@@ -1,0 +1,594 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "meta": {
+    "name": "Android Ledger UI Tokens",
+    "version": "1.0.0",
+    "status": "implementation-contract",
+    "style": "Quiet Precision / 静稳精确",
+    "sourceOfTruth": ":core:designsystem",
+    "notes": [
+      "Feature modules must not hard-code visual values represented in this file.",
+      "Dynamic color may replace shell brand tokens only; semantic, category and chart tokens remain app-controlled.",
+      "All dp/sp values are logical Android units."
+    ]
+  },
+  "color": {
+    "light": {
+      "primary": "#006B66",
+      "onPrimary": "#FFFFFF",
+      "primaryContainer": "#A8F2E8",
+      "onPrimaryContainer": "#00201E",
+      "secondary": "#4A6360",
+      "onSecondary": "#FFFFFF",
+      "secondaryContainer": "#CCE8E3",
+      "onSecondaryContainer": "#05201E",
+      "tertiary": "#4D5F7A",
+      "onTertiary": "#FFFFFF",
+      "tertiaryContainer": "#D5E3FF",
+      "onTertiaryContainer": "#071C34",
+      "background": "#F7F8F5",
+      "onBackground": "#191C1B",
+      "surface": "#FCFDF9",
+      "onSurface": "#191C1B",
+      "surfaceVariant": "#E0E5E2",
+      "onSurfaceVariant": "#414846",
+      "surfaceContainerLowest": "#FFFFFF",
+      "surfaceContainerLow": "#F4F6F2",
+      "surfaceContainer": "#EEF1ED",
+      "surfaceContainerHigh": "#E8EBE7",
+      "surfaceContainerHighest": "#E2E5E1",
+      "outline": "#707976",
+      "outlineVariant": "#C0C9C6",
+      "inverseSurface": "#2E3130",
+      "inverseOnSurface": "#EFF1ED",
+      "inversePrimary": "#83D5CC",
+      "scrim": "#000000",
+      "shadow": "#000000",
+      "disabledContainer": "#191C1B1F",
+      "disabledContent": "#191C1B61",
+      "focusRing": "#006B66",
+      "selectionOverlay": "#006B6614"
+    },
+    "dark": {
+      "primary": "#83D5CC",
+      "onPrimary": "#003735",
+      "primaryContainer": "#00504C",
+      "onPrimaryContainer": "#A8F2E8",
+      "secondary": "#B0CCC7",
+      "onSecondary": "#1B3532",
+      "secondaryContainer": "#324B48",
+      "onSecondaryContainer": "#CCE8E3",
+      "tertiary": "#B5C7E8",
+      "onTertiary": "#1F3049",
+      "tertiaryContainer": "#354761",
+      "onTertiaryContainer": "#D5E3FF",
+      "background": "#101413",
+      "onBackground": "#E1E3DF",
+      "surface": "#101413",
+      "onSurface": "#E1E3DF",
+      "surfaceVariant": "#414846",
+      "onSurfaceVariant": "#C0C9C6",
+      "surfaceContainerLowest": "#0B0F0E",
+      "surfaceContainerLow": "#171B1A",
+      "surfaceContainer": "#1B201E",
+      "surfaceContainerHigh": "#252A28",
+      "surfaceContainerHighest": "#303633",
+      "outline": "#8A9490",
+      "outlineVariant": "#414846",
+      "inverseSurface": "#E1E3DF",
+      "inverseOnSurface": "#2E3130",
+      "inversePrimary": "#006B66",
+      "scrim": "#000000",
+      "shadow": "#000000",
+      "disabledContainer": "#E1E3DF1F",
+      "disabledContent": "#E1E3DF61",
+      "focusRing": "#83D5CC",
+      "selectionOverlay": "#83D5CC1F"
+    },
+    "semantic": {
+      "positive": {
+        "light": {
+          "base": "#2E6B45",
+          "onBase": "#FFFFFF",
+          "container": "#D8F4DF",
+          "onContainer": "#0C3A21"
+        },
+        "dark": {
+          "base": "#8BD5A2",
+          "onBase": "#103B22",
+          "container": "#1D4E2F",
+          "onContainer": "#B8F2C6"
+        }
+      },
+      "warning": {
+        "light": {
+          "base": "#8A5B00",
+          "onBase": "#FFFFFF",
+          "container": "#FFE2A8",
+          "onContainer": "#2A1B00"
+        },
+        "dark": {
+          "base": "#F4C26B",
+          "onBase": "#493100",
+          "container": "#684800",
+          "onContainer": "#FFE2A8"
+        }
+      },
+      "danger": {
+        "light": {
+          "base": "#B3261E",
+          "onBase": "#FFFFFF",
+          "container": "#FFDAD6",
+          "onContainer": "#410002"
+        },
+        "dark": {
+          "base": "#FFB4AB",
+          "onBase": "#690005",
+          "container": "#93000A",
+          "onContainer": "#FFDAD6"
+        }
+      },
+      "info": {
+        "light": {
+          "base": "#1D5F8A",
+          "onBase": "#FFFFFF",
+          "container": "#D0E9FF",
+          "onContainer": "#001E30"
+        },
+        "dark": {
+          "base": "#9DCCF5",
+          "onBase": "#00344E",
+          "container": "#084B70",
+          "onContainer": "#D0E9FF"
+        }
+      },
+      "neutralTransaction": {
+        "light": {
+          "base": "#4D6070",
+          "container": "#D9E7F2",
+          "onContainer": "#122532"
+        },
+        "dark": {
+          "base": "#B9CAD8",
+          "container": "#354957",
+          "onContainer": "#D9E7F2"
+        }
+      }
+    },
+    "transaction": {
+      "expense": "onSurface",
+      "income": "semantic.positive.base",
+      "refund": "semantic.info.base",
+      "transfer": "semantic.neutralTransaction.base",
+      "repayment": "semantic.neutralTransaction.base",
+      "overdue": "semantic.danger.base",
+      "candidate": "secondary"
+    },
+    "categoryPalette": [
+      {
+        "id": "coral",
+        "foregroundLight": "#8B3A34",
+        "containerLight": "#FADBD7",
+        "foregroundDark": "#FFB4AC",
+        "containerDark": "#5B1D19"
+      },
+      {
+        "id": "orange",
+        "foregroundLight": "#8A4A12",
+        "containerLight": "#FBE0C5",
+        "foregroundDark": "#FFB77A",
+        "containerDark": "#5B2B05"
+      },
+      {
+        "id": "amber",
+        "foregroundLight": "#765800",
+        "containerLight": "#F5E5A8",
+        "foregroundDark": "#EBCB66",
+        "containerDark": "#4D3A00"
+      },
+      {
+        "id": "olive",
+        "foregroundLight": "#566500",
+        "containerLight": "#E1EBB6",
+        "foregroundDark": "#C4D77A",
+        "containerDark": "#384300"
+      },
+      {
+        "id": "green",
+        "foregroundLight": "#2F6B42",
+        "containerLight": "#D5EEDB",
+        "foregroundDark": "#8CD5A0",
+        "containerDark": "#1D4C2B"
+      },
+      {
+        "id": "teal",
+        "foregroundLight": "#006B66",
+        "containerLight": "#C8ECE7",
+        "foregroundDark": "#83D5CC",
+        "containerDark": "#0B4F4B"
+      },
+      {
+        "id": "cyan",
+        "foregroundLight": "#00677A",
+        "containerLight": "#C7EAF1",
+        "foregroundDark": "#82D3E4",
+        "containerDark": "#084A58"
+      },
+      {
+        "id": "blue",
+        "foregroundLight": "#315E86",
+        "containerLight": "#D4E7FA",
+        "foregroundDark": "#9CCBFA",
+        "containerDark": "#254661"
+      },
+      {
+        "id": "indigo",
+        "foregroundLight": "#4E5891",
+        "containerLight": "#E0E3FF",
+        "foregroundDark": "#BCC2FF",
+        "containerDark": "#373F70"
+      },
+      {
+        "id": "purple",
+        "foregroundLight": "#6B4C8A",
+        "containerLight": "#EDDDF7",
+        "foregroundDark": "#D9B8F5",
+        "containerDark": "#4D3268"
+      },
+      {
+        "id": "magenta",
+        "foregroundLight": "#86436E",
+        "containerLight": "#F7DBEA",
+        "foregroundDark": "#F3B2D6",
+        "containerDark": "#62304F"
+      },
+      {
+        "id": "brown",
+        "foregroundLight": "#6E5545",
+        "containerLight": "#EADFD8",
+        "foregroundDark": "#D9C0B0",
+        "containerDark": "#4E3B30"
+      },
+      {
+        "id": "slate",
+        "foregroundLight": "#52616A",
+        "containerLight": "#DCE5E9",
+        "foregroundDark": "#BCC8CE",
+        "containerDark": "#39464C"
+      },
+      {
+        "id": "rose",
+        "foregroundLight": "#8A4755",
+        "containerLight": "#F7DCE2",
+        "foregroundDark": "#F4B6C3",
+        "containerDark": "#63313C"
+      },
+      {
+        "id": "lime",
+        "foregroundLight": "#4F6900",
+        "containerLight": "#DDEDB4",
+        "foregroundDark": "#BDD879",
+        "containerDark": "#334600"
+      },
+      {
+        "id": "navy",
+        "foregroundLight": "#3D5874",
+        "containerLight": "#D7E5F3",
+        "foregroundDark": "#A7C7E5",
+        "containerDark": "#2A4157"
+      }
+    ],
+    "chart": {
+      "categoricalLight": [
+        "#006B66",
+        "#4D5F7A",
+        "#8A5B00",
+        "#7A4F86",
+        "#315E86",
+        "#566500",
+        "#8B3A34",
+        "#00677A",
+        "#6E5545",
+        "#52616A"
+      ],
+      "categoricalDark": [
+        "#83D5CC",
+        "#B5C7E8",
+        "#F4C26B",
+        "#D9B8F5",
+        "#9CCBFA",
+        "#C4D77A",
+        "#FFB4AC",
+        "#82D3E4",
+        "#D9C0B0",
+        "#BCC8CE"
+      ],
+      "sequentialTealLight": [
+        "#D7F3EF",
+        "#A7E2DA",
+        "#70C8BE",
+        "#33A69C",
+        "#006B66",
+        "#004B47"
+      ],
+      "sequentialTealDark": [
+        "#173F3C",
+        "#1D5A55",
+        "#27766F",
+        "#3F9990",
+        "#83D5CC",
+        "#B7F0E9"
+      ],
+      "gridLight": "#D7DDDA",
+      "gridDark": "#343B38",
+      "axisLight": "#5C6461",
+      "axisDark": "#AAB3AF",
+      "selectionLight": "#006B66",
+      "selectionDark": "#83D5CC"
+    }
+  },
+  "typography": {
+    "fontFamily": "system-sans",
+    "amountHero": {
+      "fontSizeSp": 40,
+      "lineHeightSp": 48,
+      "weight": 600,
+      "letterSpacingSp": -0.3,
+      "tabularFigures": true
+    },
+    "amountLarge": {
+      "fontSizeSp": 32,
+      "lineHeightSp": 40,
+      "weight": 600,
+      "letterSpacingSp": -0.2,
+      "tabularFigures": true
+    },
+    "amountMedium": {
+      "fontSizeSp": 22,
+      "lineHeightSp": 28,
+      "weight": 600,
+      "letterSpacingSp": 0,
+      "tabularFigures": true
+    },
+    "titleLarge": {
+      "fontSizeSp": 24,
+      "lineHeightSp": 32,
+      "weight": 600,
+      "letterSpacingSp": 0
+    },
+    "titleMedium": {
+      "fontSizeSp": 20,
+      "lineHeightSp": 28,
+      "weight": 600,
+      "letterSpacingSp": 0
+    },
+    "titleSmall": {
+      "fontSizeSp": 16,
+      "lineHeightSp": 24,
+      "weight": 600,
+      "letterSpacingSp": 0.1
+    },
+    "bodyLarge": {
+      "fontSizeSp": 16,
+      "lineHeightSp": 24,
+      "weight": 400,
+      "letterSpacingSp": 0.2
+    },
+    "bodyMedium": {
+      "fontSizeSp": 14,
+      "lineHeightSp": 20,
+      "weight": 400,
+      "letterSpacingSp": 0.25
+    },
+    "bodySmall": {
+      "fontSizeSp": 12,
+      "lineHeightSp": 16,
+      "weight": 400,
+      "letterSpacingSp": 0.3
+    },
+    "labelLarge": {
+      "fontSizeSp": 14,
+      "lineHeightSp": 20,
+      "weight": 600,
+      "letterSpacingSp": 0.2
+    },
+    "labelMedium": {
+      "fontSizeSp": 12,
+      "lineHeightSp": 16,
+      "weight": 600,
+      "letterSpacingSp": 0.4
+    },
+    "labelSmall": {
+      "fontSizeSp": 11,
+      "lineHeightSp": 16,
+      "weight": 600,
+      "letterSpacingSp": 0.5
+    },
+    "rules": {
+      "amountsUseTabularFigures": true,
+      "amountsRightAlignedInLists": true,
+      "maxBodyLineLengthDp": 600,
+      "doNotUseAllCaps": true,
+      "respectSystemFontScale": true,
+      "minimumSupportedFontScale": 0.85,
+      "testedMaximumFontScale": 2.0
+    }
+  },
+  "spacingDp": {
+    "0": 0,
+    "1": 2,
+    "2": 4,
+    "3": 8,
+    "4": 12,
+    "5": 16,
+    "6": 20,
+    "7": 24,
+    "8": 32,
+    "9": 40,
+    "10": 48,
+    "11": 64
+  },
+  "shapeDp": {
+    "none": 0,
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 20,
+    "xxl": 28,
+    "full": 999
+  },
+  "strokeDp": {
+    "hairline": 0.5,
+    "standard": 1,
+    "selected": 2,
+    "focus": 2
+  },
+  "elevationDp": {
+    "level0": 0,
+    "level1": 1,
+    "level2": 3,
+    "level3": 6
+  },
+  "opacity": {
+    "disabled": 0.38,
+    "secondary": 0.72,
+    "scrimModalLight": 0.42,
+    "scrimModalDark": 0.6,
+    "pressedOverlay": 0.1,
+    "hoverOverlay": 0.08,
+    "focusOverlay": 0.12
+  },
+  "dimensionDp": {
+    "touchTargetMin": 48,
+    "topAppBarHeight": 56,
+    "bottomNavigationHeight": 80,
+    "bottomNavigationIcon": 24,
+    "fab": 56,
+    "fabSmall": 48,
+    "fabExtendedMinWidth": 96,
+    "iconXs": 16,
+    "iconSm": 20,
+    "iconMd": 24,
+    "iconLg": 32,
+    "iconXl": 40,
+    "listRowCompact": 56,
+    "listRowStandard": 72,
+    "listRowRich": 88,
+    "formFieldMinHeight": 56,
+    "searchFieldHeight": 52,
+    "chipHeight": 32,
+    "buttonHeight": 48,
+    "buttonHeightCompact": 40,
+    "categoryTileMinHeight": 92,
+    "categoryIconContainer": 44,
+    "accountIconContainer": 44,
+    "cardMinHeight": 72,
+    "chartMinHeight": 220,
+    "chartPreferredHeight": 280,
+    "dialogMaxWidth": 560,
+    "contentMaxWidth": 720,
+    "formMaxWidth": 640,
+    "phoneContentHorizontalPadding": 16,
+    "phoneCompactHorizontalPadding": 12,
+    "bottomActionInset": 88
+  },
+  "grid": {
+    "category": {
+      "compactColumns": 3,
+      "standardColumns": 4,
+      "wideColumns": 5,
+      "horizontalGapDp": 8,
+      "verticalGapDp": 8,
+      "compactBreakpointDp": 360,
+      "wideBreakpointDp": 480
+    },
+    "dashboard": {
+      "compactColumns": 1,
+      "standardMetricColumns": 2,
+      "wideMetricColumns": 2,
+      "gapDp": 12
+    }
+  },
+  "breakpointDp": {
+    "minimumSupportedWidth": 320,
+    "compactMax": 359,
+    "standardMin": 360,
+    "standardMax": 479,
+    "wideMin": 480,
+    "largePhoneMin": 600
+  },
+  "motion": {
+    "durationMs": {
+      "instant": 0,
+      "micro": 80,
+      "short": 140,
+      "standard": 220,
+      "long": 320
+    },
+    "easing": {
+      "standard": [
+        0.2,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "decelerate": [
+        0.0,
+        0.0,
+        0.2,
+        1.0
+      ],
+      "accelerate": [
+        0.4,
+        0.0,
+        1.0,
+        1.0
+      ]
+    },
+    "rules": {
+      "noDecorativeSpring": true,
+      "noCelebrationAnimation": true,
+      "reduceMotionUsesFadeOnly": true,
+      "reduceMotionMaxDurationMs": 80,
+      "skeletonAppearsAfterMs": 150
+    }
+  },
+  "componentPolicy": {
+    "featureMayUseDirectly": [
+      "Box",
+      "Row",
+      "Column",
+      "FlowRow",
+      "LazyColumn",
+      "LazyGrid",
+      "Canvas",
+      "Text with LedgerTheme typography/color"
+    ],
+    "featureMustUseWrappersFor": [
+      "Button",
+      "IconButton",
+      "TextField",
+      "Card",
+      "Dialog",
+      "BottomSheet",
+      "Snackbar",
+      "NavigationBar",
+      "TopAppBar",
+      "Tabs",
+      "DatePicker",
+      "TimePicker",
+      "ProgressIndicator"
+    ],
+    "forbidden": [
+      "hard-coded color literals in feature modules",
+      "hard-coded spacing outside documented exceptional layout",
+      "feature-local MaterialTheme",
+      "feature-local component copies",
+      "semantic meaning expressed by color only",
+      "custom shadows or gradients outside chart/map tokens",
+      "mixed icon families",
+      "swipe-to-delete for financial records"
+    ]
+  }
+}

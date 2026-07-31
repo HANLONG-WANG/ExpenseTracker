@@ -1,0 +1,4206 @@
+meta:
+  name: Android 记账软件页面与路由契约
+  version: 1.0.0
+  screenCount: 215
+  navigationRules:
+  - 'Root navigation owns five independent back stacks: record, journal, accounts, budget, analysis.'
+  - Routes carry stable IDs, enum values or saved filter/report IDs only.
+  - Routes never carry amount, note, card number, attachment content or full domain objects.
+  - App lock and maintenance gates intercept all business destinations.
+  - Feature modules expose route keys and destination factories; they do not navigate to another feature implementation directly.
+screens:
+- id: G-001
+  group: 全局运行态
+  module: :app
+  route: session-gate
+  title: 会话入口
+  presentation: system
+  params: []
+  result: null
+  primaryComponents:
+  - LedgerSessionGate
+  requiredStates:
+  - uninitialized
+  - locked
+  - opening
+  - maintenance
+  - recoveryRequired
+  - ready
+  notes:
+  - 唯一根入口；不显示业务数据。
+  requirementTags: []
+- id: G-002
+  group: 全局运行态
+  module: :core:security
+  route: app-lock
+  title: 应用已锁定
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - LockScreen
+  - AuthenticationAction
+  requiredStates:
+  - biometricAvailable
+  - credentialOnly
+  - authenticating
+  - authFailed
+  - lockedOut
+  notes:
+  - 禁止截屏时继承 FLAG_SECURE；认证成功只解锁应用 UI，不解锁保险库。
+  requirementTags: []
+- id: G-003
+  group: 全局运行态
+  module: :app
+  route: opening-book
+  title: 正在打开账本
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - CenteredProgressState
+  requiredStates:
+  - opening
+  - migrationDetected
+  - failed
+  notes:
+  - 超过150ms才展示；不得显示数据库路径或原始异常。
+  requirementTags: []
+- id: G-004
+  group: 全局运行态
+  module: :app
+  route: maintenance
+  title: 正在维护账本
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - OperationProgressPanel
+  requiredStates:
+  - preparing
+  - running
+  - nonCancelable
+  - cancelable
+  - failed
+  - succeeded
+  notes:
+  - 禁止新的财务写入；可取消仅由 operation capability 决定。
+  requirementTags: []
+- id: G-005
+  group: 全局运行态
+  module: :app
+  route: recovery-required
+  title: 需要恢复账本
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - RecoveryActions
+  - DiagnosticCode
+  requiredStates:
+  - corrupt
+  - keyUnavailable
+  - projectionFailure
+  - restoreAvailable
+  - noBackup
+  notes:
+  - 只显示脱敏错误码；提供重试、从备份恢复、清除本机数据。
+  requirementTags: []
+- id: G-006
+  group: 全局导航
+  module: :app
+  route: more
+  title: 更多功能
+  presentation: root
+  params: []
+  result: null
+  primaryComponents:
+  - FeatureHubSection
+  - FeatureHubItem
+  requiredStates:
+  - content
+  - badgeUpdates
+  - operationInProgress
+  notes:
+  - 所有顶层页面右上角使用同一入口。
+  requirementTags: []
+- id: G-007
+  group: 后台操作
+  module: :core:background
+  route: operations
+  title: 操作中心
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OperationListItem
+  - OperationStatusBadge
+  requiredStates:
+  - active
+  - paused
+  - failed
+  - completed
+  - empty
+  notes:
+  - 导入、导出、备份、恢复等长任务统一入口。
+  requirementTags: []
+- id: G-008
+  group: 全局帮助
+  module: :feature:settings
+  route: help/{topicKey}
+  title: 帮助
+  presentation: fullScreen
+  params:
+  - topicKey:String
+  result: null
+  primaryComponents:
+  - HelpArticle
+  requiredStates:
+  - content
+  - notFound
+  notes:
+  - 仅接收白名单 topicKey，不接收自由 URL。
+  requirementTags: []
+- id: ONB-001
+  group: 首次启动
+  module: :feature:onboarding
+  route: onboarding/language
+  title: 选择界面语言
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OnboardingScaffold
+  - LanguageOption
+  requiredStates:
+  - content
+  - validationError
+  - submitting
+  notes:
+  - 显示步骤进度；可选步骤提供“稍后设置”；不得创建示例数据。
+  requirementTags: []
+- id: ONB-002
+  group: 首次启动
+  module: :feature:onboarding
+  route: onboarding/base-currency
+  title: 选择本位币
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OnboardingScaffold
+  - CurrencySearch
+  - CurrencyOption
+  requiredStates:
+  - content
+  - validationError
+  - submitting
+  notes:
+  - 显示步骤进度；可选步骤提供“稍后设置”；不得创建示例数据。
+  requirementTags: []
+- id: ONB-003
+  group: 首次启动
+  module: :feature:onboarding
+  route: onboarding/time-zone
+  title: 确认默认时区
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OnboardingScaffold
+  - TimeZoneSearch
+  - CurrentTimePreview
+  requiredStates:
+  - content
+  - validationError
+  - submitting
+  notes:
+  - 显示步骤进度；可选步骤提供“稍后设置”；不得创建示例数据。
+  requirementTags: []
+- id: ONB-004
+  group: 首次启动
+  module: :feature:onboarding
+  route: onboarding/privacy-policy
+  title: 隐私政策
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OnboardingScaffold
+  - PolicyDocument
+  - RequiredConsent
+  requiredStates:
+  - content
+  - validationError
+  - submitting
+  notes:
+  - 显示步骤进度；可选步骤提供“稍后设置”；不得创建示例数据。
+  requirementTags: []
+- id: ONB-005
+  group: 首次启动
+  module: :feature:onboarding
+  route: onboarding/telemetry
+  title: 诊断与功能统计
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OnboardingScaffold
+  - ConsentToggle
+  - PrivacySummary
+  requiredStates:
+  - content
+  - validationError
+  - submitting
+  notes:
+  - 显示步骤进度；可选步骤提供“稍后设置”；不得创建示例数据。
+  requirementTags: []
+- id: ONB-006
+  group: 首次启动
+  module: :feature:onboarding
+  route: onboarding/app-lock
+  title: 应用锁
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OnboardingScaffold
+  - SecurityCapabilityCard
+  - TimeoutSelector
+  requiredStates:
+  - content
+  - validationError
+  - submitting
+  notes:
+  - 显示步骤进度；可选步骤提供“稍后设置”；不得创建示例数据。
+  requirementTags: []
+- id: ONB-007
+  group: 首次启动
+  module: :feature:onboarding
+  route: onboarding/backup
+  title: 恢复密码与备份
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OnboardingScaffold
+  - RecoveryPasswordSetupCard
+  - BackupDestinationCard
+  requiredStates:
+  - content
+  - validationError
+  - submitting
+  notes:
+  - 显示步骤进度；可选步骤提供“稍后设置”；不得创建示例数据。
+  requirementTags: []
+- id: ONB-008
+  group: 首次启动
+  module: :feature:onboarding
+  route: onboarding/account
+  title: 创建第一个账户
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OnboardingScaffold
+  - EmbeddedAccountSetup
+  - SkipAction
+  requiredStates:
+  - content
+  - validationError
+  - submitting
+  notes:
+  - 显示步骤进度；可选步骤提供“稍后设置”；不得创建示例数据。
+  requirementTags: []
+- id: ONB-009
+  group: 首次启动
+  module: :feature:onboarding
+  route: onboarding/category
+  title: 创建第一个分类
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OnboardingScaffold
+  - EmbeddedCategorySetup
+  - SkipAction
+  requiredStates:
+  - content
+  - validationError
+  - submitting
+  notes:
+  - 显示步骤进度；可选步骤提供“稍后设置”；不得创建示例数据。
+  requirementTags: []
+- id: ONB-010
+  group: 首次启动
+  module: :feature:onboarding
+  route: onboarding/complete
+  title: 设置完成
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - OnboardingScaffold
+  - CompletionSummary
+  requiredStates:
+  - content
+  - validationError
+  - submitting
+  notes:
+  - 显示步骤进度；可选步骤提供“稍后设置”；不得创建示例数据。
+  requirementTags: []
+- id: REC-001
+  group: 记账
+  module: :feature:record
+  route: record/{tab}
+  title: 记账
+  presentation: topLevel
+  params:
+  - tab:EXPENSE|INCOME|OTHER
+  result: null
+  primaryComponents:
+  - RecordTopTabs
+  - QuickTemplateStrip
+  - CategoryGrid
+  - OtherTransactionGrid
+  - LedgerSaveFab
+  requiredStates:
+  - content
+  - noCategories
+  - searching
+  - loading
+  notes:
+  - 冷启动默认 EXPENSE；支出和收入分类树完全独立。
+  requirementTags: []
+- id: REC-002
+  group: 记账
+  module: :feature:record
+  route: record/category-search/{direction}
+  title: 搜索分类
+  presentation: fullScreen
+  params:
+  - direction:EXPENSE|INCOME
+  result: CategoryId?
+  primaryComponents:
+  - SearchField
+  - CategorySearchResults
+  requiredStates:
+  - typing
+  - results
+  - empty
+  notes: []
+  requirementTags: []
+- id: REC-003
+  group: 记账
+  module: :feature:record
+  route: record/editor/{mode}/{transactionId?}
+  title: 交易编辑器
+  presentation: fullScreen
+  params:
+  - mode:CREATE|EDIT|DUPLICATE|TEMPLATE|CANDIDATE
+  - transactionId:StableId?
+  result: null
+  primaryComponents:
+  - TransactionEditorScaffold
+  - CategorySelector
+  - MoneyExpressionField
+  - AccountCardSelector
+  - MerchantSelector
+  - DateTimeZoneField
+  - ProjectSelector
+  - SettlementSection
+  - LocationField
+  - NoteField
+  - AttachmentField
+  - AdvancedSemanticsSection
+  - LedgerSaveFab
+  requiredStates:
+  - loading
+  - editing
+  - validating
+  - saving
+  - saveError
+  - revisionConflict
+  notes:
+  - 所有字段在同一纵向页面；互请默认折叠；未保存表单只驻留 ViewModel 内存。
+  requirementTags: []
+- id: REC-004
+  group: 记账
+  module: :feature:record
+  route: record/category-picker/{direction}/{selectedId?}
+  title: 选择分类
+  presentation: fullScreen
+  params:
+  - direction:EXPENSE|INCOME
+  - selectedId:StableId?
+  result: CategoryId
+  primaryComponents:
+  - CategoryGrid
+  - CategorySearchAction
+  requiredStates:
+  - content
+  - empty
+  - searching
+  notes:
+  - 交易重新选择分类必须复用完整分类网格。
+  requirementTags: []
+- id: REC-005
+  group: 记账
+  module: :feature:record
+  route: record/account-picker/{allowedTypes}
+  title: 选择账户
+  presentation: fullScreen
+  params:
+  - allowedTypes:enumMask
+  result: AccountId
+  primaryComponents:
+  - SearchField
+  - AccountOptionRow
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: REC-006
+  group: 记账
+  module: :feature:record
+  route: record/card-picker/{accountId}
+  title: 选择实体卡
+  presentation: sheet
+  params:
+  - accountId:StableId
+  result: CardId?
+  primaryComponents:
+  - CardOptionRow
+  - NoneOption
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: REC-007
+  group: 记账
+  module: :feature:record
+  route: record/merchant-picker
+  title: 选择商户
+  presentation: fullScreen
+  params: []
+  result: MerchantId?
+  primaryComponents:
+  - SearchField
+  - MerchantSuggestionRow
+  - CreateInlineAction
+  requiredStates:
+  - recent
+  - results
+  - empty
+  - create
+  notes: []
+  requirementTags: []
+- id: REC-008
+  group: 记账
+  module: :feature:record
+  route: record/project-picker
+  title: 选择项目
+  presentation: fullScreen
+  params: []
+  result: ProjectId?
+  primaryComponents:
+  - SearchField
+  - ProjectOptionRow
+  - NoneOption
+  requiredStates:
+  - active
+  - archivedWarning
+  - empty
+  notes: []
+  requirementTags: []
+- id: REC-009
+  group: 记账
+  module: :feature:record
+  route: record/location-editor/{locationId?}
+  title: 位置
+  presentation: fullScreen
+  params:
+  - locationId:StableId?
+  result: LocationSnapshot?
+  primaryComponents:
+  - MapLibreMap
+  - MapPin
+  - LocationAccuracyPanel
+  - PlaceSelector
+  requiredStates:
+  - locating
+  - located
+  - permissionDenied
+  - timeout
+  - manual
+  - mapUnavailable
+  notes:
+  - 手动移动地图点后返回最终坐标；不在线搜索或反向地理编码。
+  requirementTags: []
+- id: REC-010
+  group: 记账
+  module: :feature:record
+  route: record/attachments
+  title: 附件
+  presentation: fullScreen
+  params: []
+  result: AttachmentSelection
+  primaryComponents:
+  - AttachmentList
+  - AddAttachmentAction
+  - AttachmentProgressRow
+  requiredStates:
+  - content
+  - empty
+  - importing
+  - failed
+  notes:
+  - 允许任意数量和格式；大文件显示流式进度与取消。
+  requirementTags: []
+- id: REC-011
+  group: 记账
+  module: :feature:record
+  route: record/settlement-allocation/{activityId}
+  title: 互请分配
+  presentation: fullScreen
+  params:
+  - activityId:StableId
+  result: SettlementAllocation
+  primaryComponents:
+  - PayerSelector
+  - SplitModeTabs
+  - ParticipantShareTable
+  - FeeDistribution
+  - RoundingRule
+  - SettlementSummary
+  requiredStates:
+  - editing
+  - imbalanced
+  - valid
+  - currencyMismatch
+  notes:
+  - 显示“本人承担”和“他人承担”，不显示借贷术语。
+  requirementTags: []
+- id: REC-012
+  group: 记账
+  module: :feature:record
+  route: record/other
+  title: 其他交易
+  presentation: embedded
+  params: []
+  result: null
+  primaryComponents:
+  - OtherTransactionGrid
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: REC-013
+  group: 其他交易
+  module: :feature:record
+  route: record/transfer/{transactionId?}
+  title: 内部转账
+  presentation: fullScreen
+  params:
+  - transactionId:StableId?
+  result: null
+  primaryComponents:
+  - FromAccountField
+  - ToAccountField
+  - MoneyExpressionField
+  - FxEvidenceSection
+  - DateTimeZoneField
+  - NoteField
+  - AttachmentField
+  - LedgerSaveFab
+  requiredStates:
+  - editing
+  - sameAccountError
+  - fxRequired
+  - saving
+  notes: []
+  requirementTags: []
+- id: REC-014
+  group: 其他交易
+  module: :feature:record
+  route: record/credit-payment/{transactionId?}
+  title: 信用卡还款
+  presentation: fullScreen
+  params:
+  - transactionId:StableId?
+  result: null
+  primaryComponents:
+  - PaymentAccountField
+  - CreditAccountField
+  - AmountField
+  - PaymentAllocationSection
+  - DateTimeZoneField
+  - LedgerSaveFab
+  requiredStates:
+  - editing
+  - overpaymentBlocked
+  - unallocated
+  - saving
+  notes:
+  - 明确提示“软件记账不代表银行扣款成功”。
+  requirementTags: []
+- id: REC-015
+  group: 其他交易
+  module: :feature:record
+  route: record/refund/{transactionId?}
+  title: 退款
+  presentation: fullScreen
+  params:
+  - transactionId:StableId?
+  result: null
+  primaryComponents:
+  - OriginalTransactionField
+  - RefundAmountField
+  - ReceivingAccountField
+  - InheritedFields
+  - RefundBudgetPolicy
+  - RefundProjectPolicy
+  - RefundGoalPolicy
+  - AdvancedExcessOverride
+  - LedgerSaveFab
+  requiredStates:
+  - linked
+  - independent
+  - partiallyRefunded
+  - exceedsRemaining
+  - saving
+  notes: []
+  requirementTags: []
+- id: REC-016
+  group: 其他交易
+  module: :feature:record
+  route: record/refund/original-picker
+  title: 选择原交易
+  presentation: fullScreen
+  params: []
+  result: TransactionId
+  primaryComponents:
+  - SearchField
+  - RefundableTransactionRow
+  - FilterChips
+  requiredStates:
+  - content
+  - empty
+  - searching
+  notes: []
+  requirementTags: []
+- id: REC-017
+  group: 其他交易
+  module: :feature:record
+  route: record/loan-operation
+  title: 贷款操作
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - LoanOperationTypeList
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: REC-018
+  group: 其他交易
+  module: :feature:record
+  route: record/loan-disbursement/{contractId?}
+  title: 贷款放款
+  presentation: fullScreen
+  params:
+  - contractId:StableId?
+  result: null
+  primaryComponents:
+  - LoanContractField
+  - ReceivingAccountField
+  - TrancheAllocation
+  - AmountField
+  - DateTimeZoneField
+  - LedgerSaveFab
+  requiredStates:
+  - editing
+  - allocationError
+  - saving
+  notes: []
+  requirementTags: []
+- id: REC-019
+  group: 其他交易
+  module: :feature:record
+  route: record/loan-payment/{contractId?}
+  title: 贷款还款
+  presentation: fullScreen
+  params:
+  - contractId:StableId?
+  result: null
+  primaryComponents:
+  - LoanContractField
+  - PaymentAccountField
+  - PaymentComponentsEditor
+  - ScheduleItemPicker
+  - AmountReconciliation
+  - LedgerSaveFab
+  requiredStates:
+  - editing
+  - principalExceeded
+  - sumMismatch
+  - saving
+  notes: []
+  requirementTags: []
+- id: REC-020
+  group: 其他交易
+  module: :feature:record
+  route: record/balance-adjustment/{accountId?}
+  title: 余额调整
+  presentation: fullScreen
+  params:
+  - accountId:StableId?
+  result: null
+  primaryComponents:
+  - AccountField
+  - DirectionSelector
+  - AmountField
+  - CheckpointLink
+  - NoIncomeExpenseBanner
+  - LedgerSaveFab
+  requiredStates:
+  - editing
+  - saving
+  notes: []
+  requirementTags: []
+- id: REC-021
+  group: 其他交易
+  module: :feature:record
+  route: record/fx-exchange
+  title: 外币兑换
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - FromAccountField
+  - ToAccountField
+  - OutgoingAmountField
+  - IncomingAmountField
+  - EffectiveRateSummary
+  - FxCostSection
+  - LedgerSaveFab
+  requiredStates:
+  - editing
+  - sameCurrencyInfo
+  - rateMismatch
+  - saving
+  notes: []
+  requirementTags: []
+- id: REC-022
+  group: 其他交易
+  module: :feature:record
+  route: record/opening-balance/{accountId}
+  title: 期初余额
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - OpeningDateField
+  - AmountField
+  - NoStatisticsBanner
+  - LedgerSaveFab
+  requiredStates:
+  - editing
+  - immutableCurrency
+  - saving
+  notes: []
+  requirementTags: []
+- id: REC-023
+  group: 批量录入
+  module: :feature:record
+  route: record/batch
+  title: 批量录入
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - BatchSummaryTable
+  - BatchToolbar
+  - BatchCommitBar
+  requiredStates:
+  - editing
+  - validating
+  - errors
+  - readyToCommit
+  - committing
+  notes:
+  - 默认整批全有或全无；表格仅为摘要，复杂字段进入完整行编辑器。
+  requirementTags: []
+- id: REC-024
+  group: 批量录入
+  module: :feature:record
+  route: record/batch/row/{rowId}
+  title: 编辑第 {row} 行
+  presentation: fullScreen
+  params:
+  - rowId:StableId
+  result: BatchRowDraft
+  primaryComponents:
+  - TransactionEditorScaffold
+  requiredStates:
+  - editing
+  - validationError
+  notes: []
+  requirementTags: []
+- id: REC-025
+  group: 批量录入
+  module: :feature:record
+  route: record/batch/validation
+  title: 批量校验结果
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - ValidationSummary
+  - ErrorRowList
+  - JumpToRowAction
+  requiredStates:
+  - errors
+  - warnings
+  - valid
+  notes: []
+  requirementTags: []
+- id: REC-026
+  group: 快捷模板
+  module: :feature:record
+  route: record/template-picker
+  title: 选择快捷模板
+  presentation: fullScreen
+  params: []
+  result: TemplateId
+  primaryComponents:
+  - SearchField
+  - TemplateCard
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: REC-027
+  group: 分期录入
+  module: :feature:liabilities
+  route: record/installment-setup/{purchaseTransactionId?}
+  title: 信用卡分期
+  presentation: fullScreen
+  params:
+  - purchaseTransactionId:StableId?
+  result: null
+  primaryComponents:
+  - CreditAccountField
+  - PrincipalSummary
+  - FeeModelSelector
+  - TermCountField
+  - RateFields
+  - SchedulePreview
+  - LedgerSaveFab
+  requiredStates:
+  - editing
+  - preview
+  - invalid
+  - saving
+  notes: []
+  requirementTags: []
+- id: JRN-001
+  group: 流水
+  module: :feature:journal
+  route: journal
+  title: 流水
+  presentation: topLevel
+  params: []
+  result: null
+  primaryComponents:
+  - JournalSearchAction
+  - ActiveFilterRow
+  - PagedTransactionList
+  - DateStickyHeader
+  - JournalTransactionRow
+  requiredStates:
+  - loading
+  - content
+  - empty
+  - error
+  - refreshing
+  notes:
+  - 默认按发生时间倒序；全局流水不显示运行余额。
+  requirementTags: []
+- id: JRN-002
+  group: 流水
+  module: :feature:journal
+  route: journal/search
+  title: 搜索流水
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - SearchField
+  - SearchScopeSummary
+  - PagedTransactionList
+  requiredStates:
+  - idle
+  - typing
+  - results
+  - empty
+  - error
+  notes: []
+  requirementTags: []
+- id: JRN-003
+  group: 流水
+  module: :feature:journal
+  route: journal/filter/{presetId?}
+  title: 筛选
+  presentation: fullScreen
+  params:
+  - presetId:StableId?
+  result: FilterSpec
+  primaryComponents:
+  - FilterDimensionSections
+  - MultiSelectPicker
+  - DateRangeField
+  - AmountRangeField
+  - LocationRadiusField
+  - StickyApplyBar
+  requiredStates:
+  - editing
+  - invalid
+  - applying
+  notes: []
+  requirementTags: []
+- id: JRN-004
+  group: 流水
+  module: :feature:journal
+  route: journal/saved-filters
+  title: 已保存筛选
+  presentation: fullScreen
+  params: []
+  result: FilterPresetId?
+  primaryComponents:
+  - SavedFilterRow
+  - SetDefaultAction
+  - ReorderAction
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: JRN-005
+  group: 流水
+  module: :feature:journal
+  route: journal/selection
+  title: 批量选择
+  presentation: mode
+  params: []
+  result: null
+  primaryComponents:
+  - SelectionTopBar
+  - PagedTransactionList
+  - SelectionBottomBar
+  requiredStates:
+  - someSelected
+  - allMatchingSelected
+  - queryChanged
+  notes:
+  - 支持“全选当前筛选结果”，不得将全部记录载入内存。
+  requirementTags: []
+- id: JRN-006
+  group: 流水
+  module: :feature:journal
+  route: journal/bulk-edit
+  title: 批量编辑
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - BulkEditableFieldList
+  - ChangeSummary
+  - AtomicCommitBar
+  requiredStates:
+  - editing
+  - validating
+  - committing
+  - failed
+  - succeeded
+  notes:
+  - 禁止批量修改金额、方向、退款关系和互请份额。
+  requirementTags: []
+- id: JRN-007
+  group: 交易详情
+  module: :feature:journal
+  route: journal/transaction/{transactionId}
+  title: 交易详情
+  presentation: fullScreen
+  params:
+  - transactionId:StableId
+  result: null
+  primaryComponents:
+  - TransactionHero
+  - TransactionStatusChips
+  - UserInputSection
+  - AccountImpactSection
+  - BudgetSemanticsSection
+  - FxSection
+  - RelationshipSections
+  - LocationSection
+  - AttachmentSection
+  - SourceSection
+  - HistoryPreview
+  - TransactionActions
+  requiredStates:
+  - loading
+  - active
+  - trashed
+  - dependencyWarning
+  - notFound
+  notes: []
+  requirementTags: []
+- id: JRN-008
+  group: 交易详情
+  module: :feature:journal
+  route: journal/transaction/{transactionId}/history
+  title: 修改历史
+  presentation: fullScreen
+  params:
+  - transactionId:StableId
+  result: null
+  primaryComponents:
+  - RevisionTimeline
+  - RevisionActionBadge
+  - FieldChangeSummary
+  requiredStates:
+  - content
+  - singleRevision
+  notes: []
+  requirementTags: []
+- id: JRN-009
+  group: 交易详情
+  module: :feature:journal
+  route: journal/transaction/{transactionId}/compare/{leftRevisionId}/{rightRevisionId}
+  title: 版本对比
+  presentation: fullScreen
+  params:
+  - transactionId:StableId
+  - leftRevisionId:StableId
+  - rightRevisionId:StableId
+  result: null
+  primaryComponents:
+  - RevisionCompareTable
+  - RestoreRevisionAction
+  requiredStates:
+  - content
+  - loading
+  notes: []
+  requirementTags: []
+- id: JRN-010
+  group: 交易详情
+  module: :feature:journal
+  route: journal/transaction/{transactionId}/dependencies
+  title: 影响范围
+  presentation: fullScreen
+  params:
+  - transactionId:StableId
+  result: DependencyStrategy
+  primaryComponents:
+  - DependencyTree
+  - StrategyOptionCards
+  - ImpactSummary
+  requiredStates:
+  - content
+  - noDependencies
+  - blocked
+  notes: []
+  requirementTags: []
+- id: JRN-011
+  group: 回收站
+  module: :feature:journal
+  route: journal/trash
+  title: 回收站
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - TrashRetentionBanner
+  - PagedTrashList
+  - RestoreAction
+  - PurgeAction
+  requiredStates:
+  - content
+  - empty
+  - selection
+  notes: []
+  requirementTags: []
+- id: JRN-012
+  group: 回收站
+  module: :feature:journal
+  route: journal/purge/{transactionId}
+  title: 永久删除
+  presentation: dialog
+  params:
+  - transactionId:StableId
+  result: null
+  primaryComponents:
+  - HighRiskConfirmation
+  - DependencySummary
+  requiredStates:
+  - eligible
+  - notEligible
+  - verifying
+  - purging
+  notes:
+  - 只有已完全冲销且依赖处理完成的交易才可清除。
+  requirementTags: []
+- id: ACC-001
+  group: 账户
+  module: :feature:accounts
+  route: accounts
+  title: 账户
+  presentation: topLevel
+  params: []
+  result: null
+  primaryComponents:
+  - NetFinancialAssetSummary
+  - AmountVisibilityAction
+  - AccountSection
+  - AccountSummaryCard
+  - AddAccountAction
+  requiredStates:
+  - content
+  - noAccounts
+  - valuationStale
+  - error
+  notes:
+  - 指标名称固定为“核心净金融资产”和“调整后净金融头寸”。
+  requirementTags: []
+- id: ACC-002
+  group: 账户
+  module: :feature:accounts
+  route: accounts/type-picker
+  title: 选择账户类型
+  presentation: fullScreen
+  params: []
+  result: AccountType
+  primaryComponents:
+  - AccountTypeCard
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: ACC-003
+  group: 账户
+  module: :feature:accounts
+  route: accounts/editor/{accountId?}
+  title: 账户设置
+  presentation: fullScreen
+  params:
+  - accountId:StableId?
+  result: null
+  primaryComponents:
+  - AccountBasicFields
+  - CurrencyField
+  - DisplayStyleFields
+  - TypeSpecificFields
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - currencyLocked
+  - validationError
+  - saving
+  notes: []
+  requirementTags: []
+- id: ACC-004
+  group: 账户
+  module: :feature:accounts
+  route: accounts/editor/{accountId}/opening-balance
+  title: 期初余额
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - OpeningBalanceForm
+  - NoStatisticsBanner
+  requiredStates:
+  - editing
+  - saving
+  notes: []
+  requirementTags: []
+- id: ACC-005
+  group: 账户详情
+  module: :feature:accounts
+  route: accounts/{accountId}
+  title: 账户详情
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - AccountBalanceHero
+  - AvailableBalanceRow
+  - ValuationInfo
+  - BalanceTrendChart
+  - AccountActionRow
+  - CardsSection
+  - GoalsSection
+  - RecentTransactions
+  requiredStates:
+  - active
+  - archived
+  - emptyTransactions
+  - valuationUnavailable
+  notes: []
+  requirementTags: []
+- id: ACC-006
+  group: 账户详情
+  module: :feature:accounts
+  route: accounts/{accountId}/transactions
+  title: 账户流水
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - AccountFilterRow
+  - PagedAccountTransactionList
+  - RunningBalanceColumn
+  requiredStates:
+  - content
+  - empty
+  - error
+  notes: []
+  requirementTags: []
+- id: ACC-007
+  group: 账户详情
+  module: :feature:accounts
+  route: accounts/{accountId}/checkpoint
+  title: 余额检查点
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - CheckpointDateField
+  - ObservedBalanceField
+  - CalculatedBalanceCard
+  - DifferenceCard
+  - ResolutionActions
+  requiredStates:
+  - editing
+  - match
+  - difference
+  - saving
+  notes: []
+  requirementTags: []
+- id: ACC-008
+  group: 账户详情
+  module: :feature:accounts
+  route: accounts/{accountId}/checkpoint/{checkpointId}/resolve
+  title: 处理余额差异
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  - checkpointId:StableId
+  result: null
+  primaryComponents:
+  - DifferenceExplanation
+  - FindMissingRecordsAction
+  - CreateAdjustmentAction
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: ACC-009
+  group: 实体卡
+  module: :feature:accounts
+  route: accounts/{accountId}/cards
+  title: 实体卡
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - CardList
+  - AddCardAction
+  - ArchivedSection
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: ACC-010
+  group: 实体卡
+  module: :feature:accounts
+  route: cards/editor/{cardId?}
+  title: 实体卡设置
+  presentation: fullScreen
+  params:
+  - cardId:StableId?
+  result: null
+  primaryComponents:
+  - CardBasicFields
+  - AccountCompatibilityInfo
+  - VaultSetupEntry
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - validationError
+  - saving
+  notes: []
+  requirementTags: []
+- id: ACC-011
+  group: 实体卡
+  module: :feature:accounts
+  route: cards/{cardId}
+  title: 实体卡详情
+  presentation: fullScreen
+  params:
+  - cardId:StableId
+  result: null
+  primaryComponents:
+  - CardIdentitySummary
+  - LinkedAccountRow
+  - VaultEntry
+  - CardHistory
+  - ArchiveReplaceActions
+  requiredStates:
+  - active
+  - archived
+  - replacement
+  notes: []
+  requirementTags: []
+- id: ACC-012
+  group: 账户
+  module: :feature:accounts
+  route: accounts/{accountId}/archive-delete
+  title: 归档或删除账户
+  presentation: dialog
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - UsageSummary
+  - ArchiveDeleteOptions
+  - LastAccountWarning
+  requiredStates:
+  - unusedDeletable
+  - usedArchiveOnly
+  - lastAccountWarning
+  notes: []
+  requirementTags: []
+- id: BUD-001
+  group: 预算
+  module: :feature:planning
+  route: budget/{yearMonth?}
+  title: 预算
+  presentation: topLevel
+  params:
+  - yearMonth:YYYYMM?
+  result: null
+  primaryComponents:
+  - MonthPager
+  - BudgetHero
+  - DailyAvailableCard
+  - BudgetCompositionRows
+  - CategoryBudgetList
+  - BudgetActions
+  requiredStates:
+  - configured
+  - notConfigured
+  - recalculating
+  - historical
+  - future
+  notes: []
+  requirementTags: []
+- id: BUD-002
+  group: 预算
+  module: :feature:planning
+  route: budget/{yearMonth}/edit
+  title: 编辑月度预算
+  presentation: fullScreen
+  params:
+  - yearMonth:YYYYMM
+  result: null
+  primaryComponents:
+  - TotalBudgetField
+  - HierarchicalBudgetEditor
+  - ConstraintMeters
+  - StickySaveBar
+  requiredStates:
+  - editing
+  - constraintError
+  - saving
+  - historyRecalculationWarning
+  notes: []
+  requirementTags: []
+- id: BUD-003
+  group: 预算
+  module: :feature:planning
+  route: budget/{yearMonth}/category/{categoryId}
+  title: 分类预算
+  presentation: fullScreen
+  params:
+  - yearMonth:YYYYMM
+  - categoryId:StableId
+  result: null
+  primaryComponents:
+  - CategoryBudgetField
+  - ChildAllocationList
+  - ParentLimitSummary
+  requiredStates:
+  - editing
+  - constraintError
+  notes: []
+  requirementTags: []
+- id: BUD-004
+  group: 预算
+  module: :feature:planning
+  route: budget/{yearMonth}/adjustments
+  title: 预算调整
+  presentation: fullScreen
+  params:
+  - yearMonth:YYYYMM
+  result: null
+  primaryComponents:
+  - AdjustmentTypeCards
+  - AdjustmentHistory
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: BUD-005
+  group: 预算
+  module: :feature:planning
+  route: budget/{yearMonth}/adjustment/{type}
+  title: 新建预算调整
+  presentation: fullScreen
+  params:
+  - yearMonth:YYYYMM
+  - type:CLEAR_ROLLOVER|ADD|SUBTRACT|TRANSFER
+  result: null
+  primaryComponents:
+  - NoAccountImpactBanner
+  - AdjustmentForm
+  - StickySaveBar
+  requiredStates:
+  - editing
+  - invalid
+  - saving
+  notes: []
+  requirementTags: []
+- id: BUD-006
+  group: 预算
+  module: :feature:planning
+  route: budget/{yearMonth}/history
+  title: 预算版本历史
+  presentation: fullScreen
+  params:
+  - yearMonth:YYYYMM
+  result: null
+  primaryComponents:
+  - BudgetRevisionTimeline
+  - CompareAction
+  requiredStates:
+  - content
+  - singleRevision
+  notes: []
+  requirementTags: []
+- id: BUD-007
+  group: 预算模板
+  module: :feature:planning
+  route: budget/templates
+  title: 预算模板
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - BudgetTemplateList
+  - AddTemplateAction
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: BUD-008
+  group: 预算模板
+  module: :feature:planning
+  route: budget/templates/editor/{templateId?}
+  title: 预算模板设置
+  presentation: fullScreen
+  params:
+  - templateId:StableId?
+  result: null
+  primaryComponents:
+  - TemplateNameField
+  - TotalBudgetField
+  - HierarchicalBudgetEditor
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - constraintError
+  notes: []
+  requirementTags: []
+- id: PRJ-001
+  group: 项目
+  module: :feature:planning
+  route: projects
+  title: 项目
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - ProjectList
+  - ProjectStatusTabs
+  - AddProjectAction
+  requiredStates:
+  - content
+  - empty
+  - archivedOnly
+  notes: []
+  requirementTags: []
+- id: PRJ-002
+  group: 项目
+  module: :feature:planning
+  route: projects/editor/{projectId?}
+  title: 项目设置
+  presentation: fullScreen
+  params:
+  - projectId:StableId?
+  result: null
+  primaryComponents:
+  - ProjectFields
+  - BudgetField
+  - MonthlyBudgetToggle
+  - GoalSelector
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - validationError
+  notes: []
+  requirementTags: []
+- id: PRJ-003
+  group: 项目
+  module: :feature:planning
+  route: projects/{projectId}
+  title: 项目详情
+  presentation: fullScreen
+  params:
+  - projectId:StableId
+  result: null
+  primaryComponents:
+  - ProjectHero
+  - ProjectProgress
+  - ProjectTabRow
+  - RecentProjectTransactions
+  - SettlementActivities
+  requiredStates:
+  - active
+  - archived
+  - overBudget
+  - noTransactions
+  notes: []
+  requirementTags: []
+- id: PRJ-004
+  group: 项目
+  module: :feature:planning
+  route: projects/{projectId}/transactions
+  title: 项目交易
+  presentation: fullScreen
+  params:
+  - projectId:StableId
+  result: null
+  primaryComponents:
+  - PagedTransactionList
+  - ProjectFilterRow
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: PRJ-005
+  group: 项目
+  module: :feature:planning
+  route: projects/{projectId}/cashflow
+  title: 项目现金流
+  presentation: fullScreen
+  params:
+  - projectId:StableId
+  result: null
+  primaryComponents:
+  - CashFlowChart
+  - CashFlowTable
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: PRJ-006
+  group: 项目
+  module: :feature:planning
+  route: projects/{projectId}/status
+  title: 项目状态
+  presentation: dialog
+  params:
+  - projectId:StableId
+  result: null
+  primaryComponents:
+  - ArchiveReopenOptions
+  requiredStates:
+  - active
+  - archived
+  notes: []
+  requirementTags: []
+- id: GOL-001
+  group: 目标资金
+  module: :feature:planning
+  route: goals
+  title: 目标资金
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - GoalsByAccount
+  - GoalSummaryCard
+  - AddGoalAction
+  requiredStates:
+  - content
+  - empty
+  - underfunded
+  notes: []
+  requirementTags: []
+- id: GOL-002
+  group: 目标资金
+  module: :feature:planning
+  route: goals/editor/{goalId?}
+  title: 目标设置
+  presentation: fullScreen
+  params:
+  - goalId:StableId?
+  result: null
+  primaryComponents:
+  - GoalFields
+  - AccountSelector
+  - SuggestedMonthlyPreview
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - currencyLocked
+  - validationError
+  notes: []
+  requirementTags: []
+- id: GOL-003
+  group: 目标资金
+  module: :feature:planning
+  route: goals/{goalId}
+  title: 目标详情
+  presentation: fullScreen
+  params:
+  - goalId:StableId
+  result: null
+  primaryComponents:
+  - GoalProgressHero
+  - AccountAvailabilitySummary
+  - GoalTrendChart
+  - BoundProjects
+  - MovementHistory
+  - GoalActions
+  requiredStates:
+  - active
+  - completed
+  - underfunded
+  - emptyHistory
+  notes: []
+  requirementTags: []
+- id: GOL-004
+  group: 目标资金
+  module: :feature:planning
+  route: goals/{goalId}/movement/{kind}
+  title: 目标资金操作
+  presentation: fullScreen
+  params:
+  - goalId:StableId
+  - kind:ALLOCATE|RELEASE|ADJUST
+  result: null
+  primaryComponents:
+  - AmountField
+  - AvailableBalanceInfo
+  - DateField
+  - StickySaveBar
+  requiredStates:
+  - editing
+  - insufficientActualBalanceWarning
+  - saving
+  notes: []
+  requirementTags: []
+- id: GOL-005
+  group: 目标资金
+  module: :feature:planning
+  route: goals/{goalId}/complete
+  title: 完成目标
+  presentation: sheet
+  params:
+  - goalId:StableId
+  result: null
+  primaryComponents:
+  - CompletionOptionCards
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: LIA-001
+  group: 负债管理
+  module: :feature:liabilities
+  route: liabilities
+  title: 负债管理
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - LiabilitySummary
+  - CreditAccountsSection
+  - LoansSection
+  - InstallmentsSection
+  requiredStates:
+  - content
+  - empty
+  - overdue
+  notes: []
+  requirementTags: []
+- id: CRD-001
+  group: 信用卡
+  module: :feature:liabilities
+  route: credit/{accountId}
+  title: 信用账户
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - CreditDebtHero
+  - LimitUsageBar
+  - DueStatusCard
+  - CreditTabRow
+  - StatementPreview
+  - InstallmentPreview
+  - CreditActions
+  requiredStates:
+  - normal
+  - overdue
+  - positiveBalance
+  - noLimit
+  - noStatements
+  notes: []
+  requirementTags: []
+- id: CRD-002
+  group: 信用卡
+  module: :feature:liabilities
+  route: credit/{accountId}/profile
+  title: 信用账户设置
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - StatementRuleFields
+  - DueRuleFields
+  - ZoneField
+  - LimitFields
+  - DefaultPaymentAccount
+  - AutoPaymentMode
+  - StickySaveBar
+  requiredStates:
+  - editing
+  - validationError
+  notes: []
+  requirementTags: []
+- id: CRD-003
+  group: 信用卡
+  module: :feature:liabilities
+  route: credit/{accountId}/statements
+  title: 信用卡账单
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - StatementList
+  - StatementStatusFilter
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: CRD-004
+  group: 信用卡
+  module: :feature:liabilities
+  route: credit/statement/{statementId}
+  title: 账单详情
+  presentation: fullScreen
+  params:
+  - statementId:StableId
+  result: null
+  primaryComponents:
+  - StatementHero
+  - EstimatedOfficialComparison
+  - PaymentProgress
+  - StatementTransactionList
+  - AllocationList
+  - SealAction
+  requiredStates:
+  - estimatedOnly
+  - official
+  - sealed
+  - overdue
+  - paid
+  notes: []
+  requirementTags: []
+- id: CRD-005
+  group: 信用卡
+  module: :feature:liabilities
+  route: credit/statement/{statementId}/official
+  title: 录入官方账单
+  presentation: fullScreen
+  params:
+  - statementId:StableId
+  result: null
+  primaryComponents:
+  - OfficialAmountField
+  - DifferencePreview
+  - SealToggle
+  - StickySaveBar
+  requiredStates:
+  - editing
+  - difference
+  - saving
+  notes: []
+  requirementTags: []
+- id: CRD-006
+  group: 信用卡
+  module: :feature:liabilities
+  route: credit/statement-assignment/{transactionId}
+  title: 调整账单归属
+  presentation: sheet
+  params:
+  - transactionId:StableId
+  result: StatementId
+  primaryComponents:
+  - PreviousCurrentNextStatementOptions
+  - ImpactWarning
+  requiredStates:
+  - content
+  - sealedWarning
+  notes: []
+  requirementTags: []
+- id: CRD-007
+  group: 信用卡
+  module: :feature:liabilities
+  route: credit/payment-allocation/{transactionId}
+  title: 还款分配
+  presentation: fullScreen
+  params:
+  - transactionId:StableId
+  result: null
+  primaryComponents:
+  - PaymentAmountSummary
+  - StatementAllocationTable
+  - UnallocatedOption
+  - RemainingValidation
+  requiredStates:
+  - editing
+  - balanced
+  - mismatch
+  notes: []
+  requirementTags: []
+- id: CRD-008
+  group: 信用卡
+  module: :feature:liabilities
+  route: credit/{accountId}/auto-payment
+  title: 自动还款记账
+  presentation: fullScreen
+  params:
+  - accountId:StableId
+  result: null
+  primaryComponents:
+  - ModeSelector
+  - EligibilityChecklist
+  - DefaultBankAccount
+  - RealityPaymentDisclaimer
+  - StickySaveBar
+  requiredStates:
+  - eligible
+  - ineligible
+  - candidateMode
+  notes: []
+  requirementTags: []
+- id: INS-001
+  group: 信用卡分期
+  module: :feature:liabilities
+  route: installments
+  title: 信用卡分期
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - InstallmentPlanList
+  - InstallmentSummary
+  requiredStates:
+  - content
+  - empty
+  - completed
+  notes: []
+  requirementTags: []
+- id: INS-002
+  group: 信用卡分期
+  module: :feature:liabilities
+  route: installments/editor/{planId?}
+  title: 分期设置
+  presentation: fullScreen
+  params:
+  - planId:StableId?
+  result: null
+  primaryComponents:
+  - InstallmentTermsForm
+  - SchedulePreview
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - invalid
+  notes: []
+  requirementTags: []
+- id: INS-003
+  group: 信用卡分期
+  module: :feature:liabilities
+  route: installments/{planId}
+  title: 分期详情
+  presentation: fullScreen
+  params:
+  - planId:StableId
+  result: null
+  primaryComponents:
+  - InstallmentProgressHero
+  - CostSummary
+  - SchedulePreview
+  - LinkedPurchase
+  - RefundImpact
+  - EarlySettlementAction
+  requiredStates:
+  - active
+  - completed
+  - refundAdjusted
+  notes: []
+  requirementTags: []
+- id: INS-004
+  group: 信用卡分期
+  module: :feature:liabilities
+  route: installments/{planId}/schedule
+  title: 分期计划
+  presentation: fullScreen
+  params:
+  - planId:StableId
+  result: null
+  primaryComponents:
+  - InstallmentScheduleTable
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: INS-005
+  group: 信用卡分期
+  module: :feature:liabilities
+  route: installments/{planId}/early-settlement
+  title: 提前结清
+  presentation: fullScreen
+  params:
+  - planId:StableId
+  result: null
+  primaryComponents:
+  - SettlementDateField
+  - PrincipalFeeBreakdown
+  - ResultComparison
+  - ApplyAction
+  requiredStates:
+  - editing
+  - calculated
+  - invalid
+  notes: []
+  requirementTags: []
+- id: INS-006
+  group: 信用卡分期
+  module: :feature:liabilities
+  route: installments/{planId}/refund-impact
+  title: 退款影响
+  presentation: fullScreen
+  params:
+  - planId:StableId
+  result: null
+  primaryComponents:
+  - RefundAllocationSummary
+  - RecalculationPolicy
+  - ScheduleDiff
+  requiredStates:
+  - content
+  - requiresDecision
+  notes: []
+  requirementTags: []
+- id: LOA-001
+  group: 贷款
+  module: :feature:liabilities
+  route: loans
+  title: 贷款
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - LoanList
+  - LoanSummary
+  - AddLoanAction
+  requiredStates:
+  - content
+  - empty
+  - closed
+  notes: []
+  requirementTags: []
+- id: LOA-002
+  group: 贷款
+  module: :feature:liabilities
+  route: loans/wizard/{contractId?}
+  title: 贷款合同设置
+  presentation: fullScreen
+  params:
+  - contractId:StableId?
+  result: null
+  primaryComponents:
+  - WizardStepper
+  - LoanBasicStep
+  - TrancheStep
+  - TermsStep
+  - RatePeriodsStep
+  - SchedulePreviewStep
+  - ReviewStep
+  requiredStates:
+  - editing
+  - invalid
+  - generatingSchedule
+  - ready
+  notes: []
+  requirementTags: []
+- id: LOA-003
+  group: 贷款
+  module: :feature:liabilities
+  route: loans/{contractId}/tranche/{trancheId?}
+  title: 贷款分项
+  presentation: fullScreen
+  params:
+  - contractId:StableId
+  - trancheId:StableId?
+  result: null
+  primaryComponents:
+  - TrancheFields
+  - PrincipalField
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  notes: []
+  requirementTags: []
+- id: LOA-004
+  group: 贷款
+  module: :feature:liabilities
+  route: loans/{contractId}/terms/{trancheId}
+  title: 贷款条款
+  presentation: fullScreen
+  params:
+  - contractId:StableId
+  - trancheId:StableId
+  result: null
+  primaryComponents:
+  - RepaymentMethodSelector
+  - RateTypeSelector
+  - FrequencyFields
+  - PrepaymentPolicy
+  - RoundingPolicy
+  - StickySaveBar
+  requiredStates:
+  - editing
+  - invalid
+  notes: []
+  requirementTags: []
+- id: LOA-005
+  group: 贷款
+  module: :feature:liabilities
+  route: loans/{contractId}/rates/{trancheId}
+  title: 利率阶段
+  presentation: fullScreen
+  params:
+  - contractId:StableId
+  - trancheId:StableId
+  result: null
+  primaryComponents:
+  - RatePeriodTimeline
+  - RatePeriodEditor
+  requiredStates:
+  - content
+  - overlapError
+  - empty
+  notes: []
+  requirementTags: []
+- id: LOA-006
+  group: 贷款
+  module: :feature:liabilities
+  route: loans/{contractId}/schedule-preview
+  title: 还款计划预览
+  presentation: fullScreen
+  params:
+  - contractId:StableId
+  result: null
+  primaryComponents:
+  - ScheduleSummary
+  - LoanScheduleTable
+  - AssumptionDisclosure
+  requiredStates:
+  - generating
+  - content
+  - calculationError
+  notes: []
+  requirementTags: []
+- id: LOA-007
+  group: 贷款
+  module: :feature:liabilities
+  route: loans/{contractId}
+  title: 贷款详情
+  presentation: fullScreen
+  params:
+  - contractId:StableId
+  result: null
+  primaryComponents:
+  - LoanPrincipalHero
+  - LoanProgress
+  - NextPaymentCard
+  - LoanTabRow
+  - TrancheSummary
+  - RecentPayments
+  - SimulationAction
+  requiredStates:
+  - active
+  - closed
+  - overduePlanDifference
+  - multiTranche
+  notes: []
+  requirementTags: []
+- id: LOA-008
+  group: 贷款
+  module: :feature:liabilities
+  route: loans/{contractId}/schedule
+  title: 贷款计划
+  presentation: fullScreen
+  params:
+  - contractId:StableId
+  result: null
+  primaryComponents:
+  - ScheduleRevisionSelector
+  - LoanScheduleTable
+  - PlannedActualToggle
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: LOA-009
+  group: 贷款
+  module: :feature:liabilities
+  route: loans/payment/{transactionId}
+  title: 贷款还款详情
+  presentation: fullScreen
+  params:
+  - transactionId:StableId
+  result: null
+  primaryComponents:
+  - PaymentBreakdown
+  - ScheduleAllocation
+  - AccountImpact
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: LOA-010
+  group: 贷款
+  module: :feature:liabilities
+  route: loans/{contractId}/simulation
+  title: 提前还款模拟
+  presentation: fullScreen
+  params:
+  - contractId:StableId
+  result: null
+  primaryComponents:
+  - SimulationParameters
+  - StrategySelector
+  - BeforeAfterCards
+  - ScheduleComparison
+  - SaveSimulationAction
+  requiredStates:
+  - editing
+  - calculating
+  - result
+  - invalid
+  notes: []
+  requirementTags: []
+- id: LOA-011
+  group: 贷款
+  module: :feature:liabilities
+  route: loans/{contractId}/simulation/{simulationId}/apply
+  title: 应用模拟方案
+  presentation: dialog
+  params:
+  - contractId:StableId
+  - simulationId:StableId
+  result: null
+  primaryComponents:
+  - ImpactSummary
+  - ApplySimulationConfirmation
+  requiredStates:
+  - content
+  - conflict
+  notes: []
+  requirementTags: []
+- id: SET-001
+  group: 互请
+  module: :feature:settlement
+  route: settlements
+  title: 互请活动
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - SettlementActivityList
+  - SettlementPositionSummary
+  - AddActivityAction
+  requiredStates:
+  - content
+  - empty
+  - requiresAdditionalSettlement
+  notes: []
+  requirementTags: []
+- id: SET-002
+  group: 互请
+  module: :feature:settlement
+  route: settlements/editor/{activityId?}
+  title: 互请活动设置
+  presentation: fullScreen
+  params:
+  - activityId:StableId?
+  result: null
+  primaryComponents:
+  - ActivityFields
+  - SettlementCurrencyField
+  - ProjectSelector
+  - ParticipantEntry
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - validationError
+  notes: []
+  requirementTags: []
+- id: SET-003
+  group: 互请
+  module: :feature:settlement
+  route: settlements/{activityId}/participants
+  title: 参与人
+  presentation: fullScreen
+  params:
+  - activityId:StableId
+  result: null
+  primaryComponents:
+  - ParticipantList
+  - AddParticipant
+  - SelfIndicator
+  - ReorderAction
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: SET-004
+  group: 互请
+  module: :feature:settlement
+  route: settlements/{activityId}
+  title: 互请活动详情
+  presentation: fullScreen
+  params:
+  - activityId:StableId
+  result: null
+  primaryComponents:
+  - SettlementHero
+  - ParticipantPositionList
+  - ActivityTransactions
+  - SettlementHistoryPreview
+  - SettleAction
+  requiredStates:
+  - open
+  - settled
+  - requiresAdditionalSettlement
+  - empty
+  notes: []
+  requirementTags: []
+- id: SET-005
+  group: 互请
+  module: :feature:settlement
+  route: settlements/{activityId}/position/{participantId}
+  title: 参与人头寸
+  presentation: fullScreen
+  params:
+  - activityId:StableId
+  - participantId:StableId
+  result: null
+  primaryComponents:
+  - PositionHero
+  - PositionBreakdown
+  - RelatedTransactions
+  requiredStates:
+  - receivable
+  - payable
+  - zero
+  notes: []
+  requirementTags: []
+- id: SET-006
+  group: 互请
+  module: :feature:settlement
+  route: settlements/{activityId}/record
+  title: 记录结算
+  presentation: fullScreen
+  params:
+  - activityId:StableId
+  result: null
+  primaryComponents:
+  - PayerField
+  - PayeeField
+  - AmountField
+  - LocalAccountConditionalField
+  - NoLocalImpactBanner
+  - StickySaveBar
+  requiredStates:
+  - selfPays
+  - selfReceives
+  - externalToExternal
+  - saving
+  notes: []
+  requirementTags: []
+- id: SET-007
+  group: 互请
+  module: :feature:settlement
+  route: settlements/{activityId}/history
+  title: 结算历史
+  presentation: fullScreen
+  params:
+  - activityId:StableId
+  result: null
+  primaryComponents:
+  - SettlementPaymentTimeline
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: SET-008
+  group: 互请
+  module: :feature:settlement
+  route: settlements/{activityId}/additional
+  title: 补充结算
+  presentation: fullScreen
+  params:
+  - activityId:StableId
+  result: null
+  primaryComponents:
+  - RecomputedPositionSummary
+  - HistoricalSettlementNotice
+  - SuggestedTransfers
+  - RecordSettlementAction
+  requiredStates:
+  - required
+  - resolved
+  notes: []
+  requirementTags: []
+- id: AUT-001
+  group: 自动化
+  module: :feature:automation
+  route: automation
+  title: 模板与周期
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - AutomationHubCards
+  - CandidateCountBadge
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: AUT-002
+  group: 快捷模板
+  module: :feature:automation
+  route: templates
+  title: 快捷模板
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - TemplateList
+  - AddTemplateAction
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: AUT-003
+  group: 快捷模板
+  module: :feature:automation
+  route: templates/editor/{templateId?}
+  title: 快捷模板设置
+  presentation: fullScreen
+  params:
+  - templateId:StableId?
+  result: null
+  primaryComponents:
+  - TemplateNameIconFields
+  - TemplateTransactionFields
+  - UnsupportedFieldNotice
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - validationError
+  notes:
+  - 不保存实际时间、实时位置、附件和实时汇率。
+  requirementTags: []
+- id: AUT-004
+  group: 周期交易
+  module: :feature:automation
+  route: recurrences
+  title: 周期交易
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - RecurrenceSeriesList
+  - StatusTabs
+  - AddSeriesAction
+  requiredStates:
+  - content
+  - empty
+  - paused
+  notes: []
+  requirementTags: []
+- id: AUT-005
+  group: 周期交易
+  module: :feature:automation
+  route: recurrences/editor/{seriesId?}
+  title: 周期交易设置
+  presentation: fullScreen
+  params:
+  - seriesId:StableId?
+  result: null
+  primaryComponents:
+  - BlueprintSelector
+  - RecurrenceRuleSummary
+  - GenerationModeSelector
+  - FixedPlaceField
+  - NotificationToggle
+  - OccurrencePreview
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - invalid
+  notes: []
+  requirementTags: []
+- id: AUT-006
+  group: 周期交易
+  module: :feature:automation
+  route: recurrences/rule/{seriesId?}
+  title: 周期规则
+  presentation: fullScreen
+  params:
+  - seriesId:StableId?
+  result: RecurrenceRule
+  primaryComponents:
+  - FrequencySelector
+  - IntervalFields
+  - WeekdaySelector
+  - MonthRuleFields
+  - MissingDayPolicy
+  - WeekendPolicy
+  - StartEndFields
+  - MaxOccurrences
+  requiredStates:
+  - editing
+  - invalid
+  notes: []
+  requirementTags: []
+- id: AUT-007
+  group: 周期交易
+  module: :feature:automation
+  route: recurrences/preview/{seriesId?}
+  title: 发生日期预览
+  presentation: fullScreen
+  params:
+  - seriesId:StableId?
+  result: null
+  primaryComponents:
+  - OccurrencePreviewList
+  - TimeZoneDisclosure
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: AUT-008
+  group: 候选记录
+  module: :feature:automation
+  route: candidates
+  title: 待确认候选
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - CandidateList
+  - CandidateStatusBadge
+  - BulkCandidateActions
+  requiredStates:
+  - content
+  - empty
+  - selection
+  notes: []
+  requirementTags: []
+- id: AUT-009
+  group: 候选记录
+  module: :feature:automation
+  route: candidates/{candidateId}
+  title: 确认候选
+  presentation: fullScreen
+  params:
+  - candidateId:StableId
+  result: null
+  primaryComponents:
+  - CandidateNotPostedBanner
+  - TransactionEditorScaffold
+  - ConfirmSkipActions
+  requiredStates:
+  - editing
+  - validationError
+  - invalidSource
+  notes: []
+  requirementTags: []
+- id: AUT-010
+  group: 周期交易
+  module: :feature:automation
+  route: recurrences/{seriesId}/scope
+  title: 应用修改范围
+  presentation: sheet
+  params:
+  - seriesId:StableId
+  result: THIS_ONLY|THIS_AND_FUTURE|ENTIRE_SERIES
+  primaryComponents:
+  - ScopeOptionCards
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: ANA-001
+  group: 分析
+  module: :feature:analysis
+  route: analysis
+  title: 分析
+  presentation: topLevel
+  params: []
+  result: null
+  primaryComponents:
+  - PeriodSelector
+  - AnalysisDashboard
+  - MetricCard
+  - ChartCard
+  - ReportEntryGrid
+  requiredStates:
+  - content
+  - noData
+  - calculating
+  - error
+  notes: []
+  requirementTags: []
+- id: ANA-002
+  group: 分析
+  module: :feature:analysis
+  route: analysis/reports
+  title: 固定报表
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - ReportCatalogSection
+  - ReportCatalogItem
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: ANA-003
+  group: 分析
+  module: :feature:analysis
+  route: analysis/report/{reportKey}/{savedSpecId?}
+  title: 报表
+  presentation: fullScreen
+  params:
+  - reportKey:String
+  - savedSpecId:StableId?
+  result: null
+  primaryComponents:
+  - ReportHeader
+  - MetricSummary
+  - ChartCard
+  - AccessibleDataTable
+  - DrilldownAction
+  - ExportAction
+  requiredStates:
+  - loading
+  - content
+  - empty
+  - queryError
+  - staleRebuildRequired
+  notes: []
+  requirementTags: []
+- id: ANA-004
+  group: 分析
+  module: :feature:analysis
+  route: analysis/report-filter/{reportKey}
+  title: 报表筛选
+  presentation: fullScreen
+  params:
+  - reportKey:String
+  result: ReportSpec
+  primaryComponents:
+  - MeasureDimensionSummary
+  - FilterBuilder
+  - GranularitySelector
+  - ComparisonSelector
+  - StickyApplyBar
+  requiredStates:
+  - editing
+  - invalid
+  notes: []
+  requirementTags: []
+- id: ANA-005
+  group: 分析
+  module: :feature:analysis
+  route: analysis/drilldown/{queryId}
+  title: 明细
+  presentation: fullScreen
+  params:
+  - queryId:StableId
+  result: null
+  primaryComponents:
+  - QuerySummary
+  - PagedTransactionList
+  requiredStates:
+  - content
+  - empty
+  - expiredQuery
+  notes: []
+  requirementTags: []
+- id: ANA-006
+  group: 自定义仪表板
+  module: :feature:analysis
+  route: analysis/dashboards
+  title: 自定义仪表板
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - DashboardList
+  - AddDashboardAction
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: ANA-007
+  group: 自定义仪表板
+  module: :feature:analysis
+  route: analysis/dashboards/editor/{dashboardId?}
+  title: 编辑仪表板
+  presentation: fullScreen
+  params:
+  - dashboardId:StableId?
+  result: null
+  primaryComponents:
+  - DashboardCanvas
+  - DashboardCardPalette
+  - ReorderResizeControls
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - emptyCanvas
+  notes: []
+  requirementTags: []
+- id: ANA-008
+  group: 自定义报表
+  module: :feature:analysis
+  route: analysis/report-builder/{definitionId?}
+  title: 自定义报表
+  presentation: fullScreen
+  params:
+  - definitionId:StableId?
+  result: null
+  primaryComponents:
+  - BuilderStepper
+  - MeasurePicker
+  - DimensionPicker
+  - FilterBuilder
+  - GranularitySelector
+  - SortEditor
+  - VisualizationPreview
+  - StickySaveBar
+  requiredStates:
+  - editing
+  - invalid
+  - previewing
+  notes: []
+  requirementTags: []
+- id: ANA-009
+  group: 自定义报表
+  module: :feature:analysis
+  route: analysis/visualization-picker
+  title: 选择图表
+  presentation: sheet
+  params: []
+  result: VisualizationType
+  primaryComponents:
+  - VisualizationOptionGrid
+  - CompatibilityMessages
+  requiredStates:
+  - content
+  - autoFallbackToBar
+  notes: []
+  requirementTags: []
+- id: ANA-010
+  group: 分析导出
+  module: :feature:analysis
+  route: analysis/export/{reportInstanceId}
+  title: 导出报表
+  presentation: sheet
+  params:
+  - reportInstanceId:StableId
+  result: null
+  primaryComponents:
+  - FormatOptions
+  - ExportScope
+  - SensitiveFieldNotice
+  - StartExportAction
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: ANA-011
+  group: 消费地图
+  module: :feature:analysis
+  route: analysis/map
+  title: 消费地图
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - MapLibreMap
+  - MapModeSelector
+  - MapWeightSelector
+  - MapFilterBar
+  - MapClusterLayer
+  - MapHeatLayer
+  - MapAttribution
+  - MapBottomPanel
+  requiredStates:
+  - loading
+  - clusters
+  - heatmap
+  - singlePoints
+  - noLocationData
+  - mapUnavailable
+  notes: []
+  requirementTags: []
+- id: ANA-012
+  group: 消费地图
+  module: :feature:analysis
+  route: analysis/map/location/{placeOrClusterId}
+  title: 地点明细
+  presentation: bottomSheet
+  params:
+  - placeOrClusterId:StableId
+  result: null
+  primaryComponents:
+  - LocationSummary
+  - CategoryComposition
+  - TransactionPreview
+  - OpenTransactionsAction
+  requiredStates:
+  - place
+  - cluster
+  - singleTransaction
+  notes: []
+  requirementTags: []
+- id: ANA-013
+  group: 异常规则
+  module: :feature:analysis
+  route: analysis/anomaly-rules
+  title: 异常规则
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - RuleList
+  - RuleEditor
+  - DeterministicMethodDisclosure
+  requiredStates:
+  - content
+  - empty
+  - invalid
+  notes: []
+  requirementTags: []
+- id: ANA-014
+  group: 预测
+  module: :feature:analysis
+  route: analysis/forecast/{forecastKey}
+  title: 预测详情
+  presentation: fullScreen
+  params:
+  - forecastKey:String
+  result: null
+  primaryComponents:
+  - ForecastChart
+  - AssumptionList
+  - RecurringInclusionToggle
+  - HistoricalComparison
+  requiredStates:
+  - content
+  - insufficientData
+  notes: []
+  requirementTags: []
+- id: ANA-015
+  group: 数据完整性
+  module: :feature:analysis
+  route: analysis/integrity
+  title: 数据完整性报告
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - IntegrityStatusHero
+  - CheckGroupList
+  - RunCheckAction
+  - RepairProjectionAction
+  requiredStates:
+  - notRun
+  - running
+  - passed
+  - warnings
+  - failed
+  notes:
+  - 不显示借贷细节给普通用户；技术详情折叠并脱敏。
+  requirementTags: []
+- id: MGT-001
+  group: 数据管理
+  module: :feature:settings
+  route: management
+  title: 基础数据管理
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - ManagementHubItems
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: CAT-001
+  group: 分类管理
+  module: :feature:settings
+  route: categories/{direction}
+  title: 分类管理
+  presentation: fullScreen
+  params:
+  - direction:EXPENSE|INCOME
+  result: null
+  primaryComponents:
+  - CategoryDirectionTabs
+  - CategoryTreeList
+  - SearchAction
+  - ReorderAction
+  - AddCategoryAction
+  requiredStates:
+  - content
+  - empty
+  - searching
+  notes: []
+  requirementTags: []
+- id: CAT-002
+  group: 分类管理
+  module: :feature:settings
+  route: categories/editor/{direction}/{categoryId?}
+  title: 分类设置
+  presentation: fullScreen
+  params:
+  - direction:EXPENSE|INCOME
+  - categoryId:StableId?
+  result: null
+  primaryComponents:
+  - CategoryNameField
+  - CategoryIconPicker
+  - CategoryColorPicker
+  - ParentSelector
+  - StatisticalNatureSelector
+  - DefaultAccountCardMerchant
+  - ContrastPreview
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - parentLocked
+  - contrastWarning
+  - validationError
+  notes: []
+  requirementTags: []
+- id: CAT-003
+  group: 分类管理
+  module: :feature:settings
+  route: categories/reorder/{direction}
+  title: 分类排序
+  presentation: fullScreen
+  params:
+  - direction:EXPENSE|INCOME
+  result: null
+  primaryComponents:
+  - DraggableCategoryTree
+  - SaveOrderAction
+  requiredStates:
+  - editing
+  notes: []
+  requirementTags: []
+- id: CAT-004
+  group: 分类管理
+  module: :feature:settings
+  route: categories/{categoryId}/delete
+  title: 处理分类
+  presentation: fullScreen
+  params:
+  - categoryId:StableId
+  result: null
+  primaryComponents:
+  - UsageSummary
+  - ReassignOption
+  - ArchiveOption
+  - DeleteTombstoneOption
+  - TargetCategoryPicker
+  requiredStates:
+  - unused
+  - used
+  - hasChildren
+  - processing
+  notes: []
+  requirementTags: []
+- id: MER-001
+  group: 商户管理
+  module: :feature:settings
+  route: merchants
+  title: 商户
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - SearchField
+  - MerchantList
+  - MergeAction
+  - AddMerchantAction
+  requiredStates:
+  - content
+  - empty
+  - searching
+  notes: []
+  requirementTags: []
+- id: MER-002
+  group: 商户管理
+  module: :feature:settings
+  route: merchants/editor/{merchantId?}
+  title: 商户设置
+  presentation: fullScreen
+  params:
+  - merchantId:StableId?
+  result: null
+  primaryComponents:
+  - MerchantNameField
+  - AliasList
+  - PlaceList
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - duplicateWarning
+  notes: []
+  requirementTags: []
+- id: MER-003
+  group: 商户管理
+  module: :feature:settings
+  route: merchants/merge
+  title: 合并商户
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - SourceMerchantPicker
+  - TargetMerchantPicker
+  - MergeImpactSummary
+  - ConfirmMergeAction
+  requiredStates:
+  - editing
+  - invalid
+  - merging
+  notes: []
+  requirementTags: []
+- id: PLC-001
+  group: 地点管理
+  module: :feature:settings
+  route: places
+  title: 地点
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - SearchField
+  - PlaceList
+  - MapPreview
+  - AddPlaceAction
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: PLC-002
+  group: 地点管理
+  module: :feature:settings
+  route: places/editor/{placeId?}
+  title: 地点设置
+  presentation: fullScreen
+  params:
+  - placeId:StableId?
+  result: null
+  primaryComponents:
+  - PlaceNameField
+  - MapPinEditor
+  - MerchantSelector
+  - StickySaveBar
+  requiredStates:
+  - create
+  - edit
+  - mapUnavailable
+  notes: []
+  requirementTags: []
+- id: PLC-003
+  group: 地点管理
+  module: :feature:settings
+  route: places/{placeId}/merge-split
+  title: 合并或拆分地点
+  presentation: fullScreen
+  params:
+  - placeId:StableId
+  result: null
+  primaryComponents:
+  - PlaceOperationTabs
+  - LocationRecordSelection
+  - MapPreview
+  - ImpactSummary
+  requiredStates:
+  - merge
+  - split
+  - invalid
+  notes: []
+  requirementTags: []
+- id: VLT-001
+  group: 卡片保险库
+  module: :feature:vault
+  route: vault
+  title: 卡片保险库
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - VaultSecurityBanner
+  - VaultCardList
+  - AuthenticationAction
+  requiredStates:
+  - locked
+  - unlockedSession
+  - deviceSecurityMissing
+  - empty
+  notes: []
+  requirementTags: []
+- id: VLT-002
+  group: 卡片保险库
+  module: :feature:vault
+  route: vault/card/{cardId}
+  title: 保险库卡片
+  presentation: fullScreen
+  params:
+  - cardId:StableId
+  result: null
+  primaryComponents:
+  - MaskedCardSummary
+  - SensitiveValueField
+  - RevealAction
+  - CopyPanAction
+  - SecurityCodeReveal
+  - AutoHideTimer
+  requiredStates:
+  - masked
+  - authenticating
+  - revealed
+  - autoHidden
+  - authFailed
+  notes:
+  - 每次查看或复制完整卡号都重新认证；安全码禁止复制；30秒和后台立即隐藏。
+  requirementTags: []
+- id: VLT-003
+  group: 卡片保险库
+  module: :feature:vault
+  route: vault/card/{cardId}/edit
+  title: 编辑保险库内容
+  presentation: fullScreen
+  params:
+  - cardId:StableId
+  result: null
+  primaryComponents:
+  - SensitiveTextFields
+  - CustomSensitiveFields
+  - AuthenticationGate
+  - StickySaveBar
+  requiredStates:
+  - authRequired
+  - editing
+  - saving
+  notes: []
+  requirementTags: []
+- id: VLT-004
+  group: 卡片保险库
+  module: :feature:vault
+  route: vault/auth/{purpose}
+  title: 身份验证
+  presentation: systemDialog
+  params:
+  - purpose:REVEAL_PAN|COPY_PAN|REVEAL_CVC|EDIT_VAULT|DELETE_CLOUD
+  result: AuthResult
+  primaryComponents:
+  - BiometricPrompt
+  requiredStates:
+  - prompt
+  - success
+  - failure
+  - cancelled
+  notes: []
+  requirementTags: []
+- id: SETG-001
+  group: 设置
+  module: :feature:settings
+  route: settings
+  title: 设置
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - SettingsSection
+  - SettingsRow
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: SETG-002
+  group: 设置
+  module: :feature:settings
+  route: settings/appearance
+  title: 外观
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - ThemeSelector
+  - DynamicColorToggle
+  - AmountVisibilityDefaults
+  - MotionPreference
+  - LiveComponentPreview
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: SETG-003
+  group: 设置
+  module: :feature:settings
+  route: settings/language-region
+  title: 语言与地区
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - LanguageSelector
+  - DateFormatSelector
+  - NumberFormatSummary
+  - TimeZoneSelector
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: SETG-004
+  group: 设置
+  module: :feature:settings
+  route: settings/currencies
+  title: 币种
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - CurrencySearch
+  - VisibleCurrencyList
+  - HiddenCurrencyList
+  - ReorderAction
+  requiredStates:
+  - content
+  - searching
+  notes: []
+  requirementTags: []
+- id: SETG-005
+  group: 设置
+  module: :feature:settings
+  route: settings/calendar
+  title: 日历设置
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - WeekStartSelector
+  - DateFormatSelector
+  - Preview
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: SETG-006
+  group: 设置
+  module: :feature:settings
+  route: settings/app-lock
+  title: 应用锁
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - AppLockToggle
+  - TimeoutSelector
+  - AuthenticationMethodSummary
+  - TestLockAction
+  requiredStates:
+  - disabled
+  - enabled
+  - deviceSecurityMissing
+  notes: []
+  requirementTags: []
+- id: SETG-007
+  group: 设置
+  module: :feature:settings
+  route: settings/screen-privacy
+  title: 屏幕隐私
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - GlobalScreenshotToggle
+  - RecentTaskObscureToggle
+  - VaultAlwaysSecureInfo
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: SETG-008
+  group: 设置
+  module: :feature:settings
+  route: settings/trash
+  title: 回收站
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - RetentionSelector
+  - AutoPurgeSummary
+  - OpenTrashAction
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: SETG-009
+  group: 设置
+  module: :feature:settings
+  route: settings/privacy-diagnostics
+  title: 隐私与诊断
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - TelemetryToggle
+  - CrashToggle
+  - QueueEntryLinks
+  - PrivacyPolicyLink
+  requiredStates:
+  - preConsent
+  - enabled
+  - disabled
+  notes: []
+  requirementTags: []
+- id: SETG-010
+  group: 设置
+  module: :feature:settings
+  route: settings/telemetry-queue
+  title: 待发送功能事件
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - WhitelistedEventList
+  - DeleteQueueAction
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: SETG-011
+  group: 设置
+  module: :feature:settings
+  route: settings/crash-queue
+  title: 待发送崩溃报告
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - SanitizedCrashList
+  - DeleteQueueAction
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: SETG-012
+  group: 设置
+  module: :feature:settings
+  route: settings/about
+  title: 关于
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - AppVersion
+  - OpenSourceNotice
+  - LicenseList
+  - SourceCodeLink
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: TRF-001
+  group: 数据传输
+  module: :feature:transfer
+  route: transfer
+  title: 导入、导出与备份
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - TransferHubCards
+  - ActiveOperationBanner
+  requiredStates:
+  - content
+  - operationActive
+  notes: []
+  requirementTags: []
+- id: IMP-001
+  group: 导入
+  module: :feature:transfer
+  route: import/source
+  title: 选择导入文件
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - ImportModeSelector
+  - SystemFilePickerAction
+  - RecentImportList
+  requiredStates:
+  - content
+  - permissionError
+  notes: []
+  requirementTags: []
+- id: IMP-002
+  group: 导入
+  module: :feature:transfer
+  route: import/{operationId}/format
+  title: 文件设置
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - SheetSelector
+  - HeaderRowSelector
+  - EncodingSelector
+  - SampleRowsTable
+  requiredStates:
+  - parsing
+  - content
+  - corruptFile
+  - unsupported
+  notes: []
+  requirementTags: []
+- id: IMP-003
+  group: 导入
+  module: :feature:transfer
+  route: import/{operationId}/field-mapping
+  title: 字段映射
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - MappingTable
+  - RequiredFieldStatus
+  - SampleValuePreview
+  - StickyNextBar
+  requiredStates:
+  - editing
+  - missingRequired
+  - valid
+  notes: []
+  requirementTags: []
+- id: IMP-004
+  group: 导入
+  module: :feature:transfer
+  route: import/{operationId}/entity-mapping
+  title: 实体映射
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - EntityMappingSections
+  - CreateMissingToggle
+  - ConflictCountSummary
+  requiredStates:
+  - editing
+  - unmapped
+  - valid
+  notes: []
+  requirementTags: []
+- id: IMP-005
+  group: 导入
+  module: :feature:transfer
+  route: import/{operationId}/fx-mapping
+  title: 币种与汇率
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - CurrencyMappingList
+  - RatePolicySelector
+  - MissingRateList
+  requiredStates:
+  - content
+  - manualRatesRequired
+  - valid
+  notes: []
+  requirementTags: []
+- id: IMP-006
+  group: 导入
+  module: :feature:transfer
+  route: import/{operationId}/validation
+  title: 校验与重复项
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - ValidationSummary
+  - ErrorTabs
+  - DuplicateCandidateList
+  - ResolutionControls
+  requiredStates:
+  - validating
+  - errors
+  - warnings
+  - valid
+  notes: []
+  requirementTags: []
+- id: IMP-007
+  group: 导入
+  module: :feature:transfer
+  route: import/{operationId}/preview
+  title: 导入预览
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - ImportSummaryCards
+  - EntityCreationSummary
+  - TransactionSample
+  - AtomicityNotice
+  - CommitAction
+  requiredStates:
+  - content
+  - notReady
+  notes: []
+  requirementTags: []
+- id: IMP-008
+  group: 导入
+  module: :feature:transfer
+  route: import/{operationId}/commit
+  title: 正在导入
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - OperationProgressPanel
+  - PhaseTimeline
+  - CancelAction
+  requiredStates:
+  - preparing
+  - applyingToShadow
+  - validating
+  - committing
+  - cancelRequested
+  - failed
+  - succeeded
+  notes: []
+  requirementTags: []
+- id: IMP-009
+  group: 导入
+  module: :feature:transfer
+  route: import/{operationId}/result
+  title: 导入结果
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - ResultHero
+  - ImportedCounts
+  - Warnings
+  - OpenJournalAction
+  - RollbackBatchAction
+  requiredStates:
+  - success
+  - partialNotAllowed
+  - failed
+  - rolledBack
+  notes: []
+  requirementTags: []
+- id: IMP-010
+  group: 导入
+  module: :feature:transfer
+  route: import/history
+  title: 导入历史
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - ImportHistoryList
+  - RollbackEligibilityBadge
+  requiredStates:
+  - content
+  - empty
+  notes: []
+  requirementTags: []
+- id: EXP-001
+  group: 导出
+  module: :feature:transfer
+  route: export/type
+  title: 选择导出内容
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - ExportTypeCards
+  - CurrentFilterSummary
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: EXP-002
+  group: 导出
+  module: :feature:transfer
+  route: export/{operationId}/fields
+  title: 导出字段
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - FieldSelectionList
+  - SensitiveLocationToggle
+  - VaultExclusionNotice
+  requiredStates:
+  - editing
+  - valid
+  notes: []
+  requirementTags: []
+- id: EXP-003
+  group: 导出
+  module: :feature:transfer
+  route: export/{operationId}/destination
+  title: 保存位置
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - SystemDestinationPicker
+  - FileNameField
+  - OverwriteWarning
+  - StartExportAction
+  requiredStates:
+  - content
+  - permissionRevoked
+  - nameConflict
+  notes: []
+  requirementTags: []
+- id: EXP-004
+  group: 导出
+  module: :feature:transfer
+  route: export/{operationId}/progress
+  title: 导出
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - OperationProgressPanel
+  - OpenFileAction
+  - ShareAction
+  requiredStates:
+  - running
+  - cancelRequested
+  - failed
+  - succeeded
+  notes: []
+  requirementTags: []
+- id: BKP-001
+  group: 备份
+  module: :feature:transfer
+  route: backup
+  title: 备份
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - BackupStatusHero
+  - RepositorySummary
+  - BackupPolicySummary
+  - RecentBackupList
+  - BackupNowAction
+  requiredStates:
+  - configured
+  - notConfigured
+  - running
+  - failed
+  - permissionRevoked
+  notes: []
+  requirementTags: []
+- id: BKP-002
+  group: 备份
+  module: :feature:transfer
+  route: backup/repository
+  title: 备份位置
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - LocalRepositoryOption
+  - GoogleDriveOption
+  - SystemDirectoryPicker
+  - AuthorizationStatus
+  requiredStates:
+  - editing
+  - driveAuthRequired
+  - permissionRevoked
+  notes: []
+  requirementTags: []
+- id: BKP-003
+  group: 备份
+  module: :feature:transfer
+  route: backup/recovery-password
+  title: 恢复密码
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - PasswordField
+  - PasswordStrengthRules
+  - NoRecoveryWarning
+  - ConfirmPassword
+  - HistoricalReencryptChoice
+  requiredStates:
+  - create
+  - change
+  - invalid
+  - reEncrypting
+  notes: []
+  requirementTags: []
+- id: BKP-004
+  group: 备份
+  module: :feature:transfer
+  route: backup/settings
+  title: 备份设置
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - AutoBackupToggle
+  - RetentionFields
+  - IncludeVaultToggle
+  - NetworkPolicy
+  - StickySaveBar
+  requiredStates:
+  - content
+  - vaultPasswordRequired
+  notes: []
+  requirementTags: []
+- id: BKP-005
+  group: 备份
+  module: :feature:transfer
+  route: backup/list
+  title: 备份历史
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - BackupSnapshotList
+  - VerificationBadge
+  - RepositoryFilter
+  requiredStates:
+  - content
+  - empty
+  - loadingRemote
+  notes: []
+  requirementTags: []
+- id: BKP-006
+  group: 备份
+  module: :feature:transfer
+  route: backup/{snapshotId}
+  title: 备份详情
+  presentation: fullScreen
+  params:
+  - snapshotId:StableId
+  result: null
+  primaryComponents:
+  - SnapshotSummary
+  - IntegrityStatus
+  - ContentsSummary
+  - RestoreAction
+  - DeleteAction
+  requiredStates:
+  - verified
+  - unverified
+  - corrupt
+  - remoteUnavailable
+  notes: []
+  requirementTags: []
+- id: BKP-007
+  group: 备份
+  module: :feature:transfer
+  route: backup/manual
+  title: 创建备份
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - BackupScopeSummary
+  - IncludeVaultToggle
+  - DestinationSummary
+  - StartBackupAction
+  requiredStates:
+  - ready
+  - passwordRequired
+  - running
+  notes: []
+  requirementTags: []
+- id: RST-001
+  group: 恢复
+  module: :feature:transfer
+  route: restore/source
+  title: 选择备份
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - SystemFilePickerAction
+  - RepositorySnapshotPicker
+  - DriveSnapshotPicker
+  requiredStates:
+  - content
+  - loadingRemote
+  - permissionError
+  notes: []
+  requirementTags: []
+- id: RST-002
+  group: 恢复
+  module: :feature:transfer
+  route: restore/{operationId}/password
+  title: 输入恢复密码
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - SecurePasswordField
+  - AttemptStatus
+  - NoBackdoorNotice
+  requiredStates:
+  - editing
+  - verifying
+  - wrongPassword
+  - lockedDelay
+  notes: []
+  requirementTags: []
+- id: RST-003
+  group: 恢复
+  module: :feature:transfer
+  route: restore/{operationId}/inspect
+  title: 检查备份
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - BackupIdentitySummary
+  - BookCompatibilityChecks
+  - VersionMigrationSummary
+  - ContentCounts
+  - IntegrityChecks
+  requiredStates:
+  - checking
+  - compatible
+  - incompatibleBook
+  - incompatibleCurrency
+  - corrupt
+  notes: []
+  requirementTags: []
+- id: RST-004
+  group: 恢复
+  module: :feature:transfer
+  route: restore/{operationId}/mode
+  title: 恢复方式
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - ReplaceRestoreCard
+  - MergeRestoreCard
+  - SafetySnapshotNotice
+  - HighRiskConfirmAction
+  requiredStates:
+  - content
+  - mergeUnavailable
+  notes: []
+  requirementTags: []
+- id: RST-005
+  group: 恢复
+  module: :feature:transfer
+  route: restore/{operationId}/conflicts
+  title: 解决合并冲突
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - ConflictProgress
+  - ConflictCard
+  - ThreeWayComparison
+  - ResolutionOptions
+  - ApplyToSimilarToggle
+  requiredStates:
+  - content
+  - resolved
+  - unresolved
+  - purgeTombstoneWins
+  notes: []
+  requirementTags: []
+- id: RST-006
+  group: 恢复
+  module: :feature:transfer
+  route: restore/{operationId}/progress
+  title: 正在恢复
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - OperationProgressPanel
+  - PhaseTimeline
+  - NonInterruptibleCommitNotice
+  requiredStates:
+  - downloading
+  - verifying
+  - migrating
+  - rebuilding
+  - swapping
+  - failedRollback
+  - succeeded
+  notes: []
+  requirementTags: []
+- id: RST-007
+  group: 恢复
+  module: :feature:transfer
+  route: restore/{operationId}/result
+  title: 恢复结果
+  presentation: fullScreen
+  params:
+  - operationId:StableId
+  result: null
+  primaryComponents:
+  - ResultHero
+  - SafetySnapshotInfo
+  - VerificationSummary
+  - OpenAppAction
+  requiredStates:
+  - success
+  - rolledBack
+  - failed
+  notes: []
+  requirementTags: []
+- id: CLR-001
+  group: 数据清除
+  module: :feature:settings
+  route: settings/clear-local
+  title: 清除本机数据
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - LocalDataScopeList
+  - ExternalBackupExclusionNotice
+  - TypedConfirmation
+  - AuthenticationGate
+  - ClearAction
+  requiredStates:
+  - content
+  - confirming
+  - clearing
+  - failed
+  notes: []
+  requirementTags: []
+- id: CLR-002
+  group: 数据清除
+  module: :feature:transfer
+  route: backup/delete-cloud
+  title: 删除云端备份
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - CloudSnapshotSelection
+  - AuthenticationGate
+  - TypedConfirmation
+  - DeleteProgress
+  requiredStates:
+  - content
+  - authRequired
+  - deleting
+  - failed
+  notes: []
+  requirementTags: []
+- id: ATT-001
+  group: 附件
+  module: :core:files
+  route: attachment/{attachmentId}/preview
+  title: 附件预览
+  presentation: fullScreen
+  params:
+  - attachmentId:StableId
+  result: null
+  primaryComponents:
+  - SecureImagePreview
+  - FileMetadata
+  - RenameAction
+  - OpenExternallyAction
+  requiredStates:
+  - loading
+  - image
+  - unsupportedPreview
+  - decryptError
+  notes: []
+  requirementTags: []
+- id: ATT-002
+  group: 附件
+  module: :core:files
+  route: attachment/{attachmentId}/external-open
+  title: 使用其他应用打开
+  presentation: dialog
+  params:
+  - attachmentId:StableId
+  result: null
+  primaryComponents:
+  - ExternalOpenRiskNotice
+  - OpenAction
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: ATT-003
+  group: 附件
+  module: :core:files
+  route: attachment/{attachmentId}/rename
+  title: 重命名附件
+  presentation: dialog
+  params:
+  - attachmentId:StableId
+  result: DisplayName
+  primaryComponents:
+  - DisplayNameField
+  requiredStates:
+  - editing
+  - invalid
+  notes: []
+  requirementTags: []
+- id: SYS-001
+  group: 系统权限
+  module: :core:geo
+  route: permission/location
+  title: 允许保存位置
+  presentation: dialog
+  params: []
+  result: null
+  primaryComponents:
+  - PermissionRationale
+  - ContinueAction
+  - NotNowAction
+  requiredStates:
+  - firstAsk
+  - denied
+  - permanentlyDenied
+  notes: []
+  requirementTags: []
+- id: SYS-002
+  group: 系统权限
+  module: :core:background
+  route: permission/notifications
+  title: 允许操作通知
+  presentation: dialog
+  params: []
+  result: null
+  primaryComponents:
+  - PermissionRationale
+  - ContinueAction
+  - NotNowAction
+  requiredStates:
+  - firstAsk
+  - denied
+  notes: []
+  requirementTags: []
+- id: SYS-003
+  group: 系统授权
+  module: :feature:transfer
+  route: authorization/drive
+  title: 连接 Google Drive
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - DriveScopeExplanation
+  - AuthorizeAction
+  - DisconnectAction
+  requiredStates:
+  - disconnected
+  - authorizing
+  - connected
+  - failed
+  notes: []
+  requirementTags: []
+- id: SYS-004
+  group: 系统安全
+  module: :core:security
+  route: device-security-required
+  title: 需要设备屏幕锁
+  presentation: fullScreen
+  params: []
+  result: null
+  primaryComponents:
+  - SecurityRequirementExplanation
+  - OpenSystemSettingsAction
+  requiredStates:
+  - missing
+  - configured
+  notes: []
+  requirementTags: []
+- id: WGT-001
+  group: 桌面小组件
+  module: :widget
+  route: widget/config/type/{appWidgetId}
+  title: 选择小组件
+  presentation: systemActivity
+  params:
+  - appWidgetId:Int
+  result: null
+  primaryComponents:
+  - WidgetTypeGrid
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
+- id: WGT-002
+  group: 桌面小组件
+  module: :widget
+  route: widget/config/data/{appWidgetId}/{type}
+  title: 小组件内容
+  presentation: systemActivity
+  params:
+  - appWidgetId:Int
+  - type:WidgetType
+  result: null
+  primaryComponents:
+  - WidgetDataSelector
+  - Preview
+  requiredStates:
+  - content
+  - noEligibleData
+  notes: []
+  requirementTags: []
+- id: WGT-003
+  group: 桌面小组件
+  module: :widget
+  route: widget/config/privacy/{appWidgetId}
+  title: 小组件隐私
+  presentation: systemActivity
+  params:
+  - appWidgetId:Int
+  result: null
+  primaryComponents:
+  - HideAmountDefault
+  - RevealAmountOptIn
+  - LockBehaviorSummary
+  - SaveWidgetAction
+  requiredStates:
+  - content
+  notes: []
+  requirementTags: []
