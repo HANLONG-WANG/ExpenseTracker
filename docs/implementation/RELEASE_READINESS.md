@@ -1,14 +1,14 @@
 # Release Readiness
 
-Last updated: 2026-07-31 (Asia/Tokyo)  
+Last updated: 2026-08-01 (Asia/Tokyo)
 Overall release status: `NOT_STARTED`  
-P00 is a specification baseline only; no application artifact exists.
+P01 establishes a buildable module baseline only; no business page or release artifact is claimed.
 
 ## Quality gates
 
 | Gate | Required evidence | Target phase | Status |
 |---|---|---|---|
-| Frozen build and module graph | JDK 17, AGP 9.3.x, Gradle 9.5.x, Kotlin 2.4.x, API 28/36; all prescribed modules and dependency rules | P01 | BLOCKED — JDK 17 and Android SDK 36 tooling absent |
+| Frozen build and module graph | JDK 17, AGP 9.3.x, Gradle 9.5.x, Kotlin 2.4.x, API 28/36; all prescribed modules and dependency rules | P01 | VERIFIED (`P01-E001`—`P01-E007`) |
 | Reproducible quality infrastructure | CI, lint, detekt, formatting, Kover, dependency verification/locks, SBOM, license tasks, architecture tests | P02 | NOT_STARTED |
 | Financial/domain correctness | Exact money/time algorithms, planners, coordinator-only writes, immutable facts and 35 invariants | P03/P05/P06/P08 | NOT_STARTED |
 | Encrypted schema/migrations | Room 2.8.4 + SQLCipher 4.17.0, v1 export, migrations, FTS5/R*Tree, no destructive migration | P07 | NOT_STARTED |
@@ -31,9 +31,9 @@ These are legitimate user/organization inputs, not Android code gaps. Their abse
 | Official privacy-policy URL, source-repository URL, support contact and store assets | In-app/store disclosures | NOT_STARTED — external input not yet supplied | P36 |
 | API 28 and API 36 physical devices plus chosen release-key custody process | Mandatory device regression and release security | NOT_STARTED — availability not yet confirmed | P35/P36 |
 
-## Build-environment prerequisite for P01
+## Build-environment baseline after P01
 
-Missing now: a patched JDK 17 and Android SDK Command-line Tools with SDK Platform 36/Build Tools 36.x. Recommended IDE per the frozen stack is Android Studio Quail 2. Verification commands after installation:
+Verified on this host: Temurin JDK 17.0.20, Android SDK Platform 36 revision 2, Build Tools 36.0.0, platform-tools/adb 37.0.1, Gradle Wrapper 9.5.1, AGP 9.3.1 and Kotlin 2.4.10. Recheck with:
 
 ```text
 java -version
@@ -42,10 +42,10 @@ sdkmanager --list_installed
 adb version
 ```
 
-Expected: Java/Javac 17, `platforms;android-36`, a stable `build-tools;36.x`, and a working adb. Resume at P01 only after rerunning the P00 validator.
+Expected: Java/Javac 17, `platforms;android-36`, a stable `build-tools;36.x`, and a working adb. P02 may start by rerunning both baseline validators and the P01 aggregate Gradle command.
 
-## P00 release conclusion
+## P01 release conclusion
 
-- No APK/AAB, signing, store upload, network deployment or external mutation is authorized or performed.
+- Debug/release APK packaging is only build evidence for an intentionally page-free P01 shell; no AAB, signing, store upload, network deployment or external mutation is authorized or performed.
 - No frozen specification is modified.
 - Release readiness cannot be promoted by document completeness alone.

@@ -1,14 +1,14 @@
 # Project State
 
-Last updated: 2026-07-31 (Asia/Tokyo)  
-Current stage: P00 — specification audit and persistent execution ledgers  
-Stage status: VERIFIED (`P00-E001`—`P00-E006`)  
-Baseline Git commit: `7b8021d41a51070bbfa15e948614948ed6e17519`
+Last updated: 2026-08-01 (Asia/Tokyo)
+Current stage: P01 — build baseline and modular skeleton
+Stage status: VERIFIED (`P01-E001`—`P01-E007`)
+P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
 
 1. Read this file and the other six ledgers in `docs/implementation/`.
-2. Run `python3 scripts/validate_spec_baseline.py` before changing implementation status.
+2. Run `python3 scripts/validate_spec_baseline.py` and `python3 scripts/validate_p01_baseline.py` before changing implementation status.
 3. Re-read the current phase's cited frozen chapters and query the complete JSON/YAML/CSV inputs that it touches.
 4. Never open, parse, hash, screenshot, sample, measure or otherwise inspect the four visual drafts named below.
 5. Preserve existing work; inspect `git status --short --branch` before edits.
@@ -50,7 +50,7 @@ The implementation precedence is:
 | `docs/UI设计稿与实现契约_v1.0/UI需求追踪矩阵_v1.csv` | `4c587e22497e693594b61995efb3527711b6552b5ecf862efdbe4a89827d1049` |
 | `docs/UI设计稿与实现契约_v1.0/MANIFEST.sha256` | `f1fa76e2ca3ec3da839496471d9f890ee7e830e9238e2e1edfa873a812f924bc` |
 
-## Repository inventory at P00 start
+## Repository inventory and preserved baseline
 
 | Area | Observed baseline | Classification |
 |---|---|---|
@@ -68,13 +68,28 @@ The implementation precedence is:
 
 Baseline conclusion: this is a documentation-only repository, not a partial Android application. P00 must not create placeholder production code or claim any feature implementation.
 
+### P01 result
+
+| Area | P01 result | Classification |
+|---|---|---|
+| Toolchain | Temurin JDK 17.0.20; Gradle Wrapper 9.5.1; AGP 9.3.1; Kotlin 2.4.10; Android compile/target 36 and min 28 | VERIFIED |
+| Build governance | AGP built-in Kotlin, Kotlin Compose compiler plugin, KSP 2.3.10, version catalog and seven convention/architecture plugins in the included `:build-logic` build | VERIFIED |
+| Module topology | 35 prescribed leaf modules plus five zero-dependency Gradle grouping projects; `:build-logic` is an included build | VERIFIED |
+| Dependency direction | Exact allowlisted project graph enforces UI → Application → Domain ← Infrastructure; eight domain/common modules are pure Kotlin/JVM; feature modules have no feature/data/DAO/Room-entity edge | VERIFIED |
+| Reproducibility | Wrapper distribution SHA-256 pinned; 37 lockfiles cover root, build logic and all leaf modules; strict dependency verification contains 756 components and 1,253 SHA-256 entries | VERIFIED |
+| Production source | Secure application manifest only; no business screen, DAO, persistence, placeholder component or fake functionality was added | Correct for P01 |
+| Tests and scripts | P00 and P01 structural validators, Gradle architecture/version checks, Android Lint and all configured JVM test tasks | VERIFIED for P01 scope |
+| CI, advanced quality and release | Detekt/format/Kover/SBOM/license/CI/Baseline Profile/release AAB are not introduced early | P02/P36 scope |
+
+P01 preserved all prior tracked and untracked work. The provisional build identity `app.ledger.expensetracker` is not a claim about the final externally supplied Play identity; see `DL-010`.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | All `NOT_STARTED`; baseline rows created only |
+| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-090` is `IN_PROGRESS`; the other 89 remain `NOT_STARTED` |
 | YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All `NOT_STARTED`; baseline rows created only |
-| Architecture ADRs | 20 + ADR-007A | Registered; implementation `NOT_STARTED` |
+| Architecture ADRs | 20 + ADR-007A | ADR-001 `VERIFIED`; the other 20 decisions remain `NOT_STARTED` |
 | UI ADRs | 12 | Registered; implementation `NOT_STARTED` |
 | Permanent domain invariants | 35 | Registered; verification `NOT_STARTED` |
 | Logical schema families | 12 | Registered; implementation `NOT_STARTED` |
@@ -86,23 +101,20 @@ Baseline conclusion: this is a documentation-only repository, not a partial Andr
 | Stage | Status | Evidence / entry condition |
 |---|---|---|
 | P00 | VERIFIED | `python3 scripts/validate_spec_baseline.py` passed; see `P00-E001`—`P00-E006` |
-| P01 | BLOCKED | P00 is VERIFIED, but the required local JDK 17 and Android SDK 36 toolchain is unavailable |
-| P02—P36 | NOT_STARTED | Do not promote early; follow the dependency graph in the preserved execution plan |
+| P01 | VERIFIED | Frozen toolchain, all modules, exact dependency graph, debug/release assembly, locks, verification metadata, lint and tests passed; see `P01-E001`—`P01-E007` |
+| P02 | NOT_STARTED | Entry condition satisfied: rerun both validators and `./gradlew p01Check lint test --configuration-cache` before adding quality/CI infrastructure |
+| P03—P36 | NOT_STARTED | Do not promote early; follow the dependency graph in the preserved execution plan |
 
-## P01 toolchain readiness
+## P02 entry state
 
-P00 itself needs no Android build or device tool. The current host does not yet satisfy P01's frozen build-tool prerequisite:
+P01 has no unresolved blocker. The authoritative recovery commands are:
 
-- Installed default runtime/compiler: OpenJDK 25.0.3 only; JDK 17 was not found under `/usr/lib/jvm`.
-- Android Debug Bridge 35.0.2 is present.
-- Android SDK command-line tools, SDK Platform 36 and Build Tools 36 were not found in the checked standard SDK locations; `sdkmanager` is not on `PATH`.
-- No Gradle installation or wrapper exists; P01 is expected to create the frozen Gradle 9.5 wrapper after JDK/SDK readiness.
+```text
+python3 scripts/validate_spec_baseline.py
+python3 scripts/validate_p01_baseline.py
+./gradlew p01Check lint test --configuration-cache
+```
 
-Required before executing P01:
+Expected result: both validators print `PASS`; Gradle reuses the configuration cache and reports `BUILD SUCCESSFUL`. The configured Java runtime must still resolve to JDK 17, and Android SDK Platform 36 plus stable Build Tools 36.x must remain installed.
 
-1. Install a current patched JDK 17 distribution and select it for the project; verify with `java -version` and `javac -version` showing 17.
-2. Install Android SDK Command-line Tools (current stable), SDK Platform 36 and a stable Build Tools 36.x package; verify with `sdkmanager --list_installed` and confirm `platforms;android-36` plus `build-tools;36.x`.
-3. The frozen IDE recommendation is Android Studio Quail 2 if an IDE is used; command-line execution remains authoritative.
-4. Resume at P01 by first running `python3 scripts/validate_spec_baseline.py`, then inventory the installed SDK/JDK and create the frozen module/build baseline.
-
-Until those SDK-level tools are installed, P00 can be completed but P01 is `BLOCKED` from execution. This is a genuine environment prerequisite, not an application-code gap.
+P02 may add the frozen quality and CI infrastructure on this baseline. It must not weaken strict dependency verification, the exact project-edge allowlist, runtime prerelease scanning or the no-placeholder rule. No business requirement or screen is complete merely because the carrier modules now build.

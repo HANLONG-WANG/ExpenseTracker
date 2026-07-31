@@ -1,8 +1,8 @@
 # Domain and Schema Coverage Baseline
 
-Last updated: 2026-07-31 (Asia/Tokyo)  
-Stage: P00  
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. No implementation or verification is claimed by this P00 inventory.
+Last updated: 2026-08-01 (Asia/Tokyo)
+Stage: P01
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P01 promotes only architecture boundaries proven by recorded build evidence; no domain, schema, accounting, security or feature behavior is claimed.
 
 ## Architecture decisions
 
@@ -10,7 +10,7 @@ Source: `docs/规格冻结_v1.0/系统架构.md` §22, except ADR-007A from `doc
 
 | ID | Frozen decision | Status | Evidence required to reach VERIFIED |
 |---|---|---|---|
-| ADR-001 | Coarse-grained multi-module modular monolith | NOT_STARTED | Dependency graph and architecture tests |
+| ADR-001 | Coarse-grained multi-module modular monolith | VERIFIED (`P01-E003`, `P01-E004`) | Dependency graph and architecture tests |
 | ADR-002 | SQLCipher primary database is the ledger's sole source of truth | NOT_STARTED | Device database and offline-first integration tests |
 | ADR-003 | Current state + immutable revisions + immutable financial log | NOT_STARTED | Domain and database contract tests |
 | ADR-004 | No full event sourcing | NOT_STARTED | Schema/API inspection |

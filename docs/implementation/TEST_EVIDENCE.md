@@ -1,18 +1,19 @@
 # Test Evidence
 
-Last updated: 2026-07-31 (Asia/Tokyo)  
+Last updated: 2026-08-01 (Asia/Tokyo)
 Evidence policy: a `VERIFIED` ledger row must cite an evidence ID below containing the exact command/test, environment and passing result. Implementation existence alone is not verification. Device-only claims cannot cite Robolectric or JVM-only evidence.
 
 ## Environment
 
-- Repository baseline commit: `7b8021d41a51070bbfa15e948614948ed6e17519`
+- P01 starting commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 - Host: Fedora Linux, kernel `7.1.4-204.fc44.x86_64`
 - Python: 3.14.6
 - PyYAML: 6.0.3
 - jq: 1.8.1
-- Java: OpenJDK 25.0.3 (not the frozen P01 JDK 17 toolchain)
-- adb: 35.0.2
-- Android/Gradle project: absent at P00; therefore no Android build, unit, instrumented, UI, migration, screenshot, accessibility or performance test is applicable yet.
+- Java/Javac: Eclipse Temurin 17.0.20+8
+- Android SDK: Platform 36 revision 2; Build Tools 36.0.0
+- adb/platform-tools: 37.0.1
+- Build: Gradle Wrapper 9.5.1, AGP 9.3.1, Kotlin 2.4.10, KSP 2.3.10
 
 ## P00 evidence
 
@@ -26,6 +27,20 @@ Evidence policy: a `VERIFIED` ledger row must cite an evidence ID below containi
 | P00-E006 | Validator syntax | `PYTHONPYCACHEPREFIX=/tmp/expense_tracker_p00_pycache python3 -m py_compile scripts/validate_spec_baseline.py` | Exit 0 | PASS, exit 0 |
 
 Additional hygiene command: `git diff --check` passed with exit 0 on 2026-07-31.
+
+## P01 evidence
+
+| Evidence ID | Scope | Command / procedure | Expected result | Recorded result |
+|---|---|---|---|---|
+| P01-E001 | Frozen host and Android toolchain | `java -version`; `javac -version`; `/home/hubery-fedora/Tools/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --list_installed`; `/home/hubery-fedora/Tools/Android/Sdk/platform-tools/adb version` | JDK/Javac 17; Android Platform 36; stable Build Tools 36.x; working adb | PASS: Temurin 17.0.20+8, Platform 36 rev 2, Build Tools 36.0.0, adb 37.0.1 |
+| P01-E002 | Machine-readable P01 baseline | `PYTHONPYCACHEPREFIX=/tmp/expense_tracker_p01_pycache python3 -m py_compile scripts/validate_p01_baseline.py && python3 scripts/validate_p01_baseline.py` | Exact module/version/edge/lock/verification checks; complete JSON/YAML/CSV parse; no placeholder, forbidden stack, XML main UI or production-runtime prerelease | PASS, exit 0: 35 leaf modules, 5 grouping projects, 8 pure Kotlin modules, 12 feature modules, 37 lockfiles, 756 verification components, 1,253 SHA-256 entries, 434 token leaves, 90 requirements, 215 unique IDs/routes, 0 forbidden findings |
+| P01-E003 | Gradle module graph and frozen versions | `./gradlew projects verifyArchitecture verifyFrozenVersions --configuration-cache --console=plain` | Every prescribed project and only its allowlisted direct project dependencies; Gradle/JDK/SDK/catalog/wrapper rules pass | PASS, exit 0: 35 leaf modules plus 5 grouping projects and included `:build-logic`; exact graph and frozen-version tasks passed |
+| P01-E004 | Complete debug/release compilation and packaging | `./gradlew assemble --configuration-cache --console=plain` | All Android and pure-Kotlin modules configure and compile; app and benchmark debug/release variants package | PASS in 1m54s: 1,705 tasks, 1,308 executed, 392 from cache, 5 up-to-date |
+| P01-E005 | Dependency locks and strict verification | `./gradlew assemble --write-locks --write-verification-metadata sha256`; `./gradlew -p build-logic dependencies --write-locks`; `./gradlew resolveKspToolingVerification --write-locks --write-verification-metadata sha256`; then run the normal aggregate command without write flags | Wrapper hash pinned; all resolvable project/build-logic/KSP tooling configurations locked; strict SHA-256 verification permits the normal build | PASS: wrapper distribution SHA-256 `bafc141b619ad6350fd975fc903156dd5c151998cc8b058e8c1044ab5f7b031f`; 37 lockfiles; 756 verified components and 1,253 SHA-256 entries; strict normal build passed |
+| P01-E006 | Aggregate P01 build, lint, test and configuration-cache replay | `./gradlew p01Check lint test --configuration-cache --console=plain`, then repeat the identical command | Architecture/version/KSP verification, every assemble task, Android Lint and every configured JVM test task pass; second run reuses cache | PASS: first run 2m44s / 2,047 actionable tasks; repeat 665ms / 2,043 actionable tasks with 2,014 up-to-date and configuration cache reused |
+| P01-E007 | Frozen-source and worktree hygiene regression | `python3 scripts/validate_spec_baseline.py`; `git diff --exit-code -- docs/规格冻结_v1.0 docs/UI设计稿与实现契约_v1.0`; `git diff --check` | P00 baseline still complete; no frozen specification changed; no patch whitespace errors | PASS, exit 0 for all checks; validator reports forbidden visual paths opened: 0 |
+
+P01 intentionally contains no business implementation and therefore no device/UI/migration/screenshot/accessibility/performance case. Gradle `test` tasks completed successfully but were `NO-SOURCE`; they are recorded only as proof that the module test variants configure, not as behavioral verification. Device-only evidence remains mandatory in its listed later phase.
 
 ## Future mandatory evidence classes
 
