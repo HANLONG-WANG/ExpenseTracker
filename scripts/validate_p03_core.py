@@ -19,15 +19,30 @@ PRODUCTION_ROOTS = [ROOT / "core/common/src/main", ROOT / "core/money/src/main",
 AUTHORITATIVE_MONEY_ROOTS = [ROOT / "core/money/src/main", ROOT / "finance/domain/src/main"]
 TARGET_REQUIREMENTS = {"REQ-014", "REQ-015", "REQ-024", "REQ-025", "REQ-030"}
 REQUIRED_TYPES = {
-    "core/common/src/main/kotlin/app/ledger/core/common/Identifiers.kt": ["class StableId", "value class InternalId"],
-    "core/common/src/main/kotlin/app/ledger/core/common/CheckedArithmetic.kt": ["Math.addExact", "Math.subtractExact"],
+    "core/common/src/main/kotlin/app/ledger/core/common/Identifiers.kt": [
+        "class StableId",
+        "value class InternalId",
+        "value class CommandId",
+        "value class RevisionId",
+    ],
+    "core/common/src/main/kotlin/app/ledger/core/common/CheckedArithmetic.kt": [
+        "Math.addExact",
+        "Math.subtractExact",
+        "fun abs",
+        "Math.absExact",
+    ],
     "core/common/src/main/kotlin/app/ledger/core/common/DomainResult.kt": ["sealed interface DomainResult"],
     "core/money/src/main/kotlin/app/ledger/core/money/Money.kt": ["data class Money", "BigInteger"],
     "core/money/src/main/kotlin/app/ledger/core/money/Fx.kt": ["data class FxEvidence", "MathContext"],
     "core/money/src/main/kotlin/app/ledger/core/money/MoneyExpression.kt": ["class MoneyExpressionEvaluator", "BigDecimal"],
     "core/money/src/main/kotlin/app/ledger/core/money/MoneyFormatting.kt": ["fun interface CurrencyFormatter", "data class MoneyUiModel"],
     "core/time/src/main/kotlin/app/ledger/core/time/LedgerClock.kt": ["fun interface LedgerClock"],
-    "core/time/src/main/kotlin/app/ledger/core/time/EffectiveTime.kt": ["data class EffectiveTime", "ZoneId"],
+    "core/time/src/main/kotlin/app/ledger/core/time/EffectiveTime.kt": [
+        "data class EffectiveTime",
+        "ZoneId",
+        "gapPolicy: GapPolicy = GapPolicy.REJECT",
+        "data class TemporalAdjustment",
+    ],
     "core/time/src/main/kotlin/app/ledger/core/time/CalendarPeriods.kt": ["data class BudgetMonthPeriod", "class StatementCycleCalculator"],
 }
 
@@ -59,8 +74,25 @@ def validate() -> dict[str, int]:
         source = path.read_text(encoding="utf-8")
         if re.search(r"\b(?:Float|Double)\b|\bto(?:Float|Double)\s*\(", source):
             raise AssertionError(f"binary floating point in authoritative money path: {path.relative_to(ROOT)}")
-        if re.search(r"(?<!CheckedArithmetic)\.(?:sum|sumOf)\s*\(", source):
+        if re.search(
+            r"(?<!CheckedArithmetic)\.(?:sum|sumOf|fold|foldIndexed|reduce|reduceIndexed|runningFold|runningReduce)\s*(?:\(|\{)",
+            source,
+        ):
             raise AssertionError(f"unchecked aggregation in authoritative money path: {path.relative_to(ROOT)}")
+        accumulators = set(
+            re.findall(r"\bvar\s+(\w+)\s*(?::\s*Long)?\s*=\s*[^\n;]*?\b-?\d+L\b", source)
+        )
+        accumulators.update(re.findall(r"\bvar\s+(\w*(?:total|sum|balance|amount|accumul)\w*)\s*=", source))
+        for accumulator in accumulators:
+            escaped = re.escape(accumulator)
+            unsafe = (
+                rf"\b{escaped}\s*\+="
+                rf"|\b{escaped}\s*=\s*{escaped}\s*\+"
+                rf"|\b{escaped}\s*=\s*[^\n;]+\+\s*{escaped}\b"
+                rf"|\b{escaped}(?:\+\+|--)"
+            )
+            if re.search(unsafe, source):
+                raise AssertionError(f"unchecked Long accumulation in authoritative money path: {path.relative_to(ROOT)}")
 
     for relative, markers in REQUIRED_TYPES.items():
         path = ROOT / relative
@@ -115,8 +147,8 @@ def main() -> int:
     print("P03 core validation: PASS")
     for name, value in result.items():
         print(f"{name}={value}")
-    print("authoritative_float_double_references=0 unchecked_money_sums=0")
-    print("forbidden_visual_files_opened=0")
+    print("authoritative_float_double_references=0 unchecked_money_accumulations=0")
+    print("visual_inputs=excluded_by_explicit_text-path allowlist")
     return 0
 
 

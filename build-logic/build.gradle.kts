@@ -1,3 +1,5 @@
+import org.gradle.api.artifacts.dsl.LockMode
+
 plugins {
     `kotlin-dsl`
     `java-gradle-plugin`
@@ -15,6 +17,7 @@ kotlin {
 
 dependencyLocking {
     lockAllConfigurations()
+    lockMode.set(LockMode.STRICT)
 }
 
 dependencies {

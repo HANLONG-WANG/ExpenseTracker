@@ -14,6 +14,14 @@ value class InternalId private constructor(val value: Long) {
     }
 }
 
+/** Idempotency identity for a write command; intentionally not interchangeable with entity IDs. */
+@JvmInline
+value class CommandId(val stableId: StableId)
+
+/** Base identity for immutable domain revisions; concrete revision types may wrap this value. */
+@JvmInline
+value class RevisionId(val stableId: StableId)
+
 /** Immutable 16-byte UUID representation suitable for a SQLite BLOB. */
 class StableId private constructor(bytes: ByteArray) : Comparable<StableId> {
     private val value = bytes.copyOf()

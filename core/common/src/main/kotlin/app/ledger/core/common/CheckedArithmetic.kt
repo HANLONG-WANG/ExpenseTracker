@@ -19,6 +19,10 @@ object CheckedArithmetic {
         Math.negateExact(value)
     }
 
+    fun abs(value: Long): DomainResult<Long> = checked(ArithmeticOperation.ABS) {
+        Math.absExact(value)
+    }
+
     fun sum(values: Iterable<Long>): DomainResult<Long> {
         var total = 0L
         for (value in values) {

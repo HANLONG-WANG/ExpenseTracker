@@ -88,7 +88,7 @@ Source: `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` �
 | INV-031 | Every core projection aligns to the same `localRevision`. | Atomicity/failure-injection audit | NOT_STARTED |
 | INV-032 | Vault fields never enter FTS, audit snapshots, logs or telemetry. | Static/privacy/device audit | NOT_STARTED |
 | INV-033 | Failed import, restore or large batch leaves the main ledger unchanged. | Shadow-DB fault injection | NOT_STARTED |
-| INV-034 | Every monetary accumulation detects `Long` overflow. | Boundary/property/static tests | VERIFIED (`P03-E002`, `P03-E006`) |
+| INV-034 | Every monetary accumulation detects `Long` overflow. | Boundary/property/static tests | VERIFIED (`P03-E002`, `P03-E006`: checked sum plus named fold/reduce/`+=`/manual-loop rejection) |
 | INV-035 | Every cache depending on current transaction content carries a version. | Architecture/cache invalidation tests | NOT_STARTED |
 
 The 16 product-level system invariants in `需求.md` §26 remain additional acceptance constraints. They are covered by REQ rows and the architecture/security/operation gates; they do not replace the 35 canonical permanent invariants above.
@@ -151,7 +151,7 @@ Worker/UIDT/service payloads may contain only `operationId`; full parameters rem
 | Room/SQLCipher schema, all migrations, FTS5, R*Tree, WAL plaintext and projection rebuild on device | Tech stack §§5,16; architecture §21 | NOT_STARTED |
 | Keystore, BiometricPrompt, SAF, location and foreground/UIDT behavior on actual devices | Tech stack §16 | NOT_STARTED |
 | Failure injection for attachment, commits, Drive, storage, restore exchange, Keystore, biometrics, row 99,999 and projection versions | Architecture §21.3 | NOT_STARTED |
-| Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`) |
+| Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`: external-dependency, receiver-alias, decoy-scope and privacy-wrapper fixtures) |
 | 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P02-E001` verifies contract/ledger retention only; UI evidence remains later scope) |
 | Target-scale paging, reports, map, 100k-row import and tens-of-GB streaming operations | Requirements §25; UI contract §16.5 | NOT_STARTED |
 | Release AAB, Baseline Profile, locks, verification metadata, SBOM, licenses, NOTICE and privacy/release documentation | Tech stack §16.4 and release plan | IN_PROGRESS (`P02-E006` verifies locks/SBOM/license task infrastructure only; release evidence remains P36) |

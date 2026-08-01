@@ -85,6 +85,15 @@ private fun ApplicationExtension.configureManagedDevices() {
     }
 }
 
+private fun LibraryExtension.configureDatabaseManagedDevice() {
+    testOptions.managedDevices.localDevices.create("pixel6Api36") {
+        device = "Pixel 6"
+        apiLevel = TARGET_SDK
+        systemImageSource = "google"
+        testedAbi = "x86_64"
+    }
+}
+
 private fun TestExtension.configureManagedDevices() {
     testOptions.managedDevices.localDevices.create("pixel6Api36") {
         device = "Pixel 6"
@@ -122,6 +131,9 @@ private fun LibraryExtension.configureAndroidLibrary(project: Project) {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+    if (project.path == ":core:database") {
+        configureDatabaseManagedDevice()
     }
 }
 
@@ -269,6 +281,22 @@ class ArchitectureConventionPlugin : Plugin<Project> {
                         candidate.path to edges.joinToString(",")
                     },
                 )
+                externalDependencies.set(
+                    target.subprojects.associate { candidate ->
+                        val dependencies = candidate.configurations
+                            .flatMap { configuration ->
+                                configuration.dependencies
+                                    .filterNot { dependency -> dependency is ProjectDependency }
+                                    .mapNotNull { dependency ->
+                                        dependency.group?.let { group ->
+                                            "${configuration.name}|$group:${dependency.name}"
+                                        }
+                                    }
+                            }
+                            .toSortedSet()
+                        candidate.path to dependencies.joinToString(";")
+                    },
+                )
                 kotlinJvmProjects.set(
                     target.subprojects.filter { candidate ->
                         candidate.pluginManager.hasPlugin("org.jetbrains.kotlin.jvm")
@@ -301,6 +329,9 @@ abstract class VerifyArchitectureTask : DefaultTask() {
     abstract val directEdges: MapProperty<String, String>
 
     @get:Input
+    abstract val externalDependencies: MapProperty<String, String>
+
+    @get:Input
     abstract val kotlinJvmProjects: ListProperty<String>
 
     @get:Input
@@ -309,6 +340,7 @@ abstract class VerifyArchitectureTask : DefaultTask() {
     @get:Input
     abstract val forbiddenPluginProjects: ListProperty<String>
 
+    @Suppress("NestedBlockDepth")
     @TaskAction
     fun verify() {
         val expectedProjects = approvedEdges.keys
@@ -338,6 +370,17 @@ abstract class VerifyArchitectureTask : DefaultTask() {
                 if (candidatePath in androidProjects.get()) {
                     errors += "Pure Kotlin module applies an Android plugin: $candidatePath"
                 }
+                externalDependencies.get()[candidatePath]
+                    .orEmpty()
+                    .split(';')
+                    .filter(String::isNotEmpty)
+                    .forEach { encodedDependency ->
+                        val coordinate = encodedDependency.substringAfter('|')
+                        if (forbiddenDomainFrameworkPrefixes.any(coordinate::startsWith)) {
+                            errors += "[ARCH-DOMAIN-FRAMEWORK] $candidatePath declares forbidden external dependency " +
+                                encodedDependency.replace('|', ':')
+                        }
+                    }
             }
         }
         forbiddenPluginProjects.get().forEach { candidatePath ->
@@ -381,6 +424,15 @@ abstract class VerifyArchitectureTask : DefaultTask() {
             ":finance:application",
             ":analytics:domain",
             ":transfer:domain",
+        )
+        val forbiddenDomainFrameworkPrefixes = setOf(
+            "android:",
+            "androidx.",
+            "com.android.",
+            "com.google.dagger:",
+            "com.squareup.okhttp3:",
+            "com.squareup.retrofit2:",
+            "io.reactivex",
         )
         val approvedEdges = buildMap<String, Set<String>> {
             put(":analytics", emptySet())

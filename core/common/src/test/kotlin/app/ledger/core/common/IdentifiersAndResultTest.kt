@@ -24,6 +24,8 @@ class IdentifiersAndResultTest {
         val source = UuidStableIdSource(UuidSource { expected })
 
         source.nextStableId().toUuid() shouldBe expected
+        CommandId(source.nextStableId()).stableId.toUuid() shouldBe expected
+        RevisionId(source.nextStableId()).stableId.toUuid() shouldBe expected
     }
 
     @Test

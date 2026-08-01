@@ -47,14 +47,23 @@ internal object SourcePolicyEngine {
         "(?i)\\b(Money|Amount|Transaction(?!Id)|CardNumber|Pan|Cvc|Cvv|Password|Secret|" +
             "LocationSnapshot|Attachment(Content|Bytes)?|ByteArray)\\b",
     )
-    private val stateClass = Regex("(?:data\\s+)?class\\s+(\\w*(?:Route|SavedState)\\w*)\\s*\\(")
+    private val anyClass = Regex("(?:data\\s+|value\\s+)?class\\s+(\\w+)\\s*\\(")
+    private val stateClass = Regex("(?:data\\s+|value\\s+)?class\\s+(\\w*(?:Route|SavedState)\\w*)\\s*\\(")
     private val constructorField = Regex("(?:val|var)\\s+(\\w+)\\s*:\\s*([^,)=]+)")
-    private val savedStateAccess = Regex(
-        "(?i)(?:savedStateHandle\\s*\\[\\s*\"([^\"]+)\"|savedStateHandle\\s*\\.\\s*set\\s*\\(\\s*\"([^\"]+)\")",
+    private val variableDeclaration = Regex("\\b(\\w+)\\s*:\\s*([A-Za-z0-9_?.<>]+)")
+    private val aliasDeclaration = Regex(
+        "(?:val|var)\\s+(\\w+)(?:\\s*:\\s*[A-Za-z0-9_?.<>]+)?\\s*=\\s*(\\w+)\\b",
     )
-    private val daoWriteCall = Regex(
-        "(?i)\\b(\\w*Dao)\\s*\\.\\s*(insert|update|delete|upsert|replace|apply|write|mutate|persist|save)\\w*\\s*\\(",
+    private val daoPropertyAliasDeclaration = Regex(
+        "(?:val|var)\\s+(\\w+)(?:\\s*:\\s*[A-Za-z0-9_?.<>]+)?\\s*=\\s*(?:\\w+\\.)+(\\w*Dao)\\b",
     )
+    private val savedStateWrite = Regex(
+        "(?i)\\b(\\w+)\\s*(?:\\[\\s*\"([^\"]+)\"\\s*]\\s*=|\\.\\s*set\\s*\\(\\s*\"([^\"]+)\"\\s*,)",
+    )
+    private val writeCall = Regex(
+        "(?i)\\b(\\w+)\\s*\\.\\s*(insert|update|delete|upsert|replace|apply|write|mutate|persist|save)\\w*\\s*\\(",
+    )
+    private val daoTypedVariable = Regex("\\b(\\w+)\\s*:\\s*(?:[A-Za-z0-9_.]+\\.)?(\\w*Dao)\\b")
     private val coordinatorDeclaration = Regex(
         "\\b(?:class|object)\\s+\\w*FinancialMutationCoordinator\\b",
     )
@@ -62,6 +71,7 @@ internal object SourcePolicyEngine {
         "(?:ScreenId\\s*\\(\\s*|screenId\\s*=\\s*)\"([A-Z][A-Z0-9]*-\\d{3})\"",
     )
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     fun scan(
         path: String,
         source: String,
@@ -97,32 +107,53 @@ internal object SourcePolicyEngine {
         }
 
         if (Regex("^(?:finance|analytics|transfer)/domain/").containsMatchIn(normalizedPath)) {
-            Regex("(?m)^import\\s+androidx?(?:\\.|$)")
+            Regex(
+                "(?m)^import\\s+(?:androidx?(?:\\.|$)|dagger(?:\\.|$)|com\\.google\\.dagger(?:\\.|$)|" +
+                    "okhttp3(?:\\.|$)|retrofit2(?:\\.|$)|io\\.reactivex(?:\\.|$)|app\\.ledger\\.core\\.network(?:\\.|$))",
+            )
                 .findAll(source)
-                .forEach { report("ARCH-DOMAIN-ANDROID", it, "domain source imports Android APIs") }
+                .forEach { report("ARCH-DOMAIN-FRAMEWORK", it, "domain source imports a forbidden framework API") }
         }
 
         findings += authoritativeMoneyFindings(normalizedPath, source)
 
-        if (normalizedPath.startsWith("core/telemetry/")) {
-            Regex("\\b(?:Map\\s*<|mapOf\\s*\\()")
+        val telemetryContext = normalizedPath.contains("/telemetry/") ||
+            Regex("(?i)\\b(?:class|object|interface)\\s+\\w*Telemetry\\w*|\\b\\w*Telemetry\\w*\\s*\\.")
+                .containsMatchIn(source)
+        if (telemetryContext) {
+            Regex("\\b(?:Map\\s*<|MutableMap\\s*<|mapOf\\s*\\(|mutableMapOf\\s*\\()")
                 .findAll(source)
                 .forEach { report("PRIVACY-TELEMETRY-MAP", it, "telemetry must use typed white-listed events, not a generic Map") }
         }
 
+        val loggingAliases = Regex(
+            "(?m)^import\\s+(?:android\\.util\\.Log|timber\\.log\\.Timber|java\\.util\\.logging\\.Logger|" +
+                "org\\.slf4j\\.LoggerFactory)(?:\\s+as\\s+(\\w+))?",
+        ).findAll(source).map { match -> match.groupValues[1].ifEmpty { match.value.substringAfterLast('.') } }.toSet()
         Regex(
             "(?:android\\.util\\.Log|\\bLog\\.[vdiewtf]\\s*\\(|\\bTimber\\.|\\bprintln\\s*\\(|" +
-                "\\bprintStackTrace\\s*\\()",
+                "\\bprintStackTrace\\s*\\(|\\bLoggerFactory\\.|\\bLogger\\.getLogger\\s*\\()",
         ).findAll(source).forEach {
             report("PRIVACY-LOGGING", it, "ordinary logging APIs are forbidden in production sources")
         }
+        loggingAliases.forEach { alias ->
+            Regex("\\b${Regex.escape(alias)}\\s*\\.").findAll(source).forEach {
+                report("PRIVACY-LOGGING", it, "aliased ordinary logging API is forbidden in production sources")
+            }
+        }
 
+        val sensitiveDeclaredTypes = sensitiveDeclaredTypes(source)
         stateClass.findAll(source).forEach { declaration ->
             val constructor = source.balancedParentheses(declaration.range.last) ?: return@forEach
             constructorField.findAll(constructor).forEach { field ->
                 val fieldName = field.groupValues[1]
-                val fieldType = field.groupValues[2]
-                if (fieldName.lowercase() in sensitiveFieldNames || sensitiveType.containsMatchIn(fieldType)) {
+                val fieldType = field.groupValues[2].trim()
+                val rawType = fieldType.substringBefore('<').removeSuffix("?").substringAfterLast('.')
+                val sensitive = fieldName.lowercase() in sensitiveFieldNames ||
+                    sensitiveType.containsMatchIn(fieldType) ||
+                    rawType in sensitiveDeclaredTypes ||
+                    !isOpaqueStateType(fieldType)
+                if (sensitive) {
                     val absolute = declaration.range.last + field.range.first
                     findings += SourcePolicyFinding(
                         "PRIVACY-ROUTE-STATE",
@@ -134,19 +165,56 @@ internal object SourcePolicyEngine {
             }
         }
 
-        savedStateAccess.findAll(source).forEach { access ->
-            val key = access.groupValues.drop(1).first(String::isNotEmpty)
-            if (key.lowercase() in sensitiveFieldNames) {
-                report("PRIVACY-SAVEDSTATE-KEY", access, "SavedStateHandle key '$key' is sensitive")
+        val variableTypes = variableDeclaration.findAll(source).associate { match ->
+            match.groupValues[1] to match.groupValues[2].removeSuffix("?").substringAfterLast('.')
+        }
+        val savedStateReceivers = variableTypes.filterValues { type -> type == "SavedStateHandle" }.keys.toMutableSet()
+        propagateAliases(source, savedStateReceivers)
+        savedStateWrite.findAll(source).forEach { access ->
+            if (access.groupValues[1] in savedStateReceivers) {
+                val key = access.groupValues.drop(2).first(String::isNotEmpty)
+                val tail = source.substring(access.range.last + 1, source.lineEndAfter(access.range.last))
+                val sensitiveValue = sensitiveType.containsMatchIn(tail) ||
+                    Regex("\\b(?:Map\\s*<|MutableMap\\s*<|mapOf\\s*\\(|mutableMapOf\\s*\\()").containsMatchIn(tail) ||
+                    variableTypes.any { (name, type) ->
+                        Regex("\\b${Regex.escape(name)}\\b").containsMatchIn(tail) &&
+                            (type in sensitiveDeclaredTypes || !isOpaqueStateType(type))
+                    }
+                if (key.lowercase() in sensitiveFieldNames || sensitiveValue) {
+                    report("PRIVACY-SAVEDSTATE-KEY", access, "SavedStateHandle write '$key' contains sensitive state")
+                }
             }
         }
 
-        if (!coordinatorDeclaration.containsMatchIn(source)) {
-            daoWriteCall.findAll(source).forEach { call ->
+        val daoTypeAliases = Regex("\\btypealias\\s+(\\w+)\\s*=\\s*(?:[A-Za-z0-9_.]+\\.)?(\\w*Dao)\\b")
+            .findAll(source)
+            .map { it.groupValues[1] }
+            .toMutableSet()
+        Regex("(?m)^import\\s+[A-Za-z0-9_.]+\\.(\\w*Dao)\\s+as\\s+(\\w+)")
+            .findAll(source)
+            .mapTo(daoTypeAliases) { it.groupValues[2] }
+        val daoReceivers = daoTypedVariable.findAll(source).map { it.groupValues[1] }.toMutableSet()
+        variableTypes.filterValues { type -> type.endsWith("Dao") || type in daoTypeAliases }.keys.forEach(daoReceivers::add)
+        daoPropertyAliasDeclaration.findAll(source).mapTo(daoReceivers) { it.groupValues[1] }
+        propagateAliases(source, daoReceivers)
+        val coordinatorRanges = coordinatorDeclaration.findAll(source).mapNotNull { declaration ->
+            val openingBrace = source.indexOf('{', declaration.range.last + 1)
+            val intervening = if (openingBrace < 0) "" else source.substring(declaration.range.last + 1, openingBrace)
+            if (openingBrace < 0 || Regex("(?m)^\\s*(?:class|object|interface|fun)\\b").containsMatchIn(intervening)) {
+                null
+            } else {
+                source.balancedBraces(openingBrace)
+            }
+        }.toList()
+        writeCall.findAll(source).forEach { call ->
+            val receiver = call.groupValues[1]
+            if ((receiver in daoReceivers || receiver.endsWith("Dao", ignoreCase = true)) &&
+                coordinatorRanges.none { range -> call.range.first in range }
+            ) {
                 report(
                     "FINANCE-COORDINATOR",
                     call,
-                    "${call.groupValues[1]}.${call.groupValues[2]}* is called outside FinancialMutationCoordinator",
+                    "$receiver.${call.groupValues[2]}* is called outside the owning FinancialMutationCoordinator scope",
                 )
             }
         }
@@ -185,15 +253,81 @@ internal object SourcePolicyEngine {
                 "authoritative money code must use Long minor units or decimal/integer exact arithmetic",
             )
         }
-        Regex("(?<!CheckedArithmetic)\\.(?:sum|sumOf)\\s*\\(").findAll(source).forEach { match ->
-            findings += SourcePolicyFinding(
-                "MONEY-UNCHECKED-SUM",
-                path,
-                source.lineAt(match.range.first),
-                "money aggregation must use CheckedArithmetic or a BigInteger accumulator",
-            )
+        Regex(
+            "(?<!CheckedArithmetic)\\.(?:sum|sumOf|fold|foldIndexed|reduce|reduceIndexed|runningFold|runningReduce)" +
+                "\\s*(?:\\(|\\{)",
+        )
+            .findAll(source).forEach { match ->
+                findings += SourcePolicyFinding(
+                    "MONEY-UNCHECKED-SUM",
+                    path,
+                    source.lineAt(match.range.first),
+                    "money aggregation must use CheckedArithmetic or an explicit BigInteger accumulator",
+                )
+            }
+        val longAccumulators = Regex("\\bvar\\s+(\\w+)\\s*(?::\\s*Long)?\\s*=\\s*[^\\n;]*?\\b-?\\d+L\\b")
+            .findAll(source)
+            .map { it.groupValues[1] }
+            .toMutableSet()
+        Regex("\\bvar\\s+(\\w+)\\s*:\\s*Long\\b")
+            .findAll(source)
+            .mapTo(longAccumulators) { it.groupValues[1] }
+        Regex("\\bvar\\s+(\\w*(?:total|sum|balance|amount|accumul)\\w*)\\s*=")
+            .findAll(source)
+            .mapTo(longAccumulators) { it.groupValues[1] }
+        longAccumulators.forEach { accumulator ->
+            val escaped = Regex.escape(accumulator)
+            listOf(
+                Regex("\\b$escaped\\s*\\+="),
+                Regex("\\b$escaped\\s*=\\s*$escaped\\s*\\+"),
+                Regex("\\b$escaped\\s*=\\s*[^\\n;]+\\+\\s*$escaped\\b"),
+                Regex("\\b$escaped(?:\\+\\+|--)"),
+            ).forEach { unsafePattern ->
+                unsafePattern.findAll(source).forEach { match ->
+                    findings += SourcePolicyFinding(
+                        "MONEY-UNCHECKED-ACCUMULATION",
+                        path,
+                        source.lineAt(match.range.first),
+                        "Long accumulator '$accumulator' must use CheckedArithmetic or BigInteger",
+                    )
+                }
+            }
         }
         return findings
+    }
+
+    private fun sensitiveDeclaredTypes(source: String): Set<String> {
+        val sensitive = mutableSetOf<String>()
+        var changed: Boolean
+        do {
+            changed = false
+            anyClass.findAll(source).forEach { declaration ->
+                val constructor = source.balancedParentheses(declaration.range.last) ?: return@forEach
+                val containsSensitive = constructorField.findAll(constructor).any { field ->
+                    val name = field.groupValues[1]
+                    val type = field.groupValues[2].trim().substringBefore('<').removeSuffix("?").substringAfterLast('.')
+                    name.lowercase() in sensitiveFieldNames || sensitiveType.containsMatchIn(type) || type in sensitive
+                }
+                if (containsSensitive && sensitive.add(declaration.groupValues[1])) changed = true
+            }
+        } while (changed)
+        return sensitive
+    }
+
+    private fun isOpaqueStateType(type: String): Boolean {
+        val normalized = type.replace(" ", "").removeSuffix("?").substringAfterLast('.')
+        return normalized in setOf("Boolean", "Int", "Long", "String", "StableId", "InternalId", "CommandId", "RevisionId") ||
+            Regex("[A-Z][A-Za-z0-9]*Id").matches(normalized)
+    }
+
+    private fun propagateAliases(source: String, receivers: MutableSet<String>) {
+        var changed: Boolean
+        do {
+            changed = false
+            aliasDeclaration.findAll(source).forEach { alias ->
+                if (alias.groupValues[2] in receivers && receivers.add(alias.groupValues[1])) changed = true
+            }
+        } while (changed)
     }
 
     private fun String.lineAt(index: Int): Int = take(index.coerceAtLeast(0)).count { it == '\n' } + 1
@@ -210,6 +344,25 @@ internal object SourcePolicyEngine {
             }
         }
         return null
+    }
+
+    private fun String.balancedBraces(openingIndex: Int): IntRange? {
+        var depth = 0
+        for (index in openingIndex until length) {
+            when (this[index]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return openingIndex..index
+                }
+            }
+        }
+        return null
+    }
+
+    private fun String.lineEndAfter(index: Int): Int {
+        val newline = indexOf('\n', index.coerceAtLeast(0))
+        return if (newline < 0) length else newline
     }
 }
 

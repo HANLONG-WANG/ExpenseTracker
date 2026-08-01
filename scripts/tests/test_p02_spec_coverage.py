@@ -57,6 +57,21 @@ class SpecCoverageFailureTest(unittest.TestCase):
         tokens["dimensionDp"]["touchTargetMin"] = 47
         self.assert_rejected(tokens=tokens)
 
+    def test_equal_count_required_state_replacement_is_rejected(self) -> None:
+        screens = copy.deepcopy(self.screens)
+        screens[0]["requiredStates"][0] = "same-count-drift"
+        self.assert_rejected(screens=screens)
+
+    def test_unselected_token_value_drift_is_rejected(self) -> None:
+        tokens = copy.deepcopy(self.tokens)
+        tokens["meta"]["description"] = "same-count-drift"
+        self.assert_rejected(tokens=tokens)
+
+    def test_requirement_content_drift_is_rejected(self) -> None:
+        matrix = copy.deepcopy(self.matrix)
+        matrix[0]["需求摘要"] += " drift"
+        self.assert_rejected(matrix=matrix)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -31,16 +31,24 @@ class EffectiveTimeAndClockTest {
     }
 
     @Test
-    fun `DST gaps can reject or shift forward deterministically`() {
+    fun `DST gaps reject by default and explicit shifts carry provenance`() {
         val date = LocalDate.of(2026, 3, 8)
         val time = LocalTime.of(2, 30)
         val newYork = ZoneId.of("America/New_York")
 
-        EffectiveTime.resolveLocal(date, time, newYork, gapPolicy = GapPolicy.REJECT) shouldBe
+        EffectiveTime.resolveLocal(date, time, newYork) shouldBe
             DomainResult.Failure(TemporalError(TemporalErrorKind.NONEXISTENT_LOCAL_TIME))
-        val shifted = (EffectiveTime.resolveLocal(date, time, newYork) as DomainResult.Success).value
+        val shifted = (
+            EffectiveTime.resolveLocal(date, time, newYork, gapPolicy = GapPolicy.SHIFT_FORWARD) as DomainResult.Success
+            ).value
         shifted.zonedDateTime.toLocalTime() shouldBe LocalTime.of(3, 30)
         shifted.localDate shouldBe date
+        shifted.adjustment shouldBe TemporalAdjustment(
+            kind = TemporalAdjustmentKind.DST_GAP_SHIFT_FORWARD,
+            requestedLocalDateTime = date.atTime(time),
+            resolvedLocalDateTime = date.atTime(3, 30),
+            shiftedSeconds = 3_600L,
+        )
     }
 
     @Test

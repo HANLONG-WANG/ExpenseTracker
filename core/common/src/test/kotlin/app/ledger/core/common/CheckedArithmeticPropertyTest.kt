@@ -48,5 +48,22 @@ class CheckedArithmeticPropertyTest {
         CheckedArithmetic.negate(Long.MIN_VALUE) shouldBe DomainResult.Failure(
             ArithmeticOverflowError(ArithmeticOperation.NEGATE),
         )
+        CheckedArithmetic.abs(Long.MIN_VALUE) shouldBe DomainResult.Failure(
+            ArithmeticOverflowError(ArithmeticOperation.ABS),
+        )
+    }
+
+    @Test
+    fun `checked absolute value agrees with an unbounded integer oracle`() = runTest {
+        checkAll(iterations = 1_000, Arb.long()) { value ->
+            val oracle = BigInteger.valueOf(value).abs()
+            val expected = if (oracle <= BigInteger.valueOf(Long.MAX_VALUE)) {
+                DomainResult.Success(oracle.longValueExact())
+            } else {
+                DomainResult.Failure(ArithmeticOverflowError(ArithmeticOperation.ABS))
+            }
+
+            CheckedArithmetic.abs(value) shouldBe expected
+        }
     }
 }

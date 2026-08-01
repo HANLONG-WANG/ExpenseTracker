@@ -101,11 +101,29 @@ def implementation_files() -> list[Path]:
         if not path.is_file():
             continue
         relative = path.relative_to(ROOT)
-        if any(part in {".git", ".gradle", ".kotlin", "build", "docs"} for part in relative.parts):
+        if any(part in {".git", ".gradle", ".kotlin", "build", "docs", "quality"} for part in relative.parts):
             continue
         if path.suffix in {".kt", ".kts", ".toml", ".xml"} or path.name in {"gradle.properties"}:
             result.append(path)
     return result
+
+
+def is_production_source(path: Path) -> bool:
+    relative = path.relative_to(ROOT)
+    if any(part in {".git", ".gradle", ".kotlin", "build", "docs", "quality"} for part in relative.parts):
+        return False
+    return any(
+        relative.parts[index : index + 2] == ("src", "main")
+        for index in range(len(relative.parts) - 1)
+    )
+
+
+def verification_coordinates(path: Path) -> set[str]:
+    root = ET.parse(path).getroot()
+    return {
+        f"{component.attrib['group']}:{component.attrib['name']}:{component.attrib['version']}"
+        for component in root.findall(".//{*}component")
+    }
 
 
 def main() -> int:
@@ -161,17 +179,16 @@ def main() -> int:
         "Retrofit": r"(?i)retrofit",
         "RxJava": r"(?i)rxjava",
     }
-    checker_source = (ROOT / "build-logic/src/main/kotlin/app/ledger/buildlogic/ConventionPlugins.kt").read_text(encoding="utf-8")
-    implementation_text = implementation_text.replace(checker_source, "")
+    for checker in (
+        ROOT / "build-logic/src/main/kotlin/app/ledger/buildlogic/ConventionPlugins.kt",
+        ROOT / "build-logic/src/main/kotlin/app/ledger/buildlogic/SourcePolicyEngine.kt",
+    ):
+        implementation_text = implementation_text.replace(checker.read_text(encoding="utf-8"), "")
     for label, pattern in forbidden.items():
         if re.search(pattern, implementation_text):
             fail(f"forbidden implementation reference found: {label}")
 
-    production_sources = [
-        path
-        for path in ROOT.rglob("src/main/*")
-        if path.is_file() and not any(part == "build" for part in path.relative_to(ROOT).parts)
-    ]
+    production_sources = [path for path in ROOT.rglob("*") if path.is_file() and is_production_source(path)]
     for path in production_sources:
         text = path.read_text(encoding="utf-8")
         if re.search(r"\bTODO\b|NotImplementedError|NotImplemented", text):
@@ -188,20 +205,34 @@ def main() -> int:
         fail("wrapper distribution SHA-256 pin differs")
     wrapper_jar_sha = hashlib.sha256((ROOT / "gradle/wrapper/gradle-wrapper.jar").read_bytes()).hexdigest()
 
-    lockfiles = [
+    lockfiles = {
         path
         for path in ROOT.rglob("gradle.lockfile")
         if not any(part in {".gradle", "build"} for part in path.relative_to(ROOT).parts)
-    ]
-    if len(lockfiles) != 37:
-        fail(f"expected 35 module locks plus root tooling and build-logic locks, found {len(lockfiles)}")
+    }
+    expected_lockfiles = {ROOT / "gradle.lockfile", ROOT / "build-logic/gradle.lockfile"} | {
+        module_dir(module) / "gradle.lockfile" for module in LEAF_MODULES
+    }
+    if lockfiles != expected_lockfiles:
+        fail(
+            "lockfile set differs: "
+            f"missing={sorted(str(path.relative_to(ROOT)) for path in expected_lockfiles - lockfiles)}, "
+            f"extra={sorted(str(path.relative_to(ROOT)) for path in lockfiles - expected_lockfiles)}"
+        )
+    root_build = (ROOT / "build.gradle.kts").read_text(encoding="utf-8")
+    build_logic_build = (ROOT / "build-logic/build.gradle.kts").read_text(encoding="utf-8")
+    if "lockMode.set(LockMode.STRICT)" not in root_build or "lockMode.set(LockMode.STRICT)" not in build_logic_build:
+        fail("root and build-logic must enable strict missing dependency-lock state")
     prerelease_production_entries = []
-    for lockfile in lockfiles:
+    locked_coordinates: set[str] = set()
+    for lockfile in sorted(lockfiles):
         if lockfile == ROOT / "build-logic/gradle.lockfile":
-            continue
+            pass
         for line in lockfile.read_text(encoding="utf-8").splitlines():
             coordinate = line.partition("=")[0]
             configurations = line.partition("=")[2]
+            if coordinate != "empty" and coordinate.count(":") == 2:
+                locked_coordinates.add(coordinate)
             if prerelease.search(coordinate) and re.search(r"(?:debug|release)RuntimeClasspath", configurations):
                 prerelease_production_entries.append(f"{lockfile.relative_to(ROOT)}:{coordinate}")
     if prerelease_production_entries:
@@ -214,6 +245,12 @@ def main() -> int:
     checksums = verification_root.findall(".//{*}sha256")
     if len(components) < 100 or len(checksums) < 100:
         fail(f"dependency verification metadata is incomplete: components={len(components)}, sha256={len(checksums)}")
+    verified_coordinates = verification_coordinates(ROOT / "gradle/verification-metadata.xml") | verification_coordinates(
+        ROOT / "build-logic/gradle/verification-metadata.xml"
+    )
+    unverified_locks = locked_coordinates - verified_coordinates
+    if unverified_locks:
+        fail(f"locked components lack verification metadata: {sorted(unverified_locks)}")
 
     ui_root = ROOT / "docs/UI设计稿与实现契约_v1.0"
     tokens = json.loads((ui_root / "android_ledger_ui_tokens_v1.json").read_text(encoding="utf-8"))

@@ -32,7 +32,7 @@ class SourcePolicyEngineTest {
         scan(
             "finance/domain/src/main/kotlin/Balance.kt",
             "import android.content.Context",
-        ).shouldContain("ARCH-DOMAIN-ANDROID")
+        ).shouldContain("ARCH-DOMAIN-FRAMEWORK")
     }
 
     @Test
@@ -75,6 +75,79 @@ class SourcePolicyEngineTest {
             "feature/record/src/main/kotlin/Save.kt",
             "fun save(transactionDao: TransactionDao) = transactionDao.insertCurrent(command)",
         ).shouldContain("FINANCE-COORDINATOR")
+    }
+
+    @Test
+    fun `rejects DAO aliases and ignores unrelated coordinator declarations`() {
+        val rules = scan(
+            "feature/record/src/main/kotlin/Save.kt",
+            """
+                class DecoyFinancialMutationCoordinator
+                fun save(transactionDao: TransactionDao) {
+                    val store = transactionDao
+                    store.insertCurrent(command)
+                }
+            """.trimIndent(),
+        )
+        rules.shouldContain("FINANCE-COORDINATOR")
+    }
+
+    @Test
+    fun `rejects fold reduce plus assign and manual Long accumulations`() {
+        val rules = scan(
+            "core/money/src/main/kotlin/UnsafeAggregation.kt",
+            """
+                fun fold(values: List<Long>) = values.fold(0L) { total, value -> total + value }
+                fun reduce(values: List<Long>) = values.reduce { total, value -> total + value }
+                fun loop(values: List<Long>): Long {
+                    var total = 0L
+                    for (value in values) total += value
+                    return total
+                }
+                fun manual(values: List<Long>): Long {
+                    var amount = 0L
+                    for (value in values) amount = amount + value
+                    return amount
+                }
+                fun obscure(values: List<Long>): Long {
+                    var x: Long = 0
+                    for (value in values) x += value
+                    return x
+                }
+            """.trimIndent(),
+        )
+        rules.shouldContainAll("MONEY-UNCHECKED-SUM", "MONEY-UNCHECKED-ACCUMULATION")
+    }
+
+    @Test
+    fun `rejects sensitive wrappers and SavedState aliases`() {
+        val rules = scan(
+            "core/navigation/src/main/kotlin/State.kt",
+            """
+                data class MoneyEnvelope(val amount: Long)
+                data class EditRoute(val payload: MoneyEnvelope)
+                fun save(handle: SavedStateHandle, envelope: MoneyEnvelope) {
+                    val store = handle
+                    store["draft"] = envelope
+                }
+            """.trimIndent(),
+        )
+        rules.shouldContainAll("PRIVACY-ROUTE-STATE", "PRIVACY-SAVEDSTATE-KEY")
+    }
+
+    @Test
+    fun `rejects telemetry and logging aliases outside fixed paths`() {
+        val rules = scan(
+            "analytics/data/src/main/kotlin/Reporter.kt",
+            """
+                import android.util.Log as AuditLog
+                class LedgerTelemetryReporter {
+                    val fields: Map<String, Any?> = mapOf()
+                    fun emit() = AuditLog.d("ledger", "event")
+                }
+            """.trimIndent(),
+        )
+        rules.shouldContainAll("PRIVACY-TELEMETRY-MAP", "PRIVACY-LOGGING")
     }
 
     @Test

@@ -1,3 +1,5 @@
+import org.gradle.api.artifacts.dsl.LockMode
+
 plugins {
     id("ledger.architecture")
     alias(libs.plugins.spotless)
@@ -51,6 +53,7 @@ allprojects {
 
     dependencyLocking {
         lockAllConfigurations()
+        lockMode.set(LockMode.STRICT)
     }
 }
 
@@ -101,13 +104,32 @@ tasks.register<JavaExec>("detekt") {
 
 spotless {
     kotlin {
-        target("**/*.kt")
-        targetExclude("**/build/**", "**/.gradle/**", "quality/fixtures/**")
+        target(
+            "app/src/**/*.kt",
+            "benchmark/src/**/*.kt",
+            "build-logic/src/**/*.kt",
+            "core/*/src/**/*.kt",
+            "finance/*/src/**/*.kt",
+            "analytics/*/src/**/*.kt",
+            "transfer/*/src/**/*.kt",
+            "feature/*/src/**/*.kt",
+            "widget/src/**/*.kt",
+        )
         ktlint(libs.versions.ktlint.get())
     }
     kotlinGradle {
-        target("**/*.gradle.kts")
-        targetExclude("**/build/**", "**/.gradle/**")
+        target(
+            "*.gradle.kts",
+            "app/*.gradle.kts",
+            "benchmark/*.gradle.kts",
+            "build-logic/*.gradle.kts",
+            "core/*/*.gradle.kts",
+            "finance/*/*.gradle.kts",
+            "analytics/*/*.gradle.kts",
+            "transfer/*/*.gradle.kts",
+            "feature/*/*.gradle.kts",
+            "widget/*.gradle.kts",
+        )
         ktlint(libs.versions.ktlint.get())
     }
 }
@@ -124,6 +146,7 @@ val validateP02Specs by tasks.registering(Exec::class) {
     description = "Validates the complete 90-requirement and 215-screen traceability contracts."
     workingDir(layout.projectDirectory)
     commandLine("python3", "scripts/validate_p02_quality.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
     inputs.files(
         fileTree("scripts") { include("**/*.py") },
         fileTree("docs/implementation") { include("*.csv", "*.md") },
@@ -140,6 +163,7 @@ val validateP02SpecFixtures by tasks.registering(Exec::class) {
     description = "Proves the spec gate rejects missing requirements, screens, routes and ledger rows."
     workingDir(layout.projectDirectory)
     commandLine("python3", "-m", "unittest", "discover", "-s", "scripts/tests", "-p", "test_*.py", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
     inputs.files(fileTree("scripts") { include("**/*.py") })
 }
 
@@ -169,6 +193,7 @@ val validateP03Core by tasks.registering(Exec::class) {
     description = "Validates the pure-Kotlin P03 money, time, ID and deterministic-algorithm baseline."
     workingDir(layout.projectDirectory)
     commandLine("python3", "scripts/validate_p03_core.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
     inputs.files(
         fileTree("scripts") { include("**/*.py") },
         fileTree("core/common/src") { include("**/*.kt") },
@@ -198,6 +223,7 @@ tasks.register<Exec>("generateLicenseReport") {
     dependsOn("cyclonedxBom")
     workingDir(layout.projectDirectory)
     commandLine("python3", "scripts/generate_oss_licenses.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
     inputs.file(layout.buildDirectory.file("reports/cyclonedx/bom.json"))
     outputs.files(
         layout.buildDirectory.file("reports/dependency-license/licenses.csv"),

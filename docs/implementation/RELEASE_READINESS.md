@@ -54,12 +54,14 @@ Expected: Java/Javac 17, `platforms;android-36`, a stable `build-tools;36.x`, wo
 ## P02 release conclusion
 
 - Static, test, CI, coverage and supply-chain infrastructure is implemented; strict dependency verification stays active when reports generate.
-- The generated P02 SBOM/license/Kover files are build evidence, not P36 release artifacts or NOTICE approval.
-- P02 is `VERIFIED`: API 28/API 36 app GMD tests and the API 36 benchmark toolchain test execute successfully on KVM, in addition to the CI/static/artifact gates.
+- The generated P02 SBOM/license/Kover files are build evidence, not P36 release artifacts or NOTICE approval; 41 upstream license metadata rows remain explicitly `UNKNOWN`.
+- P02 is `VERIFIED` for local infrastructure: API 28/API 36 app GMD tests, API 36 benchmark toolchain and API 36 MigrationTestHelper tests execute successfully on KVM, in addition to local static/artifact gates.
+- Remote GitHub Actions execution is `UNVERIFIED`: no run URL, run ID or immutable remote artifact reference is stored, so workflow configuration is not presented as a remote pass.
 
 ## P03 release conclusion
 
-- P03 is `VERIFIED`: 32 pure-Kotlin core behavioral tests, eight build-policy tests, the repeatable `p03Check` gate and P03-inclusive Kover reports pass.
-- Authoritative money production paths contain no `Float`/`Double` or unchecked collection sums; the committed violation fixture proves both rules reject real source.
+- P03 is `VERIFIED`: 36 pure-Kotlin core behavioral tests, 12 build-policy tests, the fresh 2,110-task `p03Check` gate and P03-inclusive Kover reports pass.
+- Typed Command/Revision IDs, checked absolute value, default DST-gap rejection with explicit shift provenance and the expanded expression boundary matrix are verified.
+- Authoritative money production paths contain no `Float`/`Double` or unchecked sum/fold/reduce/`+=`/manual-loop accumulation; four named fixtures prove each escape class is rejected.
 - `INV-034` is verified. The other 34 permanent invariants, database facts, planners, offline FX caching and all UI acceptance remain later-phase work.
 - All 215 screen rows remain `NOT_STARTED`; no screenshot, visual draft, APK behavior or release completeness is inferred from P03.

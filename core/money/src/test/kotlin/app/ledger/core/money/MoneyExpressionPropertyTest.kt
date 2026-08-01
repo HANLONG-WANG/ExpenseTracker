@@ -15,6 +15,7 @@ class MoneyExpressionPropertyTest {
     private val catalog = JvmLegalTenderCurrencyCatalog.create()
     private val jpy = metadata("JPY")
     private val usd = metadata("USD")
+    private val kwd = metadata("KWD")
 
     @Test
     fun `legal integer expressions obey precedence for generated operands`() = runTest {
@@ -53,6 +54,7 @@ class MoneyExpressionPropertyTest {
         oneThird.roundedMoney shouldBe Money(33L, usd.code)
         halfEvenDown.roundedMoney shouldBe Money(100L, usd.code)
         halfEvenUp.roundedMoney shouldBe Money(102L, usd.code)
+        success(evaluator.evaluate("６÷４", Locale.JAPAN, usd)).roundedMoney shouldBe Money(150L, usd.code)
     }
 
     @Test
@@ -84,6 +86,49 @@ class MoneyExpressionPropertyTest {
         val missingParenthesis = error(evaluator.evaluate("1+(2*3", Locale.US, usd)) as AmountExpressionError
         missingParenthesis.position.zeroBasedIndex shouldBe 6
         missingParenthesis.position.oneBasedPosition shouldBe 7
+    }
+
+    @Test
+    fun `isolated closing parenthesis trailing operator variable and scientific notation report exact positions`() {
+        val cases = mapOf(
+            ")1" to AmountExpressionError(AmountExpressionErrorKind.UNEXPECTED_TOKEN, app.ledger.core.common.ErrorPosition(0)),
+            "1+" to AmountExpressionError(AmountExpressionErrorKind.UNEXPECTED_TOKEN, app.ledger.core.common.ErrorPosition(2)),
+            "amount+1" to AmountExpressionError(AmountExpressionErrorKind.INVALID_CHARACTER, app.ledger.core.common.ErrorPosition(0)),
+            "1e3" to AmountExpressionError(AmountExpressionErrorKind.INVALID_CHARACTER, app.ledger.core.common.ErrorPosition(1)),
+        )
+
+        cases.forEach { (input, expected) ->
+            error(evaluator.evaluate(input, Locale.US, usd)) shouldBe expected
+        }
+    }
+
+    @Test
+    fun `number and token bounds have distinct errors and exact positions`() {
+        val numberTooLong = "9".repeat(81)
+        error(evaluator.evaluate(numberTooLong, Locale.US, usd)) shouldBe AmountExpressionError(
+            AmountExpressionErrorKind.NUMBER_TOO_LONG,
+            app.ledger.core.common.ErrorPosition(80),
+        )
+
+        val tokenBounded = MoneyExpressionEvaluator(
+            limits = ExpressionLimits(maximumCharacters = 20, maximumTokens = 5),
+        )
+        error(tokenBounded.evaluate("1+2+3", Locale.US, usd)) shouldBe AmountExpressionError(
+            AmountExpressionErrorKind.TOO_MANY_TOKENS,
+            app.ledger.core.common.ErrorPosition(4),
+        )
+    }
+
+    @Test
+    fun `extreme intermediate decimals and three-decimal currencies round without Long wrapping`() {
+        success(
+            evaluator.evaluate("92233720368547758.07*100/100", Locale.US, usd),
+        ).roundedMoney shouldBe Money(Long.MAX_VALUE, usd.code)
+        (error(evaluator.evaluate("92233720368547758.08", Locale.US, usd)) as AmountExpressionError).kind shouldBe
+            AmountExpressionErrorKind.NUMERIC_RANGE
+
+        success(evaluator.evaluate("1.2345", Locale.US, kwd)).roundedMoney shouldBe Money(1_234L, kwd.code)
+        success(evaluator.evaluate("1.2355", Locale.US, kwd)).roundedMoney shouldBe Money(1_236L, kwd.code)
     }
 
     @Test

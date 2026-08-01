@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-01 (Asia/Tokyo)
 Current stage: P03 — core value objects, money, time and deterministic algorithms
-Stage status: VERIFIED (`P03-E001`—`P03-E009`); P04 is the next unstarted stage
+Stage status: VERIFIED (`P03-E001`—`P03-E009`); the P00—P03 audit remediation tracker is complete; P04 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -87,29 +87,29 @@ P01 preserved all prior tracked and untracked work. The provisional build identi
 
 | Area | P02 result | Classification |
 |---|---|---|
-| JVM and Android test stack | JUnit 5, Kotest Property/assertions, MockK, coroutines-test, Turbine, AndroidX Test/JUnit4, Compose UI Test, Espresso, MockWebServer and Room MigrationTestHelper are centrally configured; JVM tests and API 28/API 36 device harnesses execute | VERIFIED (`P02-E002`, `P02-E008`) |
+| JVM and Android test stack | JUnit 5, Kotest Property/assertions, MockK, coroutines-test, Turbine, AndroidX Test/JUnit4, Compose UI Test, Espresso, MockWebServer and Room MigrationTestHelper are centrally configured; JVM tests and all four API 28/API 36 device harnesses execute | VERIFIED (`P02-E002`, `P02-E008`) |
 | Static quality | Android Lint, pinned stable detekt CLI, Spotless + ktlint and Kover are wired into repeatable root tasks | VERIFIED (`P02-E003`, `P02-E005`, `P02-E006`) |
-| Architecture/privacy policy | Module/source boundaries, governed UI access, sensitive route/SavedState, generic telemetry maps, ordinary logging, nondeterminism and coordinator-only financial writes have unit-tested source rules plus a committed rejected fixture | VERIFIED (`P02-E003`, `P02-E004`) |
-| Traceability | Complete token JSON, screen YAML and requirement/screen CSV ledgers are cross-checked: 434 scalar tokens, 90 REQs, 215 unique IDs/routes, 646 required states and 192 explicitly mapped screens; six mutation cases prove omissions/drift fail | VERIFIED (`P02-E001`) |
+| Architecture/privacy policy | Project/external dependency boundaries plus alias/type/scope-aware source rules cover governed UI, route/SavedState wrappers, telemetry/log aliases, nondeterminism and Coordinator-owned DAO writes; named production-shaped fixtures prove rejection | VERIFIED (`P02-E003`, `P02-E004`) |
+| Traceability | Complete token JSON, screen YAML and requirement/screen CSV ledgers are cross-checked with full canonical hashes: 434 scalar tokens, 90 REQs, 215 unique IDs/routes, 646 exact per-screen required states and 192 explicitly mapped screens; equal-count drift is rejected | VERIFIED (`P02-E001`) |
 | Supply chain | 37 lockfiles, strict root and standalone build-logic verification metadata, aggregate CycloneDX 1.6 JSON/XML SBOM, CSV/HTML OSS inventory and Kover XML/HTML reports generate in normal strict mode | VERIFIED (`P02-E006`) |
-| CI and performance base | GitHub Actions runs the aggregate/static/supply-chain jobs plus API 28/API 36 Managed Device matrix; `:benchmark` executes its Macrobenchmark/BaselineProfile rule contract on API 36, ProfileInstaller is packaged and JankStats is owned by `:core:designsystem` | VERIFIED as P02 infrastructure (`P02-E007`, `P02-E008`); real measurements/profile remain P35/P36 |
+| CI and performance base | GitHub Actions is configured for aggregate/static/supply-chain proofs plus API 28/API 36 Managed Device matrix; local `:benchmark` executes its rule contract and local `:core:database` executes MigrationTestHelper on API 36 | VERIFIED as local P02 infrastructure (`P02-E007`, `P02-E008`); remote run remains `UNVERIFIED`; measurements/profile remain P35/P36 |
 | Screenshot provenance | No screenshot or golden is fabricated for the page-free shell. Later baselines may be captured only from implemented Compose UI derived from textual contracts/tokens; excluded visual drafts remain unread | Correct for P02; see `DL-013` |
 
-P02 is complete. `/dev/kvm` is accessible, Emulator 37.1.11 reports usable KVM 12, and the API 28 app, API 36 app and API 36 benchmark Managed Device tasks all passed with zero failed/skipped tests. See `P02-E008`.
+P02 is complete for its local acceptance scope. `/dev/kvm` is accessible, Emulator 37.1.11 reports usable KVM 12, and the API 28 app, API 36 app, API 36 benchmark and API 36 MigrationTestHelper Managed Device tasks all passed with zero failed/skipped tests. Remote Actions remains explicitly unverified. See `P02-E007`—`P02-E008`.
 
 ### P03 result
 
 | Area | P03 result | Classification |
 |---|---|---|
-| Common value foundation | Positive `InternalId`, defensively immutable 16-byte `StableId`, injected UUID source, typed domain errors and immutable `DomainResult` live in `:core:common` | VERIFIED (`P03-E002`) |
-| Checked arithmetic | Every Long add/subtract/multiply/negate/accumulate entry uses exact checks; BigInteger accumulation and exact Long conversion report typed overflow | VERIFIED; permanent `INV-034` (`P03-E002`, `P03-E006`) |
+| Common value foundation | Positive `InternalId`, defensively immutable 16-byte `StableId`, distinct `CommandId`/`RevisionId`, injected UUID source, typed errors and immutable `DomainResult` live in `:core:common` | VERIFIED (`P03-E002`) |
+| Checked arithmetic | Every Long add/subtract/multiply/negate/absolute/accumulate entry uses exact checks; BigInteger accumulation and exact Long conversion report typed overflow | VERIFIED; permanent `INV-034` (`P03-E002`, `P03-E006`) |
 | Money and FX | `Money(Long minor, CurrencyCode)`, current country legal-tender metadata, currency-specific scales, explicit rounding/MathContext, immutable `FxEvidence` and exact conversion are pure Kotlin | VERIFIED as P03 foundation (`P03-E003`) |
 | Amount expression | Bounded tokenizer/Pratt parser/BigDecimal evaluator supports only `+ - * / × ÷ ( )`, whitespace/full-width/local decimal normalization, exact source positions, positive result and currency-minor rounding | VERIFIED (`P03-E004`) |
-| Time and periods | Injected Clock, self-consistent `EffectiveTime`, explicit DST policies, storage keys, natural budget months and account-zone statement cycles use only `java.time` | VERIFIED (`P03-E005`) |
+| Time and periods | Injected Clock, self-consistent `EffectiveTime`, default DST-gap rejection, explicit shift provenance/overlap policies, storage keys, natural budget months and account-zone statement cycles use only `java.time` | VERIFIED (`P03-E005`) |
 | Formatting boundary | Currency/date-time formatters return preformatted UI models, preserve locale/zone evidence and prevent hidden-value leakage; no Composable performs authoritative work because P04 UI is not started | VERIFIED as P03 interface (`P03-E003`, `P03-E005`) |
-| Static and regression gates | `p03Check`, `p03Artifacts`, pure-Kotlin validator and committed Float/Double + unchecked-sum rejection fixture extend all P02 gates | VERIFIED (`P03-E006`—`P03-E009`) |
+| Static and regression gates | `p03Check`, `p03Artifacts`, pure-Kotlin validator and named Float/Double + sum/fold/reduce/`+=`/manual-loop rejection fixtures extend all P02 gates | VERIFIED (`P03-E006`—`P03-E009`) |
 
-P03 is complete with 32 core behavioral tests plus eight build-logic policy tests (all zero failed/error/skipped), 1,000-case arithmetic and expression properties, generated calendar boundaries, and P03-inclusive Kover reports. No Android/Room/network dependency exists in the three core modules and no visual draft was read.
+P03 is complete with 36 core behavioral tests plus 12 build-logic policy tests (all zero failed/error/skipped), 1,000-case addition/absolute/expression properties, generated calendar boundaries, and fresh P03-inclusive Kover reports. No Android/Room/network dependency exists in the three core modules; visual drafts are excluded by fail-closed textual input policy.
 
 ## Coverage summary
 
@@ -130,8 +130,8 @@ P03 is complete with 32 core behavioral tests plus eight build-logic policy test
 |---|---|---|
 | P00 | VERIFIED | `python3 scripts/validate_spec_baseline.py` passed; see `P00-E001`—`P00-E006` |
 | P01 | VERIFIED | Frozen toolchain, all modules, exact dependency graph, debug/release assembly, locks, verification metadata, lint and tests passed; see `P01-E001`—`P01-E007` |
-| P02 | VERIFIED | Repeatable aggregate/static/artifact gates, rejection proofs, traceability checks, API 28/API 36 GMD and API 36 benchmark device tests pass; see `P02-E001`—`P02-E009` |
-| P03 | VERIFIED | Pure-Kotlin IDs/errors/results, checked arithmetic, exact money/FX/expression/time/period/formatting foundations and real-violation rejection pass; see `P03-E001`—`P03-E009` |
+| P02 | VERIFIED | Repeatable aggregate/static/artifact gates, named rejection proofs, exact traceability and four local GMD suites pass; remote CI is separately `UNVERIFIED`; see `P02-E001`—`P02-E009` |
+| P03 | VERIFIED | Typed IDs, complete checked arithmetic including abs/accumulation, exact money/FX/expression/time/period/formatting foundations and real-violation rejection pass; see `P03-E001`—`P03-E009` |
 | P04—P36 | NOT_STARTED | P04 is the next execution stage; do not promote later work early |
 
 ## P04 entry state

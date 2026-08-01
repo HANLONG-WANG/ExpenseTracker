@@ -9,7 +9,17 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_RULES = {"[MONEY-BINARY-FLOAT]", "[MONEY-UNCHECKED-SUM]"}
+EXPECTED_RULES = {
+    "[MONEY-BINARY-FLOAT]",
+    "[MONEY-UNCHECKED-SUM]",
+    "[MONEY-UNCHECKED-ACCUMULATION]",
+}
+EXPECTED_FIXTURES = {
+    "BinaryFloatAmount.kt": "[MONEY-BINARY-FLOAT]",
+    "UncheckedFoldAmount.kt": "[MONEY-UNCHECKED-SUM]",
+    "UncheckedReduceAmount.kt": "[MONEY-UNCHECKED-SUM]",
+    "UncheckedLoopAmount.kt": "[MONEY-UNCHECKED-ACCUMULATION]",
+}
 
 
 def main() -> int:
@@ -33,9 +43,18 @@ def main() -> int:
         print("P03 source-policy rejection proof failed: binary floating-point fixture was accepted.", file=sys.stderr)
         return 1
     missing = {rule for rule in EXPECTED_RULES if rule not in output}
-    if missing:
+    missing_fixtures = {
+        f"{fixture}:{rule}"
+        for fixture, rule in EXPECTED_FIXTURES.items()
+        if not any(fixture in line and rule in line for line in output.splitlines())
+    }
+    if missing or missing_fixtures:
         print(output, file=sys.stderr)
-        print(f"P03 source-policy rejection proof failed: expected diagnostics absent: {sorted(missing)}.", file=sys.stderr)
+        print(
+            "P03 source-policy rejection proof failed: "
+            f"rules absent={sorted(missing)}, fixture diagnostics absent={sorted(missing_fixtures)}.",
+            file=sys.stderr,
+        )
         return 1
     diagnostics = [
         line.strip()

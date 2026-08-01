@@ -100,6 +100,7 @@ enum class ArithmeticOperation {
     SUBTRACT,
     MULTIPLY,
     NEGATE,
+    ABS,
     ACCUMULATE,
     CONVERT_TO_LONG,
 }

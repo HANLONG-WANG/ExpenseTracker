@@ -73,7 +73,8 @@ REQ_LEDGER_FIELDS = [
     "status",
     "implementation_evidence",
     "verification_evidence",
-    "target_phase",
+    "primary_acceptance_phase",
+    "follow_up_review_phases",
     "notes",
 ]
 SCREEN_LEDGER_FIELDS = [
@@ -106,7 +107,18 @@ def require(condition: bool, message: str) -> None:
         raise AuditFailure(message)
 
 
+def assert_text_input(path: Path) -> None:
+    """Fail closed before any forbidden visual path reaches a filesystem read."""
+    require(path.name not in FORBIDDEN_VISUALS, f"forbidden visual input access rejected: {path.name}")
+
+
+def read_text_input(path: Path, *, encoding: str = "utf-8") -> str:
+    assert_text_input(path)
+    return path.read_text(encoding=encoding)
+
+
 def sha256(path: Path) -> str:
+    assert_text_input(path)
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -126,8 +138,9 @@ def scalar_paths(value: Any, prefix: tuple[str, ...] = ()) -> Iterable[tuple[tup
 
 
 def read_sources() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, str]]]:
-    tokens = json.loads(TOKENS_SOURCE.read_text(encoding="utf-8"))
-    screens = yaml.safe_load(SCREENS_SOURCE.read_text(encoding="utf-8"))
+    tokens = json.loads(read_text_input(TOKENS_SOURCE))
+    screens = yaml.safe_load(read_text_input(SCREENS_SOURCE))
+    assert_text_input(REQUIREMENTS_SOURCE)
     with REQUIREMENTS_SOURCE.open(encoding="utf-8-sig", newline="") as stream:
         requirements = list(csv.DictReader(stream))
     return tokens, screens, requirements
@@ -141,7 +154,7 @@ def validate_frozen_hashes() -> None:
 
 def validate_manifest() -> None:
     entries: dict[str, str] = {}
-    for line in MANIFEST_SOURCE.read_text(encoding="utf-8").splitlines():
+    for line in read_text_input(MANIFEST_SOURCE).splitlines():
         digest, name = line.split(maxsplit=1)
         name = name.strip()
         require(name not in entries, f"duplicate manifest entry: {name}")
@@ -216,11 +229,21 @@ def expand_screen_references(text: str) -> set[str]:
 
 
 def target_requirement_phases() -> dict[str, str]:
-    text = PLAN.read_text(encoding="utf-8")
+    text = read_text_input(PLAN)
     pairs = dict(re.findall(r"(REQ-\d{3}) \| (P\d{2})", text))
     expected = {f"REQ-{number:03d}" for number in range(1, 91)}
     require(set(pairs) == expected, "development plan does not map all 90 requirements")
     return pairs
+
+
+def follow_up_requirement_phases(primary_phase: str) -> str:
+    """Apply the plan's systematic P34 full review and P36 final acceptance."""
+    phase_number = int(primary_phase.removeprefix("P"))
+    if phase_number < 34:
+        return "P34 | P36"
+    if phase_number < 36:
+        return "P36"
+    return "NONE"
 
 
 def screen_target_phase(screen_id: str) -> str:
@@ -322,7 +345,8 @@ def initialize_ledgers(
                     "status": "NOT_STARTED",
                     "implementation_evidence": "",
                     "verification_evidence": "",
-                    "target_phase": phases[row["需求ID"]],
+                    "primary_acceptance_phase": phases[row["需求ID"]],
+                    "follow_up_review_phases": follow_up_requirement_phases(phases[row["需求ID"]]),
                     "notes": "P00 baseline only; implementation not claimed.",
                 }
             )
@@ -385,6 +409,30 @@ def validate_ledgers(screens: list[dict[str, Any]], requirements: list[dict[str,
         [row["requirement_id"] for row in requirement_rows] == [row["需求ID"] for row in requirements],
         "requirement ledger does not exactly cover source requirements",
     )
+    phases = target_requirement_phases()
+    source_to_ledger = {
+        "需求ID": "requirement_id",
+        "来源章节": "source_section",
+        "需求摘要": "summary",
+        "覆盖页面/流程": "screens_flows",
+        "核心组件": "core_components",
+        "验收条件": "acceptance_criteria",
+    }
+    for source, ledger in zip(requirements, requirement_rows, strict=True):
+        for source_field, ledger_field in source_to_ledger.items():
+            require(
+                source[source_field] == ledger[ledger_field],
+                f"{ledger['requirement_id']} {ledger_field} differs from frozen matrix",
+            )
+        primary = phases[ledger["requirement_id"]]
+        require(
+            ledger["primary_acceptance_phase"] == primary,
+            f"{ledger['requirement_id']} primary phase must be {primary}",
+        )
+        require(
+            ledger["follow_up_review_phases"] == follow_up_requirement_phases(primary),
+            f"{ledger['requirement_id']} follow-up review phases differ from the plan-wide review policy",
+        )
     validate_statuses(requirement_rows, "requirement_id")
 
     screen_rows = read_csv(SCREENS_LEDGER)
@@ -402,22 +450,139 @@ def validate_ledgers(screens: list[dict[str, Any]], requirements: list[dict[str,
     return len(requirement_rows), mapped
 
 
+def markdown_table_rows(section: str, id_pattern: str) -> list[list[str]]:
+    matcher = re.compile(id_pattern)
+    rows: list[list[str]] = []
+    for line in section.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if cells and matcher.fullmatch(cells[0]):
+            rows.append(cells)
+    return rows
+
+
+def exact_table_ids(section: str, id_pattern: str, expected: list[str], label: str) -> list[list[str]]:
+    rows = markdown_table_rows(section, id_pattern)
+    actual = [row[0] for row in rows]
+    require(actual == expected, f"{label} IDs/order differ: expected={expected}, actual={actual}")
+    require(len(actual) == len(set(actual)), f"{label} contains duplicate IDs")
+    return rows
+
+
+def backtick_members(cell: str) -> list[str]:
+    return re.findall(r"`([^`]+)`", cell)
+
+
+EXPECTED_SCHEMA_FAMILY_MEMBERS = {
+    "SCHEMA-FAMILY-01": ["book", "book_commit", "book_commit_parent", "command_receipt", "entity_change", "entity_revision", "purge_tombstone"],
+    "SCHEMA-FAMILY-02": ["ledger_account", "user_account", "payment_card", "card_vault_secret", "account_balance_checkpoint"],
+    "SCHEMA-FAMILY-03": ["category", "merchant", "merchant_alias", "place", "location_record", "location_rtree", "place_rtree"],
+    "SCHEMA-FAMILY-04": ["business_transaction", "transaction_revision", "revision_amount", "fx_rate_snapshot", "expense_revision_detail", "income_revision_detail", "transfer_revision_detail", "refund_revision_detail", "credit_payment_revision_detail", "loan_disbursement_revision_detail", "loan_payment_revision_detail", "balance_adjustment_revision_detail", "fx_exchange_revision_detail", "settlement_payment_revision_detail", "opening_balance_revision_detail", "transaction_revision_attachment", "transaction_revision_settlement_share", "transaction_dependency"],
+    "SCHEMA-FAMILY-05": ["journal_entry", "posting", "economic_effect", "budget_effect", "project_effect", "goal_effect", "statement_effect", "loan_effect", "settlement_effect"],
+    "SCHEMA-FAMILY-06": ["refund_allocation", "refund_status_projection"],
+    "SCHEMA-FAMILY-07": ["credit_account_profile", "credit_limit_period", "credit_statement", "credit_statement_revision", "credit_payment_allocation", "installment_plan", "installment_plan_revision", "installment_schedule_revision", "installment_schedule_item", "installment_refund_allocation"],
+    "SCHEMA-FAMILY-08": ["loan_contract", "loan_tranche", "loan_terms_revision", "loan_rate_period", "loan_schedule_revision", "loan_schedule_item", "loan_actual_allocation", "loan_simulation", "loan_simulation_item"],
+    "SCHEMA-FAMILY-09": ["participant", "settlement_activity", "settlement_activity_participant", "settlement_payment_record"],
+    "SCHEMA-FAMILY-10": ["project", "goal", "goal_movement", "budget_template", "budget_template_revision", "budget_template_category_limit", "budget_month", "budget_month_revision", "budget_category_limit", "budget_adjustment", "budget_rollover"],
+    "SCHEMA-FAMILY-11": ["transaction_blueprint", "transaction_blueprint_revision", "blueprint_settlement_share_rule", "recurrence_series", "recurrence_series_revision", "recurrence_rule_weekday", "recurrence_exception", "recurrence_occurrence", "recurrence_candidate"],
+    "SCHEMA-FAMILY-12": ["encrypted_blob", "attachment", "blob_gc_candidate"],
+}
+
+EXPECTED_PROJECTION_FAMILY_MEMBERS = {
+    "PROJECTION-FAMILY-01": ["current_transaction_projection"],
+    "PROJECTION-FAMILY-02": ["account_balance_current", "account_valuation_current", "account_balance_daily"],
+    "PROJECTION-FAMILY-03": ["budget_usage_projection", "budget_future_reservation", "project_usage_projection", "goal_balance_projection", "budget_rollover", "refund_status_projection"],
+    "PROJECTION-FAMILY-04": ["credit_statement_projection", "credit_account_projection", "installment_progress_projection", "loan_progress_projection", "loan_future_cashflow_projection", "loan_simulation_item"],
+    "PROJECTION-FAMILY-05": ["settlement_position_projection"],
+    "PROJECTION-FAMILY-06": ["analytics_daily_total", "analytics_daily_category", "analytics_daily_account", "analytics_daily_merchant", "analytics_daily_project", "analytics_daily_place", "analytics_monthly_*"],
+    "PROJECTION-FAMILY-07": ["widget_book_snapshot", "widget_account_snapshot", "widget_credit_snapshot", "widget_goal_snapshot"],
+}
+
+EXPECTED_INDEX_FAMILY_MEMBERS = {
+    "INDEX-FAMILY-01": ["transaction_fts"],
+    "INDEX-FAMILY-02": ["location_rtree", "place_rtree"],
+}
+
+EXPECTED_OPERATION_MEMBERS = {
+    "BACKGROUND-OPERATION": ["background_operation", "operation_checkpoint"],
+    "IMPORT-METADATA": ["import_record", "import_batch_commit", "import_source_reference"],
+    "IMPORT-STAGING": ["staging_raw_row", "staging_parsed_row", "staging_mapping", "staging_validation_error", "staging_duplicate_candidate", "staging_prepared_command", "staging_attachment"],
+    "BACKUP-RESTORE-METADATA": ["backup_repository", "backup_snapshot", "backup_object", "backup_snapshot_object", "drive_upload_session", "restore_record", "merge_session", "merge_conflict", "merge_resolution"],
+}
+
+
 def validate_domain_ledger() -> None:
     path = IMPLEMENTATION / "DOMAIN_AND_SCHEMA_COVERAGE.md"
-    text = path.read_text(encoding="utf-8")
-    for number in range(1, 36):
-        require(f"INV-{number:03d}" in text, f"missing permanent invariant INV-{number:03d}")
-    for number in range(1, 21):
-        require(f"ADR-{number:03d}" in text, f"missing architecture ADR-{number:03d}")
-    require("ADR-007A" in text, "missing ADR-007A")
-    for number in range(1, 13):
-        require(f"UI-ADR-{number:03d}" in text, f"missing UI ADR-{number:03d}")
-    for number in range(1, 13):
-        require(f"SCHEMA-FAMILY-{number:02d}" in text, f"missing schema family {number}")
-    require("PROJECTION-FAMILY-01" in text and "PROJECTION-FAMILY-07" in text, "projection families incomplete")
-    require("BACKGROUND-OPERATION" in text, "background operation inventory missing")
+    text = read_text_input(path)
+    architecture = text.split("## Architecture decisions", 1)[1].split("## Permanent invariants", 1)[0]
+    invariants = text.split("## Permanent invariants", 1)[1].split("## Logical schema families", 1)[0]
+    schema = text.split("## Logical schema families", 1)[1].split("## Projection and index families", 1)[0]
+    projections = text.split("## Projection and index families", 1)[1].split(
+        "## Background, staging, import, backup and recovery operations", 1
+    )[0]
+    operations = text.split("## Background, staging, import, backup and recovery operations", 1)[1].split(
+        "## Mandatory test and release quality gates", 1
+    )[0]
 
-    domain_source = (FROZEN / "领域模型与数据库逻辑模型设计.md").read_text(encoding="utf-8")
+    expected_adrs = [f"ADR-{number:03d}" for number in range(1, 8)] + ["ADR-007A"] + [
+        f"ADR-{number:03d}" for number in range(8, 21)
+    ]
+    exact_table_ids(architecture, r"ADR-\d{3}A?", expected_adrs, "architecture ADR")
+    exact_table_ids(
+        architecture,
+        r"UI-ADR-\d{3}",
+        [f"UI-ADR-{number:03d}" for number in range(1, 13)],
+        "UI ADR",
+    )
+    exact_table_ids(
+        invariants,
+        r"INV-\d{3}",
+        [f"INV-{number:03d}" for number in range(1, 36)],
+        "permanent invariant",
+    )
+
+    schema_rows = exact_table_ids(
+        schema,
+        r"SCHEMA-FAMILY-\d{2}",
+        list(EXPECTED_SCHEMA_FAMILY_MEMBERS),
+        "schema family",
+    )
+    for row in schema_rows:
+        actual = backtick_members(row[2])
+        require(actual == EXPECTED_SCHEMA_FAMILY_MEMBERS[row[0]], f"{row[0]} member mapping differs")
+        require(len(actual) == len(set(actual)), f"{row[0]} contains duplicate members")
+
+    projection_rows = exact_table_ids(
+        projections,
+        r"PROJECTION-FAMILY-\d{2}",
+        list(EXPECTED_PROJECTION_FAMILY_MEMBERS),
+        "projection family",
+    )
+    index_rows = exact_table_ids(
+        projections,
+        r"INDEX-FAMILY-\d{2}",
+        list(EXPECTED_INDEX_FAMILY_MEMBERS),
+        "index family",
+    )
+    for row in projection_rows + index_rows:
+        expected = {**EXPECTED_PROJECTION_FAMILY_MEMBERS, **EXPECTED_INDEX_FAMILY_MEMBERS}[row[0]]
+        actual = backtick_members(row[2])
+        require(actual == expected, f"{row[0]} member mapping differs")
+        require(len(actual) == len(set(actual)), f"{row[0]} contains duplicate members")
+
+    operation_rows = exact_table_ids(
+        operations,
+        r"(?:BACKGROUND-OPERATION|IMPORT-METADATA|IMPORT-STAGING|BACKUP-RESTORE-METADATA)",
+        list(EXPECTED_OPERATION_MEMBERS),
+        "operation inventory",
+    )
+    for row in operation_rows:
+        actual = backtick_members(row[2])
+        require(actual == EXPECTED_OPERATION_MEMBERS[row[0]], f"{row[0]} record mapping differs")
+        require(len(actual) == len(set(actual)), f"{row[0]} contains duplicate records")
+
+    domain_source = read_text_input(FROZEN / "领域模型与数据库逻辑模型设计.md")
     schema_section = domain_source.split("# 二十五、数据库逻辑表设计", 1)[1].split(
         "# 二十六、查询投影", 1
     )[0]
@@ -427,66 +592,8 @@ def validate_domain_ledger() -> None:
     )[0]
     schema_names.update(re.findall(r"^- `([^`]+)`", detail_section, flags=re.MULTILINE))
     require(len(schema_names) == 94, f"unexpected logical schema inventory size: {len(schema_names)}")
-    for name in schema_names:
-        require(f"`{name}`" in text, f"logical schema table missing from ledger: {name}")
-
-    projection_and_index_names = {
-        "current_transaction_projection",
-        "account_balance_current",
-        "account_valuation_current",
-        "account_balance_daily",
-        "budget_usage_projection",
-        "budget_future_reservation",
-        "project_usage_projection",
-        "goal_balance_projection",
-        "credit_statement_projection",
-        "credit_account_projection",
-        "installment_progress_projection",
-        "loan_progress_projection",
-        "loan_future_cashflow_projection",
-        "settlement_position_projection",
-        "analytics_daily_total",
-        "analytics_daily_category",
-        "analytics_daily_account",
-        "analytics_daily_merchant",
-        "analytics_daily_project",
-        "analytics_daily_place",
-        "widget_book_snapshot",
-        "widget_account_snapshot",
-        "widget_credit_snapshot",
-        "widget_goal_snapshot",
-        "transaction_fts",
-        "location_rtree",
-        "place_rtree",
-    }
-    for name in projection_and_index_names:
-        require(f"`{name}`" in text, f"projection/index missing from ledger: {name}")
-
-    operation_names = {
-        "background_operation",
-        "operation_checkpoint",
-        "import_record",
-        "import_batch_commit",
-        "import_source_reference",
-        "staging_raw_row",
-        "staging_parsed_row",
-        "staging_mapping",
-        "staging_validation_error",
-        "staging_duplicate_candidate",
-        "staging_prepared_command",
-        "staging_attachment",
-        "backup_repository",
-        "backup_snapshot",
-        "backup_object",
-        "backup_snapshot_object",
-        "drive_upload_session",
-        "restore_record",
-        "merge_session",
-        "merge_conflict",
-        "merge_resolution",
-    }
-    for name in operation_names:
-        require(f"`{name}`" in text, f"background/transfer record missing from ledger: {name}")
+    ledger_schema_names = {name for row in schema_rows for name in backtick_members(row[2])}
+    require(ledger_schema_names == schema_names, "logical schema ledger must exactly equal the frozen 94-table set")
 
 
 def validate_required_documents() -> None:
@@ -523,7 +630,7 @@ def main() -> int:
     print("P00 specification baseline: PASS")
     print("frozen_spec_files=10")
     print("manifest_text_entries_verified=5")
-    print("forbidden_visual_entries_listed=4 forbidden_visual_files_opened=0")
+    print("forbidden_visual_manifest_entries=4 visual_access_guard=fail_closed")
     print("json_scalar_paths=434 category_palettes=16")
     print(f"requirements={requirement_count} expected=90")
     print(f"screens={len(screens)} unique_ids=215 unique_routes=215")
