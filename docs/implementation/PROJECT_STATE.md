@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-02 (Asia/Tokyo)
-Current stage: P06 — accounting planners, immutable facts and core invariants
-Stage status: VERIFIED (`P06-E001`—`P06-E006`); P00—P06 are complete and P07 is the next unstarted stage
+Current stage: P07 — SQLCipher/Room Schema v1 and migration framework
+Stage status: VERIFIED (`P07-E001`—`P07-E006`); P00—P07 are complete and P08 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -150,18 +150,31 @@ P05 introduces no Room Entity/DAO, SQLCipher behavior, Android dependency, featu
 
 P06 contains no Room/SQLCipher adapter, projection persistence, feature page or platform claim. The nine target requirement rows remain truthfully `IN_PROGRESS`, the physical schema/projection families remain `NOT_STARTED`, and all 215 screen rows remain `NOT_STARTED`.
 
+### P07 result
+
+| Area | P07 result | Classification |
+|---|---|---|
+| Encrypted database topology | Room 2.8.4 owns one SQLCipher 4.17.0 primary database and an independently versioned one-operation SQLCipher import staging database; no framework-SQLite or plaintext side database path exists | VERIFIED (`P07-E001`, `P07-E003`) |
+| Complete Schema v1 | The exact 94 frozen §25 tables plus explicit `rule_set_version`, all §26 projections, §27 FTS5/R*Tree and §28 operation/import/backup/restore records produce 140 declared primary tables; all seven staging tables are separate | VERIFIED (`P07-E001`, `P07-E002`, `P07-E003`) |
+| Constraints and immutability | Foreign keys, row `CHECK`s, unique/reversal constraints, 39 named indexes, four audit views, cross-row constraints and 63 Revision/Fact append-only guards are installed; no `@Upsert` or universal JSON payload exists | VERIFIED for Schema v1 (`P07-E001`—`P07-E004`); P08 owns repository transactions |
+| SQLite/SQLCipher operation | WAL, foreign keys, incremental auto-vacuum, memory-only temporary storage, secure delete, controlled checkpoint/optimize and cipher memory protection are fail-closed connection settings | VERIFIED on API 36 (`P07-E003`) |
+| Capabilities and leakage | The official x86_64 AAR reports SQLCipher 4.17.0 and executes FTS5 trigram, R*Tree, JSON and window queries; correct-key reopen, wrong-key rejection, integrity/FK checks and database/WAL sensitive-sentinel scans pass | VERIFIED on API 36 (`P07-E003`) |
+| Migration governance | Both Room v1 JSON identities and complete canonical raw-DDL JSON catalogs are checked in; v1 has no predecessor, future versions require adjacent explicit Expand → Backfill → Switch → Contract migrations, and destructive fallback is rejected | VERIFIED (`P07-E001`, `P07-E002`, `P07-E004`) |
+
+P07 adds no repository implementation, DAO-to-domain mapper, projection rebuild algorithm, feature page, background runtime, import execution or controlled purge workflow. Those remain P08 and their owning later stages; all 215 screen rows remain `NOT_STARTED`.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-085` is `VERIFIED`; 64 requirements are `IN_PROGRESS` for accurately scoped foundations; 25 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-085` is `VERIFIED`; 65 requirements are `IN_PROGRESS` for accurately scoped foundations; 24 remain `NOT_STARTED` |
 | YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All `NOT_STARTED`; baseline rows created only |
-| Architecture ADRs | 20 + ADR-007A | ADR-001 `VERIFIED`; 17 decisions are `IN_PROGRESS` at typed-contract level; ADR-002/016/017 remain `NOT_STARTED` |
+| Architecture ADRs | 20 + ADR-007A | ADR-001 `VERIFIED`; 18 decisions are `IN_PROGRESS`; ADR-016/017 remain `NOT_STARTED` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
 | Permanent domain invariants | 35 | `INV-034` `VERIFIED`; the other 34 are `IN_PROGRESS` at typed-model/policy foundation level and retain their later planner/database evidence |
-| Logical schema families | 12 | Registered; implementation `NOT_STARTED` |
-| Projection families | 7 + search/geographic indexes | Typed domain/query contracts `IN_PROGRESS`; physical projection/index implementation `NOT_STARTED` |
-| Durable/staging/backup operation inventories | 4 groups | Typed Operation records and ports `IN_PROGRESS`; persistence/runtime implementation `NOT_STARTED` |
+| Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; repository behavior remains P08+ |
+| Projection families | 7 + search/geographic indexes | Physical tables/FTS5/R*Tree `VERIFIED` by P07; synchronous rebuild/query behavior remains `IN_PROGRESS` for P08+ |
+| Durable/staging/backup operation inventories | 4 groups | Encrypted physical records `VERIFIED` by P07; operation runtime remains `IN_PROGRESS` for P28—P31 |
 
 ## Stage progression
 
@@ -174,18 +187,21 @@ P06 contains no Room/SQLCipher adapter, projection persistence, feature page or 
 | P04 | VERIFIED | Complete token generation/mapping, governed components, 215-route/646-state contract, five stacks, static rules and API 28/API 36 UI matrices pass; see `P04-E001`—`P04-E011` |
 | P05 | VERIFIED | Complete pure Kotlin aggregate/lifecycle/query/operation model, coordinator/application ports, typed analytics/transfer contracts, property tests and architecture/static gates pass; see `P05-E001`—`P05-E006` |
 | P06 | VERIFIED | Deterministic 11-rule accounting planner, immutable reversal lifecycle, exact FX/effect/hash paths, idempotency/conflict checks and 25 accounting-core invariant mappings pass; see `P06-E001`—`P06-E006` |
-| P07—P36 | NOT_STARTED | P07 is the next execution stage; do not promote later work early |
+| P07 | VERIFIED | Complete Room/SQLCipher Schema v1, independent encrypted staging, migrations, capabilities, WAL/temp leakage and API 36 device contracts pass; see `P07-E001`—`P07-E006` |
+| P08—P36 | NOT_STARTED | P08 is the next execution stage; do not promote later work early |
 
-## P07 entry state
+## P08 entry state
 
-P06 leaves the repository at a verified pure accounting planner boundary. Its completion commands are:
+P07 leaves the repository at a verified encrypted Schema v1 boundary. Its completion commands are:
 
 ```text
-python3 scripts/validate_p06_accounting.py
-python3 -m unittest scripts.tests.test_p06_accounting_contracts -v
+python3 scripts/generate_p07_schema_catalog.py --check
+python3 scripts/validate_p07_database.py
+python3 -m unittest scripts.tests.test_p07_database_contracts -v
 python3 scripts/prove_source_policy_rejection.py
-./gradlew p06Check --configuration-cache --no-parallel --dependency-verification=strict --console=plain
-./gradlew p06Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew :core:database:pixel6Api36DebugAndroidTest --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew p07Check --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew p07Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
 ```
 
-All commands and final hygiene gates pass in `P06-E001`—`P06-E006`. P07 may map these immutable plans and facts to the frozen Room/SQLCipher schema, but must preserve the same coordinator-owned atomic boundary, original fact/rule versions and exact hash/evidence domain. All 215 screen implementations remain `NOT_STARTED`; P07 must not infer page completion from planner capability.
+All commands and final hygiene gates pass in `P07-E001`—`P07-E006`. P08 may implement Room-backed repositories and the coordinator's single `withTransaction` commit using this schema, but must not bypass append-only facts, the write gate or canonical planning hashes. All 215 screen implementations remain `NOT_STARTED`; P08 must not infer page completion from database capability.

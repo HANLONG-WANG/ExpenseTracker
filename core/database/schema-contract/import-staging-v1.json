@@ -1,0 +1,122 @@
+{
+  "formatVersion": 1,
+  "databaseKind": "IMPORT_STAGING",
+  "schemaVersion": 1,
+  "assets": {
+    "import_staging_schema_v1.sql": "5fc9a232a62f8a2952f6e571b56e63e82b94396576645a23ea839ec6a57a65fc"
+  },
+  "tables": [
+    {
+      "name": "staging_attachment",
+      "virtual": false,
+      "columns": [
+        "id",
+        "row_number",
+        "source_handle_uid",
+        "imported_attachment_uid",
+        "content_hash",
+        "staging_storage_name"
+      ],
+      "createSql": "CREATE TABLE staging_attachment (\n  id INTEGER PRIMARY KEY, row_number INTEGER NOT NULL REFERENCES staging_raw_row(row_number) ON DELETE CASCADE,\n  source_handle_uid BLOB NOT NULL CHECK (length(source_handle_uid) = 16), imported_attachment_uid BLOB CHECK (imported_attachment_uid IS NULL OR length(imported_attachment_uid) = 16),\n  content_hash BLOB CHECK (content_hash IS NULL OR length(content_hash) = 32), staging_storage_name TEXT,\n  UNIQUE (row_number, source_handle_uid)\n)"
+    },
+    {
+      "name": "staging_duplicate_candidate",
+      "virtual": false,
+      "columns": [
+        "id",
+        "row_number",
+        "existing_transaction_uid",
+        "match_kind",
+        "confidence_basis_ciphertext",
+        "resolution"
+      ],
+      "createSql": "CREATE TABLE staging_duplicate_candidate (\n  id INTEGER PRIMARY KEY, row_number INTEGER NOT NULL REFERENCES staging_raw_row(row_number) ON DELETE CASCADE,\n  existing_transaction_uid BLOB NOT NULL CHECK (length(existing_transaction_uid) = 16), match_kind INTEGER NOT NULL CHECK (match_kind >= 0),\n  confidence_basis_ciphertext BLOB NOT NULL, resolution INTEGER, UNIQUE (row_number, existing_transaction_uid, match_kind)\n)"
+    },
+    {
+      "name": "staging_mapping",
+      "virtual": false,
+      "columns": [
+        "source_column",
+        "target_field",
+        "transformation_type",
+        "transformation_blob"
+      ],
+      "createSql": "CREATE TABLE staging_mapping (\n  source_column TEXT NOT NULL CHECK (length(source_column) > 0), target_field INTEGER NOT NULL CHECK (target_field >= 0),\n  transformation_type INTEGER NOT NULL CHECK (transformation_type >= 0), transformation_blob BLOB,\n  PRIMARY KEY (source_column, target_field)\n)"
+    },
+    {
+      "name": "staging_parsed_row",
+      "virtual": false,
+      "columns": [
+        "row_number",
+        "field_set_blob",
+        "parser_version",
+        "parsed_hash"
+      ],
+      "createSql": "CREATE TABLE staging_parsed_row (\n  row_number INTEGER PRIMARY KEY REFERENCES staging_raw_row(row_number) ON DELETE CASCADE,\n  field_set_blob BLOB NOT NULL, parser_version INTEGER NOT NULL CHECK (parser_version > 0), parsed_hash BLOB NOT NULL CHECK (length(parsed_hash) = 32)\n)"
+    },
+    {
+      "name": "staging_prepared_command",
+      "virtual": false,
+      "columns": [
+        "row_number",
+        "command_uid",
+        "command_type",
+        "command_blob",
+        "command_hash",
+        "validation_state"
+      ],
+      "createSql": "CREATE TABLE staging_prepared_command (\n  row_number INTEGER PRIMARY KEY REFERENCES staging_raw_row(row_number) ON DELETE CASCADE,\n  command_uid BLOB NOT NULL UNIQUE CHECK (length(command_uid) = 16), command_type INTEGER NOT NULL CHECK (command_type >= 0),\n  command_blob BLOB NOT NULL, command_hash BLOB NOT NULL CHECK (length(command_hash) = 32), validation_state INTEGER NOT NULL CHECK (validation_state >= 0)\n)"
+    },
+    {
+      "name": "staging_raw_row",
+      "virtual": false,
+      "columns": [
+        "row_number",
+        "payload",
+        "source_hash",
+        "ingestion_state"
+      ],
+      "createSql": "-- One-operation SQLCipher staging database schema v1. No table is part of the authoritative ledger.\nCREATE TABLE staging_raw_row (\n  row_number INTEGER PRIMARY KEY CHECK (row_number > 0), payload BLOB NOT NULL,\n  source_hash BLOB NOT NULL CHECK (length(source_hash) = 32), ingestion_state INTEGER NOT NULL CHECK (ingestion_state >= 0)\n)"
+    },
+    {
+      "name": "staging_validation_error",
+      "virtual": false,
+      "columns": [
+        "id",
+        "row_number",
+        "target_field",
+        "error_code",
+        "error_detail_ciphertext"
+      ],
+      "createSql": "CREATE TABLE staging_validation_error (\n  id INTEGER PRIMARY KEY, row_number INTEGER NOT NULL REFERENCES staging_raw_row(row_number) ON DELETE CASCADE,\n  target_field INTEGER, error_code TEXT NOT NULL CHECK (length(error_code) > 0), error_detail_ciphertext BLOB,\n  UNIQUE (row_number, target_field, error_code)\n)"
+    }
+  ],
+  "indexes": [
+    {
+      "name": "ix_staging_duplicate_row",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_staging_duplicate_row ON staging_duplicate_candidate(row_number)"
+    },
+    {
+      "name": "ix_staging_prepared_state",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_staging_prepared_state ON staging_prepared_command(validation_state, row_number)"
+    },
+    {
+      "name": "ix_staging_validation_error_row",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_staging_validation_error_row ON staging_validation_error(row_number, error_code)"
+    }
+  ],
+  "views": [],
+  "triggers": [],
+  "migrationPolicy": {
+    "phases": [
+      "EXPAND",
+      "BACKFILL",
+      "SWITCH",
+      "CONTRACT"
+    ],
+    "destructiveFallbackAllowed": false
+  }
+}

@@ -214,6 +214,18 @@ def validate_mapping(mapping: str) -> list[str]:
     return errors
 
 
+def validate_project_state(project_state: str) -> list[str]:
+    current_stage = re.search(r"Current stage: P(\d{2})", project_state)
+    if (
+        current_stage is None
+        or not 6 <= int(current_stage.group(1)) <= 36
+        or "| P06 | VERIFIED |" not in project_state
+        or "### P06 result" not in project_state
+    ):
+        return ["PROJECT_STATE does not retain P06 VERIFIED in the cumulative stage ledger"]
+    return []
+
+
 def main() -> int:
     sources = load_sources()
     errors = validate_sources(sources)
@@ -222,8 +234,7 @@ def main() -> int:
     mapping = (ROOT / "docs/implementation/P06_ACCOUNTING_INVARIANT_MAPPING.md").read_text(encoding="utf-8")
     errors.extend(validate_mapping(mapping))
     project_state = (ROOT / "docs/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
-    if "Current stage: P06" not in project_state or "Stage status: VERIFIED" not in project_state:
-        errors.append("PROJECT_STATE does not record P06 VERIFIED")
+    errors.extend(validate_project_state(project_state))
     evidence = (ROOT / "docs/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
     if any(f"P06-E{value:03d}" not in evidence for value in range(1, 7)):
         errors.append("TEST_EVIDENCE does not contain P06-E001..P06-E006")

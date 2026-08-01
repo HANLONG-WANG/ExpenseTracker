@@ -33,11 +33,11 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Install contract parser
         run: python3 -m pip install PyYAML==6.0.3
-      - name: Verify frozen baseline and P05 quality gates
+      - name: Verify frozen baseline and P07 quality gates
         run: |
           python3 scripts/validate_spec_baseline.py
           python3 scripts/validate_p01_baseline.py
-          ./gradlew p06Check koverXmlReport koverHtmlReport cyclonedxBom --configuration-cache --console=plain
+          ./gradlew p07Check koverXmlReport koverHtmlReport cyclonedxBom --configuration-cache --console=plain
       - name: Prove source policies reject real violations
         run: |
           python3 scripts/prove_p01_architecture_rejection.py
@@ -90,7 +90,7 @@ jobs:
       - name: Validate Macrobenchmark and Baseline Profile device toolchain
         if: matrix.device == 'pixel6Api36'
         run: ./gradlew :benchmark:pixel6Api36DebugAndroidTest --configuration-cache --console=plain
-      - name: Execute MigrationTestHelper device infrastructure
+      - name: Execute SQLCipher schema, migration and plaintext-scan device contracts
         if: matrix.device == 'pixel6Api36'
         run: ./gradlew :core:database:pixel6Api36DebugAndroidTest --configuration-cache --console=plain
       - name: Upload device results

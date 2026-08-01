@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-02 (Asia/Tokyo)
 Overall release status: `NOT_STARTED`  
-P06 deterministic accounting and immutable-fact foundations plus the inherited exact-value/design/navigation/quality infrastructure are verified; no business page, database adapter or release artifact is claimed.
+P07 encrypted Schema v1 and migration governance plus the inherited deterministic accounting/design/navigation/quality infrastructure are verified; no business page, repository adapter or release artifact is claimed.
 
 ## Quality gates
 
@@ -10,8 +10,8 @@ P06 deterministic accounting and immutable-fact foundations plus the inherited e
 |---|---|---|---|
 | Frozen build and module graph | JDK 17, AGP 9.3.x, Gradle 9.5.x, Kotlin 2.4.x, API 28/36; all prescribed modules and dependency rules | P01 | VERIFIED (`P01-E001`—`P01-E007`) |
 | Reproducible quality infrastructure | CI, lint, detekt, formatting, Kover, dependency verification/locks, SBOM, license tasks, architecture tests and API 28/API 36 GMD entries | P02 | VERIFIED (`P02-E001`—`P02-E009`) |
-| Financial/domain correctness | Exact money/time algorithms, planners, coordinator-only writes, immutable facts and 35 invariants | P03/P05/P06/P08 | IN_PROGRESS (`P03-E002`—`P03-E006` verify exact values and INV-034; `P05-E001`—`P05-E004` verify typed aggregates/ports; `P06-E001`—`P06-E004` verify all 11 planners and 25 accounting-core invariant mappings; persistence remains P07/P08) |
-| Encrypted schema/migrations | Room 2.8.4 + SQLCipher 4.17.0, v1 export, migrations, FTS5/R*Tree, no destructive migration | P07 | NOT_STARTED |
+| Financial/domain correctness | Exact money/time algorithms, planners, coordinator-only writes, immutable facts and 35 invariants | P03/P05/P06/P08 | IN_PROGRESS (`P03-E002`—`P03-E006` verify exact values and INV-034; `P05-E001`—`P05-E004` verify typed aggregates/ports; `P06-E001`—`P06-E004` verify all 11 planners and 25 accounting-core invariant mappings; `P07-E001`—`P07-E004` verify physical facts/constraints; atomic repository persistence remains P08) |
+| Encrypted schema/migrations | Room 2.8.4 + SQLCipher 4.17.0, v1 export, migrations, FTS5/R*Tree, no destructive migration | P07 | VERIFIED (`P07-E001`—`P07-E006`) |
 | Security boundaries | Keystore/Tink/Argon2id, app/vault key separation, no sensitive route/state/log/telemetry leakage | P09/P32 | NOT_STARTED |
 | Complete functionality | REQ-001—REQ-090 and all 215 screen contracts | P11—P34 | NOT_STARTED |
 | Accessibility/localization/visual contract | Simplified Chinese, Japanese, English; themes/dynamic boundary; 320dp; 200%; TalkBack; reduced motion; non-color semantics | P34 | IN_PROGRESS (`P04-E002`, `P04-E007`, `P04-E008` verify the core design-system matrix; all feature screens and manual TalkBack/grayscale acceptance remain P34) |
@@ -32,7 +32,7 @@ These are legitimate user/organization inputs, not Android code gaps. Their abse
 | API 28 and API 36 physical devices plus chosen release-key custody process | Mandatory device regression and release security | NOT_STARTED — availability not yet confirmed | P35/P36 |
 | Host KVM virtualization and current-user access to `/dev/kvm` | P02 Gradle Managed Device execution on API 28/API 36 | RESOLVED — KVM 12 usable and all three required GMD commands pass | P02 closed |
 
-## Build-environment baseline after P06
+## Build-environment baseline after P07
 
 Verified on this host: Temurin JDK 17.0.20, Android SDK Platform 36 revision 2, Build Tools 36.0.0, platform-tools/adb 37.0.1, Gradle Wrapper 9.5.1, AGP 9.3.1 and Kotlin 2.4.10. Recheck with:
 
@@ -88,3 +88,11 @@ Expected: Java/Javac 17, `platforms;android-36`, a stable `build-tools;36.x`, wo
 - `P06_ACCOUNTING_INVARIANT_MAPPING.md` accounts for all 35 permanent invariants and names automated P06 evidence for the 25 accounting-core rows. Database constraints/audits and projection integration remain P07/P08; their ledger rows are not promoted early.
 - `REQ-085` remains the sole end-to-end `VERIFIED` requirement; 64 rows remain `IN_PROGRESS`, 25 remain `NOT_STARTED`, and all 215 feature screens remain `NOT_STARTED`.
 - P06 makes no platform/device behavior claim. SQLCipher/Room, security, external SDKs, physical-device release acceptance and remote CI remain unverified in their owning phases.
+
+## P07 release conclusion
+
+- P07 is `VERIFIED`: Room 2.8.4 with the official SQLCipher 4.17.0 AAR owns the encrypted main and import-staging databases; 140 primary declarations, seven staging tables, 39 indexes, four views and 63 append-only guards match the frozen inventory and constraints.
+- API 36 managed-device tests create, close and reopen both encrypted databases, reject a wrong key, pass integrity/foreign-key audits, execute FTS5/R*Tree/JSON/window queries and find no sensitive sentinel in database/WAL side files.
+- Both v1 Room identities and complete canonical DDL JSON catalogs are exported. Schema v1 has no predecessor; future migration registration is adjacent and phase-ordered, while destructive fallback and `@Upsert` are mutation-tested rejections.
+- `REQ-085` remains the sole end-to-end `VERIFIED` requirement; 65 rows are `IN_PROGRESS`, 24 remain `NOT_STARTED`, and all 215 feature screens remain `NOT_STARTED`. P08 owns repositories, mapping, atomic write integration and projection rebuild behavior.
+- Remote CI, Keystore-derived production keys, API 28/API 36 physical-device release regression, security/platform SDKs and final release artifacts remain in their prescribed later phases.

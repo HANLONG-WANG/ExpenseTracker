@@ -1,0 +1,2342 @@
+{
+  "formatVersion": 1,
+  "databaseKind": "PRIMARY",
+  "schemaVersion": 1,
+  "assets": {
+    "ledger_schema_v1_core.sql": "787a36ba8753a3a14667d3c91c2b65767237269d3c675bfa167919a55a272a67",
+    "ledger_schema_v1_subledgers.sql": "520876ccad3bffa05b394ee66baa5af8286e4ee73d4a623e1c32ed12329a5200",
+    "ledger_schema_v1_projections_operations.sql": "50b744de5de47e1acbc8421f75479a8f6d856067c35e4099fa5a186d557a61a6",
+    "ledger_schema_v1_indices_views.sql": "07e74ab992af0db9114392b79cdb10fdc3d84a67b8d1fb4bdc0c096149c40a26"
+  },
+  "tables": [
+    {
+      "name": "account_balance_checkpoint",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "account_id",
+        "as_of_instant",
+        "as_of_local_date",
+        "observed_amount_minor",
+        "calculated_amount_minor",
+        "difference_minor",
+        "created_commit_id",
+        "adjustment_transaction_id",
+        "note"
+      ],
+      "createSql": "CREATE TABLE account_balance_checkpoint (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  as_of_instant INTEGER NOT NULL, as_of_local_date INTEGER NOT NULL, observed_amount_minor INTEGER NOT NULL,\n  calculated_amount_minor INTEGER NOT NULL, difference_minor INTEGER NOT NULL,\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  adjustment_transaction_id INTEGER REFERENCES business_transaction(id) ON DELETE RESTRICT, note TEXT\n)"
+    },
+    {
+      "name": "account_balance_current",
+      "virtual": false,
+      "columns": [
+        "account_id",
+        "normal_balance_minor",
+        "currency_code",
+        "total_debit_minor",
+        "total_credit_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE account_balance_current (\n  account_id INTEGER PRIMARY KEY REFERENCES user_account(id) ON DELETE CASCADE, normal_balance_minor INTEGER NOT NULL,\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), total_debit_minor INTEGER NOT NULL CHECK (total_debit_minor >= 0),\n  total_credit_minor INTEGER NOT NULL CHECK (total_credit_minor >= 0), as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0)\n)"
+    },
+    {
+      "name": "account_balance_daily",
+      "virtual": false,
+      "columns": [
+        "account_id",
+        "local_date",
+        "opening_minor",
+        "inflow_minor",
+        "outflow_minor",
+        "closing_minor",
+        "currency_code",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE account_balance_daily (\n  account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE, local_date INTEGER NOT NULL,\n  opening_minor INTEGER NOT NULL, inflow_minor INTEGER NOT NULL CHECK (inflow_minor >= 0), outflow_minor INTEGER NOT NULL CHECK (outflow_minor >= 0),\n  closing_minor INTEGER NOT NULL, currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (account_id, local_date)\n)"
+    },
+    {
+      "name": "account_valuation_current",
+      "virtual": false,
+      "columns": [
+        "account_id",
+        "balance_minor",
+        "current_base_value_minor",
+        "rate_decimal",
+        "rate_quoted_at",
+        "as_of_local_revision",
+        "as_of_valuation_revision"
+      ],
+      "createSql": "CREATE TABLE account_valuation_current (\n  account_id INTEGER PRIMARY KEY REFERENCES user_account(id) ON DELETE CASCADE, balance_minor INTEGER NOT NULL,\n  current_base_value_minor INTEGER NOT NULL, rate_decimal TEXT NOT NULL, rate_quoted_at INTEGER,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0),\n  as_of_valuation_revision INTEGER NOT NULL CHECK (as_of_valuation_revision >= 0)\n)"
+    },
+    {
+      "name": "analytics_daily_account",
+      "virtual": false,
+      "columns": [
+        "local_date",
+        "account_id",
+        "inflow_base_minor",
+        "outflow_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_daily_account (\n  local_date INTEGER NOT NULL, account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,\n  inflow_base_minor INTEGER NOT NULL, outflow_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (local_date, account_id)\n)"
+    },
+    {
+      "name": "analytics_daily_category",
+      "virtual": false,
+      "columns": [
+        "local_date",
+        "category_id",
+        "nature",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_daily_category (\n  local_date INTEGER NOT NULL, category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,\n  nature INTEGER NOT NULL CHECK (nature >= 0), amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (local_date, category_id, nature)\n)"
+    },
+    {
+      "name": "analytics_daily_merchant",
+      "virtual": false,
+      "columns": [
+        "local_date",
+        "merchant_id",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_daily_merchant (\n  local_date INTEGER NOT NULL, merchant_id INTEGER NOT NULL REFERENCES merchant(id) ON DELETE CASCADE, amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (local_date, merchant_id)\n)"
+    },
+    {
+      "name": "analytics_daily_place",
+      "virtual": false,
+      "columns": [
+        "local_date",
+        "place_id",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_daily_place (\n  local_date INTEGER NOT NULL, place_id INTEGER NOT NULL REFERENCES place(id) ON DELETE CASCADE, amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (local_date, place_id)\n)"
+    },
+    {
+      "name": "analytics_daily_project",
+      "virtual": false,
+      "columns": [
+        "local_date",
+        "project_id",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_daily_project (\n  local_date INTEGER NOT NULL, project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE, amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (local_date, project_id)\n)"
+    },
+    {
+      "name": "analytics_daily_total",
+      "virtual": false,
+      "columns": [
+        "local_date",
+        "metric",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_daily_total (\n  local_date INTEGER NOT NULL, metric INTEGER NOT NULL CHECK (metric >= 0), amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (local_date, metric)\n)"
+    },
+    {
+      "name": "analytics_monthly_account",
+      "virtual": false,
+      "columns": [
+        "year_month",
+        "account_id",
+        "inflow_base_minor",
+        "outflow_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_monthly_account (\n  year_month INTEGER NOT NULL, account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,\n  inflow_base_minor INTEGER NOT NULL, outflow_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (year_month, account_id)\n)"
+    },
+    {
+      "name": "analytics_monthly_category",
+      "virtual": false,
+      "columns": [
+        "year_month",
+        "category_id",
+        "nature",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_monthly_category (\n  year_month INTEGER NOT NULL, category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,\n  nature INTEGER NOT NULL CHECK (nature >= 0), amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (year_month, category_id, nature)\n)"
+    },
+    {
+      "name": "analytics_monthly_merchant",
+      "virtual": false,
+      "columns": [
+        "year_month",
+        "merchant_id",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_monthly_merchant (\n  year_month INTEGER NOT NULL, merchant_id INTEGER NOT NULL REFERENCES merchant(id) ON DELETE CASCADE, amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (year_month, merchant_id)\n)"
+    },
+    {
+      "name": "analytics_monthly_place",
+      "virtual": false,
+      "columns": [
+        "year_month",
+        "place_id",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_monthly_place (\n  year_month INTEGER NOT NULL, place_id INTEGER NOT NULL REFERENCES place(id) ON DELETE CASCADE, amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (year_month, place_id)\n)"
+    },
+    {
+      "name": "analytics_monthly_project",
+      "virtual": false,
+      "columns": [
+        "year_month",
+        "project_id",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_monthly_project (\n  year_month INTEGER NOT NULL, project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE, amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (year_month, project_id)\n)"
+    },
+    {
+      "name": "analytics_monthly_total",
+      "virtual": false,
+      "columns": [
+        "year_month",
+        "metric",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE analytics_monthly_total (\n  year_month INTEGER NOT NULL, metric INTEGER NOT NULL CHECK (metric >= 0), amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (year_month, metric)\n)"
+    },
+    {
+      "name": "attachment",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "blob_id",
+        "display_name",
+        "imported_at",
+        "status"
+      ],
+      "createSql": "CREATE TABLE attachment (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), blob_id INTEGER NOT NULL REFERENCES encrypted_blob(id) ON DELETE RESTRICT,\n  display_name TEXT NOT NULL CHECK (length(display_name) > 0), imported_at INTEGER NOT NULL, status INTEGER NOT NULL CHECK (status >= 0)\n)"
+    },
+    {
+      "name": "background_operation",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "type",
+        "state",
+        "created_at",
+        "started_at",
+        "updated_at",
+        "progress_current",
+        "progress_total",
+        "checkpoint_version",
+        "error_code",
+        "cancel_requested",
+        "parameters_ciphertext"
+      ],
+      "createSql": "CREATE TABLE background_operation (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), type INTEGER NOT NULL CHECK (type >= 0),\n  state INTEGER NOT NULL CHECK (state BETWEEN 0 AND 9), created_at INTEGER NOT NULL, started_at INTEGER, updated_at INTEGER NOT NULL,\n  progress_current INTEGER NOT NULL CHECK (progress_current >= 0), progress_total INTEGER CHECK (progress_total IS NULL OR progress_total >= progress_current),\n  checkpoint_version INTEGER NOT NULL CHECK (checkpoint_version >= 0), error_code TEXT,\n  cancel_requested INTEGER NOT NULL CHECK (cancel_requested IN (0,1)), parameters_ciphertext BLOB NOT NULL\n)"
+    },
+    {
+      "name": "backup_object",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "repository_id",
+        "content_hash",
+        "size_bytes",
+        "kind",
+        "created_at"
+      ],
+      "createSql": "CREATE TABLE backup_object (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  repository_id INTEGER NOT NULL REFERENCES backup_repository(id) ON DELETE RESTRICT,\n  content_hash BLOB NOT NULL CHECK (length(content_hash) = 32), size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),\n  kind INTEGER NOT NULL CHECK (kind >= 0), created_at INTEGER NOT NULL, UNIQUE (repository_id, content_hash, size_bytes)\n)"
+    },
+    {
+      "name": "backup_repository",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "kind",
+        "handle_uid",
+        "enabled",
+        "created_at",
+        "last_verified_at"
+      ],
+      "createSql": "CREATE TABLE backup_repository (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), kind INTEGER NOT NULL CHECK (kind >= 0),\n  handle_uid BLOB NOT NULL CHECK (length(handle_uid) = 16), enabled INTEGER NOT NULL CHECK (enabled IN (0,1)),\n  created_at INTEGER NOT NULL, last_verified_at INTEGER\n)"
+    },
+    {
+      "name": "backup_snapshot",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "repository_id",
+        "head_commit_id",
+        "local_revision",
+        "created_at",
+        "state",
+        "manifest_hash"
+      ],
+      "createSql": "CREATE TABLE backup_snapshot (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  repository_id INTEGER NOT NULL REFERENCES backup_repository(id) ON DELETE RESTRICT,\n  head_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, local_revision INTEGER NOT NULL CHECK (local_revision >= 0),\n  created_at INTEGER NOT NULL, state INTEGER NOT NULL CHECK (state >= 0), manifest_hash BLOB CHECK (manifest_hash IS NULL OR length(manifest_hash) = 32)\n)"
+    },
+    {
+      "name": "backup_snapshot_object",
+      "virtual": false,
+      "columns": [
+        "snapshot_id",
+        "object_id",
+        "ordinal"
+      ],
+      "createSql": "CREATE TABLE backup_snapshot_object (\n  snapshot_id INTEGER NOT NULL REFERENCES backup_snapshot(id) ON DELETE CASCADE,\n  object_id INTEGER NOT NULL REFERENCES backup_object(id) ON DELETE RESTRICT, ordinal INTEGER NOT NULL CHECK (ordinal >= 0),\n  PRIMARY KEY (snapshot_id, object_id), UNIQUE (snapshot_id, ordinal)\n)"
+    },
+    {
+      "name": "balance_adjustment_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "account_id",
+        "direction",
+        "checkpoint_id"
+      ],
+      "createSql": "CREATE TABLE balance_adjustment_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT, direction INTEGER NOT NULL CHECK (direction IN (0,1)),\n  checkpoint_id INTEGER REFERENCES account_balance_checkpoint(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "blob_gc_candidate",
+      "virtual": false,
+      "columns": [
+        "blob_id",
+        "eligible_after",
+        "reason",
+        "last_checked_at"
+      ],
+      "createSql": "CREATE TABLE blob_gc_candidate (\n  blob_id INTEGER PRIMARY KEY REFERENCES encrypted_blob(id) ON DELETE CASCADE, eligible_after INTEGER NOT NULL,\n  reason INTEGER NOT NULL CHECK (reason >= 0), last_checked_at INTEGER\n)"
+    },
+    {
+      "name": "blueprint_settlement_share_rule",
+      "virtual": false,
+      "columns": [
+        "blueprint_revision_id",
+        "participant_id",
+        "rule_type",
+        "fixed_amount_minor",
+        "percentage_decimal",
+        "weight_decimal",
+        "excluded"
+      ],
+      "createSql": "CREATE TABLE blueprint_settlement_share_rule (\n  blueprint_revision_id INTEGER NOT NULL REFERENCES transaction_blueprint_revision(id) ON DELETE RESTRICT,\n  participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT, rule_type INTEGER NOT NULL CHECK (rule_type >= 0),\n  fixed_amount_minor INTEGER, percentage_decimal TEXT, weight_decimal TEXT, excluded INTEGER NOT NULL CHECK (excluded IN (0,1)),\n  PRIMARY KEY (blueprint_revision_id, participant_id)\n)"
+    },
+    {
+      "name": "book",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "base_currency",
+        "default_zone_id",
+        "head_commit_id",
+        "local_revision",
+        "valuation_revision",
+        "rule_set_version",
+        "created_at",
+        "first_financial_commit_at",
+        "state"
+      ],
+      "createSql": "-- Ledger primary database schema v1: normalized Current/Revision/Fact tables.\n-- Statements are split by the fail-closed loader only on the marker below.\nCREATE TABLE book (\n  id INTEGER PRIMARY KEY CHECK (id = 1), uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  base_currency TEXT NOT NULL CHECK (length(base_currency) = 3), default_zone_id TEXT NOT NULL,\n  head_commit_id INTEGER REFERENCES book_commit(id) ON DELETE RESTRICT, local_revision INTEGER NOT NULL CHECK (local_revision >= 0),\n  valuation_revision INTEGER NOT NULL CHECK (valuation_revision >= 0), rule_set_version INTEGER NOT NULL CHECK (rule_set_version > 0),\n  created_at INTEGER NOT NULL, first_financial_commit_at INTEGER, state INTEGER NOT NULL CHECK (state BETWEEN 0 AND 2)\n)"
+    },
+    {
+      "name": "book_commit",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "local_revision",
+        "kind",
+        "command_uid",
+        "device_instance_uid",
+        "created_at",
+        "root_hash"
+      ],
+      "createSql": "CREATE TABLE book_commit (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), local_revision INTEGER NOT NULL UNIQUE CHECK (local_revision > 0),\n  kind INTEGER NOT NULL CHECK (kind >= 0), command_uid BLOB UNIQUE CHECK (command_uid IS NULL OR length(command_uid) = 16),\n  device_instance_uid BLOB NOT NULL CHECK (length(device_instance_uid) = 16), created_at INTEGER NOT NULL,\n  root_hash BLOB NOT NULL CHECK (length(root_hash) = 32)\n)"
+    },
+    {
+      "name": "book_commit_parent",
+      "virtual": false,
+      "columns": [
+        "commit_id",
+        "parent_commit_id",
+        "ordinal"
+      ],
+      "createSql": "CREATE TABLE book_commit_parent (\n  commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  parent_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  ordinal INTEGER NOT NULL CHECK (ordinal >= 0), PRIMARY KEY (commit_id, parent_commit_id), UNIQUE (commit_id, ordinal),\n  CHECK (commit_id <> parent_commit_id)\n)"
+    },
+    {
+      "name": "budget_adjustment",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "year_month",
+        "scope",
+        "category_id",
+        "amount_base_minor",
+        "kind",
+        "created_commit_id",
+        "reversal_of_id"
+      ],
+      "createSql": "CREATE TABLE budget_adjustment (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), year_month INTEGER NOT NULL,\n  scope INTEGER NOT NULL CHECK (scope >= 0), category_id INTEGER REFERENCES category(id) ON DELETE RESTRICT,\n  amount_base_minor INTEGER NOT NULL, kind INTEGER NOT NULL CHECK (kind >= 0),\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES budget_adjustment(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "budget_category_limit",
+      "virtual": false,
+      "columns": [
+        "budget_month_revision_id",
+        "category_id",
+        "amount_base_minor"
+      ],
+      "createSql": "CREATE TABLE budget_category_limit (\n  budget_month_revision_id INTEGER NOT NULL REFERENCES budget_month_revision(id) ON DELETE RESTRICT,\n  category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE RESTRICT, amount_base_minor INTEGER NOT NULL CHECK (amount_base_minor >= 0),\n  PRIMARY KEY (budget_month_revision_id, category_id)\n)"
+    },
+    {
+      "name": "budget_effect",
+      "virtual": false,
+      "columns": [
+        "id",
+        "source_revision_id",
+        "reversal_of_id",
+        "polarity",
+        "kind",
+        "target_year_month",
+        "category_id",
+        "root_category_id",
+        "base_amount_minor",
+        "rule_set_version"
+      ],
+      "createSql": "CREATE TABLE budget_effect (\n  id INTEGER PRIMARY KEY, source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES budget_effect(id) ON DELETE RESTRICT, polarity INTEGER NOT NULL CHECK (polarity IN (-1,1)),\n  kind INTEGER NOT NULL CHECK (kind >= 0), target_year_month INTEGER NOT NULL, category_id INTEGER REFERENCES category(id) ON DELETE RESTRICT,\n  root_category_id INTEGER REFERENCES category(id) ON DELETE RESTRICT, base_amount_minor INTEGER NOT NULL CHECK (base_amount_minor >= 0),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "budget_future_reservation",
+      "virtual": false,
+      "columns": [
+        "year_month",
+        "recurrence_series_id",
+        "occurrence_date",
+        "reserved_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE budget_future_reservation (\n  year_month INTEGER NOT NULL, recurrence_series_id INTEGER NOT NULL REFERENCES recurrence_series(id) ON DELETE CASCADE,\n  occurrence_date INTEGER NOT NULL, reserved_base_minor INTEGER NOT NULL CHECK (reserved_base_minor >= 0),\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0),\n  PRIMARY KEY (year_month, recurrence_series_id, occurrence_date)\n)"
+    },
+    {
+      "name": "budget_month",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "year_month",
+        "current_revision_id"
+      ],
+      "createSql": "CREATE TABLE budget_month (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), year_month INTEGER NOT NULL UNIQUE,\n  current_revision_id INTEGER REFERENCES budget_month_revision(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "budget_month_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "budget_month_id",
+        "revision_no",
+        "base_total_minor",
+        "source_template_revision_id",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE budget_month_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  budget_month_id INTEGER NOT NULL REFERENCES budget_month(id) ON DELETE RESTRICT, revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  base_total_minor INTEGER NOT NULL CHECK (base_total_minor >= 0),\n  source_template_revision_id INTEGER REFERENCES budget_template_revision(id) ON DELETE RESTRICT,\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, UNIQUE (budget_month_id, revision_no)\n)"
+    },
+    {
+      "name": "budget_rollover",
+      "virtual": false,
+      "columns": [
+        "from_year_month",
+        "to_year_month",
+        "scope",
+        "category_id",
+        "amount_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE budget_rollover (\n  from_year_month INTEGER NOT NULL, to_year_month INTEGER NOT NULL, scope INTEGER NOT NULL CHECK (scope >= 0),\n  category_id INTEGER REFERENCES category(id) ON DELETE RESTRICT, amount_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0),\n  PRIMARY KEY (from_year_month, to_year_month, scope, category_id), CHECK (to_year_month > from_year_month)\n)"
+    },
+    {
+      "name": "budget_template",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "name",
+        "current_revision_id",
+        "status"
+      ],
+      "createSql": "CREATE TABLE budget_template (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), name TEXT NOT NULL CHECK (length(name) > 0),\n  current_revision_id INTEGER REFERENCES budget_template_revision(id) ON DELETE RESTRICT, status INTEGER NOT NULL CHECK (status >= 0)\n)"
+    },
+    {
+      "name": "budget_template_category_limit",
+      "virtual": false,
+      "columns": [
+        "template_revision_id",
+        "category_id",
+        "amount_base_minor"
+      ],
+      "createSql": "CREATE TABLE budget_template_category_limit (\n  template_revision_id INTEGER NOT NULL REFERENCES budget_template_revision(id) ON DELETE RESTRICT,\n  category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE RESTRICT, amount_base_minor INTEGER NOT NULL CHECK (amount_base_minor >= 0),\n  PRIMARY KEY (template_revision_id, category_id)\n)"
+    },
+    {
+      "name": "budget_template_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "template_id",
+        "revision_no",
+        "total_base_minor",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE budget_template_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  template_id INTEGER NOT NULL REFERENCES budget_template(id) ON DELETE RESTRICT, revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  total_base_minor INTEGER NOT NULL CHECK (total_base_minor >= 0),\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, UNIQUE (template_id, revision_no)\n)"
+    },
+    {
+      "name": "budget_usage_projection",
+      "virtual": false,
+      "columns": [
+        "year_month",
+        "category_id",
+        "base_budget_minor",
+        "rollover_minor",
+        "adjustment_minor",
+        "used_minor",
+        "remaining_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE budget_usage_projection (\n  year_month INTEGER NOT NULL, category_id INTEGER REFERENCES category(id) ON DELETE CASCADE,\n  base_budget_minor INTEGER NOT NULL CHECK (base_budget_minor >= 0), rollover_minor INTEGER NOT NULL,\n  adjustment_minor INTEGER NOT NULL, used_minor INTEGER NOT NULL, remaining_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (year_month, category_id)\n)"
+    },
+    {
+      "name": "business_transaction",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "kind",
+        "current_revision_id",
+        "lifecycle_state",
+        "created_commit_id",
+        "last_commit_id",
+        "row_version",
+        "trashed_at",
+        "purge_after",
+        "content_hash"
+      ],
+      "createSql": "CREATE TABLE business_transaction (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), kind INTEGER NOT NULL CHECK (kind BETWEEN 0 AND 10),\n  current_revision_id INTEGER REFERENCES transaction_revision(id) ON DELETE RESTRICT, lifecycle_state INTEGER NOT NULL CHECK (lifecycle_state BETWEEN 0 AND 1),\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, row_version INTEGER NOT NULL CHECK (row_version > 0),\n  trashed_at INTEGER, purge_after INTEGER, content_hash BLOB NOT NULL CHECK (length(content_hash) = 32),\n  CHECK ((lifecycle_state = 0 AND trashed_at IS NULL AND purge_after IS NULL) OR (lifecycle_state = 1 AND trashed_at IS NOT NULL AND purge_after IS NOT NULL))\n)"
+    },
+    {
+      "name": "card_vault_secret",
+      "virtual": false,
+      "columns": [
+        "card_id",
+        "holder_name_ciphertext",
+        "pan_ciphertext",
+        "expiry_ciphertext",
+        "security_code_ciphertext",
+        "custom_fields_ciphertext",
+        "key_version",
+        "updated_at"
+      ],
+      "createSql": "CREATE TABLE card_vault_secret (\n  card_id INTEGER PRIMARY KEY REFERENCES payment_card(id) ON DELETE CASCADE,\n  holder_name_ciphertext BLOB, pan_ciphertext BLOB, expiry_ciphertext BLOB, security_code_ciphertext BLOB, custom_fields_ciphertext BLOB,\n  key_version INTEGER NOT NULL CHECK (key_version > 0), updated_at INTEGER NOT NULL\n)"
+    },
+    {
+      "name": "category",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "direction",
+        "parent_id",
+        "depth",
+        "name",
+        "normalized_name",
+        "icon_key",
+        "color_argb",
+        "sort_order",
+        "status",
+        "statistical_nature",
+        "default_account_id",
+        "default_card_id",
+        "default_merchant_id",
+        "last_commit_id",
+        "row_version"
+      ],
+      "createSql": "CREATE TABLE category (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), direction INTEGER NOT NULL CHECK (direction IN (0,1)),\n  parent_id INTEGER REFERENCES category(id) ON DELETE RESTRICT, depth INTEGER NOT NULL CHECK (depth IN (1,2)),\n  name TEXT NOT NULL CHECK (length(name) > 0), normalized_name TEXT NOT NULL CHECK (length(normalized_name) > 0),\n  icon_key TEXT NOT NULL, color_argb INTEGER NOT NULL, sort_order INTEGER NOT NULL, status INTEGER NOT NULL CHECK (status >= 0),\n  statistical_nature INTEGER NOT NULL CHECK (statistical_nature >= 0), default_account_id INTEGER REFERENCES user_account(id) ON DELETE SET NULL,\n  default_card_id INTEGER REFERENCES payment_card(id) ON DELETE SET NULL, default_merchant_id INTEGER REFERENCES merchant(id) ON DELETE SET NULL,\n  last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, row_version INTEGER NOT NULL CHECK (row_version > 0),\n  CHECK ((depth = 1 AND parent_id IS NULL) OR (depth = 2 AND parent_id IS NOT NULL))\n)"
+    },
+    {
+      "name": "command_receipt",
+      "virtual": false,
+      "columns": [
+        "command_uid",
+        "command_type",
+        "payload_hash",
+        "commit_id",
+        "primary_entity_uid",
+        "executed_at"
+      ],
+      "createSql": "CREATE TABLE command_receipt (\n  command_uid BLOB PRIMARY KEY CHECK (length(command_uid) = 16), command_type INTEGER NOT NULL CHECK (command_type >= 0),\n  payload_hash BLOB NOT NULL CHECK (length(payload_hash) = 32), commit_id INTEGER NOT NULL UNIQUE REFERENCES book_commit(id) ON DELETE RESTRICT,\n  primary_entity_uid BLOB CHECK (primary_entity_uid IS NULL OR length(primary_entity_uid) = 16), executed_at INTEGER NOT NULL\n)"
+    },
+    {
+      "name": "credit_account_profile",
+      "virtual": false,
+      "columns": [
+        "account_id",
+        "statement_rule_type",
+        "statement_day",
+        "due_rule_type",
+        "due_day",
+        "days_after_statement",
+        "zone_id",
+        "standard_limit_minor",
+        "temporary_limit_minor",
+        "temporary_limit_expires_on",
+        "default_payment_account_id",
+        "auto_payment_mode",
+        "weekend_adjustment",
+        "last_commit_id"
+      ],
+      "createSql": "CREATE TABLE credit_account_profile (\n  account_id INTEGER PRIMARY KEY REFERENCES user_account(id) ON DELETE RESTRICT,\n  statement_rule_type INTEGER NOT NULL CHECK (statement_rule_type >= 0), statement_day INTEGER CHECK (statement_day BETWEEN 1 AND 31),\n  due_rule_type INTEGER NOT NULL CHECK (due_rule_type >= 0), due_day INTEGER CHECK (due_day BETWEEN 1 AND 31),\n  days_after_statement INTEGER CHECK (days_after_statement IS NULL OR days_after_statement > 0), zone_id TEXT NOT NULL,\n  standard_limit_minor INTEGER CHECK (standard_limit_minor IS NULL OR standard_limit_minor >= 0),\n  temporary_limit_minor INTEGER CHECK (temporary_limit_minor IS NULL OR temporary_limit_minor >= 0), temporary_limit_expires_on INTEGER,\n  default_payment_account_id INTEGER REFERENCES user_account(id) ON DELETE SET NULL,\n  auto_payment_mode INTEGER NOT NULL CHECK (auto_payment_mode >= 0), weekend_adjustment INTEGER NOT NULL CHECK (weekend_adjustment >= 0),\n  last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  CHECK ((temporary_limit_minor IS NULL) = (temporary_limit_expires_on IS NULL))\n)"
+    },
+    {
+      "name": "credit_account_projection",
+      "virtual": false,
+      "columns": [
+        "account_id",
+        "debt_minor",
+        "available_limit_minor",
+        "estimated_unbilled_minor",
+        "overdue_minor",
+        "currency_code",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE credit_account_projection (\n  account_id INTEGER PRIMARY KEY REFERENCES user_account(id) ON DELETE CASCADE, debt_minor INTEGER NOT NULL CHECK (debt_minor >= 0),\n  available_limit_minor INTEGER, estimated_unbilled_minor INTEGER NOT NULL, overdue_minor INTEGER NOT NULL CHECK (overdue_minor >= 0),\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0)\n)"
+    },
+    {
+      "name": "credit_limit_period",
+      "virtual": false,
+      "columns": [
+        "id",
+        "credit_account_id",
+        "effective_from",
+        "effective_to",
+        "limit_minor",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE credit_limit_period (\n  id INTEGER PRIMARY KEY, credit_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  effective_from INTEGER NOT NULL, effective_to INTEGER, limit_minor INTEGER NOT NULL CHECK (limit_minor >= 0),\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  UNIQUE (credit_account_id, effective_from), CHECK (effective_to IS NULL OR effective_to >= effective_from)\n)"
+    },
+    {
+      "name": "credit_payment_allocation",
+      "virtual": false,
+      "columns": [
+        "id",
+        "payment_transaction_id",
+        "payment_revision_id",
+        "statement_id",
+        "amount_minor",
+        "reversal_of_id"
+      ],
+      "createSql": "CREATE TABLE credit_payment_allocation (\n  id INTEGER PRIMARY KEY, payment_transaction_id INTEGER NOT NULL REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  payment_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  statement_id INTEGER REFERENCES credit_statement(id) ON DELETE RESTRICT, amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),\n  reversal_of_id INTEGER REFERENCES credit_payment_allocation(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "credit_payment_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "payment_account_id",
+        "credit_account_id",
+        "generation_mode"
+      ],
+      "createSql": "CREATE TABLE credit_payment_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  payment_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  credit_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  generation_mode INTEGER NOT NULL CHECK (generation_mode >= 0), CHECK (payment_account_id <> credit_account_id)\n)"
+    },
+    {
+      "name": "credit_statement",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "credit_account_id",
+        "cycle_start",
+        "cycle_end",
+        "due_date",
+        "current_revision_id",
+        "status"
+      ],
+      "createSql": "CREATE TABLE credit_statement (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  credit_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  cycle_start INTEGER NOT NULL, cycle_end INTEGER NOT NULL, due_date INTEGER NOT NULL,\n  current_revision_id INTEGER REFERENCES credit_statement_revision(id) ON DELETE RESTRICT, status INTEGER NOT NULL CHECK (status >= 0),\n  UNIQUE (credit_account_id, cycle_start, cycle_end), CHECK (cycle_end >= cycle_start), CHECK (due_date >= cycle_end)\n)"
+    },
+    {
+      "name": "credit_statement_projection",
+      "virtual": false,
+      "columns": [
+        "statement_id",
+        "estimated_amount_minor",
+        "official_amount_minor",
+        "paid_amount_minor",
+        "remaining_amount_minor",
+        "status",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE credit_statement_projection (\n  statement_id INTEGER PRIMARY KEY REFERENCES credit_statement(id) ON DELETE CASCADE,\n  estimated_amount_minor INTEGER NOT NULL CHECK (estimated_amount_minor >= 0), official_amount_minor INTEGER,\n  paid_amount_minor INTEGER NOT NULL CHECK (paid_amount_minor >= 0), remaining_amount_minor INTEGER NOT NULL,\n  status INTEGER NOT NULL CHECK (status >= 0), as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0)\n)"
+    },
+    {
+      "name": "credit_statement_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "statement_id",
+        "revision_no",
+        "estimated_amount_minor",
+        "official_amount_minor",
+        "official_recorded_at",
+        "difference_minor",
+        "statement_date",
+        "due_date",
+        "sealed",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE credit_statement_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  statement_id INTEGER NOT NULL REFERENCES credit_statement(id) ON DELETE RESTRICT, revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  estimated_amount_minor INTEGER NOT NULL CHECK (estimated_amount_minor >= 0),\n  official_amount_minor INTEGER CHECK (official_amount_minor IS NULL OR official_amount_minor >= 0), official_recorded_at INTEGER,\n  difference_minor INTEGER, statement_date INTEGER NOT NULL, due_date INTEGER NOT NULL,\n  sealed INTEGER NOT NULL CHECK (sealed IN (0,1)), created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  UNIQUE (statement_id, revision_no), CHECK ((official_amount_minor IS NULL) = (official_recorded_at IS NULL))\n)"
+    },
+    {
+      "name": "current_transaction_projection",
+      "virtual": false,
+      "columns": [
+        "transaction_id",
+        "transaction_uid",
+        "kind",
+        "state",
+        "current_revision_id",
+        "occurred_at",
+        "local_date",
+        "primary_account_id",
+        "secondary_account_id",
+        "card_id",
+        "category_id",
+        "merchant_id",
+        "project_id",
+        "goal_id",
+        "settlement_activity_id",
+        "payer_participant_id",
+        "input_amount_minor",
+        "input_currency",
+        "account_amount_minor",
+        "account_currency",
+        "economic_base_minor",
+        "note_preview",
+        "has_attachment",
+        "has_location",
+        "is_refund",
+        "is_refunded",
+        "has_installment",
+        "source_type",
+        "as_of_local_revision"
+      ],
+      "createSql": "-- Ledger primary database schema v1: projections, encrypted operation metadata, search and geo indexes.\nCREATE TABLE current_transaction_projection (\n  transaction_id INTEGER PRIMARY KEY REFERENCES business_transaction(id) ON DELETE CASCADE,\n  transaction_uid BLOB NOT NULL UNIQUE CHECK (length(transaction_uid) = 16), kind INTEGER NOT NULL CHECK (kind BETWEEN 0 AND 10),\n  state INTEGER NOT NULL CHECK (state BETWEEN 0 AND 1), current_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE CASCADE,\n  occurred_at INTEGER NOT NULL, local_date INTEGER NOT NULL, primary_account_id INTEGER REFERENCES user_account(id) ON DELETE SET NULL,\n  secondary_account_id INTEGER REFERENCES user_account(id) ON DELETE SET NULL, card_id INTEGER REFERENCES payment_card(id) ON DELETE SET NULL,\n  category_id INTEGER REFERENCES category(id) ON DELETE SET NULL, merchant_id INTEGER REFERENCES merchant(id) ON DELETE SET NULL,\n  project_id INTEGER REFERENCES project(id) ON DELETE SET NULL, goal_id INTEGER REFERENCES goal(id) ON DELETE SET NULL,\n  settlement_activity_id INTEGER REFERENCES settlement_activity(id) ON DELETE SET NULL,\n  payer_participant_id INTEGER REFERENCES participant(id) ON DELETE SET NULL,\n  input_amount_minor INTEGER NOT NULL CHECK (input_amount_minor > 0), input_currency TEXT NOT NULL CHECK (length(input_currency) = 3),\n  account_amount_minor INTEGER NOT NULL CHECK (account_amount_minor > 0), account_currency TEXT NOT NULL CHECK (length(account_currency) = 3),\n  economic_base_minor INTEGER, note_preview TEXT, has_attachment INTEGER NOT NULL CHECK (has_attachment IN (0,1)),\n  has_location INTEGER NOT NULL CHECK (has_location IN (0,1)), is_refund INTEGER NOT NULL CHECK (is_refund IN (0,1)),\n  is_refunded INTEGER NOT NULL CHECK (is_refunded IN (0,1)), has_installment INTEGER NOT NULL CHECK (has_installment IN (0,1)),\n  source_type INTEGER NOT NULL CHECK (source_type >= 0), as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0)\n)"
+    },
+    {
+      "name": "drive_upload_session",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "snapshot_id",
+        "repository_id",
+        "state",
+        "remote_session_ciphertext",
+        "created_at",
+        "updated_at"
+      ],
+      "createSql": "CREATE TABLE drive_upload_session (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  snapshot_id INTEGER NOT NULL REFERENCES backup_snapshot(id) ON DELETE RESTRICT,\n  repository_id INTEGER NOT NULL REFERENCES backup_repository(id) ON DELETE RESTRICT, state INTEGER NOT NULL CHECK (state >= 0),\n  remote_session_ciphertext BLOB NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL\n)"
+    },
+    {
+      "name": "economic_effect",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "source_entry_id",
+        "source_revision_id",
+        "reversal_of_id",
+        "polarity",
+        "nature",
+        "component",
+        "is_consumption",
+        "base_amount_minor",
+        "accrual_local_date",
+        "category_id",
+        "merchant_id",
+        "project_id",
+        "rule_set_version"
+      ],
+      "createSql": "CREATE TABLE economic_effect (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), source_entry_id INTEGER REFERENCES journal_entry(id) ON DELETE RESTRICT,\n  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT, reversal_of_id INTEGER REFERENCES economic_effect(id) ON DELETE RESTRICT,\n  polarity INTEGER NOT NULL CHECK (polarity IN (-1,1)), nature INTEGER NOT NULL CHECK (nature >= 0), component INTEGER NOT NULL CHECK (component >= 0),\n  is_consumption INTEGER NOT NULL CHECK (is_consumption IN (0,1)), base_amount_minor INTEGER NOT NULL CHECK (base_amount_minor >= 0),\n  accrual_local_date INTEGER NOT NULL, category_id INTEGER REFERENCES category(id) ON DELETE RESTRICT,\n  merchant_id INTEGER REFERENCES merchant(id) ON DELETE RESTRICT, project_id INTEGER REFERENCES project(id) ON DELETE RESTRICT,\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "encrypted_blob",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "storage_name",
+        "plaintext_sha256",
+        "plaintext_size",
+        "mime_type",
+        "extension",
+        "wrapped_data_key",
+        "encryption_version",
+        "reference_count_projection",
+        "created_at"
+      ],
+      "createSql": "CREATE TABLE encrypted_blob (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), storage_name TEXT NOT NULL UNIQUE CHECK (length(storage_name) > 0),\n  plaintext_sha256 BLOB NOT NULL CHECK (length(plaintext_sha256) = 32), plaintext_size INTEGER NOT NULL CHECK (plaintext_size >= 0),\n  mime_type TEXT NOT NULL, extension TEXT, wrapped_data_key BLOB NOT NULL, encryption_version INTEGER NOT NULL CHECK (encryption_version > 0),\n  reference_count_projection INTEGER NOT NULL CHECK (reference_count_projection >= 0), created_at INTEGER NOT NULL,\n  UNIQUE (plaintext_sha256, plaintext_size)\n)"
+    },
+    {
+      "name": "entity_change",
+      "virtual": false,
+      "columns": [
+        "commit_id",
+        "entity_type",
+        "entity_uid",
+        "operation",
+        "before_hash",
+        "after_hash",
+        "entity_revision_uid"
+      ],
+      "createSql": "CREATE TABLE entity_change (\n  commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, entity_type INTEGER NOT NULL CHECK (entity_type >= 0),\n  entity_uid BLOB NOT NULL CHECK (length(entity_uid) = 16), operation INTEGER NOT NULL CHECK (operation >= 0),\n  before_hash BLOB CHECK (before_hash IS NULL OR length(before_hash) = 32), after_hash BLOB CHECK (after_hash IS NULL OR length(after_hash) = 32),\n  entity_revision_uid BLOB CHECK (entity_revision_uid IS NULL OR length(entity_revision_uid) = 16),\n  PRIMARY KEY (commit_id, entity_type, entity_uid)\n)"
+    },
+    {
+      "name": "entity_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "entity_type",
+        "entity_uid",
+        "revision_no",
+        "action",
+        "commit_id",
+        "content_hash",
+        "canonical_snapshot_blob",
+        "schema_version"
+      ],
+      "createSql": "CREATE TABLE entity_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), entity_type INTEGER NOT NULL CHECK (entity_type >= 0),\n  entity_uid BLOB NOT NULL CHECK (length(entity_uid) = 16), revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  action INTEGER NOT NULL CHECK (action >= 0), commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  content_hash BLOB NOT NULL CHECK (length(content_hash) = 32), canonical_snapshot_blob BLOB NOT NULL,\n  schema_version INTEGER NOT NULL CHECK (schema_version > 0), UNIQUE (entity_type, entity_uid, revision_no)\n)"
+    },
+    {
+      "name": "expense_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "payer_kind",
+        "payer_account_id",
+        "payer_card_id",
+        "payer_participant_id",
+        "settlement_activity_id",
+        "installment_plan_id"
+      ],
+      "createSql": "CREATE TABLE expense_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  payer_kind INTEGER NOT NULL CHECK (payer_kind >= 0), payer_account_id INTEGER REFERENCES user_account(id) ON DELETE RESTRICT,\n  payer_card_id INTEGER REFERENCES payment_card(id) ON DELETE RESTRICT, payer_participant_id INTEGER REFERENCES participant(id) ON DELETE RESTRICT,\n  settlement_activity_id INTEGER REFERENCES settlement_activity(id) ON DELETE RESTRICT,\n  installment_plan_id INTEGER REFERENCES installment_plan(id) ON DELETE RESTRICT,\n  CHECK ((payer_account_id IS NOT NULL) + (payer_participant_id IS NOT NULL) = 1)\n)"
+    },
+    {
+      "name": "fx_exchange_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "from_account_id",
+        "to_account_id",
+        "valuation_policy"
+      ],
+      "createSql": "CREATE TABLE fx_exchange_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  from_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  to_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  valuation_policy INTEGER NOT NULL CHECK (valuation_policy >= 0), CHECK (from_account_id <> to_account_id)\n)"
+    },
+    {
+      "name": "fx_rate_snapshot",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "source_currency",
+        "target_currency",
+        "rate_decimal",
+        "provider",
+        "quoted_at",
+        "fetched_at",
+        "source_type",
+        "manual_override",
+        "stale_at_use",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE fx_rate_snapshot (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  source_currency TEXT NOT NULL CHECK (length(source_currency) = 3), target_currency TEXT NOT NULL CHECK (length(target_currency) = 3),\n  rate_decimal TEXT NOT NULL CHECK (CAST(rate_decimal AS REAL) > 0), provider TEXT NOT NULL, quoted_at INTEGER NOT NULL, fetched_at INTEGER,\n  source_type INTEGER NOT NULL CHECK (source_type >= 0), manual_override INTEGER NOT NULL CHECK (manual_override IN (0,1)),\n  stale_at_use INTEGER NOT NULL CHECK (stale_at_use IN (0,1)), created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  CHECK (source_currency <> target_currency), CHECK (fetched_at IS NULL OR fetched_at >= quoted_at)\n)"
+    },
+    {
+      "name": "goal",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "account_id",
+        "name",
+        "target_amount_minor",
+        "due_date",
+        "suggested_monthly_minor",
+        "status",
+        "last_commit_id",
+        "row_version"
+      ],
+      "createSql": "CREATE TABLE goal (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  name TEXT NOT NULL CHECK (length(name) > 0), target_amount_minor INTEGER NOT NULL CHECK (target_amount_minor > 0), due_date INTEGER,\n  suggested_monthly_minor INTEGER CHECK (suggested_monthly_minor IS NULL OR suggested_monthly_minor >= 0), status INTEGER NOT NULL CHECK (status >= 0),\n  last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, row_version INTEGER NOT NULL CHECK (row_version > 0)\n)"
+    },
+    {
+      "name": "goal_balance_projection",
+      "virtual": false,
+      "columns": [
+        "goal_id",
+        "balance_minor",
+        "target_minor",
+        "currency_code",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE goal_balance_projection (\n  goal_id INTEGER PRIMARY KEY REFERENCES goal(id) ON DELETE CASCADE, balance_minor INTEGER NOT NULL,\n  target_minor INTEGER NOT NULL CHECK (target_minor > 0), currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0)\n)"
+    },
+    {
+      "name": "goal_effect",
+      "virtual": false,
+      "columns": [
+        "id",
+        "goal_id",
+        "source_revision_id",
+        "goal_movement_id",
+        "reversal_of_id",
+        "polarity",
+        "kind",
+        "amount_minor",
+        "currency_code",
+        "rule_set_version"
+      ],
+      "createSql": "CREATE TABLE goal_effect (\n  id INTEGER PRIMARY KEY, goal_id INTEGER NOT NULL REFERENCES goal(id) ON DELETE RESTRICT,\n  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT, goal_movement_id INTEGER,\n  reversal_of_id INTEGER REFERENCES goal_effect(id) ON DELETE RESTRICT, polarity INTEGER NOT NULL CHECK (polarity IN (-1,1)),\n  kind INTEGER NOT NULL CHECK (kind >= 0), amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "goal_movement",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "goal_id",
+        "kind",
+        "amount_minor",
+        "occurred_at",
+        "source_transaction_id",
+        "source_recurrence_occurrence_id",
+        "reversal_of_id",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE goal_movement (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), goal_id INTEGER NOT NULL REFERENCES goal(id) ON DELETE RESTRICT,\n  kind INTEGER NOT NULL CHECK (kind >= 0), amount_minor INTEGER NOT NULL CHECK (amount_minor > 0), occurred_at INTEGER NOT NULL,\n  source_transaction_id INTEGER REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  source_recurrence_occurrence_id INTEGER REFERENCES recurrence_occurrence(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES goal_movement(id) ON DELETE RESTRICT,\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "import_batch_commit",
+      "virtual": false,
+      "columns": [
+        "import_record_id",
+        "batch_uid",
+        "commit_id",
+        "first_row_number",
+        "last_row_number"
+      ],
+      "createSql": "CREATE TABLE import_batch_commit (\n  import_record_id INTEGER NOT NULL REFERENCES import_record(id) ON DELETE RESTRICT,\n  batch_uid BLOB NOT NULL CHECK (length(batch_uid) = 16), commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  first_row_number INTEGER NOT NULL CHECK (first_row_number > 0), last_row_number INTEGER NOT NULL CHECK (last_row_number >= first_row_number),\n  PRIMARY KEY (import_record_id, batch_uid)\n)"
+    },
+    {
+      "name": "import_record",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "operation_id",
+        "format",
+        "source_fingerprint",
+        "imported_at",
+        "committed_local_revision"
+      ],
+      "createSql": "CREATE TABLE import_record (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  operation_id INTEGER NOT NULL UNIQUE REFERENCES background_operation(id) ON DELETE RESTRICT,\n  format INTEGER NOT NULL CHECK (format >= 0), source_fingerprint BLOB NOT NULL CHECK (length(source_fingerprint) = 32),\n  imported_at INTEGER, committed_local_revision INTEGER CHECK (committed_local_revision IS NULL OR committed_local_revision >= 0)\n)"
+    },
+    {
+      "name": "import_source_reference",
+      "virtual": false,
+      "columns": [
+        "import_record_id",
+        "row_number",
+        "transaction_id",
+        "source_row_hash"
+      ],
+      "createSql": "CREATE TABLE import_source_reference (\n  import_record_id INTEGER NOT NULL REFERENCES import_record(id) ON DELETE RESTRICT, row_number INTEGER NOT NULL CHECK (row_number > 0),\n  transaction_id INTEGER NOT NULL REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  source_row_hash BLOB NOT NULL CHECK (length(source_row_hash) = 32), PRIMARY KEY (import_record_id, row_number)\n)"
+    },
+    {
+      "name": "income_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "receiving_account_id"
+      ],
+      "createSql": "CREATE TABLE income_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  receiving_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "installment_plan",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "purchase_transaction_id",
+        "credit_account_id",
+        "currency_code",
+        "original_principal_minor",
+        "term_count",
+        "current_revision_id",
+        "status"
+      ],
+      "createSql": "CREATE TABLE installment_plan (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  purchase_transaction_id INTEGER NOT NULL REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  credit_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT, currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  original_principal_minor INTEGER NOT NULL CHECK (original_principal_minor > 0), term_count INTEGER NOT NULL CHECK (term_count > 0),\n  current_revision_id INTEGER REFERENCES installment_plan_revision(id) ON DELETE RESTRICT, status INTEGER NOT NULL CHECK (status >= 0)\n)"
+    },
+    {
+      "name": "installment_plan_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "plan_id",
+        "revision_no",
+        "fee_rate_type",
+        "fixed_fee_per_term_minor",
+        "first_term_fee_minor",
+        "remaining_principal_rate_decimal",
+        "effective_annual_rate_decimal",
+        "prepayment_policy",
+        "prepayment_fee_minor",
+        "refund_policy",
+        "rounding_mode",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE installment_plan_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  plan_id INTEGER NOT NULL REFERENCES installment_plan(id) ON DELETE RESTRICT, revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  fee_rate_type INTEGER NOT NULL CHECK (fee_rate_type >= 0), fixed_fee_per_term_minor INTEGER CHECK (fixed_fee_per_term_minor IS NULL OR fixed_fee_per_term_minor >= 0),\n  first_term_fee_minor INTEGER CHECK (first_term_fee_minor IS NULL OR first_term_fee_minor >= 0), remaining_principal_rate_decimal TEXT,\n  effective_annual_rate_decimal TEXT, prepayment_policy INTEGER NOT NULL CHECK (prepayment_policy >= 0),\n  prepayment_fee_minor INTEGER CHECK (prepayment_fee_minor IS NULL OR prepayment_fee_minor >= 0),\n  refund_policy INTEGER NOT NULL CHECK (refund_policy >= 0), rounding_mode INTEGER NOT NULL CHECK (rounding_mode >= 0),\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, UNIQUE (plan_id, revision_no)\n)"
+    },
+    {
+      "name": "installment_progress_projection",
+      "virtual": false,
+      "columns": [
+        "plan_id",
+        "principal_minor",
+        "posted_principal_minor",
+        "unposted_committed_principal_minor",
+        "fees_minor",
+        "next_statement_date",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE installment_progress_projection (\n  plan_id INTEGER PRIMARY KEY REFERENCES installment_plan(id) ON DELETE CASCADE, principal_minor INTEGER NOT NULL CHECK (principal_minor >= 0),\n  posted_principal_minor INTEGER NOT NULL CHECK (posted_principal_minor >= 0),\n  unposted_committed_principal_minor INTEGER NOT NULL CHECK (unposted_committed_principal_minor >= 0),\n  fees_minor INTEGER NOT NULL CHECK (fees_minor >= 0), next_statement_date INTEGER,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0)\n)"
+    },
+    {
+      "name": "installment_refund_allocation",
+      "virtual": false,
+      "columns": [
+        "id",
+        "refund_transaction_id",
+        "refund_revision_id",
+        "plan_id",
+        "principal_minor",
+        "fee_minor",
+        "reversal_of_id"
+      ],
+      "createSql": "CREATE TABLE installment_refund_allocation (\n  id INTEGER PRIMARY KEY, refund_transaction_id INTEGER NOT NULL REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  refund_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  plan_id INTEGER NOT NULL REFERENCES installment_plan(id) ON DELETE RESTRICT,\n  principal_minor INTEGER NOT NULL CHECK (principal_minor >= 0), fee_minor INTEGER NOT NULL CHECK (fee_minor >= 0),\n  reversal_of_id INTEGER REFERENCES installment_refund_allocation(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "installment_schedule_item",
+      "virtual": false,
+      "columns": [
+        "id",
+        "schedule_revision_id",
+        "installment_no",
+        "statement_date",
+        "principal_minor",
+        "interest_minor",
+        "fee_minor",
+        "remaining_principal_minor"
+      ],
+      "createSql": "CREATE TABLE installment_schedule_item (\n  id INTEGER PRIMARY KEY, schedule_revision_id INTEGER NOT NULL REFERENCES installment_schedule_revision(id) ON DELETE RESTRICT,\n  installment_no INTEGER NOT NULL CHECK (installment_no > 0), statement_date INTEGER NOT NULL,\n  principal_minor INTEGER NOT NULL CHECK (principal_minor >= 0), interest_minor INTEGER NOT NULL CHECK (interest_minor >= 0),\n  fee_minor INTEGER NOT NULL CHECK (fee_minor >= 0), remaining_principal_minor INTEGER NOT NULL CHECK (remaining_principal_minor >= 0),\n  UNIQUE (schedule_revision_id, installment_no)\n)"
+    },
+    {
+      "name": "installment_schedule_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "plan_id",
+        "revision_no",
+        "reason",
+        "generated_at",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE installment_schedule_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  plan_id INTEGER NOT NULL REFERENCES installment_plan(id) ON DELETE RESTRICT, revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  reason INTEGER NOT NULL CHECK (reason >= 0), generated_at INTEGER NOT NULL,\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, UNIQUE (plan_id, revision_no)\n)"
+    },
+    {
+      "name": "journal_entry",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "source_revision_id",
+        "applies_revision_id",
+        "entry_role",
+        "reverses_entry_id",
+        "effective_at",
+        "zone_id",
+        "local_date",
+        "base_currency",
+        "base_debit_total_minor",
+        "base_credit_total_minor",
+        "posting_count",
+        "rule_set_version",
+        "created_commit_id",
+        "content_hash"
+      ],
+      "createSql": "CREATE TABLE journal_entry (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  applies_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  entry_role INTEGER NOT NULL CHECK (entry_role IN (0,1)), reverses_entry_id INTEGER REFERENCES journal_entry(id) ON DELETE RESTRICT,\n  effective_at INTEGER NOT NULL, zone_id TEXT NOT NULL, local_date INTEGER NOT NULL,\n  base_currency TEXT NOT NULL CHECK (length(base_currency) = 3), base_debit_total_minor INTEGER NOT NULL CHECK (base_debit_total_minor >= 0),\n  base_credit_total_minor INTEGER NOT NULL CHECK (base_credit_total_minor >= 0), posting_count INTEGER NOT NULL CHECK (posting_count >= 2),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT,\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  content_hash BLOB NOT NULL CHECK (length(content_hash) = 32), CHECK (base_debit_total_minor = base_credit_total_minor)\n)"
+    },
+    {
+      "name": "ledger_account",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "owner_type",
+        "account_class",
+        "normal_side",
+        "currency_code",
+        "parent_ledger_account_id",
+        "system_code",
+        "status",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE ledger_account (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), owner_type INTEGER NOT NULL CHECK (owner_type >= 0),\n  account_class INTEGER NOT NULL CHECK (account_class >= 0), normal_side INTEGER NOT NULL CHECK (normal_side IN (0,1)),\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), parent_ledger_account_id INTEGER REFERENCES ledger_account(id) ON DELETE RESTRICT,\n  system_code TEXT UNIQUE, status INTEGER NOT NULL CHECK (status >= 0),\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "loan_actual_allocation",
+      "virtual": false,
+      "columns": [
+        "id",
+        "payment_transaction_id",
+        "payment_revision_id",
+        "tranche_id",
+        "schedule_item_id",
+        "component",
+        "amount_minor",
+        "base_amount_minor",
+        "reversal_of_id"
+      ],
+      "createSql": "CREATE TABLE loan_actual_allocation (\n  id INTEGER PRIMARY KEY, payment_transaction_id INTEGER NOT NULL REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  payment_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  tranche_id INTEGER NOT NULL REFERENCES loan_tranche(id) ON DELETE RESTRICT,\n  schedule_item_id INTEGER REFERENCES loan_schedule_item(id) ON DELETE RESTRICT, component INTEGER NOT NULL CHECK (component >= 0),\n  amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0), base_amount_minor INTEGER NOT NULL CHECK (base_amount_minor >= 0),\n  reversal_of_id INTEGER REFERENCES loan_actual_allocation(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "loan_contract",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "display_account_id",
+        "name",
+        "lender",
+        "currency_code",
+        "disbursement_date",
+        "status",
+        "last_commit_id"
+      ],
+      "createSql": "CREATE TABLE loan_contract (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  display_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT, name TEXT NOT NULL CHECK (length(name) > 0), lender TEXT,\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), disbursement_date INTEGER NOT NULL,\n  status INTEGER NOT NULL CHECK (status >= 0), last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "loan_disbursement_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "loan_contract_id",
+        "receiving_account_id"
+      ],
+      "createSql": "CREATE TABLE loan_disbursement_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  loan_contract_id INTEGER NOT NULL REFERENCES loan_contract(id) ON DELETE RESTRICT,\n  receiving_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "loan_effect",
+      "virtual": false,
+      "columns": [
+        "id",
+        "loan_contract_id",
+        "loan_tranche_id",
+        "schedule_item_id",
+        "source_revision_id",
+        "reversal_of_id",
+        "kind",
+        "polarity",
+        "amount_minor",
+        "currency_code",
+        "base_amount_minor",
+        "rule_set_version"
+      ],
+      "createSql": "CREATE TABLE loan_effect (\n  id INTEGER PRIMARY KEY, loan_contract_id INTEGER NOT NULL REFERENCES loan_contract(id) ON DELETE RESTRICT,\n  loan_tranche_id INTEGER REFERENCES loan_tranche(id) ON DELETE RESTRICT,\n  schedule_item_id INTEGER REFERENCES loan_schedule_item(id) ON DELETE RESTRICT,\n  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES loan_effect(id) ON DELETE RESTRICT, kind INTEGER NOT NULL CHECK (kind >= 0),\n  polarity INTEGER NOT NULL CHECK (polarity IN (-1,1)), amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), base_amount_minor INTEGER NOT NULL CHECK (base_amount_minor >= 0),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "loan_future_cashflow_projection",
+      "virtual": false,
+      "columns": [
+        "contract_id",
+        "tranche_id",
+        "planned_date",
+        "principal_minor",
+        "interest_minor",
+        "fee_minor",
+        "currency_code",
+        "schedule_revision_id",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE loan_future_cashflow_projection (\n  contract_id INTEGER NOT NULL REFERENCES loan_contract(id) ON DELETE CASCADE,\n  tranche_id INTEGER NOT NULL REFERENCES loan_tranche(id) ON DELETE CASCADE, planned_date INTEGER NOT NULL,\n  principal_minor INTEGER NOT NULL CHECK (principal_minor >= 0), interest_minor INTEGER NOT NULL CHECK (interest_minor >= 0),\n  fee_minor INTEGER NOT NULL CHECK (fee_minor >= 0), currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  schedule_revision_id INTEGER NOT NULL REFERENCES loan_schedule_revision(id) ON DELETE CASCADE,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0),\n  PRIMARY KEY (contract_id, tranche_id, planned_date, schedule_revision_id)\n)"
+    },
+    {
+      "name": "loan_payment_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "loan_contract_id",
+        "payment_account_id",
+        "schedule_revision_id"
+      ],
+      "createSql": "CREATE TABLE loan_payment_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  loan_contract_id INTEGER NOT NULL REFERENCES loan_contract(id) ON DELETE RESTRICT,\n  payment_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  schedule_revision_id INTEGER REFERENCES loan_schedule_revision(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "loan_progress_projection",
+      "virtual": false,
+      "columns": [
+        "contract_id",
+        "tranche_id",
+        "original_principal_minor",
+        "repaid_principal_minor",
+        "remaining_principal_minor",
+        "accrued_interest_minor",
+        "next_payment_date",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE loan_progress_projection (\n  contract_id INTEGER NOT NULL REFERENCES loan_contract(id) ON DELETE CASCADE,\n  tranche_id INTEGER NOT NULL REFERENCES loan_tranche(id) ON DELETE CASCADE,\n  original_principal_minor INTEGER NOT NULL CHECK (original_principal_minor > 0), repaid_principal_minor INTEGER NOT NULL CHECK (repaid_principal_minor >= 0),\n  remaining_principal_minor INTEGER NOT NULL CHECK (remaining_principal_minor >= 0), accrued_interest_minor INTEGER NOT NULL CHECK (accrued_interest_minor >= 0),\n  next_payment_date INTEGER, as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0), PRIMARY KEY (contract_id, tranche_id)\n)"
+    },
+    {
+      "name": "loan_rate_period",
+      "virtual": false,
+      "columns": [
+        "id",
+        "terms_revision_id",
+        "effective_from",
+        "effective_to",
+        "annual_rate_decimal",
+        "benchmark",
+        "margin_decimal"
+      ],
+      "createSql": "CREATE TABLE loan_rate_period (\n  id INTEGER PRIMARY KEY, terms_revision_id INTEGER NOT NULL REFERENCES loan_terms_revision(id) ON DELETE RESTRICT,\n  effective_from INTEGER NOT NULL, effective_to INTEGER, annual_rate_decimal TEXT NOT NULL,\n  benchmark TEXT, margin_decimal TEXT, UNIQUE (terms_revision_id, effective_from), CHECK (effective_to IS NULL OR effective_to >= effective_from)\n)"
+    },
+    {
+      "name": "loan_schedule_item",
+      "virtual": false,
+      "columns": [
+        "id",
+        "schedule_revision_id",
+        "installment_no",
+        "planned_date",
+        "principal_minor",
+        "interest_minor",
+        "fee_minor",
+        "remaining_principal_minor"
+      ],
+      "createSql": "CREATE TABLE loan_schedule_item (\n  id INTEGER PRIMARY KEY, schedule_revision_id INTEGER NOT NULL REFERENCES loan_schedule_revision(id) ON DELETE RESTRICT,\n  installment_no INTEGER NOT NULL CHECK (installment_no > 0), planned_date INTEGER NOT NULL,\n  principal_minor INTEGER NOT NULL CHECK (principal_minor >= 0), interest_minor INTEGER NOT NULL CHECK (interest_minor >= 0),\n  fee_minor INTEGER NOT NULL CHECK (fee_minor >= 0), remaining_principal_minor INTEGER NOT NULL CHECK (remaining_principal_minor >= 0),\n  UNIQUE (schedule_revision_id, installment_no)\n)"
+    },
+    {
+      "name": "loan_schedule_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "tranche_id",
+        "revision_no",
+        "terms_revision_id",
+        "reason",
+        "generated_at",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE loan_schedule_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  tranche_id INTEGER NOT NULL REFERENCES loan_tranche(id) ON DELETE RESTRICT, revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  terms_revision_id INTEGER NOT NULL REFERENCES loan_terms_revision(id) ON DELETE RESTRICT,\n  reason INTEGER NOT NULL CHECK (reason >= 0), generated_at INTEGER NOT NULL,\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, UNIQUE (tranche_id, revision_no)\n)"
+    },
+    {
+      "name": "loan_simulation",
+      "virtual": false,
+      "columns": [
+        "id",
+        "contract_id",
+        "base_schedule_revision_id",
+        "scenario_type",
+        "parameters_blob",
+        "created_at"
+      ],
+      "createSql": "CREATE TABLE loan_simulation (\n  id INTEGER PRIMARY KEY, contract_id INTEGER NOT NULL REFERENCES loan_contract(id) ON DELETE CASCADE,\n  base_schedule_revision_id INTEGER NOT NULL REFERENCES loan_schedule_revision(id) ON DELETE RESTRICT,\n  scenario_type INTEGER NOT NULL CHECK (scenario_type >= 0), parameters_blob BLOB NOT NULL, created_at INTEGER NOT NULL\n)"
+    },
+    {
+      "name": "loan_simulation_item",
+      "virtual": false,
+      "columns": [
+        "simulation_id",
+        "installment_no",
+        "planned_date",
+        "principal_minor",
+        "interest_minor",
+        "fee_minor",
+        "remaining_principal_minor"
+      ],
+      "createSql": "CREATE TABLE loan_simulation_item (\n  simulation_id INTEGER NOT NULL REFERENCES loan_simulation(id) ON DELETE CASCADE, installment_no INTEGER NOT NULL CHECK (installment_no > 0),\n  planned_date INTEGER NOT NULL, principal_minor INTEGER NOT NULL CHECK (principal_minor >= 0),\n  interest_minor INTEGER NOT NULL CHECK (interest_minor >= 0), fee_minor INTEGER NOT NULL CHECK (fee_minor >= 0),\n  remaining_principal_minor INTEGER NOT NULL CHECK (remaining_principal_minor >= 0), PRIMARY KEY (simulation_id, installment_no)\n)"
+    },
+    {
+      "name": "loan_terms_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "tranche_id",
+        "revision_no",
+        "repayment_method",
+        "rate_type",
+        "payment_frequency",
+        "start_date",
+        "end_date",
+        "rounding_mode",
+        "prepayment_policy",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE loan_terms_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  tranche_id INTEGER NOT NULL REFERENCES loan_tranche(id) ON DELETE RESTRICT, revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  repayment_method INTEGER NOT NULL CHECK (repayment_method >= 0), rate_type INTEGER NOT NULL CHECK (rate_type >= 0),\n  payment_frequency INTEGER NOT NULL CHECK (payment_frequency >= 0), start_date INTEGER NOT NULL, end_date INTEGER,\n  rounding_mode INTEGER NOT NULL CHECK (rounding_mode >= 0), prepayment_policy INTEGER NOT NULL CHECK (prepayment_policy >= 0),\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  UNIQUE (tranche_id, revision_no), CHECK (end_date IS NULL OR end_date >= start_date)\n)"
+    },
+    {
+      "name": "loan_tranche",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "contract_id",
+        "ledger_account_id",
+        "name",
+        "original_principal_minor",
+        "status"
+      ],
+      "createSql": "CREATE TABLE loan_tranche (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), contract_id INTEGER NOT NULL REFERENCES loan_contract(id) ON DELETE RESTRICT,\n  ledger_account_id INTEGER NOT NULL UNIQUE REFERENCES ledger_account(id) ON DELETE RESTRICT, name TEXT NOT NULL CHECK (length(name) > 0),\n  original_principal_minor INTEGER NOT NULL CHECK (original_principal_minor > 0), status INTEGER NOT NULL CHECK (status >= 0)\n)"
+    },
+    {
+      "name": "location_record",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "lat_e7",
+        "lon_e7",
+        "accuracy_mm",
+        "captured_at",
+        "source",
+        "provider",
+        "place_id",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE location_record (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  lat_e7 INTEGER NOT NULL CHECK (lat_e7 BETWEEN -900000000 AND 900000000),\n  lon_e7 INTEGER NOT NULL CHECK (lon_e7 BETWEEN -1800000000 AND 1800000000),\n  accuracy_mm INTEGER CHECK (accuracy_mm IS NULL OR accuracy_mm >= 0), captured_at INTEGER NOT NULL,\n  source INTEGER NOT NULL CHECK (source >= 0), provider TEXT, place_id INTEGER REFERENCES place(id) ON DELETE SET NULL,\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "location_rtree",
+      "virtual": true,
+      "columns": [
+        "location_id",
+        "min_lat",
+        "max_lat",
+        "min_lon",
+        "max_lon"
+      ],
+      "createSql": "CREATE VIRTUAL TABLE location_rtree USING rtree(location_id, min_lat, max_lat, min_lon, max_lon)"
+    },
+    {
+      "name": "merchant",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "name",
+        "normalized_name",
+        "status",
+        "merged_into_id",
+        "last_commit_id",
+        "row_version"
+      ],
+      "createSql": "CREATE TABLE merchant (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), name TEXT NOT NULL CHECK (length(name) > 0),\n  normalized_name TEXT NOT NULL CHECK (length(normalized_name) > 0), status INTEGER NOT NULL CHECK (status >= 0),\n  merged_into_id INTEGER REFERENCES merchant(id) ON DELETE RESTRICT,\n  last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, row_version INTEGER NOT NULL CHECK (row_version > 0),\n  CHECK (merged_into_id IS NULL OR merged_into_id <> id)\n)"
+    },
+    {
+      "name": "merchant_alias",
+      "virtual": false,
+      "columns": [
+        "merchant_id",
+        "alias",
+        "normalized_alias"
+      ],
+      "createSql": "CREATE TABLE merchant_alias (\n  merchant_id INTEGER NOT NULL REFERENCES merchant(id) ON DELETE CASCADE, alias TEXT NOT NULL CHECK (length(alias) > 0),\n  normalized_alias TEXT NOT NULL CHECK (length(normalized_alias) > 0), PRIMARY KEY (merchant_id, normalized_alias)\n)"
+    },
+    {
+      "name": "merge_conflict",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "session_id",
+        "kind",
+        "entity_type",
+        "entity_uid",
+        "ancestor_hash",
+        "local_hash",
+        "incoming_hash",
+        "purge_generation",
+        "resolution"
+      ],
+      "createSql": "CREATE TABLE merge_conflict (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  session_id INTEGER NOT NULL REFERENCES merge_session(id) ON DELETE CASCADE, kind INTEGER NOT NULL CHECK (kind >= 0),\n  entity_type INTEGER NOT NULL CHECK (entity_type >= 0), entity_uid BLOB NOT NULL CHECK (length(entity_uid) = 16),\n  ancestor_hash BLOB CHECK (ancestor_hash IS NULL OR length(ancestor_hash) = 32),\n  local_hash BLOB CHECK (local_hash IS NULL OR length(local_hash) = 32),\n  incoming_hash BLOB CHECK (incoming_hash IS NULL OR length(incoming_hash) = 32),\n  purge_generation INTEGER, resolution INTEGER, UNIQUE (session_id, entity_type, entity_uid)\n)"
+    },
+    {
+      "name": "merge_resolution",
+      "virtual": false,
+      "columns": [
+        "conflict_id",
+        "resolution",
+        "resolved_at",
+        "resulting_commit_id"
+      ],
+      "createSql": "CREATE TABLE merge_resolution (\n  conflict_id INTEGER PRIMARY KEY REFERENCES merge_conflict(id) ON DELETE CASCADE,\n  resolution INTEGER NOT NULL CHECK (resolution >= 0), resolved_at INTEGER NOT NULL,\n  resulting_commit_id INTEGER REFERENCES book_commit(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "merge_session",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "operation_id",
+        "common_ancestor_commit_id",
+        "local_head_commit_id",
+        "incoming_head_commit_uid",
+        "state"
+      ],
+      "createSql": "CREATE TABLE merge_session (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  operation_id INTEGER NOT NULL UNIQUE REFERENCES background_operation(id) ON DELETE RESTRICT,\n  common_ancestor_commit_id INTEGER REFERENCES book_commit(id) ON DELETE RESTRICT,\n  local_head_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  incoming_head_commit_uid BLOB NOT NULL CHECK (length(incoming_head_commit_uid) = 16), state INTEGER NOT NULL CHECK (state >= 0)\n)"
+    },
+    {
+      "name": "opening_balance_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "account_id",
+        "balance_date"
+      ],
+      "createSql": "CREATE TABLE opening_balance_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT, balance_date INTEGER NOT NULL\n)"
+    },
+    {
+      "name": "operation_checkpoint",
+      "virtual": false,
+      "columns": [
+        "operation_id",
+        "sequence",
+        "phase",
+        "checkpoint_ciphertext",
+        "created_at"
+      ],
+      "createSql": "CREATE TABLE operation_checkpoint (\n  operation_id INTEGER NOT NULL REFERENCES background_operation(id) ON DELETE CASCADE, sequence INTEGER NOT NULL CHECK (sequence >= 0),\n  phase INTEGER NOT NULL CHECK (phase BETWEEN 0 AND 9), checkpoint_ciphertext BLOB NOT NULL, created_at INTEGER NOT NULL,\n  PRIMARY KEY (operation_id, sequence)\n)"
+    },
+    {
+      "name": "participant",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "name",
+        "is_self",
+        "status",
+        "last_commit_id"
+      ],
+      "createSql": "CREATE TABLE participant (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), name TEXT NOT NULL CHECK (length(name) > 0),\n  is_self INTEGER NOT NULL CHECK (is_self IN (0,1)), status INTEGER NOT NULL CHECK (status >= 0),\n  last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "payment_card",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "account_id",
+        "card_type",
+        "display_name",
+        "last_four",
+        "status",
+        "replacement_of_card_id",
+        "icon_key",
+        "color_argb",
+        "sort_order",
+        "last_commit_id",
+        "row_version"
+      ],
+      "createSql": "CREATE TABLE payment_card (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  card_type INTEGER NOT NULL CHECK (card_type >= 0), display_name TEXT NOT NULL CHECK (length(display_name) > 0),\n  last_four TEXT CHECK (last_four IS NULL OR (length(last_four) = 4 AND last_four NOT GLOB '*[^0-9]*')),\n  status INTEGER NOT NULL CHECK (status >= 0), replacement_of_card_id INTEGER REFERENCES payment_card(id) ON DELETE RESTRICT,\n  icon_key TEXT NOT NULL, color_argb INTEGER NOT NULL, sort_order INTEGER NOT NULL,\n  last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, row_version INTEGER NOT NULL CHECK (row_version > 0)\n)"
+    },
+    {
+      "name": "place",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "name",
+        "center_lat_e7",
+        "center_lon_e7",
+        "merchant_id",
+        "status",
+        "merged_into_id",
+        "last_commit_id",
+        "row_version"
+      ],
+      "createSql": "CREATE TABLE place (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), name TEXT NOT NULL CHECK (length(name) > 0),\n  center_lat_e7 INTEGER NOT NULL CHECK (center_lat_e7 BETWEEN -900000000 AND 900000000),\n  center_lon_e7 INTEGER NOT NULL CHECK (center_lon_e7 BETWEEN -1800000000 AND 1800000000),\n  merchant_id INTEGER REFERENCES merchant(id) ON DELETE SET NULL, status INTEGER NOT NULL CHECK (status >= 0),\n  merged_into_id INTEGER REFERENCES place(id) ON DELETE RESTRICT,\n  last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, row_version INTEGER NOT NULL CHECK (row_version > 0),\n  CHECK (merged_into_id IS NULL OR merged_into_id <> id)\n)"
+    },
+    {
+      "name": "place_rtree",
+      "virtual": true,
+      "columns": [
+        "place_id",
+        "min_lat",
+        "max_lat",
+        "min_lon",
+        "max_lon"
+      ],
+      "createSql": "CREATE VIRTUAL TABLE place_rtree USING rtree(place_id, min_lat, max_lat, min_lon, max_lon)"
+    },
+    {
+      "name": "posting",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "journal_entry_id",
+        "line_no",
+        "ledger_account_id",
+        "side",
+        "account_amount_minor",
+        "account_currency",
+        "base_amount_minor",
+        "base_currency",
+        "valuation_rate_decimal",
+        "posting_role",
+        "reversal_of_posting_id"
+      ],
+      "createSql": "CREATE TABLE posting (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), journal_entry_id INTEGER NOT NULL REFERENCES journal_entry(id) ON DELETE RESTRICT,\n  line_no INTEGER NOT NULL CHECK (line_no > 0), ledger_account_id INTEGER NOT NULL REFERENCES ledger_account(id) ON DELETE RESTRICT,\n  side INTEGER NOT NULL CHECK (side IN (0,1)), account_amount_minor INTEGER NOT NULL CHECK (account_amount_minor >= 0),\n  account_currency TEXT NOT NULL CHECK (length(account_currency) = 3), base_amount_minor INTEGER NOT NULL CHECK (base_amount_minor >= 0),\n  base_currency TEXT NOT NULL CHECK (length(base_currency) = 3), valuation_rate_decimal TEXT,\n  posting_role INTEGER NOT NULL CHECK (posting_role >= 0), reversal_of_posting_id INTEGER REFERENCES posting(id) ON DELETE RESTRICT,\n  UNIQUE (journal_entry_id, line_no)\n)"
+    },
+    {
+      "name": "project",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "name",
+        "description",
+        "start_date",
+        "end_date",
+        "budget_base_minor",
+        "included_in_monthly_budget",
+        "goal_id",
+        "status",
+        "last_commit_id",
+        "row_version"
+      ],
+      "createSql": "CREATE TABLE project (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), name TEXT NOT NULL CHECK (length(name) > 0), description TEXT,\n  start_date INTEGER, end_date INTEGER, budget_base_minor INTEGER CHECK (budget_base_minor IS NULL OR budget_base_minor >= 0),\n  included_in_monthly_budget INTEGER NOT NULL CHECK (included_in_monthly_budget IN (0,1)), goal_id INTEGER REFERENCES goal(id) ON DELETE SET NULL,\n  status INTEGER NOT NULL CHECK (status >= 0), last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  row_version INTEGER NOT NULL CHECK (row_version > 0), CHECK (end_date IS NULL OR start_date IS NULL OR end_date >= start_date)\n)"
+    },
+    {
+      "name": "project_effect",
+      "virtual": false,
+      "columns": [
+        "id",
+        "project_id",
+        "source_revision_id",
+        "reversal_of_id",
+        "polarity",
+        "kind",
+        "base_amount_minor",
+        "monthly_budget_inclusion_snapshot",
+        "rule_set_version"
+      ],
+      "createSql": "CREATE TABLE project_effect (\n  id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE RESTRICT,\n  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES project_effect(id) ON DELETE RESTRICT, polarity INTEGER NOT NULL CHECK (polarity IN (-1,1)),\n  kind INTEGER NOT NULL CHECK (kind >= 0), base_amount_minor INTEGER NOT NULL CHECK (base_amount_minor >= 0),\n  monthly_budget_inclusion_snapshot INTEGER NOT NULL CHECK (monthly_budget_inclusion_snapshot IN (0,1)),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "project_usage_projection",
+      "virtual": false,
+      "columns": [
+        "project_id",
+        "budget_base_minor",
+        "used_base_minor",
+        "restored_base_minor",
+        "remaining_base_minor",
+        "cash_inflow_base_minor",
+        "cash_outflow_base_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE project_usage_projection (\n  project_id INTEGER PRIMARY KEY REFERENCES project(id) ON DELETE CASCADE, budget_base_minor INTEGER CHECK (budget_base_minor IS NULL OR budget_base_minor >= 0),\n  used_base_minor INTEGER NOT NULL, restored_base_minor INTEGER NOT NULL, remaining_base_minor INTEGER,\n  cash_inflow_base_minor INTEGER NOT NULL, cash_outflow_base_minor INTEGER NOT NULL,\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0)\n)"
+    },
+    {
+      "name": "purge_tombstone",
+      "virtual": false,
+      "columns": [
+        "entity_type",
+        "entity_uid",
+        "purge_commit_id",
+        "purged_at",
+        "purge_generation"
+      ],
+      "createSql": "CREATE TABLE purge_tombstone (\n  entity_type INTEGER NOT NULL CHECK (entity_type >= 0), entity_uid BLOB NOT NULL CHECK (length(entity_uid) = 16),\n  purge_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, purged_at INTEGER NOT NULL,\n  purge_generation INTEGER NOT NULL CHECK (purge_generation > 0), PRIMARY KEY (entity_type, entity_uid)\n)"
+    },
+    {
+      "name": "recurrence_candidate",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "occurrence_id",
+        "blueprint_revision_id",
+        "created_at",
+        "status",
+        "validation_error_code"
+      ],
+      "createSql": "CREATE TABLE recurrence_candidate (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  occurrence_id INTEGER NOT NULL UNIQUE REFERENCES recurrence_occurrence(id) ON DELETE RESTRICT,\n  blueprint_revision_id INTEGER NOT NULL REFERENCES transaction_blueprint_revision(id) ON DELETE RESTRICT,\n  created_at INTEGER NOT NULL, status INTEGER NOT NULL CHECK (status >= 0), validation_error_code TEXT\n)"
+    },
+    {
+      "name": "recurrence_exception",
+      "virtual": false,
+      "columns": [
+        "series_id",
+        "occurrence_local_date",
+        "action",
+        "override_blueprint_revision_id",
+        "override_instant"
+      ],
+      "createSql": "CREATE TABLE recurrence_exception (\n  series_id INTEGER NOT NULL REFERENCES recurrence_series(id) ON DELETE RESTRICT, occurrence_local_date INTEGER NOT NULL,\n  action INTEGER NOT NULL CHECK (action >= 0), override_blueprint_revision_id INTEGER REFERENCES transaction_blueprint_revision(id) ON DELETE RESTRICT,\n  override_instant INTEGER, PRIMARY KEY (series_id, occurrence_local_date)\n)"
+    },
+    {
+      "name": "recurrence_occurrence",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "series_id",
+        "series_revision_id",
+        "occurrence_instant",
+        "local_date",
+        "status",
+        "candidate_id",
+        "transaction_id",
+        "error_code"
+      ],
+      "createSql": "CREATE TABLE recurrence_occurrence (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), series_id INTEGER NOT NULL REFERENCES recurrence_series(id) ON DELETE RESTRICT,\n  series_revision_id INTEGER NOT NULL REFERENCES recurrence_series_revision(id) ON DELETE RESTRICT,\n  occurrence_instant INTEGER NOT NULL, local_date INTEGER NOT NULL, status INTEGER NOT NULL CHECK (status >= 0),\n  candidate_id INTEGER REFERENCES recurrence_candidate(id) ON DELETE RESTRICT,\n  transaction_id INTEGER REFERENCES business_transaction(id) ON DELETE RESTRICT, error_code TEXT,\n  UNIQUE (series_id, series_revision_id, occurrence_instant)\n)"
+    },
+    {
+      "name": "recurrence_rule_weekday",
+      "virtual": false,
+      "columns": [
+        "series_revision_id",
+        "weekday"
+      ],
+      "createSql": "CREATE TABLE recurrence_rule_weekday (\n  series_revision_id INTEGER NOT NULL REFERENCES recurrence_series_revision(id) ON DELETE RESTRICT,\n  weekday INTEGER NOT NULL CHECK (weekday BETWEEN 1 AND 7), PRIMARY KEY (series_revision_id, weekday)\n)"
+    },
+    {
+      "name": "recurrence_series",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "blueprint_id",
+        "current_revision_id",
+        "status"
+      ],
+      "createSql": "CREATE TABLE recurrence_series (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  blueprint_id INTEGER NOT NULL REFERENCES transaction_blueprint(id) ON DELETE RESTRICT,\n  current_revision_id INTEGER REFERENCES recurrence_series_revision(id) ON DELETE RESTRICT, status INTEGER NOT NULL CHECK (status >= 0)\n)"
+    },
+    {
+      "name": "recurrence_series_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "series_id",
+        "revision_no",
+        "frequency",
+        "interval_value",
+        "start_date",
+        "end_date",
+        "max_occurrences",
+        "zone_id",
+        "month_day",
+        "nth_week",
+        "weekday",
+        "missing_day_policy",
+        "weekend_policy",
+        "generation_mode",
+        "notify_candidate",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE recurrence_series_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  series_id INTEGER NOT NULL REFERENCES recurrence_series(id) ON DELETE RESTRICT, revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  frequency INTEGER NOT NULL CHECK (frequency >= 0), interval_value INTEGER NOT NULL CHECK (interval_value > 0),\n  start_date INTEGER NOT NULL, end_date INTEGER, max_occurrences INTEGER CHECK (max_occurrences IS NULL OR max_occurrences > 0),\n  zone_id TEXT NOT NULL, month_day INTEGER CHECK (month_day BETWEEN 1 AND 31), nth_week INTEGER CHECK (nth_week BETWEEN 1 AND 5),\n  weekday INTEGER CHECK (weekday BETWEEN 1 AND 7), missing_day_policy INTEGER NOT NULL CHECK (missing_day_policy >= 0),\n  weekend_policy INTEGER NOT NULL CHECK (weekend_policy >= 0), generation_mode INTEGER NOT NULL CHECK (generation_mode >= 0),\n  notify_candidate INTEGER NOT NULL CHECK (notify_candidate IN (0,1)),\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  UNIQUE (series_id, revision_no), CHECK (end_date IS NULL OR end_date >= start_date)\n)"
+    },
+    {
+      "name": "refund_allocation",
+      "virtual": false,
+      "columns": [
+        "id",
+        "refund_transaction_id",
+        "refund_revision_id",
+        "original_transaction_id",
+        "original_revision_id",
+        "original_currency_amount_minor",
+        "base_amount_minor",
+        "created_commit_id",
+        "reversal_of_id"
+      ],
+      "createSql": "-- Ledger primary database schema v1: subledgers, plans, recurrence and attachment operation state.\nCREATE TABLE refund_allocation (\n  id INTEGER PRIMARY KEY, refund_transaction_id INTEGER NOT NULL REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  refund_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  original_transaction_id INTEGER NOT NULL REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  original_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  original_currency_amount_minor INTEGER NOT NULL CHECK (original_currency_amount_minor >= 0),\n  base_amount_minor INTEGER NOT NULL CHECK (base_amount_minor >= 0),\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES refund_allocation(id) ON DELETE RESTRICT,\n  CHECK (refund_transaction_id <> original_transaction_id)\n)"
+    },
+    {
+      "name": "refund_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "receiving_account_id",
+        "receiving_card_id",
+        "independent",
+        "budget_policy",
+        "target_month",
+        "allow_excess"
+      ],
+      "createSql": "CREATE TABLE refund_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  receiving_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  receiving_card_id INTEGER REFERENCES payment_card(id) ON DELETE RESTRICT, independent INTEGER NOT NULL CHECK (independent IN (0,1)),\n  budget_policy INTEGER NOT NULL CHECK (budget_policy >= 0), target_month INTEGER, allow_excess INTEGER NOT NULL CHECK (allow_excess IN (0,1))\n)"
+    },
+    {
+      "name": "refund_status_projection",
+      "virtual": false,
+      "columns": [
+        "original_transaction_id",
+        "gross_refundable_minor",
+        "refunded_minor",
+        "remaining_minor",
+        "currency_code",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE refund_status_projection (\n  original_transaction_id INTEGER PRIMARY KEY REFERENCES business_transaction(id) ON DELETE CASCADE,\n  gross_refundable_minor INTEGER NOT NULL CHECK (gross_refundable_minor >= 0),\n  refunded_minor INTEGER NOT NULL CHECK (refunded_minor >= 0), remaining_minor INTEGER NOT NULL CHECK (remaining_minor >= 0),\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0),\n  CHECK (gross_refundable_minor = refunded_minor + remaining_minor)\n)"
+    },
+    {
+      "name": "restore_record",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "operation_id",
+        "mode",
+        "snapshot_id",
+        "state",
+        "source_head_commit_id",
+        "live_head_at_start",
+        "resulting_head_commit_id",
+        "validated_at"
+      ],
+      "createSql": "CREATE TABLE restore_record (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  operation_id INTEGER NOT NULL UNIQUE REFERENCES background_operation(id) ON DELETE RESTRICT,\n  mode INTEGER NOT NULL CHECK (mode >= 0), snapshot_id INTEGER NOT NULL REFERENCES backup_snapshot(id) ON DELETE RESTRICT,\n  state INTEGER NOT NULL CHECK (state >= 0), source_head_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  live_head_at_start INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  resulting_head_commit_id INTEGER REFERENCES book_commit(id) ON DELETE RESTRICT, validated_at INTEGER\n)"
+    },
+    {
+      "name": "revision_amount",
+      "virtual": false,
+      "columns": [
+        "id",
+        "revision_id",
+        "component_index",
+        "role",
+        "representation",
+        "amount_minor",
+        "currency_code",
+        "related_account_id",
+        "fx_rate_snapshot_id"
+      ],
+      "createSql": "CREATE TABLE revision_amount (\n  id INTEGER PRIMARY KEY, revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  component_index INTEGER NOT NULL CHECK (component_index >= 0), role INTEGER NOT NULL CHECK (role >= 0),\n  representation INTEGER NOT NULL CHECK (representation BETWEEN 0 AND 2), amount_minor INTEGER NOT NULL,\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), related_account_id INTEGER REFERENCES user_account(id) ON DELETE RESTRICT,\n  fx_rate_snapshot_id INTEGER REFERENCES fx_rate_snapshot(id) ON DELETE RESTRICT,\n  UNIQUE (revision_id, component_index, role, representation),\n  CHECK ((representation = 1 AND related_account_id IS NOT NULL) OR (representation <> 1 AND related_account_id IS NULL))\n)"
+    },
+    {
+      "name": "rule_set_version",
+      "virtual": false,
+      "columns": [
+        "version",
+        "algorithm_hash",
+        "activated_at",
+        "retired_at"
+      ],
+      "createSql": "CREATE TABLE rule_set_version (\n  version INTEGER PRIMARY KEY CHECK (version > 0), algorithm_hash BLOB NOT NULL CHECK (length(algorithm_hash) = 32),\n  activated_at INTEGER NOT NULL, retired_at INTEGER, CHECK (retired_at IS NULL OR retired_at >= activated_at)\n)"
+    },
+    {
+      "name": "settlement_activity",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "name",
+        "description",
+        "settlement_currency",
+        "project_id",
+        "start_date",
+        "end_date",
+        "status",
+        "requires_additional_settlement",
+        "last_commit_id"
+      ],
+      "createSql": "CREATE TABLE settlement_activity (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), name TEXT NOT NULL CHECK (length(name) > 0), description TEXT,\n  settlement_currency TEXT NOT NULL CHECK (length(settlement_currency) = 3), project_id INTEGER REFERENCES project(id) ON DELETE SET NULL,\n  start_date INTEGER NOT NULL, end_date INTEGER, status INTEGER NOT NULL CHECK (status >= 0),\n  requires_additional_settlement INTEGER NOT NULL CHECK (requires_additional_settlement IN (0,1)),\n  last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, CHECK (end_date IS NULL OR end_date >= start_date)\n)"
+    },
+    {
+      "name": "settlement_activity_participant",
+      "virtual": false,
+      "columns": [
+        "activity_id",
+        "participant_id",
+        "sort_order",
+        "joined_at",
+        "left_at"
+      ],
+      "createSql": "CREATE TABLE settlement_activity_participant (\n  activity_id INTEGER NOT NULL REFERENCES settlement_activity(id) ON DELETE RESTRICT,\n  participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT, sort_order INTEGER NOT NULL,\n  joined_at INTEGER NOT NULL, left_at INTEGER, PRIMARY KEY (activity_id, participant_id), CHECK (left_at IS NULL OR left_at >= joined_at)\n)"
+    },
+    {
+      "name": "settlement_effect",
+      "virtual": false,
+      "columns": [
+        "id",
+        "activity_id",
+        "participant_id",
+        "source_revision_id",
+        "settlement_payment_record_id",
+        "reversal_of_id",
+        "kind",
+        "signed_delta_minor",
+        "currency_code",
+        "rule_set_version"
+      ],
+      "createSql": "CREATE TABLE settlement_effect (\n  id INTEGER PRIMARY KEY, activity_id INTEGER NOT NULL REFERENCES settlement_activity(id) ON DELETE RESTRICT,\n  participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT,\n  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  settlement_payment_record_id INTEGER REFERENCES settlement_payment_record(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES settlement_effect(id) ON DELETE RESTRICT, kind INTEGER NOT NULL CHECK (kind >= 0),\n  signed_delta_minor INTEGER NOT NULL, currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "settlement_payment_record",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "activity_id",
+        "payer_participant_id",
+        "payee_participant_id",
+        "amount_minor",
+        "currency_code",
+        "occurred_at",
+        "linked_transaction_id",
+        "created_commit_id",
+        "reversal_of_id"
+      ],
+      "createSql": "CREATE TABLE settlement_payment_record (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  activity_id INTEGER NOT NULL REFERENCES settlement_activity(id) ON DELETE RESTRICT,\n  payer_participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT,\n  payee_participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT,\n  amount_minor INTEGER NOT NULL CHECK (amount_minor > 0), currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), occurred_at INTEGER NOT NULL,\n  linked_transaction_id INTEGER REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES settlement_payment_record(id) ON DELETE RESTRICT, CHECK (payer_participant_id <> payee_participant_id)\n)"
+    },
+    {
+      "name": "settlement_payment_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "activity_id",
+        "payer_participant_id",
+        "payee_participant_id",
+        "local_account_id"
+      ],
+      "createSql": "CREATE TABLE settlement_payment_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  activity_id INTEGER NOT NULL REFERENCES settlement_activity(id) ON DELETE RESTRICT,\n  payer_participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT,\n  payee_participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT,\n  local_account_id INTEGER REFERENCES user_account(id) ON DELETE RESTRICT,\n  CHECK (payer_participant_id <> payee_participant_id)\n)"
+    },
+    {
+      "name": "settlement_position_projection",
+      "virtual": false,
+      "columns": [
+        "activity_id",
+        "participant_id",
+        "paid_minor",
+        "owed_minor",
+        "settled_paid_minor",
+        "settled_received_minor",
+        "net_position_minor",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE settlement_position_projection (\n  activity_id INTEGER NOT NULL REFERENCES settlement_activity(id) ON DELETE CASCADE,\n  participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE CASCADE,\n  paid_minor INTEGER NOT NULL CHECK (paid_minor >= 0), owed_minor INTEGER NOT NULL CHECK (owed_minor >= 0),\n  settled_paid_minor INTEGER NOT NULL CHECK (settled_paid_minor >= 0), settled_received_minor INTEGER NOT NULL CHECK (settled_received_minor >= 0),\n  net_position_minor INTEGER NOT NULL, as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0),\n  PRIMARY KEY (activity_id, participant_id)\n)"
+    },
+    {
+      "name": "statement_effect",
+      "virtual": false,
+      "columns": [
+        "id",
+        "credit_account_id",
+        "statement_id",
+        "source_revision_id",
+        "reversal_of_id",
+        "kind",
+        "polarity",
+        "amount_minor",
+        "currency_code",
+        "manual_assignment",
+        "rule_set_version"
+      ],
+      "createSql": "CREATE TABLE statement_effect (\n  id INTEGER PRIMARY KEY, credit_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  statement_id INTEGER REFERENCES credit_statement(id) ON DELETE RESTRICT,\n  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES statement_effect(id) ON DELETE RESTRICT, kind INTEGER NOT NULL CHECK (kind >= 0),\n  polarity INTEGER NOT NULL CHECK (polarity IN (-1,1)), amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), manual_assignment INTEGER NOT NULL CHECK (manual_assignment IN (0,1)),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT\n)"
+    },
+    {
+      "name": "transaction_blueprint",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "name",
+        "current_revision_id",
+        "status",
+        "icon_key",
+        "color_argb"
+      ],
+      "createSql": "CREATE TABLE transaction_blueprint (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16), name TEXT NOT NULL CHECK (length(name) > 0),\n  current_revision_id INTEGER REFERENCES transaction_blueprint_revision(id) ON DELETE RESTRICT,\n  status INTEGER NOT NULL CHECK (status >= 0), icon_key TEXT NOT NULL, color_argb INTEGER NOT NULL\n)"
+    },
+    {
+      "name": "transaction_blueprint_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "blueprint_id",
+        "revision_no",
+        "target_kind",
+        "category_id",
+        "primary_account_id",
+        "secondary_account_id",
+        "card_id",
+        "merchant_id",
+        "project_id",
+        "goal_id",
+        "settlement_activity_id",
+        "amount_expression",
+        "currency_code",
+        "note_template",
+        "fixed_place_id",
+        "created_commit_id"
+      ],
+      "createSql": "CREATE TABLE transaction_blueprint_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  blueprint_id INTEGER NOT NULL REFERENCES transaction_blueprint(id) ON DELETE RESTRICT, revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  target_kind INTEGER NOT NULL CHECK (target_kind BETWEEN 0 AND 10), category_id INTEGER REFERENCES category(id) ON DELETE RESTRICT,\n  primary_account_id INTEGER REFERENCES user_account(id) ON DELETE RESTRICT, secondary_account_id INTEGER REFERENCES user_account(id) ON DELETE RESTRICT,\n  card_id INTEGER REFERENCES payment_card(id) ON DELETE RESTRICT, merchant_id INTEGER REFERENCES merchant(id) ON DELETE RESTRICT,\n  project_id INTEGER REFERENCES project(id) ON DELETE RESTRICT, goal_id INTEGER REFERENCES goal(id) ON DELETE RESTRICT,\n  settlement_activity_id INTEGER REFERENCES settlement_activity(id) ON DELETE RESTRICT, amount_expression TEXT,\n  currency_code TEXT CHECK (currency_code IS NULL OR length(currency_code) = 3), note_template TEXT,\n  fixed_place_id INTEGER REFERENCES place(id) ON DELETE RESTRICT,\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, UNIQUE (blueprint_id, revision_no)\n)"
+    },
+    {
+      "name": "transaction_dependency",
+      "virtual": false,
+      "columns": [
+        "parent_transaction_id",
+        "child_transaction_id",
+        "dependency_type"
+      ],
+      "createSql": "CREATE TABLE transaction_dependency (\n  parent_transaction_id INTEGER NOT NULL REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  child_transaction_id INTEGER NOT NULL REFERENCES business_transaction(id) ON DELETE RESTRICT,\n  dependency_type INTEGER NOT NULL CHECK (dependency_type >= 0), PRIMARY KEY (parent_transaction_id, child_transaction_id, dependency_type),\n  CHECK (parent_transaction_id <> child_transaction_id)\n)"
+    },
+    {
+      "name": "transaction_fts",
+      "virtual": true,
+      "columns": [
+        "transaction_id",
+        "category_name",
+        "merchant_name",
+        "merchant_aliases",
+        "note",
+        "project_name",
+        "settlement_activity_name",
+        "participant_names",
+        "attachment_names",
+        "lifecycle_state"
+      ],
+      "createSql": "CREATE VIRTUAL TABLE transaction_fts USING fts5(\n  transaction_id UNINDEXED, category_name, merchant_name, merchant_aliases, note,\n  project_name, settlement_activity_name, participant_names, attachment_names,\n  lifecycle_state UNINDEXED, tokenize='trigram case_sensitive 0'\n)"
+    },
+    {
+      "name": "transaction_revision",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "transaction_id",
+        "revision_no",
+        "action",
+        "resulting_state",
+        "previous_revision_id",
+        "created_commit_id",
+        "created_at",
+        "occurred_at",
+        "zone_id",
+        "local_date",
+        "category_id",
+        "statistical_nature_snapshot",
+        "merchant_id",
+        "project_id",
+        "goal_id",
+        "location_record_id",
+        "note",
+        "amount_expression",
+        "source_type",
+        "source_reference_uid",
+        "content_hash"
+      ],
+      "createSql": "CREATE TABLE transaction_revision (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  transaction_id INTEGER NOT NULL REFERENCES business_transaction(id) ON DELETE RESTRICT, revision_no INTEGER NOT NULL CHECK (revision_no > 0),\n  action INTEGER NOT NULL CHECK (action >= 0), resulting_state INTEGER NOT NULL CHECK (resulting_state BETWEEN 0 AND 1),\n  previous_revision_id INTEGER REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, created_at INTEGER NOT NULL, occurred_at INTEGER NOT NULL,\n  zone_id TEXT NOT NULL, local_date INTEGER NOT NULL, category_id INTEGER REFERENCES category(id) ON DELETE RESTRICT,\n  statistical_nature_snapshot INTEGER, merchant_id INTEGER REFERENCES merchant(id) ON DELETE RESTRICT,\n  project_id INTEGER REFERENCES project(id) ON DELETE RESTRICT, goal_id INTEGER REFERENCES goal(id) ON DELETE RESTRICT,\n  location_record_id INTEGER REFERENCES location_record(id) ON DELETE RESTRICT, note TEXT, amount_expression TEXT,\n  source_type INTEGER NOT NULL CHECK (source_type >= 0), source_reference_uid BLOB CHECK (source_reference_uid IS NULL OR length(source_reference_uid) = 16),\n  content_hash BLOB NOT NULL CHECK (length(content_hash) = 32), UNIQUE (transaction_id, revision_no)\n)"
+    },
+    {
+      "name": "transaction_revision_attachment",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "attachment_id",
+        "sort_order"
+      ],
+      "createSql": "CREATE TABLE transaction_revision_attachment (\n  revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  attachment_id INTEGER NOT NULL REFERENCES attachment(id) ON DELETE RESTRICT,\n  sort_order INTEGER NOT NULL CHECK (sort_order >= 0), PRIMARY KEY (revision_id, attachment_id), UNIQUE (revision_id, sort_order)\n)"
+    },
+    {
+      "name": "transaction_revision_settlement_share",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "activity_id",
+        "participant_id",
+        "paid_minor",
+        "owed_minor",
+        "settlement_currency",
+        "weight_decimal",
+        "rounding_adjustment_minor"
+      ],
+      "createSql": "CREATE TABLE transaction_revision_settlement_share (\n  revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  activity_id INTEGER NOT NULL REFERENCES settlement_activity(id) ON DELETE RESTRICT,\n  participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT,\n  paid_minor INTEGER NOT NULL CHECK (paid_minor >= 0), owed_minor INTEGER NOT NULL CHECK (owed_minor >= 0),\n  settlement_currency TEXT NOT NULL CHECK (length(settlement_currency) = 3), weight_decimal TEXT,\n  rounding_adjustment_minor INTEGER NOT NULL, PRIMARY KEY (revision_id, participant_id)\n)"
+    },
+    {
+      "name": "transfer_revision_detail",
+      "virtual": false,
+      "columns": [
+        "revision_id",
+        "from_account_id",
+        "to_account_id",
+        "source_card_id"
+      ],
+      "createSql": "CREATE TABLE transfer_revision_detail (\n  revision_id INTEGER PRIMARY KEY REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  from_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  to_account_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,\n  source_card_id INTEGER REFERENCES payment_card(id) ON DELETE RESTRICT, CHECK (from_account_id <> to_account_id)\n)"
+    },
+    {
+      "name": "user_account",
+      "virtual": false,
+      "columns": [
+        "id",
+        "uid",
+        "ledger_account_id",
+        "type",
+        "name",
+        "currency_code",
+        "institution_name",
+        "branch_name",
+        "account_number",
+        "opened_date",
+        "status",
+        "icon_key",
+        "color_argb",
+        "sort_order",
+        "last_commit_id",
+        "row_version",
+        "content_hash"
+      ],
+      "createSql": "CREATE TABLE user_account (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  ledger_account_id INTEGER NOT NULL UNIQUE REFERENCES ledger_account(id) ON DELETE RESTRICT, type INTEGER NOT NULL CHECK (type BETWEEN 0 AND 3),\n  name TEXT NOT NULL CHECK (length(name) > 0), currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  institution_name TEXT, branch_name TEXT, account_number TEXT, opened_date INTEGER, status INTEGER NOT NULL CHECK (status >= 0),\n  icon_key TEXT NOT NULL, color_argb INTEGER NOT NULL, sort_order INTEGER NOT NULL,\n  last_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT, row_version INTEGER NOT NULL CHECK (row_version > 0),\n  content_hash BLOB NOT NULL CHECK (length(content_hash) = 32)\n)"
+    },
+    {
+      "name": "widget_account_snapshot",
+      "virtual": false,
+      "columns": [
+        "account_id",
+        "balance_minor",
+        "currency_code",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE widget_account_snapshot (\n  account_id INTEGER PRIMARY KEY REFERENCES user_account(id) ON DELETE CASCADE, balance_minor INTEGER NOT NULL,\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0)\n)"
+    },
+    {
+      "name": "widget_book_snapshot",
+      "virtual": false,
+      "columns": [
+        "id",
+        "core_net_financial_assets_base_minor",
+        "adjusted_net_financial_position_base_minor",
+        "base_currency",
+        "as_of_local_revision",
+        "as_of_valuation_revision"
+      ],
+      "createSql": "CREATE TABLE widget_book_snapshot (\n  id INTEGER PRIMARY KEY CHECK (id = 1), core_net_financial_assets_base_minor INTEGER NOT NULL,\n  adjusted_net_financial_position_base_minor INTEGER NOT NULL, base_currency TEXT NOT NULL CHECK (length(base_currency) = 3),\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0),\n  as_of_valuation_revision INTEGER NOT NULL CHECK (as_of_valuation_revision >= 0)\n)"
+    },
+    {
+      "name": "widget_credit_snapshot",
+      "virtual": false,
+      "columns": [
+        "account_id",
+        "debt_minor",
+        "available_limit_minor",
+        "currency_code",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE widget_credit_snapshot (\n  account_id INTEGER PRIMARY KEY REFERENCES user_account(id) ON DELETE CASCADE, debt_minor INTEGER NOT NULL CHECK (debt_minor >= 0),\n  available_limit_minor INTEGER, currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0)\n)"
+    },
+    {
+      "name": "widget_goal_snapshot",
+      "virtual": false,
+      "columns": [
+        "goal_id",
+        "balance_minor",
+        "target_minor",
+        "currency_code",
+        "as_of_local_revision"
+      ],
+      "createSql": "CREATE TABLE widget_goal_snapshot (\n  goal_id INTEGER PRIMARY KEY REFERENCES goal(id) ON DELETE CASCADE, balance_minor INTEGER NOT NULL,\n  target_minor INTEGER NOT NULL CHECK (target_minor > 0), currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  as_of_local_revision INTEGER NOT NULL CHECK (as_of_local_revision >= 0)\n)"
+    }
+  ],
+  "indexes": [
+    {
+      "name": "ix_account_balance_daily",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_account_balance_daily ON account_balance_daily(account_id, local_date)"
+    },
+    {
+      "name": "ix_background_operation_state",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_background_operation_state ON background_operation(state, updated_at)"
+    },
+    {
+      "name": "ix_backup_snapshot_repository_date",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_backup_snapshot_repository_date ON backup_snapshot(repository_id, created_at DESC)"
+    },
+    {
+      "name": "ix_budget_effect_month_category",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_budget_effect_month_category ON budget_effect(target_year_month, category_id)"
+    },
+    {
+      "name": "ix_business_transaction_state_current",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_business_transaction_state_current ON business_transaction(lifecycle_state, current_revision_id)"
+    },
+    {
+      "name": "ix_credit_statement_cycle",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_credit_statement_cycle ON credit_statement(credit_account_id, cycle_start, cycle_end)"
+    },
+    {
+      "name": "ix_current_transaction_keyset",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_current_transaction_keyset ON current_transaction_projection(occurred_at DESC, transaction_id DESC)"
+    },
+    {
+      "name": "ix_current_transaction_page",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_current_transaction_page ON current_transaction_projection(state, local_date DESC, occurred_at DESC, transaction_id DESC)"
+    },
+    {
+      "name": "ix_economic_effect_category_date",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_economic_effect_category_date ON economic_effect(category_id, accrual_local_date)"
+    },
+    {
+      "name": "ix_economic_effect_date_nature",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_economic_effect_date_nature ON economic_effect(accrual_local_date, nature, is_consumption)"
+    },
+    {
+      "name": "ix_economic_effect_merchant_date",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_economic_effect_merchant_date ON economic_effect(merchant_id, accrual_local_date)"
+    },
+    {
+      "name": "ix_economic_effect_project_date",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_economic_effect_project_date ON economic_effect(project_id, accrual_local_date)"
+    },
+    {
+      "name": "ix_journal_effective",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_journal_effective ON journal_entry(effective_at, id)"
+    },
+    {
+      "name": "ix_loan_actual_allocation_target",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_loan_actual_allocation_target ON loan_actual_allocation(tranche_id, schedule_item_id)"
+    },
+    {
+      "name": "ix_loan_schedule_item_number",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_loan_schedule_item_number ON loan_schedule_item(schedule_revision_id, installment_no)"
+    },
+    {
+      "name": "ix_location_record_place",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_location_record_place ON location_record(place_id, captured_at)"
+    },
+    {
+      "name": "ix_posting_account_entry",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_posting_account_entry ON posting(ledger_account_id, journal_entry_id)"
+    },
+    {
+      "name": "ix_recurrence_occurrence_time",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_recurrence_occurrence_time ON recurrence_occurrence(series_id, occurrence_instant)"
+    },
+    {
+      "name": "ix_settlement_effect_position",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_settlement_effect_position ON settlement_effect(activity_id, participant_id)"
+    },
+    {
+      "name": "ix_statement_effect_statement_kind",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_statement_effect_statement_kind ON statement_effect(statement_id, kind)"
+    },
+    {
+      "name": "ix_transaction_revision_attachment_order",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_transaction_revision_attachment_order ON transaction_revision_attachment(revision_id, sort_order)"
+    },
+    {
+      "name": "ix_transaction_revision_history",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_transaction_revision_history ON transaction_revision(transaction_id, revision_no DESC)"
+    },
+    {
+      "name": "ix_transaction_revision_timeline",
+      "unique": false,
+      "createSql": "CREATE INDEX ix_transaction_revision_timeline ON transaction_revision(local_date DESC, occurred_at DESC, id DESC)"
+    },
+    {
+      "name": "uq_budget_adjustment_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_budget_adjustment_reversal ON budget_adjustment(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_budget_effect_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_budget_effect_reversal ON budget_effect(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_credit_payment_allocation_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_credit_payment_allocation_reversal ON credit_payment_allocation(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_economic_effect_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_economic_effect_reversal ON economic_effect(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_goal_effect_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_goal_effect_reversal ON goal_effect(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_goal_movement_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_goal_movement_reversal ON goal_movement(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_journal_entry_reverses_entry",
+      "unique": true,
+      "createSql": "-- Ledger schema v1 indices and deterministic diagnostic views.\nCREATE UNIQUE INDEX uq_journal_entry_reverses_entry ON journal_entry(reverses_entry_id) WHERE reverses_entry_id IS NOT NULL"
+    },
+    {
+      "name": "uq_loan_actual_allocation_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_loan_actual_allocation_reversal ON loan_actual_allocation(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_loan_effect_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_loan_effect_reversal ON loan_effect(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_participant_single_self",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_participant_single_self ON participant(is_self) WHERE is_self = 1"
+    },
+    {
+      "name": "uq_posting_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_posting_reversal ON posting(reversal_of_posting_id) WHERE reversal_of_posting_id IS NOT NULL"
+    },
+    {
+      "name": "uq_project_effect_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_project_effect_reversal ON project_effect(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_refund_allocation_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_refund_allocation_reversal ON refund_allocation(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_settlement_effect_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_settlement_effect_reversal ON settlement_effect(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_settlement_payment_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_settlement_payment_reversal ON settlement_payment_record(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    },
+    {
+      "name": "uq_statement_effect_reversal",
+      "unique": true,
+      "createSql": "CREATE UNIQUE INDEX uq_statement_effect_reversal ON statement_effect(reversal_of_id) WHERE reversal_of_id IS NOT NULL"
+    }
+  ],
+  "views": [
+    {
+      "name": "account_running_balance",
+      "createSql": "CREATE VIEW account_running_balance AS\nSELECT account_id, local_date, opening_minor, inflow_minor, outflow_minor, closing_minor,\n       SUM(inflow_minor - outflow_minor) OVER (\n         PARTITION BY account_id ORDER BY local_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n       ) AS cumulative_net_minor,\n       as_of_local_revision\nFROM account_balance_daily"
+    },
+    {
+      "name": "current_transaction_subtype_audit",
+      "createSql": "CREATE VIEW current_transaction_subtype_audit AS\nSELECT bt.id AS transaction_id, bt.kind, bt.current_revision_id,\n  CASE bt.kind\n    WHEN 0 THEN EXISTS(SELECT 1 FROM expense_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    WHEN 1 THEN EXISTS(SELECT 1 FROM income_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    WHEN 2 THEN EXISTS(SELECT 1 FROM transfer_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    WHEN 3 THEN EXISTS(SELECT 1 FROM refund_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    WHEN 4 THEN EXISTS(SELECT 1 FROM credit_payment_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    WHEN 5 THEN EXISTS(SELECT 1 FROM loan_disbursement_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    WHEN 6 THEN EXISTS(SELECT 1 FROM loan_payment_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    WHEN 7 THEN EXISTS(SELECT 1 FROM balance_adjustment_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    WHEN 8 THEN EXISTS(SELECT 1 FROM fx_exchange_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    WHEN 9 THEN EXISTS(SELECT 1 FROM settlement_payment_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    WHEN 10 THEN EXISTS(SELECT 1 FROM opening_balance_revision_detail d WHERE d.revision_id = bt.current_revision_id)\n    ELSE 0\n  END AS has_matching_detail\nFROM business_transaction bt"
+    },
+    {
+      "name": "journal_balance_audit",
+      "createSql": "CREATE VIEW journal_balance_audit AS\nSELECT id AS journal_entry_id, base_debit_total_minor, base_credit_total_minor,\n       CASE WHEN base_debit_total_minor = base_credit_total_minor THEN 1 ELSE 0 END AS is_balanced\nFROM journal_entry"
+    },
+    {
+      "name": "projection_revision_audit",
+      "createSql": "CREATE VIEW projection_revision_audit AS\nSELECT 'current_transaction_projection' AS projection_name, MIN(as_of_local_revision) AS min_revision,\n       MAX(as_of_local_revision) AS max_revision, (SELECT local_revision FROM book WHERE id = 1) AS book_revision\nFROM current_transaction_projection\nUNION ALL\nSELECT 'account_balance_current', MIN(as_of_local_revision), MAX(as_of_local_revision),\n       (SELECT local_revision FROM book WHERE id = 1) FROM account_balance_current\nUNION ALL\nSELECT 'budget_usage_projection', MIN(as_of_local_revision), MAX(as_of_local_revision),\n       (SELECT local_revision FROM book WHERE id = 1) FROM budget_usage_projection"
+    }
+  ],
+  "triggers": [
+    {
+      "name": "book_base_currency_frozen",
+      "createSql": "CREATE TRIGGER book_base_currency_frozen BEFORE UPDATE OF base_currency ON book\nWHEN OLD.first_financial_commit_at IS NOT NULL AND NEW.base_currency <> OLD.base_currency\nBEGIN SELECT RAISE(ABORT, 'base currency is frozen after the first financial commit'); END"
+    },
+    {
+      "name": "category_hierarchy_insert",
+      "createSql": "CREATE TRIGGER category_hierarchy_insert BEFORE INSERT ON category\nWHEN NEW.depth = 2 AND NOT EXISTS(\n  SELECT 1 FROM category parent WHERE parent.id = NEW.parent_id AND parent.depth = 1 AND parent.direction = NEW.direction\n)\nBEGIN SELECT RAISE(ABORT, 'child category requires a same-direction first-level parent'); END"
+    },
+    {
+      "name": "category_hierarchy_update",
+      "createSql": "CREATE TRIGGER category_hierarchy_update BEFORE UPDATE OF parent_id, depth, direction ON category\nWHEN (OLD.depth = 2 AND NEW.parent_id IS NOT OLD.parent_id) OR\n     (NEW.depth = 2 AND NOT EXISTS(\n       SELECT 1 FROM category parent WHERE parent.id = NEW.parent_id AND parent.depth = 1 AND parent.direction = NEW.direction\n     ))\nBEGIN SELECT RAISE(ABORT, 'category hierarchy mutation rejected'); END"
+    },
+    {
+      "name": "current_transaction_revision_insert",
+      "createSql": "CREATE TRIGGER current_transaction_revision_insert BEFORE INSERT ON business_transaction\nWHEN NEW.current_revision_id IS NOT NULL AND NOT EXISTS(\n  SELECT 1 FROM transaction_revision revision WHERE revision.id = NEW.current_revision_id AND revision.transaction_id = NEW.id\n)\nBEGIN SELECT RAISE(ABORT, 'current revision must belong to the transaction'); END"
+    },
+    {
+      "name": "current_transaction_revision_update",
+      "createSql": "CREATE TRIGGER current_transaction_revision_update BEFORE UPDATE OF current_revision_id ON business_transaction\nWHEN NEW.current_revision_id IS NOT NULL AND NOT EXISTS(\n  SELECT 1 FROM transaction_revision revision WHERE revision.id = NEW.current_revision_id AND revision.transaction_id = NEW.id\n)\nBEGIN SELECT RAISE(ABORT, 'current revision must belong to the transaction'); END"
+    },
+    {
+      "name": "posting_account_currency_insert",
+      "createSql": "CREATE TRIGGER posting_account_currency_insert BEFORE INSERT ON posting\nWHEN NEW.account_currency <> (SELECT currency_code FROM ledger_account WHERE id = NEW.ledger_account_id)\nBEGIN SELECT RAISE(ABORT, 'posting currency must match ledger account currency'); END"
+    },
+    {
+      "name": "settlement_self_payment_link_insert",
+      "createSql": "CREATE TRIGGER settlement_self_payment_link_insert BEFORE INSERT ON settlement_payment_record\nWHEN (\n  EXISTS(SELECT 1 FROM participant WHERE id = NEW.payer_participant_id AND is_self = 1) OR\n  EXISTS(SELECT 1 FROM participant WHERE id = NEW.payee_participant_id AND is_self = 1)\n) AND NEW.linked_transaction_id IS NULL\nBEGIN SELECT RAISE(ABORT, 'a self-involved settlement payment requires a linked transaction'); END"
+    },
+    {
+      "name": "user_account_currency_matches_ledger_insert",
+      "createSql": "CREATE TRIGGER user_account_currency_matches_ledger_insert BEFORE INSERT ON user_account\nWHEN NEW.currency_code <> (SELECT currency_code FROM ledger_account WHERE id = NEW.ledger_account_id)\nBEGIN SELECT RAISE(ABORT, 'user account currency must match ledger account currency'); END"
+    },
+    {
+      "name": "user_account_currency_matches_ledger_update",
+      "createSql": "CREATE TRIGGER user_account_currency_matches_ledger_update BEFORE UPDATE OF currency_code, ledger_account_id ON user_account\nWHEN NEW.currency_code <> (SELECT currency_code FROM ledger_account WHERE id = NEW.ledger_account_id)\nBEGIN SELECT RAISE(ABORT, 'user account currency must match ledger account currency'); END"
+    },
+    {
+      "name": "user_account_used_currency_frozen",
+      "createSql": "CREATE TRIGGER user_account_used_currency_frozen BEFORE UPDATE OF currency_code ON user_account\nWHEN NEW.currency_code <> OLD.currency_code AND EXISTS(\n  SELECT 1 FROM posting p JOIN ledger_account la ON la.id = p.ledger_account_id WHERE la.id = OLD.ledger_account_id\n)\nBEGIN SELECT RAISE(ABORT, 'account currency is frozen after its first posting'); END"
+    }
+  ],
+  "migrationPolicy": {
+    "phases": [
+      "EXPAND",
+      "BACKFILL",
+      "SWITCH",
+      "CONTRACT"
+    ],
+    "destructiveFallbackAllowed": false
+  }
+}

@@ -225,3 +225,40 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: refund and credit-payment payloads expose allocation lists, and accepting totals unrelated to the authoritative transaction amount would create internally inconsistent subledger effects.
 - Decision: linked refund base allocations must sum exactly to the frozen refund base amount and match frozen refundable currency/balance evidence; independent refunds carry no allocations. Credit payments require one or more statement allocations (a null statement means unallocated prepayment), with matching currency and an exact sum to the credit-account amount. Candidate auto-payments are rejected before fact materialization.
 - Consequence: StatementEffect and refund facts are complete and checked without inference in UI or persistence. Later repositories persist these already-validated allocations atomically.
+
+## DL-031 — Room owns lifecycle and migration while canonical DDL owns unsupported SQLite features
+
+- Date/stage: 2026-08-02 / P07
+- Surface issue: Room 2.8.4 annotations cannot express FTS5, R*Tree virtual tables, arbitrary table `CHECK` clauses or the cross-row immutability constraints required by the frozen logical model. Treating Room's annotation schema as the entire database would silently lose mandatory SQLite behavior.
+- Precedence applied: the frozen Room 2.8.4 + SQLCipher 4.17.0 stack, full logical constraints and FTS5/R*Tree requirements all remain mandatory.
+- Decision: both encrypted databases are real `RoomDatabase` instances with exported Room v1 registry schemas and explicit migration registries. A deterministic callback installs versioned canonical SQL assets for the normalized schema, views, indexes and triggers. The complete raw-DDL catalogs are independently exported as checked-in JSON and are machine-compared with the 94-table frozen inventory.
+- Consequence: Room still controls opening, version identity, migration registration and transaction integration; unsupported DDL is not weakened or hidden. P08 repositories may use the Room-owned connection but may not create a second SQLite path.
+
+## DL-032 — Security pragmas run in the SQLCipher connection hook
+
+- Date/stage: 2026-08-02 / P07
+- Surface issue: `auto_vacuum=INCREMENTAL` must be set before the first table is created, while `RoomDatabase.Callback.onCreate` runs after Room creates its registry table. Foreign-key and temporary-storage settings also apply per connection.
+- Decision: the official SQLCipher `SQLiteDatabaseHook.postKey` applies incremental auto-vacuum, foreign keys, memory-only temporary storage, secure delete, recursive triggers, cipher memory security and disabled cipher logging immediately after the key succeeds and before Room schema creation. `RoomDatabase.Callback.onOpen` fails closed if the persistent/connection values differ.
+- Consequence: there is no transient unencrypted framework database and no file-backed SQLite temp downgrade. API 36 device tests prove the effective PRAGMAs, encrypted WAL behavior and close/reopen path.
+
+## DL-033 — `rule_set_version` is an explicit v1 table in addition to the frozen 94-table §25 inventory
+
+- Date/stage: 2026-08-02 / P07
+- Surface issue: domain §25's heading-derived inventory contains 94 named tables but architecture §9 explicitly lists `rule_set_version`, and domain §33 requires Journal and Effect facts to preserve the rule version.
+- Precedence applied: historical-fact interpretation and the architecture database family outrank a count-only interpretation of §25 headings.
+- Decision: retain the exact 94 tables unchanged and add normalized `rule_set_version` as the 95th core schema table. `journal_entry` and every typed Effect table reference it; no rule metadata is stored in a universal JSON column.
+- Consequence: old facts remain interpretable without rewriting history. Validators separately assert the exact frozen 94-table subset and the required additional rule table, so neither can mask the other.
+
+## DL-034 — Schema v1 has explicit empty predecessor registries, not a synthetic migration
+
+- Date/stage: 2026-08-02 / P07
+- Surface issue: P07 must test every registered upgrade path, but v1 is the first schema and has no legitimate earlier production version.
+- Decision: primary and staging databases each expose an independently versioned, explicitly empty migration registry for v1. Future migrations must be adjacent, registered with Room and carry ordered Expand → Backfill → Switch → Contract steps. Builders always call `addMigrations` and never call a destructive fallback.
+- Consequence: v1 creation/reopen is device-tested and Room exports both v1 identities. No fake v0 schema or destructive rebuild is introduced merely to create a migration test case.
+
+## DL-035 — Immutable facts allow physical deletion only behind the maintenance guard
+
+- Date/stage: 2026-08-02 / P07
+- Surface issue: ordinary operations must never update/delete Revision or Fact rows, while the higher-priority controlled privacy-purge rule permits deletion of a fully reversed closed chain during maintenance.
+- Decision: every immutable table receives a trigger that always rejects updates and rejects deletes unless the book is in `MAINTENANCE` and the internal runtime purge guard is explicitly armed. P07 exposes no public method to arm that guard. One-to-one reversal indexes and historical foreign keys remain enforced independently.
+- Consequence: ordinary DAO mistakes fail at SQLite rather than relying only on convention. P31 must implement the maintenance-lock eligibility audit before it can receive a narrowly scoped internal purge capability; P07 does not claim that later workflow.

@@ -11,6 +11,7 @@ maplibre = "13.4.1"
 vico = "3.2.3"
 room = "2.8.4"
 sqlcipher = "4.17.0"
+androidx-sqlite = "2.6.2"
 coil = "3.5.0"
 tink = "1.23.0"
 fastexcel = "0.20.2"
@@ -63,6 +64,10 @@ compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest", version.ref = "compose-ui-test" }
 mockwebserver = { module = "com.squareup.okhttp3:mockwebserver3", version.ref = "okhttp" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-sqlite = { module = "androidx.sqlite:sqlite", version.ref = "androidx-sqlite" }
+sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
 benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "benchmark" }
 profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "benchmark" }
 jankstats = { module = "androidx.metrics:metrics-performance", version.ref = "jankstats" }
