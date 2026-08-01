@@ -273,6 +273,42 @@ tasks.register("p04Artifacts") {
     dependsOn("p03Artifacts")
 }
 
+val validateP05Domain by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the complete pure-Kotlin P05 domain, command, lifecycle and port contract."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p05_domain.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("analytics/domain/src") { include("**/*.kt") },
+        fileTree("transfer/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+    )
+}
+
+tasks.register("p05Check") {
+    group = "verification"
+    description = "Runs P04 plus the P05 domain/application tests, architecture policies and coverage gate."
+    dependsOn(
+        "p04Check",
+        validateP05Domain,
+        ":finance:domain:test",
+        ":finance:application:test",
+        ":analytics:domain:test",
+        ":transfer:domain:test",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+tasks.register("p05Artifacts") {
+    group = "verification"
+    description = "Generates P05-inclusive coverage and inherited auditable supply-chain artifacts."
+    dependsOn("p04Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

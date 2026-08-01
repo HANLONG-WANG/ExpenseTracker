@@ -160,3 +160,33 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Precedence applied: preserve the YAML path shapes but interpret these fields as opaque implementation keys, not user text.
 - Decision: `OpaqueKeyArgument` and the similarly open-ended named-enum wrapper have private constructors and internal validators. Feature code cannot construct arbitrary string arguments; future registered key constants must be exposed from `:core:navigation`. Stable IDs, exact contract enums, year-month, masks and positive widget IDs remain the only public argument constructors.
 - Consequence: all 215 patterns remain machine-equal to YAML, while the public route type system cannot transport arbitrary sensitive strings.
+
+## DL-022 — Runtime ISO currencies use a validated capability type at the command boundary
+
+- Date/stage: 2026-08-01 / P05
+- Surface issue: P05 requires compile-time prevention of wrong-currency account writes, while account/currency pairs are user-created runtime data and therefore cannot truthfully be represented by a finite compile-time generic currency parameter.
+- Precedence applied: exact runtime account currency and immutable monetary evidence outrank a fictitious compile-time ISO currency universe.
+- Decision: formal payloads cannot accept raw `Money` for an account. They require `AccountAmount`, whose real constructor and data-class copy are private; only `AccountAmount.create(AccountSnapshot, Money)` can produce it and the factory rejects inactive accounts, non-positive amounts and currency mismatch. Expense/income/category/project shapes are closed directly in their constructor types.
+- Consequence: the compiler prevents bypassing currency validation in Kotlin command construction, while the required runtime comparison remains explicit and typed. No phantom type claims knowledge the application does not have.
+
+## DL-023 — Lifecycle is a type parameter, not a mutable record flag
+
+- Date/stage: 2026-08-01 / P05
+- Surface issue: the domain document labels database tables C/R/F/P/K/O, while P05 has no Room schema and must still prevent lifecycle mixing in pure Kotlin.
+- Decision: `LifecycleRecord<L>` uses six closed marker types: Current, Revision, Fact, Projection, Cache and Operation. Each production record fixes its lifecycle in its implemented type; callers cannot mutate a record from one lifecycle to another by changing a field.
+- Consequence: P05 can prove model separation without prematurely creating P07 entities. Physical immutability, append-only DAO rules and rebuild behavior remain P07/P08 evidence.
+
+## DL-024 — Transaction payload means a sealed subtype, never a generic property bag
+
+- Date/stage: 2026-08-01 / P05
+- Surface issue: the frozen `TransactionRevision` sketch names a `payload`, but the same document requires typed detail tables and prohibits a universal transaction object.
+- Decision: `TransactionPayload` is sealed with exactly the eleven frozen transaction kinds. Ordinary expense/income payloads require a category; one payer/account/project/goal is structurally represented; subtype-only fields live only in their matching payload. A new static rule rejects `Map<String, Any?>` and JSON/property-bag types in all domain modules.
+- Consequence: adding a transaction kind requires an explicit compiler-visible subtype and contract update. No core field is hidden in generic JSON.
+
+## DL-025 — Ports follow the available frozen module boundaries
+
+- Date/stage: 2026-08-01 / P05
+- Surface issue: architecture places finance repository interfaces at the application boundary, but the frozen module graph provides no separate `:analytics:application` or `:transfer:application` module; their data modules depend directly on their domain modules.
+- Precedence applied: preserve the frozen module graph and dependency direction rather than inventing new modules.
+- Decision: all finance repositories and external finance capabilities live in `:finance:application`. Closed analytics query/algorithm ports live in `:analytics:domain`, and staging/backup/restore ports live in `:transfer:domain`, exactly opposite their frozen data-module dependency arrows. Cross-aggregate financial submission is still only through `FinancialMutationCoordinator`.
+- Consequence: no Android/Room/Hilt/OkHttp dependency enters a domain module, and no feature receives a DAO/Entity or infrastructure client.

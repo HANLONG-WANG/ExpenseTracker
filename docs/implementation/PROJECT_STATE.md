@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-01 (Asia/Tokyo)
-Current stage: P04 — unified design system, route contract and UI test foundation
-Stage status: VERIFIED (`P04-E001`—`P04-E011`); P00—P04 are complete and P05 is the next unstarted stage
+Current stage: P05 — complete domain model and application ports
+Stage status: VERIFIED (`P05-E001`—`P05-E006`); P00—P05 are complete and P06 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -125,18 +125,30 @@ P03 is complete with 36 core behavioral tests plus 12 build-logic policy tests (
 
 P04 creates no feature page, database write, SDK-backed map/widget, or fake persistence. Every row in `SCREEN_COVERAGE.csv` therefore remains `NOT_STARTED`; the independently verified cross-cutting route/state shell for all 215 screens is recorded here and in the generated contract evidence instead of misrepresenting screen UI completion.
 
+### P05 result
+
+| Area | P05 result | Classification |
+|---|---|---|
+| Lifecycle and aggregates | Six closed lifecycle markers separate Current/Revision/Fact/Projection/Cache/Operation records; Book/Commit/receipt, accounts/cards/classification, eleven transaction payloads, immutable revisions/amount evidence, Journal/Posting/effects and every frozen subledger aggregate are represented as pure Kotlin types | VERIFIED (`P05-E001`, `P05-E002`) |
+| Compile-time closure | Ordinary expense/income commands require typed category and payer values; transaction context exposes only one project and goal; formal account money can be constructed only by the currency-checking factory; transaction payloads are sealed to the eleven frozen kinds | VERIFIED (`P05-E001`, `P05-E002`, `P05-E003`) |
+| Mutation boundary | Commands carry expected revisions; `DefaultFinancialMutationCoordinator` performs idempotency lookup, snapshot, planning, domain validation and one atomic commit under the write gate; no UI, Worker or importer receives a financial DAO/Entity | VERIFIED as P05 API boundary (`P05-E002`, `P05-E003`); Room transaction implementation remains P07/P08 |
+| Query, analytics and transfer ports | Typed current/account/budget/project/installment/loan/widget projections and filters, closed 20-report analytics AST, durable operation state, staging/shadow/backup/restore/merge contracts and opaque operation launch token are present | VERIFIED for P05 contracts (`P05-E001`, `P05-E002`); adapters and algorithms remain their frozen later phases |
+| Governance and evidence | Exact §1—§35 mapping, P05 contract validator/mutation suite, generic-domain-payload rejection, pure-module architecture gate, 29 domain/application tests and 3,000 generated invariant cases pass | VERIFIED (`P05-E001`—`P05-E006`) |
+
+P05 introduces no Room Entity/DAO, SQLCipher behavior, Android dependency, feature page, fake repository or pretend persistence. The complete accounting-rule planners remain P06 and the physical schema/projections remain P07/P08; therefore target requirement rows truthfully remain `IN_PROGRESS` and all 215 screen rows remain `NOT_STARTED`.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-085` is `VERIFIED`; 26 requirements are `IN_PROGRESS` for accurately scoped foundations; 63 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-085` is `VERIFIED`; 64 requirements are `IN_PROGRESS` for accurately scoped foundations; 25 remain `NOT_STARTED` |
 | YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All `NOT_STARTED`; baseline rows created only |
-| Architecture ADRs | 20 + ADR-007A | ADR-001 `VERIFIED`; the other 20 decisions remain `NOT_STARTED` |
+| Architecture ADRs | 20 + ADR-007A | ADR-001 `VERIFIED`; 17 decisions are `IN_PROGRESS` at typed-contract level; ADR-002/016/017 remain `NOT_STARTED` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
-| Permanent domain invariants | 35 | `INV-034` `VERIFIED`; the other 34 remain `NOT_STARTED` |
+| Permanent domain invariants | 35 | `INV-034` `VERIFIED`; the other 34 are `IN_PROGRESS` at typed-model/policy foundation level and retain their later planner/database evidence |
 | Logical schema families | 12 | Registered; implementation `NOT_STARTED` |
-| Projection families | 7 + search/geographic indexes | Registered; implementation `NOT_STARTED` |
-| Durable/staging/backup operation inventories | 4 groups | Registered; implementation `NOT_STARTED` |
+| Projection families | 7 + search/geographic indexes | Typed domain/query contracts `IN_PROGRESS`; physical projection/index implementation `NOT_STARTED` |
+| Durable/staging/backup operation inventories | 4 groups | Typed Operation records and ports `IN_PROGRESS`; persistence/runtime implementation `NOT_STARTED` |
 
 ## Stage progression
 
@@ -147,18 +159,19 @@ P04 creates no feature page, database write, SDK-backed map/widget, or fake pers
 | P02 | VERIFIED | Repeatable aggregate/static/artifact gates, named rejection proofs, exact traceability and four local GMD suites pass; remote CI is separately `UNVERIFIED`; see `P02-E001`—`P02-E009` |
 | P03 | VERIFIED | Typed IDs, complete checked arithmetic including abs/accumulation, exact money/FX/expression/time/period/formatting foundations and real-violation rejection pass; see `P03-E001`—`P03-E009` |
 | P04 | VERIFIED | Complete token generation/mapping, governed components, 215-route/646-state contract, five stacks, static rules and API 28/API 36 UI matrices pass; see `P04-E001`—`P04-E011` |
-| P05—P36 | NOT_STARTED | P05 is the next execution stage; do not promote later work early |
+| P05 | VERIFIED | Complete pure Kotlin aggregate/lifecycle/query/operation model, coordinator/application ports, typed analytics/transfer contracts, property tests and architecture/static gates pass; see `P05-E001`—`P05-E006` |
+| P06—P36 | NOT_STARTED | P06 is the next execution stage; do not promote later work early |
 
-## P05 entry state
+## P06 entry state
 
-P04 leaves the repository at a verified exact-value plus UI-contract baseline. Its completion commands are:
+P05 leaves the repository at a verified typed domain/application boundary. Its completion commands are:
 
 ```text
-python3 scripts/generate_p04_contracts.py --check
+python3 scripts/validate_p05_domain.py
+python3 -m unittest scripts.tests.test_p05_domain_contracts -v
 python3 scripts/prove_source_policy_rejection.py
-./gradlew p04Check --configuration-cache --no-parallel --console=plain
-./gradlew :core:designsystem:pixel2Api28DebugAndroidTest :core:designsystem:pixel6Api36DebugAndroidTest --no-configuration-cache --no-parallel --console=plain
-./gradlew p04Artifacts --configuration-cache --no-parallel --console=plain
+./gradlew p05Check --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew p05Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
 ```
 
-All commands and final hygiene gates pass in `P04-E001`—`P04-E011`. P05 may consume the exact value APIs, stable IDs, generated route metadata and design contracts, but must not move financial authority into Compose or bypass `FinancialMutationCoordinator`. All 215 screen implementations remain `NOT_STARTED`; P05 must not infer page completion from their verified route/state shells.
+All commands and final hygiene gates pass in `P05-E001`—`P05-E006`. P06 may implement the frozen rule-by-rule planners against these closed payloads and immutable plan/fact/effect types, but must preserve coordinator-only writes and must not move accounting into repositories, Workers or UI. All 215 screen implementations remain `NOT_STARTED`; P06 must not infer page completion from typed domain capability.

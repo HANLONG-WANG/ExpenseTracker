@@ -153,6 +153,19 @@ internal object SourcePolicyEngine {
             )
                 .findAll(source)
                 .forEach { report("ARCH-DOMAIN-FRAMEWORK", it, "domain source imports a forbidden framework API") }
+            Regex(
+                "\\b(?:Map|MutableMap)\\s*<\\s*String\\s*,\\s*(?:Any|Any\\?)\\s*>|" +
+                    "\\b(?:JsonObject|JsonElement|JSONObject)\\b|" +
+                    "\\b(?:payload|attributes|properties)\\s*:\\s*(?:Map|MutableMap)\\s*<\\s*String\\s*,",
+            )
+                .findAll(source)
+                .forEach {
+                    report(
+                        "ARCH-DOMAIN-GENERIC-PAYLOAD",
+                        it,
+                        "domain core fields must use closed typed models instead of generic JSON/property bags",
+                    )
+                }
         }
 
         findings += authoritativeMoneyFindings(normalizedPath, source)

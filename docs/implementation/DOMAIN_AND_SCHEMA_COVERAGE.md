@@ -1,8 +1,12 @@
 # Domain and Schema Coverage Baseline
 
 Last updated: 2026-08-01 (Asia/Tokyo)
-Stage: P04
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P04 promotes only the design-system/navigation decisions it verifies; schema, planners, accounting persistence, security and feature behavior remain later scope.
+Stage: P05
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P05 verifies the pure Kotlin model/application boundary; schema, complete accounting planners, persistence, security adapters and feature behavior remain later scope.
+
+## P05 domain/application result
+
+P05 implements the complete typed model and port surface in `:finance:domain`, `:finance:application`, `:analytics:domain` and `:transfer:domain`. The exact §1—§35 mapping, lifecycle classification and later-phase boundaries are recorded in `P05_DOMAIN_API_MAPPING.md`. This is deliberately not a Room/schema or full P06 accounting-rule claim.
 
 ## Architecture decisions
 
@@ -12,25 +16,25 @@ Source: `docs/规格冻结_v1.0/系统架构.md` §22, except ADR-007A from `doc
 |---|---|---|---|
 | ADR-001 | Coarse-grained multi-module modular monolith | VERIFIED (`P01-E003`, `P01-E004`) | Dependency graph and architecture tests |
 | ADR-002 | SQLCipher primary database is the ledger's sole source of truth | NOT_STARTED | Device database and offline-first integration tests |
-| ADR-003 | Current state + immutable revisions + immutable financial log | NOT_STARTED | Domain and database contract tests |
-| ADR-004 | No full event sourcing | NOT_STARTED | Schema/API inspection |
-| ADR-005 | Lightweight CQRS separates writes from query projections | NOT_STARTED | Module/API and projection tests |
-| ADR-006 | Every financial write passes through `FinancialMutationCoordinator` | NOT_STARTED | Static call-site rule and integration tests |
-| ADR-007 | Journal and Posting are append-only in ordinary operations | NOT_STARTED | DAO constraints and mutation tests |
-| ADR-007A | Controlled privacy purge is the sole physical-delete exception and only applies to a fully reversed, closed transaction chain | NOT_STARTED | Purge eligibility, maintenance-lock, tombstone and merge tests |
-| ADR-008 | Editing reverses old effects and appends replacements | NOT_STARTED | Property and integration tests |
-| ADR-009 | Core financial projections update in the same database transaction | NOT_STARTED | Failure-injection and rollback tests |
-| ADR-010 | Single process and single write gate | NOT_STARTED | Manifest/process and concurrency tests |
-| ADR-011 | Network data is never authoritative ledger data | NOT_STARTED | Offline and adapter tests |
-| ADR-012 | Large imports use an encrypted staging or shadow database | NOT_STARTED | Device large-import and rollback tests |
-| ADR-013 | Restore validates in a shadow directory before atomic exchange | NOT_STARTED | Device fault-injection tests |
-| ADR-014 | Managed backups are logically full and physically incremental | NOT_STARTED | Repository retention/deduplication tests |
-| ADR-015 | Same-book merge uses stable IDs and a commit graph | NOT_STARTED | Three-way merge and conflict tests |
+| ADR-003 | Current state + immutable revisions + immutable financial log | IN_PROGRESS (`P05-E001`, `P05-E002`: typed lifecycle/API; database remains P07) | Domain and database contract tests |
+| ADR-004 | No full event sourcing | IN_PROGRESS (`P05-E001`: current pointer + immutable facts API) | Schema/API inspection |
+| ADR-005 | Lightweight CQRS separates writes from query projections | IN_PROGRESS (`P05-E001`, `P05-E004`: typed query/projection ports) | Module/API and projection tests |
+| ADR-006 | Every financial write passes through `FinancialMutationCoordinator` | IN_PROGRESS (`P05-E002`, `P05-E003`: single application coordinator/atomic commit port; data integration remains P07) | Static call-site rule and integration tests |
+| ADR-007 | Journal and Posting are append-only in ordinary operations | IN_PROGRESS (`P05-E001`, `P05-E002`: Fact-only immutable API; DAO constraints remain P07) | DAO constraints and mutation tests |
+| ADR-007A | Controlled privacy purge is the sole physical-delete exception and only applies to a fully reversed, closed transaction chain | IN_PROGRESS (`P05-E002`: fail-closed eligibility/tombstone/merge types; integration remains P31) | Purge eligibility, maintenance-lock, tombstone and merge tests |
+| ADR-008 | Editing reverses old effects and appends replacements | IN_PROGRESS (`P05-E001`: revision/reversal plan contract; complete rules remain P06) | Property and integration tests |
+| ADR-009 | Core financial projections update in the same database transaction | IN_PROGRESS (`P05-E001`, `P05-E002`: aligned `ProjectionChangeSet` + atomic port) | Failure-injection and rollback tests |
+| ADR-010 | Single process and single write gate | IN_PROGRESS (`P05-E002`: `LedgerWriteGate`; runtime proof remains later) | Manifest/process and concurrency tests |
+| ADR-011 | Network data is never authoritative ledger data | IN_PROGRESS (`P05-E001`: external evidence ports return typed immutable evidence) | Offline and adapter tests |
+| ADR-012 | Large imports use an encrypted staging or shadow database | IN_PROGRESS (`P05-E001`, `P05-E002`: typed staging/shadow ports) | Device large-import and rollback tests |
+| ADR-013 | Restore validates in a shadow directory before atomic exchange | IN_PROGRESS (`P05-E001`: validation/exchange contract) | Device fault-injection tests |
+| ADR-014 | Managed backups are logically full and physically incremental | IN_PROGRESS (`P05-E001`: snapshot/object graph contracts) | Repository retention/deduplication tests |
+| ADR-015 | Same-book merge uses stable IDs and a commit graph | IN_PROGRESS (`P05-E001`, `P05-E002`: commit graph/conflict/tombstone precedence model) | Three-way merge and conflict tests |
 | ADR-016 | Ledger, vault and recovery-password key hierarchies are separate | NOT_STARTED | Keystore/Tink device security tests |
 | ADR-017 | App lock is UI access control; vault uses a cryptographic authentication gate | NOT_STARTED | Biometric/device-credential tests |
-| ADR-018 | WorkManager carries only opaque operation IDs | NOT_STARTED | Static InputData privacy audit |
-| ADR-019 | Reports use a typed AST and never accept user SQL | NOT_STARTED | Compiler whitelist/security tests |
-| ADR-020 | The domain model enforces the no-split-transaction limitation | NOT_STARTED | Domain/import/report contract tests |
+| ADR-018 | WorkManager carries only opaque operation IDs | IN_PROGRESS (`P05-E001`, `P05-E002`: one-field `OperationLaunchToken`; Worker remains later) | Static InputData privacy audit |
+| ADR-019 | Reports use a typed AST and never accept user SQL | IN_PROGRESS (`P05-E001`, `P05-E002`: closed `ReportSpec` AST; SQL compiler remains later) | Compiler whitelist/security tests |
+| ADR-020 | The domain model enforces the no-split-transaction limitation | IN_PROGRESS (`P05-E001`, `P05-E002`: compile-time closed category/payer/project shapes; import/report integration remains later) | Domain/import/report contract tests |
 
 The 12 UI-derived decisions from UI contract §18 are separately registered below. P04 may verify a closed cross-cutting contract, while decisions that require actual screen/application behavior remain `IN_PROGRESS` or `NOT_STARTED`.
 
@@ -55,41 +59,41 @@ Source: `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` �
 
 | ID | Invariant | Primary verification class | Status |
 |---|---|---|---|
-| INV-001 | Every Journal Entry has equal base-currency debits and credits. | Domain property + database audit + restore validation | NOT_STARTED |
-| INV-002 | Every Posting currency matches its LedgerAccount currency. | Planner property + database audit | NOT_STARTED |
-| INV-003 | Every formal transaction has at most one category, project and goal. | Type/domain validation + import tests | NOT_STARTED |
-| INV-004 | Ordinary expense/income has one Primary amount and no category split. | Domain property + UI/import contract | NOT_STARTED |
-| INV-005 | Every current transaction references one complete, self-consistent current revision. | Database integrity audit | NOT_STARTED |
-| INV-006 | Old revisions, Journals and Effects are not changed during ordinary operations. | DAO/static rule + mutation tests | NOT_STARTED |
-| INV-007 | Each APPLY Entry is reversed at most once. | Unique constraint + property tests | NOT_STARTED |
-| INV-008 | An Active transaction's net APPLY chain yields exactly one current financial effect. | Domain/database audit | NOT_STARTED |
-| INV-009 | A Trashed transaction has zero current net financial effect. | Domain/database audit | NOT_STARTED |
-| INV-010 | Refunds cannot exceed the refundable balance without explicit override. | Domain property + UI tests | NOT_STARTED |
-| INV-011 | Refund cash-flow date, accrual date and budget month may differ. | Cross-month integration tests | NOT_STARTED |
-| INV-012 | Credit-card repayment creates neither expense nor income. | Planner property + report tests | NOT_STARTED |
-| INV-013 | Loan principal repayment creates no expense. | Planner property + report tests | NOT_STARTED |
-| INV-014 | Loan interest, fees and penalties create non-consumption expense. | Planner property + report tests | NOT_STARTED |
-| INV-015 | Internal transfer does not change net financial assets. | Planner property + projection tests | NOT_STARTED |
-| INV-016 | Current FX rates cannot change historical base-currency amounts. | Historical-regression tests | NOT_STARTED |
-| INV-017 | Current FX revaluation is not income or expense. | Projection/report tests | NOT_STARTED |
-| INV-018 | First-level category budget total cannot exceed total budget. | Domain property + UI tests | NOT_STARTED |
-| INV-019 | Second-level category budget total cannot exceed its parent budget. | Domain property + UI tests | NOT_STARTED |
-| INV-020 | Rollover chains rebuild from transaction effects, adjustments and prior-month rollover. | Property + projection rebuild tests | NOT_STARTED |
-| INV-021 | Goal balance does not alter real account balance. | Planner/projection tests | NOT_STARTED |
-| INV-022 | Settlement position deltas sum to zero across participants. | Domain property + database audit | NOT_STARTED |
-| INV-023 | External-participant payment cannot alter the local user's account. | Planner property + UI integration | NOT_STARTED |
-| INV-024 | Editing a settled activity transaction does not rewrite historical settlement payments. | Revision/integration tests | NOT_STARTED |
-| INV-025 | Loan-schedule principal total equals principal still to be repaid. | Property tests | NOT_STARTED |
-| INV-026 | Installment-schedule principal total equals installment principal. | Property tests | NOT_STARTED |
-| INV-027 | The recurrence occurrence unique key prevents duplicate generation. | Concurrency/idempotency tests | NOT_STARTED |
-| INV-028 | Candidate records create no formal financial effects. | Domain/database/report tests | NOT_STARTED |
-| INV-029 | Category/account/card tombstones or archives preserve historical references. | Migration/history tests | NOT_STARTED |
-| INV-030 | Purge tombstones win over old entity versions during merge restore. | Merge integration tests | NOT_STARTED |
-| INV-031 | Every core projection aligns to the same `localRevision`. | Atomicity/failure-injection audit | NOT_STARTED |
-| INV-032 | Vault fields never enter FTS, audit snapshots, logs or telemetry. | Static/privacy/device audit | NOT_STARTED |
-| INV-033 | Failed import, restore or large batch leaves the main ledger unchanged. | Shadow-DB fault injection | NOT_STARTED |
+| INV-001 | Every Journal Entry has equal base-currency debits and credits. | Domain property + database audit + restore validation | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-002 | Every Posting currency matches its LedgerAccount currency. | Planner property + database audit | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-003 | Every formal transaction has at most one category, project and goal. | Type/domain validation + import tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-004 | Ordinary expense/income has one Primary amount and no category split. | Domain property + UI/import contract | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-005 | Every current transaction references one complete, self-consistent current revision. | Database integrity audit | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-006 | Old revisions, Journals and Effects are not changed during ordinary operations. | DAO/static rule + mutation tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-007 | Each APPLY Entry is reversed at most once. | Unique constraint + property tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-008 | An Active transaction's net APPLY chain yields exactly one current financial effect. | Domain/database audit | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-009 | A Trashed transaction has zero current net financial effect. | Domain/database audit | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-010 | Refunds cannot exceed the refundable balance without explicit override. | Domain property + UI tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-011 | Refund cash-flow date, accrual date and budget month may differ. | Cross-month integration tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-012 | Credit-card repayment creates neither expense nor income. | Planner property + report tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-013 | Loan principal repayment creates no expense. | Planner property + report tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-014 | Loan interest, fees and penalties create non-consumption expense. | Planner property + report tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-015 | Internal transfer does not change net financial assets. | Planner property + projection tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-016 | Current FX rates cannot change historical base-currency amounts. | Historical-regression tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-017 | Current FX revaluation is not income or expense. | Projection/report tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-018 | First-level category budget total cannot exceed total budget. | Domain property + UI tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-019 | Second-level category budget total cannot exceed its parent budget. | Domain property + UI tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-020 | Rollover chains rebuild from transaction effects, adjustments and prior-month rollover. | Property + projection rebuild tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-021 | Goal balance does not alter real account balance. | Planner/projection tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-022 | Settlement position deltas sum to zero across participants. | Domain property + database audit | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-023 | External-participant payment cannot alter the local user's account. | Planner property + UI integration | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-024 | Editing a settled activity transaction does not rewrite historical settlement payments. | Revision/integration tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-025 | Loan-schedule principal total equals principal still to be repaid. | Property tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-026 | Installment-schedule principal total equals installment principal. | Property tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-027 | The recurrence occurrence unique key prevents duplicate generation. | Concurrency/idempotency tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-028 | Candidate records create no formal financial effects. | Domain/database/report tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-029 | Category/account/card tombstones or archives preserve historical references. | Migration/history tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-030 | Purge tombstones win over old entity versions during merge restore. | Merge integration tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-031 | Every core projection aligns to the same `localRevision`. | Atomicity/failure-injection audit | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-032 | Vault fields never enter FTS, audit snapshots, logs or telemetry. | Static/privacy/device audit | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-033 | Failed import, restore or large batch leaves the main ledger unchanged. | Shadow-DB fault injection | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
 | INV-034 | Every monetary accumulation detects `Long` overflow. | Boundary/property/static tests | VERIFIED (`P03-E002`, `P03-E006`: checked sum plus named fold/reduce/`+=`/manual-loop rejection) |
-| INV-035 | Every cache depending on current transaction content carries a version. | Architecture/cache invalidation tests | NOT_STARTED |
+| INV-035 | Every cache depending on current transaction content carries a version. | Architecture/cache invalidation tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
 
 The 16 product-level system invariants in `需求.md` §26 remain additional acceptance constraints. They are covered by REQ rows and the architecture/security/operation gates; they do not replace the 35 canonical permanent invariants above.
 
@@ -136,10 +140,10 @@ Sources: architecture §§13–15 and domain/schema §28.
 
 | ID | Scope | Required records/states | Status |
 |---|---|---|---|
-| BACKGROUND-OPERATION | Durable operation state | `background_operation`, `operation_checkpoint`; QUEUED → PREPARING → RUNNING → PAUSED/CANCEL_REQUESTED/FAILED_* → COMMITTING/ROLLING_BACK → SUCCEEDED | NOT_STARTED |
-| IMPORT-METADATA | Main-database import audit | `import_record`, `import_batch_commit`, `import_source_reference` | NOT_STARTED |
-| IMPORT-STAGING | One-time encrypted SQLCipher staging DB | `staging_raw_row`, `staging_parsed_row`, `staging_mapping`, `staging_validation_error`, `staging_duplicate_candidate`, `staging_prepared_command`, `staging_attachment` | NOT_STARTED |
-| BACKUP-RESTORE-METADATA | Backup/Drive/restore/merge | `backup_repository`, `backup_snapshot`, `backup_object`, `backup_snapshot_object`, `drive_upload_session`, `restore_record`, `merge_session`, `merge_conflict`, `merge_resolution` | NOT_STARTED |
+| BACKGROUND-OPERATION | Durable operation state | `background_operation`, `operation_checkpoint`; QUEUED → PREPARING → RUNNING → PAUSED/CANCEL_REQUESTED/FAILED_* → COMMITTING/ROLLING_BACK → SUCCEEDED | IN_PROGRESS (`P05-E001`, `P05-E002`: pure operation model/transition tests; persistence remains P28) |
+| IMPORT-METADATA | Main-database import audit | `import_record`, `import_batch_commit`, `import_source_reference` | IN_PROGRESS (`P05-E001`: typed records; persistence remains P28) |
+| IMPORT-STAGING | One-time encrypted SQLCipher staging DB | `staging_raw_row`, `staging_parsed_row`, `staging_mapping`, `staging_validation_error`, `staging_duplicate_candidate`, `staging_prepared_command`, `staging_attachment` | IN_PROGRESS (`P05-E001`: all seven typed staging records/ports; SQLCipher staging remains P28) |
+| BACKUP-RESTORE-METADATA | Backup/Drive/restore/merge | `backup_repository`, `backup_snapshot`, `backup_object`, `backup_snapshot_object`, `drive_upload_session`, `restore_record`, `merge_session`, `merge_conflict`, `merge_resolution` | IN_PROGRESS (`P05-E001`, `P05-E002`: typed metadata/conflict contracts; persistence remains P29-P31) |
 
 Worker/UIDT/service payloads may contain only `operationId`; full parameters remain encrypted in the primary database. Large import/restore/batch flows must use the same planner/coordinator, checkpoints, atomic commit/exchange, rollback and temporary cleanup.
 
@@ -147,11 +151,11 @@ Worker/UIDT/service payloads may contain only `operationId`; full parameters rem
 
 | Gate | Frozen source | Status |
 |---|---|---|
-| Pure domain property suite for accounting, refunds, FX, loans, installments, budget, settlement, expressions and recurrence | Tech stack §16; architecture §21 | IN_PROGRESS (`P03-E002`—`P03-E005` verify IDs, checked arithmetic, money/FX, expressions and time; planners and remaining invariants belong to P05/P06+) |
+| Pure domain property suite for accounting, refunds, FX, loans, installments, budget, settlement, expressions and recurrence | Tech stack §16; architecture §21 | IN_PROGRESS (`P03-E002`—`P03-E005`; `P05-E002` adds 3,000 generated Journal/budget/settlement cases and typed subledger policies; complete transaction rules remain P06+) |
 | Room/SQLCipher schema, all migrations, FTS5, R*Tree, WAL plaintext and projection rebuild on device | Tech stack §§5,16; architecture §21 | NOT_STARTED |
 | Keystore, BiometricPrompt, SAF, location and foreground/UIDT behavior on actual devices | Tech stack §16 | NOT_STARTED |
 | Failure injection for attachment, commits, Drive, storage, restore exchange, Keystore, biometrics, row 99,999 and projection versions | Architecture §21.3 | NOT_STARTED |
 | Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`: external-dependency, receiver-alias, decoy-scope and privacy-wrapper fixtures) |
-| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P02-E001` verifies contract/ledger retention only; UI evidence remains later scope) |
+| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008` verify the cross-cutting route/state/design-system and device matrix; all 215 feature screen implementations and final acceptance remain later scope) |
 | Target-scale paging, reports, map, 100k-row import and tens-of-GB streaming operations | Requirements §25; UI contract §16.5 | NOT_STARTED |
 | Release AAB, Baseline Profile, locks, verification metadata, SBOM, licenses, NOTICE and privacy/release documentation | Tech stack §16.4 and release plan | IN_PROGRESS (`P02-E006` verifies locks/SBOM/license task infrastructure only; release evidence remains P36) |

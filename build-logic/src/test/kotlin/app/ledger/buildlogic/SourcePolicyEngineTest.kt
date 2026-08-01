@@ -74,6 +74,14 @@ class SourcePolicyEngineTest {
     }
 
     @Test
+    fun `rejects generic domain payload bags`() {
+        scan(
+            "finance/domain/src/main/kotlin/UniversalTransaction.kt",
+            "data class UniversalTransaction(val payload: Map<String, Any?>)",
+        ).shouldContain("ARCH-DOMAIN-GENERIC-PAYLOAD")
+    }
+
+    @Test
     fun `rejects binary floating point and unchecked sums in authoritative money code`() {
         val rules = scan(
             "core/money/src/main/kotlin/UnsafeMoney.kt",

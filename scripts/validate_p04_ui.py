@@ -215,7 +215,7 @@ def validate_repository_state() -> dict[str, int]:
 
     state = source_text("docs/implementation/PROJECT_STATE.md")
     evidence = source_text("docs/implementation/TEST_EVIDENCE.md")
-    if "Current stage: P04" not in state or "Stage status: VERIFIED (`P04-E001`—`P04-E011`)" not in state:
+    if "| P04 | VERIFIED |" not in state or "### P04 result" not in state:
         raise P04ValidationError("PROJECT_STATE does not truthfully mark P04 VERIFIED")
     if any(f"P04-E{number:03d}" not in evidence for number in range(1, 12)):
         raise P04ValidationError("P04 evidence ledger is incomplete")

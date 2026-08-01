@@ -124,7 +124,8 @@ def validate() -> dict[str, int]:
     if "| INV-034 |" not in domain_coverage or "INV-034` `VERIFIED" not in project_state:
         raise AssertionError("INV-034 verification is absent from the domain/project ledgers")
     workflow = (ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
-    has_cumulative_aggregate = "./gradlew p03Check" in workflow or "./gradlew p04Check" in workflow
+    aggregate_stages = [int(value) for value in re.findall(r"\./gradlew p(\d{2})Check", workflow)]
+    has_cumulative_aggregate = any(stage >= 3 for stage in aggregate_stages)
     if not has_cumulative_aggregate or "python3 scripts/prove_p03_policy_rejection.py" not in workflow:
         raise AssertionError("CI does not enforce the P03 aggregate and real-violation proof")
 

@@ -20,6 +20,7 @@ EXPECTED_RULES = {
     "[UI-COMPONENT-DUPLICATE]",
     "[PRIVACY-TEST-TAG]",
     "[ARCH-DOMAIN-FRAMEWORK]",
+    "[ARCH-DOMAIN-GENERIC-PAYLOAD]",
     "[PRIVACY-TELEMETRY-MAP]",
     "[PRIVACY-LOGGING]",
     "[PRIVACY-ROUTE-STATE]",
@@ -37,6 +38,7 @@ EXPECTED_FIXTURES = {
     "TelemetryAliasLeak.kt": "[PRIVACY-TELEMETRY-MAP]",
     "LoggingAliasLeak.kt": "[PRIVACY-LOGGING]",
     "DomainFrameworkLeak.kt": "[ARCH-DOMAIN-FRAMEWORK]",
+    "DomainGenericPayload.kt": "[ARCH-DOMAIN-GENERIC-PAYLOAD]",
     "UnknownScreenAndNondeterminism.kt": "[UI-SCREEN-ID]",
     "UngovernedUi.kt": "[UI-WRAPPER]",
 }
