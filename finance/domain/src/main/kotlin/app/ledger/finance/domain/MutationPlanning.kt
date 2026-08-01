@@ -1,5 +1,6 @@
 package app.ledger.finance.domain
 
+import app.ledger.core.common.CheckedArithmetic
 import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
@@ -305,10 +306,11 @@ data class PlanningSnapshot(
     val refundStatuses: List<RefundStatusProjection>,
     val budgetRevision: BudgetMonthRevision?,
     val participants: List<Participant>,
+    val accountingContext: AccountingPlanningContext? = null,
 )
 
 object FinancialMutationPlanValidator {
-    @Suppress("ComplexCondition", "ReturnCount")
+    @Suppress("ComplexCondition", "CyclomaticComplexMethod", "ReturnCount")
     fun validate(
         command: FinancialCommand,
         snapshot: PlanningSnapshot,
@@ -325,7 +327,9 @@ object FinancialMutationPlanValidator {
             plan.commit.parentIds != listOf(snapshot.book.headCommitId) ||
             plan.projectionChanges.targetRevision != plan.targetLocalRevision ||
             plan.ruleSetVersion != snapshot.book.ruleSetVersion ||
-            plan.journalBundles.any { it.entry.ruleSetVersion != plan.ruleSetVersion } ||
+            plan.journalBundles.any {
+                it.entry.role == JournalEntryRole.APPLY && it.entry.ruleSetVersion != plan.ruleSetVersion
+            } ||
             !hasRequiredWrites(command, plan)
         ) {
             return DomainResult.Failure(DomainViolation.InvalidField("mutationPlan.identityOrRevision"))
@@ -376,21 +380,94 @@ object FinancialMutationPlanValidator {
         if (snapshot.participants.count { it.isSelf && it.status == EntityStatus.ACTIVE } > 1) {
             return DomainResult.Failure(DomainViolation.InvalidField("participant.self"))
         }
+        val transactionLifecycle = validateTransactionLifecycle(command, snapshot, plan)
+        if (transactionLifecycle is DomainResult.Failure) return transactionLifecycle
         return DomainResult.Success(plan)
     }
 
-    private fun hasRequiredWrites(command: FinancialCommand, plan: FinancialMutationPlan): Boolean = when (command) {
-        is RecordTransactionCommand<*> -> {
-            val externalOnlySettlement = command is RecordSettlementPaymentCommand &&
-                !command.input.payload.selfParticipates
-            plan.transactions.isNotEmpty() &&
-                plan.revisions.isNotEmpty() &&
-                (externalOnlySettlement || plan.journalBundles.isNotEmpty())
+    @Suppress("ComplexCondition", "ReturnCount")
+    private fun validateTransactionLifecycle(
+        command: FinancialCommand,
+        snapshot: PlanningSnapshot,
+        plan: FinancialMutationPlan,
+    ): DomainResult<Unit> {
+        if (!command.isTransactionLifecycleCommand()) return DomainResult.Success(Unit)
+        if (plan.transactions.size != 1 || plan.revisions.size != 1) {
+            return DomainResult.Failure(DomainViolation.Invariant("INV-005"))
         }
+        val transaction = plan.transactions.single()
+        val revision = plan.revisions.single()
+        if (
+            transaction.currentRevisionId != revision.id ||
+            transaction.id != revision.transactionId ||
+            transaction.kind != revision.kind ||
+            transaction.lifecycleState != revision.resultingState ||
+            revision.source == TransactionSource.RECURRENCE_CANDIDATE
+        ) {
+            return DomainResult.Failure(DomainViolation.Invariant("INV-005"))
+        }
+        val expectedRoot = CanonicalFinancialHash.commitRoot(
+            plan.commandId,
+            plan.payloadHash,
+            plan.targetLocalRevision,
+            listOf(
+                transaction.contentHash,
+                revision.contentHash,
+                CanonicalFinancialHash.evidenceAndEffects(
+                    plan.revisionAmounts,
+                    plan.fxRateSnapshots,
+                    plan.economicEffects,
+                    plan.budgetEffects,
+                    plan.projectEffects,
+                    plan.goalEffects,
+                    plan.statementEffects,
+                    plan.loanEffects,
+                    plan.settlementEffects,
+                ),
+            ) +
+                plan.journalBundles.map { it.entry.contentHash },
+        )
+        if (expectedRoot != plan.commit.rootHash) {
+            return DomainResult.Failure(DomainViolation.InvalidField("bookCommit.rootHash"))
+        }
+        val roles = plan.journalBundles.map { it.entry.role }.toSet()
+        val validRoles = when (command) {
+            is RecordTransactionCommand<*>, is RestoreTransactionCommand -> roles.allOrEmpty(JournalEntryRole.APPLY)
+            is EditTransactionCommand -> roles.all { it == JournalEntryRole.APPLY || it == JournalEntryRole.REVERSE }
+            is MoveTransactionToTrashCommand -> roles.allOrEmpty(JournalEntryRole.REVERSE)
+            else -> true
+        }
+        if (!validRoles) return DomainResult.Failure(DomainViolation.Invariant("INV-008"))
+        if (command is EditTransactionCommand || command is MoveTransactionToTrashCommand) {
+            val original = snapshot.accountingContext?.currentFacts
+                ?: return DomainResult.Failure(DomainViolation.InvalidField("planningSnapshot.currentFacts"))
+            val audit = ImmutableFactAudit.validateReversal(original, plan)
+            if (audit is DomainResult.Failure) return audit
+        }
+        if (command is RecordExpenseCommand || command is RecordIncomeCommand) {
+            val primary = plan.revisionAmounts.filter { it.role == AmountRole.PRIMARY }
+            val requiredRepresentations = setOf(
+                AmountRepresentation.USER_INPUT,
+                AmountRepresentation.ACCOUNT,
+                AmountRepresentation.BASE,
+            )
+            if (
+                primary.map { it.componentIndex }.toSet() != setOf(0) ||
+                primary.map { it.representation }.toSet() != requiredRepresentations
+            ) {
+                return DomainResult.Failure(DomainViolation.Invariant("INV-004"))
+            }
+        }
+        return DomainResult.Success(Unit)
+    }
+
+    private fun hasRequiredWrites(command: FinancialCommand, plan: FinancialMutationPlan): Boolean = when (command) {
+        is RecordTransactionCommand<*> ->
+            plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts()
         is EditTransactionCommand,
         is MoveTransactionToTrashCommand,
         is RestoreTransactionCommand,
-        -> plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.journalBundles.isNotEmpty()
+        -> plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts()
         is PurgeTransactionCommand -> plan.purgeTombstones.any { tombstone ->
             tombstone.entity.stableId == command.transactionId.value
         } && plan.commit.kind == CommitKind.PURGE
@@ -407,7 +484,9 @@ object FinancialMutationPlanValidator {
     ): Boolean {
         val expected = dependencies.toSet()
         val actual = resolutions.map { it.dependency }.toSet()
-        return expected == actual && resolutions.map { it.dependency }.toSet().size == resolutions.size
+        return expected == actual &&
+            resolutions.map { it.dependency }.toSet().size == resolutions.size &&
+            resolutions.all { it.policy.supports(it.dependency.type) }
     }
 
     @Suppress("ReturnCount")
@@ -416,9 +495,26 @@ object FinancialMutationPlanValidator {
         statuses: List<RefundStatusProjection>,
     ): Boolean {
         if (command !is RecordRefundCommand || command.input.payload.independent) return true
+        if (statuses.map { it.originalTransactionId }.toSet().size != statuses.size) return false
+        if (statuses.any { status ->
+                val remaining = CheckedArithmetic.subtract(
+                    status.grossRefundable.minor.value,
+                    status.refundedMinor,
+                )
+                remaining !is DomainResult.Success || remaining.value != status.remainingMinor
+            }
+        ) {
+            return false
+        }
         val remainingByTransaction = statuses.associate { it.originalTransactionId to it.remainingMinor }
+        val currencyByTransaction = statuses.associate {
+            it.originalTransactionId to it.grossRefundable.currency
+        }
         for (allocation in command.input.payload.allocations) {
             val remaining = remainingByTransaction[allocation.originalTransactionId] ?: return false
+            if (currencyByTransaction[allocation.originalTransactionId] != allocation.amountInOriginalCurrency.currency) {
+                return false
+            }
             if (
                 allocation.amountInOriginalCurrency.minor.value > remaining &&
                 !command.input.payload.allowExcessOverride
@@ -429,3 +525,36 @@ object FinancialMutationPlanValidator {
         return true
     }
 }
+
+private fun FinancialMutationPlan.hasFinancialFacts(): Boolean = journalBundles.isNotEmpty() ||
+    economicEffects.isNotEmpty() ||
+    budgetEffects.isNotEmpty() ||
+    projectEffects.isNotEmpty() ||
+    goalEffects.isNotEmpty() ||
+    statementEffects.isNotEmpty() ||
+    loanEffects.isNotEmpty() ||
+    settlementEffects.isNotEmpty()
+
+private fun DependencyPolicy.supports(type: TransactionDependencyType): Boolean = when (this) {
+    DependencyPolicy.ReverseDependentTransactions -> true
+    DependencyPolicy.ConvertRefundToIndependent -> type == TransactionDependencyType.REFUND
+    DependencyPolicy.CancelInstallmentPlan,
+    is DependencyPolicy.RebindInstallmentPlan,
+    -> type == TransactionDependencyType.INSTALLMENT_PLAN
+    DependencyPolicy.RecalculateSettlement,
+    DependencyPolicy.ReopenSettledActivity,
+    -> type == TransactionDependencyType.SETTLEMENT_ACTIVITY
+    DependencyPolicy.RegenerateCreditStatement -> type == TransactionDependencyType.CREDIT_STATEMENT
+    DependencyPolicy.RecalculateLoanSchedule -> type == TransactionDependencyType.LOAN_SCHEDULE
+}
+
+private fun FinancialCommand.isTransactionLifecycleCommand(): Boolean = when (this) {
+    is RecordTransactionCommand<*>,
+    is EditTransactionCommand,
+    is MoveTransactionToTrashCommand,
+    is RestoreTransactionCommand,
+    -> true
+    else -> false
+}
+
+private fun Set<JournalEntryRole>.allOrEmpty(expected: JournalEntryRole): Boolean = isEmpty() || all { it == expected }

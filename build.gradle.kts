@@ -309,6 +309,38 @@ tasks.register("p05Artifacts") {
     dependsOn("p04Artifacts")
 }
 
+val validateP06Accounting by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates deterministic P06 accounting rules, immutable reversals and invariant evidence."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p06_accounting.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+    )
+}
+
+tasks.register("p06Check") {
+    group = "verification"
+    description = "Runs P05 plus all P06 deterministic accounting, property, static and invariant gates."
+    dependsOn(
+        "p05Check",
+        validateP06Accounting,
+        ":finance:domain:test",
+        ":finance:application:test",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+tasks.register("p06Artifacts") {
+    group = "verification"
+    description = "Generates P06-inclusive coverage and inherited auditable supply-chain artifacts."
+    dependsOn("p05Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

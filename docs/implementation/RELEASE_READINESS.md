@@ -1,8 +1,8 @@
 # Release Readiness
 
-Last updated: 2026-08-01 (Asia/Tokyo)
+Last updated: 2026-08-02 (Asia/Tokyo)
 Overall release status: `NOT_STARTED`  
-P05 pure domain/application foundations and the inherited exact-value/design/navigation/quality infrastructure are verified; no business page, database adapter or release artifact is claimed.
+P06 deterministic accounting and immutable-fact foundations plus the inherited exact-value/design/navigation/quality infrastructure are verified; no business page, database adapter or release artifact is claimed.
 
 ## Quality gates
 
@@ -10,7 +10,7 @@ P05 pure domain/application foundations and the inherited exact-value/design/nav
 |---|---|---|---|
 | Frozen build and module graph | JDK 17, AGP 9.3.x, Gradle 9.5.x, Kotlin 2.4.x, API 28/36; all prescribed modules and dependency rules | P01 | VERIFIED (`P01-E001`—`P01-E007`) |
 | Reproducible quality infrastructure | CI, lint, detekt, formatting, Kover, dependency verification/locks, SBOM, license tasks, architecture tests and API 28/API 36 GMD entries | P02 | VERIFIED (`P02-E001`—`P02-E009`) |
-| Financial/domain correctness | Exact money/time algorithms, planners, coordinator-only writes, immutable facts and 35 invariants | P03/P05/P06/P08 | IN_PROGRESS (`P03-E002`—`P03-E006` verify exact values and INV-034; `P05-E001`—`P05-E004` verify the complete typed aggregate/port/lifecycle boundary and 34 invariant foundations; complete planners and persistence remain P06—P08) |
+| Financial/domain correctness | Exact money/time algorithms, planners, coordinator-only writes, immutable facts and 35 invariants | P03/P05/P06/P08 | IN_PROGRESS (`P03-E002`—`P03-E006` verify exact values and INV-034; `P05-E001`—`P05-E004` verify typed aggregates/ports; `P06-E001`—`P06-E004` verify all 11 planners and 25 accounting-core invariant mappings; persistence remains P07/P08) |
 | Encrypted schema/migrations | Room 2.8.4 + SQLCipher 4.17.0, v1 export, migrations, FTS5/R*Tree, no destructive migration | P07 | NOT_STARTED |
 | Security boundaries | Keystore/Tink/Argon2id, app/vault key separation, no sensitive route/state/log/telemetry leakage | P09/P32 | NOT_STARTED |
 | Complete functionality | REQ-001—REQ-090 and all 215 screen contracts | P11—P34 | NOT_STARTED |
@@ -32,7 +32,7 @@ These are legitimate user/organization inputs, not Android code gaps. Their abse
 | API 28 and API 36 physical devices plus chosen release-key custody process | Mandatory device regression and release security | NOT_STARTED — availability not yet confirmed | P35/P36 |
 | Host KVM virtualization and current-user access to `/dev/kvm` | P02 Gradle Managed Device execution on API 28/API 36 | RESOLVED — KVM 12 usable and all three required GMD commands pass | P02 closed |
 
-## Build-environment baseline after P05
+## Build-environment baseline after P06
 
 Verified on this host: Temurin JDK 17.0.20, Android SDK Platform 36 revision 2, Build Tools 36.0.0, platform-tools/adb 37.0.1, Gradle Wrapper 9.5.1, AGP 9.3.1 and Kotlin 2.4.10. Recheck with:
 
@@ -80,3 +80,11 @@ Expected: Java/Javac 17, `platforms;android-36`, a stable `build-tools;36.x`, wo
 - Twenty-nine P05 JVM tests, five contract mutation tests, 15 build-policy tests and the fresh 2,139-task `p05Check` gate pass; 3,000 generated accounting/subledger cases exercise checked conservation and hierarchy policies.
 - Requirement completion is not overstated: `REQ-085` remains the sole fully `VERIFIED` end-to-end requirement, 64 rows are `IN_PROGRESS` for correctly scoped foundations, 25 remain `NOT_STARTED`, and all 215 feature screens remain `NOT_STARTED`.
 - P06 accounting planners, Room/SQLCipher persistence, projection adapters, platform/device behavior and remote CI remain unverified in their prescribed later phases. P05 uses no device evidence because it makes no platform behavior claim.
+
+## P06 release conclusion
+
+- P06 is `VERIFIED`: all eleven frozen transaction kinds, deterministic create/edit/trash/restore planning, exact APPLY/REVERSE facts, typed effects, FX clearing/evidence, canonical hashes and application idempotency/conflict checks pass pure Kotlin tests and static gates.
+- Forty-two finance tests pass, including 2,500 generated accounting lifecycle cases, Long extremes, multi-currency rounding, cross-zone dates, old/new rule-version reversal, dependency closure, complete credit-account StatementEffects and journal-less settlement lifecycle.
+- `P06_ACCOUNTING_INVARIANT_MAPPING.md` accounts for all 35 permanent invariants and names automated P06 evidence for the 25 accounting-core rows. Database constraints/audits and projection integration remain P07/P08; their ledger rows are not promoted early.
+- `REQ-085` remains the sole end-to-end `VERIFIED` requirement; 64 rows remain `IN_PROGRESS`, 25 remain `NOT_STARTED`, and all 215 feature screens remain `NOT_STARTED`.
+- P06 makes no platform/device behavior claim. SQLCipher/Room, security, external SDKs, physical-device release acceptance and remote CI remain unverified in their owning phases.

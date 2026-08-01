@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-01 (Asia/Tokyo)
-Current stage: P05 — complete domain model and application ports
-Stage status: VERIFIED (`P05-E001`—`P05-E006`); P00—P05 are complete and P06 is the next unstarted stage
+Last updated: 2026-08-02 (Asia/Tokyo)
+Current stage: P06 — accounting planners, immutable facts and core invariants
+Stage status: VERIFIED (`P06-E001`—`P06-E006`); P00—P06 are complete and P07 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -137,6 +137,19 @@ P04 creates no feature page, database write, SDK-backed map/widget, or fake pers
 
 P05 introduces no Room Entity/DAO, SQLCipher behavior, Android dependency, feature page, fake repository or pretend persistence. The complete accounting-rule planners remain P06 and the physical schema/projections remain P07/P08; therefore target requirement rows truthfully remain `IN_PROGRESS` and all 215 screen rows remain `NOT_STARTED`.
 
+### P06 result
+
+| Area | P06 result | Classification |
+|---|---|---|
+| Deterministic planning | One pure planner closes all 11 frozen transaction payloads, consumes only explicit IDs/time/reference/FX/current-fact inputs and generates the same immutable plan for the same input | VERIFIED (`P06-E001`, `P06-E002`) |
+| Accounting facts and effects | Ordinary expense/income, transfer, opening balance, adjustment and FX exchange generate balanced Posting/Journal facts; refund, credit, loan and settlement rules emit all typed Effect families without a universal transaction object | VERIFIED (`P06-E001`, `P06-E002`) |
+| Revision lifecycle | Create/restore append APPLY; edit appends exact old-version REVERSE plus new APPLY; trash appends exact REVERSE; journal-less external settlement follows the same lifecycle; archived references remain reversible | VERIFIED (`P06-E002`) |
+| Exact money and FX | USER_INPUT/ACCOUNT/BASE evidence, frozen rate/provider/timestamps, FX clearing/rounding/cost/gain and all authoritative accumulation use checked integer/decimal paths; commit roots cover facts and evidence | VERIFIED (`P06-E001`—`P06-E003`) |
+| Conflicts and idempotency | Canonical command hashes are validated before receipt lookup; duplicate command IDs return only an identical first receipt; stale expected revisions and incompatible/incomplete dependency policies fail before commit | VERIFIED (`P06-E002`) |
+| Permanent invariants | `P06_ACCOUNTING_INVARIANT_MAPPING.md` maps all 35 permanent invariants; the 25 accounting-core rows have named automated P06 evidence while database/feature portions remain in their owning phases | VERIFIED for P06 scope (`P06-E001`—`P06-E006`) |
+
+P06 contains no Room/SQLCipher adapter, projection persistence, feature page or platform claim. The nine target requirement rows remain truthfully `IN_PROGRESS`, the physical schema/projection families remain `NOT_STARTED`, and all 215 screen rows remain `NOT_STARTED`.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
@@ -160,18 +173,19 @@ P05 introduces no Room Entity/DAO, SQLCipher behavior, Android dependency, featu
 | P03 | VERIFIED | Typed IDs, complete checked arithmetic including abs/accumulation, exact money/FX/expression/time/period/formatting foundations and real-violation rejection pass; see `P03-E001`—`P03-E009` |
 | P04 | VERIFIED | Complete token generation/mapping, governed components, 215-route/646-state contract, five stacks, static rules and API 28/API 36 UI matrices pass; see `P04-E001`—`P04-E011` |
 | P05 | VERIFIED | Complete pure Kotlin aggregate/lifecycle/query/operation model, coordinator/application ports, typed analytics/transfer contracts, property tests and architecture/static gates pass; see `P05-E001`—`P05-E006` |
-| P06—P36 | NOT_STARTED | P06 is the next execution stage; do not promote later work early |
+| P06 | VERIFIED | Deterministic 11-rule accounting planner, immutable reversal lifecycle, exact FX/effect/hash paths, idempotency/conflict checks and 25 accounting-core invariant mappings pass; see `P06-E001`—`P06-E006` |
+| P07—P36 | NOT_STARTED | P07 is the next execution stage; do not promote later work early |
 
-## P06 entry state
+## P07 entry state
 
-P05 leaves the repository at a verified typed domain/application boundary. Its completion commands are:
+P06 leaves the repository at a verified pure accounting planner boundary. Its completion commands are:
 
 ```text
-python3 scripts/validate_p05_domain.py
-python3 -m unittest scripts.tests.test_p05_domain_contracts -v
+python3 scripts/validate_p06_accounting.py
+python3 -m unittest scripts.tests.test_p06_accounting_contracts -v
 python3 scripts/prove_source_policy_rejection.py
-./gradlew p05Check --configuration-cache --no-parallel --dependency-verification=strict --console=plain
-./gradlew p05Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew p06Check --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew p06Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
 ```
 
-All commands and final hygiene gates pass in `P05-E001`—`P05-E006`. P06 may implement the frozen rule-by-rule planners against these closed payloads and immutable plan/fact/effect types, but must preserve coordinator-only writes and must not move accounting into repositories, Workers or UI. All 215 screen implementations remain `NOT_STARTED`; P06 must not infer page completion from typed domain capability.
+All commands and final hygiene gates pass in `P06-E001`—`P06-E006`. P07 may map these immutable plans and facts to the frozen Room/SQLCipher schema, but must preserve the same coordinator-owned atomic boundary, original fact/rule versions and exact hash/evidence domain. All 215 screen implementations remain `NOT_STARTED`; P07 must not infer page completion from planner capability.

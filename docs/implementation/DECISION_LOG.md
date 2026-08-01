@@ -1,6 +1,6 @@
 # Decision Log
 
-Last updated: 2026-08-01 (Asia/Tokyo)
+Last updated: 2026-08-02 (Asia/Tokyo)
 
 This log records interpretations; it does not modify frozen specifications. Later stages must append a dated entry before relying on any new conflict resolution.
 
@@ -190,3 +190,38 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Precedence applied: preserve the frozen module graph and dependency direction rather than inventing new modules.
 - Decision: all finance repositories and external finance capabilities live in `:finance:application`. Closed analytics query/algorithm ports live in `:analytics:domain`, and staging/backup/restore ports live in `:transfer:domain`, exactly opposite their frozen data-module dependency arrows. Cross-aggregate financial submission is still only through `FinancialMutationCoordinator`.
 - Consequence: no Android/Room/Hilt/OkHttp dependency enters a domain module, and no feature receives a DAO/Entity or infrastructure client.
+
+## DL-026 — Deterministic planning receives time, identities and evidence as explicit inputs
+
+- Date/stage: 2026-08-02 / P06
+- Surface issue: the frozen planning flow requires generated IDs, a real commit time, current reference data and frozen exchange evidence, while the same input must always produce the same plan and the domain cannot read platform services.
+- Decision: `AccountingPlanningContext` is caller-owned and includes the complete ID sequence, commit time, device ID, typed reference snapshots, amount/FX evidence and optional current immutable facts. The planner contains no clock, random, database, network or Android access.
+- Consequence: retries can reproduce a byte-identical plan and hash. P07/P08 adapters must gather the snapshot before planning and may not let DAOs invent accounting facts.
+
+## DL-027 — Reversal preserves the original fact rule version and permits archived references
+
+- Date/stage: 2026-08-02 / P06
+- Surface issue: §12 requires exact reversal at the original effective time, while §33.3 prohibits reinterpreting old facts after a rule change. An account may also be archived after the original posting.
+- Decision: every REVERSE Posting copies the original currencies, amounts, valuation rate and role with only side/identity changed; its Journal retains the original APPLY rule version and effective time. Reference status is not revalidated for exact reversal, but ID and currency still must match.
+- Consequence: editing under rule version 2 can reverse a version-1 fact without relabeling it or requiring an archived account to become active. New APPLY facts use the current book rule version.
+
+## DL-028 — FX evidence attaches to the representation it produced
+
+- Date/stage: 2026-08-02 / P06
+- Surface issue: `RevisionAmount.fxRateSnapshotId` is nullable for each USER_INPUT/ACCOUNT/BASE row, but the frozen sketch does not state which row owns a two-step conversion reference.
+- Decision: USER_INPUT has no producing rate; ACCOUNT references only the USER_INPUT→ACCOUNT conversion; BASE references only the ACCOUNT→BASE conversion. Same-currency steps have no snapshot. Cross-currency account transfers use the frozen base-currency clearing bridge, with an exact residual classified as explicit cost, rounding or gain.
+- Consequence: each representation can be reconstructed from its predecessor without attributing a later conversion to the wrong amount. Frozen evidence and all effect families enter the canonical commit root; no current rate can rewrite history.
+
+## DL-029 — Formal financial facts are broader than Journal rows
+
+- Date/stage: 2026-08-02 / P06
+- Surface issue: an external-participant settlement payment is formal and changes settlement positions but, by INV-023, must not write a local account Journal. A Journal-required lifecycle check would incorrectly reject its create/edit/trash/restore paths.
+- Decision: transaction lifecycle plans require at least one authoritative financial fact across Journal or the typed Effect families. Journal role checks remain exact when Journals exist; `ImmutableFactAudit` separately proves one-to-one effect reversals for journal-less operations.
+- Consequence: external-only settlements use no placeholder Posting and still receive full immutable revision/reversal/hash treatment. Candidates continue to produce no formal fact of any family.
+
+## DL-030 — Allocation lists are authoritative and must close exactly
+
+- Date/stage: 2026-08-02 / P06
+- Surface issue: refund and credit-payment payloads expose allocation lists, and accepting totals unrelated to the authoritative transaction amount would create internally inconsistent subledger effects.
+- Decision: linked refund base allocations must sum exactly to the frozen refund base amount and match frozen refundable currency/balance evidence; independent refunds carry no allocations. Credit payments require one or more statement allocations (a null statement means unallocated prepayment), with matching currency and an exact sum to the credit-account amount. Candidate auto-payments are rejected before fact materialization.
+- Consequence: StatementEffect and refund facts are complete and checked without inference in UI or persistence. Later repositories persist these already-validated allocations atomically.

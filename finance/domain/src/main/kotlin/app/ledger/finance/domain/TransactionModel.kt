@@ -373,7 +373,7 @@ data class RevisionAmount(
 
     init {
         require(componentIndex >= 0)
-        require((representation == AmountRepresentation.ACCOUNT) == (relatedAccountId != null))
+        require(representation == AmountRepresentation.ACCOUNT || relatedAccountId == null)
     }
 }
 

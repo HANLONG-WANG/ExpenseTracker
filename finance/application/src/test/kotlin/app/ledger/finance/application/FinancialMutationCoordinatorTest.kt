@@ -12,6 +12,7 @@ import app.ledger.finance.domain.BudgetAdjustment
 import app.ledger.finance.domain.BudgetAdjustmentId
 import app.ledger.finance.domain.BudgetAdjustmentKind
 import app.ledger.finance.domain.BudgetAdjustmentScope
+import app.ledger.finance.domain.CanonicalFinancialHash
 import app.ledger.finance.domain.CommandReceipt
 import app.ledger.finance.domain.CommitDraft
 import app.ledger.finance.domain.CommitKind
@@ -61,7 +62,8 @@ class FinancialMutationCoordinatorTest {
     @Test
     fun `same id with another payload is rejected`() = runTest {
         val command = command()
-        val conflicting = command.copy(payloadHash = hash(99))
+        val changed = command.copy(adjustment = command.adjustment.copy(amountBaseMinor = 101L))
+        val conflicting = changed.copy(payloadHash = CanonicalFinancialHash.command(changed))
         val receiptRepository = mockk<CommandReceiptRepository>()
         coEvery { receiptRepository.find(command.commandId) } returns DomainResult.Success(receipt(command))
         val coordinator = coordinator(
@@ -72,6 +74,22 @@ class FinancialMutationCoordinatorTest {
         )
 
         coordinator.execute(conflicting) shouldBe DomainResult.Failure(DomainViolation.DuplicateCommandPayloadMismatch)
+    }
+
+    @Test
+    fun `non canonical payload hash is rejected before idempotency lookup`() = runTest {
+        val command = command().copy(payloadHash = hash(99))
+        val receipts = mockk<CommandReceiptRepository>(relaxed = true)
+        val coordinator = coordinator(
+            receipts,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+        )
+
+        coordinator.execute(command) shouldBe
+            DomainResult.Failure(DomainViolation.InvalidField("financialCommand.payloadHash"))
+        coVerify(exactly = 0) { receipts.find(any()) }
     }
 
     @Test
@@ -121,7 +139,8 @@ class FinancialMutationCoordinatorTest {
             createdCommitId = BookCommitId(id(11)),
             reversalOfId = null,
         )
-        return RecordBudgetAdjustmentCommand(CommandId(id(12)), hash(12), adjustment)
+        val command = RecordBudgetAdjustmentCommand(CommandId(id(12)), hash(12), adjustment)
+        return command.copy(payloadHash = CanonicalFinancialHash.command(command))
     }
 
     private fun book(): Book = Book(

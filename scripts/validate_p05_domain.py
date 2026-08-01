@@ -339,8 +339,14 @@ def main() -> int:
     if mapping_ids != {f"{value:02d}" for value in range(1, 36)}:
         errors.append("P05 domain mapping must contain exact chapter rows 01..35")
     project_state = (ROOT / "docs/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
-    if "Current stage: P05" not in project_state or "Stage status: VERIFIED" not in project_state:
-        errors.append("PROJECT_STATE does not record P05 VERIFIED")
+    current_stage = re.search(r"Current stage: P(\d{2})", project_state)
+    if (
+        current_stage is None
+        or not 5 <= int(current_stage.group(1)) <= 36
+        or "| P05 | VERIFIED |" not in project_state
+        or "### P05 result" not in project_state
+    ):
+        errors.append("PROJECT_STATE does not retain P05 VERIFIED in the cumulative stage ledger")
     test_evidence = (ROOT / "docs/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
     if any(f"P05-E{value:03d}" not in test_evidence for value in range(1, 7)):
         errors.append("TEST_EVIDENCE does not contain the exact P05-E001..P05-E006 set")

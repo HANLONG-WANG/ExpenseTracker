@@ -2,6 +2,7 @@ package app.ledger.finance.application
 
 import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
+import app.ledger.finance.domain.CanonicalFinancialHash
 import app.ledger.finance.domain.CommandReceipt
 import app.ledger.finance.domain.DomainViolation
 import app.ledger.finance.domain.FinancialCommand
@@ -42,6 +43,9 @@ class DefaultFinancialMutationCoordinator(
     private val commitRepository: AtomicFinancialCommitRepository,
 ) : FinancialMutationCoordinator {
     override suspend fun execute(command: FinancialCommand): DomainResult<CommandReceipt> = writeGate.execute {
+        if (CanonicalFinancialHash.command(command) != command.payloadHash) {
+            return@execute DomainResult.Failure(DomainViolation.InvalidField("financialCommand.payloadHash"))
+        }
         when (val existing = receiptRepository.find(command.commandId)) {
             is DomainResult.Failure -> existing
             is DomainResult.Success -> {

@@ -7,6 +7,7 @@ import app.ledger.core.common.ValidationReason
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.Money
 import java.math.BigDecimal
+import java.security.MessageDigest
 
 sealed interface RecordLifecycle {
     data object Current : RecordLifecycle
@@ -168,6 +169,12 @@ value class LocalRevision private constructor(val value: Long) : Comparable<Loca
 
 @JvmInline
 value class RowVersion private constructor(val value: Long) {
+    fun next(): DomainResult<RowVersion> = try {
+        DomainResult.Success(RowVersion(Math.addExact(value, 1L)))
+    } catch (_: ArithmeticException) {
+        DomainResult.Failure(DomainViolation.NumericOverflow("rowVersion"))
+    }
+
     companion object {
         fun of(value: Long): DomainResult<RowVersion> = if (value > 0L) {
             DomainResult.Success(RowVersion(value))
@@ -189,6 +196,11 @@ class Hash256 private constructor(bytes: ByteArray) {
 
     companion object {
         const val BYTE_COUNT: Int = 32
+
+        /** Canonical SHA-256 used by immutable revisions, facts and commit roots. */
+        fun sha256(bytes: ByteArray): Hash256 = Hash256(
+            MessageDigest.getInstance("SHA-256").digest(bytes),
+        )
 
         fun fromBytes(bytes: ByteArray): DomainResult<Hash256> = if (bytes.size == BYTE_COUNT) {
             DomainResult.Success(Hash256(bytes))

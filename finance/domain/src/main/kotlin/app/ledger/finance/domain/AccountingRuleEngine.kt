@@ -1,0 +1,1004 @@
+@file:Suppress("TooManyFunctions")
+
+package app.ledger.finance.domain
+
+import app.ledger.core.common.CheckedArithmetic
+import app.ledger.core.common.DomainError
+import app.ledger.core.common.DomainResult
+import java.math.BigDecimal
+
+internal data class PostingSpec(
+    val ledger: LedgerAccountSnapshot,
+    val side: DebitCredit,
+    val accountAmount: PositiveMoney,
+    val baseAmount: PositiveMoney,
+    val valuationRate: BigDecimal?,
+    val role: PostingRole,
+)
+
+internal data class JournalSpec(
+    val postings: List<PostingSpec>,
+)
+
+internal data class EconomicEffectSpec(
+    val journalIndex: Int,
+    val nature: EconomicNature,
+    val component: EconomicComponent,
+    val isConsumption: Boolean,
+    val baseAmount: PositiveMoney,
+)
+
+internal data class BudgetEffectSpec(
+    val kind: BudgetEffectKind,
+    val baseAmount: PositiveMoney,
+)
+
+internal data class ProjectEffectSpec(
+    val kind: ProjectEffectKind,
+    val baseAmount: PositiveMoney,
+    val includedInMonthlyBudgetSnapshot: Boolean,
+)
+
+internal data class GoalEffectSpec(
+    val kind: GoalEffectKind,
+    val amount: PositiveMoney,
+)
+
+internal data class StatementEffectSpec(
+    val creditAccountId: UserAccountId,
+    val statementId: CreditStatementId?,
+    val kind: StatementEffectKind,
+    val amount: PositiveMoney,
+    val manualAssignment: Boolean,
+)
+
+internal data class LoanEffectSpec(
+    val contractId: LoanContractId,
+    val trancheId: LoanTrancheId,
+    val scheduleItemId: LoanScheduleItemId?,
+    val kind: LoanEffectKind,
+    val amount: PositiveMoney,
+    val baseAmount: PositiveMoney,
+)
+
+internal data class SettlementEffectSpec(
+    val activityId: SettlementActivityId,
+    val participantId: ParticipantId,
+    val kind: SettlementEffectKind,
+    val signedDeltaMinor: Long,
+    val currency: app.ledger.core.money.CurrencyCode,
+)
+
+internal data class AccountingRuleOutput(
+    val journals: List<JournalSpec>,
+    val amounts: List<FrozenAmountEvidence>,
+    val economic: List<EconomicEffectSpec> = emptyList(),
+    val budget: List<BudgetEffectSpec> = emptyList(),
+    val project: List<ProjectEffectSpec> = emptyList(),
+    val goal: List<GoalEffectSpec> = emptyList(),
+    val statement: List<StatementEffectSpec> = emptyList(),
+    val loan: List<LoanEffectSpec> = emptyList(),
+    val settlement: List<SettlementEffectSpec> = emptyList(),
+)
+
+internal object AccountingRuleEngine {
+    fun plan(
+        book: Book,
+        input: NewTransactionInput<TransactionPayload>,
+        planning: PlanningSnapshot,
+    ): DomainResult<AccountingRuleOutput> = try {
+        val context = planning.accountingContext ?: reject("planningSnapshot.accountingContext")
+        if (input.context.source == TransactionSource.RECURRENCE_CANDIDATE) {
+            rejectInvariant("INV-028")
+        }
+        val session = RuleSession(book, input, planning, context)
+        DomainResult.Success(
+            when (val payload = input.payload) {
+                is ExpensePayload -> session.expense(payload)
+                is IncomePayload -> session.income(payload)
+                is TransferPayload -> session.transfer(payload)
+                is RefundPayload -> session.refund(payload)
+                is CreditPaymentPayload -> session.creditPayment(payload)
+                is LoanDisbursementPayload -> session.loanDisbursement(payload)
+                is LoanPaymentPayload -> session.loanPayment(payload)
+                is BalanceAdjustmentPayload -> session.balanceAdjustment(payload)
+                is FxExchangePayload -> session.fxExchange(payload)
+                is SettlementPaymentPayload -> session.settlementPayment(payload)
+                is OpeningBalancePayload -> session.openingBalance(payload)
+            },
+        )
+    } catch (rejected: RuleRejected) {
+        DomainResult.Failure(rejected.violation)
+    }
+}
+
+@Suppress("LargeClass", "TooManyFunctions")
+private class RuleSession(
+    private val book: Book,
+    private val input: NewTransactionInput<TransactionPayload>,
+    private val snapshot: PlanningSnapshot,
+    private val context: AccountingPlanningContext,
+) {
+    private val references: PlanningReferenceData = context.references
+    private val baseCurrency = book.baseCurrency
+
+    fun expense(payload: ExpensePayload): AccountingRuleOutput {
+        val category = category(payload.classification)
+        val primary = amount(AmountRole.PRIMARY, expectedUserInput = payload.primaryAmount)
+        val payerLine = when (val payer = payload.payer) {
+            is ExpensePayer.LocalAccount -> {
+                val account = account(payer.accountAmount, setOf(LedgerAccountClass.ASSET, LedgerAccountClass.LIABILITY))
+                validateCard(payer.cardId, account.account.id)
+                requireAmountAccount(primary, payer.accountAmount)
+                PostingSpec(
+                    ledger = account.ledger,
+                    side = DebitCredit.CREDIT,
+                    accountAmount = primary.accountAmount,
+                    baseAmount = primary.baseAmount,
+                    valuationRate = primary.accountToBase?.evidence?.rate,
+                    role = account.ledger.accountClass.postingRole(),
+                )
+            }
+            is ExpensePayer.ExternalParticipant -> {
+                val settlement = references.settlement(payer.activityId, payer.participantId)
+                    ?: reject("expense.externalParticipantLedger")
+                require(primary.accountAmount.currency == settlement.ledger.currency, "expense.settlementCurrency")
+                PostingSpec(
+                    ledger = settlement.ledger,
+                    side = DebitCredit.CREDIT,
+                    accountAmount = primary.accountAmount,
+                    baseAmount = primary.baseAmount,
+                    valuationRate = primary.accountToBase?.evidence?.rate,
+                    role = PostingRole.SETTLEMENT,
+                )
+            }
+        }
+        val economicAmount = settlementSelfShareOrPrimary(payload, primary)
+        val expenseLedger = system(expenseSystemCode(category.statisticalNature), baseCurrency)
+        val journal = JournalSpec(
+            listOf(
+                systemPosting(expenseLedger, DebitCredit.DEBIT, primary.baseAmount, PostingRole.EXPENSE),
+                payerLine,
+            ),
+        )
+        return AccountingRuleOutput(
+            journals = listOf(journal),
+            amounts = usedAmounts(),
+            economic = listOf(
+                EconomicEffectSpec(
+                    journalIndex = 0,
+                    nature = EconomicNature.EXPENSE,
+                    component = EconomicComponent.PRIMARY,
+                    isConsumption = category.statisticalNature == StatisticalNature.CONSUMPTION_EXPENSE,
+                    baseAmount = economicAmount.baseAmount,
+                ),
+            ),
+            budget = budgetUse(economicAmount.baseAmount),
+            project = projectUse(economicAmount.baseAmount),
+            goal = goalSpend(
+                economicAmount.accountAmount,
+                (payload.payer as? ExpensePayer.LocalAccount)?.accountAmount?.accountId,
+            ),
+            statement = expenseStatement(payload, primary.accountAmount),
+            settlement = settlementShares(payload),
+        )
+    }
+
+    fun income(payload: IncomePayload): AccountingRuleOutput {
+        val category = category(payload.classification)
+        val receiving = account(
+            payload.receivingAmount,
+            setOf(LedgerAccountClass.ASSET, LedgerAccountClass.LIABILITY),
+        )
+        val primary = amount(AmountRole.PRIMARY, expectedUserInput = payload.primaryAmount)
+        requireAmountAccount(primary, payload.receivingAmount)
+        val incomeLedger = system(incomeSystemCode(category.statisticalNature), baseCurrency)
+        return AccountingRuleOutput(
+            journals = listOf(
+                JournalSpec(
+                    listOf(
+                        PostingSpec(
+                            receiving.ledger,
+                            DebitCredit.DEBIT,
+                            primary.accountAmount,
+                            primary.baseAmount,
+                            primary.accountToBase?.evidence?.rate,
+                            receiving.ledger.accountClass.postingRole(),
+                        ),
+                        systemPosting(incomeLedger, DebitCredit.CREDIT, primary.baseAmount, PostingRole.INCOME),
+                    ),
+                ),
+            ),
+            amounts = usedAmounts(),
+            economic = listOf(
+                EconomicEffectSpec(
+                    0,
+                    EconomicNature.INCOME,
+                    EconomicComponent.PRIMARY,
+                    isConsumption = false,
+                    primary.baseAmount,
+                ),
+            ),
+            statement = creditStatementEffect(
+                receiving,
+                StatementEffectKind.ADJUSTMENT,
+                primary.accountAmount,
+            ),
+        )
+    }
+
+    fun transfer(payload: TransferPayload): AccountingRuleOutput {
+        val outgoingAccount = account(payload.outgoing, setOf(LedgerAccountClass.ASSET))
+        val incomingAccount = account(payload.incoming, setOf(LedgerAccountClass.ASSET))
+        validateCard(payload.sourceCardId, outgoingAccount.account.id)
+        val outgoing = amount(AmountRole.OUTGOING)
+        val incoming = amount(AmountRole.INCOMING)
+        requireAmountAccount(outgoing, payload.outgoing)
+        requireAmountAccount(incoming, payload.incoming)
+        require(outgoing.baseAmount == incoming.baseAmount, "transfer.baseAmount")
+        return AccountingRuleOutput(
+            journals = transferJournals(outgoingAccount, incomingAccount, outgoing, incoming),
+            amounts = usedAmounts(),
+        )
+    }
+
+    fun refund(payload: RefundPayload): AccountingRuleOutput {
+        val classification = payload.classification?.let(::category)
+        val receiving = account(
+            payload.receivingAmount,
+            setOf(LedgerAccountClass.ASSET, LedgerAccountClass.LIABILITY),
+        )
+        validateCard(payload.receivingCardId, receiving.account.id)
+        val refund = amount(AmountRole.REFUND)
+        requireAmountAccount(refund, payload.receivingAmount)
+        validateRefundAllocations(payload, refund)
+        val expenseLedger = system(
+            expenseSystemCode(
+                classification?.statisticalNature ?: StatisticalNature.NON_CONSUMPTION_EXPENSE,
+            ),
+            baseCurrency,
+        )
+        val budget = if (payload.budgetPolicy == RefundBudgetPolicy.DO_NOT_RESTORE) {
+            emptyList()
+        } else {
+            budgetRestore(refund.baseAmount)
+        }
+        return AccountingRuleOutput(
+            journals = listOf(
+                JournalSpec(
+                    listOf(
+                        PostingSpec(
+                            receiving.ledger,
+                            DebitCredit.DEBIT,
+                            refund.accountAmount,
+                            refund.baseAmount,
+                            refund.accountToBase?.evidence?.rate,
+                            receiving.ledger.accountClass.postingRole(),
+                        ),
+                        systemPosting(expenseLedger, DebitCredit.CREDIT, refund.baseAmount, PostingRole.EXPENSE),
+                    ),
+                ),
+            ),
+            amounts = usedAmounts(),
+            economic = listOf(
+                EconomicEffectSpec(
+                    0,
+                    EconomicNature.CONTRA_EXPENSE,
+                    EconomicComponent.REFUND,
+                    isConsumption = classification?.statisticalNature == StatisticalNature.CONSUMPTION_EXPENSE,
+                    refund.baseAmount,
+                ),
+            ),
+            budget = budget,
+            project = projectRestore(refund.baseAmount, payload.projectPolicy),
+            goal = goalRestore(refund.accountAmount, receiving.account.id, payload.goalPolicy),
+            statement = creditStatementEffect(
+                receiving,
+                StatementEffectKind.REFUND,
+                refund.accountAmount,
+            ),
+        )
+    }
+
+    fun creditPayment(payload: CreditPaymentPayload): AccountingRuleOutput {
+        if (payload.generationMode == AutoGenerationMode.CONFIRMATION_CANDIDATE) {
+            rejectInvariant("INV-028")
+        }
+        val paymentAccount = account(payload.payment, setOf(LedgerAccountClass.ASSET))
+        val creditAccount = account(payload.creditAccountAmount, setOf(LedgerAccountClass.LIABILITY))
+        require(creditAccount.account.type == UserAccountType.CREDIT, "creditPayment.creditAccount")
+        require(creditAccount.account.id == payload.creditAccountId, "creditPayment.creditAccountId")
+        val outgoing = amount(AmountRole.OUTGOING)
+        val incoming = amount(AmountRole.INCOMING)
+        requireAmountAccount(outgoing, payload.payment)
+        requireAmountAccount(incoming, payload.creditAccountAmount)
+        require(outgoing.baseAmount == incoming.baseAmount, "creditPayment.baseAmount")
+        val allocations = creditPaymentAllocations(payload, incoming.accountAmount)
+        return AccountingRuleOutput(
+            journals = transferJournals(paymentAccount, creditAccount, outgoing, incoming),
+            amounts = usedAmounts(),
+            statement = allocations.map { allocation ->
+                StatementEffectSpec(
+                    creditAccountId = payload.creditAccountId,
+                    statementId = allocation.statementId,
+                    kind = StatementEffectKind.PAYMENT,
+                    amount = allocation.amount,
+                    manualAssignment = input.context.statementAssignment?.mode ==
+                        StatementAssignmentMode.EXPLICIT_STATEMENT,
+                )
+            },
+        )
+    }
+
+    fun loanDisbursement(payload: LoanDisbursementPayload): AccountingRuleOutput {
+        val receiving = account(payload.receivingAmount, setOf(LedgerAccountClass.ASSET))
+        val loan = references.loan(payload.loanContractId) ?: reject("loanDisbursement.loanLedger")
+        val incoming = amount(AmountRole.INCOMING)
+        val principal = amount(AmountRole.PRINCIPAL)
+        requireAmountAccount(incoming, payload.receivingAmount)
+        require(principal.accountAmount == payload.liabilityAmount, "loanDisbursement.liabilityAmount")
+        require(principal.accountAmount.currency == loan.ledger.currency, "loanDisbursement.currency")
+        require(incoming.baseAmount == principal.baseAmount, "loanDisbursement.baseAmount")
+        return AccountingRuleOutput(
+            journals = listOf(
+                JournalSpec(
+                    listOf(
+                        posting(receiving.ledger, DebitCredit.DEBIT, incoming),
+                        posting(loan.ledger, DebitCredit.CREDIT, principal),
+                    ),
+                ),
+            ),
+            amounts = usedAmounts(),
+            loan = listOf(
+                LoanEffectSpec(
+                    payload.loanContractId,
+                    loan.trancheId,
+                    null,
+                    LoanEffectKind.DISBURSEMENT,
+                    principal.accountAmount,
+                    principal.baseAmount,
+                ),
+            ),
+        )
+    }
+
+    fun loanPayment(payload: LoanPaymentPayload): AccountingRuleOutput {
+        payload.classification?.let(::category)
+        val paymentAccount = account(payload.payment, setOf(LedgerAccountClass.ASSET))
+        val loan = references.loan(payload.loanContractId) ?: reject("loanPayment.loanLedger")
+        val outgoing = amount(AmountRole.OUTGOING)
+        requireAmountAccount(outgoing, payload.payment)
+        val components = loanComponents(payload, loan)
+        require(
+            sumBase(components.map { it.amount.baseAmount }) == outgoing.baseAmount.minor.value,
+            "loanPayment.components",
+        )
+        val postings = components.map { component ->
+            val ledger = if (component.effectKind == LoanEffectKind.PRINCIPAL_PAYMENT) {
+                loan.ledger
+            } else {
+                system(SystemLedgerCode.SYSTEM_EXPENSE_NON_CONSUMPTION, baseCurrency)
+            }
+            posting(ledger, DebitCredit.DEBIT, component.amount)
+        } + posting(paymentAccount.ledger, DebitCredit.CREDIT, outgoing)
+        val economic = components.filter { it.effectKind != LoanEffectKind.PRINCIPAL_PAYMENT }.map { component ->
+            EconomicEffectSpec(
+                journalIndex = 0,
+                nature = EconomicNature.EXPENSE,
+                component = component.economicComponent,
+                isConsumption = false,
+                baseAmount = component.amount.baseAmount,
+            )
+        }
+        return AccountingRuleOutput(
+            journals = listOf(JournalSpec(postings)),
+            amounts = usedAmounts(),
+            economic = economic,
+            budget = budgetUseIfClassified(economic.map { it.baseAmount }),
+            project = projectUseIfClassified(economic.map { it.baseAmount }),
+            loan = components.map { component ->
+                LoanEffectSpec(
+                    payload.loanContractId,
+                    loan.trancheId,
+                    component.scheduleItemId,
+                    component.effectKind,
+                    component.amount.accountAmount,
+                    component.amount.baseAmount,
+                )
+            },
+        )
+    }
+
+    fun balanceAdjustment(payload: BalanceAdjustmentPayload): AccountingRuleOutput {
+        val account = account(
+            payload.accountAmount,
+            setOf(LedgerAccountClass.ASSET, LedgerAccountClass.LIABILITY),
+        )
+        val amount = amount(AmountRole.PRIMARY)
+        requireAmountAccount(amount, payload.accountAmount)
+        val normalSide = account.ledger.normalSide
+        val accountSide = if (payload.direction == BalanceAdjustmentDirection.INCREASE) {
+            normalSide
+        } else {
+            normalSide.opposite()
+        }
+        val adjustment = system(SystemLedgerCode.SYSTEM_BALANCE_ADJUSTMENT, baseCurrency)
+        return AccountingRuleOutput(
+            journals = listOf(
+                JournalSpec(
+                    listOf(
+                        posting(account.ledger, accountSide, amount),
+                        systemPosting(adjustment, accountSide.opposite(), amount.baseAmount, PostingRole.EQUITY),
+                    ),
+                ),
+            ),
+            amounts = usedAmounts(),
+            statement = creditStatementEffect(
+                account,
+                StatementEffectKind.ADJUSTMENT,
+                amount.accountAmount,
+            ),
+        )
+    }
+
+    fun fxExchange(payload: FxExchangePayload): AccountingRuleOutput {
+        val outgoingAccount = account(payload.outgoing, setOf(LedgerAccountClass.ASSET))
+        val incomingAccount = account(payload.incoming, setOf(LedgerAccountClass.ASSET))
+        val outgoing = amount(AmountRole.OUTGOING)
+        val incoming = amount(AmountRole.INCOMING)
+        requireAmountAccount(outgoing, payload.outgoing)
+        requireAmountAccount(incoming, payload.incoming)
+        require(outgoing.accountAmount.currency != incoming.accountAmount.currency, "fxExchange.currency")
+        val journals = transferJournals(outgoingAccount, incomingAccount, outgoing, incoming).toMutableList()
+        val difference = subtractExact(outgoing.baseAmount.minor.value, incoming.baseAmount.minor.value)
+        payload.spreadCost?.let { spread ->
+            require(
+                difference > 0L &&
+                    spread.currency == baseCurrency &&
+                    spread.minor.value == difference,
+                "fxExchange.spreadCost",
+            )
+        }
+        val economic = mutableListOf<EconomicEffectSpec>()
+        if (difference != 0L) {
+            journals += fxDifferenceJournal(difference, payload.spreadCost)
+            economic += fxEconomicEffect(difference, payload.spreadCost, journals.lastIndex)
+        }
+        return AccountingRuleOutput(
+            journals = journals.toList(),
+            amounts = usedAmounts(),
+            economic = economic.toList(),
+        )
+    }
+
+    fun settlementPayment(payload: SettlementPaymentPayload): AccountingRuleOutput {
+        val settlementEffects = settlementPaymentEffects(payload)
+        if (!payload.selfParticipates) {
+            return AccountingRuleOutput(
+                journals = emptyList(),
+                amounts = emptyList(),
+                settlement = settlementEffects,
+            )
+        }
+        val localAmount = payload.localAccountAmount ?: reject("settlementPayment.localAccountAmount")
+        val account = account(localAmount, setOf(LedgerAccountClass.ASSET))
+        val amount = amount(AmountRole.SETTLEMENT, expectedUserInput = payload.amount)
+        requireAmountAccount(amount, localAmount)
+        val self = selfParticipant()
+        val counterparty = if (payload.payerParticipantId == self.id) {
+            payload.payeeParticipantId
+        } else {
+            require(payload.payeeParticipantId == self.id, "settlementPayment.selfParticipant")
+            payload.payerParticipantId
+        }
+        val settlement = references.settlement(payload.activityId, counterparty)
+            ?: reject("settlementPayment.positionLedger")
+        require(settlement.ledger.currency == amount.accountAmount.currency, "settlementPayment.currency")
+        val selfPays = payload.payerParticipantId == self.id
+        return AccountingRuleOutput(
+            journals = listOf(
+                JournalSpec(
+                    listOf(
+                        posting(account.ledger, if (selfPays) DebitCredit.CREDIT else DebitCredit.DEBIT, amount),
+                        posting(
+                            settlement.ledger,
+                            if (selfPays) DebitCredit.DEBIT else DebitCredit.CREDIT,
+                            amount,
+                        ),
+                    ),
+                ),
+            ),
+            amounts = usedAmounts(),
+            settlement = settlementEffects,
+        )
+    }
+
+    fun openingBalance(payload: OpeningBalancePayload): AccountingRuleOutput {
+        val account = account(
+            payload.accountAmount,
+            setOf(LedgerAccountClass.ASSET, LedgerAccountClass.LIABILITY),
+        )
+        require(payload.side == account.ledger.normalSide, "openingBalance.side")
+        val amount = amount(AmountRole.PRIMARY)
+        requireAmountAccount(amount, payload.accountAmount)
+        val equity = system(SystemLedgerCode.SYSTEM_OPENING_EQUITY, baseCurrency)
+        return AccountingRuleOutput(
+            journals = listOf(
+                JournalSpec(
+                    listOf(
+                        posting(account.ledger, payload.side, amount),
+                        systemPosting(equity, payload.side.opposite(), amount.baseAmount, PostingRole.EQUITY),
+                    ),
+                ),
+            ),
+            amounts = usedAmounts(),
+            statement = creditStatementEffect(
+                account,
+                StatementEffectKind.ADJUSTMENT,
+                amount.accountAmount,
+            ),
+        )
+    }
+
+    private val consumedAmounts = mutableListOf<FrozenAmountEvidence>()
+
+    private fun amount(
+        role: AmountRole,
+        componentIndex: Int = 0,
+        expectedUserInput: PositiveMoney? = null,
+    ): FrozenAmountEvidence {
+        val amount = context.amount(role, componentIndex) ?: reject("amountEvidence.${role.name}.$componentIndex")
+        require(amount.baseAmount.currency == baseCurrency, "amountEvidence.baseCurrency")
+        require(expectedUserInput == null || amount.userInput == expectedUserInput, "amountEvidence.userInput")
+        if (amount !in consumedAmounts) consumedAmounts += amount
+        return amount
+    }
+
+    private fun usedAmounts(): List<FrozenAmountEvidence> = consumedAmounts.toList()
+
+    private fun account(amount: AccountAmount, classes: Set<LedgerAccountClass>): PlanningAccount {
+        val account = references.account(amount.accountId) ?: reject("account.reference")
+        require(account.account.status == EntityStatus.ACTIVE, "account.status")
+        require(account.ledger.status == EntityStatus.ACTIVE, "ledgerAccount.status")
+        require(account.ledger.accountClass in classes, "ledgerAccount.class")
+        return account
+    }
+
+    private fun requireAmountAccount(evidence: FrozenAmountEvidence, amount: AccountAmount) {
+        require(evidence.relatedAccountId == amount.accountId, "amountEvidence.relatedAccount")
+        require(evidence.accountAmount == amount.amount, "amountEvidence.accountAmount")
+    }
+
+    private fun category(assignment: CategoryAssignment): PlanningCategory {
+        val category = references.category(assignment.categoryId) ?: reject("category.reference")
+        require(category.status == CategoryStatus.ACTIVE, "category.status")
+        require(category.direction == assignment.direction, "category.direction")
+        require(category.statisticalNature == assignment.statisticalNatureSnapshot, "category.statisticalNature")
+        return category
+    }
+
+    private fun validateCard(cardId: PaymentCardId?, accountId: UserAccountId) {
+        if (cardId == null) return
+        val card = references.card(cardId) ?: reject("card.reference")
+        require(card.status == EntityStatus.ACTIVE && card.accountId == accountId, "card.account")
+    }
+
+    private fun system(
+        code: SystemLedgerCode,
+        currency: app.ledger.core.money.CurrencyCode,
+    ): LedgerAccountSnapshot = references.system(code, currency) ?: reject("systemLedger.${code.name}.${currency.value}")
+
+    private fun posting(
+        ledger: LedgerAccountSnapshot,
+        side: DebitCredit,
+        amount: FrozenAmountEvidence,
+    ): PostingSpec {
+        require(ledger.currency == amount.accountAmount.currency, "posting.accountCurrency")
+        return PostingSpec(
+            ledger,
+            side,
+            amount.accountAmount,
+            amount.baseAmount,
+            amount.accountToBase?.evidence?.rate,
+            ledger.accountClass.postingRole(),
+        )
+    }
+
+    private fun systemPosting(
+        ledger: LedgerAccountSnapshot,
+        side: DebitCredit,
+        baseAmount: PositiveMoney,
+        role: PostingRole,
+    ): PostingSpec {
+        require(ledger.currency == baseAmount.currency, "systemPosting.currency")
+        return PostingSpec(ledger, side, baseAmount, baseAmount, null, role)
+    }
+
+    private fun transferJournals(
+        outgoingAccount: PlanningAccount,
+        incomingAccount: PlanningAccount,
+        outgoing: FrozenAmountEvidence,
+        incoming: FrozenAmountEvidence,
+    ): List<JournalSpec> {
+        if (outgoing.accountAmount.currency == incoming.accountAmount.currency) {
+            return listOf(
+                JournalSpec(
+                    listOf(
+                        posting(incomingAccount.ledger, DebitCredit.DEBIT, incoming),
+                        posting(outgoingAccount.ledger, DebitCredit.CREDIT, outgoing),
+                    ),
+                ),
+            )
+        }
+        val clearing = system(SystemLedgerCode.SYSTEM_FX_CLEARING, baseCurrency)
+        return listOf(
+            JournalSpec(
+                listOf(
+                    systemPosting(clearing, DebitCredit.DEBIT, outgoing.baseAmount, PostingRole.CLEARING),
+                    posting(outgoingAccount.ledger, DebitCredit.CREDIT, outgoing),
+                ),
+            ),
+            JournalSpec(
+                listOf(
+                    posting(incomingAccount.ledger, DebitCredit.DEBIT, incoming),
+                    systemPosting(clearing, DebitCredit.CREDIT, incoming.baseAmount, PostingRole.CLEARING),
+                ),
+            ),
+        )
+    }
+
+    private fun fxDifferenceJournal(difference: Long, spreadCost: PositiveMoney?): JournalSpec {
+        val amountMinor = absExact(difference)
+        val amount = positive(amountMinor, baseCurrency)
+        val clearing = system(SystemLedgerCode.SYSTEM_FX_CLEARING, baseCurrency)
+        val isCost = difference > 0L
+        val code = when {
+            isCost && spreadCost != null -> SystemLedgerCode.SYSTEM_FX_COST
+            isCost -> SystemLedgerCode.SYSTEM_FX_ROUNDING
+            else -> SystemLedgerCode.SYSTEM_FX_GAIN
+        }
+        val result = system(code, baseCurrency)
+        return if (isCost) {
+            JournalSpec(
+                listOf(
+                    systemPosting(result, DebitCredit.DEBIT, amount, result.accountClass.postingRole()),
+                    systemPosting(clearing, DebitCredit.CREDIT, amount, PostingRole.CLEARING),
+                ),
+            )
+        } else {
+            JournalSpec(
+                listOf(
+                    systemPosting(clearing, DebitCredit.DEBIT, amount, PostingRole.CLEARING),
+                    systemPosting(result, DebitCredit.CREDIT, amount, result.accountClass.postingRole()),
+                ),
+            )
+        }
+    }
+
+    private fun fxEconomicEffect(
+        difference: Long,
+        spreadCost: PositiveMoney?,
+        journalIndex: Int,
+    ): EconomicEffectSpec {
+        val amount = positive(absExact(difference), baseCurrency)
+        if (difference > 0L && spreadCost != null) {
+            require(spreadCost == amount, "fxExchange.spreadCost")
+            return EconomicEffectSpec(
+                journalIndex,
+                EconomicNature.EXPENSE,
+                EconomicComponent.FX_COST,
+                isConsumption = false,
+                amount,
+            )
+        }
+        return EconomicEffectSpec(
+            journalIndex,
+            if (difference > 0L) EconomicNature.EQUITY else EconomicNature.INCOME,
+            EconomicComponent.FX_COST,
+            isConsumption = false,
+            amount,
+        )
+    }
+
+    private fun budgetUse(amount: PositiveMoney): List<BudgetEffectSpec> = if (
+        input.context.budgetMonth != null && input.payload.classification != null
+    ) {
+        listOf(BudgetEffectSpec(BudgetEffectKind.USE, amount))
+    } else {
+        emptyList()
+    }
+
+    private fun budgetRestore(amount: PositiveMoney): List<BudgetEffectSpec> = if (
+        input.context.budgetMonth != null && input.payload.classification != null
+    ) {
+        listOf(BudgetEffectSpec(BudgetEffectKind.RESTORE, amount))
+    } else {
+        emptyList()
+    }
+
+    private fun projectUse(amount: PositiveMoney): List<ProjectEffectSpec> {
+        val projectId = input.context.projectId ?: return emptyList()
+        val project = references.project(projectId) ?: reject("project.reference")
+        require(project.status == ProjectStatus.ACTIVE, "project.status")
+        return listOf(ProjectEffectSpec(ProjectEffectKind.USE, amount, project.includedInMonthlyBudget))
+    }
+
+    private fun projectRestore(
+        amount: PositiveMoney,
+        policy: RefundProjectPolicy,
+    ): List<ProjectEffectSpec> = if (policy == RefundProjectPolicy.DO_NOT_RESTORE) {
+        emptyList()
+    } else {
+        val projectId = input.context.projectId ?: return emptyList()
+        val project = references.project(projectId) ?: reject("project.reference")
+        listOf(ProjectEffectSpec(ProjectEffectKind.RESTORE, amount, project.includedInMonthlyBudget))
+    }
+
+    private fun goalSpend(
+        accountAmount: PositiveMoney,
+        accountId: UserAccountId?,
+    ): List<GoalEffectSpec> {
+        val goalId = input.context.goalId ?: return emptyList()
+        val goal = references.goal(goalId) ?: reject("goal.reference")
+        require(goal.status == GoalStatus.ACTIVE, "goal.status")
+        require(accountId != null && goal.accountId == accountId, "goal.account")
+        require(goal.currency == accountAmount.currency, "goal.currency")
+        return listOf(GoalEffectSpec(GoalEffectKind.SPEND, accountAmount))
+    }
+
+    private fun goalRestore(
+        amount: PositiveMoney,
+        accountId: UserAccountId,
+        policy: RefundGoalPolicy,
+    ): List<GoalEffectSpec> = if (policy == RefundGoalPolicy.DO_NOT_RESTORE) {
+        emptyList()
+    } else {
+        val goalId = input.context.goalId ?: return emptyList()
+        val goal = references.goal(goalId) ?: reject("goal.reference")
+        require(goal.accountId == accountId, "goal.account")
+        require(goal.currency == amount.currency, "goal.currency")
+        listOf(GoalEffectSpec(GoalEffectKind.RESTORE, amount))
+    }
+
+    @Suppress("ReturnCount")
+    private fun expenseStatement(
+        payload: ExpensePayload,
+        amount: PositiveMoney,
+    ): List<StatementEffectSpec> {
+        val payer = payload.payer as? ExpensePayer.LocalAccount ?: return emptyList()
+        val account = references.account(payer.accountAmount.accountId) ?: return emptyList()
+        val kind = if (payload.installmentPlanId == null) {
+            StatementEffectKind.CHARGE
+        } else {
+            StatementEffectKind.INSTALLMENT_POSTING
+        }
+        return creditStatementEffect(account, kind, amount)
+    }
+
+    private fun creditStatementEffect(
+        account: PlanningAccount,
+        kind: StatementEffectKind,
+        amount: PositiveMoney,
+    ): List<StatementEffectSpec> = if (account.account.type == UserAccountType.CREDIT) {
+        listOf(
+            StatementEffectSpec(
+                account.account.id,
+                input.context.statementAssignment?.statementId,
+                kind,
+                amount,
+                input.context.statementAssignment?.mode == StatementAssignmentMode.EXPLICIT_STATEMENT,
+            ),
+        )
+    } else {
+        emptyList()
+    }
+
+    private fun settlementSelfShareOrPrimary(
+        payload: ExpensePayload,
+        primary: FrozenAmountEvidence,
+    ): FrozenAmountEvidence {
+        if (payload.settlementShares.isEmpty()) return primary
+        SettlementSharePolicy.validate(primary.userInput.minor.value, payload.settlementShares).orReject()
+        return amount(AmountRole.SELF_SHARE)
+    }
+
+    private fun settlementShares(payload: ExpensePayload): List<SettlementEffectSpec> {
+        val activityId = payload.settlementActivityId ?: return emptyList()
+        if (payload.settlementShares.isEmpty()) reject("expense.settlementShares")
+        val currency = payload.primaryAmount.currency
+        val effects = mutableListOf<SettlementEffectSpec>()
+        payload.settlementShares.forEach { share ->
+            if (share.paidMinor > 0L) {
+                effects += SettlementEffectSpec(
+                    activityId,
+                    share.participantId,
+                    SettlementEffectKind.PAID_FOR_GROUP,
+                    share.paidMinor,
+                    currency,
+                )
+            }
+            if (share.owedMinor > 0L) {
+                effects += SettlementEffectSpec(
+                    activityId,
+                    share.participantId,
+                    SettlementEffectKind.OWED_SHARE,
+                    negateExact(share.owedMinor),
+                    currency,
+                )
+            }
+        }
+        val signedTotal = CheckedArithmetic.sum(effects.map { it.signedDeltaMinor }).orReject()
+        if (signedTotal != 0L) rejectInvariant("INV-022")
+        return effects.toList()
+    }
+
+    private fun settlementPaymentEffects(payload: SettlementPaymentPayload): List<SettlementEffectSpec> = listOf(
+        SettlementEffectSpec(
+            payload.activityId,
+            payload.payerParticipantId,
+            SettlementEffectKind.SETTLEMENT_PAID,
+            payload.amount.minor.value,
+            payload.amount.currency,
+        ),
+        SettlementEffectSpec(
+            payload.activityId,
+            payload.payeeParticipantId,
+            SettlementEffectKind.SETTLEMENT_RECEIVED,
+            negateExact(payload.amount.minor.value),
+            payload.amount.currency,
+        ),
+    )
+
+    private fun validateRefundAllocations(
+        payload: RefundPayload,
+        refund: FrozenAmountEvidence,
+    ) {
+        if (payload.independent) {
+            require(payload.allocations.isEmpty(), "refund.allocations")
+            return
+        }
+        require(payload.allocations.isNotEmpty(), "refund.allocations")
+        require(
+            payload.allocations.all { it.amountInBaseCurrency.currency == baseCurrency },
+            "refund.allocationBaseCurrency",
+        )
+        require(
+            sumBase(payload.allocations.map { it.amountInBaseCurrency }) == refund.baseAmount.minor.value,
+            "refund.allocationBaseAmount",
+        )
+    }
+
+    private fun creditPaymentAllocations(
+        payload: CreditPaymentPayload,
+        paidAmount: PositiveMoney,
+    ): List<CreditPaymentAllocation> {
+        require(payload.allocations.isNotEmpty(), "creditPayment.allocations")
+        require(
+            payload.allocations.all { it.amount.currency == paidAmount.currency },
+            "creditPayment.allocationCurrency",
+        )
+        val allocated = CheckedArithmetic.sum(payload.allocations.map { it.amount.minor.value }).orReject()
+        require(allocated == paidAmount.minor.value, "creditPayment.allocationAmount")
+        return payload.allocations
+    }
+
+    private fun selfParticipant(): Participant = snapshot.participants.singleOrNull {
+        it.isSelf && it.status == EntityStatus.ACTIVE
+    } ?: reject("participant.self")
+
+    private data class LoanComponentDraft(
+        val amount: FrozenAmountEvidence,
+        val effectKind: LoanEffectKind,
+        val economicComponent: EconomicComponent,
+        val scheduleItemId: LoanScheduleItemId?,
+    )
+
+    private fun loanComponents(
+        payload: LoanPaymentPayload,
+        loan: PlanningLoanLedger,
+    ): List<LoanComponentDraft> {
+        val values = listOfNotNull(
+            payload.components.principal?.let {
+                loanComponent(payload, loan, AmountRole.PRINCIPAL, it, LoanEffectKind.PRINCIPAL_PAYMENT, EconomicComponent.PRIMARY)
+            },
+            payload.components.interest?.let {
+                loanComponent(payload, loan, AmountRole.INTEREST, it, LoanEffectKind.INTEREST_PAYMENT, EconomicComponent.INTEREST)
+            },
+            payload.components.fee?.let {
+                loanComponent(payload, loan, AmountRole.FEE, it, LoanEffectKind.FEE_PAYMENT, EconomicComponent.FEE)
+            },
+            payload.components.penalty?.let {
+                loanComponent(payload, loan, AmountRole.PENALTY, it, LoanEffectKind.PENALTY_PAYMENT, EconomicComponent.PENALTY)
+            },
+        )
+        if (values.isEmpty()) reject("loanPayment.components")
+        return values
+    }
+
+    @Suppress("LongParameterList")
+    private fun loanComponent(
+        payload: LoanPaymentPayload,
+        loan: PlanningLoanLedger,
+        role: AmountRole,
+        expected: PositiveMoney,
+        effectKind: LoanEffectKind,
+        economicComponent: EconomicComponent,
+    ): LoanComponentDraft {
+        val amount = amount(role, expectedUserInput = expected)
+        require(amount.accountAmount.currency == loan.ledger.currency, "loanPayment.componentCurrency")
+        val scheduleItemId = payload.allocations.firstOrNull { allocation ->
+            allocation.trancheId == loan.trancheId && allocation.component.name == role.name
+        }?.scheduleItemId
+        return LoanComponentDraft(amount, effectKind, economicComponent, scheduleItemId)
+    }
+
+    private fun budgetUseIfClassified(amounts: List<PositiveMoney>): List<BudgetEffectSpec> {
+        if (input.payload.classification == null || input.context.budgetMonth == null || amounts.isEmpty()) return emptyList()
+        return listOf(BudgetEffectSpec(BudgetEffectKind.USE, positive(sumBase(amounts), baseCurrency)))
+    }
+
+    private fun projectUseIfClassified(amounts: List<PositiveMoney>): List<ProjectEffectSpec> {
+        if (input.payload.classification == null || amounts.isEmpty()) return emptyList()
+        return projectUse(positive(sumBase(amounts), baseCurrency))
+    }
+
+    private fun sumBase(amounts: List<PositiveMoney>): Long {
+        require(amounts.all { it.currency == baseCurrency }, "amount.baseCurrency")
+        return CheckedArithmetic.sum(amounts.map { it.minor.value }).orReject()
+    }
+}
+
+private fun LedgerAccountClass.postingRole(): PostingRole = when (this) {
+    LedgerAccountClass.ASSET -> PostingRole.ASSET
+    LedgerAccountClass.LIABILITY -> PostingRole.LIABILITY
+    LedgerAccountClass.INCOME -> PostingRole.INCOME
+    LedgerAccountClass.EXPENSE -> PostingRole.EXPENSE
+    LedgerAccountClass.EQUITY -> PostingRole.EQUITY
+    LedgerAccountClass.SETTLEMENT -> PostingRole.SETTLEMENT
+    LedgerAccountClass.CLEARING -> PostingRole.CLEARING
+}
+
+private fun DebitCredit.opposite(): DebitCredit = when (this) {
+    DebitCredit.DEBIT -> DebitCredit.CREDIT
+    DebitCredit.CREDIT -> DebitCredit.DEBIT
+}
+
+private fun expenseSystemCode(nature: StatisticalNature): SystemLedgerCode = when (nature) {
+    StatisticalNature.CONSUMPTION_EXPENSE -> SystemLedgerCode.SYSTEM_EXPENSE_CONSUMPTION
+    StatisticalNature.NON_CONSUMPTION_EXPENSE -> SystemLedgerCode.SYSTEM_EXPENSE_NON_CONSUMPTION
+    else -> reject("expense.statisticalNature")
+}
+
+private fun incomeSystemCode(nature: StatisticalNature): SystemLedgerCode = when (nature) {
+    StatisticalNature.REGULAR_INCOME -> SystemLedgerCode.SYSTEM_INCOME_REGULAR
+    StatisticalNature.NON_RECURRING_INCOME -> SystemLedgerCode.SYSTEM_INCOME_NON_RECURRING
+    else -> reject("income.statisticalNature")
+}
+
+private fun positive(minor: Long, currency: app.ledger.core.money.CurrencyCode): PositiveMoney = when (
+    val result = PositiveMoney.from(app.ledger.core.money.Money(minor, currency))
+) {
+    is DomainResult.Success -> result.value
+    is DomainResult.Failure -> throw RuleRejected(result.error)
+}
+
+private fun subtractExact(left: Long, right: Long): Long = CheckedArithmetic.subtract(left, right).orReject()
+
+private fun negateExact(value: Long): Long = CheckedArithmetic.negate(value).orReject()
+
+private fun absExact(value: Long): Long = CheckedArithmetic.abs(value).orReject()
+
+private fun <T> DomainResult<T>.orReject(): T = when (this) {
+    is DomainResult.Success -> value
+    is DomainResult.Failure -> throw RuleRejected(error)
+}
+
+private class RuleRejected(val violation: DomainError) : RuntimeException(null, null, false, false)
+
+private fun reject(field: String): Nothing = throw RuleRejected(DomainViolation.InvalidField(field))
+
+private fun rejectInvariant(id: String): Nothing = throw RuleRejected(DomainViolation.Invariant(id))
+
+private fun require(condition: Boolean, field: String) {
+    if (!condition) reject(field)
+}
