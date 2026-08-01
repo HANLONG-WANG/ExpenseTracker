@@ -70,6 +70,23 @@ internal object SourcePolicyEngine {
     private val screenReference = Regex(
         "(?:ScreenId\\s*\\(\\s*|screenId\\s*=\\s*)\"([A-Z][A-Z0-9]*-\\d{3})\"",
     )
+    private const val GOVERNED_MATERIAL_COMPONENT =
+        "Button|FilledTonalButton|ElevatedButton|OutlinedButton|TextButton|IconButton|" +
+            "FloatingActionButton|ExtendedFloatingActionButton|TextField|OutlinedTextField|SearchBar|" +
+            "DockedSearchBar|Card|ElevatedCard|OutlinedCard|ListItem|AssistChip|FilterChip|InputChip|" +
+            "SuggestionChip|Badge|BadgedBox|Dialog|AlertDialog|BasicAlertDialog|ModalBottomSheet|" +
+            "Snackbar|SnackbarHost|Scaffold|TopAppBar|CenterAlignedTopAppBar|MediumTopAppBar|LargeTopAppBar|" +
+            "NavigationBar|NavigationRail|Tab|PrimaryTabRow|SecondaryTabRow|DatePicker|DatePickerDialog|" +
+            "TimePicker|CircularProgressIndicator|LinearProgressIndicator|Surface"
+    private const val GOVERNED_COMPONENT_DECLARATION =
+        "AmountText|MoneyStack|MetricCard|StatusBadge|CategoryGrid|CategoryTile|JournalTransactionRow|" +
+            "AccountSummaryCard|ProgressSummary|MoneyExpressionField|FilterBuilder|AttachmentField|" +
+            "LocationField|ChartCard|AccessibleDataTable|MapPanel|OperationProgressPanel|SensitiveValueField|" +
+            "HighRiskConfirmation|LedgerScaffold|LedgerTopAppBar|LedgerNavigationBar|LedgerSaveFab|" +
+            "LedgerButton|LedgerIconButton|LedgerTextField|SearchField|SelectorField|DateTimeZoneField|" +
+            "FormSection|ValidationSummary|LedgerCard|LedgerChip|LedgerBanner|LedgerLoadingState|" +
+            "LedgerEmptyState|LedgerErrorState|LedgerProgressIndicator|LedgerSnackbarHost|LedgerTabRow|" +
+            "LedgerDialog|LedgerBottomSheet|LedgerDatePickerDialog|LedgerTimePickerDialog"
 
     @Suppress("LongMethod", "CyclomaticComplexMethod")
     fun scan(
@@ -89,22 +106,45 @@ internal object SourcePolicyEngine {
                 .findAll(source)
                 .forEach { report("ARCH-FEATURE-DATA", it, "feature source imports a data/Room API") }
             Regex(
-                "(?m)^import\\s+androidx\\.compose\\.material3\\.(?:\\*|Button|IconButton|TextField|Card|Dialog|" +
-                    "ModalBottomSheet|Snackbar|NavigationBar|TopAppBar|Tab|DatePicker|TimePicker|CircularProgressIndicator|" +
-                    "LinearProgressIndicator)\\b",
+                "(?m)^import\\s+androidx\\.compose\\.material3\\.(?:\\*|$GOVERNED_MATERIAL_COMPONENT)\\b|" +
+                    "androidx\\.compose\\.material3\\.(?:$GOVERNED_MATERIAL_COMPONENT)\\b",
             )
                 .findAll(source)
                 .forEach { report("UI-WRAPPER", it, "feature source bypasses a governed design-system wrapper") }
-            Regex("\\bColor\\s*\\(|\\bColor\\.(?:Black|White|Red|Green|Blue|Yellow|Gray|Grey|Magenta|Cyan|Transparent)\\b")
+            Regex(
+                "\\bColor\\s*\\(|\\bColor\\.(?:Black|White|Red|Green|Blue|Yellow|Gray|Grey|Magenta|Cyan|Transparent)\\b|" +
+                    "\"#[0-9A-Fa-f]{6,8}\"",
+            )
                 .findAll(source)
                 .forEach { report("UI-COLOR-LITERAL", it, "feature source contains a hard-coded color") }
             Regex("(?<![A-Za-z0-9_])(?:\\d+(?:\\.\\d+)?)\\.dp\\b")
                 .findAll(source)
                 .forEach { report("UI-SPACING-LITERAL", it, "feature source contains a hard-coded dp value") }
-            Regex("\\bMaterialTheme\\s*(?:\\(|\\{)")
+            Regex("\\bMaterialTheme\\b")
                 .findAll(source)
-                .forEach { report("UI-LOCAL-THEME", it, "feature source creates a local MaterialTheme") }
+                .forEach { report("UI-LOCAL-THEME", it, "feature source uses MaterialTheme instead of LedgerTheme") }
+            Regex("(?m)^import\\s+androidx\\.compose\\.material\\.icons(?:\\.|$)|androidx\\.compose\\.material\\.icons\\.")
+                .findAll(source)
+                .forEach { report("UI-ICON-REGISTRY", it, "feature source bypasses the unified LedgerIcon registry") }
+            Regex(
+                "\\b(?:SwipeToDismissBox|SwipeToDismiss|rememberSwipeToDismissBoxState|rememberDismissState|" +
+                    "DismissValue|DismissDirection)\\b",
+            )
+                .findAll(source)
+                .forEach { report("UI-SWIPE-DELETE", it, "feature source introduces forbidden swipe-to-delete behavior") }
+            Regex("(?m)^(?:public\\s+|private\\s+|internal\\s+)?(?:suspend\\s+)?fun\\s+(?:$GOVERNED_COMPONENT_DECLARATION)\\s*\\(")
+                .findAll(source)
+                .forEach { report("UI-COMPONENT-DUPLICATE", it, "feature source duplicates a governed design-system component") }
         }
+
+        Regex("\\.testTag\\s*\\(\\s*([^\\n)]*)")
+            .findAll(source)
+            .filter { match ->
+                val argument = match.groupValues[1].trim()
+                !Regex("LedgerTestTags\\.[A-Z][A-Z0-9_]*").matches(argument) &&
+                    !Regex("\"[a-z][a-z0-9_]{2,63}\"").matches(argument)
+            }
+            .forEach { report("PRIVACY-TEST-TAG", it, "test tags must be fixed semantic IDs without runtime or sensitive values") }
 
         if (Regex("^(?:finance|analytics|transfer)/domain/").containsMatchIn(normalizedPath)) {
             Regex(

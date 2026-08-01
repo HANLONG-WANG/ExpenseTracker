@@ -33,11 +33,11 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Install contract parser
         run: python3 -m pip install PyYAML==6.0.3
-      - name: Verify frozen baseline and P03 quality gates
+      - name: Verify frozen baseline and P04 quality gates
         run: |
           python3 scripts/validate_spec_baseline.py
           python3 scripts/validate_p01_baseline.py
-          ./gradlew p03Check koverXmlReport koverHtmlReport cyclonedxBom --configuration-cache --console=plain
+          ./gradlew p04Check koverXmlReport koverHtmlReport cyclonedxBom --configuration-cache --console=plain
       - name: Prove source policies reject real violations
         run: |
           python3 scripts/prove_p01_architecture_rejection.py
@@ -85,6 +85,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Run API-specific Gradle Managed Device tests
         run: ./gradlew :app:${{ matrix.device }}DebugAndroidTest --configuration-cache --console=plain
+      - name: Run P04 design-system golden and accessibility matrix
+        run: ./gradlew :core:designsystem:${{ matrix.device }}DebugAndroidTest --configuration-cache --console=plain
       - name: Validate Macrobenchmark and Baseline Profile device toolchain
         if: matrix.device == 'pixel6Api36'
         run: ./gradlew :benchmark:pixel6Api36DebugAndroidTest --configuration-cache --console=plain
@@ -104,3 +106,5 @@ jobs:
             benchmark/build/outputs/androidTest-results/managedDevice/
             core/database/build/reports/androidTests/managedDevice/
             core/database/build/outputs/androidTest-results/managedDevice/
+            core/designsystem/build/reports/androidTests/managedDevice/
+            core/designsystem/build/outputs/androidTest-results/managedDevice/

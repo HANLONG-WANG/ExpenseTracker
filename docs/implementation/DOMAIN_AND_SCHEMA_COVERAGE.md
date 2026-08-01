@@ -1,8 +1,8 @@
 # Domain and Schema Coverage Baseline
 
 Last updated: 2026-08-01 (Asia/Tokyo)
-Stage: P03
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P03 promotes only the pure-Kotlin value/algorithm evidence it actually verifies; schema, planners, accounting persistence, security and feature behavior remain later scope.
+Stage: P04
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P04 promotes only the design-system/navigation decisions it verifies; schema, planners, accounting persistence, security and feature behavior remain later scope.
 
 ## Architecture decisions
 
@@ -32,22 +32,22 @@ Source: `docs/规格冻结_v1.0/系统架构.md` §22, except ADR-007A from `doc
 | ADR-019 | Reports use a typed AST and never accept user SQL | NOT_STARTED | Compiler whitelist/security tests |
 | ADR-020 | The domain model enforces the no-split-transaction limitation | NOT_STARTED | Domain/import/report contract tests |
 
-The 12 UI-derived decisions from UI contract §18 are separately registered below. They remain `NOT_STARTED`; implementation evidence belongs to P04 and screen-level verification belongs to later feature phases.
+The 12 UI-derived decisions from UI contract §18 are separately registered below. P04 may verify a closed cross-cutting contract, while decisions that require actual screen/application behavior remain `IN_PROGRESS` or `NOT_STARTED`.
 
 | ID | Frozen UI decision | Status |
 |---|---|---|
-| UI-ADR-001 | Every top-level page has the same top-right More Features entry. | NOT_STARTED |
-| UI-ADR-002 | Financial records do not use swipe-to-delete. | NOT_STARTED |
-| UI-ADR-003 | Category hierarchy uses first-level groups and the same selectable tile component. | NOT_STARTED |
-| UI-ADR-004 | Unsaved forms are discarded with explanation after process death because sensitive SavedState and drafts are prohibited. | NOT_STARTED |
-| UI-ADR-005 | Invalid ordinary forms keep Save actionable so validation can explain errors; only absolute prerequisites disable it. | NOT_STARTED |
-| UI-ADR-006 | Long operations share one Operation Center. | NOT_STARTED |
-| UI-ADR-007 | Transaction lists have no swipe quick-edit/delete gesture. | NOT_STARTED |
-| UI-ADR-008 | Map failure provides a list alternative. | NOT_STARTED |
+| UI-ADR-001 | Every top-level page has the same top-right More Features entry. | IN_PROGRESS (`P04-E003`: fixed top-app-bar variant; pages remain P11+) |
+| UI-ADR-002 | Financial records do not use swipe-to-delete. | VERIFIED (`P04-E005`: source rule and real rejection fixture) |
+| UI-ADR-003 | Category hierarchy uses first-level groups and the same selectable tile component. | IN_PROGRESS (`P04-E003`: governed grouped grid/tile; category screens remain P12) |
+| UI-ADR-004 | Unsaved forms are discarded with explanation after process death because sensitive SavedState and drafts are prohibited. | IN_PROGRESS (`P02-E004`, `P04-E004`: sensitive state closure; process-death UX remains later) |
+| UI-ADR-005 | Invalid ordinary forms keep Save actionable so validation can explain errors; only absolute prerequisites disable it. | IN_PROGRESS (`P04-E003`: validation summary/save component contract; form reducers remain later) |
+| UI-ADR-006 | Long operations share one Operation Center. | IN_PROGRESS (`P04-E003`: one operation-progress model/panel; operation destination remains P28+) |
+| UI-ADR-007 | Transaction lists have no swipe quick-edit/delete gesture. | VERIFIED (`P04-E003`, `P04-E005`: non-swipe row plus static rejection) |
+| UI-ADR-008 | Map failure provides a list alternative. | IN_PROGRESS (`P04-E007`, `P04-E008`: MapPanel fallback verified; actual MapLibre integration remains P26) |
 | UI-ADR-009 | Settlement suggestions may be displayed only when returned by a domain/application query service; UI never writes its own calculation. | NOT_STARTED |
-| UI-ADR-010 | Pie charts automatically change to bars above six categories. | NOT_STARTED |
-| UI-ADR-011 | Top-level pages use a small fixed app bar, not a collapsing large title. | NOT_STARTED |
-| UI-ADR-012 | Token JSON is the machine-readable source of concrete visual values. | NOT_STARTED |
+| UI-ADR-010 | Pie charts automatically change to bars above six categories. | VERIFIED (`P04-E002`: deterministic 6/7-category boundary test) |
+| UI-ADR-011 | Top-level pages use a small fixed app bar, not a collapsing large title. | VERIFIED (`P04-E003`, `P04-E005`: closed wrapper and Material top-bar bypass rejection) |
+| UI-ADR-012 | Token JSON is the machine-readable source of concrete visual values. | VERIFIED (`P04-E001`, `P04-E002`: complete generation/hash and typed equality tests) |
 
 ## Permanent invariants
 

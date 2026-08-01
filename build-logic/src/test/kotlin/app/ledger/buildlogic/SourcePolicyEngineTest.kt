@@ -28,6 +28,44 @@ class SourcePolicyEngineTest {
     }
 
     @Test
+    fun `rejects every P04 UI governance bypass`() {
+        val rules = scan(
+            "feature/journal/src/main/kotlin/UnsafeJournal.kt",
+            """
+                import androidx.compose.material.icons.Icons
+                import androidx.compose.material3.SwipeToDismissBox
+                import androidx.compose.material3.FilledTonalButton
+                val hex = "#1234AB"
+                val scheme = MaterialTheme.colorScheme
+                fun AmountText(value: String) = value
+                fun rowTag(transactionName: String) = Modifier.testTag("row_" + transactionName)
+            """.trimIndent(),
+        )
+
+        rules.shouldContainAll(
+            "UI-WRAPPER",
+            "UI-COLOR-LITERAL",
+            "UI-LOCAL-THEME",
+            "UI-ICON-REGISTRY",
+            "UI-SWIPE-DELETE",
+            "UI-COMPONENT-DUPLICATE",
+            "PRIVACY-TEST-TAG",
+        )
+    }
+
+    @Test
+    fun `allows only fixed semantic test tags`() {
+        val findings = SourcePolicyEngine.scan(
+            "core/designsystem/src/main/kotlin/Tags.kt",
+            """
+                fun stable() = Modifier.testTag(LedgerTestTags.AMOUNT)
+                fun localStable() = Modifier.testTag("transaction_amount_field")
+            """.trimIndent(),
+        )
+        check(findings.isEmpty()) { findings.joinToString { it.diagnostic() } }
+    }
+
+    @Test
     fun `rejects Android imports in domain`() {
         scan(
             "finance/domain/src/main/kotlin/Balance.kt",

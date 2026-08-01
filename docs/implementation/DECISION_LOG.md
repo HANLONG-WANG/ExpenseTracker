@@ -129,3 +129,34 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: UI contract §§8.7, 10 and 15.5 require preformatted UI models, while architecture assigns exact money/time work to pure Kotlin core modules and no Compose page exists before P04.
 - Decision: `CurrencyFormatter` produces `MoneyUiModel` from `Money`, currency metadata and an explicit `Locale`; `LedgerDateTimeFormatter` similarly produces formatted temporal models. Hidden-value text is supplied by the presentation resource layer, so the formatter cannot leak the underlying amount or hard-code user-visible translations. Neither formatter performs FX or authoritative business calculation.
 - Consequence: later Composables consume formatted models and need no `BigDecimal`, FX, time-zone or locale calculation. P03 does not claim an `AmountText` Composable or any screen implementation.
+
+## DL-018 — P04 generated contracts and golden accept only explicit textual inputs
+
+- Date/stage: 2026-08-01 / P04
+- Surface issue: P04 needs machine-equal Kotlin tokens/routes and a screenshot regression base before feature pages exist, while review-rendering artifacts are prohibited implementation inputs.
+- Decision: `scripts/generate_p04_contracts.py` names exactly the frozen token JSON and screen YAML; it does not enumerate the delivery directory. It emits all 434 scalar token values, all 215 route/state records and a 128×104 palette golden from 208 token color occurrences. Translucent colors are composited over the light-background token, and device comparison permits only one 8-bit channel level of renderer rounding.
+- Consequence: `--check`, canonical hashes and the device golden fail on textual/token drift. The palette is a token regression fixture, not a page-design oracle; provenance and SHA-256 are recorded separately.
+
+## DL-019 — Design system and navigation consume only the exact P03 core types they expose
+
+- Date/stage: 2026-08-01 / P04
+- Surface issue: P01 created empty `:core:designsystem` and `:core:navigation` projects, so their provisional edge allowlist was empty. P04 must consume the authoritative P03 `MoneyUiModel` and immutable `StableId` instead of duplicating either type in UI code.
+- Precedence applied: frozen module direction and single-authority value semantics outrank the page-free P01 provisional edge set.
+- Decision: allow only `:core:designsystem` → `:core:money` and `:core:navigation` → `:core:common`; both dependencies are API surfaces because consumers pass the exact formatted model/ID. No feature, application, data or Android-framework reverse edge is introduced.
+- Consequence: amount rendering cannot recalculate money and routes cannot invent string IDs. `verifyArchitecture` continues to reject every unlisted edge.
+
+## DL-020 — Missing semantic onBase is derived by the frozen contrast rule
+
+- Date/stage: 2026-08-01 / P04
+- Surface issue: positive/warning/danger/info tokens define `onBase`, but `neutralTransaction` defines only base/container/onContainer. Reusing `onContainer` on the base fails the contract's 3:1 graphical contrast threshold in both themes.
+- Precedence applied: the UI main contract explicitly requires automatic accessible foreground replacement; the token JSON remains the concrete color source and is not modified.
+- Decision: when and only when `onBase` is absent, `LedgerContrast.accessibleContent(base)` chooses black or white by the higher measured contrast. Explicit `onBase` values remain exact.
+- Consequence: every semantic base/content and container/content pair passes the automated light/dark contrast suite without altering frozen token data.
+
+## DL-021 — YAML String route keys are closed implementation keys, not arbitrary public strings
+
+- Date/stage: 2026-08-01 / P04
+- Surface issue: four frozen routes declare `topicKey`, `reportKey` or `forecastKey` as `String`, while the higher-priority privacy contract forbids routes from carrying names, notes, amounts or full objects.
+- Precedence applied: preserve the YAML path shapes but interpret these fields as opaque implementation keys, not user text.
+- Decision: `OpaqueKeyArgument` and the similarly open-ended named-enum wrapper have private constructors and internal validators. Feature code cannot construct arbitrary string arguments; future registered key constants must be exposed from `:core:navigation`. Stable IDs, exact contract enums, year-month, masks and positive widget IDs remain the only public argument constructors.
+- Consequence: all 215 patterns remain machine-equal to YAML, while the public route type system cannot transport arbitrary sensitive strings.

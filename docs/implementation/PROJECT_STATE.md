@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-01 (Asia/Tokyo)
-Current stage: P03 — core value objects, money, time and deterministic algorithms
-Stage status: VERIFIED (`P03-E001`—`P03-E009`); the P00—P03 audit remediation tracker is complete; P04 is the next unstarted stage
+Current stage: P04 — unified design system, route contract and UI test foundation
+Stage status: VERIFIED (`P04-E001`—`P04-E011`); P00—P04 are complete and P05 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -111,14 +111,28 @@ P02 is complete for its local acceptance scope. `/dev/kvm` is accessible, Emulat
 
 P03 is complete with 36 core behavioral tests plus 12 build-logic policy tests (all zero failed/error/skipped), 1,000-case addition/absolute/expression properties, generated calendar boundaries, and fresh P03-inclusive Kover reports. No Android/Room/network dependency exists in the three core modules; visual drafts are excluded by fail-closed textual input policy.
 
+### P04 result
+
+| Area | P04 result | Classification |
+|---|---|---|
+| Token/theme contract | All 434 JSON scalar paths generate deterministically; typed `LedgerTheme.colors/typography/spacing/shapes/motion/dimensions`, 16 category pairs, semantic colors, chart colors and dynamic-shell boundaries are mapped and contrast-tested | VERIFIED (`P04-E001`, `P04-E002`) |
+| Governed components | 44 core component APIs plus closed variants/models, unified icon registry, load/error/empty states, financial formatting consumers, high-risk confirmation, accessibility semantics and stable test tags live only in `:core:designsystem` | VERIFIED as P04 foundation (`P04-E003`, `P04-E005`, `P04-E007`, `P04-E008`) |
+| Navigation | Navigation 3 keys mirror all 215 unique YAML routes and 646 required states; only typed stable IDs/closed enum-period-mask-int arguments cross the public boundary; five top-level stacks retain independent history and pass SessionGate/current-stack back tests | VERIFIED; `REQ-085` (`P04-E004`, `P04-E005`) |
+| Chart/map/widget boundary | Vico adapter interfaces, accessible data table and deterministic pie fallback are present; Map and Glance expose restricted token/design subsets and mandatory map-list fallback without pretending the later external SDK integrations exist | VERIFIED for P04 contract; SDK capability remains P26/P33 (`P04-E002`, `P04-E003`, `P04-E007`, `P04-E008`) |
+| Visual/accessibility matrix | Token-only 128×104 golden, 320/360/480dp, 100/130/200% font scale, zh/ja/en, light/dark, reduced motion, 48dp touch, hidden-value semantic leak and map fallback tests pass on API 28 and API 36 | VERIFIED (`P04-E007`, `P04-E008`) |
+| Static governance | Feature code is rejected for unwrapped Material components, color/general-dp literals, MaterialTheme, external icon families, swipe delete, duplicate governed components and runtime/sensitive test tags; production source passes and named fixtures fail | VERIFIED (`P04-E005`) |
+| Provenance | Generated Kotlin and the golden use only explicit token JSON/screen YAML inputs; the golden records token traversal, alpha composition, digest and renderer tolerance in `quality/screenshot/P04_GOLDEN_PROVENANCE.md` | VERIFIED (`P04-E001`, `P04-E007`, `P04-E008`) |
+
+P04 creates no feature page, database write, SDK-backed map/widget, or fake persistence. Every row in `SCREEN_COVERAGE.csv` therefore remains `NOT_STARTED`; the independently verified cross-cutting route/state shell for all 215 screens is recorded here and in the generated contract evidence instead of misrepresenting screen UI completion.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-014`, `REQ-015`, `REQ-024`, `REQ-025`, `REQ-030`, `REQ-083`—`REQ-087` and `REQ-090` are `IN_PROGRESS` for verified foundations; the other 79 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-085` is `VERIFIED`; 26 requirements are `IN_PROGRESS` for accurately scoped foundations; 63 remain `NOT_STARTED` |
 | YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All `NOT_STARTED`; baseline rows created only |
 | Architecture ADRs | 20 + ADR-007A | ADR-001 `VERIFIED`; the other 20 decisions remain `NOT_STARTED` |
-| UI ADRs | 12 | Registered; implementation `NOT_STARTED` |
+| UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
 | Permanent domain invariants | 35 | `INV-034` `VERIFIED`; the other 34 remain `NOT_STARTED` |
 | Logical schema families | 12 | Registered; implementation `NOT_STARTED` |
 | Projection families | 7 + search/geographic indexes | Registered; implementation `NOT_STARTED` |
@@ -132,17 +146,19 @@ P03 is complete with 36 core behavioral tests plus 12 build-logic policy tests (
 | P01 | VERIFIED | Frozen toolchain, all modules, exact dependency graph, debug/release assembly, locks, verification metadata, lint and tests passed; see `P01-E001`—`P01-E007` |
 | P02 | VERIFIED | Repeatable aggregate/static/artifact gates, named rejection proofs, exact traceability and four local GMD suites pass; remote CI is separately `UNVERIFIED`; see `P02-E001`—`P02-E009` |
 | P03 | VERIFIED | Typed IDs, complete checked arithmetic including abs/accumulation, exact money/FX/expression/time/period/formatting foundations and real-violation rejection pass; see `P03-E001`—`P03-E009` |
-| P04—P36 | NOT_STARTED | P04 is the next execution stage; do not promote later work early |
+| P04 | VERIFIED | Complete token generation/mapping, governed components, 215-route/646-state contract, five stacks, static rules and API 28/API 36 UI matrices pass; see `P04-E001`—`P04-E011` |
+| P05—P36 | NOT_STARTED | P05 is the next execution stage; do not promote later work early |
 
-## P04 entry state
+## P05 entry state
 
-P03 leaves the repository at a verified exact-value and deterministic-algorithm baseline. Its completion commands are:
+P04 leaves the repository at a verified exact-value plus UI-contract baseline. Its completion commands are:
 
 ```text
-./gradlew :core:common:test :core:money:test :core:time:test --configuration-cache --no-parallel --console=plain
-python3 scripts/prove_p03_policy_rejection.py
-./gradlew p03Check --configuration-cache --no-parallel --console=plain
-./gradlew p03Artifacts --configuration-cache --no-parallel --console=plain
+python3 scripts/generate_p04_contracts.py --check
+python3 scripts/prove_source_policy_rejection.py
+./gradlew p04Check --configuration-cache --no-parallel --console=plain
+./gradlew :core:designsystem:pixel2Api28DebugAndroidTest :core:designsystem:pixel6Api36DebugAndroidTest --no-configuration-cache --no-parallel --console=plain
+./gradlew p04Artifacts --configuration-cache --no-parallel --console=plain
 ```
 
-All commands pass in `P03-E002`—`P03-E009`. P04 may consume only the formatted UI models and exact value APIs; it must not duplicate amount, FX or time authority in Compose. All 215 screens remain `NOT_STARTED`, and the five P03-supported requirements remain `IN_PROGRESS` until their persistence/UI acceptance is verified in later phases.
+All commands and final hygiene gates pass in `P04-E001`—`P04-E011`. P05 may consume the exact value APIs, stable IDs, generated route metadata and design contracts, but must not move financial authority into Compose or bypass `FinancialMutationCoordinator`. All 215 screen implementations remain `NOT_STARTED`; P05 must not infer page completion from their verified route/state shells.

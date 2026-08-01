@@ -119,15 +119,13 @@ def validate() -> dict[str, int]:
     project_state = (ROOT / "docs/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
     domain_coverage = (ROOT / "docs/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md").read_text(encoding="utf-8")
     test_evidence = (ROOT / "docs/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
-    if "Current stage: P03" not in project_state or "Stage status: VERIFIED (`P03-E001`—`P03-E009`)" not in project_state:
-        raise AssertionError("PROJECT_STATE does not mark only P03 as the current verified stage")
+    if "| P03 | VERIFIED |" not in project_state or any(f"P03-E{number:03d}" not in test_evidence for number in range(1, 10)):
+        raise AssertionError("PROJECT_STATE does not retain P03 as a verified completed stage")
     if "| INV-034 |" not in domain_coverage or "INV-034` `VERIFIED" not in project_state:
         raise AssertionError("INV-034 verification is absent from the domain/project ledgers")
-    if any(f"P03-E{number:03d}" not in test_evidence for number in range(1, 10)):
-        raise AssertionError("P03 evidence ledger is incomplete")
-
     workflow = (ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
-    if "./gradlew p03Check" not in workflow or "python3 scripts/prove_p03_policy_rejection.py" not in workflow:
+    has_cumulative_aggregate = "./gradlew p03Check" in workflow or "./gradlew p04Check" in workflow
+    if not has_cumulative_aggregate or "python3 scripts/prove_p03_policy_rejection.py" not in workflow:
         raise AssertionError("CI does not enforce the P03 aggregate and real-violation proof")
 
     return {

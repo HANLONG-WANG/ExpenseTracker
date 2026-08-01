@@ -85,7 +85,16 @@ private fun ApplicationExtension.configureManagedDevices() {
     }
 }
 
-private fun LibraryExtension.configureDatabaseManagedDevice() {
+private fun LibraryExtension.configureLibraryManagedDevices(includeMinSdk: Boolean) {
+    testOptions.animationsDisabled = true
+    if (includeMinSdk) {
+        testOptions.managedDevices.localDevices.create("pixel2Api28") {
+            device = "Pixel 2"
+            apiLevel = MIN_SDK
+            systemImageSource = "google"
+            testedAbi = "x86"
+        }
+    }
     testOptions.managedDevices.localDevices.create("pixel6Api36") {
         device = "Pixel 6"
         apiLevel = TARGET_SDK
@@ -133,7 +142,10 @@ private fun LibraryExtension.configureAndroidLibrary(project: Project) {
         targetCompatibility = JavaVersion.VERSION_17
     }
     if (project.path == ":core:database") {
-        configureDatabaseManagedDevice()
+        configureLibraryManagedDevices(includeMinSdk = false)
+    }
+    if (project.path == ":core:designsystem") {
+        configureLibraryManagedDevices(includeMinSdk = true)
     }
 }
 
@@ -445,8 +457,8 @@ abstract class VerifyArchitectureTask : DefaultTask() {
             put(":core:common", emptySet())
             put(":core:money", setOf(":core:common"))
             put(":core:time", setOf(":core:common"))
-            put(":core:designsystem", emptySet())
-            put(":core:navigation", emptySet())
+            put(":core:designsystem", setOf(":core:money"))
+            put(":core:navigation", setOf(":core:common"))
             put(":core:database", emptySet())
             put(":core:security", emptySet())
             put(":core:files", emptySet())
