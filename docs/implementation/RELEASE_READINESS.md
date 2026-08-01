@@ -2,14 +2,14 @@
 
 Last updated: 2026-08-01 (Asia/Tokyo)
 Overall release status: `NOT_STARTED`  
-P01 establishes a buildable module baseline only; no business page or release artifact is claimed.
+P02 quality infrastructure and its API 28/API 36 accelerated device entries are verified; no business page or release artifact is claimed.
 
 ## Quality gates
 
 | Gate | Required evidence | Target phase | Status |
 |---|---|---|---|
 | Frozen build and module graph | JDK 17, AGP 9.3.x, Gradle 9.5.x, Kotlin 2.4.x, API 28/36; all prescribed modules and dependency rules | P01 | VERIFIED (`P01-E001`—`P01-E007`) |
-| Reproducible quality infrastructure | CI, lint, detekt, formatting, Kover, dependency verification/locks, SBOM, license tasks, architecture tests | P02 | NOT_STARTED |
+| Reproducible quality infrastructure | CI, lint, detekt, formatting, Kover, dependency verification/locks, SBOM, license tasks, architecture tests and API 28/API 36 GMD entries | P02 | VERIFIED (`P02-E001`—`P02-E009`) |
 | Financial/domain correctness | Exact money/time algorithms, planners, coordinator-only writes, immutable facts and 35 invariants | P03/P05/P06/P08 | NOT_STARTED |
 | Encrypted schema/migrations | Room 2.8.4 + SQLCipher 4.17.0, v1 export, migrations, FTS5/R*Tree, no destructive migration | P07 | NOT_STARTED |
 | Security boundaries | Keystore/Tink/Argon2id, app/vault key separation, no sensitive route/state/log/telemetry leakage | P09/P32 | NOT_STARTED |
@@ -30,8 +30,9 @@ These are legitimate user/organization inputs, not Android code gaps. Their abse
 | Self-hosted allowlisted telemetry/crash receiver URL, certificate and server retention policy | Production optional diagnostics transport | NOT_STARTED — external input not yet supplied | P32 production integration/P36 release |
 | Official privacy-policy URL, source-repository URL, support contact and store assets | In-app/store disclosures | NOT_STARTED — external input not yet supplied | P36 |
 | API 28 and API 36 physical devices plus chosen release-key custody process | Mandatory device regression and release security | NOT_STARTED — availability not yet confirmed | P35/P36 |
+| Host KVM virtualization and current-user access to `/dev/kvm` | P02 Gradle Managed Device execution on API 28/API 36 | RESOLVED — KVM 12 usable and all three required GMD commands pass | P02 closed |
 
-## Build-environment baseline after P01
+## Build-environment baseline after P02
 
 Verified on this host: Temurin JDK 17.0.20, Android SDK Platform 36 revision 2, Build Tools 36.0.0, platform-tools/adb 37.0.1, Gradle Wrapper 9.5.1, AGP 9.3.1 and Kotlin 2.4.10. Recheck with:
 
@@ -42,10 +43,16 @@ sdkmanager --list_installed
 adb version
 ```
 
-Expected: Java/Javac 17, `platforms;android-36`, a stable `build-tools;36.x`, and a working adb. P02 may start by rerunning both baseline validators and the P01 aggregate Gradle command.
+Expected: Java/Javac 17, `platforms;android-36`, a stable `build-tools;36.x`, working adb and usable KVM for managed devices. All are present and verified.
 
 ## P01 release conclusion
 
 - Debug/release APK packaging is only build evidence for an intentionally page-free P01 shell; no AAB, signing, store upload, network deployment or external mutation is authorized or performed.
 - No frozen specification is modified.
 - Release readiness cannot be promoted by document completeness alone.
+
+## P02 release conclusion
+
+- Static, test, CI, coverage and supply-chain infrastructure is implemented; strict dependency verification stays active when reports generate.
+- The generated P02 SBOM/license/Kover files are build evidence, not P36 release artifacts or NOTICE approval.
+- P02 is `VERIFIED`: API 28/API 36 app GMD tests and the API 36 benchmark toolchain test execute successfully on KVM, in addition to the CI/static/artifact gates.

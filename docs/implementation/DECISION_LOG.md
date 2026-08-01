@@ -84,3 +84,26 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: KSP 2.3.10 resolves compiler-embedded tooling lazily while Gradle serializes the configuration cache, after ordinary project dependency-report traversal. Strict dependency verification initially exposed those otherwise-unregistered artifacts.
 - Decision: define an exact, resolvable root verification configuration for KSP's symbol-processing embeddable artifact and its required coroutine runtime. Make `p01Check` resolve it, lock it and include it in SHA-256 verification metadata.
 - Consequence: configuration cache and strict dependency verification stay enabled; there is no unverified lazy-download path or weakened verification mode.
+
+## DL-012 — Stable quality adapters preserve the frozen stable-only and warning-fail rules
+
+- Date/stage: 2026-08-01 / P02
+- Surface conflict: the stable detekt 1.23.8 Gradle adapter calls a Gradle API that is deprecated under the frozen Gradle 9.5 warning-as-error build. The stable AndroidX Baseline Profile Gradle plugin 1.4.1 expects an Android test extension removed by AGP 9.3, while its AGP-9-compatible successor is prerelease and therefore forbidden by the stable-only rule.
+- Precedence applied: frozen stable versions and `org.gradle.warning.mode=fail` outrank convenience plugin adapters; performance behavior still belongs to the frozen Macrobenchmark/Baseline Profile stack.
+- Decision: run the exact stable detekt CLI from a verified, locked configuration and publish the same HTML/SARIF/XML reports. Keep the stable Macrobenchmark and `BaselineProfileRule` libraries, ProfileInstaller, self-instrumenting `:benchmark` module and API 36 GMD entry; do not add a prerelease Baseline Profile plugin or fabricate an empty profile before real critical user journeys exist.
+- Consequence: detekt is an enforced aggregate gate now. Actual Macrobenchmark measurements and a generated Baseline Profile remain P35/P36 evidence, not a P02 completion claim.
+
+## DL-013 — P02 screenshot infrastructure has contract-only provenance and no fabricated golden
+
+- Date/stage: 2026-08-01 / P02
+- Surface issue: P02 must establish screenshot-test provenance, but the repository intentionally has no business UI before P04 and the four visual drafts are prohibited inputs.
+- Decision: provide the AndroidX Compose UI test/capture-capable device harness and enforce all 215 screen IDs, states and token values as machine-readable inputs. Create no screenshot baseline for the page-free shell. Later goldens must be captured from implemented Compose UI whose source values trace to the main UI contract, token JSON and screen YAML/CSV only.
+- Consequence: no visual draft was read or treated as an oracle; a later baseline cannot silently replace or bypass the textual contracts.
+
+## DL-014 — Managed Devices use usable KVM and the stable host renderer
+
+- Date/stage: 2026-08-01 / P02
+- Surface issue: the initial container view did not expose `/dev/kvm`; after KVM became available, Emulator 36.6.11 and 37.1.11 still terminated with host SIGSEGV while creating an API 28 snapshot through the `software`/SwiftShader gfxstream path.
+- Evidence: `/dev/kvm` is now accessible as character device `10,232`, Emulator 37.1.11 reports usable KVM 12, and a direct cold boot of the same API 28 AVD completes in 12.176 seconds with `-gpu host`. The three formal Gradle Managed Device tasks then pass with zero failures/errors/skips.
+- Decision: keep hardware acceleration mandatory, use the stable Emulator 37.1.11 installed through `sdkmanager`, and set the supported Managed Device GPU mode to `host`. Do not disable KVM, replace device tests with Robolectric, or claim compile-only evidence.
+- Consequence: P02 device execution is reproducible on the current accelerated host and CI retains the same API 28/API 36 GMD entry points. This decision governs only the test runner backend; it changes no UI token, screenshot source or product behavior.

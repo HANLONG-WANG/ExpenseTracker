@@ -9,6 +9,7 @@ import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.provider.ListProperty
@@ -17,6 +18,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.testing.Test
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.util.GradleVersion
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -27,16 +29,68 @@ import java.io.File
 private const val COMPILE_SDK = 36
 private const val MIN_SDK = 28
 private const val TARGET_SDK = 36
+private const val JDK_VERSION = 17
 
-private fun Project.androidNamespace(): String =
-    "app.ledger" + path.split(':').filter(String::isNotBlank).joinToString("") { segment ->
-        "." + segment.replace("-", "")
-    }
+private fun Project.androidNamespace(): String = "app.ledger" + path.split(':').filter(String::isNotBlank).joinToString("") { segment ->
+    "." + segment.replace("-", "")
+}
 
 private fun Project.configureKotlin17() {
     tasks.withType(KotlinJvmCompile::class.java).configureEach {
         compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
         compilerOptions.allWarningsAsErrors.set(true)
+    }
+}
+
+private fun Project.catalogLibrary(alias: String) = extensions.getByType(VersionCatalogsExtension::class.java).named("libs").findLibrary(alias).get()
+
+private fun Project.configureJvmTestStack() {
+    dependencies.add("testImplementation", dependencies.platform(catalogLibrary("junit-bom")))
+    dependencies.add("testImplementation", catalogLibrary("junit-jupiter"))
+    dependencies.add("testImplementation", catalogLibrary("kotest-assertions"))
+    dependencies.add("testImplementation", catalogLibrary("kotest-property"))
+    dependencies.add("testImplementation", catalogLibrary("mockk"))
+    dependencies.add("testImplementation", catalogLibrary("coroutines-test"))
+    dependencies.add("testImplementation", catalogLibrary("turbine"))
+    dependencies.add("testRuntimeOnly", catalogLibrary("junit-platform-launcher"))
+    tasks.withType(Test::class.java).configureEach {
+        useJUnitPlatform()
+        testLogging {
+            events("failed", "skipped")
+        }
+    }
+}
+
+private fun Project.configureAndroidTestStack() {
+    dependencies.add("androidTestImplementation", catalogLibrary("androidx-test-core"))
+    dependencies.add("androidTestImplementation", catalogLibrary("androidx-test-runner"))
+    dependencies.add("androidTestImplementation", catalogLibrary("androidx-test-rules"))
+    dependencies.add("androidTestImplementation", catalogLibrary("androidx-test-ext-junit"))
+    dependencies.add("androidTestImplementation", catalogLibrary("espresso-core"))
+}
+
+private fun ApplicationExtension.configureManagedDevices() {
+    testOptions.animationsDisabled = true
+    testOptions.managedDevices.localDevices.create("pixel2Api28") {
+        device = "Pixel 2"
+        apiLevel = MIN_SDK
+        systemImageSource = "google"
+        testedAbi = "x86"
+    }
+    testOptions.managedDevices.localDevices.create("pixel6Api36") {
+        device = "Pixel 6"
+        apiLevel = TARGET_SDK
+        systemImageSource = "google"
+        testedAbi = "x86_64"
+    }
+}
+
+private fun TestExtension.configureManagedDevices() {
+    testOptions.managedDevices.localDevices.create("pixel6Api36") {
+        device = "Pixel 6"
+        apiLevel = TARGET_SDK
+        systemImageSource = "google"
+        testedAbi = "x86_64"
     }
 }
 
@@ -48,13 +102,14 @@ private fun ApplicationExtension.configureAndroidApplication(project: Project) {
         minSdk = MIN_SDK
         targetSdk = TARGET_SDK
         versionCode = 1
-        versionName = "0.1.0-p01"
+        versionName = "0.2.0-p02"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    configureManagedDevices()
 }
 
 private fun LibraryExtension.configureAndroidLibrary(project: Project) {
@@ -78,6 +133,8 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             configureAndroidApplication(owner)
         }
         configureKotlin17()
+        configureJvmTestStack()
+        configureAndroidTestStack()
     }
 }
 
@@ -89,6 +146,8 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
             configureAndroidLibrary(owner)
         }
         configureKotlin17()
+        configureJvmTestStack()
+        configureAndroidTestStack()
     }
 }
 
@@ -108,6 +167,7 @@ class AndroidTestConventionPlugin : Plugin<Project> {
                 sourceCompatibility = JavaVersion.VERSION_17
                 targetCompatibility = JavaVersion.VERSION_17
             }
+            configureManagedDevices()
         }
         configureKotlin17()
     }
@@ -126,6 +186,11 @@ class AndroidComposeConventionPlugin : Plugin<Project> {
                 buildFeatures.compose = true
             }
         }
+        dependencies.add("androidTestImplementation", dependencies.platform(catalogLibrary("compose-bom")))
+        dependencies.add("androidTestImplementation", catalogLibrary("compose-ui-test-junit4"))
+        dependencies.add("androidTestImplementation", catalogLibrary("compose-foundation"))
+        dependencies.add("debugImplementation", catalogLibrary("compose-ui-test-manifest"))
+        Unit
     }
 }
 
@@ -134,13 +199,14 @@ class KotlinLibraryConventionPlugin : Plugin<Project> {
         pluginManager.apply("org.jetbrains.kotlin.jvm")
         pluginManager.apply("java-library")
         extensions.configure(JavaPluginExtension::class.java) {
-            toolchain.languageVersion.set(JavaLanguageVersion.of(17))
+            toolchain.languageVersion.set(JavaLanguageVersion.of(JDK_VERSION))
         }
         extensions.configure(KotlinJvmProjectExtension::class.java) {
-            jvmToolchain(17)
+            jvmToolchain(JDK_VERSION)
             compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
             compilerOptions.allWarningsAsErrors.set(true)
         }
+        configureJvmTestStack()
     }
 }
 
@@ -164,30 +230,64 @@ class ArchitectureConventionPlugin : Plugin<Project> {
             runningGradleVersion.set(GradleVersion.current().version)
             runningJavaVersion.set(JavaVersion.current().toString())
         }
+        target.tasks.register("verifySourcePolicies", VerifySourcePoliciesTask::class.java) {
+            group = "verification"
+            description = "Rejects privacy, UI-governance and financial-write boundary violations in production sources."
+            rootDirectory.set(target.layout.projectDirectory)
+            screenContract.set(
+                target.layout.projectDirectory.file(
+                    "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+                ),
+            )
+            sourceFiles.from(
+                target.fileTree(target.layout.projectDirectory) {
+                    include("app/src/main/**/*.kt", "app/src/main/**/*.java")
+                    include("core/**/src/main/**/*.kt", "core/**/src/main/**/*.java")
+                    include("finance/**/src/main/**/*.kt", "finance/**/src/main/**/*.java")
+                    include("analytics/**/src/main/**/*.kt", "analytics/**/src/main/**/*.java")
+                    include("transfer/**/src/main/**/*.kt", "transfer/**/src/main/**/*.java")
+                    include("feature/**/src/main/**/*.kt", "feature/**/src/main/**/*.java")
+                    include("widget/src/main/**/*.kt", "widget/src/main/**/*.java")
+                    exclude("**/build/**")
+                },
+            )
+            target.providers.gradleProperty("qualityPolicyFixture").orNull?.let { fixturePath ->
+                fixtureDirectory.set(target.layout.projectDirectory.dir(fixturePath))
+                sourceFiles.from(target.fileTree(fixturePath) { include("**/*.kt", "**/*.java") })
+            }
+        }
         target.gradle.projectsEvaluated {
             architectureTask.configure {
                 actualProjectPaths.set(target.subprojects.map { candidate -> candidate.path }.sorted())
-                directEdges.set(target.subprojects.associate { candidate ->
-                    val edges = candidate.configurations
-                        .flatMap { configuration -> configuration.dependencies.withType(ProjectDependency::class.java) }
-                        .map { dependency -> dependency.path }
-                        .filter { dependencyPath -> dependencyPath != candidate.path }
-                        .toSortedSet()
-                    candidate.path to edges.joinToString(",")
-                })
-                kotlinJvmProjects.set(target.subprojects.filter { candidate ->
-                    candidate.pluginManager.hasPlugin("org.jetbrains.kotlin.jvm")
-                }.map { candidate -> candidate.path }.sorted())
-                androidProjects.set(target.subprojects.filter { candidate ->
-                    candidate.pluginManager.hasPlugin("com.android.library") ||
-                        candidate.pluginManager.hasPlugin("com.android.application") ||
-                        candidate.pluginManager.hasPlugin("com.android.test")
-                }.map { candidate -> candidate.path }.sorted())
-                forbiddenPluginProjects.set(target.subprojects.filter { candidate ->
-                    candidate.pluginManager.hasPlugin("org.jetbrains.kotlin.android") ||
-                        candidate.pluginManager.hasPlugin("org.jetbrains.kotlin.kapt") ||
-                        candidate.pluginManager.hasPlugin("kotlin-kapt")
-                }.map { candidate -> candidate.path }.sorted())
+                directEdges.set(
+                    target.subprojects.associate { candidate ->
+                        val edges = candidate.configurations
+                            .flatMap { configuration -> configuration.dependencies.withType(ProjectDependency::class.java) }
+                            .map { dependency -> dependency.path }
+                            .filter { dependencyPath -> dependencyPath != candidate.path }
+                            .toSortedSet()
+                        candidate.path to edges.joinToString(",")
+                    },
+                )
+                kotlinJvmProjects.set(
+                    target.subprojects.filter { candidate ->
+                        candidate.pluginManager.hasPlugin("org.jetbrains.kotlin.jvm")
+                    }.map { candidate -> candidate.path }.sorted(),
+                )
+                androidProjects.set(
+                    target.subprojects.filter { candidate ->
+                        candidate.pluginManager.hasPlugin("com.android.library") ||
+                            candidate.pluginManager.hasPlugin("com.android.application") ||
+                            candidate.pluginManager.hasPlugin("com.android.test")
+                    }.map { candidate -> candidate.path }.sorted(),
+                )
+                forbiddenPluginProjects.set(
+                    target.subprojects.filter { candidate ->
+                        candidate.pluginManager.hasPlugin("org.jetbrains.kotlin.android") ||
+                            candidate.pluginManager.hasPlugin("org.jetbrains.kotlin.kapt") ||
+                            candidate.pluginManager.hasPlugin("kotlin-kapt")
+                    }.map { candidate -> candidate.path }.sorted(),
+                )
             }
         }
     }

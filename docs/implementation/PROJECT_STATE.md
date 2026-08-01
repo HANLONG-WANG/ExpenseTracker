@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-01 (Asia/Tokyo)
-Current stage: P01 — build baseline and modular skeleton
-Stage status: VERIFIED (`P01-E001`—`P01-E007`)
+Current stage: P02 — quality gates, test infrastructure and CI
+Stage status: VERIFIED (`P02-E001`—`P02-E009`); P03 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -83,11 +83,25 @@ Baseline conclusion: this is a documentation-only repository, not a partial Andr
 
 P01 preserved all prior tracked and untracked work. The provisional build identity `app.ledger.expensetracker` is not a claim about the final externally supplied Play identity; see `DL-010`.
 
+### P02 result
+
+| Area | P02 result | Classification |
+|---|---|---|
+| JVM and Android test stack | JUnit 5, Kotest Property/assertions, MockK, coroutines-test, Turbine, AndroidX Test/JUnit4, Compose UI Test, Espresso, MockWebServer and Room MigrationTestHelper are centrally configured; JVM tests and API 28/API 36 device harnesses execute | VERIFIED (`P02-E002`, `P02-E008`) |
+| Static quality | Android Lint, pinned stable detekt CLI, Spotless + ktlint and Kover are wired into repeatable root tasks | VERIFIED (`P02-E003`, `P02-E005`, `P02-E006`) |
+| Architecture/privacy policy | Module/source boundaries, governed UI access, sensitive route/SavedState, generic telemetry maps, ordinary logging, nondeterminism and coordinator-only financial writes have unit-tested source rules plus a committed rejected fixture | VERIFIED (`P02-E003`, `P02-E004`) |
+| Traceability | Complete token JSON, screen YAML and requirement/screen CSV ledgers are cross-checked: 434 scalar tokens, 90 REQs, 215 unique IDs/routes, 646 required states and 192 explicitly mapped screens; six mutation cases prove omissions/drift fail | VERIFIED (`P02-E001`) |
+| Supply chain | 37 lockfiles, strict root and standalone build-logic verification metadata, aggregate CycloneDX 1.6 JSON/XML SBOM, CSV/HTML OSS inventory and Kover XML/HTML reports generate in normal strict mode | VERIFIED (`P02-E006`) |
+| CI and performance base | GitHub Actions runs the aggregate/static/supply-chain jobs plus API 28/API 36 Managed Device matrix; `:benchmark` executes its Macrobenchmark/BaselineProfile rule contract on API 36, ProfileInstaller is packaged and JankStats is owned by `:core:designsystem` | VERIFIED as P02 infrastructure (`P02-E007`, `P02-E008`); real measurements/profile remain P35/P36 |
+| Screenshot provenance | No screenshot or golden is fabricated for the page-free shell. Later baselines may be captured only from implemented Compose UI derived from textual contracts/tokens; excluded visual drafts remain unread | Correct for P02; see `DL-013` |
+
+P02 is complete. `/dev/kvm` is accessible, Emulator 37.1.11 reports usable KVM 12, and the API 28 app, API 36 app and API 36 benchmark Managed Device tasks all passed with zero failed/skipped tests. See `P02-E008`.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-090` is `IN_PROGRESS`; the other 89 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-083`—`REQ-087` and `REQ-090` are `IN_PROGRESS` for their P02 verification bases; the other 84 remain `NOT_STARTED` |
 | YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All `NOT_STARTED`; baseline rows created only |
 | Architecture ADRs | 20 + ADR-007A | ADR-001 `VERIFIED`; the other 20 decisions remain `NOT_STARTED` |
 | UI ADRs | 12 | Registered; implementation `NOT_STARTED` |
@@ -102,19 +116,20 @@ P01 preserved all prior tracked and untracked work. The provisional build identi
 |---|---|---|
 | P00 | VERIFIED | `python3 scripts/validate_spec_baseline.py` passed; see `P00-E001`—`P00-E006` |
 | P01 | VERIFIED | Frozen toolchain, all modules, exact dependency graph, debug/release assembly, locks, verification metadata, lint and tests passed; see `P01-E001`—`P01-E007` |
-| P02 | NOT_STARTED | Entry condition satisfied: rerun both validators and `./gradlew p01Check lint test --configuration-cache` before adding quality/CI infrastructure |
-| P03—P36 | NOT_STARTED | Do not promote early; follow the dependency graph in the preserved execution plan |
+| P02 | VERIFIED | Repeatable aggregate/static/artifact gates, rejection proofs, traceability checks, API 28/API 36 GMD and API 36 benchmark device tests pass; see `P02-E001`—`P02-E009` |
+| P03—P36 | NOT_STARTED | P03 is the next execution stage; do not promote later work early |
 
-## P02 entry state
+## P03 entry state
 
-P01 has no unresolved blocker. The authoritative recovery commands are:
+P02 leaves the repository at a verified quality baseline. The completion commands were:
 
 ```text
-python3 scripts/validate_spec_baseline.py
-python3 scripts/validate_p01_baseline.py
-./gradlew p01Check lint test --configuration-cache
+/home/hubery-fedora/Tools/Android/Sdk/emulator/emulator -accel-check
+./gradlew :app:pixel2Api28DebugAndroidTest --configuration-cache --no-parallel --console=plain
+./gradlew :app:pixel6Api36DebugAndroidTest --configuration-cache --no-parallel --console=plain
+./gradlew :benchmark:pixel6Api36DebugAndroidTest --configuration-cache --no-parallel --console=plain
+./gradlew p02Check --configuration-cache --no-parallel --console=plain
+./gradlew p02Artifacts --configuration-cache --no-parallel --console=plain
 ```
 
-Expected result: both validators print `PASS`; Gradle reuses the configuration cache and reports `BUILD SUCCESSFUL`. The configured Java runtime must still resolve to JDK 17, and Android SDK Platform 36 plus stable Build Tools 36.x must remain installed.
-
-P02 may add the frozen quality and CI infrastructure on this baseline. It must not weaken strict dependency verification, the exact project-edge allowlist, runtime prerelease scanning or the no-placeholder rule. No business requirement or screen is complete merely because the carrier modules now build.
+Acceleration, all three device commands and both aggregate tasks passed in `P02-E005`, `P02-E006` and `P02-E008`. P03 may start from this state, but no business requirement or screen is complete merely because its carrier/test infrastructure exists.

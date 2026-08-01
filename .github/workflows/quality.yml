@@ -1,0 +1,94 @@
+name: quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-unit-and-supply-chain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - name: Install contract parser
+        run: python3 -m pip install PyYAML==6.0.3
+      - name: Verify frozen baseline and P02 quality gates
+        run: |
+          python3 scripts/validate_spec_baseline.py
+          python3 scripts/validate_p01_baseline.py
+          ./gradlew p02Check koverXmlReport koverHtmlReport cyclonedxBom --configuration-cache --console=plain
+      - name: Prove source policies reject a real violation
+        run: python3 scripts/prove_source_policy_rejection.py
+      - name: Generate OSS license inventory
+        run: ./gradlew generateLicenseReport --no-configuration-cache --no-parallel --console=plain
+      - name: Upload auditable quality artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports
+          if-no-files-found: error
+          path: |
+            build/reports/detekt/
+            build/reports/kover/
+            build/reports/cyclonedx/
+            build/reports/dependency-license/
+            **/build/reports/lint-results-*.html
+            **/build/test-results/
+
+  managed-device-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        device:
+          - pixel2Api28
+          - pixel6Api36
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run API-specific Gradle Managed Device tests
+        run: ./gradlew :app:${{ matrix.device }}DebugAndroidTest --configuration-cache --console=plain
+      - name: Validate Macrobenchmark and Baseline Profile device toolchain
+        if: matrix.device == 'pixel6Api36'
+        run: ./gradlew :benchmark:pixel6Api36DebugAndroidTest --configuration-cache --console=plain
+      - name: Upload device results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: managed-device-${{ matrix.device }}
+          if-no-files-found: error
+          path: |
+            app/build/reports/androidTests/managedDevice/
+            app/build/outputs/androidTest-results/managedDevice/
+            benchmark/build/reports/androidTests/managedDevice/
+            benchmark/build/outputs/androidTest-results/managedDevice/

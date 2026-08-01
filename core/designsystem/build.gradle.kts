@@ -9,4 +9,5 @@ dependencies {
     api(libs.compose.foundation)
     api(libs.compose.material3)
     api(libs.vico.compose.material3)
+    implementation(libs.jankstats)
 }
