@@ -102,6 +102,8 @@ internal object SourcePolicyEngine {
                 .forEach { report("ARCH-DOMAIN-ANDROID", it, "domain source imports Android APIs") }
         }
 
+        findings += authoritativeMoneyFindings(normalizedPath, source)
+
         if (normalizedPath.startsWith("core/telemetry/")) {
             Regex("\\b(?:Map\\s*<|mapOf\\s*\\()")
                 .findAll(source)
@@ -168,6 +170,30 @@ internal object SourcePolicyEngine {
         }
 
         return findings.distinct()
+    }
+
+    private fun authoritativeMoneyFindings(path: String, source: String): List<SourcePolicyFinding> {
+        if (!path.startsWith("core/money/src/main/") && !path.startsWith("finance/domain/src/main/")) {
+            return emptyList()
+        }
+        val findings = mutableListOf<SourcePolicyFinding>()
+        Regex("\\b(?:Float|Double)\\b|\\bto(?:Float|Double)\\s*\\(").findAll(source).forEach { match ->
+            findings += SourcePolicyFinding(
+                "MONEY-BINARY-FLOAT",
+                path,
+                source.lineAt(match.range.first),
+                "authoritative money code must use Long minor units or decimal/integer exact arithmetic",
+            )
+        }
+        Regex("(?<!CheckedArithmetic)\\.(?:sum|sumOf)\\s*\\(").findAll(source).forEach { match ->
+            findings += SourcePolicyFinding(
+                "MONEY-UNCHECKED-SUM",
+                path,
+                source.lineAt(match.range.first),
+                "money aggregation must use CheckedArithmetic or a BigInteger accumulator",
+            )
+        }
+        return findings
     }
 
     private fun String.lineAt(index: Int): Int = take(index.coerceAtLeast(0)).count { it == '\n' } + 1

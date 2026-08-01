@@ -36,6 +36,16 @@ class SourcePolicyEngineTest {
     }
 
     @Test
+    fun `rejects binary floating point and unchecked sums in authoritative money code`() {
+        val rules = scan(
+            "core/money/src/main/kotlin/UnsafeMoney.kt",
+            "fun total(values: List<Double>) = values.sum()",
+        )
+
+        rules.shouldContainAll("MONEY-BINARY-FLOAT", "MONEY-UNCHECKED-SUM")
+    }
+
+    @Test
     fun `rejects generic telemetry and ordinary logging`() {
         val rules = scan(
             "core/telemetry/src/main/kotlin/Event.kt",

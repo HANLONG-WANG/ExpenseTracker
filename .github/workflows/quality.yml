@@ -30,13 +30,15 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Install contract parser
         run: python3 -m pip install PyYAML==6.0.3
-      - name: Verify frozen baseline and P02 quality gates
+      - name: Verify frozen baseline and P03 quality gates
         run: |
           python3 scripts/validate_spec_baseline.py
           python3 scripts/validate_p01_baseline.py
-          ./gradlew p02Check koverXmlReport koverHtmlReport cyclonedxBom --configuration-cache --console=plain
-      - name: Prove source policies reject a real violation
-        run: python3 scripts/prove_source_policy_rejection.py
+          ./gradlew p03Check koverXmlReport koverHtmlReport cyclonedxBom --configuration-cache --console=plain
+      - name: Prove source policies reject real violations
+        run: |
+          python3 scripts/prove_source_policy_rejection.py
+          python3 scripts/prove_p03_policy_rejection.py
       - name: Generate OSS license inventory
         run: ./gradlew generateLicenseReport --no-configuration-cache --no-parallel --console=plain
       - name: Upload auditable quality artifacts

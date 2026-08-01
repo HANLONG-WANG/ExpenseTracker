@@ -1,8 +1,8 @@
 # Domain and Schema Coverage Baseline
 
 Last updated: 2026-08-01 (Asia/Tokyo)
-Stage: P02
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P02 may promote testable static/coverage infrastructure only; no domain, schema, accounting, security or feature behavior is claimed.
+Stage: P03
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P03 promotes only the pure-Kotlin value/algorithm evidence it actually verifies; schema, planners, accounting persistence, security and feature behavior remain later scope.
 
 ## Architecture decisions
 
@@ -88,7 +88,7 @@ Source: `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` �
 | INV-031 | Every core projection aligns to the same `localRevision`. | Atomicity/failure-injection audit | NOT_STARTED |
 | INV-032 | Vault fields never enter FTS, audit snapshots, logs or telemetry. | Static/privacy/device audit | NOT_STARTED |
 | INV-033 | Failed import, restore or large batch leaves the main ledger unchanged. | Shadow-DB fault injection | NOT_STARTED |
-| INV-034 | Every monetary accumulation detects `Long` overflow. | Boundary/property/static tests | NOT_STARTED |
+| INV-034 | Every monetary accumulation detects `Long` overflow. | Boundary/property/static tests | VERIFIED (`P03-E002`, `P03-E006`) |
 | INV-035 | Every cache depending on current transaction content carries a version. | Architecture/cache invalidation tests | NOT_STARTED |
 
 The 16 product-level system invariants in `需求.md` §26 remain additional acceptance constraints. They are covered by REQ rows and the architecture/security/operation gates; they do not replace the 35 canonical permanent invariants above.
@@ -147,7 +147,7 @@ Worker/UIDT/service payloads may contain only `operationId`; full parameters rem
 
 | Gate | Frozen source | Status |
 |---|---|---|
-| Pure domain property suite for accounting, refunds, FX, loans, installments, budget, settlement, expressions and recurrence | Tech stack §16; architecture §21 | NOT_STARTED |
+| Pure domain property suite for accounting, refunds, FX, loans, installments, budget, settlement, expressions and recurrence | Tech stack §16; architecture §21 | IN_PROGRESS (`P03-E002`—`P03-E005` verify IDs, checked arithmetic, money/FX, expressions and time; planners and remaining invariants belong to P05/P06+) |
 | Room/SQLCipher schema, all migrations, FTS5, R*Tree, WAL plaintext and projection rebuild on device | Tech stack §§5,16; architecture §21 | NOT_STARTED |
 | Keystore, BiometricPrompt, SAF, location and foreground/UIDT behavior on actual devices | Tech stack §16 | NOT_STARTED |
 | Failure injection for attachment, commits, Drive, storage, restore exchange, Keystore, biometrics, row 99,999 and projection versions | Architecture §21.3 | NOT_STARTED |

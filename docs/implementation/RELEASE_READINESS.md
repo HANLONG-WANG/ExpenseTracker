@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-01 (Asia/Tokyo)
 Overall release status: `NOT_STARTED`  
-P02 quality infrastructure and its API 28/API 36 accelerated device entries are verified; no business page or release artifact is claimed.
+P03 exact value/time foundations and the inherited P02 quality/device infrastructure are verified; no business page or release artifact is claimed.
 
 ## Quality gates
 
@@ -10,7 +10,7 @@ P02 quality infrastructure and its API 28/API 36 accelerated device entries are 
 |---|---|---|---|
 | Frozen build and module graph | JDK 17, AGP 9.3.x, Gradle 9.5.x, Kotlin 2.4.x, API 28/36; all prescribed modules and dependency rules | P01 | VERIFIED (`P01-E001`—`P01-E007`) |
 | Reproducible quality infrastructure | CI, lint, detekt, formatting, Kover, dependency verification/locks, SBOM, license tasks, architecture tests and API 28/API 36 GMD entries | P02 | VERIFIED (`P02-E001`—`P02-E009`) |
-| Financial/domain correctness | Exact money/time algorithms, planners, coordinator-only writes, immutable facts and 35 invariants | P03/P05/P06/P08 | NOT_STARTED |
+| Financial/domain correctness | Exact money/time algorithms, planners, coordinator-only writes, immutable facts and 35 invariants | P03/P05/P06/P08 | IN_PROGRESS (`P03-E002`—`P03-E006` verify the exact ID/money/FX/expression/time base and INV-034; planners, persistence and 34 invariants remain) |
 | Encrypted schema/migrations | Room 2.8.4 + SQLCipher 4.17.0, v1 export, migrations, FTS5/R*Tree, no destructive migration | P07 | NOT_STARTED |
 | Security boundaries | Keystore/Tink/Argon2id, app/vault key separation, no sensitive route/state/log/telemetry leakage | P09/P32 | NOT_STARTED |
 | Complete functionality | REQ-001—REQ-090 and all 215 screen contracts | P11—P34 | NOT_STARTED |
@@ -32,7 +32,7 @@ These are legitimate user/organization inputs, not Android code gaps. Their abse
 | API 28 and API 36 physical devices plus chosen release-key custody process | Mandatory device regression and release security | NOT_STARTED — availability not yet confirmed | P35/P36 |
 | Host KVM virtualization and current-user access to `/dev/kvm` | P02 Gradle Managed Device execution on API 28/API 36 | RESOLVED — KVM 12 usable and all three required GMD commands pass | P02 closed |
 
-## Build-environment baseline after P02
+## Build-environment baseline after P03
 
 Verified on this host: Temurin JDK 17.0.20, Android SDK Platform 36 revision 2, Build Tools 36.0.0, platform-tools/adb 37.0.1, Gradle Wrapper 9.5.1, AGP 9.3.1 and Kotlin 2.4.10. Recheck with:
 
@@ -56,3 +56,10 @@ Expected: Java/Javac 17, `platforms;android-36`, a stable `build-tools;36.x`, wo
 - Static, test, CI, coverage and supply-chain infrastructure is implemented; strict dependency verification stays active when reports generate.
 - The generated P02 SBOM/license/Kover files are build evidence, not P36 release artifacts or NOTICE approval.
 - P02 is `VERIFIED`: API 28/API 36 app GMD tests and the API 36 benchmark toolchain test execute successfully on KVM, in addition to the CI/static/artifact gates.
+
+## P03 release conclusion
+
+- P03 is `VERIFIED`: 32 pure-Kotlin core behavioral tests, eight build-policy tests, the repeatable `p03Check` gate and P03-inclusive Kover reports pass.
+- Authoritative money production paths contain no `Float`/`Double` or unchecked collection sums; the committed violation fixture proves both rules reject real source.
+- `INV-034` is verified. The other 34 permanent invariants, database facts, planners, offline FX caching and all UI acceptance remain later-phase work.
+- All 215 screen rows remain `NOT_STARTED`; no screenshot, visual draft, APK behavior or release completeness is inferred from P03.

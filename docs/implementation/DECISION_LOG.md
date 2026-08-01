@@ -107,3 +107,25 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Evidence: `/dev/kvm` is now accessible as character device `10,232`, Emulator 37.1.11 reports usable KVM 12, and a direct cold boot of the same API 28 AVD completes in 12.176 seconds with `-gpu host`. The three formal Gradle Managed Device tasks then pass with zero failures/errors/skips.
 - Decision: keep hardware acceleration mandatory, use the stable Emulator 37.1.11 installed through `sdkmanager`, and set the supported Managed Device GPU mode to `host`. Do not disable KVM, replace device tests with Robolectric, or claim compile-only evidence.
 - Consequence: P02 device execution is reproducible on the current accelerated host and CI retains the same API 28/API 36 GMD entry points. This decision governs only the test runner backend; it changes no UI token, screenshot source or product behavior.
+
+## DL-015 — StableId uses defensive byte ownership instead of an inline ByteArray wrapper
+
+- Date/stage: 2026-08-01 / P03
+- Surface issue: the domain document §4.1 illustrates `@JvmInline value class StableId(val bytes: ByteArray)`, while P03 also requires immutable results. A public array property and an inline wrapper would allow callers to mutate an ID after construction and invalidate equality/hash behavior.
+- Precedence applied: the stable 16-byte UUID/BLOB representation and dual-ID semantics are normative; the fenced Kotlin declaration is an illustrative shape. Immutability and merge identity safety take precedence over allocation-free wrapping.
+- Decision: `StableId` owns a defensive 16-byte copy, returns copies, implements content equality/order, and round-trips UUID without exposing mutable storage. `InternalId` remains an inline positive `Long` created through a typed-result factory.
+- Consequence: database adapters still persist exactly `BLOB(16)` and `INTEGER PRIMARY KEY`; callers cannot mutate identity bytes. No frozen specification is changed.
+
+## DL-016 — Ambiguous local times require explicit deterministic policies
+
+- Date/stage: 2026-08-01 / P03
+- Surface issue: the frozen model requires `Instant`, `ZoneId`, local date and DST-safe testing but does not choose behavior for a nonexistent or duplicated local wall time entered by a user.
+- Decision: an existing `Instant` is always authoritative. Resolving a local date/time exposes explicit policies: gaps either reject or shift by the exact transition duration, and overlaps select the earlier or later offset. Defaults are shift-forward and earlier-offset, while callers can request the alternatives.
+- Consequence: DST handling is deterministic and testable, never silently uses the host default zone, and preserves the separately derived local date. Feature UI may explain a shifted time later without reimplementing zone rules.
+
+## DL-017 — Formatting contracts stay exact and Android-independent
+
+- Date/stage: 2026-08-01 / P03
+- Surface issue: UI contract §§8.7, 10 and 15.5 require preformatted UI models, while architecture assigns exact money/time work to pure Kotlin core modules and no Compose page exists before P04.
+- Decision: `CurrencyFormatter` produces `MoneyUiModel` from `Money`, currency metadata and an explicit `Locale`; `LedgerDateTimeFormatter` similarly produces formatted temporal models. Hidden-value text is supplied by the presentation resource layer, so the formatter cannot leak the underlying amount or hard-code user-visible translations. Neither formatter performs FX or authoritative business calculation.
+- Consequence: later Composables consume formatted models and need no `BigDecimal`, FX, time-zone or locale calculation. P03 does not claim an `AmountText` Composable or any screen implementation.

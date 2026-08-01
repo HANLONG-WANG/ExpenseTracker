@@ -164,6 +164,34 @@ tasks.register("p02Artifacts") {
     dependsOn("koverXmlReport", "koverHtmlReport", "cyclonedxBom", "generateLicenseReport")
 }
 
+val validateP03Core by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the pure-Kotlin P03 money, time, ID and deterministic-algorithm baseline."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p03_core.py")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("core/common/src") { include("**/*.kt") },
+        fileTree("core/money/src") { include("**/*.kt") },
+        fileTree("core/time/src") { include("**/*.kt") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        files(".github/workflows/quality.yml"),
+    )
+}
+
+tasks.register("p03Check") {
+    group = "verification"
+    description = "Runs P02 plus all P03 core tests, static policies and deterministic baseline checks."
+    dependsOn("p02Check", validateP03Core)
+}
+
+tasks.register("p03Artifacts") {
+    group = "verification"
+    description = "Generates P03 coverage and the inherited auditable supply-chain artifacts."
+    dependsOn("p02Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

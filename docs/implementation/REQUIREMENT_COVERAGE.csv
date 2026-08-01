@@ -12,8 +12,8 @@ REQ-010,需求/账户,最后一个账户允许归档但必须警告,ACC-012,Last
 REQ-011,需求/账户,有历史账户只能归档，空账户可永久删除,ACC-012,UsageSummary;ArchiveDeleteOptions,使用过的账户不显示直接删除操作。,NOT_STARTED,,,P12,P00 baseline only; implementation not claimed.
 REQ-012,需求/实体卡,账户与实体卡分离，一账户多卡或无卡,ACC-009..011;REC-006,CardOptionRow,账户详情可为空卡列表；交易卡片字段可为空。,NOT_STARTED,,,P12,P00 baseline only; implementation not claimed.
 REQ-013,需求/多币种,账户币种固定，首笔 Posting 后不可修改,ACC-003,CurrencyField,已使用账户币种字段只读并解释原因。,NOT_STARTED,,,P12,P00 baseline only; implementation not claimed.
-REQ-014,需求/多币种,保存原币、账户币、本位币和汇率证据,REC-003;REC-013;REC-021;JRN-007,FxEvidenceSection;AmountStack,详情清楚区分原始金额、入账金额、本位币估值和报价时间。,NOT_STARTED,,,P14,P00 baseline only; implementation not claimed.
-REQ-015,需求/多币种,离线缓存汇率；无缓存时手动输入,REC-003;REC-013;REC-021,FxStatusBanner;ManualRateField,离线状态显示报价时间；无汇率时阻止保存并提供手动路径。,NOT_STARTED,,,P14,P00 baseline only; implementation not claimed.
+REQ-014,需求/多币种,保存原币、账户币、本位币和汇率证据,REC-003;REC-013;REC-021;JRN-007,FxEvidenceSection;AmountStack,详情清楚区分原始金额、入账金额、本位币估值和报价时间。,IN_PROGRESS,P03 immutable FxEvidence/FxConversion and currency-specific exact conversion foundation,P03-E003; P03-E006,P14,P03 verifies the exact value/evidence layer only; RevisionAmount persistence and the four-representation UI remain P08/P14/P15.
+REQ-015,需求/多币种,离线缓存汇率；无缓存时手动输入,REC-003;REC-013;REC-021,FxStatusBanner;ManualRateField,离线状态显示报价时间；无汇率时阻止保存并提供手动路径。,IN_PROGRESS,P03 typed CACHE/MANUAL rate source quoted/fetched timestamps and manual-override evidence,P03-E003,P14,P03 verifies evidence semantics; offline repository caching stale-status UI and save blocking remain P14.
 REQ-016,需求/交易系统,顶部固定支出、收入、其他交易 Tab,REC-001,RecordTopTabs,三个 Tab 固定在内容顶部，冷启动落在支出。,NOT_STARTED,,,P13,P00 baseline only; implementation not claimed.
 REQ-017,需求/交易系统,其他交易包含转账、信用还款、退款、贷款、余额调整、外币兑换,REC-012..021,OtherTransactionGrid,六个入口全部存在；互请管理不在该网格中。,NOT_STARTED,,,P14,P00 baseline only; implementation not claimed.
 REQ-018,需求/分类,收入和支出是两棵独立树，无默认分类,REC-001;CAT-001,CategoryGrid;EmptyState,新账本显示空分类状态；收入/支出切换不混用数据。,NOT_STARTED,,,P12,P00 baseline only; implementation not claimed.
@@ -22,13 +22,13 @@ REQ-020,需求/分类,分类重新选择复用完整网格，不用下拉,REC-00
 REQ-021,需求/分类,分类支持颜色、图标、排序、搜索与对比度检测,CAT-001..003;CAT-002,CategoryColorPicker;ContrastPreview,低对比色产生警告并给出可访问前景色。,NOT_STARTED,,,P12,P00 baseline only; implementation not claimed.
 REQ-022,需求/分类,删除分类支持重分配、归档、墓碑删除,CAT-004,CategoryDeleteFlow,三种策略均展示影响笔数；墓碑历史以灰色删除线显示。,NOT_STARTED,,,P12,P00 baseline only; implementation not claimed.
 REQ-023,需求/普通交易,普通交易字段完整且顺序固定,REC-003,TransactionEditorScaffold,字段顺序严格为分类、金额、账户卡、商户、时间、项目、互请、位置、备注、附件。,NOT_STARTED,,,P13,P00 baseline only; implementation not claimed.
-REQ-024,需求/金额输入,系统键盘；支持有限算术表达式和操作符工具栏,REC-003;REC-013..021,MoneyExpressionField;OperatorToolbar,全半角规范化；错误定位；无应用内数字键盘。,NOT_STARTED,,,P13,P00 baseline only; implementation not claimed.
-REQ-025,需求/金额输入,最终金额大于零并按币种最小单位舍入,REC-003,MoneyExpressionField,零/负数不可保存；显示舍入后结果和原始算式。,NOT_STARTED,,,P03,P00 baseline only; implementation not claimed.
+REQ-024,需求/金额输入,系统键盘；支持有限算术表达式和操作符工具栏,REC-003;REC-013..021,MoneyExpressionField;OperatorToolbar,全半角规范化；错误定位；无应用内数字键盘。,IN_PROGRESS,P03 bounded tokenizer Pratt parser normalization evaluator and source-position errors,P03-E004; P03-E006,P13,P03 verifies the expression engine; system-keyboard field and operator-only Compose toolbar remain P04/P13.
+REQ-025,需求/金额输入,最终金额大于零并按币种最小单位舍入,REC-003,MoneyExpressionField,零/负数不可保存；显示舍入后结果和原始算式。,IN_PROGRESS,P03 positive-result validation currency-minor rounding and preserved original/normalized expression result,P03-E003; P03-E004,P03,P03 core acceptance is verified; displaying and binding both expression/result in REC-003 remains P13 so the end-to-end REQ is not promoted.
 REQ-026,需求/录入交互,互请默认折叠，开启后展开,REC-003;REC-011,SettlementSection,未开启时不占用大块空间；开启后字段完整。,NOT_STARTED,,,P13,P00 baseline only; implementation not claimed.
 REQ-027,需求/录入交互,保存 FAB 固定右下，不随页面滚动,REC-003;REC-013..022,LedgerSaveFab,滚动、键盘显示、大字体下仍可触达且不遮住最后字段。,NOT_STARTED,,,P13,P00 baseline only; implementation not claimed.
 REQ-028,需求/录入交互,保存后返回当前分类网格,REC-003 -> REC-001,NavigationResult,保存成功回到原支出/收入 Tab 并保持滚动位置。,NOT_STARTED,,,P13,P00 baseline only; implementation not claimed.
 REQ-029,需求/交易限制,不支持拆分分类或多账户共同支付,REC-003;IMP-003,SingleCategorySelector;SinglePayerAccount,UI 不出现拆分入口；导入映射遇到拆分数据提示需拆成多笔。,NOT_STARTED,,,P06,P00 baseline only; implementation not claimed.
-REQ-030,需求/交易时间,保存发生时间、时区、本地日期和账单归属,REC-003;CRD-006;JRN-007,DateTimeZoneField;StatementAssignment,跨时区交易详情可查看原时区；信用账单时区单独说明。,NOT_STARTED,,,P13,P00 baseline only; implementation not claimed.
+REQ-030,需求/交易时间,保存发生时间、时区、本地日期和账单归属,REC-003;CRD-006;JRN-007,DateTimeZoneField;StatementAssignment,跨时区交易详情可查看原时区；信用账单时区单独说明。,IN_PROGRESS,P03 EffectiveTime zone/local-date model temporal codecs natural budget months and statement-zone cycle calculator,P03-E005; P03-E006,P13,P03 verifies deterministic temporal foundations; database persistence statement entities and REC/JRN/CRD UI remain P08/P13/P19.
 REQ-031,需求/版本历史,任何编辑产生完整历史，旧版恢复产生新修订,JRN-008;JRN-009,RevisionTimeline;RestoreRevisionAction,恢复操作提示“将创建新版本”，历史版本数量增加而非覆盖。,NOT_STARTED,,,P15,P00 baseline only; implementation not claimed.
 REQ-032,需求/回收站,保留期可配，支持恢复和受控永久清除,JRN-011;JRN-012;SETG-008,TrashRetentionBanner;HighRiskConfirmation,永久删除前重新校验资格；依赖未处理时不可执行。,NOT_STARTED,,,P31,P00 baseline only; implementation not claimed.
 REQ-033,需求/余额检查点,检查点不影响余额，可查漏或生成调整,ACC-007;ACC-008,DifferenceCard;ResolutionActions,创建检查点后余额不变；调整是显式独立操作。,NOT_STARTED,,,P12,P00 baseline only; implementation not claimed.

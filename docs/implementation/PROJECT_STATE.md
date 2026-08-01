@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-01 (Asia/Tokyo)
-Current stage: P02 — quality gates, test infrastructure and CI
-Stage status: VERIFIED (`P02-E001`—`P02-E009`); P03 is the next unstarted stage
+Current stage: P03 — core value objects, money, time and deterministic algorithms
+Stage status: VERIFIED (`P03-E001`—`P03-E009`); P04 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -97,15 +97,29 @@ P01 preserved all prior tracked and untracked work. The provisional build identi
 
 P02 is complete. `/dev/kvm` is accessible, Emulator 37.1.11 reports usable KVM 12, and the API 28 app, API 36 app and API 36 benchmark Managed Device tasks all passed with zero failed/skipped tests. See `P02-E008`.
 
+### P03 result
+
+| Area | P03 result | Classification |
+|---|---|---|
+| Common value foundation | Positive `InternalId`, defensively immutable 16-byte `StableId`, injected UUID source, typed domain errors and immutable `DomainResult` live in `:core:common` | VERIFIED (`P03-E002`) |
+| Checked arithmetic | Every Long add/subtract/multiply/negate/accumulate entry uses exact checks; BigInteger accumulation and exact Long conversion report typed overflow | VERIFIED; permanent `INV-034` (`P03-E002`, `P03-E006`) |
+| Money and FX | `Money(Long minor, CurrencyCode)`, current country legal-tender metadata, currency-specific scales, explicit rounding/MathContext, immutable `FxEvidence` and exact conversion are pure Kotlin | VERIFIED as P03 foundation (`P03-E003`) |
+| Amount expression | Bounded tokenizer/Pratt parser/BigDecimal evaluator supports only `+ - * / × ÷ ( )`, whitespace/full-width/local decimal normalization, exact source positions, positive result and currency-minor rounding | VERIFIED (`P03-E004`) |
+| Time and periods | Injected Clock, self-consistent `EffectiveTime`, explicit DST policies, storage keys, natural budget months and account-zone statement cycles use only `java.time` | VERIFIED (`P03-E005`) |
+| Formatting boundary | Currency/date-time formatters return preformatted UI models, preserve locale/zone evidence and prevent hidden-value leakage; no Composable performs authoritative work because P04 UI is not started | VERIFIED as P03 interface (`P03-E003`, `P03-E005`) |
+| Static and regression gates | `p03Check`, `p03Artifacts`, pure-Kotlin validator and committed Float/Double + unchecked-sum rejection fixture extend all P02 gates | VERIFIED (`P03-E006`—`P03-E009`) |
+
+P03 is complete with 32 core behavioral tests plus eight build-logic policy tests (all zero failed/error/skipped), 1,000-case arithmetic and expression properties, generated calendar boundaries, and P03-inclusive Kover reports. No Android/Room/network dependency exists in the three core modules and no visual draft was read.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-083`—`REQ-087` and `REQ-090` are `IN_PROGRESS` for their P02 verification bases; the other 84 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-014`, `REQ-015`, `REQ-024`, `REQ-025`, `REQ-030`, `REQ-083`—`REQ-087` and `REQ-090` are `IN_PROGRESS` for verified foundations; the other 79 remain `NOT_STARTED` |
 | YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All `NOT_STARTED`; baseline rows created only |
 | Architecture ADRs | 20 + ADR-007A | ADR-001 `VERIFIED`; the other 20 decisions remain `NOT_STARTED` |
 | UI ADRs | 12 | Registered; implementation `NOT_STARTED` |
-| Permanent domain invariants | 35 | Registered; verification `NOT_STARTED` |
+| Permanent domain invariants | 35 | `INV-034` `VERIFIED`; the other 34 remain `NOT_STARTED` |
 | Logical schema families | 12 | Registered; implementation `NOT_STARTED` |
 | Projection families | 7 + search/geographic indexes | Registered; implementation `NOT_STARTED` |
 | Durable/staging/backup operation inventories | 4 groups | Registered; implementation `NOT_STARTED` |
@@ -117,19 +131,18 @@ P02 is complete. `/dev/kvm` is accessible, Emulator 37.1.11 reports usable KVM 1
 | P00 | VERIFIED | `python3 scripts/validate_spec_baseline.py` passed; see `P00-E001`—`P00-E006` |
 | P01 | VERIFIED | Frozen toolchain, all modules, exact dependency graph, debug/release assembly, locks, verification metadata, lint and tests passed; see `P01-E001`—`P01-E007` |
 | P02 | VERIFIED | Repeatable aggregate/static/artifact gates, rejection proofs, traceability checks, API 28/API 36 GMD and API 36 benchmark device tests pass; see `P02-E001`—`P02-E009` |
-| P03—P36 | NOT_STARTED | P03 is the next execution stage; do not promote later work early |
+| P03 | VERIFIED | Pure-Kotlin IDs/errors/results, checked arithmetic, exact money/FX/expression/time/period/formatting foundations and real-violation rejection pass; see `P03-E001`—`P03-E009` |
+| P04—P36 | NOT_STARTED | P04 is the next execution stage; do not promote later work early |
 
-## P03 entry state
+## P04 entry state
 
-P02 leaves the repository at a verified quality baseline. The completion commands were:
+P03 leaves the repository at a verified exact-value and deterministic-algorithm baseline. Its completion commands are:
 
 ```text
-/home/hubery-fedora/Tools/Android/Sdk/emulator/emulator -accel-check
-./gradlew :app:pixel2Api28DebugAndroidTest --configuration-cache --no-parallel --console=plain
-./gradlew :app:pixel6Api36DebugAndroidTest --configuration-cache --no-parallel --console=plain
-./gradlew :benchmark:pixel6Api36DebugAndroidTest --configuration-cache --no-parallel --console=plain
-./gradlew p02Check --configuration-cache --no-parallel --console=plain
-./gradlew p02Artifacts --configuration-cache --no-parallel --console=plain
+./gradlew :core:common:test :core:money:test :core:time:test --configuration-cache --no-parallel --console=plain
+python3 scripts/prove_p03_policy_rejection.py
+./gradlew p03Check --configuration-cache --no-parallel --console=plain
+./gradlew p03Artifacts --configuration-cache --no-parallel --console=plain
 ```
 
-Acceleration, all three device commands and both aggregate tasks passed in `P02-E005`, `P02-E006` and `P02-E008`. P03 may start from this state, but no business requirement or screen is complete merely because its carrier/test infrastructure exists.
+All commands pass in `P03-E002`—`P03-E009`. P04 may consume only the formatted UI models and exact value APIs; it must not duplicate amount, FX or time authority in Compose. All 215 screens remain `NOT_STARTED`, and the five P03-supported requirements remain `IN_PROGRESS` until their persistence/UI acceptance is verified in later phases.
