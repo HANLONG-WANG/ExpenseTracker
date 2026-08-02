@@ -106,8 +106,8 @@ def validate_sources(sources: Mapping[str, str]) -> list[str]:
     manifest = read(ROOT / "app/src/main/AndroidManifest.xml")
     if manifest.count("<activity") != 1 or ".MainActivity" not in manifest:
         errors.append("app manifest must expose exactly the single MainActivity root")
-    if "android.permission.INTERNET" in manifest:
-        errors.append("P11 app shell unexpectedly requests an online-login/network permission")
+    if "android.permission.INTERNET" in manifest and 'implementation(project(":core:geo"))' not in read(ROOT / "app/build.gradle.kts"):
+        errors.append("app requests network access without the governed core:geo map integration")
 
     root = named(sources, "AppRootScreen.kt")
     require_tokens(

@@ -471,6 +471,7 @@ abstract class VerifyArchitectureTask : DefaultTask() {
                     ":core:security",
                     ":core:time",
                     ":core:background",
+                    ":core:geo",
                     ":finance:application",
                     ":finance:data",
                     ":analytics:data",

@@ -11,6 +11,7 @@ package app.ledger.core.designsystem
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -263,6 +264,133 @@ public fun CategoryTile(
     }
 }
 
+@Composable
+public fun ReferenceDisplayStylePicker(
+    selectedIcon: LedgerIcon,
+    selectedPaletteId: String,
+    iconSectionLabel: String,
+    colorSectionLabel: String,
+    onIconSelected: (LedgerIcon) -> Unit,
+    onPaletteSelected: (paletteId: String, colorArgb: Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val icons = REFERENCE_STYLE_ICONS
+    val palette = LedgerTheme.colors.categoryPalette
+    val iconLabels = referenceStyleIconLabels()
+    val colorLabels = referenceStyleColorLabels()
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+        LedgerText(iconSectionLabel, LedgerTextRole.SECTION)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+            icons.forEachIndexed { index, icon ->
+                val label = iconLabels[index]
+                val selected = icon == selectedIcon
+                Card(
+                    Modifier
+                        .size(LedgerTheme.dimensions.touchTargetMin)
+                        .clickable { onIconSelected(icon) }
+                        .semantics {
+                            role = Role.RadioButton
+                            this.selected = selected
+                            contentDescription = label
+                        },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selected) {
+                            LedgerTheme.colors.material.primaryContainer
+                        } else {
+                            LedgerTheme.colors.material.surfaceContainer
+                        },
+                    ),
+                    border = BorderStroke(
+                        if (selected) LedgerTheme.dimensions.strokeSelected else LedgerTheme.dimensions.strokeStandard,
+                        if (selected) LedgerTheme.colors.material.primary else LedgerTheme.colors.material.outlineVariant,
+                    ),
+                ) {
+                    Box(Modifier.fillMaxWidth().heightIn(min = LedgerTheme.dimensions.touchTargetMin), contentAlignment = Alignment.Center) {
+                        LedgerIconView(icon, contentDescription = null)
+                    }
+                }
+            }
+        }
+        LedgerText(colorSectionLabel, LedgerTextRole.SECTION)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+            palette.forEachIndexed { index, option ->
+                val label = colorLabels[index]
+                val selected = option.id == selectedPaletteId
+                Card(
+                    Modifier
+                        .size(LedgerTheme.dimensions.touchTargetMin)
+                        .clickable {
+                            onPaletteSelected(
+                                option.id,
+                                requireNotNull(LedgerReferenceDisplayDefaults.categoryPaletteArgb[option.id]),
+                            )
+                        }
+                        .semantics {
+                            role = Role.RadioButton
+                            this.selected = selected
+                            contentDescription = label
+                        },
+                    colors = CardDefaults.cardColors(containerColor = option.container),
+                    border = BorderStroke(
+                        if (selected) LedgerTheme.dimensions.strokeSelected else LedgerTheme.dimensions.strokeStandard,
+                        if (selected) LedgerTheme.colors.material.primary else option.foreground,
+                    ),
+                ) {
+                    Box(Modifier.fillMaxWidth().heightIn(min = LedgerTheme.dimensions.touchTargetMin), contentAlignment = Alignment.Center) {
+                        LedgerIconView(selectedIcon, tint = option.foreground, contentDescription = null)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun referenceStyleIconLabels(): List<String> = listOf(
+    stringResource(R.string.ledger_style_icon_record),
+    stringResource(R.string.ledger_style_icon_account),
+    stringResource(R.string.ledger_style_icon_budget),
+    stringResource(R.string.ledger_style_icon_analysis),
+    stringResource(R.string.ledger_style_icon_journal),
+    stringResource(R.string.ledger_style_icon_location),
+    stringResource(R.string.ledger_style_icon_transfer),
+    stringResource(R.string.ledger_style_icon_refund),
+)
+
+@Composable
+private fun referenceStyleColorLabels(): List<String> = listOf(
+    stringResource(R.string.ledger_style_color_red),
+    stringResource(R.string.ledger_style_color_orange),
+    stringResource(R.string.ledger_style_color_amber),
+    stringResource(R.string.ledger_style_color_yellow),
+    stringResource(R.string.ledger_style_color_lime),
+    stringResource(R.string.ledger_style_color_green),
+    stringResource(R.string.ledger_style_color_emerald),
+    stringResource(R.string.ledger_style_color_teal),
+    stringResource(R.string.ledger_style_color_cyan),
+    stringResource(R.string.ledger_style_color_sky),
+    stringResource(R.string.ledger_style_color_blue),
+    stringResource(R.string.ledger_style_color_indigo),
+    stringResource(R.string.ledger_style_color_violet),
+    stringResource(R.string.ledger_style_color_purple),
+    stringResource(R.string.ledger_style_color_pink),
+    stringResource(R.string.ledger_style_color_slate),
+)
+
+public val ReferenceDisplayStyleIcons: List<LedgerIcon>
+    get() = REFERENCE_STYLE_ICONS
+
+private val REFERENCE_STYLE_ICONS: List<LedgerIcon> = listOf(
+    LedgerIcon.RECORD,
+    LedgerIcon.ACCOUNT,
+    LedgerIcon.BUDGET,
+    LedgerIcon.ANALYSIS,
+    LedgerIcon.JOURNAL,
+    LedgerIcon.LOCATION,
+    LedgerIcon.TRANSFER,
+    LedgerIcon.REFUND,
+)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 public fun JournalTransactionRow(
@@ -317,14 +445,18 @@ public fun AccountSummaryCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val palette = LedgerTheme.colors.categoryPalette.single { it.id == model.paletteId }
     LedgerCard(modifier.alpha(if (model.archived) .72f else 1f), onClick = onClick) {
         Row(
             Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
         ) {
-            Box(Modifier.size(LedgerTheme.dimensions.accountIconContainer).clip(LedgerTheme.shapes.full), contentAlignment = Alignment.Center) {
-                LedgerIconView(model.icon)
+            Box(
+                Modifier.size(LedgerTheme.dimensions.accountIconContainer).clip(LedgerTheme.shapes.full).background(palette.container),
+                contentAlignment = Alignment.Center,
+            ) {
+                LedgerIconView(model.icon, tint = palette.foreground)
             }
             Column(Modifier.weight(1f)) {
                 Text(model.name, style = LedgerTheme.typography.titleSmall)
@@ -333,6 +465,55 @@ public fun AccountSummaryCard(
                 if (model.status != null) Text(model.status, style = LedgerTheme.typography.labelSmall)
             }
             AmountText(model.balance, AmountSize.LIST)
+        }
+    }
+}
+
+@Composable
+public fun ReferenceDataRow(
+    model: ReferenceDataRowUiModel,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val deleted = model.status == LedgerStatusVariant.DELETED
+    val archived = model.status == LedgerStatusVariant.ARCHIVED
+    val palette = model.paletteId?.let { id -> LedgerTheme.colors.categoryPalette.single { it.id == id } }
+    LedgerCard(
+        modifier = modifier.fillMaxWidth().alpha(if (archived || deleted) .72f else 1f),
+        onClick = onClick,
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .padding(start = if (model.hierarchyLevel == 2) LedgerTheme.spacing.lg else LedgerTheme.spacing.sm)
+                .padding(end = LedgerTheme.spacing.sm, top = LedgerTheme.spacing.xs, bottom = LedgerTheme.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
+        ) {
+            if (model.icon != null && palette != null) {
+                Box(
+                    Modifier.size(LedgerTheme.dimensions.categoryIconContainer).clip(LedgerTheme.shapes.full)
+                        .background(if (deleted) LedgerTheme.colors.material.surfaceContainerHighest else palette.container),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LedgerIconView(
+                        model.icon,
+                        tint = if (deleted) LedgerTheme.colors.material.onSurfaceVariant else palette.foreground,
+                    )
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    model.title,
+                    style = LedgerTheme.typography.bodyLarge,
+                    color = if (deleted) LedgerTheme.colors.material.onSurfaceVariant else LedgerTheme.colors.material.onSurface,
+                    textDecoration = if (deleted) TextDecoration.LineThrough else null,
+                )
+                if (model.supportingText != null) {
+                    Text(model.supportingText, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
+                }
+            }
+            if (model.status != LedgerStatusVariant.NEUTRAL) StatusBadge(model.status.name, model.status)
+            LedgerIconView(LedgerIcon.CHEVRON)
         }
     }
 }

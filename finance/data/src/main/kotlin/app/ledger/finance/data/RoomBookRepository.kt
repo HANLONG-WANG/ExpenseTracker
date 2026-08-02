@@ -22,26 +22,29 @@ class RoomBookRepository(
 ) : BookRepository {
     override suspend fun current(): DomainResult<Book> = protect {
         database.readLedger { connection ->
-            val book = connection.queryOne(
-                "SELECT b.uid, b.base_currency, b.default_zone_id, bc.uid AS head_uid, b.local_revision, " +
-                    "b.valuation_revision, b.rule_set_version, b.created_at, b.first_financial_commit_at, b.state " +
-                    "FROM book b JOIN book_commit bc ON bc.id = b.head_commit_id WHERE b.id = 1",
-            ) { cursor ->
-                Book(
-                    id = BookId(cursor.stableId("uid")),
-                    baseCurrency = CurrencyCode.parse(cursor.getString(cursor.getColumnIndexOrThrow("base_currency"))).valueOrAbort(),
-                    defaultZoneId = ZoneId.of(cursor.getString(cursor.getColumnIndexOrThrow("default_zone_id"))),
-                    headCommitId = BookCommitId(cursor.stableId("head_uid")),
-                    localRevision = LocalRevision.of(cursor.getLong(cursor.getColumnIndexOrThrow("local_revision"))).valueOrAbort(),
-                    valuationRevision = LocalRevision.of(cursor.getLong(cursor.getColumnIndexOrThrow("valuation_revision"))).valueOrAbort(),
-                    ruleSetVersion = RuleSetVersion.of(cursor.getInt(cursor.getColumnIndexOrThrow("rule_set_version"))).valueOrAbort(),
-                    createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("created_at")).toStoredInstant(),
-                    firstFinancialCommitAt = cursor.nullableLong("first_financial_commit_at")?.toStoredInstant(),
-                    state = BookState.entries[cursor.getInt(cursor.getColumnIndexOrThrow("state"))],
-                )
-            } ?: abort(FinanceDataError.CorruptData)
-            DomainResult.Success(book)
+            DomainResult.Success(mapCurrent(connection))
         }
+    }
+
+    internal companion object {
+        fun mapCurrent(connection: androidx.sqlite.db.SupportSQLiteDatabase): Book = connection.queryOne(
+            "SELECT b.uid, b.base_currency, b.default_zone_id, bc.uid AS head_uid, b.local_revision, " +
+                "b.valuation_revision, b.rule_set_version, b.created_at, b.first_financial_commit_at, b.state " +
+                "FROM book b JOIN book_commit bc ON bc.id = b.head_commit_id WHERE b.id = 1",
+        ) { cursor ->
+            Book(
+                id = BookId(cursor.stableId("uid")),
+                baseCurrency = CurrencyCode.parse(cursor.getString(cursor.getColumnIndexOrThrow("base_currency"))).valueOrAbort(),
+                defaultZoneId = ZoneId.of(cursor.getString(cursor.getColumnIndexOrThrow("default_zone_id"))),
+                headCommitId = BookCommitId(cursor.stableId("head_uid")),
+                localRevision = LocalRevision.of(cursor.getLong(cursor.getColumnIndexOrThrow("local_revision"))).valueOrAbort(),
+                valuationRevision = LocalRevision.of(cursor.getLong(cursor.getColumnIndexOrThrow("valuation_revision"))).valueOrAbort(),
+                ruleSetVersion = RuleSetVersion.of(cursor.getInt(cursor.getColumnIndexOrThrow("rule_set_version"))).valueOrAbort(),
+                createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("created_at")).toStoredInstant(),
+                firstFinancialCommitAt = cursor.nullableLong("first_financial_commit_at")?.toStoredInstant(),
+                state = BookState.entries[cursor.getInt(cursor.getColumnIndexOrThrow("state"))],
+            )
+        } ?: abort(FinanceDataError.CorruptData)
     }
 
     override suspend fun purgeTombstone(transactionId: TransactionId): DomainResult<PurgeTombstone?> = protect {

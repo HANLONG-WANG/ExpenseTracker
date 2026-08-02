@@ -13,6 +13,7 @@ dependencies {
     implementation(project(":core:security"))
     implementation(project(":core:time"))
     implementation(project(":core:background"))
+    implementation(project(":core:geo"))
     implementation(project(":finance:application"))
     implementation(project(":finance:data"))
     implementation(project(":analytics:data"))

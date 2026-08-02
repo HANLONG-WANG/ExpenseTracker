@@ -12,20 +12,21 @@ import org.junit.jupiter.api.Test
 class AppSettingsContractTest {
     @Test
     fun shortBackgroundPolicyNeverRestoresAColdStartSnapshot() {
-        val settings = LedgerAppSettings.newBuilder()
-            .setRestorePolicy(SessionRestorePolicyProto.SESSION_RESTORE_SHORT_BACKGROUND)
-            .setNavigationSnapshot(safeSnapshot())
-            .build()
+        val settings = settingsWith(
+            SessionRestorePolicyProto.SESSION_RESTORE_SHORT_BACKGROUND,
+            safeSnapshot(),
+        )
 
         assertFalse(settings.shouldRestoreNavigationAfterColdStart())
     }
 
     @Test
     fun alwaysLastPagePolicyRestoresOnlyWhenASafeSnapshotExists() {
-        val withoutSnapshot = LedgerAppSettings.newBuilder()
-            .setRestorePolicy(SessionRestorePolicyProto.SESSION_RESTORE_ALWAYS_LAST_PAGE)
-            .build()
-        val withSnapshot = withoutSnapshot.toBuilder().setNavigationSnapshot(safeSnapshot()).build()
+        val withoutSnapshot = settingsWith(SessionRestorePolicyProto.SESSION_RESTORE_ALWAYS_LAST_PAGE)
+        val withSnapshot = settingsWith(
+            SessionRestorePolicyProto.SESSION_RESTORE_ALWAYS_LAST_PAGE,
+            safeSnapshot(),
+        )
 
         assertFalse(withoutSnapshot.shouldRestoreNavigationAfterColdStart())
         assertTrue(withSnapshot.shouldRestoreNavigationAfterColdStart())
@@ -41,12 +42,25 @@ class AppSettingsContractTest {
         assertTrue(names.intersect(forbidden).isEmpty())
     }
 
-    private fun safeSnapshot(): NavigationSnapshotProto = NavigationSnapshotProto.newBuilder()
-        .setSelectedTopLevel("JOURNAL")
-        .addStacks(
-            TopLevelStackProto.newBuilder()
-                .setTopLevel("JOURNAL")
-                .addDestinations(DestinationProto.newBuilder().setScreenId("JRN-001")),
-        )
-        .build()
+    private fun settingsWith(
+        policy: SessionRestorePolicyProto,
+        snapshot: NavigationSnapshotProto? = null,
+    ): LedgerAppSettings {
+        val builder: LedgerAppSettings.Builder = LedgerAppSettings.newBuilder()
+        builder.restorePolicy = policy
+        if (snapshot != null) builder.navigationSnapshot = snapshot
+        return builder.build()
+    }
+
+    private fun safeSnapshot(): NavigationSnapshotProto {
+        val destination: DestinationProto.Builder = DestinationProto.newBuilder()
+        destination.screenId = "JRN-001"
+        val stack: TopLevelStackProto.Builder = TopLevelStackProto.newBuilder()
+        stack.topLevel = "JOURNAL"
+        stack.addDestinations(destination)
+        val snapshot: NavigationSnapshotProto.Builder = NavigationSnapshotProto.newBuilder()
+        snapshot.selectedTopLevel = "JOURNAL"
+        snapshot.addStacks(stack)
+        return snapshot.build()
+    }
 }

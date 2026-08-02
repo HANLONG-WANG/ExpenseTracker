@@ -258,6 +258,17 @@ data class AccountAmount private constructor(
                 is DomainResult.Failure -> positive
             }
         }
+
+        /** Rehydrates an immutable historical revision even when its referenced account is archived. */
+        fun restoreHistorical(account: AccountSnapshot, money: Money): DomainResult<AccountAmount> {
+            if (account.currency != money.currency) {
+                return DomainResult.Failure(DomainViolation.CurrencyMismatch(account.currency, money.currency))
+            }
+            return when (val positive = PositiveMoney.from(money)) {
+                is DomainResult.Success -> DomainResult.Success(AccountAmount(account.id, positive.value))
+                is DomainResult.Failure -> positive
+            }
+        }
     }
 }
 

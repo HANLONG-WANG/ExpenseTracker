@@ -18,6 +18,8 @@ public object LedgerTestTags {
     public const val SENSITIVE_VALUE: String = "sensitive_value"
     public const val ATTACHMENT_LIST: String = "attachment_list"
     public const val ATTACHMENT_PREVIEW: String = "attachment_preview"
+    public const val P12_ACCOUNTS_ROOT: String = "p12_accounts_root"
+    public const val P12_MANAGEMENT_ROOT: String = "p12_management_root"
     public const val ATTACHMENT_METADATA: String = "attachment_metadata"
     public const val ATTACHMENT_EXTERNAL_OPEN: String = "attachment_external_open"
     public const val ATTACHMENT_RENAME: String = "attachment_rename"
@@ -133,7 +135,24 @@ public data class AccountSummaryUiModel(
     val status: String? = null,
     val archived: Boolean = false,
     val icon: LedgerIcon = LedgerIcon.ACCOUNT,
+    val paletteId: String = "slate",
 )
+
+@Immutable
+public data class ReferenceDataRowUiModel(
+    val stableKey: String,
+    val title: String,
+    val supportingText: String?,
+    val hierarchyLevel: Int = 1,
+    val status: LedgerStatusVariant = LedgerStatusVariant.NEUTRAL,
+    val icon: LedgerIcon? = null,
+    val paletteId: String? = null,
+) {
+    init {
+        require(hierarchyLevel in 1..2)
+        LedgerTestTags.requireStable(stableKey)
+    }
+}
 
 @Immutable
 public data class ProgressSummaryUiModel(

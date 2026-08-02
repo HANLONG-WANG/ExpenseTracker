@@ -25,9 +25,11 @@ internal class RoomFinancialPlanWriter {
         database: SupportSQLiteDatabase,
         plan: FinancialMutationPlan,
         checkpoint: (FinancialCommitPhase) -> Unit,
+        afterCommitHeader: (SupportSQLiteDatabase, FinancialMutationPlan) -> Unit = { _, _ -> },
     ) {
         insertCommit(database, plan)
         checkpoint(FinancialCommitPhase.AFTER_COMMIT_HEADER)
+        afterCommitHeader(database, plan)
         insertTransactionShells(database, plan)
         insertFxSnapshots(database, plan)
         insertRevisions(database, plan)

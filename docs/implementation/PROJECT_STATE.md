@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-02 (Asia/Tokyo)
-Current stage: P11 — Application shell, global runtime state, navigation and first launch
-Stage status: VERIFIED (`P11-E001`—`P11-E008`); P00—P11 are complete and P12 is the next unstarted stage
+Current stage: P12 — Account, physical-card and reference-data management
+Stage status: VERIFIED (`P12-E001`—`P12-E008`); P00—P11 remain VERIFIED and P13 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -76,7 +76,7 @@ Baseline conclusion: this is a documentation-only repository, not a partial Andr
 | Build governance | AGP built-in Kotlin, Kotlin Compose compiler plugin, KSP 2.3.10, version catalog and seven convention/architecture plugins in the included `:build-logic` build | VERIFIED |
 | Module topology | 35 prescribed leaf modules plus five zero-dependency Gradle grouping projects; `:build-logic` is an included build | VERIFIED |
 | Dependency direction | Exact allowlisted project graph enforces UI → Application → Domain ← Infrastructure; eight domain/common modules are pure Kotlin/JVM; feature modules have no feature/data/DAO/Room-entity edge | VERIFIED |
-| Reproducibility | Wrapper distribution SHA-256 pinned; 37 lockfiles cover root, build logic and all leaf modules; strict dependency verification contains 1,268 components and 2,642 SHA-256 entries after the P10 Coil/MapLibre/location graph and SBOM POMs were sealed | VERIFIED |
+| Reproducibility | Wrapper distribution SHA-256 pinned; 37 lockfiles cover root, build logic and all leaf modules; strict dependency verification contains 1,357 components and 2,804 SHA-256 entries after the P12 application/reference-data graph and SBOM POMs were sealed | VERIFIED |
 | Production source | Secure application manifest only; no business screen, DAO, persistence, placeholder component or fake functionality was added | Correct for P01 |
 | Tests and scripts | P00 and P01 structural validators, Gradle architecture/version checks, Android Lint and all configured JVM test tasks | VERIFIED for P01 scope |
 | CI, advanced quality and release | Detekt/format/Kover/SBOM/license/CI/Baseline Profile/release AAB are not introduced early | P02/P36 scope |
@@ -217,15 +217,30 @@ P10 does not claim the P13 complete record form, P27 analytics map screens, back
 
 P11 does not claim later feature pages, settings completion, durable operation execution, backup/restore transport, widget runtime, full feature-wide accessibility/performance acceptance or later process-death form behavior. `P11_APP_SHELL_MAPPING.md` records the exact implementation boundary.
 
+### P12 result (verified)
+
+| Area | P12 result | Classification |
+|---|---|---|
+| Accounts and balances | Four account types, appearance, archive/empty-delete rules, first-Posting currency lock, coordinator-owned opening balance, checkpoint-only audit, exact net-position naming and missing-valuation behavior are implemented | PASS for implemented scope (`P12-E002`—`P12-E004`) |
+| Physical cards | Separate account/card current records, bank/credit compatibility, zero/many cards, archive and replacement history are implemented | PASS for implemented scope (`P12-E002`, `P12-E003`) |
+| Categories | Independent income/expense trees, maximum depth, immutable second-level parent, governed appearance, accessible ordering, search, defaults, statistical snapshot, archive, tombstone and atomic historical reassignment are implemented | PASS (`P12-E002`—`P12-E004`, `P12-E008`) |
+| Merchants and places | Merchant alias search/merge, linked places, offline fixed-point place editing/merge/split and governed MapLibre/list fallback are implemented without reverse geocoding | PASS (`P12-E003`, `P12-E004`, `P12-E008`) |
+| Account/read UI | Account home/detail/transactions, Vico balance trend and accessible table, cards, goal projection and recent transactions render from encrypted projection-backed data | PASS on API 36 (`P12-E004`) |
+| UI contract matrix | Closed enums cover all 23 P12 screens and 67 exact YAML states; compact/wide, 100/130/200% font, three locales, light/dark and dynamic boundary execute | PASS on API 36; API 28 remains recorded separately (`P12-E004`, `P12-E006`) |
+| Historical category reassignment | Coordinator-owned `BatchFinancialCommand` appends typed EDIT revisions and REVERSE/APPLY facts using frozen historical amount/FX evidence | PASS: one canonical `BATCH_MUTATION`, one receipt and one Room transaction (`P12-E008`, `DL-058`) |
+| Place split | Immutable location clones plus current-transaction revision fan-out execute through the same batch coordinator path | PASS: source records stay immutable and the entire reference/financial change is atomic (`P12-E003`, `P12-E008`, `DL-058`) |
+
+P12 is `VERIFIED`; P13 has not started. `P12_REFERENCE_DATA_MAPPING.md` records the exact implemented boundary. No direct feature/Worker/importer financial DAO path, mutable-history workaround, sequential partial financial commit or second application write entry was introduced.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
 | Requirements `REQ-001`—`REQ-090` | 90 | Eight requirements are `VERIFIED`; 68 are `IN_PROGRESS`; 14 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | G-001—008, ONB-001—010, ATT-001—003 and SYS-001 are `VERIFIED`; REC-009/010 are `IN_PROGRESS`; 191 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 45 are `VERIFIED` (G-001—008, ONB-001—010, ATT-001—003, SYS-001 and all 23 P12 screens); REC-009/010 remain `IN_PROGRESS`; 168 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-010 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-011—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
-| Permanent domain invariants | 35 | `INV-034` `VERIFIED` remains the checked-arithmetic anchor; `INV-002`, `INV-005`, `INV-006`, `INV-007`, `INV-016` and `INV-031` are also `VERIFIED`; 28 retain later evidence |
+| Permanent domain invariants | 35 | `INV-034` `VERIFIED` remains the checked-arithmetic anchor; `INV-002`, `INV-005`, `INV-006`, `INV-007`, `INV-016`, `INV-029` and `INV-031` are also `VERIFIED`; 27 retain later evidence |
 | Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; P08 verifies normalized financial plan mapping and atomic repository behavior |
 | Projection families | 7 + search/geographic indexes | Current transaction and settlement plus both indexes are `VERIFIED`; P08 subsets of the other families are verified while later-owned projections/runtime remain `IN_PROGRESS` |
 | Durable/staging/backup operation inventories | 4 groups | Encrypted physical records `VERIFIED` by P07; operation runtime remains `IN_PROGRESS` for P28—P31 |
@@ -246,19 +261,19 @@ P11 does not claim later feature pages, settings completion, durable operation e
 | P09 | VERIFIED | Separate production key hierarchies, real SQLCipher book sessions, authenticated vault CryptoObjects, app-lock/privacy runtime and API 36 Keystore/device-credential tests pass; see `P09-E001`—`P09-E006` |
 | P10 | VERIFIED | Encrypted streaming attachments, one-time pipe sharing, three-second foreground location, MapLibre fallback and all P10 required states pass on API 36; see `P10-E001`—`P10-E007` |
 | P11 | VERIFIED | Single Activity/Compose root, complete SessionGate, five Navigation 3 stacks, typed Proto restore, secure empty-book onboarding and all 65 G/ONB states pass; see `P11-E001`—`P11-E008` |
-| P12—P36 | NOT_STARTED | P12 is the next execution stage; do not promote later work early |
+| P12 | VERIFIED | Account/card/reference-data implementation, all 23 screen contracts and coordinator-owned atomic category/place batch edits pass; see `P12-E001`—`P12-E008` |
+| P13—P36 | NOT_STARTED | P13 has not started; do not promote later work early |
 
-## P12 entry state
+## P12 verified handoff
 
-P11 leaves the repository at a verified application-shell, navigation and first-launch boundary. Its completion commands are:
+P12 leaves the repository at a fully verified account/reference-data boundary. The reproducible P12 commands are:
 
 ```text
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p11_app_shell.py
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p11_app_shell_contracts -v
-./gradlew :app:pixel2Api28DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.app.P11UiContractDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p12_reference_data.py
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+./gradlew :app:pixel2Api28DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.app.P12UiContractDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
 ./gradlew :app:pixel6Api36DebugAndroidTest :finance:data:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
-./gradlew p11Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
-./gradlew p11Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew p12Evidence --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
 ```
 
-All commands and final hygiene gates pass in `P11-E001`—`P11-E008`. P12 may add its own feature flow only through the Ready root, typed route contract and existing application ports; it may not introduce a second shell, persist sensitive navigation/form state or bypass `FinancialMutationCoordinator`. P13+ remains unpromoted.
+All P12 evidence is recorded in `P12-E001`—`P12-E008`. The next entry point is P13, which remains `NOT_STARTED`; reuse the verified account/category/merchant/place application ports and the sole financial coordinator boundary rather than adding a feature-owned persistence path.

@@ -93,6 +93,8 @@ data class PlanningReferenceData(
     val systemLedgers: List<PlanningSystemLedger>,
     val loanLedgers: List<PlanningLoanLedger>,
     val settlementLedgers: List<PlanningSettlementLedger>,
+    /** Archived/owner-specific ledgers needed only to reverse or re-apply immutable history. */
+    val historicalLedgers: List<LedgerAccountSnapshot> = emptyList(),
 ) {
     init {
         require(accounts.map { it.account.id }.toSet().size == accounts.size)
@@ -105,6 +107,7 @@ data class PlanningReferenceData(
         require(
             settlementLedgers.map { it.activityId to it.participantId }.toSet().size == settlementLedgers.size,
         )
+        require(historicalLedgers.map { it.id }.toSet().size == historicalLedgers.size)
     }
 
     fun account(id: UserAccountId): PlanningAccount? = accounts.singleOrNull { it.account.id == id }
@@ -122,7 +125,8 @@ data class PlanningReferenceData(
         systemLedgers.asSequence().map { it.ledger },
         loanLedgers.asSequence().map { it.ledger },
         settlementLedgers.asSequence().map { it.ledger },
-    ).flatten().singleOrNull { it.id == id }
+        historicalLedgers.asSequence(),
+    ).flatten().distinctBy { it.id }.singleOrNull { it.id == id }
 
     fun system(
         code: SystemLedgerCode,

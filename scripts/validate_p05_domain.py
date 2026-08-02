@@ -341,11 +341,16 @@ def main() -> int:
         "SYS-001": "VERIFIED",
         **{f"G-{number:03d}": "VERIFIED" for number in range(1, 9)},
         **{f"ONB-{number:03d}": "VERIFIED" for number in range(1, 11)},
+        "MGT-001": "VERIFIED",
+        **{f"ACC-{number:03d}": "VERIFIED" for number in range(1, 13)},
+        **{f"CAT-{number:03d}": "VERIFIED" for number in range(1, 5)},
+        **{f"MER-{number:03d}": "VERIFIED" for number in range(1, 4)},
+        **{f"PLC-{number:03d}": "VERIFIED" for number in range(1, 4)},
     }
     if len(screen_rows) != 215 or any(
         row["status"] != p11_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows
     ):
-        errors.append("screen coverage contains a promotion outside the completed P11 scope")
+        errors.append("screen coverage contains a promotion outside the cumulative P12 scope")
     mapping = (ROOT / "docs/implementation/P05_DOMAIN_API_MAPPING.md").read_text(encoding="utf-8")
     mapping_ids = set(re.findall(r"P05-DOM-(\d{2})", mapping))
     if mapping_ids != {f"{value:02d}" for value in range(1, 36)}:

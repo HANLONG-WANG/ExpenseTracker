@@ -260,6 +260,16 @@ def validate_ledgers() -> None:
                 **{f"ONB-{number:03d}": "VERIFIED" for number in range(1, 11)},
             },
         )
+    if current_stage_number >= 12:
+        permitted_promotions.update(
+            {
+                "MGT-001": "VERIFIED",
+                **{f"ACC-{number:03d}": "VERIFIED" for number in range(1, 13)},
+                **{f"CAT-{number:03d}": "VERIFIED" for number in range(1, 5)},
+                **{f"MER-{number:03d}": "VERIFIED" for number in range(1, 4)},
+                **{f"PLC-{number:03d}": "VERIFIED" for number in range(1, 4)},
+            },
+        )
     require(
         len(screen_rows) == 215
         and all(row["status"] == permitted_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),

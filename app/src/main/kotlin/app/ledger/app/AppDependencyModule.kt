@@ -13,7 +13,11 @@ import app.ledger.core.security.SecurityEnvelopeStore
 import app.ledger.core.time.JavaTimeLedgerClock
 import app.ledger.core.time.LedgerClock
 import app.ledger.finance.application.LedgerInitializationPort
+import app.ledger.finance.application.OpeningBalanceWritePort
+import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.data.SecureRoomLedgerInitializationPort
+import app.ledger.finance.data.SecureRoomOpeningBalanceWritePort
+import app.ledger.finance.data.SecureRoomReferenceDataManagementPort
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -69,4 +73,18 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
     ): LedgerInitializationPort = SecureRoomLedgerInitializationPort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun referenceDataPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+    ): ReferenceDataManagementPort = SecureRoomReferenceDataManagementPort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun openingBalanceWritePort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+    ): OpeningBalanceWritePort = SecureRoomOpeningBalanceWritePort(context, keyProvider)
 }

@@ -307,6 +307,8 @@ data class PlanningSnapshot(
     val budgetRevision: BudgetMonthRevision?,
     val participants: List<Participant>,
     val accountingContext: AccountingPlanningContext? = null,
+    /** Ordered child snapshots for an atomic [BatchFinancialCommand]. Empty for every scalar command. */
+    val batchSnapshots: List<PlanningSnapshot> = emptyList(),
 )
 
 object FinancialMutationPlanValidator {
@@ -336,6 +338,17 @@ object FinancialMutationPlanValidator {
         }
         if (command.expectedRevisionId != snapshot.currentRevision?.id) {
             return DomainResult.Failure(DomainViolation.StaleExpectedRevision)
+        }
+        if (
+            command is BatchFinancialCommand &&
+            (
+                snapshot.batchSnapshots.size != command.commands.size ||
+                    command.commands.zip(snapshot.batchSnapshots).any { (child, childSnapshot) ->
+                        child.expectedRevisionId != childSnapshot.currentRevision?.id || childSnapshot.batchSnapshots.isNotEmpty()
+                    }
+                )
+        ) {
+            return DomainResult.Failure(DomainViolation.InvalidField("planningSnapshot.batchSnapshots"))
         }
         if (
             command is EditTransactionCommand &&
@@ -382,6 +395,34 @@ object FinancialMutationPlanValidator {
         }
         val transactionLifecycle = validateTransactionLifecycle(command, snapshot, plan)
         if (transactionLifecycle is DomainResult.Failure) return transactionLifecycle
+        if (command is BatchFinancialCommand) {
+            val expectedRoot = CanonicalFinancialHash.commitRoot(
+                plan.commandId,
+                plan.payloadHash,
+                plan.targetLocalRevision,
+                plan.transactions.flatMapIndexed { index, transaction ->
+                    val revision = plan.revisions.getOrNull(index)
+                        ?: return DomainResult.Failure(DomainViolation.Invariant("INV-005"))
+                    listOf(transaction.contentHash, revision.contentHash)
+                } +
+                    listOf(
+                        CanonicalFinancialHash.evidenceAndEffects(
+                            plan.revisionAmounts,
+                            plan.fxRateSnapshots,
+                            plan.economicEffects,
+                            plan.budgetEffects,
+                            plan.projectEffects,
+                            plan.goalEffects,
+                            plan.statementEffects,
+                            plan.loanEffects,
+                            plan.settlementEffects,
+                        ),
+                    ) + plan.journalBundles.map { it.entry.contentHash },
+            )
+            if (plan.transactions.size != plan.revisions.size || expectedRoot != plan.commit.rootHash) {
+                return DomainResult.Failure(DomainViolation.InvalidField("bookCommit.rootHash"))
+            }
+        }
         return DomainResult.Success(plan)
     }
 

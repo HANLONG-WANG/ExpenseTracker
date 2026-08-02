@@ -552,6 +552,44 @@ tasks.register("p11Artifacts") {
     dependsOn("p09Artifacts")
 }
 
+val validateP12ReferenceData by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates implemented P12 account/reference-data scope and rejects a false VERIFIED promotion."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p12_reference_data.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/accounts/src") { include("**/*") },
+        fileTree("feature/settings/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+tasks.register("p12Evidence") {
+    group = "verification"
+    description = "Runs non-promotional P12 evidence while two coordinator-owned batch rewrites remain incomplete."
+    dependsOn(
+        validateP12ReferenceData,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":finance:domain:test",
+        ":app:lintDebug",
+        ":feature:accounts:lintDebug",
+        ":feature:settings:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

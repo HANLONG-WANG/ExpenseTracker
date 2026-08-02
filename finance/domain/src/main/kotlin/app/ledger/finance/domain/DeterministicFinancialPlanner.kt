@@ -25,8 +25,103 @@ object DeterministicFinancialPlanner {
             is EditTransactionCommand -> planEdit(command, snapshot)
             is MoveTransactionToTrashCommand -> planTrash(command, snapshot)
             is RestoreTransactionCommand -> planRestore(command, snapshot)
+            is BatchFinancialCommand -> planBatch(command, snapshot)
             else -> reject("financialCommand.transactionPlannerScope")
         }
+    } catch (rejected: PlannerRejected) {
+        DomainResult.Failure(rejected.violation)
+    }
+
+    @Suppress("LongMethod")
+    private fun planBatch(
+        command: BatchFinancialCommand,
+        snapshot: PlanningSnapshot,
+    ): DomainResult<FinancialMutationPlan> = try {
+        require(command.commands.size == snapshot.batchSnapshots.size, "planningSnapshot.batchSnapshots")
+        val childPlans = command.commands.zip(snapshot.batchSnapshots).map { (child, childSnapshot) ->
+            require(child is EditTransactionCommand, "batchFinancialCommand.childType")
+            require(childSnapshot.book == snapshot.book, "batchFinancialCommand.book")
+            plan(child, childSnapshot).orReject()
+        }
+        val commitIds = childPlans.map { it.commit.id }.toSet()
+        val createdAt = childPlans.map { it.commit.createdAt }.toSet()
+        val devices = childPlans.map { it.commit.deviceInstanceId }.toSet()
+        require(commitIds.size == 1 && createdAt.size == 1 && devices.size == 1, "batchFinancialCommand.commitIdentity")
+        val targetRevision = snapshot.book.localRevision.next().orReject()
+        val transactions = childPlans.flatMap(FinancialMutationPlan::transactions)
+        val revisions = childPlans.flatMap(FinancialMutationPlan::revisions)
+        require(transactions.map { it.id }.toSet().size == transactions.size, "batchFinancialCommand.transactions")
+        require(revisions.map { it.id }.toSet().size == revisions.size, "batchFinancialCommand.revisions")
+        val revisionAmounts = childPlans.flatMap(FinancialMutationPlan::revisionAmounts)
+        val fxRateSnapshots = childPlans.flatMap(FinancialMutationPlan::fxRateSnapshots)
+        val journals = childPlans.flatMap(FinancialMutationPlan::journalBundles)
+        val economic = childPlans.flatMap(FinancialMutationPlan::economicEffects)
+        val budget = childPlans.flatMap(FinancialMutationPlan::budgetEffects)
+        val project = childPlans.flatMap(FinancialMutationPlan::projectEffects)
+        val goal = childPlans.flatMap(FinancialMutationPlan::goalEffects)
+        val statement = childPlans.flatMap(FinancialMutationPlan::statementEffects)
+        val loan = childPlans.flatMap(FinancialMutationPlan::loanEffects)
+        val settlement = childPlans.flatMap(FinancialMutationPlan::settlementEffects)
+        val evidenceHash = CanonicalFinancialHash.evidenceAndEffects(
+            revisionAmounts,
+            fxRateSnapshots,
+            economic,
+            budget,
+            project,
+            goal,
+            statement,
+            loan,
+            settlement,
+        )
+        val rootHash = CanonicalFinancialHash.commitRoot(
+            command.commandId,
+            command.payloadHash,
+            targetRevision,
+            transactions.flatMapIndexed { index, transaction ->
+                listOf(transaction.contentHash, revisions[index].contentHash)
+            } + listOf(evidenceHash) + journals.map { it.entry.contentHash },
+        )
+        val plan = FinancialMutationPlan(
+            commandId = command.commandId,
+            commandType = command.commandType,
+            payloadHash = command.payloadHash,
+            expectedRevisionId = null,
+            targetLocalRevision = targetRevision,
+            commit = CommitDraft(
+                id = commitIds.single(),
+                kind = CommitKind.BATCH_MUTATION,
+                parentIds = listOf(snapshot.book.headCommitId),
+                createdAt = createdAt.single(),
+                commandId = command.commandId,
+                deviceInstanceId = devices.single(),
+                rootHash = rootHash,
+            ),
+            transactions = transactions,
+            revisions = revisions,
+            revisionAmounts = revisionAmounts,
+            fxRateSnapshots = fxRateSnapshots,
+            journalBundles = journals,
+            economicEffects = economic,
+            budgetEffects = budget,
+            projectEffects = project,
+            goalEffects = goal,
+            statementEffects = statement,
+            loanEffects = loan,
+            settlementEffects = settlement,
+            refundAllocations = childPlans.flatMap(FinancialMutationPlan::refundAllocations),
+            goalMovements = childPlans.flatMap(FinancialMutationPlan::goalMovements),
+            budgetAdjustments = childPlans.flatMap(FinancialMutationPlan::budgetAdjustments),
+            purgeTombstones = childPlans.flatMap(FinancialMutationPlan::purgeTombstones),
+            blobGcCandidates = childPlans.flatMap(FinancialMutationPlan::blobGcCandidates),
+            dependencyResolutions = childPlans.flatMap(FinancialMutationPlan::dependencyResolutions),
+            projectionChanges = ProjectionChangeSet(
+                targetRevision,
+                childPlans.flatMap { it.projectionChanges.changes }.distinct(),
+            ),
+            entityChanges = childPlans.flatMap(FinancialMutationPlan::entityChanges),
+            ruleSetVersion = snapshot.book.ruleSetVersion,
+        )
+        FinancialMutationPlanValidator.validate(command, snapshot, plan)
     } catch (rejected: PlannerRejected) {
         DomainResult.Failure(rejected.violation)
     }
@@ -134,13 +229,25 @@ object DeterministicFinancialPlanner {
             -> reverseCurrentFacts(snapshot, revision.id, identities.commitId, cursor)
             else -> MaterializedFacts.empty()
         }
-        val ruleResult = if (action == RevisionAction.MOVE_TO_TRASH) {
+        val locationOnlyEdit = action == RevisionAction.EDIT && previousRevision?.isLocationOnlyReplacement(input) == true
+        val categoryOnlyEdit = action == RevisionAction.EDIT && previousRevision?.isCategoryOnlyReplacement(input) == true
+        val ruleResult = if (action == RevisionAction.MOVE_TO_TRASH || locationOnlyEdit || categoryOnlyEdit) {
             AccountingRuleOutput(journals = emptyList(), amounts = context.amountEvidence)
         } else {
             AccountingRuleEngine.plan(snapshot.book, input, snapshot).orReject()
         }
         val applyFacts = if (resultingState == TransactionLifecycleState.ACTIVE) {
-            materializeApplyFacts(snapshot, revision, ruleResult, identities.commitId, cursor)
+            if (locationOnlyEdit || categoryOnlyEdit) {
+                cloneCurrentApplyFacts(
+                    snapshot,
+                    revision,
+                    identities.commitId,
+                    cursor,
+                    if (categoryOnlyEdit) revision.payload.classification else null,
+                )
+            } else {
+                materializeApplyFacts(snapshot, revision, ruleResult, identities.commitId, cursor)
+            }
         } else {
             MaterializedFacts.empty()
         }
@@ -501,6 +608,111 @@ private fun materializeJournal(
     return JournalBundle(entry, postings)
 }
 
+/**
+ * A location-record split changes descriptive context only. The old APPLY facts are first reversed,
+ * then reproduced byte-for-byte in economic meaning with fresh immutable identities. This keeps
+ * archived ledgers usable for historical correction and never consults a current FX rate.
+ */
+@Suppress("LongMethod")
+private fun cloneCurrentApplyFacts(
+    snapshot: PlanningSnapshot,
+    revision: TransactionRevision,
+    commitId: BookCommitId,
+    cursor: PlanningIdCursor,
+    replacementClassification: CategoryAssignment? = null,
+): MaterializedFacts {
+    val context = snapshot.accountingContext ?: reject("planningSnapshot.accountingContext")
+    val current = context.currentFacts ?: reject("planningSnapshot.currentFacts")
+    val clonedEntries = current.journalBundles.map { original ->
+        val entryId = JournalEntryId(cursor.next())
+        val postings = original.postings.sortedBy { it.lineNumber }.mapIndexed { index, posting ->
+            val ledger = replacementClassification?.replacementSystemLedger(posting, snapshot, context.references)
+                ?: context.references.ledger(posting.ledgerAccountId)
+                ?: reject("posting.ledgerAccount")
+            Posting.reapply(
+                id = PostingId(cursor.next()),
+                journalEntryId = entryId,
+                lineNumber = index + 1,
+                original = posting,
+                ledgerAccount = ledger,
+                baseCurrency = snapshot.book.baseCurrency,
+            ).orReject()
+        }
+        val hash = CanonicalFinancialHash.journal(
+            entryId,
+            revision.id,
+            revision.id,
+            JournalEntryRole.APPLY,
+            null,
+            revision.occurredAt,
+            snapshot.book.baseCurrency,
+            postings,
+            original.entry.ruleSetVersion,
+            commitId,
+        )
+        val entry = JournalEntry.create(
+            id = entryId,
+            sourceRevisionId = revision.id,
+            appliesRevisionId = revision.id,
+            role = JournalEntryRole.APPLY,
+            reversesEntryId = null,
+            effectiveAt = revision.occurredAt,
+            baseCurrency = snapshot.book.baseCurrency,
+            postings = postings,
+            ruleSetVersion = original.entry.ruleSetVersion,
+            createdCommitId = commitId,
+            contentHash = hash,
+        ).orReject()
+        original.entry.id to JournalBundle(entry, postings)
+    }
+    fun clonedEntryId(original: JournalEntryId): JournalEntryId = clonedEntries.singleOrNull { it.first == original }
+        ?.second?.entry?.id ?: reject("effect.sourceEntry")
+    return MaterializedFacts(
+        journals = clonedEntries.map { it.second },
+        economic = current.economicEffects.map { effect ->
+            effect.copy(
+                id = EconomicEffectId(cursor.next()),
+                sourceEntryId = clonedEntryId(effect.sourceEntryId),
+                sourceRevisionId = revision.id,
+                reversalOfId = null,
+                polarity = EffectPolarity.APPLY,
+                isConsumption = replacementClassification?.let {
+                    it.statisticalNatureSnapshot == StatisticalNature.CONSUMPTION_EXPENSE
+                } ?: effect.isConsumption,
+                categoryId = replacementClassification?.categoryId ?: effect.categoryId,
+            )
+        },
+        budget = current.budgetEffects.map { effect ->
+            val category = replacementClassification?.let { assignment ->
+                context.references.category(assignment.categoryId) ?: reject("category.reference")
+            }
+            effect.copy(
+                id = BudgetEffectId(cursor.next()),
+                sourceRevisionId = revision.id,
+                reversalOfId = null,
+                polarity = EffectPolarity.APPLY,
+                categoryId = replacementClassification?.categoryId ?: effect.categoryId,
+                rootCategoryId = category?.rootId ?: effect.rootCategoryId,
+            )
+        },
+        project = current.projectEffects.map { effect ->
+            effect.copy(id = ProjectEffectId(cursor.next()), sourceRevisionId = revision.id, reversalOfId = null, polarity = EffectPolarity.APPLY)
+        },
+        goal = current.goalEffects.map { effect ->
+            effect.copy(id = GoalEffectId(cursor.next()), sourceRevisionId = revision.id, goalMovementId = null, reversalOfId = null, polarity = EffectPolarity.APPLY)
+        },
+        statement = current.statementEffects.map { effect ->
+            effect.copy(id = StatementEffectId(cursor.next()), sourceRevisionId = revision.id, reversalOfId = null, polarity = EffectPolarity.APPLY)
+        },
+        loan = current.loanEffects.map { effect ->
+            effect.copy(id = LoanEffectId(cursor.next()), sourceRevisionId = revision.id, reversalOfId = null, polarity = EffectPolarity.APPLY)
+        },
+        settlement = current.settlementEffects.map { effect ->
+            effect.copy(id = SettlementEffectId(cursor.next()), sourceRevisionId = revision.id, settlementPaymentRecordId = null, reversalOfId = null)
+        },
+    )
+}
+
 @Suppress("LongMethod")
 private fun reverseCurrentFacts(
     snapshot: PlanningSnapshot,
@@ -734,6 +946,53 @@ private fun projectionChanges(
 }
 
 private fun TransactionRevision.asInput(): NewTransactionInput<TransactionPayload> = NewTransactionInput(context(), payload)
+
+private fun TransactionRevision.isLocationOnlyReplacement(replacement: NewTransactionInput<TransactionPayload>): Boolean = payload == replacement.payload &&
+    locationRecordId != replacement.context.locationRecordId &&
+    context().copy(locationRecordId = replacement.context.locationRecordId) == replacement.context
+
+@Suppress("ReturnCount")
+private fun TransactionRevision.isCategoryOnlyReplacement(replacement: NewTransactionInput<TransactionPayload>): Boolean {
+    val before = payload.classification ?: return false
+    val after = replacement.payload.classification ?: return false
+    if (before == after || context() != replacement.context) return false
+    val normalizedReplacement = when (val value = replacement.payload) {
+        is ExpensePayload -> value.copy(classification = before)
+        is IncomePayload -> value.copy(classification = before)
+        is RefundPayload -> value.copy(classification = before)
+        is LoanPaymentPayload -> value.copy(classification = before)
+        is FxExchangePayload -> value.copy(classification = before)
+        else -> return false
+    }
+    return payload == normalizedReplacement && before.direction == after.direction
+}
+
+@Suppress("ReturnCount")
+private fun CategoryAssignment.replacementSystemLedger(
+    posting: Posting,
+    snapshot: PlanningSnapshot,
+    references: PlanningReferenceData,
+): LedgerAccountSnapshot? {
+    val code = when (direction) {
+        CategoryDirection.EXPENSE -> when (posting.role) {
+            PostingRole.EXPENSE -> when (statisticalNatureSnapshot) {
+                StatisticalNature.CONSUMPTION_EXPENSE -> SystemLedgerCode.SYSTEM_EXPENSE_CONSUMPTION
+                StatisticalNature.NON_CONSUMPTION_EXPENSE -> SystemLedgerCode.SYSTEM_EXPENSE_NON_CONSUMPTION
+                else -> reject("expense.statisticalNature")
+            }
+            else -> return null
+        }
+        CategoryDirection.INCOME -> when (posting.role) {
+            PostingRole.INCOME -> when (statisticalNatureSnapshot) {
+                StatisticalNature.REGULAR_INCOME -> SystemLedgerCode.SYSTEM_INCOME_REGULAR
+                StatisticalNature.NON_RECURRING_INCOME -> SystemLedgerCode.SYSTEM_INCOME_NON_RECURRING
+                else -> reject("income.statisticalNature")
+            }
+            else -> return null
+        }
+    }
+    return references.system(code, snapshot.book.baseCurrency) ?: reject("systemLedger.$code")
+}
 
 private fun TransactionRevision.context(): TransactionContextInput = TransactionContextInput(
     occurredAt = occurredAt,

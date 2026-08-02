@@ -122,11 +122,16 @@ def validate() -> dict[str, int]:
         "SYS-001": "VERIFIED",
         **{f"G-{number:03d}": "VERIFIED" for number in range(1, 9)},
         **{f"ONB-{number:03d}": "VERIFIED" for number in range(1, 11)},
+        "MGT-001": "VERIFIED",
+        **{f"ACC-{number:03d}": "VERIFIED" for number in range(1, 13)},
+        **{f"CAT-{number:03d}": "VERIFIED" for number in range(1, 5)},
+        **{f"MER-{number:03d}": "VERIFIED" for number in range(1, 4)},
+        **{f"PLC-{number:03d}": "VERIFIED" for number in range(1, 4)},
     }
     if len(screens) != 215 or any(
         row["status"] != p11_promotions.get(row["screen_id"], "NOT_STARTED") for row in screens
     ):
-        raise AssertionError("screen coverage contains a promotion outside the completed P11 scope")
+        raise AssertionError("screen coverage contains a promotion outside the cumulative P12 scope")
 
     project_state = (ROOT / "docs/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
     domain_coverage = (ROOT / "docs/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md").read_text(encoding="utf-8")

@@ -8,6 +8,7 @@
 
 package app.ledger.core.designsystem
 
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -23,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,11 +38,45 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 
 /** Adapter implemented inside the design-system chart integration; features pass only typed models. */
 public fun interface LedgerVicoRenderer {
     @Composable
     public fun render(model: LedgerChartUiModel, modifier: Modifier)
+}
+
+/** Governed, non-animated Vico line renderer for feature-owned typed models. */
+public object LedgerVicoLineRenderer : LedgerVicoRenderer {
+    @Composable
+    override fun render(model: LedgerChartUiModel, modifier: Modifier) {
+        require(model.type == LedgerChartType.LINE)
+        val producer = remember { CartesianChartModelProducer() }
+        LaunchedEffect(model) {
+            producer.runTransaction {
+                lineModel {
+                    model.series.forEach { series -> series(series.values, series.stableSeriesKey) }
+                }
+            }
+        }
+        CartesianChartHost(
+            chart = rememberCartesianChart(
+                rememberLineCartesianLayer(),
+                startAxis = VerticalAxis.rememberStart(),
+                bottomAxis = HorizontalAxis.rememberBottom(),
+            ),
+            modelProducer = producer,
+            modifier = modifier,
+            animationSpec = snap(),
+            animateIn = false,
+        )
+    }
 }
 
 @Composable

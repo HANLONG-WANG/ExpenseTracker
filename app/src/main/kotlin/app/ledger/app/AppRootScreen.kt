@@ -5,6 +5,7 @@
     "TooManyFunctions",
     "ktlint:standard:function-naming",
     "FunctionNaming",
+    "ComplexCondition",
 )
 
 package app.ledger.app
@@ -60,6 +61,12 @@ import app.ledger.core.designsystem.OperationProgressUiModel
 import app.ledger.core.designsystem.ThemeMode
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.designsystem.rememberLedgerSnackbarController
+import app.ledger.core.geo.LedgerMap
+import app.ledger.core.geo.LedgerMapAccessibleRow
+import app.ledger.core.geo.LedgerMapMode
+import app.ledger.core.geo.LedgerMapPoint
+import app.ledger.core.geo.LedgerMapState
+import app.ledger.core.geo.LedgerMapStyleConfiguration
 import app.ledger.core.navigation.FiveStackNavigator
 import app.ledger.core.navigation.LedgerDestinationKey
 import app.ledger.core.navigation.LedgerRouteContract
@@ -70,8 +77,14 @@ import app.ledger.core.navigation.TopLevelDestination
 import app.ledger.core.security.BookSessionState
 import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.RecoveryDiagnosticCode
+import app.ledger.feature.accounts.AccountsActions
+import app.ledger.feature.accounts.AccountsDataState
+import app.ledger.feature.accounts.AccountsDestination
 import app.ledger.feature.onboarding.OnboardingActions
 import app.ledger.feature.onboarding.OnboardingScreen
+import app.ledger.feature.settings.ManagementActions
+import app.ledger.feature.settings.ManagementDataState
+import app.ledger.feature.settings.ReferenceManagementDestination
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -368,6 +381,8 @@ private fun ReadyRootScaffold(
     snackbarController: LedgerSnackbarController,
 ) {
     val navigator = viewModel.navigator
+    val referenceState by viewModel.referenceData.collectAsStateWithLifecycle()
+    val referencePending by viewModel.referenceMutationPending.collectAsStateWithLifecycle()
     var navigationEpoch by remember { mutableIntStateOf(0) }
     val selected = navigator.currentTopLevel.toDesignTopLevel()
     LedgerScaffold(
@@ -427,6 +442,9 @@ private fun ReadyRootScaffold(
                 NavEntry(key) {
                     RootDestination(
                         key,
+                        viewModel = viewModel,
+                        referenceState = referenceState,
+                        referencePending = referencePending,
                         onBack = {
                             navigator.pop()
                             navigationEpoch += 1
@@ -450,6 +468,7 @@ private fun ReadyRootScaffold(
                             )
                             navigationEpoch += 1
                         },
+                        onNavigationChanged = { navigationEpoch += 1 },
                     )
                 }
             },
@@ -460,13 +479,67 @@ private fun ReadyRootScaffold(
 @Composable
 private fun RootDestination(
     key: LedgerDestinationKey,
+    viewModel: AppRootViewModel,
+    referenceState: AppReferenceDataState,
+    referencePending: Boolean,
     onBack: () -> Unit,
     onMore: () -> Unit,
     onOperations: () -> Unit,
     onHelp: () -> Unit,
+    onNavigationChanged: () -> Unit,
 ) {
     val screenId = key.contract.screenId.value
-    if (screenId == "REC-001") {
+    if (screenId.startsWith("ACC-")) {
+        AccountsDestination(
+            screenId = screenId,
+            encodedArguments = key.encodedArguments,
+            dataState = referenceState.toAccountsState(),
+            actions = AccountsActions(
+                onNavigate = { target, arguments ->
+                    viewModel.navigateP12(key, target, arguments)
+                    onNavigationChanged()
+                },
+                onSelectAccountType = { type ->
+                    viewModel.selectP12AccountType(type, key)
+                    onNavigationChanged()
+                },
+                onSaveAccount = viewModel::saveAccount,
+                onArchiveAccount = viewModel::archiveAccount,
+                onDeleteEmptyAccount = viewModel::deleteEmptyAccount,
+                onSaveCard = viewModel::saveCard,
+                onArchiveCard = viewModel::archiveCard,
+                onSaveCheckpoint = viewModel::saveCheckpoint,
+                onSaveOpeningBalance = viewModel::saveOpeningBalance,
+                onRetry = viewModel::loadReferenceData,
+            ),
+            selectedAccountType = viewModel.selectedAccountType,
+            preferredCardAccountId = viewModel.preferredCardAccountId,
+            pending = referencePending,
+        )
+    } else if (screenId == "MGT-001" || screenId.startsWith("CAT-") || screenId.startsWith("MER-") || screenId.startsWith("PLC-")) {
+        ReferenceManagementDestination(
+            screenId = screenId,
+            encodedArguments = key.encodedArguments,
+            dataState = referenceState.toManagementState(),
+            actions = ManagementActions(
+                onNavigate = { target, stable, enums ->
+                    viewModel.navigateP12(key, target, stable, enums)
+                    onNavigationChanged()
+                },
+                onSaveCategory = viewModel::saveCategory,
+                onReorderCategories = viewModel::reorderCategories,
+                onRemoveCategory = viewModel::removeCategory,
+                onSaveMerchant = viewModel::saveMerchant,
+                onMergeMerchant = viewModel::mergeMerchant,
+                onSavePlace = viewModel::savePlace,
+                onMergePlace = viewModel::mergePlace,
+                onSplitPlace = viewModel::splitPlace,
+                onRetry = viewModel::loadReferenceData,
+            ),
+            placeMap = { places, unavailable -> PlaceMapContent(places, unavailable) },
+            pending = referencePending,
+        )
+    } else if (screenId == "REC-001") {
         EmptyTopLevel(R.string.global_record_empty_title, R.string.global_record_empty_message, onMore)
     } else if (screenId == "JRN-001") {
         EmptyTopLevel(R.string.global_journal_empty_title, R.string.global_journal_empty_message, onMore)
@@ -477,7 +550,10 @@ private fun RootDestination(
     } else if (screenId == "ANA-001") {
         EmptyTopLevel(R.string.global_analysis_empty_title, R.string.global_analysis_empty_message, onMore)
     } else if (screenId == "G-006") {
-        MoreContent(MorePresentation.CONTENT, onOperations, onHelp)
+        MoreContent(MorePresentation.CONTENT, onOperations, onHelp, onManagement = {
+            viewModel.navigateP12(key, "MGT-001", emptyMap())
+            onNavigationChanged()
+        })
     } else if (screenId == "G-007") {
         OperationCenterContent(OperationCenterPresentation.EMPTY, onBack)
     } else if (screenId == "G-008") {
@@ -509,12 +585,13 @@ internal fun MoreScreen(
     onBack: () -> Unit,
     onOperations: () -> Unit,
     onHelp: () -> Unit,
+    onManagement: () -> Unit = {},
 ) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
         topBar = { LedgerTopAppBar(stringResource(R.string.global_more_title), LedgerTopAppBarVariant.BACK, onNavigation = onBack) },
     ) { padding ->
-        MoreContent(presentation, onOperations, onHelp, Modifier.padding(padding))
+        MoreContent(presentation, onOperations, onHelp, Modifier.padding(padding), onManagement)
     }
 }
 
@@ -524,13 +601,66 @@ private fun MoreContent(
     onOperations: () -> Unit,
     onHelp: () -> Unit,
     modifier: Modifier = Modifier,
+    onManagement: () -> Unit = {},
 ) {
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (presentation == MorePresentation.BADGE_UPDATES) LedgerBanner(stringResource(R.string.global_badge_updates), LedgerBannerVariant.INFO)
         if (presentation == MorePresentation.OPERATION_IN_PROGRESS) LedgerBanner(stringResource(R.string.global_active_operation), LedgerBannerVariant.WARNING)
         FeatureHubItem(stringResource(R.string.global_operations), stringResource(R.string.global_operations_explanation), onOperations)
         FeatureHubItem(stringResource(R.string.global_help), stringResource(R.string.global_help_explanation), onHelp)
+        FeatureHubItem(stringResource(R.string.global_management), stringResource(R.string.global_management_explanation), onManagement)
     }
+}
+
+@Composable
+private fun PlaceMapContent(places: List<app.ledger.finance.application.PlaceReferenceView>, unavailable: Boolean) {
+    val identity = places.joinToString(separator = "|") { "${it.id}:${it.rowVersion}" }
+    var rendererFailed by remember(identity) { mutableStateOf(false) }
+    val summary = stringResource(R.string.global_place_map_summary, places.size)
+    val rows = places.map { place ->
+        LedgerMapAccessibleRow(place.name, stringResource(R.string.global_location_record_count, place.locationRecordCount))
+    }
+    val state = if (unavailable || rendererFailed || places.isEmpty()) {
+        LedgerMapState.Unavailable(summary, rows)
+    } else {
+        LedgerMapState.Available(
+            summary = summary,
+            mode = LedgerMapMode.CLUSTERS,
+            points = places.map { place ->
+                LedgerMapPoint(place.id, place.latitudeE7, place.longitudeE7, place.locationRecordCount)
+            },
+            accessibleRows = rows,
+        )
+    }
+    LedgerMap(
+        state = state,
+        styleConfiguration = LedgerMapStyleConfiguration.OpenFreeMap,
+        accessibleCaption = stringResource(R.string.global_place_map_table),
+        accessibleColumnHeaders = listOf(
+            stringResource(R.string.global_place),
+            stringResource(R.string.global_location_records),
+        ),
+        showAccessibleListLabel = stringResource(R.string.global_show_place_list),
+        hideAccessibleListLabel = stringResource(R.string.global_hide_place_list),
+        onFailure = { rendererFailed = true },
+    )
+    if (unavailable || rendererFailed) {
+        LedgerBanner(stringResource(R.string.global_map_renderer_unavailable), LedgerBannerVariant.INFO)
+    } else if (places.isEmpty()) {
+        LedgerText(stringResource(R.string.global_place_map_empty), LedgerTextRole.SUPPORTING)
+    }
+}
+
+private fun AppReferenceDataState.toAccountsState(): AccountsDataState = when (this) {
+    AppReferenceDataState.Loading -> AccountsDataState.Loading
+    is AppReferenceDataState.Content -> AccountsDataState.Content(snapshot)
+    is AppReferenceDataState.Error -> AccountsDataState.Error(code)
+}
+
+private fun AppReferenceDataState.toManagementState(): ManagementDataState = when (this) {
+    AppReferenceDataState.Loading -> ManagementDataState.Loading
+    is AppReferenceDataState.Content -> ManagementDataState.Content(snapshot)
+    is AppReferenceDataState.Error -> ManagementDataState.Error(code)
 }
 
 @Composable
@@ -628,26 +758,83 @@ private fun HelpContent(topicKey: String?, onBack: () -> Unit, modifier: Modifie
 @Composable
 private fun destinationTitle(key: LedgerDestinationKey): String {
     val screenId = key.contract.screenId.value
-    val resource = if (screenId == "REC-001") {
-        R.string.global_record_title
-    } else if (screenId == "JRN-001") {
-        R.string.global_journal_title
-    } else if (screenId == "ACC-001") {
-        R.string.global_accounts_title
-    } else if (screenId == "BUD-001") {
-        R.string.global_budget_title
-    } else if (screenId == "ANA-001") {
-        R.string.global_analysis_title
-    } else if (screenId == "G-006") {
-        R.string.global_more_title
-    } else if (screenId == "G-007") {
-        R.string.global_operations
-    } else if (screenId == "G-008") {
-        R.string.global_help_title
-    } else {
-        R.string.app_name
-    }
+    val resource = rootDestinationTitleResource(screenId)
+        ?: accountDestinationTitleResource(screenId)
+        ?: referenceDestinationTitleResource(screenId)
+        ?: R.string.app_name
     return stringResource(resource)
+}
+
+private fun rootDestinationTitleResource(screenId: String): Int? = if (screenId == "REC-001") {
+    R.string.global_record_title
+} else if (screenId == "JRN-001") {
+    R.string.global_journal_title
+} else if (screenId == "ACC-001") {
+    R.string.global_accounts_title
+} else if (screenId == "BUD-001") {
+    R.string.global_budget_title
+} else if (screenId == "ANA-001") {
+    R.string.global_analysis_title
+} else if (screenId == "G-006") {
+    R.string.global_more_title
+} else if (screenId == "G-007") {
+    R.string.global_operations
+} else if (screenId == "G-008") {
+    R.string.global_help_title
+} else if (screenId == "MGT-001") {
+    R.string.global_management
+} else {
+    null
+}
+
+private fun accountDestinationTitleResource(screenId: String): Int? = if (screenId == "ACC-002") {
+    R.string.p12_title_account_type
+} else if (screenId == "ACC-003") {
+    R.string.p12_title_account_editor
+} else if (screenId == "ACC-004") {
+    R.string.p12_title_opening_balance
+} else if (screenId == "ACC-005") {
+    R.string.p12_title_account_detail
+} else if (screenId == "ACC-006") {
+    R.string.p12_title_account_transactions
+} else if (screenId == "ACC-007") {
+    R.string.p12_title_checkpoint
+} else if (screenId == "ACC-008") {
+    R.string.p12_title_checkpoint_resolution
+} else if (screenId == "ACC-009") {
+    R.string.p12_title_cards
+} else if (screenId == "ACC-010") {
+    R.string.p12_title_card_editor
+} else if (screenId == "ACC-011") {
+    R.string.p12_title_card_detail
+} else if (screenId == "ACC-012") {
+    R.string.p12_title_account_archive
+} else {
+    null
+}
+
+private fun referenceDestinationTitleResource(screenId: String): Int? = if (screenId == "CAT-001") {
+    R.string.p12_title_category_list
+} else if (screenId == "CAT-002") {
+    R.string.p12_title_category_editor
+} else if (screenId == "CAT-003") {
+    R.string.p12_title_category_reorder
+} else if (screenId == "CAT-004") {
+    R.string.p12_title_category_remove
+} else if (screenId == "MER-001") {
+    R.string.p12_title_merchants
+} else if (screenId == "MER-002") {
+    R.string.p12_title_merchant_editor
+} else if (screenId == "MER-003") {
+    R.string.p12_title_merchant_merge
+} else if (screenId == "PLC-001") {
+    R.string.p12_title_places
+} else if (screenId == "PLC-002") {
+    R.string.p12_title_place_editor
+} else if (screenId == "PLC-003") {
+    R.string.p12_title_place_merge_split
+} else {
+    null
 }
 
 private fun TopLevelDestination.toDesignTopLevel(): LedgerTopLevel = if (this == TopLevelDestination.RECORD) {

@@ -124,6 +124,40 @@ data class Posting private constructor(
                 ),
             )
         }
+
+        /** Re-applies an unchanged historical line during a context-only immutable revision edit. */
+        @Suppress("LongParameterList", "ComplexCondition")
+        fun reapply(
+            id: PostingId,
+            journalEntryId: JournalEntryId,
+            lineNumber: Int,
+            original: Posting,
+            ledgerAccount: LedgerAccountSnapshot,
+            baseCurrency: CurrencyCode,
+        ): DomainResult<Posting> {
+            if (
+                lineNumber < 1 ||
+                ledgerAccount.id != original.ledgerAccountId ||
+                ledgerAccount.currency != original.accountAmount.currency ||
+                original.baseAmount.currency != baseCurrency
+            ) {
+                return DomainResult.Failure(DomainViolation.Invariant("INV-002"))
+            }
+            return DomainResult.Success(
+                Posting(
+                    id = id,
+                    journalEntryId = journalEntryId,
+                    lineNumber = lineNumber,
+                    ledgerAccountId = ledgerAccount.id,
+                    side = original.side,
+                    accountAmount = original.accountAmount,
+                    baseAmount = original.baseAmount,
+                    valuationRate = original.valuationRate,
+                    role = original.role,
+                    reversalOfPostingId = null,
+                ),
+            )
+        }
     }
 }
 

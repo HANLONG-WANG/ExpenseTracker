@@ -42,9 +42,19 @@ fun interface FinancialCommitFailureInjector {
     }
 }
 
+/** Reference-data changes that must share the exact financial commit transaction. */
+fun interface FinancialCommitSideEffect {
+    fun apply(connection: androidx.sqlite.db.SupportSQLiteDatabase, plan: FinancialMutationPlan)
+
+    companion object {
+        val NONE: FinancialCommitSideEffect = FinancialCommitSideEffect { _, _ -> }
+    }
+}
+
 class RoomFinancialCommitRepository(
     private val database: LedgerDatabase,
     private val failureInjector: FinancialCommitFailureInjector = FinancialCommitFailureInjector.NONE,
+    private val sideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
 ) : AtomicFinancialCommitRepository,
     CommandReceiptRepository {
     private val writer = RoomFinancialPlanWriter()
@@ -87,7 +97,7 @@ class RoomFinancialCommitRepository(
                     )
                 } ?: abort(FinanceDataError.CorruptData)
                 verifyCommitPreconditions(connection, command, plan, book)
-                writer.write(connection, plan, failureInjector::checkpoint)
+                writer.write(connection, plan, failureInjector::checkpoint, sideEffect::apply)
                 val projectionDate = plan.commit.createdAt
                     .atZone(ZoneId.of(book.defaultZoneId))
                     .toLocalDate()
@@ -169,6 +179,22 @@ class RoomFinancialCommitRepository(
                 abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
             }
         }
+        if (command is BatchFinancialCommand) {
+            command.commands.forEach { child ->
+                val targetId = child.transactionIdOrNull()
+                    ?: abort(FinanceDataError.CorruptData)
+                val expected = child.expectedRevisionId
+                    ?: abort(FinanceDataError.CorruptData)
+                val actual = connection.queryOne(
+                    "SELECT tr.uid FROM business_transaction bt JOIN transaction_revision tr " +
+                        "ON tr.id = bt.current_revision_id WHERE bt.uid = ?",
+                    arrayOf(targetId.value.bytes),
+                ) { cursor -> cursor.stableId("uid") }
+                if (actual != expected.value) {
+                    abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+                }
+            }
+        }
     }
 
     private fun verifyNewState(
@@ -194,7 +220,25 @@ class RoomFinancialCommitRepository(
         }
         if (mismatches.isNotEmpty()) abort(FinanceDataError.ProjectionMismatch)
         val audit = DatabaseIntegrityAudit.run(connection)
-        if (!audit.isValid) abort(FinanceDataError.CorruptData)
+        if (audit.foreignKeyViolationCount != 0) {
+            abort(app.ledger.finance.domain.DomainViolation.Invariant("INV-003"))
+        }
+        if (audit.unbalancedJournalCount != 0) {
+            abort(app.ledger.finance.domain.DomainViolation.Invariant("INV-001"))
+        }
+        if (audit.invalidCurrentSubtypeCount != 0) {
+            abort(app.ledger.finance.domain.DomainViolation.Invariant("INV-005"))
+        }
+        if (audit.integrityCheck != "ok") {
+            abort(app.ledger.finance.domain.DomainViolation.InvalidField("database.integrityCheck"))
+        }
+        val missingRequiredCapability = !audit.capability.fts5 ||
+            !audit.capability.rTree ||
+            !audit.capability.json ||
+            !audit.capability.windowFunctions
+        if (missingRequiredCapability) {
+            abort(FinanceDataError.CorruptData)
+        }
     }
 
     private fun primaryEntity(plan: FinancialMutationPlan): StableEntityReference? = plan.transactions.firstOrNull()?.let {

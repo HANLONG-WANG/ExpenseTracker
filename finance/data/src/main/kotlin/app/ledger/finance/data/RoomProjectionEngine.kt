@@ -120,7 +120,19 @@ internal class RoomProjectionEngine {
                 cpd.payment_account_id, ldd.receiving_account_id, lpd.payment_account_id, bad.account_id,
                 fxd.from_account_id, spd.local_account_id, obd.account_id),
               COALESCE(td.to_account_id, cpd.credit_account_id, fxd.to_account_id),
-              COALESCE(ed.payer_card_id, td.source_card_id, rd.receiving_card_id), tr.category_id, tr.merchant_id,
+              COALESCE(ed.payer_card_id, td.source_card_id, rd.receiving_card_id), tr.category_id,
+              COALESCE(
+                (
+                  WITH RECURSIVE merchant_chain(id, merged_into_id) AS (
+                    SELECT id, merged_into_id FROM merchant WHERE id = tr.merchant_id
+                    UNION ALL
+                    SELECT next.id, next.merged_into_id FROM merchant next
+                      JOIN merchant_chain current ON next.id = current.merged_into_id
+                  )
+                  SELECT id FROM merchant_chain WHERE merged_into_id IS NULL LIMIT 1
+                ),
+                tr.merchant_id
+              ),
               tr.project_id, tr.goal_id, COALESCE(ed.settlement_activity_id, spd.activity_id),
               COALESCE(ed.payer_participant_id, spd.payer_participant_id),
               COALESCE(

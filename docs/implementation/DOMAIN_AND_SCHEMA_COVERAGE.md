@@ -115,7 +115,7 @@ Source: `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` �
 | INV-026 | Installment-schedule principal total equals installment principal. | Property tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
 | INV-027 | The recurrence occurrence unique key prevents duplicate generation. | Concurrency/idempotency tests | IN_PROGRESS (`P05-E001`, `P05-E002`, `P07-E001`: physical `(series_id, series_revision_id, occurrence_instant)` uniqueness; concurrent Worker behavior remains P23) |
 | INV-028 | Candidate records create no formal financial effects. | Domain/database/report tests | IN_PROGRESS (`P06-E001`, `P06-E002`: recurrence and credit-payment candidates fail before materialization; database/report remain) |
-| INV-029 | Category/account/card tombstones or archives preserve historical references. | Migration/history tests | IN_PROGRESS (`P06-E001`, `P06-E002`, `P07-E001`: historical foreign keys use RESTRICT and immutable facts retain references; history workflows remain later) |
+| INV-029 | Category/account/card tombstones or archives preserve historical references. | Migration/history tests | VERIFIED (`P06-E001`, `P06-E002`, `P07-E001`, `P12-E002`, `P12-E003`, `P12-E008`: restricted historical foreign keys, archive/tombstone/replacement workflows and coordinator-owned category reassignment/place split append new revisions while preserving old facts and references) |
 | INV-030 | Purge tombstones win over old entity versions during merge restore. | Merge integration tests | IN_PROGRESS (`P05-E001`, `P05-E002`, `P07-E001`: normalized tombstone and merge conflict/resolution records; merge behavior remains P31) |
 | INV-031 | Every core projection aligns to the same `localRevision`. | Atomicity/failure-injection audit | VERIFIED (`P07-E001`, `P08-E001`, `P08-E003`: every P08 synchronous row is rebuilt at the target revision and verified before the atomic book advance; five fault phases roll back) |
 | INV-032 | Vault fields never enter FTS, audit snapshots, logs or telemetry. | Static/privacy/device audit | IN_PROGRESS (`P05-E001`, `P05-E002`, `P07-E001`—`P07-E003`: separate vault ciphertext table, exact FTS allowlist and encrypted side-file scan; wider logs/telemetry remain P32) |
@@ -124,6 +124,22 @@ Source: `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` �
 | INV-035 | Every cache depending on current transaction content carries a version. | Architecture/cache invalidation tests | IN_PROGRESS (`P05-E001`, `P07-E001`, `P08-E001`, `P08-E003`: all P08 synchronous projections/widget snapshots rebuild with explicit revisions; later analytics/valuation/runtime caches retain owning-stage evidence) |
 
 The 16 product-level system invariants in `需求.md` §26 remain additional acceptance constraints. They are covered by REQ rows and the architecture/security/operation gates; they do not replace the 35 canonical permanent invariants above.
+
+## P12 account and reference-data realization
+
+P12 maps domain §6—§7 current entities and their Schema v1 rows through typed application drafts/views; no feature obtains a DAO, Entity or SQL connection. Reference-only operations append a `BookCommit`, `entity_revision` and `entity_change`, update the guarded current row, synchronously rebuild P08 projections and advance `book.localRevision` in one SQLCipher transaction. Opening balances use `RecordOpeningBalanceCommand`; category reassignment and referenced-place split use `BatchFinancialCommand`. Both financial paths execute through `FinancialMutationCoordinator`, never the reference-only writer.
+
+| Domain/schema surface | P12 implementation status |
+|---|---|
+| `UserAccount` / `LedgerAccount` | Four closed types; row-versioned edit; immutable type; first-Posting currency lock; archive and empty-only delete; balance/valuation views (`P12-E002`, `P12-E003`) |
+| `PaymentCard` | Separate current entity; bank/debit and credit/primary/supplementary compatibility; archive and replacement link; history count (`P12-E002`, `P12-E003`) |
+| `Category` | Direction/depth/parent invariants; display/statistical/default fields; order/search; archive/tombstone audit; atomic historical reassignment through typed batch EDIT revisions (`P12-E002`—`P12-E004`, `P12-E008`) |
+| `Merchant` / aliases | Normalized duplicate check; alias search/transfer; merge relation with projection resolution (`P12-E003`, `P12-E004`) |
+| `Place` / `LocationRecord` | Fixed E7 centers, optional merchant, merge relation, immutable location query and atomic split clones with transaction revision fan-out; no online reverse geocoding (`P12-E003`, `P12-E004`, `P12-E008`) |
+| `AccountBalanceCheckpoint` | Observed/calculated/checked difference; no Journal/Posting/Effect; adjustment link only after explicit separate transaction (`P12-E002`, `P12-E003`) |
+| Account/goal/current projections | Current/daily balances, valuation evidence, running transaction balances, goal balances and exact two net-position metrics are read from synchronous P08 projections (`P12-E003`, `P12-E004`) |
+
+`INV-029` is `VERIFIED`: archive, category tombstone, card replacement, historical category reassignment and referenced-place splitting all preserve historical identifiers. The last two use a coordinator-owned `BatchFinancialCommand` that rehydrates frozen facts, appends REVERSE/APPLY revisions under one `BATCH_MUTATION` commit, and clones location records instead of updating old revisions or snapshots in place (`P12-E008`, `DL-058`).
 
 ## Logical schema families
 

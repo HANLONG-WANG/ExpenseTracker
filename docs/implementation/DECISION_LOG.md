@@ -405,4 +405,30 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: AGP/Lint 9.3.1's bundled `intellij-core` FIR path invokes `java.util.List.removeLast()`, a Java 21 method, for the large root `when` dispatch even though the frozen Android toolchain runs on JDK 17. The failure occurs inside Lint analysis; the Kotlin compiler and application runtime are valid.
 - Precedence applied: the frozen JDK/AGP/Kotlin baseline and mandatory Lint gate outrank changing the host JDK or suppressing a detector to accommodate an analyzer implementation detail.
 - Decision: retain JDK 17 and all Lint detectors, and express the root language/session/destination dispatch as equivalent exhaustive `if` chains. No UI state, route, priority or behavior changes.
-- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. A future analyzer upgrade may restore `when` only after the same static and device evidence is replayed.
+- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. During P12 the same analyzer path recurred after adding destination titles and a Protobuf-builder test chain; splitting title lookup into bounded `if` helpers and making the test builders explicit restored main, unit-test and AndroidTest Lint without disabling a detector or changing JDK. A future analyzer upgrade may restore more compact dispatch only after the same static and device evidence is replayed.
+
+## DL-056 — The P12 place map reuses the governed P10 network boundary
+
+- Date/stage: 2026-08-02 / P12
+- Surface issue: PLC-001—003 require the actual P10 `LedgerMap`, whose OpenFreeMap style is network-fetched, while P12 also forbids online place search and reverse geocoding.
+- Precedence applied: the frozen P10 MapLibre/attribution contract permits a remote map style, but REQ-053 and the P12 place contract prohibit using a network geocoder or online place database.
+- Decision: allow the app's existing `INTERNET` permission only through `:core:geo` and render P12 places with the P10 MapLibre wrapper plus its accessible list/failure fallback. No geocoding client, address lookup, background location or network-derived place suggestion is added.
+- Consequence: map tiles/styles may load when available, while place name, merchant relation and fixed-point coordinates remain explicit offline user data. A missing style/network never blocks saving.
+
+## DL-057 — Category reassignment and place split fail closed until the coordinator owns atomic batch edits
+
+- Status: superseded by `DL-058` after the required atomic batch path was implemented and device-verified; retained as the auditable pre-completion safety decision.
+
+- Date/stage: 2026-08-02 / P12
+- Surface issue: REQ-022 permits historical category reassignment and PLC-003 permits splitting location records. Both change the current meaning of one or more formal transactions. The current production P06 planner/P08 snapshot adapter accepts one transaction lifecycle snapshot and does not materialize `BatchFinancialCommand`; direct SQL would mutate immutable revisions or bypass fact reversal/application.
+- Precedence applied: immutable revision/fact rules and the single `FinancialMutationCoordinator` write boundary outrank screen-level completion and reference-data convenience.
+- Decision: implement and test all validation/selection/UI surfaces, but reject before any commit with `category.reassignmentRequiresFinancialCoordinator` or `place.splitRequiresFinancialCoordinator` whenever a financial rewrite is required. Do not update old `transaction_revision` or `location_record` rows, perform non-atomic sequential writes, or report success.
+- Consequence: P12 remains `IN_PROGRESS` rather than falsely `VERIFIED`. The SQLCipher device suite proves valid place-split input leaves `book.localRevision` and place rows unchanged. Completion requires the coordinator-owned atomic batch snapshot/planner/receipt path described in `P12_REFERENCE_DATA_MAPPING.md`.
+
+## DL-058 — Reference-driven financial rewrites use one coordinator-owned immutable batch
+
+- Date/stage: 2026-08-02 / P12
+- Surface issue: category reassignment and referenced-place splitting can affect several current formal transactions, but the frozen architecture permits only one financial application entry and forbids mutable history or sequential partial commits.
+- Precedence applied: the immutable revision/fact and single-`FinancialMutationCoordinator` invariants outrank a simpler reference-only SQL update. Existing P06 `BatchFinancialCommand` semantics are extended rather than creating a P12-specific financial writer.
+- Decision: `RoomReferenceFinancialSnapshotMapper` reconstructs each typed current revision, immutable fact family, historical ledger reference and frozen amount/FX evidence. The adapter derives deterministic child identities, and `DeterministicFinancialPlanner` emits one canonical `BATCH_MUTATION` with REVERSE/APPLY facts for every EDIT child. `RoomFinancialCommitRepository` checks every child `expectedRevision`, writes one `CommandReceipt`, rebuilds synchronous projections and advances the book once. A narrowly typed `FinancialCommitSideEffect` may write only the associated category/place/location metadata after the commit header and before revision foreign keys, inside that same Room transaction; it cannot write financial facts.
+- Consequence: category reassignment and place split are atomic with their reference metadata, deterministic and idempotent. Old revisions, location records, Journals, Postings, Effects and frozen historical currency amounts remain unchanged; any validation, persistence, audit or projection failure rolls back the entire batch. P12 can be `VERIFIED` without a direct DAO/SQL financial bypass.

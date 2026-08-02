@@ -575,6 +575,83 @@ class DeterministicFinancialPlannerTest {
     }
 
     @Test
+    fun `batch context edits share one commit reverse every prior fact and are deterministic`() {
+        val amount = PlannerFixtures.sameCurrencyEvidence(AmountRole.PRIMARY, 1_000L, PlannerFixtures.bankJpyId)
+        val firstCreateSnapshot = PlannerFixtures.snapshot(listOf(amount), seed = 42_000L)
+        val secondCreateSnapshot = PlannerFixtures.snapshot(listOf(amount), seed = 43_000L)
+        val firstCreate = DeterministicFinancialPlanner.plan(
+            PlannerFixtures.expenseCommand(1_000L, commandSeed = 42_500L),
+            firstCreateSnapshot,
+        ).success()
+        val secondCreate = DeterministicFinancialPlanner.plan(
+            PlannerFixtures.expenseCommand(1_000L, commandSeed = 43_500L),
+            secondCreateSnapshot,
+        ).success()
+        val batchBook = PlannerFixtures.nextBook(firstCreate, firstCreateSnapshot.book)
+        val sharedCommit = BookCommitId(stableId(44_900L))
+        val sharedCreatedAt = Instant.parse("2026-08-02T00:00:00Z")
+        val sharedDevice = DeviceInstanceId(stableId(44_901L))
+        fun childSnapshot(plan: FinancialMutationPlan, seed: Long): PlanningSnapshot {
+            val scalar = PlannerFixtures.snapshot(
+                amountEvidence = listOf(amount),
+                seed = seed,
+                currentTransaction = plan.transactions.single(),
+                currentRevision = plan.revisions.single(),
+                currentFacts = PlannerFixtures.currentFacts(plan),
+                sourceBook = batchBook,
+            )
+            return scalar.copy(
+                accountingContext = scalar.accountingContext!!.copy(
+                    identities = scalar.accountingContext.identities.copy(commitId = sharedCommit),
+                    createdAt = sharedCreatedAt,
+                    deviceInstanceId = sharedDevice,
+                ),
+            )
+        }
+        val snapshots = listOf(childSnapshot(firstCreate, 44_000L), childSnapshot(secondCreate, 45_000L))
+        val children = listOf(firstCreate, secondCreate).mapIndexed { index, plan ->
+            val revision = plan.revisions.single()
+            val replacement = PlannerFixtures.expenseCommand(1_000L, commandSeed = 46_000L + index).input.copy(
+                context = PlannerFixtures.inputContext().copy(locationRecordId = LocationRecordId(stableId(46_100L + index))),
+            )
+            val unsigned = EditTransactionCommand(
+                CommandId(stableId(46_200L + index)),
+                revision.id,
+                hash(0),
+                revision.transactionId,
+                replacement,
+                emptyList(),
+            )
+            unsigned.copy(payloadHash = CanonicalFinancialHash.command(unsigned))
+        }
+        val unsignedBatch = BatchFinancialCommand(CommandId(stableId(46_300L)), hash(0), children)
+        val batch = unsignedBatch.copy(payloadHash = CanonicalFinancialHash.command(unsignedBatch))
+        val root = PlanningSnapshot(
+            batchBook,
+            null,
+            null,
+            emptyList(),
+            emptySet(),
+            emptyList(),
+            null,
+            emptyList(),
+            batchSnapshots = snapshots,
+        )
+
+        val first = DeterministicFinancialPlanner.plan(batch, root).success()
+        val second = DeterministicFinancialPlanner.plan(batch, root).success()
+
+        first shouldBe second
+        first.commit.kind shouldBe CommitKind.BATCH_MUTATION
+        first.transactions shouldHaveSize 2
+        first.revisions shouldHaveSize 2
+        first.journalBundles.count { it.entry.role == JournalEntryRole.REVERSE } shouldBe 2
+        first.journalBundles.count { it.entry.role == JournalEntryRole.APPLY } shouldBe 2
+        first.journalBundles.all { it.entry.baseDebitTotalMinor == it.entry.baseCreditTotalMinor }.shouldBeTrue()
+        FinancialMutationPlanValidator.validate(batch, root, first).success() shouldBe first
+    }
+
+    @Test
     fun `trash nets current facts to zero and restore appends a new revision`() {
         val amount = PlannerFixtures.sameCurrencyEvidence(AmountRole.PRIMARY, 800L, PlannerFixtures.bankJpyId)
         val createSnapshot = PlannerFixtures.snapshot(listOf(amount), seed = 50_000L)
