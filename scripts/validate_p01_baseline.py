@@ -269,18 +269,20 @@ def main() -> int:
 
     with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as stream:
         screen_coverage = list(csv.DictReader(stream))
-    p10_promotions = {
+    p11_promotions = {
         "REC-009": "IN_PROGRESS",
         "REC-010": "IN_PROGRESS",
         "ATT-001": "VERIFIED",
         "ATT-002": "VERIFIED",
         "ATT-003": "VERIFIED",
         "SYS-001": "VERIFIED",
+        **{f"G-{number:03d}": "VERIFIED" for number in range(1, 9)},
+        **{f"ONB-{number:03d}": "VERIFIED" for number in range(1, 11)},
     }
     if len(screen_coverage) != 215 or any(
-        row["status"] != p10_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_coverage
+        row["status"] != p11_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_coverage
     ):
-        fail("screen coverage contains a promotion outside the completed P10 scope")
+        fail("screen coverage contains a promotion outside the completed P11 scope")
 
     print("P01 build baseline: PASS")
     print(f"leaf_modules={len(LEAF_MODULES)} grouping_projects=5 included_builds=1")

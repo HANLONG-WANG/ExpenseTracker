@@ -1,9 +1,19 @@
 plugins {
     id("ledger.android.application")
     id("ledger.android.compose")
+    id("ledger.ksp")
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.protobuf)
 }
 
 dependencies {
+    implementation(project(":core:common"))
+    implementation(project(":core:designsystem"))
+    implementation(project(":core:navigation"))
+    implementation(project(":core:security"))
+    implementation(project(":core:time"))
+    implementation(project(":core:background"))
+    implementation(project(":finance:application"))
     implementation(project(":finance:data"))
     implementation(project(":analytics:data"))
     implementation(project(":transfer:data"))
@@ -20,4 +30,27 @@ dependencies {
     implementation(project(":feature:transfer"))
     implementation(project(":feature:settings"))
     implementation(project(":widget"))
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.datastore)
+    implementation(libs.protobuf.java)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.androidx.biometric)
+}
+
+hilt {
+    enableAggregatingTask = false
+}
+
+protobuf {
+    protoc {
+        artifact = libs.protobuf.protoc.get().toString()
+    }
+    generateProtoTasks {
+        all().configureEach {
+            builtins {
+                create("java")
+            }
+        }
+    }
 }

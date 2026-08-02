@@ -198,18 +198,20 @@ def validate_ledgers() -> list[str]:
             errors.append(f"{requirement_id} lacks P08 implementation/verification evidence")
     with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = list(csv.DictReader(handle))
-    p10_promotions = {
+    p11_promotions = {
         "REC-009": "IN_PROGRESS",
         "REC-010": "IN_PROGRESS",
         "ATT-001": "VERIFIED",
         "ATT-002": "VERIFIED",
         "ATT-003": "VERIFIED",
         "SYS-001": "VERIFIED",
+        **{f"G-{number:03d}": "VERIFIED" for number in range(1, 9)},
+        **{f"ONB-{number:03d}": "VERIFIED" for number in range(1, 11)},
     }
     if len(screens) != 215 or any(
-        row["status"] != p10_promotions.get(row["screen_id"], "NOT_STARTED") for row in screens
+        row["status"] != p11_promotions.get(row["screen_id"], "NOT_STARTED") for row in screens
     ):
-        errors.append("screen coverage contains a promotion outside the completed P10 scope")
+        errors.append("screen coverage contains a promotion outside the completed P11 scope")
     return errors
 
 
@@ -223,7 +225,7 @@ def main() -> int:
         return 1
     print("P08 data validation: PASS")
     print(f"production_sources={len(sources)} sync_projection_families={len(SYNC_PROJECTIONS)}")
-    print("device_cases=2 injected_commit_phases=5 screens_total=215 p10_promoted=6 visual_inputs=excluded")
+    print("device_cases=2 injected_commit_phases=5 screens_total=215 p11_promoted=24 visual_inputs=excluded")
     return 0
 
 

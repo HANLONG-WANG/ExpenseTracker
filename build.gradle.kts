@@ -511,6 +511,47 @@ tasks.register("p10Artifacts") {
     dependsOn("p09Artifacts")
 }
 
+val validateP11AppShell by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the P11 SessionGate, five-stack root, secure onboarding and exact UI-state evidence."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p11_app_shell.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("feature/onboarding/src") { include("**/*") },
+        fileTree("core/navigation/src") { include("**/*.kt") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+        "gradle/libs.versions.toml",
+    )
+}
+
+tasks.register("p11Check") {
+    group = "verification"
+    description = "Runs P09 plus P11 JVM, static, lint, API 36 runtime/UI/golden and contract gates."
+    dependsOn(
+        "p09Check",
+        validateP11AppShell,
+        ":core:navigation:testDebugUnitTest",
+        ":finance:application:test",
+        ":feature:onboarding:testDebugUnitTest",
+        ":app:lintDebug",
+        ":feature:onboarding:lintDebug",
+        ":app:pixel6Api36DebugAndroidTest",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+tasks.register("p11Artifacts") {
+    group = "verification"
+    description = "Generates P11-inclusive coverage and inherited auditable supply-chain artifacts."
+    dependsOn("p09Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

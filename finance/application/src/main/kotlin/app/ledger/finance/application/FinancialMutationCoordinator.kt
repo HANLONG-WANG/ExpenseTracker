@@ -18,6 +18,24 @@ interface LedgerWriteGate {
     suspend fun <T> execute(block: suspend () -> T): T
 }
 
+fun interface FinancialWriteAvailability {
+    fun isFinancialWriteAllowed(): Boolean
+}
+
+/** Rejects before planning and again under the serialized gate when the visible session is not Ready. */
+class SessionAwareLedgerWriteGate(
+    private val delegate: LedgerWriteGate,
+    private val availability: FinancialWriteAvailability,
+) : LedgerWriteGate {
+    override suspend fun <T> execute(block: suspend () -> T): T {
+        check(availability.isFinancialWriteAllowed()) { "financial write is unavailable outside a ready session" }
+        return delegate.execute {
+            check(availability.isFinancialWriteAllowed()) { "session changed before financial write" }
+            block()
+        }
+    }
+}
+
 fun interface FinancialPlanningPort {
     fun plan(command: FinancialCommand, snapshot: PlanningSnapshot): DomainResult<FinancialMutationPlan>
 }

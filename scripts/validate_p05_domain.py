@@ -332,18 +332,20 @@ def main() -> int:
             (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="")
         )
     )
-    p10_promotions = {
+    p11_promotions = {
         "REC-009": "IN_PROGRESS",
         "REC-010": "IN_PROGRESS",
         "ATT-001": "VERIFIED",
         "ATT-002": "VERIFIED",
         "ATT-003": "VERIFIED",
         "SYS-001": "VERIFIED",
+        **{f"G-{number:03d}": "VERIFIED" for number in range(1, 9)},
+        **{f"ONB-{number:03d}": "VERIFIED" for number in range(1, 11)},
     }
     if len(screen_rows) != 215 or any(
-        row["status"] != p10_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows
+        row["status"] != p11_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows
     ):
-        errors.append("screen coverage contains a promotion outside the completed P10 scope")
+        errors.append("screen coverage contains a promotion outside the completed P11 scope")
     mapping = (ROOT / "docs/implementation/P05_DOMAIN_API_MAPPING.md").read_text(encoding="utf-8")
     mapping_ids = set(re.findall(r"P05-DOM-(\d{2})", mapping))
     if mapping_ids != {f"{value:02d}" for value in range(1, 36)}:
@@ -372,7 +374,7 @@ def main() -> int:
     print(f"finance_types={len(declarations(chr(10).join(v for k, v in sources.items() if k.startswith('finance/domain/'))))}")
     print(f"application_ports={len(REQUIRED_APPLICATION_PORTS)}")
     print(f"transaction_payloads={len(EXPECTED_TRANSACTION_PAYLOADS)} lifecycles={len(EXPECTED_LIFECYCLES)}")
-    print(f"tracked_requirements={len(TARGET_REQUIREMENTS)} screens_total={len(screen_rows)} p10_promoted=6")
+    print(f"tracked_requirements={len(TARGET_REQUIREMENTS)} screens_total={len(screen_rows)} p11_promoted=24")
     print("visual_inputs=excluded_by_explicit_source roots")
     return 0
 

@@ -156,6 +156,7 @@ private val DEVICE_TEST_LIBRARY_PATHS = setOf(
     ":core:geo",
     ":finance:data",
     ":feature:record",
+    ":feature:onboarding",
 )
 
 class AndroidApplicationConventionPlugin : Plugin<Project> {
@@ -461,7 +462,22 @@ abstract class VerifyArchitectureTask : DefaultTask() {
             put(":feature", emptySet())
             put(":finance", emptySet())
             put(":transfer", emptySet())
-            put(":app", featureProjects + setOf(":finance:data", ":analytics:data", ":transfer:data", ":widget"))
+            put(
+                ":app",
+                featureProjects + setOf(
+                    ":core:common",
+                    ":core:designsystem",
+                    ":core:navigation",
+                    ":core:security",
+                    ":core:time",
+                    ":core:background",
+                    ":finance:application",
+                    ":finance:data",
+                    ":analytics:data",
+                    ":transfer:data",
+                    ":widget",
+                ),
+            )
             put(":benchmark", setOf(":app"))
             put(":core:common", emptySet())
             put(":core:money", setOf(":core:common"))
@@ -481,7 +497,7 @@ abstract class VerifyArchitectureTask : DefaultTask() {
             put(":core:testing", emptySet())
             put(":finance:domain", setOf(":core:common", ":core:money", ":core:time"))
             put(":finance:application", setOf(":finance:domain"))
-            put(":finance:data", setOf(":finance:application", ":core:database"))
+            put(":finance:data", setOf(":finance:application", ":core:database", ":core:security"))
             put(":analytics:domain", setOf(":finance:domain"))
             put(":analytics:data", setOf(":analytics:domain", ":core:database"))
             put(":transfer:domain", setOf(":finance:application"))

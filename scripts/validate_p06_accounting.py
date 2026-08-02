@@ -241,18 +241,20 @@ def main() -> int:
     screens = list(
         csv.DictReader((ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline=""))
     )
-    p10_promotions = {
+    p11_promotions = {
         "REC-009": "IN_PROGRESS",
         "REC-010": "IN_PROGRESS",
         "ATT-001": "VERIFIED",
         "ATT-002": "VERIFIED",
         "ATT-003": "VERIFIED",
         "SYS-001": "VERIFIED",
+        **{f"G-{number:03d}": "VERIFIED" for number in range(1, 9)},
+        **{f"ONB-{number:03d}": "VERIFIED" for number in range(1, 11)},
     }
     if len(screens) != 215 or any(
-        row["status"] != p10_promotions.get(row["screen_id"], "NOT_STARTED") for row in screens
+        row["status"] != p11_promotions.get(row["screen_id"], "NOT_STARTED") for row in screens
     ):
-        errors.append("screen coverage contains a promotion outside the completed P10 scope")
+        errors.append("screen coverage contains a promotion outside the completed P11 scope")
     if errors:
         print("P06 accounting validation: FAIL", file=sys.stderr)
         for error in errors:
@@ -261,7 +263,7 @@ def main() -> int:
     print("P06 accounting validation: PASS")
     print(f"production_files={len(sources)} transaction_rules={len(TRANSACTION_PAYLOADS)}")
     print(f"target_requirements={len(TARGET_REQUIREMENTS)} permanent_invariants=35 core_automated={len(CORE_INVARIANTS)}")
-    print("screens_total=215 p10_promoted=6 visual_inputs=excluded_by_explicit_source_roots")
+    print("screens_total=215 p11_promoted=24 visual_inputs=excluded_by_explicit_source_roots")
     return 0
 
 

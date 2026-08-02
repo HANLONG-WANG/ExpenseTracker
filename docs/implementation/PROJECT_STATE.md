@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-02 (Asia/Tokyo)
-Current stage: P10 — Encrypted attachments, foreground location and map infrastructure
-Stage status: VERIFIED (`P10-E001`—`P10-E007`); P00—P10 are complete and P11 is the next unstarted stage
+Current stage: P11 — Application shell, global runtime state, navigation and first launch
+Stage status: VERIFIED (`P11-E001`—`P11-E008`); P00—P11 are complete and P12 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -203,12 +203,26 @@ P09 implements no SessionGate/settings/vault/backup/restore/clear-data screen, b
 
 P10 does not claim the P13 complete record form, P27 analytics map screens, background location, online place search/reverse geocoding, or later import/backup Workers. `P10_FILES_GEO_MAPPING.md` records the exact implementation and later-stage boundary.
 
+### P11 result
+
+| Area | P11 result | Classification |
+|---|---|---|
+| One root and SessionGate | The manifest exposes one Hilt `MainActivity` and one Compose root; Locked, Opening, Maintenance, RecoveryRequired and Ready are mutually exclusive root states, and pending deep links are consumed only after Ready | VERIFIED on API 36 (`P11-E003`, `P11-E007`) |
+| Five-stack navigation | Navigation 3 owns five independent typed back stacks; cold start is `REC-001`/`EXPENSE`, current-tab reselection pops only that stack, and safe non-sensitive snapshots preserve each stack and scroll position | VERIFIED (`P11-E002`, `P11-E003`) |
+| Global shell behavior | One governed `LedgerScaffold` owns the five-entry navigation bar, shared More/operation/help destinations, global Snackbar controller and process-loss/operation banner slot; non-Ready sessions cannot navigate or submit a financial command | VERIFIED (`P11-E002`—`P11-E005`) |
+| First launch | The exact ten ordered onboarding steps validate language, currency, time zone and privacy; optional recovery, first account and first category may be skipped; encrypted bootstrap creates no example transaction, Journal, Posting, effect or balance | VERIFIED on JVM and API 36 (`P11-E002`, `P11-E003`) |
+| Typed persistence and privacy | Proto DataStore stores only non-sensitive locale/consent/lock policy, wrapped recovery verifier, book stable ID and allowlisted navigation state; recovery plaintext is bounded, cleared on exit and absent from route, SavedState, logs and semantics | VERIFIED (`P11-E001`, `P11-E002`, `P11-E004`) |
+| UI contract matrix | All 65 required states across G-001—008 and ONB-001—010 render with privacy semantics under compact/regular/wide widths, 100/130/200% font, three locales, light/dark and the dynamic-color boundary | VERIFIED on API 28 and API 36 (`P11-E004`, `P11-E005`) |
+| Contract-rendered goldens | Four 360×720 root/onboarding PNG baselines originate only from governed Compose/token output and compare pixel-for-pixel; their dimensions and SHA-256 values are machine-frozen | VERIFIED on API 36 (`P11-E006`) |
+
+P11 does not claim later feature pages, settings completion, durable operation execution, backup/restore transport, widget runtime, full feature-wide accessibility/performance acceptance or later process-death form behavior. `P11_APP_SHELL_MAPPING.md` records the exact implementation boundary.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-054`, `REQ-055`, `REQ-057` and `REQ-085` are `VERIFIED`; 68 requirements are `IN_PROGRESS`; 18 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | ATT-001—003 and SYS-001 are `VERIFIED`; REC-009/010 are `IN_PROGRESS`; 209 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | Eight requirements are `VERIFIED`; 68 are `IN_PROGRESS`; 14 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | G-001—008, ONB-001—010, ATT-001—003 and SYS-001 are `VERIFIED`; REC-009/010 are `IN_PROGRESS`; 191 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-010 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-011—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
 | Permanent domain invariants | 35 | `INV-034` `VERIFIED` remains the checked-arithmetic anchor; `INV-002`, `INV-005`, `INV-006`, `INV-007`, `INV-016` and `INV-031` are also `VERIFIED`; 28 retain later evidence |
@@ -231,18 +245,20 @@ P10 does not claim the P13 complete record form, P27 analytics map screens, back
 | P08 | VERIFIED | One Room/SQLCipher transaction, coordinator-only write entry, synchronous projection rebuild/audit and typed keyset/FTS/R*Tree queries pass; see `P08-E001`—`P08-E006` |
 | P09 | VERIFIED | Separate production key hierarchies, real SQLCipher book sessions, authenticated vault CryptoObjects, app-lock/privacy runtime and API 36 Keystore/device-credential tests pass; see `P09-E001`—`P09-E006` |
 | P10 | VERIFIED | Encrypted streaming attachments, one-time pipe sharing, three-second foreground location, MapLibre fallback and all P10 required states pass on API 36; see `P10-E001`—`P10-E007` |
-| P11—P36 | NOT_STARTED | P11 is the next execution stage; do not promote later work early |
+| P11 | VERIFIED | Single Activity/Compose root, complete SessionGate, five Navigation 3 stacks, typed Proto restore, secure empty-book onboarding and all 65 G/ONB states pass; see `P11-E001`—`P11-E008` |
+| P12—P36 | NOT_STARTED | P12 is the next execution stage; do not promote later work early |
 
-## P11 entry state
+## P12 entry state
 
-P10 leaves the repository at a verified encrypted attachment and foreground geospatial infrastructure boundary. Its completion commands are:
+P11 leaves the repository at a verified application-shell, navigation and first-launch boundary. Its completion commands are:
 
 ```text
-python3 scripts/validate_p10_files_geo.py
-python3 -m unittest scripts.tests.test_p10_files_geo_contracts -v
-./gradlew :core:files:pixel6Api36DebugAndroidTest :core:geo:pixel6Api36DebugAndroidTest :feature:record:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
-./gradlew p10Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
-./gradlew p10Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p11_app_shell.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p11_app_shell_contracts -v
+./gradlew :app:pixel2Api28DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.app.P11UiContractDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :app:pixel6Api36DebugAndroidTest :finance:data:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p11Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p11Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
 ```
 
-All commands and final hygiene gates pass in `P10-E001`—`P10-E007`. P11 may compose the session gate and first-run runtime without exposing a DEK, database resource, attachment plaintext/path/hash, raw coordinate or SDK client to feature code. P12+ remains unpromoted.
+All commands and final hygiene gates pass in `P11-E001`—`P11-E008`. P12 may add its own feature flow only through the Ready root, typed route contract and existing application ports; it may not introduce a second shell, persist sensitive navigation/form state or bypass `FinancialMutationCoordinator`. P13+ remains unpromoted.

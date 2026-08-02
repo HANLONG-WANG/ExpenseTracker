@@ -1,8 +1,8 @@
 # Domain and Schema Coverage Baseline
 
 Last updated: 2026-08-02 (Asia/Tokyo)
-Stage: P09
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P09 verifies the separate production key hierarchies, authenticated vault cryptography, book-session/headless lifecycle and app-lock/privacy runtime; security UI, backup/restore execution and later feature behavior remain later scope.
+Stage: P11
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P11 verifies the single root runtime, session-gated financial write availability, typed empty-ledger bootstrap and secure first-run state. It does not promote later financial feature, operation Worker, backup/restore or settings workflows.
 
 ## P05 domain/application result
 
@@ -31,6 +31,10 @@ P09 separates DeviceLedgerKEK/database DEK/attachment root/security-settings key
 ## P10 attachment and geospatial infrastructure result
 
 P10 maps the Schema v1 `encrypted_blob`/`attachment`/`blob_gc_candidate` family to a streaming Tink object store with hash+size deduplication, encrypted thumbnails, reference-aware cleanup and a confirmation-bound pipe provider. Foreground location freezes provider/time/E7/accuracy evidence within one three-second monotonic save budget, and `LedgerMap` owns actual MapLibre lifecycle, overlays, attribution and accessible fallback. `P10_FILES_GEO_MAPPING.md` records exact contracts and later-stage boundaries; no financial fact is written outside the P08 coordinator.
+
+## P11 application-runtime result
+
+P11 composes the P09 `BookSessionManager` and P08 coordinator boundary into the only Activity/Compose root. `SessionAwareLedgerWriteGate` rejects before and inside the serialized gate unless the session is Ready. A typed initialization port creates only encrypted book/system-ledger and optional account/category metadata; device evidence proves it creates no transaction, Journal, Posting or monetary effect. Proto DataStore persists only non-sensitive first-run and safe route/scroll metadata. `P11_APP_SHELL_MAPPING.md` records the 18-screen/65-state UI and later-stage boundary.
 
 ## Architecture decisions
 
@@ -180,6 +184,6 @@ Worker/UIDT/service payloads may contain only `operationId`; full parameters rem
 | Keystore, BiometricPrompt, SAF, location and foreground/UIDT behavior on actual devices | Tech stack §16 | IN_PROGRESS (`P09-E003`, `P09-E004`, `P10-E003`, `P10-E004`: Keystore/credential, SAF streaming/provider and foreground location pass on API 36; foreground/UIDT services remain P28) |
 | Failure injection for attachment, commits, Drive, storage, restore exchange, Keystore, biometrics, row 99,999 and projection versions | Architecture §21.3 | IN_PROGRESS (`P08-E003`, `P09-E003`, `P09-E004`, `P10-E003`: commit/projection, key/auth and attachment cancellation/database/process failures pass; Drive/restore/scale remain later) |
 | Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`, `P08-E001`, `P08-E002`, `P10-E006`: feature SDK/infrastructure, background location/shared storage, privileged ports, SQL and DAO bypasses are rejected) |
-| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008`, `P10-E004`, `P10-E005`: cross-cutting UI matrix plus all P10 ATT/SYS/REC infrastructure states pass; later screens/final acceptance remain) |
+| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008`, `P10-E004`, `P10-E005`, `P11-E004`—`P11-E006`: cross-cutting UI matrix, P10 infrastructure states and all 65 G/ONB states pass; later screens/final acceptance remain) |
 | Target-scale paging, reports, map, 100k-row import and tens-of-GB streaming operations | Requirements §25; UI contract §16.5 | IN_PROGRESS (`P10-E003`, `P10-E004`: bounded streaming large-file and actual map lifecycle foundation pass; tens-of-GB, report and 100k-row gates remain later) |
 | Release AAB, Baseline Profile, locks, verification metadata, SBOM, licenses, NOTICE and privacy/release documentation | Tech stack §16.4 and release plan | IN_PROGRESS (`P02-E006` verifies locks/SBOM/license task infrastructure only; release evidence remains P36) |

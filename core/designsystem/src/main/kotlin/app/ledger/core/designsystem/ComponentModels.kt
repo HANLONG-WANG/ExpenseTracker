@@ -24,6 +24,11 @@ public object LedgerTestTags {
     public const val LOCATION_EDITOR: String = "location_editor"
     public const val LOCATION_PERMISSION: String = "location_permission"
     public const val MAP_FALLBACK: String = "map_accessible_fallback"
+    public const val SESSION_GATE: String = "session_gate"
+    public const val ONBOARDING_ROOT: String = "onboarding_root"
+    public const val ONBOARDING_PRIMARY: String = "onboarding_primary_action"
+    public const val ONBOARDING_SECONDARY: String = "onboarding_secondary_action"
+    public const val GLOBAL_BANNER: String = "global_operation_banner"
 
     public fun requireStable(value: String): String {
         require(STABLE_TAG.matches(value)) { "test tag must be a stable semantic identifier" }
@@ -83,6 +88,7 @@ public enum class MetricCardVariant { STANDARD, EMPHASIZED }
 public enum class LedgerProgressState { NORMAL, WARNING, OVER_LIMIT }
 public enum class LedgerTopLevel { RECORD, JOURNAL, ACCOUNTS, BUDGET, ANALYSIS }
 public enum class LedgerChartType { LINE, COLUMN, STACKED, PIE, TABLE, PROGRESS }
+public enum class LedgerTextRole { DISPLAY, TITLE, SECTION, BODY, SUPPORTING, LABEL }
 
 @Immutable
 public data class CategoryTileUiModel(

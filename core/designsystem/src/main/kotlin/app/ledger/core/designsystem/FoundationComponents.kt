@@ -48,9 +48,11 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,6 +62,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -67,6 +70,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -76,14 +80,29 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+
+@Stable
+public class LedgerSnackbarController internal constructor(
+    internal val hostState: SnackbarHostState,
+) {
+    public suspend fun show(message: String) {
+        hostState.showSnackbar(message)
+    }
+}
+
+@Composable
+public fun rememberLedgerSnackbarController(): LedgerSnackbarController = androidx.compose.runtime.remember { LedgerSnackbarController(SnackbarHostState()) }
 
 @Composable
 public fun LedgerScaffold(
     modifier: Modifier = Modifier,
     topBar: @Composable () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
-    snackbarHostState: SnackbarHostState = androidx.compose.runtime.remember { SnackbarHostState() },
+    snackbarController: LedgerSnackbarController = rememberLedgerSnackbarController(),
     banner: (@Composable () -> Unit)? = null,
     fixedAction: (@Composable BoxScope.() -> Unit)? = null,
     formContent: Boolean = false,
@@ -93,7 +112,7 @@ public fun LedgerScaffold(
         modifier = modifier.testTag(LedgerTestTags.ROOT),
         topBar = topBar,
         bottomBar = bottomBar,
-        snackbarHost = { LedgerSnackbarHost(snackbarHostState) },
+        snackbarHost = { LedgerSnackbarHost(snackbarController.hostState) },
     ) { scaffoldPadding ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(scaffoldPadding)) {
             val horizontal = LedgerTheme.dimensions.horizontalPadding(maxWidth)
@@ -329,12 +348,18 @@ public fun LedgerTextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Next,
     onImeAction: () -> Unit = {},
+    sensitive: Boolean = false,
 ) {
     val requiredText = if (required) " · ${stringResource(R.string.ledger_required)}" else ""
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth().heightIn(min = LedgerTheme.dimensions.formFieldMinHeight),
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = LedgerTheme.dimensions.formFieldMinHeight)
+            .let { field ->
+                if (sensitive) field.clearAndSetSemantics { contentDescription = label } else field
+            },
         label = { Text(label + requiredText) },
         supportingText = {
             val message = errorText ?: supportingText
@@ -346,6 +371,103 @@ public fun LedgerTextField(
         shape = LedgerTheme.shapes.md,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
         keyboardActions = KeyboardActions(onAny = { onImeAction() }),
+        visualTransformation = if (sensitive) PasswordVisualTransformation() else VisualTransformation.None,
+    )
+}
+
+@Composable
+public fun LedgerChoiceRow(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    supportingText: String? = null,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = LedgerTheme.dimensions.touchTargetMin)
+            .clickable(onClick = onClick)
+            .semantics {
+                role = Role.RadioButton
+                stateDescription = if (selected) "selected" else "not selected"
+            }
+            .padding(vertical = LedgerTheme.spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = LedgerTheme.typography.bodyLarge)
+            if (supportingText != null) {
+                Text(supportingText, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+public fun LedgerToggleRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    supportingText: String? = null,
+    enabled: Boolean = true,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = LedgerTheme.dimensions.touchTargetMin)
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .semantics {
+                role = Role.Switch
+                stateDescription = if (checked) "on" else "off"
+            }
+            .padding(vertical = LedgerTheme.spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = LedgerTheme.typography.bodyLarge)
+            if (supportingText != null) {
+                Text(supportingText, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
+            }
+        }
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+    }
+}
+
+@Composable
+public fun LedgerText(
+    text: String,
+    role: LedgerTextRole,
+    modifier: Modifier = Modifier,
+    centered: Boolean = false,
+) {
+    val style = when (role) {
+        LedgerTextRole.DISPLAY -> LedgerTheme.typography.titleLarge
+        LedgerTextRole.TITLE -> LedgerTheme.typography.titleLarge
+        LedgerTextRole.SECTION -> LedgerTheme.typography.titleSmall
+        LedgerTextRole.BODY -> LedgerTheme.typography.bodyLarge
+        LedgerTextRole.SUPPORTING -> LedgerTheme.typography.bodySmall
+        LedgerTextRole.LABEL -> LedgerTheme.typography.labelMedium
+    }
+    val color = if (role == LedgerTextRole.SUPPORTING) {
+        LedgerTheme.colors.material.onSurfaceVariant
+    } else {
+        LedgerTheme.colors.material.onSurface
+    }
+    Text(
+        text = text,
+        modifier = if (role in setOf(LedgerTextRole.DISPLAY, LedgerTextRole.TITLE, LedgerTextRole.SECTION)) {
+            modifier.semantics { heading() }
+        } else {
+            modifier
+        },
+        style = style,
+        color = color,
+        textAlign = if (centered) TextAlign.Center else TextAlign.Start,
     )
 }
 

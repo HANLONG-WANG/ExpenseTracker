@@ -240,18 +240,30 @@ def validate_ledgers() -> None:
         row = next(line for line in requirements.splitlines() if line.startswith(requirement + ","))
         require("P07-E" in row, f"{requirement} lacks P07 evidence")
     screen_rows = list(csv.DictReader(screens.splitlines()))
-    p10_promotions = {
-        "REC-009": "IN_PROGRESS",
-        "REC-010": "IN_PROGRESS",
-        "ATT-001": "VERIFIED",
-        "ATT-002": "VERIFIED",
-        "ATT-003": "VERIFIED",
-        "SYS-001": "VERIFIED",
-    }
+    current_stage_number = int(current_stage.group(1))
+    permitted_promotions: dict[str, str] = {}
+    if current_stage_number >= 10:
+        permitted_promotions.update(
+            {
+                "REC-009": "IN_PROGRESS",
+                "REC-010": "IN_PROGRESS",
+                "ATT-001": "VERIFIED",
+                "ATT-002": "VERIFIED",
+                "ATT-003": "VERIFIED",
+                "SYS-001": "VERIFIED",
+            },
+        )
+    if current_stage_number >= 11:
+        permitted_promotions.update(
+            {
+                **{f"G-{number:03d}": "VERIFIED" for number in range(1, 9)},
+                **{f"ONB-{number:03d}": "VERIFIED" for number in range(1, 11)},
+            },
+        )
     require(
         len(screen_rows) == 215
-        and all(row["status"] == p10_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),
-        "screen coverage contains a promotion outside the completed P10 scope",
+        and all(row["status"] == permitted_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),
+        f"screen coverage contains a promotion outside the completed P{current_stage_number:02d} scope",
     )
 
 
@@ -265,7 +277,7 @@ def main() -> int:
     print("P07 database contract: PASS")
     print("frozen_domain_tables=94 primary_schema_tables=140 staging_tables=7")
     print("indexes=39 views=4 runtime_append_only_tables=63")
-    print("target_requirements=8 screens_total=215 p10_promoted=6")
+    print("target_requirements=8 screens_total=215 stage_scoped_promotions=24")
     return 0
 
 

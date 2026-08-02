@@ -13,6 +13,8 @@ interface DeviceLedgerKeyProvider {
     fun initialize(bookId: StableId)
 
     fun open(bookId: StableId): DeviceLedgerKeys
+
+    fun destroyLocal(bookId: StableId)
 }
 
 class DeviceKeyHierarchy(
@@ -77,7 +79,7 @@ class DeviceKeyHierarchy(
         }
     }
 
-    fun destroyLocal(bookId: StableId) {
+    override fun destroyLocal(bookId: StableId) {
         val suffix = SecurityEnvelopeStore.aliasSuffix(bookId)
         envelopeStore.deleteAll(bookId)
         if (keystore.hasVaultAuthenticationKek(suffix)) keystore.deleteVaultAuthenticationKek(suffix)

@@ -251,6 +251,7 @@ def validate_tests() -> list[str]:
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
     project_state = read(ROOT / "docs/implementation/PROJECT_STATE.md")
+    current_stage = re.search(r"Current stage: P(\d{2})", project_state)
     if "| P09 | VERIFIED |" not in project_state or "### P09 result" not in project_state:
         errors.append("PROJECT_STATE does not record P09 VERIFIED and its result")
     evidence = read(ROOT / "docs/implementation/TEST_EVIDENCE.md")
@@ -265,24 +266,31 @@ def validate_ledgers() -> list[str]:
         rows = {row["requirement_id"]: row for row in csv.DictReader(handle)}
     for requirement_id in TARGET_REQUIREMENTS:
         row = rows.get(requirement_id)
-        if row is None or row["status"] != "IN_PROGRESS":
-            errors.append(f"{requirement_id} must remain truthful IN_PROGRESS after its P09 foundation")
+        expected_status = (
+            "VERIFIED"
+            if current_stage is not None and int(current_stage.group(1)) >= 11 and requirement_id == "REQ-087"
+            else "IN_PROGRESS"
+        )
+        if row is None or row["status"] != expected_status:
+            errors.append(f"{requirement_id} must retain its truthful P09-or-later status")
         elif "P09" not in row["implementation_evidence"] or "P09-E" not in row["verification_evidence"]:
             errors.append(f"{requirement_id} lacks P09 implementation/verification evidence")
     with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = list(csv.DictReader(handle))
-    p10_promotions = {
+    p11_promotions = {
         "REC-009": "IN_PROGRESS",
         "REC-010": "IN_PROGRESS",
         "ATT-001": "VERIFIED",
         "ATT-002": "VERIFIED",
         "ATT-003": "VERIFIED",
         "SYS-001": "VERIFIED",
+        **{f"G-{number:03d}": "VERIFIED" for number in range(1, 9)},
+        **{f"ONB-{number:03d}": "VERIFIED" for number in range(1, 11)},
     }
     if len(screens) != 215 or any(
-        row["status"] != p10_promotions.get(row["screen_id"], "NOT_STARTED") for row in screens
+        row["status"] != p11_promotions.get(row["screen_id"], "NOT_STARTED") for row in screens
     ):
-        errors.append("screen coverage contains a promotion outside the completed P10 scope")
+        errors.append("screen coverage contains a promotion outside the completed P11 scope")
     domain = read(ROOT / "docs/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md")
     if "| ADR-016 | Ledger, vault and recovery-password key hierarchies are separate | VERIFIED" not in domain:
         errors.append("ADR-016 is not VERIFIED")
@@ -303,7 +311,7 @@ def main() -> int:
     unit_cases = sum(read(path).count("@Test") for path in (ROOT / "core/security/src/test").rglob("*.kt"))
     device_cases = sum(read(path).count("@Test") for path in (ROOT / "core/security/src/androidTest").rglob("*.kt"))
     print(f"production_files={len(sources)} jvm_cases={unit_cases} android_device_cases={device_cases}")
-    print("screen_rows_total=215 p10_promoted=6 visual_drafts=excluded")
+    print("screen_rows_total=215 p11_promoted=24 visual_drafts=excluded")
     return 0
 
 

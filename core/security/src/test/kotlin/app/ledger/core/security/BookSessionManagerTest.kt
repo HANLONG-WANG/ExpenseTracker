@@ -126,6 +126,8 @@ class BookSessionManagerTest {
                 secureSettingsKeyset = LedgerTink.generateAeadKeyset(),
             )
         }
+
+        override fun destroyLocal(bookId: StableId) = Unit
     }
 
     private class FakeResourceFactory(

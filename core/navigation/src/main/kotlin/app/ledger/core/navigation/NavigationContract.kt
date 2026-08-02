@@ -164,6 +164,7 @@ public class LedgerDestinationKey internal constructor(
     public val contract: ScreenContract,
     internal val argumentValues: Map<String, SafeRouteArgument>,
 ) : NavKey {
+    public val encodedArguments: Map<String, String> = argumentValues.mapValues { (_, value) -> value.encoded }
     public val path: String = contract.parameters.fold(contract.routePattern) { current, parameter ->
         val placeholder = "{${parameter.name}${if (parameter.optional) "?" else ""}}"
         val argument = argumentValues[parameter.name]
@@ -196,6 +197,13 @@ public object LedgerRouteContract {
             "enum route value is outside the frozen contract"
         }
         return ContractEnumArgument.validated(value)
+    }
+
+    /** Closed slug factory for YAML String parameters such as help topics; arbitrary URLs are rejected. */
+    public fun opaqueKeyArgument(screenId: ScreenId, parameterName: String, value: String): OpaqueKeyArgument {
+        val parameter = requireParameter(screenId, parameterName)
+        require(parameter.kind == RouteArgumentKind.OPAQUE_KEY) { "route parameter is not an opaque key" }
+        return OpaqueKeyArgument.validated(value)
     }
 
     public fun destination(

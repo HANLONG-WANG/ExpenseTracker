@@ -363,3 +363,46 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Precedence applied: the frozen SDK 36 toolchain outranks adopting a newer library that raises the compile SDK.
 - Decision: pin stable Lifecycle 2.9.4 for `lifecycle-runtime-compose`; retain MapLibre 13.4.1, Coil 3.5.0 and Play Services Location 21.3.0. Do not raise compileSdk or use an alpha workaround.
 - Consequence: the required lifecycle API is available without changing the frozen Android baseline. Any future Lifecycle upgrade must first be compatible with the owning toolchain stage and replay the MapLibre device lifecycle suite.
+
+## DL-050 — First-run genesis is non-monetary metadata, not a second financial mutation path
+
+- Date/stage: 2026-08-02 / P11
+- Surface issue: onboarding must create a book and may create its first account/category, while every monetary write must pass through `FinancialMutationCoordinator`.
+- Decision: expose a typed application `LedgerInitializationPort` whose SQLCipher adapter may append only book/system-ledger/account/category revisions and their empty projections. It cannot accept a transaction, Journal, Posting, Effect, amount or balance. Every monetary command and all later edits/deletes/restores remain behind `FinancialMutationCoordinator` and its session-aware write gate.
+- Consequence: first launch creates no example or financial fact and does not give feature code DAO/Entity access. The distinction is enforced by port types, static scans and a real SQLCipher device test that asserts zero transactions, journals and postings.
+
+## DL-051 — Proto DataStore uses the full protobuf runtime already required by Tink
+
+- Date/stage: 2026-08-02 / P11
+- Surface issue: Proto DataStore examples often select `protobuf-javalite`, but Tink already requires the full protobuf runtime; packaging both variants creates duplicate classes and incompatible generated APIs.
+- Decision: use protobuf plugin 0.10.0 with `protobuf-java` 4.35.0 for the typed settings schema. The schema contains only non-sensitive preferences, a wrapped verifier, a book stable ID and contract-encoded navigation metadata.
+- Consequence: the APK has one protobuf runtime and strict lock/verification metadata remains reproducible. Recovery password plaintext, form names, money, cards, attachments and coordinates have no Proto field.
+
+## DL-052 — Hilt remains KSP-generated while its incompatible optional Java aggregation task is disabled
+
+- Date/stage: 2026-08-02 / P11
+- Surface issue: Hilt 2.59.2's optional Java aggregation task cannot read Kotlin 2.4 metadata, although the prescribed KSP processor generates and validates the component tree correctly.
+- Precedence applied: the frozen Kotlin/KSP toolchain and required Hilt composition boundary outrank an optional incremental aggregation optimization.
+- Decision: retain Hilt 2.59.2 and KSP, set `enableAggregatingTask=false`, and compile/test the generated application, Activity and ViewModel component graph on device.
+- Consequence: dependency injection behavior is unchanged; only that optional optimization is disabled. A future Hilt/Kotlin update may re-enable it after compile and device-runtime evidence.
+
+## DL-053 — App language is localized inside the single Compose root and updates immediately
+
+- Date/stage: 2026-08-02 / P11
+- Surface issue: ONB-001 requires subsequent pages to change language immediately, while P11 must not introduce an AppCompat Activity or a second UI shell.
+- Decision: the root derives a configuration context from the selected/persisted BCP-47 tag and provides it through Compose's context/configuration locals around the one root tree. Date/number formatting can consume that same locale boundary in later features.
+- Consequence: Simplified Chinese, Japanese and English resources switch without recreating a second Activity or storing a sensitive state. API 28/36 and three-locale UI tests cover the boundary.
+
+## DL-054 — P11 goldens are contract-rendered artifacts, never measurements from review drafts
+
+- Date/stage: 2026-08-02 / P11
+- Decision: generate the four root/onboarding goldens directly from the governed Compose implementation at fixed 360×720 density on the API 36 managed device, freeze their SHA-256 values, and compare every pixel in ordinary test mode. Inputs are only the UI contract, token JSON, screen YAML and implementation resources.
+- Consequence: the golden suite detects implementation drift without opening, parsing, measuring or deriving a baseline from any excluded visual review draft. API 28 uses semantic/layout matrix tests rather than pretending platform rasterization is pixel-identical.
+
+## DL-055 — Preserve the frozen JDK 17 toolchain when the bundled Lint FIR frontend selects a Java 21 helper
+
+- Date/stage: 2026-08-02 / P11
+- Surface issue: AGP/Lint 9.3.1's bundled `intellij-core` FIR path invokes `java.util.List.removeLast()`, a Java 21 method, for the large root `when` dispatch even though the frozen Android toolchain runs on JDK 17. The failure occurs inside Lint analysis; the Kotlin compiler and application runtime are valid.
+- Precedence applied: the frozen JDK/AGP/Kotlin baseline and mandatory Lint gate outrank changing the host JDK or suppressing a detector to accommodate an analyzer implementation detail.
+- Decision: retain JDK 17 and all Lint detectors, and express the root language/session/destination dispatch as equivalent exhaustive `if` chains. No UI state, route, priority or behavior changes.
+- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. A future analyzer upgrade may restore `when` only after the same static and device evidence is replayed.
