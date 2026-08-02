@@ -141,7 +141,7 @@ private fun LibraryExtension.configureAndroidLibrary(project: Project) {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    if (project.path == ":core:database" || project.path == ":finance:data") {
+    if (project.path == ":core:database" || project.path == ":core:security" || project.path == ":finance:data") {
         configureLibraryManagedDevices(includeMinSdk = false)
     }
     if (project.path == ":core:designsystem") {
@@ -460,7 +460,7 @@ abstract class VerifyArchitectureTask : DefaultTask() {
             put(":core:designsystem", setOf(":core:money"))
             put(":core:navigation", setOf(":core:common"))
             put(":core:database", emptySet())
-            put(":core:security", emptySet())
+            put(":core:security", setOf(":core:common", ":core:database"))
             put(":core:files", emptySet())
             put(":core:network", emptySet())
             put(":core:background", emptySet())

@@ -14,6 +14,8 @@ sqlcipher = "4.17.0"
 androidx-sqlite = "2.6.2"
 coil = "3.5.0"
 tink = "1.23.0"
+bouncycastle = "1.84"
+biometric = "1.1.0"
 fastexcel = "0.20.2"
 junit = "5.14.2"
 kotest = "6.1.11"
@@ -69,6 +71,9 @@ room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 androidx-sqlite = { module = "androidx.sqlite:sqlite", version.ref = "androidx-sqlite" }
 sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
+tink = { module = "com.google.crypto.tink:tink", version.ref = "tink" }
+bouncycastle-provider = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
 benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "benchmark" }
 profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "benchmark" }
 jankstats = { module = "androidx.metrics:metrics-performance", version.ref = "jankstats" }

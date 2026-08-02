@@ -424,6 +424,39 @@ tasks.register("p08Artifacts") {
     dependsOn("p07Artifacts")
 }
 
+val validateP09Security by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the P09 Keystore/Tink/recovery-password, session, app-lock and privacy runtime."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p09_security.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("core/security/src") { include("**/*") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        fileTree("build-logic/src") { include("**/*.kt") },
+        "gradle/libs.versions.toml",
+        "core/security/build.gradle.kts",
+    )
+}
+
+tasks.register("p09Check") {
+    group = "verification"
+    description = "Runs P08 plus P09 security unit, architecture, static-policy and contract gates."
+    dependsOn(
+        "p08Check",
+        validateP09Security,
+        ":core:security:testDebugUnitTest",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+tasks.register("p09Artifacts") {
+    group = "verification"
+    description = "Generates P09-inclusive coverage and inherited auditable supply-chain artifacts."
+    dependsOn("p08Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

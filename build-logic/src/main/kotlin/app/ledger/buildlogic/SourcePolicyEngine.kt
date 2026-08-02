@@ -45,7 +45,8 @@ internal object SourcePolicyEngine {
     )
     private val sensitiveType = Regex(
         "(?i)\\b(Money|Amount|Transaction(?!Id)|CardNumber|Pan|Cvc|Cvv|Password|Secret|" +
-            "LocationSnapshot|Attachment(Content|Bytes)?|ByteArray)\\b",
+            "RecoveryPassword|SecretBytes|SensitivePlaintext|VaultFieldCiphertext|DeviceLedgerKeys|" +
+            "RecoveryWrappedKeyMaterial|LocationSnapshot|Attachment(Content|Bytes)?|ByteArray)\\b",
     )
     private val anyClass = Regex("(?:data\\s+|value\\s+)?class\\s+(\\w+)\\s*\\(")
     private val stateClass = Regex("(?:data\\s+|value\\s+)?class\\s+(\\w*(?:Route|SavedState)\\w*)\\s*\\(")
@@ -111,6 +112,15 @@ internal object SourcePolicyEngine {
             Regex("(?m)^import\\s+(?:app\\.ledger\\..*\\.(?:data|database)(?:\\.|$)|androidx\\.room(?:\\.|$))")
                 .findAll(source)
                 .forEach { report("ARCH-FEATURE-DATA", it, "feature source imports a data/Room API") }
+            Regex("(?m)^import\\s+app\\.ledger\\.core\\.security(?:\\.|$)")
+                .findAll(source)
+                .forEach {
+                    report(
+                        "ARCH-FEATURE-SECURITY",
+                        it,
+                        "feature source cannot obtain keys, database sessions, or headless security leases",
+                    )
+                }
             Regex(
                 "(?m)^import\\s+androidx\\.compose\\.material3\\.(?:\\*|$GOVERNED_MATERIAL_COMPONENT)\\b|" +
                     "androidx\\.compose\\.material3\\.(?:$GOVERNED_MATERIAL_COMPONENT)\\b",
@@ -206,6 +216,16 @@ internal object SourcePolicyEngine {
         }
 
         findings += authoritativeMoneyFindings(normalizedPath, source)
+
+        Regex("(?i)\\b(?:password|pan|cardNumber|cvc|cvv)\\s*:\\s*String\\b")
+            .findAll(source)
+            .forEach {
+                report(
+                    "PRIVACY-RAW-SECRET",
+                    it,
+                    "passwords and complete payment-card secrets require bounded non-String wrappers",
+                )
+            }
 
         val telemetryContext = normalizedPath.contains("/telemetry/") ||
             Regex("(?i)\\b(?:class|object|interface)\\s+\\w*Telemetry\\w*|\\b\\w*Telemetry\\w*\\s*\\.")
@@ -314,7 +334,12 @@ internal object SourcePolicyEngine {
                 .findAll(source)
                 .forEach { report("DETERMINISM-CLOCK", it, "inject the project clock instead of reading system time") }
         }
-        Regex("\\b(?:UUID\\.randomUUID\\s*\\(|Random\\.Default\\b|SecureRandom\\s*\\()")
+        val directRandom = if (normalizedPath.startsWith("core/security/src/main/")) {
+            Regex("\\b(?:UUID\\.randomUUID\\s*\\(|Random\\.Default\\b)")
+        } else {
+            Regex("\\b(?:UUID\\.randomUUID\\s*\\(|Random\\.Default\\b|SecureRandom\\s*\\()")
+        }
+        directRandom
             .findAll(source)
             .forEach { report("DETERMINISM-ID", it, "inject the project ID/random source") }
 

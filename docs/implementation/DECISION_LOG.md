@@ -291,3 +291,32 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: comparing only stored version columns cannot detect a value corruption, and a naive concatenated-row digest permits ambiguous byte boundaries.
 - Decision: serialize every P08 derived table in stable key order with table names, SQLite value types and length prefixes. During audit, compute the live hash, rebuild inside a savepoint, compute the rebuilt hash and roll the savepoint back. The explicit maintenance rebuild replaces derived state atomically and runs integrity/version/count checks before returning the book to ready state.
 - Consequence: projections are reproducibly auditable from authoritative normalized facts without mutating the live database during an audit. Device tests corrupt one projection value, detect the mismatch, rebuild it and recover the original hash.
+
+## DL-040 — P09 pins stable security-library releases without changing the frozen stack
+
+- Date/stage: 2026-08-02 / P09
+- Surface issue: the frozen stack names Tink, Bouncy Castle and AndroidX Biometric but only freezes Tink's version; the other two release lines remain time-sensitive.
+- Decision: retain frozen Tink `1.23.0`, select stable Bouncy Castle `1.84` and stable AndroidX Biometric `1.1.0`. Do not adopt the Biometric alpha line merely for newer API shape. All three enter strict dependency locking and SHA-256 verification.
+- Consequence: P09 uses only the prescribed primitives with reproducible artifacts. A future version change requires an explicit dependency and device-security replay, not a silent catalog update.
+
+## DL-041 — Auth-bound Keystore AAD starts only after the CryptoObject is authenticated
+
+- Date/stage: 2026-08-02 / P09
+- Surface issue: AES-GCM associated data must bind the Vault DEK envelope, but on the real API 36 Keystore an `updateAAD` call before `BiometricPrompt` starts the auth-required operation too early. The prompt can report success while `doFinal` then fails with `KEY_USER_NOT_AUTHENTICATED`.
+- Decision: initialize the exact auth-per-use `Cipher`, pass it untouched in `BiometricPrompt.CryptoObject`, verify object identity after success, then submit canonical associated data and payload to that same authenticated operation. Request cancellation/consumption zeroizes its AAD and secret material.
+- Consequence: neither AAD integrity nor per-action authentication is weakened. A device test first reproduced the failure and then proved two separate PIN-authenticated vault operations after the corrected ordering.
+
+## DL-042 — App lock revokes UI access while headless work holds only a closed capability
+
+- Date/stage: 2026-08-02 / P09
+- Surface issue: architecture says app lock is UI access control and must not stop legitimate recurrence/backup work, while a background lease must not become a route to a database, DAO or key.
+- Decision: UI and headless references share the manager-owned encrypted database resource but have independent counts. Locking clears vault plaintext and the UI reference; an already-authorized headless lease keeps only its opaque operation ID and closed capability. Maintenance admits only its explicit read/maintenance subset, and features are statically barred from `:core:security` capabilities.
+- Consequence: background work can continue while the visible app is locked without converting app lock into cryptographic key policy or exposing general database authority. Later Workers must receive such leases from composition roots, never construct or persist them.
+
+## DL-043 — Vault biometric changes preserve the frozen device-credential fallback
+
+- Date/stage: 2026-08-02 / P09
+- Surface issue: a real API 36 `KeyInfo` check reported `invalidatedByBiometricEnrollment=false` for the vault key despite requesting enrollment invalidation. Android does not apply biometric-enrollment invalidation when a key also authorizes `AUTH_DEVICE_CREDENTIAL`; asserting otherwise would record false platform evidence.
+- Precedence applied: REQ-077 and architecture §16.1 explicitly permit every vault action through strong biometric **or** device credential. That frozen recovery path outranks an implementation preference to invalidate a biometric-only key on enrollment changes.
+- Decision: keep a zero-second authentication window with both authenticator types, explicitly disable enrollment invalidation, and classify the framework's no-biometric result as the closed, non-sensitive `DEVICE_SECURITY_CHANGED` disposition. Actual-device tests inspect the combined key policy, perform two separately authenticated actions, and prove that removing the device credential blocks the next action. They do not claim a physical biometric enrollment transition that the managed device did not perform.
+- Consequence: biometric configuration changes cannot silently authorize a vault action or leak framework details, while the required device-credential fallback remains usable. A future biometric-only policy would be a frozen-requirement change and would need separate enrollment/invalidation device evidence.

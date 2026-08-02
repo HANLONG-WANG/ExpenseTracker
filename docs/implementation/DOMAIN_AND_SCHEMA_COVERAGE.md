@@ -1,8 +1,8 @@
 # Domain and Schema Coverage Baseline
 
 Last updated: 2026-08-02 (Asia/Tokyo)
-Stage: P08
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P08 verifies the Room/SQLCipher repository transaction, synchronous projection/audit and typed query foundation; security-key adapters, feature behavior and later-owned derived projections remain later scope.
+Stage: P09
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P09 verifies the separate production key hierarchies, authenticated vault cryptography, book-session/headless lifecycle and app-lock/privacy runtime; security UI, backup/restore execution and later feature behavior remain later scope.
 
 ## P05 domain/application result
 
@@ -23,6 +23,10 @@ API 36 device evidence creates, closes and reopens both databases, rejects a wro
 P08 implements the only application write entry, process-local write gate, complete normalized plan mapper and one Room-owned SQLCipher transaction spanning immutable facts, current pointers, synchronous projections, book revision and idempotency receipt. Persisted book/head/rule/expected-revision checks run again inside that transaction; five failure checkpoints prove no partial state.
 
 Current transactions, balance/daily, refund, budget/project/goal, credit/installment/loan, settlement, FTS/R*Tree and widget snapshots rebuild synchronously from authoritative state. Canonical savepoint audits and maintenance rebuilds prove deterministic reconstruction. Bound keyset, FTS-candidate and R*Tree-plus-Haversine query services establish the later feature query boundary. Exact field/table/port mapping is recorded in `P08_REPOSITORY_PROJECTION_MAPPING.md`.
+
+## P09 security-runtime result
+
+P09 separates DeviceLedgerKEK/database DEK/attachment root/security-settings keys from the authentication-bound VaultAuthenticationKEK/Vault DEK and the Argon2id recovery-password KEK. The production `BookSessionManager` owns the real SQLCipher lifecycle and exposes only capability-limited opaque headless leases; app lock controls UI access and never substitutes for per-action vault cryptographic authentication. Exact key, state, platform-test and later-stage boundaries are recorded in `P09_SECURITY_RUNTIME_MAPPING.md`.
 
 ## Architecture decisions
 
@@ -46,8 +50,8 @@ Source: `docs/规格冻结_v1.0/系统架构.md` §22, except ADR-007A from `doc
 | ADR-013 | Restore validates in a shadow directory before atomic exchange | IN_PROGRESS (`P05-E001`: validation/exchange contract) | Device fault-injection tests |
 | ADR-014 | Managed backups are logically full and physically incremental | IN_PROGRESS (`P05-E001`: snapshot/object graph contracts) | Repository retention/deduplication tests |
 | ADR-015 | Same-book merge uses stable IDs and a commit graph | IN_PROGRESS (`P05-E001`, `P05-E002`, `P07-E001`: commit parents entity changes tombstones merge sessions/conflicts/resolutions persisted; behavior remains P31) | Three-way merge and conflict tests |
-| ADR-016 | Ledger, vault and recovery-password key hierarchies are separate | NOT_STARTED | Keystore/Tink device security tests |
-| ADR-017 | App lock is UI access control; vault uses a cryptographic authentication gate | NOT_STARTED | Biometric/device-credential tests |
+| ADR-016 | Ledger, vault and recovery-password key hierarchies are separate | VERIFIED (`P09-E001`, `P09-E003`, `P09-E004`: DeviceLedgerKEK/database/attachment/settings, auth-bound Vault KEK/DEK and Argon2id recovery wrapping are independent) | Keystore/Tink device security tests |
+| ADR-017 | App lock is UI access control; vault uses a cryptographic authentication gate | VERIFIED (`P09-E001`, `P09-E002`, `P09-E004`: app lock drops UI access while each vault action uses a newly authenticated CryptoObject) | Biometric/device-credential tests |
 | ADR-018 | WorkManager carries only opaque operation IDs | IN_PROGRESS (`P05-E001`, `P05-E002`, `P07-E001`: encrypted operation parameters/checkpoints persist behind opaque operation UID; Worker remains later) | Static InputData privacy audit |
 | ADR-019 | Reports use a typed AST and never accept user SQL | IN_PROGRESS (`P05-E001`, `P05-E002`: closed `ReportSpec` AST; SQL compiler remains later) | Compiler whitelist/security tests |
 | ADR-020 | The domain model enforces the no-split-transaction limitation | IN_PROGRESS (`P05-E001`, `P05-E002`: compile-time closed category/payer/project shapes; import/report integration remains later) | Domain/import/report contract tests |

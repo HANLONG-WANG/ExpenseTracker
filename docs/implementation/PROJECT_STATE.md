@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-02 (Asia/Tokyo)
-Current stage: P08 — Repository, FinancialMutationCoordinator, synchronous projections and query foundation
-Stage status: VERIFIED (`P08-E001`—`P08-E006`); P00—P08 are complete and P09 is the next unstarted stage
+Current stage: P09 — Key hierarchy, book sessions, app lock and secure runtime
+Stage status: VERIFIED (`P09-E001`—`P09-E006`); P00—P09 are complete and P10 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -176,13 +176,26 @@ P07 adds no repository implementation, DAO-to-domain mapper, projection rebuild 
 
 P08 creates no feature page, Worker/import execution, later analytics/valuation projection, widget runtime or physical purge workflow. `P08_REPOSITORY_PROJECTION_MAPPING.md` records the exact implementation boundary. All 215 screen rows remain `NOT_STARTED`, and P09+ is not promoted.
 
+### P09 result
+
+| Area | P09 result | Classification |
+|---|---|---|
+| Separate key hierarchies | DeviceLedgerKEK wraps the SQLCipher DEK, attachment root and secure-settings key; VaultAuthenticationKEK wraps only the Vault DEK; Argon2id derives an independent recovery-password KEK with versioned calibrated parameters | VERIFIED (`P09-E001`, `P09-E003`, `P09-E004`) |
+| Cryptographic primitives | Tink AES-256-GCM and 1 MiB-segment AES-GCM-HKDF Streaming AEAD use canonical book/purpose/card/field/blob/schema/version associated data; secrets/passwords use defensive bounded wrappers and zeroization | VERIFIED (`P09-E001`, `P09-E002`) |
+| Book runtime | `BookSessionManager` owns production SQLCipher open/inspect/close across Locked/Opening/Maintenance/RecoveryRequired/Ready; opaque capability-limited headless leases keep background access separate from UI unlock | VERIFIED on JVM and API 36 (`P09-E001`, `P09-E003`) |
+| Vault authentication | Every provision/reveal/copy/edit/export request binds one exact `Cipher` to `BiometricPrompt.CryptoObject`; security-code copy is absent, plaintext expires after 30 seconds and clears on background/app lock | VERIFIED with real device credential on API 36 (`P09-E001`, `P09-E004`) |
+| App lock and screen privacy | App lock defaults off, requires authentication to enable, uses monotonic immediate/1/5/15 minute or bounded custom timeouts, obscures recents and supports optional global `FLAG_SECURE` without weakening mandatory vault protection | VERIFIED as P09 runtime policy (`P09-E001`, `P09-E002`); UI/lifecycle wiring remains P32 |
+| Fail-closed governance | Missing/deleted keys enter recovery instead of regeneration; feature sources cannot obtain security capabilities; raw secret Strings, security wrappers in SavedState, ordinary logging and telemetry maps remain statically rejected | VERIFIED (`P09-E002`, `P09-E003`, `P09-E005`) |
+
+P09 implements no SessionGate/settings/vault/backup/restore/clear-data screen, backup transport, restore/merge flow, telemetry queue or production Worker wiring. `P09_SECURITY_RUNTIME_MAPPING.md` records the exact boundary. All 215 screen rows remain `NOT_STARTED`, and P10+ is not promoted.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-085` is `VERIFIED`; 65 requirements are `IN_PROGRESS` for accurately scoped foundations; 24 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-085` is `VERIFIED`; 71 requirements are `IN_PROGRESS` for accurately scoped foundations; 18 remain `NOT_STARTED` |
 | YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All `NOT_STARTED`; baseline rows created only |
-| Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-010 except ADR-007A are `VERIFIED`; ADR-007A, ADR-011—015 and ADR-018—020 are `IN_PROGRESS`; ADR-016/017 remain `NOT_STARTED` |
+| Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-010 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-011—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
 | Permanent domain invariants | 35 | `INV-034` `VERIFIED` remains the checked-arithmetic anchor; `INV-002`, `INV-005`, `INV-006`, `INV-007`, `INV-016` and `INV-031` are also `VERIFIED`; 28 retain later evidence |
 | Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; P08 verifies normalized financial plan mapping and atomic repository behavior |
@@ -202,19 +215,19 @@ P08 creates no feature page, Worker/import execution, later analytics/valuation 
 | P06 | VERIFIED | Deterministic 11-rule accounting planner, immutable reversal lifecycle, exact FX/effect/hash paths, idempotency/conflict checks and 25 accounting-core invariant mappings pass; see `P06-E001`—`P06-E006` |
 | P07 | VERIFIED | Complete Room/SQLCipher Schema v1, independent encrypted staging, migrations, capabilities, WAL/temp leakage and API 36 device contracts pass; see `P07-E001`—`P07-E006` |
 | P08 | VERIFIED | One Room/SQLCipher transaction, coordinator-only write entry, synchronous projection rebuild/audit and typed keyset/FTS/R*Tree queries pass; see `P08-E001`—`P08-E006` |
-| P09—P36 | NOT_STARTED | P09 is the next execution stage; do not promote later work early |
+| P09 | VERIFIED | Separate production key hierarchies, real SQLCipher book sessions, authenticated vault CryptoObjects, app-lock/privacy runtime and API 36 Keystore/device-credential tests pass; see `P09-E001`—`P09-E006` |
+| P10—P36 | NOT_STARTED | P10 is the next execution stage; do not promote later work early |
 
-## P09 entry state
+## P10 entry state
 
-P08 leaves the repository at a verified atomic application/data boundary. Its completion commands are:
+P09 leaves the repository at a verified device-local security and database-session boundary. Its completion commands are:
 
 ```text
-python3 scripts/validate_p08_data.py
-python3 -m unittest scripts.tests.test_p08_data_contracts -v
-python3 scripts/prove_source_policy_rejection.py
-./gradlew :core:database:pixel6Api36DebugAndroidTest :finance:data:pixel6Api36DebugAndroidTest --no-configuration-cache --no-parallel --dependency-verification=strict --console=plain
-./gradlew p08Check --configuration-cache --no-parallel --dependency-verification=strict --console=plain
-./gradlew p08Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+python3 scripts/validate_p09_security.py
+python3 -m unittest scripts.tests.test_p09_security_contracts -v
+./gradlew :core:security:pixel6Api36DebugAndroidTest --no-configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew p09Check --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew p09Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
 ```
 
-All commands and final hygiene gates pass in `P08-E001`—`P08-E006`. P09 may implement the production key hierarchy and database-open security integration against this single repository boundary; it must not introduce a plaintext database, bypass the write gate or infer UI completion from persistence capability. All 215 screen implementations remain `NOT_STARTED`.
+All commands and final hygiene gates pass in `P09-E001`—`P09-E006`. P10 may build only on the opaque session/security capabilities and must not expose a DEK, database resource, vault plaintext or headless database authority to feature code. All 215 screen implementations remain `NOT_STARTED`.

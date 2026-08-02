@@ -117,6 +117,24 @@ class SourcePolicyEngineTest {
     }
 
     @Test
+    fun `rejects feature access to security capabilities and raw secret strings`() {
+        val rules = scan(
+            "feature/settings/src/main/kotlin/UnsafeSecurity.kt",
+            """
+                import app.ledger.core.security.HeadlessBookLease
+                data class VaultDraftSavedState(val plaintext: SensitivePlaintext)
+                fun recover(password: String): String = password
+            """.trimIndent(),
+        )
+
+        rules.shouldContainAll(
+            "ARCH-FEATURE-SECURITY",
+            "PRIVACY-ROUTE-STATE",
+            "PRIVACY-RAW-SECRET",
+        )
+    }
+
+    @Test
     fun `rejects financial DAO writes outside coordinator`() {
         scan(
             "feature/record/src/main/kotlin/Save.kt",
