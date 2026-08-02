@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="record_location_title">Location</string>
+    <string name="record_location_use">Use this location</string>
+    <string name="record_location_adjust">Adjust</string>
+    <string name="record_location_permission_denied">Location permission was not granted. You can still select manually or save without a location.</string>
+    <string name="record_location_permission_action">Permission settings</string>
+    <string name="record_location_timeout">The 3-second location wait ended. This record will have no location and will not be updated later.</string>
+    <string name="record_location_map_unavailable">The map is unavailable. You can still save the record.</string>
+    <string name="record_location_place_label">Place</string>
+    <string name="record_location_place_offline_note">Selects only saved local places; no online search or reverse geocoding.</string>
+    <string name="record_attachments_title">Attachments</string>
+    <string name="record_attachments_empty_title">No attachments</string>
+    <string name="record_attachments_empty_message">Add a file of any type through the system file picker.</string>
+    <string name="record_attachments_add">Add attachment</string>
+    <string name="record_attachments_failed">Import failed (%1$s). No incomplete file was referenced.</string>
+    <string name="record_attachments_retry">Retry</string>
+</resources>

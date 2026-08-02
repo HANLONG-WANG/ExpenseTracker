@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="record_location_title">位置</string>
+    <string name="record_location_use">使用此位置</string>
+    <string name="record_location_adjust">调整</string>
+    <string name="record_location_permission_denied">未授予位置权限，仍可手动选择或不保存位置。</string>
+    <string name="record_location_permission_action">权限设置</string>
+    <string name="record_location_timeout">定位等待已到 3 秒上限。本次将不保存位置，也不会稍后补写。</string>
+    <string name="record_location_map_unavailable">地图暂不可用，不影响保存记账内容。</string>
+    <string name="record_location_place_label">地点</string>
+    <string name="record_location_place_offline_note">仅选择本地已保存地点，不进行在线搜索或反向地理编码。</string>
+    <string name="record_attachments_title">附件</string>
+    <string name="record_attachments_empty_title">暂无附件</string>
+    <string name="record_attachments_empty_message">可从系统文件选择器添加任意格式文件。</string>
+    <string name="record_attachments_add">添加附件</string>
+    <string name="record_attachments_failed">导入失败（%1$s）。未引用不完整文件。</string>
+    <string name="record_attachments_retry">重试</string>
+</resources>

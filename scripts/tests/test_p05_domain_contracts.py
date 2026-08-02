@@ -52,7 +52,7 @@ class P05DomainContractMutationTest(unittest.TestCase):
         mutated = self.mutate("BudgetProjectGoal.kt", "data class Goal(\n", "data class RemovedGoal(\n")
         self.assertTrue(any("Goal" in error for error in validate_source_contract(mutated)))
 
-    def test_rejects_requirement_promotion_or_missing_p05_evidence(self) -> None:
+    def test_rejects_requirement_regression_or_missing_p05_evidence(self) -> None:
         fieldnames = [
             "requirement_id",
             "source_section",
@@ -75,7 +75,7 @@ class P05DomainContractMutationTest(unittest.TestCase):
                     key: (
                         requirement_id
                         if key == "requirement_id"
-                        else "VERIFIED"
+                        else "NOT_STARTED"
                         if key == "status" and requirement_id in TARGET_REQUIREMENTS
                         else "P05"
                         if key == "implementation_evidence"

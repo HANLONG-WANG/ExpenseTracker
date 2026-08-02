@@ -141,13 +141,22 @@ private fun LibraryExtension.configureAndroidLibrary(project: Project) {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    if (project.path == ":core:database" || project.path == ":core:security" || project.path == ":finance:data") {
+    if (project.path in DEVICE_TEST_LIBRARY_PATHS) {
         configureLibraryManagedDevices(includeMinSdk = false)
     }
     if (project.path == ":core:designsystem") {
         configureLibraryManagedDevices(includeMinSdk = true)
     }
 }
+
+private val DEVICE_TEST_LIBRARY_PATHS = setOf(
+    ":core:database",
+    ":core:security",
+    ":core:files",
+    ":core:geo",
+    ":finance:data",
+    ":feature:record",
+)
 
 class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
@@ -461,10 +470,13 @@ abstract class VerifyArchitectureTask : DefaultTask() {
             put(":core:navigation", setOf(":core:common"))
             put(":core:database", emptySet())
             put(":core:security", setOf(":core:common", ":core:database"))
-            put(":core:files", emptySet())
+            put(
+                ":core:files",
+                setOf(":core:common", ":core:database", ":core:designsystem", ":core:security", ":finance:application"),
+            )
             put(":core:network", emptySet())
             put(":core:background", emptySet())
-            put(":core:geo", emptySet())
+            put(":core:geo", setOf(":core:common", ":core:designsystem", ":finance:application"))
             put(":core:telemetry", emptySet())
             put(":core:testing", emptySet())
             put(":finance:domain", setOf(":core:common", ":core:money", ":core:time"))

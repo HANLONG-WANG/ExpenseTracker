@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="attachment_secure_image_description">安全な画像プレビュー</string>
+    <string name="attachment_preview_unsupported">このファイルはアプリ内でプレビューできません。メタデータを確認するか、確認後に別のアプリで開けます。</string>
+    <string name="attachment_decrypt_error_title">添付ファイルを開けません</string>
+    <string name="attachment_decrypt_error_message">暗号化された内容を検証または読み取れませんでした。</string>
+    <string name="attachment_metadata_title">ファイル情報</string>
+    <string name="attachment_rename_action">名前を変更</string>
+    <string name="attachment_external_open_action">別のアプリで開く</string>
+    <string name="attachment_external_open_title">別のアプリで開く</string>
+    <string name="attachment_external_open_risk">ファイルは一度限りの許可で別のアプリに渡されます。移動先アプリのプライバシー動作は本アプリでは管理できません。</string>
+    <string name="attachment_external_open_confirm">続ける</string>
+    <string name="attachment_rename_title">添付ファイル名を変更</string>
+    <string name="attachment_rename_confirm">名前を保存</string>
+    <string name="attachment_display_name_label">表示名</string>
+    <string name="attachment_display_name_invalid">有効な表示名を入力してください</string>
+</resources>

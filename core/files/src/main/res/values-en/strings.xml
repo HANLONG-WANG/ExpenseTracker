@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="attachment_secure_image_description">Secure image preview</string>
+    <string name="attachment_preview_unsupported">This file cannot be previewed here. You can inspect its metadata or confirm opening it in another app.</string>
+    <string name="attachment_decrypt_error_title">Attachment unavailable</string>
+    <string name="attachment_decrypt_error_message">The encrypted content could not be verified or read.</string>
+    <string name="attachment_metadata_title">File information</string>
+    <string name="attachment_rename_action">Rename</string>
+    <string name="attachment_external_open_action">Open in another app</string>
+    <string name="attachment_external_open_title">Open in another app</string>
+    <string name="attachment_external_open_risk">The file will be provided to another app through a one-time grant. This app cannot control the other app’s privacy behavior.</string>
+    <string name="attachment_external_open_confirm">Continue</string>
+    <string name="attachment_rename_title">Rename attachment</string>
+    <string name="attachment_rename_confirm">Save name</string>
+    <string name="attachment_display_name_label">Display name</string>
+    <string name="attachment_display_name_invalid">Enter a valid display name</string>
+</resources>

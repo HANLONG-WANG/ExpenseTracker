@@ -457,6 +457,60 @@ tasks.register("p09Artifacts") {
     dependsOn("p08Artifacts")
 }
 
+val validateP10FilesGeo by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P10 encrypted attachments, foreground location, MapLibre and required UI states."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p10_files_geo.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("core/files/src") { include("**/*") },
+        fileTree("core/geo/src") { include("**/*") },
+        fileTree("feature/record/src") { include("**/*") },
+        fileTree("core/security/src/main") { include("**/*.kt") },
+        fileTree("finance/application/src/main") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+        "gradle/libs.versions.toml",
+        "core/files/build.gradle.kts",
+        "core/geo/build.gradle.kts",
+    )
+}
+
+val p10Check = tasks.register("p10Check") {
+    group = "verification"
+    description = "Runs P09 plus all P10 JVM, static, lint, API 36 device/UI and contract gates."
+    dependsOn(
+        "p09Check",
+        validateP10FilesGeo,
+        ":core:files:testDebugUnitTest",
+        ":core:geo:testDebugUnitTest",
+        ":core:files:lintDebug",
+        ":core:geo:lintDebug",
+        ":feature:record:lintDebug",
+        ":core:files:pixel6Api36DebugAndroidTest",
+        ":core:geo:pixel6Api36DebugAndroidTest",
+        ":feature:record:pixel6Api36DebugAndroidTest",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+gradle.projectsEvaluated {
+    val filesDevice = project(":core:files").tasks.named("pixel6Api36DebugAndroidTest")
+    val geoDevice = project(":core:geo").tasks.named("pixel6Api36DebugAndroidTest")
+    val recordDevice = project(":feature:record").tasks.named("pixel6Api36DebugAndroidTest")
+    geoDevice.configure { mustRunAfter(filesDevice) }
+    recordDevice.configure { mustRunAfter(geoDevice) }
+    p10Check.configure { dependsOn(filesDevice, geoDevice, recordDevice) }
+}
+
+tasks.register("p10Artifacts") {
+    group = "verification"
+    description = "Generates P10-inclusive coverage and inherited auditable supply-chain artifacts."
+    dependsOn("p09Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

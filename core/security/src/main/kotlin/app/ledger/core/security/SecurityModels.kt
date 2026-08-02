@@ -193,6 +193,16 @@ object SecurityAssociatedData {
         return canonical("attachment-data-key", bookId.bytes, blobId.bytes, encryptionVersion)
     }
 
+    fun attachmentContent(bookId: StableId, blobId: StableId, encryptionVersion: Int): ByteArray {
+        require(encryptionVersion > 0)
+        return canonical("attachment-content", bookId.bytes, blobId.bytes, encryptionVersion)
+    }
+
+    fun attachmentThumbnail(bookId: StableId, blobId: StableId, encryptionVersion: Int): ByteArray {
+        require(encryptionVersion > 0)
+        return canonical("attachment-thumbnail", bookId.bytes, blobId.bytes, encryptionVersion)
+    }
+
     private fun canonical(domain: String, vararg values: Any): ByteArray = ByteArrayOutputStream().use { bytes ->
         DataOutputStream(bytes).use { output ->
             output.writeInt(FORMAT_VERSION)

@@ -55,6 +55,32 @@ class SourcePolicyEngineTest {
     }
 
     @Test
+    fun `rejects P10 SDK bypass background location and shared plaintext storage`() {
+        val featureRules = scan(
+            "feature/record/src/main/kotlin/UnsafeInfrastructure.kt",
+            """
+                import app.ledger.core.files.EncryptedAttachmentObjectStore
+                import coil3.ImageLoader
+                import com.google.android.gms.location.LocationServices
+                import org.maplibre.android.maps.MapView
+                val permission = Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            """.trimIndent(),
+        )
+        val fileRules = scan(
+            "core/files/src/main/kotlin/UnsafePlaintext.kt",
+            "val plaintext = context.getExternalFilesDir(null)",
+        )
+
+        featureRules.shouldContainAll(
+            "ARCH-FEATURE-INFRASTRUCTURE",
+            "ARCH-ATTACHMENT-SDK",
+            "ARCH-GEO-SDK",
+            "PRIVACY-BACKGROUND-LOCATION",
+        )
+        fileRules.shouldContain("PRIVACY-FILES-SHARED-STORAGE")
+    }
+
+    @Test
     fun `allows only fixed semantic test tags`() {
         val findings = SourcePolicyEngine.scan(
             "core/designsystem/src/main/kotlin/Tags.kt",

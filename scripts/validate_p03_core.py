@@ -113,8 +113,18 @@ def validate() -> dict[str, int]:
         raise AssertionError("P03 requirement rows must retain implementation and verification evidence")
 
     screens = read_csv(ROOT / "docs/implementation/SCREEN_COVERAGE.csv")
-    if len(screens) != 215 or {row["status"] for row in screens} != {"NOT_STARTED"}:
-        raise AssertionError("P03 must not promote page implementation coverage")
+    p10_promotions = {
+        "REC-009": "IN_PROGRESS",
+        "REC-010": "IN_PROGRESS",
+        "ATT-001": "VERIFIED",
+        "ATT-002": "VERIFIED",
+        "ATT-003": "VERIFIED",
+        "SYS-001": "VERIFIED",
+    }
+    if len(screens) != 215 or any(
+        row["status"] != p10_promotions.get(row["screen_id"], "NOT_STARTED") for row in screens
+    ):
+        raise AssertionError("screen coverage contains a promotion outside the completed P10 scope")
 
     project_state = (ROOT / "docs/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
     domain_coverage = (ROOT / "docs/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md").read_text(encoding="utf-8")
@@ -133,7 +143,8 @@ def validate() -> dict[str, int]:
         "production_files": len(production_files),
         "authoritative_money_files": len(money_files),
         "tracked_requirements": len(tracked),
-        "screens_unstarted": len(screens),
+        "screens_total": len(screens),
+        "p10_promoted_screens": len(p10_promotions),
     }
 
 

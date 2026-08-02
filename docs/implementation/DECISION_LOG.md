@@ -320,3 +320,46 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Precedence applied: REQ-077 and architecture §16.1 explicitly permit every vault action through strong biometric **or** device credential. That frozen recovery path outranks an implementation preference to invalidate a biometric-only key on enrollment changes.
 - Decision: keep a zero-second authentication window with both authenticator types, explicitly disable enrollment invalidation, and classify the framework's no-biometric result as the closed, non-sensitive `DEVICE_SECURITY_CHANGED` disposition. Actual-device tests inspect the combined key policy, perform two separately authenticated actions, and prove that removing the device credential blocks the next action. They do not claim a physical biometric enrollment transition that the managed device did not perform.
 - Consequence: biometric configuration changes cannot silently authorize a vault action or leak framework details, while the required device-credential fallback remains usable. A future biometric-only policy would be a frozen-requirement change and would need separate enrollment/invalidation device evidence.
+
+## DL-044 — Attachment ports carry reopenable streams, never byte arrays or physical paths
+
+- Date/stage: 2026-08-02 / P10
+- Surface issue: the P05 attachment port contained only logical metadata, while P10 must stream arbitrarily large SAF content, retry thumbnail decoding and avoid exposing a filesystem path or whole-file byte array across the application boundary.
+- Decision: extend the existing application port with `AttachmentContentSource.openStream()` and optional declared size. The object-store adapter owns `ContentResolver` and app-private paths; callers receive only typed attachment/blob IDs, size and hash receipt evidence.
+- Consequence: large content remains bounded-memory and testable, and no feature, route or SavedState gains a URI/path/plaintext capability. This completes the previously declared P05 external port without changing domain accounting semantics.
+
+## DL-045 — Encrypted object publication precedes metadata commit and interrupted orphans are recoverable
+
+- Date/stage: 2026-08-02 / P10
+- Surface issue: filesystem rename and SQLCipher commit cannot share one transaction. Committing metadata first can create a missing-file reference, while moving the encrypted object first can leave an orphan after a database failure.
+- Decision: stream to a private staging file, fsync, atomically move the encrypted object, then commit blob/attachment metadata. Any in-process failure deletes unpublished staging/final objects; startup recovery deletes staging and random object families absent from the encrypted catalog. GC independently rechecks current, historical and backup references.
+- Consequence: the authoritative database never commits a reference to a missing object. A process death can leave only an unreferenced encrypted orphan, which is safe and deterministically reclaimable; no plaintext staging exists.
+
+## DL-046 — External attachment access is a confirmation-bound one-time pipe capability
+
+- Date/stage: 2026-08-02 / P10
+- Surface issue: ordinary `FileProvider` sharing would require a decrypted file, and a reusable content URI would outlive the explicit risk confirmation required by ATT-002.
+- Decision: a non-exported `SecureAttachmentProvider` issues a 192-bit opaque URI only from a consumed confirmation object, expires it after 60 seconds, consumes it on the first read, revokes the URI grant and decrypts directly into a reliable pipe. App lock invalidates every pending grant and clears Coil memory.
+- Consequence: receiving apps obtain only the confirmed stream; the ledger retains no long-lived plaintext copy or reusable share link. Physical names, hashes and paths remain absent from the intent and UI.
+
+## DL-047 — Location capture owns one monotonic save budget and never supplements later
+
+- Date/stage: 2026-08-02 / P10
+- Surface issue: REC-009 may prefetch before Save, but REQ-054 caps the save wait at three seconds and explicitly prohibits a later background location write.
+- Decision: `ForegroundLocationSaveSession` starts one monotonic three-second budget, reuses a prefetched deferred result, waits only the remaining time and cancels on timeout. Fused Location Provider falls back to `LocationManager`; only the foreground coarse/fine permissions exist. Coordinates are frozen as checked E7 values before entering the application port.
+- Consequence: denial, timeout, missing Play services and provider failure all continue saving without location. There is no Worker, alarm, background permission or supplement callback capable of mutating the saved transaction later.
+
+## DL-048 — MapLibre remains a core implementation detail with deterministic local-style device tests
+
+- Date/stage: 2026-08-02 / P10
+- Surface issue: production maps need online HTTPS styles, while required lifecycle/overlay/accessibility tests must not depend on external network availability or leak MapLibre types into feature modules.
+- Decision: `LedgerMapStyleConfiguration` accepts closed HTTPS/asset/inline-JSON style sources. Production defaults use OpenFreeMap with explicit attribution; API 36 tests use a minimal inline style while exercising the actual MapLibre renderer, lifecycle and all overlay modes. MapLibre is an `implementation` dependency of `:core:geo`; feature imports are statically rejected.
+- Consequence: tests are deterministic without substituting a fake SDK, attribution remains visible, and later analytics features consume only `LedgerMap` plus accessible rows. The map failure path is always the contract data-table fallback.
+
+## DL-049 — Lifecycle Compose stays on the compileSdk-36-compatible stable line
+
+- Date/stage: 2026-08-02 / P10
+- Surface issue: the current stable Lifecycle 2.11 line requires compileSdk 37, while the frozen project toolchain is compile/target SDK 36 and P10 needs `LocalLifecycleOwner` for MapLibre ownership.
+- Precedence applied: the frozen SDK 36 toolchain outranks adopting a newer library that raises the compile SDK.
+- Decision: pin stable Lifecycle 2.9.4 for `lifecycle-runtime-compose`; retain MapLibre 13.4.1, Coil 3.5.0 and Play Services Location 21.3.0. Do not raise compileSdk or use an alpha workaround.
+- Consequence: the required lifecycle API is available without changing the frozen Android baseline. Any future Lifecycle upgrade must first be compatible with the owning toolchain stage and replay the MapLibre device lifecycle suite.

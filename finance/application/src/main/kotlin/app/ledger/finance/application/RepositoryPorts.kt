@@ -45,6 +45,7 @@ import app.ledger.finance.domain.TransactionId
 import app.ledger.finance.domain.TransactionRevision
 import app.ledger.finance.domain.UserAccount
 import app.ledger.finance.domain.UserAccountId
+import java.io.InputStream
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -171,7 +172,27 @@ data class CapturedLocation(
     val longitudeE7: Int,
     val accuracyMillimeters: Int?,
     val capturedAt: Instant,
-)
+    val provider: CapturedLocationProvider,
+) {
+    init {
+        require(latitudeE7 in MIN_LATITUDE_E7..MAX_LATITUDE_E7)
+        require(longitudeE7 in MIN_LONGITUDE_E7..MAX_LONGITUDE_E7)
+        require(accuracyMillimeters == null || accuracyMillimeters >= 0)
+    }
+
+    private companion object {
+        const val MIN_LATITUDE_E7 = -900_000_000
+        const val MAX_LATITUDE_E7 = 900_000_000
+        const val MIN_LONGITUDE_E7 = -1_800_000_000
+        const val MAX_LONGITUDE_E7 = 1_800_000_000
+    }
+}
+
+enum class CapturedLocationProvider {
+    FUSED,
+    GPS,
+    NETWORK,
+}
 
 fun interface ForegroundLocationPort {
     suspend fun capture(deadline: Instant): DomainResult<CapturedLocation?>
@@ -181,7 +202,18 @@ data class AttachmentImportRequest(
     val displayName: String,
     val mimeType: String?,
     val extension: String?,
-)
+    val declaredSize: Long?,
+    val content: AttachmentContentSource,
+) {
+    init {
+        require(declaredSize == null || declaredSize >= 0L)
+    }
+}
+
+/** Reopenable plaintext source consumed only by the encrypted attachment infrastructure. */
+fun interface AttachmentContentSource {
+    fun openStream(): InputStream
+}
 
 data class AttachmentImportReceipt(
     val attachmentId: AttachmentId,

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="record_location_title">場所</string>
+    <string name="record_location_use">この場所を使用</string>
+    <string name="record_location_adjust">調整</string>
+    <string name="record_location_permission_denied">位置情報の権限がありません。手動選択、または場所なしで保存できます。</string>
+    <string name="record_location_permission_action">権限設定</string>
+    <string name="record_location_timeout">位置情報の待機が3秒で終了しました。今回は場所を保存せず、後から追記もしません。</string>
+    <string name="record_location_map_unavailable">地図を利用できません。記帳内容は保存できます。</string>
+    <string name="record_location_place_label">場所</string>
+    <string name="record_location_place_offline_note">保存済みの場所のみ選択し、オンライン検索や逆ジオコーディングは行いません。</string>
+    <string name="record_attachments_title">添付ファイル</string>
+    <string name="record_attachments_empty_title">添付ファイルはありません</string>
+    <string name="record_attachments_empty_message">システムのファイル選択から任意形式のファイルを追加できます。</string>
+    <string name="record_attachments_add">添付ファイルを追加</string>
+    <string name="record_attachments_failed">取り込みに失敗しました（%1$s）。不完全なファイルは参照されていません。</string>
+    <string name="record_attachments_retry">再試行</string>
+</resources>

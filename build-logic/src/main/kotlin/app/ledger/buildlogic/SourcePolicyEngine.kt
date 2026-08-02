@@ -38,9 +38,14 @@ internal object SourcePolicyEngine {
         "secret",
         "latitude",
         "longitude",
+        "coordinates",
         "location",
         "address",
         "attachment",
+        "filepath",
+        "path",
+        "hash",
+        "uri",
         "transaction",
     )
     private val sensitiveType = Regex(
@@ -157,6 +162,50 @@ internal object SourcePolicyEngine {
             )
                 .findAll(source)
                 .forEach { report("FINANCE-WRITE-PORT", it, "feature source may depend only on the financial command handler/use case") }
+            Regex("(?m)^import\\s+app\\.ledger\\.core\\.(?:files|geo)(?:\\.|$)")
+                .findAll(source)
+                .forEach {
+                    report(
+                        "ARCH-FEATURE-INFRASTRUCTURE",
+                        it,
+                        "feature source must consume attachment/location application ports or injected UI boundaries",
+                    )
+                }
+        }
+
+        Regex("\\bManifest\\.permission\\.ACCESS_BACKGROUND_LOCATION\\b|\\bACCESS_BACKGROUND_LOCATION\\b")
+            .findAll(source)
+            .forEach {
+                report(
+                    "PRIVACY-BACKGROUND-LOCATION",
+                    it,
+                    "background location permission is outside the foreground-only location contract",
+                )
+            }
+
+        if (!normalizedPath.startsWith("core/files/src/main/")) {
+            Regex("(?m)^import\\s+coil3(?:\\.|$)")
+                .findAll(source)
+                .forEach { report("ARCH-ATTACHMENT-SDK", it, "Coil attachment integration is owned by core:files") }
+        } else {
+            Regex(
+                "\\bEnvironment\\.getExternalStorage|\\bMediaStore\\.|\\bgetExternalFilesDir\\s*\\(|" +
+                    "\\bexternalCacheDir\\b|\\bgetExternalCacheDir\\s*\\(",
+            )
+                .findAll(source)
+                .forEach {
+                    report(
+                        "PRIVACY-FILES-SHARED-STORAGE",
+                        it,
+                        "encrypted attachment objects and thumbnails must remain in app-private storage",
+                    )
+                }
+        }
+
+        if (!normalizedPath.startsWith("core/geo/src/main/")) {
+            Regex("(?m)^import\\s+(?:org\\.maplibre|com\\.google\\.android\\.gms\\.location)(?:\\.|$)")
+                .findAll(source)
+                .forEach { report("ARCH-GEO-SDK", it, "MapLibre and fused-location SDK access is owned by core:geo") }
         }
 
         val ownsFinancialWritePorts = normalizedPath.startsWith("finance/application/src/main/") ||

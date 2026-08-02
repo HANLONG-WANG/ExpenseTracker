@@ -622,12 +622,13 @@ public fun LedgerTabRow(
 @Composable
 public fun LedgerDialog(
     title: String,
-    message: String,
+    message: String?,
     confirmLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     danger: Boolean = false,
+    content: (@Composable () -> Unit)? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -636,7 +637,12 @@ public fun LedgerDialog(
         },
         dismissButton = { LedgerButton(stringResource(R.string.ledger_cancel), onDismiss, variant = LedgerButtonVariant.SECONDARY) },
         title = { Text(title, Modifier.semantics { heading() }) },
-        text = { Text(message) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                if (message != null) Text(message)
+                if (content != null) content()
+            }
+        },
         modifier = modifier.widthIn(max = LedgerTheme.dimensions.dialogMaxWidth).semantics { paneTitle = title },
     )
 }

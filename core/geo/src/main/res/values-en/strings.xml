@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="location_permission_title">Allow saved locations</string>
+    <string name="location_permission_first_ask">Your current location is requested only while the record screen is foregrounded, for at most 3 seconds. Declining does not block recording.</string>
+    <string name="location_permission_denied">Location permission was denied. You can request it again or continue without a location.</string>
+    <string name="location_permission_permanently_denied">Android will no longer show the permission prompt. You may enable it in system settings; recording still works without it.</string>
+    <string name="location_permission_continue">Continue</string>
+    <string name="location_permission_open_settings">Open settings</string>
+</resources>

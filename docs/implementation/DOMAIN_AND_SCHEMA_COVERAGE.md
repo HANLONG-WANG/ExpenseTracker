@@ -28,6 +28,10 @@ Current transactions, balance/daily, refund, budget/project/goal, credit/install
 
 P09 separates DeviceLedgerKEK/database DEK/attachment root/security-settings keys from the authentication-bound VaultAuthenticationKEK/Vault DEK and the Argon2id recovery-password KEK. The production `BookSessionManager` owns the real SQLCipher lifecycle and exposes only capability-limited opaque headless leases; app lock controls UI access and never substitutes for per-action vault cryptographic authentication. Exact key, state, platform-test and later-stage boundaries are recorded in `P09_SECURITY_RUNTIME_MAPPING.md`.
 
+## P10 attachment and geospatial infrastructure result
+
+P10 maps the Schema v1 `encrypted_blob`/`attachment`/`blob_gc_candidate` family to a streaming Tink object store with hash+size deduplication, encrypted thumbnails, reference-aware cleanup and a confirmation-bound pipe provider. Foreground location freezes provider/time/E7/accuracy evidence within one three-second monotonic save budget, and `LedgerMap` owns actual MapLibre lifecycle, overlays, attribution and accessible fallback. `P10_FILES_GEO_MAPPING.md` records exact contracts and later-stage boundaries; no financial fact is written outside the P08 coordinator.
+
 ## Architecture decisions
 
 Source: `docs/规格冻结_v1.0/系统架构.md` §22, except ADR-007A from `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` §1.
@@ -67,7 +71,7 @@ The 12 UI-derived decisions from UI contract §18 are separately registered belo
 | UI-ADR-005 | Invalid ordinary forms keep Save actionable so validation can explain errors; only absolute prerequisites disable it. | IN_PROGRESS (`P04-E003`: validation summary/save component contract; form reducers remain later) |
 | UI-ADR-006 | Long operations share one Operation Center. | IN_PROGRESS (`P04-E003`: one operation-progress model/panel; operation destination remains P28+) |
 | UI-ADR-007 | Transaction lists have no swipe quick-edit/delete gesture. | VERIFIED (`P04-E003`, `P04-E005`: non-swipe row plus static rejection) |
-| UI-ADR-008 | Map failure provides a list alternative. | IN_PROGRESS (`P04-E007`, `P04-E008`: MapPanel fallback verified; actual MapLibre integration remains P26) |
+| UI-ADR-008 | Map failure provides a list alternative. | VERIFIED (`P04-E007`, `P04-E008`, `P10-E004`: token contract and actual MapLibre unavailable/style paths render the accessible data table) |
 | UI-ADR-009 | Settlement suggestions may be displayed only when returned by a domain/application query service; UI never writes its own calculation. | NOT_STARTED |
 | UI-ADR-010 | Pie charts automatically change to bars above six categories. | VERIFIED (`P04-E002`: deterministic 6/7-category boundary test) |
 | UI-ADR-011 | Top-level pages use a small fixed app bar, not a collapsing large title. | VERIFIED (`P04-E003`, `P04-E005`: closed wrapper and Material top-bar bypass rejection) |
@@ -173,9 +177,9 @@ Worker/UIDT/service payloads may contain only `operationId`; full parameters rem
 |---|---|---|
 | Pure domain property suite for accounting, refunds, FX, loans, installments, budget, settlement, expressions and recurrence | Tech stack §16; architecture §21 | IN_PROGRESS (`P03-E002`—`P03-E005`, `P05-E002`, `P06-E001`—`P06-E003`: all P06 transaction rules and accounting-core properties verified; later advanced planners/integration remain) |
 | Room/SQLCipher schema, all migrations, FTS5, R*Tree, WAL plaintext and projection rebuild on device | Tech stack §§5,16; architecture §21 | IN_PROGRESS (`P07-E001`—`P07-E004`, `P08-E003`: v1 create/reopen/capabilities/leakage and exact synchronous projection audit/rebuild are verified on API 36; future registered migrations retain their owning stages) |
-| Keystore, BiometricPrompt, SAF, location and foreground/UIDT behavior on actual devices | Tech stack §16 | NOT_STARTED |
-| Failure injection for attachment, commits, Drive, storage, restore exchange, Keystore, biometrics, row 99,999 and projection versions | Architecture §21.3 | IN_PROGRESS (`P08-E003`: five commit phases and projection corruption/rebuild are device-verified; attachment/Drive/storage/restore/Keystore/biometric/scale failures remain their owning stages) |
-| Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`, `P08-E001`, `P08-E002`: feature/Worker/importer privileged ports, direct SQL and DAO bypasses are rejected) |
-| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008` verify the cross-cutting route/state/design-system and device matrix; all 215 feature screen implementations and final acceptance remain later scope) |
-| Target-scale paging, reports, map, 100k-row import and tens-of-GB streaming operations | Requirements §25; UI contract §16.5 | NOT_STARTED |
+| Keystore, BiometricPrompt, SAF, location and foreground/UIDT behavior on actual devices | Tech stack §16 | IN_PROGRESS (`P09-E003`, `P09-E004`, `P10-E003`, `P10-E004`: Keystore/credential, SAF streaming/provider and foreground location pass on API 36; foreground/UIDT services remain P28) |
+| Failure injection for attachment, commits, Drive, storage, restore exchange, Keystore, biometrics, row 99,999 and projection versions | Architecture §21.3 | IN_PROGRESS (`P08-E003`, `P09-E003`, `P09-E004`, `P10-E003`: commit/projection, key/auth and attachment cancellation/database/process failures pass; Drive/restore/scale remain later) |
+| Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`, `P08-E001`, `P08-E002`, `P10-E006`: feature SDK/infrastructure, background location/shared storage, privileged ports, SQL and DAO bypasses are rejected) |
+| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008`, `P10-E004`, `P10-E005`: cross-cutting UI matrix plus all P10 ATT/SYS/REC infrastructure states pass; later screens/final acceptance remain) |
+| Target-scale paging, reports, map, 100k-row import and tens-of-GB streaming operations | Requirements §25; UI contract §16.5 | IN_PROGRESS (`P10-E003`, `P10-E004`: bounded streaming large-file and actual map lifecycle foundation pass; tens-of-GB, report and 100k-row gates remain later) |
 | Release AAB, Baseline Profile, locks, verification metadata, SBOM, licenses, NOTICE and privacy/release documentation | Tech stack §16.4 and release plan | IN_PROGRESS (`P02-E006` verifies locks/SBOM/license task infrastructure only; release evidence remains P36) |

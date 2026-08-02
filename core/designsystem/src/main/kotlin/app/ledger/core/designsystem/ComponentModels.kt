@@ -16,6 +16,14 @@ public object LedgerTestTags {
     public const val MAP: String = "ledger_map"
     public const val OPERATION: String = "operation_progress"
     public const val SENSITIVE_VALUE: String = "sensitive_value"
+    public const val ATTACHMENT_LIST: String = "attachment_list"
+    public const val ATTACHMENT_PREVIEW: String = "attachment_preview"
+    public const val ATTACHMENT_METADATA: String = "attachment_metadata"
+    public const val ATTACHMENT_EXTERNAL_OPEN: String = "attachment_external_open"
+    public const val ATTACHMENT_RENAME: String = "attachment_rename"
+    public const val LOCATION_EDITOR: String = "location_editor"
+    public const val LOCATION_PERMISSION: String = "location_permission"
+    public const val MAP_FALLBACK: String = "map_accessible_fallback"
 
     public fun requireStable(value: String): String {
         require(STABLE_TAG.matches(value)) { "test tag must be a stable semantic identifier" }

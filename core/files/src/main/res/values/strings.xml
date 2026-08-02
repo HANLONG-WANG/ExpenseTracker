@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="attachment_secure_image_description">安全图片预览</string>
+    <string name="attachment_preview_unsupported">此文件不支持应用内预览，可查看元数据或在确认后使用其他应用打开。</string>
+    <string name="attachment_decrypt_error_title">无法打开附件</string>
+    <string name="attachment_decrypt_error_message">加密内容无法验证或读取。</string>
+    <string name="attachment_metadata_title">文件信息</string>
+    <string name="attachment_rename_action">重命名</string>
+    <string name="attachment_external_open_action">使用其他应用打开</string>
+    <string name="attachment_external_open_title">使用其他应用打开</string>
+    <string name="attachment_external_open_risk">文件将通过一次性授权提供给其他应用。其他应用的隐私行为不受本应用控制。</string>
+    <string name="attachment_external_open_confirm">继续打开</string>
+    <string name="attachment_rename_title">重命名附件</string>
+    <string name="attachment_rename_confirm">保存名称</string>
+    <string name="attachment_display_name_label">显示名称</string>
+    <string name="attachment_display_name_invalid">请输入有效的显示名称</string>
+</resources>

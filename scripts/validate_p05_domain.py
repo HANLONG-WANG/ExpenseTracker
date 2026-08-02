@@ -307,7 +307,7 @@ def validate_requirement_rows(rows: list[dict[str, str]]) -> list[str]:
         errors.append("requirement ledger does not contain exact REQ-001..090")
     for requirement_id in TARGET_REQUIREMENTS:
         row = by_id.get(requirement_id)
-        if row is None or row["status"] != "IN_PROGRESS" or "P05" not in row["implementation_evidence"]:
+        if row is None or row["status"] not in {"IN_PROGRESS", "VERIFIED"} or "P05" not in row["implementation_evidence"]:
             errors.append(f"{requirement_id} lacks truthful P05 foundation tracking")
     return errors
 
@@ -332,8 +332,18 @@ def main() -> int:
             (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="")
         )
     )
-    if len(screen_rows) != 215 or any(row["status"] != "NOT_STARTED" for row in screen_rows):
-        errors.append("P05 must leave all 215 UI screens NOT_STARTED")
+    p10_promotions = {
+        "REC-009": "IN_PROGRESS",
+        "REC-010": "IN_PROGRESS",
+        "ATT-001": "VERIFIED",
+        "ATT-002": "VERIFIED",
+        "ATT-003": "VERIFIED",
+        "SYS-001": "VERIFIED",
+    }
+    if len(screen_rows) != 215 or any(
+        row["status"] != p10_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows
+    ):
+        errors.append("screen coverage contains a promotion outside the completed P10 scope")
     mapping = (ROOT / "docs/implementation/P05_DOMAIN_API_MAPPING.md").read_text(encoding="utf-8")
     mapping_ids = set(re.findall(r"P05-DOM-(\d{2})", mapping))
     if mapping_ids != {f"{value:02d}" for value in range(1, 36)}:
@@ -362,7 +372,7 @@ def main() -> int:
     print(f"finance_types={len(declarations(chr(10).join(v for k, v in sources.items() if k.startswith('finance/domain/'))))}")
     print(f"application_ports={len(REQUIRED_APPLICATION_PORTS)}")
     print(f"transaction_payloads={len(EXPECTED_TRANSACTION_PAYLOADS)} lifecycles={len(EXPECTED_LIFECYCLES)}")
-    print(f"tracked_requirements={len(TARGET_REQUIREMENTS)} screens_unstarted={len(screen_rows)}")
+    print(f"tracked_requirements={len(TARGET_REQUIREMENTS)} screens_total={len(screen_rows)} p10_promoted=6")
     print("visual_inputs=excluded_by_explicit_source roots")
     return 0
 

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="location_permission_title">場所の保存を許可</string>
+    <string name="location_permission_first_ask">記帳画面が前面にある間だけ現在地を要求し、待機は最大3秒です。拒否しても記帳できます。</string>
+    <string name="location_permission_denied">位置情報の権限が拒否されました。再度要求するか、場所なしで続行できます。</string>
+    <string name="location_permission_permanently_denied">Android は権限確認を再表示しません。システム設定で有効にできますが、無効のままでも記帳できます。</string>
+    <string name="location_permission_continue">続行</string>
+    <string name="location_permission_open_settings">設定を開く</string>
+</resources>

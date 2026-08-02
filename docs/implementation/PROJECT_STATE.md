@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-02 (Asia/Tokyo)
-Current stage: P09 — Key hierarchy, book sessions, app lock and secure runtime
-Stage status: VERIFIED (`P09-E001`—`P09-E006`); P00—P09 are complete and P10 is the next unstarted stage
+Current stage: P10 — Encrypted attachments, foreground location and map infrastructure
+Stage status: VERIFIED (`P10-E001`—`P10-E007`); P00—P10 are complete and P11 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -76,7 +76,7 @@ Baseline conclusion: this is a documentation-only repository, not a partial Andr
 | Build governance | AGP built-in Kotlin, Kotlin Compose compiler plugin, KSP 2.3.10, version catalog and seven convention/architecture plugins in the included `:build-logic` build | VERIFIED |
 | Module topology | 35 prescribed leaf modules plus five zero-dependency Gradle grouping projects; `:build-logic` is an included build | VERIFIED |
 | Dependency direction | Exact allowlisted project graph enforces UI → Application → Domain ← Infrastructure; eight domain/common modules are pure Kotlin/JVM; feature modules have no feature/data/DAO/Room-entity edge | VERIFIED |
-| Reproducibility | Wrapper distribution SHA-256 pinned; 37 lockfiles cover root, build logic and all leaf modules; strict dependency verification contains 756 components and 1,253 SHA-256 entries | VERIFIED |
+| Reproducibility | Wrapper distribution SHA-256 pinned; 37 lockfiles cover root, build logic and all leaf modules; strict dependency verification contains 1,268 components and 2,642 SHA-256 entries after the P10 Coil/MapLibre/location graph and SBOM POMs were sealed | VERIFIED |
 | Production source | Secure application manifest only; no business screen, DAO, persistence, placeholder component or fake functionality was added | Correct for P01 |
 | Tests and scripts | P00 and P01 structural validators, Gradle architecture/version checks, Android Lint and all configured JVM test tasks | VERIFIED for P01 scope |
 | CI, advanced quality and release | Detekt/format/Kover/SBOM/license/CI/Baseline Profile/release AAB are not introduced early | P02/P36 scope |
@@ -189,12 +189,26 @@ P08 creates no feature page, Worker/import execution, later analytics/valuation 
 
 P09 implements no SessionGate/settings/vault/backup/restore/clear-data screen, backup transport, restore/merge flow, telemetry queue or production Worker wiring. `P09_SECURITY_RUNTIME_MAPPING.md` records the exact boundary. All 215 screen rows remain `NOT_STARTED`, and P10+ is not promoted.
 
+### P10 result
+
+| Area | P10 result | Classification |
+|---|---|---|
+| Encrypted object store | Reopenable SAF sources stream through SHA-256 and Tink Streaming AEAD into app-private staging, atomically move under random opaque names, deduplicate by hash+size, and commit attachment/blob metadata in Room/SQLCipher transactions | VERIFIED on API 36 (`P10-E001`—`P10-E003`) |
+| Failure and retention lifecycle | Cancellation, I/O/database failure and interrupted-process recovery remove staging/orphan objects without leaving a database reference to a missing object; history and backup references gate delayed GC | VERIFIED (`P10-E002`, `P10-E003`) |
+| Secure presentation and sharing | Coil 3 decrypts originals/thumbnails without disk/network cache; app lock clears memory; preview is zoomable; the non-exported Provider decrypts to a pipe only after explicit confirmation and consumes a 60-second one-time URI | VERIFIED on API 36 (`P10-E003`, `P10-E005`) |
+| Foreground location | Fused Location Provider falls back to `LocationManager`, requires foreground permission only, freezes fixed-point evidence within the three-second save budget, and cancels rather than performing a later background write | VERIFIED on API 36 (`P10-E002`, `P10-E004`) |
+| Map foundation | `LedgerMap` owns MapLibre lifecycle/style/attribution and token-derived cluster, heatmap and single-point layers; every unavailable renderer/style path keeps the accessible data-table alternative | VERIFIED on API 36 (`P10-E004`) |
+| Contract UI | ATT-001—003 and SYS-001 are complete; REC-009/010 render all required infrastructure states at 320dp/200% font but remain `IN_PROGRESS` until P13 wires the complete record form/application flow; ANA-011/012 remain P27 | VERIFIED for P10 scope (`P10-E004`, `P10-E005`) |
+| Static privacy boundary | Feature code cannot import `:core:files`/`:core:geo` or Coil/MapLibre/Fused SDKs; production background location, shared attachment storage, sensitive route/state values and ordinary logging remain rejected | VERIFIED (`P10-E001`, `P10-E006`) |
+
+P10 does not claim the P13 complete record form, P27 analytics map screens, background location, online place search/reverse geocoding, or later import/backup Workers. `P10_FILES_GEO_MAPPING.md` records the exact implementation and later-stage boundary.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-085` is `VERIFIED`; 71 requirements are `IN_PROGRESS` for accurately scoped foundations; 18 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All `NOT_STARTED`; baseline rows created only |
+| Requirements `REQ-001`—`REQ-090` | 90 | `REQ-054`, `REQ-055`, `REQ-057` and `REQ-085` are `VERIFIED`; 68 requirements are `IN_PROGRESS`; 18 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | ATT-001—003 and SYS-001 are `VERIFIED`; REC-009/010 are `IN_PROGRESS`; 209 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-010 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-011—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
 | Permanent domain invariants | 35 | `INV-034` `VERIFIED` remains the checked-arithmetic anchor; `INV-002`, `INV-005`, `INV-006`, `INV-007`, `INV-016` and `INV-031` are also `VERIFIED`; 28 retain later evidence |
@@ -216,18 +230,19 @@ P09 implements no SessionGate/settings/vault/backup/restore/clear-data screen, b
 | P07 | VERIFIED | Complete Room/SQLCipher Schema v1, independent encrypted staging, migrations, capabilities, WAL/temp leakage and API 36 device contracts pass; see `P07-E001`—`P07-E006` |
 | P08 | VERIFIED | One Room/SQLCipher transaction, coordinator-only write entry, synchronous projection rebuild/audit and typed keyset/FTS/R*Tree queries pass; see `P08-E001`—`P08-E006` |
 | P09 | VERIFIED | Separate production key hierarchies, real SQLCipher book sessions, authenticated vault CryptoObjects, app-lock/privacy runtime and API 36 Keystore/device-credential tests pass; see `P09-E001`—`P09-E006` |
-| P10—P36 | NOT_STARTED | P10 is the next execution stage; do not promote later work early |
+| P10 | VERIFIED | Encrypted streaming attachments, one-time pipe sharing, three-second foreground location, MapLibre fallback and all P10 required states pass on API 36; see `P10-E001`—`P10-E007` |
+| P11—P36 | NOT_STARTED | P11 is the next execution stage; do not promote later work early |
 
-## P10 entry state
+## P11 entry state
 
-P09 leaves the repository at a verified device-local security and database-session boundary. Its completion commands are:
+P10 leaves the repository at a verified encrypted attachment and foreground geospatial infrastructure boundary. Its completion commands are:
 
 ```text
-python3 scripts/validate_p09_security.py
-python3 -m unittest scripts.tests.test_p09_security_contracts -v
-./gradlew :core:security:pixel6Api36DebugAndroidTest --no-configuration-cache --no-parallel --dependency-verification=strict --console=plain
-./gradlew p09Check --configuration-cache --no-parallel --dependency-verification=strict --console=plain
-./gradlew p09Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+python3 scripts/validate_p10_files_geo.py
+python3 -m unittest scripts.tests.test_p10_files_geo_contracts -v
+./gradlew :core:files:pixel6Api36DebugAndroidTest :core:geo:pixel6Api36DebugAndroidTest :feature:record:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p10Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p10Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
 ```
 
-All commands and final hygiene gates pass in `P09-E001`—`P09-E006`. P10 may build only on the opaque session/security capabilities and must not expose a DEK, database resource, vault plaintext or headless database authority to feature code. All 215 screen implementations remain `NOT_STARTED`.
+All commands and final hygiene gates pass in `P10-E001`—`P10-E007`. P11 may compose the session gate and first-run runtime without exposing a DEK, database resource, attachment plaintext/path/hash, raw coordinate or SDK client to feature code. P12+ remains unpromoted.

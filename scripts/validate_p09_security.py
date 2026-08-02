@@ -271,8 +271,18 @@ def validate_ledgers() -> list[str]:
             errors.append(f"{requirement_id} lacks P09 implementation/verification evidence")
     with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = list(csv.DictReader(handle))
-    if len(screens) != 215 or any(row["status"] != "NOT_STARTED" for row in screens):
-        errors.append("P09 must leave all 215 UI screens NOT_STARTED")
+    p10_promotions = {
+        "REC-009": "IN_PROGRESS",
+        "REC-010": "IN_PROGRESS",
+        "ATT-001": "VERIFIED",
+        "ATT-002": "VERIFIED",
+        "ATT-003": "VERIFIED",
+        "SYS-001": "VERIFIED",
+    }
+    if len(screens) != 215 or any(
+        row["status"] != p10_promotions.get(row["screen_id"], "NOT_STARTED") for row in screens
+    ):
+        errors.append("screen coverage contains a promotion outside the completed P10 scope")
     domain = read(ROOT / "docs/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md")
     if "| ADR-016 | Ledger, vault and recovery-password key hierarchies are separate | VERIFIED" not in domain:
         errors.append("ADR-016 is not VERIFIED")
@@ -293,7 +303,7 @@ def main() -> int:
     unit_cases = sum(read(path).count("@Test") for path in (ROOT / "core/security/src/test").rglob("*.kt"))
     device_cases = sum(read(path).count("@Test") for path in (ROOT / "core/security/src/androidTest").rglob("*.kt"))
     print(f"production_files={len(sources)} jvm_cases={unit_cases} android_device_cases={device_cases}")
-    print("screen_rows_unstarted=215 visual_drafts=excluded")
+    print("screen_rows_total=215 p10_promoted=6 visual_drafts=excluded")
     return 0
 
 

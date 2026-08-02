@@ -39,4 +39,5 @@
     <string name="ledger_top_level_category">第1階層</string>
     <string name="ledger_pause">一時停止</string>
     <string name="ledger_copy">コピー</string>
+    <string name="ledger_attachment_import_progress">添付ファイルの読み込み進行状況</string>
 </resources>

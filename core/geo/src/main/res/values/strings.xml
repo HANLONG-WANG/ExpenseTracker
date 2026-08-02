@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="location_permission_title">允许保存位置</string>
+    <string name="location_permission_first_ask">仅在记账页位于前台时请求一次当前位置；最长等待 3 秒。拒绝不会影响记账。</string>
+    <string name="location_permission_denied">位置权限已拒绝。可再次请求，或继续在无位置状态下记账。</string>
+    <string name="location_permission_permanently_denied">系统不再显示权限请求。可前往系统设置开启；不开启也不影响记账。</string>
+    <string name="location_permission_continue">继续</string>
+    <string name="location_permission_open_settings">打开设置</string>
+</resources>

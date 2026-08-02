@@ -441,7 +441,12 @@ public fun AttachmentField(
                     Column(Modifier.weight(1f).padding(horizontal = LedgerTheme.spacing.xs)) {
                         Text(attachment.displayName, maxLines = 2)
                         Text("${attachment.typeLabel} · ${attachment.sizeText}", style = LedgerTheme.typography.bodySmall)
-                        if (attachment.progress != null) LedgerProgressIndicator(attachment.progress, accessibleText = attachment.displayName)
+                        if (attachment.progress != null) {
+                            LedgerProgressIndicator(
+                                attachment.progress,
+                                accessibleText = stringResource(R.string.ledger_attachment_import_progress),
+                            )
+                        }
                     }
                     if (attachment.state == AttachmentTransferState.IMPORTING) {
                         LedgerIconButton(LedgerIcon.CLOSE, stringResource(R.string.ledger_cancel), { onCancel(attachment) })

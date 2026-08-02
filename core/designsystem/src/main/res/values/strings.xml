@@ -39,4 +39,5 @@
     <string name="ledger_top_level_category">一级</string>
     <string name="ledger_pause">暂停</string>
     <string name="ledger_copy">复制</string>
+    <string name="ledger_attachment_import_progress">附件导入进度</string>
 </resources>

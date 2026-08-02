@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import re
 from pathlib import Path
@@ -238,8 +239,20 @@ def validate_ledgers() -> None:
     for requirement in ("REQ-002", "REQ-013", "REQ-014", "REQ-031", "REQ-032", "REQ-084", "REQ-086", "REQ-089"):
         row = next(line for line in requirements.splitlines() if line.startswith(requirement + ","))
         require("P07-E" in row, f"{requirement} lacks P07 evidence")
-    screen_rows = screens.splitlines()[1:]
-    require(len(screen_rows) == 215 and all(",NOT_STARTED," in row for row in screen_rows), "P07 must not promote UI screens")
+    screen_rows = list(csv.DictReader(screens.splitlines()))
+    p10_promotions = {
+        "REC-009": "IN_PROGRESS",
+        "REC-010": "IN_PROGRESS",
+        "ATT-001": "VERIFIED",
+        "ATT-002": "VERIFIED",
+        "ATT-003": "VERIFIED",
+        "SYS-001": "VERIFIED",
+    }
+    require(
+        len(screen_rows) == 215
+        and all(row["status"] == p10_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),
+        "screen coverage contains a promotion outside the completed P10 scope",
+    )
 
 
 def main() -> int:
@@ -252,7 +265,7 @@ def main() -> int:
     print("P07 database contract: PASS")
     print("frozen_domain_tables=94 primary_schema_tables=140 staging_tables=7")
     print("indexes=39 views=4 runtime_append_only_tables=63")
-    print("target_requirements=8 screens_unstarted=215")
+    print("target_requirements=8 screens_total=215 p10_promoted=6")
     return 0
 
 
