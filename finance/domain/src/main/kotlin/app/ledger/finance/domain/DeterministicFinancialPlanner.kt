@@ -145,7 +145,7 @@ object DeterministicFinancialPlanner {
             MaterializedFacts.empty()
         }
         val facts = reverseFacts + applyFacts
-        val revisionAmounts = materializeRevisionAmounts(revision.id, ruleResult.amounts)
+        val revisionAmounts = materializeRevisionAmounts(revision.id, revision.payload, ruleResult.amounts)
         val fxSnapshots = materializeFxSnapshots(identities.commitId, ruleResult.amounts)
         val projectionChanges = projectionChanges(snapshot, transaction, revision, facts, targetRevision)
         val evidenceAndEffectsHash = CanonicalFinancialHash.evidenceAndEffects(
@@ -631,37 +631,55 @@ private fun reverseCurrentFacts(
 
 private fun materializeRevisionAmounts(
     revisionId: TransactionRevisionId,
+    payload: TransactionPayload,
     amounts: List<FrozenAmountEvidence>,
-): List<RevisionAmount> = amounts.flatMap { evidence ->
-    listOf(
-        RevisionAmount(
-            revisionId,
-            evidence.key.componentIndex,
-            evidence.key.role,
-            AmountRepresentation.USER_INPUT,
-            evidence.userInput,
-            null,
-            null,
-        ),
-        RevisionAmount(
-            revisionId,
-            evidence.key.componentIndex,
-            evidence.key.role,
-            AmountRepresentation.ACCOUNT,
-            evidence.accountAmount,
-            evidence.relatedAccountId,
-            evidence.userInputToAccount?.id,
-        ),
-        RevisionAmount(
-            revisionId,
-            evidence.key.componentIndex,
-            evidence.key.role,
-            AmountRepresentation.BASE,
-            evidence.baseAmount,
-            null,
-            evidence.accountToBase?.id,
-        ),
-    )
+): List<RevisionAmount> {
+    val materialized = amounts.flatMap { evidence ->
+        listOf(
+            RevisionAmount(
+                revisionId,
+                evidence.key.componentIndex,
+                evidence.key.role,
+                AmountRepresentation.USER_INPUT,
+                evidence.userInput,
+                null,
+                null,
+            ),
+            RevisionAmount(
+                revisionId,
+                evidence.key.componentIndex,
+                evidence.key.role,
+                AmountRepresentation.ACCOUNT,
+                evidence.accountAmount,
+                evidence.relatedAccountId,
+                evidence.userInputToAccount?.id,
+            ),
+            RevisionAmount(
+                revisionId,
+                evidence.key.componentIndex,
+                evidence.key.role,
+                AmountRepresentation.BASE,
+                evidence.baseAmount,
+                null,
+                evidence.accountToBase?.id,
+            ),
+        )
+    }
+    return if (materialized.isEmpty() && payload is SettlementPaymentPayload && !payload.selfParticipates) {
+        listOf(
+            RevisionAmount(
+                revisionId = revisionId,
+                componentIndex = 0,
+                role = AmountRole.SETTLEMENT,
+                representation = AmountRepresentation.SETTLEMENT,
+                money = payload.amount,
+                relatedAccountId = null,
+                fxRateSnapshotId = null,
+            ),
+        )
+    } else {
+        materialized
+    }
 }
 
 private fun materializeFxSnapshots(

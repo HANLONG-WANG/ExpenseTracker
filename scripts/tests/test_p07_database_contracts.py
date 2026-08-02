@@ -81,6 +81,20 @@ class P07DatabaseContractMutationTest(unittest.TestCase):
         self.assertEqual([], validate_project_state(project_state))
         self.assertTrue(validate_project_state(project_state.replace("| P06 | VERIFIED |", "| P06 | IN_PROGRESS |")))
 
+    def test_p07_validator_retains_verified_stage_during_later_stage(self) -> None:
+        validator.validate_ledgers()
+        original_read = validator.read
+
+        def mutated_read(path):
+            value = original_read(path)
+            if path.name == "PROJECT_STATE.md":
+                return value.replace("| P07 | VERIFIED |", "| P07 | IN_PROGRESS |")
+            return value
+
+        with patch.object(validator, "read", side_effect=mutated_read):
+            with self.assertRaisesRegex(validator.ValidationError, "P07 project state"):
+                validator.validate_ledgers()
+
 
 if __name__ == "__main__":
     unittest.main()

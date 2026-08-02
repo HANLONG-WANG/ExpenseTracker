@@ -2,6 +2,7 @@ package app.ledger.buildlogic
 
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
 class SourcePolicyEngineTest {
@@ -121,6 +122,35 @@ class SourcePolicyEngineTest {
             "feature/record/src/main/kotlin/Save.kt",
             "fun save(transactionDao: TransactionDao) = transactionDao.insertCurrent(command)",
         ).shouldContain("FINANCE-COORDINATOR")
+    }
+
+    @Test
+    fun `rejects direct financial SQL and privileged commit ports outside data ownership`() {
+        val rules = scan(
+            "feature/importer/src/main/kotlin/ImportWorker.kt",
+            """
+                import app.ledger.finance.application.AtomicFinancialCommitRepository
+                fun bypass(db: SupportSQLiteDatabase) {
+                    db.execSQL("INSERT INTO journal_entry(id) VALUES (1)")
+                }
+            """.trimIndent(),
+        )
+
+        rules.shouldContainAll("FINANCE-WRITE-PORT", "FINANCE-SQL-WRITE")
+    }
+
+    @Test
+    fun `rejects privileged planning and persistence ports in workers and importers`() {
+        val rules = scan(
+            "transfer/data/src/main/kotlin/ImportWorker.kt",
+            """
+                import app.ledger.finance.application.FinancialPlanningSnapshotRepository
+                import app.ledger.finance.application.AtomicFinancialCommitRepository
+                class ImportWorker
+            """.trimIndent(),
+        )
+
+        rules.count { it == "FINANCE-WRITE-PORT" } shouldBe 2
     }
 
     @Test

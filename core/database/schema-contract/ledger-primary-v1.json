@@ -3,7 +3,7 @@
   "databaseKind": "PRIMARY",
   "schemaVersion": 1,
   "assets": {
-    "ledger_schema_v1_core.sql": "787a36ba8753a3a14667d3c91c2b65767237269d3c675bfa167919a55a272a67",
+    "ledger_schema_v1_core.sql": "010f2068e21967959845b0af82c3fa1df211624222998b1c6b72f7a2eda5b041",
     "ledger_schema_v1_subledgers.sql": "520876ccad3bffa05b394ee66baa5af8286e4ee73d4a623e1c32ed12329a5200",
     "ledger_schema_v1_projections_operations.sql": "50b744de5de47e1acbc8421f75479a8f6d856067c35e4099fa5a186d557a61a6",
     "ledger_schema_v1_indices_views.sql": "07e74ab992af0db9114392b79cdb10fdc3d84a67b8d1fb4bdc0c096149c40a26"
@@ -867,7 +867,7 @@
         "stale_at_use",
         "created_commit_id"
       ],
-      "createSql": "CREATE TABLE fx_rate_snapshot (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  source_currency TEXT NOT NULL CHECK (length(source_currency) = 3), target_currency TEXT NOT NULL CHECK (length(target_currency) = 3),\n  rate_decimal TEXT NOT NULL CHECK (CAST(rate_decimal AS REAL) > 0), provider TEXT NOT NULL, quoted_at INTEGER NOT NULL, fetched_at INTEGER,\n  source_type INTEGER NOT NULL CHECK (source_type >= 0), manual_override INTEGER NOT NULL CHECK (manual_override IN (0,1)),\n  stale_at_use INTEGER NOT NULL CHECK (stale_at_use IN (0,1)), created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  CHECK (source_currency <> target_currency), CHECK (fetched_at IS NULL OR fetched_at >= quoted_at)\n)"
+      "createSql": "CREATE TABLE fx_rate_snapshot (\n  id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),\n  source_currency TEXT NOT NULL CHECK (length(source_currency) = 3), target_currency TEXT NOT NULL CHECK (length(target_currency) = 3),\n  rate_decimal TEXT NOT NULL CHECK (CAST(rate_decimal AS REAL) > 0), provider TEXT NOT NULL, quoted_at INTEGER, fetched_at INTEGER,\n  source_type INTEGER NOT NULL CHECK (source_type >= 0), manual_override INTEGER NOT NULL CHECK (manual_override IN (0,1)),\n  stale_at_use INTEGER NOT NULL CHECK (stale_at_use IN (0,1)), created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,\n  CHECK (source_currency <> target_currency),\n  CHECK (fetched_at IS NULL OR quoted_at IS NULL OR fetched_at >= quoted_at)\n)"
     },
     {
       "name": "goal",
@@ -913,7 +913,7 @@
         "currency_code",
         "rule_set_version"
       ],
-      "createSql": "CREATE TABLE goal_effect (\n  id INTEGER PRIMARY KEY, goal_id INTEGER NOT NULL REFERENCES goal(id) ON DELETE RESTRICT,\n  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT, goal_movement_id INTEGER,\n  reversal_of_id INTEGER REFERENCES goal_effect(id) ON DELETE RESTRICT, polarity INTEGER NOT NULL CHECK (polarity IN (-1,1)),\n  kind INTEGER NOT NULL CHECK (kind >= 0), amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT\n)"
+      "createSql": "CREATE TABLE goal_effect (\n  id INTEGER PRIMARY KEY, goal_id INTEGER NOT NULL REFERENCES goal(id) ON DELETE RESTRICT,\n  source_revision_id INTEGER REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  goal_movement_id INTEGER REFERENCES goal_movement(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES goal_effect(id) ON DELETE RESTRICT, polarity INTEGER NOT NULL CHECK (polarity IN (-1,1)),\n  kind INTEGER NOT NULL CHECK (kind >= 0), amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT,\n  CHECK ((source_revision_id IS NULL) <> (goal_movement_id IS NULL))\n)"
     },
     {
       "name": "goal_movement",
@@ -1745,7 +1745,7 @@
         "related_account_id",
         "fx_rate_snapshot_id"
       ],
-      "createSql": "CREATE TABLE revision_amount (\n  id INTEGER PRIMARY KEY, revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  component_index INTEGER NOT NULL CHECK (component_index >= 0), role INTEGER NOT NULL CHECK (role >= 0),\n  representation INTEGER NOT NULL CHECK (representation BETWEEN 0 AND 2), amount_minor INTEGER NOT NULL,\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), related_account_id INTEGER REFERENCES user_account(id) ON DELETE RESTRICT,\n  fx_rate_snapshot_id INTEGER REFERENCES fx_rate_snapshot(id) ON DELETE RESTRICT,\n  UNIQUE (revision_id, component_index, role, representation),\n  CHECK ((representation = 1 AND related_account_id IS NOT NULL) OR (representation <> 1 AND related_account_id IS NULL))\n)"
+      "createSql": "CREATE TABLE revision_amount (\n  id INTEGER PRIMARY KEY, revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  component_index INTEGER NOT NULL CHECK (component_index >= 0), role INTEGER NOT NULL CHECK (role >= 0),\n  representation INTEGER NOT NULL CHECK (representation BETWEEN 0 AND 4), amount_minor INTEGER NOT NULL,\n  currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), related_account_id INTEGER REFERENCES user_account(id) ON DELETE RESTRICT,\n  fx_rate_snapshot_id INTEGER REFERENCES fx_rate_snapshot(id) ON DELETE RESTRICT,\n  UNIQUE (revision_id, component_index, role, representation),\n  CHECK (representation = 1 OR related_account_id IS NULL)\n)"
     },
     {
       "name": "rule_set_version",
@@ -1803,7 +1803,7 @@
         "currency_code",
         "rule_set_version"
       ],
-      "createSql": "CREATE TABLE settlement_effect (\n  id INTEGER PRIMARY KEY, activity_id INTEGER NOT NULL REFERENCES settlement_activity(id) ON DELETE RESTRICT,\n  participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT,\n  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  settlement_payment_record_id INTEGER REFERENCES settlement_payment_record(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES settlement_effect(id) ON DELETE RESTRICT, kind INTEGER NOT NULL CHECK (kind >= 0),\n  signed_delta_minor INTEGER NOT NULL, currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT\n)"
+      "createSql": "CREATE TABLE settlement_effect (\n  id INTEGER PRIMARY KEY, activity_id INTEGER NOT NULL REFERENCES settlement_activity(id) ON DELETE RESTRICT,\n  participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT,\n  source_revision_id INTEGER REFERENCES transaction_revision(id) ON DELETE RESTRICT,\n  settlement_payment_record_id INTEGER REFERENCES settlement_payment_record(id) ON DELETE RESTRICT,\n  reversal_of_id INTEGER REFERENCES settlement_effect(id) ON DELETE RESTRICT, kind INTEGER NOT NULL CHECK (kind >= 0),\n  signed_delta_minor INTEGER NOT NULL, currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),\n  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT,\n  CHECK ((source_revision_id IS NULL) <> (settlement_payment_record_id IS NULL))\n)"
     },
     {
       "name": "settlement_payment_record",

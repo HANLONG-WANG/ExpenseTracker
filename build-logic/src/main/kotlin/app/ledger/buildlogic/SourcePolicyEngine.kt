@@ -67,6 +67,12 @@ internal object SourcePolicyEngine {
     private val coordinatorDeclaration = Regex(
         "\\b(?:class|object)\\s+\\w*FinancialMutationCoordinator\\b",
     )
+    private val protectedFinancialSqlMutation = Regex(
+        "(?is)\\b(?:INSERT\\s+(?:OR\\s+\\w+\\s+)?INTO|UPDATE|DELETE\\s+FROM|REPLACE\\s+INTO)\\s+" +
+            "(?:book(?:_commit|_commit_parent)?|command_receipt|business_transaction|transaction_revision|" +
+            "journal_entry|posting|economic_effect|budget_effect|project_effect|goal_effect|statement_effect|" +
+            "loan_effect|settlement_effect|refund_allocation|goal_movement|budget_adjustment)\\b",
+    )
     private val screenReference = Regex(
         "(?:ScreenId\\s*\\(\\s*|screenId\\s*=\\s*)\"([A-Z][A-Z0-9]*-\\d{3})\"",
     )
@@ -135,6 +141,37 @@ internal object SourcePolicyEngine {
             Regex("(?m)^(?:public\\s+|private\\s+|internal\\s+)?(?:suspend\\s+)?fun\\s+(?:$GOVERNED_COMPONENT_DECLARATION)\\s*\\(")
                 .findAll(source)
                 .forEach { report("UI-COMPONENT-DUPLICATE", it, "feature source duplicates a governed design-system component") }
+            Regex(
+                "(?m)^import\\s+app\\.ledger\\.finance\\.(?:data(?:\\.|$)|application\\.(?:AtomicFinancialCommitRepository|" +
+                    "CommandReceiptRepository|FinancialPlanningSnapshotRepository))",
+            )
+                .findAll(source)
+                .forEach { report("FINANCE-WRITE-PORT", it, "feature source may depend only on the financial command handler/use case") }
+        }
+
+        val ownsFinancialWritePorts = normalizedPath.startsWith("finance/application/src/main/") ||
+            normalizedPath.startsWith("finance/data/src/main/")
+        if (!ownsFinancialWritePorts) {
+            Regex(
+                "(?m)^import\\s+app\\.ledger\\.finance\\.application\\.(?:AtomicFinancialCommitRepository|" +
+                    "CommandReceiptRepository|FinancialPlanningPort|FinancialPlanningSnapshotRepository)\\b",
+            )
+                .findAll(source)
+                .forEach {
+                    report(
+                        "FINANCE-WRITE-PORT",
+                        it,
+                        "only finance application/data may depend on planning or atomic financial persistence ports",
+                    )
+                }
+        }
+
+        val ownsFinancialSql = normalizedPath.startsWith("finance/data/src/main/") ||
+            normalizedPath.startsWith("core/database/src/main/")
+        if (!ownsFinancialSql) {
+            protectedFinancialSqlMutation.findAll(source).forEach {
+                report("FINANCE-SQL-WRITE", it, "financial SQL mutations are owned by finance:data/core:database only")
+            }
         }
 
         Regex("\\.testTag\\s*\\(\\s*([^\\n)]*)")

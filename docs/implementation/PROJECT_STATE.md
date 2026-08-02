@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-02 (Asia/Tokyo)
-Current stage: P07 — SQLCipher/Room Schema v1 and migration framework
-Stage status: VERIFIED (`P07-E001`—`P07-E006`); P00—P07 are complete and P08 is the next unstarted stage
+Current stage: P08 — Repository, FinancialMutationCoordinator, synchronous projections and query foundation
+Stage status: VERIFIED (`P08-E001`—`P08-E006`); P00—P08 are complete and P09 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -163,17 +163,30 @@ P06 contains no Room/SQLCipher adapter, projection persistence, feature page or 
 
 P07 adds no repository implementation, DAO-to-domain mapper, projection rebuild algorithm, feature page, background runtime, import execution or controlled purge workflow. Those remain P08 and their owning later stages; all 215 screen rows remain `NOT_STARTED`.
 
+### P08 result
+
+| Area | P08 result | Classification |
+|---|---|---|
+| One write entry | `FinancialCommandHandler`, the submit use case, `DefaultFinancialMutationCoordinator` and a mutex-backed `DefaultLedgerWriteGate` form the only application write path; source policies deny privileged planning/commit ports and financial SQL to features, Workers and importers | VERIFIED (`P08-E001`, `P08-E002`, `P08-E004`) |
+| Atomic persistence | `RoomFinancialCommitRepository` re-checks receipt/book/head/rule/expected revision and appends commit, Revision, frozen evidence, facts, Effects, pointers, projections, book revision and receipt in one Room-owned SQLCipher transaction | VERIFIED on API 36 (`P08-E003`) |
+| Mapper breadth | The normalized writer covers all 11 typed transaction details, Journal/Posting, seven Effect families, refund/credit/loan allocations, goal/budget facts and entity changes without JSON or `@Upsert` | VERIFIED (`P08-E001`, `P08-E003`) |
+| Synchronous projections | Current transactions, balance/daily, refund, budget, project, goal, credit, installment, loan, settlement, FTS/R*Tree and four widget snapshot families rebuild from authoritative facts at the target local revision; deferred valuation/future/analytics revisions are not falsely advanced | VERIFIED for the P08 synchronous set (`P08-E001`, `P08-E003`) |
+| Audit/recovery | Canonical projection hashes, savepoint-based dry rebuild audit, atomic maintenance rebuild, integrity/subtype/version/count checks and a lightweight startup disposition are implemented | VERIFIED (`P08-E003`) |
+| Query base | Bound type-safe filters, stable keyset paging, FTS candidate selection plus exact typed predicates, and R*Tree candidate selection plus Kotlin Haversine distance are implemented with closed limits and no `OFFSET` | VERIFIED (`P08-E001`—`P08-E003`) |
+
+P08 creates no feature page, Worker/import execution, later analytics/valuation projection, widget runtime or physical purge workflow. `P08_REPOSITORY_PROJECTION_MAPPING.md` records the exact implementation boundary. All 215 screen rows remain `NOT_STARTED`, and P09+ is not promoted.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
 | Requirements `REQ-001`—`REQ-090` | 90 | `REQ-085` is `VERIFIED`; 65 requirements are `IN_PROGRESS` for accurately scoped foundations; 24 remain `NOT_STARTED` |
 | YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All `NOT_STARTED`; baseline rows created only |
-| Architecture ADRs | 20 + ADR-007A | ADR-001 `VERIFIED`; 18 decisions are `IN_PROGRESS`; ADR-016/017 remain `NOT_STARTED` |
+| Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-010 except ADR-007A are `VERIFIED`; ADR-007A, ADR-011—015 and ADR-018—020 are `IN_PROGRESS`; ADR-016/017 remain `NOT_STARTED` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
-| Permanent domain invariants | 35 | `INV-034` `VERIFIED`; the other 34 are `IN_PROGRESS` at typed-model/policy foundation level and retain their later planner/database evidence |
-| Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; repository behavior remains P08+ |
-| Projection families | 7 + search/geographic indexes | Physical tables/FTS5/R*Tree `VERIFIED` by P07; synchronous rebuild/query behavior remains `IN_PROGRESS` for P08+ |
+| Permanent domain invariants | 35 | `INV-034` `VERIFIED` remains the checked-arithmetic anchor; `INV-002`, `INV-005`, `INV-006`, `INV-007`, `INV-016` and `INV-031` are also `VERIFIED`; 28 retain later evidence |
+| Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; P08 verifies normalized financial plan mapping and atomic repository behavior |
+| Projection families | 7 + search/geographic indexes | Current transaction and settlement plus both indexes are `VERIFIED`; P08 subsets of the other families are verified while later-owned projections/runtime remain `IN_PROGRESS` |
 | Durable/staging/backup operation inventories | 4 groups | Encrypted physical records `VERIFIED` by P07; operation runtime remains `IN_PROGRESS` for P28—P31 |
 
 ## Stage progression
@@ -188,20 +201,20 @@ P07 adds no repository implementation, DAO-to-domain mapper, projection rebuild 
 | P05 | VERIFIED | Complete pure Kotlin aggregate/lifecycle/query/operation model, coordinator/application ports, typed analytics/transfer contracts, property tests and architecture/static gates pass; see `P05-E001`—`P05-E006` |
 | P06 | VERIFIED | Deterministic 11-rule accounting planner, immutable reversal lifecycle, exact FX/effect/hash paths, idempotency/conflict checks and 25 accounting-core invariant mappings pass; see `P06-E001`—`P06-E006` |
 | P07 | VERIFIED | Complete Room/SQLCipher Schema v1, independent encrypted staging, migrations, capabilities, WAL/temp leakage and API 36 device contracts pass; see `P07-E001`—`P07-E006` |
-| P08—P36 | NOT_STARTED | P08 is the next execution stage; do not promote later work early |
+| P08 | VERIFIED | One Room/SQLCipher transaction, coordinator-only write entry, synchronous projection rebuild/audit and typed keyset/FTS/R*Tree queries pass; see `P08-E001`—`P08-E006` |
+| P09—P36 | NOT_STARTED | P09 is the next execution stage; do not promote later work early |
 
-## P08 entry state
+## P09 entry state
 
-P07 leaves the repository at a verified encrypted Schema v1 boundary. Its completion commands are:
+P08 leaves the repository at a verified atomic application/data boundary. Its completion commands are:
 
 ```text
-python3 scripts/generate_p07_schema_catalog.py --check
-python3 scripts/validate_p07_database.py
-python3 -m unittest scripts.tests.test_p07_database_contracts -v
+python3 scripts/validate_p08_data.py
+python3 -m unittest scripts.tests.test_p08_data_contracts -v
 python3 scripts/prove_source_policy_rejection.py
-./gradlew :core:database:pixel6Api36DebugAndroidTest --configuration-cache --no-parallel --dependency-verification=strict --console=plain
-./gradlew p07Check --configuration-cache --no-parallel --dependency-verification=strict --console=plain
-./gradlew p07Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew :core:database:pixel6Api36DebugAndroidTest :finance:data:pixel6Api36DebugAndroidTest --no-configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew p08Check --configuration-cache --no-parallel --dependency-verification=strict --console=plain
+./gradlew p08Artifacts --configuration-cache --no-parallel --dependency-verification=strict --console=plain
 ```
 
-All commands and final hygiene gates pass in `P07-E001`—`P07-E006`. P08 may implement Room-backed repositories and the coordinator's single `withTransaction` commit using this schema, but must not bypass append-only facts, the write gate or canonical planning hashes. All 215 screen implementations remain `NOT_STARTED`; P08 must not infer page completion from database capability.
+All commands and final hygiene gates pass in `P08-E001`—`P08-E006`. P09 may implement the production key hierarchy and database-open security integration against this single repository boundary; it must not introduce a plaintext database, bypass the write gate or infer UI completion from persistence capability. All 215 screen implementations remain `NOT_STARTED`.

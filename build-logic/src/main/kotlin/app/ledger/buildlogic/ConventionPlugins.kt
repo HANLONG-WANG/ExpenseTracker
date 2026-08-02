@@ -141,7 +141,7 @@ private fun LibraryExtension.configureAndroidLibrary(project: Project) {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    if (project.path == ":core:database") {
+    if (project.path == ":core:database" || project.path == ":finance:data") {
         configureLibraryManagedDevices(includeMinSdk = false)
     }
     if (project.path == ":core:designsystem") {

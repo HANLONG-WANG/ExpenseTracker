@@ -32,7 +32,7 @@ interface CommandReceiptRepository {
 
 /** Adapter implementation must persist the complete plan and receipt in one database transaction. */
 fun interface AtomicFinancialCommitRepository {
-    suspend fun commit(plan: FinancialMutationPlan): DomainResult<CommandReceipt>
+    suspend fun commit(command: FinancialCommand, plan: FinancialMutationPlan): DomainResult<CommandReceipt>
 }
 
 class DefaultFinancialMutationCoordinator(
@@ -73,7 +73,7 @@ class DefaultFinancialMutationCoordinator(
                 val validated = FinancialMutationPlanValidator.validate(command, snapshot.value, proposed.value)
             ) {
                 is DomainResult.Failure -> validated
-                is DomainResult.Success -> commitRepository.commit(validated.value)
+                is DomainResult.Success -> commitRepository.commit(command, validated.value)
             }
         }
     }

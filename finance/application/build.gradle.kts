@@ -4,4 +4,5 @@ plugins {
 
 dependencies {
     api(project(":finance:domain"))
+    implementation(libs.coroutines.core)
 }

@@ -390,6 +390,40 @@ tasks.register("p07Artifacts") {
     dependsOn("p06Artifacts")
 }
 
+val validateP08Data by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the P08 atomic financial write, synchronous projection and typed query foundation."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p08_data.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("core/database/src/main") { include("**/*") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        fileTree("build-logic/src") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p08Check") {
+    group = "verification"
+    description = "Runs P07 plus P08 application/data tests, architecture policies and contract gates."
+    dependsOn(
+        "p07Check",
+        validateP08Data,
+        ":finance:application:test",
+        ":finance:data:testDebugUnitTest",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+tasks.register("p08Artifacts") {
+    group = "verification"
+    description = "Generates P08-inclusive coverage and inherited auditable supply-chain artifacts."
+    dependsOn("p07Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

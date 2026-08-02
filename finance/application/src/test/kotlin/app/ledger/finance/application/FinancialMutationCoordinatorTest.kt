@@ -56,7 +56,7 @@ class FinancialMutationCoordinatorTest {
 
         coVerify(exactly = 0) { snapshotRepository.load(any()) }
         verify(exactly = 0) { planner.plan(any(), any()) }
-        coVerify(exactly = 0) { commitRepository.commit(any()) }
+        coVerify(exactly = 0) { commitRepository.commit(any(), any()) }
     }
 
     @Test
@@ -106,11 +106,11 @@ class FinancialMutationCoordinatorTest {
         coEvery { receiptRepository.find(command.commandId) } returns DomainResult.Success(null)
         coEvery { snapshotRepository.load(command) } returns DomainResult.Success(snapshot)
         every { planner.plan(command, snapshot) } returns DomainResult.Success(plan)
-        coEvery { commitRepository.commit(plan) } returns DomainResult.Success(receipt)
+        coEvery { commitRepository.commit(command, plan) } returns DomainResult.Success(receipt)
         val coordinator = coordinator(receiptRepository, snapshotRepository, planner, commitRepository)
 
         coordinator.execute(command) shouldBe DomainResult.Success(receipt)
-        coVerify(exactly = 1) { commitRepository.commit(plan) }
+        coVerify(exactly = 1) { commitRepository.commit(command, plan) }
     }
 
     private fun coordinator(

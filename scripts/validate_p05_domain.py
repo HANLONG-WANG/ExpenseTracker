@@ -270,7 +270,7 @@ def validate_source_contract(sources: Mapping[str, str]) -> list[str]:
         errors.append("ordinary commands must accept only their closed typed payload")
     if "FinancialMutationPlanValidator.validate" not in application:
         errors.append("application coordinator must invoke the domain plan validator")
-    if "commitRepository.commit(validated.value)" not in application:
+    if "commitRepository.commit(command, validated.value)" not in application:
         errors.append("coordinator must commit only the validated immutable plan")
 
     for path, source in sources.items():

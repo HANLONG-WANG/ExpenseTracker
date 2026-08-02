@@ -221,7 +221,14 @@ def validate_ledgers() -> None:
     requirements = read(ROOT / "docs" / "implementation" / "REQUIREMENT_COVERAGE.csv")
     screens = read(ROOT / "docs" / "implementation" / "SCREEN_COVERAGE.csv")
 
-    require("Current stage: P07" in project_state and "Stage status: VERIFIED" in project_state, "P07 project state not verified")
+    current_stage = re.search(r"Current stage: P(\d{2})", project_state)
+    require(
+        current_stage is not None
+        and 7 <= int(current_stage.group(1)) <= 36
+        and "| P07 | VERIFIED |" in project_state
+        and "### P07 result" in project_state,
+        "P07 project state not verified",
+    )
     for evidence_id in range(1, 7):
         require(f"P07-E{evidence_id:03d}" in evidence, f"missing P07 evidence P07-E{evidence_id:03d}")
     for family in EXPECTED_SCHEMA_FAMILY_MEMBERS:

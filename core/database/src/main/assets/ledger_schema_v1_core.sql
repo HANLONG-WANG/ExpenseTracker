@@ -186,10 +186,11 @@ CREATE TABLE business_transaction (
 CREATE TABLE fx_rate_snapshot (
   id INTEGER PRIMARY KEY, uid BLOB NOT NULL UNIQUE CHECK (length(uid) = 16),
   source_currency TEXT NOT NULL CHECK (length(source_currency) = 3), target_currency TEXT NOT NULL CHECK (length(target_currency) = 3),
-  rate_decimal TEXT NOT NULL CHECK (CAST(rate_decimal AS REAL) > 0), provider TEXT NOT NULL, quoted_at INTEGER NOT NULL, fetched_at INTEGER,
+  rate_decimal TEXT NOT NULL CHECK (CAST(rate_decimal AS REAL) > 0), provider TEXT NOT NULL, quoted_at INTEGER, fetched_at INTEGER,
   source_type INTEGER NOT NULL CHECK (source_type >= 0), manual_override INTEGER NOT NULL CHECK (manual_override IN (0,1)),
   stale_at_use INTEGER NOT NULL CHECK (stale_at_use IN (0,1)), created_commit_id INTEGER NOT NULL REFERENCES book_commit(id) ON DELETE RESTRICT,
-  CHECK (source_currency <> target_currency), CHECK (fetched_at IS NULL OR fetched_at >= quoted_at)
+  CHECK (source_currency <> target_currency),
+  CHECK (fetched_at IS NULL OR quoted_at IS NULL OR fetched_at >= quoted_at)
 )
 --@@
 CREATE TABLE transaction_revision (
@@ -209,11 +210,11 @@ CREATE TABLE transaction_revision (
 CREATE TABLE revision_amount (
   id INTEGER PRIMARY KEY, revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,
   component_index INTEGER NOT NULL CHECK (component_index >= 0), role INTEGER NOT NULL CHECK (role >= 0),
-  representation INTEGER NOT NULL CHECK (representation BETWEEN 0 AND 2), amount_minor INTEGER NOT NULL,
+  representation INTEGER NOT NULL CHECK (representation BETWEEN 0 AND 4), amount_minor INTEGER NOT NULL,
   currency_code TEXT NOT NULL CHECK (length(currency_code) = 3), related_account_id INTEGER REFERENCES user_account(id) ON DELETE RESTRICT,
   fx_rate_snapshot_id INTEGER REFERENCES fx_rate_snapshot(id) ON DELETE RESTRICT,
   UNIQUE (revision_id, component_index, role, representation),
-  CHECK ((representation = 1 AND related_account_id IS NOT NULL) OR (representation <> 1 AND related_account_id IS NULL))
+  CHECK (representation = 1 OR related_account_id IS NULL)
 )
 --@@
 CREATE TABLE expense_revision_detail (
@@ -378,11 +379,13 @@ CREATE TABLE project_effect (
 --@@
 CREATE TABLE goal_effect (
   id INTEGER PRIMARY KEY, goal_id INTEGER NOT NULL REFERENCES goal(id) ON DELETE RESTRICT,
-  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT, goal_movement_id INTEGER,
+  source_revision_id INTEGER REFERENCES transaction_revision(id) ON DELETE RESTRICT,
+  goal_movement_id INTEGER REFERENCES goal_movement(id) ON DELETE RESTRICT,
   reversal_of_id INTEGER REFERENCES goal_effect(id) ON DELETE RESTRICT, polarity INTEGER NOT NULL CHECK (polarity IN (-1,1)),
   kind INTEGER NOT NULL CHECK (kind >= 0), amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),
   currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),
-  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT
+  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT,
+  CHECK ((source_revision_id IS NULL) <> (goal_movement_id IS NULL))
 )
 --@@
 CREATE TABLE statement_effect (
@@ -409,9 +412,10 @@ CREATE TABLE loan_effect (
 CREATE TABLE settlement_effect (
   id INTEGER PRIMARY KEY, activity_id INTEGER NOT NULL REFERENCES settlement_activity(id) ON DELETE RESTRICT,
   participant_id INTEGER NOT NULL REFERENCES participant(id) ON DELETE RESTRICT,
-  source_revision_id INTEGER NOT NULL REFERENCES transaction_revision(id) ON DELETE RESTRICT,
+  source_revision_id INTEGER REFERENCES transaction_revision(id) ON DELETE RESTRICT,
   settlement_payment_record_id INTEGER REFERENCES settlement_payment_record(id) ON DELETE RESTRICT,
   reversal_of_id INTEGER REFERENCES settlement_effect(id) ON DELETE RESTRICT, kind INTEGER NOT NULL CHECK (kind >= 0),
   signed_delta_minor INTEGER NOT NULL, currency_code TEXT NOT NULL CHECK (length(currency_code) = 3),
-  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT
+  rule_set_version INTEGER NOT NULL REFERENCES rule_set_version(version) ON DELETE RESTRICT,
+  CHECK ((source_revision_id IS NULL) <> (settlement_payment_record_id IS NULL))
 )

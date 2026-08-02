@@ -262,3 +262,32 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: ordinary operations must never update/delete Revision or Fact rows, while the higher-priority controlled privacy-purge rule permits deletion of a fully reversed closed chain during maintenance.
 - Decision: every immutable table receives a trigger that always rejects updates and rejects deletes unless the book is in `MAINTENANCE` and the internal runtime purge guard is explicitly armed. P07 exposes no public method to arm that guard. One-to-one reversal indexes and historical foreign keys remain enforced independently.
 - Consequence: ordinary DAO mistakes fail at SQLite rather than relying only on convention. P31 must implement the maintenance-lock eligibility audit before it can receive a narrowly scoped internal purge capability; P07 does not claim that later workflow.
+
+## DL-036 — P08 corrects four Schema v1 nullability and XOR constraints before repository use
+
+- Date/stage: 2026-08-02 / P08
+- Surface issue: executing real P06 plans against the P07 schema exposed four mismatches that static inventory checks could not exercise: manual FX evidence may have no quote time; a GoalEffect may originate from a transaction revision or a goal movement; a SettlementEffect may originate from a transaction revision or a settlement payment; and the frozen `RevisionAmount` representation enum has five values while the physical check admitted only four. The related-account requirement also had to follow the representation owning the account amount.
+- Precedence applied: frozen domain fields and accounting evidence semantics outrank the earlier physical interpretation.
+- Decision: make `fx_rate_snapshot.quoted_at` nullable; enforce exact-one source XORs for goal and settlement effects; admit representation ordinals 0—4; require `related_account_id` exactly for the account representation. Regenerate the deterministic schema catalog after changing canonical DDL.
+- Consequence: real deterministic plans now persist without discarding evidence or inventing foreign keys. P07 device capability/integrity tests were replayed and remain passing; no frozen specification was changed.
+
+## DL-037 — Receipt-last and persisted rechecks define the atomic idempotency boundary
+
+- Date/stage: 2026-08-02 / P08
+- Surface issue: a coordinator-side receipt/revision check is necessary for fast rejection but cannot by itself close a race between planning and persistence.
+- Decision: `RoomFinancialCommitRepository` rechecks an existing receipt, book state/head/local revision/rule version and the target transaction's current revision inside Room's sole SQLCipher transaction. It compare-and-sets the book head/revision after facts and projections, then inserts `CommandReceipt` last. A duplicate returns the stored receipt only when type and canonical payload hash match.
+- Consequence: repeated commands are idempotent, stale revisions cannot silently overwrite, and a receipt cannot claim a partially committed mutation. The process-local mutex orders ordinary submissions; SQLite remains the atomicity authority.
+
+## DL-038 — Only P08-owned synchronous projections advance during a financial commit
+
+- Date/stage: 2026-08-02 / P08
+- Surface issue: the physical v1 schema includes valuation, future-reservation/future-cashflow and analytics projections whose complete algorithms belong to later stages. Stamping those rows with the new revision without recomputing them would create false freshness.
+- Decision: atomically rebuild the current transaction, balance/daily, refund, budget usage, project, goal, current credit/installment/loan, settlement, FTS/R*Tree and widget snapshot set. Leave later-owned projections and their `as_of_*` values untouched. The explicit projection date comes from commit/book-zone evidence; no ambient clock or current FX feed participates.
+- Consequence: every P08 synchronous row matches `book.localRevision`, while deferred projections truthfully remain stale until their owning stage. `asOfValuationRevision` is preserved independently and historical facts cannot be revalued accidentally.
+
+## DL-039 — Projection audit rebuilds in a savepoint and canonical hashes are type-delimited
+
+- Date/stage: 2026-08-02 / P08
+- Surface issue: comparing only stored version columns cannot detect a value corruption, and a naive concatenated-row digest permits ambiguous byte boundaries.
+- Decision: serialize every P08 derived table in stable key order with table names, SQLite value types and length prefixes. During audit, compute the live hash, rebuild inside a savepoint, compute the rebuilt hash and roll the savepoint back. The explicit maintenance rebuild replaces derived state atomically and runs integrity/version/count checks before returning the book to ready state.
+- Consequence: projections are reproducibly auditable from authoritative normalized facts without mutating the live database during an audit. Device tests corrupt one projection value, detect the mismatch, rebuild it and recover the original hash.

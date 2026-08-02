@@ -16,6 +16,12 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 )
 abstract class LedgerDatabase : RoomDatabase() {
     internal abstract fun schemaRegistryDao(): PrimarySchemaRegistryDao
+
+    /** Runs infrastructure work on Room's sole SQLCipher connection and transaction boundary. */
+    fun <T> inLedgerTransaction(block: (SupportSQLiteDatabase) -> T): T = runInTransaction<T> { block(openHelper.writableDatabase) }
+
+    /** Read access for infrastructure adapters; callers cannot open an alternate SQLite connection. */
+    fun <T> readLedger(block: (SupportSQLiteDatabase) -> T): T = block(openHelper.readableDatabase)
 }
 
 @Database(
