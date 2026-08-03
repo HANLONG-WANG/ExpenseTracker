@@ -590,6 +590,42 @@ tasks.register("p12Evidence") {
     )
 }
 
+val validateP13Recording by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the frozen P13 category-first ordinary-recording contract and VERIFIED evidence."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p13_recording.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("core/files/src") { include("**/*.kt") },
+        fileTree("feature/record/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+tasks.register("p13Check") {
+    group = "verification"
+    description = "Runs P13 static, JVM, lint and architecture evidence; managed-device suites run separately."
+    dependsOn(
+        validateP13Recording,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":feature:record:testDebugUnitTest",
+        ":app:lintDebug",
+        ":feature:record:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

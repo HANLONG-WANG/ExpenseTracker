@@ -1,10 +1,11 @@
-@file:Suppress("LongMethod", "TooManyFunctions", "MagicNumber", "LongParameterList", "LargeClass", "MaxLineLength")
+@file:Suppress("LongMethod", "TooManyFunctions", "MagicNumber", "LongParameterList", "LargeClass", "MaxLineLength", "ReturnCount")
 
 package app.ledger.app
 
 import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.ledger.app.settings.DestinationProto
@@ -17,6 +18,8 @@ import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerReferenceDisplayDefaults
+import app.ledger.core.geo.ForegroundLocationSaveSession
+import app.ledger.core.geo.ProductionForegroundLocationClient
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.navigation.DestinationSnapshot
 import app.ledger.core.navigation.EncodedRouteArgument
@@ -48,6 +51,7 @@ import app.ledger.core.security.SecretBytes
 import app.ledger.core.security.SecurityAssociatedData
 import app.ledger.core.security.SqlCipherBookDatabaseResourceFactory
 import app.ledger.core.security.VaultExposureRegistry
+import app.ledger.core.time.InjectedJavaClock
 import app.ledger.feature.accounts.AccountEditorSubmission
 import app.ledger.feature.accounts.CardEditorSubmission
 import app.ledger.feature.accounts.CheckpointSubmission
@@ -59,10 +63,20 @@ import app.ledger.feature.onboarding.OnboardingRenderState
 import app.ledger.feature.onboarding.OnboardingStep
 import app.ledger.feature.onboarding.OnboardingUiState
 import app.ledger.feature.onboarding.OnboardingValidator
+import app.ledger.feature.record.OrdinaryRecordEditorState
+import app.ledger.feature.record.OrdinaryRecordLoadState
+import app.ledger.feature.record.OrdinaryRecordPolicy
+import app.ledger.feature.record.RecordEditorMode
+import app.ledger.feature.record.RecordEditorPresentation
+import app.ledger.feature.record.RecordField
+import app.ledger.feature.record.RecordTab
 import app.ledger.feature.settings.CategorySubmission
 import app.ledger.feature.settings.MerchantSubmission
 import app.ledger.feature.settings.PlaceSubmission
 import app.ledger.finance.application.AccountDraft
+import app.ledger.finance.application.AttachmentContentSource
+import app.ledger.finance.application.AttachmentImportRequest
+import app.ledger.finance.application.BookAttachmentObjectPort
 import app.ledger.finance.application.CardDraft
 import app.ledger.finance.application.CategoryDraft
 import app.ledger.finance.application.InitialAccountCommand
@@ -74,6 +88,13 @@ import app.ledger.finance.application.MerchantDraft
 import app.ledger.finance.application.OpeningBalanceWriteIds
 import app.ledger.finance.application.OpeningBalanceWritePort
 import app.ledger.finance.application.OpeningBalanceWriteRequest
+import app.ledger.finance.application.OrdinaryAmountDraft
+import app.ledger.finance.application.OrdinaryDirection
+import app.ledger.finance.application.OrdinaryLocationDraft
+import app.ledger.finance.application.OrdinaryLocationProvider
+import app.ledger.finance.application.OrdinaryTransactionEntryPort
+import app.ledger.finance.application.OrdinaryTransactionWriteIds
+import app.ledger.finance.application.OrdinaryTransactionWriteRequest
 import app.ledger.finance.application.PlaceDraft
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.ReferenceDataSnapshot
@@ -86,12 +107,14 @@ import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryRemovalStrategy
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.SystemLedgerCode
+import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountType
 import com.google.protobuf.ByteString
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -145,6 +168,8 @@ internal class AppRootViewModel @Inject constructor(
     private val initializationPort: LedgerInitializationPort,
     private val referenceDataPort: ReferenceDataManagementPort,
     private val openingBalanceWritePort: OpeningBalanceWritePort,
+    private val ordinaryTransactionEntryPort: OrdinaryTransactionEntryPort,
+    private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
 ) : ViewModel() {
     private val mutableRootState = MutableStateFlow<AppRootState>(AppRootState.Starting)
@@ -169,6 +194,10 @@ internal class AppRootViewModel @Inject constructor(
     val referenceData: StateFlow<AppReferenceDataState> = mutableReferenceData.asStateFlow()
     private val mutableReferenceMutationPending = MutableStateFlow(false)
     val referenceMutationPending: StateFlow<Boolean> = mutableReferenceMutationPending.asStateFlow()
+    private val mutableOrdinaryRecord = MutableStateFlow<OrdinaryRecordLoadState>(OrdinaryRecordLoadState.Loading)
+    val ordinaryRecord: StateFlow<OrdinaryRecordLoadState> = mutableOrdinaryRecord.asStateFlow()
+    private val mutableOrdinaryRecordPending = MutableStateFlow(false)
+    val ordinaryRecordPending: StateFlow<Boolean> = mutableOrdinaryRecordPending.asStateFlow()
     var selectedAccountType: UserAccountType = UserAccountType.CASH
         private set
     private var pendingCardAccountId: StableId? = null
@@ -182,6 +211,9 @@ internal class AppRootViewModel @Inject constructor(
     val navigator: FiveStackNavigator = FiveStackNavigator()
     private var pendingDeepLink: LedgerDestinationKey? = null
     private val scrollStates = mutableMapOf<TopLevelDestination, Pair<String, Int>>()
+    private var recordLocationSession: ForegroundLocationSaveSession? = null
+    private var recordAttachmentImportJob: Job? = null
+    private var pendingRecordExit: PendingRecordExit? = null
 
     init {
         viewModelScope.launch { start() }
@@ -445,6 +477,7 @@ internal class AppRootViewModel @Inject constructor(
                 if (state is BookSessionState.Ready) {
                     consumePendingDeepLink()
                     loadReferenceData()
+                    loadOrdinaryRecord()
                 }
             }
         }
@@ -554,6 +587,298 @@ internal class AppRootViewModel @Inject constructor(
                 is DomainResult.Failure -> AppReferenceDataState.Error(result.error.code)
             }
         }
+    }
+
+    fun loadOrdinaryRecord(transactionId: StableId? = null) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
+            if (transactionId == null) mutableOrdinaryRecord.value = OrdinaryRecordLoadState.Loading
+            mutableOrdinaryRecord.value = when (val result = ordinaryTransactionEntryPort.snapshot(bookId, transactionId)) {
+                is DomainResult.Success -> {
+                    val previous = mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content
+                    OrdinaryRecordLoadState.Content(
+                        result.value,
+                        previous?.tab ?: RecordTab.EXPENSE,
+                        previous?.search.orEmpty(),
+                        previous?.selectedCategoryId,
+                        previous?.editor,
+                        previous?.expenseScrollIndex ?: 0,
+                        previous?.incomeScrollIndex ?: 0,
+                    )
+                }
+                is DomainResult.Failure -> OrdinaryRecordLoadState.Failure(sanitizeCode(result.error.code))
+            }
+        }
+    }
+
+    fun selectRecordTab(tab: RecordTab) = updateRecordContent { copy(tab = tab, search = "") }
+    fun updateRecordSearch(value: String) = updateRecordContent { copy(search = value.take(RECORD_SEARCH_LIMIT)) }
+
+    fun openRecordEditor(
+        mode: RecordEditorMode,
+        direction: OrdinaryDirection,
+        categoryId: StableId?,
+        sourceId: StableId?,
+    ) {
+        if (mutableOrdinaryRecordPending.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content ?: return@launch
+            val transactionId = sourceId.takeIf { mode in setOf(RecordEditorMode.EDIT, RecordEditorMode.DUPLICATE) }
+            val snapshot = if (transactionId == null) {
+                current.snapshot
+            } else {
+                val bookId = requireBookId(settingsRepository.current())
+                when (val loaded = ordinaryTransactionEntryPort.snapshot(bookId, transactionId)) {
+                    is DomainResult.Success -> loaded.value
+                    is DomainResult.Failure -> {
+                        mutableOrdinaryRecord.value = OrdinaryRecordLoadState.Failure(sanitizeCode(loaded.error.code))
+                        return@launch
+                    }
+                }
+            }
+            val locale = recordLocale()
+            val zone = ZoneId.of(settingsRepository.current().zoneId.ifBlank { DEFAULT_ZONE })
+            val editor = OrdinaryRecordPolicy.createEditor(snapshot, mode, direction, categoryId, sourceId, runtimeSources.clock.now(), zone, locale)
+            mutableOrdinaryRecord.value = current.copy(snapshot = snapshot, selectedCategoryId = editor.draft.categoryId, editor = editor)
+            val platformClock = InjectedJavaClock(runtimeSources.clock)
+            recordLocationSession = ForegroundLocationSaveSession(
+                ProductionForegroundLocationClient(context, platformClock),
+                platformClock,
+                SystemClock::elapsedRealtime,
+            ).also { it.prefetch(viewModelScope) }
+            val screenId = ScreenId("REC-003")
+            val arguments = buildMap<String, SafeRouteArgument> {
+                put("mode", LedgerRouteContract.enumArgument(screenId, "mode", mode.name))
+                sourceId?.let { put("transactionId", StableIdArgument(it)) }
+            }
+            navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+        }
+    }
+
+    fun navigateRecord(target: String, stable: Map<String, StableId>, enums: Map<String, String>) {
+        val screenId = ScreenId(target)
+        val arguments = buildMap<String, SafeRouteArgument> {
+            stable.forEach { (name, value) -> put(name, StableIdArgument(value)) }
+            enums.forEach { (name, value) -> put(name, LedgerRouteContract.enumArgument(screenId, name, value)) }
+        }
+        navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+    }
+
+    fun recordExpression(value: String) = updateEditor { OrdinaryRecordPolicy.changeExpression(it, value, recordLocale()) }
+    fun recordOperator(value: String) = updateEditor { OrdinaryRecordPolicy.appendOperator(it, value, recordLocale()) }
+    fun selectRecordCategory(id: StableId) = updateEditorAndPop { OrdinaryRecordPolicy.selectCategory(it, id) }
+    fun selectRecordAccount(id: StableId) = updateEditorAndPop { OrdinaryRecordPolicy.selectAccount(it, id, recordLocale()) }
+    fun selectRecordCard(id: StableId?) = updateEditorAndPop { OrdinaryRecordPolicy.selectCard(it, id) }
+    fun selectRecordReference(field: RecordField, id: StableId?) = updateEditorAndPop { OrdinaryRecordPolicy.update(it, field, id) }
+    fun updateRecordNote(value: String) = updateEditor { OrdinaryRecordPolicy.updateNote(it, value) }
+    fun setRecordSettlementEnabled(value: Boolean) = updateEditor { OrdinaryRecordPolicy.setSettlementEnabled(it, value) }
+    fun selectRecordSettlementActivity(id: StableId) = updateEditorAndPop { OrdinaryRecordPolicy.selectSettlementActivity(it, id) }
+    fun updateRecordOccurredAt(dateMillis: Long, hour: Int, minute: Int) = updateEditor { OrdinaryRecordPolicy.updateOccurredAt(it, dateMillis, hour, minute) }
+
+    fun importRecordAttachment(uri: Uri) {
+        val content = mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content ?: return
+        val editor = content.editor ?: return
+        if (editor.attachmentImporting) return
+        updateEditor { it.copy(attachmentImporting = true, attachmentFailureCode = null) }
+        recordAttachmentImportJob = viewModelScope.launch(Dispatchers.IO) {
+            val metadata = attachmentMetadata(uri)
+            if (metadata == null) {
+                updateEditor { it.copy(attachmentImporting = false, attachmentFailureCode = "ATTACHMENT_SOURCE_UNAVAILABLE") }
+                return@launch
+            }
+            val request = AttachmentImportRequest(
+                displayName = metadata.first,
+                mimeType = context.contentResolver.getType(uri),
+                extension = metadata.first.substringAfterLast('.', "").takeIf(String::isNotBlank),
+                declaredSize = metadata.second,
+                content = AttachmentContentSource { requireNotNull(context.contentResolver.openInputStream(uri)) },
+            )
+            when (val result = bookAttachmentObjectPort.import(editor.snapshot.references.bookId, request)) {
+                is DomainResult.Success -> updateEditor {
+                    it.copy(
+                        draft = it.draft.copy(
+                            attachmentIds = it.draft.attachmentIds + result.value.attachmentId.value,
+                            touched = it.draft.touched + RecordField.ATTACHMENTS,
+                        ),
+                        attachmentImporting = false,
+                        attachmentFailureCode = null,
+                        uncommittedAttachmentIds = it.uncommittedAttachmentIds + result.value.attachmentId.value,
+                    )
+                }
+                is DomainResult.Failure -> updateEditor { it.copy(attachmentImporting = false, attachmentFailureCode = sanitizeCode(result.error.code)) }
+            }
+        }
+        recordAttachmentImportJob?.invokeOnCompletion {
+            updateEditor { it.copy(attachmentImporting = false) }
+            recordAttachmentImportJob = null
+        }
+    }
+
+    fun cancelRecordAttachment(index: Int) {
+        val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor ?: return
+        val attachmentId = editor.draft.attachmentIds.getOrNull(index)
+        if (attachmentId == null && editor.attachmentImporting) {
+            recordAttachmentImportJob?.cancel()
+            return
+        }
+        attachmentId ?: return
+        updateEditor {
+            it.copy(
+                draft = it.draft.copy(
+                    attachmentIds = it.draft.attachmentIds.filterIndexed { itemIndex, _ -> itemIndex != index },
+                    touched = it.draft.touched + RecordField.ATTACHMENTS,
+                ),
+                uncommittedAttachmentIds = it.uncommittedAttachmentIds - attachmentId,
+            )
+        }
+        if (attachmentId in editor.uncommittedAttachmentIds) {
+            viewModelScope.launch(Dispatchers.IO) {
+                bookAttachmentObjectPort.discardUncommitted(editor.snapshot.references.bookId, app.ledger.finance.domain.AttachmentId(attachmentId))
+            }
+        }
+    }
+
+    fun saveOrdinaryRecord() {
+        if (mutableOrdinaryRecordPending.value) return
+        val content = mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content ?: return
+        val editor = content.editor ?: return
+        val validated = OrdinaryRecordPolicy.validate(editor)
+        mutableOrdinaryRecord.value = content.copy(editor = validated)
+        if (validated.errors.isNotEmpty()) return
+        val amountMinor = validated.draft.resultMinor ?: return
+        val account = validated.snapshot.references.accounts.singleOrNull { it.id == validated.draft.accountId } ?: return
+        val baseMinor = baseMinor(validated, account.balanceMinor, account.currentBaseValueMinor) ?: run {
+            mutableOrdinaryRecord.value = content.copy(editor = validated.copy(presentation = RecordEditorPresentation.SAVE_ERROR, sanitizedFailureCode = "FX_EVIDENCE_UNAVAILABLE"))
+            return
+        }
+        mutableOrdinaryRecordPending.value = true
+        mutableOrdinaryRecord.value = content.copy(editor = validated.copy(presentation = RecordEditorPresentation.SAVING, errors = emptyList()))
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val locationResult = if (validated.draft.locationRecordId == null && RecordField.LOCATION !in validated.draft.touched) {
+                    runCatching { recordLocationSession?.locationForSave() }.getOrNull()?.location
+                } else {
+                    null
+                }
+                val locationId = locationResult?.let { nextId() }
+                val ids = OrdinaryTransactionWriteIds(
+                    bookId = validated.snapshot.references.bookId,
+                    commandId = nextId(),
+                    transactionId = validated.transactionId ?: nextId(),
+                    revisionId = nextId(),
+                    commitId = nextId(),
+                    deviceInstanceId = nextId(),
+                    factIds = List(FINANCIAL_FACT_ID_RESERVE) { nextId() },
+                    fxRateSnapshotIds = List(FX_ID_RESERVE) { nextId() },
+                )
+                val request = OrdinaryTransactionWriteRequest(
+                    ids = ids,
+                    expectedRevisionId = validated.expectedRevisionId,
+                    direction = validated.draft.direction,
+                    categoryId = requireNotNull(validated.draft.categoryId),
+                    amount = OrdinaryAmountDraft(validated.draft.expression, amountMinor, account.currency, amountMinor, baseMinor),
+                    accountId = requireNotNull(validated.draft.accountId),
+                    cardId = validated.draft.cardId,
+                    merchantId = validated.draft.merchantId,
+                    occurredAt = validated.draft.occurredAt,
+                    zoneId = validated.draft.zoneId,
+                    localDate = validated.draft.occurredAt.atZone(validated.draft.zoneId).toLocalDate(),
+                    projectId = validated.draft.projectId,
+                    settlementActivityId = validated.draft.settlementActivityId.takeIf { validated.draft.settlementEnabled },
+                    settlementShares = validated.draft.settlementShares.takeIf { validated.draft.settlementEnabled }.orEmpty(),
+                    locationRecordId = validated.draft.locationRecordId ?: locationId,
+                    newLocation = locationResult?.let { captured ->
+                        OrdinaryLocationDraft(
+                            requireNotNull(locationId),
+                            captured.latitudeE7,
+                            captured.longitudeE7,
+                            captured.accuracyMillimeters,
+                            captured.capturedAt,
+                            when (captured.provider) {
+                                app.ledger.finance.application.CapturedLocationProvider.FUSED -> OrdinaryLocationProvider.FUSED
+                                app.ledger.finance.application.CapturedLocationProvider.GPS -> OrdinaryLocationProvider.GPS
+                                app.ledger.finance.application.CapturedLocationProvider.NETWORK -> OrdinaryLocationProvider.NETWORK
+                            },
+                            null,
+                        )
+                    },
+                    note = validated.draft.note.trim().takeIf(String::isNotEmpty),
+                    attachmentIds = validated.draft.attachmentIds,
+                    source = recordSource(validated),
+                    sourceReferenceId = validated.sourceReferenceId.takeIf { validated.mode in setOf(RecordEditorMode.TEMPLATE, RecordEditorMode.CANDIDATE) },
+                    createdAt = runtimeSources.clock.now(),
+                )
+                when (val result = ordinaryTransactionEntryPort.submit(request)) {
+                    is DomainResult.Success -> finishRecordSave(validated, ids.transactionId)
+                    is DomainResult.Failure -> {
+                        val code = sanitizeCode(result.error.code)
+                        val presentation = if (code.contains("STALE") || code.contains("REVISION")) RecordEditorPresentation.REVISION_CONFLICT else RecordEditorPresentation.SAVE_ERROR
+                        updateEditor { it.copy(presentation = presentation, sanitizedFailureCode = code) }
+                    }
+                }
+            } finally {
+                mutableOrdinaryRecordPending.value = false
+            }
+        }
+    }
+
+    fun requestRootBack() {
+        val screen = navigator.currentKey.contract.screenId.value
+        val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
+        if (screen == "REC-003" && editor?.draft?.dirty == true) {
+            pendingRecordExit = PendingRecordExit.Back
+            updateEditor { it.copy(showUnsavedDialog = true) }
+        } else {
+            navigator.pop()
+        }
+    }
+
+    fun selectRootTopLevel(target: TopLevelDestination) {
+        val screen = navigator.currentKey.contract.screenId.value
+        val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
+        if (screen == "REC-003" && editor?.draft?.dirty == true) {
+            pendingRecordExit = PendingRecordExit.TopLevel(target)
+            updateEditor { it.copy(showUnsavedDialog = true) }
+        } else {
+            navigator.select(target)
+        }
+    }
+
+    fun discardRecordChanges() {
+        recordAttachmentImportJob?.cancel()
+        val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
+        if (editor != null && editor.uncommittedAttachmentIds.isNotEmpty()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                editor.uncommittedAttachmentIds.forEach { id ->
+                    bookAttachmentObjectPort.discardUncommitted(editor.snapshot.references.bookId, app.ledger.finance.domain.AttachmentId(id))
+                }
+            }
+        }
+        updateEditor { it.copy(showUnsavedDialog = false) }
+        when (val pending = pendingRecordExit) {
+            PendingRecordExit.Back -> navigator.pop()
+            is PendingRecordExit.TopLevel -> navigator.select(pending.target)
+            null -> Unit
+        }
+        pendingRecordExit = null
+        recordLocationSession = null
+    }
+
+    fun keepEditingRecord() {
+        pendingRecordExit = null
+        updateEditor { it.copy(showUnsavedDialog = false) }
+    }
+
+    fun reloadRecordConflict() {
+        val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor ?: return
+        val id = editor.transactionId ?: return
+        openRecordEditor(RecordEditorMode.EDIT, editor.draft.direction, editor.draft.categoryId, id)
+    }
+
+    fun cancelRecordConflict() {
+        navigator.pop()
+        updateRecordContent { copy(editor = null) }
     }
 
     fun navigateP12(
@@ -871,6 +1196,81 @@ internal class AppRootViewModel @Inject constructor(
         StableId.fromBytes(saved.bookId.toByteArray()).getOrNull(),
     )
 
+    private fun updateRecordContent(block: OrdinaryRecordLoadState.Content.() -> OrdinaryRecordLoadState.Content) {
+        val current = mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content ?: return
+        mutableOrdinaryRecord.value = current.block()
+    }
+
+    private fun updateEditor(block: (OrdinaryRecordEditorState) -> OrdinaryRecordEditorState) {
+        updateRecordContent { copy(editor = editor?.let(block)) }
+    }
+
+    private fun updateEditorAndPop(block: (OrdinaryRecordEditorState) -> OrdinaryRecordEditorState) {
+        updateEditor(block)
+        navigator.pop()
+    }
+
+    private fun baseMinor(editor: OrdinaryRecordEditorState, balanceMinor: Long, currentBaseValueMinor: Long?): Long? {
+        val result = editor.draft.resultMinor ?: return null
+        val account = editor.snapshot.references.accounts.singleOrNull { it.id == editor.draft.accountId } ?: return null
+        if (account.currency == editor.snapshot.references.baseCurrency) return result
+        if (balanceMinor == 0L || currentBaseValueMinor == null) return null
+        return runCatching {
+            java.math.BigDecimal.valueOf(result)
+                .multiply(java.math.BigDecimal.valueOf(currentBaseValueMinor).abs())
+                .divide(java.math.BigDecimal.valueOf(balanceMinor).abs(), 0, java.math.RoundingMode.HALF_EVEN)
+                .longValueExact()
+                .takeIf { it > 0L }
+        }.getOrNull()
+    }
+
+    private fun recordSource(editor: OrdinaryRecordEditorState): TransactionSource = when (editor.mode) {
+        RecordEditorMode.TEMPLATE -> TransactionSource.QUICK_TEMPLATE
+        RecordEditorMode.CANDIDATE -> TransactionSource.RECURRENCE_CANDIDATE
+        RecordEditorMode.EDIT -> editor.snapshot.editing?.source ?: TransactionSource.MANUAL
+        RecordEditorMode.CREATE, RecordEditorMode.DUPLICATE -> TransactionSource.MANUAL
+    }
+
+    private suspend fun finishRecordSave(editor: OrdinaryRecordEditorState, transactionId: StableId) {
+        loadReferenceDataAfterMutation(editor.snapshot.references.bookId)
+        when (editor.mode) {
+            RecordEditorMode.EDIT -> {
+                val screen = ScreenId("JRN-007")
+                navigator.navigate(
+                    LedgerRouteContract.destination(screen, mapOf("transactionId" to StableIdArgument(transactionId))),
+                    SessionGateState.READY,
+                )
+            }
+            RecordEditorMode.CANDIDATE -> navigator.navigate(LedgerRouteContract.destination(ScreenId("AUT-008")), SessionGateState.READY)
+            RecordEditorMode.CREATE, RecordEditorMode.DUPLICATE, RecordEditorMode.TEMPLATE -> {
+                while (navigator.currentKey.contract.screenId.value != "REC-001" && navigator.currentBackStack.size > 1) navigator.pop()
+            }
+        }
+        val loaded = ordinaryTransactionEntryPort.snapshot(editor.snapshot.references.bookId)
+        mutableOrdinaryRecord.value = when (loaded) {
+            is DomainResult.Success -> OrdinaryRecordLoadState.Content(loaded.value, if (editor.draft.direction == OrdinaryDirection.EXPENSE) RecordTab.EXPENSE else RecordTab.INCOME, selectedCategoryId = editor.draft.categoryId)
+            is DomainResult.Failure -> OrdinaryRecordLoadState.Failure(sanitizeCode(loaded.error.code))
+        }
+        recordLocationSession = null
+    }
+
+    private fun recordLocale(): Locale {
+        val tag = settings.value.languageTag.ifBlank { Locale.getDefault().toLanguageTag() }
+        return Locale.forLanguageTag(tag)
+    }
+
+    private fun attachmentMetadata(uri: Uri): Pair<String, Long?>? = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val name = cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)).trim().take(RECORD_ATTACHMENT_NAME_LIMIT)
+            val sizeIndex = cursor.getColumnIndexOrThrow(OpenableColumns.SIZE)
+            val size = if (cursor.isNull(sizeIndex)) null else cursor.getLong(sizeIndex).takeIf { it >= 0L }
+            name.takeIf(String::isNotBlank)?.let { it to size }
+        }
+    }.getOrNull()
+
+    private fun sanitizeCode(value: String): String = value.uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9_]"), "_").take(48).ifBlank { "RECORD_FAILURE" }
+
     private fun nextId(): StableId = runtimeSources.stableIds.nextStableId()
 
     private fun <T> DomainResult<T>.requireSuccess(): T = when (this) {
@@ -907,5 +1307,13 @@ internal class AppRootViewModel @Inject constructor(
         const val DEEP_LINK_HOST = "screen"
         const val REFERENCE_REVISION_ID_RESERVE = 128
         const val FINANCIAL_FACT_ID_RESERVE = 256
+        const val FX_ID_RESERVE = 8
+        const val RECORD_SEARCH_LIMIT = 80
+        const val RECORD_ATTACHMENT_NAME_LIMIT = 255
     }
+}
+
+private sealed interface PendingRecordExit {
+    data object Back : PendingRecordExit
+    data class TopLevel(val target: TopLevelDestination) : PendingRecordExit
 }

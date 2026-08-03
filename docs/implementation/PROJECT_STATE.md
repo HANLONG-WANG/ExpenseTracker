@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-02 (Asia/Tokyo)
-Current stage: P12 — Account, physical-card and reference-data management
-Stage status: VERIFIED (`P12-E001`—`P12-E008`); P00—P11 remain VERIFIED and P13 is the next unstarted stage
+Last updated: 2026-08-03 (Asia/Tokyo)
+Current stage: P13 — Category-first ordinary recording and core entry experience
+Stage status: VERIFIED (`P13-E001`—`P13-E008`); P00—P12 remain VERIFIED and P14 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -230,14 +230,26 @@ P11 does not claim later feature pages, settings completion, durable operation e
 | Historical category reassignment | Coordinator-owned `BatchFinancialCommand` appends typed EDIT revisions and REVERSE/APPLY facts using frozen historical amount/FX evidence | PASS: one canonical `BATCH_MUTATION`, one receipt and one Room transaction (`P12-E008`, `DL-058`) |
 | Place split | Immutable location clones plus current-transaction revision fan-out execute through the same batch coordinator path | PASS: source records stay immutable and the entire reference/financial change is atomic (`P12-E003`, `P12-E008`, `DL-058`) |
 
-P12 is `VERIFIED`; P13 has not started. `P12_REFERENCE_DATA_MAPPING.md` records the exact implemented boundary. No direct feature/Worker/importer financial DAO path, mutable-history workaround, sequential partial financial commit or second application write entry was introduced.
+P12 is `VERIFIED`. `P12_REFERENCE_DATA_MAPPING.md` records the exact implemented boundary. No direct feature/Worker/importer financial DAO path, mutable-history workaround, sequential partial financial commit or second application write entry was introduced.
+
+### P13 result (verified)
+
+| Area | P13 result | Classification |
+|---|---|---|
+| Category-first recording | Fixed expense/income/other tabs, independent full category grids, search/empty states, first/second-level direct selection and editable template entry | VERIFIED (`P13-E002`, `P13-E004`) |
+| Complete editor | Exact field order, system-keyboard expression, governed date/time picker, compatible account/card defaults, settlement, location, protected note semantics, encrypted attachments and advanced snapshots | VERIFIED (`P13-E002`, `P13-E004`, `P13-E005`) |
+| Atomic application write | One typed application request reaches `FinancialMutationCoordinator`; idempotency, expected revision, immutable edit facts, location side effect and synchronous projections share one SQLCipher transaction | VERIFIED (`P13-E003`, `P13-E006`) |
+| Failure/privacy behavior | Invalid Save locates errors, submitting is single-flight, failures retain input, conflict is explicit, unsaved exit is confirmed, sensitive draft data stays out of routes/SavedState/logs/semantic values | VERIFIED (`P13-E002`, `P13-E004`, `P13-E006`) |
+| UI evidence | 12 REC screens/42 states, widths/font scales, three languages, light/dark/reduced-motion, accessibility semantics and four exact Compose/token goldens pass on API 36 | VERIFIED (`P13-E004`, `P13-E005`) |
+
+P13 is `VERIFIED`; P14 is `NOT_STARTED`. `P13_ORDINARY_RECORDING_MAPPING.md` records later ownership boundaries. No specialized P14+ transaction page, P18 goal behavior, P22 settlement management, P23 template authoring, P28 import flow or later acceptance stage is promoted.
 
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | Eight requirements are `VERIFIED`; 68 are `IN_PROGRESS`; 14 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 45 are `VERIFIED` (G-001—008, ONB-001—010, ATT-001—003, SYS-001 and all 23 P12 screens); REC-009/010 remain `IN_PROGRESS`; 168 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 20 requirements are `VERIFIED`; 58 are `IN_PROGRESS`; 12 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 57 are `VERIFIED` (G-001—008, ONB-001—010, ATT-001—003, SYS-001, all 23 P12 screens and REC-001—012); 158 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-010 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-011—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
 | Permanent domain invariants | 35 | `INV-034` `VERIFIED` remains the checked-arithmetic anchor; `INV-002`, `INV-005`, `INV-006`, `INV-007`, `INV-016`, `INV-029` and `INV-031` are also `VERIFIED`; 27 retain later evidence |
@@ -262,7 +274,8 @@ P12 is `VERIFIED`; P13 has not started. `P12_REFERENCE_DATA_MAPPING.md` records 
 | P10 | VERIFIED | Encrypted streaming attachments, one-time pipe sharing, three-second foreground location, MapLibre fallback and all P10 required states pass on API 36; see `P10-E001`—`P10-E007` |
 | P11 | VERIFIED | Single Activity/Compose root, complete SessionGate, five Navigation 3 stacks, typed Proto restore, secure empty-book onboarding and all 65 G/ONB states pass; see `P11-E001`—`P11-E008` |
 | P12 | VERIFIED | Account/card/reference-data implementation, all 23 screen contracts and coordinator-owned atomic category/place batch edits pass; see `P12-E001`—`P12-E008` |
-| P13—P36 | NOT_STARTED | P13 has not started; do not promote later work early |
+| P13 | VERIFIED | Complete category-first ordinary entry; `P13-E001`—`P13-E008` |
+| P14—P36 | NOT_STARTED | P14 is next; do not promote later work early |
 
 ## P12 verified handoff
 
@@ -276,4 +289,4 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 ./gradlew p12Evidence --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
 ```
 
-All P12 evidence is recorded in `P12-E001`—`P12-E008`. The next entry point is P13, which remains `NOT_STARTED`; reuse the verified account/category/merchant/place application ports and the sole financial coordinator boundary rather than adding a feature-owned persistence path.
+All P13 evidence is recorded in `P13-E001`—`P13-E008`. The next entry point is P14; reuse the verified ordinary application adapter and sole financial coordinator boundary rather than adding a feature-owned persistence path.

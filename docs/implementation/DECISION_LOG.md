@@ -405,7 +405,7 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: AGP/Lint 9.3.1's bundled `intellij-core` FIR path invokes `java.util.List.removeLast()`, a Java 21 method, for the large root `when` dispatch even though the frozen Android toolchain runs on JDK 17. The failure occurs inside Lint analysis; the Kotlin compiler and application runtime are valid.
 - Precedence applied: the frozen JDK/AGP/Kotlin baseline and mandatory Lint gate outrank changing the host JDK or suppressing a detector to accommodate an analyzer implementation detail.
 - Decision: retain JDK 17 and all Lint detectors, and express the root language/session/destination dispatch as equivalent exhaustive `if` chains. No UI state, route, priority or behavior changes.
-- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. During P12 the same analyzer path recurred after adding destination titles and a Protobuf-builder test chain; splitting title lookup into bounded `if` helpers and making the test builders explicit restored main, unit-test and AndroidTest Lint without disabling a detector or changing JDK. A future analyzer upgrade may restore more compact dispatch only after the same static and device evidence is replayed.
+- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. During P12 the same analyzer path recurred after adding destination titles and a Protobuf-builder test chain; splitting title lookup into bounded `if` helpers and making the test builders explicit restored main, unit-test and AndroidTest Lint without disabling a detector or changing JDK. P13 likewise keeps the Ready scaffold, SAF launcher/fixed action and ordinary-record destination wiring in bounded files, restoring full app/feature/data Lint with unchanged navigation behavior. A future analyzer upgrade may restore more compact dispatch only after the same static and device evidence is replayed.
 
 ## DL-056 — The P12 place map reuses the governed P10 network boundary
 
@@ -432,3 +432,31 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Precedence applied: the immutable revision/fact and single-`FinancialMutationCoordinator` invariants outrank a simpler reference-only SQL update. Existing P06 `BatchFinancialCommand` semantics are extended rather than creating a P12-specific financial writer.
 - Decision: `RoomReferenceFinancialSnapshotMapper` reconstructs each typed current revision, immutable fact family, historical ledger reference and frozen amount/FX evidence. The adapter derives deterministic child identities, and `DeterministicFinancialPlanner` emits one canonical `BATCH_MUTATION` with REVERSE/APPLY facts for every EDIT child. `RoomFinancialCommitRepository` checks every child `expectedRevision`, writes one `CommandReceipt`, rebuilds synchronous projections and advances the book once. A narrowly typed `FinancialCommitSideEffect` may write only the associated category/place/location metadata after the commit header and before revision foreign keys, inside that same Room transaction; it cannot write financial facts.
 - Consequence: category reassignment and place split are atomic with their reference metadata, deterministic and idempotent. Old revisions, location records, Journals, Postings, Effects and frozen historical currency amounts remain unchanged; any validation, persistence, audit or projection failure rolls back the entire batch. P12 can be `VERIFIED` without a direct DAO/SQL financial bypass.
+
+## DL-059 — P13 entry origins reuse the frozen opaque StableId route slot
+
+- Date/stage: 2026-08-03 / P13
+- Surface issue: REC-003 exposes one optional `transactionId:StableId?`, while template, candidate, duplicate and batch-row entry need an opaque source identity but routes may not carry names, amounts, notes or full objects.
+- Decision: use that optional stable-ID slot as the source identity for the closed `RecordEditorMode`; resolve the full encrypted snapshot through the application port after SessionGate. Amounts, entity names, notes, card data, attachments and location never enter the route or SavedState.
+- Consequence: all entry origins share one editor and one safe route contract. Return behavior is selected by the closed origin policy without introducing sensitive route parameters.
+
+## DL-060 — Foreign ordinary entry fails closed without frozen valuation evidence
+
+- Date/stage: 2026-08-03 / P13
+- Surface issue: account currency amount is authoritative, while base-currency evidence is also required and an offline account may lack a usable current valuation quote.
+- Precedence applied: exact historical amount evidence and offline correctness outrank an invented or silently current online rate.
+- Decision: same-currency entry uses identical user/account/base minor units. A foreign account may use only the encrypted current valuation evidence already associated with its projection; otherwise Save retains the form and returns `FX_EVIDENCE_UNAVAILABLE` for explicit correction. The adapter freezes derived rate snapshots inside the commit.
+- Consequence: no network dependency, float, guessed rate or later revaluation rewrites a historical fact.
+
+## DL-061 — P13 goldens originate only from governed Compose and token inputs
+
+- Date/stage: 2026-08-03 / P13
+- Decision: record four 360×720 API-36 baselines directly from the implemented `LedgerTheme`/governed Compose tree and compare every pixel. The only design inputs are the textual main contract, token JSON, screen YAML and localized resources.
+- Consequence: screenshot regression evidence exists without opening, parsing, sampling, measuring or comparing any excluded PNG/HTML visual draft.
+
+## DL-062 — Settlement-position ledger ownership uses the frozen schema's system code
+
+- Date/stage: 2026-08-03 / P13
+- Surface issue: the frozen Schema v1 ledger table has no nullable activity/participant ownership columns, while P06 settlement postings require a deterministic typed ledger per activity participant.
+- Decision: resolve existing settlement-position ledgers by the canonical `SETTLEMENT:<activity StableId>:<participant StableId>` system-code convention already admitted by the typed mapper. P13 does not create or mutate settlement activities or ledgers.
+- Consequence: planning remains type-safe and deterministic without adding a schema column, universal JSON payload or feature-side lookup. P22 owns creation and lifecycle validation of these ledgers.

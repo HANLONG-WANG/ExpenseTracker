@@ -1,22 +1,29 @@
+@file:Suppress("TooManyFunctions")
+
 package app.ledger.app
 
 import android.content.Context
 import app.ledger.core.common.StableId
 import app.ledger.core.common.StableIdSource
 import app.ledger.core.common.getOrNull
+import app.ledger.core.files.SecureBookAttachmentObjectPort
 import app.ledger.core.security.AndroidKeystoreKeys
 import app.ledger.core.security.CryptographicRandomSource
 import app.ledger.core.security.DeviceKeyHierarchy
 import app.ledger.core.security.DeviceLedgerKeyProvider
 import app.ledger.core.security.PlatformCryptographicRandomSource
 import app.ledger.core.security.SecurityEnvelopeStore
+import app.ledger.core.time.InjectedJavaClock
 import app.ledger.core.time.JavaTimeLedgerClock
 import app.ledger.core.time.LedgerClock
+import app.ledger.finance.application.BookAttachmentObjectPort
 import app.ledger.finance.application.LedgerInitializationPort
 import app.ledger.finance.application.OpeningBalanceWritePort
+import app.ledger.finance.application.OrdinaryTransactionEntryPort
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.data.SecureRoomLedgerInitializationPort
 import app.ledger.finance.data.SecureRoomOpeningBalanceWritePort
+import app.ledger.finance.data.SecureRoomOrdinaryTransactionEntryPort
 import app.ledger.finance.data.SecureRoomReferenceDataManagementPort
 import dagger.Module
 import dagger.Provides
@@ -87,4 +94,26 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
     ): OpeningBalanceWritePort = SecureRoomOpeningBalanceWritePort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun ordinaryTransactionEntryPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+        referenceDataPort: ReferenceDataManagementPort,
+    ): OrdinaryTransactionEntryPort = SecureRoomOrdinaryTransactionEntryPort(context, keyProvider, referenceDataPort)
+
+    @Provides
+    @Singleton
+    fun bookAttachmentObjectPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+        runtimeSources: AppRuntimeSources,
+    ): BookAttachmentObjectPort = SecureBookAttachmentObjectPort(
+        context,
+        keyProvider,
+        runtimeSources.stableIds,
+        InjectedJavaClock(runtimeSources.clock),
+        runtimeSources.cryptographicRandom,
+    )
 }

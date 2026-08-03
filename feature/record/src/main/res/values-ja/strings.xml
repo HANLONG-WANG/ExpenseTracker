@@ -15,4 +15,36 @@
     <string name="record_attachments_add">添付ファイルを追加</string>
     <string name="record_attachments_failed">取り込みに失敗しました（%1$s）。不完全なファイルは参照されていません。</string>
     <string name="record_attachments_retry">再試行</string>
+    <string name="record_loading">記録データを読み込んでいます…</string>
+    <string name="record_load_failed">記録データを読み込めません。再試行してください。</string>
+    <string name="record_tab_expense">支出</string><string name="record_tab_income">収入</string><string name="record_tab_other">その他</string>
+    <string name="record_all_templates">すべてのテンプレート</string><string name="record_search_category">カテゴリを検索</string>
+    <string name="record_search_account">口座を検索</string>
+    <string name="record_search_merchant">加盟店または別名を検索</string>
+    <string name="record_search_project">プロジェクトを検索</string>
+    <string name="record_accounts_empty">利用可能な口座がありません</string>
+    <string name="record_accounts_empty_body">記録を続ける前に口座を作成してください。</string>
+    <string name="record_create_account">口座を作成</string>
+    <string name="record_merchants_empty">一致する加盟店がありません。「なし」のままにするか新規作成できます。</string>
+    <string name="record_create_merchant">加盟店を作成</string>
+    <string name="record_projects_empty">一致する有効なプロジェクトがありません。「なし」で続行できます。</string>
+    <string name="record_project_archived_warning">この履歴取引はアーカイブ済みプロジェクトを参照しています。保持するか有効なプロジェクトを選択してください。</string>
+    <string name="record_no_categories">カテゴリがありません</string><string name="record_no_categories_body">まずカテゴリを作成してください。第1・第2階層のどちらも直接記録できます。</string>
+    <string name="record_create_expense_category">支出カテゴリを作成</string><string name="record_create_income_category">収入カテゴリを作成</string><string name="record_create_category">カテゴリを作成</string>
+    <string name="record_search_empty">一致するカテゴリがありません</string><string name="record_search_empty_body">別の名前で検索するか、完全なグリッドに戻ってください。</string>
+    <string name="record_other_transfer">振替</string><string name="record_other_credit_payment">カード返済</string><string name="record_other_refund">返金</string><string name="record_other_loan">貸借</string><string name="record_other_adjustment">残高調整</string><string name="record_other_fx">外貨両替</string>
+    <string name="record_field_category">カテゴリ</string><string name="record_field_account">口座</string><string name="record_field_card">実カード</string><string name="record_field_merchant">加盟店</string><string name="record_field_time">発生日時</string><string name="record_field_project">プロジェクト（任意）</string><string name="record_field_settlement">割り勘</string><string name="record_field_note">メモ</string>
+    <string name="record_not_selected">未選択</string><string name="record_no_card">実カードなし</string>
+    <string name="record_join_settlement">割り勘活動に追加</string><string name="record_settlement_collapsed_note">初期状態はオフです。活動、支払者、配分を選ぶ場合のみオンにします。</string><string name="record_settlement_activity">活動</string>
+    <string name="record_amount_rounding">通貨の小数桁と偶数丸めで保存し、元の式も保持します。</string>
+    <string name="record_advanced">統計と予算（詳細）</string><string name="record_advanced_summary">この改訂に固定される統計属性と予算帰属を表示します。</string><string name="record_fixed_save_hint">保存は右下に固定され、最後の項目はその上までスクロールできます。</string>
+    <string name="record_save_failed">保存に失敗しました（%1$s）。入力は保持されています。</string><string name="record_revision_conflict">この取引は別の場所で変更されました。上書きせず、再読込または編集を中止してください。</string><string name="record_reload">再読込</string><string name="record_cancel_edit">編集を中止</string>
+    <string name="record_unsaved_title">未保存の変更を破棄しますか？</string><string name="record_unsaved_message">変更はメモリ内だけにあります。移動しても暗黙の下書きは作成されません。</string><string name="record_discard">破棄</string>
+    <string name="record_error_category">支出または収入カテゴリを1つ選んでください。</string><string name="record_error_amount">0より大きい有効な金額式を入力してください。</string><string name="record_error_account">有効な口座を選んでください。</string><string name="record_error_settlement">支払合計と負担合計を取引金額に一致させ、支払者を1人にしてください。</string><string name="record_error_generic">この項目を確認してください。</string>
+    <string name="record_default_explanation">出典：%1$s</string><string name="record_default_manual">手動選択</string><string name="record_default_edit">現在の完全な改訂</string><string name="record_default_template">テンプレート</string><string name="record_default_category">カテゴリ既定値</string><string name="record_default_recent">最近の互換選択</string><string name="record_default_cash">現金口座の代替</string><string name="record_default_first">最初の有効口座</string><string name="record_default_none">未設定</string>
+    <string name="record_card_last_four">末尾 %1$s</string>
+    <string name="record_location_three_seconds">位置情報は前面で合計3秒まで待機します。タイムアウト時は位置なしで保存し、後から補完しません。</string><string name="record_saved_location">保存済みの位置</string><string name="record_without_location">位置なしで保存</string>
+    <string name="record_attachment_attached">暗号化された添付</string><string name="record_attachment_type">非公開の添付</string><string name="record_attachment_importing">暗号化して読み込み中…</string>
+    <string name="record_settlement_empty">利用可能な活動がありません</string><string name="record_settlement_empty_body">割り勘をオフにすると通常取引として保存できます。</string><string name="record_continue_without_settlement">割り勘なしで続行</string><string name="record_settlement_balanced">配分は一致しており保存できます。</string><string name="record_settlement_imbalanced">配分がまだ一致していません。</string><string name="record_settlement_currency_mismatch">活動の精算通貨が取引通貨と異なります。別の活動を選ぶか、明示的な換算を先に指定してください。</string><string name="record_settlement_share">%1$s の負担は最小単位 %2$d</string>
+    <string name="record_statistical_snapshot">統計属性のスナップショット：%1$s</string><string name="record_budget_snapshot">予算帰属のスナップショット：%1$s</string><string name="record_budget_category_rule">カテゴリ規則</string><string name="record_snapshot_immutable">保存後は不変の改訂に属し、後のカテゴリ変更は過去の事実を書き換えません。</string>
 </resources>

@@ -60,9 +60,15 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TimePickerState
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -349,6 +355,7 @@ public fun LedgerTextField(
     imeAction: ImeAction = ImeAction.Next,
     onImeAction: () -> Unit = {},
     sensitive: Boolean = false,
+    hideValueFromSemantics: Boolean = false,
 ) {
     val requiredText = if (required) " · ${stringResource(R.string.ledger_required)}" else ""
     OutlinedTextField(
@@ -358,7 +365,7 @@ public fun LedgerTextField(
             .fillMaxWidth()
             .heightIn(min = LedgerTheme.dimensions.formFieldMinHeight)
             .let { field ->
-                if (sensitive) field.clearAndSetSemantics { contentDescription = label } else field
+                if (sensitive || hideValueFromSemantics) field.clearAndSetSemantics { contentDescription = label } else field
             },
         label = { Text(label + requiredText) },
         supportingText = {
@@ -810,6 +817,37 @@ public fun LedgerTimePickerDialog(
         text = { TimePicker(state) },
         modifier = modifier,
     )
+}
+
+/**
+ * Governed two-step Material date/time picker. Feature modules only exchange primitive,
+ * non-persisted values and never need to import a raw Material component or picker state.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+public fun LedgerDateTimePickerFlow(
+    initialDateMillis: Long,
+    initialHour: Int,
+    initialMinute: Int,
+    onConfirm: (dateMillis: Long, hour: Int, minute: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var choosingTime by remember { mutableStateOf(false) }
+    val date = rememberDatePickerState(initialSelectedDateMillis = initialDateMillis)
+    val time = rememberTimePickerState(initialHour = initialHour, initialMinute = initialMinute, is24Hour = true)
+    if (choosingTime) {
+        LedgerTimePickerDialog(
+            state = time,
+            onConfirm = { onConfirm(date.selectedDateMillis ?: initialDateMillis, time.hour, time.minute) },
+            onDismiss = onDismiss,
+        )
+    } else {
+        LedgerDatePickerDialog(
+            state = date,
+            onConfirm = { choosingTime = true },
+            onDismiss = onDismiss,
+        )
+    }
 }
 
 @Composable

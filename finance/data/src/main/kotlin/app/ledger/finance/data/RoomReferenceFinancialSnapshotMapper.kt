@@ -88,8 +88,11 @@ import app.ledger.finance.domain.PaymentCardId
 import app.ledger.finance.domain.PlanningAccount
 import app.ledger.finance.domain.PlanningCard
 import app.ledger.finance.domain.PlanningCategory
+import app.ledger.finance.domain.PlanningGoal
 import app.ledger.finance.domain.PlanningIdentitySet
+import app.ledger.finance.domain.PlanningProject
 import app.ledger.finance.domain.PlanningReferenceData
+import app.ledger.finance.domain.PlanningSettlementLedger
 import app.ledger.finance.domain.PlanningSnapshot
 import app.ledger.finance.domain.PlanningSystemLedger
 import app.ledger.finance.domain.PositiveMoney
@@ -100,6 +103,7 @@ import app.ledger.finance.domain.ProjectEffect
 import app.ledger.finance.domain.ProjectEffectId
 import app.ledger.finance.domain.ProjectEffectKind
 import app.ledger.finance.domain.ProjectId
+import app.ledger.finance.domain.ProjectStatus
 import app.ledger.finance.domain.RefundAccrualPolicy
 import app.ledger.finance.domain.RefundAllocation
 import app.ledger.finance.domain.RefundBudgetPolicy
@@ -190,7 +194,7 @@ internal class RoomReferenceFinancialSnapshotMapper {
         return ReferenceEditSource(snapshot, currentRevision)
     }
 
-    private fun references(db: SupportSQLiteDatabase): PlanningReferenceData {
+    internal fun references(db: SupportSQLiteDatabase): PlanningReferenceData {
         val accounts = db.queryList(
             "SELECT ua.uid account_uid,la.uid ledger_uid,ua.type,ua.currency_code,ua.status,ua.row_version," +
                 "EXISTS(SELECT 1 FROM posting p WHERE p.ledger_account_id=la.id) has_postings," +
@@ -238,10 +242,39 @@ internal class RoomReferenceFinancialSnapshotMapper {
                 cursor.ledgerSnapshot(),
             )
         }
+        val projects = db.queryList("SELECT uid,included_in_monthly_budget,status FROM project") { cursor ->
+            PlanningProject(
+                ProjectId(cursor.stableId("uid")),
+                cursor.int("included_in_monthly_budget") == 1,
+                ProjectStatus.entries[cursor.int("status")],
+            )
+        }
+        val goals = db.queryList(
+            "SELECT g.uid,ua.uid account_uid,ua.currency_code,g.status FROM goal g JOIN user_account ua ON ua.id=g.account_id",
+        ) { cursor ->
+            PlanningGoal(
+                GoalId(cursor.stableId("uid")),
+                UserAccountId(cursor.stableId("account_uid")),
+                currency(cursor.string("currency_code")),
+                app.ledger.finance.domain.GoalStatus.entries[cursor.int("status")],
+            )
+        }
+        val settlementLedgers = db.queryList(
+            "SELECT uid,account_class,normal_side,currency_code,status,system_code FROM ledger_account " +
+                "WHERE owner_type=3 AND system_code LIKE 'SETTLEMENT:%'",
+        ) { cursor ->
+            val parts = cursor.string("system_code").split(':')
+            if (parts.size != 3) abort(FinanceDataError.CorruptData)
+            PlanningSettlementLedger(
+                SettlementActivityId(StableId.parse(parts[1]).valueOrAbort()),
+                ParticipantId(StableId.parse(parts[2]).valueOrAbort()),
+                cursor.ledgerSnapshot(),
+            )
+        }
         val typedLedgerIds = (accounts.map { it.ledger.id } + systems.map { it.ledger.id }).toSet()
         val historical = db.queryList("SELECT uid,account_class,normal_side,currency_code,status FROM ledger_account") { it.ledgerSnapshot() }
             .filterNot { it.id in typedLedgerIds }
-        return PlanningReferenceData(accounts, cards, categories, emptyList(), emptyList(), systems, emptyList(), emptyList(), historical)
+        return PlanningReferenceData(accounts, cards, categories, projects, goals, systems, emptyList(), settlementLedgers, historical)
     }
 
     private fun readTransaction(db: SupportSQLiteDatabase, id: StableId): BusinessTransaction = db.queryOne(

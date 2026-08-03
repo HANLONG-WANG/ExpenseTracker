@@ -1,0 +1,386 @@
+@file:Suppress("LongMethod", "LongParameterList", "MagicNumber", "TooManyFunctions", "MaxLineLength")
+
+package app.ledger.finance.data
+
+import android.content.Context
+import androidx.sqlite.db.SupportSQLiteDatabase
+import app.ledger.core.common.CommandId
+import app.ledger.core.common.DomainResult
+import app.ledger.core.common.StableId
+import app.ledger.core.database.EncryptedDatabaseFactory
+import app.ledger.core.database.LedgerDatabase
+import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.FxEvidence
+import app.ledger.core.money.FxEvidenceInput
+import app.ledger.core.money.FxProvider
+import app.ledger.core.money.FxRateSource
+import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
+import app.ledger.core.money.Money
+import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.time.EffectiveTime
+import app.ledger.finance.application.DefaultFinancialMutationCoordinator
+import app.ledger.finance.application.FinanceDataError
+import app.ledger.finance.application.FinancialPlanningPort
+import app.ledger.finance.application.FinancialPlanningSnapshotRepository
+import app.ledger.finance.application.LedgerWriteGate
+import app.ledger.finance.application.OrdinaryAmountDraft
+import app.ledger.finance.application.OrdinaryDirection
+import app.ledger.finance.application.OrdinaryParticipantView
+import app.ledger.finance.application.OrdinaryProjectView
+import app.ledger.finance.application.OrdinaryRecentDefaultView
+import app.ledger.finance.application.OrdinarySettlementActivityView
+import app.ledger.finance.application.OrdinarySettlementShareDraft
+import app.ledger.finance.application.OrdinaryTemplateView
+import app.ledger.finance.application.OrdinaryTransactionEditView
+import app.ledger.finance.application.OrdinaryTransactionEntryPort
+import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
+import app.ledger.finance.application.OrdinaryTransactionWriteRequest
+import app.ledger.finance.application.ReferenceDataManagementPort
+import app.ledger.finance.domain.AccountAmount
+import app.ledger.finance.domain.AccountingPlanningContext
+import app.ledger.finance.domain.AmountEvidenceKey
+import app.ledger.finance.domain.AmountRole
+import app.ledger.finance.domain.BookCommitId
+import app.ledger.finance.domain.CanonicalFinancialHash
+import app.ledger.finance.domain.CategoryAssignment
+import app.ledger.finance.domain.CategoryDirection
+import app.ledger.finance.domain.CategoryId
+import app.ledger.finance.domain.CommandReceipt
+import app.ledger.finance.domain.DeterministicFinancialPlanner
+import app.ledger.finance.domain.DeviceInstanceId
+import app.ledger.finance.domain.EditTransactionCommand
+import app.ledger.finance.domain.ExpensePayer
+import app.ledger.finance.domain.ExpensePayload
+import app.ledger.finance.domain.FrozenAmountEvidence
+import app.ledger.finance.domain.FrozenFxConversion
+import app.ledger.finance.domain.FxRateSnapshotId
+import app.ledger.finance.domain.Hash256
+import app.ledger.finance.domain.IncomePayload
+import app.ledger.finance.domain.LocationRecordId
+import app.ledger.finance.domain.MerchantId
+import app.ledger.finance.domain.NewTransactionInput
+import app.ledger.finance.domain.ParticipantId
+import app.ledger.finance.domain.PaymentCardId
+import app.ledger.finance.domain.PlanningIdentitySet
+import app.ledger.finance.domain.PlanningSnapshot
+import app.ledger.finance.domain.PositiveMoney
+import app.ledger.finance.domain.ProjectId
+import app.ledger.finance.domain.RecordExpenseCommand
+import app.ledger.finance.domain.RecordIncomeCommand
+import app.ledger.finance.domain.SettlementActivityId
+import app.ledger.finance.domain.SettlementShare
+import app.ledger.finance.domain.TransactionContextInput
+import app.ledger.finance.domain.TransactionId
+import app.ledger.finance.domain.TransactionKind
+import app.ledger.finance.domain.TransactionRevisionId
+import app.ledger.finance.domain.UserAccountId
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.math.MathContext
+import java.math.RoundingMode
+import java.security.MessageDigest
+import java.time.YearMonth
+
+/** SQLCipher-backed ordinary entry adapter; every write terminates at FinancialMutationCoordinator. */
+public class SecureRoomOrdinaryTransactionEntryPort(
+    context: Context,
+    private val keyProvider: DeviceLedgerKeyProvider,
+    private val referenceDataPort: ReferenceDataManagementPort = SecureRoomReferenceDataManagementPort(context, keyProvider),
+) : OrdinaryTransactionEntryPort {
+    private val applicationContext = context.applicationContext
+    private val gate = OrdinaryLedgerWriteGate()
+    private val mapper = RoomReferenceFinancialSnapshotMapper()
+    private val currencies = JvmLegalTenderCurrencyCatalog.create()
+
+    override suspend fun snapshot(bookId: StableId, transactionId: StableId?): DomainResult<OrdinaryTransactionEntrySnapshot> {
+        val references = when (val result = referenceDataPort.snapshot(bookId)) {
+            is DomainResult.Success -> result.value
+            is DomainResult.Failure -> return result
+        }
+        return withDatabase(bookId) { database ->
+            database.readLedger { db ->
+                if (RoomBookRepository.mapCurrent(db).id.value != bookId) abort(FinanceDataError.CorruptData)
+                OrdinaryTransactionEntrySnapshot(
+                    references = references,
+                    projects = projects(db),
+                    settlementActivities = settlementActivities(db),
+                    templates = templates(db),
+                    recentDefaults = recentDefaults(db),
+                    editing = transactionId?.let { editing(db, it) },
+                )
+            }
+        }
+    }
+
+    override suspend fun submit(request: OrdinaryTransactionWriteRequest): DomainResult<CommandReceipt> = when (
+        val opened = withDatabase(request.ids.bookId) { database -> execute(database, request) }
+    ) {
+        is DomainResult.Success -> opened.value
+        is DomainResult.Failure -> opened
+    }
+
+    private suspend fun execute(database: LedgerDatabase, request: OrdinaryTransactionWriteRequest): DomainResult<CommandReceipt> {
+        val snapshot = database.readLedger { db -> planningSnapshot(db, request) }
+        val references = requireNotNull(snapshot.accountingContext).references
+        val account = references.account(UserAccountId(request.accountId)) ?: abort(FinanceDataError.CorruptData)
+        val category = references.category(CategoryId(request.categoryId)) ?: abort(FinanceDataError.CorruptData)
+        val evidence = requireNotNull(snapshot.accountingContext).amount(AmountRole.PRIMARY) ?: abort(FinanceDataError.CorruptData)
+        val context = TransactionContextInput(
+            occurredAt = EffectiveTime.fromInstant(request.occurredAt, request.zoneId),
+            accrualDate = request.localDate,
+            budgetMonth = YearMonth.from(request.localDate),
+            merchantId = request.merchantId?.let(::MerchantId),
+            projectId = request.projectId?.let(::ProjectId),
+            goalId = null,
+            locationRecordId = request.locationRecordId?.let(::LocationRecordId),
+            note = request.note?.trim(),
+            amountExpression = request.amount.expression,
+            source = request.source,
+            sourceReferenceId = request.sourceReferenceId,
+            statementAssignment = null,
+            attachmentIds = request.attachmentIds.map { app.ledger.finance.domain.AttachmentId(it) },
+        )
+        val classification = CategoryAssignment(category.id, category.direction, category.statisticalNature)
+        val accountAmount = AccountAmount.create(account.account, evidence.accountAmount.money).valueOrAbort()
+        val payload = when (request.direction) {
+            OrdinaryDirection.EXPENSE -> ExpensePayload(
+                classification,
+                ExpensePayer.LocalAccount(accountAmount, request.cardId?.let(::PaymentCardId)),
+                evidence.userInput,
+                request.settlementActivityId?.let(::SettlementActivityId),
+                request.settlementShares.map { it.toDomain() },
+                null,
+            )
+            OrdinaryDirection.INCOME -> IncomePayload(classification, accountAmount, evidence.userInput)
+        }
+        val input = NewTransactionInput(context, payload)
+        val emptyHash = Hash256.fromBytes(ByteArray(32)).valueOrAbort()
+        val expectedRevisionId = request.expectedRevisionId
+        val command = if (expectedRevisionId == null) {
+            when (payload) {
+                is ExpensePayload -> RecordExpenseCommand(CommandId(request.ids.commandId), emptyHash, NewTransactionInput(context, payload))
+                is IncomePayload -> RecordIncomeCommand(CommandId(request.ids.commandId), emptyHash, NewTransactionInput(context, payload))
+                else -> abort(FinanceDataError.CorruptData)
+            }
+        } else {
+            EditTransactionCommand(
+                CommandId(request.ids.commandId),
+                TransactionRevisionId(expectedRevisionId),
+                emptyHash,
+                TransactionId(request.ids.transactionId),
+                input,
+                emptyList(),
+            )
+        }.withCanonicalHash()
+        val sideEffect = request.newLocation?.let { location ->
+            FinancialCommitSideEffect { db, plan ->
+                val internalId = db.allocateInternalId("location_record", location.id)
+                db.execSQL(
+                    "INSERT INTO location_record(id,uid,lat_e7,lon_e7,accuracy_mm,captured_at,source,provider,place_id,created_commit_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    arrayOf<Any?>(
+                        internalId,
+                        location.id.bytes,
+                        location.latitudeE7,
+                        location.longitudeE7,
+                        location.accuracyMillimeters,
+                        location.capturedAt.toStorageEpochMillis(),
+                        if (location.provider == app.ledger.finance.application.OrdinaryLocationProvider.MANUAL) 1 else 0,
+                        location.provider.name,
+                        db.optionalInternalId("place", location.placeId),
+                        db.commitId(plan.commit.id),
+                    ),
+                )
+            }
+        } ?: FinancialCommitSideEffect.NONE
+        val repository = RoomFinancialCommitRepository(database, sideEffect = sideEffect)
+        return DefaultFinancialMutationCoordinator(
+            writeGate = gate,
+            receiptRepository = repository,
+            snapshotRepository = object : FinancialPlanningSnapshotRepository {
+                override suspend fun load(command: app.ledger.finance.domain.FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
+            },
+            planner = FinancialPlanningPort(DeterministicFinancialPlanner::plan),
+            commitRepository = repository,
+        ).execute(command)
+    }
+
+    private fun planningSnapshot(db: SupportSQLiteDatabase, request: OrdinaryTransactionWriteRequest): PlanningSnapshot {
+        val book = RoomBookRepository.mapCurrent(db)
+        if (book.id.value != request.ids.bookId || request.localDate != request.occurredAt.atZone(request.zoneId).toLocalDate()) {
+            abort(FinanceDataError.CorruptData)
+        }
+        val references = mapper.references(db)
+        val account = references.account(UserAccountId(request.accountId)) ?: abort(FinanceDataError.CorruptData)
+        val category = references.category(CategoryId(request.categoryId)) ?: abort(FinanceDataError.CorruptData)
+        val expectedDirection = if (request.direction == OrdinaryDirection.EXPENSE) CategoryDirection.EXPENSE else CategoryDirection.INCOME
+        if (category.direction != expectedDirection || request.direction == OrdinaryDirection.INCOME && request.settlementShares.isNotEmpty()) {
+            abort(FinanceDataError.CorruptData)
+        }
+        val evidence = amountEvidence(request.amount, account.account.currency, book.baseCurrency, account.account.id, request)
+        val identities = PlanningIdentitySet(
+            TransactionId(request.ids.transactionId),
+            TransactionRevisionId(request.ids.revisionId),
+            BookCommitId(request.ids.commitId),
+            request.ids.factIds,
+        )
+        val baseContext = AccountingPlanningContext(identities, request.createdAt, DeviceInstanceId(request.ids.deviceInstanceId), references, listOf(evidence), null)
+        if (request.expectedRevisionId == null) {
+            return PlanningSnapshot(book, null, null, emptyList(), emptySet(), emptyList(), null, emptyList(), baseContext)
+        }
+        val source = mapper.load(
+            db,
+            request.ids.transactionId,
+            request.ids.revisionId,
+            request.ids.commitId,
+            request.ids.factIds,
+            request.ids.fxRateSnapshotIds,
+            request.createdAt,
+            request.ids.deviceInstanceId,
+        )
+        // Keep the actual current revision in the planning snapshot. The coordinator compares it
+        // with the command's expected revision and returns the typed optimistic-lock conflict.
+        // Rejecting the mismatch here would incorrectly turn a normal concurrent edit into
+        // corrupt-data and bypass the single application/domain conflict policy.
+        if (source.revision.kind !in setOf(TransactionKind.EXPENSE, TransactionKind.INCOME)) {
+            abort(FinanceDataError.CorruptData)
+        }
+        return source.snapshot.copy(
+            accountingContext = requireNotNull(source.snapshot.accountingContext).copy(
+                identities = identities,
+                createdAt = request.createdAt,
+                deviceInstanceId = DeviceInstanceId(request.ids.deviceInstanceId),
+                amountEvidence = listOf(evidence),
+            ),
+        )
+    }
+
+    private fun amountEvidence(
+        draft: OrdinaryAmountDraft,
+        accountCurrency: CurrencyCode,
+        baseCurrency: CurrencyCode,
+        accountId: UserAccountId,
+        request: OrdinaryTransactionWriteRequest,
+    ): FrozenAmountEvidence {
+        var fxIndex = 0
+        val user = PositiveMoney.from(Money(draft.userMinor, draft.userCurrency)).valueOrAbort()
+        val account = PositiveMoney.from(Money(draft.accountMinor, accountCurrency)).valueOrAbort()
+        val base = PositiveMoney.from(Money(draft.baseMinor, baseCurrency)).valueOrAbort()
+        fun conversion(source: PositiveMoney, target: PositiveMoney): FrozenFxConversion? {
+            if (source.currency == target.currency) {
+                if (source != target) abort(FinanceDataError.CorruptData)
+                return null
+            }
+            val id = request.ids.fxRateSnapshotIds.getOrNull(fxIndex++) ?: abort(FinanceDataError.CorruptData)
+            val sourceMetadata = currencies.require(source.currency).valueOrAbort()
+            val targetMetadata = currencies.require(target.currency).valueOrAbort()
+            val rate = target.money.toMajor(targetMetadata).valueOrAbort()
+                .divide(source.money.toMajor(sourceMetadata).valueOrAbort(), MathContext(34, RoundingMode.HALF_EVEN))
+            val fx = FxEvidence.create(
+                FxEvidenceInput(source.currency, target.currency, rate, FxProvider.of("manual").valueOrAbort(), request.createdAt, request.createdAt, FxRateSource.MANUAL, true),
+            ).valueOrAbort()
+            return FrozenFxConversion.create(FxRateSnapshotId(id), source, target, fx, sourceMetadata, targetMetadata, false).valueOrAbort()
+        }
+        return FrozenAmountEvidence.create(AmountEvidenceKey(AmountRole.PRIMARY, 0), user, account, base, accountId, conversion(user, account), conversion(account, base)).valueOrAbort()
+    }
+
+    private fun projects(db: SupportSQLiteDatabase): List<OrdinaryProjectView> = db.queryList(
+        "SELECT uid,name,status FROM project ORDER BY status,name,uid",
+    ) { OrdinaryProjectView(it.stableId("uid"), it.getString(1), it.getInt(2) == 0) }
+
+    private fun settlementActivities(db: SupportSQLiteDatabase): List<OrdinarySettlementActivityView> = db.queryList(
+        "SELECT uid,name,settlement_currency,status FROM settlement_activity ORDER BY status,name,uid",
+    ) { activity ->
+        val id = activity.stableId("uid")
+        OrdinarySettlementActivityView(
+            id,
+            activity.getString(1),
+            CurrencyCode.parse(activity.getString(2)).valueOrAbort(),
+            db.queryList(
+                "SELECT p.uid,p.name,p.is_self FROM settlement_activity_participant sap JOIN settlement_activity sa ON sa.id=sap.activity_id JOIN participant p ON p.id=sap.participant_id WHERE sa.uid=? AND sap.left_at IS NULL ORDER BY sap.sort_order,p.uid",
+                arrayOf(id.bytes),
+            ) { OrdinaryParticipantView(it.stableId("uid"), it.getString(1), it.getInt(2) == 1) },
+            activity.getInt(3) == 0,
+        )
+    }
+
+    private fun templates(db: SupportSQLiteDatabase): List<OrdinaryTemplateView> = db.queryList(
+        "SELECT tb.uid,tb.name,tbr.target_kind,c.uid category_uid,ua.uid account_uid,pc.uid card_uid,m.uid merchant_uid,p.uid project_uid,sa.uid activity_uid,tbr.amount_expression,tbr.currency_code,tbr.note_template,pl.uid place_uid " +
+            "FROM transaction_blueprint tb JOIN transaction_blueprint_revision tbr ON tbr.id=tb.current_revision_id " +
+            "LEFT JOIN category c ON c.id=tbr.category_id LEFT JOIN user_account ua ON ua.id=tbr.primary_account_id LEFT JOIN payment_card pc ON pc.id=tbr.card_id " +
+            "LEFT JOIN merchant m ON m.id=tbr.merchant_id LEFT JOIN project p ON p.id=tbr.project_id LEFT JOIN settlement_activity sa ON sa.id=tbr.settlement_activity_id LEFT JOIN place pl ON pl.id=tbr.fixed_place_id " +
+            "WHERE tb.status=0 AND tbr.target_kind IN (0,1) ORDER BY tb.name,tb.uid",
+    ) { cursor ->
+        OrdinaryTemplateView(
+            cursor.stableId("uid"), cursor.getString(1), if (cursor.getInt(2) == 0) OrdinaryDirection.EXPENSE else OrdinaryDirection.INCOME,
+            cursor.nullableStableId("category_uid"), cursor.nullableStableId("account_uid"), cursor.nullableStableId("card_uid"),
+            cursor.nullableStableId("merchant_uid"), cursor.nullableStableId("project_uid"), cursor.nullableStableId("activity_uid"),
+            cursor.nullableString("amount_expression"), cursor.nullableString("currency_code")?.let { CurrencyCode.parse(it).valueOrAbort() },
+            cursor.nullableString("note_template"), cursor.nullableStableId("place_uid"),
+        )
+    }
+
+    private fun recentDefaults(db: SupportSQLiteDatabase): List<OrdinaryRecentDefaultView> = db.queryList(
+        "SELECT bt.kind,c.uid category_uid,ua.uid account_uid,pc.uid card_uid,tr.occurred_at FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id " +
+            "JOIN category c ON c.id=tr.category_id LEFT JOIN expense_revision_detail erd ON erd.revision_id=tr.id LEFT JOIN income_revision_detail ird ON ird.revision_id=tr.id " +
+            "JOIN user_account ua ON ua.id=COALESCE(erd.payer_account_id,ird.receiving_account_id) LEFT JOIN payment_card pc ON pc.id=erd.payer_card_id " +
+            "WHERE bt.lifecycle_state=0 AND bt.kind IN (0,1) ORDER BY tr.occurred_at DESC LIMIT 50",
+    ) {
+        OrdinaryRecentDefaultView(if (it.getInt(0) == 0) OrdinaryDirection.EXPENSE else OrdinaryDirection.INCOME, it.stableId("category_uid"), it.stableId("account_uid"), it.nullableStableId("card_uid"), it.getLong(4).toStoredInstant())
+    }
+
+    private fun editing(db: SupportSQLiteDatabase, id: StableId): OrdinaryTransactionEditView = db.queryOne(
+        "SELECT bt.kind,tr.uid revision_uid,c.uid category_uid,tr.amount_expression,user.amount_minor user_minor,user.currency_code user_currency,acct.amount_minor account_minor,ua.uid account_uid,pc.uid card_uid,m.uid merchant_uid,tr.occurred_at,tr.zone_id,p.uid project_uid,sa.uid activity_uid,lr.uid location_uid,tr.note,tr.source_type,tr.source_reference_uid " +
+            "FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id JOIN category c ON c.id=tr.category_id " +
+            "JOIN revision_amount user ON user.revision_id=tr.id AND user.component_index=0 AND user.role=0 AND user.representation=0 " +
+            "JOIN revision_amount acct ON acct.revision_id=tr.id AND acct.component_index=0 AND acct.role=0 AND acct.representation=1 " +
+            "LEFT JOIN expense_revision_detail erd ON erd.revision_id=tr.id LEFT JOIN income_revision_detail ird ON ird.revision_id=tr.id JOIN user_account ua ON ua.id=COALESCE(erd.payer_account_id,ird.receiving_account_id) " +
+            "LEFT JOIN payment_card pc ON pc.id=erd.payer_card_id LEFT JOIN merchant m ON m.id=tr.merchant_id LEFT JOIN project p ON p.id=tr.project_id LEFT JOIN settlement_activity sa ON sa.id=erd.settlement_activity_id LEFT JOIN location_record lr ON lr.id=tr.location_record_id " +
+            "WHERE bt.uid=? AND bt.kind IN (0,1) AND bt.lifecycle_state=0",
+        arrayOf(id.bytes),
+    ) { cursor ->
+        val revisionId = cursor.stableId("revision_uid")
+        OrdinaryTransactionEditView(
+            id, revisionId, if (cursor.getInt(0) == 0) OrdinaryDirection.EXPENSE else OrdinaryDirection.INCOME, cursor.stableId("category_uid"), cursor.nullableString("amount_expression"),
+            cursor.getLong(cursor.getColumnIndexOrThrow("user_minor")), CurrencyCode.parse(cursor.getString(cursor.getColumnIndexOrThrow("user_currency"))).valueOrAbort(), cursor.getLong(cursor.getColumnIndexOrThrow("account_minor")),
+            cursor.stableId("account_uid"), cursor.nullableStableId("card_uid"), cursor.nullableStableId("merchant_uid"), cursor.getLong(cursor.getColumnIndexOrThrow("occurred_at")).toStoredInstant(), java.time.ZoneId.of(cursor.getString(cursor.getColumnIndexOrThrow("zone_id"))),
+            cursor.nullableStableId("project_uid"), cursor.nullableStableId("activity_uid"), settlementShares(db, revisionId), cursor.nullableStableId("location_uid"), cursor.nullableString("note"),
+            db.queryList("SELECT a.uid FROM transaction_revision_attachment tra JOIN attachment a ON a.id=tra.attachment_id JOIN transaction_revision tr ON tr.id=tra.revision_id WHERE tr.uid=? ORDER BY tra.sort_order", arrayOf(revisionId.bytes)) { it.stableId("uid") },
+            app.ledger.finance.domain.TransactionSource.entries[cursor.getInt(cursor.getColumnIndexOrThrow("source_type"))], cursor.nullableStableId("source_reference_uid"),
+        )
+    } ?: abort(FinanceDataError.CorruptData)
+
+    private fun settlementShares(db: SupportSQLiteDatabase, revisionId: StableId): List<OrdinarySettlementShareDraft> = db.queryList(
+        "SELECT p.uid,s.paid_minor,s.owed_minor,s.weight_decimal,s.rounding_adjustment_minor FROM transaction_revision_settlement_share s JOIN transaction_revision tr ON tr.id=s.revision_id JOIN participant p ON p.id=s.participant_id WHERE tr.uid=? ORDER BY p.uid",
+        arrayOf(revisionId.bytes),
+    ) { OrdinarySettlementShareDraft(it.stableId("uid"), it.getLong(1), it.getLong(2), it.nullableString("weight_decimal")?.toBigDecimal(), it.getLong(4)) }
+
+    private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> T): DomainResult<T> = try {
+        keyProvider.open(bookId).use { keys ->
+            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
+            try {
+                DomainResult.Success(block(database))
+            } finally {
+                database.close()
+            }
+        }
+    } catch (abort: FinancialPersistenceAbort) {
+        DomainResult.Failure(abort.domainError)
+    } catch (_: Exception) {
+        DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun app.ledger.finance.domain.FinancialCommand.withCanonicalHash(): app.ledger.finance.domain.FinancialCommand = when (this) {
+        is RecordExpenseCommand -> copy(payloadHash = CanonicalFinancialHash.command(this))
+        is RecordIncomeCommand -> copy(payloadHash = CanonicalFinancialHash.command(this))
+        is EditTransactionCommand -> copy(payloadHash = CanonicalFinancialHash.command(this))
+        else -> error("ordinary command type")
+    }
+
+    private fun OrdinarySettlementShareDraft.toDomain(): SettlementShare = SettlementShare(ParticipantId(participantId), paidMinor, owedMinor, weight, roundingAdjustmentMinor)
+}
+
+private class OrdinaryLedgerWriteGate : LedgerWriteGate {
+    private val mutex = Mutex()
+    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
+}

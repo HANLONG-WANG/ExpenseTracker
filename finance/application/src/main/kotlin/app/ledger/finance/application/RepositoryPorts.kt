@@ -1,6 +1,7 @@
 package app.ledger.finance.application
 
 import app.ledger.core.common.DomainResult
+import app.ledger.core.common.StableId
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.FxEvidence
 import app.ledger.core.time.EffectiveTime
@@ -226,6 +227,13 @@ interface AttachmentObjectPort {
     suspend fun import(request: AttachmentImportRequest): DomainResult<AttachmentImportReceipt>
 
     suspend fun removeUnreferenced(blobId: BlobId): DomainResult<Unit>
+}
+
+/** Opens the requested encrypted book only for the duration of one attachment operation. */
+interface BookAttachmentObjectPort {
+    suspend fun import(bookId: StableId, request: AttachmentImportRequest): DomainResult<AttachmentImportReceipt>
+
+    suspend fun discardUncommitted(bookId: StableId, attachmentId: AttachmentId): DomainResult<Unit>
 }
 
 data class MerchantLocationSuggestionQuery(

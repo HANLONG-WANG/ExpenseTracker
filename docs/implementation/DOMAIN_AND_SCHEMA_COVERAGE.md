@@ -125,6 +125,20 @@ Source: `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` �
 
 The 16 product-level system invariants in `需求.md` §26 remain additional acceptance constraints. They are covered by REQ rows and the architecture/security/operation gates; they do not replace the 35 canonical permanent invariants above.
 
+## P13 ordinary transaction realization
+
+P13 maps category-first expense/income entry to the existing immutable financial kernel without adding a feature-owned financial writer. `OrdinaryTransactionEntrySnapshot` is a typed Current/Projection read model; `OrdinaryTransactionWriteRequest` carries one category, one payer account, optional project/settlement/location/attachments and exact integer-minor evidence. `SecureRoomOrdinaryTransactionEntryPort` rehydrates frozen Current/Revision/Fact state and delegates create/edit planning to `FinancialMutationCoordinator`.
+
+| Domain/schema surface | P13 realization |
+|---|---|
+| `BusinessTransaction` / `TransactionRevision` | Typed expense/income create and edit with `expectedRevisionId`; edit is coordinator-planned REVERSE/APPLY, never a mutable row update (`P13-E003`) |
+| `RevisionAmount` / FX evidence | User/account/base amounts are positive integer minor units; expression is preserved; account/base conversion freezes existing valuation evidence and fails closed when foreign evidence is unavailable (`P13-E002`, `P13-E003`) |
+| `Journal` / `Posting` / Effects | Produced only by the P06 deterministic planner behind the coordinator; ViewModel, Composable and feature sources cannot construct or persist them (`P13-E001`, `P13-E006`) |
+| Current pointers/projections/receipt | Current revision, receipt, balances, all synchronous projections and `book.localRevision` advance atomically and are idempotent under the supplied command ID (`P13-E003`) |
+| `LocationRecord` | Optional captured E7 coordinate row is a narrowly typed commit side effect in the same transaction; timeout/denial produces no row and never a later supplement (`P13-E003`) |
+| `Attachment` / encrypted object | SAF bytes stream to the P10 encrypted object store before submission; cancellation/discard removes uncommitted objects; committed revision references only completed encrypted objects (`P13-E004`, inherited `P10-E003`) |
+| Settlement shares | One activity, one payer and checked paid/owed totals; mismatched settlement currency is rejected until an explicit conversion path is selected (`P13-E002`, `P13-E004`) |
+
 ## P12 account and reference-data realization
 
 P12 maps domain §6—§7 current entities and their Schema v1 rows through typed application drafts/views; no feature obtains a DAO, Entity or SQL connection. Reference-only operations append a `BookCommit`, `entity_revision` and `entity_change`, update the guarded current row, synchronously rebuild P08 projections and advance `book.localRevision` in one SQLCipher transaction. Opening balances use `RecordOpeningBalanceCommand`; category reassignment and referenced-place split use `BatchFinancialCommand`. Both financial paths execute through `FinancialMutationCoordinator`, never the reference-only writer.

@@ -15,4 +15,36 @@
     <string name="record_attachments_add">Add attachment</string>
     <string name="record_attachments_failed">Import failed (%1$s). No incomplete file was referenced.</string>
     <string name="record_attachments_retry">Retry</string>
+    <string name="record_loading">Loading recording data…</string>
+    <string name="record_load_failed">Recording data could not be loaded. Try again.</string>
+    <string name="record_tab_expense">Expense</string><string name="record_tab_income">Income</string><string name="record_tab_other">Other</string>
+    <string name="record_all_templates">All templates</string><string name="record_search_category">Search categories</string>
+    <string name="record_search_account">Search accounts</string>
+    <string name="record_search_merchant">Search merchants or aliases</string>
+    <string name="record_search_project">Search projects</string>
+    <string name="record_accounts_empty">No available account</string>
+    <string name="record_accounts_empty_body">Create an account before recording a transaction.</string>
+    <string name="record_create_account">Create account</string>
+    <string name="record_merchants_empty">No matching merchant. Keep None or create one.</string>
+    <string name="record_create_merchant">Create merchant</string>
+    <string name="record_projects_empty">No matching active project. You can continue with None.</string>
+    <string name="record_project_archived_warning">This historical transaction references an archived project. Keep it or select an active project.</string>
+    <string name="record_no_categories">No categories yet</string><string name="record_no_categories_body">Create a category first. Both top-level and child categories can be recorded directly.</string>
+    <string name="record_create_expense_category">Create expense category</string><string name="record_create_income_category">Create income category</string><string name="record_create_category">Create category</string>
+    <string name="record_search_empty">No matching category</string><string name="record_search_empty_body">Try another name or return to the complete grid.</string>
+    <string name="record_other_transfer">Transfer</string><string name="record_other_credit_payment">Card payment</string><string name="record_other_refund">Refund</string><string name="record_other_loan">Loan</string><string name="record_other_adjustment">Balance adjustment</string><string name="record_other_fx">Currency exchange</string>
+    <string name="record_field_category">Category</string><string name="record_field_account">Account</string><string name="record_field_card">Physical card</string><string name="record_field_merchant">Merchant</string><string name="record_field_time">Occurred at</string><string name="record_field_project">Project (optional)</string><string name="record_field_settlement">Shared expense</string><string name="record_field_note">Note</string>
+    <string name="record_not_selected">Not selected</string><string name="record_no_card">No physical card</string>
+    <string name="record_join_settlement">Add to a shared-expense activity</string><string name="record_settlement_collapsed_note">Off by default; turn on to choose the activity, payer, and allocation.</string><string name="record_settlement_activity">Activity</string>
+    <string name="record_amount_rounding">The result uses the currency fraction digits and half-even rounding; the expression is preserved.</string>
+    <string name="record_advanced">Statistics and budget (advanced)</string><string name="record_advanced_summary">Shows the statistical nature and budget attribution frozen for this revision.</string><string name="record_fixed_save_hint">Save stays at the lower right; the final field scrolls above it.</string>
+    <string name="record_save_failed">Save failed (%1$s). Your input is retained.</string><string name="record_revision_conflict">This transaction changed elsewhere. It cannot be overwritten silently; reload or cancel editing.</string><string name="record_reload">Reload</string><string name="record_cancel_edit">Cancel editing</string>
+    <string name="record_unsaved_title">Discard unsaved changes?</string><string name="record_unsaved_message">Changes exist only in memory. Leaving will not create an implicit draft.</string><string name="record_discard">Discard</string>
+    <string name="record_error_category">Choose one expense or income category.</string><string name="record_error_amount">Enter a valid amount expression greater than zero.</string><string name="record_error_account">Choose an active account.</string><string name="record_error_settlement">Paid and owed totals must equal the transaction amount, with exactly one payer.</string><string name="record_error_generic">Check this field.</string>
+    <string name="record_default_explanation">Source: %1$s</string><string name="record_default_manual">manual choice</string><string name="record_default_edit">current complete revision</string><string name="record_default_template">template</string><string name="record_default_category">category default</string><string name="record_default_recent">recent compatible choice</string><string name="record_default_cash">cash fallback</string><string name="record_default_first">first active account</string><string name="record_default_none">not set</string>
+    <string name="record_card_last_four">Ending %1$s</string>
+    <string name="record_location_three_seconds">Location is requested only in the foreground, for at most 3 seconds total. A timeout saves without location and never fills it later.</string><string name="record_saved_location">Saved location</string><string name="record_without_location">Save without location</string>
+    <string name="record_attachment_attached">Encrypted attachment</string><string name="record_attachment_type">Private attachment</string><string name="record_attachment_importing">Encrypting import…</string>
+    <string name="record_settlement_empty">No available activity</string><string name="record_settlement_empty_body">Turn off shared expense to continue saving an ordinary transaction.</string><string name="record_continue_without_settlement">Continue without shared expense</string><string name="record_settlement_balanced">Allocation is balanced and can be saved.</string><string name="record_settlement_imbalanced">Allocation is not balanced yet.</string><string name="record_settlement_currency_mismatch">The activity settlement currency differs from the transaction. Choose another activity or provide an explicit conversion first.</string><string name="record_settlement_share">%1$s · minor amount: %2$d</string>
+    <string name="record_statistical_snapshot">Statistical snapshot: %1$s</string><string name="record_budget_snapshot">Budget snapshot: %1$s</string><string name="record_budget_category_rule">category rules</string><string name="record_snapshot_immutable">After saving, these belong to the immutable revision. Later category changes do not rewrite historical facts.</string>
 </resources>

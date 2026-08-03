@@ -21,7 +21,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,8 +30,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation3.runtime.NavEntry
-import androidx.navigation3.ui.NavDisplay
 import app.ledger.core.designsystem.HighRiskConfirmation
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
@@ -42,9 +39,7 @@ import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerIcon
-import app.ledger.core.designsystem.LedgerIconButton
 import app.ledger.core.designsystem.LedgerLoadingState
-import app.ledger.core.designsystem.LedgerNavigationBar
 import app.ledger.core.designsystem.LedgerProgressState
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerSnackbarController
@@ -54,7 +49,6 @@ import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerTopAppBar
 import app.ledger.core.designsystem.LedgerTopAppBarVariant
-import app.ledger.core.designsystem.LedgerTopLevel
 import app.ledger.core.designsystem.OperationCapability
 import app.ledger.core.designsystem.OperationProgressPanel
 import app.ledger.core.designsystem.OperationProgressUiModel
@@ -67,13 +61,10 @@ import app.ledger.core.geo.LedgerMapMode
 import app.ledger.core.geo.LedgerMapPoint
 import app.ledger.core.geo.LedgerMapState
 import app.ledger.core.geo.LedgerMapStyleConfiguration
-import app.ledger.core.navigation.FiveStackNavigator
 import app.ledger.core.navigation.LedgerDestinationKey
 import app.ledger.core.navigation.LedgerRouteContract
 import app.ledger.core.navigation.NavigationOutcome
 import app.ledger.core.navigation.ScreenId
-import app.ledger.core.navigation.SessionGateState
-import app.ledger.core.navigation.TopLevelDestination
 import app.ledger.core.security.BookSessionState
 import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.RecoveryDiagnosticCode
@@ -82,6 +73,7 @@ import app.ledger.feature.accounts.AccountsDataState
 import app.ledger.feature.accounts.AccountsDestination
 import app.ledger.feature.onboarding.OnboardingActions
 import app.ledger.feature.onboarding.OnboardingScreen
+import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.settings.ManagementActions
 import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ReferenceManagementDestination
@@ -375,113 +367,13 @@ internal fun RecoveryRequiredScreen(
 }
 
 @Composable
-private fun ReadyRootScaffold(
-    viewModel: AppRootViewModel,
-    unsavedContentLossNotice: Boolean,
-    snackbarController: LedgerSnackbarController,
-) {
-    val navigator = viewModel.navigator
-    val referenceState by viewModel.referenceData.collectAsStateWithLifecycle()
-    val referencePending by viewModel.referenceMutationPending.collectAsStateWithLifecycle()
-    var navigationEpoch by remember { mutableIntStateOf(0) }
-    val selected = navigator.currentTopLevel.toDesignTopLevel()
-    LedgerScaffold(
-        modifier = Modifier.fillMaxSize(),
-        snackbarController = snackbarController,
-        topBar = {
-            val key = navigator.currentKey
-            val topLevel = key.contract.screenId.value in setOf("REC-001", "JRN-001", "ACC-001", "BUD-001", "ANA-001")
-            LedgerTopAppBar(
-                title = destinationTitle(key),
-                variant = if (topLevel) LedgerTopAppBarVariant.TOP_LEVEL else LedgerTopAppBarVariant.BACK,
-                onNavigation = {
-                    navigator.pop()
-                    navigationEpoch += 1
-                },
-                actions = {
-                    if (topLevel) {
-                        LedgerIconButton(LedgerIcon.MORE, stringResource(R.string.global_more), onClick = {
-                            navigator.navigate(LedgerRouteContract.destination(ScreenId("G-006")), SessionGateState.READY)
-                            navigationEpoch += 1
-                        })
-                    }
-                },
-            )
-        },
-        bottomBar = {
-            if (navigator.isBottomNavigationVisible) {
-                LedgerNavigationBar(selected = selected, onSelected = { target ->
-                    navigator.select(target.toNavigationTopLevel())
-                    navigationEpoch += 1
-                })
-            }
-        },
-        banner = if (unsavedContentLossNotice) {
-            {
-                LedgerBanner(
-                    stringResource(R.string.global_unsaved_lost),
-                    LedgerBannerVariant.WARNING,
-                    Modifier.testTag(LedgerTestTags.GLOBAL_BANNER),
-                    actionLabel = stringResource(R.string.global_dismiss),
-                    onAction = viewModel::dismissUnsavedContentLossNotice,
-                )
-            }
-        } else {
-            null
-        },
-    ) { padding ->
-        navigationEpoch
-        NavDisplay(
-            backStack = navigator.currentBackStack,
-            onBack = {
-                navigator.pop()
-                navigationEpoch += 1
-            },
-            modifier = Modifier.fillMaxSize().padding(padding),
-            entryProvider = { key ->
-                NavEntry(key) {
-                    RootDestination(
-                        key,
-                        viewModel = viewModel,
-                        referenceState = referenceState,
-                        referencePending = referencePending,
-                        onBack = {
-                            navigator.pop()
-                            navigationEpoch += 1
-                        },
-                        onMore = {
-                            navigator.navigate(LedgerRouteContract.destination(ScreenId("G-006")), SessionGateState.READY)
-                            navigationEpoch += 1
-                        },
-                        onOperations = {
-                            navigator.navigate(LedgerRouteContract.destination(ScreenId("G-007")), SessionGateState.READY)
-                            navigationEpoch += 1
-                        },
-                        onHelp = {
-                            val screenId = ScreenId("G-008")
-                            navigator.navigate(
-                                LedgerRouteContract.destination(
-                                    screenId,
-                                    mapOf("topicKey" to LedgerRouteContract.opaqueKeyArgument(screenId, "topicKey", "getting-started")),
-                                ),
-                                SessionGateState.READY,
-                            )
-                            navigationEpoch += 1
-                        },
-                        onNavigationChanged = { navigationEpoch += 1 },
-                    )
-                }
-            },
-        )
-    }
-}
-
-@Composable
-private fun RootDestination(
+internal fun RootDestination(
     key: LedgerDestinationKey,
     viewModel: AppRootViewModel,
     referenceState: AppReferenceDataState,
     referencePending: Boolean,
+    recordState: OrdinaryRecordLoadState,
+    onAddAttachment: () -> Unit,
     onBack: () -> Unit,
     onMore: () -> Unit,
     onOperations: () -> Unit,
@@ -539,8 +431,14 @@ private fun RootDestination(
             placeMap = { places, unavailable -> PlaceMapContent(places, unavailable) },
             pending = referencePending,
         )
-    } else if (screenId == "REC-001") {
-        EmptyTopLevel(R.string.global_record_empty_title, R.string.global_record_empty_message, onMore)
+    } else if (screenId.startsWith("REC-")) {
+        OrdinaryRecordRootDestination(
+            screenId = screenId,
+            state = recordState,
+            viewModel = viewModel,
+            onAddAttachment = onAddAttachment,
+            onNavigationChanged = onNavigationChanged,
+        )
     } else if (screenId == "JRN-001") {
         EmptyTopLevel(R.string.global_journal_empty_title, R.string.global_journal_empty_message, onMore)
     } else if (screenId == "ACC-001") {
@@ -756,7 +654,7 @@ private fun HelpContent(topicKey: String?, onBack: () -> Unit, modifier: Modifie
 }
 
 @Composable
-private fun destinationTitle(key: LedgerDestinationKey): String {
+internal fun destinationTitle(key: LedgerDestinationKey): String {
     val screenId = key.contract.screenId.value
     val resource = rootDestinationTitleResource(screenId)
         ?: accountDestinationTitleResource(screenId)
@@ -835,28 +733,4 @@ private fun referenceDestinationTitleResource(screenId: String): Int? = if (scre
     R.string.p12_title_place_merge_split
 } else {
     null
-}
-
-private fun TopLevelDestination.toDesignTopLevel(): LedgerTopLevel = if (this == TopLevelDestination.RECORD) {
-    LedgerTopLevel.RECORD
-} else if (this == TopLevelDestination.JOURNAL) {
-    LedgerTopLevel.JOURNAL
-} else if (this == TopLevelDestination.ACCOUNTS) {
-    LedgerTopLevel.ACCOUNTS
-} else if (this == TopLevelDestination.BUDGET) {
-    LedgerTopLevel.BUDGET
-} else {
-    LedgerTopLevel.ANALYSIS
-}
-
-private fun LedgerTopLevel.toNavigationTopLevel(): TopLevelDestination = if (this == LedgerTopLevel.RECORD) {
-    TopLevelDestination.RECORD
-} else if (this == LedgerTopLevel.JOURNAL) {
-    TopLevelDestination.JOURNAL
-} else if (this == LedgerTopLevel.ACCOUNTS) {
-    TopLevelDestination.ACCOUNTS
-} else if (this == LedgerTopLevel.BUDGET) {
-    TopLevelDestination.BUDGET
-} else {
-    TopLevelDestination.ANALYSIS
 }

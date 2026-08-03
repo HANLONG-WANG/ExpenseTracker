@@ -31,6 +31,15 @@ public object LedgerTestTags {
     public const val ONBOARDING_PRIMARY: String = "onboarding_primary_action"
     public const val ONBOARDING_SECONDARY: String = "onboarding_secondary_action"
     public const val GLOBAL_BANNER: String = "global_operation_banner"
+    public const val RECORD_ROOT: String = "record_root"
+    public const val RECORD_EDITOR: String = "record_editor"
+    public const val RECORD_CATEGORY: String = "record_category"
+    public const val RECORD_ACCOUNT: String = "record_account"
+    public const val RECORD_DEFAULT_SOURCE: String = "record_default_source"
+    public const val RECORD_VALIDATION: String = "record_validation"
+    public const val RECORD_SETTLEMENT: String = "record_settlement"
+    public const val RECORD_UNSAVED_DIALOG: String = "record_unsaved_dialog"
+    public const val RECORD_REVISION_CONFLICT: String = "record_revision_conflict"
 
     public fun requireStable(value: String): String {
         require(STABLE_TAG.matches(value)) { "test tag must be a stable semantic identifier" }
