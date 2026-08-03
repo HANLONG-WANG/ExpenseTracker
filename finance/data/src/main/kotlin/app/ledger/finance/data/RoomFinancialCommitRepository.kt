@@ -21,6 +21,7 @@ import app.ledger.finance.domain.PurgeTransactionCommand
 import app.ledger.finance.domain.RecordBudgetAdjustmentCommand
 import app.ledger.finance.domain.RecordGoalMovementCommand
 import app.ledger.finance.domain.RecordTransactionCommand
+import app.ledger.finance.domain.RestoreHistoricalRevisionCommand
 import app.ledger.finance.domain.RestoreTransactionCommand
 import app.ledger.finance.domain.StableEntityReference
 import app.ledger.finance.domain.TransactionId
@@ -290,6 +291,7 @@ private data class BookWriteState(
 
 private fun FinancialCommand.transactionIdOrNull(): TransactionId? = when (this) {
     is EditTransactionCommand -> transactionId
+    is RestoreHistoricalRevisionCommand -> transactionId
     is MoveTransactionToTrashCommand -> transactionId
     is RestoreTransactionCommand -> transactionId
     is PurgeTransactionCommand -> transactionId

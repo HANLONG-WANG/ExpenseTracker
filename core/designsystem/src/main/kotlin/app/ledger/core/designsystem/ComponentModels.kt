@@ -11,6 +11,7 @@ public object LedgerTestTags {
     public const val AMOUNT: String = "transaction_amount"
     public const val CATEGORY_GRID: String = "category_grid"
     public const val JOURNAL_ROW: String = "journal_transaction_row"
+    public const val JOURNAL_SCREEN: String = "journal_screen"
     public const val DATA_TABLE: String = "accessible_data_table"
     public const val CHART: String = "ledger_chart"
     public const val MAP: String = "ledger_map"

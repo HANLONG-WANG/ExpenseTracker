@@ -22,6 +22,7 @@ import app.ledger.finance.domain.ParticipantId
 import app.ledger.finance.domain.PaymentCardId
 import app.ledger.finance.domain.ProjectId
 import app.ledger.finance.domain.SettlementActivityId
+import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.TransactionFilter
 import app.ledger.finance.domain.TransactionId
 import app.ledger.finance.domain.TransactionKind
@@ -191,6 +192,8 @@ internal object TransactionSqlCompiler {
             clauses += "ctp.occurred_at <= ?"
             args += it.toEpochMilli()
         }
+        instantRange("created.created_at", filter.createdFrom, filter.createdThrough, clauses, args)
+        instantRange("modified.created_at", filter.modifiedFrom, filter.modifiedThrough, clauses, args)
         enumSet("ctp.kind", filter.kinds.map(TransactionKind::ordinal), clauses, args)
         stableAccountSet(filter.accountIds.map { it.value }, clauses, args)
         stableSet("ctp.card_id", "payment_card", filter.cardIds.map { it.value }, clauses, args)
@@ -211,6 +214,19 @@ internal object TransactionSqlCompiler {
         boolean("ctp.has_attachment", filter.hasAttachment, clauses, args)
         boolean("ctp.is_refund", filter.isRefund, clauses, args)
         boolean("ctp.has_installment", filter.hasInstallment, clauses, args)
+        enumSet("tr.statistical_nature_snapshot", filter.statisticalNatures.map(StatisticalNature::ordinal), clauses, args)
+        filter.includedInBudget?.let { included ->
+            clauses += if (included) {
+                "EXISTS (SELECT 1 FROM budget_effect be WHERE be.source_revision_id=tr.id AND be.polarity=1)"
+            } else {
+                "NOT EXISTS (SELECT 1 FROM budget_effect be WHERE be.source_revision_id=tr.id AND be.polarity=1)"
+            }
+        }
+        filter.generatedByRecurrence?.let { generated ->
+            val recurrenceSources = listOf(TransactionSource.RECURRENCE_AUTO.ordinal, TransactionSource.RECURRENCE_CANDIDATE.ordinal)
+            clauses += if (generated) "ctp.source_type IN (?,?)" else "ctp.source_type NOT IN (?,?)"
+            args.addAll(recurrenceSources)
+        }
         enumSet("ctp.source_type", filter.sources.map(TransactionSource::ordinal), clauses, args)
         enumSet("ctp.state", filter.lifecycleStates.map(TransactionLifecycleState::ordinal), clauses, args)
         filter.searchText?.trim()?.takeIf(String::isNotEmpty)?.let { search ->
@@ -290,6 +306,23 @@ internal object TransactionSqlCompiler {
         }
     }
 
+    private fun instantRange(
+        column: String,
+        from: Instant?,
+        through: Instant?,
+        clauses: MutableList<String>,
+        args: MutableList<Any?>,
+    ) {
+        from?.let {
+            clauses += "$column >= ?"
+            args += it.toEpochMilli()
+        }
+        through?.let {
+            clauses += "$column <= ?"
+            args += it.toEpochMilli()
+        }
+    }
+
     val BASE_SELECT = """
         SELECT ctp.*,
           tr.uid AS current_revision_uid,
@@ -298,7 +331,10 @@ internal object TransactionSqlCompiler {
           act.uid AS settlement_activity_uid, part.uid AS payer_participant_uid,
           lr.lat_e7 AS latitude_e7, lr.lon_e7 AS longitude_e7
         FROM current_transaction_projection ctp
+        JOIN business_transaction bt ON bt.id = ctp.transaction_id
         JOIN transaction_revision tr ON tr.id = ctp.current_revision_id
+        JOIN book_commit created ON created.id = bt.created_commit_id
+        JOIN book_commit modified ON modified.id = bt.last_commit_id
         LEFT JOIN user_account pa ON pa.id = ctp.primary_account_id
         LEFT JOIN user_account sa ON sa.id = ctp.secondary_account_id
         LEFT JOIN payment_card pc ON pc.id = ctp.card_id

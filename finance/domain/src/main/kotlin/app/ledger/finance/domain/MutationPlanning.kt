@@ -158,8 +158,13 @@ data class EditTransactionCommand(
     val transactionId: TransactionId,
     val replacement: NewTransactionInput<TransactionPayload>,
     val dependencyResolutions: List<DependencyResolution>,
+    val revisionAction: RevisionAction = RevisionAction.EDIT,
 ) : FinancialCommand {
     override val commandType: FinancialCommandType = FinancialCommandType.EDIT_TRANSACTION
+
+    init {
+        require(revisionAction == RevisionAction.EDIT || revisionAction == RevisionAction.BULK_EDIT)
+    }
 }
 
 data class MoveTransactionToTrashCommand(
@@ -178,6 +183,19 @@ data class RestoreTransactionCommand(
     override val expectedRevisionId: TransactionRevisionId,
     override val payloadHash: Hash256,
     val transactionId: TransactionId,
+) : FinancialCommand {
+    override val commandType: FinancialCommandType = FinancialCommandType.RESTORE_TRANSACTION
+}
+
+/** Restores the content of an immutable historical revision by appending a new RESTORE revision. */
+data class RestoreHistoricalRevisionCommand(
+    override val commandId: CommandId,
+    override val expectedRevisionId: TransactionRevisionId,
+    override val payloadHash: Hash256,
+    val transactionId: TransactionId,
+    val sourceRevisionId: TransactionRevisionId,
+    val replacement: NewTransactionInput<TransactionPayload>,
+    val dependencyResolutions: List<DependencyResolution>,
 ) : FinancialCommand {
     override val commandType: FinancialCommandType = FinancialCommandType.RESTORE_TRANSACTION
 }
@@ -350,16 +368,24 @@ object FinancialMutationPlanValidator {
         ) {
             return DomainResult.Failure(DomainViolation.InvalidField("planningSnapshot.batchSnapshots"))
         }
-        if (
-            command is EditTransactionCommand &&
-            snapshot.currentTransaction?.kind != command.replacement.payload.kind
-        ) {
+        val replacementKind = when (command) {
+            is EditTransactionCommand -> command.replacement.payload.kind
+            is RestoreHistoricalRevisionCommand -> command.replacement.payload.kind
+            else -> null
+        }
+        if (replacementKind != null && snapshot.currentTransaction?.kind != replacementKind) {
             return DomainResult.Failure(DomainViolation.InvalidField("editTransaction.kind"))
         }
         if (command is PurgeTransactionCommand && !command.eligibility.eligible) {
             return DomainResult.Failure(DomainViolation.InvalidStateTransition("purge"))
         }
-        if (!dependencyPoliciesCover(snapshot.dependencies, plan.dependencyResolutions)) {
+        if (
+            command is EditTransactionCommand || command is RestoreHistoricalRevisionCommand || command is MoveTransactionToTrashCommand
+        ) {
+            if (!dependencyPoliciesCover(snapshot.dependencies, plan.dependencyResolutions)) {
+                return DomainResult.Failure(DomainViolation.InvalidField("mutationPlan.dependencies"))
+            }
+        } else if (plan.dependencyResolutions.isNotEmpty()) {
             return DomainResult.Failure(DomainViolation.InvalidField("mutationPlan.dependencies"))
         }
         val amountKeys = plan.revisionAmounts.map {
@@ -474,12 +500,12 @@ object FinancialMutationPlanValidator {
         val roles = plan.journalBundles.map { it.entry.role }.toSet()
         val validRoles = when (command) {
             is RecordTransactionCommand<*>, is RestoreTransactionCommand -> roles.allOrEmpty(JournalEntryRole.APPLY)
-            is EditTransactionCommand -> roles.all { it == JournalEntryRole.APPLY || it == JournalEntryRole.REVERSE }
+            is EditTransactionCommand, is RestoreHistoricalRevisionCommand -> roles.all { it == JournalEntryRole.APPLY || it == JournalEntryRole.REVERSE }
             is MoveTransactionToTrashCommand -> roles.allOrEmpty(JournalEntryRole.REVERSE)
             else -> true
         }
         if (!validRoles) return DomainResult.Failure(DomainViolation.Invariant("INV-008"))
-        if (command is EditTransactionCommand || command is MoveTransactionToTrashCommand) {
+        if (command is EditTransactionCommand || command is RestoreHistoricalRevisionCommand || command is MoveTransactionToTrashCommand) {
             val original = snapshot.accountingContext?.currentFacts
                 ?: return DomainResult.Failure(DomainViolation.InvalidField("planningSnapshot.currentFacts"))
             val audit = ImmutableFactAudit.validateReversal(original, plan)
@@ -506,6 +532,7 @@ object FinancialMutationPlanValidator {
         is RecordTransactionCommand<*> ->
             plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts()
         is EditTransactionCommand,
+        is RestoreHistoricalRevisionCommand,
         is MoveTransactionToTrashCommand,
         is RestoreTransactionCommand,
         -> plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts()
@@ -592,6 +619,7 @@ private fun DependencyPolicy.supports(type: TransactionDependencyType): Boolean 
 private fun FinancialCommand.isTransactionLifecycleCommand(): Boolean = when (this) {
     is RecordTransactionCommand<*>,
     is EditTransactionCommand,
+    is RestoreHistoricalRevisionCommand,
     is MoveTransactionToTrashCommand,
     is RestoreTransactionCommand,
     -> true

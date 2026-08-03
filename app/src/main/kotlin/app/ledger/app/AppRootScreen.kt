@@ -71,6 +71,9 @@ import app.ledger.core.security.RecoveryDiagnosticCode
 import app.ledger.feature.accounts.AccountsActions
 import app.ledger.feature.accounts.AccountsDataState
 import app.ledger.feature.accounts.AccountsDestination
+import app.ledger.feature.journal.JournalActions
+import app.ledger.feature.journal.JournalDestination
+import app.ledger.feature.journal.JournalLoadState
 import app.ledger.feature.onboarding.OnboardingActions
 import app.ledger.feature.onboarding.OnboardingScreen
 import app.ledger.feature.record.OrdinaryRecordLoadState
@@ -82,6 +85,7 @@ import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ReferenceManagementDestination
 import kotlinx.coroutines.delay
 import java.util.Locale
+import app.ledger.feature.journal.R as JournalR
 
 @Composable
 internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
@@ -378,6 +382,7 @@ internal fun RootDestination(
     recordState: OrdinaryRecordLoadState,
     specializedState: SpecializedTransactionLoadState,
     currencySettings: CurrencySettingsState?,
+    journalState: JournalLoadState,
     onAddAttachment: () -> Unit,
     onBack: () -> Unit,
     onMore: () -> Unit,
@@ -452,8 +457,43 @@ internal fun RootDestination(
             onAddAttachment = onAddAttachment,
             onNavigationChanged = onNavigationChanged,
         )
-    } else if (screenId == "JRN-001") {
-        EmptyTopLevel(R.string.global_journal_empty_title, R.string.global_journal_empty_message, onMore)
+    } else if (screenId.startsWith("JRN-")) {
+        JournalDestination(
+            screenId = screenId,
+            encodedArguments = key.encodedArguments,
+            state = journalState,
+            pages = viewModel.journalPages,
+            actions = JournalActions(
+                onNavigate = { target, stable ->
+                    stable["transactionId"]?.let(viewModel::loadJournalDetail)
+                    if (target == "JRN-012") stable["transactionId"]?.let(viewModel::verifyJournalPurge)
+                    viewModel.navigateP12(key, target, stable)
+                    onNavigationChanged()
+                },
+                onSearch = viewModel::updateJournalSearch,
+                onApplyFilter = viewModel::applyJournalFilter,
+                onRemoveFilter = viewModel::removeJournalFilter,
+                onRetry = viewModel::loadJournal,
+                onLoadDetail = viewModel::loadJournalDetail,
+                onSelect = viewModel::selectJournalTransaction,
+                onSelectAllMatching = viewModel::selectAllJournalResults,
+                onClearSelection = viewModel::clearJournalSelection,
+                onBulkEdit = viewModel::bulkEditJournal,
+                onSaveFilter = viewModel::saveJournalFilter,
+                onApplyPreset = viewModel::applyJournalPreset,
+                onCopyPreset = viewModel::copyJournalPreset,
+                onSetDefaultPreset = viewModel::setDefaultJournalPreset,
+                onDeletePreset = viewModel::deleteJournalPreset,
+                onReorderPresets = viewModel::reorderJournalPresets,
+                onResolveDependency = viewModel::resolveJournalDependency,
+                onMoveToTrash = viewModel::moveJournalToTrash,
+                onRestore = viewModel::restoreJournalTransaction,
+                onCompareRevisions = viewModel::compareJournalRevisions,
+                onRestoreRevision = viewModel::restoreJournalRevision,
+                onVerifyPurge = viewModel::verifyJournalPurge,
+                onPurgeRequested = viewModel::verifyJournalPurge,
+            ),
+        )
     } else if (screenId == "ACC-001") {
         EmptyTopLevel(R.string.global_accounts_empty_title, R.string.global_accounts_empty_message, onMore)
     } else if (screenId == "BUD-001") {
@@ -697,6 +737,28 @@ private fun rootDestinationTitleResource(screenId: String): Int? = if (screenId 
     R.string.global_record_title
 } else if (screenId == "JRN-001") {
     R.string.global_journal_title
+} else if (screenId == "JRN-002") {
+    JournalR.string.p15_journal_search
+} else if (screenId == "JRN-003") {
+    JournalR.string.p15_journal_filter
+} else if (screenId == "JRN-004") {
+    JournalR.string.p15_journal_saved_filters
+} else if (screenId == "JRN-005") {
+    JournalR.string.p15_journal_selection
+} else if (screenId == "JRN-006") {
+    JournalR.string.p15_journal_bulk_edit
+} else if (screenId == "JRN-007") {
+    JournalR.string.p15_journal_detail
+} else if (screenId == "JRN-008") {
+    JournalR.string.p15_journal_history
+} else if (screenId == "JRN-009") {
+    JournalR.string.p15_journal_compare
+} else if (screenId == "JRN-010") {
+    JournalR.string.p15_journal_dependencies
+} else if (screenId == "JRN-011") {
+    JournalR.string.p15_journal_trash
+} else if (screenId == "JRN-012") {
+    JournalR.string.p15_journal_purge
 } else if (screenId == "ACC-001") {
     R.string.global_accounts_title
 } else if (screenId == "BUD-001") {

@@ -23,6 +23,7 @@ object DeterministicFinancialPlanner {
         when (command) {
             is RecordTransactionCommand<*> -> planCreate(command, snapshot)
             is EditTransactionCommand -> planEdit(command, snapshot)
+            is RestoreHistoricalRevisionCommand -> planHistoricalRestore(command, snapshot)
             is MoveTransactionToTrashCommand -> planTrash(command, snapshot)
             is RestoreTransactionCommand -> planRestore(command, snapshot)
             is BatchFinancialCommand -> planBatch(command, snapshot)
@@ -39,9 +40,9 @@ object DeterministicFinancialPlanner {
     ): DomainResult<FinancialMutationPlan> = try {
         require(command.commands.size == snapshot.batchSnapshots.size, "planningSnapshot.batchSnapshots")
         val childPlans = command.commands.zip(snapshot.batchSnapshots).map { (child, childSnapshot) ->
-            require(child is EditTransactionCommand, "batchFinancialCommand.childType")
+            val edit = child as? EditTransactionCommand ?: reject("batchFinancialCommand.childType")
             require(childSnapshot.book == snapshot.book, "batchFinancialCommand.book")
-            plan(child, childSnapshot).orReject()
+            plan(edit, childSnapshot).orReject()
         }
         val commitIds = childPlans.map { it.commit.id }.toSet()
         val createdAt = childPlans.map { it.commit.createdAt }.toSet()
@@ -141,7 +142,7 @@ object DeterministicFinancialPlanner {
     ): DomainResult<FinancialMutationPlan> {
         val transaction = currentTransaction(command.transactionId, snapshot, TransactionLifecycleState.ACTIVE)
         require(transaction.kind == command.replacement.payload.kind, "editTransaction.kind")
-        return planLifecycle(command, snapshot, command.replacement, RevisionAction.EDIT, TransactionLifecycleState.ACTIVE)
+        return planLifecycle(command, snapshot, command.replacement, command.revisionAction, TransactionLifecycleState.ACTIVE)
     }
 
     private fun planTrash(
@@ -173,6 +174,16 @@ object DeterministicFinancialPlanner {
             RevisionAction.RESTORE,
             TransactionLifecycleState.ACTIVE,
         )
+    }
+
+    private fun planHistoricalRestore(
+        command: RestoreHistoricalRevisionCommand,
+        snapshot: PlanningSnapshot,
+    ): DomainResult<FinancialMutationPlan> {
+        val transaction = currentTransaction(command.transactionId, snapshot, TransactionLifecycleState.ACTIVE)
+        require(transaction.kind == command.replacement.payload.kind, "restoreHistoricalRevision.kind")
+        require(command.sourceRevisionId != snapshot.currentRevision?.id, "restoreHistoricalRevision.current")
+        return planLifecycle(command, snapshot, command.replacement, RevisionAction.RESTORE, TransactionLifecycleState.ACTIVE)
     }
 
     @Suppress("LongMethod")
@@ -225,12 +236,19 @@ object DeterministicFinancialPlanner {
         val cursor = PlanningIdCursor(identities.factIds)
         val reverseFacts = when (action) {
             RevisionAction.EDIT,
+            RevisionAction.BULK_EDIT,
+            RevisionAction.RESTORE,
             RevisionAction.MOVE_TO_TRASH,
-            -> reverseCurrentFacts(snapshot, revision.id, identities.commitId, cursor)
+            -> if (action == RevisionAction.RESTORE && current?.lifecycleState == TransactionLifecycleState.TRASHED) {
+                MaterializedFacts.empty()
+            } else {
+                reverseCurrentFacts(snapshot, revision.id, identities.commitId, cursor)
+            }
             else -> MaterializedFacts.empty()
         }
-        val locationOnlyEdit = action == RevisionAction.EDIT && previousRevision?.isLocationOnlyReplacement(input) == true
-        val categoryOnlyEdit = action == RevisionAction.EDIT && previousRevision?.isCategoryOnlyReplacement(input) == true
+        val editAction = action == RevisionAction.EDIT || action == RevisionAction.BULK_EDIT
+        val locationOnlyEdit = editAction && previousRevision?.isLocationOnlyReplacement(input) == true
+        val categoryOnlyEdit = editAction && previousRevision?.isCategoryOnlyReplacement(input) == true
         val ruleResult = if (action == RevisionAction.MOVE_TO_TRASH || locationOnlyEdit || categoryOnlyEdit) {
             AccountingRuleOutput(journals = emptyList(), amounts = context.amountEvidence)
         } else {
@@ -276,6 +294,7 @@ object DeterministicFinancialPlanner {
         )
         val dependencyResolutions = when (command) {
             is EditTransactionCommand -> command.dependencyResolutions
+            is RestoreHistoricalRevisionCommand -> command.dependencyResolutions
             is MoveTransactionToTrashCommand -> command.dependencyResolutions
             else -> emptyList()
         }

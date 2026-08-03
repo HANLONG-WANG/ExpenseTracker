@@ -156,6 +156,7 @@ private val DEVICE_TEST_LIBRARY_PATHS = setOf(
     ":core:geo",
     ":finance:data",
     ":feature:record",
+    ":feature:journal",
     ":feature:settings",
     ":feature:onboarding",
 )

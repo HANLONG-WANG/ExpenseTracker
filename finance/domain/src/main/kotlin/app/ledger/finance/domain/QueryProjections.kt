@@ -152,28 +152,37 @@ data class GeoRadiusFilter(
 }
 
 data class TransactionFilter(
-    val occurredFrom: Instant?,
-    val occurredThrough: Instant?,
-    val kinds: Set<TransactionKind>,
-    val accountIds: Set<UserAccountId>,
-    val cardIds: Set<PaymentCardId>,
-    val categoryIds: Set<CategoryId>,
-    val merchantIds: Set<MerchantId>,
-    val projectIds: Set<ProjectId>,
-    val settlementActivityIds: Set<SettlementActivityId>,
-    val participantIds: Set<ParticipantId>,
-    val currencies: Set<CurrencyCode>,
-    val amountRange: TransactionAmountRange?,
-    val geoRadius: GeoRadiusFilter?,
-    val hasAttachment: Boolean?,
-    val isRefund: Boolean?,
-    val hasInstallment: Boolean?,
-    val sources: Set<TransactionSource>,
-    val lifecycleStates: Set<TransactionLifecycleState>,
-    val searchText: String?,
+    val occurredFrom: Instant? = null,
+    val occurredThrough: Instant? = null,
+    val createdFrom: Instant? = null,
+    val createdThrough: Instant? = null,
+    val modifiedFrom: Instant? = null,
+    val modifiedThrough: Instant? = null,
+    val kinds: Set<TransactionKind> = emptySet(),
+    val accountIds: Set<UserAccountId> = emptySet(),
+    val cardIds: Set<PaymentCardId> = emptySet(),
+    val categoryIds: Set<CategoryId> = emptySet(),
+    val merchantIds: Set<MerchantId> = emptySet(),
+    val projectIds: Set<ProjectId> = emptySet(),
+    val settlementActivityIds: Set<SettlementActivityId> = emptySet(),
+    val participantIds: Set<ParticipantId> = emptySet(),
+    val currencies: Set<CurrencyCode> = emptySet(),
+    val statisticalNatures: Set<StatisticalNature> = emptySet(),
+    val amountRange: TransactionAmountRange? = null,
+    val geoRadius: GeoRadiusFilter? = null,
+    val hasAttachment: Boolean? = null,
+    val isRefund: Boolean? = null,
+    val hasInstallment: Boolean? = null,
+    val includedInBudget: Boolean? = null,
+    val generatedByRecurrence: Boolean? = null,
+    val sources: Set<TransactionSource> = emptySet(),
+    val lifecycleStates: Set<TransactionLifecycleState> = emptySet(),
+    val searchText: String? = null,
 ) {
     init {
         require(occurredFrom == null || occurredThrough == null || occurredThrough >= occurredFrom)
+        require(createdFrom == null || createdThrough == null || createdThrough >= createdFrom)
+        require(modifiedFrom == null || modifiedThrough == null || modifiedThrough >= modifiedFrom)
     }
 }
 

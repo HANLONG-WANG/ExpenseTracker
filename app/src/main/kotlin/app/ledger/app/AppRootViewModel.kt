@@ -8,6 +8,10 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import app.ledger.app.settings.DestinationProto
 import app.ledger.app.settings.LedgerAppSettings
 import app.ledger.app.settings.NavigationSnapshotProto
@@ -56,6 +60,10 @@ import app.ledger.feature.accounts.AccountEditorSubmission
 import app.ledger.feature.accounts.CardEditorSubmission
 import app.ledger.feature.accounts.CheckpointSubmission
 import app.ledger.feature.accounts.OpeningBalanceSubmission
+import app.ledger.feature.journal.JournalLoadState
+import app.ledger.feature.journal.JournalOperationState
+import app.ledger.feature.journal.JournalPagingSource
+import app.ledger.feature.journal.JournalSelectionPolicy
 import app.ledger.feature.onboarding.InitialAccountType
 import app.ledger.feature.onboarding.InitialCategoryDirection
 import app.ledger.feature.onboarding.OnboardingLanguage
@@ -89,6 +97,15 @@ import app.ledger.finance.application.CategoryDraft
 import app.ledger.finance.application.InitialAccountCommand
 import app.ledger.finance.application.InitialCategoryCommand
 import app.ledger.finance.application.InitializeLedgerCommand
+import app.ledger.finance.application.JournalApplicationPort
+import app.ledger.finance.application.JournalBulkEditPatch
+import app.ledger.finance.application.JournalBulkEditRequest
+import app.ledger.finance.application.JournalDependencyView
+import app.ledger.finance.application.JournalMutationIds
+import app.ledger.finance.application.JournalMutationRequest
+import app.ledger.finance.application.JournalSavedFilterCommand
+import app.ledger.finance.application.JournalSelectionSpec
+import app.ledger.finance.application.JournalTransactionView
 import app.ledger.finance.application.LedgerGenesisIds
 import app.ledger.finance.application.LedgerInitializationPort
 import app.ledger.finance.application.MerchantDraft
@@ -118,8 +135,14 @@ import app.ledger.finance.data.RoomLedgerStartupInspector
 import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryRemovalStrategy
+import app.ledger.finance.domain.DependencyPolicy
+import app.ledger.finance.domain.DependencyResolution
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.SystemLedgerCode
+import app.ledger.finance.domain.TransactionDependency
+import app.ledger.finance.domain.TransactionFilter
+import app.ledger.finance.domain.TransactionId
+import app.ledger.finance.domain.TransactionLifecycleState
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountType
 import com.google.protobuf.ByteString
@@ -127,6 +150,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -136,6 +160,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -180,6 +206,7 @@ internal class AppRootViewModel @Inject constructor(
     private val keyProvider: DeviceLedgerKeyProvider,
     private val initializationPort: LedgerInitializationPort,
     private val referenceDataPort: ReferenceDataManagementPort,
+    private val journalApplicationPort: JournalApplicationPort,
     private val openingBalanceWritePort: OpeningBalanceWritePort,
     private val ordinaryTransactionEntryPort: OrdinaryTransactionEntryPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
@@ -218,6 +245,20 @@ internal class AppRootViewModel @Inject constructor(
     val specializedTransactionPending: StateFlow<Boolean> = mutableSpecializedTransactionPending.asStateFlow()
     private val mutableCurrencySettings = MutableStateFlow<CurrencySettingsState?>(null)
     val currencySettings: StateFlow<CurrencySettingsState?> = mutableCurrencySettings.asStateFlow()
+    private val mutableJournal = MutableStateFlow<JournalLoadState>(JournalLoadState.Loading)
+    val journal: StateFlow<JournalLoadState> = mutableJournal.asStateFlow()
+    private val mutableJournalPagingRequest = MutableStateFlow<JournalPagingRequest?>(null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val journalPages = mutableJournalPagingRequest.flatMapLatest { request ->
+        if (request == null) {
+            flowOf(PagingData.empty())
+        } else {
+            Pager(
+                PagingConfig(pageSize = 40, prefetchDistance = 10, initialLoadSize = 40, enablePlaceholders = false, maxSize = 200),
+            ) { JournalPagingSource(journalApplicationPort, request.bookId, request.filter, request.runningBalanceAccountId) }.flow
+        }
+    }.cachedIn(viewModelScope)
     var selectedAccountType: UserAccountType = UserAccountType.CASH
         private set
     private var pendingCardAccountId: StableId? = null
@@ -499,6 +540,7 @@ internal class AppRootViewModel @Inject constructor(
                     consumePendingDeepLink()
                     loadReferenceData()
                     loadOrdinaryRecord()
+                    loadJournal()
                 }
             }
         }
@@ -611,6 +653,238 @@ internal class AppRootViewModel @Inject constructor(
                 is DomainResult.Failure -> AppReferenceDataState.Error(result.error.code)
             }
         }
+    }
+
+    fun loadJournal() {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
+            val current = mutableJournal.value as? JournalLoadState.Content
+            val presets = (journalApplicationPort.savedFilters(bookId) as? DomainResult.Success)?.value.orEmpty()
+            val options = (journalApplicationPort.bulkEditOptions(bookId) as? DomainResult.Success)?.value
+                ?: return@launch run { mutableJournal.value = JournalLoadState.Failure("JOURNAL_OPTIONS_FAILED") }
+            val defaultPreset = presets.singleOrNull { it.isDefault }
+            val filter = current?.filter ?: defaultPreset?.filter ?: TransactionFilter(lifecycleStates = setOf(TransactionLifecycleState.ACTIVE))
+            mutableJournal.value = (current ?: JournalLoadState.Content()).copy(
+                filter = filter,
+                searchText = filter.searchText.orEmpty(),
+                presets = presets,
+                bulkOptions = options,
+                activePresetId = current?.activePresetId ?: defaultPreset?.id,
+            )
+            mutableJournalPagingRequest.value = JournalPagingRequest(bookId, filter, refreshEpoch = (mutableJournalPagingRequest.value?.refreshEpoch ?: 0) + 1)
+        }
+    }
+
+    fun updateJournalSearch(value: String) {
+        val query = value.take(RECORD_SEARCH_LIMIT)
+        updateJournalContent { copy(searchText = query, filter = filter.copy(searchText = query.takeIf(String::isNotBlank))) }
+        refreshJournalPaging()
+    }
+
+    fun applyJournalFilter(filter: TransactionFilter) {
+        updateJournalContent { copy(filter = filter, searchText = filter.searchText.orEmpty(), activePresetId = null) }
+        refreshJournalPaging()
+    }
+
+    fun removeJournalFilter(stableKey: String) {
+        updateJournalContent {
+            val updated = when {
+                stableKey.startsWith("kind_") -> filter.copy(kinds = filter.kinds.filterNot { "kind_${it.name}" == stableKey }.toSet())
+                stableKey.startsWith("state_") -> filter.copy(lifecycleStates = filter.lifecycleStates.filterNot { "state_${it.name}" == stableKey }.toSet())
+                stableKey.startsWith("source_") -> filter.copy(sources = filter.sources.filterNot { "source_${it.name}" == stableKey }.toSet())
+                stableKey.startsWith("account_") -> filter.copy(accountIds = filter.accountIds.filterNot { "account_$it" == stableKey }.toSet())
+                stableKey.startsWith("card_") -> filter.copy(cardIds = filter.cardIds.filterNot { "card_$it" == stableKey }.toSet())
+                stableKey.startsWith("category_") -> filter.copy(categoryIds = filter.categoryIds.filterNot { "category_$it" == stableKey }.toSet())
+                stableKey.startsWith("merchant_") -> filter.copy(merchantIds = filter.merchantIds.filterNot { "merchant_$it" == stableKey }.toSet())
+                stableKey.startsWith("project_") -> filter.copy(projectIds = filter.projectIds.filterNot { "project_$it" == stableKey }.toSet())
+                stableKey.startsWith("settlement_") -> filter.copy(settlementActivityIds = filter.settlementActivityIds.filterNot { "settlement_$it" == stableKey }.toSet())
+                stableKey.startsWith("participant_") -> filter.copy(participantIds = filter.participantIds.filterNot { "participant_$it" == stableKey }.toSet())
+                stableKey.startsWith("currency_") -> filter.copy(currencies = filter.currencies.filterNot { "currency_${it.value}" == stableKey }.toSet())
+                stableKey.startsWith("nature_") -> filter.copy(statisticalNatures = filter.statisticalNatures.filterNot { "nature_${it.name}" == stableKey }.toSet())
+                stableKey == "occurred_from" -> filter.copy(occurredFrom = null)
+                stableKey == "occurred_through" -> filter.copy(occurredThrough = null)
+                stableKey == "created_from" -> filter.copy(createdFrom = null)
+                stableKey == "created_through" -> filter.copy(createdThrough = null)
+                stableKey == "modified_from" -> filter.copy(modifiedFrom = null)
+                stableKey == "modified_through" -> filter.copy(modifiedThrough = null)
+                stableKey == "amount" -> filter.copy(amountRange = null)
+                stableKey == "geo_radius" -> filter.copy(geoRadius = null)
+                stableKey == "budget" -> filter.copy(includedInBudget = null)
+                stableKey == "attachment" -> filter.copy(hasAttachment = null)
+                stableKey == "refund" -> filter.copy(isRefund = null)
+                stableKey == "installment" -> filter.copy(hasInstallment = null)
+                stableKey == "recurrence" -> filter.copy(generatedByRecurrence = null)
+                else -> filter
+            }
+            copy(filter = updated)
+        }
+        refreshJournalPaging()
+    }
+
+    fun loadJournalDetail(transactionId: StableId) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = requireBookId(settingsRepository.current())
+            val detail = journalApplicationPort.detail(bookId, transactionId)
+            val history = journalApplicationPort.history(bookId, transactionId)
+            val dependencies = journalApplicationPort.dependencies(bookId, transactionId)
+            if (detail is DomainResult.Success && history is DomainResult.Success && dependencies is DomainResult.Success) {
+                updateJournalContent { copy(detail = detail.value, history = history.value, dependencies = dependencies.value, dependencyResolutions = emptyList()) }
+            } else {
+                mutableJournal.value = JournalLoadState.Failure("JOURNAL_DETAIL_FAILED")
+            }
+        }
+    }
+
+    fun selectJournalTransaction(transactionId: StableId) = updateJournalContent {
+        val next = selection?.let { JournalSelectionPolicy.toggle(it, transactionId) } ?: JournalSelectionPolicy.begin(filter, transactionId)
+        copy(selection = next)
+    }
+
+    fun selectAllJournalResults() = updateJournalContent { copy(selection = JournalSelectionPolicy.selectAllMatching(filter)) }
+
+    fun clearJournalSelection() = updateJournalContent { copy(selection = null) }
+
+    fun saveJournalFilter(name: String) {
+        val filter = (mutableJournal.value as? JournalLoadState.Content)?.filter ?: return
+        mutateJournalPresets(JournalSavedFilterCommand.Save(nextId(), name, filter, journalFilterSummary()))
+    }
+
+    fun applyJournalPreset(id: StableId) {
+        val preset = (mutableJournal.value as? JournalLoadState.Content)?.presets?.singleOrNull { it.id == id } ?: return
+        updateJournalContent { copy(filter = preset.filter, searchText = preset.filter.searchText.orEmpty(), activePresetId = id, selection = null) }
+        refreshJournalPaging()
+    }
+
+    fun copyJournalPreset(id: StableId) {
+        val source = (mutableJournal.value as? JournalLoadState.Content)?.presets?.singleOrNull { it.id == id } ?: return
+        mutateJournalPresets(JournalSavedFilterCommand.Copy(id, nextId(), "${source.name} copy"))
+    }
+
+    fun setDefaultJournalPreset(id: StableId) = mutateJournalPresets(JournalSavedFilterCommand.SetDefault(id))
+
+    fun deleteJournalPreset(id: StableId) = mutateJournalPresets(JournalSavedFilterCommand.Delete(id))
+
+    fun reorderJournalPresets(ids: List<StableId>) = mutateJournalPresets(JournalSavedFilterCommand.Reorder(ids))
+
+    fun bulkEditJournal(patch: JournalBulkEditPatch) {
+        val content = mutableJournal.value as? JournalLoadState.Content ?: return
+        val selection = content.selection ?: return
+        if (selection.queryChanged(JournalSelectionSpec.fingerprint(content.filter))) {
+            updateJournalContent { copy(operation = JournalOperationState.FAILED) }
+            return
+        }
+        if (content.operation in setOf(JournalOperationState.VALIDATING, JournalOperationState.COMMITTING)) return
+        updateJournalContent { copy(operation = JournalOperationState.VALIDATING) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = requireBookId(settingsRepository.current())
+            updateJournalContent { copy(operation = JournalOperationState.COMMITTING) }
+            val request = JournalBulkEditRequest(bookId, nextId(), nextId(), nextId(), selection, content.filter, patch, runtimeSources.clock.now())
+            when (journalApplicationPort.bulkEdit(request)) {
+                is DomainResult.Success -> {
+                    updateJournalContent { copy(operation = JournalOperationState.SUCCEEDED, selection = null) }
+                    refreshJournalPaging()
+                }
+                is DomainResult.Failure -> updateJournalContent { copy(operation = JournalOperationState.FAILED) }
+            }
+        }
+    }
+
+    private fun mutateJournalPresets(command: JournalSavedFilterCommand) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = requireBookId(settingsRepository.current())
+            when (val result = journalApplicationPort.mutateSavedFilter(bookId, command)) {
+                is DomainResult.Success -> updateJournalContent { copy(presets = result.value) }
+                is DomainResult.Failure -> mutableJournal.value = JournalLoadState.Failure(sanitizeCode(result.error.code))
+            }
+        }
+    }
+
+    private fun journalFilterSummary(): String {
+        val filter = (mutableJournal.value as? JournalLoadState.Content)?.filter ?: return "all transactions"
+        val dimensions = buildList {
+            if (filter.searchText != null) add("search")
+            if (filter.occurredFrom != null || filter.occurredThrough != null) add("occurrence time")
+            if (filter.kinds.isNotEmpty()) add("${filter.kinds.size} types")
+            if (filter.accountIds.isNotEmpty()) add("${filter.accountIds.size} accounts")
+            if (filter.categoryIds.isNotEmpty()) add("${filter.categoryIds.size} categories")
+            if (filter.lifecycleStates.isNotEmpty()) add("${filter.lifecycleStates.size} states")
+            if (filter.amountRange != null) add("amount")
+            if (filter.hasAttachment != null) add("attachment")
+            if (filter.includedInBudget != null) add("budget")
+        }
+        return dimensions.ifEmpty { listOf("all transactions") }.joinToString(" · ")
+    }
+
+    fun resolveJournalDependency(dependency: JournalDependencyView, policy: DependencyPolicy) = updateJournalContent {
+        val domain = TransactionDependency(TransactionId(dependency.parentTransactionId), TransactionId(dependency.childTransactionId), dependency.type)
+        val resolution = DependencyResolution(domain, policy)
+        copy(dependencyResolutions = dependencyResolutions.filterNot { it.dependency == domain } + resolution)
+    }
+
+    fun moveJournalToTrash(transactionId: StableId, expectedRevisionId: StableId, resolutions: List<DependencyResolution>) = executeJournalMutation(
+        transactionId,
+    ) { ids, now -> JournalMutationRequest.MoveToTrash(ids, expectedRevisionId, now, now.plusSeconds(JOURNAL_RETENTION_SECONDS), resolutions) }
+
+    fun restoreJournalTransaction(transactionId: StableId, expectedRevisionId: StableId) = executeJournalMutation(
+        transactionId,
+    ) { ids, now -> JournalMutationRequest.RestoreFromTrash(ids, expectedRevisionId, now) }
+
+    fun restoreJournalRevision(transactionId: StableId, expectedRevisionId: StableId, sourceRevisionId: StableId, resolutions: List<DependencyResolution>) = executeJournalMutation(
+        transactionId,
+    ) { ids, now -> JournalMutationRequest.RestoreHistorical(ids, expectedRevisionId, now, sourceRevisionId, resolutions) }
+
+    fun compareJournalRevisions(transactionId: StableId, leftRevisionId: StableId, rightRevisionId: StableId) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = requireBookId(settingsRepository.current())
+            when (val result = journalApplicationPort.compare(bookId, transactionId, leftRevisionId, rightRevisionId)) {
+                is DomainResult.Success -> updateJournalContent { copy(comparison = result.value) }
+                is DomainResult.Failure -> mutableJournal.value = JournalLoadState.Failure(sanitizeCode(result.error.code))
+            }
+        }
+    }
+
+    fun verifyJournalPurge(transactionId: StableId) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = requireBookId(settingsRepository.current())
+            when (val result = journalApplicationPort.assessPurge(bookId, transactionId, runtimeSources.clock.now())) {
+                is DomainResult.Success -> updateJournalContent { copy(purgeAssessment = result.value) }
+                is DomainResult.Failure -> mutableJournal.value = JournalLoadState.Failure(sanitizeCode(result.error.code))
+            }
+        }
+    }
+
+    private fun executeJournalMutation(
+        transactionId: StableId,
+        request: (JournalMutationIds, java.time.Instant) -> JournalMutationRequest,
+    ) {
+        if ((mutableJournal.value as? JournalLoadState.Content)?.operation in setOf(JournalOperationState.VALIDATING, JournalOperationState.COMMITTING)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            updateJournalContent { copy(operation = JournalOperationState.COMMITTING) }
+            val bookId = requireBookId(settingsRepository.current())
+            val ids = JournalMutationIds(bookId, nextId(), transactionId, nextId(), nextId(), nextId(), List(FINANCIAL_FACT_ID_RESERVE) { nextId() }, List(FX_ID_RESERVE) { nextId() })
+            when (val result = journalApplicationPort.mutate(request(ids, runtimeSources.clock.now()))) {
+                is DomainResult.Success -> {
+                    updateJournalContent { copy(operation = JournalOperationState.SUCCEEDED) }
+                    loadJournalDetail(transactionId)
+                    refreshJournalPaging()
+                }
+                is DomainResult.Failure -> updateJournalContent { copy(operation = JournalOperationState.FAILED) }
+            }
+        }
+    }
+
+    private fun refreshJournalPaging() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
+            val content = mutableJournal.value as? JournalLoadState.Content ?: return@launch
+            mutableJournalPagingRequest.value = JournalPagingRequest(bookId, content.filter, refreshEpoch = (mutableJournalPagingRequest.value?.refreshEpoch ?: 0) + 1)
+        }
+    }
+
+    private fun updateJournalContent(block: JournalLoadState.Content.() -> JournalLoadState.Content) {
+        val current = mutableJournal.value as? JournalLoadState.Content ?: return
+        mutableJournal.value = current.block()
     }
 
     fun loadOrdinaryRecord(transactionId: StableId? = null) {
@@ -1554,8 +1828,16 @@ internal class AppRootViewModel @Inject constructor(
         const val FX_ID_RESERVE = 8
         const val RECORD_SEARCH_LIMIT = 80
         const val RECORD_ATTACHMENT_NAME_LIMIT = 255
+        const val JOURNAL_RETENTION_SECONDS = 30L * 24L * 60L * 60L
     }
 }
+
+private data class JournalPagingRequest(
+    val bookId: StableId,
+    val filter: TransactionFilter,
+    val runningBalanceAccountId: StableId? = null,
+    val refreshEpoch: Int,
+)
 
 private sealed interface PendingRecordExit {
     data object Back : PendingRecordExit

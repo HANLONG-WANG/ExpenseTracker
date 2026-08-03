@@ -1,6 +1,9 @@
 package app.ledger.finance.data
 
+import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.TransactionFilter
+import app.ledger.finance.domain.TransactionKind
+import app.ledger.finance.domain.TransactionSource
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
@@ -25,25 +28,32 @@ class TransactionSqlCompilerTest {
         compiled.arguments.first() shouldBe "\"$hostile\""
     }
 
-    private fun emptyFilter(): TransactionFilter = TransactionFilter(
-        occurredFrom = null,
-        occurredThrough = null,
-        kinds = emptySet(),
-        accountIds = emptySet(),
-        cardIds = emptySet(),
-        categoryIds = emptySet(),
-        merchantIds = emptySet(),
-        projectIds = emptySet(),
-        settlementActivityIds = emptySet(),
-        participantIds = emptySet(),
-        currencies = emptySet(),
-        amountRange = null,
-        geoRadius = null,
-        hasAttachment = null,
-        isRefund = null,
-        hasInstallment = null,
-        sources = emptySet(),
-        lifecycleStates = emptySet(),
-        searchText = null,
-    )
+    @Test
+    fun `complete filters use OR within a dimension and AND across dimensions`() {
+        val compiled = TransactionSqlCompiler.compile(
+            TransactionFilter(
+                occurredFrom = java.time.Instant.EPOCH,
+                createdFrom = java.time.Instant.EPOCH,
+                modifiedThrough = java.time.Instant.ofEpochSecond(10),
+                kinds = setOf(TransactionKind.EXPENSE, TransactionKind.INCOME),
+                statisticalNatures = setOf(StatisticalNature.CONSUMPTION_EXPENSE, StatisticalNature.NON_CONSUMPTION_EXPENSE),
+                hasAttachment = true,
+                includedInBudget = true,
+                generatedByRecurrence = true,
+                sources = setOf(TransactionSource.MANUAL, TransactionSource.CSV_IMPORT),
+            ),
+            null,
+            41,
+        )
+
+        compiled.sql.shouldContain("ctp.kind IN (?,?)")
+        compiled.sql.shouldContain("tr.statistical_nature_snapshot IN (?,?)")
+        compiled.sql.shouldContain("created.created_at >= ?")
+        compiled.sql.shouldContain("modified.created_at <= ?")
+        compiled.sql.shouldContain("EXISTS (SELECT 1 FROM budget_effect")
+        compiled.sql.shouldContain("ctp.source_type IN (?,?)")
+        compiled.sql.contains(" OFFSET ", ignoreCase = true) shouldBe false
+    }
+
+    private fun emptyFilter(): TransactionFilter = TransactionFilter()
 }

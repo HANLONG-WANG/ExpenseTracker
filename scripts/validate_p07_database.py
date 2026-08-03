@@ -282,6 +282,8 @@ def validate_ledgers() -> None:
                 "SETG-004": "VERIFIED",
             },
         )
+    if current_stage_number >= 15:
+        permitted_promotions.update({f"JRN-{number:03d}": "VERIFIED" for number in range(1, 13)})
     require(
         len(screen_rows) == 215
         and all(row["status"] == permitted_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),

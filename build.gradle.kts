@@ -669,6 +669,44 @@ tasks.register("p14Check") {
     )
 }
 
+val validateP15Journal by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the frozen P15 journal, search, immutable history, dependency and trash contract."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p15_journal.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/journal/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+tasks.register("p15Check") {
+    group = "verification"
+    description = "Runs P15 static, JVM, Lint and architecture evidence; managed-device suites run separately."
+    dependsOn(
+        validateP15Journal,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":finance:domain:test",
+        ":finance:data:testDebugUnitTest",
+        ":feature:journal:testDebugUnitTest",
+        ":app:lintDebug",
+        ":feature:journal:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

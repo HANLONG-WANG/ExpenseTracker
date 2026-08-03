@@ -20,6 +20,13 @@ object CanonicalFinancialHash {
             is RecordTransactionCommand<*> -> transactionInput(command.input)
             is EditTransactionCommand -> {
                 stableId(command.transactionId.value)
+                text(command.revisionAction.name)
+                transactionInput(command.replacement)
+                dependencyResolutions(command.dependencyResolutions)
+            }
+            is RestoreHistoricalRevisionCommand -> {
+                stableId(command.transactionId.value)
+                stableId(command.sourceRevisionId.value)
                 transactionInput(command.replacement)
                 dependencyResolutions(command.dependencyResolutions)
             }

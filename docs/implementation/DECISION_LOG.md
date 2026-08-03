@@ -488,3 +488,31 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Date/stage: 2026-08-03 / P14
 - Decision: record four 360×720 API-36 baselines for transfer, adjustment, FX exchange and opening balance directly from `LedgerTheme` and the implemented governed Compose tree, then compare every pixel in ordinary test mode.
 - Consequence: screenshot regression covers the specialized forms without opening, parsing, sampling, measuring or comparing any excluded PNG/HTML visual draft. The baseline inputs are only the textual main contract, token JSON, screen YAML and localized resources.
+
+## DL-067 — Paging 3 resolves to stable 3.5.0 without changing the frozen family
+
+- Date/stage: 2026-08-03 / P15
+- Surface issue: the frozen stack requires Paging 3 but intentionally does not freeze a patch. P15 is the first feature that needs the runtime artifact.
+- Decision: resolve the frozen Paging 3 family to stable AndroidX Paging 3.5.0, lock every artifact and checksum it in strict verification metadata. The data boundary still owns explicit keyset SQL; Paging only transports bounded pages and load states.
+- Consequence: no preview/alpha dependency, deep OFFSET, unbounded in-memory list or Room/DAO exposure enters the feature.
+
+## DL-068 — Search and geographic filters use bounded candidates plus exact predicates
+
+- Date/stage: 2026-08-03 / P15
+- Surface issue: FTS5 and R*Tree are candidate indexes, while the contract requires exact combined filters and nearby distance. Applying every predicate to only a prematurely truncated candidate subset could silently omit valid rows.
+- Decision: all structured dimensions are parameterized in one query with OR inside each dimension and AND between dimensions. FTS text is reduced to safe bound prefix terms. Geographic lookup admits at most 2,000 bounding-box candidates, calculates Haversine distance in Kotlin, and then uses the exact accepted IDs with all other predicates. Pages are ordered by `(occurred_at, transaction_id)` and carry that exact cursor.
+- Consequence: user input never becomes SQL syntax, location math is exact after the index prefilter, and a real 500,000-row SQLCipher test proves bounded non-overlapping pages without OFFSET.
+
+## DL-069 — P15 confirms purge eligibility but P31 owns physical deletion
+
+- Date/stage: 2026-08-03 / P15
+- Surface issue: JRN-012 must explain and reconfirm permanent-delete eligibility, while the phase contract explicitly assigns the final physical purge transaction to P31 and ADR-007A restricts immutable-fact deletion to maintenance mode.
+- Precedence applied: the immutable fact/security boundary and explicit P31 ownership outrank treating a confirmation dialog as authority to delete.
+- Decision: P15 rechecks retention, current lifecycle, account/base and every typed effect net, dependencies, durable-operation references and backup-object references. Even an otherwise eligible row retains `PHYSICAL_PURGE_REQUIRES_MAINTENANCE`; no P15 adapter executes DELETE on transaction, revision, Journal or Posting tables.
+- Consequence: the UI never reports fake success and gives a precise reason. P31 must consume the same assessment inside its maintenance transaction, write the purge tombstone and prove restore/merge behavior before physical removal can be claimed.
+
+## DL-070 — P15 goldens originate only from governed Compose and textual contracts
+
+- Date/stage: 2026-08-03 / P15
+- Decision: record the 360×720dp list-light and detail-dark baselines directly from `LedgerTheme`, the implemented governed journal components and localized strings, then compare all 945×1890 physical pixels at the managed device density.
+- Consequence: journal screenshot regression exists without opening, parsing, sampling, measuring or comparing an excluded PNG/HTML visual draft. The only design inputs are the UI main contract, token JSON, screen YAML and traceability matrix.

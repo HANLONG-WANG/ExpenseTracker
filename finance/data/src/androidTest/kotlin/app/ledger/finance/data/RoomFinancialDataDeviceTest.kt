@@ -1,8 +1,9 @@
-@file:Suppress("LargeClass", "LongMethod")
+@file:Suppress("LargeClass", "LongMethod", "MaxLineLength")
 
 package app.ledger.finance.data
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -213,6 +214,96 @@ class RoomFinancialDataDeviceTest {
             assertEquals(0L, scalar("SELECT COUNT(*) FROM journal_entry"))
             assertEquals(0L, scalar("SELECT COUNT(*) FROM command_receipt"))
         }
+    }
+
+    @Test
+    fun halfMillionRowsUseBoundedKeysetPagingAndFtsWithoutDeepOffset() = runBlocking {
+        seedHalfMillionQueryRows()
+        val query = RoomTransactionQueryService(database)
+        val started = SystemClock.elapsedRealtime()
+        val first = query.page(emptyFilter(), 40, null).success()
+        val firstElapsed = SystemClock.elapsedRealtime() - started
+        assertEquals(40, first.items.size)
+        assertNotNull(first.nextCursor)
+        val second = query.page(emptyFilter(), 40, first.nextCursor).success()
+        assertEquals(40, second.items.size)
+        assertTrue(first.items.map { it.transactionId }.toSet().intersect(second.items.map { it.transactionId }.toSet()).isEmpty())
+        val searched = query.page(emptyFilter().copy(searchText = "needle-p15"), 40, null).success()
+        assertEquals(1, searched.items.size)
+        assertTrue(firstElapsed < 5_000L)
+        val compiled = TransactionSqlCompiler.compile(emptyFilter(), first.nextCursor, 41)
+        assertFalse(compiled.sql.contains(" OFFSET ", ignoreCase = true))
+        val plan = database.readLedger { db ->
+            db.query("EXPLAIN QUERY PLAN ${compiled.sql}", compiled.arguments.toTypedArray()).use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.getString(3)) }
+            }
+        }
+        assertTrue(plan.any { it.contains("ix_current_transaction_keyset") || it.contains("INDEX") })
+        assertEquals(HALF_MILLION.toLong(), scalar("SELECT COUNT(*) FROM current_transaction_projection"))
+    }
+
+    private fun seedHalfMillionQueryRows() {
+        val db = database.openHelper.writableDatabase
+        database.inLedgerTransaction { connection ->
+            val insertTransaction = connection.compileStatement(
+                "INSERT INTO business_transaction(id,uid,kind,current_revision_id,lifecycle_state,created_commit_id,last_commit_id,row_version,trashed_at,purge_after,content_hash) VALUES(?,?,0,NULL,0,1,1,1,NULL,NULL,?)",
+            )
+            val insertRevision = connection.compileStatement(
+                "INSERT INTO transaction_revision(id,uid,transaction_id,revision_no,action,resulting_state,previous_revision_id,created_commit_id,created_at,occurred_at,zone_id,local_date,category_id,statistical_nature_snapshot,merchant_id,project_id,goal_id,location_record_id,note,amount_expression,source_type,source_reference_uid,content_hash) VALUES(?,?,?,1,0,0,NULL,1,?,?,?, ?,?,?,NULL,NULL,NULL,NULL,?,NULL,0,NULL,?)",
+            )
+            val updateTransaction = connection.compileStatement("UPDATE business_transaction SET current_revision_id=? WHERE id=?")
+            val insertProjection = connection.compileStatement(
+                "INSERT INTO current_transaction_projection(transaction_id,transaction_uid,kind,state,current_revision_id,occurred_at,local_date,primary_account_id,secondary_account_id,card_id,category_id,merchant_id,project_id,goal_id,settlement_activity_id,payer_participant_id,input_amount_minor,input_currency,account_amount_minor,account_currency,economic_base_minor,note_preview,has_attachment,has_location,is_refund,is_refunded,has_installment,source_type,as_of_local_revision) VALUES(?,?,0,0,?,?,?, ?,NULL,NULL,?,NULL,NULL,NULL,NULL,NULL,1,'JPY',1,'JPY',1,?,0,0,0,0,0,0,1)",
+            )
+            val insertFts = connection.compileStatement(
+                "INSERT INTO transaction_fts(transaction_id,category_name,merchant_name,merchant_aliases,note,project_name,settlement_activity_name,participant_names,attachment_names,lifecycle_state) VALUES(?, 'Food','','',?,'','','','',0)",
+            )
+            repeat(HALF_MILLION) { index ->
+                val transactionInternal = 10_000L + index
+                val revisionInternal = 600_000L + index
+                val transactionUid = id(1_000_000L + index).bytes
+                val revisionUid = id(2_000_000L + index).bytes
+                val occurredAt = 1_800_000_000_000L + index
+                val note = if (index == HALF_MILLION - 1) "needle-p15" else "row-$index"
+                insertTransaction.clearBindings()
+                insertTransaction.bindLong(1, transactionInternal)
+                insertTransaction.bindBlob(2, transactionUid)
+                insertTransaction.bindBlob(3, ByteArray(32) { 8 })
+                insertTransaction.executeInsert()
+                insertRevision.clearBindings()
+                insertRevision.bindLong(1, revisionInternal)
+                insertRevision.bindBlob(2, revisionUid)
+                insertRevision.bindLong(3, transactionInternal)
+                insertRevision.bindLong(4, occurredAt)
+                insertRevision.bindLong(5, occurredAt)
+                insertRevision.bindString(6, "Asia/Tokyo")
+                insertRevision.bindLong(7, 20260803)
+                insertRevision.bindLong(8, CATEGORY_ID.value.internalId())
+                insertRevision.bindLong(9, StatisticalNature.CONSUMPTION_EXPENSE.ordinal.toLong())
+                insertRevision.bindString(10, note)
+                insertRevision.bindBlob(11, ByteArray(32) { 9 })
+                insertRevision.executeInsert()
+                updateTransaction.clearBindings()
+                updateTransaction.bindLong(1, revisionInternal)
+                updateTransaction.bindLong(2, transactionInternal)
+                updateTransaction.executeUpdateDelete()
+                insertProjection.clearBindings()
+                insertProjection.bindLong(1, transactionInternal)
+                insertProjection.bindBlob(2, transactionUid)
+                insertProjection.bindLong(3, revisionInternal)
+                insertProjection.bindLong(4, occurredAt)
+                insertProjection.bindLong(5, 20260803)
+                insertProjection.bindLong(6, ACCOUNT_ID.value.internalId())
+                insertProjection.bindLong(7, CATEGORY_ID.value.internalId())
+                insertProjection.bindString(8, note)
+                insertProjection.executeInsert()
+                insertFts.clearBindings()
+                insertFts.bindLong(1, transactionInternal)
+                insertFts.bindString(2, note)
+                insertFts.executeInsert()
+            }
+        }
+        db.query("PRAGMA optimize").close()
     }
 
     private fun resetDatabase() {
@@ -435,10 +526,7 @@ class RoomFinancialDataDeviceTest {
         assertEquals(1L, scalar("SELECT as_of_valuation_revision FROM widget_book_snapshot WHERE id = 1"))
     }
 
-    private fun emptyFilter(): TransactionFilter = TransactionFilter(
-        null, null, emptySet(), emptySet(), emptySet(), emptySet(), emptySet(), emptySet(), emptySet(), emptySet(),
-        emptySet(), null, null, null, null, null, emptySet(), emptySet(), null,
-    )
+    private fun emptyFilter(): TransactionFilter = TransactionFilter()
 
     private fun initialBook(): Book = Book(
         BOOK_ID,
@@ -494,6 +582,7 @@ class RoomFinancialDataDeviceTest {
         val LOCATION_ID = LocationRecordId(StableId.fromUuid(UUID(0L, 750L)))
         const val LATITUDE_E7 = 356_817_000
         const val LONGITUDE_E7 = 1397_672_000
+        const val HALF_MILLION = 500_000
         val VERSIONED_PROJECTIONS = listOf(
             "current_transaction_projection", "account_balance_current", "account_balance_daily",
             "refund_status_projection", "budget_usage_projection", "project_usage_projection", "goal_balance_projection",

@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-03 (Asia/Tokyo)
-Current stage: P14 — Transfer, opening, balance adjustment, and foreign-currency exchange
-Stage status: VERIFIED (`P14-E001`—`P14-E008`); P00—P13 remain VERIFIED and P15 is the next unstarted stage
+Current stage: P15 — Journal, search/filter, immutable history, and trash
+Stage status: VERIFIED (`P15-E001`—`P15-E008`); P00—P14 remain VERIFIED and P16 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -76,7 +76,7 @@ Baseline conclusion: this is a documentation-only repository, not a partial Andr
 | Build governance | AGP built-in Kotlin, Kotlin Compose compiler plugin, KSP 2.3.10, version catalog and seven convention/architecture plugins in the included `:build-logic` build | VERIFIED |
 | Module topology | 35 prescribed leaf modules plus five zero-dependency Gradle grouping projects; `:build-logic` is an included build | VERIFIED |
 | Dependency direction | Exact allowlisted project graph enforces UI → Application → Domain ← Infrastructure; eight domain/common modules are pure Kotlin/JVM; feature modules have no feature/data/DAO/Room-entity edge | VERIFIED |
-| Reproducibility | Wrapper distribution SHA-256 pinned; 37 lockfiles cover root, build logic and all leaf modules; strict dependency verification contains 1,357 components and 2,804 SHA-256 entries after the P12 application/reference-data graph and SBOM POMs were sealed | VERIFIED |
+| Reproducibility | Wrapper distribution SHA-256 pinned; 37 lockfiles cover root, build logic and all leaf modules; strict dependency verification contains 1,366 components and 2,819 SHA-256 entries after the P15 Paging graph was sealed | VERIFIED |
 | Production source | Secure application manifest only; no business screen, DAO, persistence, placeholder component or fake functionality was added | Correct for P01 |
 | Tests and scripts | P00 and P01 structural validators, Gradle architecture/version checks, Android Lint and all configured JVM test tasks | VERIFIED for P01 scope |
 | CI, advanced quality and release | Detekt/format/Kover/SBOM/license/CI/Baseline Profile/release AAB are not introduced early | P02/P36 scope |
@@ -255,14 +255,27 @@ P13 remains `VERIFIED`. `P13_ORDINARY_RECORDING_MAPPING.md` records its handoff 
 | Currency settings | Legal-tender search, visible/hidden state, persistent order and mandatory base/account currencies implement SETG-004 without storing financial or sensitive values | VERIFIED (`P14-E002`, `P14-E005`) |
 | UI and screenshots | REC-013/020/021/022 and SETG-004 cover all 15 YAML states under the P14 width/font/locale/theme matrix; four 360×720 token/Compose goldens compare exactly | VERIFIED (`P14-E005`, `P14-E006`) |
 
-P14 is `VERIFIED`; P15 is `NOT_STARTED`. `P14_MULTICURRENCY_MAPPING.md` records the exact application/data/UI boundary. No journal page, refund/credit/loan workflow, import, global settings completion or later acceptance stage is promoted.
+P14 remains `VERIFIED`. `P14_MULTICURRENCY_MAPPING.md` records the exact application/data/UI boundary; P15 does not reinterpret its frozen amount or FX evidence.
+
+### P15 result (verified)
+
+| Area | P15 result | Classification |
+|---|---|---|
+| Large journal/query path | Bounded keyset Paging, date headers, complete filter algebra, parameterized FTS5 plus exact R*Tree/Haversine filtering, account-only running balances and no deep `OFFSET` | VERIFIED (`P15-E002`, `P15-E003`) |
+| Selection and batch editing | All-matching selection stores only query fingerprint and exceptions; exactly eight allowed fields execute as one coordinator-owned immutable batch, while amount/direction/refund/share remain forbidden | VERIFIED (`P15-E002`, `P15-E004`) |
+| Detail and immutable history | Complete detail/FX/relationship/source reads, revision timeline, comparison and old-version restore append RESTORE plus REVERSE/APPLY facts without overwriting history | VERIFIED (`P15-E004`, `P15-E005`) |
+| Trash and purge boundary | Move/restore are typed coordinator commands; retention, financial net, dependencies, operations and backup references produce explicit eligibility reasons; P31 retains physical maintenance purge | VERIFIED for P15 (`P15-E004`, `DL-069`) |
+| Saved filters and privacy | Save/copy/default/reorder/delete persist under per-book AEAD in no-backup storage; values never enter routes, SavedState, logs or semantic values | VERIFIED (`P15-E004`, `P15-E007`) |
+| UI and screenshots | JRN-001—JRN-012 cover all 42 YAML states at the width/font/locale/theme matrix; two token/Compose goldens compare exactly and no swipe-delete exists | VERIFIED (`P15-E005`, `P15-E006`) |
+
+P15 is `VERIFIED`. `P15_JOURNAL_MAPPING.md` records the exact query/application/UI and retained P31 purge boundary. No refund, credit, loan, budget, goal, analytics, import, physical purge or later feature stage is promoted.
 
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 21 requirements are `VERIFIED`; 57 are `IN_PROGRESS`; 12 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 62 are `VERIFIED` (prior 57 plus REC-013/020/021/022 and SETG-004); 153 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 28 requirements are `VERIFIED`; 52 are `IN_PROGRESS`; 10 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 74 are `VERIFIED` (prior 62 plus JRN-001—JRN-012); 141 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-011 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-012—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
 | Permanent domain invariants | 35 | Ten are `VERIFIED`, including transfer net-assets (`INV-015`), immutable historical FX (`INV-016`), valuation exclusion (`INV-017`) and checked arithmetic (`INV-034`); 25 retain later evidence |
@@ -289,17 +302,20 @@ P14 is `VERIFIED`; P15 is `NOT_STARTED`. `P14_MULTICURRENCY_MAPPING.md` records 
 | P12 | VERIFIED | Account/card/reference-data implementation, all 23 screen contracts and coordinator-owned atomic category/place batch edits pass; see `P12-E001`—`P12-E008` |
 | P13 | VERIFIED | Complete category-first ordinary entry; `P13-E001`—`P13-E008` |
 | P14 | VERIFIED | Transfer/opening/adjustment/FX evidence, valuation revision, currency settings and all five screen contracts; `P14-E001`—`P14-E008` |
-| P15—P36 | NOT_STARTED | P15 is next; do not promote later work early |
+| P15 | VERIFIED | Keyset/FTS journal, complete filters, bounded selection, immutable history/trash and all 12 JRN contracts; `P15-E001`—`P15-E008` |
+| P16—P36 | NOT_STARTED | P16 is next; do not promote later work early |
 
-## P14 verified handoff
+## P15 verified handoff
 
-P14 leaves the repository at a fully verified specialized-transaction and authoritative multicurrency-evidence boundary. The reproducible P14 commands are:
+P15 leaves the repository at a fully verified journal/query/history/trash boundary. The reproducible P15 commands are:
 
 ```text
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p14_multicurrency.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p15_journal.py
 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
-./gradlew :finance:data:pixel6Api36DebugAndroidTest :feature:record:pixel6Api36DebugAndroidTest :feature:settings:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
-./gradlew p14Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.RoomFinancialDataDeviceTest#halfMillionRowsUseBoundedKeysetPagingAndFtsWithoutDeepOffset --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.JournalApplicationPortDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :feature:journal:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p15Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
 ```
 
-All P14 evidence is recorded in `P14-E001`—`P14-E008`. The next entry point is P15; reuse the verified projection queries, typed stable-ID routes and sole financial coordinator boundary rather than adding a feature-owned persistence path.
+All P15 evidence is recorded in `P15-E001`—`P15-E008`. The next entry point is P16; reuse the typed filter/query boundary, immutable revision reads and sole financial coordinator rather than adding feature-owned SQL or mutable history.

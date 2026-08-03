@@ -575,6 +575,52 @@ class DeterministicFinancialPlannerTest {
     }
 
     @Test
+    fun `restoring a historical version appends RESTORE and reverses only current facts`() {
+        val originalEvidence = PlannerFixtures.sameCurrencyEvidence(AmountRole.PRIMARY, 1_000L, PlannerFixtures.bankJpyId)
+        val originalSnapshot = PlannerFixtures.snapshot(listOf(originalEvidence), seed = 41_200L)
+        val originalCommand = PlannerFixtures.expenseCommand(1_000L, commandSeed = 41_300L)
+        val original = DeterministicFinancialPlanner.plan(originalCommand, originalSnapshot).success()
+        val editedCommand = editCommand(original, 1_700L)
+        val editedEvidence = PlannerFixtures.sameCurrencyEvidence(AmountRole.PRIMARY, 1_700L, PlannerFixtures.bankJpyId)
+        val editSnapshot = PlannerFixtures.snapshot(
+            listOf(editedEvidence),
+            seed = 41_400L,
+            currentTransaction = original.transactions.single(),
+            currentRevision = original.revisions.single(),
+            currentFacts = PlannerFixtures.currentFacts(original),
+            sourceBook = PlannerFixtures.nextBook(original, originalSnapshot.book),
+        )
+        val edited = DeterministicFinancialPlanner.plan(editedCommand, editSnapshot).success()
+        val historicalSnapshot = PlannerFixtures.snapshot(
+            listOf(originalEvidence),
+            seed = 41_500L,
+            currentTransaction = edited.transactions.single(),
+            currentRevision = edited.revisions.single(),
+            currentFacts = PlannerFixtures.currentFacts(edited),
+            sourceBook = PlannerFixtures.nextBook(edited, editSnapshot.book),
+        )
+        val unsigned = RestoreHistoricalRevisionCommand(
+            CommandId(stableId(41_600L)),
+            edited.revisions.single().id,
+            hash(0),
+            edited.transactions.single().id,
+            original.revisions.single().id,
+            originalCommand.input,
+            emptyList(),
+        )
+        val command = unsigned.copy(payloadHash = CanonicalFinancialHash.command(unsigned))
+
+        val restored = DeterministicFinancialPlanner.plan(command, historicalSnapshot).success()
+
+        restored.revisions.single().action shouldBe RevisionAction.RESTORE
+        restored.revisions.single().revisionNumber shouldBe 3
+        restored.revisions.single().previousRevisionId shouldBe edited.revisions.single().id
+        restored.journalBundles.map { it.entry.role }.toSet() shouldBe setOf(JournalEntryRole.REVERSE, JournalEntryRole.APPLY)
+        restored.economicEffects.single { it.polarity == EffectPolarity.APPLY }.baseAmount.minor.value shouldBe 1_000L
+        (restored.revisions.single().contentHash != original.revisions.single().contentHash).shouldBeTrue()
+    }
+
+    @Test
     fun `batch context edits share one commit reverse every prior fact and are deterministic`() {
         val amount = PlannerFixtures.sameCurrencyEvidence(AmountRole.PRIMARY, 1_000L, PlannerFixtures.bankJpyId)
         val firstCreateSnapshot = PlannerFixtures.snapshot(listOf(amount), seed = 42_000L)
@@ -621,6 +667,7 @@ class DeterministicFinancialPlannerTest {
                 revision.transactionId,
                 replacement,
                 emptyList(),
+                RevisionAction.BULK_EDIT,
             )
             unsigned.copy(payloadHash = CanonicalFinancialHash.command(unsigned))
         }
@@ -645,6 +692,7 @@ class DeterministicFinancialPlannerTest {
         first.commit.kind shouldBe CommitKind.BATCH_MUTATION
         first.transactions shouldHaveSize 2
         first.revisions shouldHaveSize 2
+        first.revisions.all { it.action == RevisionAction.BULK_EDIT }.shouldBeTrue()
         first.journalBundles.count { it.entry.role == JournalEntryRole.REVERSE } shouldBe 2
         first.journalBundles.count { it.entry.role == JournalEntryRole.APPLY } shouldBe 2
         first.journalBundles.all { it.entry.baseDebitTotalMinor == it.entry.baseCreditTotalMinor }.shouldBeTrue()

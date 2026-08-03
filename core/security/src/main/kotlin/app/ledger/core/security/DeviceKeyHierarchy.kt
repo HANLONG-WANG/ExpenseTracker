@@ -150,6 +150,14 @@ class DeviceLedgerKeys internal constructor(
 ) : AutoCloseable {
     fun secureSettingsAead(): Aead = secureSettingsKeyset.useBytes(LedgerTink::aead)
 
+    fun encryptSecureSettings(plaintext: ByteArray, associatedData: ByteArray): ByteArray = secureSettingsKeyset.useBytes { keyset ->
+        LedgerTink.aead(keyset).encrypt(plaintext, associatedData)
+    }
+
+    fun decryptSecureSettings(ciphertext: ByteArray, associatedData: ByteArray): ByteArray = secureSettingsKeyset.useBytes { keyset ->
+        LedgerTink.aead(keyset).decrypt(ciphertext, associatedData)
+    }
+
     fun createAttachmentDataKey(): SecretBytes = LedgerTink.generateStreamingAeadKeyset()
 
     fun wrapAttachmentDataKey(serializedDataKey: SecretBytes, associatedData: ByteArray): ByteArray = attachmentRootKeyset.useBytes { keyset ->

@@ -82,6 +82,7 @@ import app.ledger.finance.domain.LoanScheduleRevisionId
 import app.ledger.finance.domain.LoanTrancheId
 import app.ledger.finance.domain.LocationRecordId
 import app.ledger.finance.domain.MerchantId
+import app.ledger.finance.domain.NewTransactionInput
 import app.ledger.finance.domain.OpeningBalancePayload
 import app.ledger.finance.domain.ParticipantId
 import app.ledger.finance.domain.PaymentCardId
@@ -128,6 +129,7 @@ import app.ledger.finance.domain.StatementEffectId
 import app.ledger.finance.domain.StatementEffectKind
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.SystemLedgerCode
+import app.ledger.finance.domain.TransactionContextInput
 import app.ledger.finance.domain.TransactionId
 import app.ledger.finance.domain.TransactionKind
 import app.ledger.finance.domain.TransactionLifecycleState
@@ -164,7 +166,7 @@ internal class RoomReferenceFinancialSnapshotMapper {
         val book = RoomBookRepository.mapCurrent(db)
         val references = references(db)
         val transaction = readTransaction(db, transactionId)
-        val currentRevision = readRevision(db, transaction, references)
+        val currentRevision = readRevision(db, transaction, references, transaction.currentRevisionId)
         val amounts = readRevisionAmounts(db, currentRevision.id)
         val evidence = readAmountEvidence(db, amounts, fxIds)
         val facts = readCurrentFacts(db, currentRevision.id)
@@ -172,7 +174,7 @@ internal class RoomReferenceFinancialSnapshotMapper {
             book = book,
             currentTransaction = transaction,
             currentRevision = currentRevision,
-            dependencies = emptyList(),
+            dependencies = readDependencies(db, transaction.id),
             reversedApplyEntryIds = readReversedEntryIds(db, currentRevision.id),
             refundStatuses = emptyList(),
             budgetRevision = null,
@@ -192,6 +194,21 @@ internal class RoomReferenceFinancialSnapshotMapper {
             ),
         )
         return ReferenceEditSource(snapshot, currentRevision)
+    }
+
+    internal fun historicalInput(
+        db: SupportSQLiteDatabase,
+        transactionId: StableId,
+        revisionId: StableId,
+        fxIds: List<StableId>,
+    ): Pair<NewTransactionInput<TransactionPayload>, List<FrozenAmountEvidence>> {
+        val transaction = readTransaction(db, transactionId)
+        val typedRevisionId = TransactionRevisionId(revisionId)
+        val references = references(db)
+        val revision = readRevision(db, transaction, references, typedRevisionId)
+        if (revision.transactionId != transaction.id) abort(FinanceDataError.CorruptData)
+        val evidence = readAmountEvidence(db, readRevisionAmounts(db, typedRevisionId), fxIds)
+        return NewTransactionInput(revision.toContextInput(), revision.payload) to evidence
     }
 
     internal fun references(db: SupportSQLiteDatabase): PlanningReferenceData {
@@ -297,7 +314,12 @@ internal class RoomReferenceFinancialSnapshotMapper {
         )
     } ?: abort(FinanceDataError.CorruptData)
 
-    private fun readRevision(db: SupportSQLiteDatabase, transaction: BusinessTransaction, references: PlanningReferenceData): TransactionRevision {
+    private fun readRevision(
+        db: SupportSQLiteDatabase,
+        transaction: BusinessTransaction,
+        references: PlanningReferenceData,
+        revisionId: TransactionRevisionId,
+    ): TransactionRevision {
         val row = db.queryOne(
             "SELECT tr.id,tr.uid,bt.uid transaction_uid,tr.revision_no,tr.action,tr.resulting_state,prev.uid previous_uid,bc.uid commit_uid," +
                 "tr.created_at,tr.occurred_at,tr.zone_id,tr.local_date,c.uid category_uid,tr.statistical_nature_snapshot,m.uid merchant_uid," +
@@ -306,9 +328,10 @@ internal class RoomReferenceFinancialSnapshotMapper {
                 "LEFT JOIN transaction_revision prev ON prev.id=tr.previous_revision_id LEFT JOIN category c ON c.id=tr.category_id " +
                 "LEFT JOIN merchant m ON m.id=tr.merchant_id LEFT JOIN project p ON p.id=tr.project_id LEFT JOIN goal g ON g.id=tr.goal_id " +
                 "LEFT JOIN location_record lr ON lr.id=tr.location_record_id WHERE tr.uid=?",
-            arrayOf(transaction.currentRevisionId.value.bytes),
+            arrayOf(revisionId.value.bytes),
         ) { cursor -> RevisionRow.from(cursor) } ?: abort(FinanceDataError.CorruptData)
-        val amounts = readRevisionAmounts(db, transaction.currentRevisionId)
+        if (row.id != revisionId) abort(FinanceDataError.CorruptData)
+        val amounts = readRevisionAmounts(db, revisionId)
         val classification = row.categoryId?.let { categoryId ->
             val category = references.category(categoryId) ?: abort(FinanceDataError.CorruptData)
             CategoryAssignment(categoryId, category.direction, row.statisticalNature ?: abort(FinanceDataError.CorruptData))
@@ -353,6 +376,20 @@ internal class RoomReferenceFinancialSnapshotMapper {
             attachmentIds,
             payload,
             row.contentHash,
+        )
+    }
+
+    private fun readDependencies(db: SupportSQLiteDatabase, transactionId: TransactionId): List<app.ledger.finance.domain.TransactionDependency> = db.queryList(
+        "SELECT parent.uid parent_uid,child.uid child_uid,td.dependency_type FROM transaction_dependency td " +
+            "JOIN business_transaction parent ON parent.id=td.parent_transaction_id " +
+            "JOIN business_transaction child ON child.id=td.child_transaction_id " +
+            "WHERE parent.uid=? OR child.uid=? ORDER BY td.dependency_type,parent.uid,child.uid",
+        arrayOf(transactionId.value.bytes, transactionId.value.bytes),
+    ) { cursor ->
+        app.ledger.finance.domain.TransactionDependency(
+            TransactionId(cursor.stableId("parent_uid")),
+            TransactionId(cursor.stableId("child_uid")),
+            app.ledger.finance.domain.TransactionDependencyType.entries[cursor.int("dependency_type")],
         )
     }
 
@@ -551,6 +588,21 @@ internal class RoomReferenceFinancialSnapshotMapper {
         return AccountAmount.restoreHistorical(account, value.money.money).valueOrAbort()
     }
     private fun positive(minor: Long, currency: CurrencyCode): PositiveMoney = PositiveMoney.from(Money(minor, currency)).valueOrAbort()
+    private fun TransactionRevision.toContextInput(): TransactionContextInput = TransactionContextInput(
+        occurredAt,
+        accrualDate,
+        budgetMonth,
+        merchantId,
+        projectId,
+        goalId,
+        locationRecordId,
+        note,
+        amountExpression,
+        source,
+        sourceReferenceId,
+        statementAssignment,
+        attachmentIds,
+    )
     private fun Cursor.ledgerSnapshot() = LedgerAccountSnapshot(LedgerAccountId(stableId("uid")), LedgerAccountClass.entries[int("account_class")], DebitCredit.entries[int("normal_side")], currency(string("currency_code")), EntityStatus.entries[int("status")])
 
     private data class RevisionRow(val internalId: Long, val id: TransactionRevisionId, val revisionNumber: Int, val action: RevisionAction, val state: TransactionLifecycleState, val previousId: TransactionRevisionId?, val commitId: BookCommitId, val createdAt: Instant, val occurredAt: Instant, val zoneId: java.time.ZoneId, val localDate: java.time.LocalDate, val categoryId: CategoryId?, val statisticalNature: StatisticalNature?, val merchantId: MerchantId?, val projectId: ProjectId?, val goalId: GoalId?, val locationId: LocationRecordId?, val note: String?, val amountExpression: String?, val source: TransactionSource, val sourceReferenceId: StableId?, val contentHash: ContentHash) {

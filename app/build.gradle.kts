@@ -37,6 +37,8 @@ dependencies {
     implementation(libs.datastore)
     implementation(libs.protobuf.java)
     implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.paging.common)
+    implementation(libs.paging.compose)
     implementation(libs.androidx.biometric)
 }
 

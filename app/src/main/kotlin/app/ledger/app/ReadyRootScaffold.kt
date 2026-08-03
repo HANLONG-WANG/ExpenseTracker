@@ -46,6 +46,7 @@ internal fun ReadyRootScaffold(
     val specializedState by viewModel.specializedTransaction.collectAsStateWithLifecycle()
     val specializedPending by viewModel.specializedTransactionPending.collectAsStateWithLifecycle()
     val currencySettings by viewModel.currencySettings.collectAsStateWithLifecycle()
+    val journalState by viewModel.journal.collectAsStateWithLifecycle()
     val launchAttachmentPicker = rememberRecordAttachmentPicker { uri ->
         if (viewModel.navigator.currentKey.contract.screenId.value == "REC-013") {
             viewModel.importSpecializedAttachment(uri)
@@ -129,6 +130,7 @@ internal fun ReadyRootScaffold(
                         recordState = recordState,
                         specializedState = specializedState,
                         currencySettings = currencySettings,
+                        journalState = journalState,
                         onAddAttachment = launchAttachmentPicker,
                         onBack = {
                             navigator.pop()
