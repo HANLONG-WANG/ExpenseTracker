@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-03 (Asia/Tokyo)
-Current stage: P13 — Category-first ordinary recording and core entry experience
-Stage status: VERIFIED (`P13-E001`—`P13-E008`); P00—P12 remain VERIFIED and P14 is the next unstarted stage
+Current stage: P14 — Transfer, opening, balance adjustment, and foreign-currency exchange
+Stage status: VERIFIED (`P14-E001`—`P14-E008`); P00—P13 remain VERIFIED and P15 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -242,19 +242,32 @@ P12 is `VERIFIED`. `P12_REFERENCE_DATA_MAPPING.md` records the exact implemented
 | Failure/privacy behavior | Invalid Save locates errors, submitting is single-flight, failures retain input, conflict is explicit, unsaved exit is confirmed, sensitive draft data stays out of routes/SavedState/logs/semantic values | VERIFIED (`P13-E002`, `P13-E004`, `P13-E006`) |
 | UI evidence | 12 REC screens/42 states, widths/font scales, three languages, light/dark/reduced-motion, accessibility semantics and four exact Compose/token goldens pass on API 36 | VERIFIED (`P13-E004`, `P13-E005`) |
 
-P13 is `VERIFIED`; P14 is `NOT_STARTED`. `P13_ORDINARY_RECORDING_MAPPING.md` records later ownership boundaries. No specialized P14+ transaction page, P18 goal behavior, P22 settlement management, P23 template authoring, P28 import flow or later acceptance stage is promoted.
+P13 remains `VERIFIED`. `P13_ORDINARY_RECORDING_MAPPING.md` records its handoff boundary; P14 closes only the transfer/opening/adjustment/FX subset while P18 goal behavior, P22 settlement management, P23 template authoring, P28 import flow and later acceptance remain unpromoted.
+
+### P14 result (verified)
+
+| Area | P14 result | Classification |
+|---|---|---|
+| Specialized financial writes | Internal transfer, balance adjustment, FX exchange and opening balance use closed typed requests and the P06 planner through the sole `FinancialMutationCoordinator`; duplicate command remains idempotent and every SQLCipher Journal balances | VERIFIED (`P14-E002`, `P14-E004`) |
+| Multicurrency evidence | Same-currency single amount, cross-currency dual authoritative amounts, original/account/base minor units, latest/cache/manual/historical/implied sources, quote times and exact spread/rounding evidence are frozen per revision | VERIFIED (`P14-E002`—`P14-E004`) |
+| Statistics and checkpoints | Opening/adjustment create no income, expense, consumption or budget effect; checkpoint Fact remains immutable and its reverse association is derived from the adjustment revision detail | VERIFIED (`P14-E004`, `DL-064`) |
+| Current valuation and offline policy | Privacy-limited pair/date network adapter, encrypted timestamped cache, stale state and manual fallback are implemented; current refresh advances only `valuationRevision`, while historical facts and `localRevision` remain unchanged | VERIFIED (`P14-E003`, `P14-E004`) |
+| Currency settings | Legal-tender search, visible/hidden state, persistent order and mandatory base/account currencies implement SETG-004 without storing financial or sensitive values | VERIFIED (`P14-E002`, `P14-E005`) |
+| UI and screenshots | REC-013/020/021/022 and SETG-004 cover all 15 YAML states under the P14 width/font/locale/theme matrix; four 360×720 token/Compose goldens compare exactly | VERIFIED (`P14-E005`, `P14-E006`) |
+
+P14 is `VERIFIED`; P15 is `NOT_STARTED`. `P14_MULTICURRENCY_MAPPING.md` records the exact application/data/UI boundary. No journal page, refund/credit/loan workflow, import, global settings completion or later acceptance stage is promoted.
 
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 20 requirements are `VERIFIED`; 58 are `IN_PROGRESS`; 12 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 57 are `VERIFIED` (G-001—008, ONB-001—010, ATT-001—003, SYS-001, all 23 P12 screens and REC-001—012); 158 remain `NOT_STARTED` |
-| Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-010 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-011—015 and ADR-018—020 are `IN_PROGRESS` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 21 requirements are `VERIFIED`; 57 are `IN_PROGRESS`; 12 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 62 are `VERIFIED` (prior 57 plus REC-013/020/021/022 and SETG-004); 153 remain `NOT_STARTED` |
+| Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-011 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-012—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
-| Permanent domain invariants | 35 | `INV-034` `VERIFIED` remains the checked-arithmetic anchor; `INV-002`, `INV-005`, `INV-006`, `INV-007`, `INV-016`, `INV-029` and `INV-031` are also `VERIFIED`; 27 retain later evidence |
+| Permanent domain invariants | 35 | Ten are `VERIFIED`, including transfer net-assets (`INV-015`), immutable historical FX (`INV-016`), valuation exclusion (`INV-017`) and checked arithmetic (`INV-034`); 25 retain later evidence |
 | Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; P08 verifies normalized financial plan mapping and atomic repository behavior |
-| Projection families | 7 + search/geographic indexes | Current transaction and settlement plus both indexes are `VERIFIED`; P08 subsets of the other families are verified while later-owned projections/runtime remain `IN_PROGRESS` |
+| Projection families | 7 + search/geographic indexes | Current transaction, account and settlement plus both indexes are `VERIFIED`; later-owned planning/liability/analytics/widget runtimes remain `IN_PROGRESS` |
 | Durable/staging/backup operation inventories | 4 groups | Encrypted physical records `VERIFIED` by P07; operation runtime remains `IN_PROGRESS` for P28—P31 |
 
 ## Stage progression
@@ -275,18 +288,18 @@ P13 is `VERIFIED`; P14 is `NOT_STARTED`. `P13_ORDINARY_RECORDING_MAPPING.md` rec
 | P11 | VERIFIED | Single Activity/Compose root, complete SessionGate, five Navigation 3 stacks, typed Proto restore, secure empty-book onboarding and all 65 G/ONB states pass; see `P11-E001`—`P11-E008` |
 | P12 | VERIFIED | Account/card/reference-data implementation, all 23 screen contracts and coordinator-owned atomic category/place batch edits pass; see `P12-E001`—`P12-E008` |
 | P13 | VERIFIED | Complete category-first ordinary entry; `P13-E001`—`P13-E008` |
-| P14—P36 | NOT_STARTED | P14 is next; do not promote later work early |
+| P14 | VERIFIED | Transfer/opening/adjustment/FX evidence, valuation revision, currency settings and all five screen contracts; `P14-E001`—`P14-E008` |
+| P15—P36 | NOT_STARTED | P15 is next; do not promote later work early |
 
-## P12 verified handoff
+## P14 verified handoff
 
-P12 leaves the repository at a fully verified account/reference-data boundary. The reproducible P12 commands are:
+P14 leaves the repository at a fully verified specialized-transaction and authoritative multicurrency-evidence boundary. The reproducible P14 commands are:
 
 ```text
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p12_reference_data.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p14_multicurrency.py
 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
-./gradlew :app:pixel2Api28DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.app.P12UiContractDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
-./gradlew :app:pixel6Api36DebugAndroidTest :finance:data:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
-./gradlew p12Evidence --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :finance:data:pixel6Api36DebugAndroidTest :feature:record:pixel6Api36DebugAndroidTest :feature:settings:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p14Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
 ```
 
-All P13 evidence is recorded in `P13-E001`—`P13-E008`. The next entry point is P14; reuse the verified ordinary application adapter and sole financial coordinator boundary rather than adding a feature-owned persistence path.
+All P14 evidence is recorded in `P14-E001`—`P14-E008`. The next entry point is P15; reuse the verified projection queries, typed stable-ID routes and sole financial coordinator boundary rather than adding a feature-owned persistence path.

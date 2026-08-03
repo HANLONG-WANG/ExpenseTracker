@@ -184,12 +184,12 @@ private fun CategoryFirstHome(state: OrdinaryRecordLoadState.Content, actions: O
 @Composable
 private fun OtherTransactionCards(actions: OrdinaryRecordActions) {
     val targets = listOf(
-        "TRF-001" to R.string.record_other_transfer,
+        "REC-013" to R.string.record_other_transfer,
         "CRD-007" to R.string.record_other_credit_payment,
         "REF-001" to R.string.record_other_refund,
         "LOA-007" to R.string.record_other_loan,
-        "ADJ-001" to R.string.record_other_adjustment,
-        "FX-001" to R.string.record_other_fx,
+        "REC-020" to R.string.record_other_adjustment,
+        "REC-021" to R.string.record_other_fx,
     )
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         targets.forEach { (target, label) -> LedgerButton(stringResource(label), { actions.onNavigate(target, emptyMap(), emptyMap()) }, variant = LedgerButtonVariant.TONAL) }

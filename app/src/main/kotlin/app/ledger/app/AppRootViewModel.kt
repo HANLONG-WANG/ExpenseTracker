@@ -70,7 +70,14 @@ import app.ledger.feature.record.RecordEditorMode
 import app.ledger.feature.record.RecordEditorPresentation
 import app.ledger.feature.record.RecordField
 import app.ledger.feature.record.RecordTab
+import app.ledger.feature.record.SpecializedPresentation
+import app.ledger.feature.record.SpecializedTransactionEditorState
+import app.ledger.feature.record.SpecializedTransactionKind
+import app.ledger.feature.record.SpecializedTransactionLoadState
+import app.ledger.feature.record.SpecializedTransactionPolicy
 import app.ledger.feature.settings.CategorySubmission
+import app.ledger.feature.settings.CurrencySettingsPolicy
+import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.MerchantSubmission
 import app.ledger.feature.settings.PlaceSubmission
 import app.ledger.finance.application.AccountDraft
@@ -101,8 +108,14 @@ import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.ReferenceMutation
 import app.ledger.finance.application.ReferenceMutationCommand
 import app.ledger.finance.application.ReferenceMutationIds
+import app.ledger.finance.application.SpecializedFxQuoteRequest
+import app.ledger.finance.application.SpecializedTransactionContext
+import app.ledger.finance.application.SpecializedTransactionEntryPort
+import app.ledger.finance.application.SpecializedTransactionWriteIds
+import app.ledger.finance.application.SpecializedTransactionWriteRequest
 import app.ledger.finance.application.UpdateBookLocaleCommand
 import app.ledger.finance.data.RoomLedgerStartupInspector
+import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryRemovalStrategy
 import app.ledger.finance.domain.StatisticalNature
@@ -169,6 +182,7 @@ internal class AppRootViewModel @Inject constructor(
     private val referenceDataPort: ReferenceDataManagementPort,
     private val openingBalanceWritePort: OpeningBalanceWritePort,
     private val ordinaryTransactionEntryPort: OrdinaryTransactionEntryPort,
+    private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
 ) : ViewModel() {
@@ -198,6 +212,12 @@ internal class AppRootViewModel @Inject constructor(
     val ordinaryRecord: StateFlow<OrdinaryRecordLoadState> = mutableOrdinaryRecord.asStateFlow()
     private val mutableOrdinaryRecordPending = MutableStateFlow(false)
     val ordinaryRecordPending: StateFlow<Boolean> = mutableOrdinaryRecordPending.asStateFlow()
+    private val mutableSpecializedTransaction = MutableStateFlow<SpecializedTransactionLoadState>(SpecializedTransactionLoadState.Loading)
+    val specializedTransaction: StateFlow<SpecializedTransactionLoadState> = mutableSpecializedTransaction.asStateFlow()
+    private val mutableSpecializedTransactionPending = MutableStateFlow(false)
+    val specializedTransactionPending: StateFlow<Boolean> = mutableSpecializedTransactionPending.asStateFlow()
+    private val mutableCurrencySettings = MutableStateFlow<CurrencySettingsState?>(null)
+    val currencySettings: StateFlow<CurrencySettingsState?> = mutableCurrencySettings.asStateFlow()
     var selectedAccountType: UserAccountType = UserAccountType.CASH
         private set
     private var pendingCardAccountId: StableId? = null
@@ -213,6 +233,7 @@ internal class AppRootViewModel @Inject constructor(
     private val scrollStates = mutableMapOf<TopLevelDestination, Pair<String, Int>>()
     private var recordLocationSession: ForegroundLocationSaveSession? = null
     private var recordAttachmentImportJob: Job? = null
+    private var specializedAttachmentImportJob: Job? = null
     private var pendingRecordExit: PendingRecordExit? = null
 
     init {
@@ -583,7 +604,10 @@ internal class AppRootViewModel @Inject constructor(
             val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
             mutableReferenceData.value = AppReferenceDataState.Loading
             mutableReferenceData.value = when (val result = referenceDataPort.snapshot(bookId)) {
-                is DomainResult.Success -> AppReferenceDataState.Content(result.value)
+                is DomainResult.Success -> {
+                    updateCurrencySettings(result.value)
+                    AppReferenceDataState.Content(result.value)
+                }
                 is DomainResult.Failure -> AppReferenceDataState.Error(result.error.code)
             }
         }
@@ -739,6 +763,185 @@ internal class AppRootViewModel @Inject constructor(
         }
     }
 
+    fun loadSpecializedTransaction(screenId: String, presetAccountId: StableId? = null) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        val kind = when (screenId) {
+            "REC-013" -> SpecializedTransactionKind.TRANSFER
+            "REC-020" -> SpecializedTransactionKind.BALANCE_ADJUSTMENT
+            "REC-021" -> SpecializedTransactionKind.FX_EXCHANGE
+            "REC-022" -> SpecializedTransactionKind.OPENING_BALANCE
+            else -> return
+        }
+        mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.current()
+            val bookId = requireBookId(saved)
+            when (val result = specializedTransactionEntryPort.snapshot(bookId)) {
+                is DomainResult.Failure -> mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Success -> {
+                    val editor = SpecializedTransactionPolicy.create(
+                        kind,
+                        result.value.references,
+                        presetAccountId,
+                        runtimeSources.clock.now(),
+                        ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }),
+                        recordLocale(),
+                    )
+                    mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Content(editor)
+                    quoteSpecializedRates(refreshOnline = true)
+                }
+            }
+        }
+    }
+
+    fun specializedExpression(incoming: Boolean, value: String) = updateSpecialized {
+        SpecializedTransactionPolicy.updateExpression(it, incoming, value, recordLocale())
+    }
+
+    fun specializedOperator(incoming: Boolean, value: String) = updateSpecialized {
+        SpecializedTransactionPolicy.appendOperator(it, incoming, value, recordLocale())
+    }
+
+    fun selectSpecializedAccount(incoming: Boolean) {
+        updateSpecialized { SpecializedTransactionPolicy.selectAccount(it, incoming) }
+        refreshSpecializedRates()
+    }
+
+    fun specializedManualRate(incoming: Boolean, value: String) = updateSpecialized {
+        SpecializedTransactionPolicy.setManualRate(it, incoming, value)
+    }
+
+    fun specializedDirection(direction: BalanceAdjustmentDirection) = updateSpecialized {
+        SpecializedTransactionPolicy.setDirection(it, direction)
+    }
+
+    fun specializedCheckpoint(id: StableId?) = updateSpecialized { SpecializedTransactionPolicy.setCheckpoint(it, id) }
+    fun specializedDate(date: java.time.LocalDate) = updateSpecialized { SpecializedTransactionPolicy.changeDate(it, date) }
+    fun specializedNote(value: String) = updateSpecialized { SpecializedTransactionPolicy.setNote(it, value) }
+
+    fun refreshSpecializedRates() {
+        viewModelScope.launch(Dispatchers.IO) { quoteSpecializedRates(refreshOnline = true) }
+    }
+
+    private suspend fun quoteSpecializedRates(refreshOnline: Boolean) {
+        val editor = (mutableSpecializedTransaction.value as? SpecializedTransactionLoadState.Content)?.editor ?: return
+        val currencies = SpecializedTransactionPolicy.requiredQuoteCurrencies(editor)
+        if (currencies.isEmpty()) return
+        mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Content(editor.copy(quotePending = currencies))
+        currencies.forEach { currency ->
+            val current = (mutableSpecializedTransaction.value as? SpecializedTransactionLoadState.Content)?.editor ?: return
+            val result = specializedTransactionEntryPort.quote(
+                SpecializedFxQuoteRequest(current.snapshot.bookId, currency, current.snapshot.baseCurrency, current.draft.localDate, refreshOnline),
+            )
+            updateSpecialized { state ->
+                SpecializedTransactionPolicy.withQuote(state, currency, (result as? DomainResult.Success)?.value)
+            }
+        }
+    }
+
+    fun importSpecializedAttachment(uri: Uri) {
+        val editor = (mutableSpecializedTransaction.value as? SpecializedTransactionLoadState.Content)?.editor ?: return
+        if (editor.attachmentImporting) return
+        updateSpecialized { it.copy(attachmentImporting = true, attachmentFailureCode = null) }
+        specializedAttachmentImportJob = viewModelScope.launch(Dispatchers.IO) {
+            val metadata = attachmentMetadata(uri)
+            if (metadata == null) {
+                updateSpecialized { it.copy(attachmentImporting = false, attachmentFailureCode = "ATTACHMENT_SOURCE_UNAVAILABLE") }
+                return@launch
+            }
+            val request = AttachmentImportRequest(
+                displayName = metadata.first,
+                mimeType = context.contentResolver.getType(uri),
+                extension = metadata.first.substringAfterLast('.', "").takeIf(String::isNotBlank),
+                declaredSize = metadata.second,
+                content = AttachmentContentSource { requireNotNull(context.contentResolver.openInputStream(uri)) },
+            )
+            when (val result = bookAttachmentObjectPort.import(editor.snapshot.bookId, request)) {
+                is DomainResult.Success -> updateSpecialized {
+                    it.copy(
+                        draft = it.draft.copy(attachmentIds = it.draft.attachmentIds + result.value.attachmentId.value, dirty = true),
+                        attachmentImporting = false,
+                        uncommittedAttachmentIds = it.uncommittedAttachmentIds + result.value.attachmentId.value,
+                    )
+                }
+                is DomainResult.Failure -> updateSpecialized { it.copy(attachmentImporting = false, attachmentFailureCode = sanitizeCode(result.error.code)) }
+            }
+        }.also { job -> job.invokeOnCompletion { updateSpecialized { it.copy(attachmentImporting = false) } } }
+    }
+
+    fun cancelSpecializedAttachment(index: Int) {
+        val editor = (mutableSpecializedTransaction.value as? SpecializedTransactionLoadState.Content)?.editor ?: return
+        val id = editor.draft.attachmentIds.getOrNull(index)
+        if (id == null && editor.attachmentImporting) {
+            specializedAttachmentImportJob?.cancel()
+            return
+        }
+        id ?: return
+        updateSpecialized {
+            it.copy(
+                draft = it.draft.copy(attachmentIds = it.draft.attachmentIds.filterIndexed { itemIndex, _ -> itemIndex != index }, dirty = true),
+                uncommittedAttachmentIds = it.uncommittedAttachmentIds - id,
+            )
+        }
+        if (id in editor.uncommittedAttachmentIds) {
+            viewModelScope.launch(Dispatchers.IO) {
+                bookAttachmentObjectPort.discardUncommitted(editor.snapshot.bookId, app.ledger.finance.domain.AttachmentId(id))
+            }
+        }
+    }
+
+    fun saveSpecializedTransaction() {
+        if (mutableSpecializedTransactionPending.value) return
+        val content = mutableSpecializedTransaction.value as? SpecializedTransactionLoadState.Content ?: return
+        val validated = SpecializedTransactionPolicy.validate(content.editor)
+        mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Content(validated)
+        if (validated.errors.isNotEmpty()) return
+        val prepared = runCatching { SpecializedTransactionPolicy.prepareAmounts(validated) }.getOrNull() ?: return
+        mutableSpecializedTransactionPending.value = true
+        mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Content(validated.copy(presentation = SpecializedPresentation.SAVING))
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val ids = SpecializedTransactionWriteIds(
+                    bookId = validated.snapshot.bookId,
+                    commandId = CommandId(nextId()),
+                    transactionId = nextId(),
+                    revisionId = nextId(),
+                    commitId = nextId(),
+                    deviceInstanceId = nextId(),
+                    factIds = List(FINANCIAL_FACT_ID_RESERVE) { nextId() },
+                    fxRateSnapshotIds = List(FX_ID_RESERVE) { nextId() },
+                )
+                val context = SpecializedTransactionContext(
+                    occurredAt = validated.draft.occurredAt,
+                    zoneId = validated.draft.zoneId,
+                    localDate = validated.draft.localDate,
+                    amountExpression = validated.draft.outgoingExpression,
+                    note = validated.draft.note.trim().takeIf(String::isNotEmpty),
+                    attachmentIds = validated.draft.attachmentIds,
+                    createdAt = runtimeSources.clock.now(),
+                )
+                val request = when (validated.kind) {
+                    SpecializedTransactionKind.TRANSFER -> SpecializedTransactionWriteRequest.Transfer(ids, context, prepared.outgoing, requireNotNull(prepared.incoming))
+                    SpecializedTransactionKind.BALANCE_ADJUSTMENT -> SpecializedTransactionWriteRequest.BalanceAdjustment(ids, context, prepared.outgoing, validated.draft.direction, validated.draft.checkpointId)
+                    SpecializedTransactionKind.FX_EXCHANGE -> SpecializedTransactionWriteRequest.FxExchange(ids, context, prepared.outgoing, requireNotNull(prepared.incoming), prepared.valuationPolicy, prepared.spreadCostBaseMinor)
+                    SpecializedTransactionKind.OPENING_BALANCE -> SpecializedTransactionWriteRequest.OpeningBalance(ids, context, prepared.outgoing, validated.draft.localDate)
+                }
+                when (val result = specializedTransactionEntryPort.submit(request)) {
+                    is DomainResult.Success -> {
+                        loadReferenceDataAfterMutation(validated.snapshot.bookId)
+                        mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Loading
+                        navigator.pop()
+                    }
+                    is DomainResult.Failure -> updateSpecialized {
+                        it.copy(presentation = SpecializedPresentation.SAVE_ERROR, failureCode = sanitizeCode(result.error.code))
+                    }
+                }
+            } finally {
+                mutableSpecializedTransactionPending.value = false
+            }
+        }
+    }
+
     fun saveOrdinaryRecord() {
         if (mutableOrdinaryRecordPending.value) return
         val content = mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content ?: return
@@ -879,6 +1082,30 @@ internal class AppRootViewModel @Inject constructor(
     fun cancelRecordConflict() {
         navigator.pop()
         updateRecordContent { copy(editor = null) }
+    }
+
+    fun searchCurrencies(value: String) {
+        mutableCurrencySettings.value = mutableCurrencySettings.value?.let { CurrencySettingsPolicy.search(it, value) }
+    }
+
+    fun toggleCurrency(code: CurrencyCode) {
+        mutableCurrencySettings.value = mutableCurrencySettings.value?.let { CurrencySettingsPolicy.toggle(it, code) }
+        persistCurrencyOrder()
+    }
+
+    fun moveCurrency(code: CurrencyCode, delta: Int) {
+        mutableCurrencySettings.value = mutableCurrencySettings.value?.let { CurrencySettingsPolicy.move(it, code, delta) }
+        persistCurrencyOrder()
+    }
+
+    private fun persistCurrencyOrder() {
+        val value = mutableCurrencySettings.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsRepository.update {
+                it.clearVisibleCurrencyCodes()
+                it.addAllVisibleCurrencyCodes(value.visibleCodes.map { code -> code.value })
+            }
+        }
     }
 
     fun navigateP12(
@@ -1039,9 +1266,21 @@ internal class AppRootViewModel @Inject constructor(
 
     private suspend fun loadReferenceDataAfterMutation(bookId: StableId) {
         mutableReferenceData.value = when (val result = referenceDataPort.snapshot(bookId)) {
-            is DomainResult.Success -> AppReferenceDataState.Content(result.value)
+            is DomainResult.Success -> {
+                updateCurrencySettings(result.value)
+                AppReferenceDataState.Content(result.value)
+            }
             is DomainResult.Failure -> AppReferenceDataState.Error(result.error.code)
         }
+    }
+
+    private suspend fun updateCurrencySettings(snapshot: ReferenceDataSnapshot) {
+        val saved = settingsRepository.current()
+        mutableCurrencySettings.value = CurrencySettingsPolicy.create(
+            snapshot.baseCurrency,
+            snapshot.accounts.map { it.currency }.toSet(),
+            saved.visibleCurrencyCodesList,
+        )
     }
 
     private fun executeOpeningBalance(value: OpeningBalanceSubmission) {
@@ -1208,6 +1447,11 @@ internal class AppRootViewModel @Inject constructor(
     private fun updateEditorAndPop(block: (OrdinaryRecordEditorState) -> OrdinaryRecordEditorState) {
         updateEditor(block)
         navigator.pop()
+    }
+
+    private fun updateSpecialized(block: (SpecializedTransactionEditorState) -> SpecializedTransactionEditorState) {
+        val current = mutableSpecializedTransaction.value as? SpecializedTransactionLoadState.Content ?: return
+        mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Content(block(current.editor))
     }
 
     private fun baseMinor(editor: OrdinaryRecordEditorState, balanceMinor: Long, currentBaseValueMinor: Long?): Long? {

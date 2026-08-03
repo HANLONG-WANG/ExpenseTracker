@@ -1,8 +1,8 @@
 # Domain and Schema Coverage Baseline
 
-Last updated: 2026-08-02 (Asia/Tokyo)
-Stage: P11
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P11 verifies the single root runtime, session-gated financial write availability, typed empty-ledger bootstrap and secure first-run state. It does not promote later financial feature, operation Worker, backup/restore or settings workflows.
+Last updated: 2026-08-03 (Asia/Tokyo)
+Stage: P14
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P14 verifies the specialized transfer/opening/adjustment/FX evidence chain, current valuation revision and currency-display slice. It does not promote later journal, liability, import, report, operation Worker, backup/restore or release workflows.
 
 ## P05 domain/application result
 
@@ -36,6 +36,10 @@ P10 maps the Schema v1 `encrypted_blob`/`attachment`/`blob_gc_candidate` family 
 
 P11 composes the P09 `BookSessionManager` and P08 coordinator boundary into the only Activity/Compose root. `SessionAwareLedgerWriteGate` rejects before and inside the serialized gate unless the session is Ready. A typed initialization port creates only encrypted book/system-ledger and optional account/category metadata; device evidence proves it creates no transaction, Journal, Posting or monetary effect. Proto DataStore persists only non-sensitive first-run and safe route/scroll metadata. `P11_APP_SHELL_MAPPING.md` records the 18-screen/65-state UI and later-stage boundary.
 
+## P14 specialized-transaction and valuation result
+
+P14 maps internal transfer, balance adjustment, FX exchange and opening balance to the existing P06 planner and sole P08 `FinancialMutationCoordinator` transaction. Cross-currency flows preserve dual authoritative account amounts and append exact account/base/FX evidence; opening/adjustment create no economic or budget effects. A privacy-limited OkHttp adapter supplies reference evidence and an encrypted current cache advances only `valuationRevision`. Exact field, cache, screen and evidence mapping is recorded in `P14_MULTICURRENCY_MAPPING.md`.
+
 ## Architecture decisions
 
 Source: `docs/规格冻结_v1.0/系统架构.md` §22, except ADR-007A from `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` §1.
@@ -53,7 +57,7 @@ Source: `docs/规格冻结_v1.0/系统架构.md` §22, except ADR-007A from `doc
 | ADR-008 | Editing reverses old effects and appends replacements | VERIFIED (`P06-E001`, `P06-E002`, `P07-E001`, `P08-E001`, `P08-E003`: immutable reverse/apply plan is persisted by the same append-only mapper and atomic transaction) | Property and integration tests |
 | ADR-009 | Core financial projections update in the same database transaction | VERIFIED (`P07-E001`, `P08-E001`, `P08-E003`: target-version rebuild and all five injected failures roll back facts, projections, book and receipt) | Failure-injection and rollback tests |
 | ADR-010 | Single process and single write gate | VERIFIED (`P01-E003`, `P08-E002`, `P08-E004`: single-process manifest and mutex-backed application entry with static bypass rejection) | Manifest/process and concurrency tests |
-| ADR-011 | Network data is never authoritative ledger data | IN_PROGRESS (`P05-E001`, `P06-E001`, `P06-E002`: planner accepts only frozen FX/reference evidence and has no network dependency) | Offline and adapter tests |
+| ADR-011 | Network data is never authoritative ledger data | VERIFIED (`P05-E001`, `P06-E001`, `P06-E002`, `P14-E002`—`P14-E004`: network sends only pair/date; online/cache/manual evidence is frozen into immutable amounts and later refresh changes only valuation projection) | Offline and adapter tests |
 | ADR-012 | Large imports use an encrypted staging or shadow database | IN_PROGRESS (`P05-E001`, `P05-E002`, `P07-E001`, `P07-E003`: separate encrypted seven-table staging DB verified; large-import/shadow execution remains P28) | Device large-import and rollback tests |
 | ADR-013 | Restore validates in a shadow directory before atomic exchange | IN_PROGRESS (`P05-E001`: validation/exchange contract) | Device fault-injection tests |
 | ADR-014 | Managed backups are logically full and physically incremental | IN_PROGRESS (`P05-E001`: snapshot/object graph contracts) | Repository retention/deduplication tests |
@@ -101,9 +105,9 @@ Source: `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` �
 | INV-012 | Credit-card repayment creates neither expense nor income. | Planner property + report tests | IN_PROGRESS (`P06-E001`, `P06-E002`: balanced liability transfer and allocation effects, zero EconomicEffect; reports remain) |
 | INV-013 | Loan principal repayment creates no expense. | Planner property + report tests | IN_PROGRESS (`P06-E001`, `P06-E002`: principal LoanEffect only; reports remain) |
 | INV-014 | Loan interest, fees and penalties create non-consumption expense. | Planner property + report tests | IN_PROGRESS (`P06-E001`, `P06-E002`: separate typed non-consumption effects; reports remain) |
-| INV-015 | Internal transfer does not change net financial assets. | Planner property + projection tests | IN_PROGRESS (`P06-E001`, `P06-E002`: 1,000 generated zero-net-asset transfers; projections remain) |
+| INV-015 | Internal transfer does not change net financial assets. | Planner property + projection tests | VERIFIED (`P06-E001`, `P06-E002`, `P14-E004`: 1,000 generated zero-net-asset plans plus SQLCipher commit/widget projection retain exact zero net change) |
 | INV-016 | Current FX rates cannot change historical base-currency amounts. | Historical-regression tests | VERIFIED (`P06-E001`, `P06-E002`, `P07-E001`, `P08-E001`, `P08-E003`: frozen amount/FX evidence and postings append through the normalized mapper; rebuild never reads a current FX feed) |
-| INV-017 | Current FX revaluation is not income or expense. | Projection/report tests | IN_PROGRESS (`P06-E001`, `P06-E002`: closed transfer/exchange semantics; valuation projections/reports remain) |
+| INV-017 | Current FX revaluation is not income or expense. | Projection/report tests | VERIFIED (`P06-E001`, `P06-E002`, `P14-E004`: current-rate refresh only advances valuation projection/version, appends no transaction/Journal/EconomicEffect and leaves localRevision unchanged) |
 | INV-018 | First-level category budget total cannot exceed total budget. | Domain property + UI tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
 | INV-019 | Second-level category budget total cannot exceed its parent budget. | Domain property + UI tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
 | INV-020 | Rollover chains rebuild from transaction effects, adjustments and prior-month rollover. | Property + projection rebuild tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
@@ -121,9 +125,23 @@ Source: `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` �
 | INV-032 | Vault fields never enter FTS, audit snapshots, logs or telemetry. | Static/privacy/device audit | IN_PROGRESS (`P05-E001`, `P05-E002`, `P07-E001`—`P07-E003`: separate vault ciphertext table, exact FTS allowlist and encrypted side-file scan; wider logs/telemetry remain P32) |
 | INV-033 | Failed import, restore or large batch leaves the main ledger unchanged. | Shadow-DB fault injection | IN_PROGRESS (`P05-E001`, `P05-E002`, `P07-E001`, `P07-E003`: independently encrypted staging schema proven; shadow exchange/fault injection remains P28/P31) |
 | INV-034 | Every monetary accumulation detects `Long` overflow. | Boundary/property/static tests | VERIFIED (`P03-E002`, `P03-E006`, `P06-E002`, `P06-E003`: checked sum plus planner Long.MAX/overflow and static rejection) |
-| INV-035 | Every cache depending on current transaction content carries a version. | Architecture/cache invalidation tests | IN_PROGRESS (`P05-E001`, `P07-E001`, `P08-E001`, `P08-E003`: all P08 synchronous projections/widget snapshots rebuild with explicit revisions; later analytics/valuation/runtime caches retain owning-stage evidence) |
+| INV-035 | Every cache depending on current transaction content carries a version. | Architecture/cache invalidation tests | IN_PROGRESS (`P05-E001`, `P07-E001`, `P08-E001`, `P08-E003`, `P14-E004`: synchronous and current-valuation/widget caches carry local/valuation revisions; later analytics/runtime caches retain owning-stage evidence) |
 
 The 16 product-level system invariants in `需求.md` §26 remain additional acceptance constraints. They are covered by REQ rows and the architecture/security/operation gates; they do not replace the 35 canonical permanent invariants above.
+
+## P14 transfer, adjustment, opening and FX realization
+
+P14 adds no new transaction kind or mutable-history path. The application layer accepts four closed request variants with positive integer minor units and typed stable IDs. `SecureRoomSpecializedTransactionEntryPort` rehydrates current references, freezes amount/rate evidence and invokes the deterministic planner through `FinancialMutationCoordinator`.
+
+| Domain/schema surface | P14 realization |
+|---|---|
+| `TransferPayload` | Same-currency amounts must match; cross-currency outgoing/incoming account amounts remain independent authorities but share one balanced base amount with explicit latest/cache/manual plus implied evidence (`P14-E002`, `P14-E004`) |
+| `BalanceAdjustmentPayload` | Explicit increase/decrease; no classification/economic/budget effect. Optional association is stored only as immutable `balance_adjustment_revision_detail.checkpoint_id`; the immutable checkpoint row is never updated (`P14-E004`, `DL-064`) |
+| `FxExchangePayload` | Different currencies, dual frozen valuations, exact base-minor spread cost and P06 FX clearing/rounding/cost/gain behavior (`P14-E002`, `P14-E004`) |
+| `OpeningBalancePayload` | Unused account and one opening record only; immutable account currency and no income/expense/consumption/budget effect (`P14-E004`) |
+| `RevisionAmount` / `FxRateSnapshot` | USER_INPUT/ACCOUNT/BASE amounts, provider/source/rate/quoted/fetched time and stale/manual flags append with the revision; later current-rate refresh leaves them byte-for-byte unchanged (`P14-E003`, `P14-E004`) |
+| `account_valuation_current` | Current-date quote updates encrypted base values and stamps a new `as_of_valuation_revision`; `book.localRevision` and historical facts remain unchanged. Historical-date quotes cannot enter this current cache (`P14-E004`) |
+| `CommandReceipt` / projections | Duplicate command returns the original receipt; all four writes and synchronous projections are one SQLCipher transaction, and every resulting Journal passes base debit/credit equality (`P14-E004`) |
 
 ## P13 ordinary transaction realization
 
@@ -183,12 +201,12 @@ Source: domain/schema document §§26–27. Every core projection stores `as_of_
 | ID | Family | Members | Status |
 |---|---|---|---|
 | PROJECTION-FAMILY-01 | Current transaction | `current_transaction_projection` | VERIFIED (`P07-E001`, `P08-E001`—`P08-E003`: deterministic rebuild, version/count audit and typed keyset query pass on SQLCipher) |
-| PROJECTION-FAMILY-02 | Account | `account_balance_current`, `account_valuation_current`, `account_balance_daily` | IN_PROGRESS (`P08-E001`, `P08-E003`: balance current/daily rebuild and widget consumption verified; current-FX valuation remains its owning later stage and is not falsely stamped) |
+| PROJECTION-FAMILY-02 | Account | `account_balance_current`, `account_valuation_current`, `account_balance_daily` | VERIFIED (`P08-E001`, `P08-E003`, `P14-E004`: balance/current/daily rebuild plus current FX valuation and independent local/valuation revision stamping pass on SQLCipher) |
 | PROJECTION-FAMILY-03 | Budget and planning | `budget_usage_projection`, `budget_future_reservation`, `project_usage_projection`, `goal_balance_projection`, `budget_rollover`, `refund_status_projection` | IN_PROGRESS (`P08-E001`, `P08-E003`: usage/project/goal/refund rebuilds verified; reservation and rollover-chain runtimes remain later) |
 | PROJECTION-FAMILY-04 | Liabilities | `credit_statement_projection`, `credit_account_projection`, `installment_progress_projection`, `loan_progress_projection`, `loan_future_cashflow_projection`, `loan_simulation_item` | IN_PROGRESS (`P08-E001`, `P08-E003`: current credit/installment/loan progress rebuilds verified; future cashflow and simulations remain later) |
 | PROJECTION-FAMILY-05 | Settlement | `settlement_position_projection` | VERIFIED (`P07-E001`, `P08-E001`, `P08-E003`: fact-derived positions rebuild with the target local revision; suggestion UI remains P22 and is not part of this family) |
 | PROJECTION-FAMILY-06 | Analytics | `analytics_daily_total`, `analytics_daily_category`, `analytics_daily_account`, `analytics_daily_merchant`, `analytics_daily_project`, `analytics_daily_place` and corresponding `analytics_monthly_*` tables | IN_PROGRESS (`P07-E001`: all twelve narrow physical rollups complete; P25 calculation behavior remains) |
-| PROJECTION-FAMILY-07 | Widgets | `widget_book_snapshot`, `widget_account_snapshot`, `widget_credit_snapshot`, `widget_goal_snapshot` | IN_PROGRESS (`P08-E001`, `P08-E003`: all four snapshots rebuild transactionally with local/valuation versions; Glance scheduling/rendering remains P33) |
+| PROJECTION-FAMILY-07 | Widgets | `widget_book_snapshot`, `widget_account_snapshot`, `widget_credit_snapshot`, `widget_goal_snapshot` | IN_PROGRESS (`P08-E001`, `P08-E003`, `P14-E004`: all four transaction snapshots and current valuation-dependent book snapshot carry local/valuation versions; Glance scheduling/rendering remains P33) |
 | INDEX-FAMILY-01 | Search | `transaction_fts`; current effective transactions only; no vault/account/location-sensitive fields | VERIFIED (`P07-E001`—`P07-E003`, `P08-E001`—`P08-E003`: exact allowlist, synchronous rebuild, bound FTS candidate query and encrypted device execution) |
 | INDEX-FAMILY-02 | Geography | `location_rtree`, `place_rtree`; R*Tree bounding candidates followed by precise Kotlin distance | VERIFIED (`P07-E001`—`P07-E003`, `P08-E001`—`P08-E003`: both indexes rebuild; candidate bounds plus Kotlin Haversine exact distance pass on device) |
 
@@ -214,6 +232,6 @@ Worker/UIDT/service payloads may contain only `operationId`; full parameters rem
 | Keystore, BiometricPrompt, SAF, location and foreground/UIDT behavior on actual devices | Tech stack §16 | IN_PROGRESS (`P09-E003`, `P09-E004`, `P10-E003`, `P10-E004`: Keystore/credential, SAF streaming/provider and foreground location pass on API 36; foreground/UIDT services remain P28) |
 | Failure injection for attachment, commits, Drive, storage, restore exchange, Keystore, biometrics, row 99,999 and projection versions | Architecture §21.3 | IN_PROGRESS (`P08-E003`, `P09-E003`, `P09-E004`, `P10-E003`: commit/projection, key/auth and attachment cancellation/database/process failures pass; Drive/restore/scale remain later) |
 | Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`, `P08-E001`, `P08-E002`, `P10-E006`: feature SDK/infrastructure, background location/shared storage, privileged ports, SQL and DAO bypasses are rejected) |
-| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008`, `P10-E004`, `P10-E005`, `P11-E004`—`P11-E006`: cross-cutting UI matrix, P10 infrastructure states and all 65 G/ONB states pass; later screens/final acceptance remain) |
+| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008`, `P10-E004`, `P10-E005`, `P11-E004`—`P11-E006`, `P14-E005`, `P14-E006`: cross-cutting matrix plus G/ONB and P14's five screens/15 states/goldens pass; later screens/final acceptance remain) |
 | Target-scale paging, reports, map, 100k-row import and tens-of-GB streaming operations | Requirements §25; UI contract §16.5 | IN_PROGRESS (`P10-E003`, `P10-E004`: bounded streaming large-file and actual map lifecycle foundation pass; tens-of-GB, report and 100k-row gates remain later) |
 | Release AAB, Baseline Profile, locks, verification metadata, SBOM, licenses, NOTICE and privacy/release documentation | Tech stack §16.4 and release plan | IN_PROGRESS (`P02-E006` verifies locks/SBOM/license task infrastructure only; release evidence remains P36) |

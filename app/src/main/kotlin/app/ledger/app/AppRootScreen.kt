@@ -74,6 +74,9 @@ import app.ledger.feature.accounts.AccountsDestination
 import app.ledger.feature.onboarding.OnboardingActions
 import app.ledger.feature.onboarding.OnboardingScreen
 import app.ledger.feature.record.OrdinaryRecordLoadState
+import app.ledger.feature.record.SpecializedTransactionLoadState
+import app.ledger.feature.settings.CurrencySettingsDestination
+import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.ManagementActions
 import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ReferenceManagementDestination
@@ -373,6 +376,8 @@ internal fun RootDestination(
     referenceState: AppReferenceDataState,
     referencePending: Boolean,
     recordState: OrdinaryRecordLoadState,
+    specializedState: SpecializedTransactionLoadState,
+    currencySettings: CurrencySettingsState?,
     onAddAttachment: () -> Unit,
     onBack: () -> Unit,
     onMore: () -> Unit,
@@ -431,6 +436,14 @@ internal fun RootDestination(
             placeMap = { places, unavailable -> PlaceMapContent(places, unavailable) },
             pending = referencePending,
         )
+    } else if (screenId in setOf("REC-013", "REC-020", "REC-021", "REC-022")) {
+        SpecializedTransactionRootDestination(
+            screenId = screenId,
+            encodedArguments = key.encodedArguments,
+            state = specializedState,
+            viewModel = viewModel,
+            onAddAttachment = onAddAttachment,
+        )
     } else if (screenId.startsWith("REC-")) {
         OrdinaryRecordRootDestination(
             screenId = screenId,
@@ -451,7 +464,22 @@ internal fun RootDestination(
         MoreContent(MorePresentation.CONTENT, onOperations, onHelp, onManagement = {
             viewModel.navigateP12(key, "MGT-001", emptyMap())
             onNavigationChanged()
+        }, onCurrencies = {
+            viewModel.navigateP12(key, "SETG-004", emptyMap())
+            onNavigationChanged()
         })
+    } else if (screenId == "SETG-004") {
+        val state = currencySettings
+        if (state == null) {
+            LedgerLoadingState(Modifier.fillMaxSize())
+        } else {
+            CurrencySettingsDestination(
+                state = state,
+                onSearch = { query -> viewModel.searchCurrencies(query) },
+                onToggle = { code -> viewModel.toggleCurrency(code) },
+                onMove = { code, delta -> viewModel.moveCurrency(code, delta) },
+            )
+        }
     } else if (screenId == "G-007") {
         OperationCenterContent(OperationCenterPresentation.EMPTY, onBack)
     } else if (screenId == "G-008") {
@@ -500,6 +528,7 @@ private fun MoreContent(
     onHelp: () -> Unit,
     modifier: Modifier = Modifier,
     onManagement: () -> Unit = {},
+    onCurrencies: () -> Unit = {},
 ) {
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (presentation == MorePresentation.BADGE_UPDATES) LedgerBanner(stringResource(R.string.global_badge_updates), LedgerBannerVariant.INFO)
@@ -507,6 +536,7 @@ private fun MoreContent(
         FeatureHubItem(stringResource(R.string.global_operations), stringResource(R.string.global_operations_explanation), onOperations)
         FeatureHubItem(stringResource(R.string.global_help), stringResource(R.string.global_help_explanation), onHelp)
         FeatureHubItem(stringResource(R.string.global_management), stringResource(R.string.global_management_explanation), onManagement)
+        FeatureHubItem(stringResource(R.string.global_currencies), stringResource(R.string.global_currencies_explanation), onCurrencies)
     }
 }
 
@@ -514,11 +544,11 @@ private fun MoreContent(
 private fun PlaceMapContent(places: List<app.ledger.finance.application.PlaceReferenceView>, unavailable: Boolean) {
     val identity = places.joinToString(separator = "|") { "${it.id}:${it.rowVersion}" }
     var rendererFailed by remember(identity) { mutableStateOf(false) }
-    val summary = stringResource(R.string.global_place_map_summary, places.size)
+    val summary = stringResource(R.string.global_place_map_summary, places.count())
     val rows = places.map { place ->
         LedgerMapAccessibleRow(place.name, stringResource(R.string.global_location_record_count, place.locationRecordCount))
     }
-    val state = if (unavailable || rendererFailed || places.isEmpty()) {
+    val state = if (unavailable || rendererFailed || places.none()) {
         LedgerMapState.Unavailable(summary, rows)
     } else {
         LedgerMapState.Available(
@@ -544,7 +574,7 @@ private fun PlaceMapContent(places: List<app.ledger.finance.application.PlaceRef
     )
     if (unavailable || rendererFailed) {
         LedgerBanner(stringResource(R.string.global_map_renderer_unavailable), LedgerBannerVariant.INFO)
-    } else if (places.isEmpty()) {
+    } else if (places.none()) {
         LedgerText(stringResource(R.string.global_place_map_empty), LedgerTextRole.SUPPORTING)
     }
 }
@@ -681,6 +711,16 @@ private fun rootDestinationTitleResource(screenId: String): Int? = if (screenId 
     R.string.global_help_title
 } else if (screenId == "MGT-001") {
     R.string.global_management
+} else if (screenId == "REC-013") {
+    R.string.p14_title_transfer
+} else if (screenId == "REC-020") {
+    R.string.p14_title_adjustment
+} else if (screenId == "REC-021") {
+    R.string.p14_title_fx_exchange
+} else if (screenId == "REC-022") {
+    R.string.p14_title_opening_balance
+} else if (screenId == "SETG-004") {
+    R.string.global_currencies
 } else {
     null
 }

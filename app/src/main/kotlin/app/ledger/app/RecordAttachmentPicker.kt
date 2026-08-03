@@ -9,6 +9,8 @@ import androidx.compose.runtime.remember
 import app.ledger.core.designsystem.LedgerSaveFab
 import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.record.RecordEditorPresentation
+import app.ledger.feature.record.SpecializedPresentation
+import app.ledger.feature.record.SpecializedTransactionLoadState
 
 /** Keeps the system SAF launcher outside the large root destination dispatch for stable Lint FIR analysis. */
 @Composable
@@ -17,6 +19,23 @@ internal fun rememberRecordAttachmentPicker(onSelected: (Uri) -> Unit): () -> Un
         if (uri != null) onSelected(uri)
     }
     return remember(launcher) { { launcher.launch(arrayOf("*/*")) } }
+}
+
+internal fun specializedTransactionFixedAction(
+    screenId: String,
+    state: SpecializedTransactionLoadState,
+    pending: Boolean,
+    onSave: () -> Unit,
+): (@Composable BoxScope.() -> Unit)? {
+    if (screenId !in setOf("REC-013", "REC-020", "REC-021", "REC-022")) return null
+    return {
+        val editor = (state as? SpecializedTransactionLoadState.Content)?.editor
+        LedgerSaveFab(
+            onSave,
+            submitting = pending || editor?.presentation == SpecializedPresentation.SAVING,
+            enabled = !pending,
+        )
+    }
 }
 
 internal fun ordinaryRecordFixedAction(

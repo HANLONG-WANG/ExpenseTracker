@@ -626,6 +626,49 @@ tasks.register("p13Check") {
     )
 }
 
+val validateP14Multicurrency by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the frozen P14 specialized-transaction, FX, valuation and currency-settings contract."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p14_multicurrency.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("core/network/src") { include("**/*") },
+        fileTree("feature/accounts/src") { include("**/*") },
+        fileTree("feature/record/src") { include("**/*") },
+        fileTree("feature/settings/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+tasks.register("p14Check") {
+    group = "verification"
+    description = "Runs P14 static, JVM, Lint and architecture evidence; managed-device suites run separately."
+    dependsOn(
+        validateP14Multicurrency,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":core:network:testDebugUnitTest",
+        ":feature:record:testDebugUnitTest",
+        ":feature:settings:testDebugUnitTest",
+        ":app:lintDebug",
+        ":core:network:lintDebug",
+        ":feature:accounts:lintDebug",
+        ":feature:record:lintDebug",
+        ":feature:settings:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

@@ -101,4 +101,19 @@
     <string name="record_budget_snapshot">预算归属快照：%1$s</string>
     <string name="record_budget_category_rule">按分类规则</string>
     <string name="record_snapshot_immutable">保存后这些快照属于不可变修订；以后修改分类名称或属性不会改写历史事实。</string>
+    <string name="specialized_load_failed">无法载入交易所需账户与估值数据。</string>
+    <string name="specialized_from_account">转出/目标账户</string><string name="specialized_to_account">转入账户</string>
+    <string name="specialized_increase">增加余额</string><string name="specialized_decrease">减少余额</string>
+    <string name="specialized_checkpoint">关联余额检查点</string><string name="specialized_checkpoint_explanation">检查点本身不改变余额；本次调整会作为独立事实写入。</string><string name="specialized_none">不关联</string>
+    <string name="specialized_opening_date">期初日期</string><string name="specialized_effective_time">发生日期与时区</string>
+    <string name="specialized_note">备注</string><string name="specialized_add_attachment">添加加密附件</string><string name="specialized_attachment_index">加密附件 %1$d</string><string name="specialized_encrypted">已加密</string><string name="specialized_size_hidden">元数据受保护</string><string name="specialized_importing">正在加密导入</string>
+    <string name="specialized_save">保存</string><string name="specialized_saving">保存中…</string><string name="specialized_save_failed">保存失败；输入和金额证据仍保留在本机内存中。</string>
+    <string name="specialized_same_account">转出和转入账户不能相同。</string><string name="specialized_same_currency">外币兑换必须选择不同币种；同币种请使用内部转账。</string>
+    <string name="specialized_no_statistics">期初余额和余额调整不计收入、费用、消费或预算。</string><string name="specialized_currency_immutable">账户币种 %1$s 是权威币种，首条 Posting 后不可更改。</string>
+    <string name="specialized_fx_required">缺少权威换算证据。请刷新报价，或手动输入账户币种到本位币的正汇率；绝不会填入 0。</string>
+    <string name="specialized_fx_evidence">汇率与金额证据</string><string name="specialized_fx_evidence_explanation">账户金额是权威值；报价仅用于冻结本位币金额，之后的缓存更新不会改写历史。</string>
+    <string name="specialized_refresh_rate">刷新参考汇率</string><string name="specialized_rate_loading">正在获取参考汇率…</string><string name="specialized_rate_summary">1 %1$s = %2$s %3$s</string><string name="specialized_rate_unavailable">离线且无缓存；请手动输入汇率。</string><string name="specialized_rate_time">报价时间：%1$s</string><string name="specialized_rate_stale">当前为过期缓存报价，保存时会原样冻结并标记。</string>
+    <string name="specialized_manual_rate">手动汇率 %1$s → %2$s</string><string name="specialized_manual_override">填入后优先使用手动证据。</string><string name="specialized_invalid_field">请检查此字段。</string>
+    <string name="specialized_effective_rate_title">有效汇率与参考报价</string><string name="specialized_effective_rate_value">有效汇率：1 %1$s = %2$s %3$s</string><string name="specialized_reference_rate_value">参考汇率：1 %1$s = %2$s %3$s</string><string name="specialized_pending_value">待输入</string>
+    <string name="specialized_fx_cost_title">汇兑成本、价差与舍入</string><string name="specialized_fx_cost_value">本位币价差：%1$s %2$s 最小单位</string><string name="specialized_rounding_evidence">原币与账户币金额是权威值；换算按币种小数位使用 HALF_EVEN 舍入，金额和汇率证据随修订冻结。</string>
 </resources>

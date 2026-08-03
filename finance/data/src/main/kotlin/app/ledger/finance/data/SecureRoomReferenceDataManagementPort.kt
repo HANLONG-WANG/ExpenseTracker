@@ -294,6 +294,7 @@ public class SecureRoomReferenceDataManagementPort(
             SELECT ua.uid, ua.type, ua.name, ua.currency_code, ua.status, ua.institution_name, ua.branch_name,
               ua.opened_date, ua.icon_key, ua.color_argb, ua.sort_order, ua.row_version,
               COALESCE(abc.normal_balance_minor, 0) balance_minor, avc.current_base_value_minor, avc.rate_quoted_at,
+              avc.rate_decimal,
               EXISTS(SELECT 1 FROM posting p WHERE p.ledger_account_id = ua.ledger_account_id) has_postings,
               (SELECT COUNT(*) FROM payment_card pc WHERE pc.account_id = ua.id) card_count
             FROM user_account ua LEFT JOIN account_balance_current abc ON abc.account_id = ua.id
@@ -319,6 +320,7 @@ public class SecureRoomReferenceDataManagementPort(
                 valuationQuotedAt = cursor.nullableLong("rate_quoted_at")?.toStoredInstant(),
                 hasFinancialPostings = cursor.getInt(cursor.getColumnIndexOrThrow("has_postings")) == 1,
                 cardCount = cursor.getLong(cursor.getColumnIndexOrThrow("card_count")),
+                currentValuationRate = cursor.nullableString("rate_decimal")?.toBigDecimal(),
             )
         }
         val cards = readCards(connection)
@@ -354,6 +356,7 @@ public class SecureRoomReferenceDataManagementPort(
             coreNetFinancialAssetsMinor = core,
             adjustedNetFinancialPositionMinor = adjusted,
             valuationMissing = missingValuation || settlementMissing,
+            valuationRevision = book.valuationRevision,
         )
     }
 
@@ -480,9 +483,12 @@ public class SecureRoomReferenceDataManagementPort(
     private fun readCheckpoints(connection: SupportSQLiteDatabase): List<CheckpointReferenceView> = connection.queryList(
         """
         SELECT cp.uid, ua.uid account_uid, cp.as_of_instant, cp.as_of_local_date, cp.observed_amount_minor,
-          cp.calculated_amount_minor, cp.difference_minor, bt.uid adjustment_uid
+          cp.calculated_amount_minor, cp.difference_minor, COALESCE(bt.uid, derived_bt.uid) adjustment_uid
         FROM account_balance_checkpoint cp JOIN user_account ua ON ua.id = cp.account_id
-          LEFT JOIN business_transaction bt ON bt.id = cp.adjustment_transaction_id ORDER BY cp.as_of_instant DESC
+          LEFT JOIN business_transaction bt ON bt.id = cp.adjustment_transaction_id
+          LEFT JOIN balance_adjustment_revision_detail bad ON bad.checkpoint_id = cp.id
+          LEFT JOIN business_transaction derived_bt ON derived_bt.current_revision_id = bad.revision_id
+        ORDER BY cp.as_of_instant DESC
         """.trimIndent(),
     ) { cursor ->
         CheckpointReferenceView(

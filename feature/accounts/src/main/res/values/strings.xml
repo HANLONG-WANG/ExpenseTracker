@@ -52,6 +52,7 @@
     <string name="accounts_checkpoint_does_not_change">检查点本身不改变账面余额；只有明确创建余额调整才产生财务事实。</string>
     <string name="accounts_find_missing">查看附近流水</string>
     <string name="accounts_create_adjustment">创建余额调整</string>
+    <string name="accounts_add_opening_balance">录入期初余额</string>
     <string name="accounts_cards_empty">没有实体卡</string>
     <string name="accounts_cards_empty_body">账户可以没有卡，也可以关联多张兼容的卡。</string>
     <string name="accounts_card_add">添加实体卡</string>

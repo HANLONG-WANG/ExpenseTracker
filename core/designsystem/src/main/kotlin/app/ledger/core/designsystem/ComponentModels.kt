@@ -40,6 +40,11 @@ public object LedgerTestTags {
     public const val RECORD_SETTLEMENT: String = "record_settlement"
     public const val RECORD_UNSAVED_DIALOG: String = "record_unsaved_dialog"
     public const val RECORD_REVISION_CONFLICT: String = "record_revision_conflict"
+    public const val SPECIALIZED_TRANSACTION_ROOT: String = "specialized_transaction_root"
+    public const val SPECIALIZED_TRANSACTION_FORM: String = "specialized_transaction_form"
+    public const val EFFECTIVE_RATE_SUMMARY: String = "effective_rate_summary"
+    public const val FX_COST_SECTION: String = "fx_cost_section"
+    public const val CURRENCY_SETTINGS_ROOT: String = "currency_settings_root"
 
     public fun requireStable(value: String): String {
         require(STABLE_TAG.matches(value)) { "test tag must be a stable semantic identifier" }

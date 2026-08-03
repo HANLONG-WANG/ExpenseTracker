@@ -405,7 +405,7 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: AGP/Lint 9.3.1's bundled `intellij-core` FIR path invokes `java.util.List.removeLast()`, a Java 21 method, for the large root `when` dispatch even though the frozen Android toolchain runs on JDK 17. The failure occurs inside Lint analysis; the Kotlin compiler and application runtime are valid.
 - Precedence applied: the frozen JDK/AGP/Kotlin baseline and mandatory Lint gate outrank changing the host JDK or suppressing a detector to accommodate an analyzer implementation detail.
 - Decision: retain JDK 17 and all Lint detectors, and express the root language/session/destination dispatch as equivalent exhaustive `if` chains. No UI state, route, priority or behavior changes.
-- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. During P12 the same analyzer path recurred after adding destination titles and a Protobuf-builder test chain; splitting title lookup into bounded `if` helpers and making the test builders explicit restored main, unit-test and AndroidTest Lint without disabling a detector or changing JDK. P13 likewise keeps the Ready scaffold, SAF launcher/fixed action and ordinary-record destination wiring in bounded files, restoring full app/feature/data Lint with unchanged navigation behavior. A future analyzer upgrade may restore more compact dispatch only after the same static and device evidence is replayed.
+- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. During P12 the same analyzer path recurred after adding destination titles and a Protobuf-builder test chain; splitting title lookup into bounded `if` helpers and making the test builders explicit restored main, unit-test and AndroidTest Lint without disabling a detector or changing JDK. P13 likewise keeps the Ready scaffold, SAF launcher/fixed action and ordinary-record destination wiring in bounded files. In P14, direct `List.size`/`List.isEmpty` resolution in the place-map fallback reached the same bundled JavaDoc parser; equivalent Kotlin `count()`/`none()` calls retained behavior and restored complete app Lint. No stage changes JDK, suppresses a detector or weakens the gate. A future analyzer upgrade may restore more compact expressions only after the same static and device evidence is replayed.
 
 ## DL-056 — The P12 place map reuses the governed P10 network boundary
 
@@ -460,3 +460,31 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: the frozen Schema v1 ledger table has no nullable activity/participant ownership columns, while P06 settlement postings require a deterministic typed ledger per activity participant.
 - Decision: resolve existing settlement-position ledgers by the canonical `SETTLEMENT:<activity StableId>:<participant StableId>` system-code convention already admitted by the typed mapper. P13 does not create or mutate settlement activities or ledgers.
 - Consequence: planning remains type-safe and deterministic without adding a schema column, universal JSON payload or feature-side lookup. P22 owns creation and lifecycle validation of these ledgers.
+
+## DL-063 — Historical quotes never replace current valuation
+
+- Date/stage: 2026-08-03 / P14
+- Surface issue: REC-013/021 can request a rate for an effective historical date, while `account_valuation_current` and `book.valuationRevision` describe the present valuation only.
+- Precedence applied: immutable historical amount evidence and the domain's separate local/valuation revision clocks outrank reusing every network response as a current cache value.
+- Decision: the OkHttp adapter sends only ISO source/target/date and parses an exact decimal response. A request whose effective date equals the fetch instant's UTC date may update encrypted current valuation and advance only `valuationRevision`. Any other dated response is labeled `HISTORICAL_FALLBACK`, may be frozen into a transaction revision, and cannot update current valuation. Offline lookup uses the encrypted current cache with its quote time; absence requires a positive manual rate and never produces zero.
+- Consequence: cache refresh does not invalidate `localRevision`, create income/expense, or alter historical `fx_rate_snapshot` rows. Device evidence covers current, historical, cached and manual paths.
+
+## DL-064 — Balance adjustment links to the immutable checkpoint from its revision detail
+
+- Date/stage: 2026-08-03 / P14
+- Surface issue: the logical checkpoint row includes an optional adjustment reference, but P07 classifies `account_balance_checkpoint` as an immutable Fact and installs a trigger rejecting updates. An initial attempt to backfill that column correctly failed on device with `SQLiteConstraintException: immutable table update rejected`.
+- Precedence applied: the frozen Fact immutability invariant outranks a convenient reverse-link update.
+- Decision: retain the checkpoint trigger unchanged. The authoritative association is the append-only `balance_adjustment_revision_detail.checkpoint_id`; `SecureRoomReferenceDataManagementPort` derives `CheckpointReferenceView.adjustmentTransactionId` by joining the current transaction revision. No checkpoint row is updated.
+- Consequence: checkpoint creation remains balance-neutral and immutable, while REC-020 can still show and enforce one explicit adjustment association. The final SQLCipher test passes integrity/foreign-key checks and verifies the derived link.
+
+## DL-065 — P14 rate service is a non-authoritative privacy-limited adapter
+
+- Date/stage: 2026-08-03 / P14
+- Decision: use the frozen OkHttp stack with the Frankfurter v1 HTTPS endpoint, bounded 5/10/15-second connect/read/call timeouts, no transparent OkHttp retry and at most one explicit retry. The request type can carry only a currency pair and date; it has no amount, book/account/card ID, name, note, attachment or location field and no logging interceptor.
+- Consequence: network availability can improve a reference quote but cannot create a financial fact or become the ledger's source of truth. A static mutation suite rejects request widening, unbounded semantics and coordinator/cache revision regressions.
+
+## DL-066 — P14 goldens originate only from governed Compose and token inputs
+
+- Date/stage: 2026-08-03 / P14
+- Decision: record four 360×720 API-36 baselines for transfer, adjustment, FX exchange and opening balance directly from `LedgerTheme` and the implemented governed Compose tree, then compare every pixel in ordinary test mode.
+- Consequence: screenshot regression covers the specialized forms without opening, parsing, sampling, measuring or comparing any excluded PNG/HTML visual draft. The baseline inputs are only the textual main contract, token JSON, screen YAML and localized resources.

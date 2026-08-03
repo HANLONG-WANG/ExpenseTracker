@@ -319,6 +319,14 @@ private fun AccountDetail(snapshot: ReferenceDataSnapshot?, accountId: StableId,
         LedgerButton(stringResource(R.string.accounts_transactions), { actions.onNavigate("ACC-006", mapOf("accountId" to account.id)) }, Modifier.weight(1f), variant = LedgerButtonVariant.SECONDARY)
         LedgerButton(stringResource(R.string.accounts_checkpoint), { actions.onNavigate("ACC-007", mapOf("accountId" to account.id)) }, Modifier.weight(1f), variant = LedgerButtonVariant.SECONDARY)
     }
+    if (!account.hasFinancialPostings) {
+        LedgerButton(
+            stringResource(R.string.accounts_add_opening_balance),
+            { actions.onNavigate("REC-022", mapOf("accountId" to account.id)) },
+            Modifier.fillMaxWidth(),
+            variant = LedgerButtonVariant.SECONDARY,
+        )
+    }
     LedgerButton(stringResource(R.string.accounts_cards), { actions.onNavigate("ACC-009", mapOf("accountId" to account.id)) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.SECONDARY)
     val cards = snapshot.cards.filter { it.accountId == accountId }
     LedgerText(stringResource(R.string.accounts_cards_section, cards.size), LedgerTextRole.SECTION)

@@ -1,4 +1,4 @@
-@file:Suppress("ktlint:standard:function-naming", "FunctionNaming")
+@file:Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongMethod")
 
 package app.ledger.app
 
@@ -43,7 +43,16 @@ internal fun ReadyRootScaffold(
     val referencePending by viewModel.referenceMutationPending.collectAsStateWithLifecycle()
     val recordState by viewModel.ordinaryRecord.collectAsStateWithLifecycle()
     val recordPending by viewModel.ordinaryRecordPending.collectAsStateWithLifecycle()
-    val launchAttachmentPicker = rememberRecordAttachmentPicker(viewModel::importRecordAttachment)
+    val specializedState by viewModel.specializedTransaction.collectAsStateWithLifecycle()
+    val specializedPending by viewModel.specializedTransactionPending.collectAsStateWithLifecycle()
+    val currencySettings by viewModel.currencySettings.collectAsStateWithLifecycle()
+    val launchAttachmentPicker = rememberRecordAttachmentPicker { uri ->
+        if (viewModel.navigator.currentKey.contract.screenId.value == "REC-013") {
+            viewModel.importSpecializedAttachment(uri)
+        } else {
+            viewModel.importRecordAttachment(uri)
+        }
+    }
     var navigationEpoch by remember { mutableIntStateOf(0) }
     val selected = navigator.currentTopLevel.toDesignTopLevel()
     LedgerScaffold(
@@ -69,7 +78,12 @@ internal fun ReadyRootScaffold(
                 },
             )
         },
-        fixedAction = ordinaryRecordFixedAction(
+        fixedAction = specializedTransactionFixedAction(
+            navigator.currentKey.contract.screenId.value,
+            specializedState,
+            specializedPending,
+            viewModel::saveSpecializedTransaction,
+        ) ?: ordinaryRecordFixedAction(
             navigator.currentKey.contract.screenId.value,
             recordState,
             recordPending,
@@ -113,6 +127,8 @@ internal fun ReadyRootScaffold(
                         referenceState = referenceState,
                         referencePending = referencePending,
                         recordState = recordState,
+                        specializedState = specializedState,
+                        currencySettings = currencySettings,
                         onAddAttachment = launchAttachmentPicker,
                         onBack = {
                             navigator.pop()

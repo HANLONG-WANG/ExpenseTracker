@@ -156,6 +156,7 @@ private val DEVICE_TEST_LIBRARY_PATHS = setOf(
     ":core:geo",
     ":finance:data",
     ":feature:record",
+    ":feature:settings",
     ":feature:onboarding",
 )
 
@@ -499,7 +500,7 @@ abstract class VerifyArchitectureTask : DefaultTask() {
             put(":core:testing", emptySet())
             put(":finance:domain", setOf(":core:common", ":core:money", ":core:time"))
             put(":finance:application", setOf(":finance:domain"))
-            put(":finance:data", setOf(":finance:application", ":core:database", ":core:security"))
+            put(":finance:data", setOf(":finance:application", ":core:database", ":core:network", ":core:security"))
             put(":analytics:domain", setOf(":finance:domain"))
             put(":analytics:data", setOf(":analytics:domain", ":core:database"))
             put(":transfer:domain", setOf(":finance:application"))

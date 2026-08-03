@@ -12,6 +12,7 @@ import app.ledger.finance.domain.CategoryStatus
 import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.UserAccountType
+import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
 
@@ -153,6 +154,7 @@ public data class AccountReferenceView(
     val valuationQuotedAt: Instant?,
     val hasFinancialPostings: Boolean,
     val cardCount: Long,
+    val currentValuationRate: BigDecimal? = null,
 )
 
 public data class CardReferenceView(
@@ -269,6 +271,7 @@ public data class ReferenceDataSnapshot(
     val coreNetFinancialAssetsMinor: Long?,
     val adjustedNetFinancialPositionMinor: Long?,
     val valuationMissing: Boolean,
+    val valuationRevision: Long = 0L,
 )
 
 public interface ReferenceDataManagementPort {

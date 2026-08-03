@@ -21,10 +21,12 @@ import app.ledger.finance.application.LedgerInitializationPort
 import app.ledger.finance.application.OpeningBalanceWritePort
 import app.ledger.finance.application.OrdinaryTransactionEntryPort
 import app.ledger.finance.application.ReferenceDataManagementPort
+import app.ledger.finance.application.SpecializedTransactionEntryPort
 import app.ledger.finance.data.SecureRoomLedgerInitializationPort
 import app.ledger.finance.data.SecureRoomOpeningBalanceWritePort
 import app.ledger.finance.data.SecureRoomOrdinaryTransactionEntryPort
 import app.ledger.finance.data.SecureRoomReferenceDataManagementPort
+import app.ledger.finance.data.SecureRoomSpecializedTransactionEntryPort
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -102,6 +104,19 @@ internal object AppDependencyModule {
         keyProvider: DeviceLedgerKeyProvider,
         referenceDataPort: ReferenceDataManagementPort,
     ): OrdinaryTransactionEntryPort = SecureRoomOrdinaryTransactionEntryPort(context, keyProvider, referenceDataPort)
+
+    @Provides
+    @Singleton
+    fun specializedTransactionEntryPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+        referenceDataPort: ReferenceDataManagementPort,
+        runtimeSources: AppRuntimeSources,
+    ): SpecializedTransactionEntryPort = SecureRoomSpecializedTransactionEntryPort.production(
+        context,
+        keyProvider,
+        referenceDataPort,
+    ) { runtimeSources.clock.now() }
 
     @Provides
     @Singleton

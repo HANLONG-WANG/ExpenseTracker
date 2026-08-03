@@ -62,4 +62,5 @@ message LedgerAppSettings {
   SessionRestorePolicyProto restore_policy = 16;
   NavigationSnapshotProto navigation_snapshot = 17;
   bool unsaved_content_loss_pending = 18;
+  repeated string visible_currency_codes = 19;
 }

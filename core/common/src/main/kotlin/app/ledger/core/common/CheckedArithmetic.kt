@@ -43,8 +43,10 @@ object CheckedArithmetic {
         return total
     }
 
-    fun toLongExact(value: BigInteger): DomainResult<Long> = checked(ArithmeticOperation.CONVERT_TO_LONG) {
-        value.longValueExact()
+    fun toLongExact(value: BigInteger): DomainResult<Long> = if (value < LONG_MIN || value > LONG_MAX) {
+        DomainResult.Failure(ArithmeticOverflowError(ArithmeticOperation.CONVERT_TO_LONG))
+    } else {
+        DomainResult.Success(value.toLong())
     }
 
     private inline fun checked(operation: ArithmeticOperation, block: () -> Long): DomainResult<Long> = try {
@@ -52,4 +54,7 @@ object CheckedArithmetic {
     } catch (_: ArithmeticException) {
         DomainResult.Failure(ArithmeticOverflowError(operation))
     }
+
+    private val LONG_MIN: BigInteger = BigInteger.valueOf(Long.MIN_VALUE)
+    private val LONG_MAX: BigInteger = BigInteger.valueOf(Long.MAX_VALUE)
 }
