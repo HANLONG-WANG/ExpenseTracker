@@ -218,12 +218,41 @@ data class RefundPayload(
     val projectPolicy: RefundProjectPolicy,
     val goalPolicy: RefundGoalPolicy,
     val accrualPolicy: RefundAccrualPolicy,
+    val settlementActivityId: SettlementActivityId? = null,
+    val settlementShares: List<SettlementShare> = emptyList(),
 ) : TransactionPayload {
     override val kind: TransactionKind = TransactionKind.REFUND
 
     init {
-        require(independent || allocations.isNotEmpty())
+        require(independent == allocations.isEmpty())
         require(independent || allocations.map { it.originalTransactionId }.toSet().size == allocations.size)
+        require(classification == null || classification.direction == CategoryDirection.EXPENSE)
+        require((settlementActivityId == null) == settlementShares.isEmpty())
+    }
+}
+
+/** Natural reference used by the normalized refund fact table, which intentionally has no stable UID column. */
+data class RefundAllocationReference(
+    val refundRevisionId: TransactionRevisionId,
+    val originalTransactionId: TransactionId,
+)
+
+/** Immutable allocation fact emitted by the planner; persistence only resolves its natural reference to an internal row ID. */
+data class RefundAllocationFact(
+    val refundTransactionId: TransactionId,
+    val refundRevisionId: TransactionRevisionId,
+    val originalTransactionId: TransactionId,
+    val originalRevisionId: TransactionRevisionId,
+    val amountInOriginalCurrency: PositiveMoney,
+    val amountInBaseCurrency: PositiveMoney,
+    val createdCommitId: BookCommitId,
+    val reversalOf: RefundAllocationReference?,
+) : LifecycleRecord<RecordLifecycle.Fact> {
+    override val lifecycle: RecordLifecycle.Fact = RecordLifecycle.Fact
+
+    init {
+        require(refundTransactionId != originalTransactionId)
+        require(reversalOf == null || reversalOf.originalTransactionId == originalTransactionId)
     }
 }
 
@@ -433,6 +462,7 @@ data class RefundStatusProjection(
     val refundedMinor: Long,
     val remainingMinor: Long,
     val asOfLocalRevision: LocalRevision,
+    val originalLifecycleState: TransactionLifecycleState = TransactionLifecycleState.ACTIVE,
 ) : LifecycleRecord<RecordLifecycle.Projection> {
     override val lifecycle: RecordLifecycle.Projection = RecordLifecycle.Projection
 

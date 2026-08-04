@@ -405,7 +405,7 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: AGP/Lint 9.3.1's bundled `intellij-core` FIR path invokes `java.util.List.removeLast()`, a Java 21 method, for the large root `when` dispatch even though the frozen Android toolchain runs on JDK 17. The failure occurs inside Lint analysis; the Kotlin compiler and application runtime are valid.
 - Precedence applied: the frozen JDK/AGP/Kotlin baseline and mandatory Lint gate outrank changing the host JDK or suppressing a detector to accommodate an analyzer implementation detail.
 - Decision: retain JDK 17 and all Lint detectors, and express the root language/session/destination dispatch as equivalent exhaustive `if` chains. No UI state, route, priority or behavior changes.
-- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. During P12 the same analyzer path recurred after adding destination titles and a Protobuf-builder test chain; splitting title lookup into bounded `if` helpers and making the test builders explicit restored main, unit-test and AndroidTest Lint without disabling a detector or changing JDK. P13 likewise keeps the Ready scaffold, SAF launcher/fixed action and ordinary-record destination wiring in bounded files. In P14, direct `List.size`/`List.isEmpty` resolution in the place-map fallback reached the same bundled JavaDoc parser; equivalent Kotlin `count()`/`none()` calls retained behavior and restored complete app Lint. No stage changes JDK, suppresses a detector or weakens the gate. A future analyzer upgrade may restore more compact expressions only after the same static and device evidence is replayed.
+- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. During P12 the same analyzer path recurred after adding destination titles and a Protobuf-builder test chain; splitting title lookup into bounded `if` helpers and making the test builders explicit restored main, unit-test and AndroidTest Lint without disabling a detector or changing JDK. P13 likewise keeps the Ready scaffold, SAF launcher/fixed action and ordinary-record destination wiring in bounded files. In P14, direct `List.size`/`List.isEmpty` resolution in the place-map fallback reached the same bundled JavaDoc parser; equivalent Kotlin `count()`/`none()` calls retained behavior and restored complete app Lint. P16 keeps its refund route dispatch/title in `RefundRootDestination.kt` rather than enlarging `AppRootScreen.kt`, restoring app Lint without a detector or toolchain change. No stage changes JDK, suppresses a detector or weakens the gate. A future analyzer upgrade may restore more compact expressions only after the same static and device evidence is replayed.
 
 ## DL-056 — The P12 place map reuses the governed P10 network boundary
 
@@ -516,3 +516,23 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Date/stage: 2026-08-03 / P15
 - Decision: record the 360×720dp list-light and detail-dark baselines directly from `LedgerTheme`, the implemented governed journal components and localized strings, then compare all 945×1890 physical pixels at the managed device density.
 - Consequence: journal screenshot regression exists without opening, parsing, sampling, measuring or comparing an excluded PNG/HTML visual draft. The only design inputs are the UI main contract, token JSON, screen YAML and traceability matrix.
+
+## DL-071 — Explicit excess stays immutable while the frozen status projection remains non-negative
+
+- Date/stage: 2026-08-04 / P16
+- Surface issue: the higher-priority refund requirement permits an explicitly confirmed excess refund, while the frozen Schema v1 `refund_status_projection` has `gross_refundable = refunded + remaining` and non-negative `remaining`. Storing the true excess in that projection would violate its CHECK constraint.
+- Precedence applied: immutable accounting/audit facts and the explicit advanced override outrank the derived projection representation; the frozen schema itself cannot be changed in P16.
+- Decision: append the full actual allocation amount and `allow_excess` revision evidence to immutable rows. Rebuild derives the true net for validation/audit, but caps the status projection at gross and zero remaining. Application query models additionally expose `excessRefundedMinor` from the immutable total.
+- Consequence: no excess evidence is lost or rewritten, the projection remains valid/non-negative, default future refund validation still sees the true allocation total, and no frozen schema change is required.
+
+## DL-072 — Original transactions with refunds require a complete atomic policy
+
+- Date/stage: 2026-08-04 / P16
+- Decision: moving an original transaction to trash requires exactly one closed resolution for each active linked refund: reverse the dependent transaction or append a replacement revision that makes it independent. The dependent commands and original reversal execute in one `BatchFinancialCommand`. An original edit with unresolved refund dependencies remains blocked.
+- Consequence: cascade, independentization and prevent behavior are all explicit; old revisions/facts are never mutated, stale revisions cannot silently overwrite, and no partially converted dependency graph can commit.
+
+## DL-073 — P16 goldens are full-pixel digests of governed Compose output
+
+- Date/stage: 2026-08-04 / P16
+- Decision: render linked-light and high-risk-excess-dark refund forms in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. The two 64-hex digests are checked into the Android test source.
+- Consequence: pixel drift is machine-detectable without adding an external bitmap input. The renderer uses only `LedgerTheme`, governed components, textual contracts/tokens/YAML/CSV and localized resources; no excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.

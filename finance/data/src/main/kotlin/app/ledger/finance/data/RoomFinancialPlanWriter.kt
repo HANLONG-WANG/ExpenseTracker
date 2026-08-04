@@ -158,11 +158,23 @@ internal class RoomFinancialPlanWriter {
                     arrayOf<Any>(revisionId, database.requireInternalId("attachment", attachmentId.value), index),
                 )
             }
-            val expense = revision.payload as? ExpensePayload
-            expense?.settlementShares?.forEach { share ->
-                val activityId = expense.settlementActivityId
-                    ?: (expense.payer as? ExpensePayer.ExternalParticipant)?.activityId
-                    ?: abort(FinanceDataError.CorruptData)
+            val settlement = when (val payload = revision.payload) {
+                is ExpensePayload -> Triple(
+                    payload.settlementActivityId
+                        ?: (payload.payer as? ExpensePayer.ExternalParticipant)?.activityId,
+                    payload.settlementShares,
+                    payload.primaryAmount.currency,
+                )
+                is RefundPayload -> Triple(
+                    payload.settlementActivityId,
+                    payload.settlementShares,
+                    payload.allocations.firstOrNull()?.amountInOriginalCurrency?.currency
+                        ?: payload.receivingAmount.amount.currency,
+                )
+                else -> Triple(null, emptyList(), null)
+            }
+            settlement.second.forEach { share ->
+                val activityId = settlement.first ?: abort(FinanceDataError.CorruptData)
                 database.execSQL(
                     "INSERT INTO transaction_revision_settlement_share(revision_id, activity_id, participant_id, paid_minor, " +
                         "owed_minor, settlement_currency, weight_decimal, rounding_adjustment_minor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -172,7 +184,7 @@ internal class RoomFinancialPlanWriter {
                         database.requireInternalId("participant", share.participantId.value),
                         share.paidMinor,
                         share.owedMinor,
-                        expense.primaryAmount.currency.value,
+                        requireNotNull(settlement.third).value,
                         share.weight?.toPlainString(),
                         share.roundingAdjustmentMinor,
                     ),
@@ -416,21 +428,7 @@ internal class RoomFinancialPlanWriter {
             val revisionId = database.requireInternalId("transaction_revision", revision.id.value)
             val transactionId = database.requireInternalId("business_transaction", revision.transactionId.value)
             when (val payload = revision.payload) {
-                is RefundPayload -> payload.allocations.forEach { allocation ->
-                    database.execSQL(
-                        "INSERT INTO refund_allocation(refund_transaction_id, refund_revision_id, original_transaction_id, original_revision_id, " +
-                            "original_currency_amount_minor, base_amount_minor, created_commit_id, reversal_of_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
-                        arrayOf<Any>(
-                            transactionId,
-                            revisionId,
-                            database.requireInternalId("business_transaction", allocation.originalTransactionId.value),
-                            database.requireInternalId("transaction_revision", allocation.originalRevisionId.value),
-                            allocation.amountInOriginalCurrency.minor.value,
-                            allocation.amountInBaseCurrency.minor.value,
-                            database.commitId(revision.createdCommitId),
-                        ),
-                    )
-                }
+                is RefundPayload -> Unit
                 is CreditPaymentPayload -> payload.allocations.forEach { allocation ->
                     database.execSQL(
                         "INSERT INTO credit_payment_allocation(payment_transaction_id, payment_revision_id, statement_id, amount_minor, reversal_of_id) " +
@@ -462,6 +460,7 @@ internal class RoomFinancialPlanWriter {
                 else -> Unit
             }
         }
+        RoomRefundFactWriter.write(database, plan)
     }
 
     private fun insertEffects(database: SupportSQLiteDatabase, plan: FinancialMutationPlan) {

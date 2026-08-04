@@ -186,6 +186,19 @@ object ImmutableFactAudit {
                 return failure("INV-006")
             }
         }
+        for (allocation in original.refundAllocationFacts) {
+            val reference = RefundAllocationReference(allocation.refundRevisionId, allocation.originalTransactionId)
+            val reverse = reversal.refundAllocations.singleOrNull { it.reversalOf == reference }
+                ?: return failure("INV-006")
+            if (
+                reverse.refundTransactionId != allocation.refundTransactionId ||
+                reverse.originalRevisionId != allocation.originalRevisionId ||
+                reverse.amountInOriginalCurrency != allocation.amountInOriginalCurrency ||
+                reverse.amountInBaseCurrency != allocation.amountInBaseCurrency
+            ) {
+                return failure("INV-006")
+            }
+        }
         if (reversal.effectReversalCount() != original.effectCount()) return failure("INV-006")
         return DomainResult.Success(Unit)
     }
@@ -194,7 +207,7 @@ object ImmutableFactAudit {
 }
 
 private fun CurrentFinancialFacts.effectCount(): Int = economicEffects.size + budgetEffects.size + projectEffects.size + goalEffects.size +
-    statementEffects.size + loanEffects.size + settlementEffects.size
+    statementEffects.size + loanEffects.size + settlementEffects.size + refundAllocationFacts.size
 
 private fun FinancialMutationPlan.effectReversalCount(): Int = economicEffects.count { it.reversalOfId != null } +
     budgetEffects.count { it.reversalOfId != null } +
@@ -202,7 +215,7 @@ private fun FinancialMutationPlan.effectReversalCount(): Int = economicEffects.c
     goalEffects.count { it.reversalOfId != null } +
     statementEffects.count { it.reversalOfId != null } +
     loanEffects.count { it.reversalOfId != null } +
-    settlementEffects.count { it.reversalOfId != null }
+    settlementEffects.count { it.reversalOfId != null } + refundAllocations.count { it.reversalOf != null }
 
 private fun BudgetEffectKind.reversed(): BudgetEffectKind = when (this) {
     BudgetEffectKind.USE -> BudgetEffectKind.RESTORE

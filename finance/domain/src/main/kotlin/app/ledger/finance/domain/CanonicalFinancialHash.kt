@@ -158,6 +158,7 @@ object CanonicalFinancialHash {
         statement: List<StatementEffect>,
         loan: List<LoanEffect>,
         settlement: List<SettlementEffect>,
+        refundAllocations: List<RefundAllocationFact> = emptyList(),
     ): ContentHash = ContentHash(
         digest {
             text("FINANCIAL_EVIDENCE_AND_EFFECTS_V1")
@@ -275,6 +276,21 @@ object CanonicalFinancialHash {
                 text(effect.kind.name)
                 long(effect.signedDeltaMinor)
                 currency(effect.currency)
+            }
+            integer(refundAllocations.size)
+            refundAllocations.forEach { allocation ->
+                stableId(allocation.refundTransactionId.value)
+                stableId(allocation.refundRevisionId.value)
+                stableId(allocation.originalTransactionId.value)
+                stableId(allocation.originalRevisionId.value)
+                positiveMoney(allocation.amountInOriginalCurrency)
+                positiveMoney(allocation.amountInBaseCurrency)
+                stableId(allocation.createdCommitId.value)
+                boolean(allocation.reversalOf != null)
+                allocation.reversalOf?.let { reversal ->
+                    stableId(reversal.refundRevisionId.value)
+                    stableId(reversal.originalTransactionId.value)
+                }
             }
         },
     )
@@ -490,6 +506,9 @@ private class CanonicalWriter {
         text(payload.projectPolicy.name)
         text(payload.goalPolicy.name)
         text(payload.accrualPolicy.name)
+        nullableStableId(payload.settlementActivityId?.value)
+        integer(payload.settlementShares.size)
+        payload.settlementShares.forEach(::settlementShare)
     }
 
     private fun creditPayment(payload: CreditPaymentPayload) {

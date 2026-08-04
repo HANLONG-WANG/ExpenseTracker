@@ -707,6 +707,44 @@ tasks.register("p15Check") {
     )
 }
 
+val validateP16Refunds by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the frozen P16 refund facts, projections, dependency policies and UI contract."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p16_refunds.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/record/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+tasks.register("p16Check") {
+    group = "verification"
+    description = "Runs P16 static, JVM, Lint and architecture evidence; managed-device suites run separately."
+    dependsOn(
+        validateP16Refunds,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":finance:domain:test",
+        ":finance:data:testDebugUnitTest",
+        ":feature:record:testDebugUnitTest",
+        ":app:lintDebug",
+        ":feature:record:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

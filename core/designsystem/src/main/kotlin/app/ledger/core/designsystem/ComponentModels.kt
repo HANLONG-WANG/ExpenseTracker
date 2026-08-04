@@ -46,6 +46,13 @@ public object LedgerTestTags {
     public const val EFFECTIVE_RATE_SUMMARY: String = "effective_rate_summary"
     public const val FX_COST_SECTION: String = "fx_cost_section"
     public const val CURRENCY_SETTINGS_ROOT: String = "currency_settings_root"
+    public const val REFUND_ROOT: String = "refund_root"
+    public const val REFUND_FORM: String = "refund_form"
+    public const val REFUND_PICKER: String = "refund_picker"
+    public const val REFUND_ORIGINAL: String = "refund_original"
+    public const val REFUND_AMOUNT_SUMMARY: String = "refund_amount_summary"
+    public const val REFUND_TIME_DIMENSIONS: String = "refund_time_dimensions"
+    public const val REFUND_EXCESS_CONFIRMATION: String = "refund_excess_confirmation"
 
     public fun requireStable(value: String): String {
         require(STABLE_TAG.matches(value)) { "test tag must be a stable semantic identifier" }

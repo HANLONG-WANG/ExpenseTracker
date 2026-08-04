@@ -304,7 +304,7 @@ data class FinancialMutationPlan(
     val statementEffects: List<StatementEffect>,
     val loanEffects: List<LoanEffect>,
     val settlementEffects: List<SettlementEffect>,
-    val refundAllocations: List<RefundAllocation>,
+    val refundAllocations: List<RefundAllocationFact>,
     val goalMovements: List<GoalMovement>,
     val budgetAdjustments: List<BudgetAdjustment>,
     val purgeTombstones: List<PurgeTombstone>,
@@ -401,7 +401,7 @@ object FinancialMutationPlanValidator {
         ) {
             return DomainResult.Failure(DomainViolation.Invariant("INV-007"))
         }
-        if (!refundsWithinBalance(command, snapshot.refundStatuses)) {
+        if (!refundsWithinBalance(command, snapshot)) {
             return DomainResult.Failure(DomainViolation.Invariant("INV-010"))
         }
         if (snapshot.budgetRevision != null) {
@@ -442,6 +442,7 @@ object FinancialMutationPlanValidator {
                             plan.statementEffects,
                             plan.loanEffects,
                             plan.settlementEffects,
+                            plan.refundAllocations,
                         ),
                     ) + plan.journalBundles.map { it.entry.contentHash },
             )
@@ -490,6 +491,7 @@ object FinancialMutationPlanValidator {
                     plan.statementEffects,
                     plan.loanEffects,
                     plan.settlementEffects,
+                    plan.refundAllocations,
                 ),
             ) +
                 plan.journalBundles.map { it.entry.contentHash },
@@ -560,16 +562,21 @@ object FinancialMutationPlanValidator {
     @Suppress("ReturnCount")
     private fun refundsWithinBalance(
         command: FinancialCommand,
-        statuses: List<RefundStatusProjection>,
+        snapshot: PlanningSnapshot,
     ): Boolean {
-        if (command !is RecordRefundCommand || command.input.payload.independent) return true
+        val payload = when (command) {
+            is RecordRefundCommand -> command.input.payload
+            is EditTransactionCommand -> command.replacement.payload as? RefundPayload
+            is RestoreHistoricalRevisionCommand -> command.replacement.payload as? RefundPayload
+            is RestoreTransactionCommand -> snapshot.currentRevision?.payload as? RefundPayload
+            else -> null
+        } ?: return true
+        if (payload.independent) return payload.allocations.isEmpty()
+        val statuses = snapshot.refundStatuses
         if (statuses.map { it.originalTransactionId }.toSet().size != statuses.size) return false
         if (statuses.any { status ->
-                val remaining = CheckedArithmetic.subtract(
-                    status.grossRefundable.minor.value,
-                    status.refundedMinor,
-                )
-                remaining !is DomainResult.Success || remaining.value != status.remainingMinor
+                val difference = CheckedArithmetic.subtract(status.grossRefundable.minor.value, status.refundedMinor)
+                difference !is DomainResult.Success || maxOf(difference.value, 0L) != status.remainingMinor
             }
         ) {
             return false
@@ -578,14 +585,23 @@ object FinancialMutationPlanValidator {
         val currencyByTransaction = statuses.associate {
             it.originalTransactionId to it.grossRefundable.currency
         }
-        for (allocation in command.input.payload.allocations) {
-            val remaining = remainingByTransaction[allocation.originalTransactionId] ?: return false
+        val replacedAmounts = snapshot.accountingContext?.currentFacts?.refundAllocationFacts.orEmpty().associate {
+            it.originalTransactionId to it.amountInOriginalCurrency.minor.value
+        }
+        for (allocation in payload.allocations) {
+            val status = statuses.singleOrNull { it.originalTransactionId == allocation.originalTransactionId } ?: return false
+            if (status.originalLifecycleState != TransactionLifecycleState.ACTIVE) return false
+            val remaining = CheckedArithmetic.add(
+                remainingByTransaction[allocation.originalTransactionId] ?: return false,
+                replacedAmounts[allocation.originalTransactionId] ?: 0L,
+            )
+            if (remaining !is DomainResult.Success) return false
             if (currencyByTransaction[allocation.originalTransactionId] != allocation.amountInOriginalCurrency.currency) {
                 return false
             }
             if (
-                allocation.amountInOriginalCurrency.minor.value > remaining &&
-                !command.input.payload.allowExcessOverride
+                allocation.amountInOriginalCurrency.minor.value > remaining.value &&
+                !payload.allowExcessOverride
             ) {
                 return false
             }

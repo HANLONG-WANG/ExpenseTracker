@@ -1,8 +1,8 @@
 # Domain and Schema Coverage Baseline
 
 Last updated: 2026-08-03 (Asia/Tokyo)
-Stage: P15
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P15 verifies the typed journal query, immutable revision/history, bulk-edit, trash/restore and purge-assessment slice. It does not promote the P31 physical purge transaction or later liability, import, report, operation Worker, backup/restore or release workflows.
+Stage: P16
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P16 verifies refund transactions/revisions, immutable allocation/reversal facts, synchronous refundable/dependency projections, contra-expense effects, original-dependency policies and REC-015/016. It does not promote installment-specific refunds, reports, P31 physical purge or later workflows.
 
 ## P05 domain/application result
 
@@ -43,6 +43,10 @@ P14 maps internal transfer, balance adjustment, FX exchange and opening balance 
 ## P15 journal/history/trash result
 
 P15 implements bounded current-transaction queries, complete typed filters, immutable revision reads/compare/restore, coordinator-owned allowed-field batch edits and reversible trash transitions. `P15_JOURNAL_MAPPING.md` records the 12-screen/42-state and 500,000-row evidence. Permanent physical deletion remains behind the P31 maintenance guard.
+
+## P16 refund result
+
+P16 realizes the §14/§25.6 refund model as a typed revision plus immutable allocation fact/reversal chain. Linked and independent refunds generate balanced cash/expense postings, `CONTRA_EXPENSE` instead of income, closed budget/project/goal/settlement restore effects, three separately persisted dates/months and exact cumulative eligibility. `P16_REFUND_MAPPING.md` records the two-screen/eight-state UI, dependency-policy and excess-projection precedence details.
 
 ## Architecture decisions
 
@@ -104,8 +108,8 @@ Source: `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` �
 | INV-007 | Each APPLY Entry is reversed at most once. | Unique constraint + property tests | VERIFIED (`P06-E001`, `P06-E002`, `P07-E001`, `P07-E003`, `P08-E003`: planner and repository execute under the unique reversal constraint) |
 | INV-008 | An Active transaction's net APPLY chain yields exactly one current financial effect. | Domain/database audit | VERIFIED (`P06-E001`, `P06-E002`, `P15-E004`: generated create/edit/restore chains and SQLCipher BULK_EDIT/RESTORE integration preserve one active replacement effect) |
 | INV-009 | A Trashed transaction has zero current net financial effect. | Domain/database audit | VERIFIED (`P06-E001`, `P06-E002`, `P15-E004`: 500 generated reversals plus SQLCipher purge assessment verify zero account/base/economic/budget/project/goal/statement/loan/settlement net after trash) |
-| INV-010 | Refunds cannot exceed the refundable balance without explicit override. | Domain property + UI tests | IN_PROGRESS (`P06-E001`, `P06-E002`: currency/exact balance/allocation validation; UI/persisted aggregate remain) |
-| INV-011 | Refund cash-flow date, accrual date and budget month may differ. | Cross-month integration tests | IN_PROGRESS (`P06-E001`, `P06-E002`: three independent frozen dates tested; projection integration remains) |
+| INV-010 | Refunds cannot exceed the refundable balance without explicit override. | Domain property + UI tests | VERIFIED (`P06-E001`, `P06-E002`, `P16-E002`—`P16-E004`: 500 generated exact-minor plans, cumulative SQLCipher allocations, default rejection and separate danger confirmation/immutable override evidence pass) |
+| INV-011 | Refund cash-flow date, accrual date and budget month may differ. | Cross-month integration tests | VERIFIED (`P06-E001`, `P06-E002`, `P16-E002`—`P16-E004`: actual September cash date, July accrual date and original/refund/no-restore budget policies remain independent through facts, rebuild and UI) |
 | INV-012 | Credit-card repayment creates neither expense nor income. | Planner property + report tests | IN_PROGRESS (`P06-E001`, `P06-E002`: balanced liability transfer and allocation effects, zero EconomicEffect; reports remain) |
 | INV-013 | Loan principal repayment creates no expense. | Planner property + report tests | IN_PROGRESS (`P06-E001`, `P06-E002`: principal LoanEffect only; reports remain) |
 | INV-014 | Loan interest, fees and penalties create non-consumption expense. | Planner property + report tests | IN_PROGRESS (`P06-E001`, `P06-E002`: separate typed non-consumption effects; reports remain) |
@@ -147,6 +151,17 @@ P15 adds no generic transaction object and no mutable fact path. `TransactionFil
 | `command_receipt` / `book.localRevision` | Batch children share one BatchFinancialCommand and Room transaction; stale expected revision and duplicate command semantics retain the P08 fail-closed boundary (`P15-E002`, `P15-E004`) |
 | Trash retention and purge | Trash reversal yields zero current net effect; assessment checks retention, every typed effect net, dependency, durable operation and backup reference. Physical deletion remains P31-only (`P15-E004`, `DL-069`) |
 | Saved filter cache | Per-book AEAD ciphertext in no-backup storage with associated data; it is a Cache lifetime and never authoritative ledger state (`P15-E004`) |
+
+## P16 refund realization
+
+| Domain/schema surface | P16 realization |
+|---|---|
+| `RefundPayload` / `refund_revision_detail` | Closed linked/independent form with receiving account/card, expense classification, accrual/budget/project/goal policies, explicit excess and optional settlement/installment relationships (`P16-E002`, `P16-E003`) |
+| `RefundAllocationFact` / `refund_allocation` | Planner-owned immutable apply/reversal rows freeze original transaction/revision and original/base minor amounts; canonical hash and audit include both directions (`P16-E001`—`P16-E003`) |
+| `refund_status_projection` | Rebuilt synchronously from allocation facts; normal amounts retain exact gross/refunded/remaining, while explicit excess is retained in immutable facts and exposed separately under `DL-071` (`P16-E003`) |
+| `transaction_dependency` | Rebuilt from net active allocations; original trash requires a complete reverse-dependent or convert-independent policy and commits all revisions/facts atomically (`P16-E002`, `P16-E003`) |
+| Typed Effects | Refunds create `CONTRA_EXPENSE`, budget/project/goal RESTORE and inverse settlement effects; trash appends exact REVERSE facts and nets every family to zero (`P16-E002`, `P16-E003`) |
+| Journal history/detail | Refund revisions read their receiving account and REFUND amount role; relation summaries expose original/refunded/remaining and cash/accrual/budget dimensions (`P16-E003`) |
 
 ## P14 transfer, adjustment, opening and FX realization
 
@@ -203,7 +218,7 @@ Source: domain/schema document §25. The inventory names every logical table, in
 | SCHEMA-FAMILY-03 | Classification, merchants and places | `category`, `merchant`, `merchant_alias`, `place`, `location_record`, `location_rtree`, `place_rtree` | VERIFIED (`P07-E001`—`P07-E003`) |
 | SCHEMA-FAMILY-04 | Transactions and revisions | `business_transaction`, `transaction_revision`, `revision_amount`, `fx_rate_snapshot`, `expense_revision_detail`, `income_revision_detail`, `transfer_revision_detail`, `refund_revision_detail`, `credit_payment_revision_detail`, `loan_disbursement_revision_detail`, `loan_payment_revision_detail`, `balance_adjustment_revision_detail`, `fx_exchange_revision_detail`, `settlement_payment_revision_detail`, `opening_balance_revision_detail`, `transaction_revision_attachment`, `transaction_revision_settlement_share`, `transaction_dependency` | VERIFIED (`P07-E001`—`P07-E003`) |
 | SCHEMA-FAMILY-05 | Accounting facts | `journal_entry`, `posting`, `economic_effect`, `budget_effect`, `project_effect`, `goal_effect`, `statement_effect`, `loan_effect`, `settlement_effect` | VERIFIED (`P07-E001`—`P07-E003`) |
-| SCHEMA-FAMILY-06 | Refunds | `refund_allocation`, `refund_status_projection` | VERIFIED (`P07-E001`—`P07-E003`) |
+| SCHEMA-FAMILY-06 | Refunds | `refund_allocation`, `refund_status_projection` | VERIFIED (`P07-E001`—`P07-E003`, `P16-E002`, `P16-E003`: immutable planner facts/reversals, exact SQLCipher cumulative query, synchronous dependency/status rebuild and canonical-hash equality pass) |
 | SCHEMA-FAMILY-07 | Credit and installments | `credit_account_profile`, `credit_limit_period`, `credit_statement`, `credit_statement_revision`, `credit_payment_allocation`, `installment_plan`, `installment_plan_revision`, `installment_schedule_revision`, `installment_schedule_item`, `installment_refund_allocation` | VERIFIED (`P07-E001`—`P07-E003`) |
 | SCHEMA-FAMILY-08 | Loans | `loan_contract`, `loan_tranche`, `loan_terms_revision`, `loan_rate_period`, `loan_schedule_revision`, `loan_schedule_item`, `loan_actual_allocation`, `loan_simulation`, `loan_simulation_item` | VERIFIED (`P07-E001`—`P07-E003`) |
 | SCHEMA-FAMILY-09 | Settlement | `participant`, `settlement_activity`, `settlement_activity_participant`, `settlement_payment_record` | VERIFIED (`P07-E001`—`P07-E003`) |
@@ -250,7 +265,7 @@ Worker/UIDT/service payloads may contain only `operationId`; full parameters rem
 | Room/SQLCipher schema, all migrations, FTS5, R*Tree, WAL plaintext and projection rebuild on device | Tech stack §§5,16; architecture §21 | IN_PROGRESS (`P07-E001`—`P07-E004`, `P08-E003`: v1 create/reopen/capabilities/leakage and exact synchronous projection audit/rebuild are verified on API 36; future registered migrations retain their owning stages) |
 | Keystore, BiometricPrompt, SAF, location and foreground/UIDT behavior on actual devices | Tech stack §16 | IN_PROGRESS (`P09-E003`, `P09-E004`, `P10-E003`, `P10-E004`: Keystore/credential, SAF streaming/provider and foreground location pass on API 36; foreground/UIDT services remain P28) |
 | Failure injection for attachment, commits, Drive, storage, restore exchange, Keystore, biometrics, row 99,999 and projection versions | Architecture §21.3 | IN_PROGRESS (`P08-E003`, `P09-E003`, `P09-E004`, `P10-E003`: commit/projection, key/auth and attachment cancellation/database/process failures pass; Drive/restore/scale remain later) |
-| Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`, `P08-E001`, `P08-E002`, `P10-E006`, `P15-E001`, `P15-E007`: feature SDK/infrastructure, privileged ports, SQL/DAO/fact and direct-writer bypasses are rejected) |
-| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008`, `P10-E004`, `P10-E005`, `P11-E004`—`P11-E006`, `P14-E005`, `P14-E006`, `P15-E005`, `P15-E006`: cross-cutting matrix plus G/ONB, P14 and all 12 JRN screens/42 states pass; later screens/final acceptance remain) |
+| Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`, `P08-E001`, `P08-E002`, `P10-E006`, `P15-E001`, `P15-E007`, `P16-E001`, `P16-E006`: feature SDK/infrastructure, privileged ports, SQL/DAO/fact and direct-writer bypasses are rejected) |
+| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008`, `P10-E004`, `P10-E005`, `P11-E004`—`P11-E006`, `P14-E005`, `P14-E006`, `P15-E005`, `P15-E006`, `P16-E004`, `P16-E005`: cross-cutting matrix plus G/ONB, P14, all JRN and REC-015/016 states pass; later screens/final acceptance remain) |
 | Target-scale paging, reports, map, 100k-row import and tens-of-GB streaming operations | Requirements §25; UI contract §16.5 | IN_PROGRESS (`P10-E003`, `P10-E004`, `P15-E003`: bounded streaming/map and real 500,000-transaction SQLCipher keyset/FTS evidence pass; tens-of-GB, report and 100k-row import gates remain later) |
 | Release AAB, Baseline Profile, locks, verification metadata, SBOM, licenses, NOTICE and privacy/release documentation | Tech stack §16.4 and release plan | IN_PROGRESS (`P02-E006` verifies locks/SBOM/license task infrastructure only; release evidence remains P36) |

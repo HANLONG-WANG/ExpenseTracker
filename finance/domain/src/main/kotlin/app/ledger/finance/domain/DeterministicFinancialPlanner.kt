@@ -40,9 +40,12 @@ object DeterministicFinancialPlanner {
     ): DomainResult<FinancialMutationPlan> = try {
         require(command.commands.size == snapshot.batchSnapshots.size, "planningSnapshot.batchSnapshots")
         val childPlans = command.commands.zip(snapshot.batchSnapshots).map { (child, childSnapshot) ->
-            val edit = child as? EditTransactionCommand ?: reject("batchFinancialCommand.childType")
+            require(
+                child is EditTransactionCommand || child is MoveTransactionToTrashCommand,
+                "batchFinancialCommand.childType",
+            )
             require(childSnapshot.book == snapshot.book, "batchFinancialCommand.book")
-            plan(edit, childSnapshot).orReject()
+            plan(child, childSnapshot).orReject()
         }
         val commitIds = childPlans.map { it.commit.id }.toSet()
         val createdAt = childPlans.map { it.commit.createdAt }.toSet()
@@ -63,6 +66,7 @@ object DeterministicFinancialPlanner {
         val statement = childPlans.flatMap(FinancialMutationPlan::statementEffects)
         val loan = childPlans.flatMap(FinancialMutationPlan::loanEffects)
         val settlement = childPlans.flatMap(FinancialMutationPlan::settlementEffects)
+        val refundAllocations = childPlans.flatMap(FinancialMutationPlan::refundAllocations)
         val evidenceHash = CanonicalFinancialHash.evidenceAndEffects(
             revisionAmounts,
             fxRateSnapshots,
@@ -73,6 +77,7 @@ object DeterministicFinancialPlanner {
             statement,
             loan,
             settlement,
+            refundAllocations,
         )
         val rootHash = CanonicalFinancialHash.commitRoot(
             command.commandId,
@@ -109,12 +114,14 @@ object DeterministicFinancialPlanner {
             statementEffects = statement,
             loanEffects = loan,
             settlementEffects = settlement,
-            refundAllocations = childPlans.flatMap(FinancialMutationPlan::refundAllocations),
+            refundAllocations = refundAllocations,
             goalMovements = childPlans.flatMap(FinancialMutationPlan::goalMovements),
             budgetAdjustments = childPlans.flatMap(FinancialMutationPlan::budgetAdjustments),
             purgeTombstones = childPlans.flatMap(FinancialMutationPlan::purgeTombstones),
             blobGcCandidates = childPlans.flatMap(FinancialMutationPlan::blobGcCandidates),
-            dependencyResolutions = childPlans.flatMap(FinancialMutationPlan::dependencyResolutions),
+            // Dependency policies are validated on the corresponding child snapshot. They are
+            // execution instructions, not immutable financial facts of the aggregate batch.
+            dependencyResolutions = emptyList(),
             projectionChanges = ProjectionChangeSet(
                 targetRevision,
                 childPlans.flatMap { it.projectionChanges.changes }.distinct(),
@@ -283,6 +290,7 @@ object DeterministicFinancialPlanner {
             facts.statement,
             facts.loan,
             facts.settlement,
+            facts.refundAllocations,
         )
         val contentHashes = listOf(transaction.contentHash, revision.contentHash, evidenceAndEffectsHash) +
             facts.journals.map { it.entry.contentHash }
@@ -325,7 +333,7 @@ object DeterministicFinancialPlanner {
             statementEffects = facts.statement,
             loanEffects = facts.loan,
             settlementEffects = facts.settlement,
-            refundAllocations = (input.payload as? RefundPayload)?.allocations.orEmpty(),
+            refundAllocations = facts.refundAllocations,
             goalMovements = emptyList(),
             budgetAdjustments = emptyList(),
             purgeTombstones = emptyList(),
@@ -435,6 +443,7 @@ private data class MaterializedFacts(
     val statement: List<StatementEffect>,
     val loan: List<LoanEffect>,
     val settlement: List<SettlementEffect>,
+    val refundAllocations: List<RefundAllocationFact>,
 ) {
     operator fun plus(other: MaterializedFacts): MaterializedFacts = MaterializedFacts(
         journals + other.journals,
@@ -445,10 +454,12 @@ private data class MaterializedFacts(
         statement + other.statement,
         loan + other.loan,
         settlement + other.settlement,
+        refundAllocations + other.refundAllocations,
     )
 
     companion object {
         fun empty(): MaterializedFacts = MaterializedFacts(
+            emptyList(),
             emptyList(),
             emptyList(),
             emptyList(),
@@ -573,7 +584,19 @@ private fun materializeApplyFacts(
             currency = spec.currency,
         )
     }
-    return MaterializedFacts(journals, economic, budget, project, goal, statement, loan, settlement)
+    val refundAllocations = (revision.payload as? RefundPayload)?.allocations.orEmpty().map { allocation ->
+        RefundAllocationFact(
+            refundTransactionId = revision.transactionId,
+            refundRevisionId = revision.id,
+            originalTransactionId = allocation.originalTransactionId,
+            originalRevisionId = allocation.originalRevisionId,
+            amountInOriginalCurrency = allocation.amountInOriginalCurrency,
+            amountInBaseCurrency = allocation.amountInBaseCurrency,
+            createdCommitId = commitId,
+            reversalOf = null,
+        )
+    }
+    return MaterializedFacts(journals, economic, budget, project, goal, statement, loan, settlement, refundAllocations)
 }
 
 private fun materializeJournal(
@@ -729,6 +752,9 @@ private fun cloneCurrentApplyFacts(
         settlement = current.settlementEffects.map { effect ->
             effect.copy(id = SettlementEffectId(cursor.next()), sourceRevisionId = revision.id, settlementPaymentRecordId = null, reversalOfId = null)
         },
+        refundAllocations = current.refundAllocationFacts.map { allocation ->
+            allocation.copy(refundRevisionId = revision.id, createdCommitId = commitId, reversalOf = null)
+        },
     )
 }
 
@@ -848,6 +874,13 @@ private fun reverseCurrentFacts(
             signedDeltaMinor = CheckedArithmetic.negate(effect.signedDeltaMinor).orReject(),
         )
     }
+    val refundAllocations = current.refundAllocationFacts.map { allocation ->
+        allocation.copy(
+            refundRevisionId = sourceRevisionId,
+            createdCommitId = commitId,
+            reversalOf = RefundAllocationReference(allocation.refundRevisionId, allocation.originalTransactionId),
+        )
+    }
     return MaterializedFacts(
         reversedEntries.map { it.second },
         economic,
@@ -857,6 +890,7 @@ private fun reverseCurrentFacts(
         statement,
         loan,
         settlement,
+        refundAllocations,
     )
 }
 
@@ -961,6 +995,7 @@ private fun projectionChanges(
     facts.statement.mapNotNull { it.statementId }.forEach { changes += ProjectionChange.Statement(it, target) }
     facts.loan.map { it.loanContractId }.forEach { changes += ProjectionChange.Loan(it, target) }
     facts.settlement.map { it.activityId }.forEach { changes += ProjectionChange.Settlement(it, target) }
+    facts.refundAllocations.map { it.originalTransactionId }.forEach { changes += ProjectionChange.Refund(it, target) }
     return ProjectionChangeSet(target, changes.distinct())
 }
 

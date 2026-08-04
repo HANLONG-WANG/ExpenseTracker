@@ -303,6 +303,7 @@ internal object PlannerFixtures {
         statementEffects = plan.statementEffects.filter { it.polarity == EffectPolarity.APPLY },
         loanEffects = plan.loanEffects.filter { it.polarity == EffectPolarity.APPLY },
         settlementEffects = plan.settlementEffects.filter { it.reversalOfId == null },
+        refundAllocationFacts = plan.refundAllocations.filter { it.reversalOf == null },
     )
 
     private fun account(

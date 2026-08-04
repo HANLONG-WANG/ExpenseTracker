@@ -275,6 +275,7 @@ data class CurrentFinancialFacts(
     val statementEffects: List<StatementEffect>,
     val loanEffects: List<LoanEffect>,
     val settlementEffects: List<SettlementEffect>,
+    val refundAllocationFacts: List<RefundAllocationFact> = emptyList(),
 ) {
     init {
         require(journalBundles.isNotEmpty() || settlementEffects.isNotEmpty())
@@ -285,6 +286,7 @@ data class CurrentFinancialFacts(
         require(goalEffects.all { it.polarity == EffectPolarity.APPLY })
         require(statementEffects.all { it.polarity == EffectPolarity.APPLY })
         require(loanEffects.all { it.polarity == EffectPolarity.APPLY })
+        require(refundAllocationFacts.all { it.reversalOf == null })
     }
 }
 

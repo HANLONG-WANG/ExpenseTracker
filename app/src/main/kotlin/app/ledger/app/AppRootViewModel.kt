@@ -78,6 +78,11 @@ import app.ledger.feature.record.RecordEditorMode
 import app.ledger.feature.record.RecordEditorPresentation
 import app.ledger.feature.record.RecordField
 import app.ledger.feature.record.RecordTab
+import app.ledger.feature.record.RefundEditorState
+import app.ledger.feature.record.RefundLoadState
+import app.ledger.feature.record.RefundPickerState
+import app.ledger.feature.record.RefundPolicy
+import app.ledger.feature.record.RefundPresentation
 import app.ledger.feature.record.SpecializedPresentation
 import app.ledger.feature.record.SpecializedTransactionEditorState
 import app.ledger.feature.record.SpecializedTransactionKind
@@ -125,6 +130,10 @@ import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.ReferenceMutation
 import app.ledger.finance.application.ReferenceMutationCommand
 import app.ledger.finance.application.ReferenceMutationIds
+import app.ledger.finance.application.RefundApplicationPort
+import app.ledger.finance.application.RefundSearchQuery
+import app.ledger.finance.application.RefundWriteIds
+import app.ledger.finance.application.RefundWriteRequest
 import app.ledger.finance.application.SpecializedFxQuoteRequest
 import app.ledger.finance.application.SpecializedTransactionContext
 import app.ledger.finance.application.SpecializedTransactionEntryPort
@@ -137,6 +146,10 @@ import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryRemovalStrategy
 import app.ledger.finance.domain.DependencyPolicy
 import app.ledger.finance.domain.DependencyResolution
+import app.ledger.finance.domain.RefundAccrualPolicy
+import app.ledger.finance.domain.RefundBudgetPolicy
+import app.ledger.finance.domain.RefundGoalPolicy
+import app.ledger.finance.domain.RefundProjectPolicy
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.SystemLedgerCode
 import app.ledger.finance.domain.TransactionDependency
@@ -209,6 +222,7 @@ internal class AppRootViewModel @Inject constructor(
     private val journalApplicationPort: JournalApplicationPort,
     private val openingBalanceWritePort: OpeningBalanceWritePort,
     private val ordinaryTransactionEntryPort: OrdinaryTransactionEntryPort,
+    private val refundApplicationPort: RefundApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
@@ -239,6 +253,12 @@ internal class AppRootViewModel @Inject constructor(
     val ordinaryRecord: StateFlow<OrdinaryRecordLoadState> = mutableOrdinaryRecord.asStateFlow()
     private val mutableOrdinaryRecordPending = MutableStateFlow(false)
     val ordinaryRecordPending: StateFlow<Boolean> = mutableOrdinaryRecordPending.asStateFlow()
+    private val mutableRefund = MutableStateFlow<RefundLoadState>(RefundLoadState.Loading)
+    val refund: StateFlow<RefundLoadState> = mutableRefund.asStateFlow()
+    private val mutableRefundPicker = MutableStateFlow<RefundPickerState>(RefundPickerState.Loading)
+    val refundPicker: StateFlow<RefundPickerState> = mutableRefundPicker.asStateFlow()
+    private val mutableRefundPending = MutableStateFlow(false)
+    val refundPending: StateFlow<Boolean> = mutableRefundPending.asStateFlow()
     private val mutableSpecializedTransaction = MutableStateFlow<SpecializedTransactionLoadState>(SpecializedTransactionLoadState.Loading)
     val specializedTransaction: StateFlow<SpecializedTransactionLoadState> = mutableSpecializedTransaction.asStateFlow()
     private val mutableSpecializedTransactionPending = MutableStateFlow(false)
@@ -1035,6 +1055,177 @@ internal class AppRootViewModel @Inject constructor(
                 bookAttachmentObjectPort.discardUncommitted(editor.snapshot.references.bookId, app.ledger.finance.domain.AttachmentId(attachmentId))
             }
         }
+    }
+
+    fun loadRefund(presetOriginalId: StableId? = null) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        mutableRefund.value = RefundLoadState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.current()
+            val bookId = requireBookId(saved)
+            when (val result = refundApplicationPort.snapshot(bookId)) {
+                is DomainResult.Failure -> mutableRefund.value = RefundLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Success -> {
+                    val editor = RefundPolicy.create(
+                        result.value,
+                        presetOriginalId,
+                        runtimeSources.clock.now(),
+                        ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }),
+                        recordLocale(),
+                    )
+                    mutableRefund.value = RefundLoadState.Content(editor)
+                    mutableRefundPicker.value = RefundPickerState.Content(result.value)
+                }
+            }
+        }
+    }
+
+    fun loadRefundOriginals(query: RefundSearchQuery = RefundSearchQuery()) {
+        val editor = (mutableRefund.value as? RefundLoadState.Content)?.editor
+        val bookId = editor?.snapshot?.references?.bookId ?: return loadRefund()
+        val current = mutableRefundPicker.value as? RefundPickerState.Content
+        if (current != null) mutableRefundPicker.value = current.copy(query = query, searching = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            when (val result = refundApplicationPort.snapshot(bookId, query)) {
+                is DomainResult.Failure -> mutableRefundPicker.value = RefundPickerState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Success -> mutableRefundPicker.value = RefundPickerState.Content(result.value, query)
+            }
+        }
+    }
+
+    fun chooseRefundOriginal(id: StableId) {
+        updateRefund { RefundPolicy.selectOriginal(it, id, recordLocale()) }
+        navigator.pop()
+    }
+
+    fun openRefundOriginalPicker() {
+        navigator.navigate(LedgerRouteContract.destination(ScreenId("REC-016")), SessionGateState.READY)
+    }
+
+    fun setRefundIndependent(value: Boolean) = updateRefund { RefundPolicy.setIndependent(it, value, recordLocale()) }
+    fun refundExpression(value: String) = updateRefund { RefundPolicy.updateExpression(it, value, recordLocale()) }
+    fun refundOperator(value: String) = updateRefund { RefundPolicy.appendOperator(it, value, recordLocale()) }
+
+    fun selectNextRefundAccount() = updateRefund { editor ->
+        val active = editor.snapshot.references.accounts.filter { it.status == app.ledger.finance.domain.EntityStatus.ACTIVE }.sortedBy { it.sortOrder }
+        val next = active.nextId(editor.draft.receivingAccountId) { it.id } ?: return@updateRefund editor
+        RefundPolicy.selectAccount(editor, next, recordLocale())
+    }
+
+    fun selectNextRefundCard() = updateRefund { editor ->
+        val cards = editor.snapshot.references.cards.filter { it.status == app.ledger.finance.domain.EntityStatus.ACTIVE && it.accountId == editor.draft.receivingAccountId }.sortedBy { it.sortOrder }
+        val choices = listOf<StableId?>(null) + cards.map { it.id }
+        val next = choices[(choices.indexOf(editor.draft.receivingCardId).takeIf { it >= 0 } ?: 0).plus(1) % choices.size]
+        RefundPolicy.selectCard(editor, next)
+    }
+
+    fun selectNextRefundCategory() = updateRefund { editor ->
+        val values = editor.snapshot.references.categories.filter { it.status == app.ledger.finance.domain.CategoryStatus.ACTIVE && it.direction == CategoryDirection.EXPENSE }.sortedWith(compareBy({ it.sortOrder }, { it.name }))
+        val next = values.nextId(editor.draft.categoryId) { it.id } ?: return@updateRefund editor
+        RefundPolicy.updateReference(editor, app.ledger.feature.record.RefundField.CATEGORY, next)
+    }
+
+    fun selectNextRefundMerchant() = updateRefund { editor ->
+        val values = editor.snapshot.references.merchants.filter { it.status == app.ledger.finance.domain.EntityStatus.ACTIVE }.sortedBy { it.name }
+        val choices = listOf<StableId?>(null) + values.map { it.id }
+        val next = choices[(choices.indexOf(editor.draft.merchantId).takeIf { it >= 0 } ?: 0).plus(1) % choices.size]
+        RefundPolicy.updateInherited(editor, merchantId = next)
+    }
+
+    fun selectNextRefundProject() = updateRefund { editor ->
+        val choices = listOf<StableId?>(null) + editor.snapshot.projects.map { it.id }
+        val next = choices[(choices.indexOf(editor.draft.projectId).takeIf { it >= 0 } ?: 0).plus(1) % choices.size]
+        RefundPolicy.updateInherited(editor, projectId = next)
+    }
+
+    fun selectNextRefundGoal() = updateRefund { editor ->
+        val choices = listOf<StableId?>(null) + editor.snapshot.goals.map { it.id }
+        val next = choices[(choices.indexOf(editor.draft.goalId).takeIf { it >= 0 } ?: 0).plus(1) % choices.size]
+        RefundPolicy.updateInherited(editor, goalId = next)
+    }
+
+    fun refundDate(date: java.time.LocalDate) = updateRefund { RefundPolicy.setDate(it, date) }
+    fun refundAccrual(policy: RefundAccrualPolicy) = updateRefund { RefundPolicy.setAccrualPolicy(it, policy) }
+    fun refundBudget(policy: RefundBudgetPolicy) = updateRefund { RefundPolicy.setBudgetPolicy(it, policy) }
+    fun refundProject(policy: RefundProjectPolicy) = updateRefund { RefundPolicy.setProjectPolicy(it, policy) }
+    fun refundGoal(policy: RefundGoalPolicy) = updateRefund { RefundPolicy.setGoalPolicy(it, policy) }
+    fun refundNote(value: String) = updateRefund { RefundPolicy.setNote(it, value) }
+    fun requestRefundExcess(value: Boolean) = updateRefund { RefundPolicy.requestExcessOverride(it, value) }
+    fun confirmRefundExcess() = updateRefund(RefundPolicy::confirmExcessRisk)
+
+    fun saveRefund() {
+        if (mutableRefundPending.value) return
+        val editor = (mutableRefund.value as? RefundLoadState.Content)?.editor ?: return
+        val validated = RefundPolicy.validate(editor)
+        mutableRefund.value = RefundLoadState.Content(validated)
+        if (validated.errors.isNotEmpty()) return
+        val prepared = runCatching { RefundPolicy.prepare(validated) }.getOrNull() ?: return
+        val original = RefundPolicy.original(validated)
+        mutableRefundPending.value = true
+        mutableRefund.value = RefundLoadState.Content(validated.copy(presentation = RefundPresentation.SAVING))
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val ids = RefundWriteIds(
+                    bookId = validated.snapshot.references.bookId,
+                    commandId = CommandId(nextId()),
+                    transactionId = nextId(),
+                    revisionId = nextId(),
+                    commitId = nextId(),
+                    deviceInstanceId = nextId(),
+                    factIds = List(FINANCIAL_FACT_ID_RESERVE) { nextId() },
+                    fxRateSnapshotIds = List(FX_ID_RESERVE) { nextId() },
+                )
+                val request = RefundWriteRequest(
+                    ids = ids,
+                    allocations = prepared.allocations,
+                    amount = prepared.amount,
+                    receivingCardId = validated.draft.receivingCardId,
+                    independent = validated.draft.independent,
+                    categoryId = requireNotNull(validated.draft.categoryId),
+                    merchantId = validated.draft.merchantId,
+                    projectId = validated.draft.projectId,
+                    goalId = validated.draft.goalId,
+                    settlementActivityId = original?.settlementActivityId,
+                    settlementShares = original?.settlementShares.orEmpty(),
+                    occurredAt = validated.draft.occurredAt,
+                    zoneId = validated.draft.zoneId,
+                    localDate = validated.draft.localDate,
+                    accrualDate = prepared.accrualDate,
+                    budgetTargetMonth = prepared.budgetTargetMonth,
+                    budgetPolicy = validated.draft.budgetPolicy,
+                    projectPolicy = validated.draft.projectPolicy,
+                    goalPolicy = validated.draft.goalPolicy,
+                    accrualPolicy = validated.draft.accrualPolicy,
+                    allowExcessOverride = validated.draft.excessOverrideRequested && RefundPolicy.exceedsRemaining(validated),
+                    excessRiskConfirmed = validated.draft.excessRiskConfirmed,
+                    amountExpression = validated.draft.expression,
+                    note = validated.draft.note.trim().takeIf(String::isNotEmpty),
+                    attachmentIds = validated.draft.attachmentIds,
+                    createdAt = runtimeSources.clock.now(),
+                )
+                when (val result = refundApplicationPort.submit(request)) {
+                    is DomainResult.Success -> {
+                        loadReferenceDataAfterMutation(validated.snapshot.references.bookId)
+                        mutableRefund.value = RefundLoadState.Loading
+                        navigator.pop()
+                    }
+                    is DomainResult.Failure -> updateRefund { it.copy(presentation = RefundPresentation.SAVE_ERROR, failureCode = sanitizeCode(result.error.code)) }
+                }
+            } finally {
+                mutableRefundPending.value = false
+            }
+        }
+    }
+
+    private fun updateRefund(transform: (RefundEditorState) -> RefundEditorState) {
+        val content = mutableRefund.value as? RefundLoadState.Content ?: return
+        mutableRefund.value = RefundLoadState.Content(transform(content.editor))
+    }
+
+    private inline fun <T> List<T>.nextId(current: StableId?, id: (T) -> StableId): StableId? {
+        if (isEmpty()) return null
+        val index = indexOfFirst { id(it) == current }
+        return id(this[if (index < 0) 0 else (index + 1) % size])
     }
 
     fun loadSpecializedTransaction(screenId: String, presetAccountId: StableId? = null) {

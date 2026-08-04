@@ -21,6 +21,7 @@ internal class RoomProjectionEngine {
         clearDerivedState(database)
         rebuildCurrentTransactions(database, localRevision)
         rebuildAccountBalances(database, localRevision)
+        rebuildRefundDependencies(database)
         rebuildRefunds(database, localRevision)
         rebuildBudget(database, localRevision)
         rebuildProjects(database, localRevision)
@@ -157,7 +158,11 @@ internal class RoomProjectionEngine {
               EXISTS(SELECT 1 FROM transaction_revision_attachment tra WHERE tra.revision_id = tr.id),
               CASE WHEN tr.location_record_id IS NULL THEN 0 ELSE 1 END,
               CASE WHEN bt.kind = 3 THEN 1 ELSE 0 END,
-              EXISTS(SELECT 1 FROM refund_allocation rfa WHERE rfa.original_transaction_id = bt.id),
+              EXISTS(
+                SELECT 1 FROM refund_allocation rfa WHERE rfa.original_transaction_id = bt.id
+                GROUP BY rfa.original_transaction_id
+                HAVING SUM(CASE WHEN rfa.reversal_of_id IS NULL THEN rfa.original_currency_amount_minor ELSE -rfa.original_currency_amount_minor END) > 0
+              ),
               CASE WHEN ed.installment_plan_id IS NULL THEN 0 ELSE 1 END,
               tr.source_type, ?
             FROM business_transaction bt
@@ -227,18 +232,34 @@ internal class RoomProjectionEngine {
             ), gross AS (
               SELECT bt.id AS transaction_id, ra.amount_minor, ra.currency_code
               FROM business_transaction bt JOIN revision_amount ra ON ra.revision_id = bt.current_revision_id
-              WHERE ra.representation = 0 AND ra.component_index = 0
+              WHERE bt.kind = 0 AND bt.lifecycle_state = 0 AND ra.representation = 0 AND ra.component_index = 0
                 AND ra.role IN (0,9) AND NOT EXISTS (
                   SELECT 1 FROM revision_amount earlier WHERE earlier.revision_id = ra.revision_id AND earlier.representation = 0
                     AND (earlier.component_index < ra.component_index OR (earlier.component_index = ra.component_index AND earlier.role < ra.role))
                 )
             )
-            SELECT gross.transaction_id, gross.amount_minor, refunds.refunded,
-              gross.amount_minor - refunds.refunded, gross.currency_code, ?
-            FROM refunds JOIN gross ON gross.transaction_id = refunds.original_transaction_id
-            WHERE refunds.refunded BETWEEN 0 AND gross.amount_minor
+            SELECT gross.transaction_id, gross.amount_minor,
+              CASE WHEN COALESCE(refunds.refunded,0) > gross.amount_minor THEN gross.amount_minor ELSE COALESCE(refunds.refunded,0) END,
+              CASE WHEN COALESCE(refunds.refunded,0) > gross.amount_minor THEN 0 ELSE gross.amount_minor - COALESCE(refunds.refunded,0) END,
+              gross.currency_code, ?
+            FROM gross LEFT JOIN refunds ON gross.transaction_id = refunds.original_transaction_id
+            WHERE COALESCE(refunds.refunded,0) >= 0
             """.trimIndent(),
             arrayOf<Any>(revision),
+        )
+    }
+
+    private fun rebuildRefundDependencies(database: SupportSQLiteDatabase) {
+        database.execSQL("DELETE FROM transaction_dependency WHERE dependency_type=0")
+        database.execSQL(
+            """
+            INSERT INTO transaction_dependency(parent_transaction_id, child_transaction_id, dependency_type)
+            SELECT ra.original_transaction_id, ra.refund_transaction_id, 0
+            FROM refund_allocation ra
+            JOIN business_transaction refund ON refund.id=ra.refund_transaction_id AND refund.lifecycle_state=0
+            GROUP BY ra.original_transaction_id,ra.refund_transaction_id
+            HAVING SUM(CASE WHEN ra.reversal_of_id IS NULL THEN ra.original_currency_amount_minor ELSE -ra.original_currency_amount_minor END) > 0
+            """.trimIndent(),
         )
     }
 

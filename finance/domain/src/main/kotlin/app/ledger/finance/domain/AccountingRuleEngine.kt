@@ -297,6 +297,7 @@ private class RuleSession(
                 StatementEffectKind.REFUND,
                 refund.accountAmount,
             ),
+            settlement = refundSettlementShares(payload),
         )
     }
 
@@ -830,6 +831,37 @@ private class RuleSession(
         val signedTotal = CheckedArithmetic.sum(effects.map { it.signedDeltaMinor }).orReject()
         if (signedTotal != 0L) rejectInvariant("INV-022")
         return effects.toList()
+    }
+
+    private fun refundSettlementShares(payload: RefundPayload): List<SettlementEffectSpec> {
+        val activityId = payload.settlementActivityId ?: return emptyList()
+        if (payload.settlementShares.isEmpty()) reject("refund.settlementShares")
+        val currency = payload.allocations.firstOrNull()?.amountInOriginalCurrency?.currency
+            ?: payload.receivingAmount.amount.currency
+        val effects = mutableListOf<SettlementEffectSpec>()
+        payload.settlementShares.forEach { share ->
+            if (share.paidMinor > 0L) {
+                effects += SettlementEffectSpec(
+                    activityId,
+                    share.participantId,
+                    SettlementEffectKind.PAID_FOR_GROUP,
+                    negateExact(share.paidMinor),
+                    currency,
+                )
+            }
+            if (share.owedMinor > 0L) {
+                effects += SettlementEffectSpec(
+                    activityId,
+                    share.participantId,
+                    SettlementEffectKind.OWED_SHARE,
+                    share.owedMinor,
+                    currency,
+                )
+            }
+        }
+        val signedTotal = CheckedArithmetic.sum(effects.map { it.signedDeltaMinor }).orReject()
+        require(signedTotal == 0L, "refund.settlementBalance")
+        return effects
     }
 
     private fun settlementPaymentEffects(payload: SettlementPaymentPayload): List<SettlementEffectSpec> = listOf(

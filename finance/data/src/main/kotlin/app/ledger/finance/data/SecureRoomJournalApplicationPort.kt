@@ -39,6 +39,7 @@ import app.ledger.finance.application.JournalTransactionView
 import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.PurgeIneligibilityReason
 import app.ledger.finance.domain.AccountAmount
+import app.ledger.finance.domain.AmountRole
 import app.ledger.finance.domain.BalanceAdjustmentPayload
 import app.ledger.finance.domain.BatchFinancialCommand
 import app.ledger.finance.domain.BookCommitId
@@ -48,6 +49,8 @@ import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryId
 import app.ledger.finance.domain.CommandReceipt
 import app.ledger.finance.domain.CreditPaymentPayload
+import app.ledger.finance.domain.DependencyPolicy
+import app.ledger.finance.domain.DependencyResolution
 import app.ledger.finance.domain.DeterministicFinancialPlanner
 import app.ledger.finance.domain.DeviceInstanceId
 import app.ledger.finance.domain.DomainViolation
@@ -240,8 +243,8 @@ class SecureRoomJournalApplicationPort(
             book = first.book,
             currentTransaction = null,
             currentRevision = null,
-            dependencies = sources.flatMap { it.snapshot.dependencies },
-            reversedApplyEntryIds = sources.flatMap { it.snapshot.reversedApplyEntryIds }.toSet(),
+            dependencies = emptyList(),
+            reversedApplyEntryIds = emptySet(),
             refundStatuses = emptyList(),
             budgetRevision = null,
             participants = emptyList(),
@@ -327,22 +330,30 @@ class SecureRoomJournalApplicationPort(
         val source = database.readLedger { db ->
             mapper.load(db, ids.transactionId, ids.revisionId, ids.commitId, ids.factIds, ids.fxRateSnapshotIds, request.createdAt, ids.deviceInstanceId)
         }
+        if (request is JournalMutationRequest.MoveToTrash && source.snapshot.dependencies.any {
+                it.type == TransactionDependencyType.REFUND && it.parentTransactionId.value == ids.transactionId
+            }
+        ) {
+            return executeOriginalWithRefundPolicy(database, request, source)
+        }
         val emptyHash = Hash256.fromBytes(ByteArray(32)).valueOrAbort()
-        val command: FinancialCommand = when (request) {
-            is JournalMutationRequest.MoveToTrash -> MoveTransactionToTrashCommand(
-                CommandId(ids.commandId),
-                TransactionRevisionId(request.expectedRevisionId),
-                emptyHash,
-                TransactionId(ids.transactionId),
-                request.purgeAfter,
-                request.dependencyResolutions,
-            )
-            is JournalMutationRequest.RestoreFromTrash -> RestoreTransactionCommand(
-                CommandId(ids.commandId),
-                TransactionRevisionId(request.expectedRevisionId),
-                emptyHash,
-                TransactionId(ids.transactionId),
-            )
+        val commandAndSnapshot: Pair<FinancialCommand, PlanningSnapshot> = when (request) {
+            is JournalMutationRequest.MoveToTrash ->
+                MoveTransactionToTrashCommand(
+                    CommandId(ids.commandId),
+                    TransactionRevisionId(request.expectedRevisionId),
+                    emptyHash,
+                    TransactionId(ids.transactionId),
+                    request.purgeAfter,
+                    request.dependencyResolutions,
+                ).canonical() to source.snapshot
+            is JournalMutationRequest.RestoreFromTrash ->
+                RestoreTransactionCommand(
+                    CommandId(ids.commandId),
+                    TransactionRevisionId(request.expectedRevisionId),
+                    emptyHash,
+                    TransactionId(ids.transactionId),
+                ).canonical() to source.snapshot
             is JournalMutationRequest.RestoreHistorical -> {
                 val historical = database.readLedger { db -> mapper.historicalInput(db, ids.transactionId, request.sourceRevisionId, ids.fxRateSnapshotIds) }
                 val context = requireNotNull(source.snapshot.accountingContext)
@@ -354,22 +365,112 @@ class SecureRoomJournalApplicationPort(
                         amountEvidence = historical.second,
                     ),
                 )
-                return coordinate(
-                    database,
-                    RestoreHistoricalRevisionCommand(
-                        CommandId(ids.commandId),
-                        TransactionRevisionId(request.expectedRevisionId),
-                        emptyHash,
-                        TransactionId(ids.transactionId),
-                        TransactionRevisionId(request.sourceRevisionId),
-                        historical.first,
-                        request.dependencyResolutions,
-                    ).canonical(),
-                    historicalSnapshot,
-                )
+                RestoreHistoricalRevisionCommand(
+                    CommandId(ids.commandId),
+                    TransactionRevisionId(request.expectedRevisionId),
+                    emptyHash,
+                    TransactionId(ids.transactionId),
+                    TransactionRevisionId(request.sourceRevisionId),
+                    historical.first,
+                    request.dependencyResolutions,
+                ).canonical() to historicalSnapshot
             }
-        }.canonical()
-        return coordinate(database, command, source.snapshot)
+        }
+        return coordinate(database, commandAndSnapshot.first, commandAndSnapshot.second)
+    }
+
+    /** Applies the selected original/refund dependency policy in the same financial commit. */
+    private suspend fun executeOriginalWithRefundPolicy(
+        database: LedgerDatabase,
+        request: JournalMutationRequest.MoveToTrash,
+        original: ReferenceEditSource,
+    ): DomainResult<CommandReceipt> {
+        val resolutions = request.dependencyResolutions.associateBy(DependencyResolution::dependency)
+        if (resolutions.size != request.dependencyResolutions.size) {
+            return DomainResult.Failure(DomainViolation.InvalidField("refundDependency.duplicateResolution"))
+        }
+        val refundDependencies = original.snapshot.dependencies.filter {
+            it.type == TransactionDependencyType.REFUND && it.parentTransactionId.value == request.ids.transactionId
+        }
+        val dependentSources = database.readLedger { db ->
+            refundDependencies.mapIndexed { index, dependency ->
+                val resolution = resolutions[dependency]
+                    ?: abort(DomainViolation.InvalidField("refundDependency.unresolved"))
+                val source = mapper.load(
+                    db,
+                    dependency.childTransactionId.value,
+                    derivedId(request.ids.commitId, "refund-revision:$index"),
+                    request.ids.commitId,
+                    List(BULK_FACT_ID_RESERVE) { fact -> derivedId(request.ids.commitId, "refund-fact:$index:$fact") },
+                    List(BULK_FX_ID_RESERVE) { fx -> derivedId(request.ids.commitId, "refund-fx:$index:$fx") },
+                    request.createdAt,
+                    request.ids.deviceInstanceId,
+                )
+                DependentRefundSource(source, resolution)
+            }
+        }
+        val dependentCommands = dependentSources.mapIndexed { index, dependent ->
+            val source = dependent.source
+            val covered = source.snapshot.dependencies.map { dependency ->
+                resolutions[dependency] ?: abort(DomainViolation.InvalidField("refundDependency.childUnresolved"))
+            }
+            when (dependent.resolution.policy) {
+                DependencyPolicy.ReverseDependentTransactions -> MoveTransactionToTrashCommand(
+                    commandId = CommandId(derivedId(request.ids.commandId, "refund-child:$index")),
+                    expectedRevisionId = source.revision.id,
+                    payloadHash = zeroHash(),
+                    transactionId = source.revision.transactionId,
+                    purgeAfter = request.purgeAfter,
+                    dependencyResolutions = covered,
+                ).canonical()
+                DependencyPolicy.ConvertRefundToIndependent -> {
+                    val refund = source.revision.payload as? RefundPayload
+                        ?: abort(DomainViolation.InvalidField("refundDependency.childKind"))
+                    EditTransactionCommand(
+                        commandId = CommandId(derivedId(request.ids.commandId, "refund-child:$index")),
+                        expectedRevisionId = source.revision.id,
+                        payloadHash = zeroHash(),
+                        transactionId = source.revision.transactionId,
+                        replacement = NewTransactionInput(
+                            source.revision.toContextInput(),
+                            refund.copy(
+                                allocations = emptyList(),
+                                independent = true,
+                                allowExcessOverride = false,
+                            ),
+                        ),
+                        dependencyResolutions = covered,
+                    ).canonical()
+                }
+                else -> abort(DomainViolation.InvalidField("refundDependency.policy"))
+            }
+        }
+        val originalCommand = MoveTransactionToTrashCommand(
+            commandId = CommandId(derivedId(request.ids.commandId, "original")),
+            expectedRevisionId = TransactionRevisionId(request.expectedRevisionId),
+            payloadHash = zeroHash(),
+            transactionId = TransactionId(request.ids.transactionId),
+            purgeAfter = request.purgeAfter,
+            dependencyResolutions = request.dependencyResolutions,
+        ).canonical()
+        val batchDraft = BatchFinancialCommand(
+            CommandId(request.ids.commandId),
+            zeroHash(),
+            dependentCommands + originalCommand,
+        )
+        val batch = batchDraft.copy(payloadHash = CanonicalFinancialHash.command(batchDraft))
+        val root = PlanningSnapshot(
+            book = original.snapshot.book,
+            currentTransaction = null,
+            currentRevision = null,
+            dependencies = emptyList(),
+            reversedApplyEntryIds = emptySet(),
+            refundStatuses = emptyList(),
+            budgetRevision = null,
+            participants = emptyList(),
+            batchSnapshots = dependentSources.map { it.source.snapshot } + original.snapshot,
+        )
+        return coordinate(database, batch, root)
     }
 
     private suspend fun coordinate(database: LedgerDatabase, command: FinancialCommand, snapshot: PlanningSnapshot): DomainResult<CommandReceipt> {
@@ -461,25 +562,28 @@ class SecureRoomJournalApplicationPort(
                 "LEFT JOIN user_account ua ON ua.ledger_account_id=la.id WHERE tr.uid=? ORDER BY je.entry_role,p.line_no",
             arrayOf(base.revisionId.bytes),
         ) { c -> "${c.getString(0)}:${if (c.getInt(1) == 0) "debit" else "credit"}:${c.getLong(2)} ${c.getString(3)}" }
-        val relations = dependencies(db, id).map { "${it.type}:${it.childTransactionId}" }
+        val dependencyRelations = dependencies(db, id).map { "${it.type}:${it.childTransactionId}" }
+        val relations = dependencyRelations + RoomJournalRefundRelations.summaries(db, id)
         val budget = db.queryOne("SELECT COUNT(*) n FROM budget_effect be JOIN transaction_revision tr ON tr.id=be.source_revision_id WHERE tr.uid=? AND be.polarity=1", arrayOf(base.revisionId.bytes)) { it.jLong("n") }
         return JournalDetailView(
             item, base.createdAt, base.modifiedAt, base.zoneId, base.expression, base.note, base.merchant, base.project, base.place,
             attachments, budget?.takeIf { it > 0 }?.let { "included:$it" }, base.statisticalNature, fx, relations, accountEffects,
-            TransactionSource.entries[base.source].name, base.purgeAfter, relations.size,
+            TransactionSource.entries[base.source].name, base.purgeAfter, dependencyRelations.size,
         )
     }
 
     private fun history(db: SupportSQLiteDatabase, id: StableId): List<JournalRevisionView> {
         val raw = db.queryList(
             "SELECT tr.uid,tr.revision_no,tr.action,tr.resulting_state,tr.created_at,tr.occurred_at,c.name category_name," +
-                "COALESCE(ua.name,ua2.name) account_name,ra.amount_minor,ra.currency_code,tr.note,tr.merchant_id,tr.project_id,tr.location_record_id " +
+                "COALESCE(ua.name,ua2.name,ua3.name) account_name,ra.amount_minor,ra.currency_code,tr.note,tr.merchant_id,tr.project_id,tr.location_record_id " +
                 "FROM transaction_revision tr JOIN business_transaction bt ON bt.id=tr.transaction_id LEFT JOIN category c ON c.id=tr.category_id " +
                 "LEFT JOIN expense_revision_detail erd ON erd.revision_id=tr.id LEFT JOIN income_revision_detail ird ON ird.revision_id=tr.id " +
+                "LEFT JOIN refund_revision_detail rrd ON rrd.revision_id=tr.id " +
                 "LEFT JOIN user_account ua ON ua.id=erd.payer_account_id LEFT JOIN user_account ua2 ON ua2.id=ird.receiving_account_id " +
-                "LEFT JOIN revision_amount ra ON ra.revision_id=tr.id AND ra.component_index=0 AND ra.role=0 AND ra.representation=1 " +
+                "LEFT JOIN user_account ua3 ON ua3.id=rrd.receiving_account_id " +
+                "LEFT JOIN revision_amount ra ON ra.revision_id=tr.id AND ra.component_index=0 AND ra.role IN (?,?) AND ra.representation=1 " +
                 "WHERE bt.uid=? ORDER BY tr.revision_no",
-            arrayOf(id.bytes),
+            arrayOf(AmountRole.PRIMARY.ordinal, AmountRole.REFUND.ordinal, id.bytes),
         ) { RevisionRaw.from(it) }
         return raw.mapIndexed { index, value ->
             val previous = raw.getOrNull(index - 1)
@@ -580,6 +684,11 @@ class SecureRoomJournalApplicationPort(
     ).valueOrAbort()
 
     private fun zeroHash(): Hash256 = Hash256.fromBytes(ByteArray(32)).valueOrAbort()
+
+    private data class DependentRefundSource(
+        val source: ReferenceEditSource,
+        val resolution: DependencyResolution,
+    )
 
     private fun app.ledger.finance.domain.TransactionRevision.toContextInput(): TransactionContextInput = TransactionContextInput(
         occurredAt, accrualDate, budgetMonth, merchantId, projectId, goalId, locationRecordId, note, amountExpression,

@@ -214,7 +214,7 @@ def validate_kotlin_and_build() -> None:
         require(value["database"]["version"] == 1, f"Room v1 schema export invalid: {room_schema}")
 
 
-def validate_ledgers() -> None:
+def validate_ledgers() -> int:
     project_state = read(ROOT / "docs" / "implementation" / "PROJECT_STATE.md")
     evidence = read(ROOT / "docs" / "implementation" / "TEST_EVIDENCE.md")
     coverage = read(ROOT / "docs" / "implementation" / "DOMAIN_AND_SCHEMA_COVERAGE.md")
@@ -284,11 +284,19 @@ def validate_ledgers() -> None:
         )
     if current_stage_number >= 15:
         permitted_promotions.update({f"JRN-{number:03d}": "VERIFIED" for number in range(1, 13)})
+    if current_stage_number >= 16:
+        permitted_promotions.update(
+            {
+                "REC-015": "VERIFIED",
+                "REC-016": "VERIFIED",
+            },
+        )
     require(
         len(screen_rows) == 215
         and all(row["status"] == permitted_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),
         f"screen coverage contains a promotion outside the completed P{current_stage_number:02d} scope",
     )
+    return len(permitted_promotions)
 
 
 def main() -> int:
@@ -297,11 +305,11 @@ def main() -> int:
     validate_inventory(primary, staging)
     validate_sql_contract(primary, staging)
     validate_kotlin_and_build()
-    validate_ledgers()
+    stage_scoped_promotions = validate_ledgers()
     print("P07 database contract: PASS")
     print("frozen_domain_tables=94 primary_schema_tables=140 staging_tables=7")
     print("indexes=39 views=4 runtime_append_only_tables=63")
-    print("target_requirements=8 screens_total=215 stage_scoped_promotions=24")
+    print(f"target_requirements=8 screens_total=215 stage_scoped_promotions={stage_scoped_promotions}")
     return 0
 
 

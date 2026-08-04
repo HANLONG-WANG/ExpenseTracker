@@ -45,6 +45,8 @@ internal fun ReadyRootScaffold(
     val recordPending by viewModel.ordinaryRecordPending.collectAsStateWithLifecycle()
     val specializedState by viewModel.specializedTransaction.collectAsStateWithLifecycle()
     val specializedPending by viewModel.specializedTransactionPending.collectAsStateWithLifecycle()
+    val refundState by viewModel.refund.collectAsStateWithLifecycle()
+    val refundPending by viewModel.refundPending.collectAsStateWithLifecycle()
     val currencySettings by viewModel.currencySettings.collectAsStateWithLifecycle()
     val journalState by viewModel.journal.collectAsStateWithLifecycle()
     val launchAttachmentPicker = rememberRecordAttachmentPicker { uri ->
@@ -63,7 +65,7 @@ internal fun ReadyRootScaffold(
             val key = navigator.currentKey
             val topLevel = key.contract.screenId.value in setOf("REC-001", "JRN-001", "ACC-001", "BUD-001", "ANA-001")
             LedgerTopAppBar(
-                title = destinationTitle(key),
+                title = refundDestinationTitleOrNull(key.contract.screenId.value) ?: destinationTitle(key),
                 variant = if (topLevel) LedgerTopAppBarVariant.TOP_LEVEL else LedgerTopAppBarVariant.BACK,
                 onNavigation = {
                     viewModel.requestRootBack()
@@ -79,7 +81,12 @@ internal fun ReadyRootScaffold(
                 },
             )
         },
-        fixedAction = specializedTransactionFixedAction(
+        fixedAction = refundFixedAction(
+            navigator.currentKey.contract.screenId.value,
+            refundState,
+            refundPending,
+            viewModel::saveRefund,
+        ) ?: specializedTransactionFixedAction(
             navigator.currentKey.contract.screenId.value,
             specializedState,
             specializedPending,
@@ -122,41 +129,57 @@ internal fun ReadyRootScaffold(
             modifier = Modifier.fillMaxSize().padding(padding),
             entryProvider = { key ->
                 NavEntry(key) {
-                    RootDestination(
-                        key,
-                        viewModel = viewModel,
-                        referenceState = referenceState,
-                        referencePending = referencePending,
-                        recordState = recordState,
-                        specializedState = specializedState,
-                        currencySettings = currencySettings,
-                        journalState = journalState,
-                        onAddAttachment = launchAttachmentPicker,
-                        onBack = {
-                            navigator.pop()
-                            navigationEpoch += 1
-                        },
-                        onMore = {
-                            navigator.navigate(LedgerRouteContract.destination(ScreenId("G-006")), SessionGateState.READY)
-                            navigationEpoch += 1
-                        },
-                        onOperations = {
-                            navigator.navigate(LedgerRouteContract.destination(ScreenId("G-007")), SessionGateState.READY)
-                            navigationEpoch += 1
-                        },
-                        onHelp = {
-                            val screenId = ScreenId("G-008")
-                            navigator.navigate(
-                                LedgerRouteContract.destination(
-                                    screenId,
-                                    mapOf("topicKey" to LedgerRouteContract.opaqueKeyArgument(screenId, "topicKey", "getting-started")),
-                                ),
-                                SessionGateState.READY,
-                            )
-                            navigationEpoch += 1
-                        },
-                        onNavigationChanged = { navigationEpoch += 1 },
-                    )
+                    val screenId = key.contract.screenId.value
+                    if (screenId == "REC-015" || screenId == "REC-016") {
+                        RefundRootDestination(
+                            screenId = screenId,
+                            encodedArguments = key.encodedArguments,
+                            viewModel = viewModel,
+                            onNavigationChanged = { navigationEpoch += 1 },
+                        )
+                    } else {
+                        RootDestination(
+                            key,
+                            viewModel = viewModel,
+                            referenceState = referenceState,
+                            referencePending = referencePending,
+                            recordState = recordState,
+                            specializedState = specializedState,
+                            currencySettings = currencySettings,
+                            journalState = journalState,
+                            onAddAttachment = launchAttachmentPicker,
+                            onBack = {
+                                navigator.pop()
+                                navigationEpoch += 1
+                            },
+                            onMore = {
+                                navigator.navigate(LedgerRouteContract.destination(ScreenId("G-006")), SessionGateState.READY)
+                                navigationEpoch += 1
+                            },
+                            onOperations = {
+                                navigator.navigate(LedgerRouteContract.destination(ScreenId("G-007")), SessionGateState.READY)
+                                navigationEpoch += 1
+                            },
+                            onHelp = {
+                                val helpScreenId = ScreenId("G-008")
+                                navigator.navigate(
+                                    LedgerRouteContract.destination(
+                                        helpScreenId,
+                                        mapOf(
+                                            "topicKey" to LedgerRouteContract.opaqueKeyArgument(
+                                                helpScreenId,
+                                                "topicKey",
+                                                "getting-started",
+                                            ),
+                                        ),
+                                    ),
+                                    SessionGateState.READY,
+                                )
+                                navigationEpoch += 1
+                            },
+                            onNavigationChanged = { navigationEpoch += 1 },
+                        )
+                    }
                 }
             },
         )

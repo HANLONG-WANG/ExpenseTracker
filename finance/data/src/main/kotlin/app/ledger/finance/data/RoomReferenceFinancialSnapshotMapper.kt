@@ -107,6 +107,7 @@ import app.ledger.finance.domain.ProjectId
 import app.ledger.finance.domain.ProjectStatus
 import app.ledger.finance.domain.RefundAccrualPolicy
 import app.ledger.finance.domain.RefundAllocation
+import app.ledger.finance.domain.RefundAllocationFact
 import app.ledger.finance.domain.RefundBudgetPolicy
 import app.ledger.finance.domain.RefundGoalPolicy
 import app.ledger.finance.domain.RefundPayload
@@ -352,6 +353,21 @@ internal class RoomReferenceFinancialSnapshotMapper {
                 StatementAssignment(StatementAssignmentMode.AUTOMATIC, null)
             }
         }
+        val accrualDate = if (transaction.kind == TransactionKind.REFUND) {
+            db.queryOne(
+                "SELECT accrual_local_date FROM economic_effect WHERE source_revision_id=? AND polarity=1 AND component=6 LIMIT 1",
+                arrayOf(row.internalId),
+            ) { cursor -> cursor.int("accrual_local_date").toStoredLocalDate() } ?: row.localDate
+        } else {
+            row.localDate
+        }
+        val budgetMonth = if (transaction.kind == TransactionKind.REFUND) {
+            db.queryOne("SELECT target_month FROM refund_revision_detail WHERE revision_id=?", arrayOf(row.internalId)) { cursor ->
+                cursor.nullableLong("target_month")?.toInt()?.toStoredYearMonth()
+            }
+        } else {
+            YearMonth.from(row.localDate)
+        }
         return TransactionRevision(
             row.id,
             transaction.id,
@@ -362,8 +378,8 @@ internal class RoomReferenceFinancialSnapshotMapper {
             row.commitId,
             row.createdAt,
             EffectiveTime.fromInstant(row.occurredAt, row.zoneId),
-            row.localDate,
-            YearMonth.from(row.localDate),
+            accrualDate,
+            budgetMonth,
             row.merchantId,
             row.projectId,
             row.goalId,
@@ -432,31 +448,7 @@ internal class RoomReferenceFinancialSnapshotMapper {
             amounts.accountAmount(AmountRole.INCOMING, references),
             db.queryOne("SELECT pc.uid FROM transfer_revision_detail d LEFT JOIN payment_card pc ON pc.id=d.source_card_id WHERE d.revision_id=?", arrayOf(revisionInternalId)) { it.nullableStableId("uid")?.let(::PaymentCardId) },
         )
-        TransactionKind.REFUND -> {
-            val detail = db.queryOne(
-                "SELECT pc.uid card_uid,d.independent,d.budget_policy,d.allow_excess FROM refund_revision_detail d LEFT JOIN payment_card pc ON pc.id=d.receiving_card_id WHERE d.revision_id=?",
-                arrayOf(revisionInternalId),
-            ) { RefundDetail.from(it) } ?: abort(FinanceDataError.CorruptData)
-            val allocations = db.queryList(
-                "SELECT obt.uid original_transaction_uid,otr.uid original_revision_uid,ra.original_currency_amount_minor,ra.base_amount_minor," +
-                    "oa.currency_code original_currency,b.base_currency FROM refund_allocation ra JOIN business_transaction obt ON obt.id=ra.original_transaction_id " +
-                    "JOIN transaction_revision otr ON otr.id=ra.original_revision_id JOIN transaction_revision rr ON rr.id=ra.refund_revision_id " +
-                    "JOIN book b ON b.id=1 LEFT JOIN revision_amount oa ON oa.revision_id=rr.id AND oa.role=? AND oa.representation=? WHERE ra.refund_revision_id=?",
-                arrayOf<Any?>(AmountRole.REFUND.ordinal, AmountRepresentation.ACCOUNT.ordinal, revisionInternalId),
-            ) { cursor -> RefundAllocation(TransactionId(cursor.stableId("original_transaction_uid")), TransactionRevisionId(cursor.stableId("original_revision_uid")), positive(cursor.long("original_currency_amount_minor"), currency(cursor.string("original_currency"))), positive(cursor.long("base_amount_minor"), currency(cursor.string("base_currency")))) }
-            RefundPayload(
-                classification,
-                amounts.accountAmount(AmountRole.REFUND, references),
-                detail.cardId,
-                allocations,
-                detail.independent,
-                detail.allowExcess,
-                RefundBudgetPolicy.entries[detail.budgetPolicy],
-                RefundProjectPolicy.DO_NOT_RESTORE,
-                RefundGoalPolicy.DO_NOT_RESTORE,
-                RefundAccrualPolicy.REFUND_DATE,
-            )
-        }
+        TransactionKind.REFUND -> readRefundPayload(db, revisionInternalId, amounts, classification, references)
         TransactionKind.CREDIT_PAYMENT -> {
             val detail = db.queryOne("SELECT ua.uid credit_uid,d.generation_mode FROM credit_payment_revision_detail d JOIN user_account ua ON ua.id=d.credit_account_id WHERE d.revision_id=?", arrayOf(revisionInternalId)) { it.stableId("credit_uid") to it.int("generation_mode") } ?: abort(FinanceDataError.CorruptData)
             val allocations = db.queryList("SELECT cs.uid statement_uid,cpa.amount_minor,ua.currency_code FROM credit_payment_allocation cpa LEFT JOIN credit_statement cs ON cs.id=cpa.statement_id JOIN user_account ua ON ua.id=(SELECT credit_account_id FROM credit_payment_revision_detail WHERE revision_id=?) WHERE cpa.payment_revision_id=?", arrayOf(revisionInternalId, revisionInternalId)) { cursor -> CreditPaymentAllocation(cursor.nullableStableId("statement_uid")?.let(::CreditStatementId), positive(cursor.long("amount_minor"), currency(cursor.string("currency_code")))) }
@@ -490,6 +482,60 @@ internal class RoomReferenceFinancialSnapshotMapper {
             val detail = db.queryOne("SELECT d.balance_date,la.normal_side FROM opening_balance_revision_detail d JOIN user_account ua ON ua.id=d.account_id JOIN ledger_account la ON la.id=ua.ledger_account_id WHERE d.revision_id=?", arrayOf(revisionInternalId)) { it.getInt(0).toStoredLocalDate() to DebitCredit.entries[it.getInt(1)] } ?: abort(FinanceDataError.CorruptData)
             OpeningBalancePayload(amounts.accountAmount(AmountRole.PRIMARY, references), detail.first, detail.second)
         }
+    }
+
+    private fun readRefundPayload(
+        db: SupportSQLiteDatabase,
+        revisionId: Long,
+        amounts: List<RevisionAmount>,
+        classification: CategoryAssignment?,
+        references: PlanningReferenceData,
+    ): RefundPayload {
+        val detail = db.queryOne(
+            "SELECT pc.uid card_uid,d.independent,d.budget_policy,d.target_month,d.allow_excess FROM refund_revision_detail d LEFT JOIN payment_card pc ON pc.id=d.receiving_card_id WHERE d.revision_id=?",
+            arrayOf(revisionId),
+        ) { RefundDetail.from(it) } ?: abort(FinanceDataError.CorruptData)
+        val allocations = db.queryList(
+            "SELECT obt.uid original_transaction_uid,otr.uid original_revision_uid,ra.original_currency_amount_minor,ra.base_amount_minor," +
+                "oa.currency_code original_currency,b.base_currency FROM refund_allocation ra JOIN business_transaction obt ON obt.id=ra.original_transaction_id " +
+                "JOIN transaction_revision otr ON otr.id=ra.original_revision_id JOIN transaction_revision rr ON rr.id=ra.refund_revision_id " +
+                "JOIN book b ON b.id=1 LEFT JOIN revision_amount oa ON oa.revision_id=otr.id AND oa.component_index=0 AND oa.representation=? WHERE ra.refund_revision_id=? AND ra.reversal_of_id IS NULL",
+            arrayOf<Any?>(AmountRepresentation.USER_INPUT.ordinal, revisionId),
+        ) { cursor -> RefundAllocation(TransactionId(cursor.stableId("original_transaction_uid")), TransactionRevisionId(cursor.stableId("original_revision_uid")), positive(cursor.long("original_currency_amount_minor"), currency(cursor.string("original_currency"))), positive(cursor.long("base_amount_minor"), currency(cursor.string("base_currency")))) }
+        val settlement = db.queryList(
+            "SELECT sa.uid activity_uid,p.uid participant_uid,trs.paid_minor,trs.owed_minor,trs.weight_decimal,trs.rounding_adjustment_minor " +
+                "FROM transaction_revision_settlement_share trs JOIN settlement_activity sa ON sa.id=trs.activity_id " +
+                "JOIN participant p ON p.id=trs.participant_id WHERE trs.revision_id=? ORDER BY p.uid",
+            arrayOf(revisionId),
+        ) { cursor ->
+            SettlementActivityId(cursor.stableId("activity_uid")) to SettlementShare(
+                ParticipantId(cursor.stableId("participant_uid")),
+                cursor.long("paid_minor"),
+                cursor.long("owed_minor"),
+                cursor.nullableString("weight_decimal")?.toBigDecimal(),
+                cursor.long("rounding_adjustment_minor"),
+            )
+        }
+        val projectRestored = db.queryOne("SELECT EXISTS(SELECT 1 FROM project_effect WHERE source_revision_id=? AND polarity=1 AND kind=1)", arrayOf(revisionId)) { it.getInt(0) == 1 } == true
+        val goalRestored = db.queryOne("SELECT EXISTS(SELECT 1 FROM goal_effect WHERE source_revision_id=? AND polarity=1 AND kind=3)", arrayOf(revisionId)) { it.getInt(0) == 1 } == true
+        val originalDateAccrual = db.queryOne(
+            "SELECT ee.accrual_local_date<>tr.local_date FROM economic_effect ee JOIN transaction_revision tr ON tr.id=ee.source_revision_id WHERE ee.source_revision_id=? AND ee.polarity=1 AND ee.component=6 LIMIT 1",
+            arrayOf(revisionId),
+        ) { it.getInt(0) == 1 } == true
+        return RefundPayload(
+            classification,
+            amounts.accountAmount(AmountRole.REFUND, references),
+            detail.cardId,
+            allocations,
+            detail.independent,
+            detail.allowExcess,
+            RefundBudgetPolicy.entries[detail.budgetPolicy],
+            if (projectRestored) RefundProjectPolicy.USE_SELECTED_PROJECT else RefundProjectPolicy.DO_NOT_RESTORE,
+            if (goalRestored) RefundGoalPolicy.USE_SELECTED_GOAL else RefundGoalPolicy.DO_NOT_RESTORE,
+            if (originalDateAccrual) RefundAccrualPolicy.ORIGINAL_TRANSACTION_DATE else RefundAccrualPolicy.REFUND_DATE,
+            settlement.firstOrNull()?.first,
+            settlement.map { it.second },
+        )
     }
 
     private fun readLoanPayment(db: SupportSQLiteDatabase, revisionId: Long, transaction: BusinessTransaction, amounts: List<RevisionAmount>, classification: CategoryAssignment?, references: PlanningReferenceData): LoanPaymentPayload {
@@ -554,7 +600,29 @@ internal class RoomReferenceFinancialSnapshotMapper {
         val statement = db.queryList("SELECT se.id,ua.uid account_uid,cs.uid statement_uid,tr.uid revision_uid,se.kind,se.amount_minor,se.currency_code,se.manual_assignment FROM statement_effect se JOIN user_account ua ON ua.id=se.credit_account_id LEFT JOIN credit_statement cs ON cs.id=se.statement_id JOIN transaction_revision tr ON tr.id=se.source_revision_id WHERE tr.uid=? AND se.polarity=1", arrayOf(revisionId.value.bytes)) { cursor -> StatementEffect(StatementEffectId(stableIdFromInternal(cursor.long("id"))), UserAccountId(cursor.stableId("account_uid")), cursor.nullableStableId("statement_uid")?.let(::CreditStatementId), TransactionRevisionId(cursor.stableId("revision_uid")), null, StatementEffectKind.entries[cursor.int("kind")], EffectPolarity.APPLY, positive(cursor.long("amount_minor"), currency(cursor.string("currency_code"))), cursor.int("manual_assignment") == 1) }
         val loan = db.queryList("SELECT le.id,lc.uid contract_uid,lt.uid tranche_uid,lsi.id schedule_id,tr.uid revision_uid,le.kind,le.amount_minor,le.currency_code,le.base_amount_minor,b.base_currency FROM loan_effect le JOIN loan_contract lc ON lc.id=le.loan_contract_id JOIN loan_tranche lt ON lt.id=le.loan_tranche_id LEFT JOIN loan_schedule_item lsi ON lsi.id=le.schedule_item_id JOIN transaction_revision tr ON tr.id=le.source_revision_id JOIN book b ON b.id=1 WHERE tr.uid=? AND le.polarity=1", arrayOf(revisionId.value.bytes)) { cursor -> LoanEffect(LoanEffectId(stableIdFromInternal(cursor.long("id"))), LoanContractId(cursor.stableId("contract_uid")), LoanTrancheId(cursor.stableId("tranche_uid")), cursor.nullableLong("schedule_id")?.let { LoanScheduleItemId(stableIdFromInternal(it)) }, TransactionRevisionId(cursor.stableId("revision_uid")), null, LoanEffectKind.entries[cursor.int("kind")], EffectPolarity.APPLY, positive(cursor.long("amount_minor"), currency(cursor.string("currency_code"))), positive(cursor.long("base_amount_minor"), currency(cursor.string("base_currency")))) }
         val settlement = db.queryList("SELECT se.id,sa.uid activity_uid,p.uid participant_uid,tr.uid revision_uid,se.kind,se.signed_delta_minor,se.currency_code FROM settlement_effect se JOIN settlement_activity sa ON sa.id=se.activity_id JOIN participant p ON p.id=se.participant_id JOIN transaction_revision tr ON tr.id=se.source_revision_id WHERE tr.uid=?", arrayOf(revisionId.value.bytes)) { cursor -> SettlementEffect(SettlementEffectId(stableIdFromInternal(cursor.long("id"))), SettlementActivityId(cursor.stableId("activity_uid")), ParticipantId(cursor.stableId("participant_uid")), TransactionRevisionId(cursor.stableId("revision_uid")), null, null, SettlementEffectKind.entries[cursor.int("kind")], cursor.long("signed_delta_minor"), currency(cursor.string("currency_code"))) }
-        return CurrentFinancialFacts(journals, economic, budget, project, goal, statement, loan, settlement)
+        val refundAllocations = db.queryList(
+            "SELECT refund.uid refund_uid,rr.uid refund_revision_uid,original.uid original_uid,original_revision.uid original_revision_uid," +
+                "ra.original_currency_amount_minor,original_amount.currency_code original_currency,ra.base_amount_minor,b.base_currency,bc.uid commit_uid " +
+                "FROM refund_allocation ra JOIN business_transaction refund ON refund.id=ra.refund_transaction_id " +
+                "JOIN transaction_revision rr ON rr.id=ra.refund_revision_id JOIN business_transaction original ON original.id=ra.original_transaction_id " +
+                "JOIN transaction_revision original_revision ON original_revision.id=ra.original_revision_id " +
+                "JOIN revision_amount original_amount ON original_amount.revision_id=original_revision.id AND original_amount.component_index=0 AND original_amount.representation=0 " +
+                "JOIN book b ON b.id=1 JOIN book_commit bc ON bc.id=ra.created_commit_id " +
+                "WHERE rr.uid=? AND ra.reversal_of_id IS NULL ORDER BY original.uid",
+            arrayOf(revisionId.value.bytes),
+        ) { cursor ->
+            RefundAllocationFact(
+                TransactionId(cursor.stableId("refund_uid")),
+                TransactionRevisionId(cursor.stableId("refund_revision_uid")),
+                TransactionId(cursor.stableId("original_uid")),
+                TransactionRevisionId(cursor.stableId("original_revision_uid")),
+                positive(cursor.long("original_currency_amount_minor"), currency(cursor.string("original_currency"))),
+                positive(cursor.long("base_amount_minor"), currency(cursor.string("base_currency"))),
+                BookCommitId(cursor.stableId("commit_uid")),
+                null,
+            )
+        }
+        return CurrentFinancialFacts(journals, economic, budget, project, goal, statement, loan, settlement, refundAllocations)
     }
 
     private fun readJournal(db: SupportSQLiteDatabase, cursor: Cursor): JournalBundle {
@@ -615,9 +683,9 @@ internal class RoomReferenceFinancialSnapshotMapper {
             fun from(c: Cursor) = ExpenseDetail(c.int("payer_kind"), c.nullableStableId("card_uid")?.let(::PaymentCardId), c.nullableStableId("participant_uid")?.let(::ParticipantId), c.nullableStableId("activity_uid")?.let(::SettlementActivityId), c.nullableStableId("installment_uid")?.let(::InstallmentPlanId))
         }
     }
-    private data class RefundDetail(val cardId: PaymentCardId?, val independent: Boolean, val budgetPolicy: Int, val allowExcess: Boolean) {
+    private data class RefundDetail(val cardId: PaymentCardId?, val independent: Boolean, val budgetPolicy: Int, val targetMonth: Int?, val allowExcess: Boolean) {
         companion object {
-            fun from(c: Cursor) = RefundDetail(c.nullableStableId("card_uid")?.let(::PaymentCardId), c.int("independent") == 1, c.int("budget_policy"), c.int("allow_excess") == 1)
+            fun from(c: Cursor) = RefundDetail(c.nullableStableId("card_uid")?.let(::PaymentCardId), c.int("independent") == 1, c.int("budget_policy"), c.nullableLong("target_month")?.toInt(), c.int("allow_excess") == 1)
         }
     }
     private data class SettlementDetail(val activityId: SettlementActivityId, val payerId: ParticipantId, val payeeId: ParticipantId, val accountId: UserAccountId?) {

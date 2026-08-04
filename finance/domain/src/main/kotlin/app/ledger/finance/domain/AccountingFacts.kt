@@ -454,6 +454,11 @@ sealed interface ProjectionChange {
         override val targetRevision: LocalRevision,
     ) : ProjectionChange
 
+    data class Refund(
+        val originalTransactionId: TransactionId,
+        override val targetRevision: LocalRevision,
+    ) : ProjectionChange
+
     data class SearchAndMap(
         val transactionId: TransactionId,
         override val targetRevision: LocalRevision,

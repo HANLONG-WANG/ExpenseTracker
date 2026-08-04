@@ -9,6 +9,8 @@ import androidx.compose.runtime.remember
 import app.ledger.core.designsystem.LedgerSaveFab
 import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.record.RecordEditorPresentation
+import app.ledger.feature.record.RefundLoadState
+import app.ledger.feature.record.RefundPresentation
 import app.ledger.feature.record.SpecializedPresentation
 import app.ledger.feature.record.SpecializedTransactionLoadState
 
@@ -50,6 +52,23 @@ internal fun ordinaryRecordFixedAction(
         LedgerSaveFab(
             onSave,
             submitting = pending || editor?.presentation == RecordEditorPresentation.SAVING,
+            enabled = !pending,
+        )
+    }
+}
+
+internal fun refundFixedAction(
+    screenId: String,
+    state: RefundLoadState,
+    pending: Boolean,
+    onSave: () -> Unit,
+): (@Composable BoxScope.() -> Unit)? {
+    if (screenId != "REC-015") return null
+    return {
+        val editor = (state as? RefundLoadState.Content)?.editor
+        LedgerSaveFab(
+            onSave,
+            submitting = pending || editor?.presentation == RefundPresentation.SAVING,
             enabled = !pending,
         )
     }

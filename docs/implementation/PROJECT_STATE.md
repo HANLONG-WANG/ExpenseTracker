@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-03 (Asia/Tokyo)
-Current stage: P15 — Journal, search/filter, immutable history, and trash
-Stage status: VERIFIED (`P15-E001`—`P15-E008`); P00—P14 remain VERIFIED and P16 is the next unstarted stage
+Last updated: 2026-08-04 (Asia/Tokyo)
+Current stage: P16 — Refund end-to-end
+Stage status: VERIFIED (`P16-E001`—`P16-E007`); P00—P15 remain VERIFIED and P17 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -270,12 +270,24 @@ P14 remains `VERIFIED`. `P14_MULTICURRENCY_MAPPING.md` records the exact applica
 
 P15 is `VERIFIED`. `P15_JOURNAL_MAPPING.md` records the exact query/application/UI and retained P31 purge boundary. No refund, credit, loan, budget, goal, analytics, import, physical purge or later feature stage is promoted.
 
+### P16 result (verified)
+
+| Area | P16 result | Classification |
+|---|---|---|
+| Refund facts and accounting | Linked/independent, full/partial/repeated/cross-month/other-account/excess refunds append balanced Journals, contra-expense and typed restore effects plus immutable allocation/reversal facts | VERIFIED (`P16-E002`, `P16-E003`) |
+| Refundable projection | True net allocations enforce cumulative remaining and rebuild deterministic status/dependency/current/budget/project/goal projections; explicit excess remains auditable without making projection amounts negative | VERIFIED (`P16-E003`, `DL-071`) |
+| Original dependency handling | Original trash atomically reverses linked refunds or converts them to independent according to complete per-dependent policies; unresolved original edits/removal remain blocked | VERIFIED (`P16-E002`, `P16-E003`, `DL-072`) |
+| Application/privacy boundary | Typed request/snapshot/search APIs and the encrypted adapter delegate every write to `FinancialMutationCoordinator`; route carries only an optional stable transaction ID and the draft remains in memory | VERIFIED (`P16-E001`, `P16-E006`) |
+| UI and screenshots | REC-015/016 cover all 8 YAML states at the width/font/locale/theme matrix; two Compose/token pixel-hash goldens freeze linked-light and excess-dark without visual-draft input | VERIFIED (`P16-E004`, `P16-E005`, `DL-073`) |
+
+P16 is `VERIFIED`. `P16_REFUND_MAPPING.md` records the exact domain/fact/application/query/UI boundary. Credit/installment completion, reports, physical purge and P17+ features remain in their owning later stages.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 28 requirements are `VERIFIED`; 52 are `IN_PROGRESS`; 10 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 74 are `VERIFIED` (prior 62 plus JRN-001—JRN-012); 141 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 30 requirements are `VERIFIED`; 50 are `IN_PROGRESS`; 10 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 76 are `VERIFIED` (prior 74 plus REC-015/016); 139 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-011 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-012—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
 | Permanent domain invariants | 35 | Ten are `VERIFIED`, including transfer net-assets (`INV-015`), immutable historical FX (`INV-016`), valuation exclusion (`INV-017`) and checked arithmetic (`INV-034`); 25 retain later evidence |
