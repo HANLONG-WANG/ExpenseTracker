@@ -21,6 +21,8 @@ import app.ledger.finance.domain.TransactionRevision
 import app.ledger.finance.domain.TransferPayload
 
 internal class RoomFinancialPlanWriter {
+    private val budgetPlanWriter = RoomBudgetPlanWriter()
+
     fun write(
         database: SupportSQLiteDatabase,
         plan: FinancialMutationPlan,
@@ -30,6 +32,7 @@ internal class RoomFinancialPlanWriter {
         insertCommit(database, plan)
         checkpoint(FinancialCommitPhase.AFTER_COMMIT_HEADER)
         afterCommitHeader(database, plan)
+        budgetPlanWriter.write(database, plan)
         insertTransactionShells(database, plan)
         insertFxSnapshots(database, plan)
         insertRevisions(database, plan)

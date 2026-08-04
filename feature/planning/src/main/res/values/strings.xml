@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="budget_loading">正在加载预算…</string><string name="budget_load_failed">无法加载预算资料。</string>
+    <string name="budget_previous_month">上一月</string><string name="budget_next_month">下一月</string><string name="budget_historical">历史月份</string><string name="budget_future">未来月份，可预先编辑。</string>
+    <string name="budget_recalculating">正在从受影响月份重算后续结转链，完成后自动刷新。</string><string name="budget_recalculation_failed">结转链重算失败；旧缓存不会作为当前结果显示。</string><string name="budget_operation_center">操作中心</string>
+    <string name="budget_not_configured">本月未设置预算</string><string name="budget_not_configured_body">消费仍会进入总预算口径；设置自然月基础预算后可查看结转与执行率。</string><string name="budget_create">设置预算</string>
+    <string name="budget_remaining">本月剩余可用预算</string><string name="budget_exceeded">本月已超出预算</string><string name="budget_base_row">基础预算：%1$s</string><string name="budget_rollover_row">历史结转：%1$s</string><string name="budget_adjustment_row">本月调整：%1$s</string><string name="budget_used_row">已用：%1$s</string><string name="budget_exceeded_amount">超出：%1$s</string><string name="budget_progress_accessible">已用 %1$d，可用 %2$d</string>
+    <string name="budget_daily_available">今日可用</string><string name="budget_daily_unavailable">历史月份或尚无当前投影，无法计算今日可用。</string><string name="budget_reserved_formula">已扣除尚未发生周期固定支出 %1$s，再除以剩余 %2$d 天。</string>
+    <string name="budget_categories">分类预算</string><string name="budget_used_available">已用 %1$s / 可用 %2$s</string><string name="budget_unallocated_category">未单独设置预算；消费仍占月度总预算。</string><string name="budget_includes_children">已包含子分类消费，不会与总预算重复统计。</string>
+    <string name="budget_edit">编辑预算</string><string name="budget_adjustments">预算调整</string><string name="budget_history">版本历史</string><string name="budget_templates">预算模板</string>
+    <string name="budget_template_name">模板名称</string><string name="budget_total">月度基础总预算</string><string name="budget_invalid_amount">请输入有效的非负金额。</string><string name="budget_child_label">二级 · %1$s</string>
+    <string name="budget_history_recalc_warning">修改历史月份预算会从该月开始重建后续结转链。</string><string name="budget_rollover_excluded_constraint">基础限额校验不包含结转和调整；正负结转单独显示且无上限、不过期。</string>
+    <string name="budget_allocation_total">一级合计 %1$d / 总预算 %2$d</string><string name="budget_child_allocation">二级合计 %1$d / 一级预算 %2$d</string><string name="budget_over_limit">超限差额 %1$d；保存将被阻止。</string><string name="budget_unallocated">剩余未分配 %1$d</string>
+    <string name="budget_save">保存</string><string name="budget_saving">保存中…</string><string name="budget_parent_limit_summary">一级与其二级限额实时校验；父级消费已包含子级。</string><string name="budget_category_limit">分类基础预算</string>
+    <string name="budget_no_account_impact">此操作不改变账户余额，也不会创建财务交易。</string><string name="budget_no_adjustments">暂无预算调整</string><string name="budget_no_adjustments_body">基础预算、结转和调整始终分开记录。</string><string name="budget_add_adjustment">新建调整</string><string name="budget_adjustment_immutable">历史调整不可直接编辑；修改需追加反向或新调整。</string><string name="budget_adjustment_amount">调整金额</string><string name="budget_adjustment_category_hint">分类转移需明确来源和目标；当前默认使用可用分类。</string>
+    <string name="budget_source_category">来源分类：%1$s</string><string name="budget_target_category">目标分类：%1$s</string>
+    <string name="budget_clear_rollover">清除结转</string><string name="budget_increase">增加可用额</string><string name="budget_decrease">减少可用额</string><string name="budget_transfer">分类间转移</string><string name="budget_archive_transfer">归档分类结转转移</string>
+    <string name="budget_revision">修订 %1$d</string><string name="budget_compare">比较版本</string><string name="budget_no_templates">暂无预算模板</string><string name="budget_no_templates_body">模板只保存基础总额和分类结构，不保存结转或调整。</string><string name="budget_add_template">新建模板</string>
+</resources>

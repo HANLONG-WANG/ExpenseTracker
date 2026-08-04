@@ -265,27 +265,91 @@ internal class RoomProjectionEngine {
 
     private fun rebuildBudget(database: SupportSQLiteDatabase, revision: Long) {
         database.execSQL(
-            """
-            INSERT INTO budget_usage_projection(year_month, category_id, base_budget_minor, rollover_minor, adjustment_minor, used_minor, remaining_minor, as_of_local_revision)
-            WITH effects AS (
-              SELECT target_year_month AS ym, category_id,
-                SUM(CASE WHEN kind = 0 THEN CASE polarity WHEN 1 THEN base_amount_minor ELSE -base_amount_minor END
-                         ELSE CASE polarity WHEN 1 THEN -base_amount_minor ELSE base_amount_minor END END) AS used
-              FROM budget_effect GROUP BY target_year_month, category_id
-            ), adjustments AS (
-              SELECT year_month AS ym, category_id,
-                SUM(CASE kind WHEN 0 THEN amount_base_minor WHEN 1 THEN -amount_base_minor ELSE amount_base_minor END) AS adjusted
-              FROM budget_adjustment GROUP BY year_month, category_id
-            ), keys AS (
-              SELECT ym, category_id FROM effects UNION SELECT ym, category_id FROM adjustments
-            )
-            SELECT keys.ym, keys.category_id, 0, 0, COALESCE(adjustments.adjusted, 0), COALESCE(effects.used, 0),
-              COALESCE(adjustments.adjusted, 0) - COALESCE(effects.used, 0), ?
-            FROM keys LEFT JOIN effects ON effects.ym = keys.ym AND effects.category_id IS keys.category_id
-              LEFT JOIN adjustments ON adjustments.ym = keys.ym AND adjustments.category_id IS keys.category_id
-            """.trimIndent(),
+            "UPDATE budget_future_reservation SET as_of_local_revision=?",
             arrayOf<Any>(revision),
         )
+        val configured = database.queryList(
+            "SELECT bm.year_month,bmr.base_total_minor,bm.current_revision_id FROM budget_month bm " +
+                "JOIN budget_month_revision bmr ON bmr.id=bm.current_revision_id ORDER BY bm.year_month",
+        ) { cursor -> BudgetConfigured(cursor.getInt(0), cursor.getLong(1), cursor.getLong(2)) }
+        val limits = configured.associate { item ->
+            item.month to database.queryList(
+                "SELECT category_id,amount_base_minor FROM budget_category_limit WHERE budget_month_revision_id=?",
+                arrayOf(item.revisionId),
+            ) { cursor -> cursor.getLong(0) to cursor.getLong(1) }.toMap()
+        }
+        val usages = database.queryList(
+            "SELECT target_year_month,category_id,SUM(CASE kind WHEN 0 THEN polarity*base_amount_minor ELSE -polarity*base_amount_minor END) " +
+                "FROM budget_effect GROUP BY target_year_month,category_id",
+        ) { cursor -> BudgetAmount(cursor.getInt(0), if (cursor.isNull(1)) null else cursor.getLong(1), cursor.getLong(2)) }
+            .groupBy(BudgetAmount::month)
+        val adjustments = database.queryList(
+            "SELECT year_month,category_id,SUM(amount_base_minor) FROM budget_adjustment GROUP BY year_month,category_id",
+        ) { cursor -> BudgetAmount(cursor.getInt(0), if (cursor.isNull(1)) null else cursor.getLong(1), cursor.getLong(2)) }
+            .groupBy(BudgetAmount::month)
+        val relevant = (configured.map(BudgetConfigured::month) + usages.keys + adjustments.keys).distinct().sorted()
+        if (relevant.isEmpty()) return
+        val categoryParents = database.queryList("SELECT id,parent_id FROM category") { cursor ->
+            cursor.getLong(0) to if (cursor.isNull(1)) null else cursor.getLong(1)
+        }.toMap()
+        var month = relevant.first().toProjectionMonth()
+        val last = relevant.last().toProjectionMonth()
+        val carried = mutableMapOf<Long?, Long>()
+        while (month <= last) {
+            val monthKey = month.toProjectionInt()
+            val configuredMonth = configured.singleOrNull { it.month == monthKey }
+            val monthLimits = limits[monthKey].orEmpty()
+            val directUsage = usages[monthKey].orEmpty().associate { it.categoryId to it.amount }
+            val monthAdjustments = adjustments[monthKey].orEmpty().associate { it.categoryId to it.amount }
+            val totalUsed = exactSum(directUsage.values)
+            val total = BudgetProjectionRow(
+                categoryId = null,
+                base = configuredMonth?.total ?: 0L,
+                rollover = carried[null] ?: 0L,
+                adjustment = monthAdjustments[null] ?: 0L,
+                used = totalUsed,
+            ).withRemaining()
+            val displayCategoryIds = (monthLimits.keys + directUsage.keys.filterNotNull() + monthAdjustments.keys.filterNotNull()).toSet()
+            val categories = displayCategoryIds.map { categoryId ->
+                val children = categoryParents.filterValues { it == categoryId }.keys
+                val used = if (children.isEmpty()) {
+                    directUsage[categoryId] ?: 0L
+                } else {
+                    exactSum(directUsage.filterKeys { it == categoryId || it in children }.values)
+                }
+                BudgetProjectionRow(
+                    categoryId,
+                    monthLimits[categoryId] ?: 0L,
+                    if (categoryId in monthLimits) carried[categoryId] ?: 0L else 0L,
+                    monthAdjustments[categoryId] ?: 0L,
+                    used,
+                ).withRemaining()
+            }
+            val rows = listOf(total) + categories
+            rows.forEach { row ->
+                database.execSQL(
+                    "INSERT INTO budget_usage_projection(" +
+                        "year_month,category_id,base_budget_minor,rollover_minor," +
+                        "adjustment_minor,used_minor,remaining_minor,as_of_local_revision" +
+                        ") " +
+                        "VALUES (?,?,?,?,?,?,?,?)",
+                    arrayOf<Any?>(monthKey, row.categoryId, row.base, row.rollover, row.adjustment, row.used, row.remaining, revision),
+                )
+            }
+            val next = month.plusMonths(1)
+            if (month < last) {
+                rows.filter { it.categoryId == null || it.categoryId in monthLimits }.forEach { row ->
+                    database.execSQL(
+                        "INSERT INTO budget_rollover(from_year_month,to_year_month,scope,category_id,amount_base_minor,as_of_local_revision) VALUES (?,?,?,?,?,?)",
+                        arrayOf<Any?>(monthKey, next.toProjectionInt(), if (row.categoryId == null) 0 else 1, row.categoryId, row.remaining, revision),
+                    )
+                }
+            }
+            carried.clear()
+            carried[null] = total.remaining
+            categories.filter { it.categoryId in monthLimits }.forEach { carried[it.categoryId] = it.remaining }
+            month = next
+        }
     }
 
     private fun rebuildProjects(database: SupportSQLiteDatabase, revision: Long) {
@@ -533,6 +597,7 @@ internal class RoomProjectionEngine {
             "widget_account_snapshot", "widget_book_snapshot", "settlement_position_projection", "loan_progress_projection",
             "installment_progress_projection", "credit_account_projection", "credit_statement_projection",
             "goal_balance_projection", "project_usage_projection", "budget_usage_projection", "refund_status_projection",
+            "budget_rollover",
             "account_balance_daily", "account_balance_current", "current_transaction_projection",
         )
         val VERSIONED_FAMILIES = mapOf(
@@ -540,7 +605,11 @@ internal class RoomProjectionEngine {
             ProjectionFamily.ACCOUNT_BALANCE to listOf("account_balance_current"),
             ProjectionFamily.ACCOUNT_DAILY to listOf("account_balance_daily"),
             ProjectionFamily.REFUND to listOf("refund_status_projection"),
-            ProjectionFamily.BUDGET to listOf("budget_usage_projection"),
+            ProjectionFamily.BUDGET to listOf(
+                "budget_usage_projection",
+                "budget_rollover",
+                "budget_future_reservation",
+            ),
             ProjectionFamily.PROJECT to listOf("project_usage_projection"),
             ProjectionFamily.GOAL to listOf("goal_balance_projection"),
             ProjectionFamily.CREDIT to listOf("credit_statement_projection", "credit_account_projection"),
@@ -585,6 +654,9 @@ internal class RoomProjectionEngine {
             "account_balance_daily" to "SELECT * FROM account_balance_daily ORDER BY account_id, local_date",
             "refund_status_projection" to "SELECT * FROM refund_status_projection ORDER BY original_transaction_id",
             "budget_usage_projection" to "SELECT * FROM budget_usage_projection ORDER BY year_month, category_id",
+            "budget_rollover" to "SELECT * FROM budget_rollover ORDER BY from_year_month, to_year_month, scope, category_id",
+            "budget_future_reservation" to
+                "SELECT * FROM budget_future_reservation ORDER BY year_month, recurrence_series_id, occurrence_date",
             "project_usage_projection" to "SELECT * FROM project_usage_projection ORDER BY project_id",
             "goal_balance_projection" to "SELECT * FROM goal_balance_projection ORDER BY goal_id",
             "credit_statement_projection" to "SELECT * FROM credit_statement_projection ORDER BY statement_id",
@@ -602,3 +674,25 @@ internal class RoomProjectionEngine {
         )
     }
 }
+
+private data class BudgetConfigured(val month: Int, val total: Long, val revisionId: Long)
+private data class BudgetAmount(val month: Int, val categoryId: Long?, val amount: Long)
+private data class BudgetProjectionRow(
+    val categoryId: Long?,
+    val base: Long,
+    val rollover: Long,
+    val adjustment: Long,
+    val used: Long,
+    val remaining: Long = 0L,
+) {
+    fun withRemaining(): BudgetProjectionRow = copy(
+        remaining = Math.subtractExact(Math.addExact(Math.addExact(base, rollover), adjustment), used),
+    )
+}
+
+private fun exactSum(values: Collection<Long>): Long = values.fold(0L, Math::addExact)
+private fun Int.toProjectionMonth(): java.time.YearMonth = java.time.YearMonth.of(this / PROJECTION_MONTH_RADIX, this % PROJECTION_MONTH_RADIX)
+
+private fun java.time.YearMonth.toProjectionInt(): Int = year * PROJECTION_MONTH_RADIX + monthValue
+
+private const val PROJECTION_MONTH_RADIX = 100

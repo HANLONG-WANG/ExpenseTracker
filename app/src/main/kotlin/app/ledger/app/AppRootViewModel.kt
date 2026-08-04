@@ -37,6 +37,7 @@ import app.ledger.core.navigation.SessionGateState
 import app.ledger.core.navigation.StableIdArgument
 import app.ledger.core.navigation.TopLevelDestination
 import app.ledger.core.navigation.TopLevelStackSnapshot
+import app.ledger.core.navigation.YearMonthArgument
 import app.ledger.core.security.AndroidKeystoreKeys
 import app.ledger.core.security.AppLockController
 import app.ledger.core.security.AppLockSettings
@@ -71,6 +72,10 @@ import app.ledger.feature.onboarding.OnboardingRenderState
 import app.ledger.feature.onboarding.OnboardingStep
 import app.ledger.feature.onboarding.OnboardingUiState
 import app.ledger.feature.onboarding.OnboardingValidator
+import app.ledger.feature.planning.BudgetFeatureState
+import app.ledger.feature.planning.BudgetLoadState
+import app.ledger.feature.planning.BudgetPolicy
+import app.ledger.feature.planning.BudgetPresentation
 import app.ledger.feature.record.OrdinaryRecordEditorState
 import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.record.OrdinaryRecordPolicy
@@ -97,6 +102,8 @@ import app.ledger.finance.application.AccountDraft
 import app.ledger.finance.application.AttachmentContentSource
 import app.ledger.finance.application.AttachmentImportRequest
 import app.ledger.finance.application.BookAttachmentObjectPort
+import app.ledger.finance.application.BudgetApplicationPort
+import app.ledger.finance.application.BudgetMutationIds
 import app.ledger.finance.application.CardDraft
 import app.ledger.finance.application.CategoryDraft
 import app.ledger.finance.application.InitialAccountCommand
@@ -125,6 +132,7 @@ import app.ledger.finance.application.OrdinaryTransactionEntryPort
 import app.ledger.finance.application.OrdinaryTransactionWriteIds
 import app.ledger.finance.application.OrdinaryTransactionWriteRequest
 import app.ledger.finance.application.PlaceDraft
+import app.ledger.finance.application.RecordBudgetAdjustmentRequest
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.ReferenceMutation
@@ -134,6 +142,8 @@ import app.ledger.finance.application.RefundApplicationPort
 import app.ledger.finance.application.RefundSearchQuery
 import app.ledger.finance.application.RefundWriteIds
 import app.ledger.finance.application.RefundWriteRequest
+import app.ledger.finance.application.SaveBudgetMonthRequest
+import app.ledger.finance.application.SaveBudgetTemplateRequest
 import app.ledger.finance.application.SpecializedFxQuoteRequest
 import app.ledger.finance.application.SpecializedTransactionContext
 import app.ledger.finance.application.SpecializedTransactionEntryPort
@@ -142,6 +152,7 @@ import app.ledger.finance.application.SpecializedTransactionWriteRequest
 import app.ledger.finance.application.UpdateBookLocaleCommand
 import app.ledger.finance.data.RoomLedgerStartupInspector
 import app.ledger.finance.domain.BalanceAdjustmentDirection
+import app.ledger.finance.domain.BudgetAdjustmentKind
 import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryRemovalStrategy
 import app.ledger.finance.domain.DependencyPolicy
@@ -180,6 +191,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
+import java.time.YearMonth
 import java.time.ZoneId
 import java.util.Locale
 import javax.inject.Inject
@@ -223,6 +235,7 @@ internal class AppRootViewModel @Inject constructor(
     private val openingBalanceWritePort: OpeningBalanceWritePort,
     private val ordinaryTransactionEntryPort: OrdinaryTransactionEntryPort,
     private val refundApplicationPort: RefundApplicationPort,
+    private val budgetApplicationPort: BudgetApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
@@ -268,6 +281,10 @@ internal class AppRootViewModel @Inject constructor(
     private val mutableJournal = MutableStateFlow<JournalLoadState>(JournalLoadState.Loading)
     val journal: StateFlow<JournalLoadState> = mutableJournal.asStateFlow()
     private val mutableJournalPagingRequest = MutableStateFlow<JournalPagingRequest?>(null)
+    private val mutableBudget = MutableStateFlow<BudgetLoadState>(BudgetLoadState.Loading)
+    val budget: StateFlow<BudgetLoadState> = mutableBudget.asStateFlow()
+    private val mutableBudgetPending = MutableStateFlow(false)
+    val budgetPending: StateFlow<Boolean> = mutableBudgetPending.asStateFlow()
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val journalPages = mutableJournalPagingRequest.flatMapLatest { request ->
@@ -1489,6 +1506,212 @@ internal class AppRootViewModel @Inject constructor(
                 mutableOrdinaryRecordPending.value = false
             }
         }
+    }
+
+    fun loadBudget(month: YearMonth, templateId: StableId? = null, screenId: String = "BUD-001") {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        mutableBudget.value = BudgetLoadState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
+            val today = runtimeSources.clock.now().atZone(ZoneId.of(settingsRepository.current().zoneId.ifBlank { DEFAULT_ZONE })).toLocalDate()
+            mutableBudget.value = when (val result = budgetApplicationPort.snapshot(bookId, month, today)) {
+                is DomainResult.Failure -> BudgetLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Success -> {
+                    var state = BudgetPolicy.create(result.value)
+                    if (templateId != null) {
+                        val template = result.value.templates.singleOrNull { it.id == templateId }
+                        if (template != null) {
+                            state = BudgetPolicy.validate(
+                                state.copy(
+                                    selectedTemplateId = template.id,
+                                    presentation = BudgetPresentation.EDIT,
+                                    editor = state.editor.copy(
+                                        templateName = template.name,
+                                        totalText = budgetMinorText(template.revision.totalBaseMinor, result.value.baseCurrency),
+                                        categoryTexts = template.revision.limits.associate { limit ->
+                                            limit.categoryId to budgetMinorText(limit.amountBaseMinor, result.value.baseCurrency)
+                                        },
+                                    ),
+                                ),
+                            )
+                        }
+                    }
+                    state = when (screenId) {
+                        "BUD-002", "BUD-003" -> BudgetPolicy.edit(state)
+                        "BUD-004" -> state.copy(presentation = if (state.snapshot.adjustments.isEmpty()) BudgetPresentation.EMPTY else BudgetPresentation.CONTENT)
+                        "BUD-005" -> state.copy(presentation = BudgetPresentation.EDITING)
+                        "BUD-006" -> state.copy(presentation = if (state.snapshot.revisionHistory.size <= 1) BudgetPresentation.SINGLE_REVISION else BudgetPresentation.CONTENT)
+                        "BUD-007" -> state.copy(presentation = if (state.snapshot.templates.isEmpty()) BudgetPresentation.EMPTY else BudgetPresentation.CONTENT)
+                        "BUD-008" -> state.copy(presentation = if (templateId == null) BudgetPresentation.CREATE else BudgetPresentation.EDIT)
+                        else -> state
+                    }
+                    BudgetLoadState.Content(state)
+                }
+            }
+        }
+    }
+
+    fun editBudget() = updateBudget(BudgetPolicy::edit)
+
+    fun currentBudgetMonth(): YearMonth {
+        val zone = ZoneId.of(settings.value.zoneId.ifBlank { DEFAULT_ZONE })
+        return YearMonth.from(runtimeSources.clock.now().atZone(zone))
+    }
+    fun updateBudgetTotal(value: String) = updateBudget { BudgetPolicy.updateTotal(it, value) }
+    fun updateBudgetCategory(id: StableId, value: String) = updateBudget { BudgetPolicy.updateCategory(it, id, value) }
+    fun updateBudgetTemplateName(value: String) = updateBudget { BudgetPolicy.updateTemplateName(it, value) }
+    fun updateBudgetAdjustmentAmount(value: String) = updateBudget { BudgetPolicy.updateAdjustmentAmount(it, value) }
+    fun selectBudgetAdjustmentSource() = updateBudget(BudgetPolicy::selectNextAdjustmentSource)
+    fun selectBudgetAdjustmentTarget() = updateBudget(BudgetPolicy::selectNextAdjustmentTarget)
+
+    fun saveBudgetMonth() {
+        val content = mutableBudget.value as? BudgetLoadState.Content ?: return
+        val validated = BudgetPolicy.validate(content.state)
+        if (!validated.validation.valid) {
+            mutableBudget.value = BudgetLoadState.Content(validated.copy(presentation = BudgetPresentation.CONSTRAINT_ERROR))
+            return
+        }
+        if (mutableBudgetPending.value) return
+        mutableBudgetPending.value = true
+        mutableBudget.value = BudgetLoadState.Content(validated.copy(presentation = BudgetPresentation.SAVING))
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val snapshot = validated.snapshot
+                val request = SaveBudgetMonthRequest(
+                    budgetIds(snapshot.bookId, snapshot.monthId ?: nextId(), 0),
+                    snapshot.month,
+                    snapshot.currentRevision?.id,
+                    requireNotNull(validated.validation.totalMinor),
+                    validated.validation.limits,
+                    null,
+                    runtimeSources.clock.now(),
+                )
+                when (val result = budgetApplicationPort.saveMonth(request)) {
+                    is DomainResult.Success -> {
+                        loadBudget(snapshot.month)
+                        while (navigator.currentKey.contract.screenId.value != "BUD-001" && navigator.currentBackStack.size > 1) navigator.pop()
+                    }
+                    is DomainResult.Failure -> mutableBudget.value = BudgetLoadState.Content(validated.copy(presentation = BudgetPresentation.FAILED, failureCode = sanitizeCode(result.error.code)))
+                }
+            } finally {
+                mutableBudgetPending.value = false
+            }
+        }
+    }
+
+    fun saveBudgetTemplate() {
+        val content = mutableBudget.value as? BudgetLoadState.Content ?: return
+        val validated = BudgetPolicy.validate(content.state)
+        if (!validated.validation.valid || validated.editor.templateName.isBlank()) {
+            mutableBudget.value = BudgetLoadState.Content(validated.copy(presentation = BudgetPresentation.CONSTRAINT_ERROR))
+            return
+        }
+        if (mutableBudgetPending.value) return
+        mutableBudgetPending.value = true
+        mutableBudget.value = BudgetLoadState.Content(validated.copy(presentation = BudgetPresentation.SAVING))
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val existing = validated.selectedTemplateId?.let { id -> validated.snapshot.templates.singleOrNull { it.id == id } }
+                val request = SaveBudgetTemplateRequest(
+                    budgetIds(validated.snapshot.bookId, existing?.id ?: nextId(), 0),
+                    existing?.revision?.id,
+                    validated.editor.templateName.trim(),
+                    app.ledger.finance.domain.EntityStatus.ACTIVE,
+                    requireNotNull(validated.validation.totalMinor),
+                    validated.validation.limits,
+                    runtimeSources.clock.now(),
+                )
+                when (val result = budgetApplicationPort.saveTemplate(request)) {
+                    is DomainResult.Success -> {
+                        loadBudget(validated.snapshot.month)
+                        while (navigator.currentKey.contract.screenId.value != "BUD-001" && navigator.currentBackStack.size > 1) navigator.pop()
+                    }
+                    is DomainResult.Failure -> mutableBudget.value = BudgetLoadState.Content(validated.copy(presentation = BudgetPresentation.FAILED, failureCode = sanitizeCode(result.error.code)))
+                }
+            } finally {
+                mutableBudgetPending.value = false
+            }
+        }
+    }
+
+    fun saveBudgetAdjustment(kind: BudgetAdjustmentKind) {
+        val content = mutableBudget.value as? BudgetLoadState.Content ?: return
+        val state = content.state
+        val amount = if (kind == BudgetAdjustmentKind.CLEAR_ROLLOVER) 1L else BudgetPolicy.adjustmentMinor(state)
+        if (amount == null) {
+            mutableBudget.value = BudgetLoadState.Content(state.copy(presentation = BudgetPresentation.INVALID))
+            return
+        }
+        val source = state.adjustmentSourceCategoryId
+        val target = state.adjustmentTargetCategoryId
+        if (kind in setOf(BudgetAdjustmentKind.TRANSFER_IN, BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER) && (source == null || target == null)) {
+            mutableBudget.value = BudgetLoadState.Content(state.copy(presentation = BudgetPresentation.INVALID))
+            return
+        }
+        if (mutableBudgetPending.value) return
+        mutableBudgetPending.value = true
+        mutableBudget.value = BudgetLoadState.Content(state.copy(presentation = BudgetPresentation.SAVING))
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val request = RecordBudgetAdjustmentRequest(
+                    budgetIds(state.snapshot.bookId, state.snapshot.monthId ?: nextId(), if (kind in setOf(BudgetAdjustmentKind.TRANSFER_IN, BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER)) 2 else 1),
+                    state.snapshot.month,
+                    kind,
+                    amount,
+                    if (kind == BudgetAdjustmentKind.INCREASE_AVAILABLE) null else source,
+                    if (kind in setOf(BudgetAdjustmentKind.DECREASE_AVAILABLE, BudgetAdjustmentKind.CLEAR_ROLLOVER)) null else target,
+                    runtimeSources.clock.now(),
+                )
+                when (val result = budgetApplicationPort.recordAdjustment(request)) {
+                    is DomainResult.Success -> {
+                        loadBudget(state.snapshot.month)
+                        while (navigator.currentKey.contract.screenId.value != "BUD-001" && navigator.currentBackStack.size > 1) navigator.pop()
+                    }
+                    is DomainResult.Failure -> mutableBudget.value = BudgetLoadState.Content(state.copy(presentation = BudgetPresentation.FAILED, failureCode = sanitizeCode(result.error.code)))
+                }
+            } finally {
+                mutableBudgetPending.value = false
+            }
+        }
+    }
+
+    fun navigateBudget(target: String, month: YearMonth, stableId: StableId?, adjustmentKind: BudgetAdjustmentKind?) {
+        val screenId = ScreenId(target)
+        val arguments = buildMap<String, SafeRouteArgument> {
+            if (target in setOf("BUD-001", "BUD-002", "BUD-003", "BUD-004", "BUD-005", "BUD-006")) put("yearMonth", YearMonthArgument(month))
+            if (target == "BUD-003" && stableId != null) put("categoryId", StableIdArgument(stableId))
+            if (target == "BUD-008" && stableId != null) put("templateId", StableIdArgument(stableId))
+            if (target == "BUD-005" && adjustmentKind != null) {
+                val routeValue = when (adjustmentKind) {
+                    BudgetAdjustmentKind.CLEAR_ROLLOVER -> "CLEAR_ROLLOVER"
+                    BudgetAdjustmentKind.INCREASE_AVAILABLE -> "ADD"
+                    BudgetAdjustmentKind.DECREASE_AVAILABLE -> "SUBTRACT"
+                    else -> "TRANSFER"
+                }
+                put("type", LedgerRouteContract.enumArgument(screenId, "type", routeValue))
+            }
+        }
+        navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+    }
+
+    private fun budgetIds(bookId: StableId, entityId: StableId, factCount: Int) = BudgetMutationIds(
+        bookId,
+        CommandId(nextId()),
+        nextId(),
+        entityId,
+        nextId(),
+        List(factCount) { nextId() },
+        nextId(),
+    )
+
+    private fun budgetMinorText(minor: Long, currency: CurrencyCode): String {
+        val scale = app.ledger.core.money.JvmLegalTenderCurrencyCatalog.create().find(currency)?.fractionDigits ?: 0
+        return java.math.BigDecimal.valueOf(minor, scale).stripTrailingZeros().toPlainString()
+    }
+
+    private fun updateBudget(block: (BudgetFeatureState) -> BudgetFeatureState) {
+        val current = mutableBudget.value as? BudgetLoadState.Content ?: return
+        mutableBudget.value = BudgetLoadState.Content(block(current.state))
     }
 
     fun requestRootBack() {

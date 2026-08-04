@@ -27,8 +27,64 @@ object DeterministicFinancialPlanner {
             is MoveTransactionToTrashCommand -> planTrash(command, snapshot)
             is RestoreTransactionCommand -> planRestore(command, snapshot)
             is BatchFinancialCommand -> planBatch(command, snapshot)
+            is ConfigureBudgetMonthCommand,
+            is SaveBudgetTemplateCommand,
+            is RecordBudgetAdjustmentCommand,
+            is RecordBudgetAdjustmentsCommand,
+            -> planBudgetMutation(command, snapshot)
             else -> reject("financialCommand.transactionPlannerScope")
         }
+    } catch (rejected: PlannerRejected) {
+        DomainResult.Failure(rejected.violation)
+    }
+
+    private fun planBudgetMutation(
+        command: FinancialCommand,
+        snapshot: PlanningSnapshot,
+    ): DomainResult<FinancialMutationPlan> = try {
+        val operation = snapshot.operationContext ?: reject("planningSnapshot.operationContext")
+        val target = snapshot.book.localRevision.next().orReject()
+        val monthMutations = if (command is ConfigureBudgetMonthCommand) listOf(command.mutation) else emptyList()
+        val templateMutations = if (command is SaveBudgetTemplateCommand) listOf(command.mutation) else emptyList()
+        val adjustments = when (command) {
+            is RecordBudgetAdjustmentCommand -> listOf(command.adjustment)
+            is RecordBudgetAdjustmentsCommand -> command.adjustments
+            else -> emptyList()
+        }
+        require(monthMutations.all { it.revision.createdCommitId == operation.commitId }, "budgetMonth.createdCommitId")
+        require(templateMutations.all { it.revision.createdCommitId == operation.commitId }, "budgetTemplate.createdCommitId")
+        require(adjustments.all { it.createdCommitId == operation.commitId }, "budgetAdjustment.createdCommitId")
+        val affectedMonth = monthMutations.firstOrNull()?.month?.month ?: adjustments.firstOrNull()?.month
+        val plan = FinancialMutationPlan(
+            commandId = command.commandId,
+            commandType = command.commandType,
+            payloadHash = command.payloadHash,
+            expectedRevisionId = null,
+            targetLocalRevision = target,
+            commit = CommitDraft(
+                operation.commitId,
+                CommitKind.USER_MUTATION,
+                listOf(snapshot.book.headCommitId),
+                operation.createdAt,
+                command.commandId,
+                operation.deviceInstanceId,
+                CanonicalFinancialHash.commitRoot(command.commandId, command.payloadHash, target, emptyList()),
+            ),
+            transactions = emptyList(), revisions = emptyList(), revisionAmounts = emptyList(), fxRateSnapshots = emptyList(),
+            journalBundles = emptyList(), economicEffects = emptyList(), budgetEffects = emptyList(), projectEffects = emptyList(),
+            goalEffects = emptyList(), statementEffects = emptyList(), loanEffects = emptyList(), settlementEffects = emptyList(),
+            refundAllocations = emptyList(), goalMovements = emptyList(), budgetAdjustments = adjustments,
+            purgeTombstones = emptyList(), blobGcCandidates = emptyList(), dependencyResolutions = emptyList(),
+            projectionChanges = ProjectionChangeSet(
+                target,
+                affectedMonth?.let { listOf(ProjectionChange.BudgetFromMonth(it, target)) }.orEmpty(),
+            ),
+            entityChanges = emptyList(),
+            ruleSetVersion = snapshot.book.ruleSetVersion,
+            budgetMonthMutations = monthMutations,
+            budgetTemplateMutations = templateMutations,
+        )
+        FinancialMutationPlanValidator.validate(command, snapshot, plan)
     } catch (rejected: PlannerRejected) {
         DomainResult.Failure(rejected.violation)
     }

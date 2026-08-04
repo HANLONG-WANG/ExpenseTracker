@@ -496,8 +496,6 @@ internal fun RootDestination(
         )
     } else if (screenId == "ACC-001") {
         EmptyTopLevel(R.string.global_accounts_empty_title, R.string.global_accounts_empty_message, onMore)
-    } else if (screenId == "BUD-001") {
-        EmptyTopLevel(R.string.global_budget_empty_title, R.string.global_budget_empty_message, onMore)
     } else if (screenId == "ANA-001") {
         EmptyTopLevel(R.string.global_analysis_empty_title, R.string.global_analysis_empty_message, onMore)
     } else if (screenId == "G-006") {

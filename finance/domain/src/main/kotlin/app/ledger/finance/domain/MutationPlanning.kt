@@ -27,6 +27,9 @@ enum class FinancialCommandType {
     RECORD_GOAL_MOVEMENT,
     RECORD_BUDGET_ADJUSTMENT,
     BATCH_MUTATION,
+    CONFIGURE_BUDGET_MONTH,
+    SAVE_BUDGET_TEMPLATE,
+    RECORD_BUDGET_ADJUSTMENTS,
 }
 
 sealed interface FinancialCommand {
@@ -250,6 +253,39 @@ data class RecordBudgetAdjustmentCommand(
     override val commandType: FinancialCommandType = FinancialCommandType.RECORD_BUDGET_ADJUSTMENT
 }
 
+data class ConfigureBudgetMonthCommand(
+    override val commandId: CommandId,
+    override val payloadHash: Hash256,
+    val mutation: BudgetMonthMutation,
+) : FinancialCommand {
+    override val expectedRevisionId: TransactionRevisionId? = null
+    override val commandType: FinancialCommandType = FinancialCommandType.CONFIGURE_BUDGET_MONTH
+}
+
+data class SaveBudgetTemplateCommand(
+    override val commandId: CommandId,
+    override val payloadHash: Hash256,
+    val mutation: BudgetTemplateMutation,
+) : FinancialCommand {
+    override val expectedRevisionId: TransactionRevisionId? = null
+    override val commandType: FinancialCommandType = FinancialCommandType.SAVE_BUDGET_TEMPLATE
+}
+
+data class RecordBudgetAdjustmentsCommand(
+    override val commandId: CommandId,
+    override val payloadHash: Hash256,
+    val adjustments: List<BudgetAdjustment>,
+) : FinancialCommand {
+    override val expectedRevisionId: TransactionRevisionId? = null
+    override val commandType: FinancialCommandType = FinancialCommandType.RECORD_BUDGET_ADJUSTMENTS
+
+    init {
+        require(adjustments.isNotEmpty())
+        require(adjustments.map(BudgetAdjustment::id).toSet().size == adjustments.size)
+        require(adjustments.map(BudgetAdjustment::month).toSet().size == 1)
+    }
+}
+
 data class BatchFinancialCommand(
     override val commandId: CommandId,
     override val payloadHash: Hash256,
@@ -313,6 +349,14 @@ data class FinancialMutationPlan(
     val projectionChanges: ProjectionChangeSet,
     val entityChanges: List<EntityChange>,
     val ruleSetVersion: RuleSetVersion,
+    val budgetMonthMutations: List<BudgetMonthMutation> = emptyList(),
+    val budgetTemplateMutations: List<BudgetTemplateMutation> = emptyList(),
+)
+
+data class PlanningOperationContext(
+    val commitId: BookCommitId,
+    val createdAt: Instant,
+    val deviceInstanceId: DeviceInstanceId,
 )
 
 data class PlanningSnapshot(
@@ -327,6 +371,8 @@ data class PlanningSnapshot(
     val accountingContext: AccountingPlanningContext? = null,
     /** Ordered child snapshots for an atomic [BatchFinancialCommand]. Empty for every scalar command. */
     val batchSnapshots: List<PlanningSnapshot> = emptyList(),
+    val budgetTemplateRevision: BudgetTemplateRevision? = null,
+    val operationContext: PlanningOperationContext? = null,
 )
 
 object FinancialMutationPlanValidator {
@@ -357,6 +403,8 @@ object FinancialMutationPlanValidator {
         if (command.expectedRevisionId != snapshot.currentRevision?.id) {
             return DomainResult.Failure(DomainViolation.StaleExpectedRevision)
         }
+        val budgetValidation = validateBudgetMutations(command, snapshot, plan)
+        if (budgetValidation is DomainResult.Failure) return budgetValidation
         if (
             command is BatchFinancialCommand &&
             (
@@ -404,13 +452,6 @@ object FinancialMutationPlanValidator {
         if (!refundsWithinBalance(command, snapshot)) {
             return DomainResult.Failure(DomainViolation.Invariant("INV-010"))
         }
-        if (snapshot.budgetRevision != null) {
-            val budgetResult = BudgetHierarchyPolicy.validate(
-                snapshot.budgetRevision.totalBaseMinor,
-                snapshot.budgetRevision.categoryLimits,
-            )
-            if (budgetResult is DomainResult.Failure) return budgetResult
-        }
         val settlementGroups = plan.settlementEffects.groupBy { it.activityId to it.currency }
         for (effects in settlementGroups.values) {
             val settlementResult = SettlementSharePolicy.validateEffects(effects)
@@ -451,6 +492,41 @@ object FinancialMutationPlanValidator {
             }
         }
         return DomainResult.Success(plan)
+    }
+
+    private fun validateBudgetMutations(
+        command: FinancialCommand,
+        snapshot: PlanningSnapshot,
+        plan: FinancialMutationPlan,
+    ): DomainResult<Unit> {
+        if (!budgetExpectedRevisionMatches(command, snapshot)) {
+            return DomainResult.Failure(DomainViolation.StaleExpectedRevision)
+        }
+        val hierarchies = buildList {
+            snapshot.budgetRevision?.let { add(it.totalBaseMinor to it.categoryLimits) }
+            plan.budgetMonthMutations.forEach { add(it.revision.totalBaseMinor to it.revision.categoryLimits) }
+            plan.budgetTemplateMutations.forEach { add(it.revision.totalBaseMinor to it.revision.categoryLimits) }
+        }
+        return validateBudgetHierarchies(hierarchies)
+    }
+
+    private fun budgetExpectedRevisionMatches(
+        command: FinancialCommand,
+        snapshot: PlanningSnapshot,
+    ): Boolean = when (command) {
+        is ConfigureBudgetMonthCommand -> command.mutation.expectedRevisionId == snapshot.budgetRevision?.id
+        is SaveBudgetTemplateCommand -> command.mutation.expectedRevisionId == snapshot.budgetTemplateRevision?.id
+        else -> true
+    }
+
+    private fun validateBudgetHierarchies(
+        hierarchies: List<Pair<Long, List<CategoryBudgetLimit>>>,
+    ): DomainResult<Unit> {
+        hierarchies.forEach { (totalBaseMinor, limits) ->
+            val result = BudgetHierarchyPolicy.validate(totalBaseMinor, limits)
+            if (result is DomainResult.Failure) return result
+        }
+        return DomainResult.Success(Unit)
     }
 
     @Suppress("ComplexCondition", "ReturnCount")
@@ -543,6 +619,9 @@ object FinancialMutationPlanValidator {
         } && plan.commit.kind == CommitKind.PURGE
         is RecordGoalMovementCommand -> plan.goalMovements.contains(command.movement) && plan.goalEffects.isNotEmpty()
         is RecordBudgetAdjustmentCommand -> plan.budgetAdjustments.contains(command.adjustment)
+        is ConfigureBudgetMonthCommand -> plan.budgetMonthMutations == listOf(command.mutation)
+        is SaveBudgetTemplateCommand -> plan.budgetTemplateMutations == listOf(command.mutation)
+        is RecordBudgetAdjustmentsCommand -> plan.budgetAdjustments == command.adjustments
         is BatchFinancialCommand ->
             plan.commit.kind == CommitKind.BATCH_MUTATION &&
                 (plan.revisions.isNotEmpty() || plan.goalMovements.isNotEmpty() || plan.budgetAdjustments.isNotEmpty())

@@ -65,7 +65,7 @@ internal fun ReadyRootScaffold(
             val key = navigator.currentKey
             val topLevel = key.contract.screenId.value in setOf("REC-001", "JRN-001", "ACC-001", "BUD-001", "ANA-001")
             LedgerTopAppBar(
-                title = refundDestinationTitleOrNull(key.contract.screenId.value) ?: destinationTitle(key),
+                title = budgetDestinationTitleOrNull(key.contract.screenId.value) ?: refundDestinationTitleOrNull(key.contract.screenId.value) ?: destinationTitle(key),
                 variant = if (topLevel) LedgerTopAppBarVariant.TOP_LEVEL else LedgerTopAppBarVariant.BACK,
                 onNavigation = {
                     viewModel.requestRootBack()
@@ -130,7 +130,18 @@ internal fun ReadyRootScaffold(
             entryProvider = { key ->
                 NavEntry(key) {
                     val screenId = key.contract.screenId.value
-                    if (screenId == "REC-015" || screenId == "REC-016") {
+                    if (screenId.startsWith("BUD-")) {
+                        BudgetRootDestination(
+                            screenId,
+                            key.encodedArguments,
+                            viewModel,
+                            onNavigationChanged = { navigationEpoch += 1 },
+                            onOperations = {
+                                navigator.navigate(LedgerRouteContract.destination(ScreenId("G-007")), SessionGateState.READY)
+                                navigationEpoch += 1
+                            },
+                        )
+                    } else if (screenId == "REC-015" || screenId == "REC-016") {
                         RefundRootDestination(
                             screenId = screenId,
                             encodedArguments = key.encodedArguments,

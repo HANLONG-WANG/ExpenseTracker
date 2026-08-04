@@ -1,8 +1,8 @@
 # Domain and Schema Coverage Baseline
 
-Last updated: 2026-08-03 (Asia/Tokyo)
-Stage: P16
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P16 verifies refund transactions/revisions, immutable allocation/reversal facts, synchronous refundable/dependency projections, contra-expense effects, original-dependency policies and REC-015/016. It does not promote installment-specific refunds, reports, P31 physical purge or later workflows.
+Last updated: 2026-08-04 (Asia/Tokyo)
+Stage: P17
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P17 verifies month/template revisions, hierarchy constraints, immutable budget adjustments, synchronous usage/rollover rebuild, daily availability and BUD-001—008. It does not promote recurrence authoring, project/goal/analytics completion or later workflows.
 
 ## P05 domain/application result
 
@@ -47,6 +47,10 @@ P15 implements bounded current-transaction queries, complete typed filters, immu
 ## P16 refund result
 
 P16 realizes the §14/§25.6 refund model as a typed revision plus immutable allocation fact/reversal chain. Linked and independent refunds generate balanced cash/expense postings, `CONTRA_EXPENSE` instead of income, closed budget/project/goal/settlement restore effects, three separately persisted dates/months and exact cumulative eligibility. `P16_REFUND_MAPPING.md` records the two-screen/eight-state UI, dependency-policy and excess-projection precedence details.
+
+## P17 budget result
+
+P17 realizes §15 and the existing Schema v1 budget family through typed month/template mutations, immutable revisions and signed adjustment facts. `BudgetHierarchyPolicy` enforces total/root/child base limits, while synchronous projection rebuild derives total/root/leaf usage and an uncapped positive/negative natural-month rollover chain from immutable effects, adjustments and the prior month. Daily availability subtracts the version-matched future recurrence reservation before exact integer division. `P17_BUDGET_MAPPING.md` records the eight-screen/23-state UI, application/coordinator boundary and retained later-stage ownership.
 
 ## Architecture decisions
 
@@ -116,9 +120,9 @@ Source: `docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md` �
 | INV-015 | Internal transfer does not change net financial assets. | Planner property + projection tests | VERIFIED (`P06-E001`, `P06-E002`, `P14-E004`: 1,000 generated zero-net-asset plans plus SQLCipher commit/widget projection retain exact zero net change) |
 | INV-016 | Current FX rates cannot change historical base-currency amounts. | Historical-regression tests | VERIFIED (`P06-E001`, `P06-E002`, `P07-E001`, `P08-E001`, `P08-E003`: frozen amount/FX evidence and postings append through the normalized mapper; rebuild never reads a current FX feed) |
 | INV-017 | Current FX revaluation is not income or expense. | Projection/report tests | VERIFIED (`P06-E001`, `P06-E002`, `P14-E004`: current-rate refresh only advances valuation projection/version, appends no transaction/Journal/EconomicEffect and leaves localRevision unchanged) |
-| INV-018 | First-level category budget total cannot exceed total budget. | Domain property + UI tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
-| INV-019 | Second-level category budget total cannot exceed its parent budget. | Domain property + UI tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
-| INV-020 | Rollover chains rebuild from transaction effects, adjustments and prior-month rollover. | Property + projection rebuild tests | IN_PROGRESS (`P05-E001`, `P05-E002`: typed model/policy foundation; persistence/integration evidence remains later) |
+| INV-018 | First-level category budget total cannot exceed total budget. | Domain property + UI tests | VERIFIED (`P17-E002`—`P17-E004`: 1,000 generated hierarchies, SQLCipher rejection rollback and live exact-difference meters pass) |
+| INV-019 | Second-level category budget total cannot exceed its parent budget. | Domain property + UI tests | VERIFIED (`P17-E002`—`P17-E004`: typed root/parent identity, checked child sums, database integration and constraint UI pass) |
+| INV-020 | Rollover chains rebuild from transaction effects, adjustments and prior-month rollover. | Property + projection rebuild tests | VERIFIED (`P17-E002`, `P17-E003`: 122 continuous positive/negative months plus transaction, paired adjustment, historical edit and canonical SQLCipher rebuild hash pass) |
 | INV-021 | Goal balance does not alter real account balance. | Planner/projection tests | IN_PROGRESS (`P06-E001`, `P06-E002`: separate GoalEffect leaves Posting shape unchanged; projection remains) |
 | INV-022 | Settlement position deltas sum to zero across participants. | Domain property + database audit | IN_PROGRESS (`P06-E001`, `P06-E002`: checked zero-sum share/payment effects; database audit remains) |
 | INV-023 | External-participant payment cannot alter the local user's account. | Planner property + UI integration | IN_PROGRESS (`P06-E001`, `P06-E002`: journal-less external operation and full lifecycle tested; UI remains) |
@@ -236,7 +240,7 @@ Source: domain/schema document §§26–27. Every core projection stores `as_of_
 |---|---|---|---|
 | PROJECTION-FAMILY-01 | Current transaction | `current_transaction_projection` | VERIFIED (`P07-E001`, `P08-E001`—`P08-E003`: deterministic rebuild, version/count audit and typed keyset query pass on SQLCipher) |
 | PROJECTION-FAMILY-02 | Account | `account_balance_current`, `account_valuation_current`, `account_balance_daily` | VERIFIED (`P08-E001`, `P08-E003`, `P14-E004`: balance/current/daily rebuild plus current FX valuation and independent local/valuation revision stamping pass on SQLCipher) |
-| PROJECTION-FAMILY-03 | Budget and planning | `budget_usage_projection`, `budget_future_reservation`, `project_usage_projection`, `goal_balance_projection`, `budget_rollover`, `refund_status_projection` | IN_PROGRESS (`P08-E001`, `P08-E003`: usage/project/goal/refund rebuilds verified; reservation and rollover-chain runtimes remain later) |
+| PROJECTION-FAMILY-03 | Budget and planning | `budget_usage_projection`, `budget_future_reservation`, `project_usage_projection`, `goal_balance_projection`, `budget_rollover`, `refund_status_projection` | IN_PROGRESS (`P08-E001`, `P08-E003`, `P16-E003`, `P17-E002`—`P17-E004`: budget usage/rollover/reservation consumption and refund status are verified; project/goal feature completion and recurrence production remain later) |
 | PROJECTION-FAMILY-04 | Liabilities | `credit_statement_projection`, `credit_account_projection`, `installment_progress_projection`, `loan_progress_projection`, `loan_future_cashflow_projection`, `loan_simulation_item` | IN_PROGRESS (`P08-E001`, `P08-E003`: current credit/installment/loan progress rebuilds verified; future cashflow and simulations remain later) |
 | PROJECTION-FAMILY-05 | Settlement | `settlement_position_projection` | VERIFIED (`P07-E001`, `P08-E001`, `P08-E003`: fact-derived positions rebuild with the target local revision; suggestion UI remains P22 and is not part of this family) |
 | PROJECTION-FAMILY-06 | Analytics | `analytics_daily_total`, `analytics_daily_category`, `analytics_daily_account`, `analytics_daily_merchant`, `analytics_daily_project`, `analytics_daily_place` and corresponding `analytics_monthly_*` tables | IN_PROGRESS (`P07-E001`: all twelve narrow physical rollups complete; P25 calculation behavior remains) |
@@ -261,11 +265,11 @@ Worker/UIDT/service payloads may contain only `operationId`; full parameters rem
 
 | Gate | Frozen source | Status |
 |---|---|---|
-| Pure domain property suite for accounting, refunds, FX, loans, installments, budget, settlement, expressions and recurrence | Tech stack §16; architecture §21 | IN_PROGRESS (`P03-E002`—`P03-E005`, `P05-E002`, `P06-E001`—`P06-E003`: all P06 transaction rules and accounting-core properties verified; later advanced planners/integration remain) |
-| Room/SQLCipher schema, all migrations, FTS5, R*Tree, WAL plaintext and projection rebuild on device | Tech stack §§5,16; architecture §21 | IN_PROGRESS (`P07-E001`—`P07-E004`, `P08-E003`: v1 create/reopen/capabilities/leakage and exact synchronous projection audit/rebuild are verified on API 36; future registered migrations retain their owning stages) |
+| Pure domain property suite for accounting, refunds, FX, loans, installments, budget, settlement, expressions and recurrence | Tech stack §16; architecture §21 | IN_PROGRESS (`P03-E002`—`P03-E005`, `P05-E002`, `P06-E001`—`P06-E003`, `P16-E002`, `P17-E002`: accounting/refund rules and 1,000 generated budget hierarchies plus 122-month rollover chains are verified; later loan/installment/settlement/recurrence integration remains) |
+| Room/SQLCipher schema, all migrations, FTS5, R*Tree, WAL plaintext and projection rebuild on device | Tech stack §§5,16; architecture §21 | IN_PROGRESS (`P07-E001`—`P07-E004`, `P08-E003`, `P17-E003`: v1 create/reopen/capabilities/leakage and exact synchronous financial/budget projection audit/rebuild are verified on API 36; future registered migrations retain their owning stages) |
 | Keystore, BiometricPrompt, SAF, location and foreground/UIDT behavior on actual devices | Tech stack §16 | IN_PROGRESS (`P09-E003`, `P09-E004`, `P10-E003`, `P10-E004`: Keystore/credential, SAF streaming/provider and foreground location pass on API 36; foreground/UIDT services remain P28) |
 | Failure injection for attachment, commits, Drive, storage, restore exchange, Keystore, biometrics, row 99,999 and projection versions | Architecture §21.3 | IN_PROGRESS (`P08-E003`, `P09-E003`, `P09-E004`, `P10-E003`: commit/projection, key/auth and attachment cancellation/database/process failures pass; Drive/restore/scale remain later) |
-| Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`, `P08-E001`, `P08-E002`, `P10-E006`, `P15-E001`, `P15-E007`, `P16-E001`, `P16-E006`: feature SDK/infrastructure, privileged ports, SQL/DAO/fact and direct-writer bypasses are rejected) |
-| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008`, `P10-E004`, `P10-E005`, `P11-E004`—`P11-E006`, `P14-E005`, `P14-E006`, `P15-E005`, `P15-E006`, `P16-E004`, `P16-E005`: cross-cutting matrix plus G/ONB, P14, all JRN and REC-015/016 states pass; later screens/final acceptance remain) |
+| Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`, `P08-E001`, `P08-E002`, `P10-E006`, `P15-E001`, `P15-E007`, `P16-E001`, `P16-E006`, `P17-E001`, `P17-E006`: feature SDK/infrastructure, privileged ports, SQL/DAO/fact and direct-writer bypasses are rejected) |
+| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008`, `P10-E004`, `P10-E005`, `P11-E004`—`P11-E006`, `P14-E005`, `P14-E006`, `P15-E005`, `P15-E006`, `P16-E004`, `P16-E005`, `P17-E004`, `P17-E005`: cross-cutting matrix plus G/ONB, P14, all JRN, refund and all eight BUD screens pass; later screens/final acceptance remain) |
 | Target-scale paging, reports, map, 100k-row import and tens-of-GB streaming operations | Requirements §25; UI contract §16.5 | IN_PROGRESS (`P10-E003`, `P10-E004`, `P15-E003`: bounded streaming/map and real 500,000-transaction SQLCipher keyset/FTS evidence pass; tens-of-GB, report and 100k-row import gates remain later) |
 | Release AAB, Baseline Profile, locks, verification metadata, SBOM, licenses, NOTICE and privacy/release documentation | Tech stack §16.4 and release plan | IN_PROGRESS (`P02-E006` verifies locks/SBOM/license task infrastructure only; release evidence remains P36) |

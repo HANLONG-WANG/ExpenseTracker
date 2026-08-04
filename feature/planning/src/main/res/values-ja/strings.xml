@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="budget_loading">予算を読み込み中…</string><string name="budget_load_failed">予算データを読み込めません。</string>
+    <string name="budget_previous_month">前月</string><string name="budget_next_month">翌月</string><string name="budget_historical">過去の月</string><string name="budget_future">将来の月です。事前に編集できます。</string>
+    <string name="budget_recalculating">影響月から繰越チェーンを再計算中です。完了後に自動更新します。</string><string name="budget_recalculation_failed">繰越の再計算に失敗しました。古いキャッシュを現在値として表示しません。</string><string name="budget_operation_center">操作センター</string>
+    <string name="budget_not_configured">この月の予算は未設定です</string><string name="budget_not_configured_body">支出は月間合計に含まれます。自然月の基本予算を設定すると繰越と進捗を確認できます。</string><string name="budget_create">予算を設定</string>
+    <string name="budget_remaining">今月の利用可能額</string><string name="budget_exceeded">予算超過</string><string name="budget_base_row">基本予算：%1$s</string><string name="budget_rollover_row">繰越：%1$s</string><string name="budget_adjustment_row">調整：%1$s</string><string name="budget_used_row">使用済み：%1$s</string><string name="budget_exceeded_amount">超過：%1$s</string><string name="budget_progress_accessible">利用可能 %2$d のうち %1$d 使用</string>
+    <string name="budget_daily_available">今日の利用可能額</string><string name="budget_daily_unavailable">過去月または最新でない投影では計算できません。</string><string name="budget_reserved_formula">未発生の周期固定支出 %1$s を差し引き、残り %2$d 日で割ります。</string>
+    <string name="budget_categories">カテゴリ予算</string><string name="budget_used_available">使用 %1$s / 利用可能 %2$s</string><string name="budget_unallocated_category">個別予算なし。支出は月間合計に含まれます。</string><string name="budget_includes_children">子カテゴリの支出を含み、重複計上しません。</string>
+    <string name="budget_edit">予算を編集</string><string name="budget_adjustments">予算調整</string><string name="budget_history">版履歴</string><string name="budget_templates">予算テンプレート</string>
+    <string name="budget_template_name">テンプレート名</string><string name="budget_total">月間基本総予算</string><string name="budget_invalid_amount">有効な0以上の金額を入力してください。</string><string name="budget_child_label">子 · %1$s</string>
+    <string name="budget_history_recalc_warning">過去月の予算変更は、その月以降の繰越チェーンを再構築します。</string><string name="budget_rollover_excluded_constraint">基本上限の検証に繰越と調整は含みません。正負の繰越は別表示で上限・期限なしです。</string>
+    <string name="budget_allocation_total">第1階層合計 %1$d / 総予算 %2$d</string><string name="budget_child_allocation">第2階層合計 %1$d / 親予算 %2$d</string><string name="budget_over_limit">%1$d 超過。保存できません。</string><string name="budget_unallocated">未配分 %1$d</string>
+    <string name="budget_save">保存</string><string name="budget_saving">保存中…</string><string name="budget_parent_limit_summary">親子の上限を即時検証し、親の使用額には子を含みます。</string><string name="budget_category_limit">カテゴリ基本予算</string>
+    <string name="budget_no_account_impact">口座残高を変更せず、財務取引も作成しません。</string><string name="budget_no_adjustments">調整はありません</string><string name="budget_no_adjustments_body">基本予算、繰越、調整は常に分けて記録します。</string><string name="budget_add_adjustment">調整を追加</string><string name="budget_adjustment_immutable">過去の調整は直接編集せず、反対調整または新規調整を追加します。</string><string name="budget_adjustment_amount">調整額</string><string name="budget_adjustment_category_hint">カテゴリ移動は移動元と移動先を明示します。</string>
+    <string name="budget_source_category">移動元：%1$s</string><string name="budget_target_category">移動先：%1$s</string>
+    <string name="budget_clear_rollover">繰越をクリア</string><string name="budget_increase">利用可能額を増加</string><string name="budget_decrease">利用可能額を減少</string><string name="budget_transfer">カテゴリ間移動</string><string name="budget_archive_transfer">アーカイブ繰越を移動</string>
+    <string name="budget_revision">リビジョン %1$d</string><string name="budget_compare">版を比較</string><string name="budget_no_templates">テンプレートはありません</string><string name="budget_no_templates_body">テンプレートは基本額とカテゴリ構造だけを保存し、繰越と調整は保存しません。</string><string name="budget_add_template">テンプレートを追加</string>
+</resources>

@@ -11,6 +11,7 @@ import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.domain.BatchFinancialCommand
 import app.ledger.finance.domain.CommandReceipt
 import app.ledger.finance.domain.CommitKind
+import app.ledger.finance.domain.ConfigureBudgetMonthCommand
 import app.ledger.finance.domain.EditTransactionCommand
 import app.ledger.finance.domain.EntityType
 import app.ledger.finance.domain.FinancialCommand
@@ -19,10 +20,12 @@ import app.ledger.finance.domain.FinancialMutationPlan
 import app.ledger.finance.domain.MoveTransactionToTrashCommand
 import app.ledger.finance.domain.PurgeTransactionCommand
 import app.ledger.finance.domain.RecordBudgetAdjustmentCommand
+import app.ledger.finance.domain.RecordBudgetAdjustmentsCommand
 import app.ledger.finance.domain.RecordGoalMovementCommand
 import app.ledger.finance.domain.RecordTransactionCommand
 import app.ledger.finance.domain.RestoreHistoricalRevisionCommand
 import app.ledger.finance.domain.RestoreTransactionCommand
+import app.ledger.finance.domain.SaveBudgetTemplateCommand
 import app.ledger.finance.domain.StableEntityReference
 import app.ledger.finance.domain.TransactionId
 import java.time.ZoneId
@@ -119,7 +122,7 @@ class RoomFinancialCommitRepository(
                 ).apply {
                     bindLong(1, connection.commitId(plan.commit.id))
                     bindLong(2, plan.targetLocalRevision.value)
-                    bindLong(3, plan.commit.createdAt.toStorageEpochMillis())
+                    if (plan.journalBundles.isEmpty()) bindNull(3) else bindLong(3, plan.commit.createdAt.toStorageEpochMillis())
                     bindLong(4, book.localRevision)
                     bindLong(5, book.headCommitId ?: abort(FinanceDataError.CorruptData))
                 }.executeUpdateDelete()
@@ -196,6 +199,24 @@ class RoomFinancialCommitRepository(
                 }
             }
         }
+        if (command is ConfigureBudgetMonthCommand) {
+            val actual = connection.queryOne(
+                "SELECT r.uid FROM budget_month m LEFT JOIN budget_month_revision r ON r.id=m.current_revision_id WHERE m.uid=?",
+                arrayOf(command.mutation.month.id.value.bytes),
+            ) { cursor -> cursor.nullableStableId("uid") }
+            if (actual != command.mutation.expectedRevisionId?.value) {
+                abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+            }
+        }
+        if (command is SaveBudgetTemplateCommand) {
+            val actual = connection.queryOne(
+                "SELECT r.uid FROM budget_template t LEFT JOIN budget_template_revision r ON r.id=t.current_revision_id WHERE t.uid=?",
+                arrayOf(command.mutation.template.id.value.bytes),
+            ) { cursor -> cursor.nullableStableId("uid") }
+            if (actual != command.mutation.expectedRevisionId?.value) {
+                abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+            }
+        }
     }
 
     private fun verifyNewState(
@@ -254,6 +275,10 @@ class RoomFinancialCommitRepository(
         val entityType = when (commandType) {
             FinancialCommandType.RECORD_GOAL_MOVEMENT -> EntityType.GOAL
             FinancialCommandType.RECORD_BUDGET_ADJUSTMENT -> EntityType.BUDGET
+            FinancialCommandType.CONFIGURE_BUDGET_MONTH,
+            FinancialCommandType.SAVE_BUDGET_TEMPLATE,
+            FinancialCommandType.RECORD_BUDGET_ADJUSTMENTS,
+            -> EntityType.BUDGET
             FinancialCommandType.BATCH_MUTATION -> null
             else -> EntityType.TRANSACTION
         }
@@ -298,6 +323,9 @@ private fun FinancialCommand.transactionIdOrNull(): TransactionId? = when (this)
     is RecordTransactionCommand<*>,
     is RecordGoalMovementCommand,
     is RecordBudgetAdjustmentCommand,
+    is ConfigureBudgetMonthCommand,
+    is SaveBudgetTemplateCommand,
+    is RecordBudgetAdjustmentsCommand,
     is BatchFinancialCommand,
     -> null
 }

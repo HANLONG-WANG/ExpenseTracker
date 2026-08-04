@@ -292,11 +292,12 @@ def main() -> int:
         "REC-022": "VERIFIED",
         "SETG-004": "VERIFIED",
         **{f"JRN-{number:03d}": "VERIFIED" for number in range(1, 13)},
+        **{f"BUD-{number:03d}": "VERIFIED" for number in range(1, 9)},
     }
     if len(screen_coverage) != 215 or any(
         row["status"] != cumulative_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_coverage
     ):
-        fail("screen coverage contains a promotion outside the cumulative P16 scope")
+        fail("screen coverage contains a promotion outside the cumulative P17 scope")
 
     print("P01 build baseline: PASS")
     print(f"leaf_modules={len(LEAF_MODULES)} grouping_projects=5 included_builds=1")

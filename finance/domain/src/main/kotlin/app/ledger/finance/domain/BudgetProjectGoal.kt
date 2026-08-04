@@ -2,6 +2,8 @@ package app.ledger.finance.domain
 
 import app.ledger.core.common.CheckedArithmetic
 import app.ledger.core.common.DomainResult
+import app.ledger.core.common.flatMap
+import app.ledger.core.common.map
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.Money
 import app.ledger.core.time.EffectiveTime
@@ -79,6 +81,9 @@ object BudgetHierarchyPolicy {
             return DomainResult.Failure(DomainViolation.InvalidField("budget.categoryLimits"))
         }
         val roots = limits.filter { it.depth == 1 }
+        if (roots.any { it.rootCategoryId != it.categoryId } || hasInvalidChildHierarchy(limits, roots)) {
+            return DomainResult.Failure(DomainViolation.InvalidField("budget.categoryHierarchy"))
+        }
         val rootTotal = CheckedArithmetic.sum(roots.map { it.amountBaseMinor })
         if (rootTotal !is DomainResult.Success || rootTotal.value > totalBaseMinor) {
             return DomainResult.Failure(DomainViolation.Invariant("INV-018"))
@@ -96,6 +101,69 @@ object BudgetHierarchyPolicy {
             return DomainResult.Failure(DomainViolation.InvalidField("budget.rootCategoryId"))
         }
         return DomainResult.Success(Unit)
+    }
+
+    private fun hasInvalidChildHierarchy(
+        limits: List<CategoryBudgetLimit>,
+        roots: List<CategoryBudgetLimit>,
+    ): Boolean = limits.any { limit ->
+        limit.depth == 2 &&
+            (limit.parentCategoryId != limit.rootCategoryId || roots.none { it.categoryId == limit.rootCategoryId })
+    }
+}
+
+data class BudgetConstraintMeter(
+    val scopeCategoryId: CategoryId?,
+    val allocatedBaseMinor: Long,
+    val limitBaseMinor: Long,
+    val excessBaseMinor: Long,
+) {
+    init {
+        require(allocatedBaseMinor >= 0L)
+        require(limitBaseMinor >= 0L)
+        require(excessBaseMinor >= 0L)
+    }
+}
+
+data class BudgetConstraintReport(
+    val total: BudgetConstraintMeter,
+    val parents: List<BudgetConstraintMeter>,
+) {
+    val valid: Boolean = total.excessBaseMinor == 0L && parents.all { it.excessBaseMinor == 0L }
+}
+
+object BudgetConstraintPolicy {
+    fun evaluate(totalBaseMinor: Long, limits: List<CategoryBudgetLimit>): DomainResult<BudgetConstraintReport> {
+        val validated = BudgetHierarchyPolicy.validate(totalBaseMinor, limits)
+        val roots = limits.filter { it.depth == 1 }
+        return validated.flatMap {
+            CheckedArithmetic.sum(roots.map(CategoryBudgetLimit::amountBaseMinor)).flatMap { allocatedRoots ->
+                parentMeters(limits, roots).map { parents ->
+                    BudgetConstraintReport(meter(null, allocatedRoots, totalBaseMinor), parents)
+                }
+            }
+        }
+    }
+
+    private fun parentMeters(
+        limits: List<CategoryBudgetLimit>,
+        roots: List<CategoryBudgetLimit>,
+    ): DomainResult<List<BudgetConstraintMeter>> {
+        val meters = mutableListOf<BudgetConstraintMeter>()
+        roots.forEach { root ->
+            val children = CheckedArithmetic.sum(
+                limits.filter { it.parentCategoryId == root.categoryId }
+                    .map(CategoryBudgetLimit::amountBaseMinor),
+            )
+            if (children is DomainResult.Failure) return children
+            meters += meter(root.categoryId, (children as DomainResult.Success).value, root.amountBaseMinor)
+        }
+        return DomainResult.Success(meters)
+    }
+
+    private fun meter(categoryId: CategoryId?, allocated: Long, limit: Long): BudgetConstraintMeter {
+        val excess = if (allocated > limit) Math.subtractExact(allocated, limit) else 0L
+        return BudgetConstraintMeter(categoryId, allocated, limit, excess)
     }
 }
 
@@ -146,6 +214,122 @@ data class BudgetRollover(
     }
 }
 
+data class BudgetMonthMutation(
+    val month: BudgetMonth,
+    val revision: BudgetMonthRevision,
+    val expectedRevisionId: BudgetMonthRevisionId?,
+) {
+    init {
+        require(month.currentRevisionId == revision.id)
+        require(month.id == revision.budgetMonthId)
+        require((revision.revisionNumber == 1) == (expectedRevisionId == null))
+    }
+}
+
+data class BudgetTemplateMutation(
+    val template: BudgetTemplate,
+    val revision: BudgetTemplateRevision,
+    val expectedRevisionId: BudgetTemplateRevisionId?,
+) {
+    init {
+        require(template.currentRevisionId == revision.id)
+        require(template.id == revision.templateId)
+        require((revision.revisionNumber == 1) == (expectedRevisionId == null))
+    }
+}
+
+data class BudgetMonthComputationInput(
+    val month: YearMonth,
+    val totalBaseMinor: Long,
+    val categoryLimits: List<CategoryBudgetLimit>,
+    val directUsageByCategory: Map<CategoryId?, Long>,
+    val adjustmentsByCategory: Map<CategoryId?, Long>,
+) {
+    init {
+        require(totalBaseMinor >= 0L)
+        require(directUsageByCategory.values.all { it >= 0L })
+    }
+}
+
+data class BudgetScopeComputation(
+    val categoryId: CategoryId?,
+    val baseMinor: Long,
+    val rolloverMinor: Long,
+    val adjustmentMinor: Long,
+    val usedMinor: Long,
+    val remainingMinor: Long,
+)
+
+data class BudgetMonthComputation(
+    val month: YearMonth,
+    val scopes: List<BudgetScopeComputation>,
+) {
+    val total: BudgetScopeComputation = scopes.single { it.categoryId == null }
+}
+
+/** Rebuildable, unbounded positive/negative rollover chain. It never mutates a budget fact. */
+object BudgetRolloverEngine {
+    fun rebuild(inputs: List<BudgetMonthComputationInput>): DomainResult<List<BudgetMonthComputation>> = try {
+        val ordered = inputs.sortedBy(BudgetMonthComputationInput::month)
+        require(ordered.map(BudgetMonthComputationInput::month).toSet().size == ordered.size)
+        val carried = mutableMapOf<CategoryId?, Long>()
+        DomainResult.Success(
+            ordered.map { input ->
+                BudgetHierarchyPolicy.validate(input.totalBaseMinor, input.categoryLimits).orThrowBudget()
+                val roots = input.categoryLimits.filter { it.depth == 1 }
+                val children = input.categoryLimits.filter { it.depth == 2 }
+                val allDirectUsed = CheckedArithmetic.sum(input.directUsageByCategory.values).orThrowBudget()
+                val totalAdjustment = input.adjustmentsByCategory[null] ?: 0L
+                val total = scope(
+                    null,
+                    input.totalBaseMinor,
+                    carried[null] ?: 0L,
+                    totalAdjustment,
+                    allDirectUsed,
+                )
+                val categoryScopes = input.categoryLimits.map { limit ->
+                    val used = if (limit.depth == 1) {
+                        val ids = children.filter { it.parentCategoryId == limit.categoryId }.map { it.categoryId }.toSet()
+                        CheckedArithmetic.sum(
+                            input.directUsageByCategory.filterKeys { it == limit.categoryId || it in ids }.values,
+                        ).orThrowBudget()
+                    } else {
+                        input.directUsageByCategory[limit.categoryId] ?: 0L
+                    }
+                    scope(
+                        limit.categoryId,
+                        limit.amountBaseMinor,
+                        carried[limit.categoryId] ?: 0L,
+                        input.adjustmentsByCategory[limit.categoryId] ?: 0L,
+                        used,
+                    )
+                }
+                val scopes = listOf(total) + categoryScopes
+                carried.clear()
+                scopes.forEach { carried[it.categoryId] = it.remainingMinor }
+                BudgetMonthComputation(input.month, scopes)
+            },
+        )
+    } catch (_: ArithmeticException) {
+        DomainResult.Failure(DomainViolation.NumericOverflow("budget.rollover"))
+    } catch (_: IllegalArgumentException) {
+        DomainResult.Failure(DomainViolation.InvalidField("budget.rolloverChain"))
+    } catch (failure: BudgetComputationFailure) {
+        DomainResult.Failure(failure.error)
+    }
+
+    private fun scope(categoryId: CategoryId?, base: Long, rollover: Long, adjustment: Long, used: Long): BudgetScopeComputation {
+        val available = Math.addExact(Math.addExact(base, rollover), adjustment)
+        return BudgetScopeComputation(categoryId, base, rollover, adjustment, used, Math.subtractExact(available, used))
+    }
+
+    private class BudgetComputationFailure(val error: app.ledger.core.common.DomainError) : RuntimeException()
+    private fun <T> DomainResult<T>.orThrowBudget(): T = when (this) {
+        is DomainResult.Success -> value
+        is DomainResult.Failure -> throw BudgetComputationFailure(error)
+    }
+}
+
 data class DailyAvailableBudget(
     val month: YearMonth,
     val remainingDisposableBaseMinor: Long,
@@ -158,6 +342,34 @@ data class DailyAvailableBudget(
 
     init {
         require(remainingDayCount > 0)
+    }
+}
+
+object DailyAvailableBudgetPolicy {
+    fun calculate(
+        month: YearMonth,
+        remainingDisposableBaseMinor: Long,
+        reservedRecurrenceBaseMinor: Long,
+        remainingDayCount: Int,
+        asOfLocalRevision: LocalRevision,
+    ): DomainResult<DailyAvailableBudget> = try {
+        if (remainingDayCount <= 0 || reservedRecurrenceBaseMinor < 0L) {
+            DomainResult.Failure(DomainViolation.InvalidField("budget.dailyAvailable"))
+        } else {
+            val distributable = Math.subtractExact(remainingDisposableBaseMinor, reservedRecurrenceBaseMinor)
+            DomainResult.Success(
+                DailyAvailableBudget(
+                    month,
+                    remainingDisposableBaseMinor,
+                    reservedRecurrenceBaseMinor,
+                    remainingDayCount,
+                    distributable / remainingDayCount,
+                    asOfLocalRevision,
+                ),
+            )
+        }
+    } catch (_: ArithmeticException) {
+        DomainResult.Failure(DomainViolation.NumericOverflow("budget.dailyAvailable"))
     }
 }
 

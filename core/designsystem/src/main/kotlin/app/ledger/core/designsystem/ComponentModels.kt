@@ -53,6 +53,17 @@ public object LedgerTestTags {
     public const val REFUND_AMOUNT_SUMMARY: String = "refund_amount_summary"
     public const val REFUND_TIME_DIMENSIONS: String = "refund_time_dimensions"
     public const val REFUND_EXCESS_CONFIRMATION: String = "refund_excess_confirmation"
+    public const val BUDGET_HOME: String = "budget_home"
+    public const val BUDGET_EDITOR: String = "budget_editor"
+    public const val BUDGET_CATEGORY_EDITOR: String = "budget_category_editor"
+    public const val BUDGET_ADJUSTMENTS: String = "budget_adjustments"
+    public const val BUDGET_ADJUSTMENT_EDITOR: String = "budget_adjustment_editor"
+    public const val BUDGET_HISTORY: String = "budget_history"
+    public const val BUDGET_TEMPLATES: String = "budget_templates"
+    public const val BUDGET_TEMPLATE_EDITOR: String = "budget_template_editor"
+    public const val BUDGET_DAILY_AVAILABLE: String = "budget_daily_available"
+    public const val BUDGET_COMPOSITION: String = "budget_composition"
+    public const val BUDGET_CONSTRAINT_METERS: String = "budget_constraint_meters"
 
     public fun requireStable(value: String): String {
         require(STABLE_TAG.matches(value)) { "test tag must be a stable semantic identifier" }

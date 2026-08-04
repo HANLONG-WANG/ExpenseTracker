@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-04 (Asia/Tokyo)
-Current stage: P16 — Refund end-to-end
-Stage status: VERIFIED (`P16-E001`—`P16-E007`); P00—P15 remain VERIFIED and P17 is the next unstarted stage
+Current stage: P17 — Monthly budgets and rollover
+Stage status: VERIFIED (`P17-E001`—`P17-E007`); P00—P16 remain VERIFIED and P18 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -280,17 +280,29 @@ P15 is `VERIFIED`. `P15_JOURNAL_MAPPING.md` records the exact query/application/
 | Application/privacy boundary | Typed request/snapshot/search APIs and the encrypted adapter delegate every write to `FinancialMutationCoordinator`; route carries only an optional stable transaction ID and the draft remains in memory | VERIFIED (`P16-E001`, `P16-E006`) |
 | UI and screenshots | REC-015/016 cover all 8 YAML states at the width/font/locale/theme matrix; two Compose/token pixel-hash goldens freeze linked-light and excess-dark without visual-draft input | VERIFIED (`P16-E004`, `P16-E005`, `DL-073`) |
 
-P16 is `VERIFIED`. `P16_REFUND_MAPPING.md` records the exact domain/fact/application/query/UI boundary. Credit/installment completion, reports, physical purge and P17+ features remain in their owning later stages.
+P16 remains `VERIFIED`. `P16_REFUND_MAPPING.md` records its exact domain/fact/application/query/UI boundary. Credit/installment completion, reports, physical purge and P18+ features remain in their owning later stages.
+
+### P17 result (verified)
+
+| Area | P17 result | Classification |
+|---|---|---|
+| Budget model and history | Natural-month/template currents, immutable revisions, typed category limits and signed adjustment facts preserve full version history and explicit optimistic concurrency | VERIFIED (`P17-E001`—`P17-E003`) |
+| Hierarchy and rollover | Base-only total/root/child constraints, unclassified total usage, non-duplicated parent/child consumption and uncapped positive/negative rollover rebuild deterministically across 122 months | VERIFIED (`P17-E002`, `P17-E003`) |
+| Daily available amount | Exact checked-integer calculation exposes base, rollover, adjustments, usage, nonzero future recurrence reservation and remaining-day divisor independently | VERIFIED (`P17-E002`—`P17-E004`) |
+| Atomic application/data boundary | Month, template and adjustment writes use only `FinancialMutationCoordinator`; command receipts, current pointers, revisions, facts, projections and `localRevision` share one SQLCipher transaction | VERIFIED (`P17-E001`, `P17-E003`, `P17-E006`) |
+| UI, accessibility and screenshots | BUD-001—008 cover all 23 YAML states under width/font/locale/theme matrices; two governed Compose/token full-pixel digests freeze the budget home and constraint editor | VERIFIED (`P17-E004`, `P17-E005`) |
+
+P17 is `VERIFIED`. `P17_BUDGET_MAPPING.md` records the exact aggregate/schema/application/projection/UI boundary. Recurrence authoring, projects, goals, analytics, durable operation execution and all P18+ workflows remain in their owning stages.
 
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 30 requirements are `VERIFIED`; 50 are `IN_PROGRESS`; 10 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 76 are `VERIFIED` (prior 74 plus REC-015/016); 139 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 33 requirements are `VERIFIED`; 47 are `IN_PROGRESS`; 10 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 84 are `VERIFIED`; 131 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-011 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-012—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
-| Permanent domain invariants | 35 | Ten are `VERIFIED`, including transfer net-assets (`INV-015`), immutable historical FX (`INV-016`), valuation exclusion (`INV-017`) and checked arithmetic (`INV-034`); 25 retain later evidence |
+| Permanent domain invariants | 35 | Thirteen are `VERIFIED`, including budget hierarchy/rollover (`INV-018`—`INV-020`), transfer net-assets (`INV-015`), immutable historical FX (`INV-016`), valuation exclusion (`INV-017`) and checked arithmetic (`INV-034`); 22 retain later evidence |
 | Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; P08 verifies normalized financial plan mapping and atomic repository behavior |
 | Projection families | 7 + search/geographic indexes | Current transaction, account and settlement plus both indexes are `VERIFIED`; later-owned planning/liability/analytics/widget runtimes remain `IN_PROGRESS` |
 | Durable/staging/backup operation inventories | 4 groups | Encrypted physical records `VERIFIED` by P07; operation runtime remains `IN_PROGRESS` for P28—P31 |
@@ -315,19 +327,20 @@ P16 is `VERIFIED`. `P16_REFUND_MAPPING.md` records the exact domain/fact/applica
 | P13 | VERIFIED | Complete category-first ordinary entry; `P13-E001`—`P13-E008` |
 | P14 | VERIFIED | Transfer/opening/adjustment/FX evidence, valuation revision, currency settings and all five screen contracts; `P14-E001`—`P14-E008` |
 | P15 | VERIFIED | Keyset/FTS journal, complete filters, bounded selection, immutable history/trash and all 12 JRN contracts; `P15-E001`—`P15-E008` |
-| P16—P36 | NOT_STARTED | P16 is next; do not promote later work early |
+| P16 | VERIFIED | Complete refund facts, allocations, dependency resolution and REC-015/016; `P16-E001`—`P16-E007` |
+| P17 | VERIFIED | Complete monthly budget/template history, hierarchy constraints, signed adjustments, deterministic rollover/daily availability and BUD-001—008; `P17-E001`—`P17-E007` |
+| P18—P36 | NOT_STARTED | P18 is next; do not promote later work early |
 
-## P15 verified handoff
+## P17 verified handoff
 
-P15 leaves the repository at a fully verified journal/query/history/trash boundary. The reproducible P15 commands are:
+P17 leaves the repository at a fully verified budget aggregate, coordinator, projection and UI boundary. The reproducible P17 commands are:
 
 ```text
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p15_journal.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p17_budget.py
 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
-./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.RoomFinancialDataDeviceTest#halfMillionRowsUseBoundedKeysetPagingAndFtsWithoutDeepOffset --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
-./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.JournalApplicationPortDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
-./gradlew :feature:journal:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
-./gradlew p15Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.BudgetApplicationPortDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :feature:planning:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p17Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
 ```
 
-All P15 evidence is recorded in `P15-E001`—`P15-E008`. The next entry point is P16; reuse the typed filter/query boundary, immutable revision reads and sole financial coordinator rather than adding feature-owned SQL or mutable history.
+All P17 evidence is recorded in `P17-E001`—`P17-E007`. The next entry point is P18; reuse the typed budget facts, exact projections and sole financial coordinator rather than introducing feature-owned SQL, mutable history or a second budget calculation path.

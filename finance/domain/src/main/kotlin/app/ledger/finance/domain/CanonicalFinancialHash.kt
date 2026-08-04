@@ -42,6 +42,12 @@ object CanonicalFinancialHash {
             }
             is RecordGoalMovementCommand -> goalMovement(command.movement)
             is RecordBudgetAdjustmentCommand -> budgetAdjustment(command.adjustment)
+            is ConfigureBudgetMonthCommand -> budgetMonthMutation(command.mutation)
+            is SaveBudgetTemplateCommand -> budgetTemplateMutation(command.mutation)
+            is RecordBudgetAdjustmentsCommand -> {
+                integer(command.adjustments.size)
+                command.adjustments.forEach(::budgetAdjustment)
+            }
             is BatchFinancialCommand -> {
                 integer(command.commands.size)
                 command.commands.forEach { child ->
@@ -624,6 +630,42 @@ private class CanonicalWriter {
         text(value.kind.name)
         stableId(value.createdCommitId.value)
         nullableStableId(value.reversalOfId?.value)
+    }
+
+    fun budgetMonthMutation(value: BudgetMonthMutation) {
+        stableId(value.month.id.value)
+        integer(value.month.month.year)
+        integer(value.month.month.monthValue)
+        stableId(value.revision.id.value)
+        integer(value.revision.revisionNumber)
+        long(value.revision.totalBaseMinor)
+        nullableStableId(value.revision.sourceTemplateRevisionId?.value)
+        stableId(value.revision.createdCommitId.value)
+        nullableStableId(value.expectedRevisionId?.value)
+        budgetLimits(value.revision.categoryLimits)
+    }
+
+    fun budgetTemplateMutation(value: BudgetTemplateMutation) {
+        stableId(value.template.id.value)
+        text(value.template.name)
+        text(value.template.status.name)
+        stableId(value.revision.id.value)
+        integer(value.revision.revisionNumber)
+        long(value.revision.totalBaseMinor)
+        stableId(value.revision.createdCommitId.value)
+        nullableStableId(value.expectedRevisionId?.value)
+        budgetLimits(value.revision.categoryLimits)
+    }
+
+    private fun budgetLimits(values: List<CategoryBudgetLimit>) {
+        integer(values.size)
+        values.sortedBy { it.categoryId.value }.forEach { value ->
+            stableId(value.categoryId.value)
+            stableId(value.rootCategoryId.value)
+            nullableStableId(value.parentCategoryId?.value)
+            integer(value.depth)
+            long(value.amountBaseMinor)
+        }
     }
 
     fun posting(value: Posting) {

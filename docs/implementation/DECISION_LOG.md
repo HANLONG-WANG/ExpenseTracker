@@ -536,3 +536,24 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Date/stage: 2026-08-04 / P16
 - Decision: render linked-light and high-risk-excess-dark refund forms in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. The two 64-hex digests are checked into the Android test source.
 - Consequence: pixel drift is machine-detectable without adding an external bitmap input. The renderer uses only `LedgerTheme`, governed components, textual contracts/tokens/YAML/CSV and localized resources; no excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.
+
+## DL-074 — Budget retry hashes use the request's immutable expected revision
+
+- Date/stage: 2026-08-04 / P17
+- Surface issue: rebuilding a retry command from the mutable current budget revision changes its canonical payload after the first success, so receipt lookup would incorrectly reject an otherwise exact duplicate `commandId` before the idempotency boundary can return the original result.
+- Decision: construct every budget command from the request's immutable `expectedRevisionId`. The repository still reads the current pointer for optimistic-concurrency validation, but it cannot rewrite the command payload or canonical hash.
+- Consequence: an exact retry returns its first `CommandReceipt` without duplicate facts; a new command with a genuinely obsolete expected revision still fails before any write. The API 36 SQLCipher test covers both paths.
+
+## DL-075 — A stale budget projection fails closed instead of displaying old values as current
+
+- Date/stage: 2026-08-04 / P17
+- Surface issue: a historical transaction or budget revision can invalidate a long natural-month rollover chain. Serving the previous cache during failed recomputation would make base, carry, usage and daily availability appear authoritative at different revisions.
+- Precedence applied: synchronous projection consistency and explicit maintenance/failure state outrank best-effort display of stale derived values.
+- Decision: rebuild the affected chain synchronously inside the financial commit and stamp every row with the resulting `book.localRevision`. The application compares all required projection versions; any mismatch returns `FAILED`, omits composition/daily values and exposes the existing operation-center recovery entry.
+- Consequence: a ten-year edit either presents a completely rebuilt current chain or a clear failure state. It never labels old cache values current, while the prior database transaction remains atomically intact on failure.
+
+## DL-076 — P17 goldens are full-pixel digests of governed Compose output
+
+- Date/stage: 2026-08-04 / P17
+- Decision: render configured-light and constraint-error-dark budget screens in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. The two digests live in the Android test source.
+- Consequence: budget pixel drift is machine-detectable using only `LedgerTheme`, governed components, the textual UI contract, token JSON, screen YAML, traceability CSV and localized resources. No excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.
