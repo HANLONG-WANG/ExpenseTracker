@@ -410,18 +410,30 @@ internal class RoomProjectionEngine {
                                  WHEN 1 THEN CASE se.polarity WHEN 1 THEN -se.amount_minor ELSE se.amount_minor END
                                  WHEN 4 THEN CASE se.polarity WHEN 1 THEN se.amount_minor ELSE -se.amount_minor END ELSE 0 END), 0) -
                 COALESCE(SUM(CASE WHEN se.kind = 2 THEN CASE se.polarity WHEN 1 THEN se.amount_minor ELSE -se.amount_minor END ELSE 0 END), 0),
-              cs.status, ?
+              CASE
+                WHEN COALESCE(csr.official_amount_minor,
+                  SUM(CASE se.kind WHEN 0 THEN CASE se.polarity WHEN 1 THEN se.amount_minor ELSE -se.amount_minor END
+                                   WHEN 1 THEN CASE se.polarity WHEN 1 THEN -se.amount_minor ELSE se.amount_minor END
+                                   WHEN 4 THEN CASE se.polarity WHEN 1 THEN se.amount_minor ELSE -se.amount_minor END ELSE 0 END), 0) -
+                  COALESCE(SUM(CASE WHEN se.kind = 2 THEN CASE se.polarity WHEN 1 THEN se.amount_minor ELSE -se.amount_minor END ELSE 0 END), 0) <= 0 THEN 3
+                WHEN cs.due_date < ? THEN 4
+                WHEN COALESCE(SUM(CASE WHEN se.kind = 2 THEN CASE se.polarity WHEN 1 THEN se.amount_minor ELSE -se.amount_minor END ELSE 0 END), 0) > 0 THEN 2
+                WHEN csr.sealed = 1 THEN 5
+                WHEN csr.official_amount_minor IS NOT NULL THEN 1
+                ELSE 0 END, ?
             FROM credit_statement cs LEFT JOIN credit_statement_revision csr ON csr.id = cs.current_revision_id
               LEFT JOIN statement_effect se ON se.statement_id = cs.id
             GROUP BY cs.id, csr.official_amount_minor, cs.status
             """.trimIndent(),
-            arrayOf<Any>(revision),
+            arrayOf<Any>(asOfLocalDate, revision),
         )
         database.execSQL(
             """
             INSERT INTO credit_account_projection(account_id, debt_minor, available_limit_minor, estimated_unbilled_minor, overdue_minor, currency_code, as_of_local_revision)
             SELECT ua.id, MAX(0, COALESCE(abc.normal_balance_minor, 0)),
-              CASE WHEN cap.standard_limit_minor IS NULL THEN NULL ELSE cap.standard_limit_minor + COALESCE(cap.temporary_limit_minor, 0) - MAX(0, COALESCE(abc.normal_balance_minor, 0)) END,
+              CASE WHEN cap.standard_limit_minor IS NULL THEN NULL ELSE cap.standard_limit_minor +
+                CASE WHEN cap.temporary_limit_expires_on >= ? THEN COALESCE(cap.temporary_limit_minor, 0) ELSE 0 END -
+                COALESCE(abc.normal_balance_minor, 0) END,
               MAX(0, COALESCE((
                 SELECT SUM(CASE se.kind WHEN 1 THEN CASE se.polarity WHEN 1 THEN -se.amount_minor ELSE se.amount_minor END
                                              WHEN 2 THEN CASE se.polarity WHEN 1 THEN -se.amount_minor ELSE se.amount_minor END
@@ -431,13 +443,13 @@ internal class RoomProjectionEngine {
               COALESCE((
                 SELECT SUM(MAX(0, csp.remaining_amount_minor)) FROM credit_statement cs
                 JOIN credit_statement_projection csp ON csp.statement_id = cs.id
-                WHERE cs.credit_account_id = ua.id AND cs.due_date < ? AND cs.status <> 3
+                WHERE cs.credit_account_id = ua.id AND cs.due_date < ? AND csp.remaining_amount_minor > 0
               ), 0), ua.currency_code, ?
             FROM user_account ua JOIN credit_account_profile cap ON cap.account_id = ua.id
               LEFT JOIN account_balance_current abc ON abc.account_id = ua.id
             WHERE ua.type = 2
             """.trimIndent(),
-            arrayOf<Any>(asOfLocalDate, revision),
+            arrayOf<Any>(asOfLocalDate, asOfLocalDate, revision),
         )
     }
 

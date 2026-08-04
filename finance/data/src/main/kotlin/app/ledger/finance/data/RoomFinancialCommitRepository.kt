@@ -26,6 +26,8 @@ import app.ledger.finance.domain.RecordTransactionCommand
 import app.ledger.finance.domain.RestoreHistoricalRevisionCommand
 import app.ledger.finance.domain.RestoreTransactionCommand
 import app.ledger.finance.domain.SaveBudgetTemplateCommand
+import app.ledger.finance.domain.SaveCreditProfileCommand
+import app.ledger.finance.domain.SaveCreditStatementCommand
 import app.ledger.finance.domain.StableEntityReference
 import app.ledger.finance.domain.TransactionId
 import java.time.ZoneId
@@ -226,6 +228,71 @@ class RoomFinancialCommitRepository(
                 abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
             }
         }
+        verifyCreditPreconditions(connection, command)
+    }
+
+    private fun verifyCreditPreconditions(
+        connection: androidx.sqlite.db.SupportSQLiteDatabase,
+        command: FinancialCommand,
+    ) {
+        when (command) {
+            is SaveCreditProfileCommand -> verifyCreditProfilePreconditions(connection, command)
+            is SaveCreditStatementCommand -> verifyCreditStatementPreconditions(connection, command)
+            else -> Unit
+        }
+    }
+
+    private fun verifyCreditProfilePreconditions(
+        connection: androidx.sqlite.db.SupportSQLiteDatabase,
+        command: SaveCreditProfileCommand,
+    ) {
+        val accountType = connection.queryOne(
+            "SELECT type FROM user_account WHERE uid=?",
+            arrayOf(command.mutation.profile.accountId.value.bytes),
+        ) { it.getInt(0) }
+        if (accountType != CREDIT_ACCOUNT_TYPE) {
+            abort(app.ledger.finance.domain.DomainViolation.InvalidField("creditProfile.accountType"))
+        }
+        val actual = connection.queryOne(
+            "SELECT bc.uid FROM credit_account_profile cap JOIN book_commit bc ON bc.id=cap.last_commit_id " +
+                "WHERE cap.account_id=(SELECT id FROM user_account WHERE uid=?)",
+            arrayOf(command.mutation.profile.accountId.value.bytes),
+        ) { it.stableId("uid") }
+        if (actual != command.mutation.expectedLastCommitId?.value) {
+            abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+        }
+        command.mutation.profile.defaultPaymentAccountId?.let { paymentId ->
+            val validPayment = connection.queryOne(
+                "SELECT COUNT(*) FROM user_account WHERE uid=? AND status=0 AND type IN (0,1)",
+                arrayOf(paymentId.value.bytes),
+            ) { it.getLong(0) } == 1L
+            if (!validPayment) {
+                abort(app.ledger.finance.domain.DomainViolation.InvalidField("creditProfile.defaultPaymentAccount"))
+            }
+        }
+    }
+
+    private fun verifyCreditStatementPreconditions(
+        connection: androidx.sqlite.db.SupportSQLiteDatabase,
+        command: SaveCreditStatementCommand,
+    ) {
+        val mutation = command.mutation
+        val actual = connection.queryOne(
+            "SELECT csr.uid FROM credit_statement cs LEFT JOIN credit_statement_revision csr " +
+                "ON csr.id=cs.current_revision_id WHERE cs.uid=?",
+            arrayOf(mutation.statement.id.value.bytes),
+        ) { it.nullableStableId("uid") }
+        if (actual != mutation.expectedRevisionId?.value) {
+            abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+        }
+        val projectedEstimate = connection.queryOne(
+            "SELECT estimated_amount_minor FROM credit_statement_projection csp " +
+                "JOIN credit_statement cs ON cs.id=csp.statement_id WHERE cs.uid=?",
+            arrayOf(mutation.statement.id.value.bytes),
+        ) { it.getLong(0) }
+        if (projectedEstimate != null && projectedEstimate != mutation.revision.estimatedAmountMinor) {
+            abort(app.ledger.finance.domain.DomainViolation.InvalidField("creditStatement.estimatedAmount"))
+        }
     }
 
     private fun verifyNewState(
@@ -288,6 +355,8 @@ class RoomFinancialCommitRepository(
             FinancialCommandType.SAVE_BUDGET_TEMPLATE,
             FinancialCommandType.RECORD_BUDGET_ADJUSTMENTS,
             -> EntityType.BUDGET
+            FinancialCommandType.SAVE_CREDIT_PROFILE -> EntityType.ACCOUNT
+            FinancialCommandType.SAVE_CREDIT_STATEMENT -> EntityType.CREDIT_STATEMENT
             FinancialCommandType.BATCH_MUTATION -> null
             else -> EntityType.TRANSACTION
         }
@@ -323,6 +392,8 @@ private data class BookWriteState(
     val defaultZoneId: String,
 )
 
+private const val CREDIT_ACCOUNT_TYPE = 2
+
 private fun FinancialCommand.transactionIdOrNull(): TransactionId? = when (this) {
     is EditTransactionCommand -> transactionId
     is RestoreHistoricalRevisionCommand -> transactionId
@@ -335,6 +406,8 @@ private fun FinancialCommand.transactionIdOrNull(): TransactionId? = when (this)
     is ConfigureBudgetMonthCommand,
     is SaveBudgetTemplateCommand,
     is RecordBudgetAdjustmentsCommand,
+    is SaveCreditProfileCommand,
+    is SaveCreditStatementCommand,
     is BatchFinancialCommand,
     -> null
 }

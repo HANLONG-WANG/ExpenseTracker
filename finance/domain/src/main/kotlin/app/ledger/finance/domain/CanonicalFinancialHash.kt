@@ -12,6 +12,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 /** Length-prefixed, locale-independent encoding for command idempotency and immutable facts. */
+@Suppress("TooManyFunctions")
 object CanonicalFinancialHash {
     fun command(command: FinancialCommand): Hash256 = digest {
         text(command.commandType.name)
@@ -52,6 +53,8 @@ object CanonicalFinancialHash {
                 integer(command.adjustments.size)
                 command.adjustments.forEach(::budgetAdjustment)
             }
+            is SaveCreditProfileCommand -> creditProfileMutation(command.mutation)
+            is SaveCreditStatementCommand -> creditStatementMutation(command.mutation)
             is BatchFinancialCommand -> {
                 integer(command.commands.size)
                 command.commands.forEach { child ->
@@ -60,6 +63,79 @@ object CanonicalFinancialHash {
                 }
             }
         }
+    }
+
+    private fun CanonicalWriter.creditProfileMutation(mutation: CreditProfileMutation) {
+        val profile = mutation.profile
+        stableId(profile.accountId.value)
+        when (val rule = profile.statementRule) {
+            is StatementDateRule.DayOfMonth -> {
+                text("DAY")
+                integer(rule.day)
+                text(rule.missingDayPolicy.name)
+            }
+            StatementDateRule.LastDayOfMonth -> text("LAST_DAY")
+        }
+        when (val rule = profile.paymentDueRule) {
+            is DueDateRule.FixedDay -> {
+                text("FIXED_DAY")
+                integer(rule.day)
+                text(rule.missingDayPolicy.name)
+            }
+            is DueDateRule.DaysAfterStatement -> {
+                text("DAYS_AFTER")
+                integer(rule.days)
+            }
+        }
+        text(profile.statementZoneId.id)
+        optionalLong(profile.standardLimitMinor)
+        optionalLong(profile.temporaryLimitMinor)
+        optionalLocalDate(profile.temporaryLimitExpiresOn)
+        nullableStableId(profile.defaultPaymentAccountId?.value)
+        text(profile.autoPaymentMode.name)
+        text(profile.weekendAdjustment.name)
+        stableId(profile.lastCommitId.value)
+        nullableStableId(mutation.expectedLastCommitId?.value)
+        boolean(mutation.limitPeriod != null)
+        mutation.limitPeriod?.let {
+            localDate(it.effectiveFrom)
+            optionalLocalDate(it.effectiveTo)
+            long(it.limitMinor)
+            stableId(it.createdCommitId.value)
+        }
+    }
+
+    private fun CanonicalWriter.creditStatementMutation(mutation: CreditStatementMutation) {
+        val statement = mutation.statement
+        val revision = mutation.revision
+        stableId(statement.id.value)
+        stableId(statement.creditAccountId.value)
+        localDate(statement.cycleStart)
+        localDate(statement.cycleEnd)
+        localDate(statement.dueDate)
+        stableId(statement.currentRevisionId.value)
+        text(statement.status.name)
+        stableId(revision.id.value)
+        integer(revision.revisionNumber)
+        long(revision.estimatedAmountMinor)
+        optionalLong(revision.officialAmountMinor)
+        nullableInstant(revision.officialRecordedAt)
+        optionalLong(revision.differenceMinor)
+        localDate(revision.statementDate)
+        localDate(revision.dueDate)
+        boolean(revision.sealed)
+        stableId(revision.createdCommitId.value)
+        nullableStableId(mutation.expectedRevisionId?.value)
+    }
+
+    private fun CanonicalWriter.optionalLong(value: Long?) {
+        boolean(value != null)
+        if (value != null) long(value)
+    }
+
+    private fun CanonicalWriter.optionalLocalDate(value: LocalDate?) {
+        boolean(value != null)
+        if (value != null) localDate(value)
     }
 
     @Suppress("LongParameterList")

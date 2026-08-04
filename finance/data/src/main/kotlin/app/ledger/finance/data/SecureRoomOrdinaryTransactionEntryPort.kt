@@ -40,14 +40,19 @@ import app.ledger.finance.domain.AccountAmount
 import app.ledger.finance.domain.AccountingPlanningContext
 import app.ledger.finance.domain.AmountEvidenceKey
 import app.ledger.finance.domain.AmountRole
+import app.ledger.finance.domain.AutoGenerationMode
 import app.ledger.finance.domain.BookCommitId
 import app.ledger.finance.domain.CanonicalFinancialHash
 import app.ledger.finance.domain.CategoryAssignment
 import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryId
 import app.ledger.finance.domain.CommandReceipt
+import app.ledger.finance.domain.CreditAccountProfile
+import app.ledger.finance.domain.CreditCalendarPolicy
+import app.ledger.finance.domain.CreditStatementId
 import app.ledger.finance.domain.DeterministicFinancialPlanner
 import app.ledger.finance.domain.DeviceInstanceId
+import app.ledger.finance.domain.DueDateRule
 import app.ledger.finance.domain.EditTransactionCommand
 import app.ledger.finance.domain.ExpensePayer
 import app.ledger.finance.domain.ExpensePayload
@@ -59,6 +64,7 @@ import app.ledger.finance.domain.Hash256
 import app.ledger.finance.domain.IncomePayload
 import app.ledger.finance.domain.LocationRecordId
 import app.ledger.finance.domain.MerchantId
+import app.ledger.finance.domain.MissingDayPolicy
 import app.ledger.finance.domain.NewTransactionInput
 import app.ledger.finance.domain.ParticipantId
 import app.ledger.finance.domain.PaymentCardId
@@ -70,17 +76,22 @@ import app.ledger.finance.domain.RecordExpenseCommand
 import app.ledger.finance.domain.RecordIncomeCommand
 import app.ledger.finance.domain.SettlementActivityId
 import app.ledger.finance.domain.SettlementShare
+import app.ledger.finance.domain.StatementAssignment
+import app.ledger.finance.domain.StatementAssignmentMode
+import app.ledger.finance.domain.StatementDateRule
 import app.ledger.finance.domain.TransactionContextInput
 import app.ledger.finance.domain.TransactionId
 import app.ledger.finance.domain.TransactionKind
 import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.UserAccountId
+import app.ledger.finance.domain.WeekendAdjustment
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.math.MathContext
 import java.math.RoundingMode
 import java.security.MessageDigest
 import java.time.YearMonth
+import java.time.ZoneId
 
 /** SQLCipher-backed ordinary entry adapter; every write terminates at FinancialMutationCoordinator. */
 public class SecureRoomOrdinaryTransactionEntryPort(
@@ -121,7 +132,8 @@ public class SecureRoomOrdinaryTransactionEntryPort(
     }
 
     private suspend fun execute(database: LedgerDatabase, request: OrdinaryTransactionWriteRequest): DomainResult<CommandReceipt> {
-        val snapshot = database.readLedger { db -> planningSnapshot(db, request) }
+        val automaticStatement = database.readLedger { db -> automaticStatement(db, request) }
+        val snapshot = database.readLedger { db -> planningSnapshot(db, request, automaticStatement?.newStatement != null) }
         val references = requireNotNull(snapshot.accountingContext).references
         val account = references.account(UserAccountId(request.accountId)) ?: abort(FinanceDataError.CorruptData)
         val category = references.category(CategoryId(request.categoryId)) ?: abort(FinanceDataError.CorruptData)
@@ -138,7 +150,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             amountExpression = request.amount.expression,
             source = request.source,
             sourceReferenceId = request.sourceReferenceId,
-            statementAssignment = null,
+            statementAssignment = automaticStatement?.let { StatementAssignment(StatementAssignmentMode.AUTOMATIC, CreditStatementId(it.statementId)) },
             attachmentIds = request.attachmentIds.map { app.ledger.finance.domain.AttachmentId(it) },
         )
         val classification = CategoryAssignment(category.id, category.direction, category.statisticalNature)
@@ -173,26 +185,32 @@ public class SecureRoomOrdinaryTransactionEntryPort(
                 emptyList(),
             )
         }.withCanonicalHash()
-        val sideEffect = request.newLocation?.let { location ->
+        val sideEffect = if (request.newLocation != null || automaticStatement?.newStatement != null) {
             FinancialCommitSideEffect { db, plan ->
-                val internalId = db.allocateInternalId("location_record", location.id)
-                db.execSQL(
-                    "INSERT INTO location_record(id,uid,lat_e7,lon_e7,accuracy_mm,captured_at,source,provider,place_id,created_commit_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                    arrayOf<Any?>(
-                        internalId,
-                        location.id.bytes,
-                        location.latitudeE7,
-                        location.longitudeE7,
-                        location.accuracyMillimeters,
-                        location.capturedAt.toStorageEpochMillis(),
-                        if (location.provider == app.ledger.finance.application.OrdinaryLocationProvider.MANUAL) 1 else 0,
-                        location.provider.name,
-                        db.optionalInternalId("place", location.placeId),
-                        db.commitId(plan.commit.id),
-                    ),
-                )
+                val location = request.newLocation
+                if (location != null) {
+                    val internalId = db.allocateInternalId("location_record", location.id)
+                    db.execSQL(
+                        "INSERT INTO location_record(id,uid,lat_e7,lon_e7,accuracy_mm,captured_at,source,provider,place_id,created_commit_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        arrayOf<Any?>(
+                            internalId,
+                            location.id.bytes,
+                            location.latitudeE7,
+                            location.longitudeE7,
+                            location.accuracyMillimeters,
+                            location.capturedAt.toStorageEpochMillis(),
+                            if (location.provider == app.ledger.finance.application.OrdinaryLocationProvider.MANUAL) 1 else 0,
+                            location.provider.name,
+                            db.optionalInternalId("place", location.placeId),
+                            db.commitId(plan.commit.id),
+                        ),
+                    )
+                }
+                automaticStatement?.newStatement?.let { statement -> insertAutomaticStatement(db, plan, statement) }
             }
-        } ?: FinancialCommitSideEffect.NONE
+        } else {
+            FinancialCommitSideEffect.NONE
+        }
         val repository = RoomFinancialCommitRepository(database, sideEffect = sideEffect)
         return DefaultFinancialMutationCoordinator(
             writeGate = gate,
@@ -205,7 +223,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
         ).execute(command)
     }
 
-    private fun planningSnapshot(db: SupportSQLiteDatabase, request: OrdinaryTransactionWriteRequest): PlanningSnapshot {
+    private fun planningSnapshot(db: SupportSQLiteDatabase, request: OrdinaryTransactionWriteRequest, reserveStatementIds: Boolean): PlanningSnapshot {
         val book = RoomBookRepository.mapCurrent(db)
         if (book.id.value != request.ids.bookId || request.localDate != request.occurredAt.atZone(request.zoneId).toLocalDate()) {
             abort(FinanceDataError.CorruptData)
@@ -218,11 +236,12 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             abort(FinanceDataError.CorruptData)
         }
         val evidence = amountEvidence(request.amount, account.account.currency, book.baseCurrency, account.account.id, request)
+        val factIds = if (reserveStatementIds) request.ids.factIds.dropLast(AUTOMATIC_STATEMENT_ID_COUNT) else request.ids.factIds
         val identities = PlanningIdentitySet(
             TransactionId(request.ids.transactionId),
             TransactionRevisionId(request.ids.revisionId),
             BookCommitId(request.ids.commitId),
-            request.ids.factIds,
+            factIds,
         )
         val baseContext = AccountingPlanningContext(identities, request.createdAt, DeviceInstanceId(request.ids.deviceInstanceId), references, listOf(evidence), null)
         if (request.expectedRevisionId == null) {
@@ -233,7 +252,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             request.ids.transactionId,
             request.ids.revisionId,
             request.ids.commitId,
-            request.ids.factIds,
+            factIds,
             request.ids.fxRateSnapshotIds,
             request.createdAt,
             request.ids.deviceInstanceId,
@@ -253,6 +272,70 @@ public class SecureRoomOrdinaryTransactionEntryPort(
                 amountEvidence = listOf(evidence),
             ),
         )
+    }
+
+    private fun automaticStatement(db: SupportSQLiteDatabase, request: OrdinaryTransactionWriteRequest): AutomaticStatement? {
+        val row = db.queryOne(
+            "SELECT ua.id account_id,cap.statement_rule_type,cap.statement_day,cap.due_rule_type,cap.due_day,cap.days_after_statement," +
+                "cap.zone_id,cap.standard_limit_minor,cap.temporary_limit_minor,cap.temporary_limit_expires_on,pay.uid payment_uid," +
+                "cap.auto_payment_mode,cap.weekend_adjustment,last.uid last_commit_uid FROM user_account ua " +
+                "JOIN credit_account_profile cap ON cap.account_id=ua.id JOIN book_commit last ON last.id=cap.last_commit_id " +
+                "LEFT JOIN user_account pay ON pay.id=cap.default_payment_account_id WHERE ua.uid=? AND ua.type=2",
+            arrayOf(request.accountId.bytes),
+        ) { cursor ->
+            val statementRule = when (cursor.getInt(cursor.getColumnIndexOrThrow("statement_rule_type"))) {
+                0 -> StatementDateRule.DayOfMonth(cursor.getInt(cursor.getColumnIndexOrThrow("statement_day")), MissingDayPolicy.MOVE_TO_MONTH_END)
+                1 -> StatementDateRule.DayOfMonth(cursor.getInt(cursor.getColumnIndexOrThrow("statement_day")), MissingDayPolicy.SKIP)
+                2 -> StatementDateRule.LastDayOfMonth
+                else -> abort(FinanceDataError.CorruptData)
+            }
+            val dueRule = when (cursor.getInt(cursor.getColumnIndexOrThrow("due_rule_type"))) {
+                0 -> DueDateRule.FixedDay(cursor.getInt(cursor.getColumnIndexOrThrow("due_day")), MissingDayPolicy.MOVE_TO_MONTH_END)
+                1 -> DueDateRule.FixedDay(cursor.getInt(cursor.getColumnIndexOrThrow("due_day")), MissingDayPolicy.SKIP)
+                2 -> DueDateRule.DaysAfterStatement(cursor.getInt(cursor.getColumnIndexOrThrow("days_after_statement")))
+                else -> abort(FinanceDataError.CorruptData)
+            }
+            AutomaticProfile(
+                cursor.getLong(cursor.getColumnIndexOrThrow("account_id")),
+                CreditAccountProfile(
+                    UserAccountId(request.accountId), statementRule, dueRule, ZoneId.of(cursor.getString(cursor.getColumnIndexOrThrow("zone_id"))),
+                    cursor.nullableLong("standard_limit_minor"), cursor.nullableLong("temporary_limit_minor"),
+                    cursor.nullableLong("temporary_limit_expires_on")?.toInt()?.toStoredLocalDate(), cursor.nullableStableId("payment_uid")?.let(::UserAccountId),
+                    AutoGenerationMode.entries[cursor.getInt(cursor.getColumnIndexOrThrow("auto_payment_mode"))],
+                    WeekendAdjustment.entries[cursor.getInt(cursor.getColumnIndexOrThrow("weekend_adjustment"))], BookCommitId(cursor.stableId("last_commit_uid")),
+                ),
+            )
+        } ?: return null
+        val localDate = request.occurredAt.atZone(row.profile.statementZoneId).toLocalDate()
+        val cycle = CreditCalendarPolicy.cycleContaining(localDate, row.profile).valueOrAbort()
+        val existing = db.queryOne(
+            "SELECT uid FROM credit_statement WHERE credit_account_id=? AND cycle_start=? AND cycle_end=?",
+            arrayOf<Any>(row.accountInternalId, cycle.cycleStart.toStorageInt(), cycle.cycleEnd.toStorageInt()),
+        ) { it.stableId("uid") }
+        return existing?.let { AutomaticStatement(it, null) } ?: run {
+            if (request.ids.factIds.size <= AUTOMATIC_STATEMENT_ID_COUNT) abort(FinanceDataError.CorruptData)
+            val statementId = request.ids.factIds[request.ids.factIds.lastIndex - 1]
+            val revisionId = request.ids.factIds.last()
+            AutomaticStatement(statementId, AutomaticStatementDraft(statementId, revisionId, row.accountInternalId, cycle))
+        }
+    }
+
+    private fun insertAutomaticStatement(
+        db: SupportSQLiteDatabase,
+        plan: app.ledger.finance.domain.FinancialMutationPlan,
+        statement: AutomaticStatementDraft,
+    ) {
+        val statementId = db.allocateInternalId("credit_statement", statement.statementId)
+        db.execSQL(
+            "INSERT INTO credit_statement(id,uid,credit_account_id,cycle_start,cycle_end,due_date,current_revision_id,status) VALUES(?,?,?,?,?,?,NULL,0)",
+            arrayOf<Any>(statementId, statement.statementId.bytes, statement.accountInternalId, statement.cycle.cycleStart.toStorageInt(), statement.cycle.cycleEnd.toStorageInt(), statement.cycle.dueDate.toStorageInt()),
+        )
+        val revisionId = db.allocateInternalId("credit_statement_revision", statement.revisionId)
+        db.execSQL(
+            "INSERT INTO credit_statement_revision(id,uid,statement_id,revision_no,estimated_amount_minor,official_amount_minor,official_recorded_at,difference_minor,statement_date,due_date,sealed,created_commit_id) VALUES(?,?,?,1,0,NULL,NULL,NULL,?,?,0,?)",
+            arrayOf<Any>(revisionId, statement.revisionId.bytes, statementId, statement.cycle.cycleEnd.toStorageInt(), statement.cycle.dueDate.toStorageInt(), db.commitId(plan.commit.id)),
+        )
+        db.execSQL("UPDATE credit_statement SET current_revision_id=? WHERE id=?", arrayOf<Any>(revisionId, statementId))
     }
 
     private fun amountEvidence(
@@ -379,6 +462,19 @@ public class SecureRoomOrdinaryTransactionEntryPort(
     }
 
     private fun OrdinarySettlementShareDraft.toDomain(): SettlementShare = SettlementShare(ParticipantId(participantId), paidMinor, owedMinor, weight, roundingAdjustmentMinor)
+
+    private data class AutomaticProfile(val accountInternalId: Long, val profile: CreditAccountProfile)
+    private data class AutomaticStatement(val statementId: StableId, val newStatement: AutomaticStatementDraft?)
+    private data class AutomaticStatementDraft(
+        val statementId: StableId,
+        val revisionId: StableId,
+        val accountInternalId: Long,
+        val cycle: app.ledger.finance.domain.CreditCycle,
+    )
+
+    private companion object {
+        const val AUTOMATIC_STATEMENT_ID_COUNT = 2
+    }
 }
 
 private class OrdinaryLedgerWriteGate : LedgerWriteGate {

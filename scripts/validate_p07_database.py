@@ -300,6 +300,13 @@ def validate_ledgers() -> int:
                 **{f"GOL-{number:03d}": "VERIFIED" for number in range(1, 6)},
             },
         )
+    if current_stage_number >= 19:
+        permitted_promotions.update(
+            {
+                "REC-014": "VERIFIED",
+                **{f"CRD-{number:03d}": "VERIFIED" for number in range(1, 9)},
+            },
+        )
     require(
         len(screen_rows) == 215
         and all(row["status"] == permitted_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),

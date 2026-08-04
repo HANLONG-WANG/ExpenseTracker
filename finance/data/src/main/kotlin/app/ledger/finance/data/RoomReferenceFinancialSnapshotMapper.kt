@@ -350,7 +350,7 @@ internal class RoomReferenceFinancialSnapshotMapper {
             if (cursor.int("manual_assignment") == 1 && statement != null) {
                 StatementAssignment(StatementAssignmentMode.EXPLICIT_STATEMENT, statement)
             } else {
-                StatementAssignment(StatementAssignmentMode.AUTOMATIC, null)
+                StatementAssignment(StatementAssignmentMode.AUTOMATIC, statement)
             }
         }
         val accrualDate = if (transaction.kind == TransactionKind.REFUND) {
@@ -361,12 +361,12 @@ internal class RoomReferenceFinancialSnapshotMapper {
         } else {
             row.localDate
         }
-        val budgetMonth = if (transaction.kind == TransactionKind.REFUND) {
-            db.queryOne("SELECT target_month FROM refund_revision_detail WHERE revision_id=?", arrayOf(row.internalId)) { cursor ->
+        val budgetMonth = when (transaction.kind) {
+            TransactionKind.REFUND -> db.queryOne("SELECT target_month FROM refund_revision_detail WHERE revision_id=?", arrayOf(row.internalId)) { cursor ->
                 cursor.nullableLong("target_month")?.toInt()?.toStoredYearMonth()
             }
-        } else {
-            YearMonth.from(row.localDate)
+            TransactionKind.EXPENSE, TransactionKind.INCOME -> YearMonth.from(row.localDate)
+            else -> null
         }
         return TransactionRevision(
             row.id,
@@ -451,7 +451,7 @@ internal class RoomReferenceFinancialSnapshotMapper {
         TransactionKind.REFUND -> readRefundPayload(db, revisionInternalId, amounts, classification, references)
         TransactionKind.CREDIT_PAYMENT -> {
             val detail = db.queryOne("SELECT ua.uid credit_uid,d.generation_mode FROM credit_payment_revision_detail d JOIN user_account ua ON ua.id=d.credit_account_id WHERE d.revision_id=?", arrayOf(revisionInternalId)) { it.stableId("credit_uid") to it.int("generation_mode") } ?: abort(FinanceDataError.CorruptData)
-            val allocations = db.queryList("SELECT cs.uid statement_uid,cpa.amount_minor,ua.currency_code FROM credit_payment_allocation cpa LEFT JOIN credit_statement cs ON cs.id=cpa.statement_id JOIN user_account ua ON ua.id=(SELECT credit_account_id FROM credit_payment_revision_detail WHERE revision_id=?) WHERE cpa.payment_revision_id=?", arrayOf(revisionInternalId, revisionInternalId)) { cursor -> CreditPaymentAllocation(cursor.nullableStableId("statement_uid")?.let(::CreditStatementId), positive(cursor.long("amount_minor"), currency(cursor.string("currency_code")))) }
+            val allocations = db.queryList("SELECT cs.uid statement_uid,cpa.amount_minor,ua.currency_code FROM credit_payment_allocation cpa LEFT JOIN credit_statement cs ON cs.id=cpa.statement_id JOIN user_account ua ON ua.id=(SELECT credit_account_id FROM credit_payment_revision_detail WHERE revision_id=?) WHERE cpa.payment_revision_id=? AND cpa.reversal_of_id IS NULL", arrayOf(revisionInternalId, revisionInternalId)) { cursor -> CreditPaymentAllocation(cursor.nullableStableId("statement_uid")?.let(::CreditStatementId), positive(cursor.long("amount_minor"), currency(cursor.string("currency_code")))) }
             CreditPaymentPayload(amounts.accountAmount(AmountRole.OUTGOING, references), UserAccountId(detail.first), amounts.accountAmount(AmountRole.INCOMING, references), allocations, AutoGenerationMode.entries[detail.second])
         }
         TransactionKind.LOAN_DISBURSEMENT -> {

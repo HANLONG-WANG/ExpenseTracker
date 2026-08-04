@@ -83,7 +83,7 @@ data class StatementAssignment(
     val statementId: CreditStatementId?,
 ) {
     init {
-        require((mode == StatementAssignmentMode.EXPLICIT_STATEMENT) == (statementId != null))
+        require(mode == StatementAssignmentMode.AUTOMATIC || statementId != null)
     }
 }
 

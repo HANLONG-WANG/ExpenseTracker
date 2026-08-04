@@ -66,6 +66,12 @@ import app.ledger.feature.journal.JournalLoadState
 import app.ledger.feature.journal.JournalOperationState
 import app.ledger.feature.journal.JournalPagingSource
 import app.ledger.feature.journal.JournalSelectionPolicy
+import app.ledger.feature.liabilities.CreditAllocationMode
+import app.ledger.feature.liabilities.CreditFeatureState
+import app.ledger.feature.liabilities.CreditField
+import app.ledger.feature.liabilities.CreditLoadState
+import app.ledger.feature.liabilities.CreditPolicy
+import app.ledger.feature.liabilities.CreditPresentation
 import app.ledger.feature.onboarding.InitialAccountType
 import app.ledger.feature.onboarding.InitialCategoryDirection
 import app.ledger.feature.onboarding.OnboardingLanguage
@@ -105,6 +111,7 @@ import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.MerchantSubmission
 import app.ledger.feature.settings.PlaceSubmission
 import app.ledger.finance.application.AccountDraft
+import app.ledger.finance.application.AssignCreditStatementRequest
 import app.ledger.finance.application.AttachmentContentSource
 import app.ledger.finance.application.AttachmentImportRequest
 import app.ledger.finance.application.BookAttachmentObjectPort
@@ -114,6 +121,11 @@ import app.ledger.finance.application.CardDraft
 import app.ledger.finance.application.CategoryDraft
 import app.ledger.finance.application.ChangeProjectStatusRequest
 import app.ledger.finance.application.CompleteGoalRequest
+import app.ledger.finance.application.CreditApplicationPort
+import app.ledger.finance.application.CreditMutationIds
+import app.ledger.finance.application.CreditPaymentContext
+import app.ledger.finance.application.CreditStatementMutationIds
+import app.ledger.finance.application.CreditTransactionMutationIds
 import app.ledger.finance.application.GoalCompletionStrategy
 import app.ledger.finance.application.GoalMovementMutationIds
 import app.ledger.finance.application.InitialAccountCommand
@@ -145,6 +157,7 @@ import app.ledger.finance.application.PlaceDraft
 import app.ledger.finance.application.PlanningMutationIds
 import app.ledger.finance.application.ProjectGoalApplicationPort
 import app.ledger.finance.application.RecordBudgetAdjustmentRequest
+import app.ledger.finance.application.RecordCreditPaymentRequest
 import app.ledger.finance.application.RecordGoalMovementRequest
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.ReferenceDataSnapshot
@@ -157,8 +170,11 @@ import app.ledger.finance.application.RefundWriteIds
 import app.ledger.finance.application.RefundWriteRequest
 import app.ledger.finance.application.SaveBudgetMonthRequest
 import app.ledger.finance.application.SaveBudgetTemplateRequest
+import app.ledger.finance.application.SaveCreditProfileRequest
+import app.ledger.finance.application.SaveCreditStatementRequest
 import app.ledger.finance.application.SaveGoalRequest
 import app.ledger.finance.application.SaveProjectRequest
+import app.ledger.finance.application.SpecializedAccountAmountDraft
 import app.ledger.finance.application.SpecializedFxQuoteRequest
 import app.ledger.finance.application.SpecializedTransactionContext
 import app.ledger.finance.application.SpecializedTransactionEntryPort
@@ -166,19 +182,25 @@ import app.ledger.finance.application.SpecializedTransactionWriteIds
 import app.ledger.finance.application.SpecializedTransactionWriteRequest
 import app.ledger.finance.application.UpdateBookLocaleCommand
 import app.ledger.finance.data.RoomLedgerStartupInspector
+import app.ledger.finance.domain.AutoGenerationMode
 import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.BudgetAdjustmentKind
 import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryRemovalStrategy
+import app.ledger.finance.domain.CreditPaymentSelection
 import app.ledger.finance.domain.DependencyPolicy
 import app.ledger.finance.domain.DependencyResolution
+import app.ledger.finance.domain.DueDateRule
 import app.ledger.finance.domain.GoalMovementKind
 import app.ledger.finance.domain.GoalStatus
+import app.ledger.finance.domain.MissingDayPolicy
 import app.ledger.finance.domain.ProjectStatus
 import app.ledger.finance.domain.RefundAccrualPolicy
 import app.ledger.finance.domain.RefundBudgetPolicy
 import app.ledger.finance.domain.RefundGoalPolicy
 import app.ledger.finance.domain.RefundProjectPolicy
+import app.ledger.finance.domain.StatementAssignmentMode
+import app.ledger.finance.domain.StatementDateRule
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.SystemLedgerCode
 import app.ledger.finance.domain.TransactionDependency
@@ -187,6 +209,7 @@ import app.ledger.finance.domain.TransactionId
 import app.ledger.finance.domain.TransactionLifecycleState
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountType
+import app.ledger.finance.domain.WeekendAdjustment
 import com.google.protobuf.ByteString
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -256,6 +279,7 @@ internal class AppRootViewModel @Inject constructor(
     private val refundApplicationPort: RefundApplicationPort,
     private val budgetApplicationPort: BudgetApplicationPort,
     private val projectGoalApplicationPort: ProjectGoalApplicationPort,
+    private val creditApplicationPort: CreditApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
@@ -309,6 +333,12 @@ internal class AppRootViewModel @Inject constructor(
     val projectGoal: StateFlow<ProjectGoalLoadState> = mutableProjectGoal.asStateFlow()
     private val mutableProjectGoalPending = MutableStateFlow(false)
     val projectGoalPending: StateFlow<Boolean> = mutableProjectGoalPending.asStateFlow()
+    private val mutableCredit = MutableStateFlow<CreditLoadState>(CreditLoadState.Loading)
+    val credit: StateFlow<CreditLoadState> = mutableCredit.asStateFlow()
+    private val mutableCreditPending = MutableStateFlow(false)
+    val creditPending: StateFlow<Boolean> = mutableCreditPending.asStateFlow()
+    private var currentCreditScreenId: String = "CRD-001"
+    private var currentCreditTransactionId: StableId? = null
     private val mutableProjectTransactionPagingRequest = MutableStateFlow<ProjectTransactionPagingRequest?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -2005,6 +2035,351 @@ internal class AppRootViewModel @Inject constructor(
         mutableProjectGoal.value = ProjectGoalLoadState.Content(block(current.state))
     }
 
+    fun loadCredit(
+        screenId: String,
+        accountId: StableId? = null,
+        statementId: StableId? = null,
+        transactionId: StableId? = null,
+    ) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        currentCreditScreenId = screenId
+        currentCreditTransactionId = transactionId
+        mutableCredit.value = CreditLoadState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            val appSettings = settingsRepository.current()
+            val bookId = runCatching { requireBookId(appSettings) }.getOrNull() ?: return@launch
+            mutableCredit.value = when (val result = creditApplicationPort.snapshot(bookId)) {
+                is DomainResult.Failure -> CreditLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Success -> {
+                    val resolvedAccountId = accountId ?: statementId?.let { target ->
+                        result.value.accounts.singleOrNull { account -> account.statements.any { it.id == target } }?.id
+                    }
+                    val missing = resolvedAccountId != null && result.value.accounts.none { it.id == resolvedAccountId } ||
+                        statementId != null && result.value.accounts.none { account -> account.statements.any { it.id == statementId } }
+                    if (missing) {
+                        CreditLoadState.Failure(CREDIT_NOT_FOUND)
+                    } else {
+                        val state = CreditPolicy.create(result.value, screenId, resolvedAccountId, statementId)
+                        val zone = ZoneId.of(appSettings.zoneId.ifBlank { DEFAULT_ZONE })
+                        CreditLoadState.Content(
+                            if (state.draft.date.isBlank()) {
+                                state.copy(draft = state.draft.copy(date = runtimeSources.clock.now().atZone(zone).toLocalDate().toString()))
+                            } else {
+                                state
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun updateCreditField(field: CreditField, value: String) = updateCredit { CreditPolicy.updateDraft(it, field, value) }
+
+    fun selectNextCreditPaymentAccount() = updateCredit { state ->
+        val active = state.snapshot.paymentAccounts.filter { it.active }
+        if (active.isEmpty()) {
+            state
+        } else {
+            val current = active.indexOfFirst { it.id == state.draft.selectedPaymentAccountId }
+            state.copy(draft = state.draft.copy(selectedPaymentAccountId = active[(current + 1).mod(active.size)].id))
+        }
+    }
+
+    fun selectCreditStatement(statementId: StableId?) = updateCredit { state ->
+        state.copy(
+            draft = state.draft.copy(selectedStatementId = statementId, allocationMode = CreditAllocationMode.SPECIFIC),
+            presentation = CreditPresentation.EDITING,
+        )
+    }
+
+    fun selectCreditEarliest() = updateCredit { state ->
+        state.copy(
+            draft = state.draft.copy(selectedStatementId = null, allocationMode = CreditAllocationMode.EARLIEST_UNPAID),
+            presentation = CreditPresentation.EDITING,
+        )
+    }
+
+    fun selectCreditUnallocated() = updateCredit { state ->
+        state.copy(
+            draft = state.draft.copy(selectedStatementId = null, allocationMode = CreditAllocationMode.UNALLOCATED_ADVANCE),
+            presentation = CreditPresentation.UNALLOCATED,
+        )
+    }
+
+    fun toggleCreditAutoPayment(enabled: Boolean) = updateCredit { state ->
+        state.copy(
+            draft = state.draft.copy(autoPaymentMode = if (enabled) AutoGenerationMode.FORMAL_TRANSACTION else AutoGenerationMode.CONFIRMATION_CANDIDATE),
+            presentation = CreditPolicy.autoPresentation(
+                state.account,
+                state.statement,
+                if (enabled) AutoGenerationMode.FORMAL_TRANSACTION else AutoGenerationMode.CONFIRMATION_CANDIDATE,
+            ),
+        )
+    }
+
+    fun saveCredit() {
+        when (currentCreditScreenId) {
+            "REC-014" -> saveCreditPayment()
+            "CRD-002", "CRD-008" -> saveCreditProfile()
+            "CRD-005" -> saveOfficialCreditStatement()
+            "CRD-007" -> reallocateCreditPayment()
+        }
+    }
+
+    fun assignCreditStatement(mode: StatementAssignmentMode) {
+        val state = (mutableCredit.value as? CreditLoadState.Content)?.state ?: return
+        val transactionId = currentCreditTransactionId ?: return
+        val statement = statementForMode(state, mode) ?: return
+        if (!beginCreditMutation(state.copy(presentation = if (statement.sealed) CreditPresentation.SEALED_WARNING else CreditPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val detail = journalApplicationPort.detail(state.snapshot.bookId, transactionId)
+                val expected = (detail as? DomainResult.Success)?.value?.transaction?.revisionId
+                if (expected == null) {
+                    finishCreditFailure("CREDIT_TRANSACTION_NOT_FOUND")
+                    return@launch
+                }
+                val result = creditApplicationPort.assignStatement(
+                    AssignCreditStatementRequest(
+                        creditTransactionIds(state.snapshot.bookId, transactionId),
+                        expected,
+                        statement.id,
+                        mode,
+                        runtimeSources.clock.now(),
+                    ),
+                )
+                finishCreditMutation(result, "CRD-004", statement.id)
+            } finally {
+                mutableCreditPending.value = false
+            }
+        }
+    }
+
+    fun navigateCredit(target: String, stableId: StableId?) {
+        val screenId = ScreenId(target)
+        val arguments = buildMap<String, SafeRouteArgument> {
+            if (stableId != null && target in setOf("CRD-001", "CRD-002", "CRD-003", "CRD-008")) put("accountId", StableIdArgument(stableId))
+            if (stableId != null && target in setOf("CRD-004", "CRD-005")) put("statementId", StableIdArgument(stableId))
+            if (stableId != null && target in setOf("CRD-006", "CRD-007")) put("transactionId", StableIdArgument(stableId))
+            if (stableId != null && target == "REC-014") put("transactionId", StableIdArgument(stableId))
+        }
+        navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+    }
+
+    private fun saveCreditProfile() {
+        val state = (mutableCredit.value as? CreditLoadState.Content)?.state ?: return
+        val account = state.account ?: return
+        val statementDay = state.draft.statementDay.toIntOrNull()
+        val dueDay = state.draft.dueDay.toIntOrNull()
+        val standard = state.draft.standardLimit.takeIf(String::isNotBlank)?.let { CreditPolicy.parseMinor(it, account.currency) }
+        val temporary = state.draft.temporaryLimit.takeIf(String::isNotBlank)?.let { CreditPolicy.parseMinor(it, account.currency) }
+        val expires = state.draft.temporaryExpires.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val errors = buildSet {
+            if (statementDay !in 1..31) add("statementDay")
+            if (dueDay !in 1..31) add("dueDay")
+            if (runCatching { ZoneId.of(state.draft.zoneId) }.isFailure) add("zone")
+            if ((temporary == null) != (expires == null)) add("temporaryLimit")
+        }
+        if (errors.isNotEmpty()) {
+            mutableCredit.value = CreditLoadState.Content(state.copy(presentation = CreditPresentation.VALIDATION_ERROR, validationFields = errors))
+            return
+        }
+        if (!beginCreditMutation(state.copy(presentation = CreditPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val now = runtimeSources.clock.now()
+                val result = creditApplicationPort.saveProfile(
+                    SaveCreditProfileRequest(
+                        CreditMutationIds(state.snapshot.bookId, CommandId(nextId()), nextId(), nextId()),
+                        account.id,
+                        account.profile?.lastCommitId,
+                        StatementDateRule.DayOfMonth(requireNotNull(statementDay), MissingDayPolicy.MOVE_TO_MONTH_END),
+                        DueDateRule.FixedDay(requireNotNull(dueDay), MissingDayPolicy.MOVE_TO_MONTH_END),
+                        ZoneId.of(state.draft.zoneId),
+                        standard,
+                        temporary,
+                        expires,
+                        state.draft.selectedPaymentAccountId,
+                        state.draft.autoPaymentMode,
+                        WeekendAdjustment.NEXT_BUSINESS_DAY,
+                        now.atZone(ZoneId.of(state.draft.zoneId)).toLocalDate().takeIf { standard != account.profile?.standardLimitMinor },
+                        now,
+                    ),
+                )
+                finishCreditMutation(result, "CRD-001", account.id)
+            } finally {
+                mutableCreditPending.value = false
+            }
+        }
+    }
+
+    private fun saveOfficialCreditStatement() {
+        val state = (mutableCredit.value as? CreditLoadState.Content)?.state ?: return
+        val account = state.account ?: return
+        val statement = state.statement ?: return
+        val official = CreditPolicy.parseMinor(state.draft.officialAmount, account.currency)
+        if (official == null || official < 0L) {
+            mutableCredit.value = CreditLoadState.Content(state.copy(presentation = CreditPresentation.VALIDATION_ERROR, validationFields = setOf("officialAmount")))
+            return
+        }
+        if (!beginCreditMutation(state.copy(presentation = CreditPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val now = runtimeSources.clock.now()
+                val result = creditApplicationPort.saveStatement(
+                    SaveCreditStatementRequest(
+                        CreditStatementMutationIds(
+                            CreditMutationIds(state.snapshot.bookId, CommandId(nextId()), nextId(), nextId()),
+                            statement.id,
+                            nextId(),
+                        ),
+                        account.id,
+                        statement.revisionId,
+                        statement.revisionNumber + 1,
+                        statement.cycleStart,
+                        statement.cycleEnd,
+                        statement.dueDate,
+                        statement.estimatedAmountMinor,
+                        official,
+                        now,
+                        true,
+                        now,
+                    ),
+                )
+                finishCreditMutation(result, "CRD-004", statement.id)
+            } finally {
+                mutableCreditPending.value = false
+            }
+        }
+    }
+
+    private fun saveCreditPayment() {
+        val content = mutableCredit.value as? CreditLoadState.Content ?: return
+        val state = CreditPolicy.validatePayment(content.state)
+        val account = state.account ?: return
+        val paymentId = state.draft.selectedPaymentAccountId
+        val payment = state.snapshot.paymentAccounts.singleOrNull { it.id == paymentId && it.active }
+        val amount = CreditPolicy.parseMinor(state.draft.amount, account.currency)
+        if (state.presentation in setOf(CreditPresentation.VALIDATION_ERROR, CreditPresentation.OVERPAYMENT_BLOCKED) || payment == null || amount == null) {
+            mutableCredit.value = CreditLoadState.Content(state)
+            return
+        }
+        if (payment.currency != account.currency || account.currency != state.snapshot.baseCurrency) {
+            finishCreditFailure("CREDIT_FX_EVIDENCE_REQUIRED")
+            return
+        }
+        if (!beginCreditMutation(state.copy(presentation = CreditPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val now = runtimeSources.clock.now()
+                val ids = creditTransactionIds(state.snapshot.bookId, nextId())
+                val result = creditApplicationPort.recordPayment(
+                    RecordCreditPaymentRequest(
+                        ids,
+                        CreditPaymentContext(
+                            LocalDate.parse(state.draft.date).atTime(now.atZone(ZoneId.of(account.profile?.statementZoneId?.id ?: DEFAULT_ZONE)).toLocalTime()).atZone(ZoneId.of(account.profile?.statementZoneId?.id ?: DEFAULT_ZONE)).toInstant(),
+                            ZoneId.of(account.profile?.statementZoneId?.id ?: DEFAULT_ZONE),
+                            LocalDate.parse(state.draft.date),
+                            state.draft.amount,
+                            null,
+                            now,
+                        ),
+                        SpecializedAccountAmountDraft(payment.id, amount, amount, null),
+                        SpecializedAccountAmountDraft(account.id, amount, amount, null),
+                        state.creditPaymentSelection(),
+                    ),
+                )
+                finishCreditMutation(result, "CRD-001", account.id)
+            } finally {
+                mutableCreditPending.value = false
+            }
+        }
+    }
+
+    private fun reallocateCreditPayment() {
+        val state = (mutableCredit.value as? CreditLoadState.Content)?.state ?: return
+        val transactionId = currentCreditTransactionId ?: return
+        if (!beginCreditMutation(state.copy(presentation = CreditPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val detail = journalApplicationPort.detail(state.snapshot.bookId, transactionId)
+                val expected = (detail as? DomainResult.Success)?.value?.transaction?.revisionId
+                if (expected == null) {
+                    finishCreditFailure("CREDIT_TRANSACTION_NOT_FOUND")
+                    return@launch
+                }
+                val result = creditApplicationPort.reallocatePayment(
+                    app.ledger.finance.application.ReallocateCreditPaymentRequest(
+                        creditTransactionIds(state.snapshot.bookId, transactionId),
+                        expected,
+                        state.creditPaymentSelection(),
+                        runtimeSources.clock.now(),
+                    ),
+                )
+                finishCreditMutation(result, "JRN-007", transactionId)
+            } finally {
+                mutableCreditPending.value = false
+            }
+        }
+    }
+
+    private fun statementForMode(state: CreditFeatureState, mode: StatementAssignmentMode): app.ledger.finance.application.CreditStatementView? {
+        val ordered = state.account?.statements?.sortedBy { it.cycleEnd }.orEmpty()
+        if (ordered.isEmpty()) return null
+        val selected = ordered.indexOfFirst { it.id == state.selectedStatementId }.takeIf { it >= 0 } ?: ordered.lastIndex
+        return ordered.getOrNull(
+            when (mode) {
+                StatementAssignmentMode.PREVIOUS_CYCLE -> selected - 1
+                StatementAssignmentMode.NEXT_CYCLE -> selected + 1
+                else -> selected
+            },
+        )
+    }
+
+    private fun CreditFeatureState.creditPaymentSelection(): CreditPaymentSelection = when (draft.allocationMode) {
+        CreditAllocationMode.EARLIEST_UNPAID -> CreditPaymentSelection.EarliestUnpaid
+        CreditAllocationMode.SPECIFIC -> CreditPaymentSelection.Specific(
+            app.ledger.finance.domain.CreditStatementId(requireNotNull(draft.selectedStatementId)),
+        )
+        CreditAllocationMode.UNALLOCATED_ADVANCE -> CreditPaymentSelection.UnallocatedAdvance
+    }
+
+    private fun creditTransactionIds(bookId: StableId, transactionId: StableId) = CreditTransactionMutationIds(
+        bookId,
+        CommandId(nextId()),
+        transactionId,
+        nextId(),
+        nextId(),
+        nextId(),
+        List(CREDIT_FACT_ID_COUNT) { nextId() },
+        emptyList(),
+    )
+
+    private fun beginCreditMutation(state: CreditFeatureState): Boolean {
+        if (mutableCreditPending.value) return false
+        mutableCreditPending.value = true
+        mutableCredit.value = CreditLoadState.Content(state)
+        return true
+    }
+
+    private suspend fun finishCreditMutation(result: DomainResult<app.ledger.finance.domain.CommandReceipt>, target: String, stableId: StableId?) {
+        when (result) {
+            is DomainResult.Success -> navigateCredit(target, stableId)
+            is DomainResult.Failure -> finishCreditFailure(sanitizeCode(result.error.code))
+        }
+    }
+
+    private fun finishCreditFailure(code: String) {
+        val state = (mutableCredit.value as? CreditLoadState.Content)?.state ?: return
+        mutableCredit.value = CreditLoadState.Content(state.copy(presentation = CreditPresentation.VALIDATION_ERROR, failureCode = code))
+    }
+
+    private fun updateCredit(block: (CreditFeatureState) -> CreditFeatureState) {
+        val current = mutableCredit.value as? CreditLoadState.Content ?: return
+        mutableCredit.value = CreditLoadState.Content(block(current.state))
+    }
+
     fun requestRootBack() {
         val screen = navigator.currentKey.contract.screenId.value
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
@@ -2524,6 +2899,8 @@ internal class AppRootViewModel @Inject constructor(
         const val DEFAULT_CURRENCY = "JPY"
         const val DEFAULT_ZONE = "Asia/Tokyo"
         const val PROJECT_GOAL_NOT_FOUND = "PROJECT_GOAL_NOT_FOUND"
+        const val CREDIT_NOT_FOUND = "CREDIT_NOT_FOUND"
+        const val CREDIT_FACT_ID_COUNT = 96
         const val MAX_RECOVERY_LENGTH = 256
         const val MAX_REFERENCE_NAME = 80
         const val RECOVERY_VERIFIER_BYTES = 32

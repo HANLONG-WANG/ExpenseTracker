@@ -33,6 +33,9 @@ object DeterministicFinancialPlanner {
             is RecordBudgetAdjustmentCommand,
             is RecordBudgetAdjustmentsCommand,
             -> planBudgetMutation(command, snapshot)
+            is SaveCreditProfileCommand,
+            is SaveCreditStatementCommand,
+            -> planCreditMutation(command, snapshot)
             else -> reject("financialCommand.transactionPlannerScope")
         }
     } catch (rejected: PlannerRejected) {
@@ -566,6 +569,70 @@ object DeterministicFinancialPlanner {
         afterHash = after.contentHash,
         entityRevisionId = EntityRevisionId(revision.id.value),
     )
+}
+
+private fun planCreditMutation(
+    command: FinancialCommand,
+    snapshot: PlanningSnapshot,
+): DomainResult<FinancialMutationPlan> = try {
+    val operation = snapshot.operationContext ?: reject("planningSnapshot.operationContext")
+    val target = snapshot.book.localRevision.next().orReject()
+    val profiles = (command as? SaveCreditProfileCommand)?.let { listOf(it.mutation) }.orEmpty()
+    val statements = (command as? SaveCreditStatementCommand)?.let { listOf(it.mutation) }.orEmpty()
+    require(profiles.all { it.profile.lastCommitId == operation.commitId }, "creditProfile.lastCommitId")
+    require(
+        profiles.all { it.limitPeriod?.createdCommitId == null || it.limitPeriod.createdCommitId == operation.commitId },
+        "creditLimitPeriod.createdCommitId",
+    )
+    require(statements.all { it.revision.createdCommitId == operation.commitId }, "creditStatement.createdCommitId")
+    val entity = profiles.firstOrNull()?.profile?.accountId?.value?.let { StableEntityReference(EntityType.ACCOUNT, it) }
+        ?: statements.single().statement.id.value.let { StableEntityReference(EntityType.CREDIT_STATEMENT, it) }
+    val plan = FinancialMutationPlan(
+        commandId = command.commandId,
+        commandType = command.commandType,
+        payloadHash = command.payloadHash,
+        expectedRevisionId = null,
+        targetLocalRevision = target,
+        commit = CommitDraft(
+            operation.commitId,
+            CommitKind.USER_MUTATION,
+            listOf(snapshot.book.headCommitId),
+            operation.createdAt,
+            command.commandId,
+            operation.deviceInstanceId,
+            CanonicalFinancialHash.commitRoot(command.commandId, command.payloadHash, target, emptyList()),
+        ),
+        transactions = emptyList(), revisions = emptyList(), revisionAmounts = emptyList(), fxRateSnapshots = emptyList(),
+        journalBundles = emptyList(), economicEffects = emptyList(), budgetEffects = emptyList(), projectEffects = emptyList(),
+        goalEffects = emptyList(), statementEffects = emptyList(), loanEffects = emptyList(), settlementEffects = emptyList(),
+        refundAllocations = emptyList(), goalMovements = emptyList(), budgetAdjustments = emptyList(),
+        purgeTombstones = emptyList(), blobGcCandidates = emptyList(), dependencyResolutions = emptyList(),
+        projectionChanges = ProjectionChangeSet(
+            target,
+            statements.map { ProjectionChange.Statement(it.statement.id, target) } +
+                listOf(ProjectionChange.Widget(snapshot.book.id, target)),
+        ),
+        entityChanges = listOf(
+            EntityChange(
+                operation.commitId,
+                entity,
+                if (profiles.singleOrNull()?.expectedLastCommitId == null && statements.singleOrNull()?.expectedRevisionId == null) {
+                    EntityChangeOperation.CREATE
+                } else {
+                    EntityChangeOperation.UPDATE
+                },
+                null,
+                ContentHash(command.payloadHash),
+                null,
+            ),
+        ),
+        ruleSetVersion = snapshot.book.ruleSetVersion,
+        creditProfileMutations = profiles,
+        creditStatementMutations = statements,
+    )
+    FinancialMutationPlanValidator.validate(command, snapshot, plan)
+} catch (rejected: PlannerRejected) {
+    DomainResult.Failure(rejected.violation)
 }
 
 private data class MaterializedFacts(

@@ -405,7 +405,7 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: AGP/Lint 9.3.1's bundled `intellij-core` FIR path invokes `java.util.List.removeLast()`, a Java 21 method, for the large root `when` dispatch even though the frozen Android toolchain runs on JDK 17. The failure occurs inside Lint analysis; the Kotlin compiler and application runtime are valid.
 - Precedence applied: the frozen JDK/AGP/Kotlin baseline and mandatory Lint gate outrank changing the host JDK or suppressing a detector to accommodate an analyzer implementation detail.
 - Decision: retain JDK 17 and all Lint detectors, and express the root language/session/destination dispatch as equivalent exhaustive `if` chains. No UI state, route, priority or behavior changes.
-- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. During P12 the same analyzer path recurred after adding destination titles and a Protobuf-builder test chain; splitting title lookup into bounded `if` helpers and making the test builders explicit restored main, unit-test and AndroidTest Lint without disabling a detector or changing JDK. P13 likewise keeps the Ready scaffold, SAF launcher/fixed action and ordinary-record destination wiring in bounded files. In P14, direct `List.size`/`List.isEmpty` resolution in the place-map fallback reached the same bundled JavaDoc parser; equivalent Kotlin `count()`/`none()` calls retained behavior and restored complete app Lint. P16 keeps its refund route dispatch/title in `RefundRootDestination.kt` rather than enlarging `AppRootScreen.kt`, restoring app Lint without a detector or toolchain change. No stage changes JDK, suppresses a detector or weakens the gate. A future analyzer upgrade may restore more compact expressions only after the same static and device evidence is replayed.
+- Consequence: `lintDebug`, `lintVitalRelease`, the fresh cumulative gate and the API 36 seven-test application suite all pass on the frozen toolchain. During P12 the same analyzer path recurred after adding destination titles and a Protobuf-builder test chain; splitting title lookup into bounded `if` helpers and making the test builders explicit restored main, unit-test and AndroidTest Lint without disabling a detector or changing JDK. P13 likewise keeps the Ready scaffold, SAF launcher/fixed action and ordinary-record destination wiring in bounded files. In P14, direct `List.size`/`List.isEmpty` resolution in the place-map fallback reached the same bundled JavaDoc parser; equivalent Kotlin `count()`/`none()` calls retained behavior and restored complete app Lint. P16 keeps its refund route dispatch/title in `RefundRootDestination.kt` rather than enlarging `AppRootScreen.kt`, restoring app Lint without a detector or toolchain change. P19 moves the More destination into `MoreRootScreen.kt` and replaces two test-side Java-list conveniences with bounded descriptor/count operations after the analyzer bug recurs; main, unit and AndroidTest Lint then pass without suppression. No stage changes JDK, suppresses a detector or weakens the gate. A future analyzer upgrade may restore more compact expressions only after the same static and device evidence is replayed.
 
 ## DL-056 — The P12 place map reuses the governed P10 network boundary
 
@@ -584,3 +584,48 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Date/stage: 2026-08-04 / P18
 - Decision: render project-cash-flow light and underfunded-goal-detail dark states in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. The two digests live in the Android test source.
 - Consequence: P18 pixel drift is machine-detectable using only `LedgerTheme`, governed components, localized resources, the textual UI contract, token JSON, screen YAML and traceability CSV. No excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.
+
+## DL-081 — Missing billing days use the frozen closed calendar rule
+
+- Date/stage: 2026-08-04 / P19
+- Surface issue: a configured billing or due day may not exist in a short month, and a local calendar date may be skipped by a historical time-zone transition.
+- Decision: keep the persisted integer rule as a closed typed policy: resolve a missing day to the month's last valid local date, then resolve a skipped local date deterministically before applying the due-day offset in the account zone. The planner receives the resolved instant and never reads the device's current zone.
+- Consequence: statement boundaries are reproducible across short months, DST/history and process/device changes without a Schema v1 migration.
+
+## DL-082 — Estimated statement shells are atomic accounting side effects
+
+- Date/stage: 2026-08-04 / P19
+- Decision: when a formal credit transaction resolves to a cycle with no statement row, the coordinator plan reserves deterministic statement/revision IDs and writes the estimated statement shell in the same SQLCipher transaction as assignment, facts, projections, receipt and book revision.
+- Consequence: a committed transaction can never reference a missing statement, and a failed or duplicate command cannot leave an orphan shell or append a second estimated statement.
+
+## DL-083 — Actual debt governs overpayment; official difference never adjusts it
+
+- Date/stage: 2026-08-04 / P19
+- Precedence applied: immutable Journal/Posting facts and the no-automatic-adjustment requirement outrank a bank statement's display amount.
+- Decision: validate active repayment against the current fact-derived credit debt. Official and estimated statement amounts produce a display difference only. A passive positive balance remains legal and explicitly explained; no minimum-payment value is inferred.
+- Consequence: deliberate overpayment is blocked, externally caused positive balances remain visible, and entering an official amount never fabricates a balance adjustment, income or expense.
+
+## DL-084 — Temporary credit limits coalesce by effective day without weakening command idempotency
+
+- Date/stage: 2026-08-04 / P19
+- Decision: a new profile command replaces the current same-day temporary-limit interval in its revisioned current representation, while canonical command hashing and `CommandReceipt` lookup still make an identical `commandId` an exact replay.
+- Consequence: the user does not accumulate ambiguous overlapping same-day limit rows, and retries cannot create duplicate history or silently accept a different payload.
+
+## DL-085 — Automatic repayment records bookkeeping, never external payment success
+
+- Date/stage: 2026-08-04 / P19
+- Decision: formal mode requires all five frozen eligibility facts and a unique occurrence key before calling `FinancialMutationCoordinator`; candidate mode returns a proposal without writing any fact. UI and application result text explicitly state that no bank payment is initiated or confirmed.
+- Consequence: P23 can later supply occurrence scheduling through the same boundary, but cannot bypass eligibility/idempotency or reinterpret a bookkeeping record as real-world settlement.
+
+## DL-086 — Localized root contexts preserve the Activity result owner explicitly
+
+- Date/stage: 2026-08-04 / P19
+- Surface issue: the app root installs a localized `LocalContext`; AndroidX resolves `LocalActivityResultRegistryOwner` through the original Activity context, so replacing the context without preserving the owner caused the Ready scaffold's SAF launcher to fail during a real device cold start.
+- Decision: capture the Activity's registry owner before installing the localized context and provide both values explicitly to the same root composition.
+- Consequence: localization remains process-safe, SessionGate is unchanged, and every production SAF launcher has a real lifecycle owner; the full API 36 application suite proves the fix rather than using a test-only owner.
+
+## DL-087 — P19 goldens are full-pixel digests of governed Compose output
+
+- Date/stage: 2026-08-04 / P19
+- Decision: render credit-account light and official-difference dark states in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. Both digests live in the Android test source.
+- Consequence: P19 pixel drift is machine-detectable using only `LedgerTheme`, governed components, localized resources, the textual UI contract, token JSON, screen YAML and traceability CSV. No excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.

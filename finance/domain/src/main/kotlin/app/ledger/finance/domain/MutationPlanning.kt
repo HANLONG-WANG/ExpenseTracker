@@ -30,6 +30,8 @@ enum class FinancialCommandType {
     CONFIGURE_BUDGET_MONTH,
     SAVE_BUDGET_TEMPLATE,
     RECORD_BUDGET_ADJUSTMENTS,
+    SAVE_CREDIT_PROFILE,
+    SAVE_CREDIT_STATEMENT,
 }
 
 sealed interface FinancialCommand {
@@ -288,6 +290,24 @@ data class RecordBudgetAdjustmentsCommand(
     }
 }
 
+data class SaveCreditProfileCommand(
+    override val commandId: CommandId,
+    override val payloadHash: Hash256,
+    val mutation: CreditProfileMutation,
+) : FinancialCommand {
+    override val expectedRevisionId: TransactionRevisionId? = null
+    override val commandType: FinancialCommandType = FinancialCommandType.SAVE_CREDIT_PROFILE
+}
+
+data class SaveCreditStatementCommand(
+    override val commandId: CommandId,
+    override val payloadHash: Hash256,
+    val mutation: CreditStatementMutation,
+) : FinancialCommand {
+    override val expectedRevisionId: TransactionRevisionId? = null
+    override val commandType: FinancialCommandType = FinancialCommandType.SAVE_CREDIT_STATEMENT
+}
+
 data class BatchFinancialCommand(
     override val commandId: CommandId,
     override val payloadHash: Hash256,
@@ -353,6 +373,8 @@ data class FinancialMutationPlan(
     val ruleSetVersion: RuleSetVersion,
     val budgetMonthMutations: List<BudgetMonthMutation> = emptyList(),
     val budgetTemplateMutations: List<BudgetTemplateMutation> = emptyList(),
+    val creditProfileMutations: List<CreditProfileMutation> = emptyList(),
+    val creditStatementMutations: List<CreditStatementMutation> = emptyList(),
 )
 
 data class PlanningOperationContext(
@@ -638,6 +660,8 @@ object FinancialMutationPlanValidator {
         is ConfigureBudgetMonthCommand -> plan.budgetMonthMutations == listOf(command.mutation)
         is SaveBudgetTemplateCommand -> plan.budgetTemplateMutations == listOf(command.mutation)
         is RecordBudgetAdjustmentsCommand -> plan.budgetAdjustments == command.adjustments
+        is SaveCreditProfileCommand -> plan.creditProfileMutations == listOf(command.mutation)
+        is SaveCreditStatementCommand -> plan.creditStatementMutations == listOf(command.mutation)
         is BatchFinancialCommand ->
             plan.commit.kind == CommitKind.BATCH_MUTATION &&
                 (plan.revisions.isNotEmpty() || plan.goalMovements.isNotEmpty() || plan.budgetAdjustments.isNotEmpty())

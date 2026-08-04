@@ -22,6 +22,7 @@ import app.ledger.finance.domain.TransferPayload
 
 internal class RoomFinancialPlanWriter {
     private val budgetPlanWriter = RoomBudgetPlanWriter()
+    private val creditPlanWriter = RoomCreditPlanWriter()
 
     fun write(
         database: SupportSQLiteDatabase,
@@ -33,6 +34,7 @@ internal class RoomFinancialPlanWriter {
         checkpoint(FinancialCommitPhase.AFTER_COMMIT_HEADER)
         afterCommitHeader(database, plan)
         budgetPlanWriter.write(database, plan)
+        creditPlanWriter.write(database, plan)
         insertTransactionShells(database, plan)
         insertFxSnapshots(database, plan)
         insertRevisions(database, plan)
@@ -427,23 +429,12 @@ internal class RoomFinancialPlanWriter {
                 ),
             )
         }
+        RoomCreditPaymentAllocationWriter.write(database, plan)
         plan.revisions.forEach { revision ->
             val revisionId = database.requireInternalId("transaction_revision", revision.id.value)
             val transactionId = database.requireInternalId("business_transaction", revision.transactionId.value)
             when (val payload = revision.payload) {
                 is RefundPayload -> Unit
-                is CreditPaymentPayload -> payload.allocations.forEach { allocation ->
-                    database.execSQL(
-                        "INSERT INTO credit_payment_allocation(payment_transaction_id, payment_revision_id, statement_id, amount_minor, reversal_of_id) " +
-                            "VALUES (?, ?, ?, ?, NULL)",
-                        arrayOf<Any?>(
-                            transactionId,
-                            revisionId,
-                            allocation.statementId?.let { database.requireInternalId("credit_statement", it.value) },
-                            allocation.amount.minor.value,
-                        ),
-                    )
-                }
                 is LoanPaymentPayload -> payload.allocations.forEach { allocation ->
                     database.execSQL(
                         "INSERT INTO loan_actual_allocation(payment_transaction_id, payment_revision_id, tranche_id, schedule_item_id, component, " +

@@ -79,7 +79,7 @@ class P11RuntimeDeviceTest {
             assertEquals("EXPENSE", viewModel.navigator.currentKey.encodedArguments["tab"])
 
             val saved = viewModel.settings.first { it.onboardingComplete }
-            assertEquals(16, saved.bookId.size())
+            assertEquals(16, saved.bookId.toByteArray().count())
             assertEquals("en", saved.languageTag)
             assertEquals("JPY", saved.baseCurrency)
             assertEquals("Asia/Tokyo", saved.zoneId)

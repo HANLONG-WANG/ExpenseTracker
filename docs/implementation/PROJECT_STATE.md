@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-04 (Asia/Tokyo)
-Current stage: P18 — Projects and goal funds
-Stage status: VERIFIED (`P18-E001`—`P18-E007`); P00—P17 remain VERIFIED and P19 is the next unstarted stage
+Current stage: P19 — Credit accounts, statements, repayments and automatic repayment bookkeeping
+Stage status: VERIFIED (`P19-E001`—`P19-E007`); P00—P18 remain VERIFIED and P20 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -306,17 +306,29 @@ P17 is `VERIFIED`. `P17_BUDGET_MAPPING.md` records the exact aggregate/schema/ap
 
 P18 is `VERIFIED`. `P18_PROJECT_GOAL_MAPPING.md` records the exact aggregate/fact/application/query/UI boundary. Recurrence allocation, settlement authoring, cross-feature analytics, widgets, operations and all P19+ workflows remain in their owning stages.
 
+### P19 result (verified)
+
+| Area | P19 result | Classification |
+|---|---|---|
+| Credit profile and statements | Typed billing/due/time-zone rules, permanent and temporary limits, estimated/official statements, sealing, overdue/paid/positive-balance states and immutable revisions are complete | VERIFIED (`P19-E001`—`P19-E004`) |
+| Credit accounting and allocation | Consumption increases liability and expense; repayment transfers asset to liability with zero income/expense and deterministic earliest/specified/unallocated allocation | VERIFIED (`P19-E002`, `P19-E003`) |
+| Safety and automation | Actual debt blocks active overpayment, passive positive balances remain explicit, formal auto-bookkeeping checks five eligibility facts and occurrence idempotency, and candidate mode writes no facts | VERIFIED (`P19-E001`—`P19-E004`) |
+| Atomic application/data boundary | Every repayment and reassignment reaches immutable facts only through `FinancialMutationCoordinator`; profile/official statement revisions and all synchronous credit projections share the encrypted transaction/revision boundary | VERIFIED (`P19-E001`, `P19-E003`, `P19-E006`) |
+| UI, accessibility and screenshots | REC-014 and CRD-001—008 cover all 29 YAML states under width/font/locale/theme matrices; two governed Compose/token full-pixel digests freeze account and official-difference states | VERIFIED (`P19-E004`, `P19-E005`) |
+
+P19 is `VERIFIED`. `P19_CREDIT_MAPPING.md` records the exact domain/fact/application/query/UI boundary. P23 retains only occurrence-engine scheduling integration; installments, loans, analytics, widgets and all P20+ workflows remain in their owning stages.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 37 requirements are `VERIFIED`; 45 are `IN_PROGRESS`; 8 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 95 are `VERIFIED`; 120 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 41 requirements are `VERIFIED`; 41 are `IN_PROGRESS`; 8 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 104 are `VERIFIED`; 111 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-011 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-012—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
-| Permanent domain invariants | 35 | Fourteen are `VERIFIED`, including goal/account separation (`INV-021`), budget hierarchy/rollover (`INV-018`—`INV-020`), transfer net-assets (`INV-015`), immutable historical FX (`INV-016`), valuation exclusion (`INV-017`) and checked arithmetic (`INV-034`); 21 retain later evidence |
+| Permanent domain invariants | 35 | Fifteen are `VERIFIED`, including credit repayment classification (`INV-012`), goal/account separation (`INV-021`), budget hierarchy/rollover (`INV-018`—`INV-020`), transfer net-assets (`INV-015`), immutable historical FX (`INV-016`), valuation exclusion (`INV-017`) and checked arithmetic (`INV-034`); 20 retain later evidence |
 | Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; P08 verifies normalized financial plan mapping and atomic repository behavior |
-| Projection families | 7 + search/geographic indexes | Current transaction, account and settlement plus both indexes are `VERIFIED`; later-owned planning/liability/analytics/widget runtimes remain `IN_PROGRESS` |
+| Projection families | 7 + search/geographic indexes | Current transaction, account, budget/project/goal, settlement and the P19 credit subset plus both indexes are `VERIFIED`; installment/loan, analytics and widget completion remain later-owned |
 | Durable/staging/backup operation inventories | 4 groups | Encrypted physical records `VERIFIED` by P07; operation runtime remains `IN_PROGRESS` for P28—P31 |
 
 ## Stage progression
@@ -342,7 +354,8 @@ P18 is `VERIFIED`. `P18_PROJECT_GOAL_MAPPING.md` records the exact aggregate/fac
 | P16 | VERIFIED | Complete refund facts, allocations, dependency resolution and REC-015/016; `P16-E001`—`P16-E007` |
 | P17 | VERIFIED | Complete monthly budget/template history, hierarchy constraints, signed adjustments, deterministic rollover/daily availability and BUD-001—008; `P17-E001`—`P17-E007` |
 | P18 | VERIFIED | Complete project budgeting/reports, keyset transactions, goal reservations/completion and PRJ/GOL contracts; `P18-E001`—`P18-E007` |
-| P19—P36 | NOT_STARTED | P19 is next; do not promote later work early |
+| P19 | VERIFIED | Complete credit profile/statements, assignment, repayment/allocation, auto-bookkeeping boundary and REC-014/CRD-001—008; `P19-E001`—`P19-E007` |
+| P20—P36 | NOT_STARTED | P20 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -371,3 +384,18 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 ```
 
 All P18 evidence is recorded in `P18-E001`—`P18-E007`. The next entry point is P19; reuse the coordinator-owned goal/project facts and exact projections without introducing mutable history, signed values hidden in positive-money fields or feature-owned financial SQL.
+
+## P19 verified handoff
+
+P19 leaves the repository with verified credit profiles/statements, immutable repayment/allocation facts, synchronous projections, guarded automatic bookkeeping and all nine UI contracts. The reproducible P19 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p19_credit.py
+./gradlew :finance:domain:test
+./gradlew :finance:data:pixel6Api36DebugAndroidTest
+./gradlew :feature:liabilities:pixel6Api36DebugAndroidTest
+./gradlew :app:pixel6Api36DebugAndroidTest
+./gradlew p19Check
+```
+
+All P19 evidence is recorded in `P19-E001`—`P19-E007`. The next entry point is P20; reuse the coordinator-owned credit facts and exact projections without inventing bank-payment success, minimum-payment data, mutable official differences or feature-owned financial SQL.

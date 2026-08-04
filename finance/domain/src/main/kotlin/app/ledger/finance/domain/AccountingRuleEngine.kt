@@ -324,8 +324,8 @@ private class RuleSession(
                     statementId = allocation.statementId,
                     kind = StatementEffectKind.PAYMENT,
                     amount = allocation.amount,
-                    manualAssignment = input.context.statementAssignment?.mode ==
-                        StatementAssignmentMode.EXPLICIT_STATEMENT,
+                    manualAssignment = input.context.statementAssignment?.mode != null &&
+                        input.context.statementAssignment.mode != StatementAssignmentMode.AUTOMATIC,
                 )
             },
         )
@@ -791,7 +791,8 @@ private class RuleSession(
                 input.context.statementAssignment?.statementId,
                 kind,
                 amount,
-                input.context.statementAssignment?.mode == StatementAssignmentMode.EXPLICIT_STATEMENT,
+                input.context.statementAssignment?.mode != null &&
+                    input.context.statementAssignment.mode != StatementAssignmentMode.AUTOMATIC,
             ),
         )
     } else {

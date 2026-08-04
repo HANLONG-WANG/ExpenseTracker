@@ -821,6 +821,63 @@ tasks.register("p18Check") {
     )
 }
 
+val validateP19Credit by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the frozen P19 credit, statement, payment, projection and UI contract."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p19_credit.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/liabilities/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP19CreditFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P19 credit gate rejects coordinator, overpayment, statement, route and UI weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p19_credit_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p19_credit.py",
+        "scripts/tests/test_p19_credit_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/designsystem/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/liabilities/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/domain/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p19Check") {
+    group = "verification"
+    description = "Runs P19 static, JVM, lint and architecture evidence; managed-device suites run separately."
+    dependsOn(
+        validateP19Credit,
+        validateP19CreditFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":finance:domain:test",
+        ":finance:data:testDebugUnitTest",
+        ":feature:liabilities:testDebugUnitTest",
+        ":app:lintDebug",
+        ":feature:liabilities:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

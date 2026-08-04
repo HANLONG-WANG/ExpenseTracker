@@ -34,12 +34,12 @@ class AppSettingsContractTest {
 
     @Test
     fun typedSettingsSchemaContainsNoFormOrFinancialPlaintextField() {
-        val forbidden = setOf(
+        val forbidden = arrayOf(
             "amount", "memo", "note", "account_name", "category_name", "card_number",
             "attachment_path", "latitude", "longitude", "recovery_password",
         )
-        val names = LedgerAppSettings.getDescriptor().fields.map { it.name }.toSet()
-        assertTrue(names.intersect(forbidden).isEmpty())
+        val descriptor = LedgerAppSettings.getDescriptor()
+        forbidden.forEach { fieldName -> assertTrue(descriptor.findFieldByName(fieldName) == null) }
     }
 
     private fun settingsWith(

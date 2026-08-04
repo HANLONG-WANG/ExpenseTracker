@@ -125,6 +125,7 @@ data class CreditStatementRevision(
     init {
         require(revisionNumber > 0)
         require(estimatedAmountMinor >= 0L)
+        require(officialAmountMinor == null || officialAmountMinor >= 0L)
         require((officialAmountMinor == null) == (officialRecordedAt == null))
         require((officialAmountMinor == null) == (differenceMinor == null))
     }

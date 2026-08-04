@@ -49,6 +49,8 @@ internal fun ReadyRootScaffold(
     val refundPending by viewModel.refundPending.collectAsStateWithLifecycle()
     val currencySettings by viewModel.currencySettings.collectAsStateWithLifecycle()
     val journalState by viewModel.journal.collectAsStateWithLifecycle()
+    val creditState by viewModel.credit.collectAsStateWithLifecycle()
+    val creditPending by viewModel.creditPending.collectAsStateWithLifecycle()
     val launchAttachmentPicker = rememberRecordAttachmentPicker { uri ->
         if (viewModel.navigator.currentKey.contract.screenId.value == "REC-013") {
             viewModel.importSpecializedAttachment(uri)
@@ -68,6 +70,7 @@ internal fun ReadyRootScaffold(
                 title = projectGoalDestinationTitleOrNull(key.contract.screenId.value)
                     ?: budgetDestinationTitleOrNull(key.contract.screenId.value)
                     ?: refundDestinationTitleOrNull(key.contract.screenId.value)
+                    ?: creditDestinationTitleOrNull(key.contract.screenId.value)
                     ?: destinationTitle(key),
                 variant = if (topLevel) LedgerTopAppBarVariant.TOP_LEVEL else LedgerTopAppBarVariant.BACK,
                 onNavigation = {
@@ -84,7 +87,12 @@ internal fun ReadyRootScaffold(
                 },
             )
         },
-        fixedAction = refundFixedAction(
+        fixedAction = creditFixedAction(
+            navigator.currentKey.contract.screenId.value,
+            creditState,
+            creditPending,
+            viewModel::saveCredit,
+        ) ?: refundFixedAction(
             navigator.currentKey.contract.screenId.value,
             refundState,
             refundPending,
@@ -133,7 +141,14 @@ internal fun ReadyRootScaffold(
             entryProvider = { key ->
                 NavEntry(key) {
                     val screenId = key.contract.screenId.value
-                    if (screenId.startsWith("PRJ-") || screenId.startsWith("GOL-")) {
+                    if (screenId.startsWith("CRD-") || screenId == "REC-014") {
+                        CreditRootDestination(
+                            screenId,
+                            key.encodedArguments,
+                            viewModel,
+                            onNavigationChanged = { navigationEpoch += 1 },
+                        )
+                    } else if (screenId.startsWith("PRJ-") || screenId.startsWith("GOL-")) {
                         ProjectGoalRootDestination(
                             screenId,
                             key.encodedArguments,
