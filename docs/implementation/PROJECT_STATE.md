@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-04 (Asia/Tokyo)
-Current stage: P17 — Monthly budgets and rollover
-Stage status: VERIFIED (`P17-E001`—`P17-E007`); P00—P16 remain VERIFIED and P18 is the next unstarted stage
+Current stage: P18 — Projects and goal funds
+Stage status: VERIFIED (`P18-E001`—`P18-E007`); P00—P17 remain VERIFIED and P19 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -294,15 +294,27 @@ P16 remains `VERIFIED`. `P16_REFUND_MAPPING.md` records its exact domain/fact/ap
 
 P17 is `VERIFIED`. `P17_BUDGET_MAPPING.md` records the exact aggregate/schema/application/projection/UI boundary. Recurrence authoring, projects, goals, analytics, durable operation execution and all P18+ workflows remain in their owning stages.
 
+### P18 result (verified)
+
+| Area | P18 result | Classification |
+|---|---|---|
+| Project aggregate and reports | Row-versioned project current/audit state, one optional goal relation, base-currency budget, SELF_SHARE usage, refund restoration, settlement status, cash flow and recent/keyset-paged transactions are complete | VERIFIED (`P18-E001`—`P18-E004`) |
+| Frozen project effects | Transaction-time monthly inclusion is stored in each ProjectEffect; transfers and loan principal are excluded while real interest/fees/penalties consume; later configuration changes never rewrite history | VERIFIED (`P18-E002`, `P18-E003`) |
+| Goal reservation facts | Account-bound Goal current state, exact GoalMovement/GoalEffect planning, transaction SPEND, refund RESTORE, canonical hash, idempotency and row conflict all terminate at `FinancialMutationCoordinator` | VERIFIED (`P18-E001`—`P18-E003`) |
+| Availability and completion | Checked `actual - reserved` may be negative with warning but no blocking or automatic reduction; RELEASE/KEEP/CONTINUE retain explicit history and never change actual account balance | VERIFIED (`P18-E002`—`P18-E004`) |
+| UI, accessibility and screenshots | PRJ-001—006 and GOL-001—005 cover all 31 YAML states under width/font/locale/theme matrices; two governed Compose/token full-pixel digests freeze cash flow and underfunded goal detail | VERIFIED (`P18-E004`, `P18-E005`) |
+
+P18 is `VERIFIED`. `P18_PROJECT_GOAL_MAPPING.md` records the exact aggregate/fact/application/query/UI boundary. Recurrence allocation, settlement authoring, cross-feature analytics, widgets, operations and all P19+ workflows remain in their owning stages.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 33 requirements are `VERIFIED`; 47 are `IN_PROGRESS`; 10 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 84 are `VERIFIED`; 131 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 37 requirements are `VERIFIED`; 45 are `IN_PROGRESS`; 8 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 95 are `VERIFIED`; 120 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-011 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-012—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
-| Permanent domain invariants | 35 | Thirteen are `VERIFIED`, including budget hierarchy/rollover (`INV-018`—`INV-020`), transfer net-assets (`INV-015`), immutable historical FX (`INV-016`), valuation exclusion (`INV-017`) and checked arithmetic (`INV-034`); 22 retain later evidence |
+| Permanent domain invariants | 35 | Fourteen are `VERIFIED`, including goal/account separation (`INV-021`), budget hierarchy/rollover (`INV-018`—`INV-020`), transfer net-assets (`INV-015`), immutable historical FX (`INV-016`), valuation exclusion (`INV-017`) and checked arithmetic (`INV-034`); 21 retain later evidence |
 | Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; P08 verifies normalized financial plan mapping and atomic repository behavior |
 | Projection families | 7 + search/geographic indexes | Current transaction, account and settlement plus both indexes are `VERIFIED`; later-owned planning/liability/analytics/widget runtimes remain `IN_PROGRESS` |
 | Durable/staging/backup operation inventories | 4 groups | Encrypted physical records `VERIFIED` by P07; operation runtime remains `IN_PROGRESS` for P28—P31 |
@@ -329,7 +341,8 @@ P17 is `VERIFIED`. `P17_BUDGET_MAPPING.md` records the exact aggregate/schema/ap
 | P15 | VERIFIED | Keyset/FTS journal, complete filters, bounded selection, immutable history/trash and all 12 JRN contracts; `P15-E001`—`P15-E008` |
 | P16 | VERIFIED | Complete refund facts, allocations, dependency resolution and REC-015/016; `P16-E001`—`P16-E007` |
 | P17 | VERIFIED | Complete monthly budget/template history, hierarchy constraints, signed adjustments, deterministic rollover/daily availability and BUD-001—008; `P17-E001`—`P17-E007` |
-| P18—P36 | NOT_STARTED | P18 is next; do not promote later work early |
+| P18 | VERIFIED | Complete project budgeting/reports, keyset transactions, goal reservations/completion and PRJ/GOL contracts; `P18-E001`—`P18-E007` |
+| P19—P36 | NOT_STARTED | P19 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -344,3 +357,17 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 ```
 
 All P17 evidence is recorded in `P17-E001`—`P17-E007`. The next entry point is P18; reuse the typed budget facts, exact projections and sole financial coordinator rather than introducing feature-owned SQL, mutable history or a second budget calculation path.
+
+## P18 verified handoff
+
+P18 leaves the repository with verified project/goal aggregates, immutable facts, synchronous projections, keyset Paging and all 11 UI contracts. The reproducible P18 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p18_project_goal.py
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.ProjectGoalApplicationPortDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :feature:planning:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.feature.planning.ProjectGoalUiContractDeviceTest,app.ledger.feature.planning.P18GoldenDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p18Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+```
+
+All P18 evidence is recorded in `P18-E001`—`P18-E007`. The next entry point is P19; reuse the coordinator-owned goal/project facts and exact projections without introducing mutable history, signed values hidden in positive-money fields or feature-owned financial SQL.

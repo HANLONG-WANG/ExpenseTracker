@@ -22,6 +22,7 @@ import app.ledger.finance.application.JournalApplicationPort
 import app.ledger.finance.application.LedgerInitializationPort
 import app.ledger.finance.application.OpeningBalanceWritePort
 import app.ledger.finance.application.OrdinaryTransactionEntryPort
+import app.ledger.finance.application.ProjectGoalApplicationPort
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.RefundApplicationPort
 import app.ledger.finance.application.SpecializedTransactionEntryPort
@@ -30,6 +31,7 @@ import app.ledger.finance.data.SecureRoomJournalApplicationPort
 import app.ledger.finance.data.SecureRoomLedgerInitializationPort
 import app.ledger.finance.data.SecureRoomOpeningBalanceWritePort
 import app.ledger.finance.data.SecureRoomOrdinaryTransactionEntryPort
+import app.ledger.finance.data.SecureRoomProjectGoalApplicationPort
 import app.ledger.finance.data.SecureRoomReferenceDataManagementPort
 import app.ledger.finance.data.SecureRoomRefundApplicationPort
 import app.ledger.finance.data.SecureRoomSpecializedTransactionEntryPort
@@ -109,6 +111,14 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
     ): BudgetApplicationPort = SecureRoomBudgetApplicationPort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun projectGoalApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+        referenceDataPort: ReferenceDataManagementPort,
+    ): ProjectGoalApplicationPort = SecureRoomProjectGoalApplicationPort(context, keyProvider, referenceDataPort)
 
     @Provides
     @Singleton

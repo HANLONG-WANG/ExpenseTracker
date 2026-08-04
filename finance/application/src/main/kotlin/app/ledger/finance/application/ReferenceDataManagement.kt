@@ -10,6 +10,8 @@ import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryRemovalStrategy
 import app.ledger.finance.domain.CategoryStatus
 import app.ledger.finance.domain.EntityStatus
+import app.ledger.finance.domain.GoalStatus
+import app.ledger.finance.domain.ProjectStatus
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.UserAccountType
 import java.math.BigDecimal
@@ -93,6 +95,30 @@ public data class PlaceDraft(
     val merchantId: StableId?,
 )
 
+public data class ProjectDraft(
+    val projectId: StableId,
+    val expectedRowVersion: Long?,
+    val name: String,
+    val description: String?,
+    val startDate: LocalDate,
+    val endDate: LocalDate?,
+    val budgetBaseMinor: Long,
+    val includedInMonthlyBudget: Boolean,
+    val goalId: StableId?,
+    val status: ProjectStatus,
+)
+
+public data class GoalDraft(
+    val goalId: StableId,
+    val expectedRowVersion: Long?,
+    val accountId: StableId,
+    val name: String,
+    val targetAmountMinor: Long,
+    val dueDate: LocalDate?,
+    val suggestedMonthlyAmountMinor: Long?,
+    val status: GoalStatus,
+)
+
 public sealed interface ReferenceMutation {
     public data class SaveAccount(val draft: AccountDraft) : ReferenceMutation
     public data class ArchiveAccount(val accountId: StableId, val expectedRowVersion: Long) : ReferenceMutation
@@ -132,6 +158,13 @@ public sealed interface ReferenceMutation {
         val observedMinor: Long,
         val note: String?,
     ) : ReferenceMutation
+    public data class SaveProject(val draft: ProjectDraft) : ReferenceMutation
+    public data class ChangeProjectStatus(
+        val projectId: StableId,
+        val expectedRowVersion: Long,
+        val status: ProjectStatus,
+    ) : ReferenceMutation
+    public data class SaveGoal(val draft: GoalDraft) : ReferenceMutation
 }
 
 public data class ReferenceMutationCommand(val ids: ReferenceMutationIds, val mutation: ReferenceMutation)

@@ -239,6 +239,8 @@ data class RecordGoalMovementCommand(
     override val commandId: CommandId,
     override val payloadHash: Hash256,
     val movement: GoalMovement,
+    val effectId: GoalEffectId,
+    val expectedGoalRowVersion: RowVersion,
 ) : FinancialCommand {
     override val expectedRevisionId: TransactionRevisionId? = null
     override val commandType: FinancialCommandType = FinancialCommandType.RECORD_GOAL_MOVEMENT
@@ -373,6 +375,8 @@ data class PlanningSnapshot(
     val batchSnapshots: List<PlanningSnapshot> = emptyList(),
     val budgetTemplateRevision: BudgetTemplateRevision? = null,
     val operationContext: PlanningOperationContext? = null,
+    val goal: Goal? = null,
+    val goalBalanceMinor: Long? = null,
 )
 
 object FinancialMutationPlanValidator {
@@ -393,6 +397,11 @@ object FinancialMutationPlanValidator {
             plan.commit.parentIds != listOf(snapshot.book.headCommitId) ||
             plan.projectionChanges.targetRevision != plan.targetLocalRevision ||
             plan.ruleSetVersion != snapshot.book.ruleSetVersion ||
+            (
+                command is RecordGoalMovementCommand && snapshot.goal?.let { goal ->
+                    goal.id != command.movement.goalId || goal.rowVersion != command.expectedGoalRowVersion
+                } != false
+                ) ||
             plan.journalBundles.any {
                 it.entry.role == JournalEntryRole.APPLY && it.entry.ruleSetVersion != plan.ruleSetVersion
             } ||
@@ -617,7 +626,14 @@ object FinancialMutationPlanValidator {
         is PurgeTransactionCommand -> plan.purgeTombstones.any { tombstone ->
             tombstone.entity.stableId == command.transactionId.value
         } && plan.commit.kind == CommitKind.PURGE
-        is RecordGoalMovementCommand -> plan.goalMovements.contains(command.movement) && plan.goalEffects.isNotEmpty()
+        is RecordGoalMovementCommand ->
+            plan.goalMovements == listOf(command.movement) &&
+                plan.goalEffects.singleOrNull()?.let { effect ->
+                    effect.id == command.effectId &&
+                        effect.goalMovementId == command.movement.id &&
+                        effect.sourceRevisionId == null &&
+                        effect.goalId == command.movement.goalId
+                } == true
         is RecordBudgetAdjustmentCommand -> plan.budgetAdjustments.contains(command.adjustment)
         is ConfigureBudgetMonthCommand -> plan.budgetMonthMutations == listOf(command.mutation)
         is SaveBudgetTemplateCommand -> plan.budgetTemplateMutations == listOf(command.mutation)

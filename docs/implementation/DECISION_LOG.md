@@ -557,3 +557,30 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Date/stage: 2026-08-04 / P17
 - Decision: render configured-light and constraint-error-dark budget screens in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. The two digests live in the Android test source.
 - Consequence: budget pixel drift is machine-detectable using only `LedgerTheme`, governed components, the textual UI contract, token JSON, screen YAML, traceability CSV and localized resources. No excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.
+
+## DL-077 — Goal ADJUST keeps the positive-money model closed
+
+- Date/stage: 2026-08-04 / P18
+- Surface issue: the frozen `GoalMovement` stores a positive amount and the UI route exposes the closed `ALLOCATE|RELEASE|ADJUST` kind, while an unrestricted signed adjustment would hide direction inside a positive-money field.
+- Precedence applied: the domain model's typed money and prohibited-state rules outrank a looser UI interpretation.
+- Decision: `ADJUST` is an explicit positive reserve correction. A downward correction uses `RELEASE`; no negative amount or implicit sign is accepted by a goal command.
+- Consequence: direction stays auditable in the immutable movement kind, canonical hashing remains unambiguous and compile/runtime validation rejects zero, negative and over-release inputs.
+
+## DL-078 — RELEASE completion is a resumable two-commit workflow
+
+- Date/stage: 2026-08-04 / P18
+- Surface issue: completion combines a financial release, which requires a command receipt and the sole financial coordinator, with a goal-status entity revision. The frozen model does not define one cross-kind command that may bypass either boundary.
+- Decision: commit the exact remaining reserve through `FinancialMutationCoordinator`, then append the goal completion revision. A retry first observes the rebuilt zero reserve and performs only the missing status transition.
+- Consequence: failure between steps is visible and safely resumable; retries cannot release twice, real account balance is unchanged and the implementation does not claim unsupported cross-command atomicity.
+
+## DL-079 — Project transaction paging uses the immutable occurrence/ID key
+
+- Date/stage: 2026-08-04 / P18
+- Decision: order project transactions by `(occurredAt DESC, StableId DESC)` and continue with an exclusive compound cursor. The overview is separately bounded to the first three rows.
+- Consequence: PRJ-004 uses Paging 3 without deep OFFSET or retaining a full result-ID set; equal timestamps remain deterministic and newly appended history does not duplicate a page already consumed.
+
+## DL-080 — P18 goldens are full-pixel digests of governed Compose output
+
+- Date/stage: 2026-08-04 / P18
+- Decision: render project-cash-flow light and underfunded-goal-detail dark states in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. The two digests live in the Android test source.
+- Consequence: P18 pixel drift is machine-detectable using only `LedgerTheme`, governed components, localized resources, the textual UI contract, token JSON, screen YAML and traceability CSV. No excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.

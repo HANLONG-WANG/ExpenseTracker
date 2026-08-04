@@ -64,6 +64,19 @@ public object LedgerTestTags {
     public const val BUDGET_DAILY_AVAILABLE: String = "budget_daily_available"
     public const val BUDGET_COMPOSITION: String = "budget_composition"
     public const val BUDGET_CONSTRAINT_METERS: String = "budget_constraint_meters"
+    public const val PROJECT_LIST: String = "project_list"
+    public const val PROJECT_EDITOR: String = "project_editor"
+    public const val PROJECT_DETAIL: String = "project_detail"
+    public const val PROJECT_TRANSACTIONS: String = "project_transactions"
+    public const val PROJECT_CASHFLOW: String = "project_cashflow"
+    public const val PROJECT_STATUS: String = "project_status"
+    public const val GOAL_LIST: String = "goal_list"
+    public const val GOAL_EDITOR: String = "goal_editor"
+    public const val GOAL_DETAIL: String = "goal_detail"
+    public const val GOAL_MOVEMENT: String = "goal_movement"
+    public const val GOAL_COMPLETION: String = "goal_completion"
+    public const val ACCOUNT_AVAILABILITY: String = "account_availability"
+    public const val PROJECT_MONTHLY_SNAPSHOT: String = "project_monthly_snapshot"
 
     public fun requireStable(value: String): String {
         require(STABLE_TAG.matches(value)) { "test tag must be a stable semantic identifier" }

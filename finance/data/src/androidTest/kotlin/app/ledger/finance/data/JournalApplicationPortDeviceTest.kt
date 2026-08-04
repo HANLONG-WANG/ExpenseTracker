@@ -183,7 +183,7 @@ class JournalApplicationPortDeviceTest {
         expectedRevisionId = null, direction = OrdinaryDirection.EXPENSE, categoryId = CATEGORY_ID,
         amount = OrdinaryAmountDraft("1250", 1_250, currency("JPY"), 1_250, 1_250), accountId = ACCOUNT_ID, cardId = null,
         merchantId = null, occurredAt = Instant.parse("2026-08-03T03:30:00Z").plusMillis(seed), zoneId = ZONE, localDate = LocalDate.of(2026, 8, 3),
-        projectId = null, settlementActivityId = null, settlementShares = emptyList(), locationRecordId = null, newLocation = null,
+        projectId = null, goalId = null, settlementActivityId = null, settlementShares = emptyList(), locationRecordId = null, newLocation = null,
         note = note, attachmentIds = emptyList(), source = TransactionSource.MANUAL, sourceReferenceId = null, createdAt = Instant.parse("2026-08-03T04:30:00Z").plusMillis(seed),
     )
 

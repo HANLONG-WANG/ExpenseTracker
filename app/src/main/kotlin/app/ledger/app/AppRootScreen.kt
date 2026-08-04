@@ -505,6 +505,12 @@ internal fun RootDestination(
         }, onCurrencies = {
             viewModel.navigateP12(key, "SETG-004", emptyMap())
             onNavigationChanged()
+        }, onProjects = {
+            viewModel.navigateProjectGoal("PRJ-001", null, null)
+            onNavigationChanged()
+        }, onGoals = {
+            viewModel.navigateProjectGoal("GOL-001", null, null)
+            onNavigationChanged()
         })
     } else if (screenId == "SETG-004") {
         val state = currencySettings
@@ -550,12 +556,14 @@ internal fun MoreScreen(
     onOperations: () -> Unit,
     onHelp: () -> Unit,
     onManagement: () -> Unit = {},
+    onProjects: () -> Unit = {},
+    onGoals: () -> Unit = {},
 ) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
         topBar = { LedgerTopAppBar(stringResource(R.string.global_more_title), LedgerTopAppBarVariant.BACK, onNavigation = onBack) },
     ) { padding ->
-        MoreContent(presentation, onOperations, onHelp, Modifier.padding(padding), onManagement)
+        MoreContent(presentation, onOperations, onHelp, Modifier.padding(padding), onManagement, onProjects = onProjects, onGoals = onGoals)
     }
 }
 
@@ -567,6 +575,8 @@ private fun MoreContent(
     modifier: Modifier = Modifier,
     onManagement: () -> Unit = {},
     onCurrencies: () -> Unit = {},
+    onProjects: () -> Unit = {},
+    onGoals: () -> Unit = {},
 ) {
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (presentation == MorePresentation.BADGE_UPDATES) LedgerBanner(stringResource(R.string.global_badge_updates), LedgerBannerVariant.INFO)
@@ -575,6 +585,8 @@ private fun MoreContent(
         FeatureHubItem(stringResource(R.string.global_help), stringResource(R.string.global_help_explanation), onHelp)
         FeatureHubItem(stringResource(R.string.global_management), stringResource(R.string.global_management_explanation), onManagement)
         FeatureHubItem(stringResource(R.string.global_currencies), stringResource(R.string.global_currencies_explanation), onCurrencies)
+        FeatureHubItem(stringResource(R.string.global_projects), stringResource(R.string.global_projects_explanation), onProjects)
+        FeatureHubItem(stringResource(R.string.global_goals), stringResource(R.string.global_goals_explanation), onGoals)
     }
 }
 

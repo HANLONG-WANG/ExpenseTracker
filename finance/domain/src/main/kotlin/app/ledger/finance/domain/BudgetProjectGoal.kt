@@ -470,3 +470,54 @@ data class AccountAvailabilityProjection(
 ) : LifecycleRecord<RecordLifecycle.Projection> {
     override val lifecycle: RecordLifecycle.Projection = RecordLifecycle.Projection
 }
+
+data class GoalBalanceDelta(
+    val kind: GoalEffectKind,
+    val amountMinor: Long,
+    val polarity: EffectPolarity,
+) {
+    init {
+        require(amountMinor > 0L)
+    }
+}
+
+/** Exact reconstruction rule shared by projection tests and presentation mappers. */
+object GoalBalancePolicy {
+    fun rebuild(deltas: List<GoalBalanceDelta>): DomainResult<Long> = try {
+        val signedDeltas = deltas.map { delta ->
+            when (delta.kind) {
+                GoalEffectKind.ALLOCATE,
+                GoalEffectKind.RESTORE,
+                GoalEffectKind.ADJUST,
+                -> delta.amountMinor
+                GoalEffectKind.RELEASE,
+                GoalEffectKind.SPEND,
+                -> Math.negateExact(delta.amountMinor)
+            }.let { if (delta.polarity == EffectPolarity.APPLY) it else Math.negateExact(it) }
+        }
+        when (val sum = CheckedArithmetic.sum(signedDeltas)) {
+            is DomainResult.Success -> sum
+            is DomainResult.Failure -> DomainResult.Failure(DomainViolation.NumericOverflow("goal.balance"))
+        }
+    } catch (_: ArithmeticException) {
+        DomainResult.Failure(DomainViolation.NumericOverflow("goal.balance"))
+    }
+
+    fun availability(actualBalanceMinor: Long, reservedMinor: Long): DomainResult<Pair<Long, Boolean>> = try {
+        val available = Math.subtractExact(actualBalanceMinor, reservedMinor)
+        DomainResult.Success(available to (available < 0L))
+    } catch (_: ArithmeticException) {
+        DomainResult.Failure(DomainViolation.NumericOverflow("goal.availability"))
+    }
+}
+
+object ProjectStatusPolicy {
+    fun canSelectForNewTransaction(status: ProjectStatus): Boolean = status == ProjectStatus.ACTIVE
+
+    fun transition(from: ProjectStatus, to: ProjectStatus): DomainResult<ProjectStatus> = when {
+        from == to -> DomainResult.Success(to)
+        from == ProjectStatus.ACTIVE && to == ProjectStatus.ARCHIVED -> DomainResult.Success(to)
+        from == ProjectStatus.ARCHIVED && to == ProjectStatus.ACTIVE -> DomainResult.Success(to)
+        else -> DomainResult.Failure(DomainViolation.InvalidStateTransition("project.status"))
+    }
+}

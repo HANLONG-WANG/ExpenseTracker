@@ -202,7 +202,7 @@ class RefundApplicationPortDeviceTest {
     private fun expense(amount: Long, transaction: StableId, seed: Long): OrdinaryTransactionWriteRequest = OrdinaryTransactionWriteRequest(
         OrdinaryTransactionWriteIds(BOOK_ID, id(seed), transaction, id(seed + 1), id(seed + 2), id(seed + 3), (seed + 10..seed + 300).map(::id), (seed + 400..seed + 407).map(::id)),
         null, OrdinaryDirection.EXPENSE, CATEGORY_ID, OrdinaryAmountDraft(amount.toString(), amount, JPY, amount, amount), ACCOUNT_A, null, null,
-        Instant.parse("2026-07-08T03:00:00Z"), ZONE, LocalDate.of(2026, 7, 8), null, null, emptyList(), null, null, "purchase", emptyList(), TransactionSource.MANUAL, null, Instant.ofEpochMilli(seed * 10),
+        Instant.parse("2026-07-08T03:00:00Z"), ZONE, LocalDate.of(2026, 7, 8), null, null, null, emptyList(), null, null, "purchase", emptyList(), TransactionSource.MANUAL, null, Instant.ofEpochMilli(seed * 10),
     )
 
     private fun linkedRefund(amount: Long, original: StableId, originalRevision: StableId, account: StableId, seed: Long, excess: Boolean): RefundWriteRequest = refundRequest(

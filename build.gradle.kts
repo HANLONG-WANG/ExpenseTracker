@@ -783,6 +783,44 @@ tasks.register("p17Check") {
     )
 }
 
+val validateP18ProjectGoal by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the frozen P18 project, goal-fund, projection, paging and UI contract."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p18_project_goal.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/planning/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+tasks.register("p18Check") {
+    group = "verification"
+    description = "Runs P18 static, JVM, lint and architecture evidence; managed-device suites run separately."
+    dependsOn(
+        validateP18ProjectGoal,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":finance:domain:test",
+        ":finance:data:testDebugUnitTest",
+        ":feature:planning:testDebugUnitTest",
+        ":app:lintDebug",
+        ":feature:planning:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

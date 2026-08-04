@@ -702,7 +702,9 @@ private class RuleSession(
     }
 
     private fun budgetUse(amount: PositiveMoney): List<BudgetEffectSpec> = if (
-        input.context.budgetMonth != null && input.payload.classification != null
+        input.context.budgetMonth != null &&
+        input.payload.classification != null &&
+        input.context.projectId?.let { references.project(it)?.includedInMonthlyBudget } != false
     ) {
         listOf(BudgetEffectSpec(BudgetEffectKind.USE, amount))
     } else {
@@ -710,7 +712,9 @@ private class RuleSession(
     }
 
     private fun budgetRestore(amount: PositiveMoney): List<BudgetEffectSpec> = if (
-        input.context.budgetMonth != null && input.payload.classification != null
+        input.context.budgetMonth != null &&
+        input.payload.classification != null &&
+        input.context.projectId?.let { references.project(it)?.includedInMonthlyBudget } != false
     ) {
         listOf(BudgetEffectSpec(BudgetEffectKind.RESTORE, amount))
     } else {

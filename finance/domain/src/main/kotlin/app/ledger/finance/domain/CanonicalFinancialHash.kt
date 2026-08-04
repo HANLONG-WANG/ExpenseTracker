@@ -40,7 +40,11 @@ object CanonicalFinancialHash {
                 stableId(command.transactionId.value)
                 purgeEligibility(command.eligibility)
             }
-            is RecordGoalMovementCommand -> goalMovement(command.movement)
+            is RecordGoalMovementCommand -> {
+                goalMovement(command.movement)
+                stableId(command.effectId.value)
+                long(command.expectedGoalRowVersion.value)
+            }
             is RecordBudgetAdjustmentCommand -> budgetAdjustment(command.adjustment)
             is ConfigureBudgetMonthCommand -> budgetMonthMutation(command.mutation)
             is SaveBudgetTemplateCommand -> budgetTemplateMutation(command.mutation)

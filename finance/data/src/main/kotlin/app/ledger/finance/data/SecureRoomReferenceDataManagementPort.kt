@@ -34,10 +34,12 @@ import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
+import app.ledger.finance.application.GoalDraft
 import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.LocationReferenceView
 import app.ledger.finance.application.MerchantReferenceView
 import app.ledger.finance.application.PlaceReferenceView
+import app.ledger.finance.application.ProjectDraft
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.ReferenceMutation
@@ -60,12 +62,15 @@ import app.ledger.finance.domain.EntityType
 import app.ledger.finance.domain.ExpensePayload
 import app.ledger.finance.domain.FinancialCommand
 import app.ledger.finance.domain.FxExchangePayload
+import app.ledger.finance.domain.GoalStatus
 import app.ledger.finance.domain.IncomePayload
 import app.ledger.finance.domain.LedgerAccountClass
 import app.ledger.finance.domain.LedgerOwnerType
 import app.ledger.finance.domain.LoanPaymentPayload
 import app.ledger.finance.domain.NewTransactionInput
 import app.ledger.finance.domain.PlanningSnapshot
+import app.ledger.finance.domain.ProjectStatus
+import app.ledger.finance.domain.ProjectStatusPolicy
 import app.ledger.finance.domain.ReferenceDataPolicies
 import app.ledger.finance.domain.ReferenceDataViolation
 import app.ledger.finance.domain.RefundPayload
@@ -125,6 +130,9 @@ public class SecureRoomReferenceDataManagementPort(
             is ReferenceMutation.MergePlace -> mergePlace(connection, command.ids, mutation, book, nextRevision)
             is ReferenceMutation.SplitPlace -> splitPlace(connection, command.ids, mutation, book, nextRevision)
             is ReferenceMutation.SaveCheckpoint -> saveCheckpoint(connection, command.ids, mutation, book, nextRevision)
+            is ReferenceMutation.SaveProject -> saveProject(connection, command.ids, mutation.draft, book, nextRevision)
+            is ReferenceMutation.ChangeProjectStatus -> changeProjectStatus(connection, command.ids, mutation, book, nextRevision)
+            is ReferenceMutation.SaveGoal -> saveGoal(connection, command.ids, mutation.draft, book, nextRevision)
         }
     }
 
@@ -972,6 +980,182 @@ public class SecureRoomReferenceDataManagementPort(
         return total
     }
 
+    private fun saveProject(
+        db: SupportSQLiteDatabase,
+        ids: ReferenceMutationIds,
+        draft: ProjectDraft,
+        book: BookRow,
+        revision: Long,
+    ) {
+        validateName(draft.name, "project.name")
+        if (draft.budgetBaseMinor < 0L || draft.endDate?.isBefore(draft.startDate) == true) {
+            abort(ReferenceDataViolation.InvalidField("project.periodOrBudget"))
+        }
+        val existing = projectRow(db, draft.projectId)
+        if (existing == null && draft.expectedRowVersion != null) abort(ReferenceDataViolation.StaleRevision)
+        existing?.let {
+            requireVersion(it.rowVersion, draft.expectedRowVersion)
+            if (it.status != draft.status) abort(ReferenceDataViolation.InvalidField("project.statusMutation"))
+        }
+        val goalInternal = draft.goalId?.let { goalId ->
+            db.queryOne("SELECT id FROM goal WHERE uid=?", arrayOf(goalId.bytes)) { it.getLong(0) }
+                ?: abort(ReferenceDataViolation.InvalidField("project.goal"))
+        }
+        val snapshot = canonicalProject(draft)
+        startCommit(db, ids, book, revision, snapshot)
+        val commit = db.requireInternalId("book_commit", ids.commitId)
+        if (existing == null) {
+            db.execSQL(
+                "INSERT INTO project(id,uid,name,description,start_date,end_date,budget_base_minor,included_in_monthly_budget,goal_id,status,last_commit_id,row_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)",
+                arrayOf<Any?>(db.allocateInternalId("project", draft.projectId), draft.projectId.bytes, draft.name.trim(), draft.description.clean(), draft.startDate.toStorageInt(), draft.endDate?.toStorageInt(), draft.budgetBaseMinor, draft.includedInMonthlyBudget.toSqlInt(), goalInternal, draft.status.ordinal, commit),
+            )
+        } else {
+            val changed = db.compileStatement(
+                "UPDATE project SET name=?,description=?,start_date=?,end_date=?,budget_base_minor=?,included_in_monthly_budget=?,goal_id=?,last_commit_id=?,row_version=row_version+1 WHERE id=? AND row_version=?",
+            ).apply {
+                bindString(1, draft.name.trim())
+                draft.description.clean()?.let { bindString(2, it) } ?: bindNull(2)
+                bindLong(3, draft.startDate.toStorageInt().toLong())
+                draft.endDate?.let { bindLong(4, it.toStorageInt().toLong()) } ?: bindNull(4)
+                bindLong(5, draft.budgetBaseMinor)
+                bindLong(6, draft.includedInMonthlyBudget.toSqlInt().toLong())
+                goalInternal?.let { bindLong(7, it) } ?: bindNull(7)
+                bindLong(8, commit)
+                bindLong(9, existing.id)
+                bindLong(10, existing.rowVersion)
+            }.executeUpdateDelete()
+            if (changed != 1) abort(ReferenceDataViolation.StaleRevision)
+        }
+        audit(
+            db, ids, EntityType.PROJECT, draft.projectId,
+            nextEntityRevision(db, EntityType.PROJECT, draft.projectId),
+            if (existing == null) EntityRevisionAction.CREATE else EntityRevisionAction.EDIT,
+            if (existing == null) EntityChangeOperation.CREATE else EntityChangeOperation.UPDATE,
+            existing?.canonical, snapshot,
+        )
+        finish(db, ids, revision, book.valuationRevision)
+    }
+
+    private fun changeProjectStatus(
+        db: SupportSQLiteDatabase,
+        ids: ReferenceMutationIds,
+        mutation: ReferenceMutation.ChangeProjectStatus,
+        book: BookRow,
+        revision: Long,
+    ) {
+        val existing = projectRow(db, mutation.projectId)
+            ?: abort(ReferenceDataViolation.InvalidField("project.id"))
+        requireVersion(existing.rowVersion, mutation.expectedRowVersion)
+        ProjectStatusPolicy.transition(existing.status, mutation.status).valueOrAbort()
+        val after = canonical(
+            "project", mutation.projectId.toString(), existing.name, existing.description.orEmpty(),
+            existing.startDate.toString(), existing.endDate?.toString().orEmpty(), existing.budgetBaseMinor.toString(),
+            existing.includedInMonthlyBudget.toString(), existing.goalId?.toString().orEmpty(), mutation.status.name,
+        )
+        startCommit(db, ids, book, revision, after)
+        val changed = db.compileStatement(
+            "UPDATE project SET status=?,last_commit_id=?,row_version=row_version+1 WHERE id=? AND row_version=?",
+        ).apply {
+            bindLong(1, mutation.status.ordinal.toLong())
+            bindLong(2, db.requireInternalId("book_commit", ids.commitId))
+            bindLong(3, existing.id)
+            bindLong(4, existing.rowVersion)
+        }.executeUpdateDelete()
+        if (changed != 1) abort(ReferenceDataViolation.StaleRevision)
+        audit(
+            db, ids, EntityType.PROJECT, mutation.projectId,
+            nextEntityRevision(db, EntityType.PROJECT, mutation.projectId),
+            if (mutation.status == ProjectStatus.ARCHIVED) EntityRevisionAction.ARCHIVE else EntityRevisionAction.RESTORE,
+            if (mutation.status == ProjectStatus.ARCHIVED) EntityChangeOperation.ARCHIVE else EntityChangeOperation.RESTORE,
+            existing.canonical, after,
+        )
+        finish(db, ids, revision, book.valuationRevision)
+    }
+
+    private fun saveGoal(
+        db: SupportSQLiteDatabase,
+        ids: ReferenceMutationIds,
+        draft: GoalDraft,
+        book: BookRow,
+        revision: Long,
+    ) {
+        validateName(draft.name, "goal.name")
+        if (draft.targetAmountMinor <= 0L || (draft.suggestedMonthlyAmountMinor ?: 1L) <= 0L) {
+            abort(ReferenceDataViolation.InvalidField("goal.amount"))
+        }
+        val account = accountRow(db, draft.accountId)
+        val existing = goalRow(db, draft.goalId)
+        if (existing == null && draft.expectedRowVersion != null) abort(ReferenceDataViolation.StaleRevision)
+        existing?.let {
+            requireVersion(it.rowVersion, draft.expectedRowVersion)
+            if (it.accountId != account.id) abort(ReferenceDataViolation.InvalidField("goal.accountLocked"))
+        }
+        val snapshot = canonicalGoal(draft, account.currency)
+        startCommit(db, ids, book, revision, snapshot)
+        val commit = db.requireInternalId("book_commit", ids.commitId)
+        if (existing == null) {
+            db.execSQL(
+                "INSERT INTO goal(id,uid,account_id,name,target_amount_minor,due_date,suggested_monthly_minor,status,last_commit_id,row_version) VALUES(?,?,?,?,?,?,?,?,?,1)",
+                arrayOf<Any?>(db.allocateInternalId("goal", draft.goalId), draft.goalId.bytes, account.id, draft.name.trim(), draft.targetAmountMinor, draft.dueDate?.toStorageInt(), draft.suggestedMonthlyAmountMinor, draft.status.ordinal, commit),
+            )
+        } else {
+            val changed = db.compileStatement(
+                "UPDATE goal SET name=?,target_amount_minor=?,due_date=?,suggested_monthly_minor=?,status=?,last_commit_id=?,row_version=row_version+1 WHERE id=? AND row_version=?",
+            ).apply {
+                bindString(1, draft.name.trim())
+                bindLong(2, draft.targetAmountMinor)
+                draft.dueDate?.let { bindLong(3, it.toStorageInt().toLong()) } ?: bindNull(3)
+                draft.suggestedMonthlyAmountMinor?.let { bindLong(4, it) } ?: bindNull(4)
+                bindLong(5, draft.status.ordinal.toLong())
+                bindLong(6, commit)
+                bindLong(7, existing.id)
+                bindLong(8, existing.rowVersion)
+            }.executeUpdateDelete()
+            if (changed != 1) abort(ReferenceDataViolation.StaleRevision)
+        }
+        audit(
+            db, ids, EntityType.GOAL, draft.goalId,
+            nextEntityRevision(db, EntityType.GOAL, draft.goalId),
+            if (existing == null) EntityRevisionAction.CREATE else EntityRevisionAction.EDIT,
+            if (existing == null) EntityChangeOperation.CREATE else EntityChangeOperation.UPDATE,
+            existing?.canonical, snapshot,
+        )
+        finish(db, ids, revision, book.valuationRevision)
+    }
+
+    private fun projectRow(db: SupportSQLiteDatabase, id: StableId): ProjectRow? = db.queryOne(
+        "SELECT p.id,p.name,p.description,p.start_date,p.end_date,p.budget_base_minor,p.included_in_monthly_budget,g.uid goal_uid,p.status,p.row_version FROM project p LEFT JOIN goal g ON g.id=p.goal_id WHERE p.uid=?",
+        arrayOf(id.bytes),
+    ) { cursor ->
+        val goalId = cursor.nullableStableId("goal_uid")
+        val row = ProjectRow(
+            cursor.long("id"), cursor.string("name"), cursor.nullableString("description"),
+            cursor.int("start_date").toStoredLocalDate(), cursor.nullableLong("end_date")?.toInt()?.toStoredLocalDate(),
+            cursor.long("budget_base_minor"), cursor.int("included_in_monthly_budget") == 1,
+            goalId, ProjectStatus.entries[cursor.int("status")], cursor.long("row_version"), ByteArray(0),
+        )
+        row.copy(canonical = canonical("project", id.toString(), row.name, row.description.orEmpty(), row.startDate.toString(), row.endDate?.toString().orEmpty(), row.budgetBaseMinor.toString(), row.includedInMonthlyBudget.toString(), goalId?.toString().orEmpty(), row.status.name))
+    }
+
+    private fun goalRow(db: SupportSQLiteDatabase, id: StableId): GoalRow? = db.queryOne(
+        "SELECT g.id,g.account_id,g.name,g.target_amount_minor,g.due_date,g.suggested_monthly_minor,g.status,g.row_version,ua.currency_code FROM goal g JOIN user_account ua ON ua.id=g.account_id WHERE g.uid=?",
+        arrayOf(id.bytes),
+    ) { cursor ->
+        val row = GoalRow(cursor.long("id"), cursor.long("account_id"), cursor.string("name"), cursor.long("target_amount_minor"), cursor.nullableLong("due_date")?.toInt()?.toStoredLocalDate(), cursor.nullableLong("suggested_monthly_minor"), GoalStatus.entries[cursor.int("status")], cursor.long("row_version"), cursor.string("currency_code"), ByteArray(0))
+        row.copy(canonical = canonical("goal", id.toString(), row.accountId.toString(), row.name, row.targetAmountMinor.toString(), row.dueDate?.toString().orEmpty(), row.suggestedMonthlyMinor?.toString().orEmpty(), row.status.name, row.currency))
+    }
+
+    private fun canonicalProject(draft: ProjectDraft): ByteArray = canonical(
+        "project", draft.projectId.toString(), draft.name.trim(), draft.description.clean().orEmpty(), draft.startDate.toString(),
+        draft.endDate?.toString().orEmpty(), draft.budgetBaseMinor.toString(), draft.includedInMonthlyBudget.toString(),
+        draft.goalId?.toString().orEmpty(), draft.status.name,
+    )
+
+    private fun canonicalGoal(draft: GoalDraft, currency: String): ByteArray = canonical(
+        "goal", draft.goalId.toString(), draft.accountId.toString(), draft.name.trim(), draft.targetAmountMinor.toString(),
+        draft.dueDate?.toString().orEmpty(), draft.suggestedMonthlyAmountMinor?.toString().orEmpty(), draft.status.name, currency,
+    )
+
     private fun startCommit(db: SupportSQLiteDatabase, ids: ReferenceMutationIds, book: BookRow, revision: Long, snapshot: ByteArray) {
         if (ids.entityRevisionIds.toSet().size != ids.entityRevisionIds.size) abort(ReferenceDataViolation.InvalidField("revisionIds"))
         db.execSQL(
@@ -1124,6 +1308,31 @@ public class SecureRoomReferenceDataManagementPort(
 
     private data class BookRow(val uid: ByteArray, val baseCurrency: String, val headCommitId: Long, val localRevision: Long, val valuationRevision: Long, val state: Int)
     private data class AccountRow(val id: Long, val ledgerId: Long, val type: Int, val currency: String, val rowVersion: Long, val hasPostings: Boolean)
+    private data class ProjectRow(
+        val id: Long,
+        val name: String,
+        val description: String?,
+        val startDate: java.time.LocalDate,
+        val endDate: java.time.LocalDate?,
+        val budgetBaseMinor: Long,
+        val includedInMonthlyBudget: Boolean,
+        val goalId: StableId?,
+        val status: ProjectStatus,
+        val rowVersion: Long,
+        val canonical: ByteArray,
+    )
+    private data class GoalRow(
+        val id: Long,
+        val accountId: Long,
+        val name: String,
+        val targetAmountMinor: Long,
+        val dueDate: java.time.LocalDate?,
+        val suggestedMonthlyMinor: Long?,
+        val status: GoalStatus,
+        val rowVersion: Long,
+        val currency: String,
+        val canonical: ByteArray,
+    )
     private data class ParentRow(val id: Long, val direction: CategoryDirection, val depth: Int, val status: CategoryStatus)
     private data class CategoryRow(val id: Long, val parentId: Long?, val direction: CategoryDirection, val rowVersion: Long)
 }
@@ -1140,3 +1349,7 @@ private fun androidx.sqlite.db.SupportSQLiteStatement.bindNullableString(index: 
 private fun androidx.sqlite.db.SupportSQLiteStatement.bindNullableLong(index: Int, value: Long?) {
     if (value == null) bindNull(index) else bindLong(index, value)
 }
+
+private fun android.database.Cursor.int(name: String): Int = getInt(getColumnIndexOrThrow(name))
+private fun android.database.Cursor.long(name: String): Long = getLong(getColumnIndexOrThrow(name))
+private fun android.database.Cursor.string(name: String): String = getString(getColumnIndexOrThrow(name))

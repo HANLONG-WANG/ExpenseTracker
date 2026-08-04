@@ -21,6 +21,7 @@ import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
+import app.ledger.core.common.map
 import app.ledger.core.designsystem.LedgerReferenceDisplayDefaults
 import app.ledger.core.geo.ForegroundLocationSaveSession
 import app.ledger.core.geo.ProductionForegroundLocationClient
@@ -76,6 +77,11 @@ import app.ledger.feature.planning.BudgetFeatureState
 import app.ledger.feature.planning.BudgetLoadState
 import app.ledger.feature.planning.BudgetPolicy
 import app.ledger.feature.planning.BudgetPresentation
+import app.ledger.feature.planning.ProjectGoalFeatureState
+import app.ledger.feature.planning.ProjectGoalLoadState
+import app.ledger.feature.planning.ProjectGoalPolicy
+import app.ledger.feature.planning.ProjectGoalPresentation
+import app.ledger.feature.planning.ProjectTransactionPagingSource
 import app.ledger.feature.record.OrdinaryRecordEditorState
 import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.record.OrdinaryRecordPolicy
@@ -106,6 +112,10 @@ import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.BudgetMutationIds
 import app.ledger.finance.application.CardDraft
 import app.ledger.finance.application.CategoryDraft
+import app.ledger.finance.application.ChangeProjectStatusRequest
+import app.ledger.finance.application.CompleteGoalRequest
+import app.ledger.finance.application.GoalCompletionStrategy
+import app.ledger.finance.application.GoalMovementMutationIds
 import app.ledger.finance.application.InitialAccountCommand
 import app.ledger.finance.application.InitialCategoryCommand
 import app.ledger.finance.application.InitializeLedgerCommand
@@ -132,7 +142,10 @@ import app.ledger.finance.application.OrdinaryTransactionEntryPort
 import app.ledger.finance.application.OrdinaryTransactionWriteIds
 import app.ledger.finance.application.OrdinaryTransactionWriteRequest
 import app.ledger.finance.application.PlaceDraft
+import app.ledger.finance.application.PlanningMutationIds
+import app.ledger.finance.application.ProjectGoalApplicationPort
 import app.ledger.finance.application.RecordBudgetAdjustmentRequest
+import app.ledger.finance.application.RecordGoalMovementRequest
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.ReferenceMutation
@@ -144,6 +157,8 @@ import app.ledger.finance.application.RefundWriteIds
 import app.ledger.finance.application.RefundWriteRequest
 import app.ledger.finance.application.SaveBudgetMonthRequest
 import app.ledger.finance.application.SaveBudgetTemplateRequest
+import app.ledger.finance.application.SaveGoalRequest
+import app.ledger.finance.application.SaveProjectRequest
 import app.ledger.finance.application.SpecializedFxQuoteRequest
 import app.ledger.finance.application.SpecializedTransactionContext
 import app.ledger.finance.application.SpecializedTransactionEntryPort
@@ -157,6 +172,9 @@ import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryRemovalStrategy
 import app.ledger.finance.domain.DependencyPolicy
 import app.ledger.finance.domain.DependencyResolution
+import app.ledger.finance.domain.GoalMovementKind
+import app.ledger.finance.domain.GoalStatus
+import app.ledger.finance.domain.ProjectStatus
 import app.ledger.finance.domain.RefundAccrualPolicy
 import app.ledger.finance.domain.RefundBudgetPolicy
 import app.ledger.finance.domain.RefundGoalPolicy
@@ -191,6 +209,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import java.util.Locale
@@ -236,6 +255,7 @@ internal class AppRootViewModel @Inject constructor(
     private val ordinaryTransactionEntryPort: OrdinaryTransactionEntryPort,
     private val refundApplicationPort: RefundApplicationPort,
     private val budgetApplicationPort: BudgetApplicationPort,
+    private val projectGoalApplicationPort: ProjectGoalApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
@@ -285,6 +305,11 @@ internal class AppRootViewModel @Inject constructor(
     val budget: StateFlow<BudgetLoadState> = mutableBudget.asStateFlow()
     private val mutableBudgetPending = MutableStateFlow(false)
     val budgetPending: StateFlow<Boolean> = mutableBudgetPending.asStateFlow()
+    private val mutableProjectGoal = MutableStateFlow<ProjectGoalLoadState>(ProjectGoalLoadState.Loading)
+    val projectGoal: StateFlow<ProjectGoalLoadState> = mutableProjectGoal.asStateFlow()
+    private val mutableProjectGoalPending = MutableStateFlow(false)
+    val projectGoalPending: StateFlow<Boolean> = mutableProjectGoalPending.asStateFlow()
+    private val mutableProjectTransactionPagingRequest = MutableStateFlow<ProjectTransactionPagingRequest?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val journalPages = mutableJournalPagingRequest.flatMapLatest { request ->
@@ -294,6 +319,17 @@ internal class AppRootViewModel @Inject constructor(
             Pager(
                 PagingConfig(pageSize = 40, prefetchDistance = 10, initialLoadSize = 40, enablePlaceholders = false, maxSize = 200),
             ) { JournalPagingSource(journalApplicationPort, request.bookId, request.filter, request.runningBalanceAccountId) }.flow
+        }
+    }.cachedIn(viewModelScope)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val projectTransactionPages = mutableProjectTransactionPagingRequest.flatMapLatest { request ->
+        if (request == null) {
+            flowOf(PagingData.empty())
+        } else {
+            Pager(
+                PagingConfig(pageSize = 40, prefetchDistance = 10, initialLoadSize = 40, enablePlaceholders = false, maxSize = 200),
+            ) { ProjectTransactionPagingSource(projectGoalApplicationPort, request.bookId, request.projectId) }.flow
         }
     }.cachedIn(viewModelScope)
     var selectedAccountType: UserAccountType = UserAccountType.CASH
@@ -1470,6 +1506,7 @@ internal class AppRootViewModel @Inject constructor(
                     zoneId = validated.draft.zoneId,
                     localDate = validated.draft.occurredAt.atZone(validated.draft.zoneId).toLocalDate(),
                     projectId = validated.draft.projectId,
+                    goalId = null,
                     settlementActivityId = validated.draft.settlementActivityId.takeIf { validated.draft.settlementEnabled },
                     settlementShares = validated.draft.settlementShares.takeIf { validated.draft.settlementEnabled }.orEmpty(),
                     locationRecordId = validated.draft.locationRecordId ?: locationId,
@@ -1712,6 +1749,260 @@ internal class AppRootViewModel @Inject constructor(
     private fun updateBudget(block: (BudgetFeatureState) -> BudgetFeatureState) {
         val current = mutableBudget.value as? BudgetLoadState.Content ?: return
         mutableBudget.value = BudgetLoadState.Content(block(current.state))
+    }
+
+    fun loadProjectGoal(
+        screenId: String,
+        projectId: StableId? = null,
+        goalId: StableId? = null,
+        movementKind: GoalMovementKind? = null,
+    ) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        mutableProjectGoal.value = ProjectGoalLoadState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            val appSettings = settingsRepository.current()
+            val bookId = runCatching { requireBookId(appSettings) }.getOrNull() ?: return@launch
+            val today = runtimeSources.clock.now().atZone(ZoneId.of(appSettings.zoneId.ifBlank { DEFAULT_ZONE })).toLocalDate()
+            mutableProjectGoal.value = when (val result = projectGoalApplicationPort.snapshot(bookId)) {
+                is DomainResult.Failure -> ProjectGoalLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Success -> {
+                    val requestedEntityMissing =
+                        projectId != null && result.value.projects.none { it.id == projectId } ||
+                            goalId != null && result.value.goals.none { it.id == goalId }
+                    if (requestedEntityMissing) {
+                        ProjectGoalLoadState.Failure(PROJECT_GOAL_NOT_FOUND)
+                    } else {
+                        mutableProjectTransactionPagingRequest.value = if (screenId == "PRJ-004" && projectId != null) {
+                            ProjectTransactionPagingRequest(bookId, projectId)
+                        } else {
+                            null
+                        }
+                        val initial = ProjectGoalPolicy.create(
+                            result.value,
+                            today,
+                            projectId,
+                            goalId,
+                            ProjectGoalPolicy.presentationFor(screenId, result.value, projectId, goalId),
+                        )
+                        ProjectGoalLoadState.Content(initial.copy(movementKind = movementKind ?: initial.movementKind))
+                    }
+                }
+            }
+        }
+    }
+
+    fun updateProjectName(value: String) = updateProjectGoal { ProjectGoalPolicy.projectName(it, value) }
+    fun updateProjectDescription(value: String) = updateProjectGoal { ProjectGoalPolicy.projectDescription(it, value) }
+    fun updateProjectStartDate(value: String) = updateProjectGoal { ProjectGoalPolicy.projectStartDate(it, value) }
+    fun updateProjectEndDate(value: String) = updateProjectGoal { ProjectGoalPolicy.projectEndDate(it, value) }
+    fun updateProjectBudget(value: String) = updateProjectGoal { ProjectGoalPolicy.projectBudget(it, value) }
+    fun toggleProjectMonthlyBudget() = updateProjectGoal(ProjectGoalPolicy::toggleMonthlyBudget)
+    fun selectNextProjectGoal() = updateProjectGoal(ProjectGoalPolicy::selectNextGoal)
+    fun updateGoalName(value: String) = updateProjectGoal { ProjectGoalPolicy.goalName(it, value) }
+    fun updateGoalTarget(value: String) = updateProjectGoal { ProjectGoalPolicy.goalTarget(it, value) }
+    fun updateGoalSuggested(value: String) = updateProjectGoal { ProjectGoalPolicy.goalSuggested(it, value) }
+    fun updateGoalDueDate(value: String) = updateProjectGoal { ProjectGoalPolicy.goalDueDate(it, value) }
+    fun selectNextGoalAccount() = updateProjectGoal(ProjectGoalPolicy::selectNextAccount)
+    fun updateGoalMovementAmount(value: String) = updateProjectGoal { ProjectGoalPolicy.movementAmount(it, value) }
+    fun updateGoalMovementDate(value: String) = updateProjectGoal { ProjectGoalPolicy.movementDate(it, value) }
+    fun selectProjectStatusTab(archived: Boolean) = updateProjectGoal {
+        it.copy(presentation = if (archived) ProjectGoalPresentation.ARCHIVED_ONLY else ProjectGoalPresentation.CONTENT)
+    }
+
+    fun saveProject() {
+        val content = mutableProjectGoal.value as? ProjectGoalLoadState.Content ?: return
+        val state = ProjectGoalPolicy.validateProject(content.state)
+        val budgetMinor = ProjectGoalPolicy.projectBudgetMinor(state)
+        if (state.projectErrors.isNotEmpty() || budgetMinor == null) {
+            mutableProjectGoal.value = ProjectGoalLoadState.Content(state)
+            return
+        }
+        if (!beginProjectGoalMutation(state)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val existing = state.project
+                val now = runtimeSources.clock.now()
+                val request = SaveProjectRequest(
+                    planningIds(state, nextId()),
+                    existing?.id ?: nextId(),
+                    existing?.rowVersion,
+                    state.projectDraft.name.trim(),
+                    state.projectDraft.description.trim().takeIf(String::isNotEmpty),
+                    state.projectDraft.startDate,
+                    state.projectDraft.endDate,
+                    budgetMinor,
+                    state.projectDraft.includedInMonthlyBudget,
+                    state.projectDraft.goalId,
+                    existing?.status ?: ProjectStatus.ACTIVE,
+                    now,
+                )
+                finishProjectGoalMutation(projectGoalApplicationPort.saveProject(request), "PRJ-001")
+            } finally {
+                mutableProjectGoalPending.value = false
+            }
+        }
+    }
+
+    fun saveGoal() {
+        val content = mutableProjectGoal.value as? ProjectGoalLoadState.Content ?: return
+        val state = ProjectGoalPolicy.validateGoal(content.state)
+        val target = ProjectGoalPolicy.goalTargetMinor(state)
+        val accountId = state.goalDraft.accountId
+        if (state.goalErrors.isNotEmpty() || target == null || accountId == null) {
+            mutableProjectGoal.value = ProjectGoalLoadState.Content(state)
+            return
+        }
+        if (!beginProjectGoalMutation(state)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val existing = state.goal
+                val request = SaveGoalRequest(
+                    planningIds(state, nextId()),
+                    existing?.id ?: nextId(),
+                    existing?.rowVersion,
+                    accountId,
+                    state.goalDraft.name.trim(),
+                    target,
+                    state.goalDraft.dueDate,
+                    ProjectGoalPolicy.goalSuggestedMinor(state),
+                    existing?.status ?: GoalStatus.ACTIVE,
+                    runtimeSources.clock.now(),
+                )
+                finishProjectGoalMutation(projectGoalApplicationPort.saveGoal(request), "GOL-001")
+            } finally {
+                mutableProjectGoalPending.value = false
+            }
+        }
+    }
+
+    fun saveGoalMovement() {
+        val content = mutableProjectGoal.value as? ProjectGoalLoadState.Content ?: return
+        val state = content.state
+        val goal = state.goal ?: return
+        val amount = ProjectGoalPolicy.movementMinor(state) ?: return
+        if ("movementDate" in state.goalErrors) return
+        if (!beginProjectGoalMutation(state.copy(presentation = ProjectGoalPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val now = runtimeSources.clock.now()
+                val settings = settingsRepository.current()
+                val zone = ZoneId.of(settings.zoneId.ifBlank { DEFAULT_ZONE })
+                val occurredAt = state.movementDate.atTime(now.atZone(zone).toLocalTime()).atZone(zone).toInstant()
+                val ids = goalMovementIds(state)
+                val result = projectGoalApplicationPort.recordGoalMovement(
+                    RecordGoalMovementRequest(ids, goal.id, goal.rowVersion, state.movementKind, amount, occurredAt, now),
+                )
+                finishProjectGoalMutation(result.map { Unit }, "GOL-003", goal.id)
+            } finally {
+                mutableProjectGoalPending.value = false
+            }
+        }
+    }
+
+    fun changeProjectStatus() {
+        val content = mutableProjectGoal.value as? ProjectGoalLoadState.Content ?: return
+        val state = content.state
+        val project = state.project ?: return
+        if (!beginProjectGoalMutation(state)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val request = ChangeProjectStatusRequest(
+                    planningIds(state, nextId()),
+                    project.id,
+                    project.rowVersion,
+                    if (project.status == ProjectStatus.ACTIVE) ProjectStatus.ARCHIVED else ProjectStatus.ACTIVE,
+                    runtimeSources.clock.now(),
+                )
+                finishProjectGoalMutation(projectGoalApplicationPort.changeProjectStatus(request), "PRJ-003", project.id)
+            } finally {
+                mutableProjectGoalPending.value = false
+            }
+        }
+    }
+
+    fun completeGoal(strategy: GoalCompletionStrategy) {
+        val content = mutableProjectGoal.value as? ProjectGoalLoadState.Content ?: return
+        val state = content.state
+        val goal = state.goal ?: return
+        if (!beginProjectGoalMutation(state)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val request = CompleteGoalRequest(
+                    planningIds(state, nextId()),
+                    goalMovementIds(state).takeIf { strategy == GoalCompletionStrategy.RELEASE },
+                    goal.id,
+                    goal.rowVersion,
+                    strategy,
+                    runtimeSources.clock.now(),
+                )
+                finishProjectGoalMutation(projectGoalApplicationPort.completeGoal(request), "GOL-003", goal.id)
+            } finally {
+                mutableProjectGoalPending.value = false
+            }
+        }
+    }
+
+    fun navigateProjectGoal(target: String, stableId: StableId?, movementKind: GoalMovementKind?) {
+        val screenId = ScreenId(target)
+        val arguments = buildMap<String, SafeRouteArgument> {
+            if (stableId != null && target in setOf("PRJ-002", "PRJ-003", "PRJ-004", "PRJ-005", "PRJ-006")) {
+                put("projectId", StableIdArgument(stableId))
+            }
+            if (stableId != null && target in setOf("GOL-002", "GOL-003", "GOL-004", "GOL-005")) {
+                put("goalId", StableIdArgument(stableId))
+            }
+            if (target == "GOL-004" && movementKind != null) {
+                put("kind", LedgerRouteContract.enumArgument(screenId, "kind", movementKind.name))
+            }
+        }
+        navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+    }
+
+    private fun planningIds(state: ProjectGoalFeatureState, entityRevisionId: StableId) = PlanningMutationIds(
+        state.snapshot.bookId,
+        state.snapshot.localRevision,
+        nextId(),
+        entityRevisionId,
+        nextId(),
+    )
+
+    private fun goalMovementIds(state: ProjectGoalFeatureState) = GoalMovementMutationIds(
+        state.snapshot.bookId,
+        CommandId(nextId()),
+        nextId(),
+        nextId(),
+        nextId(),
+        nextId(),
+    )
+
+    private fun beginProjectGoalMutation(state: ProjectGoalFeatureState): Boolean {
+        if (mutableProjectGoalPending.value) return false
+        mutableProjectGoalPending.value = true
+        mutableProjectGoal.value = ProjectGoalLoadState.Content(state)
+        return true
+    }
+
+    private suspend fun finishProjectGoalMutation(
+        result: DomainResult<Unit>,
+        target: String,
+        stableId: StableId? = null,
+    ) {
+        when (result) {
+            is DomainResult.Success -> {
+                navigateProjectGoal(target, stableId, null)
+            }
+            is DomainResult.Failure -> {
+                val current = (mutableProjectGoal.value as? ProjectGoalLoadState.Content)?.state ?: return
+                mutableProjectGoal.value = ProjectGoalLoadState.Content(
+                    current.copy(presentation = ProjectGoalPresentation.VALIDATION_ERROR, failureCode = sanitizeCode(result.error.code)),
+                )
+            }
+        }
+    }
+
+    private fun updateProjectGoal(block: (ProjectGoalFeatureState) -> ProjectGoalFeatureState) {
+        val current = mutableProjectGoal.value as? ProjectGoalLoadState.Content ?: return
+        mutableProjectGoal.value = ProjectGoalLoadState.Content(block(current.state))
     }
 
     fun requestRootBack() {
@@ -2232,6 +2523,7 @@ internal class AppRootViewModel @Inject constructor(
     private companion object {
         const val DEFAULT_CURRENCY = "JPY"
         const val DEFAULT_ZONE = "Asia/Tokyo"
+        const val PROJECT_GOAL_NOT_FOUND = "PROJECT_GOAL_NOT_FOUND"
         const val MAX_RECOVERY_LENGTH = 256
         const val MAX_REFERENCE_NAME = 80
         const val RECOVERY_VERIFIER_BYTES = 32
@@ -2251,6 +2543,11 @@ private data class JournalPagingRequest(
     val filter: TransactionFilter,
     val runningBalanceAccountId: StableId? = null,
     val refreshEpoch: Int,
+)
+
+private data class ProjectTransactionPagingRequest(
+    val bookId: StableId,
+    val projectId: StableId,
 )
 
 private sealed interface PendingRecordExit {

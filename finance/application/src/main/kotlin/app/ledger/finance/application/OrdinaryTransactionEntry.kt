@@ -172,6 +172,7 @@ public data class OrdinaryTransactionWriteRequest(
     val zoneId: ZoneId,
     val localDate: LocalDate,
     val projectId: StableId?,
+    val goalId: StableId?,
     val settlementActivityId: StableId?,
     val settlementShares: List<OrdinarySettlementShareDraft>,
     val locationRecordId: StableId?,

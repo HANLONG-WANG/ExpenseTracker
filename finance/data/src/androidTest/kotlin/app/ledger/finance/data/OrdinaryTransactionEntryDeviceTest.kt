@@ -136,6 +136,7 @@ class OrdinaryTransactionEntryDeviceTest {
         zoneId = ZONE,
         localDate = LocalDate.of(2026, 8, 3),
         projectId = null,
+        goalId = null,
         settlementActivityId = null,
         settlementShares = emptyList(),
         locationRecordId = if (location) LOCATION_ID else null,

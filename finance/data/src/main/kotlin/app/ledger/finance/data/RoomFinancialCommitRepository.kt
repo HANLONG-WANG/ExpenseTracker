@@ -217,6 +217,15 @@ class RoomFinancialCommitRepository(
                 abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
             }
         }
+        if (command is RecordGoalMovementCommand) {
+            val actual = connection.queryOne(
+                "SELECT row_version FROM goal WHERE uid=? AND status=?",
+                arrayOf(command.movement.goalId.value.bytes, app.ledger.finance.domain.GoalStatus.ACTIVE.ordinal),
+            ) { cursor -> cursor.getLong(0) }
+            if (actual != command.expectedGoalRowVersion.value) {
+                abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+            }
+        }
     }
 
     private fun verifyNewState(

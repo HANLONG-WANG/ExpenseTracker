@@ -54,6 +54,7 @@ import app.ledger.finance.domain.ExpensePayload
 import app.ledger.finance.domain.FrozenAmountEvidence
 import app.ledger.finance.domain.FrozenFxConversion
 import app.ledger.finance.domain.FxRateSnapshotId
+import app.ledger.finance.domain.GoalId
 import app.ledger.finance.domain.Hash256
 import app.ledger.finance.domain.IncomePayload
 import app.ledger.finance.domain.LocationRecordId
@@ -131,7 +132,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             budgetMonth = YearMonth.from(request.localDate),
             merchantId = request.merchantId?.let(::MerchantId),
             projectId = request.projectId?.let(::ProjectId),
-            goalId = null,
+            goalId = request.goalId?.let(::GoalId),
             locationRecordId = request.locationRecordId?.let(::LocationRecordId),
             note = request.note?.trim(),
             amountExpression = request.amount.expression,

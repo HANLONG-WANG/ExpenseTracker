@@ -9,4 +9,6 @@ dependencies {
     implementation(project(":transfer:domain"))
     implementation(project(":core:designsystem"))
     implementation(project(":core:navigation"))
+    implementation(libs.paging.common)
+    implementation(libs.paging.compose)
 }

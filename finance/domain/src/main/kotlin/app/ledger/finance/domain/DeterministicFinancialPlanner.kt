@@ -22,6 +22,7 @@ object DeterministicFinancialPlanner {
         )
         when (command) {
             is RecordTransactionCommand<*> -> planCreate(command, snapshot)
+            is RecordGoalMovementCommand -> planGoalMovement(command, snapshot)
             is EditTransactionCommand -> planEdit(command, snapshot)
             is RestoreHistoricalRevisionCommand -> planHistoricalRestore(command, snapshot)
             is MoveTransactionToTrashCommand -> planTrash(command, snapshot)
@@ -34,6 +35,83 @@ object DeterministicFinancialPlanner {
             -> planBudgetMutation(command, snapshot)
             else -> reject("financialCommand.transactionPlannerScope")
         }
+    } catch (rejected: PlannerRejected) {
+        DomainResult.Failure(rejected.violation)
+    }
+
+    private fun planGoalMovement(
+        command: RecordGoalMovementCommand,
+        snapshot: PlanningSnapshot,
+    ): DomainResult<FinancialMutationPlan> = try {
+        val operation = snapshot.operationContext ?: reject("planningSnapshot.operationContext")
+        val goal = snapshot.goal ?: reject("planningSnapshot.goal")
+        val target = snapshot.book.localRevision.next().orReject()
+        require(goal.id == command.movement.goalId, "goalMovement.goalId")
+        require(goal.rowVersion == command.expectedGoalRowVersion, "goalMovement.rowVersion")
+        require(goal.status == GoalStatus.ACTIVE, "goalMovement.goalStatus")
+        require(goal.currency == command.movement.amount.currency, "goalMovement.currency")
+        require(command.movement.createdCommitId == operation.commitId, "goalMovement.createdCommitId")
+        require(command.movement.sourceTransactionId == null, "goalMovement.sourceTransactionId")
+        if (command.movement.kind == GoalMovementKind.RELEASE) {
+            val balance = snapshot.goalBalanceMinor ?: reject("planningSnapshot.goalBalanceMinor")
+            require(command.movement.amount.minor.value <= balance, "goalMovement.releaseAmount")
+        }
+        val kind = when (command.movement.kind) {
+            GoalMovementKind.ALLOCATE -> GoalEffectKind.ALLOCATE
+            GoalMovementKind.RELEASE -> GoalEffectKind.RELEASE
+            GoalMovementKind.ADJUST -> GoalEffectKind.ADJUST
+        }
+        val effect = GoalEffect(
+            id = command.effectId,
+            goalId = goal.id,
+            kind = kind,
+            amount = command.movement.amount,
+            sourceRevisionId = null,
+            goalMovementId = command.movement.id,
+            reversalOfId = null,
+            polarity = EffectPolarity.APPLY,
+        )
+        val plan = FinancialMutationPlan(
+            commandId = command.commandId,
+            commandType = command.commandType,
+            payloadHash = command.payloadHash,
+            expectedRevisionId = null,
+            targetLocalRevision = target,
+            commit = CommitDraft(
+                operation.commitId,
+                CommitKind.USER_MUTATION,
+                listOf(snapshot.book.headCommitId),
+                operation.createdAt,
+                command.commandId,
+                operation.deviceInstanceId,
+                CanonicalFinancialHash.commitRoot(command.commandId, command.payloadHash, target, emptyList()),
+            ),
+            transactions = emptyList(),
+            revisions = emptyList(),
+            revisionAmounts = emptyList(),
+            fxRateSnapshots = emptyList(),
+            journalBundles = emptyList(),
+            economicEffects = emptyList(),
+            budgetEffects = emptyList(),
+            projectEffects = emptyList(),
+            goalEffects = listOf(effect),
+            statementEffects = emptyList(),
+            loanEffects = emptyList(),
+            settlementEffects = emptyList(),
+            refundAllocations = emptyList(),
+            goalMovements = listOf(command.movement),
+            budgetAdjustments = emptyList(),
+            purgeTombstones = emptyList(),
+            blobGcCandidates = emptyList(),
+            dependencyResolutions = emptyList(),
+            projectionChanges = ProjectionChangeSet(
+                target,
+                listOf(ProjectionChange.Goal(goal.id, target), ProjectionChange.Widget(snapshot.book.id, target)),
+            ),
+            entityChanges = emptyList(),
+            ruleSetVersion = snapshot.book.ruleSetVersion,
+        )
+        FinancialMutationPlanValidator.validate(command, snapshot, plan)
     } catch (rejected: PlannerRejected) {
         DomainResult.Failure(rejected.violation)
     }
