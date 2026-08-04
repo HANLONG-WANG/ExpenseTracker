@@ -23,6 +23,7 @@ import app.ledger.finance.domain.TransferPayload
 internal class RoomFinancialPlanWriter {
     private val budgetPlanWriter = RoomBudgetPlanWriter()
     private val creditPlanWriter = RoomCreditPlanWriter()
+    private val installmentPlanWriter = RoomInstallmentPlanWriter()
 
     fun write(
         database: SupportSQLiteDatabase,
@@ -35,6 +36,7 @@ internal class RoomFinancialPlanWriter {
         afterCommitHeader(database, plan)
         budgetPlanWriter.write(database, plan)
         creditPlanWriter.write(database, plan)
+        installmentPlanWriter.write(database, plan)
         insertTransactionShells(database, plan)
         insertFxSnapshots(database, plan)
         insertRevisions(database, plan)

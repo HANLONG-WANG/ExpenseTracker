@@ -19,6 +19,7 @@ import app.ledger.core.time.LedgerClock
 import app.ledger.finance.application.BookAttachmentObjectPort
 import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.CreditApplicationPort
+import app.ledger.finance.application.InstallmentApplicationPort
 import app.ledger.finance.application.JournalApplicationPort
 import app.ledger.finance.application.LedgerInitializationPort
 import app.ledger.finance.application.OpeningBalanceWritePort
@@ -29,6 +30,7 @@ import app.ledger.finance.application.RefundApplicationPort
 import app.ledger.finance.application.SpecializedTransactionEntryPort
 import app.ledger.finance.data.SecureRoomBudgetApplicationPort
 import app.ledger.finance.data.SecureRoomCreditApplicationPort
+import app.ledger.finance.data.SecureRoomInstallmentApplicationPort
 import app.ledger.finance.data.SecureRoomJournalApplicationPort
 import app.ledger.finance.data.SecureRoomLedgerInitializationPort
 import app.ledger.finance.data.SecureRoomOpeningBalanceWritePort
@@ -128,6 +130,13 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
     ): CreditApplicationPort = SecureRoomCreditApplicationPort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun installmentApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+    ): InstallmentApplicationPort = SecureRoomInstallmentApplicationPort(context, keyProvider)
 
     @Provides
     @Singleton

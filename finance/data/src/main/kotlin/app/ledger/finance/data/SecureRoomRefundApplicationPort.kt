@@ -261,7 +261,7 @@ public class SecureRoomRefundApplicationPort(
             LEFT JOIN payment_card card ON card.id=expense.payer_card_id LEFT JOIN merchant ON merchant.id=tr.merchant_id
             LEFT JOIN project ON project.id=tr.project_id LEFT JOIN goal ON goal.id=tr.goal_id
             LEFT JOIN settlement_activity activity ON activity.id=expense.settlement_activity_id
-            LEFT JOIN installment_plan installment ON installment.id=expense.installment_plan_id
+            LEFT JOIN installment_plan installment ON installment.purchase_transaction_id=bt.id
             WHERE bt.kind=0 AND bt.lifecycle_state=0
               AND (?='' OR lower(category.name) LIKE ? ESCAPE '\\' OR lower(COALESCE(merchant.name,'')) LIKE ? ESCAPE '\\')
               AND (? IS NULL OR expense.payer_account_id=(SELECT id FROM user_account WHERE uid=?))

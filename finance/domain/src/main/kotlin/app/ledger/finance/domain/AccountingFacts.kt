@@ -444,6 +444,11 @@ sealed interface ProjectionChange {
         override val targetRevision: LocalRevision,
     ) : ProjectionChange
 
+    data class Installment(
+        val planId: InstallmentPlanId,
+        override val targetRevision: LocalRevision,
+    ) : ProjectionChange
+
     data class Loan(
         val loanContractId: LoanContractId,
         override val targetRevision: LocalRevision,

@@ -210,6 +210,28 @@ data class InstallmentPlanRevision(
         require(fixedFeePerTermMinor == null || fixedFeePerTermMinor >= 0L)
         require(firstTermFeeMinor == null || firstTermFeeMinor >= 0L)
         require(prepaymentFeeMinor == null || prepaymentFeeMinor >= 0L)
+        require(
+            when (feeRateType) {
+                InstallmentFeeRateType.NONE ->
+                    fixedFeePerTermMinor == null && firstTermFeeMinor == null &&
+                        remainingPrincipalRate == null && effectiveAnnualRate == null
+                InstallmentFeeRateType.FIXED_PER_TERM ->
+                    fixedFeePerTermMinor != null && firstTermFeeMinor == null &&
+                        remainingPrincipalRate == null && effectiveAnnualRate == null
+                InstallmentFeeRateType.FIRST_TERM_FIXED ->
+                    fixedFeePerTermMinor == null && firstTermFeeMinor != null &&
+                        remainingPrincipalRate == null && effectiveAnnualRate == null
+                InstallmentFeeRateType.REMAINING_PRINCIPAL_RATE ->
+                    fixedFeePerTermMinor == null && firstTermFeeMinor == null &&
+                        remainingPrincipalRate != null && effectiveAnnualRate == null
+                InstallmentFeeRateType.EFFECTIVE_ANNUAL_RATE ->
+                    fixedFeePerTermMinor == null && firstTermFeeMinor == null &&
+                        remainingPrincipalRate == null && effectiveAnnualRate != null
+            },
+        )
+        require(
+            (prepaymentPolicy == InstallmentPrepaymentPolicy.ALLOWED_WITH_FEE) == (prepaymentFeeMinor != null),
+        )
     }
 }
 
@@ -250,27 +272,50 @@ data class InstallmentScheduleItem(
 }
 
 object InstallmentSchedulePolicy {
-    fun validate(principalMinor: Long, items: List<InstallmentScheduleItem>): DomainResult<Unit> {
-        if (principalMinor <= 0L || items.isEmpty() || items.map { it.installmentNumber }.toSet().size != items.size) {
-            return DomainResult.Failure(DomainViolation.Invariant("INV-026"))
-        }
-        val total = CheckedArithmetic.sum(items.map { it.principalMinor })
-        return if (total is DomainResult.Success && total.value == principalMinor) {
-            DomainResult.Success(Unit)
-        } else {
+    fun validate(principalMinor: Long, items: List<InstallmentScheduleItem>): DomainResult<Unit> = try {
+        if (!hasValidShape(principalMinor, items) || !hasValidRemainingChain(items)) {
             DomainResult.Failure(DomainViolation.Invariant("INV-026"))
+        } else {
+            val total = CheckedArithmetic.sum(items.map { it.principalMinor })
+            if (total is DomainResult.Success && total.value == principalMinor) {
+                DomainResult.Success(Unit)
+            } else {
+                DomainResult.Failure(DomainViolation.Invariant("INV-026"))
+            }
         }
+    } catch (_: ArithmeticException) {
+        DomainResult.Failure(DomainViolation.NumericOverflow("installment.scheduleValidation"))
     }
+
+    private fun hasValidShape(principalMinor: Long, items: List<InstallmentScheduleItem>): Boolean {
+        val numbers = items.map { it.installmentNumber }
+        return principalMinor >= 0L &&
+            (principalMinor == 0L || items.isNotEmpty()) &&
+            numbers.toSet().size == items.size &&
+            numbers == (1..items.size).toList() &&
+            items.zipWithNext().none { (first, second) -> second.statementDate <= first.statementDate }
+    }
+
+    private fun hasValidRemainingChain(items: List<InstallmentScheduleItem>): Boolean = items.lastOrNull()?.remainingPrincipalMinor in setOf(null, 0L) &&
+        items.zipWithNext().all { (first, second) ->
+            first.remainingPrincipalMinor == Math.addExact(second.principalMinor, second.remainingPrincipalMinor)
+        }
 }
 
 data class InstallmentRefundAllocation(
     val refundTransactionId: TransactionId,
+    val refundRevisionId: TransactionRevisionId,
     val planId: InstallmentPlanId,
     val principalMinor: Long,
     val feeMinor: Long,
     val reversalOfId: app.ledger.core.common.StableId?,
 ) : LifecycleRecord<RecordLifecycle.Fact> {
     override val lifecycle: RecordLifecycle.Fact = RecordLifecycle.Fact
+
+    init {
+        require(principalMinor >= 0L && feeMinor >= 0L)
+        require(principalMinor > 0L || feeMinor > 0L)
+    }
 }
 
 enum class LoanStatus {

@@ -21,6 +21,7 @@ object DeterministicFinancialPlanner {
             "financialCommand.payloadHash",
         )
         when (command) {
+            is ApplyInstallmentSettlementCommand -> planCreate(command, snapshot)
             is RecordTransactionCommand<*> -> planCreate(command, snapshot)
             is RecordGoalMovementCommand -> planGoalMovement(command, snapshot)
             is EditTransactionCommand -> planEdit(command, snapshot)
@@ -36,6 +37,7 @@ object DeterministicFinancialPlanner {
             is SaveCreditProfileCommand,
             is SaveCreditStatementCommand,
             -> planCreditMutation(command, snapshot)
+            is SaveInstallmentPlanCommand -> planInstallmentMutation(command, snapshot)
             else -> reject("financialCommand.transactionPlannerScope")
         }
     } catch (rejected: PlannerRejected) {
@@ -443,6 +445,15 @@ object DeterministicFinancialPlanner {
             is MoveTransactionToTrashCommand -> command.dependencyResolutions
             else -> emptyList()
         }
+        val installmentMutations = (command as? ApplyInstallmentSettlementCommand)?.let { listOf(it.mutation) }.orEmpty()
+        require(
+            installmentMutations.all { mutation ->
+                mutation.revision.createdCommitId == identities.commitId &&
+                    mutation.scheduleRevision.createdCommitId == identities.commitId &&
+                    mutation.settlementTransactionId == identities.transactionId
+            },
+            "installmentSettlement.mutation",
+        )
         val plan = FinancialMutationPlan(
             commandId = command.commandId,
             commandType = command.commandType,
@@ -476,9 +487,22 @@ object DeterministicFinancialPlanner {
             purgeTombstones = emptyList(),
             blobGcCandidates = emptyList(),
             dependencyResolutions = dependencyResolutions,
-            projectionChanges = projectionChanges,
-            entityChanges = listOf(transactionEntityChange(current, transaction, revision)),
+            projectionChanges = ProjectionChangeSet(
+                targetRevision,
+                projectionChanges.changes + installmentMutations.map { ProjectionChange.Installment(it.plan.id, targetRevision) },
+            ),
+            entityChanges = listOf(transactionEntityChange(current, transaction, revision)) + installmentMutations.map { mutation ->
+                EntityChange(
+                    identities.commitId,
+                    StableEntityReference(EntityType.INSTALLMENT_PLAN, mutation.plan.id.value),
+                    EntityChangeOperation.UPDATE,
+                    null,
+                    ContentHash(command.payloadHash),
+                    EntityRevisionId(mutation.revision.id.value),
+                )
+            },
             ruleSetVersion = snapshot.book.ruleSetVersion,
+            installmentPlanMutations = installmentMutations,
         )
         FinancialMutationPlanValidator.validate(command, snapshot, plan)
     } catch (rejected: PlannerRejected) {
@@ -629,6 +653,58 @@ private fun planCreditMutation(
         ruleSetVersion = snapshot.book.ruleSetVersion,
         creditProfileMutations = profiles,
         creditStatementMutations = statements,
+    )
+    FinancialMutationPlanValidator.validate(command, snapshot, plan)
+} catch (rejected: PlannerRejected) {
+    DomainResult.Failure(rejected.violation)
+}
+
+private fun planInstallmentMutation(
+    command: SaveInstallmentPlanCommand,
+    snapshot: PlanningSnapshot,
+): DomainResult<FinancialMutationPlan> = try {
+    val operation = snapshot.operationContext ?: reject("planningSnapshot.operationContext")
+    val mutation = command.mutation
+    val target = snapshot.book.localRevision.next().orReject()
+    require(mutation.revision.createdCommitId == operation.commitId, "installmentPlan.createdCommitId")
+    require(mutation.scheduleRevision.createdCommitId == operation.commitId, "installmentSchedule.createdCommitId")
+    require(mutation.refundAllocation?.let { it.planId == mutation.plan.id } != false, "installmentRefund.planId")
+    val plan = FinancialMutationPlan(
+        commandId = command.commandId,
+        commandType = command.commandType,
+        payloadHash = command.payloadHash,
+        expectedRevisionId = null,
+        targetLocalRevision = target,
+        commit = CommitDraft(
+            operation.commitId,
+            CommitKind.USER_MUTATION,
+            listOf(snapshot.book.headCommitId),
+            operation.createdAt,
+            command.commandId,
+            operation.deviceInstanceId,
+            CanonicalFinancialHash.commitRoot(command.commandId, command.payloadHash, target, emptyList()),
+        ),
+        transactions = emptyList(), revisions = emptyList(), revisionAmounts = emptyList(), fxRateSnapshots = emptyList(),
+        journalBundles = emptyList(), economicEffects = emptyList(), budgetEffects = emptyList(), projectEffects = emptyList(),
+        goalEffects = emptyList(), statementEffects = emptyList(), loanEffects = emptyList(), settlementEffects = emptyList(),
+        refundAllocations = emptyList(), goalMovements = emptyList(), budgetAdjustments = emptyList(),
+        purgeTombstones = emptyList(), blobGcCandidates = emptyList(), dependencyResolutions = emptyList(),
+        projectionChanges = ProjectionChangeSet(
+            target,
+            listOf(ProjectionChange.Installment(mutation.plan.id, target), ProjectionChange.Widget(snapshot.book.id, target)),
+        ),
+        entityChanges = listOf(
+            EntityChange(
+                operation.commitId,
+                StableEntityReference(EntityType.INSTALLMENT_PLAN, mutation.plan.id.value),
+                if (mutation.expectedRevisionId == null) EntityChangeOperation.CREATE else EntityChangeOperation.UPDATE,
+                null,
+                ContentHash(command.payloadHash),
+                EntityRevisionId(mutation.revision.id.value),
+            ),
+        ),
+        ruleSetVersion = snapshot.book.ruleSetVersion,
+        installmentPlanMutations = listOf(mutation),
     )
     FinancialMutationPlanValidator.validate(command, snapshot, plan)
 } catch (rejected: PlannerRejected) {

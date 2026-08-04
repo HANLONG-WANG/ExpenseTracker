@@ -277,9 +277,15 @@ data class CreditPaymentPayload(
     val creditAccountAmount: AccountAmount,
     val allocations: List<CreditPaymentAllocation>,
     val generationMode: AutoGenerationMode,
+    val installmentPlanId: InstallmentPlanId? = null,
+    val settlementFee: PositiveMoney? = null,
 ) : TransactionPayload {
     override val kind: TransactionKind = TransactionKind.CREDIT_PAYMENT
     override val classification: CategoryAssignment? = null
+
+    init {
+        require((installmentPlanId == null) == (settlementFee == null))
+    }
 }
 
 data class LoanDisbursementPayload(

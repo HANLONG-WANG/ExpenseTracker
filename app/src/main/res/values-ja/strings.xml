@@ -15,4 +15,5 @@
     <string name="global_currencies">通貨表示</string><string name="global_currencies_explanation">法定通貨の検索、表示、非表示、並べ替え</string><string name="p14_title_transfer">内部振替</string><string name="p14_title_adjustment">残高調整</string><string name="p14_title_fx_exchange">外貨両替</string><string name="p14_title_opening_balance">期首残高</string>
     <string name="p16_title_refund">返金</string><string name="p16_title_refund_original">元取引を選択</string>
     <string name="global_projects">プロジェクト</string><string name="global_projects_explanation">予算、本人負担、キャッシュフロー、割り勘を確認</string><string name="global_goals">目標資金</string><string name="global_goals_explanation">口座内予約、利用可能額、目標履歴を管理</string><string name="global_credit">クレジット口座</string><string name="global_credit_explanation">明細、限度額、返済配分、自動記帳条件を確認</string>
+    <string name="global_installments">クレジット分割払い</string><string name="global_installments_explanation">予定、未計上の約束、返金影響、繰上完済を管理</string>
 </resources>

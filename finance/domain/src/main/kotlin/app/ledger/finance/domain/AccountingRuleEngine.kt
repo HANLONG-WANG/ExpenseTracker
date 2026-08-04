@@ -313,11 +313,49 @@ private class RuleSession(
         val incoming = amount(AmountRole.INCOMING)
         requireAmountAccount(outgoing, payload.payment)
         requireAmountAccount(incoming, payload.creditAccountAmount)
-        require(outgoing.baseAmount == incoming.baseAmount, "creditPayment.baseAmount")
+        val settlementFee = payload.settlementFee?.let { expected ->
+            amount(AmountRole.FEE, expectedUserInput = expected).also { fee ->
+                require(fee.accountAmount.currency == paymentAccount.account.currency, "creditPayment.settlementFeeCurrency")
+            }
+        }
+        val expectedOutgoingBase = Math.addExact(
+            incoming.baseAmount.minor.value,
+            settlementFee?.baseAmount?.minor?.value ?: 0L,
+        )
+        require(outgoing.baseAmount.minor.value == expectedOutgoingBase, "creditPayment.baseAmount")
         val allocations = creditPaymentAllocations(payload, incoming.accountAmount)
+        val journals = if (settlementFee == null) {
+            transferJournals(paymentAccount, creditAccount, outgoing, incoming)
+        } else {
+            listOf(
+                JournalSpec(
+                    listOf(
+                        posting(creditAccount.ledger, DebitCredit.DEBIT, incoming),
+                        systemPosting(
+                            system(SystemLedgerCode.SYSTEM_EXPENSE_NON_CONSUMPTION, baseCurrency),
+                            DebitCredit.DEBIT,
+                            settlementFee.baseAmount,
+                            PostingRole.EXPENSE,
+                        ),
+                        posting(paymentAccount.ledger, DebitCredit.CREDIT, outgoing),
+                    ),
+                ),
+            )
+        }
         return AccountingRuleOutput(
-            journals = transferJournals(paymentAccount, creditAccount, outgoing, incoming),
+            journals = journals,
             amounts = usedAmounts(),
+            economic = settlementFee?.let { fee ->
+                listOf(
+                    EconomicEffectSpec(
+                        journalIndex = 0,
+                        nature = EconomicNature.EXPENSE,
+                        component = EconomicComponent.FEE,
+                        isConsumption = false,
+                        baseAmount = fee.baseAmount,
+                    ),
+                )
+            }.orEmpty(),
             statement = allocations.map { allocation ->
                 StatementEffectSpec(
                     creditAccountId = payload.creditAccountId,

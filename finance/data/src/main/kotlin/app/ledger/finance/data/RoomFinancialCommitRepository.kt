@@ -3,11 +3,13 @@ package app.ledger.finance.data
 import android.database.sqlite.SQLiteFullException
 import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
+import app.ledger.core.common.StableId
 import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.finance.application.AtomicFinancialCommitRepository
 import app.ledger.finance.application.CommandReceiptRepository
 import app.ledger.finance.application.FinanceDataError
+import app.ledger.finance.domain.ApplyInstallmentSettlementCommand
 import app.ledger.finance.domain.BatchFinancialCommand
 import app.ledger.finance.domain.CommandReceipt
 import app.ledger.finance.domain.CommitKind
@@ -17,6 +19,7 @@ import app.ledger.finance.domain.EntityType
 import app.ledger.finance.domain.FinancialCommand
 import app.ledger.finance.domain.FinancialCommandType
 import app.ledger.finance.domain.FinancialMutationPlan
+import app.ledger.finance.domain.InstallmentPlanMutation
 import app.ledger.finance.domain.MoveTransactionToTrashCommand
 import app.ledger.finance.domain.PurgeTransactionCommand
 import app.ledger.finance.domain.RecordBudgetAdjustmentCommand
@@ -28,6 +31,7 @@ import app.ledger.finance.domain.RestoreTransactionCommand
 import app.ledger.finance.domain.SaveBudgetTemplateCommand
 import app.ledger.finance.domain.SaveCreditProfileCommand
 import app.ledger.finance.domain.SaveCreditStatementCommand
+import app.ledger.finance.domain.SaveInstallmentPlanCommand
 import app.ledger.finance.domain.StableEntityReference
 import app.ledger.finance.domain.TransactionId
 import java.time.ZoneId
@@ -229,6 +233,7 @@ class RoomFinancialCommitRepository(
             }
         }
         verifyCreditPreconditions(connection, command)
+        InstallmentPreconditionVerifier.verify(connection, command)
     }
 
     private fun verifyCreditPreconditions(
@@ -357,6 +362,8 @@ class RoomFinancialCommitRepository(
             -> EntityType.BUDGET
             FinancialCommandType.SAVE_CREDIT_PROFILE -> EntityType.ACCOUNT
             FinancialCommandType.SAVE_CREDIT_STATEMENT -> EntityType.CREDIT_STATEMENT
+            FinancialCommandType.SAVE_INSTALLMENT_PLAN -> EntityType.INSTALLMENT_PLAN
+            FinancialCommandType.APPLY_INSTALLMENT_SETTLEMENT -> EntityType.TRANSACTION
             FinancialCommandType.BATCH_MUTATION -> null
             else -> EntityType.TRANSACTION
         }
@@ -383,6 +390,146 @@ class RoomFinancialCommitRepository(
     }
 }
 
+private object InstallmentPreconditionVerifier {
+    fun verify(
+        connection: androidx.sqlite.db.SupportSQLiteDatabase,
+        command: FinancialCommand,
+    ) {
+        val mutation = when (command) {
+            is SaveInstallmentPlanCommand -> command.mutation
+            is ApplyInstallmentSettlementCommand -> command.mutation
+            else -> return
+        }
+        val actualRevision = connection.queryOne(
+            "SELECT ipr.uid FROM installment_plan ip LEFT JOIN installment_plan_revision ipr " +
+                "ON ipr.id=ip.current_revision_id WHERE ip.uid=?",
+            arrayOf(mutation.plan.id.value.bytes),
+        ) { it.nullableStableId("uid") }
+        if (actualRevision != mutation.expectedRevisionId?.value) {
+            abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+        }
+        if (mutation.expectedRevisionId == null) {
+            verifyNewPlan(connection, mutation)
+        } else {
+            verifyExistingPlan(connection, mutation)
+        }
+        verifyRefund(connection, mutation)
+    }
+
+    private fun verifyNewPlan(
+        connection: androidx.sqlite.db.SupportSQLiteDatabase,
+        mutation: InstallmentPlanMutation,
+    ) {
+        val purchase = connection.queryOne(
+            "SELECT bt.kind transaction_kind,bt.lifecycle_state lifecycle_state,ua.type account_type," +
+                "ua.uid account_uid,ua.currency_code currency_code,ra.amount_minor amount_minor " +
+                "FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id " +
+                "JOIN expense_revision_detail erd ON erd.revision_id=tr.id " +
+                "JOIN user_account ua ON ua.id=erd.payer_account_id " +
+                "JOIN revision_amount ra ON ra.revision_id=tr.id AND ra.role=0 AND ra.representation=1 " +
+                "WHERE bt.uid=?",
+            arrayOf(mutation.plan.purchaseTransactionId.value.bytes),
+        ) { cursor ->
+            InstallmentPurchaseIdentity(
+                cursor.namedInt("transaction_kind"),
+                cursor.namedInt("lifecycle_state"),
+                cursor.namedInt("account_type"),
+                cursor.stableId("account_uid"),
+                cursor.namedString("currency_code"),
+                cursor.namedLong("amount_minor"),
+            )
+        } ?: abort(app.ledger.finance.domain.DomainViolation.InvalidField("installment.purchase"))
+        val expected = InstallmentPurchaseIdentity(
+            EXPENSE_TRANSACTION_KIND,
+            ACTIVE_TRANSACTION_LIFECYCLE,
+            CREDIT_ACCOUNT_TYPE,
+            mutation.plan.creditAccountId.value,
+            mutation.plan.currency.value,
+            mutation.plan.originalPrincipalMinor,
+        )
+        if (purchase != expected) {
+            abort(app.ledger.finance.domain.DomainViolation.InvalidField("installment.purchase"))
+        }
+        val duplicate = connection.queryOne(
+            "SELECT COUNT(*) row_count FROM installment_plan " +
+                "WHERE purchase_transaction_id=(SELECT id FROM business_transaction WHERE uid=?)",
+            arrayOf(mutation.plan.purchaseTransactionId.value.bytes),
+        ) { it.namedLong("row_count") } ?: 0L
+        if (duplicate != 0L) {
+            abort(app.ledger.finance.domain.DomainViolation.InvalidField("installment.purchase.duplicate"))
+        }
+    }
+
+    private fun verifyExistingPlan(
+        connection: androidx.sqlite.db.SupportSQLiteDatabase,
+        mutation: InstallmentPlanMutation,
+    ) {
+        val immutable = connection.queryOne(
+            "SELECT bt.uid purchase_uid,ua.uid account_uid,ip.currency_code currency_code," +
+                "ip.original_principal_minor original_principal_minor " +
+                "FROM installment_plan ip JOIN business_transaction bt ON bt.id=ip.purchase_transaction_id " +
+                "JOIN user_account ua ON ua.id=ip.credit_account_id WHERE ip.uid=?",
+            arrayOf(mutation.plan.id.value.bytes),
+        ) { cursor ->
+            InstallmentImmutableIdentity(
+                cursor.stableId("purchase_uid"),
+                cursor.stableId("account_uid"),
+                cursor.namedString("currency_code"),
+                cursor.namedLong("original_principal_minor"),
+            )
+        } ?: abort(FinanceDataError.CorruptData)
+        val expected = InstallmentImmutableIdentity(
+            mutation.plan.purchaseTransactionId.value,
+            mutation.plan.creditAccountId.value,
+            mutation.plan.currency.value,
+            mutation.plan.originalPrincipalMinor,
+        )
+        if (immutable != expected) {
+            abort(app.ledger.finance.domain.DomainViolation.InvalidField("installment.immutableIdentity"))
+        }
+    }
+
+    private fun verifyRefund(
+        connection: androidx.sqlite.db.SupportSQLiteDatabase,
+        mutation: InstallmentPlanMutation,
+    ) {
+        val allocation = mutation.refundAllocation ?: return
+        val valid = connection.queryOne(
+            "SELECT COUNT(*) row_count FROM business_transaction bt " +
+                "JOIN transaction_revision tr ON tr.transaction_id=bt.id " +
+                "WHERE bt.uid=? AND tr.uid=? AND bt.kind=?",
+            arrayOf(
+                allocation.refundTransactionId.value.bytes,
+                allocation.refundRevisionId.value.bytes,
+                REFUND_TRANSACTION_KIND,
+            ),
+        ) { it.namedLong("row_count") } == 1L
+        if (!valid) abort(app.ledger.finance.domain.DomainViolation.InvalidField("installment.refund"))
+    }
+}
+
+private data class InstallmentPurchaseIdentity(
+    val transactionKind: Int,
+    val lifecycleState: Int,
+    val accountType: Int,
+    val accountId: StableId,
+    val currency: String,
+    val amountMinor: Long,
+)
+
+private data class InstallmentImmutableIdentity(
+    val purchaseId: StableId,
+    val accountId: StableId,
+    val currency: String,
+    val originalPrincipalMinor: Long,
+)
+
+private fun android.database.Cursor.namedInt(name: String): Int = getInt(getColumnIndexOrThrow(name))
+
+private fun android.database.Cursor.namedLong(name: String): Long = getLong(getColumnIndexOrThrow(name))
+
+private fun android.database.Cursor.namedString(name: String): String = getString(getColumnIndexOrThrow(name))
+
 private data class BookWriteState(
     val headCommitId: Long?,
     val localRevision: Long,
@@ -393,6 +540,9 @@ private data class BookWriteState(
 )
 
 private const val CREDIT_ACCOUNT_TYPE = 2
+private const val EXPENSE_TRANSACTION_KIND = 0
+private const val ACTIVE_TRANSACTION_LIFECYCLE = 0
+private const val REFUND_TRANSACTION_KIND = 3
 
 private fun FinancialCommand.transactionIdOrNull(): TransactionId? = when (this) {
     is EditTransactionCommand -> transactionId
@@ -408,6 +558,7 @@ private fun FinancialCommand.transactionIdOrNull(): TransactionId? = when (this)
     is RecordBudgetAdjustmentsCommand,
     is SaveCreditProfileCommand,
     is SaveCreditStatementCommand,
+    is SaveInstallmentPlanCommand,
     is BatchFinancialCommand,
     -> null
 }

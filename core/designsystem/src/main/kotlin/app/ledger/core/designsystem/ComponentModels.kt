@@ -86,6 +86,13 @@ public object LedgerTestTags {
     public const val CREDIT_ASSIGNMENT: String = "credit_assignment"
     public const val CREDIT_PAYMENT_ALLOCATION: String = "credit_payment_allocation"
     public const val CREDIT_AUTO_PAYMENT: String = "credit_auto_payment"
+    public const val INSTALLMENT_SETUP: String = "installment_setup"
+    public const val INSTALLMENT_LIST: String = "installment_list"
+    public const val INSTALLMENT_EDITOR: String = "installment_editor"
+    public const val INSTALLMENT_DETAIL: String = "installment_detail"
+    public const val INSTALLMENT_SCHEDULE: String = "installment_schedule"
+    public const val INSTALLMENT_SETTLEMENT: String = "installment_settlement"
+    public const val INSTALLMENT_REFUND: String = "installment_refund"
 
     public fun requireStable(value: String): String {
         require(STABLE_TAG.matches(value)) { "test tag must be a stable semantic identifier" }

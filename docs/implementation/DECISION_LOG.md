@@ -629,3 +629,36 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Date/stage: 2026-08-04 / P19
 - Decision: render credit-account light and official-difference dark states in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. Both digests live in the Android test source.
 - Consequence: P19 pixel drift is machine-detectable using only `LedgerTheme`, governed components, localized resources, the textual UI contract, token JSON, screen YAML and traceability CSV. No excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.
+
+## DL-088 — Installment annual rates use one explicit deterministic monthly conversion
+
+- Date/stage: 2026-08-04 / P20
+- Surface issue: the frozen model distinguishes remaining-principal rate and effective annual rate but does not define a day-count convention or a lender-specific compounding calendar.
+- Decision: persist the annual decimal rate exactly, derive the monthly schedule rate as annual/12 with `BigDecimal` DECIMAL128, and round each minor-unit charge with the revision's closed `RoundingMode` (HALF_EVEN in the production editor). No `Float`/`Double`, current date or external quote participates.
+- Consequence: identical inputs generate identical schedules and canonical hashes. A future lender-specific convention would require an explicit new rule/version and migration; it cannot reinterpret a historical schedule.
+
+## DL-089 — Installment schedule items are plans, not business transactions
+
+- Date/stage: 2026-08-04 / P20
+- Precedence applied: the frozen requirement that the purchase immediately recognizes the complete expense/liability and the accounting invariant against duplicate consumption outrank the visual convenience of showing each term like a transaction.
+- Decision: keep the original credit purchase whole. Each schedule item records only statement date, principal, interest, fee and remaining-principal planning evidence. Only an explicitly applied early settlement creates a real repayment transaction, atomically with the replacement plan version.
+- Consequence: lists and analytics cannot count future terms as new purchases; posted liability and unposted commitment remain separately explainable without changing historical consumption.
+
+## DL-090 — Frozen schedule-item identity remains revision-local
+
+- Date/stage: 2026-08-04 / P20
+- Surface issue: Schema v1 identifies schedule items by the schedule revision plus installment number and has no public stable UID column, while the application writer still needs deterministic internal write identities.
+- Decision: preserve the frozen natural identity `(schedule_revision_id, installment_no)` and use command-scoped deterministic IDs only inside the normalized write plan. Do not add a Schema v2 column during P20 and never expose a schedule-item ID as a route or transaction identity.
+- Consequence: no unplanned migration or universal JSON is introduced; old schedule versions remain ordered, unique and auditable.
+
+## DL-091 — Refund recalculation requires committed purchase-linked evidence
+
+- Date/stage: 2026-08-04 / P20
+- Decision: accept installment refund allocation only after the encrypted database proves that the supplied refund revision allocates to the plan's original purchase and covers the explicit principal-plus-fee allocation. Recalculation appends a plan and schedule revision through `FinancialMutationCoordinator`; an unrelated or fabricated transaction is rejected.
+- Consequence: refund simulation/UI state cannot manufacture principal relief, retries remain idempotent, and every old schedule remains available for comparison/audit.
+
+## DL-092 — P20 goldens are full-pixel digests of governed Compose output
+
+- Date/stage: 2026-08-04 / P20
+- Decision: render active installment detail in light theme and calculated settlement in dark theme in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. Both digests live in the Android test source.
+- Consequence: P20 pixel drift is machine-detectable using only `LedgerTheme`, governed components, localized resources, the textual UI contract, token JSON, screen YAML and traceability CSV. No excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.

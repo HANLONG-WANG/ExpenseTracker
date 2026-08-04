@@ -72,6 +72,11 @@ import app.ledger.feature.liabilities.CreditField
 import app.ledger.feature.liabilities.CreditLoadState
 import app.ledger.feature.liabilities.CreditPolicy
 import app.ledger.feature.liabilities.CreditPresentation
+import app.ledger.feature.liabilities.InstallmentFeatureState
+import app.ledger.feature.liabilities.InstallmentField
+import app.ledger.feature.liabilities.InstallmentLoadState
+import app.ledger.feature.liabilities.InstallmentPolicy
+import app.ledger.feature.liabilities.InstallmentPresentation
 import app.ledger.feature.onboarding.InitialAccountType
 import app.ledger.feature.onboarding.InitialCategoryDirection
 import app.ledger.feature.onboarding.OnboardingLanguage
@@ -111,6 +116,7 @@ import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.MerchantSubmission
 import app.ledger.feature.settings.PlaceSubmission
 import app.ledger.finance.application.AccountDraft
+import app.ledger.finance.application.ApplyInstallmentSettlementRequest
 import app.ledger.finance.application.AssignCreditStatementRequest
 import app.ledger.finance.application.AttachmentContentSource
 import app.ledger.finance.application.AttachmentImportRequest
@@ -131,6 +137,10 @@ import app.ledger.finance.application.GoalMovementMutationIds
 import app.ledger.finance.application.InitialAccountCommand
 import app.ledger.finance.application.InitialCategoryCommand
 import app.ledger.finance.application.InitializeLedgerCommand
+import app.ledger.finance.application.InstallmentApplicationPort
+import app.ledger.finance.application.InstallmentMutationIds
+import app.ledger.finance.application.InstallmentSettlementIds
+import app.ledger.finance.application.InstallmentTermsDraft
 import app.ledger.finance.application.JournalApplicationPort
 import app.ledger.finance.application.JournalBulkEditPatch
 import app.ledger.finance.application.JournalBulkEditRequest
@@ -173,6 +183,7 @@ import app.ledger.finance.application.SaveBudgetTemplateRequest
 import app.ledger.finance.application.SaveCreditProfileRequest
 import app.ledger.finance.application.SaveCreditStatementRequest
 import app.ledger.finance.application.SaveGoalRequest
+import app.ledger.finance.application.SaveInstallmentPlanRequest
 import app.ledger.finance.application.SaveProjectRequest
 import app.ledger.finance.application.SpecializedAccountAmountDraft
 import app.ledger.finance.application.SpecializedFxQuoteRequest
@@ -193,12 +204,17 @@ import app.ledger.finance.domain.DependencyResolution
 import app.ledger.finance.domain.DueDateRule
 import app.ledger.finance.domain.GoalMovementKind
 import app.ledger.finance.domain.GoalStatus
+import app.ledger.finance.domain.InstallmentFeeRateType
+import app.ledger.finance.domain.InstallmentPrepaymentPolicy
+import app.ledger.finance.domain.InstallmentRefundPolicy
+import app.ledger.finance.domain.InterestRate
 import app.ledger.finance.domain.MissingDayPolicy
 import app.ledger.finance.domain.ProjectStatus
 import app.ledger.finance.domain.RefundAccrualPolicy
 import app.ledger.finance.domain.RefundBudgetPolicy
 import app.ledger.finance.domain.RefundGoalPolicy
 import app.ledger.finance.domain.RefundProjectPolicy
+import app.ledger.finance.domain.ScheduleRevisionReason
 import app.ledger.finance.domain.StatementAssignmentMode
 import app.ledger.finance.domain.StatementDateRule
 import app.ledger.finance.domain.StatisticalNature
@@ -232,6 +248,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -280,6 +298,7 @@ internal class AppRootViewModel @Inject constructor(
     private val budgetApplicationPort: BudgetApplicationPort,
     private val projectGoalApplicationPort: ProjectGoalApplicationPort,
     private val creditApplicationPort: CreditApplicationPort,
+    private val installmentApplicationPort: InstallmentApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
@@ -339,6 +358,11 @@ internal class AppRootViewModel @Inject constructor(
     val creditPending: StateFlow<Boolean> = mutableCreditPending.asStateFlow()
     private var currentCreditScreenId: String = "CRD-001"
     private var currentCreditTransactionId: StableId? = null
+    private val mutableInstallment = MutableStateFlow<InstallmentLoadState>(InstallmentLoadState.Loading)
+    val installment: StateFlow<InstallmentLoadState> = mutableInstallment.asStateFlow()
+    private val mutableInstallmentPending = MutableStateFlow(false)
+    val installmentPending: StateFlow<Boolean> = mutableInstallmentPending.asStateFlow()
+    private var currentInstallmentScreenId: String = "INS-001"
     private val mutableProjectTransactionPagingRequest = MutableStateFlow<ProjectTransactionPagingRequest?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -2380,6 +2404,298 @@ internal class AppRootViewModel @Inject constructor(
         mutableCredit.value = CreditLoadState.Content(block(current.state))
     }
 
+    fun loadInstallment(screenId: String, planId: StableId? = null, purchaseId: StableId? = null) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        currentInstallmentScreenId = screenId
+        mutableInstallment.value = InstallmentLoadState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.current()
+            val bookId = runCatching { requireBookId(saved) }.getOrNull() ?: return@launch
+            val zone = ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE })
+            val today = runtimeSources.clock.now().atZone(zone).toLocalDate()
+            mutableInstallment.value = when (val result = installmentApplicationPort.snapshot(bookId, today)) {
+                is DomainResult.Failure -> InstallmentLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Success -> {
+                    val missing = planId != null && result.value.plans.none { it.id == planId } ||
+                        purchaseId != null && result.value.purchases.none { it.transactionId == purchaseId }
+                    if (missing) {
+                        InstallmentLoadState.Failure(INSTALLMENT_NOT_FOUND)
+                    } else {
+                        InstallmentLoadState.Content(InstallmentPolicy.create(result.value, screenId, planId, purchaseId))
+                    }
+                }
+            }
+        }
+    }
+
+    fun updateInstallmentField(field: InstallmentField, value: String) = updateInstallment {
+        InstallmentPolicy.update(it, field, value)
+    }
+
+    fun updateInstallmentFeeModel(model: InstallmentFeeRateType) = updateInstallment { state ->
+        state.copy(
+            draft = state.draft.copy(feeModel = model),
+            presentation = InstallmentPresentation.EDITING,
+            previewSchedule = null,
+            validationFields = emptySet(),
+        )
+    }
+
+    fun updateInstallmentRefundPolicy(policy: InstallmentRefundPolicy) = updateInstallment { state ->
+        state.copy(
+            draft = state.draft.copy(refundPolicy = policy),
+            presentation = InstallmentPresentation.EDITING,
+            previewSchedule = null,
+        )
+    }
+
+    fun selectInstallmentPurchase(purchaseId: StableId) = updateInstallment { state ->
+        state.copy(
+            selectedPurchaseId = purchaseId,
+            selectedPlanId = null,
+            presentation = InstallmentPresentation.EDITING,
+            previewSchedule = null,
+        )
+    }
+
+    fun navigateInstallment(target: String, stableId: StableId?) {
+        val screenId = ScreenId(target)
+        val arguments = buildMap<String, SafeRouteArgument> {
+            if (stableId != null && target == "REC-027") put("purchaseTransactionId", StableIdArgument(stableId))
+            if (stableId != null && target in setOf("INS-002", "INS-003", "INS-004", "INS-005", "INS-006")) {
+                put("planId", StableIdArgument(stableId))
+            }
+        }
+        navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+    }
+
+    fun previewInstallment() {
+        val state = (mutableInstallment.value as? InstallmentLoadState.Content)?.state ?: return
+        val request = installmentPlanRequest(state)
+        if (request == null) {
+            markInstallmentInvalid()
+            return
+        }
+        if (!beginInstallmentMutation(state.copy(presentation = InstallmentPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                when (val result = installmentApplicationPort.preview(request)) {
+                    is DomainResult.Success -> mutableInstallment.value = InstallmentLoadState.Content(
+                        state.copy(presentation = InstallmentPresentation.PREVIEW, previewSchedule = result.value),
+                    )
+                    is DomainResult.Failure -> markInstallmentInvalid(sanitizeCode(result.error.code))
+                }
+            } finally {
+                mutableInstallmentPending.value = false
+            }
+        }
+    }
+
+    fun saveInstallment() {
+        val state = (mutableInstallment.value as? InstallmentLoadState.Content)?.state ?: return
+        if (state.presentation != InstallmentPresentation.PREVIEW || state.previewSchedule == null) {
+            markInstallmentInvalid()
+            return
+        }
+        val request = installmentPlanRequest(state)
+        if (request == null || !beginInstallmentMutation(state.copy(presentation = InstallmentPresentation.SAVING))) {
+            if (request == null) markInstallmentInvalid()
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = installmentApplicationPort.save(request)) {
+                    is DomainResult.Success -> navigateInstallment("INS-003", request.ids.planId)
+                    is DomainResult.Failure -> markInstallmentInvalid(sanitizeCode(result.error.code))
+                }
+            } finally {
+                mutableInstallmentPending.value = false
+            }
+        }
+    }
+
+    fun calculateInstallmentSettlement() {
+        val state = (mutableInstallment.value as? InstallmentLoadState.Content)?.state ?: return
+        val plan = state.plan ?: return
+        val date = runCatching { LocalDate.parse(state.draft.settlementDate) }.getOrNull()
+        if (date == null) {
+            markInstallmentInvalid()
+            return
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            when (val result = installmentApplicationPort.simulateSettlement(state.snapshot.bookId, plan.id, date)) {
+                is DomainResult.Success -> mutableInstallment.value = InstallmentLoadState.Content(
+                    state.copy(
+                        presentation = if (result.value.allowed) InstallmentPresentation.CALCULATED else InstallmentPresentation.INVALID,
+                        simulation = result.value,
+                    ),
+                )
+                is DomainResult.Failure -> markInstallmentInvalid(sanitizeCode(result.error.code))
+            }
+        }
+    }
+
+    fun applyInstallmentSettlement() {
+        val state = (mutableInstallment.value as? InstallmentLoadState.Content)?.state ?: return
+        val plan = state.plan ?: return
+        val simulation = state.simulation?.takeIf { it.allowed } ?: return
+        val payment = state.snapshot.paymentAccounts.firstOrNull { it.active && it.currency == plan.currency }
+        if (payment == null || plan.currency != state.snapshot.baseCurrency) {
+            markInstallmentInvalid(INSTALLMENT_PAYMENT_ACCOUNT_REQUIRED)
+            return
+        }
+        if (!beginInstallmentMutation(state.copy(presentation = InstallmentPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val now = runtimeSources.clock.now()
+                val mutation = installmentMutationIds(state.snapshot.bookId, plan.id, 0)
+                val request = ApplyInstallmentSettlementRequest(
+                    InstallmentSettlementIds(
+                        mutation,
+                        nextId(),
+                        nextId(),
+                        List(INSTALLMENT_FACT_ID_COUNT) { nextId() },
+                        emptyList(),
+                    ),
+                    plan.currentRevision.id.value,
+                    plan.currentRevision.revisionNumber + 1,
+                    plan.currentSchedule.revisionNumber + 1,
+                    simulation.settlementDate,
+                    ZoneId.of(settingsRepository.current().zoneId.ifBlank { DEFAULT_ZONE }),
+                    SpecializedAccountAmountDraft(payment.id, simulation.paymentMinor, simulation.paymentMinor, null),
+                    SpecializedAccountAmountDraft(plan.creditAccountId, simulation.outstandingPrincipalMinor, simulation.outstandingPrincipalMinor, null),
+                    simulation.settlementFeeMinor.takeIf { it > 0L }?.let {
+                        SpecializedAccountAmountDraft(payment.id, it, it, null)
+                    },
+                    now,
+                )
+                when (val result = installmentApplicationPort.applySettlement(request)) {
+                    is DomainResult.Success -> navigateInstallment("INS-003", plan.id)
+                    is DomainResult.Failure -> markInstallmentInvalid(sanitizeCode(result.error.code))
+                }
+            } finally {
+                mutableInstallmentPending.value = false
+            }
+        }
+    }
+
+    private fun installmentPlanRequest(state: InstallmentFeatureState): SaveInstallmentPlanRequest? = runCatching {
+        val plan = state.plan
+        val purchase = state.snapshot.purchases.singleOrNull { it.transactionId == state.selectedPurchaseId }
+            ?: plan?.let { selected -> state.snapshot.purchases.singleOrNull { it.transactionId == selected.purchaseTransactionId } }
+            ?: return null
+        val termCount = state.draft.termCount.toInt().takeIf { it in 1..INSTALLMENT_MAX_TERMS } ?: return null
+        val firstStatementDate = LocalDate.parse(state.draft.firstStatementDate)
+        val prepaymentFee = state.draft.prepaymentFee.takeIf(String::isNotBlank)?.let {
+            CreditPolicy.parseMinor(it, purchase.currency)
+        }
+        if (state.draft.prepaymentFee.isNotBlank() && prepaymentFee == null) return null
+        val terms = installmentTerms(state, purchase.currency, prepaymentFee) ?: return null
+        val planId = plan?.id ?: nextId()
+        val currentPrincipal = plan?.currentPrincipalMinor ?: purchase.principalMinor
+        SaveInstallmentPlanRequest(
+            installmentMutationIds(state.snapshot.bookId, planId, termCount),
+            purchase.transactionId,
+            purchase.creditAccountId,
+            purchase.currency,
+            plan?.originalPrincipalMinor ?: purchase.principalMinor,
+            currentPrincipal,
+            termCount,
+            plan?.currentRevision?.id?.value,
+            (plan?.currentRevision?.revisionNumber ?: 0) + 1,
+            (plan?.currentSchedule?.revisionNumber ?: 0) + 1,
+            firstStatementDate,
+            terms,
+            if (plan == null) ScheduleRevisionReason.INITIAL else ScheduleRevisionReason.RATE_CHANGE,
+            runtimeSources.clock.now(),
+        )
+    }.getOrNull()
+
+    private fun installmentTerms(
+        state: InstallmentFeatureState,
+        currency: CurrencyCode,
+        prepaymentFee: Long?,
+    ): InstallmentTermsDraft? {
+        val fixedPerTerm = if (state.draft.feeModel == InstallmentFeeRateType.FIXED_PER_TERM) {
+            CreditPolicy.parseMinor(state.draft.feeValue, currency)
+        } else {
+            null
+        }
+        val firstTerm = if (state.draft.feeModel == InstallmentFeeRateType.FIRST_TERM_FIXED) {
+            CreditPolicy.parseMinor(state.draft.firstTermFee, currency)
+        } else {
+            null
+        }
+        val remainingRate = if (state.draft.feeModel == InstallmentFeeRateType.REMAINING_PRINCIPAL_RATE) {
+            parseInstallmentRate(state.draft.feeValue)
+        } else {
+            null
+        }
+        val annualRate = if (state.draft.feeModel == InstallmentFeeRateType.EFFECTIVE_ANNUAL_RATE) {
+            parseInstallmentRate(state.draft.annualRate)
+        } else {
+            null
+        }
+        val requiredValueMissing = when (state.draft.feeModel) {
+            InstallmentFeeRateType.FIXED_PER_TERM -> fixedPerTerm == null
+            InstallmentFeeRateType.FIRST_TERM_FIXED -> firstTerm == null
+            InstallmentFeeRateType.REMAINING_PRINCIPAL_RATE -> remainingRate == null
+            InstallmentFeeRateType.EFFECTIVE_ANNUAL_RATE -> annualRate == null
+            InstallmentFeeRateType.NONE -> false
+        }
+        if (requiredValueMissing) return null
+        return InstallmentTermsDraft(
+            state.draft.feeModel,
+            fixedPerTerm,
+            firstTerm,
+            remainingRate,
+            annualRate,
+            if (prepaymentFee == null) InstallmentPrepaymentPolicy.ALLOWED_WITHOUT_FEE else InstallmentPrepaymentPolicy.ALLOWED_WITH_FEE,
+            prepaymentFee,
+            state.draft.refundPolicy,
+            RoundingMode.HALF_EVEN,
+        )
+    }
+
+    private fun parseInstallmentRate(raw: String): InterestRate? = runCatching {
+        val entered = BigDecimal(raw.trim().removeSuffix("%"))
+        val decimal = if (raw.contains('%') || entered > BigDecimal.ONE) entered.movePointLeft(2) else entered
+        InterestRate.of(decimal).getOrNull()
+    }.getOrNull()
+
+    private fun installmentMutationIds(bookId: StableId, planId: StableId, termCount: Int) = InstallmentMutationIds(
+        bookId,
+        CommandId(nextId()),
+        nextId(),
+        nextId(),
+        planId,
+        nextId(),
+        nextId(),
+        List(termCount) { nextId() },
+    )
+
+    private fun beginInstallmentMutation(state: InstallmentFeatureState): Boolean {
+        if (mutableInstallmentPending.value) return false
+        mutableInstallmentPending.value = true
+        mutableInstallment.value = InstallmentLoadState.Content(state)
+        return true
+    }
+
+    private fun markInstallmentInvalid(code: String? = null) {
+        val state = (mutableInstallment.value as? InstallmentLoadState.Content)?.state ?: return
+        mutableInstallment.value = InstallmentLoadState.Content(
+            state.copy(
+                presentation = InstallmentPresentation.INVALID,
+                validationFields = setOfNotNull(code ?: "installment"),
+            ),
+        )
+    }
+
+    private fun updateInstallment(block: (InstallmentFeatureState) -> InstallmentFeatureState) {
+        val current = mutableInstallment.value as? InstallmentLoadState.Content ?: return
+        mutableInstallment.value = InstallmentLoadState.Content(block(current.state))
+    }
+
     fun requestRootBack() {
         val screen = navigator.currentKey.contract.screenId.value
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
@@ -2901,6 +3217,10 @@ internal class AppRootViewModel @Inject constructor(
         const val PROJECT_GOAL_NOT_FOUND = "PROJECT_GOAL_NOT_FOUND"
         const val CREDIT_NOT_FOUND = "CREDIT_NOT_FOUND"
         const val CREDIT_FACT_ID_COUNT = 96
+        const val INSTALLMENT_NOT_FOUND = "INSTALLMENT_NOT_FOUND"
+        const val INSTALLMENT_PAYMENT_ACCOUNT_REQUIRED = "INSTALLMENT_PAYMENT_ACCOUNT_REQUIRED"
+        const val INSTALLMENT_FACT_ID_COUNT = 96
+        const val INSTALLMENT_MAX_TERMS = 600
         const val MAX_RECOVERY_LENGTH = 256
         const val MAX_REFERENCE_NAME = 80
         const val RECOVERY_VERIFIER_BYTES = 32

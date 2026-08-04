@@ -32,6 +32,8 @@ enum class FinancialCommandType {
     RECORD_BUDGET_ADJUSTMENTS,
     SAVE_CREDIT_PROFILE,
     SAVE_CREDIT_STATEMENT,
+    SAVE_INSTALLMENT_PLAN,
+    APPLY_INSTALLMENT_SETTLEMENT,
 }
 
 sealed interface FinancialCommand {
@@ -308,6 +310,31 @@ data class SaveCreditStatementCommand(
     override val commandType: FinancialCommandType = FinancialCommandType.SAVE_CREDIT_STATEMENT
 }
 
+data class SaveInstallmentPlanCommand(
+    override val commandId: CommandId,
+    override val payloadHash: Hash256,
+    val mutation: InstallmentPlanMutation,
+) : FinancialCommand {
+    override val expectedRevisionId: TransactionRevisionId? = null
+    override val commandType: FinancialCommandType = FinancialCommandType.SAVE_INSTALLMENT_PLAN
+}
+
+/** One confirmed action atomically records the real payoff transaction and advances the plan version. */
+data class ApplyInstallmentSettlementCommand(
+    override val commandId: CommandId,
+    override val payloadHash: Hash256,
+    override val input: NewTransactionInput<CreditPaymentPayload>,
+    val mutation: InstallmentPlanMutation,
+) : RecordTransactionCommand<CreditPaymentPayload> {
+    override val commandType: FinancialCommandType = FinancialCommandType.APPLY_INSTALLMENT_SETTLEMENT
+
+    init {
+        require(input.payload.installmentPlanId == mutation.plan.id)
+        require(mutation.plan.status == InstallmentStatus.SETTLED)
+        require(mutation.settlementTransactionId != null)
+    }
+}
+
 data class BatchFinancialCommand(
     override val commandId: CommandId,
     override val payloadHash: Hash256,
@@ -375,6 +402,7 @@ data class FinancialMutationPlan(
     val budgetTemplateMutations: List<BudgetTemplateMutation> = emptyList(),
     val creditProfileMutations: List<CreditProfileMutation> = emptyList(),
     val creditStatementMutations: List<CreditStatementMutation> = emptyList(),
+    val installmentPlanMutations: List<InstallmentPlanMutation> = emptyList(),
 )
 
 data class PlanningOperationContext(
@@ -399,6 +427,7 @@ data class PlanningSnapshot(
     val operationContext: PlanningOperationContext? = null,
     val goal: Goal? = null,
     val goalBalanceMinor: Long? = null,
+    val installmentPlanRevision: InstallmentPlanRevision? = null,
 )
 
 object FinancialMutationPlanValidator {
@@ -408,27 +437,7 @@ object FinancialMutationPlanValidator {
         snapshot: PlanningSnapshot,
         plan: FinancialMutationPlan,
     ): DomainResult<FinancialMutationPlan> {
-        val expectedNext = snapshot.book.localRevision.next()
-        if (
-            expectedNext !is DomainResult.Success ||
-            plan.commandId != command.commandId ||
-            plan.commandType != command.commandType ||
-            plan.payloadHash != command.payloadHash ||
-            plan.targetLocalRevision != expectedNext.value ||
-            plan.commit.commandId != command.commandId ||
-            plan.commit.parentIds != listOf(snapshot.book.headCommitId) ||
-            plan.projectionChanges.targetRevision != plan.targetLocalRevision ||
-            plan.ruleSetVersion != snapshot.book.ruleSetVersion ||
-            (
-                command is RecordGoalMovementCommand && snapshot.goal?.let { goal ->
-                    goal.id != command.movement.goalId || goal.rowVersion != command.expectedGoalRowVersion
-                } != false
-                ) ||
-            plan.journalBundles.any {
-                it.entry.role == JournalEntryRole.APPLY && it.entry.ruleSetVersion != plan.ruleSetVersion
-            } ||
-            !hasRequiredWrites(command, plan)
-        ) {
+        if (!hasMatchingIdentity(command, snapshot, plan)) {
             return DomainResult.Failure(DomainViolation.InvalidField("mutationPlan.identityOrRevision"))
         }
         if (command.expectedRevisionId != snapshot.currentRevision?.id) {
@@ -436,6 +445,14 @@ object FinancialMutationPlanValidator {
         }
         val budgetValidation = validateBudgetMutations(command, snapshot, plan)
         if (budgetValidation is DomainResult.Failure) return budgetValidation
+        val installmentRevisionMatches = when (command) {
+            is SaveInstallmentPlanCommand -> command.mutation.expectedRevisionId == snapshot.installmentPlanRevision?.id
+            is ApplyInstallmentSettlementCommand -> command.mutation.expectedRevisionId == snapshot.installmentPlanRevision?.id
+            else -> true
+        }
+        if (!installmentRevisionMatches) {
+            return DomainResult.Failure(DomainViolation.StaleExpectedRevision)
+        }
         if (
             command is BatchFinancialCommand &&
             (
@@ -523,6 +540,33 @@ object FinancialMutationPlanValidator {
             }
         }
         return DomainResult.Success(plan)
+    }
+
+    @Suppress("ReturnCount")
+    private fun hasMatchingIdentity(
+        command: FinancialCommand,
+        snapshot: PlanningSnapshot,
+        plan: FinancialMutationPlan,
+    ): Boolean {
+        val expectedNext = snapshot.book.localRevision.next()
+        if (expectedNext !is DomainResult.Success) return false
+        if (plan.commandId != command.commandId || plan.commandType != command.commandType) return false
+        if (plan.payloadHash != command.payloadHash || plan.targetLocalRevision != expectedNext.value) return false
+        if (plan.commit.commandId != command.commandId) return false
+        if (plan.commit.parentIds != listOf(snapshot.book.headCommitId)) return false
+        if (plan.projectionChanges.targetRevision != plan.targetLocalRevision) return false
+        if (plan.ruleSetVersion != snapshot.book.ruleSetVersion) return false
+        if (command is RecordGoalMovementCommand) {
+            val goal = snapshot.goal ?: return false
+            if (goal.id != command.movement.goalId || goal.rowVersion != command.expectedGoalRowVersion) return false
+        }
+        if (plan.journalBundles.any {
+                it.entry.role == JournalEntryRole.APPLY && it.entry.ruleSetVersion != plan.ruleSetVersion
+            }
+        ) {
+            return false
+        }
+        return hasRequiredWrites(command, plan)
     }
 
     private fun validateBudgetMutations(
@@ -637,9 +681,20 @@ object FinancialMutationPlanValidator {
         return DomainResult.Success(Unit)
     }
 
-    private fun hasRequiredWrites(command: FinancialCommand, plan: FinancialMutationPlan): Boolean = when (command) {
-        is RecordTransactionCommand<*> ->
+    private fun hasRequiredWrites(command: FinancialCommand, plan: FinancialMutationPlan): Boolean = when {
+        command is ApplyInstallmentSettlementCommand ->
+            plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts() &&
+                plan.installmentPlanMutations == listOf(command.mutation)
+        command is RecordTransactionCommand<*> ->
             plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts()
+        else -> hasRequiredNonRecordWrites(command, plan)
+    }
+
+    private fun hasRequiredNonRecordWrites(command: FinancialCommand, plan: FinancialMutationPlan): Boolean = when (command) {
+        is ApplyInstallmentSettlementCommand ->
+            plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts() &&
+                plan.installmentPlanMutations == listOf(command.mutation)
+        is RecordTransactionCommand<*> -> plan.hasFinancialFacts()
         is EditTransactionCommand,
         is RestoreHistoricalRevisionCommand,
         is MoveTransactionToTrashCommand,
@@ -662,6 +717,7 @@ object FinancialMutationPlanValidator {
         is RecordBudgetAdjustmentsCommand -> plan.budgetAdjustments == command.adjustments
         is SaveCreditProfileCommand -> plan.creditProfileMutations == listOf(command.mutation)
         is SaveCreditStatementCommand -> plan.creditStatementMutations == listOf(command.mutation)
+        is SaveInstallmentPlanCommand -> plan.installmentPlanMutations == listOf(command.mutation)
         is BatchFinancialCommand ->
             plan.commit.kind == CommitKind.BATCH_MUTATION &&
                 (plan.revisions.isNotEmpty() || plan.goalMovements.isNotEmpty() || plan.budgetAdjustments.isNotEmpty())

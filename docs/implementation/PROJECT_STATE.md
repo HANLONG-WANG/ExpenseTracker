@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-04 (Asia/Tokyo)
-Current stage: P19 — Credit accounts, statements, repayments and automatic repayment bookkeeping
-Stage status: VERIFIED (`P19-E001`—`P19-E007`); P00—P18 remain VERIFIED and P20 is the next unstarted stage
+Current stage: P20 — Credit card installments
+Stage status: VERIFIED (`P20-E001`—`P20-E007`); P00—P19 remain VERIFIED and P21 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -355,7 +355,8 @@ P19 is `VERIFIED`. `P19_CREDIT_MAPPING.md` records the exact domain/fact/applica
 | P17 | VERIFIED | Complete monthly budget/template history, hierarchy constraints, signed adjustments, deterministic rollover/daily availability and BUD-001—008; `P17-E001`—`P17-E007` |
 | P18 | VERIFIED | Complete project budgeting/reports, keyset transactions, goal reservations/completion and PRJ/GOL contracts; `P18-E001`—`P18-E007` |
 | P19 | VERIFIED | Complete credit profile/statements, assignment, repayment/allocation, auto-bookkeeping boundary and REC-014/CRD-001—008; `P19-E001`—`P19-E007` |
-| P20—P36 | NOT_STARTED | P20 is next; do not promote later work early |
+| P20 | VERIFIED | Purchase stays whole; exact versioned schedules, explicit settlement/refund application, synchronized progress and REC-027/INS-001—006; `P20-E001`—`P20-E007` |
+| P21—P36 | NOT_STARTED | P21 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -399,3 +400,18 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p19_credit.py
 ```
 
 All P19 evidence is recorded in `P19-E001`—`P19-E007`. The next entry point is P20; reuse the coordinator-owned credit facts and exact projections without inventing bank-payment success, minimum-payment data, mutable official differences or feature-owned financial SQL.
+
+## P20 verified handoff
+
+P20 leaves the repository with verified purchase-linked installment aggregates, immutable terms/schedules, exact principal/cost calculations, explicit settlement/refund application, synchronized progress and all seven UI contracts. The reproducible P20 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p20_installments.py
+./gradlew :finance:domain:test
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.InstallmentApplicationPortDeviceTest
+./gradlew :feature:liabilities:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.feature.liabilities.InstallmentUiContractDeviceTest,app.ledger.feature.liabilities.P20GoldenDeviceTest
+./gradlew :app:pixel6Api36DebugAndroidTest
+./gradlew p20Check
+```
+
+All P20 evidence is recorded in `P20-E001`—`P20-E007`. The next entry point is P21; reuse the checked schedule/version/coordinator patterns without turning future installments into transactions, rewriting the original purchase or introducing feature-owned financial SQL.

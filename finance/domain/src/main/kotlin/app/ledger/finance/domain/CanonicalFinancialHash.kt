@@ -18,6 +18,10 @@ object CanonicalFinancialHash {
         text(command.commandType.name)
         nullableStableId(command.expectedRevisionId?.value)
         when (command) {
+            is ApplyInstallmentSettlementCommand -> {
+                transactionInput(command.input)
+                installmentPlanMutation(command.mutation)
+            }
             is RecordTransactionCommand<*> -> transactionInput(command.input)
             is EditTransactionCommand -> {
                 stableId(command.transactionId.value)
@@ -55,6 +59,7 @@ object CanonicalFinancialHash {
             }
             is SaveCreditProfileCommand -> creditProfileMutation(command.mutation)
             is SaveCreditStatementCommand -> creditStatementMutation(command.mutation)
+            is SaveInstallmentPlanCommand -> installmentPlanMutation(command.mutation)
             is BatchFinancialCommand -> {
                 integer(command.commands.size)
                 command.commands.forEach { child ->
@@ -126,6 +131,58 @@ object CanonicalFinancialHash {
         boolean(revision.sealed)
         stableId(revision.createdCommitId.value)
         nullableStableId(mutation.expectedRevisionId?.value)
+    }
+
+    private fun CanonicalWriter.installmentPlanMutation(mutation: InstallmentPlanMutation) {
+        val plan = mutation.plan
+        val revision = mutation.revision
+        stableId(plan.id.value)
+        stableId(plan.purchaseTransactionId.value)
+        stableId(plan.creditAccountId.value)
+        long(plan.originalPrincipalMinor)
+        currency(plan.currency)
+        integer(plan.termCount)
+        stableId(plan.currentRevisionId.value)
+        text(plan.status.name)
+        nullableStableId(mutation.expectedRevisionId?.value)
+        stableId(revision.id.value)
+        integer(revision.revisionNumber)
+        text(revision.feeRateType.name)
+        optionalLong(revision.fixedFeePerTermMinor)
+        optionalLong(revision.firstTermFeeMinor)
+        decimal(revision.remainingPrincipalRate?.annualDecimal)
+        decimal(revision.effectiveAnnualRate?.annualDecimal)
+        text(revision.prepaymentPolicy.name)
+        optionalLong(revision.prepaymentFeeMinor)
+        text(revision.refundPolicy.name)
+        text(revision.roundingMode.name)
+        stableId(revision.createdCommitId.value)
+        val schedule = mutation.scheduleRevision
+        stableId(schedule.id.value)
+        integer(schedule.revisionNumber)
+        text(schedule.reason.name)
+        instant(schedule.generatedAt)
+        stableId(schedule.createdCommitId.value)
+        integer(schedule.items.size)
+        schedule.items.forEach { item ->
+            stableId(item.id.value)
+            integer(item.installmentNumber)
+            localDate(item.statementDate)
+            long(item.principalMinor)
+            long(item.interestMinor)
+            long(item.feeMinor)
+            long(item.remainingPrincipalMinor)
+        }
+        long(mutation.currentPrincipalMinor)
+        nullableStableId(mutation.settlementTransactionId?.value)
+        boolean(mutation.refundAllocation != null)
+        mutation.refundAllocation?.let { allocation ->
+            stableId(allocation.refundTransactionId.value)
+            stableId(allocation.refundRevisionId.value)
+            long(allocation.principalMinor)
+            long(allocation.feeMinor)
+            nullableStableId(allocation.reversalOfId)
+        }
     }
 
     private fun CanonicalWriter.optionalLong(value: Long?) {
@@ -607,6 +664,9 @@ private class CanonicalWriter {
             positiveMoney(allocation.amount)
         }
         text(payload.generationMode.name)
+        nullableStableId(payload.installmentPlanId?.value)
+        boolean(payload.settlementFee != null)
+        payload.settlementFee?.let(::positiveMoney)
     }
 
     private fun loanPayment(payload: LoanPaymentPayload) {

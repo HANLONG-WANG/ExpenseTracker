@@ -457,16 +457,20 @@ internal class RoomProjectionEngine {
         database.execSQL(
             """
             INSERT INTO installment_progress_projection(plan_id, principal_minor, posted_principal_minor, unposted_committed_principal_minor, fees_minor, next_statement_date, as_of_local_revision)
-            SELECT ip.id, ip.original_principal_minor,
+            SELECT ip.id,
+              CASE WHEN ip.status = 1 THEN 0 ELSE MAX(0, ip.original_principal_minor - COALESCE((
+                SELECT SUM(CASE WHEN ira.reversal_of_id IS NULL THEN ira.principal_minor ELSE -ira.principal_minor END)
+                FROM installment_refund_allocation ira WHERE ira.plan_id=ip.id
+              ),0)) END,
               COALESCE(SUM(CASE WHEN isi.statement_date <= ? THEN isi.principal_minor ELSE 0 END), 0),
-              MAX(0, ip.original_principal_minor - COALESCE(SUM(CASE WHEN isi.statement_date <= ? THEN isi.principal_minor ELSE 0 END), 0)),
+              MAX(0, COALESCE(SUM(isi.principal_minor),0) - COALESCE(SUM(CASE WHEN isi.statement_date <= ? THEN isi.principal_minor ELSE 0 END), 0)),
               COALESCE(SUM(isi.fee_minor), 0), MIN(CASE WHEN isi.statement_date > ? THEN isi.statement_date END), ?
             FROM installment_plan ip LEFT JOIN installment_schedule_revision isr ON isr.id = (
                 SELECT latest.id FROM installment_schedule_revision latest
                 WHERE latest.plan_id = ip.id ORDER BY latest.revision_no DESC LIMIT 1
               )
               LEFT JOIN installment_schedule_item isi ON isi.schedule_revision_id = isr.id
-            GROUP BY ip.id, ip.original_principal_minor
+            GROUP BY ip.id, ip.original_principal_minor, ip.status
             """.trimIndent(),
             arrayOf<Any>(asOfLocalDate, asOfLocalDate, asOfLocalDate, revision),
         )

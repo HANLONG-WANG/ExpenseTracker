@@ -51,6 +51,8 @@ internal fun ReadyRootScaffold(
     val journalState by viewModel.journal.collectAsStateWithLifecycle()
     val creditState by viewModel.credit.collectAsStateWithLifecycle()
     val creditPending by viewModel.creditPending.collectAsStateWithLifecycle()
+    val installmentState by viewModel.installment.collectAsStateWithLifecycle()
+    val installmentPending by viewModel.installmentPending.collectAsStateWithLifecycle()
     val launchAttachmentPicker = rememberRecordAttachmentPicker { uri ->
         if (viewModel.navigator.currentKey.contract.screenId.value == "REC-013") {
             viewModel.importSpecializedAttachment(uri)
@@ -71,6 +73,7 @@ internal fun ReadyRootScaffold(
                     ?: budgetDestinationTitleOrNull(key.contract.screenId.value)
                     ?: refundDestinationTitleOrNull(key.contract.screenId.value)
                     ?: creditDestinationTitleOrNull(key.contract.screenId.value)
+                    ?: installmentDestinationTitleOrNull(key.contract.screenId.value)
                     ?: destinationTitle(key),
                 variant = if (topLevel) LedgerTopAppBarVariant.TOP_LEVEL else LedgerTopAppBarVariant.BACK,
                 onNavigation = {
@@ -87,7 +90,12 @@ internal fun ReadyRootScaffold(
                 },
             )
         },
-        fixedAction = creditFixedAction(
+        fixedAction = installmentFixedAction(
+            navigator.currentKey.contract.screenId.value,
+            installmentState,
+            installmentPending,
+            viewModel::saveInstallment,
+        ) ?: creditFixedAction(
             navigator.currentKey.contract.screenId.value,
             creditState,
             creditPending,
@@ -141,7 +149,14 @@ internal fun ReadyRootScaffold(
             entryProvider = { key ->
                 NavEntry(key) {
                     val screenId = key.contract.screenId.value
-                    if (screenId.startsWith("CRD-") || screenId == "REC-014") {
+                    if (screenId.startsWith("INS-") || screenId == "REC-027") {
+                        InstallmentRootDestination(
+                            screenId,
+                            key.encodedArguments,
+                            viewModel,
+                            onNavigationChanged = { navigationEpoch += 1 },
+                        )
+                    } else if (screenId.startsWith("CRD-") || screenId == "REC-014") {
                         CreditRootDestination(
                             screenId,
                             key.encodedArguments,
