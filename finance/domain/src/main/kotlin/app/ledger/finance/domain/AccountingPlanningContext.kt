@@ -139,6 +139,10 @@ data class PlanningReferenceData(
         it.contractId == contractId
     }
 
+    fun loan(contractId: LoanContractId, trancheId: LoanTrancheId): PlanningLoanLedger? = loanLedgers.singleOrNull {
+        it.contractId == contractId && it.trancheId == trancheId
+    }
+
     fun settlement(
         activityId: SettlementActivityId,
         participantId: ParticipantId,

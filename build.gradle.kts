@@ -935,6 +935,63 @@ tasks.register("p20Check") {
     )
 }
 
+val validateP21Loans by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the frozen P21 loan, schedule, payment, simulation, projection and UI contract."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p21_loans.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/liabilities/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP21LoanFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P21 gate rejects coordinator, conservation, forecast, route and UI weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p21_loan_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p21_loans.py",
+        "scripts/tests/test_p21_loan_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/designsystem/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/liabilities/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/domain/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p21Check") {
+    group = "verification"
+    description = "Runs P21 static, JVM, lint and architecture evidence; managed-device suites run separately."
+    dependsOn(
+        validateP21Loans,
+        validateP21LoanFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":finance:domain:test",
+        ":finance:data:testDebugUnitTest",
+        ":feature:liabilities:testDebugUnitTest",
+        ":app:lintDebug",
+        ":feature:liabilities:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

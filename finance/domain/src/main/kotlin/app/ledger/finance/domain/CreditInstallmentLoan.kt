@@ -413,6 +413,15 @@ data class LoanTermsRevision(
     init {
         require(revisionNumber > 0)
         require(endDate >= startDate)
+        require(ratePeriods.isNotEmpty())
+        require(LoanRatePeriodPolicy.validate(ratePeriods) is DomainResult.Success)
+        require((prepaymentPolicy == LoanPrepaymentPolicy.ALLOWED_WITH_PENALTY) == (penaltyRate != null))
+        require(
+            when (rateType) {
+                LoanRateType.FIXED -> ratePeriods.all { it.benchmark == null && it.margin == null }
+                LoanRateType.FLOATING -> ratePeriods.all { !it.benchmark.isNullOrBlank() && it.margin != null }
+            },
+        )
     }
 }
 

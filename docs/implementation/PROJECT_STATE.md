@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-04 (Asia/Tokyo)
-Current stage: P20 — Credit card installments
-Stage status: VERIFIED (`P20-E001`—`P20-E007`); P00—P19 remain VERIFIED and P21 is the next unstarted stage
+Current stage: P21 — Loans
+Stage status: VERIFIED (`P21-E001`—`P21-E007`); P00—P20 remain VERIFIED and P22 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -356,7 +356,8 @@ P19 is `VERIFIED`. `P19_CREDIT_MAPPING.md` records the exact domain/fact/applica
 | P18 | VERIFIED | Complete project budgeting/reports, keyset transactions, goal reservations/completion and PRJ/GOL contracts; `P18-E001`—`P18-E007` |
 | P19 | VERIFIED | Complete credit profile/statements, assignment, repayment/allocation, auto-bookkeeping boundary and REC-014/CRD-001—008; `P19-E001`—`P19-E007` |
 | P20 | VERIFIED | Purchase stays whole; exact versioned schedules, explicit settlement/refund application, synchronized progress and REC-027/INS-001—006; `P20-E001`—`P20-E007` |
-| P21—P36 | NOT_STARTED | P21 is next; do not promote later work early |
+| P21 | VERIFIED | Combination contracts/tranches, exact versioned loan schedules, formal disbursement/payment, pure prepayment simulation, strict-future projection and all 15 LIA/REC/LOA destinations; `P21-E001`—`P21-E007` |
+| P22—P36 | NOT_STARTED | P22 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -415,3 +416,18 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p20_installments.py
 ```
 
 All P20 evidence is recorded in `P20-E001`—`P20-E007`. The next entry point is P21; reuse the checked schedule/version/coordinator patterns without turning future installments into transactions, rewriting the original purchase or introducing feature-owned financial SQL.
+
+## P21 verified handoff
+
+P21 leaves the repository with verified combination-loan contracts, dedicated tranche ledgers, immutable terms/rate/schedule revisions, exact formal disbursement/payment accounting, isolated prepayment simulation, synchronous loan progress and future-only cash-flow projections, and all 15 UI contracts. The reproducible P21 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p21_loans.py
+./gradlew :finance:domain:test
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.LoanApplicationPortDeviceTest
+./gradlew :feature:liabilities:pixel6Api36DebugAndroidTest
+./gradlew :app:pixel6Api36DebugAndroidTest
+./gradlew p21Check
+```
+
+All P21 evidence is recorded in `P21-E001`—`P21-E007`. The next entry point is P22; reuse typed StableId routes and coordinator-owned immutable facts without converting forecasts into transactions, rewriting schedule history or introducing feature-owned financial SQL.

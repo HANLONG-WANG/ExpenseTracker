@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "TooManyFunctions", "MagicNumber", "LongParameterList", "LargeClass", "MaxLineLength", "ReturnCount")
+@file:Suppress("LongMethod", "TooManyFunctions", "MagicNumber", "LongParameterList", "LargeClass", "MaxLineLength", "ReturnCount", "CyclomaticComplexMethod")
 
 package app.ledger.app
 
@@ -77,6 +77,11 @@ import app.ledger.feature.liabilities.InstallmentField
 import app.ledger.feature.liabilities.InstallmentLoadState
 import app.ledger.feature.liabilities.InstallmentPolicy
 import app.ledger.feature.liabilities.InstallmentPresentation
+import app.ledger.feature.liabilities.LoanFeatureState
+import app.ledger.feature.liabilities.LoanField
+import app.ledger.feature.liabilities.LoanLoadState
+import app.ledger.feature.liabilities.LoanPolicy
+import app.ledger.feature.liabilities.LoanPresentation
 import app.ledger.feature.onboarding.InitialAccountType
 import app.ledger.feature.onboarding.InitialCategoryDirection
 import app.ledger.feature.onboarding.OnboardingLanguage
@@ -117,6 +122,7 @@ import app.ledger.feature.settings.MerchantSubmission
 import app.ledger.feature.settings.PlaceSubmission
 import app.ledger.finance.application.AccountDraft
 import app.ledger.finance.application.ApplyInstallmentSettlementRequest
+import app.ledger.finance.application.ApplyLoanSimulationRequest
 import app.ledger.finance.application.AssignCreditStatementRequest
 import app.ledger.finance.application.AttachmentContentSource
 import app.ledger.finance.application.AttachmentImportRequest
@@ -152,6 +158,17 @@ import app.ledger.finance.application.JournalSelectionSpec
 import app.ledger.finance.application.JournalTransactionView
 import app.ledger.finance.application.LedgerGenesisIds
 import app.ledger.finance.application.LedgerInitializationPort
+import app.ledger.finance.application.LoanApplicationPort
+import app.ledger.finance.application.LoanComponentAllocationDraft
+import app.ledger.finance.application.LoanComponentAmountDraft
+import app.ledger.finance.application.LoanMutationIds
+import app.ledger.finance.application.LoanPaymentAmountsDraft
+import app.ledger.finance.application.LoanSimulationRequest
+import app.ledger.finance.application.LoanTermsDraft
+import app.ledger.finance.application.LoanTrancheDraft
+import app.ledger.finance.application.LoanTrancheMutationIds
+import app.ledger.finance.application.LoanTransactionContext
+import app.ledger.finance.application.LoanTransactionIds
 import app.ledger.finance.application.MerchantDraft
 import app.ledger.finance.application.OpeningBalanceWriteIds
 import app.ledger.finance.application.OpeningBalanceWritePort
@@ -169,6 +186,8 @@ import app.ledger.finance.application.ProjectGoalApplicationPort
 import app.ledger.finance.application.RecordBudgetAdjustmentRequest
 import app.ledger.finance.application.RecordCreditPaymentRequest
 import app.ledger.finance.application.RecordGoalMovementRequest
+import app.ledger.finance.application.RecordLoanDisbursementRequest
+import app.ledger.finance.application.RecordLoanPaymentRequest
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.ReferenceMutation
@@ -184,6 +203,7 @@ import app.ledger.finance.application.SaveCreditProfileRequest
 import app.ledger.finance.application.SaveCreditStatementRequest
 import app.ledger.finance.application.SaveGoalRequest
 import app.ledger.finance.application.SaveInstallmentPlanRequest
+import app.ledger.finance.application.SaveLoanContractRequest
 import app.ledger.finance.application.SaveProjectRequest
 import app.ledger.finance.application.SpecializedAccountAmountDraft
 import app.ledger.finance.application.SpecializedFxQuoteRequest
@@ -208,7 +228,16 @@ import app.ledger.finance.domain.InstallmentFeeRateType
 import app.ledger.finance.domain.InstallmentPrepaymentPolicy
 import app.ledger.finance.domain.InstallmentRefundPolicy
 import app.ledger.finance.domain.InterestRate
+import app.ledger.finance.domain.LoanPaymentComponent
+import app.ledger.finance.domain.LoanPrepaymentPolicy
+import app.ledger.finance.domain.LoanRatePeriod
+import app.ledger.finance.domain.LoanRateType
+import app.ledger.finance.domain.LoanRepaymentMethod
+import app.ledger.finance.domain.LoanSimulationScenario
+import app.ledger.finance.domain.LoanStatus
 import app.ledger.finance.domain.MissingDayPolicy
+import app.ledger.finance.domain.PaymentFrequency
+import app.ledger.finance.domain.PrepaymentRecalculationStrategy
 import app.ledger.finance.domain.ProjectStatus
 import app.ledger.finance.domain.RefundAccrualPolicy
 import app.ledger.finance.domain.RefundBudgetPolicy
@@ -299,6 +328,7 @@ internal class AppRootViewModel @Inject constructor(
     private val projectGoalApplicationPort: ProjectGoalApplicationPort,
     private val creditApplicationPort: CreditApplicationPort,
     private val installmentApplicationPort: InstallmentApplicationPort,
+    private val loanApplicationPort: LoanApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
@@ -363,6 +393,13 @@ internal class AppRootViewModel @Inject constructor(
     private val mutableInstallmentPending = MutableStateFlow(false)
     val installmentPending: StateFlow<Boolean> = mutableInstallmentPending.asStateFlow()
     private var currentInstallmentScreenId: String = "INS-001"
+    private val mutableLoan = MutableStateFlow<LoanLoadState>(LoanLoadState.Loading)
+    val loan: StateFlow<LoanLoadState> = mutableLoan.asStateFlow()
+    private val mutableLoanPending = MutableStateFlow(false)
+    val loanPending: StateFlow<Boolean> = mutableLoanPending.asStateFlow()
+    private var currentLoanScreenId: String = "LIA-001"
+    private var currentLoanSimulationRequest: LoanSimulationRequest? = null
+    private var currentLoanSimulation: app.ledger.finance.domain.LoanPrepaymentSimulation? = null
     private val mutableProjectTransactionPagingRequest = MutableStateFlow<ProjectTransactionPagingRequest?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -2696,6 +2733,438 @@ internal class AppRootViewModel @Inject constructor(
         mutableInstallment.value = InstallmentLoadState.Content(block(current.state))
     }
 
+    fun loadLoan(
+        screenId: String,
+        contractId: StableId? = null,
+        trancheId: StableId? = null,
+        transactionId: StableId? = null,
+        simulationId: StableId? = null,
+    ) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        currentLoanScreenId = screenId
+        mutableLoan.value = LoanLoadState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
+            mutableLoan.value = when (val result = loanApplicationPort.snapshot(bookId)) {
+                is DomainResult.Failure -> LoanLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Success -> {
+                    val missing = contractId != null && result.value.contracts.none { it.id == contractId } ||
+                        trancheId != null && result.value.contracts.none { contract -> contract.tranches.any { it.id == trancheId } }
+                    if (missing) {
+                        LoanLoadState.Failure(LOAN_NOT_FOUND)
+                    } else {
+                        val created = LoanPolicy.create(result.value, screenId, contractId, trancheId, transactionId, simulationId)
+                        val retained = currentLoanSimulationRequest?.takeIf { request ->
+                            request.contractId == created.selectedContractId && request.simulationId == simulationId
+                        }
+                        LoanLoadState.Content(
+                            if (screenId == "LOA-011" && retained != null) {
+                                created.copy(simulation = currentLoanSimulation)
+                            } else {
+                                created
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun updateLoanField(field: LoanField, value: String) = updateLoan { LoanPolicy.update(it, field, value) }
+
+    fun selectLoanContract(contractId: StableId) = updateLoan { state ->
+        LoanPolicy.create(state.snapshot, currentLoanScreenId, contractId, null, state.selectedTransactionId, state.selectedSimulationId)
+    }
+
+    fun selectLoanTranche(trancheId: StableId) = updateLoan { state ->
+        LoanPolicy.create(state.snapshot, currentLoanScreenId, state.selectedContractId, trancheId, state.selectedTransactionId, state.selectedSimulationId)
+    }
+
+    fun selectLoanRepaymentMethod(method: LoanRepaymentMethod) = updateLoan { state ->
+        state.copy(draft = state.draft.copy(repaymentMethod = method), presentation = LoanPresentation.EDITING, preview = emptyList())
+    }
+
+    fun selectLoanStrategy(strategy: PrepaymentRecalculationStrategy) = updateLoan { state ->
+        state.copy(draft = state.draft.copy(strategy = strategy), presentation = LoanPresentation.EDITING, simulation = null)
+    }
+
+    fun navigateLoan(target: String, primary: StableId?, secondary: StableId?) {
+        val screenId = ScreenId(target)
+        val arguments = buildMap<String, SafeRouteArgument> {
+            when (target) {
+                "REC-018", "REC-019", "LOA-002", "LOA-006", "LOA-007", "LOA-008", "LOA-010" ->
+                    primary?.let { put("contractId", StableIdArgument(it)) }
+                "LOA-003" -> {
+                    primary?.let { put("contractId", StableIdArgument(it)) }
+                    secondary?.let { put("trancheId", StableIdArgument(it)) }
+                }
+                "LOA-004", "LOA-005" -> {
+                    primary?.let { put("contractId", StableIdArgument(it)) }
+                    requireNotNull(secondary).let { put("trancheId", StableIdArgument(it)) }
+                }
+                "LOA-009" -> primary?.let { put("transactionId", StableIdArgument(it)) }
+                "LOA-011" -> {
+                    primary?.let { put("contractId", StableIdArgument(it)) }
+                    currentLoanSimulationRequest?.simulationId?.let { put("simulationId", StableIdArgument(it)) }
+                }
+            }
+        }
+        navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+    }
+
+    fun previewLoan() {
+        val state = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        val request = loanContractRequest(state)
+        if (request == null || !beginLoanMutation(state.copy(presentation = LoanPresentation.GENERATING_SCHEDULE))) {
+            if (request == null) markLoanInvalid(LoanPresentation.INVALID)
+            return
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                mutableLoan.value = when (val result = loanApplicationPort.preview(request)) {
+                    is DomainResult.Success -> LoanLoadState.Content(state.copy(presentation = LoanPresentation.READY, preview = result.value))
+                    is DomainResult.Failure -> LoanLoadState.Content(state.copy(presentation = LoanPresentation.CALCULATION_ERROR, validationFields = setOf(sanitizeCode(result.error.code))))
+                }
+            } finally {
+                mutableLoanPending.value = false
+            }
+        }
+    }
+
+    fun saveLoan() {
+        when (currentLoanScreenId) {
+            "REC-018" -> recordLoanDisbursement()
+            "REC-019" -> recordLoanPayment()
+            else -> saveLoanContract()
+        }
+    }
+
+    private fun saveLoanContract() {
+        val state = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        val request = loanContractRequest(state)
+        if (request == null || !beginLoanMutation(state.copy(presentation = LoanPresentation.SAVING))) {
+            if (request == null) markLoanInvalid(LoanPresentation.INVALID)
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = loanApplicationPort.saveContract(request)) {
+                    is DomainResult.Success -> navigateLoan("LOA-007", request.ids.contractId, null)
+                    is DomainResult.Failure -> markLoanFailure(result.error.code)
+                }
+            } finally {
+                mutableLoanPending.value = false
+            }
+        }
+    }
+
+    private fun recordLoanDisbursement() {
+        val state = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        val contract = state.contract ?: return markLoanInvalid(LoanPresentation.INVALID)
+        val tranche = state.tranche ?: return markLoanInvalid(LoanPresentation.ALLOCATION_ERROR)
+        val amount = CreditPolicy.parseMinor(state.draft.amount, contract.currency)
+        val account = state.snapshot.paymentAccounts.firstOrNull { it.active && it.currency == contract.currency }
+        if (amount == null || account == null || contract.currency != state.snapshot.baseCurrency) {
+            markLoanInvalid(LoanPresentation.ALLOCATION_ERROR)
+            return
+        }
+        val ids = loanExistingMutationIds(state, contract.id, tranche.id)
+        val request = RecordLoanDisbursementRequest(
+            ids,
+            loanTransactionIds(),
+            loanTransactionContext(),
+            SpecializedAccountAmountDraft(account.id, amount, amount, null),
+            LoanComponentAmountDraft(amount, amount, null),
+            listOf(LoanComponentAllocationDraft(tranche.id, null, LoanPaymentComponent.PRINCIPAL, amount, amount)),
+        )
+        if (!beginLoanMutation(state.copy(presentation = LoanPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = loanApplicationPort.recordDisbursement(request)) {
+                    is DomainResult.Success -> navigateLoan("LOA-007", contract.id, null)
+                    is DomainResult.Failure -> markLoanFailure(result.error.code)
+                }
+            } finally {
+                mutableLoanPending.value = false
+            }
+        }
+    }
+
+    private fun recordLoanPayment() {
+        val state = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        val contract = state.contract ?: return markLoanInvalid(LoanPresentation.INVALID)
+        val tranche = state.tranche ?: return markLoanInvalid(LoanPresentation.INVALID)
+        val components = loanComponents(state, contract.currency) ?: return markLoanInvalid(LoanPresentation.SUM_MISMATCH)
+        val total = runCatching { components.filterNotNull().fold(0L, Math::addExact) }.getOrNull()
+        val enteredTotal = CreditPolicy.parseMinor(state.draft.amount, contract.currency)
+        if (total == null || enteredTotal != total) return markLoanInvalid(LoanPresentation.SUM_MISMATCH)
+        val principal = components[0] ?: 0L
+        if (principal > tranche.remainingPrincipalMinor) return markLoanInvalid(LoanPresentation.PRINCIPAL_EXCEEDED)
+        val account = state.snapshot.paymentAccounts.firstOrNull { it.active && it.currency == contract.currency }
+        if (account == null || contract.currency != state.snapshot.baseCurrency) return markLoanInvalid(LoanPresentation.INVALID)
+        val mutation = loanContractRequest(state, selectedOnly = true, principalAfter = tranche.remainingPrincipalMinor - principal)
+            ?: return markLoanInvalid(LoanPresentation.INVALID)
+        val amounts = components.map { minor -> minor?.let { LoanComponentAmountDraft(it, it, null) } }
+        val allocation = LoanPaymentComponent.entries.mapIndexedNotNull { index, component ->
+            amounts[index]?.let { LoanComponentAllocationDraft(tranche.id, null, component, it.accountMinor, it.baseMinor) }
+        }
+        val request = RecordLoanPaymentRequest(
+            mutation,
+            loanTransactionIds(),
+            loanTransactionContext(),
+            SpecializedAccountAmountDraft(account.id, total, total, null),
+            LoanPaymentAmountsDraft(amounts[0], amounts[1], amounts[2], amounts[3]),
+            allocation,
+        )
+        if (!beginLoanMutation(state.copy(presentation = LoanPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = loanApplicationPort.recordPayment(request)) {
+                    is DomainResult.Success -> navigateLoan("LOA-007", contract.id, null)
+                    is DomainResult.Failure -> markLoanFailure(result.error.code)
+                }
+            } finally {
+                mutableLoanPending.value = false
+            }
+        }
+    }
+
+    fun simulateLoan() {
+        val state = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        val contract = state.contract ?: return markLoanInvalid(LoanPresentation.INVALID)
+        val tranche = state.tranche ?: return markLoanInvalid(LoanPresentation.INVALID)
+        val amount = CreditPolicy.parseMinor(state.draft.principalComponent, contract.currency)
+            ?.takeIf { it in 1..tranche.remainingPrincipalMinor }
+            ?: return markLoanInvalid(LoanPresentation.INVALID)
+        val remaining = tranche.remainingPrincipalMinor - amount
+        val itemCount = if (remaining == 0L) 0 else tranche.schedule.count { it.remainingPrincipalMinor < remaining }.coerceAtLeast(1)
+        val ids = loanTrancheMutationIds(itemCount)
+        val terms = loanTerms(state, tranche, itemCount.coerceAtLeast(1)) ?: return markLoanInvalid(LoanPresentation.INVALID)
+        val now = runtimeSources.clock.now()
+        val zone = ZoneId.of(settings.value.zoneId.ifBlank { DEFAULT_ZONE })
+        val request = LoanSimulationRequest(
+            nextId(),
+            state.snapshot.bookId,
+            contract.id,
+            tranche.id,
+            LoanSimulationScenario.PartialPrepayment(amount, state.draft.strategy, now.atZone(zone).toLocalDate()),
+            ids,
+            terms,
+            now,
+        )
+        if (!beginLoanMutation(state.copy(presentation = LoanPresentation.CALCULATING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = loanApplicationPort.simulate(request)) {
+                    is DomainResult.Success -> {
+                        currentLoanSimulationRequest = request
+                        currentLoanSimulation = result.value
+                        mutableLoan.value = LoanLoadState.Content(state.copy(presentation = LoanPresentation.RESULT, simulation = result.value, selectedSimulationId = request.simulationId))
+                    }
+                    is DomainResult.Failure -> markLoanFailure(result.error.code)
+                }
+            } finally {
+                mutableLoanPending.value = false
+            }
+        }
+    }
+
+    fun applyLoanSimulation() {
+        val state = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        val simulation = state.simulation ?: return markLoanInvalid(LoanPresentation.CONFLICT)
+        val request = currentLoanSimulationRequest ?: return markLoanInvalid(LoanPresentation.CONFLICT)
+        val contract = state.contract ?: return markLoanInvalid(LoanPresentation.CONFLICT)
+        val tranche = state.tranche ?: return markLoanInvalid(LoanPresentation.CONFLICT)
+        val account = state.snapshot.paymentAccounts.firstOrNull { it.active && it.currency == contract.currency }
+        if (account == null || contract.currency != state.snapshot.baseCurrency || state.draft.confirmPhrase.isBlank()) {
+            return markLoanInvalid(LoanPresentation.INVALID)
+        }
+        val mutation = loanContractRequest(
+            state,
+            selectedOnly = true,
+            principalAfter = simulation.remainingPrincipalBeforeMinor - simulation.prepaymentPrincipalMinor,
+            fixedIds = request.replacementIds,
+        ) ?: return markLoanInvalid(LoanPresentation.CONFLICT)
+        val penalty = simulation.penaltyMinor.takeIf { it > 0L }?.let { LoanComponentAmountDraft(it, it, null) }
+        val apply = ApplyLoanSimulationRequest(
+            request,
+            mutation,
+            loanTransactionIds(),
+            loanTransactionContext(),
+            SpecializedAccountAmountDraft(account.id, simulation.paymentNowMinor, simulation.paymentNowMinor, null),
+            LoanComponentAmountDraft(simulation.prepaymentPrincipalMinor, simulation.prepaymentPrincipalMinor, null),
+            penalty,
+        )
+        if (!beginLoanMutation(state.copy(presentation = LoanPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = loanApplicationPort.applySimulation(apply)) {
+                    is DomainResult.Success -> navigateLoan("LOA-007", contract.id, null)
+                    is DomainResult.Failure -> markLoanFailure(result.error.code)
+                }
+            } finally {
+                mutableLoanPending.value = false
+            }
+        }
+    }
+
+    private fun loanContractRequest(
+        state: LoanFeatureState,
+        selectedOnly: Boolean = false,
+        principalAfter: Long? = null,
+        fixedIds: LoanTrancheMutationIds? = null,
+    ): SaveLoanContractRequest? = runCatching {
+        val contract = state.contract
+        val account = contract?.let { selected -> state.snapshot.loanAccounts.singleOrNull { it.id == selected.displayAccountId } }
+            ?: state.snapshot.loanAccounts.firstOrNull { it.active }
+            ?: return null
+        val contractId = contract?.id ?: nextId()
+        val views = if (contract == null) {
+            emptyList()
+        } else if (selectedOnly) {
+            listOfNotNull(state.tranche)
+        } else {
+            contract.tranches
+        }
+        val descriptors = if (views.isEmpty()) listOf(null) else views
+        val trancheRequests = descriptors.map { view ->
+            val selected = view == null || view.id == state.selectedTrancheId
+            val currentPrincipal = when {
+                selected && principalAfter != null -> principalAfter
+                view != null -> view.remainingPrincipalMinor
+                else -> CreditPolicy.parseMinor(state.draft.principal, account.currency) ?: return null
+            }
+            val requestedCount = if (currentPrincipal == 0L) {
+                0
+            } else if (selected) {
+                state.draft.paymentCount.toIntOrNull()?.takeIf { it in 1..LOAN_MAX_PAYMENTS } ?: view?.schedule?.size ?: return null
+            } else {
+                view.schedule.size.coerceAtLeast(1)
+            }
+            val ids = if (selected && fixedIds != null) fixedIds else loanTrancheMutationIds(requestedCount)
+            val terms = loanTerms(state, view, requestedCount.coerceAtLeast(1)) ?: return null
+            LoanTrancheDraft(
+                ids,
+                view?.ledgerAccountId ?: account.ledgerAccountId,
+                view?.name ?: state.draft.name.ifBlank { account.name },
+                view?.originalPrincipalMinor ?: currentPrincipal,
+                currentPrincipal,
+                if (currentPrincipal == 0L) LoanStatus.PAID_OFF else view?.status ?: LoanStatus.ACTIVE,
+                view?.currentTermsRevisionId,
+                (view?.termsRevisionNumber ?: 0) + 1,
+                (view?.scheduleRevisionNumber ?: 0) + 1,
+                if (view == null) ScheduleRevisionReason.INITIAL else ScheduleRevisionReason.PREPAYMENT,
+                terms,
+            )
+        }
+        val ids = LoanMutationIds(state.snapshot.bookId, CommandId(nextId()), nextId(), nextId(), contractId, trancheRequests.map { it.ids })
+        SaveLoanContractRequest(
+            ids,
+            contract?.displayAccountId ?: account.id,
+            state.draft.name.ifBlank { contract?.name ?: account.name },
+            state.draft.lender.ifBlank { null },
+            contract?.currency ?: account.currency,
+            state.draft.startDate.takeIf(String::isNotBlank)?.let(LocalDate::parse) ?: contract?.disbursementDate ?: loanToday(),
+            if (trancheRequests.all { it.status == LoanStatus.PAID_OFF }) LoanStatus.PAID_OFF else contract?.status ?: LoanStatus.ACTIVE,
+            contract?.lastCommitId,
+            trancheRequests,
+            runtimeSources.clock.now(),
+        )
+    }.getOrNull()
+
+    private fun loanTerms(
+        state: LoanFeatureState,
+        view: app.ledger.finance.application.LoanTrancheView?,
+        paymentCount: Int,
+    ): LoanTermsDraft? {
+        val start = state.draft.startDate.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?: view?.ratePeriods?.firstOrNull()?.effectiveFrom ?: loanToday()
+        val first = state.draft.firstPaymentDate.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?: view?.schedule?.firstOrNull()?.plannedDate ?: start.plusMonths(1)
+        val end = state.draft.endDate.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?: view?.schedule?.lastOrNull()?.plannedDate ?: first.plusMonths((paymentCount - 1).toLong())
+        val rate = state.draft.annualRate.takeIf(String::isNotBlank)?.let(::parseLoanRate)
+            ?: view?.ratePeriods?.firstOrNull()?.annualRate ?: return null
+        val periods = if (view != null && state.draft.annualRate.isBlank()) view.ratePeriods else listOf(LoanRatePeriod(start, end, rate, null, null))
+        val fee = CreditPolicy.parseMinor(state.draft.feePerPayment, state.snapshot.baseCurrency) ?: 0L
+        return LoanTermsDraft(
+            state.draft.repaymentMethod,
+            LoanRateType.FIXED,
+            PaymentFrequency.MONTHLY,
+            start,
+            end,
+            paymentCount,
+            first,
+            RoundingMode.HALF_EVEN,
+            LoanPrepaymentPolicy.ALLOWED,
+            state.draft.strategy,
+            null,
+            periods,
+            fee,
+        )
+    }
+
+    private fun loanExistingMutationIds(state: LoanFeatureState, contractId: StableId, trancheId: StableId): LoanMutationIds {
+        val tranche = state.snapshot.contracts.single { it.id == contractId }.tranches.single { it.id == trancheId }
+        return LoanMutationIds(
+            state.snapshot.bookId,
+            CommandId(nextId()),
+            nextId(),
+            nextId(),
+            contractId,
+            listOf(LoanTrancheMutationIds(tranche.id, tranche.currentTermsRevisionId, tranche.currentScheduleRevisionId, tranche.schedule.map { nextId() })),
+        )
+    }
+
+    private fun loanTrancheMutationIds(itemCount: Int) = LoanTrancheMutationIds(nextId(), nextId(), nextId(), List(itemCount) { nextId() })
+
+    private fun loanTransactionIds() = LoanTransactionIds(nextId(), nextId(), List(LOAN_FACT_ID_COUNT) { nextId() }, emptyList())
+
+    private fun loanTransactionContext(): LoanTransactionContext {
+        val now = runtimeSources.clock.now()
+        val zone = ZoneId.of(settings.value.zoneId.ifBlank { DEFAULT_ZONE })
+        return LoanTransactionContext(now, zone, now.atZone(zone).toLocalDate(), null, null)
+    }
+
+    private fun loanComponents(state: LoanFeatureState, currency: CurrencyCode): List<Long?>? {
+        val raw = listOf(state.draft.principalComponent, state.draft.interestComponent, state.draft.feeComponent, state.draft.penaltyComponent)
+        val parsed = raw.map { value -> if (value.isBlank()) null else CreditPolicy.parseMinor(value, currency) }
+        return parsed.takeIf { values -> values.any { it != null } && values.zip(raw).all { (value, source) -> source.isBlank() || value != null } }
+    }
+
+    private fun parseLoanRate(raw: String): InterestRate? = runCatching {
+        val entered = BigDecimal(raw.trim().removeSuffix("%"))
+        InterestRate.of(if (raw.contains('%') || entered > BigDecimal.ONE) entered.movePointLeft(2) else entered).getOrNull()
+    }.getOrNull()
+
+    private fun loanToday(): LocalDate {
+        val zone = ZoneId.of(settings.value.zoneId.ifBlank { DEFAULT_ZONE })
+        return runtimeSources.clock.now().atZone(zone).toLocalDate()
+    }
+
+    private fun beginLoanMutation(state: LoanFeatureState): Boolean {
+        if (mutableLoanPending.value) return false
+        mutableLoanPending.value = true
+        mutableLoan.value = LoanLoadState.Content(state)
+        return true
+    }
+
+    private fun markLoanInvalid(presentation: LoanPresentation) {
+        val state = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        mutableLoan.value = LoanLoadState.Content(state.copy(presentation = presentation, validationFields = setOf("loan")))
+    }
+
+    private fun markLoanFailure(code: String) {
+        val presentation = if (sanitizeCode(code).contains("STALE")) LoanPresentation.CONFLICT else LoanPresentation.INVALID
+        val state = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        mutableLoan.value = LoanLoadState.Content(state.copy(presentation = presentation, validationFields = setOf(sanitizeCode(code))))
+    }
+
+    private fun updateLoan(block: (LoanFeatureState) -> LoanFeatureState) {
+        val current = mutableLoan.value as? LoanLoadState.Content ?: return
+        mutableLoan.value = LoanLoadState.Content(block(current.state))
+    }
+
     fun requestRootBack() {
         val screen = navigator.currentKey.contract.screenId.value
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
@@ -3221,6 +3690,9 @@ internal class AppRootViewModel @Inject constructor(
         const val INSTALLMENT_PAYMENT_ACCOUNT_REQUIRED = "INSTALLMENT_PAYMENT_ACCOUNT_REQUIRED"
         const val INSTALLMENT_FACT_ID_COUNT = 96
         const val INSTALLMENT_MAX_TERMS = 600
+        const val LOAN_NOT_FOUND = "LOAN_NOT_FOUND"
+        const val LOAN_FACT_ID_COUNT = 128
+        const val LOAN_MAX_PAYMENTS = 1_200
         const val MAX_RECOVERY_LENGTH = 256
         const val MAX_REFERENCE_NAME = 80
         const val RECOVERY_VERIFIER_BYTES = 32

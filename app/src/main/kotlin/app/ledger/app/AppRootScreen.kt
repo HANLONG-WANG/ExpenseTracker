@@ -93,6 +93,7 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
     val root by viewModel.rootState.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val baseContext = LocalContext.current
+    val baseConfiguration = LocalConfiguration.current
     val activityResultRegistryOwner = checkNotNull(LocalActivityResultRegistryOwner.current) {
         "LedgerAppRoot requires an ActivityResultRegistryOwner"
     }
@@ -102,12 +103,12 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
     } else {
         settings.languageTag.takeIf { language -> language.isNotBlank() }
     }
-    val localizedContext = remember(baseContext, languageTag) {
+    val localizedContext = remember(baseContext, baseConfiguration, languageTag) {
         if (languageTag == null) {
             baseContext
         } else {
             baseContext.createConfigurationContext(
-                Configuration(baseContext.resources.configuration).apply {
+                Configuration(baseConfiguration).apply {
                     setLocales(LocaleList(Locale.forLanguageTag(languageTag)))
                 },
             )

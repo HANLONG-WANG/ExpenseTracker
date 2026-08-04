@@ -87,6 +87,12 @@ internal fun OnboardingStepProto.toDomain(): OnboardingStep = when (this) {
 }
 
 internal val LedgerAppSettings.alwaysRestoreLastPage: Boolean
-    get() = restorePolicy == SessionRestorePolicyProto.SESSION_RESTORE_ALWAYS_LAST_PAGE
+    get() = restorePolicyValue == SessionRestorePolicyProto.SESSION_RESTORE_ALWAYS_LAST_PAGE_VALUE
 
-internal fun LedgerAppSettings.shouldRestoreNavigationAfterColdStart(): Boolean = alwaysRestoreLastPage && hasNavigationSnapshot()
+internal fun shouldRestoreNavigationAfterColdStart(
+    restorePolicyValue: Int,
+    hasSafeSnapshot: Boolean,
+): Boolean = restorePolicyValue == SessionRestorePolicyProto.SESSION_RESTORE_ALWAYS_LAST_PAGE_VALUE && hasSafeSnapshot
+
+@Suppress("MaxLineLength")
+internal fun LedgerAppSettings.shouldRestoreNavigationAfterColdStart(): Boolean = shouldRestoreNavigationAfterColdStart(restorePolicyValue, hasNavigationSnapshot())

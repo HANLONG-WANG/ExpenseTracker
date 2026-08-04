@@ -288,13 +288,25 @@ data class CreditPaymentPayload(
     }
 }
 
+data class LoanDisbursementAllocation(
+    val trancheId: LoanTrancheId,
+    val amount: PositiveMoney,
+    val baseAmount: PositiveMoney,
+)
+
 data class LoanDisbursementPayload(
     val loanContractId: LoanContractId,
     val receivingAmount: AccountAmount,
     val liabilityAmount: PositiveMoney,
+    val allocations: List<LoanDisbursementAllocation> = emptyList(),
 ) : TransactionPayload {
     override val kind: TransactionKind = TransactionKind.LOAN_DISBURSEMENT
     override val classification: CategoryAssignment? = null
+
+    init {
+        require(allocations.map { it.trancheId }.toSet().size == allocations.size)
+        require(allocations.all { it.amount.currency == liabilityAmount.currency })
+    }
 }
 
 data class LoanPaymentComponents(

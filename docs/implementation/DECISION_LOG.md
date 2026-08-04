@@ -662,3 +662,43 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Date/stage: 2026-08-04 / P20
 - Decision: render active installment detail in light theme and calculated settlement in dark theme in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. Both digests live in the Android test source.
 - Consequence: P20 pixel drift is machine-detectable using only `LedgerTheme`, governed components, localized resources, the textual UI contract, token JSON, screen YAML and traceability CSV. No excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.
+
+## DL-093 — Loan annual rates use a versioned periodic convention
+
+- Date/stage: 2026-08-04 / P21
+- Surface issue: the frozen model requires fixed/floating rate stages and several payment frequencies but does not prescribe a lender day-count convention.
+- Decision: persist the annual decimal rate and derive each schedule-period rate by the revision's exact payments-per-year using `BigDecimal` DECIMAL128, then round minor units with the closed revision rounding mode. No floating point, current clock or external quote participates.
+- Consequence: equal inputs produce equal schedules and hashes. A future lender-specific day-count convention requires a new explicit rule/version and cannot reinterpret a historical schedule.
+
+## DL-094 — Schema v1 prepayment policy uses a reversible closed scalar encoding
+
+- Date/stage: 2026-08-04 / P21
+- Surface issue: the higher-priority frozen domain requires prepayment permission, recalculation strategy and penalty rate, while frozen Schema v1 exposes only the non-negative integer `loan_terms_revision.prepayment_policy` and P21 may not introduce an unplanned Schema v2 migration or universal JSON.
+- Decision: encode the closed policy/strategy/penalty tuple reversibly in that integer through `LoanPrepaymentCodec`; application/domain APIs remain fully typed and validate every component before persistence.
+- Consequence: all frozen semantics round-trip without JSON or schema drift. A later schema expansion may normalize the tuple through an explicit migration but must preserve historical decoding.
+
+## DL-095 — Future loan schedule items are projection-only
+
+- Date/stage: 2026-08-04 / P21
+- Precedence applied: REQ-042 and accounting facts outrank the convenience of representing a planned payment as a transaction.
+- Decision: rebuild `loan_future_cashflow_projection` from only the latest schedule and only rows with `planned_date > today`. Planned items never create a business transaction, Journal, Posting, EconomicEffect or account-balance row; only an actual formal payment command does.
+- Consequence: forecast and current-state queries cannot double count principal or expense, while P23 can later trigger formal/candidate occurrences through the same coordinator boundary.
+
+## DL-096 — Exact replay is resolved before current-schedule staleness
+
+- Date/stage: 2026-08-04 / P21
+- Decision: when a completed loan command is retried, `LoanReplayReceiptVerifier` first proves that the stored transaction/simulation identity and canonical payload match the original receipt. Only non-replay commands evaluate the latest schedule revision and optimistic revision.
+- Consequence: a network/process retry remains idempotent after the original command advanced the schedule, while a changed payload or unrelated stale command still fails closed.
+
+## DL-097 — P21 goldens are full-pixel digests of governed Compose output
+
+- Date/stage: 2026-08-04 / P21
+- Decision: render the multi-tranche loan detail in light theme and prepayment simulation result in dark theme in a deterministic 360×720 Compose viewport and compare SHA-256 over width, height and every ARGB pixel. The digests are `6f00bc134059ef0de333706f3aacfffdc36d16a1138f8f4f3f5a9627228421d4` and `8d3b4240181052ed95a2a9142df4639c0a109561eecd32f184cfbb682464d9cd`.
+- Consequence: P21 pixel drift is machine-detectable using only `LedgerTheme`, governed components, localized resources, the textual UI contract, token JSON, screen YAML and traceability CSV. No excluded PNG/HTML visual draft is opened, parsed, sampled, measured or compared.
+
+## DL-098 — Protobuf generated JavaDoc is removed for frozen JDK 17 Lint compatibility
+
+- Date/stage: 2026-08-04 / P21
+- Surface issue: the locked Lint 32.3.1 artifact has Java 17 class-file level but its FIR `JavaDocParser` calls `java.util.List.removeLast()`, an API absent before JDK 21. On the frozen Temurin JDK 17 it crashes while resolving Protobuf 4.35 generated JavaDoc, before reporting any project diagnostic.
+- Decision: retain JDK 17, AGP/Lint 32.3.1 and full main/test Lint coverage. Each existing Protobuf generation task deterministically removes only `/** ... */` blocks from its generated Java outputs before Gradle snapshots them; generated declarations, annotations, descriptors and bytecode inputs are unchanged. The settings contract unit test directly audits the tracked `.proto` source and the production restore decision through a pure wire-value function.
+- Consequence: no rule, source set, generated declaration or security assertion is disabled, and clean generation is reproducible. This compatibility step may be deleted only after the frozen toolchain is explicitly revised to a Lint artifact that no longer calls the unavailable JDK API.

@@ -34,6 +34,8 @@ enum class FinancialCommandType {
     SAVE_CREDIT_STATEMENT,
     SAVE_INSTALLMENT_PLAN,
     APPLY_INSTALLMENT_SETTLEMENT,
+    SAVE_LOAN_CONTRACT,
+    APPLY_LOAN_PAYMENT,
 }
 
 sealed interface FinancialCommand {
@@ -335,6 +337,30 @@ data class ApplyInstallmentSettlementCommand(
     }
 }
 
+data class SaveLoanContractCommand(
+    override val commandId: CommandId,
+    override val payloadHash: Hash256,
+    val mutation: LoanContractMutation,
+) : FinancialCommand {
+    override val expectedRevisionId: TransactionRevisionId? = null
+    override val commandType: FinancialCommandType = FinancialCommandType.SAVE_LOAN_CONTRACT
+}
+
+/** A real repayment and every affected future schedule version share one atomic commit. */
+data class ApplyLoanPaymentCommand(
+    override val commandId: CommandId,
+    override val payloadHash: Hash256,
+    override val input: NewTransactionInput<LoanPaymentPayload>,
+    val mutation: LoanContractMutation,
+) : RecordTransactionCommand<LoanPaymentPayload> {
+    override val commandType: FinancialCommandType = FinancialCommandType.APPLY_LOAN_PAYMENT
+
+    init {
+        require(input.payload.loanContractId == mutation.contract.id)
+        require(mutation.tranches.isNotEmpty())
+    }
+}
+
 data class BatchFinancialCommand(
     override val commandId: CommandId,
     override val payloadHash: Hash256,
@@ -403,6 +429,7 @@ data class FinancialMutationPlan(
     val creditProfileMutations: List<CreditProfileMutation> = emptyList(),
     val creditStatementMutations: List<CreditStatementMutation> = emptyList(),
     val installmentPlanMutations: List<InstallmentPlanMutation> = emptyList(),
+    val loanContractMutations: List<LoanContractMutation> = emptyList(),
 )
 
 data class PlanningOperationContext(
@@ -428,6 +455,7 @@ data class PlanningSnapshot(
     val goal: Goal? = null,
     val goalBalanceMinor: Long? = null,
     val installmentPlanRevision: InstallmentPlanRevision? = null,
+    val loanContractLastCommitId: BookCommitId? = null,
 )
 
 object FinancialMutationPlanValidator {
@@ -451,6 +479,14 @@ object FinancialMutationPlanValidator {
             else -> true
         }
         if (!installmentRevisionMatches) {
+            return DomainResult.Failure(DomainViolation.StaleExpectedRevision)
+        }
+        val loanRevisionMatches = when (command) {
+            is SaveLoanContractCommand -> command.mutation.expectedLastCommitId == snapshot.loanContractLastCommitId
+            is ApplyLoanPaymentCommand -> command.mutation.expectedLastCommitId == snapshot.loanContractLastCommitId
+            else -> true
+        }
+        if (!loanRevisionMatches) {
             return DomainResult.Failure(DomainViolation.StaleExpectedRevision)
         }
         if (
@@ -682,6 +718,9 @@ object FinancialMutationPlanValidator {
     }
 
     private fun hasRequiredWrites(command: FinancialCommand, plan: FinancialMutationPlan): Boolean = when {
+        command is ApplyLoanPaymentCommand ->
+            plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts() &&
+                plan.loanContractMutations == listOf(command.mutation)
         command is ApplyInstallmentSettlementCommand ->
             plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts() &&
                 plan.installmentPlanMutations == listOf(command.mutation)
@@ -690,7 +729,11 @@ object FinancialMutationPlanValidator {
         else -> hasRequiredNonRecordWrites(command, plan)
     }
 
+    @Suppress("CyclomaticComplexMethod")
     private fun hasRequiredNonRecordWrites(command: FinancialCommand, plan: FinancialMutationPlan): Boolean = when (command) {
+        is ApplyLoanPaymentCommand ->
+            plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts() &&
+                plan.loanContractMutations == listOf(command.mutation)
         is ApplyInstallmentSettlementCommand ->
             plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts() &&
                 plan.installmentPlanMutations == listOf(command.mutation)
@@ -718,6 +761,7 @@ object FinancialMutationPlanValidator {
         is SaveCreditProfileCommand -> plan.creditProfileMutations == listOf(command.mutation)
         is SaveCreditStatementCommand -> plan.creditStatementMutations == listOf(command.mutation)
         is SaveInstallmentPlanCommand -> plan.installmentPlanMutations == listOf(command.mutation)
+        is SaveLoanContractCommand -> plan.loanContractMutations == listOf(command.mutation)
         is BatchFinancialCommand ->
             plan.commit.kind == CommitKind.BATCH_MUTATION &&
                 (plan.revisions.isNotEmpty() || plan.goalMovements.isNotEmpty() || plan.budgetAdjustments.isNotEmpty())

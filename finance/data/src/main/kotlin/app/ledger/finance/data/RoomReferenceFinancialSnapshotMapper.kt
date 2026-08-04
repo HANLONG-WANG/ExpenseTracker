@@ -70,6 +70,7 @@ import app.ledger.finance.domain.LedgerAccountId
 import app.ledger.finance.domain.LedgerAccountSnapshot
 import app.ledger.finance.domain.LoanActualAllocation
 import app.ledger.finance.domain.LoanContractId
+import app.ledger.finance.domain.LoanDisbursementAllocation
 import app.ledger.finance.domain.LoanDisbursementPayload
 import app.ledger.finance.domain.LoanEffect
 import app.ledger.finance.domain.LoanEffectId
@@ -91,6 +92,7 @@ import app.ledger.finance.domain.PlanningCard
 import app.ledger.finance.domain.PlanningCategory
 import app.ledger.finance.domain.PlanningGoal
 import app.ledger.finance.domain.PlanningIdentitySet
+import app.ledger.finance.domain.PlanningLoanLedger
 import app.ledger.finance.domain.PlanningProject
 import app.ledger.finance.domain.PlanningReferenceData
 import app.ledger.finance.domain.PlanningSettlementLedger
@@ -289,10 +291,20 @@ internal class RoomReferenceFinancialSnapshotMapper {
                 cursor.ledgerSnapshot(),
             )
         }
-        val typedLedgerIds = (accounts.map { it.ledger.id } + systems.map { it.ledger.id }).toSet()
+        val loanLedgers = db.queryList(
+            "SELECT lc.uid contract_uid,lt.uid tranche_uid,la.uid,la.account_class,la.normal_side,la.currency_code,la.status " +
+                "FROM loan_tranche lt JOIN loan_contract lc ON lc.id=lt.contract_id JOIN ledger_account la ON la.id=lt.ledger_account_id",
+        ) { cursor ->
+            PlanningLoanLedger(
+                LoanContractId(cursor.stableId("contract_uid")),
+                LoanTrancheId(cursor.stableId("tranche_uid")),
+                cursor.ledgerSnapshot(),
+            )
+        }
+        val typedLedgerIds = (accounts.map { it.ledger.id } + systems.map { it.ledger.id } + loanLedgers.map { it.ledger.id }).toSet()
         val historical = db.queryList("SELECT uid,account_class,normal_side,currency_code,status FROM ledger_account") { it.ledgerSnapshot() }
             .filterNot { it.id in typedLedgerIds }
-        return PlanningReferenceData(accounts, cards, categories, projects, goals, systems, emptyList(), settlementLedgers, historical)
+        return PlanningReferenceData(accounts, cards, categories, projects, goals, systems, loanLedgers, settlementLedgers, historical)
     }
 
     private fun readTransaction(db: SupportSQLiteDatabase, id: StableId): BusinessTransaction = db.queryOne(
@@ -456,7 +468,24 @@ internal class RoomReferenceFinancialSnapshotMapper {
         }
         TransactionKind.LOAN_DISBURSEMENT -> {
             val contract = db.queryOne("SELECT lc.uid FROM loan_disbursement_revision_detail d JOIN loan_contract lc ON lc.id=d.loan_contract_id WHERE d.revision_id=?", arrayOf(revisionInternalId)) { LoanContractId(it.stableId("uid")) } ?: abort(FinanceDataError.CorruptData)
-            LoanDisbursementPayload(contract, amounts.accountAmount(AmountRole.INCOMING, references), amounts.money(AmountRole.PRINCIPAL, AmountRepresentation.ACCOUNT))
+            val allocations = db.queryList(
+                "SELECT lt.uid tranche_uid,le.amount_minor,le.currency_code,le.base_amount_minor,b.base_currency " +
+                    "FROM loan_effect le JOIN loan_tranche lt ON lt.id=le.loan_tranche_id JOIN book b ON b.id=1 " +
+                    "WHERE le.source_revision_id=? AND le.kind=? AND le.polarity=1 ORDER BY le.id",
+                arrayOf<Any>(revisionInternalId, LoanEffectKind.DISBURSEMENT.ordinal),
+            ) { cursor ->
+                LoanDisbursementAllocation(
+                    LoanTrancheId(cursor.stableId("tranche_uid")),
+                    positive(cursor.long("amount_minor"), currency(cursor.string("currency_code"))),
+                    positive(cursor.long("base_amount_minor"), currency(cursor.string("base_currency"))),
+                )
+            }
+            LoanDisbursementPayload(
+                contract,
+                amounts.accountAmount(AmountRole.INCOMING, references),
+                amounts.money(AmountRole.PRINCIPAL, AmountRepresentation.ACCOUNT),
+                allocations,
+            )
         }
         TransactionKind.LOAN_PAYMENT -> readLoanPayment(db, revisionInternalId, transaction, amounts, classification, references)
         TransactionKind.BALANCE_ADJUSTMENT -> {

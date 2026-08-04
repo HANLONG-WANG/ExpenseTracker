@@ -55,6 +55,14 @@ protobuf {
             builtins {
                 create("java")
             }
+            doLast {
+                val javaDoc = Regex("/\\*\\*[\\s\\S]*?\\*/")
+                outputs.files.asFileTree.matching { include("**/*.java") }.files.forEach { generatedJava ->
+                    val source = generatedJava.readText()
+                    val lintCompatible = source.replace(javaDoc, "")
+                    if (source != lintCompatible) generatedJava.writeText(lintCompatible)
+                }
+            }
         }
     }
 }

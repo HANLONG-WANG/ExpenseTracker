@@ -18,6 +18,10 @@ object CanonicalFinancialHash {
         text(command.commandType.name)
         nullableStableId(command.expectedRevisionId?.value)
         when (command) {
+            is ApplyLoanPaymentCommand -> {
+                transactionInput(command.input)
+                loanContractMutation(command.mutation)
+            }
             is ApplyInstallmentSettlementCommand -> {
                 transactionInput(command.input)
                 installmentPlanMutation(command.mutation)
@@ -60,12 +64,75 @@ object CanonicalFinancialHash {
             is SaveCreditProfileCommand -> creditProfileMutation(command.mutation)
             is SaveCreditStatementCommand -> creditStatementMutation(command.mutation)
             is SaveInstallmentPlanCommand -> installmentPlanMutation(command.mutation)
+            is SaveLoanContractCommand -> loanContractMutation(command.mutation)
             is BatchFinancialCommand -> {
                 integer(command.commands.size)
                 command.commands.forEach { child ->
                     stableId(child.commandId.stableId)
                     hash(child.payloadHash)
                 }
+            }
+        }
+    }
+
+    private fun CanonicalWriter.loanContractMutation(mutation: LoanContractMutation) {
+        val contract = mutation.contract
+        stableId(contract.id.value)
+        stableId(contract.displayAccountId.value)
+        text(contract.name)
+        nullableText(contract.lender)
+        currency(contract.currency)
+        localDate(contract.disbursementDate)
+        text(contract.status.name)
+        stableId(contract.lastCommitId.value)
+        nullableStableId(mutation.expectedLastCommitId?.value)
+        integer(mutation.tranches.size)
+        mutation.tranches.forEach { trancheMutation ->
+            val tranche = trancheMutation.tranche
+            stableId(tranche.id.value)
+            stableId(tranche.ledgerAccountId.value)
+            text(tranche.name)
+            long(tranche.originalPrincipalMinor)
+            text(tranche.status.name)
+            nullableStableId(trancheMutation.expectedTermsRevisionId?.value)
+            val terms = trancheMutation.termsRevision
+            stableId(terms.id.value)
+            integer(terms.revisionNumber)
+            text(terms.repaymentMethod.name)
+            text(terms.rateType.name)
+            text(terms.paymentFrequency.name)
+            localDate(terms.startDate)
+            localDate(terms.endDate)
+            text(terms.roundingMode.name)
+            text(terms.prepaymentPolicy.name)
+            text(terms.prepaymentStrategy.name)
+            decimal(terms.penaltyRate?.annualDecimal)
+            stableId(terms.createdCommitId.value)
+            integer(terms.ratePeriods.size)
+            terms.ratePeriods.forEach { period ->
+                localDate(period.effectiveFrom)
+                optionalLocalDate(period.effectiveTo)
+                decimal(period.annualRate.annualDecimal)
+                nullableText(period.benchmark)
+                decimal(period.margin?.annualDecimal)
+            }
+            val schedule = trancheMutation.scheduleRevision
+            stableId(schedule.id.value)
+            integer(schedule.revisionNumber)
+            stableId(schedule.termsRevisionId.value)
+            text(schedule.reason.name)
+            instant(schedule.generatedAt)
+            stableId(schedule.createdCommitId.value)
+            integer(schedule.items.size)
+            schedule.items.forEach { item ->
+                stableId(item.id.value)
+                integer(item.installmentNumber)
+                localDate(item.plannedDate)
+                long(item.principalMinor)
+                long(item.interestMinor)
+                long(item.feeMinor)
+                long(item.remainingPrincipalMinor)
+                boolean(item.finalInstallment)
             }
         }
     }
@@ -583,6 +650,12 @@ private class CanonicalWriter {
                 stableId(payload.loanContractId.value)
                 accountAmount(payload.receivingAmount)
                 positiveMoney(payload.liabilityAmount)
+                integer(payload.allocations.size)
+                payload.allocations.forEach { allocation ->
+                    stableId(allocation.trancheId.value)
+                    positiveMoney(allocation.amount)
+                    positiveMoney(allocation.baseAmount)
+                }
             }
             is LoanPaymentPayload -> loanPayment(payload)
             is BalanceAdjustmentPayload -> {

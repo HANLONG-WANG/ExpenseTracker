@@ -505,6 +505,19 @@ internal class RoomProjectionEngine {
             """.trimIndent(),
             arrayOf<Any>(asOfLocalDate, revision),
         )
+        database.execSQL(
+            """
+            INSERT INTO loan_future_cashflow_projection(contract_id,tranche_id,planned_date,principal_minor,interest_minor,fee_minor,currency_code,schedule_revision_id,as_of_local_revision)
+            SELECT lt.contract_id,lt.id,lsi.planned_date,lsi.principal_minor,lsi.interest_minor,lsi.fee_minor,lc.currency_code,lsr.id,?
+            FROM loan_tranche lt JOIN loan_contract lc ON lc.id=lt.contract_id
+              JOIN loan_schedule_revision lsr ON lsr.tranche_id=lt.id
+              JOIN loan_schedule_item lsi ON lsi.schedule_revision_id=lsr.id
+            WHERE lsi.planned_date>? AND lsr.revision_no=(
+              SELECT MAX(latest.revision_no) FROM loan_schedule_revision latest WHERE latest.tranche_id=lt.id
+            )
+            """.trimIndent(),
+            arrayOf<Any>(revision, asOfLocalDate),
+        )
     }
 
     private fun rebuildSettlement(database: SupportSQLiteDatabase, revision: Long) {
@@ -610,7 +623,8 @@ internal class RoomProjectionEngine {
     private companion object {
         val DERIVED_TABLES = listOf(
             "transaction_fts", "location_rtree", "place_rtree", "widget_goal_snapshot", "widget_credit_snapshot",
-            "widget_account_snapshot", "widget_book_snapshot", "settlement_position_projection", "loan_progress_projection",
+            "widget_account_snapshot", "widget_book_snapshot", "settlement_position_projection", "loan_future_cashflow_projection",
+            "loan_progress_projection",
             "installment_progress_projection", "credit_account_projection", "credit_statement_projection",
             "goal_balance_projection", "project_usage_projection", "budget_usage_projection", "refund_status_projection",
             "budget_rollover",
@@ -630,7 +644,7 @@ internal class RoomProjectionEngine {
             ProjectionFamily.GOAL to listOf("goal_balance_projection"),
             ProjectionFamily.CREDIT to listOf("credit_statement_projection", "credit_account_projection"),
             ProjectionFamily.INSTALLMENT to listOf("installment_progress_projection"),
-            ProjectionFamily.LOAN to listOf("loan_progress_projection"),
+            ProjectionFamily.LOAN to listOf("loan_progress_projection", "loan_future_cashflow_projection"),
             ProjectionFamily.SETTLEMENT to listOf("settlement_position_projection"),
             ProjectionFamily.WIDGET to listOf("widget_book_snapshot", "widget_account_snapshot", "widget_credit_snapshot", "widget_goal_snapshot"),
         )
@@ -679,6 +693,8 @@ internal class RoomProjectionEngine {
             "credit_account_projection" to "SELECT * FROM credit_account_projection ORDER BY account_id",
             "installment_progress_projection" to "SELECT * FROM installment_progress_projection ORDER BY plan_id",
             "loan_progress_projection" to "SELECT * FROM loan_progress_projection ORDER BY contract_id, tranche_id",
+            "loan_future_cashflow_projection" to
+                "SELECT * FROM loan_future_cashflow_projection ORDER BY contract_id, tranche_id, planned_date, schedule_revision_id",
             "settlement_position_projection" to "SELECT * FROM settlement_position_projection ORDER BY activity_id, participant_id",
             "transaction_fts" to "SELECT * FROM transaction_fts ORDER BY transaction_id",
             "location_rtree" to "SELECT * FROM location_rtree ORDER BY location_id",

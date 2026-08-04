@@ -24,6 +24,7 @@ internal class RoomFinancialPlanWriter {
     private val budgetPlanWriter = RoomBudgetPlanWriter()
     private val creditPlanWriter = RoomCreditPlanWriter()
     private val installmentPlanWriter = RoomInstallmentPlanWriter()
+    private val loanContractWriter = RoomLoanContractWriter()
 
     fun write(
         database: SupportSQLiteDatabase,
@@ -37,6 +38,7 @@ internal class RoomFinancialPlanWriter {
         budgetPlanWriter.write(database, plan)
         creditPlanWriter.write(database, plan)
         installmentPlanWriter.write(database, plan)
+        loanContractWriter.write(database, plan)
         insertTransactionShells(database, plan)
         insertFxSnapshots(database, plan)
         insertRevisions(database, plan)

@@ -10,6 +10,7 @@ import app.ledger.finance.application.AtomicFinancialCommitRepository
 import app.ledger.finance.application.CommandReceiptRepository
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.domain.ApplyInstallmentSettlementCommand
+import app.ledger.finance.domain.ApplyLoanPaymentCommand
 import app.ledger.finance.domain.BatchFinancialCommand
 import app.ledger.finance.domain.CommandReceipt
 import app.ledger.finance.domain.CommitKind
@@ -32,6 +33,7 @@ import app.ledger.finance.domain.SaveBudgetTemplateCommand
 import app.ledger.finance.domain.SaveCreditProfileCommand
 import app.ledger.finance.domain.SaveCreditStatementCommand
 import app.ledger.finance.domain.SaveInstallmentPlanCommand
+import app.ledger.finance.domain.SaveLoanContractCommand
 import app.ledger.finance.domain.StableEntityReference
 import app.ledger.finance.domain.TransactionId
 import java.time.ZoneId
@@ -234,6 +236,7 @@ class RoomFinancialCommitRepository(
         }
         verifyCreditPreconditions(connection, command)
         InstallmentPreconditionVerifier.verify(connection, command)
+        LoanPreconditionVerifier.verify(connection, command)
     }
 
     private fun verifyCreditPreconditions(
@@ -364,6 +367,8 @@ class RoomFinancialCommitRepository(
             FinancialCommandType.SAVE_CREDIT_STATEMENT -> EntityType.CREDIT_STATEMENT
             FinancialCommandType.SAVE_INSTALLMENT_PLAN -> EntityType.INSTALLMENT_PLAN
             FinancialCommandType.APPLY_INSTALLMENT_SETTLEMENT -> EntityType.TRANSACTION
+            FinancialCommandType.SAVE_LOAN_CONTRACT -> EntityType.LOAN
+            FinancialCommandType.APPLY_LOAN_PAYMENT -> EntityType.TRANSACTION
             FinancialCommandType.BATCH_MUTATION -> null
             else -> EntityType.TRANSACTION
         }
@@ -387,6 +392,47 @@ class RoomFinancialCommitRepository(
         DomainResult.Failure(FinanceDataError.NumericRangeExceeded)
     } catch (_: Exception) {
         DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    }
+}
+
+private object LoanPreconditionVerifier {
+    fun verify(connection: androidx.sqlite.db.SupportSQLiteDatabase, command: FinancialCommand) {
+        val mutation = when (command) {
+            is SaveLoanContractCommand -> command.mutation
+            is ApplyLoanPaymentCommand -> command.mutation
+            else -> return
+        }
+        val actualCommit = connection.queryOne(
+            "SELECT bc.uid FROM loan_contract lc LEFT JOIN book_commit bc ON bc.id=lc.last_commit_id WHERE lc.uid=?",
+            arrayOf(mutation.contract.id.value.bytes),
+        ) { it.nullableStableId("uid") }
+        if (actualCommit != mutation.expectedLastCommitId?.value) {
+            abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+        }
+        val account = connection.queryOne(
+            "SELECT type,currency_code FROM user_account WHERE uid=?",
+            arrayOf(mutation.contract.displayAccountId.value.bytes),
+        ) { it.getInt(0) to it.getString(1) } ?: abort(FinanceDataError.CorruptData)
+        if (account.first != LOAN_ACCOUNT_TYPE || account.second != mutation.contract.currency.value) {
+            abort(app.ledger.finance.domain.DomainViolation.InvalidField("loan.displayAccount"))
+        }
+        mutation.tranches.forEach { trancheMutation ->
+            val ledger = connection.queryOne(
+                "SELECT account_class,currency_code FROM ledger_account WHERE uid=?",
+                arrayOf(trancheMutation.tranche.ledgerAccountId.value.bytes),
+            ) { it.getInt(0) to it.getString(1) } ?: abort(FinanceDataError.CorruptData)
+            if (ledger.first != LIABILITY_LEDGER_CLASS || ledger.second != mutation.contract.currency.value) {
+                abort(app.ledger.finance.domain.DomainViolation.InvalidField("loan.trancheLedger"))
+            }
+            val actualTerms = connection.queryOne(
+                "SELECT ltr.uid FROM loan_tranche lt LEFT JOIN loan_terms_revision ltr ON ltr.tranche_id=lt.id " +
+                    "WHERE lt.uid=? ORDER BY ltr.revision_no DESC LIMIT 1",
+                arrayOf(trancheMutation.tranche.id.value.bytes),
+            ) { it.nullableStableId("uid") }
+            if (actualTerms != trancheMutation.expectedTermsRevisionId?.value) {
+                abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+            }
+        }
     }
 }
 
@@ -543,6 +589,8 @@ private const val CREDIT_ACCOUNT_TYPE = 2
 private const val EXPENSE_TRANSACTION_KIND = 0
 private const val ACTIVE_TRANSACTION_LIFECYCLE = 0
 private const val REFUND_TRANSACTION_KIND = 3
+private const val LOAN_ACCOUNT_TYPE = 3
+private const val LIABILITY_LEDGER_CLASS = 1
 
 private fun FinancialCommand.transactionIdOrNull(): TransactionId? = when (this) {
     is EditTransactionCommand -> transactionId
@@ -559,6 +607,7 @@ private fun FinancialCommand.transactionIdOrNull(): TransactionId? = when (this)
     is SaveCreditProfileCommand,
     is SaveCreditStatementCommand,
     is SaveInstallmentPlanCommand,
+    is SaveLoanContractCommand,
     is BatchFinancialCommand,
     -> null
 }

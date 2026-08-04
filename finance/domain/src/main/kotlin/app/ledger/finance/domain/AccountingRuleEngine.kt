@@ -371,40 +371,73 @@ private class RuleSession(
 
     fun loanDisbursement(payload: LoanDisbursementPayload): AccountingRuleOutput {
         val receiving = account(payload.receivingAmount, setOf(LedgerAccountClass.ASSET))
-        val loan = references.loan(payload.loanContractId) ?: reject("loanDisbursement.loanLedger")
         val incoming = amount(AmountRole.INCOMING)
         val principal = amount(AmountRole.PRINCIPAL)
         requireAmountAccount(incoming, payload.receivingAmount)
         require(principal.accountAmount == payload.liabilityAmount, "loanDisbursement.liabilityAmount")
-        require(principal.accountAmount.currency == loan.ledger.currency, "loanDisbursement.currency")
         require(incoming.baseAmount == principal.baseAmount, "loanDisbursement.baseAmount")
+        val allocations = if (payload.allocations.isEmpty()) {
+            val loan = references.loan(payload.loanContractId) ?: reject("loanDisbursement.loanLedger")
+            listOf(LoanDisbursementAllocation(loan.trancheId, principal.accountAmount, principal.baseAmount))
+        } else {
+            payload.allocations
+        }
+        require(
+            CheckedArithmetic.sum(allocations.map { it.amount.minor.value }).orReject() == principal.accountAmount.minor.value,
+            "loanDisbursement.allocationAmount",
+        )
+        require(
+            CheckedArithmetic.sum(allocations.map { it.baseAmount.minor.value }).orReject() == principal.baseAmount.minor.value,
+            "loanDisbursement.allocationBaseAmount",
+        )
+        val loanAllocations = allocations.map { allocation ->
+            val loan = references.loan(payload.loanContractId, allocation.trancheId)
+                ?: reject("loanDisbursement.loanTranche")
+            require(allocation.amount.currency == loan.ledger.currency, "loanDisbursement.currency")
+            require(allocation.baseAmount.currency == baseCurrency, "loanDisbursement.baseCurrency")
+            loan to allocation
+        }
         return AccountingRuleOutput(
             journals = listOf(
                 JournalSpec(
-                    listOf(
-                        posting(receiving.ledger, DebitCredit.DEBIT, incoming),
-                        posting(loan.ledger, DebitCredit.CREDIT, principal),
-                    ),
+                    listOf(posting(receiving.ledger, DebitCredit.DEBIT, incoming)) + loanAllocations.map { (loan, allocation) ->
+                        PostingSpec(
+                            loan.ledger,
+                            DebitCredit.CREDIT,
+                            allocation.amount,
+                            allocation.baseAmount,
+                            principal.accountToBase?.evidence?.rate,
+                            PostingRole.LIABILITY,
+                        )
+                    },
                 ),
             ),
             amounts = usedAmounts(),
-            loan = listOf(
+            loan = loanAllocations.map { (loan, allocation) ->
                 LoanEffectSpec(
                     payload.loanContractId,
                     loan.trancheId,
                     null,
                     LoanEffectKind.DISBURSEMENT,
-                    principal.accountAmount,
-                    principal.baseAmount,
-                ),
-            ),
+                    allocation.amount,
+                    allocation.baseAmount,
+                )
+            },
         )
     }
 
     fun loanPayment(payload: LoanPaymentPayload): AccountingRuleOutput {
         payload.classification?.let(::category)
         val paymentAccount = account(payload.payment, setOf(LedgerAccountClass.ASSET))
-        val loan = references.loan(payload.loanContractId) ?: reject("loanPayment.loanLedger")
+        if (payload.allocations.map { it.trancheId }.distinct().size > 1) {
+            return multiTrancheLoanPayment(payload, paymentAccount)
+        }
+        val allocatedTranche = payload.allocations.map { it.trancheId }.distinct().singleOrNull()
+        val loan = if (allocatedTranche == null) {
+            references.loan(payload.loanContractId)
+        } else {
+            references.loan(payload.loanContractId, allocatedTranche)
+        } ?: reject("loanPayment.loanLedger")
         val outgoing = amount(AmountRole.OUTGOING)
         requireAmountAccount(outgoing, payload.payment)
         val components = loanComponents(payload, loan)
@@ -443,6 +476,100 @@ private class RuleSession(
                     component.effectKind,
                     component.amount.accountAmount,
                     component.amount.baseAmount,
+                )
+            },
+        )
+    }
+
+    private fun multiTrancheLoanPayment(
+        payload: LoanPaymentPayload,
+        paymentAccount: PlanningAccount,
+    ): AccountingRuleOutput {
+        val outgoing = amount(AmountRole.OUTGOING)
+        requireAmountAccount(outgoing, payload.payment)
+        val evidence = listOfNotNull(
+            payload.components.principal?.let { AmountRole.PRINCIPAL to amount(AmountRole.PRINCIPAL, expectedUserInput = it) },
+            payload.components.interest?.let { AmountRole.INTEREST to amount(AmountRole.INTEREST, expectedUserInput = it) },
+            payload.components.fee?.let { AmountRole.FEE to amount(AmountRole.FEE, expectedUserInput = it) },
+            payload.components.penalty?.let { AmountRole.PENALTY to amount(AmountRole.PENALTY, expectedUserInput = it) },
+        ).toMap()
+        require(evidence.isNotEmpty(), "loanPayment.components")
+        LoanPaymentComponent.entries.forEach { component ->
+            val role = AmountRole.valueOf(component.name)
+            val componentAllocations = payload.allocations.filter { it.component == component }
+            val componentEvidence = evidence[role]
+            require(componentAllocations.isNotEmpty() == (componentEvidence != null), "loanPayment.allocationComponent")
+            componentEvidence?.let { frozen ->
+                require(
+                    CheckedArithmetic.sum(componentAllocations.map { it.amount.minor.value }).orReject() ==
+                        frozen.accountAmount.minor.value,
+                    "loanPayment.allocationAmount",
+                )
+                require(
+                    CheckedArithmetic.sum(componentAllocations.map { it.baseAmount.minor.value }).orReject() ==
+                        frozen.baseAmount.minor.value,
+                    "loanPayment.allocationBaseAmount",
+                )
+            }
+        }
+        require(
+            CheckedArithmetic.sum(payload.allocations.map { it.baseAmount.minor.value }).orReject() == outgoing.baseAmount.minor.value,
+            "loanPayment.components",
+        )
+        val resolved = payload.allocations.map { allocation ->
+            val loan = references.loan(payload.loanContractId, allocation.trancheId) ?: reject("loanPayment.loanTranche")
+            require(allocation.amount.currency == loan.ledger.currency, "loanPayment.componentCurrency")
+            require(allocation.baseAmount.currency == baseCurrency, "loanPayment.componentBaseCurrency")
+            loan to allocation
+        }
+        val postings = resolved.map { (loan, allocation) ->
+            val ledger = if (allocation.component == LoanPaymentComponent.PRINCIPAL) {
+                loan.ledger
+            } else {
+                system(SystemLedgerCode.SYSTEM_EXPENSE_NON_CONSUMPTION, baseCurrency)
+            }
+            PostingSpec(
+                ledger,
+                DebitCredit.DEBIT,
+                if (ledger.accountClass == LedgerAccountClass.LIABILITY) allocation.amount else allocation.baseAmount,
+                allocation.baseAmount,
+                evidence.getValue(AmountRole.valueOf(allocation.component.name)).accountToBase?.evidence?.rate,
+                ledger.accountClass.postingRole(),
+            )
+        } + posting(paymentAccount.ledger, DebitCredit.CREDIT, outgoing)
+        val economic = payload.allocations.filter { it.component != LoanPaymentComponent.PRINCIPAL }.map { allocation ->
+            EconomicEffectSpec(
+                0,
+                EconomicNature.EXPENSE,
+                when (allocation.component) {
+                    LoanPaymentComponent.INTEREST -> EconomicComponent.INTEREST
+                    LoanPaymentComponent.FEE -> EconomicComponent.FEE
+                    LoanPaymentComponent.PENALTY -> EconomicComponent.PENALTY
+                    LoanPaymentComponent.PRINCIPAL -> reject("loanPayment.component")
+                },
+                isConsumption = false,
+                allocation.baseAmount,
+            )
+        }
+        return AccountingRuleOutput(
+            journals = listOf(JournalSpec(postings)),
+            amounts = usedAmounts(),
+            economic = economic,
+            budget = budgetUseIfClassified(economic.map { it.baseAmount }),
+            project = projectUseIfClassified(economic.map { it.baseAmount }),
+            loan = resolved.map { (loan, allocation) ->
+                LoanEffectSpec(
+                    payload.loanContractId,
+                    loan.trancheId,
+                    allocation.scheduleItemId,
+                    when (allocation.component) {
+                        LoanPaymentComponent.PRINCIPAL -> LoanEffectKind.PRINCIPAL_PAYMENT
+                        LoanPaymentComponent.INTEREST -> LoanEffectKind.INTEREST_PAYMENT
+                        LoanPaymentComponent.FEE -> LoanEffectKind.FEE_PAYMENT
+                        LoanPaymentComponent.PENALTY -> LoanEffectKind.PENALTY_PAYMENT
+                    },
+                    allocation.amount,
+                    allocation.baseAmount,
                 )
             },
         )
