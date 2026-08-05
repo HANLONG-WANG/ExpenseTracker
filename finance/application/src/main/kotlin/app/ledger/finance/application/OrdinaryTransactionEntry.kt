@@ -62,7 +62,7 @@ public data class OrdinaryTemplateView(
 public data class OrdinaryRecentDefaultView(
     val direction: OrdinaryDirection,
     val categoryId: StableId,
-    val accountId: StableId,
+    val accountId: StableId?,
     val cardId: StableId?,
     val occurredAt: Instant,
 )
@@ -76,7 +76,7 @@ public data class OrdinaryTransactionEditView(
     val userMinor: Long,
     val userCurrency: CurrencyCode,
     val accountMinor: Long,
-    val accountId: StableId,
+    val accountId: StableId?,
     val cardId: StableId?,
     val merchantId: StableId?,
     val occurredAt: Instant,
@@ -165,7 +165,7 @@ public data class OrdinaryTransactionWriteRequest(
     val direction: OrdinaryDirection,
     val categoryId: StableId,
     val amount: OrdinaryAmountDraft,
-    val accountId: StableId,
+    val accountId: StableId?,
     val cardId: StableId?,
     val merchantId: StableId?,
     val occurredAt: Instant,
@@ -189,6 +189,8 @@ public data class OrdinaryTransactionWriteRequest(
         require(attachmentIds.toSet().size == attachmentIds.size)
         require(note == null || note.isNotBlank())
         require(settlementActivityId != null || settlementShares.isEmpty())
+        require(accountId != null || direction == OrdinaryDirection.EXPENSE && settlementActivityId != null)
+        require(accountId != null || cardId == null)
     }
 }
 

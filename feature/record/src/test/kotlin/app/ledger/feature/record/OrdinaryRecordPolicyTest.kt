@@ -8,13 +8,17 @@ import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.application.CardReferenceView
 import app.ledger.finance.application.CategoryReferenceView
 import app.ledger.finance.application.OrdinaryDirection
+import app.ledger.finance.application.OrdinaryParticipantView
 import app.ledger.finance.application.OrdinaryRecentDefaultView
+import app.ledger.finance.application.OrdinarySettlementActivityView
 import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
 import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.domain.CardType
 import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.CategoryStatus
 import app.ledger.finance.domain.EntityStatus
+import app.ledger.finance.domain.SettlementChargeDistribution
+import app.ledger.finance.domain.SettlementSplitMethod
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.UserAccountType
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -64,6 +68,48 @@ class OrdinaryRecordPolicyTest {
     }
 
     @Test
+    fun closedSettlementModesStayExactAndExternalPayerNeedsNoLocalAccount() {
+        var editor = OrdinaryRecordPolicy.createEditor(snapshot(), RecordEditorMode.CREATE, OrdinaryDirection.EXPENSE, CATEGORY_DEFAULT, null, NOW, ZONE, Locale.JAPAN)
+        editor = OrdinaryRecordPolicy.changeExpression(editor, "1001", Locale.JAPAN)
+        editor = OrdinaryRecordPolicy.setSettlementEnabled(editor, true)
+        editor = OrdinaryRecordPolicy.selectSettlementActivity(editor, ACTIVITY)
+
+        SettlementSplitMethod.entries.forEach { method ->
+            editor = OrdinaryRecordPolicy.selectSettlementSplitMethod(editor, method)
+            assertEquals(1_001L, editor.draft.settlementShares.sumOf { it.paidMinor })
+            assertEquals(1_001L, editor.draft.settlementShares.sumOf { it.owedMinor })
+            assertEquals(1, editor.draft.settlementShares.count { it.paidMinor > 0L })
+        }
+
+        editor = OrdinaryRecordPolicy.selectSettlementPayer(editor, FRIEND)
+        assertNull(editor.draft.accountId)
+        assertNull(editor.draft.cardId)
+        assertTrue(OrdinaryRecordPolicy.validate(editor).errors.none { it.field == RecordField.ACCOUNT })
+
+        editor = OrdinaryRecordPolicy.selectSettlementSplitMethod(editor, SettlementSplitMethod.EQUAL)
+        editor = OrdinaryRecordPolicy.toggleSettlementParticipant(editor, OTHER)
+        assertEquals(0L, editor.draft.settlementShares.single { it.participantId == OTHER }.owedMinor)
+        assertEquals(1_001L, editor.draft.settlementShares.sumOf { it.owedMinor })
+    }
+
+    @Test
+    fun taxAndServiceFeeSpecifiedDistributionMustBalanceExactly() {
+        var editor = OrdinaryRecordPolicy.createEditor(snapshot(), RecordEditorMode.CREATE, OrdinaryDirection.EXPENSE, CATEGORY_DEFAULT, null, NOW, ZONE, Locale.JAPAN)
+        editor = OrdinaryRecordPolicy.changeExpression(editor, "1000", Locale.JAPAN)
+        editor = OrdinaryRecordPolicy.selectSettlementActivity(OrdinaryRecordPolicy.setSettlementEnabled(editor, true), ACTIVITY)
+        editor = OrdinaryRecordPolicy.updateSettlementTax(editor, "11")
+        editor = OrdinaryRecordPolicy.updateSettlementServiceFee(editor, "10")
+        editor = OrdinaryRecordPolicy.selectSettlementChargeDistribution(editor, SettlementChargeDistribution.SPECIFIED)
+        editor = OrdinaryRecordPolicy.updateSettlementChargeInput(editor, SELF, "7")
+        editor = OrdinaryRecordPolicy.updateSettlementChargeInput(editor, FRIEND, "7")
+        editor = OrdinaryRecordPolicy.updateSettlementChargeInput(editor, OTHER, "7")
+
+        assertEquals(1_000L, editor.draft.settlementShares.sumOf { it.paidMinor })
+        assertEquals(1_000L, editor.draft.settlementShares.sumOf { it.owedMinor })
+        assertTrue(OrdinaryRecordPolicy.validate(editor).errors.isEmpty())
+    }
+
+    @Test
     fun dateTimePickerPreservesOriginalZoneAndAttachmentImportBlocksSubmission() {
         var editor = OrdinaryRecordPolicy.createEditor(snapshot(), RecordEditorMode.CREATE, OrdinaryDirection.EXPENSE, CATEGORY_DEFAULT, null, NOW, ZONE, Locale.JAPAN)
         editor = OrdinaryRecordPolicy.updateOccurredAt(editor, Instant.parse("2026-08-10T00:00:00Z").toEpochMilli(), 1, 15)
@@ -95,7 +141,18 @@ class OrdinaryRecordPolicyTest {
             CategoryReferenceView(CATEGORY_DEFAULT, CategoryDirection.EXPENSE, null, 1, "Food", "record", 0, 0, CategoryStatus.ACTIVE, StatisticalNature.CONSUMPTION_EXPENSE, BANK, BANK_CARD, null, 1, 0, 0),
         )
         val references = ReferenceDataSnapshot(BOOK, jpy, 3, accounts, cards, categories, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), 0, 0, false)
-        return OrdinaryTransactionEntrySnapshot(references, emptyList(), emptyList(), emptyList(), listOf(OrdinaryRecentDefaultView(OrdinaryDirection.EXPENSE, CATEGORY_DEFAULT, CASH, null, NOW.minusSeconds(60))), null)
+        val activity = OrdinarySettlementActivityView(
+            ACTIVITY,
+            "Weekend",
+            jpy,
+            listOf(
+                OrdinaryParticipantView(SELF, "Me", true),
+                OrdinaryParticipantView(FRIEND, "Friend", false),
+                OrdinaryParticipantView(OTHER, "Other", false),
+            ),
+            true,
+        )
+        return OrdinaryTransactionEntrySnapshot(references, emptyList(), listOf(activity), emptyList(), listOf(OrdinaryRecentDefaultView(OrdinaryDirection.EXPENSE, CATEGORY_DEFAULT, CASH, null, NOW.minusSeconds(60))), null)
     }
 
     private fun account(id: StableId, type: UserAccountType, name: String, sort: Int, currency: CurrencyCode) = AccountReferenceView(id, type, name, currency, EntityStatus.ACTIVE, null, null, null, "account", 0, sort, 1, 0, 0, null, false, 0)
@@ -110,6 +167,10 @@ class OrdinaryRecordPolicyTest {
         val TX = StableId.fromUuid(UUID(0x13, 6))
         val TEMPLATE = StableId.fromUuid(UUID(0x13, 7))
         val BATCH_ROW = StableId.fromUuid(UUID(0x13, 8))
+        val ACTIVITY = StableId.fromUuid(UUID(0x13, 9))
+        val SELF = StableId.fromUuid(UUID(0x13, 10))
+        val FRIEND = StableId.fromUuid(UUID(0x13, 11))
+        val OTHER = StableId.fromUuid(UUID(0x13, 12))
         val NOW: Instant = Instant.parse("2026-08-03T03:30:00Z")
         val ZONE: ZoneId = ZoneId.of("Asia/Tokyo")
     }

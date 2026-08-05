@@ -108,6 +108,14 @@ public object LedgerTestTags {
     public const val LOAN_PAYMENT_DETAIL: String = "loan_payment_detail"
     public const val LOAN_SIMULATION: String = "loan_simulation"
     public const val LOAN_SIMULATION_APPLY: String = "loan_simulation_apply"
+    public const val SETTLEMENT_HOME: String = "settlement_home"
+    public const val SETTLEMENT_EDITOR: String = "settlement_editor"
+    public const val SETTLEMENT_PARTICIPANTS: String = "settlement_participants"
+    public const val SETTLEMENT_DETAIL: String = "settlement_detail"
+    public const val SETTLEMENT_POSITIONS: String = "settlement_positions"
+    public const val SETTLEMENT_PAYMENT: String = "settlement_payment"
+    public const val SETTLEMENT_HISTORY: String = "settlement_history"
+    public const val SETTLEMENT_ADDITIONAL: String = "settlement_additional"
 
     public fun requireStable(value: String): String {
         require(STABLE_TAG.matches(value)) { "test tag must be a stable semantic identifier" }

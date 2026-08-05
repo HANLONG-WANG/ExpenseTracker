@@ -20,6 +20,13 @@ import app.ledger.finance.application.OrdinaryTemplateView
 import app.ledger.finance.application.OrdinaryTransactionEditView
 import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
 import app.ledger.finance.domain.EntityStatus
+import app.ledger.finance.domain.ParticipantId
+import app.ledger.finance.domain.SettlementAllocationPolicy
+import app.ledger.finance.domain.SettlementAllocationRequest
+import app.ledger.finance.domain.SettlementChargeDistribution
+import app.ledger.finance.domain.SettlementParticipantAllocation
+import app.ledger.finance.domain.SettlementRoundingRule
+import app.ledger.finance.domain.SettlementSplitMethod
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.ZoneId
@@ -96,6 +103,15 @@ public data class OrdinaryRecordDraft(
     val settlementEnabled: Boolean,
     val settlementActivityId: StableId?,
     val settlementShares: List<OrdinarySettlementShareDraft>,
+    val settlementPayerParticipantId: StableId?,
+    val settlementSplitMethod: SettlementSplitMethod,
+    val settlementChargeDistribution: SettlementChargeDistribution,
+    val settlementRoundingRule: SettlementRoundingRule,
+    val settlementTaxMinor: Long,
+    val settlementServiceFeeMinor: Long,
+    val settlementIncludedParticipantIds: Set<StableId>,
+    val settlementAllocationInputs: Map<StableId, String>,
+    val settlementChargeInputs: Map<StableId, String>,
     val locationRecordId: StableId?,
     val note: String,
     val attachmentIds: List<StableId>,
@@ -140,6 +156,7 @@ public object OrdinaryRecordPolicy {
     private val evaluator = MoneyExpressionEvaluator()
     private val formatter = LocaleCurrencyFormatter(catalog)
 
+    @Suppress("CyclomaticComplexMethod")
     public fun createEditor(
         snapshot: OrdinaryTransactionEntrySnapshot,
         mode: RecordEditorMode,
@@ -157,6 +174,14 @@ public object OrdinaryRecordPolicy {
         val defaults = defaults(snapshot, actualDirection, actualCategory, template, edit)
         val account = snapshot.references.accounts.singleOrNull { it.id == defaults.accountId }
         val expression = edit?.expression ?: template?.amountExpression.orEmpty()
+        val activityId = edit?.settlementActivityId ?: template?.settlementActivityId
+        val selectedActivity = snapshot.settlementActivities.singleOrNull { it.id == activityId }
+        val editPayerId = edit?.settlementShares?.singleOrNull { it.paidMinor > 0L }?.participantId
+        val currencyCode = edit?.userCurrency?.value ?: account?.currency?.value ?: template?.currency?.value ?: snapshot.references.baseCurrency.value
+        val editIncludedIds = edit?.settlementShares.orEmpty()
+            .filter { it.owedMinor > 0L || it.paidMinor > 0L }
+            .mapTo(linkedSetOf(), OrdinarySettlementShareDraft::participantId)
+            .apply { selectedActivity?.participants?.singleOrNull { it.isSelf }?.id?.let(::add) }
         val draft = OrdinaryRecordDraft(
             direction = actualDirection,
             categoryId = actualCategory,
@@ -164,16 +189,25 @@ public object OrdinaryRecordPolicy {
             normalizedExpression = "",
             resultMinor = edit?.userMinor,
             result = null,
-            currencyCode = edit?.userCurrency?.value ?: account?.currency?.value ?: template?.currency?.value ?: snapshot.references.baseCurrency.value,
+            currencyCode = currencyCode,
             accountId = defaults.accountId,
             cardId = defaults.cardId,
             merchantId = edit?.merchantId ?: template?.merchantId ?: defaults.merchantId,
             occurredAt = if (mode == RecordEditorMode.EDIT) edit?.occurredAt ?: now else now,
             zoneId = if (mode == RecordEditorMode.EDIT) edit?.zoneId ?: zoneId else zoneId,
             projectId = edit?.projectId ?: template?.projectId,
-            settlementEnabled = edit?.settlementActivityId != null || template?.settlementActivityId != null,
-            settlementActivityId = edit?.settlementActivityId ?: template?.settlementActivityId,
+            settlementEnabled = activityId != null,
+            settlementActivityId = activityId,
             settlementShares = edit?.settlementShares.orEmpty(),
+            settlementPayerParticipantId = editPayerId,
+            settlementSplitMethod = if (edit?.settlementShares.isNullOrEmpty()) SettlementSplitMethod.EQUAL else SettlementSplitMethod.FIXED_AMOUNT,
+            settlementChargeDistribution = SettlementChargeDistribution.SAME_AS_BASE,
+            settlementRoundingRule = SettlementRoundingRule.PARTICIPANT_ORDER,
+            settlementTaxMinor = 0L,
+            settlementServiceFeeMinor = 0L,
+            settlementIncludedParticipantIds = editIncludedIds,
+            settlementAllocationInputs = edit?.settlementShares.orEmpty().associate { it.participantId to minorInput(it.owedMinor, currencyCode) },
+            settlementChargeInputs = emptyMap(),
             locationRecordId = edit?.locationRecordId,
             note = edit?.note ?: template?.noteTemplate.orEmpty(),
             attachmentIds = if (mode == RecordEditorMode.EDIT) edit?.attachmentIds.orEmpty() else emptyList(),
@@ -183,7 +217,7 @@ public object OrdinaryRecordPolicy {
             },
             touched = emptySet(),
         )
-        return OrdinaryRecordEditorState(
+        val editor = OrdinaryRecordEditorState(
             mode,
             if (mode == RecordEditorMode.EDIT) edit?.transactionId else null,
             if (mode == RecordEditorMode.EDIT) edit?.revisionId else null,
@@ -191,13 +225,17 @@ public object OrdinaryRecordPolicy {
             snapshot,
             evaluate(draft, locale),
         )
+        return if (activityId != null && edit == null) selectSettlementActivity(editor, activityId) else editor
     }
 
-    public fun changeExpression(state: OrdinaryRecordEditorState, value: String, locale: Locale): OrdinaryRecordEditorState = state.copy(
-        draft = evaluate(state.draft.copy(expression = value.take(MAX_EXPRESSION), touched = state.draft.touched + RecordField.AMOUNT, origins = state.draft.origins + (RecordField.AMOUNT to manualOrigin())), locale),
-        presentation = RecordEditorPresentation.EDITING,
-        errors = state.errors.filterNot { it.field == RecordField.AMOUNT },
-    )
+    public fun changeExpression(state: OrdinaryRecordEditorState, value: String, locale: Locale): OrdinaryRecordEditorState {
+        val evaluated = evaluate(state.draft.copy(expression = value.take(MAX_EXPRESSION), touched = state.draft.touched + RecordField.AMOUNT, origins = state.draft.origins + (RecordField.AMOUNT to manualOrigin())), locale)
+        return state.copy(
+            draft = reallocateSettlement(evaluated, state.snapshot),
+            presentation = RecordEditorPresentation.EDITING,
+            errors = state.errors.filterNot { it.field == RecordField.AMOUNT },
+        )
+    }
 
     public fun appendOperator(state: OrdinaryRecordEditorState, operator: String, locale: Locale): OrdinaryRecordEditorState {
         val expression = if (operator == "DELETE") state.draft.expression.dropLast(1) else state.draft.expression + normalizeOperator(operator)
@@ -250,6 +288,8 @@ public object OrdinaryRecordPolicy {
             settlementEnabled = enabled,
             settlementActivityId = if (enabled) state.draft.settlementActivityId else null,
             settlementShares = if (enabled) state.draft.settlementShares else emptyList(),
+            settlementPayerParticipantId = if (enabled) state.draft.settlementPayerParticipantId else null,
+            settlementIncludedParticipantIds = if (enabled) state.draft.settlementIncludedParticipantIds else emptySet(),
             touched = state.draft.touched + RecordField.SETTLEMENT,
             origins = state.draft.origins + (RecordField.SETTLEMENT to manualOrigin()),
         ),
@@ -257,15 +297,137 @@ public object OrdinaryRecordPolicy {
 
     public fun selectSettlementActivity(state: OrdinaryRecordEditorState, id: StableId): OrdinaryRecordEditorState {
         val activity = state.snapshot.settlementActivities.single { it.id == id && it.active }
-        val total = state.draft.resultMinor ?: 0L
         val self = activity.participants.singleOrNull { it.isSelf }
-        val base = if (activity.participants.isEmpty()) 0L else total / activity.participants.size
-        val remainder = if (activity.participants.isEmpty()) 0L else total % activity.participants.size
-        val shares = activity.participants.mapIndexed { index, participant ->
-            val owed = base + if (index.toLong() < remainder) 1L else 0L
-            OrdinarySettlementShareDraft(participant.id, if (participant.id == self?.id) total else 0L, owed, BigDecimal.ONE, 0L)
+        val draft = state.draft.copy(
+            settlementActivityId = id,
+            settlementPayerParticipantId = self?.id ?: activity.participants.firstOrNull()?.id,
+            settlementIncludedParticipantIds = activity.participants.mapTo(linkedSetOf()) { it.id },
+            settlementAllocationInputs = activity.participants.associate { it.id to "1" },
+            settlementChargeInputs = activity.participants.associate { it.id to "0" },
+            touched = state.draft.touched + RecordField.SETTLEMENT,
+            origins = state.draft.origins + (RecordField.SETTLEMENT to manualOrigin()),
+        )
+        return state.copy(draft = reallocateSettlement(draft, state.snapshot))
+    }
+
+    public fun selectSettlementPayer(state: OrdinaryRecordEditorState, participantId: StableId): OrdinaryRecordEditorState {
+        val activity = requireNotNull(state.snapshot.settlementActivities.singleOrNull { it.id == state.draft.settlementActivityId })
+        require(activity.participants.any { it.id == participantId })
+        val selfPays = activity.participants.single { it.id == participantId }.isSelf
+        val draft = state.draft.copy(
+            settlementPayerParticipantId = participantId,
+            accountId = if (selfPays) state.draft.accountId ?: state.snapshot.references.accounts.firstOrNull { it.status == EntityStatus.ACTIVE && it.currency.value == state.draft.currencyCode }?.id else null,
+            cardId = if (selfPays) state.draft.cardId else null,
+            touched = state.draft.touched + RecordField.SETTLEMENT,
+        )
+        return state.copy(draft = reallocateSettlement(draft, state.snapshot))
+    }
+
+    public fun selectSettlementSplitMethod(state: OrdinaryRecordEditorState, method: SettlementSplitMethod): OrdinaryRecordEditorState {
+        val activity = state.snapshot.settlementActivities.singleOrNull { it.id == state.draft.settlementActivityId } ?: return state
+        val included = activity.participants.filter { it.id in state.draft.settlementIncludedParticipantIds }
+        val total = Math.subtractExact(state.draft.resultMinor ?: 0L, Math.addExact(state.draft.settlementTaxMinor, state.draft.settlementServiceFeeMinor)).coerceAtLeast(0L)
+        val inputs = when (method) {
+            SettlementSplitMethod.EQUAL -> state.draft.settlementAllocationInputs
+            SettlementSplitMethod.FIXED_AMOUNT -> exactIntegerParts(total, included.size).let { parts -> included.mapIndexed { index, participant -> participant.id to minorInput(parts[index], state.draft.currencyCode) }.toMap() }
+            SettlementSplitMethod.PERCENTAGE -> exactDecimalParts(BigDecimal("100"), included.size).let { parts -> included.mapIndexed { index, participant -> participant.id to parts[index].stripTrailingZeros().toPlainString() }.toMap() }
+            SettlementSplitMethod.WEIGHT -> included.associate { it.id to "1" }
         }
-        return state.copy(draft = state.draft.copy(settlementActivityId = id, settlementShares = shares, touched = state.draft.touched + RecordField.SETTLEMENT, origins = state.draft.origins + (RecordField.SETTLEMENT to manualOrigin())))
+        return state.copy(draft = reallocateSettlement(state.draft.copy(settlementSplitMethod = method, settlementAllocationInputs = state.draft.settlementAllocationInputs + inputs), state.snapshot))
+    }
+
+    public fun selectSettlementChargeDistribution(state: OrdinaryRecordEditorState, distribution: SettlementChargeDistribution): OrdinaryRecordEditorState = state.copy(draft = reallocateSettlement(state.draft.copy(settlementChargeDistribution = distribution), state.snapshot))
+
+    public fun selectSettlementRoundingRule(state: OrdinaryRecordEditorState, rule: SettlementRoundingRule): OrdinaryRecordEditorState = state.copy(draft = reallocateSettlement(state.draft.copy(settlementRoundingRule = rule), state.snapshot))
+
+    public fun toggleSettlementParticipant(state: OrdinaryRecordEditorState, participantId: StableId): OrdinaryRecordEditorState {
+        val activity = state.snapshot.settlementActivities.singleOrNull { it.id == state.draft.settlementActivityId } ?: return state
+        val participant = activity.participants.single { it.id == participantId }
+        require(!participant.isSelf && participantId != state.draft.settlementPayerParticipantId)
+        val included = state.draft.settlementIncludedParticipantIds.toMutableSet().apply { if (!add(participantId)) remove(participantId) }
+        return state.copy(draft = reallocateSettlement(state.draft.copy(settlementIncludedParticipantIds = included), state.snapshot))
+    }
+
+    public fun updateSettlementAllocationInput(state: OrdinaryRecordEditorState, participantId: StableId, value: String): OrdinaryRecordEditorState = state.copy(draft = reallocateSettlement(state.draft.copy(settlementAllocationInputs = state.draft.settlementAllocationInputs + (participantId to value.take(32))), state.snapshot))
+
+    public fun updateSettlementChargeInput(state: OrdinaryRecordEditorState, participantId: StableId, value: String): OrdinaryRecordEditorState = state.copy(draft = reallocateSettlement(state.draft.copy(settlementChargeInputs = state.draft.settlementChargeInputs + (participantId to value.take(32))), state.snapshot))
+
+    public fun updateSettlementTax(state: OrdinaryRecordEditorState, value: String): OrdinaryRecordEditorState = updateSettlementChargeTotal(state, value, tax = true)
+
+    public fun updateSettlementServiceFee(state: OrdinaryRecordEditorState, value: String): OrdinaryRecordEditorState = updateSettlementChargeTotal(state, value, tax = false)
+
+    public fun settlementAmountInput(value: Long, currencyCode: String): String = if (value < 0L) "" else minorInput(value, currencyCode)
+
+    private fun updateSettlementChargeTotal(state: OrdinaryRecordEditorState, value: String, tax: Boolean): OrdinaryRecordEditorState {
+        val minor = parseMinorInput(value, state.draft.currencyCode) ?: -1L
+        val draft = if (tax) state.draft.copy(settlementTaxMinor = minor) else state.draft.copy(settlementServiceFeeMinor = minor)
+        return state.copy(draft = reallocateSettlement(draft, state.snapshot))
+    }
+
+    private fun reallocateSettlement(draft: OrdinaryRecordDraft, snapshot: OrdinaryTransactionEntrySnapshot): OrdinaryRecordDraft {
+        if (!draft.settlementEnabled) return draft
+        val activity = snapshot.settlementActivities.singleOrNull { it.id == draft.settlementActivityId } ?: return draft.copy(settlementShares = emptyList())
+        val self = activity.participants.singleOrNull { it.isSelf } ?: return draft.copy(settlementShares = emptyList())
+        val payer = draft.settlementPayerParticipantId ?: return draft.copy(settlementShares = emptyList())
+        val total = draft.resultMinor ?: return draft.copy(settlementShares = emptyList())
+        if (draft.settlementTaxMinor < 0L || draft.settlementServiceFeeMinor < 0L) return draft.copy(settlementShares = emptyList())
+        val participants = activity.participants.map { participant ->
+            val input = draft.settlementAllocationInputs[participant.id].orEmpty()
+            SettlementParticipantAllocation(
+                ParticipantId(participant.id),
+                included = participant.id in draft.settlementIncludedParticipantIds,
+                fixedMinor = if (draft.settlementSplitMethod == SettlementSplitMethod.FIXED_AMOUNT) parseMinorInput(input, draft.currencyCode) else null,
+                percentage = if (draft.settlementSplitMethod == SettlementSplitMethod.PERCENTAGE) input.toBigDecimalOrNull()?.takeIf { it.signum() >= 0 } else null,
+                weight = if (draft.settlementSplitMethod == SettlementSplitMethod.WEIGHT) input.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } else null,
+                chargeMinor = if (draft.settlementChargeDistribution == SettlementChargeDistribution.SPECIFIED) parseMinorInput(draft.settlementChargeInputs[participant.id].orEmpty(), draft.currencyCode) else null,
+            )
+        }
+        val result = SettlementAllocationPolicy.allocate(
+            SettlementAllocationRequest(
+                total,
+                ParticipantId(payer),
+                ParticipantId(self.id),
+                participants,
+                draft.settlementSplitMethod,
+                draft.settlementTaxMinor,
+                draft.settlementServiceFeeMinor,
+                draft.settlementChargeDistribution,
+                draft.settlementRoundingRule,
+            ),
+        )
+        if (result !is DomainResult.Success) return draft.copy(settlementShares = emptyList())
+        return draft.copy(
+            settlementShares = result.value.shares.map {
+                OrdinarySettlementShareDraft(it.participantId.value, it.paidMinor, it.owedMinor, it.weight, it.roundingAdjustmentMinor)
+            },
+        )
+    }
+
+    private fun parseMinorInput(value: String, currencyCode: String): Long? = runCatching {
+        val currency = (app.ledger.core.money.CurrencyCode.parse(currencyCode) as DomainResult.Success).value
+        val fractionDigits = requireNotNull(catalog.find(currency)).fractionDigits
+        BigDecimal(value.trim().replace(',', '.')).movePointRight(fractionDigits).setScale(0, java.math.RoundingMode.UNNECESSARY).longValueExact().takeIf { it >= 0L }
+    }.getOrNull()
+
+    private fun minorInput(value: Long, currencyCode: String): String {
+        val currency = (app.ledger.core.money.CurrencyCode.parse(currencyCode) as DomainResult.Success).value
+        val fractionDigits = requireNotNull(catalog.find(currency)).fractionDigits
+        return BigDecimal.valueOf(value, fractionDigits).stripTrailingZeros().toPlainString()
+    }
+
+    private fun exactIntegerParts(total: Long, count: Int): List<Long> {
+        if (count <= 0) return emptyList()
+        val base = total / count
+        val remainder = total % count
+        return List(count) { index -> Math.addExact(base, if (index.toLong() < remainder) 1L else 0L) }
+    }
+
+    private fun exactDecimalParts(total: BigDecimal, count: Int): List<BigDecimal> {
+        if (count <= 0) return emptyList()
+        val base = total.divide(BigDecimal.valueOf(count.toLong()), 12, java.math.RoundingMode.DOWN)
+        val result = MutableList(count) { base }
+        result[count - 1] = total.subtract(result.dropLast(1).fold(BigDecimal.ZERO, BigDecimal::add))
+        return result
     }
 
     public fun updateOccurredAt(state: OrdinaryRecordEditorState, dateMillis: Long, hour: Int, minute: Int): OrdinaryRecordEditorState {
@@ -285,7 +447,9 @@ public object OrdinaryRecordPolicy {
         val errors = buildList {
             if (state.draft.categoryId == null) add(RecordValidationError(RecordField.CATEGORY, "CATEGORY_REQUIRED"))
             if (state.draft.resultMinor == null || state.draft.resultMinor <= 0L) add(RecordValidationError(RecordField.AMOUNT, "AMOUNT_INVALID"))
-            if (state.draft.accountId == null) add(RecordValidationError(RecordField.ACCOUNT, "ACCOUNT_REQUIRED"))
+            val settlementActivity = state.snapshot.settlementActivities.singleOrNull { it.id == state.draft.settlementActivityId }
+            val settlementPayerIsSelf = settlementActivity?.participants?.singleOrNull { it.id == state.draft.settlementPayerParticipantId }?.isSelf != false
+            if (state.draft.accountId == null && (!state.draft.settlementEnabled || settlementPayerIsSelf)) add(RecordValidationError(RecordField.ACCOUNT, "ACCOUNT_REQUIRED"))
             if (state.attachmentImporting) add(RecordValidationError(RecordField.ATTACHMENTS, "ATTACHMENT_IMPORTING"))
             if (state.draft.settlementEnabled) {
                 val total = state.draft.resultMinor ?: 0L

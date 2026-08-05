@@ -148,6 +148,7 @@ data class RecordSettlementPaymentCommand(
     override val commandId: CommandId,
     override val payloadHash: Hash256,
     override val input: NewTransactionInput<SettlementPaymentPayload>,
+    val paymentRecord: SettlementPaymentRecord,
 ) : RecordTransactionCommand<SettlementPaymentPayload> {
     override val commandType: FinancialCommandType = FinancialCommandType.RECORD_SETTLEMENT_PAYMENT
 }
@@ -430,6 +431,7 @@ data class FinancialMutationPlan(
     val creditStatementMutations: List<CreditStatementMutation> = emptyList(),
     val installmentPlanMutations: List<InstallmentPlanMutation> = emptyList(),
     val loanContractMutations: List<LoanContractMutation> = emptyList(),
+    val settlementPaymentRecords: List<SettlementPaymentRecord> = emptyList(),
 )
 
 data class PlanningOperationContext(
@@ -459,7 +461,7 @@ data class PlanningSnapshot(
 )
 
 object FinancialMutationPlanValidator {
-    @Suppress("ComplexCondition", "CyclomaticComplexMethod", "ReturnCount")
+    @Suppress("ComplexCondition", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
     fun validate(
         command: FinancialCommand,
         snapshot: PlanningSnapshot,
@@ -543,6 +545,26 @@ object FinancialMutationPlanValidator {
         }
         if (snapshot.participants.count { it.isSelf && it.status == EntityStatus.ACTIVE } > 1) {
             return DomainResult.Failure(DomainViolation.InvalidField("participant.self"))
+        }
+        if (command is RecordSettlementPaymentCommand) {
+            val record = command.paymentRecord
+            val payload = command.input.payload
+            if (
+                plan.settlementPaymentRecords != listOf(record) ||
+                record.activityId != payload.activityId ||
+                record.payerParticipantId != payload.payerParticipantId ||
+                record.payeeParticipantId != payload.payeeParticipantId ||
+                record.amount != payload.amount ||
+                record.occurredAt != command.input.context.occurredAt ||
+                record.selfParticipates != payload.selfParticipates ||
+                record.createdCommitId != plan.commit.id ||
+                record.linkedTransactionId != (if (payload.selfParticipates) plan.transactions.singleOrNull()?.id else null) ||
+                plan.settlementEffects.any { it.settlementPaymentRecordId != record.id || it.sourceRevisionId != null }
+            ) {
+                return DomainResult.Failure(DomainViolation.InvalidField("settlementPayment.record"))
+            }
+        } else if (plan.settlementPaymentRecords.isNotEmpty()) {
+            return DomainResult.Failure(DomainViolation.InvalidField("settlementPayment.record"))
         }
         val transactionLifecycle = validateTransactionLifecycle(command, snapshot, plan)
         if (transactionLifecycle is DomainResult.Failure) return transactionLifecycle
@@ -724,6 +746,9 @@ object FinancialMutationPlanValidator {
         command is ApplyInstallmentSettlementCommand ->
             plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts() &&
                 plan.installmentPlanMutations == listOf(command.mutation)
+        command is RecordSettlementPaymentCommand ->
+            plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts() &&
+                plan.settlementPaymentRecords == listOf(command.paymentRecord)
         command is RecordTransactionCommand<*> ->
             plan.transactions.isNotEmpty() && plan.revisions.isNotEmpty() && plan.hasFinancialFacts()
         else -> hasRequiredNonRecordWrites(command, plan)

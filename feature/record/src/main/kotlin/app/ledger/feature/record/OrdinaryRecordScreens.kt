@@ -75,6 +75,9 @@ import app.ledger.finance.application.OrdinaryDirection
 import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
 import app.ledger.finance.domain.CategoryStatus
 import app.ledger.finance.domain.EntityStatus
+import app.ledger.finance.domain.SettlementChargeDistribution
+import app.ledger.finance.domain.SettlementRoundingRule
+import app.ledger.finance.domain.SettlementSplitMethod
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
@@ -93,6 +96,15 @@ public data class OrdinaryRecordActions(
     val onNote: (String) -> Unit,
     val onSettlementEnabled: (Boolean) -> Unit,
     val onSettlementActivity: (StableId) -> Unit,
+    val onSettlementPayer: (StableId) -> Unit,
+    val onSettlementSplitMethod: (SettlementSplitMethod) -> Unit,
+    val onSettlementChargeDistribution: (SettlementChargeDistribution) -> Unit,
+    val onSettlementRoundingRule: (SettlementRoundingRule) -> Unit,
+    val onSettlementParticipantIncluded: (StableId) -> Unit,
+    val onSettlementAllocationInput: (StableId, String) -> Unit,
+    val onSettlementChargeInput: (StableId, String) -> Unit,
+    val onSettlementTax: (String) -> Unit,
+    val onSettlementServiceFee: (String) -> Unit,
     val onOccurredAt: (dateMillis: Long, hour: Int, minute: Int) -> Unit,
     val onAddAttachment: () -> Unit,
     val onCancelAttachment: (index: Int) -> Unit,
@@ -427,16 +439,132 @@ private fun SettlementAllocation(state: OrdinaryRecordEditorState, actions: Ordi
         if (selectedActivity != null && selectedActivity.currency.value != state.draft.currencyCode) {
             LedgerBanner(stringResource(R.string.record_settlement_currency_mismatch), LedgerBannerVariant.DANGER)
         }
+        if (selectedActivity != null) {
+            FormSection(stringResource(R.string.record_settlement_payer)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                    selectedActivity.participants.forEach { participant ->
+                        LedgerButton(
+                            participant.name,
+                            { actions.onSettlementPayer(participant.id) },
+                            variant = if (participant.id == state.draft.settlementPayerParticipantId) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT,
+                        )
+                    }
+                }
+            }
+            FormSection(stringResource(R.string.record_settlement_split_method)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                    SettlementSplitMethod.entries.forEach { method ->
+                        LedgerButton(splitMethodLabel(method), { actions.onSettlementSplitMethod(method) }, variant = if (method == state.draft.settlementSplitMethod) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
+                    }
+                }
+            }
+            LedgerTextField(
+                OrdinaryRecordPolicy.settlementAmountInput(state.draft.settlementTaxMinor, state.draft.currencyCode),
+                actions.onSettlementTax,
+                stringResource(R.string.record_settlement_tax),
+                Modifier.fillMaxWidth(),
+            )
+            LedgerTextField(
+                OrdinaryRecordPolicy.settlementAmountInput(state.draft.settlementServiceFeeMinor, state.draft.currencyCode),
+                actions.onSettlementServiceFee,
+                stringResource(R.string.record_settlement_service_fee),
+                Modifier.fillMaxWidth(),
+            )
+            FormSection(stringResource(R.string.record_settlement_charge_distribution)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                    SettlementChargeDistribution.entries.forEach { distribution ->
+                        LedgerButton(chargeDistributionLabel(distribution), { actions.onSettlementChargeDistribution(distribution) }, variant = if (distribution == state.draft.settlementChargeDistribution) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
+                    }
+                }
+            }
+            FormSection(stringResource(R.string.record_settlement_rounding)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                    SettlementRoundingRule.entries.forEach { rule ->
+                        LedgerButton(roundingRuleLabel(rule), { actions.onSettlementRoundingRule(rule) }, variant = if (rule == state.draft.settlementRoundingRule) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
+                    }
+                }
+            }
+            selectedActivity.participants.forEach { participant ->
+                val locked = participant.isSelf || participant.id == state.draft.settlementPayerParticipantId
+                LedgerToggleRow(
+                    participant.name,
+                    participant.id in state.draft.settlementIncludedParticipantIds,
+                    { _ -> if (!locked) actions.onSettlementParticipantIncluded(participant.id) },
+                    supportingText = if (locked) stringResource(R.string.record_settlement_required_participant) else stringResource(R.string.record_settlement_exclusion_support),
+                )
+                if (state.draft.settlementSplitMethod != SettlementSplitMethod.EQUAL && participant.id in state.draft.settlementIncludedParticipantIds) {
+                    LedgerTextField(
+                        state.draft.settlementAllocationInputs[participant.id].orEmpty(),
+                        { actions.onSettlementAllocationInput(participant.id, it) },
+                        allocationInputLabel(state.draft.settlementSplitMethod),
+                        Modifier.fillMaxWidth(),
+                    )
+                }
+                if (state.draft.settlementChargeDistribution == SettlementChargeDistribution.SPECIFIED && participant.id in state.draft.settlementIncludedParticipantIds) {
+                    LedgerTextField(
+                        state.draft.settlementChargeInputs[participant.id].orEmpty(),
+                        { actions.onSettlementChargeInput(participant.id, it) },
+                        stringResource(R.string.record_settlement_specified_charge),
+                        Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
         val paid = state.draft.settlementShares.sumOf { it.paidMinor }
         val owed = state.draft.settlementShares.sumOf { it.owedMinor }
         val total = state.draft.resultMinor ?: 0L
+        val selfIds = state.snapshot.settlementActivities.flatMap { it.participants }.filter { it.isSelf }.mapTo(hashSetOf()) { it.id }
+        val selfOwed = state.draft.settlementShares.filter { it.participantId in selfIds }.sumOf { it.owedMinor }
+        val othersOwed = Math.subtractExact(owed, selfOwed)
         LedgerBanner(stringResource(if (paid == total && owed == total && total > 0) R.string.record_settlement_balanced else R.string.record_settlement_imbalanced), if (paid == total && owed == total && total > 0) LedgerBannerVariant.INFO else LedgerBannerVariant.DANGER)
+        LedgerText(stringResource(R.string.record_settlement_self_summary, selfOwed), LedgerTextRole.BODY)
+        LedgerText(stringResource(R.string.record_settlement_others_summary, othersOwed), LedgerTextRole.BODY)
         state.draft.settlementShares.forEach { share ->
             val participant = state.snapshot.settlementActivities.flatMap { it.participants }.singleOrNull { it.id == share.participantId }
             LedgerText(stringResource(R.string.record_settlement_share, participant?.name.orEmpty(), share.owedMinor), LedgerTextRole.BODY)
         }
     }
 }
+
+@Composable
+private fun splitMethodLabel(method: SettlementSplitMethod): String = stringResource(
+    when (method) {
+        SettlementSplitMethod.EQUAL -> R.string.record_settlement_equal
+        SettlementSplitMethod.FIXED_AMOUNT -> R.string.record_settlement_fixed
+        SettlementSplitMethod.PERCENTAGE -> R.string.record_settlement_percentage
+        SettlementSplitMethod.WEIGHT -> R.string.record_settlement_weight
+    },
+)
+
+@Composable
+private fun chargeDistributionLabel(distribution: SettlementChargeDistribution): String = stringResource(
+    when (distribution) {
+        SettlementChargeDistribution.SAME_AS_BASE -> R.string.record_settlement_charge_same
+        SettlementChargeDistribution.EQUAL -> R.string.record_settlement_charge_equal
+        SettlementChargeDistribution.PAYER -> R.string.record_settlement_charge_payer
+        SettlementChargeDistribution.SPECIFIED -> R.string.record_settlement_charge_specified
+    },
+)
+
+@Composable
+private fun roundingRuleLabel(rule: SettlementRoundingRule): String = stringResource(
+    when (rule) {
+        SettlementRoundingRule.PARTICIPANT_ORDER -> R.string.record_settlement_rounding_order
+        SettlementRoundingRule.PAYER -> R.string.record_settlement_rounding_payer
+        SettlementRoundingRule.SELF -> R.string.record_settlement_rounding_self
+        SettlementRoundingRule.LARGEST_SHARE -> R.string.record_settlement_rounding_largest
+    },
+)
+
+@Composable
+private fun allocationInputLabel(method: SettlementSplitMethod): String = stringResource(
+    when (method) {
+        SettlementSplitMethod.FIXED_AMOUNT -> R.string.record_settlement_fixed_amount
+        SettlementSplitMethod.PERCENTAGE -> R.string.record_settlement_percentage_value
+        SettlementSplitMethod.WEIGHT -> R.string.record_settlement_weight_value
+        SettlementSplitMethod.EQUAL -> R.string.record_settlement_equal
+    },
+)
 
 @Composable
 private fun AdvancedSemantics(state: OrdinaryRecordEditorState) {

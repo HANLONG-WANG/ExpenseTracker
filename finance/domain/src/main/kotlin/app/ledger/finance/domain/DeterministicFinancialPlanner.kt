@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions")
+@file:Suppress("TooManyFunctions", "LargeClass")
 
 package app.ledger.finance.domain
 
@@ -402,6 +402,25 @@ object DeterministicFinancialPlanner {
         } else {
             AccountingRuleEngine.plan(snapshot.book, input, snapshot).orReject()
         }
+        val settlementPaymentRecord = (command as? RecordSettlementPaymentCommand)?.paymentRecord
+        settlementPaymentRecord?.let { record ->
+            val payload = input.payload as? SettlementPaymentPayload ?: reject("settlementPayment.payload")
+            require(record.activityId == payload.activityId, "settlementPayment.activityId")
+            require(record.payerParticipantId == payload.payerParticipantId, "settlementPayment.payer")
+            require(record.payeeParticipantId == payload.payeeParticipantId, "settlementPayment.payee")
+            require(record.amount == payload.amount, "settlementPayment.amount")
+            require(record.occurredAt == input.context.occurredAt, "settlementPayment.occurredAt")
+            require(record.selfParticipates == payload.selfParticipates, "settlementPayment.selfParticipates")
+            require(record.createdCommitId == identities.commitId, "settlementPayment.createdCommitId")
+            require(
+                if (payload.selfParticipates) {
+                    record.linkedTransactionId == identities.transactionId
+                } else {
+                    record.linkedTransactionId == null
+                },
+                "settlementPayment.linkedTransactionId",
+            )
+        }
         val applyFacts = if (resultingState == TransactionLifecycleState.ACTIVE) {
             if (locationOnlyEdit || categoryOnlyEdit) {
                 cloneCurrentApplyFacts(
@@ -412,7 +431,14 @@ object DeterministicFinancialPlanner {
                     if (categoryOnlyEdit) revision.payload.classification else null,
                 )
             } else {
-                materializeApplyFacts(snapshot, revision, ruleResult, identities.commitId, cursor)
+                materializeApplyFacts(
+                    snapshot,
+                    revision,
+                    ruleResult,
+                    identities.commitId,
+                    cursor,
+                    settlementPaymentRecord?.id,
+                )
             }
         } else {
             MaterializedFacts.empty()
@@ -526,6 +552,7 @@ object DeterministicFinancialPlanner {
             ruleSetVersion = snapshot.book.ruleSetVersion,
             installmentPlanMutations = installmentMutations,
             loanContractMutations = loanMutations,
+            settlementPaymentRecords = settlementPaymentRecord?.let(::listOf).orEmpty(),
         )
         FinancialMutationPlanValidator.validate(command, snapshot, plan)
     } catch (rejected: PlannerRejected) {
@@ -829,13 +856,14 @@ private data class MaterializedFacts(
     }
 }
 
-@Suppress("LongMethod")
+@Suppress("LongMethod", "LongParameterList")
 private fun materializeApplyFacts(
     snapshot: PlanningSnapshot,
     revision: TransactionRevision,
     output: AccountingRuleOutput,
     commitId: BookCommitId,
     cursor: PlanningIdCursor,
+    settlementPaymentRecordId: SettlementPaymentRecordId? = null,
 ): MaterializedFacts {
     val journals = output.journals.map { spec ->
         materializeJournal(snapshot, revision, spec, commitId, cursor)
@@ -933,8 +961,8 @@ private fun materializeApplyFacts(
             id = SettlementEffectId(cursor.next()),
             activityId = spec.activityId,
             participantId = spec.participantId,
-            sourceRevisionId = revision.id,
-            settlementPaymentRecordId = null,
+            sourceRevisionId = if (settlementPaymentRecordId == null) revision.id else null,
+            settlementPaymentRecordId = settlementPaymentRecordId,
             reversalOfId = null,
             kind = spec.kind,
             signedDeltaMinor = spec.signedDeltaMinor,

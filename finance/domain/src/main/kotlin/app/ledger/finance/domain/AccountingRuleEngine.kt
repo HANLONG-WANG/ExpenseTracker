@@ -6,6 +6,7 @@ import app.ledger.core.common.CheckedArithmetic
 import app.ledger.core.common.DomainError
 import app.ledger.core.common.DomainResult
 import java.math.BigDecimal
+import java.math.BigInteger
 
 internal data class PostingSpec(
     val ledger: LedgerAccountSnapshot,
@@ -125,6 +126,9 @@ private class RuleSession(
     fun expense(payload: ExpensePayload): AccountingRuleOutput {
         val category = category(payload.classification)
         val primary = amount(AmountRole.PRIMARY, expectedUserInput = payload.primaryAmount)
+        if (payload.settlementShares.isNotEmpty()) {
+            return settlementExpense(payload, category, primary)
+        }
         val payerLine = when (val payer = payload.payer) {
             is ExpensePayer.LocalAccount -> {
                 val account = account(payer.accountAmount, setOf(LedgerAccountClass.ASSET, LedgerAccountClass.LIABILITY))
@@ -153,7 +157,6 @@ private class RuleSession(
                 )
             }
         }
-        val economicAmount = settlementSelfShareOrPrimary(payload, primary)
         val expenseLedger = system(expenseSystemCode(category.statisticalNature), baseCurrency)
         val journal = JournalSpec(
             listOf(
@@ -170,16 +173,123 @@ private class RuleSession(
                     nature = EconomicNature.EXPENSE,
                     component = EconomicComponent.PRIMARY,
                     isConsumption = category.statisticalNature == StatisticalNature.CONSUMPTION_EXPENSE,
-                    baseAmount = economicAmount.baseAmount,
+                    baseAmount = primary.baseAmount,
                 ),
             ),
-            budget = budgetUse(economicAmount.baseAmount),
-            project = projectUse(economicAmount.baseAmount),
+            budget = budgetUse(primary.baseAmount),
+            project = projectUse(primary.baseAmount),
             goal = goalSpend(
-                economicAmount.accountAmount,
+                primary.accountAmount,
                 (payload.payer as? ExpensePayer.LocalAccount)?.accountAmount?.accountId,
             ),
             statement = expenseStatement(payload, primary.accountAmount),
+            settlement = settlementShares(payload),
+        )
+    }
+
+    @Suppress("LongMethod", "ComplexCondition")
+    private fun settlementExpense(
+        payload: ExpensePayload,
+        category: PlanningCategory,
+        primary: FrozenAmountEvidence,
+    ): AccountingRuleOutput {
+        val activityId = payload.settlementActivityId ?: reject("expense.settlementActivity")
+        SettlementSharePolicy.validate(primary.userInput.minor.value, payload.settlementShares).orReject()
+        val self = selfParticipant()
+        val selfIndex = payload.settlementShares.indexOfFirst { it.participantId == self.id }
+        require(selfIndex >= 0, "expense.settlementSelf")
+        val payerShare = payload.settlementShares.single { it.paidMinor > 0L }
+        val owed = payload.settlementShares.map(SettlementShare::owedMinor)
+        val baseAllocations = proportionalMinorAllocation(primary.baseAmount.minor.value, owed)
+        val accountAllocations = proportionalMinorAllocation(primary.accountAmount.minor.value, owed)
+        val selfOwedMinor = owed[selfIndex]
+        val selfBaseMinor = baseAllocations[selfIndex]
+        val selfAccountMinor = accountAllocations[selfIndex]
+        val expenseLedger = system(expenseSystemCode(category.statisticalNature), baseCurrency)
+        val debitLines = mutableListOf<PostingSpec>()
+        if (selfBaseMinor > 0L) {
+            debitLines += systemPosting(
+                expenseLedger,
+                DebitCredit.DEBIT,
+                positive(selfBaseMinor, baseCurrency),
+                PostingRole.EXPENSE,
+            )
+        }
+        val localPayer = payload.payer as? ExpensePayer.LocalAccount
+        if (localPayer != null) {
+            require(payerShare.participantId == self.id, "expense.localSettlementPayer")
+            val account = account(localPayer.accountAmount, setOf(LedgerAccountClass.ASSET, LedgerAccountClass.LIABILITY))
+            validateCard(localPayer.cardId, account.account.id)
+            requireAmountAccount(primary, localPayer.accountAmount)
+            payload.settlementShares.forEachIndexed { index, share ->
+                if (share.participantId != self.id && share.owedMinor > 0L) {
+                    val ledger = references.settlement(activityId, share.participantId)?.ledger
+                        ?: reject("expense.settlementParticipantLedger")
+                    require(ledger.currency == primary.userInput.currency, "expense.settlementCurrency")
+                    debitLines += PostingSpec(
+                        ledger,
+                        DebitCredit.DEBIT,
+                        positive(share.owedMinor, ledger.currency),
+                        positive(baseAllocations[index], baseCurrency),
+                        null,
+                        PostingRole.SETTLEMENT,
+                    )
+                }
+            }
+            debitLines += PostingSpec(
+                account.ledger,
+                DebitCredit.CREDIT,
+                primary.accountAmount,
+                primary.baseAmount,
+                primary.accountToBase?.evidence?.rate,
+                account.ledger.accountClass.postingRole(),
+            )
+        } else {
+            val externalPayer = payload.payer as ExpensePayer.ExternalParticipant
+            require(
+                externalPayer.activityId == activityId && payerShare.participantId == externalPayer.participantId &&
+                    externalPayer.participantId != self.id,
+                "expense.externalSettlementPayer",
+            )
+            if (selfOwedMinor > 0L) {
+                val ledger = references.settlement(activityId, externalPayer.participantId)?.ledger
+                    ?: reject("expense.externalParticipantLedger")
+                require(ledger.currency == primary.userInput.currency, "expense.settlementCurrency")
+                debitLines += PostingSpec(
+                    ledger,
+                    DebitCredit.CREDIT,
+                    positive(selfOwedMinor, ledger.currency),
+                    positive(selfBaseMinor, baseCurrency),
+                    null,
+                    PostingRole.SETTLEMENT,
+                )
+            }
+        }
+        val journals = if (debitLines.isEmpty()) emptyList() else listOf(JournalSpec(debitLines))
+        val selfBase = selfBaseMinor.takeIf { it > 0L }?.let { positive(it, baseCurrency) }
+        val selfAccount = selfAccountMinor.takeIf { it > 0L }?.let { positive(it, primary.accountAmount.currency) }
+        return AccountingRuleOutput(
+            journals = journals,
+            amounts = usedAmounts(),
+            economic = selfBase?.let {
+                listOf(
+                    EconomicEffectSpec(
+                        0,
+                        EconomicNature.EXPENSE,
+                        EconomicComponent.SELF_SETTLEMENT_SHARE,
+                        category.statisticalNature == StatisticalNature.CONSUMPTION_EXPENSE,
+                        it,
+                    ),
+                )
+            }.orEmpty(),
+            budget = selfBase?.let(::budgetUse).orEmpty(),
+            project = selfBase?.let(::projectUse).orEmpty(),
+            goal = if (localPayer != null && selfAccount != null) {
+                goalSpend(selfAccount, localPayer.accountAmount.accountId)
+            } else {
+                emptyList()
+            },
+            statement = localPayer?.let { expenseStatement(payload, primary.accountAmount) }.orEmpty(),
             settlement = settlementShares(payload),
         )
     }
@@ -964,15 +1074,6 @@ private class RuleSession(
         emptyList()
     }
 
-    private fun settlementSelfShareOrPrimary(
-        payload: ExpensePayload,
-        primary: FrozenAmountEvidence,
-    ): FrozenAmountEvidence {
-        if (payload.settlementShares.isEmpty()) return primary
-        SettlementSharePolicy.validate(primary.userInput.minor.value, payload.settlementShares).orReject()
-        return amount(AmountRole.SELF_SHARE)
-    }
-
     private fun settlementShares(payload: ExpensePayload): List<SettlementEffectSpec> {
         val activityId = payload.settlementActivityId ?: return emptyList()
         if (payload.settlementShares.isEmpty()) reject("expense.settlementShares")
@@ -1175,6 +1276,28 @@ private fun incomeSystemCode(nature: StatisticalNature): SystemLedgerCode = when
     StatisticalNature.REGULAR_INCOME -> SystemLedgerCode.SYSTEM_INCOME_REGULAR
     StatisticalNature.NON_RECURRING_INCOME -> SystemLedgerCode.SYSTEM_INCOME_NON_RECURRING
     else -> reject("income.statisticalNature")
+}
+
+private fun proportionalMinorAllocation(totalMinor: Long, weights: List<Long>): List<Long> {
+    require(totalMinor > 0L && weights.isNotEmpty() && weights.all { it >= 0L }, "settlement.allocation")
+    val weightTotal = CheckedArithmetic.sum(weights).orReject()
+    require(weightTotal > 0L, "settlement.weightTotal")
+    val total = BigInteger.valueOf(totalMinor)
+    val denominator = BigInteger.valueOf(weightTotal)
+    val allocated = weights.map { weight ->
+        total.multiply(BigInteger.valueOf(weight)).divide(denominator).longValueExact()
+    }.toMutableList()
+    val allocatedTotal = CheckedArithmetic.sum(allocated).orReject()
+    var residual = Math.subtractExact(totalMinor, allocatedTotal)
+    var index = 0
+    while (residual > 0L) {
+        if (weights[index] > 0L) {
+            allocated[index] = Math.addExact(allocated[index], 1L)
+            residual--
+        }
+        index = (index + 1) % weights.size
+    }
+    return allocated
 }
 
 private fun positive(minor: Long, currency: app.ledger.core.money.CurrencyCode): PositiveMoney = when (

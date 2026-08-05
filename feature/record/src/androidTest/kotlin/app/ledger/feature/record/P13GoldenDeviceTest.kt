@@ -35,6 +35,7 @@ class P13GoldenDeviceTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    /** REC-011 moved to [P22SettlementAllocationGoldenDeviceTest] when its frozen P22 controls became complete. */
     @Test
     fun categoryHomeEditorValidationAndSettlementGoldensMatchEveryPixel() {
         val record = InstrumentationRegistry.getArguments().getString(RECORD_ARGUMENT) == "true"
@@ -80,10 +81,6 @@ class P13GoldenDeviceTest {
             OrdinaryRecordDeviceFixtures.content(OrdinaryRecordPolicy.changeExpression(OrdinaryRecordDeviceFixtures.editor(Locale.ENGLISH), "1000+250", Locale.ENGLISH))
         },
         Golden("p13_validation_light.png", "REC-003", ThemeMode.LIGHT) { OrdinaryRecordDeviceFixtures.content(OrdinaryRecordPolicy.validate(OrdinaryRecordDeviceFixtures.editor(Locale.JAPANESE))) },
-        Golden("p13_settlement_dark.png", "REC-011", ThemeMode.DARK) {
-            val amount = OrdinaryRecordPolicy.changeExpression(OrdinaryRecordDeviceFixtures.editor(), "1000", Locale.JAPAN)
-            OrdinaryRecordDeviceFixtures.content(OrdinaryRecordPolicy.selectSettlementActivity(OrdinaryRecordPolicy.setSettlementEnabled(amount, true), OrdinaryRecordDeviceFixtures.activity))
-        },
     )
 
     private data class Golden(val assetName: String, val screen: String, val theme: ThemeMode, val state: () -> OrdinaryRecordLoadState.Content)

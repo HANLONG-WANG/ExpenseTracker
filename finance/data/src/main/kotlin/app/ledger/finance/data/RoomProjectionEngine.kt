@@ -63,7 +63,7 @@ internal class RoomProjectionEngine {
             add(ProjectionFamily.ACCOUNT_BALANCE)
             add(ProjectionFamily.WIDGET)
         }
-        val activeTransactions = count(database, "SELECT COUNT(*) FROM business_transaction WHERE lifecycle_state = 0")
+        val activeTransactions = count(database, "SELECT COUNT(*) FROM current_transaction_projection")
         if (count(database, "SELECT COUNT(*) FROM transaction_fts") != activeTransactions) add(ProjectionFamily.SEARCH)
         if (
             count(database, "SELECT COUNT(*) FROM location_rtree") != count(database, "SELECT COUNT(*) FROM location_record") ||
@@ -178,6 +178,7 @@ internal class RoomProjectionEngine {
             LEFT JOIN fx_exchange_revision_detail fxd ON fxd.revision_id = tr.id
             LEFT JOIN settlement_payment_revision_detail spd ON spd.revision_id = tr.id
             LEFT JOIN opening_balance_revision_detail obd ON obd.revision_id = tr.id
+            WHERE NOT (bt.kind = 9 AND spd.local_account_id IS NULL)
             """.trimIndent(),
             arrayOf<Any>(revision),
         )
@@ -527,8 +528,8 @@ internal class RoomProjectionEngine {
             SELECT sap.activity_id, sap.participant_id,
               COALESCE(SUM(CASE WHEN se.kind = 0 AND se.signed_delta_minor > 0 THEN se.signed_delta_minor ELSE 0 END), 0),
               COALESCE(SUM(CASE WHEN se.kind = 1 AND se.signed_delta_minor < 0 THEN -se.signed_delta_minor ELSE 0 END), 0),
-              COALESCE(SUM(CASE WHEN se.kind = 2 AND se.signed_delta_minor < 0 THEN -se.signed_delta_minor ELSE 0 END), 0),
-              COALESCE(SUM(CASE WHEN se.kind = 3 AND se.signed_delta_minor > 0 THEN se.signed_delta_minor ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN se.kind = 2 AND se.signed_delta_minor > 0 THEN se.signed_delta_minor ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN se.kind = 3 AND se.signed_delta_minor < 0 THEN -se.signed_delta_minor ELSE 0 END), 0),
               COALESCE(SUM(se.signed_delta_minor), 0), ?
             FROM settlement_activity_participant sap LEFT JOIN settlement_effect se
               ON se.activity_id = sap.activity_id AND se.participant_id = sap.participant_id
@@ -646,12 +647,19 @@ internal class RoomProjectionEngine {
             ProjectionFamily.INSTALLMENT to listOf("installment_progress_projection"),
             ProjectionFamily.LOAN to listOf("loan_progress_projection", "loan_future_cashflow_projection"),
             ProjectionFamily.SETTLEMENT to listOf("settlement_position_projection"),
-            ProjectionFamily.WIDGET to listOf("widget_book_snapshot", "widget_account_snapshot", "widget_credit_snapshot", "widget_goal_snapshot"),
+            ProjectionFamily.WIDGET to listOf(
+                "widget_book_snapshot",
+                "widget_account_snapshot",
+                "widget_credit_snapshot",
+                "widget_goal_snapshot",
+            ),
         )
         val ROW_COUNT_EXPECTATIONS = listOf(
             ProjectionFamily.CURRENT_TRANSACTION to Pair(
                 "SELECT COUNT(*) FROM current_transaction_projection",
-                "SELECT COUNT(*) FROM business_transaction",
+                "SELECT COUNT(*) FROM business_transaction bt WHERE NOT (bt.kind=9 AND EXISTS " +
+                    "(SELECT 1 FROM settlement_payment_revision_detail spd " +
+                    "WHERE spd.revision_id=bt.current_revision_id AND spd.local_account_id IS NULL))",
             ),
             ProjectionFamily.ACCOUNT_BALANCE to Pair(
                 "SELECT COUNT(*) FROM account_balance_current",

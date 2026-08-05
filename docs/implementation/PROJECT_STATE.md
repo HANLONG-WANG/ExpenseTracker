@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-04 (Asia/Tokyo)
-Current stage: P21 — Loans
-Stage status: VERIFIED (`P21-E001`—`P21-E007`); P00—P20 remain VERIFIED and P22 is the next unstarted stage
+Last updated: 2026-08-05 (Asia/Tokyo)
+Current stage: P22 — Mutual-settlement netting
+Stage status: VERIFIED (`P22-E001`—`P22-E007`); P00—P21 remain VERIFIED and P23 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -240,7 +240,7 @@ P12 is `VERIFIED`. `P12_REFERENCE_DATA_MAPPING.md` records the exact implemented
 | Complete editor | Exact field order, system-keyboard expression, governed date/time picker, compatible account/card defaults, settlement, location, protected note semantics, encrypted attachments and advanced snapshots | VERIFIED (`P13-E002`, `P13-E004`, `P13-E005`) |
 | Atomic application write | One typed application request reaches `FinancialMutationCoordinator`; idempotency, expected revision, immutable edit facts, location side effect and synchronous projections share one SQLCipher transaction | VERIFIED (`P13-E003`, `P13-E006`) |
 | Failure/privacy behavior | Invalid Save locates errors, submitting is single-flight, failures retain input, conflict is explicit, unsaved exit is confirmed, sensitive draft data stays out of routes/SavedState/logs/semantic values | VERIFIED (`P13-E002`, `P13-E004`, `P13-E006`) |
-| UI evidence | 12 REC screens/42 states, widths/font scales, three languages, light/dark/reduced-motion, accessibility semantics and four exact Compose/token goldens pass on API 36 | VERIFIED (`P13-E004`, `P13-E005`) |
+| UI evidence | 12 REC screens/42 states, widths/font scales, three languages, light/dark/reduced-motion and accessibility semantics pass; three P13-owned exact goldens remain active and REC-011's complete regression moved to P22 | VERIFIED (`P13-E004`, `P13-E005`, `P22-E005`) |
 
 P13 remains `VERIFIED`. `P13_ORDINARY_RECORDING_MAPPING.md` records its handoff boundary; P14 closes only the transfer/opening/adjustment/FX subset while P18 goal behavior, P22 settlement management, P23 template authoring, P28 import flow and later acceptance remain unpromoted.
 
@@ -318,15 +318,27 @@ P18 is `VERIFIED`. `P18_PROJECT_GOAL_MAPPING.md` records the exact aggregate/fac
 
 P19 is `VERIFIED`. `P19_CREDIT_MAPPING.md` records the exact domain/fact/application/query/UI boundary. P23 retains only occurrence-engine scheduling integration; installments, loans, analytics, widgets and all P20+ workflows remain in their owning stages.
 
+### P22 result (verified)
+
+| Area | P22 result | Classification |
+|---|---|---|
+| Activities and participants | Exactly one active self participant, arbitrary external participants, ordered membership, settlement currency/date/project association and audited activity changes are complete | VERIFIED (`P22-E001`, `P22-E003`) |
+| Exact allocation and accounting | Equal/fixed/percentage/weight, exclusion, tax/service-fee distribution and closed rounding use checked minor units; only self's share enters consumption/budget/project and every participant delta nets to zero | VERIFIED (`P22-E002`, `P22-E003`) |
+| Settlement lifecycle | Self-involved payments use balanced coordinator-owned facts; external-to-external payments are pure immutable subledger records; partial/multiple payments are idempotent and historical payments survive source edits | VERIFIED (`P22-E002`, `P22-E003`) |
+| Projection and additional settlement | Paid/owed/settled/net positions rebuild canonically at one local revision; post-settlement edits recompute the theoretical residual and expose only application-generated supplemental suggestions | VERIFIED (`P22-E003`) |
+| UI, routes and screenshots | REC-011 and SET-001—008 cover all 27 YAML states using StableId-only routes, three languages, responsive/font/theme/accessibility matrices and three full-pixel Compose digests | VERIFIED (`P22-E001`, `P22-E004`, `P22-E005`) |
+
+P22 is `VERIFIED`. `P22_SETTLEMENT_MAPPING.md` records the exact allocation/fact/application/projection/UI boundary. P23 retains recurrence/occurrence integration; P25/P34 retain cross-feature analytics, and no P23+ stage is promoted.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 41 requirements are `VERIFIED`; 41 are `IN_PROGRESS`; 8 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 104 are `VERIFIED`; 111 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 47 requirements are `VERIFIED`; 35 are `IN_PROGRESS`; 8 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 134 are `VERIFIED`; 81 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-011 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-012—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
-| Permanent domain invariants | 35 | Fifteen are `VERIFIED`, including credit repayment classification (`INV-012`), goal/account separation (`INV-021`), budget hierarchy/rollover (`INV-018`—`INV-020`), transfer net-assets (`INV-015`), immutable historical FX (`INV-016`), valuation exclusion (`INV-017`) and checked arithmetic (`INV-034`); 20 retain later evidence |
+| Permanent domain invariants | 35 | 26 are `VERIFIED`, including settlement conservation/local-account/history invariants (`INV-022`—`INV-024`); 9 retain later evidence |
 | Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; P08 verifies normalized financial plan mapping and atomic repository behavior |
 | Projection families | 7 + search/geographic indexes | Current transaction, account, budget/project/goal, settlement and the P19 credit subset plus both indexes are `VERIFIED`; installment/loan, analytics and widget completion remain later-owned |
 | Durable/staging/backup operation inventories | 4 groups | Encrypted physical records `VERIFIED` by P07; operation runtime remains `IN_PROGRESS` for P28—P31 |
@@ -357,7 +369,8 @@ P19 is `VERIFIED`. `P19_CREDIT_MAPPING.md` records the exact domain/fact/applica
 | P19 | VERIFIED | Complete credit profile/statements, assignment, repayment/allocation, auto-bookkeeping boundary and REC-014/CRD-001—008; `P19-E001`—`P19-E007` |
 | P20 | VERIFIED | Purchase stays whole; exact versioned schedules, explicit settlement/refund application, synchronized progress and REC-027/INS-001—006; `P20-E001`—`P20-E007` |
 | P21 | VERIFIED | Combination contracts/tranches, exact versioned loan schedules, formal disbursement/payment, pure prepayment simulation, strict-future projection and all 15 LIA/REC/LOA destinations; `P21-E001`—`P21-E007` |
-| P22—P36 | NOT_STARTED | P22 is next; do not promote later work early |
+| P22 | VERIFIED | Exact mutual-expense allocation, unique-self activity/participants, immutable partial settlements, canonical positions/additional-settlement and REC-011/SET-001—008; `P22-E001`—`P22-E007` |
+| P23—P36 | NOT_STARTED | P23 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -431,3 +444,20 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p21_loans.py
 ```
 
 All P21 evidence is recorded in `P21-E001`—`P21-E007`. The next entry point is P22; reuse typed StableId routes and coordinator-owned immutable facts without converting forecasts into transactions, rewriting schedule history or introducing feature-owned financial SQL.
+
+## P22 verified handoff
+
+P22 leaves the repository with exact closed allocation policies, unique-self activity/participant management, coordinator-owned expense and self-settlement facts, pure external-to-external subledger payments, immutable partial-payment history, deterministic position/suggestion rebuilds and all nine REC/SET destinations. The reproducible P22 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p22_settlements.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p22_settlement_contracts -v
+./gradlew :finance:domain:test :finance:data:testDebugUnitTest :feature:record:testDebugUnitTest
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.SettlementApplicationPortDeviceTest
+./gradlew :feature:settlement:pixel6Api36DebugAndroidTest
+./gradlew :feature:record:pixel6Api36DebugAndroidTest
+./gradlew :app:pixel6Api36DebugAndroidTest
+./gradlew p22Check
+```
+
+All P22 evidence is recorded in `P22-E001`—`P22-E007`. The next entry point is P23; reuse the same idempotent occurrence/coordinator boundary without rewriting settlement history, turning candidates into facts or introducing a Worker-side financial DAO path.

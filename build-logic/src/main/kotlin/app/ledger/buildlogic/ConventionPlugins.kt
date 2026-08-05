@@ -159,6 +159,7 @@ private val DEVICE_TEST_LIBRARY_PATHS = setOf(
     ":feature:journal",
     ":feature:planning",
     ":feature:liabilities",
+    ":feature:settlement",
     ":feature:settings",
     ":feature:onboarding",
 )

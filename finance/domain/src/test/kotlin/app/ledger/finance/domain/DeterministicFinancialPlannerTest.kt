@@ -12,6 +12,71 @@ import java.time.ZoneId
 @Suppress("LargeClass")
 class DeterministicFinancialPlannerTest {
     @Test
+    fun `settlement expense records only self consumption and exact receivable or payable`() {
+        val references = PlannerFixtures.references()
+        val classification = CategoryAssignment(
+            PlannerFixtures.expenseCategoryId,
+            CategoryDirection.EXPENSE,
+            StatisticalNature.CONSUMPTION_EXPENSE,
+        )
+        val selfPaysPayload = ExpensePayload(
+            classification,
+            ExpensePayer.LocalAccount(PlannerFixtures.accountAmount(PlannerFixtures.bankJpyId, 200L, references), null),
+            positive(200L, PlannerFixtures.jpy),
+            PlannerFixtures.activityId,
+            listOf(
+                SettlementShare(PlannerFixtures.selfId, 200L, 100L, null, 0L),
+                SettlementShare(PlannerFixtures.friendId, 0L, 100L, null, 0L),
+            ),
+            null,
+        )
+        val selfUnsigned = RecordExpenseCommand(
+            CommandId(stableId(9_100L)),
+            hash(0),
+            NewTransactionInput(PlannerFixtures.inputContext(), selfPaysPayload),
+        )
+        val selfCommand = selfUnsigned.copy(payloadHash = CanonicalFinancialHash.command(selfUnsigned))
+        val selfPlan = DeterministicFinancialPlanner.plan(
+            selfCommand,
+            PlannerFixtures.snapshot(
+                listOf(PlannerFixtures.sameCurrencyEvidence(AmountRole.PRIMARY, 200L, PlannerFixtures.bankJpyId)),
+                seed = 9_200L,
+            ),
+        ).success()
+        selfPlan.journalBundles.single().entry.baseDebitTotalMinor shouldBe 200L
+        selfPlan.journalBundles.single().entry.baseCreditTotalMinor shouldBe 200L
+        selfPlan.economicEffects.single().baseAmount.minor.value shouldBe 100L
+        selfPlan.budgetEffects.single().baseAmount.minor.value shouldBe 100L
+        selfPlan.settlementEffects.sumOf(SettlementEffect::signedDeltaMinor) shouldBe 0L
+
+        val otherPaysPayload = selfPaysPayload.copy(
+            payer = ExpensePayer.ExternalParticipant(PlannerFixtures.friendId, PlannerFixtures.activityId),
+            primaryAmount = positive(160L, PlannerFixtures.jpy),
+            settlementShares = listOf(
+                SettlementShare(PlannerFixtures.selfId, 0L, 80L, null, 0L),
+                SettlementShare(PlannerFixtures.friendId, 160L, 80L, null, 0L),
+            ),
+        )
+        val otherUnsigned = RecordExpenseCommand(
+            CommandId(stableId(9_300L)),
+            hash(0),
+            NewTransactionInput(PlannerFixtures.inputContext(), otherPaysPayload),
+        )
+        val otherCommand = otherUnsigned.copy(payloadHash = CanonicalFinancialHash.command(otherUnsigned))
+        val otherPlan = DeterministicFinancialPlanner.plan(
+            otherCommand,
+            PlannerFixtures.snapshot(
+                listOf(PlannerFixtures.sameCurrencyEvidence(AmountRole.PRIMARY, 160L, null)),
+                seed = 9_400L,
+            ),
+        ).success()
+        otherPlan.journalBundles.single().entry.baseDebitTotalMinor shouldBe 80L
+        otherPlan.journalBundles.single().entry.baseCreditTotalMinor shouldBe 80L
+        otherPlan.economicEffects.single().baseAmount.minor.value shouldBe 80L
+        otherPlan.budgetEffects.single().baseAmount.minor.value shouldBe 80L
+    }
+
+    @Test
     fun `ordinary expense is deterministic balanced and emits four-layer effects`() {
         val amount = PlannerFixtures.sameCurrencyEvidence(
             AmountRole.PRIMARY,
@@ -379,6 +444,7 @@ class DeterministicFinancialPlannerTest {
     }
 
     @Test
+    @Suppress("LongMethod")
     fun `refund credit payment loan disbursement and external settlement use closed advanced rules`() {
         val references = PlannerFixtures.references()
         val refundPayload = RefundPayload(
@@ -491,6 +557,18 @@ class DeterministicFinancialPlannerTest {
             CommandId(stableId(37_000L)),
             hash(0),
             NewTransactionInput(PlannerFixtures.inputContext(), externalSettlementPayload),
+            SettlementPaymentRecord(
+                SettlementPaymentRecordId(stableId(37_050L)),
+                PlannerFixtures.activityId,
+                PlannerFixtures.friendId,
+                ParticipantId(stableId(36_500L)),
+                positive(100L, PlannerFixtures.jpy),
+                PlannerFixtures.inputContext().occurredAt,
+                null,
+                false,
+                BookCommitId(stableId(37_102L)),
+                null,
+            ),
         )
         val settlement = settlementUnsigned.copy(payloadHash = CanonicalFinancialHash.command(settlementUnsigned))
         val externalPlan = DeterministicFinancialPlanner.plan(
@@ -906,6 +984,18 @@ class DeterministicFinancialPlannerTest {
             CommandId(stableId(66_000L)),
             hash(0),
             NewTransactionInput(PlannerFixtures.inputContext(), createPayload),
+            SettlementPaymentRecord(
+                SettlementPaymentRecordId(stableId(66_050L)),
+                PlannerFixtures.activityId,
+                PlannerFixtures.selfId,
+                PlannerFixtures.friendId,
+                positive(300L, PlannerFixtures.jpy),
+                PlannerFixtures.inputContext().occurredAt,
+                null,
+                false,
+                BookCommitId(stableId(66_102L)),
+                null,
+            ),
         )
         val createCommand = createUnsigned.copy(payloadHash = CanonicalFinancialHash.command(createUnsigned))
         val createSnapshot = PlannerFixtures.snapshot(emptyList(), seed = 66_100L)

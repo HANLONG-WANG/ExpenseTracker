@@ -120,6 +120,12 @@ import app.ledger.feature.settings.CurrencySettingsPolicy
 import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.MerchantSubmission
 import app.ledger.feature.settings.PlaceSubmission
+import app.ledger.feature.settlement.SettlementFeatureState
+import app.ledger.feature.settlement.SettlementField
+import app.ledger.feature.settlement.SettlementLoadState
+import app.ledger.feature.settlement.SettlementParticipantDraft
+import app.ledger.feature.settlement.SettlementPolicy
+import app.ledger.feature.settlement.SettlementPresentation
 import app.ledger.finance.application.AccountDraft
 import app.ledger.finance.application.ApplyInstallmentSettlementRequest
 import app.ledger.finance.application.ApplyLoanSimulationRequest
@@ -188,6 +194,7 @@ import app.ledger.finance.application.RecordCreditPaymentRequest
 import app.ledger.finance.application.RecordGoalMovementRequest
 import app.ledger.finance.application.RecordLoanDisbursementRequest
 import app.ledger.finance.application.RecordLoanPaymentRequest
+import app.ledger.finance.application.RecordSettlementPaymentRequest
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.ReferenceMutation
@@ -205,6 +212,10 @@ import app.ledger.finance.application.SaveGoalRequest
 import app.ledger.finance.application.SaveInstallmentPlanRequest
 import app.ledger.finance.application.SaveLoanContractRequest
 import app.ledger.finance.application.SaveProjectRequest
+import app.ledger.finance.application.SaveSettlementActivityRequest
+import app.ledger.finance.application.SettlementApplicationPort
+import app.ledger.finance.application.SettlementMutationIds
+import app.ledger.finance.application.SettlementPaymentIds
 import app.ledger.finance.application.SpecializedAccountAmountDraft
 import app.ledger.finance.application.SpecializedFxQuoteRequest
 import app.ledger.finance.application.SpecializedTransactionContext
@@ -244,6 +255,10 @@ import app.ledger.finance.domain.RefundBudgetPolicy
 import app.ledger.finance.domain.RefundGoalPolicy
 import app.ledger.finance.domain.RefundProjectPolicy
 import app.ledger.finance.domain.ScheduleRevisionReason
+import app.ledger.finance.domain.SettlementActivityStatus
+import app.ledger.finance.domain.SettlementChargeDistribution
+import app.ledger.finance.domain.SettlementRoundingRule
+import app.ledger.finance.domain.SettlementSplitMethod
 import app.ledger.finance.domain.StatementAssignmentMode
 import app.ledger.finance.domain.StatementDateRule
 import app.ledger.finance.domain.StatisticalNature
@@ -284,6 +299,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.util.Locale
 import javax.inject.Inject
+import app.ledger.finance.application.SettlementParticipantDraft as SettlementParticipantWriteDraft
 
 internal sealed interface AppRootState {
     data object Starting : AppRootState
@@ -329,6 +345,7 @@ internal class AppRootViewModel @Inject constructor(
     private val creditApplicationPort: CreditApplicationPort,
     private val installmentApplicationPort: InstallmentApplicationPort,
     private val loanApplicationPort: LoanApplicationPort,
+    private val settlementApplicationPort: SettlementApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
@@ -400,6 +417,11 @@ internal class AppRootViewModel @Inject constructor(
     private var currentLoanScreenId: String = "LIA-001"
     private var currentLoanSimulationRequest: LoanSimulationRequest? = null
     private var currentLoanSimulation: app.ledger.finance.domain.LoanPrepaymentSimulation? = null
+    private val mutableSettlement = MutableStateFlow<SettlementLoadState>(SettlementLoadState.Loading)
+    val settlement: StateFlow<SettlementLoadState> = mutableSettlement.asStateFlow()
+    private val mutableSettlementPending = MutableStateFlow(false)
+    val settlementPending: StateFlow<Boolean> = mutableSettlementPending.asStateFlow()
+    private var currentSettlementScreenId: String = "SET-001"
     private val mutableProjectTransactionPagingRequest = MutableStateFlow<ProjectTransactionPagingRequest?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -1136,6 +1158,15 @@ internal class AppRootViewModel @Inject constructor(
     fun updateRecordNote(value: String) = updateEditor { OrdinaryRecordPolicy.updateNote(it, value) }
     fun setRecordSettlementEnabled(value: Boolean) = updateEditor { OrdinaryRecordPolicy.setSettlementEnabled(it, value) }
     fun selectRecordSettlementActivity(id: StableId) = updateEditorAndPop { OrdinaryRecordPolicy.selectSettlementActivity(it, id) }
+    fun selectRecordSettlementPayer(id: StableId) = updateEditor { OrdinaryRecordPolicy.selectSettlementPayer(it, id) }
+    fun selectRecordSettlementSplitMethod(method: app.ledger.finance.domain.SettlementSplitMethod) = updateEditor { OrdinaryRecordPolicy.selectSettlementSplitMethod(it, method) }
+    fun selectRecordSettlementChargeDistribution(distribution: app.ledger.finance.domain.SettlementChargeDistribution) = updateEditor { OrdinaryRecordPolicy.selectSettlementChargeDistribution(it, distribution) }
+    fun selectRecordSettlementRoundingRule(rule: app.ledger.finance.domain.SettlementRoundingRule) = updateEditor { OrdinaryRecordPolicy.selectSettlementRoundingRule(it, rule) }
+    fun toggleRecordSettlementParticipant(id: StableId) = updateEditor { OrdinaryRecordPolicy.toggleSettlementParticipant(it, id) }
+    fun updateRecordSettlementAllocationInput(id: StableId, value: String) = updateEditor { OrdinaryRecordPolicy.updateSettlementAllocationInput(it, id, value) }
+    fun updateRecordSettlementChargeInput(id: StableId, value: String) = updateEditor { OrdinaryRecordPolicy.updateSettlementChargeInput(it, id, value) }
+    fun updateRecordSettlementTax(value: String) = updateEditor { OrdinaryRecordPolicy.updateSettlementTax(it, value) }
+    fun updateRecordSettlementServiceFee(value: String) = updateEditor { OrdinaryRecordPolicy.updateSettlementServiceFee(it, value) }
     fun updateRecordOccurredAt(dateMillis: Long, hour: Int, minute: Int) = updateEditor { OrdinaryRecordPolicy.updateOccurredAt(it, dateMillis, hour, minute) }
 
     fun importRecordAttachment(uri: Uri) {
@@ -1559,8 +1590,23 @@ internal class AppRootViewModel @Inject constructor(
         mutableOrdinaryRecord.value = content.copy(editor = validated)
         if (validated.errors.isNotEmpty()) return
         val amountMinor = validated.draft.resultMinor ?: return
-        val account = validated.snapshot.references.accounts.singleOrNull { it.id == validated.draft.accountId } ?: return
-        val baseMinor = baseMinor(validated, account.balanceMinor, account.currentBaseValueMinor) ?: run {
+        val activity = validated.snapshot.settlementActivities.singleOrNull { it.id == validated.draft.settlementActivityId }
+        val externalPayer = validated.draft.settlementEnabled &&
+            activity?.participants?.singleOrNull { it.id == validated.draft.settlementPayerParticipantId }?.isSelf == false
+        val account = validated.snapshot.references.accounts.singleOrNull { it.id == validated.draft.accountId }
+        if (!externalPayer && account == null) return
+        val userCurrency = if (externalPayer) requireNotNull(activity).currency else requireNotNull(account).currency
+        val baseMinor = if (externalPayer && userCurrency == validated.snapshot.references.baseCurrency) {
+            amountMinor
+        } else if (externalPayer) {
+            validated.snapshot.references.accounts.asSequence()
+                .filter { it.currency == userCurrency }
+                .mapNotNull { valuedBaseMinor(amountMinor, it.balanceMinor, it.currentBaseValueMinor) }
+                .firstOrNull()
+        } else {
+            val localAccount = requireNotNull(account)
+            baseMinor(validated, localAccount.balanceMinor, localAccount.currentBaseValueMinor)
+        } ?: run {
             mutableOrdinaryRecord.value = content.copy(editor = validated.copy(presentation = RecordEditorPresentation.SAVE_ERROR, sanitizedFailureCode = "FX_EVIDENCE_UNAVAILABLE"))
             return
         }
@@ -1589,9 +1635,9 @@ internal class AppRootViewModel @Inject constructor(
                     expectedRevisionId = validated.expectedRevisionId,
                     direction = validated.draft.direction,
                     categoryId = requireNotNull(validated.draft.categoryId),
-                    amount = OrdinaryAmountDraft(validated.draft.expression, amountMinor, account.currency, amountMinor, baseMinor),
-                    accountId = requireNotNull(validated.draft.accountId),
-                    cardId = validated.draft.cardId,
+                    amount = OrdinaryAmountDraft(validated.draft.expression, amountMinor, userCurrency, amountMinor, baseMinor),
+                    accountId = if (externalPayer) null else validated.draft.accountId,
+                    cardId = if (externalPayer) null else validated.draft.cardId,
                     merchantId = validated.draft.merchantId,
                     occurredAt = validated.draft.occurredAt,
                     zoneId = validated.draft.zoneId,
@@ -3165,6 +3211,259 @@ internal class AppRootViewModel @Inject constructor(
         mutableLoan.value = LoanLoadState.Content(block(current.state))
     }
 
+    fun loadSettlement(screenId: String, activityId: StableId? = null, participantId: StableId? = null) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        currentSettlementScreenId = screenId
+        mutableSettlement.value = SettlementLoadState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
+            mutableSettlement.value = when (val result = settlementApplicationPort.snapshot(bookId)) {
+                is DomainResult.Failure -> SettlementLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Success -> {
+                    val activity = activityId?.let { id -> result.value.activities.singleOrNull { it.id == id } }
+                    val missingActivity = activityId != null && activity == null
+                    val missingParticipant = participantId != null && activity?.participants?.none { it.id == participantId } != false
+                    if (missingActivity || missingParticipant) {
+                        SettlementLoadState.Failure("SETTLEMENT_NOT_FOUND")
+                    } else {
+                        val created = SettlementPolicy.create(result.value, screenId, activityId, participantId)
+                        val zone = ZoneId.of(settings.value.zoneId.ifBlank { DEFAULT_ZONE })
+                        SettlementLoadState.Content(
+                            if (screenId == "SET-002" && activityId == null && created.draft.startDate.isBlank()) {
+                                created.copy(draft = created.draft.copy(startDate = runtimeSources.clock.now().atZone(zone).toLocalDate().toString()))
+                            } else {
+                                created
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun navigateSettlement(target: String, activityId: StableId?, participantId: StableId? = null) {
+        val screenId = ScreenId(target)
+        val arguments = buildMap<String, SafeRouteArgument> {
+            if (target != "SET-001") activityId?.let { put("activityId", StableIdArgument(it)) }
+            if (target == "SET-005") {
+                put("participantId", StableIdArgument(requireNotNull(participantId)))
+            }
+        }
+        navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+    }
+
+    fun updateSettlementField(field: SettlementField, value: String) = updateSettlement { SettlementPolicy.update(it, field, value) }
+
+    fun selectSettlementActivity(activityId: StableId) = updateSettlement { state ->
+        SettlementPolicy.create(state.snapshot, currentSettlementScreenId, activityId)
+    }
+
+    fun selectSettlementPayer(participantId: StableId) = updateSettlement { state ->
+        val activity = state.activity
+        val payerSelf = activity?.participants?.singleOrNull { it.id == participantId }?.isSelf == true
+        val payeeSelf = activity?.participants?.singleOrNull { it.id == state.draft.payeeParticipantId }?.isSelf == true
+        state.copy(
+            draft = state.draft.copy(
+                payerParticipantId = participantId,
+                accountId = if (payerSelf || payeeSelf) state.draft.accountId ?: state.snapshot.accounts.firstOrNull { it.active && it.currency == activity.currency }?.id else null,
+            ),
+            presentation = if (payerSelf) {
+                SettlementPresentation.SELF_PAYS
+            } else if (payeeSelf) {
+                SettlementPresentation.SELF_RECEIVES
+            } else {
+                SettlementPresentation.EXTERNAL_TO_EXTERNAL
+            },
+        )
+    }
+
+    fun selectSettlementPayee(participantId: StableId) = updateSettlement { state ->
+        val activity = state.activity
+        val payerSelf = activity?.participants?.singleOrNull { it.id == state.draft.payerParticipantId }?.isSelf == true
+        val payeeSelf = activity?.participants?.singleOrNull { it.id == participantId }?.isSelf == true
+        state.copy(
+            draft = state.draft.copy(
+                payeeParticipantId = participantId,
+                accountId = if (payerSelf || payeeSelf) state.draft.accountId ?: state.snapshot.accounts.firstOrNull { it.active && it.currency == activity.currency }?.id else null,
+            ),
+            presentation = if (payerSelf) {
+                SettlementPresentation.SELF_PAYS
+            } else if (payeeSelf) {
+                SettlementPresentation.SELF_RECEIVES
+            } else {
+                SettlementPresentation.EXTERNAL_TO_EXTERNAL
+            },
+        )
+    }
+
+    fun selectSettlementAccount(accountId: StableId?) = updateSettlement { it.copy(draft = it.draft.copy(accountId = accountId)) }
+    fun selectSettlementProject(projectId: StableId?) = updateSettlement { state ->
+        require(projectId == null || state.snapshot.projects.any { it.id == projectId && it.active })
+        state.copy(draft = state.draft.copy(projectId = projectId))
+    }
+    fun selectSettlementSplitMethod(method: SettlementSplitMethod) = updateSettlement { it.copy(draft = it.draft.copy(splitMethod = method)) }
+    fun selectSettlementChargeDistribution(distribution: SettlementChargeDistribution) = updateSettlement { it.copy(draft = it.draft.copy(chargeDistribution = distribution)) }
+    fun selectSettlementRoundingRule(rule: SettlementRoundingRule) = updateSettlement { it.copy(draft = it.draft.copy(roundingRule = rule)) }
+
+    fun toggleSettlementParticipant(participantId: StableId) = updateSettlement { state ->
+        val participants = state.draft.participants.map { participant ->
+            if (participant.id == participantId && !participant.isSelf) participant.copy(included = !participant.included) else participant
+        }
+        state.copy(draft = state.draft.copy(participants = participants), presentation = SettlementPresentation.EDIT)
+    }
+
+    fun moveSettlementParticipant(participantId: StableId, delta: Int) = updateSettlement { state ->
+        require(delta == -1 || delta == 1)
+        val from = state.draft.participants.indexOfFirst { it.id == participantId }
+        if (from < 0) {
+            state
+        } else {
+            val to = (from + delta).coerceIn(0, state.draft.participants.lastIndex)
+            if (from == to) return@updateSettlement state
+            val reordered = state.draft.participants.toMutableList()
+            val participant = reordered.removeAt(from)
+            reordered.add(to, participant)
+            state.copy(draft = state.draft.copy(participants = reordered), presentation = SettlementPresentation.EDIT)
+        }
+    }
+
+    fun addSettlementParticipant() = updateSettlement { state ->
+        val name = state.draft.participantName.trim()
+        if (name.isEmpty() || state.draft.participants.any { it.name.equals(name, ignoreCase = true) }) {
+            state.copy(presentation = SettlementPresentation.VALIDATION_ERROR, validationFields = state.validationFields + "participantName")
+        } else {
+            state.copy(
+                draft = state.draft.copy(
+                    participantName = "",
+                    participants = state.draft.participants + SettlementParticipantDraft(nextId(), name, isSelf = false),
+                ),
+                presentation = SettlementPresentation.EDIT,
+            )
+        }
+    }
+
+    fun saveSettlement() {
+        if (currentSettlementScreenId == "SET-006") saveSettlementPayment() else saveSettlementActivity()
+    }
+
+    private fun saveSettlementActivity() {
+        val raw = (mutableSettlement.value as? SettlementLoadState.Content)?.state ?: return
+        val state = SettlementPolicy.validateActivity(raw)
+        if (state.validationFields.isNotEmpty()) {
+            mutableSettlement.value = SettlementLoadState.Content(state)
+            return
+        }
+        val included = state.draft.participants.filter { it.included }
+        val activity = state.activity
+        val activityId = activity?.id ?: nextId()
+        val start = runCatching { LocalDate.parse(state.draft.startDate) }.getOrNull() ?: return
+        val end = state.draft.endDate.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: if (state.draft.endDate.isBlank()) null else return
+        val ids = SettlementMutationIds(
+            state.snapshot.bookId,
+            CommandId(nextId()),
+            nextId(),
+            nextId(),
+            List(included.size + 1) { nextId() },
+            included.filterNot { it.isSelf }.associate { it.id to nextId() },
+            state.snapshot.localRevision,
+        )
+        val request = SaveSettlementActivityRequest(
+            ids, activityId, activity?.lastCommitId, state.draft.name, state.draft.description.ifBlank { null },
+            activity?.currency ?: state.snapshot.baseCurrency, state.draft.projectId, start, end,
+            activity?.status ?: SettlementActivityStatus.ACTIVE,
+            included.map { SettlementParticipantWriteDraft(it.id, it.name, it.isSelf) }, runtimeSources.clock.now(),
+        )
+        if (!beginSettlementMutation(state.copy(presentation = SettlementPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = settlementApplicationPort.saveActivity(request)) {
+                    is DomainResult.Success -> {
+                        navigateSettlement("SET-004", activityId)
+                        loadSettlement("SET-004", activityId)
+                    }
+                    is DomainResult.Failure -> markSettlementFailure(result.error.code)
+                }
+            } finally {
+                mutableSettlementPending.value = false
+            }
+        }
+    }
+
+    private fun saveSettlementPayment() {
+        val state = (mutableSettlement.value as? SettlementLoadState.Content)?.state ?: return
+        val activity = state.activity ?: return markSettlementInvalid()
+        val amount = SettlementPolicy.minor(state.draft.total, activity.currency)?.takeIf { it > 0L } ?: return markSettlementInvalid()
+        val payer = state.draft.payerParticipantId ?: return markSettlementInvalid()
+        val payee = state.draft.payeeParticipantId?.takeIf { it != payer } ?: return markSettlementInvalid()
+        val selfInvolved = activity.participants.any { it.isSelf && it.id in setOf(payer, payee) }
+        val account = state.draft.accountId?.let { id -> state.snapshot.accounts.singleOrNull { it.id == id && it.active } }
+        val accountPresenceMismatch = selfInvolved != (account != null)
+        val currencyMismatch = activity.currency != state.snapshot.baseCurrency || account?.currency?.let { it != activity.currency } == true
+        if (accountPresenceMismatch || selfInvolved && currencyMismatch) {
+            return markSettlementInvalid()
+        }
+        val now = runtimeSources.clock.now()
+        val zone = ZoneId.of(settings.value.zoneId.ifBlank { DEFAULT_ZONE })
+        val request = RecordSettlementPaymentRequest(
+            SettlementPaymentIds(
+                state.snapshot.bookId, CommandId(nextId()), nextId(), nextId(), nextId(), nextId(), nextId(),
+                List(FINANCIAL_FACT_ID_RESERVE) { nextId() }, emptyList(),
+            ),
+            activity.id, payer, payee, amount, account?.id,
+            account?.let { amount }, account?.let { amount }, null, null,
+            now, zone, now.atZone(zone).toLocalDate(), state.draft.note.ifBlank { null }, now,
+        )
+        if (!beginSettlementMutation(state.copy(presentation = SettlementPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = settlementApplicationPort.recordPayment(request)) {
+                    is DomainResult.Success -> {
+                        navigator.pop()
+                        loadSettlement("SET-004", activity.id)
+                    }
+                    is DomainResult.Failure -> markSettlementFailure(result.error.code)
+                }
+            } finally {
+                mutableSettlementPending.value = false
+            }
+        }
+    }
+
+    fun rebuildSettlement() {
+        val state = (mutableSettlement.value as? SettlementLoadState.Content)?.state ?: return
+        if (!beginSettlementMutation(state.copy(presentation = SettlementPresentation.SAVING))) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = settlementApplicationPort.rebuildAndAudit(state.snapshot.bookId)) {
+                    is DomainResult.Success -> loadSettlement(currentSettlementScreenId, state.selectedActivityId, state.selectedParticipantId)
+                    is DomainResult.Failure -> markSettlementFailure(result.error.code)
+                }
+            } finally {
+                mutableSettlementPending.value = false
+            }
+        }
+    }
+
+    private fun beginSettlementMutation(state: SettlementFeatureState): Boolean {
+        if (mutableSettlementPending.value) return false
+        mutableSettlementPending.value = true
+        mutableSettlement.value = SettlementLoadState.Content(state)
+        return true
+    }
+
+    private fun markSettlementInvalid() = updateSettlement {
+        it.copy(presentation = SettlementPresentation.VALIDATION_ERROR, validationFields = setOf("settlement"))
+    }
+
+    private fun markSettlementFailure(code: String) = updateSettlement {
+        it.copy(presentation = SettlementPresentation.VALIDATION_ERROR, validationFields = setOf(sanitizeCode(code)))
+    }
+
+    private fun updateSettlement(block: (SettlementFeatureState) -> SettlementFeatureState) {
+        val current = mutableSettlement.value as? SettlementLoadState.Content ?: return
+        mutableSettlement.value = SettlementLoadState.Content(block(current.state))
+    }
+
     fun requestRootBack() {
         val screen = navigator.currentKey.contract.screenId.value
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
@@ -3597,9 +3896,13 @@ internal class AppRootViewModel @Inject constructor(
         val result = editor.draft.resultMinor ?: return null
         val account = editor.snapshot.references.accounts.singleOrNull { it.id == editor.draft.accountId } ?: return null
         if (account.currency == editor.snapshot.references.baseCurrency) return result
+        return valuedBaseMinor(result, balanceMinor, currentBaseValueMinor)
+    }
+
+    private fun valuedBaseMinor(resultMinor: Long, balanceMinor: Long, currentBaseValueMinor: Long?): Long? {
         if (balanceMinor == 0L || currentBaseValueMinor == null) return null
         return runCatching {
-            java.math.BigDecimal.valueOf(result)
+            java.math.BigDecimal.valueOf(resultMinor)
                 .multiply(java.math.BigDecimal.valueOf(currentBaseValueMinor).abs())
                 .divide(java.math.BigDecimal.valueOf(balanceMinor).abs(), 0, java.math.RoundingMode.HALF_EVEN)
                 .longValueExact()

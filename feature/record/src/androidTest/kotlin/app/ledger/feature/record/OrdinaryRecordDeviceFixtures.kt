@@ -80,7 +80,9 @@ internal object OrdinaryRecordDeviceFixtures {
     val actions = OrdinaryRecordActions(
         onRetry = {}, onTab = {}, onSearch = {}, onNavigate = { _, _, _ -> }, onOpenEditor = { _, _, _, _ -> },
         onExpression = {}, onOperator = {}, onSelectCategory = {}, onSelectAccount = {}, onSelectCard = {}, onSelectReference = { _, _ -> },
-        onNote = {}, onSettlementEnabled = {}, onSettlementActivity = {}, onOccurredAt = { _, _, _ -> }, onAddAttachment = {}, onCancelAttachment = {}, onSave = {}, onUnsavedDiscard = {},
+        onNote = {}, onSettlementEnabled = {}, onSettlementActivity = {}, onSettlementPayer = {}, onSettlementSplitMethod = {}, onSettlementChargeDistribution = {}, onSettlementRoundingRule = {},
+        onSettlementParticipantIncluded = {}, onSettlementAllocationInput = { _, _ -> }, onSettlementChargeInput = { _, _ -> }, onSettlementTax = {}, onSettlementServiceFee = {},
+        onOccurredAt = { _, _, _ -> }, onAddAttachment = {}, onCancelAttachment = {}, onSave = {}, onUnsavedDiscard = {},
         onUnsavedKeepEditing = {}, onReloadConflict = {}, onCancelConflict = {},
     )
 

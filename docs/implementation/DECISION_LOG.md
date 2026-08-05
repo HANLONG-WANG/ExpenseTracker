@@ -702,3 +702,32 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: the locked Lint 32.3.1 artifact has Java 17 class-file level but its FIR `JavaDocParser` calls `java.util.List.removeLast()`, an API absent before JDK 21. On the frozen Temurin JDK 17 it crashes while resolving Protobuf 4.35 generated JavaDoc, before reporting any project diagnostic.
 - Decision: retain JDK 17, AGP/Lint 32.3.1 and full main/test Lint coverage. Each existing Protobuf generation task deterministically removes only `/** ... */` blocks from its generated Java outputs before Gradle snapshots them; generated declarations, annotations, descriptors and bytecode inputs are unchanged. The settings contract unit test directly audits the tracked `.proto` source and the production restore decision through a pure wire-value function.
 - Consequence: no rule, source set, generated declaration or security assertion is disabled, and clean generation is reproducible. This compatibility step may be deleted only after the frozen toolchain is explicitly revised to a Lint artifact that no longer calls the unavailable JDK API.
+
+## DL-099 — P22 activity start date follows the normalized Schema v1 constraint
+
+- Date/stage: 2026-08-05 / P22
+- Surface issue: the domain overview describes an activity date range as optional, while the frozen P07 Schema v1 maps `settlement_activity.start_date` to a non-null column and the SET-002 contract exposes a required start-date validation state.
+- Precedence applied: the normalized logical/database contract and already verified encrypted Schema v1 outrank treating a presentation-level omission as permission to store an absent start date.
+- Decision: the typed save request requires `LocalDate startDate`; the editor reports a validation error for blank/invalid start date and permits only an optional end date not earlier than the start.
+- Consequence: P22 does not mutate the frozen schema, fabricate a sentinel date or silently reinterpret an existing row. A future optional-start change would require an explicit schema migration and specification decision.
+
+## DL-100 — External-to-external settlement retains an immutable operation without a local transaction
+
+- Date/stage: 2026-08-05 / P22
+- Surface issue: REQ-044 requires an external participant's payment to another external participant to update only the mutual-settlement subledger, while command idempotency and audit still require an immutable receipt and operation identity.
+- Decision: persist the command receipt and `settlement_payment_record` atomically with `linked_transaction_id = NULL`; append no local Journal, Posting, account effect, current-transaction projection or FTS row. Self-involved settlement continues through the full `FinancialMutationCoordinator` transaction path.
+- Consequence: external history is auditable and replay-safe without pretending that the local user moved money. The SET-006 account field is absent and the no-local-impact disclosure is mandatory for this branch.
+
+## DL-101 — Settled-source edits retain payment history and expose only the residual
+
+- Date/stage: 2026-08-05 / P22
+- Surface issue: recalculating an edited group expense after partial/full settlement can produce a different theoretical position, but REQ-045 and INV-024 prohibit rewriting actual historical payments.
+- Decision: edit the source through its normal immutable REVERSE/APPLY chain; never update or replace `settlement_payment_record`. Rebuild the theoretical position from current expense effects plus the retained payment facts and set `requires_additional_settlement` only when a non-zero residual remains.
+- Consequence: SET-004/SET-008 explain that history is retained and render application-generated supplemental suggestions. No retroactive payment, income/expense duplication or hidden auto-settlement is created.
+
+## DL-102 — REC-011 P22 pixel evidence supersedes its pre-feature P13 snapshot
+
+- Date/stage: 2026-08-05 / P22
+- Surface issue: P13 froze a minimal REC-011 handoff before P22 owned the complete payer, four-mode, charge, exclusion and rounding controls. Continuing to compare the expanded screen to that old image would reject the required contract rather than visual drift.
+- Decision: retain the old P13 asset as historical evidence but remove it from the active P13 case list. P22 renders the complete production REC-011 surface in a deterministic 360×720 dark viewport and compares SHA-256 over width, height and every ARGB pixel: `10ac3fb165b6f3881f6c0e1c3b03f8aa8d7ce3bbe6e50f16b1f58760287767b4`. SET-004 light and SET-006 external dark use `f9d6c0b5ed020985df1555241ceadb1453d21ff6471335346ac502a9f1515c42` and `1e3acfa652268c86f0015504ffe374b468f6469730d6329d86ebbdbe6f805a19`.
+- Consequence: pixel drift remains machine-detectable at the correct owning stage. Every digest is derived only from production Compose, frozen textual UI contracts, YAML/CSV and token JSON; none of the excluded PNG/HTML visual drafts was opened, parsed, sampled, measured or compared.

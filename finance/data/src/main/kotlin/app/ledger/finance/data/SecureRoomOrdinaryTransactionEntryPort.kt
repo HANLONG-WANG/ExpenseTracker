@@ -133,9 +133,10 @@ public class SecureRoomOrdinaryTransactionEntryPort(
 
     private suspend fun execute(database: LedgerDatabase, request: OrdinaryTransactionWriteRequest): DomainResult<CommandReceipt> {
         val automaticStatement = database.readLedger { db -> automaticStatement(db, request) }
+        val settledActivity = database.readLedger { db -> settledActivityForEdit(db, request) }
         val snapshot = database.readLedger { db -> planningSnapshot(db, request, automaticStatement?.newStatement != null) }
         val references = requireNotNull(snapshot.accountingContext).references
-        val account = references.account(UserAccountId(request.accountId)) ?: abort(FinanceDataError.CorruptData)
+        val account = request.accountId?.let { references.account(UserAccountId(it)) ?: abort(FinanceDataError.CorruptData) }
         val category = references.category(CategoryId(request.categoryId)) ?: abort(FinanceDataError.CorruptData)
         val evidence = requireNotNull(snapshot.accountingContext).amount(AmountRole.PRIMARY) ?: abort(FinanceDataError.CorruptData)
         val context = TransactionContextInput(
@@ -154,17 +155,31 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             attachmentIds = request.attachmentIds.map { app.ledger.finance.domain.AttachmentId(it) },
         )
         val classification = CategoryAssignment(category.id, category.direction, category.statisticalNature)
-        val accountAmount = AccountAmount.create(account.account, evidence.accountAmount.money).valueOrAbort()
         val payload = when (request.direction) {
-            OrdinaryDirection.EXPENSE -> ExpensePayload(
-                classification,
-                ExpensePayer.LocalAccount(accountAmount, request.cardId?.let(::PaymentCardId)),
-                evidence.userInput,
-                request.settlementActivityId?.let(::SettlementActivityId),
-                request.settlementShares.map { it.toDomain() },
-                null,
-            )
-            OrdinaryDirection.INCOME -> IncomePayload(classification, accountAmount, evidence.userInput)
+            OrdinaryDirection.EXPENSE -> {
+                val payerParticipantId = request.settlementShares.singleOrNull { it.paidMinor > 0L }?.participantId
+                val selfParticipantId = snapshot.participants.singleOrNull { it.isSelf }?.id?.value
+                val settlementActivityId = request.settlementActivityId
+                val payer = if (settlementActivityId != null && payerParticipantId != null && payerParticipantId != selfParticipantId) {
+                    if (account != null || request.cardId != null) abort(FinanceDataError.CorruptData)
+                    ExpensePayer.ExternalParticipant(ParticipantId(payerParticipantId), SettlementActivityId(settlementActivityId))
+                } else {
+                    val localAccount = account ?: abort(FinanceDataError.CorruptData)
+                    ExpensePayer.LocalAccount(AccountAmount.create(localAccount.account, evidence.accountAmount.money).valueOrAbort(), request.cardId?.let(::PaymentCardId))
+                }
+                ExpensePayload(
+                    classification,
+                    payer,
+                    evidence.userInput,
+                    request.settlementActivityId?.let(::SettlementActivityId),
+                    request.settlementShares.map { it.toDomain() },
+                    null,
+                )
+            }
+            OrdinaryDirection.INCOME -> {
+                val localAccount = account ?: abort(FinanceDataError.CorruptData)
+                IncomePayload(classification, AccountAmount.create(localAccount.account, evidence.accountAmount.money).valueOrAbort(), evidence.userInput)
+            }
         }
         val input = NewTransactionInput(context, payload)
         val emptyHash = Hash256.fromBytes(ByteArray(32)).valueOrAbort()
@@ -185,7 +200,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
                 emptyList(),
             )
         }.withCanonicalHash()
-        val sideEffect = if (request.newLocation != null || automaticStatement?.newStatement != null) {
+        val sideEffect = if (request.newLocation != null || automaticStatement?.newStatement != null || settledActivity != null) {
             FinancialCommitSideEffect { db, plan ->
                 val location = request.newLocation
                 if (location != null) {
@@ -207,6 +222,26 @@ public class SecureRoomOrdinaryTransactionEntryPort(
                     )
                 }
                 automaticStatement?.newStatement?.let { statement -> insertAutomaticStatement(db, plan, statement) }
+                settledActivity?.let { activityId ->
+                    db.execSQL(
+                        "UPDATE settlement_activity SET status=?,requires_additional_settlement=1,last_commit_id=? WHERE uid=? AND status=?",
+                        arrayOf<Any>(
+                            app.ledger.finance.domain.SettlementActivityStatus.REQUIRES_ADDITIONAL_SETTLEMENT.ordinal,
+                            db.commitId(plan.commit.id),
+                            activityId.bytes,
+                            app.ledger.finance.domain.SettlementActivityStatus.SETTLED.ordinal,
+                        ),
+                    )
+                    db.execSQL(
+                        "INSERT INTO entity_change(commit_id,entity_type,entity_uid,operation,before_hash,after_hash,entity_revision_uid) VALUES(?,?,?,?,NULL,NULL,NULL)",
+                        arrayOf<Any>(
+                            db.commitId(plan.commit.id),
+                            app.ledger.finance.domain.EntityType.SETTLEMENT_ACTIVITY.ordinal,
+                            activityId.bytes,
+                            app.ledger.finance.domain.EntityChangeOperation.UPDATE.ordinal,
+                        ),
+                    )
+                }
             }
         } else {
             FinancialCommitSideEffect.NONE
@@ -229,13 +264,13 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             abort(FinanceDataError.CorruptData)
         }
         val references = mapper.references(db)
-        val account = references.account(UserAccountId(request.accountId)) ?: abort(FinanceDataError.CorruptData)
+        val account = request.accountId?.let { references.account(UserAccountId(it)) ?: abort(FinanceDataError.CorruptData) }
         val category = references.category(CategoryId(request.categoryId)) ?: abort(FinanceDataError.CorruptData)
         val expectedDirection = if (request.direction == OrdinaryDirection.EXPENSE) CategoryDirection.EXPENSE else CategoryDirection.INCOME
         if (category.direction != expectedDirection || request.direction == OrdinaryDirection.INCOME && request.settlementShares.isNotEmpty()) {
             abort(FinanceDataError.CorruptData)
         }
-        val evidence = amountEvidence(request.amount, account.account.currency, book.baseCurrency, account.account.id, request)
+        val evidence = amountEvidence(request.amount, account?.account?.currency ?: request.amount.userCurrency, book.baseCurrency, account?.account?.id, request)
         val factIds = if (reserveStatementIds) request.ids.factIds.dropLast(AUTOMATIC_STATEMENT_ID_COUNT) else request.ids.factIds
         val identities = PlanningIdentitySet(
             TransactionId(request.ids.transactionId),
@@ -245,7 +280,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
         )
         val baseContext = AccountingPlanningContext(identities, request.createdAt, DeviceInstanceId(request.ids.deviceInstanceId), references, listOf(evidence), null)
         if (request.expectedRevisionId == null) {
-            return PlanningSnapshot(book, null, null, emptyList(), emptySet(), emptyList(), null, emptyList(), baseContext)
+            return PlanningSnapshot(book, null, null, emptyList(), emptySet(), emptyList(), null, domainParticipants(db), baseContext)
         }
         val source = mapper.load(
             db,
@@ -265,6 +300,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             abort(FinanceDataError.CorruptData)
         }
         return source.snapshot.copy(
+            participants = domainParticipants(db),
             accountingContext = requireNotNull(source.snapshot.accountingContext).copy(
                 identities = identities,
                 createdAt = request.createdAt,
@@ -274,14 +310,39 @@ public class SecureRoomOrdinaryTransactionEntryPort(
         )
     }
 
+    private fun domainParticipants(db: SupportSQLiteDatabase): List<app.ledger.finance.domain.Participant> = db.queryList(
+        "SELECT p.uid,p.name,p.is_self,p.status,bc.uid commit_uid FROM participant p JOIN book_commit bc ON bc.id=p.last_commit_id WHERE p.status=? ORDER BY p.is_self DESC,p.uid",
+        arrayOf(app.ledger.finance.domain.EntityStatus.ACTIVE.ordinal),
+    ) {
+        app.ledger.finance.domain.Participant(
+            app.ledger.finance.domain.ParticipantId(it.stableId("uid")),
+            it.getString(1),
+            it.getInt(2) == 1,
+            app.ledger.finance.domain.EntityStatus.entries[it.getInt(3)],
+            app.ledger.finance.domain.BookCommitId(it.stableId("commit_uid")),
+        )
+    }
+
+    private fun settledActivityForEdit(db: SupportSQLiteDatabase, request: OrdinaryTransactionWriteRequest): StableId? {
+        if (request.expectedRevisionId == null) return null
+        return db.queryOne(
+            "SELECT sa.uid FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id " +
+                "JOIN expense_revision_detail erd ON erd.revision_id=tr.id JOIN settlement_activity sa ON sa.id=erd.settlement_activity_id " +
+                "WHERE bt.uid=? AND sa.status=?",
+            arrayOf(request.ids.transactionId.bytes, app.ledger.finance.domain.SettlementActivityStatus.SETTLED.ordinal),
+        ) { it.stableId("uid") }
+    }
+
+    @Suppress("ReturnCount")
     private fun automaticStatement(db: SupportSQLiteDatabase, request: OrdinaryTransactionWriteRequest): AutomaticStatement? {
+        val requestAccountId = request.accountId ?: return null
         val row = db.queryOne(
             "SELECT ua.id account_id,cap.statement_rule_type,cap.statement_day,cap.due_rule_type,cap.due_day,cap.days_after_statement," +
                 "cap.zone_id,cap.standard_limit_minor,cap.temporary_limit_minor,cap.temporary_limit_expires_on,pay.uid payment_uid," +
                 "cap.auto_payment_mode,cap.weekend_adjustment,last.uid last_commit_uid FROM user_account ua " +
                 "JOIN credit_account_profile cap ON cap.account_id=ua.id JOIN book_commit last ON last.id=cap.last_commit_id " +
                 "LEFT JOIN user_account pay ON pay.id=cap.default_payment_account_id WHERE ua.uid=? AND ua.type=2",
-            arrayOf(request.accountId.bytes),
+            arrayOf(requestAccountId.bytes),
         ) { cursor ->
             val statementRule = when (cursor.getInt(cursor.getColumnIndexOrThrow("statement_rule_type"))) {
                 0 -> StatementDateRule.DayOfMonth(cursor.getInt(cursor.getColumnIndexOrThrow("statement_day")), MissingDayPolicy.MOVE_TO_MONTH_END)
@@ -298,7 +359,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             AutomaticProfile(
                 cursor.getLong(cursor.getColumnIndexOrThrow("account_id")),
                 CreditAccountProfile(
-                    UserAccountId(request.accountId), statementRule, dueRule, ZoneId.of(cursor.getString(cursor.getColumnIndexOrThrow("zone_id"))),
+                    UserAccountId(requestAccountId), statementRule, dueRule, ZoneId.of(cursor.getString(cursor.getColumnIndexOrThrow("zone_id"))),
                     cursor.nullableLong("standard_limit_minor"), cursor.nullableLong("temporary_limit_minor"),
                     cursor.nullableLong("temporary_limit_expires_on")?.toInt()?.toStoredLocalDate(), cursor.nullableStableId("payment_uid")?.let(::UserAccountId),
                     AutoGenerationMode.entries[cursor.getInt(cursor.getColumnIndexOrThrow("auto_payment_mode"))],
@@ -342,7 +403,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
         draft: OrdinaryAmountDraft,
         accountCurrency: CurrencyCode,
         baseCurrency: CurrencyCode,
-        accountId: UserAccountId,
+        accountId: UserAccountId?,
         request: OrdinaryTransactionWriteRequest,
     ): FrozenAmountEvidence {
         var fxIndex = 0
@@ -406,10 +467,10 @@ public class SecureRoomOrdinaryTransactionEntryPort(
     private fun recentDefaults(db: SupportSQLiteDatabase): List<OrdinaryRecentDefaultView> = db.queryList(
         "SELECT bt.kind,c.uid category_uid,ua.uid account_uid,pc.uid card_uid,tr.occurred_at FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id " +
             "JOIN category c ON c.id=tr.category_id LEFT JOIN expense_revision_detail erd ON erd.revision_id=tr.id LEFT JOIN income_revision_detail ird ON ird.revision_id=tr.id " +
-            "JOIN user_account ua ON ua.id=COALESCE(erd.payer_account_id,ird.receiving_account_id) LEFT JOIN payment_card pc ON pc.id=erd.payer_card_id " +
+            "LEFT JOIN user_account ua ON ua.id=COALESCE(erd.payer_account_id,ird.receiving_account_id) LEFT JOIN payment_card pc ON pc.id=erd.payer_card_id " +
             "WHERE bt.lifecycle_state=0 AND bt.kind IN (0,1) ORDER BY tr.occurred_at DESC LIMIT 50",
     ) {
-        OrdinaryRecentDefaultView(if (it.getInt(0) == 0) OrdinaryDirection.EXPENSE else OrdinaryDirection.INCOME, it.stableId("category_uid"), it.stableId("account_uid"), it.nullableStableId("card_uid"), it.getLong(4).toStoredInstant())
+        OrdinaryRecentDefaultView(if (it.getInt(0) == 0) OrdinaryDirection.EXPENSE else OrdinaryDirection.INCOME, it.stableId("category_uid"), it.nullableStableId("account_uid"), it.nullableStableId("card_uid"), it.getLong(4).toStoredInstant())
     }
 
     private fun editing(db: SupportSQLiteDatabase, id: StableId): OrdinaryTransactionEditView = db.queryOne(
@@ -417,7 +478,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             "FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id JOIN category c ON c.id=tr.category_id " +
             "JOIN revision_amount user ON user.revision_id=tr.id AND user.component_index=0 AND user.role=0 AND user.representation=0 " +
             "JOIN revision_amount acct ON acct.revision_id=tr.id AND acct.component_index=0 AND acct.role=0 AND acct.representation=1 " +
-            "LEFT JOIN expense_revision_detail erd ON erd.revision_id=tr.id LEFT JOIN income_revision_detail ird ON ird.revision_id=tr.id JOIN user_account ua ON ua.id=COALESCE(erd.payer_account_id,ird.receiving_account_id) " +
+            "LEFT JOIN expense_revision_detail erd ON erd.revision_id=tr.id LEFT JOIN income_revision_detail ird ON ird.revision_id=tr.id LEFT JOIN user_account ua ON ua.id=COALESCE(erd.payer_account_id,ird.receiving_account_id) " +
             "LEFT JOIN payment_card pc ON pc.id=erd.payer_card_id LEFT JOIN merchant m ON m.id=tr.merchant_id LEFT JOIN project p ON p.id=tr.project_id LEFT JOIN settlement_activity sa ON sa.id=erd.settlement_activity_id LEFT JOIN location_record lr ON lr.id=tr.location_record_id " +
             "WHERE bt.uid=? AND bt.kind IN (0,1) AND bt.lifecycle_state=0",
         arrayOf(id.bytes),
@@ -426,7 +487,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
         OrdinaryTransactionEditView(
             id, revisionId, if (cursor.getInt(0) == 0) OrdinaryDirection.EXPENSE else OrdinaryDirection.INCOME, cursor.stableId("category_uid"), cursor.nullableString("amount_expression"),
             cursor.getLong(cursor.getColumnIndexOrThrow("user_minor")), CurrencyCode.parse(cursor.getString(cursor.getColumnIndexOrThrow("user_currency"))).valueOrAbort(), cursor.getLong(cursor.getColumnIndexOrThrow("account_minor")),
-            cursor.stableId("account_uid"), cursor.nullableStableId("card_uid"), cursor.nullableStableId("merchant_uid"), cursor.getLong(cursor.getColumnIndexOrThrow("occurred_at")).toStoredInstant(), java.time.ZoneId.of(cursor.getString(cursor.getColumnIndexOrThrow("zone_id"))),
+            cursor.nullableStableId("account_uid"), cursor.nullableStableId("card_uid"), cursor.nullableStableId("merchant_uid"), cursor.getLong(cursor.getColumnIndexOrThrow("occurred_at")).toStoredInstant(), java.time.ZoneId.of(cursor.getString(cursor.getColumnIndexOrThrow("zone_id"))),
             cursor.nullableStableId("project_uid"), cursor.nullableStableId("activity_uid"), settlementShares(db, revisionId), cursor.nullableStableId("location_uid"), cursor.nullableString("note"),
             db.queryList("SELECT a.uid FROM transaction_revision_attachment tra JOIN attachment a ON a.id=tra.attachment_id JOIN transaction_revision tr ON tr.id=tra.revision_id WHERE tr.uid=? ORDER BY tra.sort_order", arrayOf(revisionId.bytes)) { it.stableId("uid") },
             app.ledger.finance.domain.TransactionSource.entries[cursor.getInt(cursor.getColumnIndexOrThrow("source_type"))], cursor.nullableStableId("source_reference_uid"),

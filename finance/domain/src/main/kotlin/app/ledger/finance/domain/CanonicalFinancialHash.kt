@@ -26,6 +26,10 @@ object CanonicalFinancialHash {
                 transactionInput(command.input)
                 installmentPlanMutation(command.mutation)
             }
+            is RecordSettlementPaymentCommand -> {
+                transactionInput(command.input)
+                settlementPaymentRecord(command.paymentRecord)
+            }
             is RecordTransactionCommand<*> -> transactionInput(command.input)
             is EditTransactionCommand -> {
                 stableId(command.transactionId.value)
@@ -73,6 +77,19 @@ object CanonicalFinancialHash {
                 }
             }
         }
+    }
+
+    private fun CanonicalWriter.settlementPaymentRecord(record: SettlementPaymentRecord) {
+        stableId(record.id.value)
+        stableId(record.activityId.value)
+        stableId(record.payerParticipantId.value)
+        stableId(record.payeeParticipantId.value)
+        positiveMoney(record.amount)
+        effectiveTime(record.occurredAt)
+        nullableStableId(record.linkedTransactionId?.value)
+        boolean(record.selfParticipates)
+        stableId(record.createdCommitId.value)
+        nullableStableId(record.reversalOfId?.value)
     }
 
     private fun CanonicalWriter.loanContractMutation(mutation: LoanContractMutation) {

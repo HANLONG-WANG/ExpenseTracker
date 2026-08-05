@@ -68,6 +68,10 @@ internal fun MoreRootDestination(
             viewModel.navigateLoan("LIA-001", null, null)
             onNavigationChanged()
         },
+        onSettlements = {
+            viewModel.navigateSettlement("SET-001", null)
+            onNavigationChanged()
+        },
     )
 }
 
@@ -83,6 +87,7 @@ internal fun MoreScreen(
     onCredit: () -> Unit = {},
     onInstallments: () -> Unit = {},
     onLoans: () -> Unit = {},
+    onSettlements: () -> Unit = {},
 ) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
@@ -105,6 +110,7 @@ internal fun MoreScreen(
             onCredit = onCredit,
             onInstallments = onInstallments,
             onLoans = onLoans,
+            onSettlements = onSettlements,
         )
     }
 }
@@ -122,6 +128,7 @@ internal fun MoreContent(
     onCredit: () -> Unit = {},
     onInstallments: () -> Unit = {},
     onLoans: () -> Unit = {},
+    onSettlements: () -> Unit = {},
 ) {
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (presentation == MorePresentation.BADGE_UPDATES) {
@@ -139,6 +146,7 @@ internal fun MoreContent(
         FeatureHubItem(stringResource(R.string.global_credit), stringResource(R.string.global_credit_explanation), onCredit)
         FeatureHubItem(stringResource(R.string.global_installments), stringResource(R.string.global_installments_explanation), onInstallments)
         FeatureHubItem(stringResource(R.string.global_loans), stringResource(R.string.global_loans_explanation), onLoans)
+        FeatureHubItem(stringResource(R.string.global_settlements), stringResource(R.string.global_settlements_explanation), onSettlements)
     }
 }
 

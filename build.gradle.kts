@@ -992,6 +992,68 @@ tasks.register("p21Check") {
     )
 }
 
+val validateP22Settlements by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates the frozen P22 allocation, accounting, payment, projection, route and UI contract."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p22_settlements.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/database/src/main") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/record/src") { include("**/*") },
+        fileTree("feature/settlement/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP22SettlementFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P22 gate rejects coordinator, allocation, history, route and UI weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p22_settlement_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p22_settlements.py",
+        "scripts/tests/test_p22_settlement_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/designsystem/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/record/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/settlement/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/domain/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p22Check") {
+    group = "verification"
+    description = "Runs P22 static, JVM, lint and architecture evidence; managed-device suites run separately."
+    dependsOn(
+        validateP22Settlements,
+        validateP22SettlementFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":finance:domain:test",
+        ":finance:data:testDebugUnitTest",
+        ":feature:record:testDebugUnitTest",
+        ":feature:settlement:testDebugUnitTest",
+        ":app:lintDebug",
+        ":feature:record:lintDebug",
+        ":feature:settlement:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

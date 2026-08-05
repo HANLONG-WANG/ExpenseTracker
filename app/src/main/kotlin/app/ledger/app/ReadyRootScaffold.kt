@@ -1,4 +1,4 @@
-@file:Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongMethod")
+@file:Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongMethod", "CyclomaticComplexMethod")
 
 package app.ledger.app
 
@@ -55,6 +55,8 @@ internal fun ReadyRootScaffold(
     val installmentPending by viewModel.installmentPending.collectAsStateWithLifecycle()
     val loanState by viewModel.loan.collectAsStateWithLifecycle()
     val loanPending by viewModel.loanPending.collectAsStateWithLifecycle()
+    val settlementState by viewModel.settlement.collectAsStateWithLifecycle()
+    val settlementPending by viewModel.settlementPending.collectAsStateWithLifecycle()
     val launchAttachmentPicker = rememberRecordAttachmentPicker { uri ->
         if (viewModel.navigator.currentKey.contract.screenId.value == "REC-013") {
             viewModel.importSpecializedAttachment(uri)
@@ -72,6 +74,7 @@ internal fun ReadyRootScaffold(
             val topLevel = key.contract.screenId.value in setOf("REC-001", "JRN-001", "ACC-001", "BUD-001", "ANA-001")
             LedgerTopAppBar(
                 title = projectGoalDestinationTitleOrNull(key.contract.screenId.value)
+                    ?: settlementDestinationTitleOrNull(key.contract.screenId.value)
                     ?: budgetDestinationTitleOrNull(key.contract.screenId.value)
                     ?: refundDestinationTitleOrNull(key.contract.screenId.value)
                     ?: creditDestinationTitleOrNull(key.contract.screenId.value)
@@ -93,7 +96,12 @@ internal fun ReadyRootScaffold(
                 },
             )
         },
-        fixedAction = loanFixedAction(
+        fixedAction = settlementFixedAction(
+            navigator.currentKey.contract.screenId.value,
+            settlementState,
+            settlementPending,
+            viewModel::saveSettlement,
+        ) ?: loanFixedAction(
             navigator.currentKey.contract.screenId.value,
             loanState,
             loanPending,
@@ -157,7 +165,14 @@ internal fun ReadyRootScaffold(
             entryProvider = { key ->
                 NavEntry(key) {
                     val screenId = key.contract.screenId.value
-                    if (screenId.startsWith("LOA-") || screenId == "LIA-001" || screenId in setOf("REC-017", "REC-018", "REC-019")) {
+                    if (screenId.startsWith("SET-")) {
+                        SettlementRootDestination(
+                            screenId,
+                            key.encodedArguments,
+                            viewModel,
+                            onNavigationChanged = { navigationEpoch += 1 },
+                        )
+                    } else if (screenId.startsWith("LOA-") || screenId == "LIA-001" || screenId in setOf("REC-017", "REC-018", "REC-019")) {
                         LoanRootDestination(
                             screenId,
                             key.encodedArguments,

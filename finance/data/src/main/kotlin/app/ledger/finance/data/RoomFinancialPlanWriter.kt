@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "TooManyFunctions")
+@file:Suppress("LargeClass", "LongMethod", "TooManyFunctions")
 
 package app.ledger.finance.data
 
@@ -40,6 +40,7 @@ internal class RoomFinancialPlanWriter {
         installmentPlanWriter.write(database, plan)
         loanContractWriter.write(database, plan)
         insertTransactionShells(database, plan)
+        insertSettlementPaymentRecords(database, plan)
         insertFxSnapshots(database, plan)
         insertRevisions(database, plan)
         insertAmounts(database, plan)
@@ -49,6 +50,29 @@ internal class RoomFinancialPlanWriter {
         insertEntityChanges(database, plan)
         checkpoint(FinancialCommitPhase.AFTER_IMMUTABLE_FACTS)
         updateCurrentTransactions(database, plan)
+    }
+
+    private fun insertSettlementPaymentRecords(database: SupportSQLiteDatabase, plan: FinancialMutationPlan) {
+        plan.settlementPaymentRecords.forEach { record ->
+            database.execSQL(
+                "INSERT INTO settlement_payment_record(id, uid, activity_id, payer_participant_id, payee_participant_id, " +
+                    "amount_minor, currency_code, occurred_at, linked_transaction_id, created_commit_id, reversal_of_id) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                arrayOf<Any?>(
+                    database.allocateInternalId("settlement_payment_record", record.id.value),
+                    record.id.value.bytes,
+                    database.requireInternalId("settlement_activity", record.activityId.value),
+                    database.requireInternalId("participant", record.payerParticipantId.value),
+                    database.requireInternalId("participant", record.payeeParticipantId.value),
+                    record.amount.minor.value,
+                    record.amount.currency.value,
+                    record.occurredAt.instant.toStorageEpochMillis(),
+                    record.linkedTransactionId?.let { database.requireInternalId("business_transaction", it.value) },
+                    database.commitId(record.createdCommitId),
+                    record.reversalOfId?.let { database.requireInternalId("settlement_payment_record", it.value) },
+                ),
+            )
+        }
     }
 
     private fun insertCommit(database: SupportSQLiteDatabase, plan: FinancialMutationPlan) {

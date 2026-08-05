@@ -28,6 +28,7 @@ import app.ledger.finance.application.OrdinaryTransactionEntryPort
 import app.ledger.finance.application.ProjectGoalApplicationPort
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.RefundApplicationPort
+import app.ledger.finance.application.SettlementApplicationPort
 import app.ledger.finance.application.SpecializedTransactionEntryPort
 import app.ledger.finance.data.SecureRoomBudgetApplicationPort
 import app.ledger.finance.data.SecureRoomCreditApplicationPort
@@ -40,6 +41,7 @@ import app.ledger.finance.data.SecureRoomOrdinaryTransactionEntryPort
 import app.ledger.finance.data.SecureRoomProjectGoalApplicationPort
 import app.ledger.finance.data.SecureRoomReferenceDataManagementPort
 import app.ledger.finance.data.SecureRoomRefundApplicationPort
+import app.ledger.finance.data.SecureRoomSettlementApplicationPort
 import app.ledger.finance.data.SecureRoomSpecializedTransactionEntryPort
 import dagger.Module
 import dagger.Provides
@@ -146,6 +148,13 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
     ): LoanApplicationPort = SecureRoomLoanApplicationPort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun settlementApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+    ): SettlementApplicationPort = SecureRoomSettlementApplicationPort(context, keyProvider)
 
     @Provides
     @Singleton
