@@ -72,6 +72,10 @@ internal fun MoreRootDestination(
             viewModel.navigateSettlement("SET-001", null)
             onNavigationChanged()
         },
+        onAutomation = {
+            viewModel.navigateAutomation("AUT-001", null)
+            onNavigationChanged()
+        },
     )
 }
 
@@ -88,6 +92,7 @@ internal fun MoreScreen(
     onInstallments: () -> Unit = {},
     onLoans: () -> Unit = {},
     onSettlements: () -> Unit = {},
+    onAutomation: () -> Unit = {},
 ) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
@@ -111,6 +116,7 @@ internal fun MoreScreen(
             onInstallments = onInstallments,
             onLoans = onLoans,
             onSettlements = onSettlements,
+            onAutomation = onAutomation,
         )
     }
 }
@@ -129,6 +135,7 @@ internal fun MoreContent(
     onInstallments: () -> Unit = {},
     onLoans: () -> Unit = {},
     onSettlements: () -> Unit = {},
+    onAutomation: () -> Unit = {},
 ) {
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (presentation == MorePresentation.BADGE_UPDATES) {
@@ -147,6 +154,7 @@ internal fun MoreContent(
         FeatureHubItem(stringResource(R.string.global_installments), stringResource(R.string.global_installments_explanation), onInstallments)
         FeatureHubItem(stringResource(R.string.global_loans), stringResource(R.string.global_loans_explanation), onLoans)
         FeatureHubItem(stringResource(R.string.global_settlements), stringResource(R.string.global_settlements_explanation), onSettlements)
+        FeatureHubItem(stringResource(R.string.global_automation), stringResource(R.string.global_automation_explanation), onAutomation)
     }
 }
 

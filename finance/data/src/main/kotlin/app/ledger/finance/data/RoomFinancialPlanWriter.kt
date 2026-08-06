@@ -31,6 +31,7 @@ internal class RoomFinancialPlanWriter {
         plan: FinancialMutationPlan,
         checkpoint: (FinancialCommitPhase) -> Unit,
         afterCommitHeader: (SupportSQLiteDatabase, FinancialMutationPlan) -> Unit = { _, _ -> },
+        afterFinancialWrite: (SupportSQLiteDatabase, FinancialMutationPlan) -> Unit = { _, _ -> },
     ) {
         insertCommit(database, plan)
         checkpoint(FinancialCommitPhase.AFTER_COMMIT_HEADER)
@@ -50,6 +51,7 @@ internal class RoomFinancialPlanWriter {
         insertEntityChanges(database, plan)
         checkpoint(FinancialCommitPhase.AFTER_IMMUTABLE_FACTS)
         updateCurrentTransactions(database, plan)
+        afterFinancialWrite(database, plan)
     }
 
     private fun insertSettlementPaymentRecords(database: SupportSQLiteDatabase, plan: FinancialMutationPlan) {

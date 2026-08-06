@@ -75,6 +75,33 @@ class OrdinaryRecordUiContractDeviceTest {
     }
 
     @Test
+    fun rec026ContentAndEmptyRenderInRecordModuleAcrossAccessibilityBoundary() {
+        val populated = OrdinaryRecordDeviceFixtures.content()
+        val empty = OrdinaryRecordLoadState.Content(populated.snapshot.copy(templates = emptyList()), search = "none")
+        val presentation = mutableStateOf(Presentation("REC-026", populated, 320, 1f, "zh-CN", ThemeMode.LIGHT))
+        composeRule.setContent {
+            val current = presentation.value
+            val base = LocalContext.current
+            val localized = base.createConfigurationContext(Configuration(LocalConfiguration.current).apply { setLocales(LocaleList(Locale.forLanguageTag(current.locale))) })
+            CompositionLocalProvider(
+                LocalContext provides localized,
+                LocalConfiguration provides localized.resources.configuration,
+                LocalDensity provides Density(1f, current.fontScale),
+            ) {
+                LedgerTheme(current.theme, dynamicColor = false, reduceMotion = true) {
+                    Box(Modifier.size(current.width.dp, 1_400.dp)) {
+                        OrdinaryRecordDestination("REC-026", current.state, OrdinaryRecordDeviceFixtures.actions)
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithTag(LedgerTestTags.AUTOMATION_TEMPLATE_PICKER).assertExists()
+        composeRule.runOnIdle { presentation.value = Presentation("REC-026", empty, 480, 2f, "ja-JP", ThemeMode.DARK) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(LedgerTestTags.AUTOMATION_TEMPLATE_PICKER).assertExists()
+    }
+
+    @Test
     fun editorValidationConflictUnsavedAndFixedCoreFieldsExposeStableAccessibleSemantics() {
         val validated = OrdinaryRecordPolicy.validate(OrdinaryRecordDeviceFixtures.editor())
         val state = mutableStateOf(OrdinaryRecordDeviceFixtures.content(validated))

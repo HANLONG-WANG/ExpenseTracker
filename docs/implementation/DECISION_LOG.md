@@ -731,3 +731,33 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: P13 froze a minimal REC-011 handoff before P22 owned the complete payer, four-mode, charge, exclusion and rounding controls. Continuing to compare the expanded screen to that old image would reject the required contract rather than visual drift.
 - Decision: retain the old P13 asset as historical evidence but remove it from the active P13 case list. P22 renders the complete production REC-011 surface in a deterministic 360×720 dark viewport and compares SHA-256 over width, height and every ARGB pixel: `10ac3fb165b6f3881f6c0e1c3b03f8aa8d7ce3bbe6e50f16b1f58760287767b4`. SET-004 light and SET-006 external dark use `f9d6c0b5ed020985df1555241ceadb1453d21ff6471335346ac502a9f1515c42` and `1e3acfa652268c86f0015504ffe374b468f6469730d6329d86ebbdbe6f805a19`.
 - Consequence: pixel drift remains machine-detectable at the correct owning stage. Every digest is derived only from production Compose, frozen textual UI contracts, YAML/CSV and token JSON; none of the excluded PNG/HTML visual drafts was opened, parsed, sampled, measured or compared.
+
+## DL-103 — Schema v1 recurrence time uses the frozen local 09:00 convention
+
+- Date/stage: 2026-08-06 / P23
+- Surface issue: the typed domain/UI recurrence contract includes an occurrence local time, but the already verified frozen Schema v1 `recurrence_series_revision` table persists `zone_id` without a separate time column. P23 is not authorized to mutate the P07 schema or silently add a migration.
+- Precedence applied: the frozen normalized database model and migration boundary outrank adding a presentation-driven column during P23, while the explicit time-zone and immutable occurrence-instant requirements remain mandatory.
+- Decision: persisted series accept the fixed 09:00 local occurrence time, retain the typed `LocalTime` application/domain boundary, combine it with the stored `zone_id`, and freeze every generated `occurrence_instant`. Non-09:00 series saves fail validation instead of being truncated.
+- Consequence: generation is deterministic and historical instants never change. A user-configurable time requires an explicitly versioned schema migration in an authorized later schema phase.
+
+## DL-104 — Confirmed candidates become normal transactions, not candidate facts
+
+- Date/stage: 2026-08-06 / P23
+- Surface issue: `TransactionSource.RECURRENCE_CANDIDATE` exists as a lifecycle/source vocabulary value, while permanent INV-028 and the P06 planner prohibit candidate records from materializing Journal/Effects. Treating confirmation as a candidate-sourced financial command would violate the higher accounting invariant.
+- Precedence applied: the accounting invariant and deterministic planner outrank interpreting an enum label as permission for a candidate to become a fact.
+- Decision: opening AUT-009 enters the complete in-memory form. Saving emits a normal `MANUAL` transaction with the candidate stable ID as an audit reference and a separate typed `acceptedCandidateId`. After the financial rows exist, the same coordinator transaction marks the candidate accepted and links its occurrence to that transaction.
+- Consequence: candidate rows remain fact-free, failure rolls back both transaction and candidate state, retry is idempotent, and provenance remains queryable without weakening INV-028.
+
+## DL-105 — Candidate consumption runs after financial rows inside the same commit transaction
+
+- Date/stage: 2026-08-06 / P23
+- Surface issue: existing coordinator reference side effects execute immediately after the commit header because location/statement rows must exist before transaction revisions. Candidate acceptance instead requires the newly inserted `business_transaction` ID.
+- Decision: `RoomFinancialPlanWriter` exposes a second internal after-financial-write callback. `RoomFinancialCommitRepository` invokes it after immutable facts and current pointers but before projections, integrity verification, book revision advance and `CommandReceipt` insertion. Only the coordinator-owned repository can supply it.
+- Consequence: candidate/occurrence linkage and all financial facts remain one Room/SQLCipher transaction; no feature, Worker or automation adapter gains a direct financial writer.
+
+## DL-106 — P23 background payload and pixel evidence remain non-sensitive and text-derived
+
+- Date/stage: 2026-08-06 / P23
+- Surface issue: catch-up needs to identify an encrypted ledger, while Worker payload/privacy rules permit only `operationId`; screenshot acceptance also cannot use the excluded visual drafts.
+- Decision: the opaque book `StableId` is the P23 operation ID and is the only WorkManager input key. All rules and business fields are loaded from SQLCipher. The Worker can reach that adapter only through `AppHeadlessRecurrenceExecutor`, which acquires and releases a `HeadlessBookLease` with `RECURRENCE_WRITE` capability. AUT-001/AUT-008 goldens hash width, height and every production Compose ARGB pixel at 360×720 using only frozen textual UI contracts, token JSON, screen YAML and production state fixtures.
+- Consequence: route/WorkManager/SavedState carry no amount, note, name, attachment, coordinate or full object, and application lock does not create an unrestricted background database path. Golden hashes `0f73c7a9ae623b1482cb53b37a0a1851ac4689868ada7a8cce81e047a8d6f874` and `7b9f1701eccafa0c06de9f2bccee96be12e9a0fcb3ba330dbd0276907e77e497` detect production drift; none of the prohibited PNG/HTML drafts was opened, parsed, sampled, measured or compared.

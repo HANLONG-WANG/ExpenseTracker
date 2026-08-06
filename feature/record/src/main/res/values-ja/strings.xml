@@ -78,4 +78,8 @@
     <string name="record_settlement_tax">税</string><string name="record_settlement_service_fee">サービス料</string><string name="record_settlement_charge_distribution">税・サービス料の配分</string><string name="record_settlement_charge_same">基本分担に従う</string><string name="record_settlement_charge_equal">均等</string><string name="record_settlement_charge_payer">支払者</string><string name="record_settlement_charge_specified">個別指定</string>
     <string name="record_settlement_rounding">端数の割当</string><string name="record_settlement_rounding_order">参加者順</string><string name="record_settlement_rounding_payer">支払者</string><string name="record_settlement_rounding_self">本人</string><string name="record_settlement_rounding_largest">最大分担</string>
     <string name="record_settlement_required_participant">本人と支払者は必須です</string><string name="record_settlement_exclusion_support">オフにするとこの参加者を除外します</string><string name="record_settlement_fixed_amount">負担額</string><string name="record_settlement_percentage_value">負担率</string><string name="record_settlement_weight_value">負担の重み</string><string name="record_settlement_specified_charge">指定する税・サービス料</string><string name="record_settlement_self_summary">本人の負担：最小単位 %1$d</string><string name="record_settlement_others_summary">他の参加者の負担：最小単位 %1$d</string>
+    <string name="record_template_search">クイックテンプレートを検索</string>
+    <string name="record_template_empty">一致するクイックテンプレートはありません</string>
+    <string name="record_template_empty_body">検索を変更するか、自動化でテンプレートを作成してください。</string>
+    <string name="record_template_create">テンプレートを作成</string>
 </resources>

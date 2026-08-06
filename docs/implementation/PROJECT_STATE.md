@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-05 (Asia/Tokyo)
-Current stage: P22 — Mutual-settlement netting
-Stage status: VERIFIED (`P22-E001`—`P22-E007`); P00—P21 remain VERIFIED and P23 is the next unstarted stage
+Last updated: 2026-08-06 (Asia/Tokyo)
+Current stage: P23 — Quick templates, recurring transactions and candidate records
+Stage status: VERIFIED (`P23-E001`—`P23-E007`); P00—P22 remain VERIFIED and P24 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -370,7 +370,8 @@ P22 is `VERIFIED`. `P22_SETTLEMENT_MAPPING.md` records the exact allocation/fact
 | P20 | VERIFIED | Purchase stays whole; exact versioned schedules, explicit settlement/refund application, synchronized progress and REC-027/INS-001—006; `P20-E001`—`P20-E007` |
 | P21 | VERIFIED | Combination contracts/tranches, exact versioned loan schedules, formal disbursement/payment, pure prepayment simulation, strict-future projection and all 15 LIA/REC/LOA destinations; `P21-E001`—`P21-E007` |
 | P22 | VERIFIED | Exact mutual-expense allocation, unique-self activity/participants, immutable partial settlements, canonical positions/additional-settlement and REC-011/SET-001—008; `P22-E001`—`P22-E007` |
-| P23—P36 | NOT_STARTED | P23 is next; do not promote later work early |
+| P23 | VERIFIED | Immutable blueprints/series, deterministic occurrence engine, restricted-headless idempotent startup/WorkManager catch-up, fact-free candidates, formal credit/loan integration and all 11 REC/AUT destinations; `P23-E001`—`P23-E007` |
+| P24—P36 | NOT_STARTED | P24 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -461,3 +462,20 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p22_settlement_
 ```
 
 All P22 evidence is recorded in `P22-E001`—`P22-E007`. The next entry point is P23; reuse the same idempotent occurrence/coordinator boundary without rewriting settlement history, turning candidates into facts or introducing a Worker-side financial DAO path.
+
+## P23 verified handoff
+
+P23 leaves the repository with immutable transaction blueprints, deterministic versioned recurrence rules/exceptions, unique occurrence reservation, startup plus unique WorkManager catch-up behind a `RECURRENCE_WRITE` headless lease, formal/candidate generation, atomic full-form candidate confirmation, credit/loan occurrence adapters and all 11 REC-026/AUT destinations. The reproducible P23 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p23_automation.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p23_automation_contracts -v
+./gradlew :finance:domain:test :finance:data:testDebugUnitTest :feature:automation:testDebugUnitTest :app:testDebugUnitTest
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.AutomationApplicationPortDeviceTest
+./gradlew :feature:automation:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.feature.automation.AutomationUiContractDeviceTest
+./gradlew :feature:record:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.feature.record.OrdinaryRecordUiContractDeviceTest#rec026ContentAndEmptyRenderInRecordModuleAcrossAccessibilityBoundary
+./gradlew :app:pixel6Api36DebugAndroidTest
+./gradlew p23Check
+```
+
+All P23 evidence is recorded in `P23-E001`—`P23-E007`. The next entry point is P24. Preserve occurrence uniqueness and immutable blueprint/series revisions; never turn candidates into facts, acquire current location in recurrence execution, claim external payment success or add a Worker/feature financial DAO path.

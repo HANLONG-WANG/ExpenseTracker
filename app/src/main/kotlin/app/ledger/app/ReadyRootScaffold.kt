@@ -57,6 +57,8 @@ internal fun ReadyRootScaffold(
     val loanPending by viewModel.loanPending.collectAsStateWithLifecycle()
     val settlementState by viewModel.settlement.collectAsStateWithLifecycle()
     val settlementPending by viewModel.settlementPending.collectAsStateWithLifecycle()
+    val automationState by viewModel.automation.collectAsStateWithLifecycle()
+    val automationPending by viewModel.automationPending.collectAsStateWithLifecycle()
     val launchAttachmentPicker = rememberRecordAttachmentPicker { uri ->
         if (viewModel.navigator.currentKey.contract.screenId.value == "REC-013") {
             viewModel.importSpecializedAttachment(uri)
@@ -74,6 +76,7 @@ internal fun ReadyRootScaffold(
             val topLevel = key.contract.screenId.value in setOf("REC-001", "JRN-001", "ACC-001", "BUD-001", "ANA-001")
             LedgerTopAppBar(
                 title = projectGoalDestinationTitleOrNull(key.contract.screenId.value)
+                    ?: automationDestinationTitleOrNull(key.contract.screenId.value)
                     ?: settlementDestinationTitleOrNull(key.contract.screenId.value)
                     ?: budgetDestinationTitleOrNull(key.contract.screenId.value)
                     ?: refundDestinationTitleOrNull(key.contract.screenId.value)
@@ -101,6 +104,12 @@ internal fun ReadyRootScaffold(
             settlementState,
             settlementPending,
             viewModel::saveSettlement,
+        ) ?: automationFixedAction(
+            navigator.currentKey.contract.screenId.value,
+            automationState,
+            automationPending,
+            viewModel::saveAutomationBlueprint,
+            viewModel::saveAutomationRecurrence,
         ) ?: loanFixedAction(
             navigator.currentKey.contract.screenId.value,
             loanState,
@@ -165,7 +174,14 @@ internal fun ReadyRootScaffold(
             entryProvider = { key ->
                 NavEntry(key) {
                     val screenId = key.contract.screenId.value
-                    if (screenId.startsWith("SET-")) {
+                    if (screenId.startsWith("AUT-")) {
+                        AutomationRootDestination(
+                            screenId,
+                            key.encodedArguments,
+                            viewModel,
+                            onNavigationChanged = { navigationEpoch += 1 },
+                        )
+                    } else if (screenId.startsWith("SET-")) {
                         SettlementRootDestination(
                             screenId,
                             key.encodedArguments,

@@ -62,6 +62,12 @@ import app.ledger.feature.accounts.AccountEditorSubmission
 import app.ledger.feature.accounts.CardEditorSubmission
 import app.ledger.feature.accounts.CheckpointSubmission
 import app.ledger.feature.accounts.OpeningBalanceSubmission
+import app.ledger.feature.automation.AutomationFeatureState
+import app.ledger.feature.automation.AutomationLoadState
+import app.ledger.feature.automation.AutomationPolicy
+import app.ledger.feature.automation.AutomationPresentation
+import app.ledger.feature.automation.BlueprintField
+import app.ledger.feature.automation.RecurrenceField
 import app.ledger.feature.journal.JournalLoadState
 import app.ledger.feature.journal.JournalOperationState
 import app.ledger.feature.journal.JournalPagingSource
@@ -132,6 +138,9 @@ import app.ledger.finance.application.ApplyLoanSimulationRequest
 import app.ledger.finance.application.AssignCreditStatementRequest
 import app.ledger.finance.application.AttachmentContentSource
 import app.ledger.finance.application.AttachmentImportRequest
+import app.ledger.finance.application.AutomationApplicationPort
+import app.ledger.finance.application.AutomationMutationIds
+import app.ledger.finance.application.BlueprintDraft
 import app.ledger.finance.application.BookAttachmentObjectPort
 import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.BudgetMutationIds
@@ -176,6 +185,7 @@ import app.ledger.finance.application.LoanTrancheMutationIds
 import app.ledger.finance.application.LoanTransactionContext
 import app.ledger.finance.application.LoanTransactionIds
 import app.ledger.finance.application.MerchantDraft
+import app.ledger.finance.application.ModifyOccurrenceRequest
 import app.ledger.finance.application.OpeningBalanceWriteIds
 import app.ledger.finance.application.OpeningBalanceWritePort
 import app.ledger.finance.application.OpeningBalanceWriteRequest
@@ -195,6 +205,7 @@ import app.ledger.finance.application.RecordGoalMovementRequest
 import app.ledger.finance.application.RecordLoanDisbursementRequest
 import app.ledger.finance.application.RecordLoanPaymentRequest
 import app.ledger.finance.application.RecordSettlementPaymentRequest
+import app.ledger.finance.application.RecurrenceSeriesDraft
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.ReferenceMutation
@@ -204,6 +215,7 @@ import app.ledger.finance.application.RefundApplicationPort
 import app.ledger.finance.application.RefundSearchQuery
 import app.ledger.finance.application.RefundWriteIds
 import app.ledger.finance.application.RefundWriteRequest
+import app.ledger.finance.application.SaveBlueprintRequest
 import app.ledger.finance.application.SaveBudgetMonthRequest
 import app.ledger.finance.application.SaveBudgetTemplateRequest
 import app.ledger.finance.application.SaveCreditProfileRequest
@@ -212,6 +224,7 @@ import app.ledger.finance.application.SaveGoalRequest
 import app.ledger.finance.application.SaveInstallmentPlanRequest
 import app.ledger.finance.application.SaveLoanContractRequest
 import app.ledger.finance.application.SaveProjectRequest
+import app.ledger.finance.application.SaveRecurrenceRequest
 import app.ledger.finance.application.SaveSettlementActivityRequest
 import app.ledger.finance.application.SettlementApplicationPort
 import app.ledger.finance.application.SettlementMutationIds
@@ -250,6 +263,9 @@ import app.ledger.finance.domain.MissingDayPolicy
 import app.ledger.finance.domain.PaymentFrequency
 import app.ledger.finance.domain.PrepaymentRecalculationStrategy
 import app.ledger.finance.domain.ProjectStatus
+import app.ledger.finance.domain.RecurrenceFrequency
+import app.ledger.finance.domain.RecurrenceGenerationMode
+import app.ledger.finance.domain.RecurrenceModificationScope
 import app.ledger.finance.domain.RefundAccrualPolicy
 import app.ledger.finance.domain.RefundBudgetPolicy
 import app.ledger.finance.domain.RefundGoalPolicy
@@ -294,7 +310,9 @@ import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.util.Locale
@@ -346,6 +364,7 @@ internal class AppRootViewModel @Inject constructor(
     private val installmentApplicationPort: InstallmentApplicationPort,
     private val loanApplicationPort: LoanApplicationPort,
     private val settlementApplicationPort: SettlementApplicationPort,
+    private val automationApplicationPort: AutomationApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
@@ -422,6 +441,12 @@ internal class AppRootViewModel @Inject constructor(
     private val mutableSettlementPending = MutableStateFlow(false)
     val settlementPending: StateFlow<Boolean> = mutableSettlementPending.asStateFlow()
     private var currentSettlementScreenId: String = "SET-001"
+    private val mutableAutomation = MutableStateFlow<AutomationLoadState>(AutomationLoadState.Loading)
+    val automation: StateFlow<AutomationLoadState> = mutableAutomation.asStateFlow()
+    private val mutableAutomationPending = MutableStateFlow(false)
+    val automationPending: StateFlow<Boolean> = mutableAutomationPending.asStateFlow()
+    private var currentAutomationScreenId: String = "AUT-001"
+    private var pendingCandidateId: StableId? = null
     private val mutableProjectTransactionPagingRequest = MutableStateFlow<ProjectTransactionPagingRequest?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -727,11 +752,20 @@ internal class AppRootViewModel @Inject constructor(
                     loadReferenceData()
                     loadOrdinaryRecord()
                     loadJournal()
+                    catchUpAutomation(bookId)
                 }
             }
         }
         manager.initialize()
         if (!saved.appLockEnabled) manager.unlockUi()
+    }
+
+    private fun catchUpAutomation(bookId: StableId) {
+        RecurrenceWorkScheduler.enqueueCatchUp(context, bookId)
+        RecurrenceWorkScheduler.ensurePeriodicCatchUp(context, bookId)
+        viewModelScope.launch(Dispatchers.IO) {
+            automationApplicationPort.catchUp(bookId, runtimeSources.clock.now())
+        }
     }
 
     fun beginAuthentication() {
@@ -1667,9 +1701,13 @@ internal class AppRootViewModel @Inject constructor(
                     source = recordSource(validated),
                     sourceReferenceId = validated.sourceReferenceId.takeIf { validated.mode in setOf(RecordEditorMode.TEMPLATE, RecordEditorMode.CANDIDATE) },
                     createdAt = runtimeSources.clock.now(),
+                    acceptedCandidateId = validated.sourceReferenceId.takeIf { validated.mode == RecordEditorMode.CANDIDATE },
                 )
                 when (val result = ordinaryTransactionEntryPort.submit(request)) {
-                    is DomainResult.Success -> finishRecordSave(validated, ids.transactionId)
+                    is DomainResult.Success -> {
+                        if (validated.mode == RecordEditorMode.CANDIDATE) pendingCandidateId = null
+                        finishRecordSave(validated, ids.transactionId)
+                    }
                     is DomainResult.Failure -> {
                         val code = sanitizeCode(result.error.code)
                         val presentation = if (code.contains("STALE") || code.contains("REVISION")) RecordEditorPresentation.REVISION_CONFLICT else RecordEditorPresentation.SAVE_ERROR
@@ -3873,6 +3911,351 @@ internal class AppRootViewModel @Inject constructor(
         StableId.fromBytes(saved.bookId.toByteArray()).getOrNull(),
     )
 
+    fun loadAutomation(
+        screenId: String = currentAutomationScreenId,
+        blueprintId: StableId? = null,
+        seriesId: StableId? = null,
+        candidateId: StableId? = null,
+    ) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        currentAutomationScreenId = screenId
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.current()
+            val bookId = runCatching { requireBookId(saved) }.getOrNull() ?: return@launch
+            val zone = ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE })
+            val today = runtimeSources.clock.now().atZone(zone).toLocalDate()
+            mutableAutomation.value = AutomationLoadState.Loading
+            val automationResult = automationApplicationPort.snapshot(bookId)
+            val entryResult = ordinaryTransactionEntryPort.snapshot(bookId)
+            mutableAutomation.value = if (automationResult is DomainResult.Success && entryResult is DomainResult.Success) {
+                AutomationLoadState.Content(
+                    AutomationPolicy.create(
+                        automationResult.value,
+                        entryResult.value,
+                        screenId,
+                        blueprintId,
+                        seriesId,
+                        candidateId,
+                        zone,
+                        today,
+                    ),
+                )
+            } else {
+                val code = (automationResult as? DomainResult.Failure)?.error?.code
+                    ?: (entryResult as? DomainResult.Failure)?.error?.code
+                    ?: "AUTOMATION_LOAD_FAILED"
+                AutomationLoadState.Failure(sanitizeCode(code))
+            }
+        }
+    }
+
+    fun navigateAutomation(target: String, stableId: StableId?) {
+        val screenId = ScreenId(target)
+        val argumentName = when {
+            target == "AUT-003" -> "templateId"
+            target in setOf("AUT-005", "AUT-006", "AUT-007", "AUT-010") -> "seriesId"
+            target == "AUT-009" -> "candidateId"
+            else -> null
+        }
+        val arguments = if (argumentName != null && stableId != null) mapOf(argumentName to StableIdArgument(stableId)) else emptyMap()
+        navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+    }
+
+    fun updateAutomationSearch(value: String) = updateAutomationContent { copy(search = value.take(80)) }
+
+    fun updateAutomationBlueprintField(field: BlueprintField, value: String) = updateAutomationContent {
+        AutomationPolicy.updateBlueprint(this, field, value)
+    }
+
+    fun updateAutomationBlueprintKind(kind: app.ledger.finance.domain.TransactionKind) = updateAutomationContent {
+        val draft = requireNotNull(blueprintDraft)
+        copy(blueprintDraft = draft.copy(targetKind = kind), presentation = AutomationPresentation.EDITING, validationFields = emptySet())
+    }
+
+    fun updateAutomationBlueprintReference(field: String, id: StableId?) = updateAutomationContent {
+        val draft = requireNotNull(blueprintDraft)
+        val updated = when (field) {
+            "category" -> draft.copy(categoryId = id)
+            "primaryAccount" -> {
+                val currency = entrySnapshot.references.accounts.singleOrNull { it.id == id }?.currency?.value.orEmpty()
+                draft.copy(primaryAccountId = id, currency = currency)
+            }
+            "secondaryAccount" -> draft.copy(secondaryAccountId = id)
+            "card" -> draft.copy(cardId = id)
+            "merchant" -> draft.copy(merchantId = id)
+            "project" -> draft.copy(projectId = id)
+            "goal" -> draft.copy(goalId = id)
+            "settlement" -> draft.copy(settlementActivityId = id)
+            "fixedPlace" -> draft.copy(fixedPlaceId = id)
+            else -> draft
+        }
+        copy(blueprintDraft = updated, presentation = AutomationPresentation.EDITING, validationFields = emptySet())
+    }
+
+    fun saveAutomationBlueprint() {
+        if (mutableAutomationPending.value) return
+        val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
+        val validated = AutomationPolicy.validateBlueprint(content.state)
+        mutableAutomation.value = AutomationLoadState.Content(validated)
+        if (validated.validationFields.isNotEmpty()) return
+        val draft = requireNotNull(validated.blueprintDraft)
+        mutableAutomationPending.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val snapshot = validated.snapshot
+                val current = draft.id?.let { id -> snapshot.blueprints.singleOrNull { it.id == id } }
+                val request = SaveBlueprintRequest(
+                    AutomationMutationIds(snapshot.bookId, nextId(), nextId(), nextId(), snapshot.localRevision, runtimeSources.clock.now()),
+                    BlueprintDraft(
+                        id = draft.id ?: nextId(),
+                        revisionId = nextId(),
+                        expectedRevisionId = current?.revisionId,
+                        name = draft.name.trim(),
+                        iconKey = LedgerReferenceDisplayDefaults.CATEGORY_ICON_KEY,
+                        colorArgb = LedgerReferenceDisplayDefaults.COLOR_ARGB,
+                        status = current?.status ?: app.ledger.finance.domain.EntityStatus.ACTIVE,
+                        targetKind = draft.targetKind,
+                        categoryId = draft.categoryId,
+                        primaryAccountId = draft.primaryAccountId,
+                        secondaryAccountId = draft.secondaryAccountId,
+                        cardId = draft.cardId,
+                        merchantId = draft.merchantId,
+                        projectId = draft.projectId,
+                        goalId = draft.goalId,
+                        settlementActivityId = draft.settlementActivityId,
+                        amountExpression = draft.amountExpression.trim().takeIf(String::isNotEmpty),
+                        currency = draft.currency.takeIf(String::isNotBlank)?.let { CurrencyCode.parse(it).getOrNull() },
+                        noteTemplate = draft.noteTemplate.trim().takeIf(String::isNotEmpty),
+                        fixedPlaceId = draft.fixedPlaceId,
+                    ),
+                )
+                when (val result = automationApplicationPort.saveBlueprint(request)) {
+                    is DomainResult.Success -> {
+                        loadAutomation("AUT-002")
+                        navigator.pop()
+                    }
+                    is DomainResult.Failure -> mutableAutomation.value = AutomationLoadState.Content(validated.copy(presentation = AutomationPresentation.VALIDATION_ERROR, failureCode = sanitizeCode(result.error.code)))
+                }
+            } finally {
+                mutableAutomationPending.value = false
+            }
+        }
+    }
+
+    fun updateAutomationRecurrenceField(field: RecurrenceField, value: String) = updateAutomationContent {
+        AutomationPolicy.updateRecurrence(this, field, value)
+    }
+
+    fun selectAutomationRecurrenceBlueprint(id: StableId) = updateAutomationContent {
+        val draft = requireNotNull(recurrenceDraft)
+        val fixedPlace = snapshot.blueprints.singleOrNull { it.id == id }?.fixedPlaceId
+        copy(recurrenceDraft = draft.copy(blueprintId = id, fixedPlaceId = fixedPlace), presentation = AutomationPresentation.EDITING)
+    }
+
+    fun updateAutomationFrequency(frequency: RecurrenceFrequency) = updateAutomationContent {
+        val draft = requireNotNull(recurrenceDraft)
+        val old = draft.rule
+        val updated = old.copy(
+            frequency = frequency,
+            weekdays = if (frequency in setOf(RecurrenceFrequency.WEEKLY, RecurrenceFrequency.BUSINESS_DAYS)) old.weekdays.ifEmpty { setOf(DayOfWeek.MONDAY) } else emptySet(),
+            monthDay = if (frequency == RecurrenceFrequency.MONTHLY_DAY) old.monthDay ?: 1 else null,
+            nthWeek = if (frequency == RecurrenceFrequency.MONTHLY_NTH_WEEKDAY) old.nthWeek ?: 1 else null,
+            weekday = if (frequency == RecurrenceFrequency.MONTHLY_NTH_WEEKDAY) old.weekday ?: DayOfWeek.MONDAY else null,
+        )
+        copy(recurrenceDraft = draft.copy(rule = updated), presentation = AutomationPresentation.EDITING)
+    }
+
+    fun toggleAutomationWeekday(day: DayOfWeek) = updateAutomationContent {
+        val draft = requireNotNull(recurrenceDraft)
+        val days = if (day in draft.rule.weekdays) draft.rule.weekdays - day else draft.rule.weekdays + day
+        copy(recurrenceDraft = draft.copy(rule = draft.rule.copy(weekdays = days)), presentation = AutomationPresentation.EDITING)
+    }
+
+    fun updateAutomationMissingDay(value: MissingDayPolicy) = updateAutomationContent {
+        val draft = requireNotNull(recurrenceDraft)
+        copy(recurrenceDraft = draft.copy(rule = draft.rule.copy(missingDayPolicy = value)), presentation = AutomationPresentation.EDITING)
+    }
+
+    fun updateAutomationWeekend(value: WeekendAdjustment) = updateAutomationContent {
+        val draft = requireNotNull(recurrenceDraft)
+        copy(recurrenceDraft = draft.copy(rule = draft.rule.copy(weekendAdjustment = value)), presentation = AutomationPresentation.EDITING)
+    }
+
+    fun updateAutomationGenerationMode(value: RecurrenceGenerationMode) = updateAutomationContent {
+        val draft = requireNotNull(recurrenceDraft)
+        copy(recurrenceDraft = draft.copy(generationMode = value, notifyCandidate = value == RecurrenceGenerationMode.CANDIDATE && draft.notifyCandidate), presentation = AutomationPresentation.EDITING)
+    }
+
+    fun updateAutomationNotifyCandidate(value: Boolean) = updateAutomationContent {
+        val draft = requireNotNull(recurrenceDraft)
+        copy(recurrenceDraft = draft.copy(notifyCandidate = value && draft.generationMode == RecurrenceGenerationMode.CANDIDATE), presentation = AutomationPresentation.EDITING)
+    }
+
+    fun saveAutomationRecurrence() {
+        if (mutableAutomationPending.value) return
+        val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
+        val validated = AutomationPolicy.validateRecurrence(content.state)
+        mutableAutomation.value = AutomationLoadState.Content(validated)
+        if (validated.validationFields.isNotEmpty()) return
+        val uiDraft = requireNotNull(validated.recurrenceDraft)
+        val start = LocalDate.parse(uiDraft.startDate)
+        val end = uiDraft.endDate.takeIf(String::isNotBlank)?.let(LocalDate::parse)
+        mutableAutomationPending.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val snapshot = validated.snapshot
+                val current = uiDraft.id?.let { id -> snapshot.series.singleOrNull { it.id == id } }
+                val draft = RecurrenceSeriesDraft(
+                    id = uiDraft.id ?: nextId(),
+                    revisionId = nextId(),
+                    expectedRevisionId = current?.revisionId,
+                    blueprintId = requireNotNull(uiDraft.blueprintId),
+                    status = uiDraft.status,
+                    rule = uiDraft.rule,
+                    startDate = start,
+                    endDate = end,
+                    maxOccurrences = uiDraft.maxOccurrences.takeIf(String::isNotBlank)?.toInt(),
+                    occurrenceTime = LocalTime.of(9, 0),
+                    zoneId = uiDraft.zoneId,
+                    generationMode = uiDraft.generationMode,
+                    fixedPlaceId = uiDraft.fixedPlaceId,
+                    notifyCandidate = uiDraft.notifyCandidate,
+                )
+                val result = automationApplicationPort.saveSeries(
+                    SaveRecurrenceRequest(
+                        AutomationMutationIds(snapshot.bookId, nextId(), nextId(), nextId(), snapshot.localRevision, runtimeSources.clock.now()),
+                        draft,
+                    ),
+                )
+                when (result) {
+                    is DomainResult.Success -> {
+                        loadAutomation("AUT-004")
+                        navigator.pop()
+                        RecurrenceWorkScheduler.enqueueCatchUp(context, snapshot.bookId)
+                    }
+                    is DomainResult.Failure -> mutableAutomation.value = AutomationLoadState.Content(validated.copy(presentation = AutomationPresentation.INVALID, failureCode = sanitizeCode(result.error.code)))
+                }
+            } finally {
+                mutableAutomationPending.value = false
+            }
+        }
+    }
+
+    fun selectAutomationTemplate(id: StableId) {
+        val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
+        val template = content.state.snapshot.blueprints.singleOrNull { it.id == id } ?: return
+        openRecordEditor(
+            RecordEditorMode.TEMPLATE,
+            if (template.targetKind == app.ledger.finance.domain.TransactionKind.INCOME) OrdinaryDirection.INCOME else OrdinaryDirection.EXPENSE,
+            template.categoryId,
+            id,
+        )
+    }
+
+    fun selectAutomationCandidate(id: StableId) {
+        navigateAutomation("AUT-009", id)
+    }
+
+    fun toggleAutomationCandidate(id: StableId) = updateAutomationContent {
+        copy(selectedCandidateIds = if (id in selectedCandidateIds) selectedCandidateIds - id else selectedCandidateIds + id, presentation = AutomationPresentation.SELECTION)
+    }
+
+    fun confirmAutomationCandidate() {
+        val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
+        val candidate = content.state.selectedCandidate ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = content.state.snapshot.bookId
+            when (val confirmed = automationApplicationPort.confirmCandidate(bookId, candidate.id)) {
+                is DomainResult.Failure -> mutableAutomation.value = AutomationLoadState.Content(content.state.copy(presentation = AutomationPresentation.INVALID_SOURCE, failureCode = sanitizeCode(confirmed.error.code)))
+                is DomainResult.Success -> {
+                    val template = confirmed.value.blueprint
+                    val snapshot = when (val loaded = ordinaryTransactionEntryPort.snapshot(bookId)) {
+                        is DomainResult.Success -> loaded.value
+                        is DomainResult.Failure -> return@launch
+                    }
+                    val direction = if (template.targetKind == app.ledger.finance.domain.TransactionKind.INCOME) OrdinaryDirection.INCOME else OrdinaryDirection.EXPENSE
+                    val zone = ZoneId.of(settingsRepository.current().zoneId.ifBlank { DEFAULT_ZONE })
+                    val editor = OrdinaryRecordPolicy.createEditor(snapshot, RecordEditorMode.TEMPLATE, direction, template.categoryId, template.id, runtimeSources.clock.now(), zone, recordLocale())
+                        .copy(mode = RecordEditorMode.CANDIDATE, sourceReferenceId = candidate.id)
+                    mutableOrdinaryRecord.value = OrdinaryRecordLoadState.Content(snapshot, if (direction == OrdinaryDirection.EXPENSE) RecordTab.EXPENSE else RecordTab.INCOME, selectedCategoryId = template.categoryId, editor = editor)
+                    pendingCandidateId = candidate.id
+                    val screenId = ScreenId("REC-003")
+                    navigator.navigate(
+                        LedgerRouteContract.destination(
+                            screenId,
+                            mapOf("mode" to LedgerRouteContract.enumArgument(screenId, "mode", RecordEditorMode.CANDIDATE.name)),
+                        ),
+                        SessionGateState.READY,
+                    )
+                }
+            }
+        }
+    }
+
+    fun skipAutomationCandidate() {
+        val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
+        val candidate = content.state.selectedCandidate ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            when (automationApplicationPort.skipCandidate(content.state.snapshot.bookId, candidate.id, runtimeSources.clock.now())) {
+                is DomainResult.Success -> {
+                    loadAutomation("AUT-008")
+                    navigator.pop()
+                }
+                is DomainResult.Failure -> Unit
+            }
+        }
+    }
+
+    fun updateAutomationScope(value: RecurrenceModificationScope) = updateAutomationContent { copy(modificationScope = value) }
+
+    fun applyAutomationScope() {
+        val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
+        val state = content.state
+        val selected = state.selectedSeries ?: return
+        val uiDraft = state.recurrenceDraft ?: return
+        val date = selected.preview.firstOrNull()?.localDate ?: selected.startDate
+        viewModelScope.launch(Dispatchers.IO) {
+            val replacement = RecurrenceSeriesDraft(
+                selected.id,
+                nextId(),
+                selected.revisionId,
+                requireNotNull(uiDraft.blueprintId),
+                uiDraft.status,
+                uiDraft.rule,
+                LocalDate.parse(uiDraft.startDate),
+                uiDraft.endDate.takeIf(String::isNotBlank)?.let(LocalDate::parse),
+                uiDraft.maxOccurrences.takeIf(String::isNotBlank)?.toInt(),
+                LocalTime.of(9, 0),
+                uiDraft.zoneId,
+                uiDraft.generationMode,
+                uiDraft.fixedPlaceId,
+                uiDraft.notifyCandidate,
+            )
+            when (
+                automationApplicationPort.modifyOccurrence(
+                    ModifyOccurrenceRequest(
+                        AutomationMutationIds(state.snapshot.bookId, nextId(), nextId(), nextId(), state.snapshot.localRevision, runtimeSources.clock.now()),
+                        selected.id,
+                        date,
+                        state.modificationScope,
+                        replacement,
+                    ),
+                )
+            ) {
+                is DomainResult.Success -> {
+                    loadAutomation("AUT-004")
+                    navigator.pop()
+                }
+                is DomainResult.Failure -> Unit
+            }
+        }
+    }
+
+    private fun updateAutomationContent(block: AutomationFeatureState.() -> AutomationFeatureState) {
+        val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
+        mutableAutomation.value = AutomationLoadState.Content(content.state.block())
+    }
+
     private fun updateRecordContent(block: OrdinaryRecordLoadState.Content.() -> OrdinaryRecordLoadState.Content) {
         val current = mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content ?: return
         mutableOrdinaryRecord.value = current.block()
@@ -3912,7 +4295,7 @@ internal class AppRootViewModel @Inject constructor(
 
     private fun recordSource(editor: OrdinaryRecordEditorState): TransactionSource = when (editor.mode) {
         RecordEditorMode.TEMPLATE -> TransactionSource.QUICK_TEMPLATE
-        RecordEditorMode.CANDIDATE -> TransactionSource.RECURRENCE_CANDIDATE
+        RecordEditorMode.CANDIDATE -> TransactionSource.MANUAL
         RecordEditorMode.EDIT -> editor.snapshot.editing?.source ?: TransactionSource.MANUAL
         RecordEditorMode.CREATE, RecordEditorMode.DUPLICATE -> TransactionSource.MANUAL
     }

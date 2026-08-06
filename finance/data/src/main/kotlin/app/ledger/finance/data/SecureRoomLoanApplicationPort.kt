@@ -273,7 +273,7 @@ class SecureRoomLoanApplicationPort(
         val unsigned = ApplyLoanPaymentCommand(
             request.mutation.ids.commandId,
             zeroHash(),
-            NewTransactionInput(transactionContext(request.context, current.id), payload),
+            NewTransactionInput(transactionContext(request.context, request.sourceOccurrenceId ?: current.id, request.sourceOccurrenceId != null), payload),
             mutation,
         )
         val command = unsigned.copy(payloadHash = CanonicalFinancialHash.command(unsigned))
@@ -835,7 +835,7 @@ class SecureRoomLoanApplicationPort(
         ),
     )
 
-    private fun transactionContext(context: app.ledger.finance.application.LoanTransactionContext, sourceId: StableId?) = TransactionContextInput(
+    private fun transactionContext(context: app.ledger.finance.application.LoanTransactionContext, sourceId: StableId?, automatic: Boolean = false) = TransactionContextInput(
         EffectiveTime.fromInstant(context.occurredAt, context.zoneId),
         context.localDate,
         null,
@@ -845,7 +845,7 @@ class SecureRoomLoanApplicationPort(
         null,
         context.note,
         context.amountExpression,
-        TransactionSource.MANUAL,
+        if (automatic) TransactionSource.RECURRENCE_AUTO else TransactionSource.MANUAL,
         sourceId,
         null,
         emptyList(),

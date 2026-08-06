@@ -1054,6 +1054,68 @@ tasks.register("p22Check") {
     )
 }
 
+val validateP23Automation by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates deterministic P23 templates, recurrences, candidates, Worker, routes and UI contracts."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p23_automation.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/database/src/main") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/automation/src") { include("**/*") },
+        fileTree("feature/record/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP23AutomationFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P23 gate rejects occurrence, candidate, Worker, route and design-system weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p23_automation_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p23_automation.py",
+        "scripts/tests/test_p23_automation_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/designsystem/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/automation/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/record/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/domain/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p23Check") {
+    group = "verification"
+    description = "Runs P23 static, JVM, lint and architecture evidence; managed-device suites run separately."
+    dependsOn(
+        validateP23Automation,
+        validateP23AutomationFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":finance:domain:test",
+        ":finance:data:testDebugUnitTest",
+        ":feature:automation:testDebugUnitTest",
+        ":core:navigation:testDebugUnitTest",
+        ":app:lintDebug",
+        ":feature:automation:lintDebug",
+        ":feature:record:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

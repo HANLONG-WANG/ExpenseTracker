@@ -182,6 +182,8 @@ public data class OrdinaryTransactionWriteRequest(
     val source: TransactionSource,
     val sourceReferenceId: StableId?,
     val createdAt: Instant,
+    /** Operation link consumed atomically when a user confirms a fact-free recurrence candidate. */
+    val acceptedCandidateId: StableId? = null,
 ) {
     init {
         require(expectedRevisionId == null || expectedRevisionId != ids.revisionId)
@@ -191,6 +193,7 @@ public data class OrdinaryTransactionWriteRequest(
         require(settlementActivityId != null || settlementShares.isEmpty())
         require(accountId != null || direction == OrdinaryDirection.EXPENSE && settlementActivityId != null)
         require(accountId != null || cardId == null)
+        require(acceptedCandidateId == null || acceptedCandidateId == sourceReferenceId && source != TransactionSource.RECURRENCE_CANDIDATE)
     }
 }
 

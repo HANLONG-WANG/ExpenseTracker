@@ -133,4 +133,8 @@
     <string name="record_settlement_tax">税费</string><string name="record_settlement_service_fee">服务费</string><string name="record_settlement_charge_distribution">税费与服务费分配</string><string name="record_settlement_charge_same">随基础份额</string><string name="record_settlement_charge_equal">平均分配</string><string name="record_settlement_charge_payer">付款人承担</string><string name="record_settlement_charge_specified">分别指定</string>
     <string name="record_settlement_rounding">尾差归属</string><string name="record_settlement_rounding_order">参与人顺序</string><string name="record_settlement_rounding_payer">付款人</string><string name="record_settlement_rounding_self">本人</string><string name="record_settlement_rounding_largest">最大份额</string>
     <string name="record_settlement_required_participant">本人和付款人必须参与</string><string name="record_settlement_exclusion_support">关闭以排除此参与人</string><string name="record_settlement_fixed_amount">承担金额</string><string name="record_settlement_percentage_value">承担百分比</string><string name="record_settlement_weight_value">承担权重</string><string name="record_settlement_specified_charge">指定税费与服务费</string><string name="record_settlement_self_summary">本人承担：%1$d 个最小货币单位</string><string name="record_settlement_others_summary">他人承担：%1$d 个最小货币单位</string>
+    <string name="record_template_search">搜索快捷模板</string>
+    <string name="record_template_empty">没有匹配的快捷模板</string>
+    <string name="record_template_empty_body">可以修改搜索词，或在自动化中创建模板。</string>
+    <string name="record_template_create">创建模板</string>
 </resources>

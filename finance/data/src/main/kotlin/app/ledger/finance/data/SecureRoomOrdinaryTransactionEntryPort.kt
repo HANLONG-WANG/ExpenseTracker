@@ -200,7 +200,8 @@ public class SecureRoomOrdinaryTransactionEntryPort(
                 emptyList(),
             )
         }.withCanonicalHash()
-        val sideEffect = if (request.newLocation != null || automaticStatement?.newStatement != null || settledActivity != null) {
+        val hasReferenceSideEffect = request.newLocation != null || automaticStatement?.newStatement != null || settledActivity != null
+        val sideEffect = if (hasReferenceSideEffect) {
             FinancialCommitSideEffect { db, plan ->
                 val location = request.newLocation
                 if (location != null) {
@@ -246,7 +247,11 @@ public class SecureRoomOrdinaryTransactionEntryPort(
         } else {
             FinancialCommitSideEffect.NONE
         }
-        val repository = RoomFinancialCommitRepository(database, sideEffect = sideEffect)
+        val repository = RoomFinancialCommitRepository(
+            database,
+            sideEffect = sideEffect,
+            afterFinancialWriteSideEffect = candidateAcceptanceSideEffect(request.acceptedCandidateId, request.ids.transactionId),
+        )
         return DefaultFinancialMutationCoordinator(
             writeGate = gate,
             receiptRepository = repository,
@@ -256,6 +261,29 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             planner = FinancialPlanningPort(DeterministicFinancialPlanner::plan),
             commitRepository = repository,
         ).execute(command)
+    }
+
+    private fun candidateAcceptanceSideEffect(candidateUid: StableId?, transactionUid: StableId): FinancialCommitSideEffect {
+        if (candidateUid == null) return FinancialCommitSideEffect.NONE
+        return FinancialCommitSideEffect { db, _ ->
+            val candidateInternal = db.queryOne(
+                "SELECT id FROM recurrence_candidate WHERE uid=? AND status IN (?,?)",
+                arrayOf(
+                    candidateUid.bytes,
+                    app.ledger.finance.domain.RecurrenceCandidateStatus.PENDING_CONFIRMATION.ordinal,
+                    app.ledger.finance.domain.RecurrenceCandidateStatus.INVALID.ordinal,
+                ),
+            ) { it.getLong(0) } ?: abort(app.ledger.finance.domain.DomainViolation.InvalidStateTransition("candidate.complete"))
+            val transactionInternal = db.requireInternalId("business_transaction", transactionUid)
+            db.execSQL(
+                "UPDATE recurrence_candidate SET status=?,validation_error_code=NULL WHERE id=?",
+                arrayOf<Any>(app.ledger.finance.domain.RecurrenceCandidateStatus.ACCEPTED.ordinal, candidateInternal),
+            )
+            db.execSQL(
+                "UPDATE recurrence_occurrence SET status=?,transaction_id=?,candidate_id=NULL,error_code=NULL WHERE candidate_id=?",
+                arrayOf<Any>(app.ledger.finance.domain.RecurrenceOccurrenceStatus.TRANSACTION_CREATED.ordinal, transactionInternal, candidateInternal),
+            )
+        }
     }
 
     private fun planningSnapshot(db: SupportSQLiteDatabase, request: OrdinaryTransactionWriteRequest, reserveStatementIds: Boolean): PlanningSnapshot {

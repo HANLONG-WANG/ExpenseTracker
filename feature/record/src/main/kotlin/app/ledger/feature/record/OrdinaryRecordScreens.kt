@@ -46,6 +46,7 @@ import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
+import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerDateTimePickerFlow
 import app.ledger.core.designsystem.LedgerEmptyState
@@ -146,6 +147,7 @@ private fun RecordContent(screenId: String, state: OrdinaryRecordLoadState.Conte
         "REC-010" -> state.editor?.let { AttachmentPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-011" -> state.editor?.let { SettlementAllocation(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-012" -> state.editor?.let { AdvancedSemantics(it) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
+        "REC-026" -> QuickTemplatePicker(state, actions)
         else -> LedgerErrorState(UiErrorCode("RECORD_ROUTE_UNKNOWN"), stringResource(R.string.record_load_failed), actions.onRetry)
     }
 }
@@ -166,7 +168,7 @@ private fun CategoryFirstHome(state: OrdinaryRecordLoadState.Content, actions: O
                 items(templates, key = { it.id.toString() }) { template ->
                     LedgerButton(template.name, { actions.onOpenEditor(RecordEditorMode.TEMPLATE, direction, template.categoryId, template.id) }, compact = true, variant = LedgerButtonVariant.TONAL)
                 }
-                item { LedgerButton(stringResource(R.string.record_all_templates), { actions.onNavigate("TPL-001", emptyMap(), emptyMap()) }, compact = true, variant = LedgerButtonVariant.TEXT) }
+                item { LedgerButton(stringResource(R.string.record_all_templates), { actions.onNavigate("REC-026", emptyMap(), emptyMap()) }, compact = true, variant = LedgerButtonVariant.TEXT) }
             }
         }
         Row(Modifier.fillMaxWidth()) {
@@ -189,6 +191,53 @@ private fun CategoryFirstHome(state: OrdinaryRecordLoadState.Content, actions: O
                 onCreate = { actions.onNavigate("CAT-002", emptyMap(), mapOf("direction" to direction.name)) },
                 createLabel = stringResource(R.string.record_create_category),
             )
+        }
+    }
+}
+
+@Composable
+private fun QuickTemplatePicker(state: OrdinaryRecordLoadState.Content, actions: OrdinaryRecordActions) {
+    val templates = state.snapshot.templates.filter { it.name.contains(state.search, ignoreCase = true) }
+    LazyColumn(
+        Modifier.fillMaxSize().testTag(LedgerTestTags.AUTOMATION_TEMPLATE_PICKER),
+        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+    ) {
+        item {
+            SearchField(
+                value = state.search,
+                onValueChange = actions.onSearch,
+                placeholder = stringResource(R.string.record_template_search),
+                onClear = { actions.onSearch("") },
+            )
+        }
+        if (templates.isEmpty()) {
+            item {
+                LedgerEmptyState(
+                    title = stringResource(R.string.record_template_empty),
+                    explanation = stringResource(R.string.record_template_empty_body),
+                    primaryAction = stringResource(R.string.record_template_create),
+                    onPrimaryAction = { actions.onNavigate("AUT-003", emptyMap(), emptyMap()) },
+                )
+            }
+        } else {
+            items(templates, key = { it.id.toString() }) { template ->
+                LedgerCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        actions.onOpenEditor(
+                            RecordEditorMode.TEMPLATE,
+                            template.direction,
+                            template.categoryId,
+                            template.id,
+                        )
+                    },
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm)) {
+                        LedgerText(template.name, LedgerTextRole.BODY)
+                        template.amountExpression?.let { LedgerText(it, LedgerTextRole.SUPPORTING) }
+                    }
+                }
+            }
         }
     }
 }

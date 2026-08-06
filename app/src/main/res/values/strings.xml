@@ -18,4 +18,5 @@
     <string name="p16_title_refund">退款</string><string name="p16_title_refund_original">选择原交易</string>
     <string name="global_projects">项目</string><string name="global_projects_explanation">查看项目预算、本人承担费用、现金流和互请</string><string name="global_goals">目标资金</string><string name="global_goals_explanation">管理账户内预留、可用余额和目标历史</string><string name="global_credit">信用账户</string><string name="global_credit_explanation">查看账单、额度、还款分配与自动记账资格</string><string name="global_installments">信用卡分期</string><string name="global_installments_explanation">管理分期计划、未出账承诺、退款影响和提前结清</string><string name="global_loans">贷款与负债</string><string name="global_loans_explanation">管理组合贷款、条款版本、计划、实际还款和独立模拟</string>
     <string name="global_settlements">互请与结算</string><string name="global_settlements_explanation">管理参与人、分摊头寸、多次部分结算和补充结算</string>
+    <string name="global_automation">模板与周期</string><string name="global_automation_explanation">管理快捷模板、周期规则和未入账候选</string>
 </resources>

@@ -40,6 +40,7 @@ dependencies {
     implementation(libs.paging.common)
     implementation(libs.paging.compose)
     implementation(libs.androidx.biometric)
+    implementation(libs.work.runtime.ktx)
 }
 
 hilt {

@@ -67,6 +67,7 @@ class RoomFinancialCommitRepository(
     private val database: LedgerDatabase,
     private val failureInjector: FinancialCommitFailureInjector = FinancialCommitFailureInjector.NONE,
     private val sideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
+    private val afterFinancialWriteSideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
 ) : AtomicFinancialCommitRepository,
     CommandReceiptRepository {
     private val writer = RoomFinancialPlanWriter()
@@ -109,7 +110,13 @@ class RoomFinancialCommitRepository(
                     )
                 } ?: abort(FinanceDataError.CorruptData)
                 verifyCommitPreconditions(connection, command, plan, book)
-                writer.write(connection, plan, failureInjector::checkpoint, sideEffect::apply)
+                writer.write(
+                    connection,
+                    plan,
+                    failureInjector::checkpoint,
+                    sideEffect::apply,
+                    afterFinancialWriteSideEffect::apply,
+                )
                 val projectionDate = plan.commit.createdAt
                     .atZone(ZoneId.of(book.defaultZoneId))
                     .toLocalDate()

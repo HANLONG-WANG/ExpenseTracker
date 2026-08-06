@@ -243,6 +243,7 @@ data class RecordLoanPaymentRequest(
     val payment: SpecializedAccountAmountDraft,
     val components: LoanPaymentAmountsDraft,
     val allocations: List<LoanComponentAllocationDraft>,
+    val sourceOccurrenceId: StableId? = null,
 )
 
 data class LoanSimulationRequest(

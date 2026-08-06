@@ -17,4 +17,5 @@
     <string name="global_projects">プロジェクト</string><string name="global_projects_explanation">予算、本人負担、キャッシュフロー、割り勘を確認</string><string name="global_goals">目標資金</string><string name="global_goals_explanation">口座内予約、利用可能額、目標履歴を管理</string><string name="global_credit">クレジット口座</string><string name="global_credit_explanation">明細、限度額、返済配分、自動記帳条件を確認</string>
     <string name="global_installments">クレジット分割払い</string><string name="global_installments_explanation">予定、未計上の約束、返金影響、繰上完済を管理</string><string name="global_loans">ローンと負債</string><string name="global_loans_explanation">組合せローン、版管理条項、予定、実返済、独立試算を管理</string>
     <string name="global_settlements">割り勘と精算</string><string name="global_settlements_explanation">参加者、分担ポジション、部分精算、追加精算を管理</string>
+    <string name="global_automation">テンプレートと定期取引</string><string name="global_automation_explanation">クイックテンプレート、決定的なルール、未記帳候補を管理</string>
 </resources>

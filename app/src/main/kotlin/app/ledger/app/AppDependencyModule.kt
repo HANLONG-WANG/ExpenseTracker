@@ -16,9 +16,11 @@ import app.ledger.core.security.SecurityEnvelopeStore
 import app.ledger.core.time.InjectedJavaClock
 import app.ledger.core.time.JavaTimeLedgerClock
 import app.ledger.core.time.LedgerClock
+import app.ledger.finance.application.AutomationApplicationPort
 import app.ledger.finance.application.BookAttachmentObjectPort
 import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.CreditApplicationPort
+import app.ledger.finance.application.FormalOccurrenceGenerator
 import app.ledger.finance.application.InstallmentApplicationPort
 import app.ledger.finance.application.JournalApplicationPort
 import app.ledger.finance.application.LedgerInitializationPort
@@ -30,6 +32,7 @@ import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.RefundApplicationPort
 import app.ledger.finance.application.SettlementApplicationPort
 import app.ledger.finance.application.SpecializedTransactionEntryPort
+import app.ledger.finance.data.SecureRoomAutomationApplicationPort
 import app.ledger.finance.data.SecureRoomBudgetApplicationPort
 import app.ledger.finance.data.SecureRoomCreditApplicationPort
 import app.ledger.finance.data.SecureRoomInstallmentApplicationPort
@@ -155,6 +158,30 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
     ): SettlementApplicationPort = SecureRoomSettlementApplicationPort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun formalOccurrenceGenerator(
+        ordinary: OrdinaryTransactionEntryPort,
+        credit: CreditApplicationPort,
+        loan: LoanApplicationPort,
+    ): FormalOccurrenceGenerator = AppFormalOccurrenceGenerator(ordinary, credit, loan)
+
+    @Provides
+    @Singleton
+    fun automationApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+        generator: FormalOccurrenceGenerator,
+    ): AutomationApplicationPort = SecureRoomAutomationApplicationPort(context, keyProvider, generator)
+
+    @Provides
+    @Singleton
+    fun headlessRecurrenceExecutor(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+        automation: AutomationApplicationPort,
+    ): HeadlessRecurrenceExecutor = AppHeadlessRecurrenceExecutor(context, keyProvider, automation)
 
     @Provides
     @Singleton
