@@ -16,6 +16,7 @@ import app.ledger.analytics.domain.AnalyticsApplicationPort
 import app.ledger.analytics.domain.DrilldownQueryId
 import app.ledger.analytics.domain.FixedReport
 import app.ledger.analytics.domain.FixedReportCatalog
+import app.ledger.analytics.domain.ReportExportFormat
 import app.ledger.app.settings.DestinationProto
 import app.ledger.app.settings.LedgerAppSettings
 import app.ledger.app.settings.NavigationSnapshotProto
@@ -899,14 +900,20 @@ internal class AppRootViewModel @Inject constructor(
         }
     }
 
-    fun loadAnalysis(screenId: String, reportKey: String? = null, queryId: StableId? = null) {
+    fun loadAnalysis(
+        screenId: String,
+        reportKey: String? = null,
+        queryId: StableId? = null,
+        entityId: StableId? = null,
+        forecastKey: app.ledger.analytics.domain.ForecastKey? = null,
+    ) {
         if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
         viewModelScope.launch(Dispatchers.IO) {
             val saved = settingsRepository.current()
             val bookId = runCatching { requireBookId(saved) }.getOrNull() ?: return@launch
             val currency = CurrencyCode.parse(saved.baseCurrency.ifBlank { DEFAULT_CURRENCY }).getOrNull() ?: return@launch
             val today = runtimeSources.clock.now().atZone(ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE })).toLocalDate()
-            analysisController.open(bookId, currency, today, screenId, reportKey, queryId?.let(::DrilldownQueryId))
+            analysisController.open(bookId, currency, today, screenId, reportKey, queryId?.let(::DrilldownQueryId), entityId, forecastKey)
         }
     }
 
@@ -932,7 +939,55 @@ internal class AppRootViewModel @Inject constructor(
 
     fun applyAnalysisFilter(): Boolean = analysisController.applyFilter()
 
-    fun prepareAnalysisExport(): Boolean = analysisController.prepareExport()
+    fun prepareAnalysisExport(): Boolean {
+        if (!analysisController.prepareExport()) return false
+        val instanceId = nextId()
+        analysisController.bindPreparedExportId(instanceId)
+        navigateAnalysisP26("ANA-010", instanceId, null)
+        return true
+    }
+
+    fun updateAnalysisDraftName(value: String) = analysisController.updateDraftName(value)
+
+    fun previewCustomAnalysisReport() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.previewCustomReport() }
+    }
+
+    fun saveCustomAnalysisReport() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.saveCustomReport() }
+    }
+
+    fun copyCustomAnalysisReport(id: app.ledger.analytics.domain.ReportDefinitionId) {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.copyCustomReport(id) }
+    }
+
+    fun selectAnalysisVisualization(value: app.ledger.analytics.domain.ReportVisualization) = analysisController.selectVisualization(value)
+
+    fun saveAnalysisDashboard() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.saveDashboard() }
+    }
+
+    fun toggleAnalysisDashboardReport(id: app.ledger.analytics.domain.ReportDefinitionId) = analysisController.toggleDashboardReport(id)
+
+    fun moveAnalysisDashboardReport(id: app.ledger.analytics.domain.ReportDefinitionId, delta: Int) = analysisController.moveDashboardReport(id, delta)
+
+    fun toggleAnalysisDashboardWidth(id: app.ledger.analytics.domain.ReportDefinitionId) = analysisController.toggleDashboardWidth(id)
+
+    fun saveAnalysisAnomalyRule(id: app.ledger.analytics.domain.AnomalyRuleId?) {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.saveAnomalyRule(id) }
+    }
+
+    fun editAnalysisAnomalyRule(id: app.ledger.analytics.domain.AnomalyRuleId?) = analysisController.editAnomalyRule(id)
+
+    fun cycleAnalysisAnomalyType() = analysisController.cycleAnomalyType()
+
+    fun updateAnalysisAnomalyThreshold(value: String) = analysisController.updateAnomalyThreshold(value)
+
+    fun updateAnalysisAnomalyLookback(value: String) = analysisController.updateAnomalyLookback(value)
+
+    fun selectAnalysisExportFormat(format: ReportExportFormat) = analysisController.selectExportFormat(format)
+
+    fun prepareCurrentAnalysisExport(): Boolean = analysisController.prepareCurrentExport()
 
     fun runAnalysisIntegrity() {
         viewModelScope.launch(Dispatchers.IO) { analysisController.runIntegrity() }
@@ -964,6 +1019,26 @@ internal class AppRootViewModel @Inject constructor(
             }
             if (targetScreenId == "ANA-005") {
                 put("queryId", StableIdArgument(requireNotNull(queryId).value))
+            }
+        }
+        navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+    }
+
+    fun navigateAnalysisP26(
+        targetScreenId: String,
+        id: StableId?,
+        forecastKey: app.ledger.analytics.domain.ForecastKey?,
+    ) {
+        val screenId = ScreenId(targetScreenId)
+        val arguments = buildMap<String, SafeRouteArgument> {
+            when (targetScreenId) {
+                "ANA-007" -> if (id != null) put("dashboardId", StableIdArgument(id))
+                "ANA-008" -> if (id != null) put("definitionId", StableIdArgument(id))
+                "ANA-010" -> put("reportInstanceId", StableIdArgument(requireNotNull(id)))
+                "ANA-014" -> put(
+                    "forecastKey",
+                    LedgerRouteContract.opaqueKeyArgument(screenId, "forecastKey", requireNotNull(forecastKey).routeKey),
+                )
             }
         }
         navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)

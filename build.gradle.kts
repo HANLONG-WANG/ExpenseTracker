@@ -1186,7 +1186,10 @@ val validateP25Analytics by tasks.registering(Exec::class) {
     environment("PYTHONDONTWRITEBYTECODE", "1")
     inputs.files(
         fileTree("scripts") { include("**/*.py") },
-        fileTree("analytics") { include("**/*") },
+        fileTree("analytics") {
+            include("**/*.kt", "**/*.kts", "**/AndroidManifest.xml")
+            exclude("**/build/**")
+        },
         fileTree("app/src") { include("**/*") },
         fileTree("core/database/src/main") { include("**/*") },
         fileTree("core/designsystem/src") { include("**/*") },
@@ -1229,6 +1232,66 @@ tasks.register("p25Check") {
         "detekt",
         ":analytics:domain:test",
         ":analytics:data:testDebugUnitTest",
+        ":feature:analysis:testDebugUnitTest",
+        ":app:lintDebug",
+        ":analytics:data:lintDebug",
+        ":feature:analysis:lintDebug",
+        ":core:database:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+val validateP26CustomAnalytics by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P26 revisioned custom reports, dashboards, deterministic anomaly/forecast engines, safe routes and accessible UI."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p26_custom_analytics.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("analytics") {
+            include("**/*.kt", "**/*.kts", "**/AndroidManifest.xml")
+            exclude("**/build/**")
+        },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/database/src/main") { include("**/*") },
+        fileTree("core/database/schemas") { include("**/*.json") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/analysis/src") { include("**/*") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP26CustomAnalyticsFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P26 gate rejects deterministic, encryption, revision, route and accessibility weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p26_custom_analytics_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p26_custom_analytics.py",
+        "scripts/tests/test_p26_custom_analytics_contracts.py",
+        fileTree("analytics") { include("**/*.kt") },
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/database/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/analysis/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p26Check") {
+    group = "verification"
+    description = "Runs P26 static, JVM, lint and architecture evidence; SQLCipher/UI device suites run separately."
+    dependsOn(
+        validateP26CustomAnalytics,
+        validateP26CustomAnalyticsFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":analytics:domain:test",
+        ":analytics:data:testDebugUnitTest",
+        ":core:database:testDebugUnitTest",
         ":feature:analysis:testDebugUnitTest",
         ":app:lintDebug",
         ":analytics:data:lintDebug",

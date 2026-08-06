@@ -316,11 +316,18 @@ def main() -> int:
         "ANA-004": "VERIFIED",
         "ANA-005": "VERIFIED",
         "ANA-015": "VERIFIED",
+        "ANA-006": "VERIFIED",
+        "ANA-007": "VERIFIED",
+        "ANA-008": "VERIFIED",
+        "ANA-009": "VERIFIED",
+        "ANA-010": "VERIFIED",
+        "ANA-013": "VERIFIED",
+        "ANA-014": "VERIFIED",
     }
     if len(screen_coverage) != 215 or any(
         row["status"] != cumulative_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_coverage
     ):
-        fail("screen coverage contains a promotion outside the cumulative P25 scope")
+        fail("screen coverage contains a promotion outside the cumulative P26 scope")
 
     print("P01 build baseline: PASS")
     print(f"leaf_modules={len(LEAF_MODULES)} grouping_projects=5 included_builds=1")

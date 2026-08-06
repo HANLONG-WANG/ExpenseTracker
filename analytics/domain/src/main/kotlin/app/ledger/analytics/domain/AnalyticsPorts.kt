@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package app.ledger.analytics.domain
 
 import app.ledger.core.common.DomainError
@@ -42,6 +44,14 @@ sealed interface AnalyticsError : DomainError {
     data object StaleProjection : AnalyticsError {
         override val code: String = "ANALYTICS_STALE_PROJECTION"
     }
+
+    data object DefinitionNotFound : AnalyticsError {
+        override val code: String = "ANALYTICS_DEFINITION_NOT_FOUND"
+    }
+
+    data object RevisionConflict : AnalyticsError {
+        override val code: String = "ANALYTICS_REVISION_CONFLICT"
+    }
 }
 
 data class ReportPeriod(val start: LocalDate, val endInclusive: LocalDate) {
@@ -70,6 +80,7 @@ sealed interface ReportExecution {
         val visualization: VisualizationResolution,
         val summaryCode: String,
         val comparison: ReportComparison? = null,
+        val derivedSeries: ReportDerivedSeries? = null,
     ) : ReportExecution
 
     data class Empty(
@@ -91,6 +102,24 @@ data class ReportComparison(
 ) {
     init {
         require(mode == ComparisonMode.PREVIOUS_PERIOD || mode == ComparisonMode.YEAR_OVER_YEAR)
+    }
+}
+
+data class DerivedSeriesPoint(
+    val date: LocalDate,
+    val values: List<MeasureValue>,
+)
+
+data class ReportDerivedSeries(
+    val mode: ComparisonMode,
+    val windowSize: Int,
+    val algorithmVersion: AnalyticsAlgorithmVersion,
+    val points: List<DerivedSeriesPoint>,
+    val explanationCode: String,
+) {
+    init {
+        require(mode in setOf(ComparisonMode.MOVING_AVERAGE, ComparisonMode.TREND, ComparisonMode.FORECAST))
+        require(windowSize > 0)
     }
 }
 
@@ -201,11 +230,31 @@ interface AnalyticsApplicationPort : AnalyticsQueryPort {
         period: ReportPeriod,
         format: ReportExportFormat,
     ): DomainResult<ReportExportPayload>
+
+    suspend fun savedReports(bookId: StableId): DomainResult<List<SavedReportDefinition>>
+
+    suspend fun saveReport(bookId: StableId, request: SaveReportDefinitionRequest): DomainResult<SavedReportDefinition>
+
+    suspend fun copyReport(bookId: StableId, reportId: ReportDefinitionId, copyName: String): DomainResult<SavedReportDefinition>
+
+    suspend fun dashboards(bookId: StableId): DomainResult<List<SavedDashboard>>
+
+    suspend fun saveDashboard(bookId: StableId, request: SaveDashboardRequest): DomainResult<SavedDashboard>
+
+    suspend fun anomalyRules(bookId: StableId): DomainResult<List<SavedAnomalyRule>>
+
+    suspend fun saveAnomalyRule(bookId: StableId, request: SaveAnomalyRuleRequest): DomainResult<SavedAnomalyRule>
+
+    suspend fun anomalyFindings(bookId: StableId, period: ReportPeriod): DomainResult<List<AnomalyFinding>>
+
+    suspend fun forecast(bookId: StableId, key: ForecastKey, today: LocalDate): DomainResult<ForecastResult>
 }
 
 data class TimeSeriesPoint(
     val date: LocalDate,
     val amountMinor: Long,
+    val seriesKey: String = "total",
+    val occurrenceCount: Long = 1L,
 )
 
 @JvmInline
@@ -242,7 +291,22 @@ data class AnomalyFinding(
     val baselineMinor: Long,
     val score: BigDecimal,
     val explanationCode: String,
+    val seriesKey: String = "total",
+    val observedCount: Long = 1L,
+    val windowStart: LocalDate = date,
+    val windowEndInclusive: LocalDate = date,
 )
+
+enum class ForecastKey(val routeKey: String) {
+    MONTH_END_SPENDING("month-end-spending"),
+    MONTH_END_BALANCE_WITH_RECURRENCE("month-end-balance-with-recurrence"),
+    HISTORICAL_SAME_MONTH("historical-same-month"),
+    ;
+
+    companion object {
+        fun fromRouteKey(value: String): ForecastKey? = entries.singleOrNull { it.routeKey == value }
+    }
+}
 
 enum class ForecastMethod {
     CURRENT_DAILY_AVERAGE,
@@ -257,6 +321,8 @@ data class ForecastRequest(
     val today: LocalDate,
     val throughDate: LocalDate,
     val version: AnalyticsAlgorithmVersion,
+    val key: ForecastKey = ForecastKey.MONTH_END_SPENDING,
+    val startingBalanceMinor: Long? = null,
 ) {
     init {
         require(throughDate >= today)
@@ -270,6 +336,11 @@ data class ForecastResult(
     val version: AnalyticsAlgorithmVersion,
     val explanationCode: String,
     val basedOnLocalRevision: LocalRevision,
+    val observedMinor: Long = 0L,
+    val dailyAverageMinor: Long = 0L,
+    val recurrenceIncludedMinor: Long = 0L,
+    val windowStart: LocalDate = throughDate,
+    val windowEndInclusive: LocalDate = throughDate,
 )
 
 interface DeterministicAnalyticsEngine {

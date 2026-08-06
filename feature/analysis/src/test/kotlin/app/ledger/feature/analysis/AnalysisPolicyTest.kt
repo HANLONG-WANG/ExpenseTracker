@@ -31,7 +31,7 @@ class AnalysisPolicyTest {
     }
 
     @Test
-    fun `all YAML presentation states are closed and distinguish stale from query error`() {
+    fun `all P25 and P26 YAML presentation states are closed`() {
         AnalysisPresentation.entries.toSet() shouldBe setOf(
             AnalysisPresentation.CONTENT,
             AnalysisPresentation.NO_DATA,
@@ -49,6 +49,12 @@ class AnalysisPolicyTest {
             AnalysisPresentation.PASSED,
             AnalysisPresentation.WARNINGS,
             AnalysisPresentation.FAILED,
+            AnalysisPresentation.CREATE,
+            AnalysisPresentation.EDIT,
+            AnalysisPresentation.EMPTY_CANVAS,
+            AnalysisPresentation.PREVIEWING,
+            AnalysisPresentation.AUTO_FALLBACK_TO_BAR,
+            AnalysisPresentation.INSUFFICIENT_DATA,
         )
     }
 

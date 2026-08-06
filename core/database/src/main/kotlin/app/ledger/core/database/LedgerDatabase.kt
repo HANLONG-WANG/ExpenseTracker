@@ -11,7 +11,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 @Database(
     entities = [PrimarySchemaRegistryEntity::class],
-    version = LedgerSchemaDefinition.VERSION,
+    version = LedgerSchemaDefinition.PRIMARY_VERSION,
     exportSchema = true,
 )
 abstract class LedgerDatabase : RoomDatabase() {
@@ -26,7 +26,7 @@ abstract class LedgerDatabase : RoomDatabase() {
 
 @Database(
     entities = [StagingSchemaRegistryEntity::class],
-    version = LedgerSchemaDefinition.VERSION,
+    version = LedgerSchemaDefinition.STAGING_VERSION,
     exportSchema = true,
 )
 abstract class ImportStagingDatabase : RoomDatabase() {
@@ -47,7 +47,7 @@ object EncryptedDatabaseFactory {
         return Room.databaseBuilder(context.applicationContext, LedgerDatabase::class.java, name)
             .openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf(), SecureSqlCipherHook, true))
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .apply { LedgerMigrations.registered.forEach { migration -> addMigrations(migration) } }
+            .apply { LedgerMigrations.registered(context.applicationContext).forEach { migration -> addMigrations(migration) } }
             .addCallback(PrimaryDatabaseCallback(context.applicationContext))
             .build()
     }

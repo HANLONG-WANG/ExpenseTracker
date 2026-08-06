@@ -3,13 +3,26 @@
 package app.ledger.feature.analysis
 
 import app.ledger.analytics.domain.AnalysisOverview
+import app.ledger.analytics.domain.AnalyticsAlgorithmVersion
 import app.ledger.analytics.domain.AnalyticsIntegrityReport
+import app.ledger.analytics.domain.AnomalyFinding
+import app.ledger.analytics.domain.AnomalyRule
+import app.ledger.analytics.domain.AnomalyRuleId
+import app.ledger.analytics.domain.AnomalyRuleType
+import app.ledger.analytics.domain.Dashboard
+import app.ledger.analytics.domain.DashboardId
+import app.ledger.analytics.domain.DashboardItem
+import app.ledger.analytics.domain.DashboardRevision
+import app.ledger.analytics.domain.DashboardRevisionId
 import app.ledger.analytics.domain.DimensionValue
 import app.ledger.analytics.domain.DrilldownPage
 import app.ledger.analytics.domain.DrilldownQueryId
 import app.ledger.analytics.domain.DrilldownTransaction
 import app.ledger.analytics.domain.FixedReport
 import app.ledger.analytics.domain.FixedReportCatalog
+import app.ledger.analytics.domain.ForecastKey
+import app.ledger.analytics.domain.ForecastMethod
+import app.ledger.analytics.domain.ForecastResult
 import app.ledger.analytics.domain.IntegrityCheckKey
 import app.ledger.analytics.domain.IntegrityCheckResult
 import app.ledger.analytics.domain.IntegritySeverity
@@ -17,11 +30,18 @@ import app.ledger.analytics.domain.Measure
 import app.ledger.analytics.domain.MeasureValue
 import app.ledger.analytics.domain.QuerySource
 import app.ledger.analytics.domain.ReportComparison
+import app.ledger.analytics.domain.ReportDefinition
+import app.ledger.analytics.domain.ReportDefinitionId
+import app.ledger.analytics.domain.ReportDefinitionRevision
 import app.ledger.analytics.domain.ReportExecution
 import app.ledger.analytics.domain.ReportPeriod
 import app.ledger.analytics.domain.ReportQueryPlan
+import app.ledger.analytics.domain.ReportRevisionId
 import app.ledger.analytics.domain.ReportRow
 import app.ledger.analytics.domain.ReportVisualization
+import app.ledger.analytics.domain.SavedAnomalyRule
+import app.ledger.analytics.domain.SavedDashboard
+import app.ledger.analytics.domain.SavedReportDefinition
 import app.ledger.analytics.domain.VisualizationResolution
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
@@ -77,6 +97,77 @@ object AnalysisDeviceFixtures {
         integrity = integrity,
         technicalDetailsExpanded = true,
         failureCode = failureCode,
+        savedReports = savedReports(),
+        dashboards = dashboards(),
+        selectedDashboard = dashboards().single(),
+        dashboardItems = dashboards().single().revision.items,
+        draftName = "Monthly overview",
+        draftVisualization = ReportVisualization.LINE,
+        anomalyRules = anomalyRules(),
+        anomalyFindings = anomalyFindings(),
+        forecastKey = ForecastKey.MONTH_END_SPENDING,
+        forecast = forecast(),
+    )
+
+    fun savedReports(): List<SavedReportDefinition> {
+        val definitionId = ReportDefinitionId(id(1_001))
+        val revisionId = ReportRevisionId(id(1_002))
+        return listOf(
+            SavedReportDefinition(
+                ReportDefinition(definitionId, "Monthly overview", revisionId, false, 1),
+                ReportDefinitionRevision(revisionId, definitionId, 1, definition.spec, ReportVisualization.LINE, 1, 1_786_000_000_000L),
+            ),
+        )
+    }
+
+    fun dashboards(): List<SavedDashboard> {
+        val dashboardId = DashboardId(id(1_010))
+        val revisionId = DashboardRevisionId(id(1_011))
+        val items = listOf(DashboardItem(savedReports().single().definition.id, 0))
+        return listOf(
+            SavedDashboard(
+                Dashboard(dashboardId, "Planning", items, false, revisionId, 1),
+                DashboardRevision(revisionId, dashboardId, 1, items, 1_786_000_000_000L),
+            ),
+        )
+    }
+
+    fun anomalyRules(): List<SavedAnomalyRule> = listOf(
+        SavedAnomalyRule(
+            AnomalyRuleId(id(1_020)),
+            AnomalyRule(AnomalyRuleType.HISTORICAL_MEAN_STANDARD_DEVIATION, BigDecimal("2.0"), 12, AnalyticsAlgorithmVersion(1)),
+            true,
+            1,
+        ),
+    )
+
+    fun anomalyFindings(): List<AnomalyFinding> = listOf(
+        AnomalyFinding(
+            anomalyRules().single().rule,
+            LocalDate.of(2026, 8, 5),
+            5_000,
+            1_000,
+            BigDecimal("4.0"),
+            "ANOMALY_HISTORICAL_MEAN_STANDARD_DEVIATION",
+            "food",
+            1,
+            LocalDate.of(2025, 8, 1),
+            LocalDate.of(2026, 7, 31),
+        ),
+    )
+
+    fun forecast(): ForecastResult = ForecastResult(
+        ForecastMethod.CURRENT_DAILY_AVERAGE,
+        82_000,
+        LocalDate.of(2026, 8, 31),
+        AnalyticsAlgorithmVersion(1),
+        "FORECAST_DAILY_AVERAGE",
+        revision,
+        18_000,
+        3_000,
+        0,
+        LocalDate.of(2026, 8, 1),
+        LocalDate.of(2026, 8, 6),
     )
 
     fun overview(): AnalysisOverview = AnalysisOverview(

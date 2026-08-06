@@ -16,6 +16,9 @@ import app.ledger.analytics.domain.AnalysisOverview
 import app.ledger.analytics.domain.AnalyticsApplicationPort
 import app.ledger.analytics.domain.AnalyticsError
 import app.ledger.analytics.domain.AnalyticsIntegrityReport
+import app.ledger.analytics.domain.AnomalyFinding
+import app.ledger.analytics.domain.AnomalyRuleId
+import app.ledger.analytics.domain.DashboardId
 import app.ledger.analytics.domain.Dimension
 import app.ledger.analytics.domain.DimensionValue
 import app.ledger.analytics.domain.DrilldownCursor
@@ -25,6 +28,8 @@ import app.ledger.analytics.domain.DrilldownTransaction
 import app.ledger.analytics.domain.FixedReport
 import app.ledger.analytics.domain.FixedReportCatalog
 import app.ledger.analytics.domain.FixedReportDefinition
+import app.ledger.analytics.domain.ForecastKey
+import app.ledger.analytics.domain.ForecastResult
 import app.ledger.analytics.domain.IntegrityCheckKey
 import app.ledger.analytics.domain.IntegrityCheckResult
 import app.ledger.analytics.domain.IntegritySeverity
@@ -32,6 +37,8 @@ import app.ledger.analytics.domain.Measure
 import app.ledger.analytics.domain.MeasureValue
 import app.ledger.analytics.domain.QuerySource
 import app.ledger.analytics.domain.ReportComparison
+import app.ledger.analytics.domain.ReportDefinitionId
+import app.ledger.analytics.domain.ReportDerivationPolicy
 import app.ledger.analytics.domain.ReportExecution
 import app.ledger.analytics.domain.ReportExportFormat
 import app.ledger.analytics.domain.ReportExportPayload
@@ -42,15 +49,23 @@ import app.ledger.analytics.domain.ReportRow
 import app.ledger.analytics.domain.ReportSpec
 import app.ledger.analytics.domain.ReportVisualization
 import app.ledger.analytics.domain.ReportVisualizationPolicy
+import app.ledger.analytics.domain.SaveAnomalyRuleRequest
+import app.ledger.analytics.domain.SaveDashboardRequest
+import app.ledger.analytics.domain.SaveReportDefinitionRequest
+import app.ledger.analytics.domain.SavedAnomalyRule
+import app.ledger.analytics.domain.SavedDashboard
+import app.ledger.analytics.domain.SavedReportDefinition
 import app.ledger.analytics.domain.SavingsRatePolicy
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
+import app.ledger.core.common.StableIdSource
 import app.ledger.core.common.getOrNull
 import app.ledger.core.database.AnalyticsProjectionEngine
 import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
+import app.ledger.core.time.LedgerClock
 import app.ledger.finance.domain.LocalRevision
 import java.math.BigDecimal
 import java.security.MessageDigest
@@ -65,9 +80,12 @@ fun interface TransientAnalyticsDatabasePassphraseProvider {
 class SecureRoomAnalyticsApplicationPort(
     context: Context,
     private val passphrases: TransientAnalyticsDatabasePassphraseProvider,
+    ids: StableIdSource,
+    clock: LedgerClock,
 ) : AnalyticsApplicationPort {
     private val applicationContext = context.applicationContext
     private val drilldowns = DrilldownRegistry()
+    private val customAnalytics = CustomAnalyticsStore(ids, clock)
 
     override fun fixedReports(): List<FixedReportDefinition> = FixedReportCatalog.definitions
 
@@ -235,6 +253,62 @@ class SecureRoomAnalyticsApplicationPort(
         ),
     )
 
+    override suspend fun savedReports(bookId: StableId): DomainResult<List<SavedReportDefinition>> = withDatabase(bookId) { database ->
+        database.readLedger(customAnalytics::listReports)
+    }
+
+    override suspend fun saveReport(
+        bookId: StableId,
+        request: SaveReportDefinitionRequest,
+    ): DomainResult<SavedReportDefinition> = withDatabase(bookId) { database ->
+        database.inLedgerTransaction { connection -> customAnalytics.saveReport(connection, request) }
+    }
+
+    override suspend fun copyReport(
+        bookId: StableId,
+        reportId: ReportDefinitionId,
+        copyName: String,
+    ): DomainResult<SavedReportDefinition> = withDatabase(bookId) { database ->
+        database.inLedgerTransaction { connection -> customAnalytics.copyReport(connection, reportId, copyName) }
+    }
+
+    override suspend fun dashboards(bookId: StableId): DomainResult<List<SavedDashboard>> = withDatabase(bookId) { database ->
+        database.readLedger(customAnalytics::listDashboards)
+    }
+
+    override suspend fun saveDashboard(
+        bookId: StableId,
+        request: SaveDashboardRequest,
+    ): DomainResult<SavedDashboard> = withDatabase(bookId) { database ->
+        database.inLedgerTransaction { connection -> customAnalytics.saveDashboard(connection, request) }
+    }
+
+    override suspend fun anomalyRules(bookId: StableId): DomainResult<List<SavedAnomalyRule>> = withDatabase(bookId) { database ->
+        database.readLedger(customAnalytics::listAnomalyRules)
+    }
+
+    override suspend fun saveAnomalyRule(
+        bookId: StableId,
+        request: SaveAnomalyRuleRequest,
+    ): DomainResult<SavedAnomalyRule> = withDatabase(bookId) { database ->
+        database.inLedgerTransaction { connection -> customAnalytics.saveAnomalyRule(connection, request) }
+    }
+
+    override suspend fun anomalyFindings(
+        bookId: StableId,
+        period: ReportPeriod,
+    ): DomainResult<List<AnomalyFinding>> = withDatabase(bookId) { database ->
+        database.readLedger { connection -> customAnalytics.anomalyFindings(connection, period) }
+    }
+
+    override suspend fun forecast(
+        bookId: StableId,
+        key: ForecastKey,
+        today: LocalDate,
+    ): DomainResult<ForecastResult> = withDatabase(bookId) { database ->
+        database.readLedger { connection -> customAnalytics.forecast(connection, key, today) }
+    }
+
     private fun executeOnConnection(
         connection: SupportSQLiteDatabase,
         plan: ReportQueryPlan,
@@ -269,12 +343,20 @@ class SecureRoomAnalyticsApplicationPort(
             )
         }
         val categoryCount = if (Dimension.CATEGORY in plan.spec.dimensions) rows.size else 0
-        val visualization = ReportVisualizationPolicy.resolve(requestedVisualization, categoryCount, plan.spec.dimensions)
+        val visualization = ReportVisualizationPolicy.resolve(
+            requestedVisualization,
+            categoryCount,
+            plan.spec.dimensions,
+            plan.spec.measures,
+        )
+        val derived = ReportDerivationPolicy.derive(plan.spec.comparison, rows)
         val comparisonRows = comparison?.rows.orEmpty()
         return if ((rows + comparisonRows).isEmpty() || (rows + comparisonRows).all { row -> row.measureValues.all { it.isZero() } }) {
             DomainResult.Success(ReportExecution.Empty(fixedReport, plan, visualization))
         } else {
-            DomainResult.Success(ReportExecution.Content(fixedReport, plan, rows, visualization, "REPORT_RESULT_READY", comparison))
+            DomainResult.Success(
+                ReportExecution.Content(fixedReport, plan, rows, visualization, "REPORT_RESULT_READY", comparison, derived),
+            )
         }
     }
 

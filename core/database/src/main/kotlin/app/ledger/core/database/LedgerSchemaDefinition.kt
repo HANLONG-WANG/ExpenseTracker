@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package app.ledger.core.database
 
 import android.content.Context
@@ -5,13 +7,18 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import java.security.MessageDigest
 
 internal object LedgerSchemaDefinition {
-    const val VERSION: Int = 1
+    const val PRIMARY_VERSION: Int = 2
+    const val STAGING_VERSION: Int = 1
 
-    val primaryAssets: List<String> = listOf(
+    internal val primaryV1Assets: List<String> = listOf(
         "ledger_schema_v1_core.sql",
         "ledger_schema_v1_subledgers.sql",
         "ledger_schema_v1_projections_operations.sql",
         "ledger_schema_v1_indices_views.sql",
+    )
+
+    val primaryAssets: List<String> = primaryV1Assets + listOf(
+        "ledger_schema_v2_analytics_configuration.sql",
     )
 
     val stagingAssets: List<String> = listOf("import_staging_schema_v1.sql")
@@ -99,7 +106,22 @@ internal object LedgerSchemaDefinition {
         registerStagingContract(context, database)
     }
 
+    fun migratePrimaryV1ToV2(context: Context, database: SupportSQLiteDatabase) {
+        SchemaSqlAssets.install(context, database, listOf("ledger_schema_v2_analytics_configuration.sql"))
+        database.execSQL(
+            "UPDATE _room_schema_registry SET logicalSchemaVersion=?, contractSha256=? WHERE id=1",
+            arrayOf<Any>(PRIMARY_VERSION, primaryContractSha256(context)),
+        )
+    }
+
     fun primaryContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryAssets)
+
+    internal fun primaryV1ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV1Assets)
+
+    internal fun expectedPrimaryV2TableNames(context: Context): Set<String> = SchemaSqlAssets.statements(
+        context,
+        listOf("ledger_schema_v2_analytics_configuration.sql"),
+    ).mapNotNull(SchemaSqlAssets::createdTableName).toSet()
 
     fun stagingContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, stagingAssets)
 
@@ -127,14 +149,14 @@ internal object LedgerSchemaDefinition {
     private fun registerPrimaryContract(context: Context, database: SupportSQLiteDatabase) {
         database.execSQL(
             "INSERT INTO _room_schema_registry(id, logicalSchemaVersion, contractSha256) VALUES (1, ?, ?)",
-            arrayOf<Any>(VERSION, primaryContractSha256(context)),
+            arrayOf<Any>(PRIMARY_VERSION, primaryContractSha256(context)),
         )
     }
 
     private fun registerStagingContract(context: Context, database: SupportSQLiteDatabase) {
         database.execSQL(
             "INSERT INTO _staging_room_schema_registry(id, logicalSchemaVersion, contractSha256) VALUES (1, ?, ?)",
-            arrayOf<Any>(VERSION, stagingContractSha256(context)),
+            arrayOf<Any>(STAGING_VERSION, stagingContractSha256(context)),
         )
     }
 }

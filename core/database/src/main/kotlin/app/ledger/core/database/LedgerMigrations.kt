@@ -1,6 +1,8 @@
 package app.ledger.core.database
 
+import android.content.Context
 import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 enum class MigrationPhase {
     EXPAND,
@@ -34,16 +36,30 @@ data class MigrationContract(
 }
 
 object LedgerMigrations {
-    const val CURRENT_VERSION: Int = LedgerSchemaDefinition.VERSION
+    const val CURRENT_VERSION: Int = LedgerSchemaDefinition.PRIMARY_VERSION
 
-    /** v1 is the first registered primary schema, so there is no predecessor migration yet. */
-    val registered: List<Migration> = emptyList()
+    fun registered(context: Context): List<Migration> = listOf(
+        object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                LedgerSchemaDefinition.migratePrimaryV1ToV2(context, db)
+            }
+        },
+    )
 
-    val contracts: List<MigrationContract> = emptyList()
+    val contracts: List<MigrationContract> = listOf(
+        MigrationContract(
+            1,
+            2,
+            listOf(
+                MigrationStep(MigrationPhase.EXPAND, "add normalized custom report dashboard and anomaly rule tables"),
+                MigrationStep(MigrationPhase.SWITCH, "register primary logical schema v2 contract"),
+            ),
+        ),
+    )
 }
 
 object StagingMigrations {
-    const val CURRENT_VERSION: Int = LedgerSchemaDefinition.VERSION
+    const val CURRENT_VERSION: Int = LedgerSchemaDefinition.STAGING_VERSION
 
     /** Staging schemas are independently versioned and disposable, but never opened through destructive fallback. */
     val registered: List<Migration> = emptyList()

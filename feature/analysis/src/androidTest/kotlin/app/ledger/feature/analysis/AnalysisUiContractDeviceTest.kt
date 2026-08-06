@@ -39,7 +39,7 @@ class AnalysisUiContractDeviceTest {
     @Test
     fun everyFrozenRequiredStateRendersAcrossWidthFontLocaleAndThemeMatrix() {
         val cases = cases()
-        assertEquals(20, cases.size)
+        assertEquals(36, cases.size)
         assertEquals(EXPECTED, cases.groupBy(Case::screen).mapValues { (_, values) -> values.map(Case::stateName).toSet() })
         val active = mutableStateOf(cases.first())
         composeRule.setContent {
@@ -116,6 +116,22 @@ class AnalysisUiContractDeviceTest {
                 AnalysisDeviceFixtures.base("ANA-005", AnalysisPresentation.EMPTY, drilldown = DrilldownPage(emptyList(), null)),
             ),
             Case("ANA-005", "expiredQuery", LedgerTestTags.REPORT_DRILLDOWN, AnalysisDeviceFixtures.base("ANA-005", AnalysisPresentation.EXPIRED_QUERY)),
+            Case("ANA-006", "content", LedgerTestTags.DASHBOARD_LIST, AnalysisDeviceFixtures.base("ANA-006", AnalysisPresentation.CONTENT)),
+            Case("ANA-006", "empty", LedgerTestTags.DASHBOARD_LIST, AnalysisDeviceFixtures.base("ANA-006", AnalysisPresentation.EMPTY).copy(dashboards = emptyList())),
+            Case("ANA-007", "create", LedgerTestTags.DASHBOARD_EDITOR, AnalysisDeviceFixtures.base("ANA-007", AnalysisPresentation.CREATE).copy(selectedDashboard = null)),
+            Case("ANA-007", "edit", LedgerTestTags.DASHBOARD_EDITOR, AnalysisDeviceFixtures.base("ANA-007", AnalysisPresentation.EDIT)),
+            Case("ANA-007", "emptyCanvas", LedgerTestTags.DASHBOARD_EDITOR, AnalysisDeviceFixtures.base("ANA-007", AnalysisPresentation.EMPTY_CANVAS).copy(selectedDashboard = null, dashboardItems = emptyList())),
+            Case("ANA-008", "editing", LedgerTestTags.REPORT_BUILDER, AnalysisDeviceFixtures.base("ANA-008", AnalysisPresentation.EDITING)),
+            Case("ANA-008", "invalid", LedgerTestTags.REPORT_BUILDER, AnalysisDeviceFixtures.base("ANA-008", AnalysisPresentation.INVALID).copy(draftName = "")),
+            Case("ANA-008", "previewing", LedgerTestTags.REPORT_BUILDER, AnalysisDeviceFixtures.base("ANA-008", AnalysisPresentation.PREVIEWING)),
+            Case("ANA-009", "content", LedgerTestTags.VISUALIZATION_PICKER, AnalysisDeviceFixtures.base("ANA-009", AnalysisPresentation.CONTENT)),
+            Case("ANA-009", "autoFallbackToBar", LedgerTestTags.VISUALIZATION_PICKER, AnalysisDeviceFixtures.base("ANA-009", AnalysisPresentation.AUTO_FALLBACK_TO_BAR)),
+            Case("ANA-010", "content", LedgerTestTags.REPORT_EXPORT, AnalysisDeviceFixtures.base("ANA-010", AnalysisPresentation.CONTENT)),
+            Case("ANA-013", "content", LedgerTestTags.ANOMALY_RULES, AnalysisDeviceFixtures.base("ANA-013", AnalysisPresentation.CONTENT)),
+            Case("ANA-013", "empty", LedgerTestTags.ANOMALY_RULES, AnalysisDeviceFixtures.base("ANA-013", AnalysisPresentation.EMPTY).copy(anomalyRules = emptyList(), anomalyFindings = emptyList())),
+            Case("ANA-013", "invalid", LedgerTestTags.ANOMALY_RULES, AnalysisDeviceFixtures.base("ANA-013", AnalysisPresentation.INVALID)),
+            Case("ANA-014", "content", LedgerTestTags.FORECAST_DETAIL, AnalysisDeviceFixtures.base("ANA-014", AnalysisPresentation.CONTENT)),
+            Case("ANA-014", "insufficientData", LedgerTestTags.FORECAST_DETAIL, AnalysisDeviceFixtures.base("ANA-014", AnalysisPresentation.INSUFFICIENT_DATA).copy(forecast = null)),
             Case("ANA-015", "notRun", LedgerTestTags.INTEGRITY_REPORT, AnalysisDeviceFixtures.base("ANA-015", AnalysisPresentation.NOT_RUN, integrity = null)),
             Case("ANA-015", "running", LedgerTestTags.INTEGRITY_REPORT, AnalysisDeviceFixtures.base("ANA-015", AnalysisPresentation.RUNNING, integrity = null)),
             Case("ANA-015", "passed", LedgerTestTags.INTEGRITY_REPORT, AnalysisDeviceFixtures.base("ANA-015", AnalysisPresentation.PASSED, integrity = AnalysisDeviceFixtures.integrity(IntegritySeverity.PASS))),
@@ -150,6 +166,13 @@ class AnalysisUiContractDeviceTest {
             "ANA-003" to setOf("loading", "content", "empty", "queryError", "staleRebuildRequired"),
             "ANA-004" to setOf("editing", "invalid"),
             "ANA-005" to setOf("content", "empty", "expiredQuery"),
+            "ANA-006" to setOf("content", "empty"),
+            "ANA-007" to setOf("create", "edit", "emptyCanvas"),
+            "ANA-008" to setOf("editing", "invalid", "previewing"),
+            "ANA-009" to setOf("content", "autoFallbackToBar"),
+            "ANA-010" to setOf("content"),
+            "ANA-013" to setOf("content", "empty", "invalid"),
+            "ANA-014" to setOf("content", "insufficientData"),
             "ANA-015" to setOf("notRun", "running", "passed", "warnings", "failed"),
         )
     }

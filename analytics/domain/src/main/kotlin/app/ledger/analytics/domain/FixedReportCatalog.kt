@@ -223,6 +223,7 @@ object ReportVisualizationPolicy {
         requested: ReportVisualization,
         categoryCount: Int,
         dimensions: List<Dimension>,
+        measures: List<Measure> = emptyList(),
     ): VisualizationResolution {
         require(categoryCount >= 0)
         if (requested == ReportVisualization.PIE && categoryCount > MAX_PIE_CATEGORIES) {
@@ -233,8 +234,18 @@ object ReportVisualizationPolicy {
                 VisualizationFallbackReason.TOO_MANY_PIE_CATEGORIES,
             )
         }
-        val incompatible = (requested == ReportVisualization.LINE && Dimension.DATE !in dimensions) ||
-            (requested == ReportVisualization.MAP && Dimension.PLACE !in dimensions)
+        val incompatible = when (requested) {
+            ReportVisualization.LINE -> Dimension.DATE !in dimensions
+            ReportVisualization.STACKED_BAR -> Dimension.DATE !in dimensions || dimensions.size < 2
+            ReportVisualization.PIE -> dimensions.size != 1 || Dimension.DATE in dimensions || measures.size > 1
+            ReportVisualization.MAP -> Dimension.PLACE !in dimensions
+            ReportVisualization.BUDGET_PROGRESS -> Measure.BUDGET_USAGE !in measures
+            ReportVisualization.GOAL_PROGRESS -> Measure.GOAL_BALANCE !in measures
+            ReportVisualization.METRIC_CARD -> dimensions.isNotEmpty() || measures.size != 1
+            ReportVisualization.BAR,
+            ReportVisualization.TABLE,
+            -> false
+        }
         return if (incompatible) {
             VisualizationResolution(
                 requested,

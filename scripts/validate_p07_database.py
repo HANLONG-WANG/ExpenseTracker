@@ -352,6 +352,18 @@ def validate_ledgers() -> int:
                 "ANA-015": "VERIFIED",
             },
         )
+    if current_stage_number >= 26:
+        permitted_promotions.update(
+            {
+                "ANA-006": "VERIFIED",
+                "ANA-007": "VERIFIED",
+                "ANA-008": "VERIFIED",
+                "ANA-009": "VERIFIED",
+                "ANA-010": "VERIFIED",
+                "ANA-013": "VERIFIED",
+                "ANA-014": "VERIFIED",
+            },
+        )
     require(
         len(screen_rows) == 215
         and all(row["status"] == permitted_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),

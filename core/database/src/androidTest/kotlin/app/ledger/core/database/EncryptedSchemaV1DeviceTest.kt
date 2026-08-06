@@ -116,13 +116,55 @@ class EncryptedSchemaV1DeviceTest {
     }
 
     @Test
-    fun schemaVersionOneHasNoDestructiveOrMissingPredecessorMigration() {
-        assertEquals(1, LedgerMigrations.CURRENT_VERSION)
-        assertTrue(LedgerMigrations.registered.isEmpty())
-        assertTrue(LedgerMigrations.contracts.isEmpty())
+    fun schemaVersionTwoHasRegisteredNonDestructivePredecessorMigration() {
+        assertEquals(2, LedgerMigrations.CURRENT_VERSION)
+        assertEquals(1, LedgerMigrations.registered(context).size)
+        assertEquals(1, LedgerMigrations.contracts.size)
         assertEquals(1, StagingMigrations.CURRENT_VERSION)
         assertTrue(StagingMigrations.registered.isEmpty())
         assertTrue(StagingMigrations.contracts.isEmpty())
+    }
+
+    @Test
+    fun encryptedVersionOneDatabaseMigratesToVersionTwoWithoutLosingLedgerData() {
+        val passphrase = passphrase(0x63)
+        val initial = EncryptedDatabaseFactory.openPrimary(context, passphrase)
+        val versionTwo = initial.openHelper.writableDatabase
+        versionTwo.execSQL(
+            "INSERT INTO book(id, uid, base_currency, default_zone_id, local_revision, valuation_revision, " +
+                "rule_set_version, created_at, state) VALUES (1, ?, 'JPY', 'Asia/Tokyo', 0, 0, 1, 1, 0)",
+            arrayOf<Any>(blob(33, 16)),
+        )
+
+        // Recreate the exact predecessor surface from the current encrypted file. This avoids any
+        // plaintext test database and proves Room applies the registered SQLCipher migration.
+        versionTwo.setForeignKeyConstraintsEnabled(false)
+        LedgerSchemaDefinition.expectedPrimaryV2TableNames(context).forEach { table ->
+            versionTwo.execSQL("DROP TABLE $table")
+        }
+        versionTwo.execSQL(
+            "UPDATE _room_schema_registry SET logicalSchemaVersion=1, contractSha256=? WHERE id=1",
+            arrayOf<Any>(LedgerSchemaDefinition.primaryV1ContractSha256(context)),
+        )
+        versionTwo.execSQL("PRAGMA user_version = 1")
+        initial.close()
+
+        val migrated = EncryptedDatabaseFactory.openPrimary(context, passphrase)
+        val database = migrated.openHelper.writableDatabase
+        assertEquals(2L, singleLong(database, "PRAGMA user_version"))
+        assertEquals(1L, singleLong(database, "SELECT count(*) FROM book WHERE base_currency='JPY'"))
+        assertEquals(2L, singleLong(database, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
+        assertEquals(
+            LedgerSchemaDefinition.primaryContractSha256(context),
+            singleString(database, "SELECT contractSha256 FROM _room_schema_registry WHERE id=1"),
+        )
+        assertTrue(sqliteObjectNames(database, "table").containsAll(LedgerSchemaDefinition.expectedPrimaryV2TableNames(context)))
+        assertTrue(DatabaseIntegrityAudit.run(database).isValid)
+        migrated.close()
+
+        val reopened = EncryptedDatabaseFactory.openPrimary(context, passphrase)
+        assertEquals(1L, singleLong(reopened.openHelper.writableDatabase, "SELECT count(*) FROM book"))
+        reopened.close()
     }
 
     private fun assertSchemaObjects(database: SupportSQLiteDatabase) {

@@ -7,17 +7,17 @@ import org.junit.jupiter.api.Test
 
 class MigrationContractTest {
     @Test
-    fun versionOneHasNoUnregisteredPredecessor() {
-        assertEquals(1, LedgerMigrations.CURRENT_VERSION)
-        assertTrue(LedgerMigrations.registered.isEmpty())
-        assertTrue(LedgerMigrations.contracts.isEmpty())
+    fun versionTwoRegistersEveryPredecessorWithoutDestructiveFallback() {
+        assertEquals(2, LedgerMigrations.CURRENT_VERSION)
+        assertEquals(listOf(1 to 2), LedgerMigrations.contracts.map { it.fromVersion to it.toVersion })
+        assertEquals(listOf(MigrationPhase.EXPAND, MigrationPhase.SWITCH), LedgerMigrations.contracts.single().steps.map(MigrationStep::phase))
         assertEquals(1, StagingMigrations.CURRENT_VERSION)
         assertTrue(StagingMigrations.registered.isEmpty())
         assertTrue(StagingMigrations.contracts.isEmpty())
     }
 
     @Test
-    fun futureMigrationAcceptsExpandBackfillSwitchContractOrder() {
+    fun migrationAcceptsExpandBackfillSwitchContractOrder() {
         val contract = MigrationContract(
             fromVersion = 1,
             toVersion = 2,

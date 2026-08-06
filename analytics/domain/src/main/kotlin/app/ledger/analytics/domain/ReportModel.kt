@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package app.ledger.analytics.domain
 
 import app.ledger.core.common.StableId
@@ -17,6 +19,12 @@ import java.time.LocalDate
 @JvmInline value class ReportRevisionId(val value: StableId)
 
 @JvmInline value class DashboardId(val value: StableId)
+
+@JvmInline value class DashboardRevisionId(val value: StableId)
+
+@JvmInline value class AnomalyRuleId(val value: StableId)
+
+@JvmInline value class ReportInstanceId(val value: StableId)
 
 @JvmInline
 value class ReportKey(val value: String) {
@@ -213,21 +221,56 @@ sealed interface FilterValue {
         }
     }
 
-    data class Accounts(val values: Set<UserAccountId>) : FilterValue
+    data class Accounts(val values: Set<UserAccountId>) : FilterValue {
+        init {
+            require(values.isNotEmpty())
+        }
+    }
 
-    data class Categories(val values: Set<CategoryId>) : FilterValue
+    data class Categories(val values: Set<CategoryId>) : FilterValue {
+        init {
+            require(values.isNotEmpty())
+        }
+    }
 
-    data class Merchants(val values: Set<MerchantId>) : FilterValue
+    data class Merchants(val values: Set<MerchantId>) : FilterValue {
+        init {
+            require(values.isNotEmpty())
+        }
+    }
 
-    data class Projects(val values: Set<ProjectId>) : FilterValue
+    data class Projects(val values: Set<ProjectId>) : FilterValue {
+        init {
+            require(values.isNotEmpty())
+        }
+    }
 
-    data class Places(val values: Set<PlaceId>) : FilterValue
+    data class Places(val values: Set<PlaceId>) : FilterValue {
+        init {
+            require(values.isNotEmpty())
+        }
+    }
 
-    data class Participants(val values: Set<ParticipantId>) : FilterValue
+    data class Participants(val values: Set<ParticipantId>) : FilterValue {
+        init {
+            require(values.isNotEmpty())
+        }
+    }
 
-    data class Currencies(val values: Set<CurrencyCode>) : FilterValue
+    data class Currencies(val values: Set<CurrencyCode>) : FilterValue {
+        init {
+            require(values.isNotEmpty())
+        }
+    }
 
-    data class ClosedKeys(val values: Set<String>) : FilterValue
+    data class ClosedKeys(val values: Set<String>) : FilterValue {
+        init {
+            require(values.isNotEmpty())
+            require(values.all(KEY::matches))
+        } private companion object {
+            val KEY = Regex("[A-Z][A-Z0-9_]{0,63}")
+        }
+    }
 
     data class Flag(val value: Boolean) : FilterValue
 }
@@ -308,8 +351,15 @@ data class ReportDefinition(
     val name: String,
     val currentRevisionId: ReportRevisionId,
     val archived: Boolean,
+    val rowVersion: Long = 1L,
 ) : app.ledger.finance.domain.LifecycleRecord<RecordLifecycle.Current> {
     override val lifecycle: RecordLifecycle.Current = RecordLifecycle.Current
+
+    init {
+        require(name.isNotBlank())
+        require(name.length <= 80)
+        require(rowVersion > 0L)
+    }
 }
 
 data class ReportDefinitionRevision(
@@ -319,6 +369,7 @@ data class ReportDefinitionRevision(
     val spec: ReportSpec,
     val visualization: ReportVisualization,
     val algorithmVersion: Int,
+    val createdAtEpochMillis: Long = 0L,
 ) : app.ledger.finance.domain.LifecycleRecord<RecordLifecycle.Revision> {
     override val lifecycle: RecordLifecycle.Revision = RecordLifecycle.Revision
 
@@ -331,15 +382,49 @@ data class ReportDefinitionRevision(
 data class DashboardItem(
     val reportId: ReportDefinitionId,
     val sortOrder: Int,
+    val width: DashboardItemWidth = DashboardItemWidth.FULL,
 )
+
+enum class DashboardItemWidth {
+    FULL,
+    HALF_METRIC,
+}
+
+data class DashboardRevision(
+    val id: DashboardRevisionId,
+    val dashboardId: DashboardId,
+    val revisionNumber: Int,
+    val items: List<DashboardItem>,
+    val createdAtEpochMillis: Long,
+) : app.ledger.finance.domain.LifecycleRecord<RecordLifecycle.Revision> {
+    override val lifecycle: RecordLifecycle.Revision = RecordLifecycle.Revision
+
+    init {
+        require(revisionNumber > 0)
+        require(items.size <= 24)
+        require(items.map(DashboardItem::reportId).toSet().size == items.size)
+        require(items.map(DashboardItem::sortOrder) == items.indices.toList())
+    }
+}
 
 data class Dashboard(
     val id: DashboardId,
     val name: String,
     val items: List<DashboardItem>,
     val archived: Boolean,
+    val currentRevisionId: DashboardRevisionId? = null,
+    val rowVersion: Long = 1L,
 ) : app.ledger.finance.domain.LifecycleRecord<RecordLifecycle.Current> {
     override val lifecycle: RecordLifecycle.Current = RecordLifecycle.Current
+
+    init {
+        require(name.isNotBlank())
+        require(name.length <= 80)
+        require(rowVersion > 0L)
+        require(items.size <= 24)
+        require(items.map(DashboardItem::reportId).toSet().size == items.size)
+        require(items.map(DashboardItem::sortOrder) == items.indices.toList())
+    }
 }
 
 enum class QuerySource {

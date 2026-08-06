@@ -26,18 +26,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import app.ledger.analytics.domain.AnomalyRuleId
 import app.ledger.analytics.domain.ComparisonMode
+import app.ledger.analytics.domain.DashboardId
 import app.ledger.analytics.domain.Dimension
 import app.ledger.analytics.domain.DrilldownQueryId
 import app.ledger.analytics.domain.FixedReport
 import app.ledger.analytics.domain.FixedReportGroup
+import app.ledger.analytics.domain.ForecastKey
 import app.ledger.analytics.domain.IntegrityCheckKey
 import app.ledger.analytics.domain.IntegritySeverity
 import app.ledger.analytics.domain.Measure
+import app.ledger.analytics.domain.ReportDefinitionId
 import app.ledger.analytics.domain.ReportExecution
+import app.ledger.analytics.domain.ReportExportFormat
 import app.ledger.analytics.domain.ReportSpec
 import app.ledger.analytics.domain.ReportVisualization
 import app.ledger.analytics.domain.TimeGranularity
+import app.ledger.core.common.StableId
 import app.ledger.core.designsystem.AccessibleTableUiModel
 import app.ledger.core.designsystem.ChartCard
 import app.ledger.core.designsystem.FilterChipUiModel
@@ -87,6 +93,23 @@ data class AnalysisActions(
     val onRunIntegrity: () -> Unit,
     val onRepairProjection: () -> Unit,
     val onToggleTechnicalDetails: () -> Unit,
+    val onNavigateP26: (screenId: String, id: StableId?, forecastKey: ForecastKey?) -> Unit = { _, _, _ -> },
+    val onDraftNameChanged: (String) -> Unit = {},
+    val onSaveReport: () -> Unit = {},
+    val onPreviewReport: () -> Unit = {},
+    val onCopyReport: (ReportDefinitionId) -> Unit = {},
+    val onSelectVisualization: (ReportVisualization) -> Unit = {},
+    val onSaveDashboard: () -> Unit = {},
+    val onToggleDashboardReport: (ReportDefinitionId) -> Unit = {},
+    val onMoveDashboardReport: (ReportDefinitionId, Int) -> Unit = { _, _ -> },
+    val onToggleDashboardWidth: (ReportDefinitionId) -> Unit = {},
+    val onSaveAnomalyRule: (AnomalyRuleId?) -> Unit = {},
+    val onEditAnomalyRule: (AnomalyRuleId?) -> Unit = {},
+    val onCycleAnomalyType: () -> Unit = {},
+    val onAnomalyThresholdChanged: (String) -> Unit = {},
+    val onAnomalyLookbackChanged: (String) -> Unit = {},
+    val onSelectExportFormat: (ReportExportFormat) -> Unit = {},
+    val onPrepareExport: () -> Unit = {},
 )
 
 @Composable
@@ -114,6 +137,13 @@ fun AnalysisDestination(screenId: String, state: AnalysisLoadState, actions: Ana
         "ANA-003" -> ReportDetail(content, actions)
         "ANA-004" -> ReportFilter(content, actions)
         "ANA-005" -> ReportDrilldown(content, actions)
+        "ANA-006" -> DashboardListScreen(content, actions)
+        "ANA-007" -> DashboardEditorScreen(content, actions)
+        "ANA-008" -> ReportBuilderScreen(content, actions)
+        "ANA-009" -> VisualizationPickerScreen(content, actions)
+        "ANA-010" -> ReportExportScreen(content, actions)
+        "ANA-013" -> AnomalyRulesScreen(content, actions)
+        "ANA-014" -> ForecastDetailScreen(content, actions)
         "ANA-015" -> IntegrityReport(content, actions)
         else -> LedgerErrorState(UiErrorCode("ANALYSIS_SCREEN_UNKNOWN"), stringResource(R.string.analysis_query_failed), actions.onRetry)
     }
@@ -193,6 +223,20 @@ private fun AnalysisHome(state: AnalysisFeatureState, actions: AnalysisActions) 
                 LedgerButtonVariant.SECONDARY,
             )
         }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+                LedgerButton(stringResource(R.string.analysis_title_dashboards), { actions.onNavigateP26("ANA-006", null, null) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
+                LedgerButton(stringResource(R.string.analysis_title_anomaly), { actions.onNavigateP26("ANA-013", null, null) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
+            }
+        }
+        item {
+            LedgerButton(
+                stringResource(R.string.analysis_title_forecast),
+                { actions.onNavigateP26("ANA-014", null, ForecastKey.MONTH_END_SPENDING) },
+                Modifier.fillMaxWidth(),
+                LedgerButtonVariant.SECONDARY,
+            )
+        }
     }
 }
 
@@ -223,6 +267,13 @@ private fun ReportCatalog(state: AnalysisFeatureState, actions: AnalysisActions)
         contentPadding = PaddingValues(LedgerTheme.spacing.md),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
+        item {
+            LedgerButton(
+                stringResource(R.string.analysis_title_builder),
+                { actions.onNavigateP26("ANA-008", null, null) },
+                Modifier.fillMaxWidth(),
+            )
+        }
         FixedReportGroup.entries.forEach { group ->
             item(key = group.name) { LedgerText(reportGroupTitle(group), LedgerTextRole.SECTION) }
             items(state.catalog.filter { it.group == group }, key = { it.key.value }) { definition ->
@@ -350,7 +401,7 @@ private fun ReportContent(state: AnalysisFeatureState, execution: ReportExecutio
 }
 
 @Composable
-private fun ReportChart(model: LedgerChartUiModel) {
+internal fun ReportChart(model: LedgerChartUiModel) {
     when (model.type) {
         app.ledger.core.designsystem.LedgerChartType.LINE -> LedgerLineChart(model, LedgerVicoLineRenderer, Modifier.fillMaxWidth())
         app.ledger.core.designsystem.LedgerChartType.COLUMN -> LedgerColumnChart(model, LedgerVicoColumnRenderer, Modifier.fillMaxWidth())
@@ -637,6 +688,13 @@ private fun Modifier.analysisRootTag(screenId: String): Modifier = when (screenI
     "ANA-003" -> testTag(LedgerTestTags.REPORT_DETAIL)
     "ANA-004" -> testTag(LedgerTestTags.REPORT_FILTER)
     "ANA-005" -> testTag(LedgerTestTags.REPORT_DRILLDOWN)
+    "ANA-006" -> testTag(LedgerTestTags.DASHBOARD_LIST)
+    "ANA-007" -> testTag(LedgerTestTags.DASHBOARD_EDITOR)
+    "ANA-008" -> testTag(LedgerTestTags.REPORT_BUILDER)
+    "ANA-009" -> testTag(LedgerTestTags.VISUALIZATION_PICKER)
+    "ANA-010" -> testTag(LedgerTestTags.REPORT_EXPORT)
+    "ANA-013" -> testTag(LedgerTestTags.ANOMALY_RULES)
+    "ANA-014" -> testTag(LedgerTestTags.FORECAST_DETAIL)
     "ANA-015" -> testTag(LedgerTestTags.INTEGRITY_REPORT)
     else -> testTag(LedgerTestTags.ANALYSIS_HOME)
 }

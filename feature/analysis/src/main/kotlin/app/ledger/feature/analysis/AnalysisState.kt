@@ -4,18 +4,29 @@ package app.ledger.feature.analysis
 
 import app.ledger.analytics.domain.AnalysisOverview
 import app.ledger.analytics.domain.AnalyticsIntegrityReport
+import app.ledger.analytics.domain.AnomalyFinding
+import app.ledger.analytics.domain.AnomalyRuleId
+import app.ledger.analytics.domain.AnomalyRuleType
 import app.ledger.analytics.domain.ComparisonMode
+import app.ledger.analytics.domain.DashboardItem
 import app.ledger.analytics.domain.Dimension
 import app.ledger.analytics.domain.DimensionValue
 import app.ledger.analytics.domain.DrilldownPage
 import app.ledger.analytics.domain.FixedReport
 import app.ledger.analytics.domain.FixedReportDefinition
+import app.ledger.analytics.domain.ForecastKey
+import app.ledger.analytics.domain.ForecastResult
 import app.ledger.analytics.domain.Measure
 import app.ledger.analytics.domain.ReportExecution
+import app.ledger.analytics.domain.ReportExportFormat
+import app.ledger.analytics.domain.ReportExportPayload
 import app.ledger.analytics.domain.ReportPeriod
 import app.ledger.analytics.domain.ReportRow
 import app.ledger.analytics.domain.ReportSpec
 import app.ledger.analytics.domain.ReportVisualization
+import app.ledger.analytics.domain.SavedAnomalyRule
+import app.ledger.analytics.domain.SavedDashboard
+import app.ledger.analytics.domain.SavedReportDefinition
 import app.ledger.analytics.domain.TimeGranularity
 import app.ledger.core.common.DomainResult
 import app.ledger.core.money.AmountSemantic
@@ -49,6 +60,12 @@ enum class AnalysisPresentation {
     PASSED,
     WARNINGS,
     FAILED,
+    CREATE,
+    EDIT,
+    EMPTY_CANVAS,
+    PREVIEWING,
+    AUTO_FALLBACK_TO_BAR,
+    INSUFFICIENT_DATA,
 }
 
 data class AnalysisFeatureState(
@@ -65,6 +82,22 @@ data class AnalysisFeatureState(
     val integrity: AnalyticsIntegrityReport? = null,
     val technicalDetailsExpanded: Boolean = false,
     val failureCode: String? = null,
+    val savedReports: List<SavedReportDefinition> = emptyList(),
+    val dashboards: List<SavedDashboard> = emptyList(),
+    val selectedDashboard: SavedDashboard? = null,
+    val dashboardItems: List<DashboardItem> = emptyList(),
+    val draftName: String = "",
+    val draftVisualization: ReportVisualization = ReportVisualization.TABLE,
+    val anomalyRules: List<SavedAnomalyRule> = emptyList(),
+    val anomalyFindings: List<AnomalyFinding> = emptyList(),
+    val editingAnomalyRuleId: AnomalyRuleId? = null,
+    val anomalyDraftType: AnomalyRuleType = AnomalyRuleType.HISTORICAL_MEAN_STANDARD_DEVIATION,
+    val anomalyThresholdText: String = "2.0",
+    val anomalyLookbackText: String = "12",
+    val forecastKey: ForecastKey? = null,
+    val forecast: ForecastResult? = null,
+    val exportFormat: ReportExportFormat = ReportExportFormat.CSV,
+    val exportPayload: ReportExportPayload? = null,
 )
 
 sealed interface AnalysisLoadState {

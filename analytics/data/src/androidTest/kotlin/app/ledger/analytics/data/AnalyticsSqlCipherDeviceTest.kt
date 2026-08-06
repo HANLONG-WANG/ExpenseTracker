@@ -6,10 +6,24 @@ import android.content.Context
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.ledger.analytics.domain.AnalyticsAlgorithmVersion
+import app.ledger.analytics.domain.AnalyticsError
+import app.ledger.analytics.domain.AnomalyRule
+import app.ledger.analytics.domain.AnomalyRuleType
+import app.ledger.analytics.domain.DashboardItem
+import app.ledger.analytics.domain.DashboardItemWidth
+import app.ledger.analytics.domain.Dimension
+import app.ledger.analytics.domain.FilterExpression
 import app.ledger.analytics.domain.FixedReportCatalog
+import app.ledger.analytics.domain.ForecastKey
 import app.ledger.analytics.domain.IntegritySeverity
+import app.ledger.analytics.domain.Measure
 import app.ledger.analytics.domain.ReportExecution
 import app.ledger.analytics.domain.ReportPeriod
+import app.ledger.analytics.domain.ReportVisualization
+import app.ledger.analytics.domain.SaveAnomalyRuleRequest
+import app.ledger.analytics.domain.SaveDashboardRequest
+import app.ledger.analytics.domain.SaveReportDefinitionRequest
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.database.AnalyticsProjectionEngine
@@ -31,6 +45,7 @@ class AnalyticsSqlCipherDeviceTest {
     private lateinit var context: Context
     private lateinit var application: SecureRoomAnalyticsApplicationPort
     private var lastPassphraseCopy: ByteArray? = null
+    private var nextStableSeed: Long = 7_000L
 
     @Before
     fun prepare() {
@@ -39,9 +54,76 @@ class AnalyticsSqlCipherDeviceTest {
         val database = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
         database.inLedgerTransaction { connection -> seed(connection) }
         database.close()
-        application = SecureRoomAnalyticsApplicationPort(context) {
-            PASSPHRASE.copyOf().also { lastPassphraseCopy = it }
+        application = SecureRoomAnalyticsApplicationPort(
+            context,
+            { PASSPHRASE.copyOf().also { lastPassphraseCopy = it } },
+            app.ledger.core.common.StableIdSource { id(++nextStableSeed) },
+            app.ledger.core.time.LedgerClock { java.time.Instant.parse("2026-08-06T00:00:00Z") },
+        )
+    }
+
+    @Test
+    fun customReportDashboardAnomalyAndForecastRoundTripThroughNormalizedEncryptedSchema() = runBlocking {
+        val spec = FixedReportCatalog.definition(app.ledger.analytics.domain.FixedReport.INCOME_EXPENSE_NET).spec.copy(
+            measures = listOf(Measure.EXPENSE),
+            dimensions = listOf(Dimension.DATE),
+            filters = FilterExpression.All,
+            comparison = null,
+        )
+        val created = application.saveReport(
+            BOOK_ID,
+            SaveReportDefinitionRequest(null, "Monthly spending", null, spec, ReportVisualization.LINE),
+        ).success()
+        assertEquals("Monthly spending", application.savedReports(BOOK_ID).success().single().definition.name)
+
+        val conflict = application.saveReport(
+            BOOK_ID,
+            SaveReportDefinitionRequest(created.definition.id, "stale", created.definition.rowVersion + 1, spec, ReportVisualization.LINE),
+        )
+        assertEquals(AnalyticsError.RevisionConflict, (conflict as DomainResult.Failure).error)
+
+        val copied = application.copyReport(BOOK_ID, created.definition.id, "Monthly spending copy").success()
+        assertEquals(2, application.savedReports(BOOK_ID).success().size)
+        val dashboard = application.saveDashboard(
+            BOOK_ID,
+            SaveDashboardRequest(
+                null,
+                "Overview",
+                null,
+                listOf(
+                    DashboardItem(copied.definition.id, 0, DashboardItemWidth.FULL),
+                    DashboardItem(created.definition.id, 1, DashboardItemWidth.FULL),
+                ),
+            ),
+        ).success()
+        assertEquals(listOf(copied.definition.id, created.definition.id), dashboard.revision.items.map(DashboardItem::reportId))
+        assertEquals(dashboard, application.dashboards(BOOK_ID).success().single())
+
+        val anomaly = application.saveAnomalyRule(
+            BOOK_ID,
+            SaveAnomalyRuleRequest(
+                null,
+                null,
+                AnomalyRule(AnomalyRuleType.LARGE_SINGLE_TRANSACTION, BigDecimal("1000"), 12, AnalyticsAlgorithmVersion(1)),
+                true,
+            ),
+        ).success()
+        assertEquals(anomaly, application.anomalyRules(BOOK_ID).success().single())
+        assertTrue(application.anomalyFindings(BOOK_ID, AUGUST).success().all { it.rule.version == AnalyticsAlgorithmVersion(1) })
+
+        val forecast = application.forecast(BOOK_ID, ForecastKey.MONTH_END_SPENDING, LocalDate.of(2026, 8, 6)).success()
+        assertEquals(AnalyticsAlgorithmVersion(1), forecast.version)
+        assertEquals(LocalDate.of(2026, 8, 31), forecast.throughDate)
+
+        val reopened = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
+        reopened.readLedger { connection ->
+            assertEquals(2L, singleLong(connection, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
+            assertEquals(2L, singleLong(connection, "SELECT COUNT(*) FROM analytics_report_definition"))
+            assertEquals(2L, singleLong(connection, "SELECT COUNT(*) FROM analytics_report_revision"))
+            assertEquals(1L, singleLong(connection, "SELECT COUNT(*) FROM analytics_dashboard_revision"))
+            assertEquals(1L, singleLong(connection, "SELECT COUNT(*) FROM analytics_anomaly_rule_revision"))
         }
+        reopened.close()
     }
 
     @After
@@ -112,6 +194,11 @@ class AnalyticsSqlCipherDeviceTest {
         val database = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
         database.inLedgerTransaction { it.execSQL(sql) }
         database.close()
+    }
+
+    private fun singleLong(database: SupportSQLiteDatabase, sql: String): Long = database.query(sql).use { cursor ->
+        check(cursor.moveToFirst())
+        cursor.getLong(0)
     }
 
     private fun seed(database: SupportSQLiteDatabase) {

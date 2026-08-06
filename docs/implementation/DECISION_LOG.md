@@ -816,3 +816,38 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Date/stage: 2026-08-06 / P25
 - Decision: render ANA-001 content light and ANA-015 failed dark in deterministic 360×720 production Compose viewports and compare SHA-256 over every ARGB pixel. The frozen digests are `3d4c0905ebeb7ae110835a2505f76a6017f549d2b440a64ecc63e373956e53c0` and `05837adc39a458f3561155595422b88d95a4d76baa509454627740ae4031103b`.
 - Consequence: analysis UI drift is machine-detectable using only production Compose, governed `LedgerTheme`, localized resources, the textual UI contract, token JSON and screen YAML. No excluded PNG/HTML visual draft was opened, parsed, sampled, measured or compared.
+
+## DL-115 — Custom analysis configuration expands the encrypted primary database to Schema v2
+
+- Date/stage: 2026-08-06 / P26
+- Surface issue: P26 requires saved/copied report definitions, multiple reorderable dashboards and versioned anomaly rules. Keeping these only in memory would be fake persistence; using a JSON blob or plaintext preferences would violate the normalized lifecycle and security boundaries.
+- Decision: register the first adjacent Room migration and add normalized current/revision/child tables in the existing SQLCipher primary database. `ReportSpec` measures, dimensions, sorts and filter trees have typed rows; dashboards and anomaly rules have current pointers plus append-only revisions. Explicit row-version checks reject conflicting edits. No `fallbackToDestructiveMigration` exists.
+- Consequence: Schema v2 can rebuild exact custom definitions without a universal payload. API 36 proves encrypted v1→v2 migration retains the predecessor ledger row, switches the registered contract hash, passes integrity checks and reopens with the correct key.
+
+## DL-116 — Analysis configuration revisions are not financial book revisions
+
+- Date/stage: 2026-08-06 / P26
+- Surface issue: report/dashboard/rule edits must be auditable, but `book.localRevision` is the authoritative ordering for financial commits and synchronous financial projections.
+- Precedence applied: accounting and projection invariants outrank treating every preference edit as a ledger mutation.
+- Decision: custom analysis current rows own `rowVersion` and immutable revision numbers. They execute in one SQLCipher transaction through `AnalyticsApplicationPort`, create no BookCommit/Journal/Effect and do not increment `book.localRevision`. Every report execution still records the financial `asOfLocalRevision`/valuation revision it read.
+- Consequence: configuration conflict/audit semantics remain explicit without invalidating financial caches or creating a second financial write entrance.
+
+## DL-117 — Forecast routes and export handoff remain opaque and closed
+
+- Date/stage: 2026-08-06 / P26
+- Surface issue: ANA-014 YAML declares `forecastKey:String`, and ANA-010 needs a report result while privacy rules forbid moving a report spec/result, labels or financial values through routes/SavedState.
+- Decision: accept only three literal `ForecastKey.routeKey` values and reject every other string. ANA-010 receives an opaque `reportInstanceId:StableId`; its data is retained only in the root in-memory registry. P26 prepares a typed IMAGE/PDF/CSV/XLSX data payload and sensitive-field notice; P29 owns actual files and SAF delivery.
+- Consequence: routes cannot carry amount, name, note, account/card, attachment, location, SQL, formula or full objects, and P26 never reports a fake file success.
+
+## DL-118 — P26 deterministic and pixel evidence uses only allowed inputs
+
+- Date/stage: 2026-08-06 / P26
+- Decision: anomaly/forecast/derived-series algorithms consume explicit date/Clock inputs and algorithm versions and use only checked integer, `BigInteger` and `BigDecimal` authority. Missing observations fail as insufficient data rather than zero. ANA-008 light and ANA-014 dark render at 360×720 and hash every production Compose ARGB pixel.
+- Consequence: equal input/date/version produces equal property/golden results. The frozen pixel digests are `8fdc298365d26cddbfa1f6f92604f83b2fe1ebdf3d36daff2fbb05a8953aeee5` and `62f5065b1c0cc5d6013bc609a738bbd6f9745413131ab0c63d9adf8d372cf25d`. No excluded PNG/HTML visual draft was opened, parsed, sampled, measured or compared.
+
+## DL-119 — Security startup inspection follows the registered logical schema version
+
+- Date/stage: 2026-08-06 / P26
+- Context: the P26 Schema v2 migration replay exposed a stale `logicalSchemaVersion = 1` literal in the shared UI/headless startup inspector. The encrypted database was valid, but both session paths were incorrectly classified as recovery-required.
+- Decision: source the startup predicate from `LedgerMigrations.CURRENT_VERSION`; the P26 static gate mutates this dependency back to `1` and must reject the drift.
+- Consequence: the registered Room migration version, SQLCipher registry and security session decision advance together. Focused headless/cold-start device tests pass 2/2 and the complete application device suite passes 11/11.

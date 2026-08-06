@@ -56,14 +56,14 @@ class ReportSqlCompilerTest {
 
     @Test
     fun `malicious or unknown closed keys are rejected instead of becoming SQL`() {
-        val spec = spec(
-            filters = FilterExpression.Predicate(
-                FilterField.TRANSACTION_SOURCE,
-                FilterOperator.EQUALS,
-                FilterValue.ClosedKeys(setOf("CURRENT'); DROP TABLE book;--")),
-            ),
-        )
         assertThrows<IllegalArgumentException> {
+            val spec = spec(
+                filters = FilterExpression.Predicate(
+                    FilterField.TRANSACTION_SOURCE,
+                    FilterOperator.EQUALS,
+                    FilterValue.ClosedKeys(setOf("CURRENT'); DROP TABLE book;--")),
+                ),
+            )
             ReportSqlCompiler.compile(QuerySource.ECONOMIC_EFFECTS, spec, START, END)
         }
     }

@@ -4,6 +4,7 @@ import android.content.Context
 import app.ledger.core.common.StableId
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
+import app.ledger.core.database.LedgerMigrations
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -111,7 +112,8 @@ object DefaultLedgerStartupInspector : LedgerStartupInspector {
     override fun inspect(database: LedgerDatabase): StartupInspection = try {
         database.readLedger { connection ->
             val registryValid = connection.query(
-                "SELECT COUNT(*) FROM _room_schema_registry WHERE id = 1 AND logicalSchemaVersion = 1",
+                "SELECT COUNT(*) FROM _room_schema_registry WHERE id = 1 " +
+                    "AND logicalSchemaVersion = ${LedgerMigrations.CURRENT_VERSION}",
             ).use { cursor -> cursor.moveToFirst() && cursor.getLong(0) == 1L }
             val cipherAvailable = connection.query("PRAGMA cipher_version").use { cursor ->
                 cursor.moveToFirst() && cursor.getString(0).startsWith("4.17.0")

@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-06 (Asia/Tokyo)
-Current stage: P25 — Analytics engine, fixed reports and data integrity
-Stage status: VERIFIED (`P25-E001`—`P25-E007`); P00—P24 remain VERIFIED and P26 is the next unstarted stage
+Current stage: P26 — Custom reports, dashboards, anomaly and forecast
+Stage status: VERIFIED (`P26-E001`—`P26-E007`); P00—P25 remain VERIFIED and P27 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -330,17 +330,29 @@ P19 is `VERIFIED`. `P19_CREDIT_MAPPING.md` records the exact domain/fact/applica
 
 P22 is `VERIFIED`. `P22_SETTLEMENT_MAPPING.md` records the exact allocation/fact/application/projection/UI boundary. P23 retains recurrence/occurrence integration; P25/P34 retain cross-feature analytics, and no P23+ stage is promoted.
 
+### P26 result (verified)
+
+| Area | P26 result | Classification |
+|---|---|---|
+| Custom report lifecycle | Closed P25 `ReportSpec` drives preview/save/edit/copy; current pointers, immutable revisions and row-version conflicts persist in SQLCipher with no JSON/formula/SQL input | VERIFIED (`P26-E001`—`P26-E003`) |
+| Multiple dashboards | Named dashboards support accessible add/remove/reorder and full/half metric card widths; invalid combinations are explained and never silently rendered | VERIFIED (`P26-E003`, `P26-E004`) |
+| Deterministic methods | Five anomaly rules, three forecast modes and moving-average/trend/forecast series use explicit versions/date input and exact integer/decimal arithmetic; missing history is insufficient data, not zero | VERIFIED (`P26-E002`, `P26-E003`) |
+| Schema migration | Schema v2 adds 12 normalized analytics configuration tables; registered non-destructive v1→v2 SQLCipher migration retains predecessor data, switches the contract hash and reopens cleanly | VERIFIED (`P26-E003`) |
+| UI, routes and export boundary | ANA-006—010/013/014 cover all 16 states in three languages and responsive/font/theme/accessibility matrices; routes carry only StableId/closed keys; export stops at a typed payload for P29 | VERIFIED (`P26-E001`, `P26-E004`, `P26-E005`) |
+
+P26 is `VERIFIED`. `P26_CUSTOM_ANALYTICS_MAPPING.md` records the complete AST/configuration/algorithm/Schema v2/UI boundary. Actual export file generation remains P29; P27 and later stages are not promoted.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 47 requirements are `VERIFIED`; 35 are `IN_PROGRESS`; 8 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 134 are `VERIFIED`; 81 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 57 requirements are `VERIFIED`; 30 are `IN_PROGRESS`; 3 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 161 are `VERIFIED`; 54 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-011 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-012—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
 | Permanent domain invariants | 35 | 26 are `VERIFIED`, including settlement conservation/local-account/history invariants (`INV-022`—`INV-024`); 9 retain later evidence |
-| Logical schema families | 12 | All 12 physical Schema v1 families `VERIFIED` by P07; P08 verifies normalized financial plan mapping and atomic repository behavior |
-| Projection families | 7 + search/geographic indexes | Current transaction, account, budget/project/goal, settlement and the P19 credit subset plus both indexes are `VERIFIED`; installment/loan, analytics and widget completion remain later-owned |
+| Logical schema families | 12 | All 12 frozen physical Schema v1 families remain `VERIFIED`; P26 registers and device-verifies the normalized non-destructive analytics-configuration Schema v2 expansion |
+| Projection families | 7 + search/geographic indexes | Current transaction, account, budget/project/goal, liabilities, settlement and analytics plus both indexes are `VERIFIED`; widget runtime completion remains later-owned |
 | Durable/staging/backup operation inventories | 4 groups | Encrypted physical records `VERIFIED` by P07; operation runtime remains `IN_PROGRESS` for P28—P31 |
 
 ## Stage progression
@@ -373,7 +385,8 @@ P22 is `VERIFIED`. `P22_SETTLEMENT_MAPPING.md` records the exact allocation/fact
 | P23 | VERIFIED | Immutable blueprints/series, deterministic occurrence engine, restricted-headless idempotent startup/WorkManager catch-up, fact-free candidates, formal credit/loan integration and all 11 REC/AUT destinations; `P23-E001`—`P23-E007` |
 | P24 | VERIFIED | In-memory complete-row batch editing, one coordinator-owned SQLCipher commit, exact retry, whole-batch reversal, bounded query selection, 100,000-row virtualized UI and all five REC/JRN destinations; `P24-E001`—`P24-E007` |
 | P25 | VERIFIED | Closed bounded ReportSpec AST, whitelist compiler, 20 fixed reports, twelve synchronous analytics rollups, nine integrity checks and all six ANA destinations; `P25-E001`—`P25-E007` |
-| P26—P36 | NOT_STARTED | P26 is next; do not promote later work early |
+| P26 | VERIFIED | Revisioned custom reports/dashboards/anomaly rules, exact deterministic forecast/derived series, non-destructive SQLCipher Schema v2 and all seven ANA destinations; `P26-E001`—`P26-E007` |
+| P27—P36 | NOT_STARTED | P27 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -516,3 +529,21 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p25_analytics_c
 ```
 
 All P25 evidence is recorded in `P25-E001`—`P25-E007`. The next entry point is P26. Reuse the closed AST/compiler and versioned report results for custom reports/dashboards; do not add arbitrary SQL/formulas, persist sensitive query contents in routes/SavedState, bypass the encrypted application port, or reinterpret historical facts with current valuation.
+
+## P26 verified handoff
+
+P26 leaves the repository with normalized encrypted current/revision storage for custom reports, dashboards and anomaly rules; exact versioned anomaly/forecast/derived-series methods; safe StableId/closed-key routes; typed export payloads; governed Vico/data-table UI and every ANA-006—010/013/014 required state. Configuration edits do not create financial facts or advance `book.localRevision`, and feature code has no SQLCipher/DAO/Entity access.
+
+The reproducible P26 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p26_custom_analytics.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p26_custom_analytics_contracts -v
+./gradlew :analytics:domain:test :analytics:data:testDebugUnitTest :core:database:testDebugUnitTest :feature:analysis:testDebugUnitTest :app:compileDebugKotlin
+./gradlew :core:database:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :analytics:data:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :feature:analysis:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p26Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+```
+
+All P26 evidence is recorded in `P26-E001`—`P26-E007`. The next entry point is P27. Preserve the typed report language, exact algorithm/version disclosures, normalized Schema v2, opaque route registry and P29 export ownership; do not introduce AI/OCR, user formulas/scripts, plaintext configuration or another financial writer.

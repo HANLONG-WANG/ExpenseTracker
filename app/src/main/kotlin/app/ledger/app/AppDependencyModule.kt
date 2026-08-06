@@ -184,11 +184,17 @@ internal object AppDependencyModule {
     fun analyticsApplicationPort(
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
-    ): AnalyticsApplicationPort = SecureRoomAnalyticsApplicationPort(context) { bookId ->
-        keyProvider.open(bookId).use { keys ->
-            keys.databaseDek.useBytes(ByteArray::copyOf)
-        }
-    }
+        runtime: AppRuntimeSources,
+    ): AnalyticsApplicationPort = SecureRoomAnalyticsApplicationPort(
+        context,
+        { bookId ->
+            keyProvider.open(bookId).use { keys ->
+                keys.databaseDek.useBytes(ByteArray::copyOf)
+            }
+        },
+        runtime.stableIds,
+        runtime.clock,
+    )
 
     @Provides
     @Singleton
