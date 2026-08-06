@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-06 (Asia/Tokyo)
-Current stage: P24 — Batch entry and bulk edit
-Stage status: VERIFIED (`P24-E001`—`P24-E007`); P00—P23 remain VERIFIED and P25 is the next unstarted stage
+Current stage: P25 — Analytics engine, fixed reports and data integrity
+Stage status: VERIFIED (`P25-E001`—`P25-E007`); P00—P24 remain VERIFIED and P26 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -372,7 +372,8 @@ P22 is `VERIFIED`. `P22_SETTLEMENT_MAPPING.md` records the exact allocation/fact
 | P22 | VERIFIED | Exact mutual-expense allocation, unique-self activity/participants, immutable partial settlements, canonical positions/additional-settlement and REC-011/SET-001—008; `P22-E001`—`P22-E007` |
 | P23 | VERIFIED | Immutable blueprints/series, deterministic occurrence engine, restricted-headless idempotent startup/WorkManager catch-up, fact-free candidates, formal credit/loan integration and all 11 REC/AUT destinations; `P23-E001`—`P23-E007` |
 | P24 | VERIFIED | In-memory complete-row batch editing, one coordinator-owned SQLCipher commit, exact retry, whole-batch reversal, bounded query selection, 100,000-row virtualized UI and all five REC/JRN destinations; `P24-E001`—`P24-E007` |
-| P25—P36 | NOT_STARTED | P25 is next; do not promote later work early |
+| P25 | VERIFIED | Closed bounded ReportSpec AST, whitelist compiler, 20 fixed reports, twelve synchronous analytics rollups, nine integrity checks and all six ANA destinations; `P25-E001`—`P25-E007` |
+| P26—P36 | NOT_STARTED | P26 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -497,3 +498,21 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p24_batch_contr
 ```
 
 All P24 evidence is recorded in `P24-E001`—`P24-E007`. The next entry point is P25. Preserve the sole `FinancialMutationCoordinator` write boundary, immutable parent/child audit identities, bounded selection specs and active-only FTS semantics; do not turn batch input into a persisted draft or a large-import bypass.
+
+## P25 verified handoff
+
+P25 leaves the repository with a bounded typed `ReportSpec` AST, a bound-parameter whitelist SQL compiler, the exact 20-report catalog, twelve revision-stamped daily/monthly projections, version-gated query/drilldown/export ports, a nine-check SQLCipher integrity/repair workflow, governed Vico wrappers and every ANA-001—005/015 required state. Original-currency subledger results retain explicit currency evidence; base-value measures never mix original and base minor units. Analytics adds no financial write path: synchronous projections remain below the existing `FinancialMutationCoordinator`, and repair is an explicit maintenance operation.
+
+The reproducible P25 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p25_analytics.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p25_analytics_contracts -v
+./gradlew :analytics:domain:test :analytics:data:testDebugUnitTest :feature:analysis:testDebugUnitTest :app:compileDebugKotlin
+./gradlew :analytics:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.analytics.data.AnalyticsSqlCipherDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :feature:analysis:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :app:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p25Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+```
+
+All P25 evidence is recorded in `P25-E001`—`P25-E007`. The next entry point is P26. Reuse the closed AST/compiler and versioned report results for custom reports/dashboards; do not add arbitrary SQL/formulas, persist sensitive query contents in routes/SavedState, bypass the encrypted application port, or reinterpret historical facts with current valuation.

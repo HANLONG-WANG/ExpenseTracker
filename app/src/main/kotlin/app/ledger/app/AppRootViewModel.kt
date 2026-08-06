@@ -12,6 +12,10 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import app.ledger.analytics.domain.AnalyticsApplicationPort
+import app.ledger.analytics.domain.DrilldownQueryId
+import app.ledger.analytics.domain.FixedReport
+import app.ledger.analytics.domain.FixedReportCatalog
 import app.ledger.app.settings.DestinationProto
 import app.ledger.app.settings.LedgerAppSettings
 import app.ledger.app.settings.NavigationSnapshotProto
@@ -62,6 +66,7 @@ import app.ledger.feature.accounts.AccountEditorSubmission
 import app.ledger.feature.accounts.CardEditorSubmission
 import app.ledger.feature.accounts.CheckpointSubmission
 import app.ledger.feature.accounts.OpeningBalanceSubmission
+import app.ledger.feature.analysis.AnalysisLoadState
 import app.ledger.feature.automation.AutomationFeatureState
 import app.ledger.feature.automation.AutomationLoadState
 import app.ledger.feature.automation.AutomationPolicy
@@ -371,10 +376,13 @@ internal class AppRootViewModel @Inject constructor(
     private val loanApplicationPort: LoanApplicationPort,
     private val settlementApplicationPort: SettlementApplicationPort,
     private val automationApplicationPort: AutomationApplicationPort,
+    analyticsApplicationPort: AnalyticsApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
 ) : ViewModel() {
+    private val analysisController = AnalysisController(analyticsApplicationPort)
+    val analysis: StateFlow<AnalysisLoadState> = analysisController.state
     private val batchEntryController = BatchEntryController(
         batchEntryApplicationPort,
         ordinaryTransactionEntryPort,
@@ -889,6 +897,76 @@ internal class AppRootViewModel @Inject constructor(
                 is DomainResult.Failure -> AppReferenceDataState.Error(result.error.code)
             }
         }
+    }
+
+    fun loadAnalysis(screenId: String, reportKey: String? = null, queryId: StableId? = null) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.current()
+            val bookId = runCatching { requireBookId(saved) }.getOrNull() ?: return@launch
+            val currency = CurrencyCode.parse(saved.baseCurrency.ifBlank { DEFAULT_CURRENCY }).getOrNull() ?: return@launch
+            val today = runtimeSources.clock.now().atZone(ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE })).toLocalDate()
+            analysisController.open(bookId, currency, today, screenId, reportKey, queryId?.let(::DrilldownQueryId))
+        }
+    }
+
+    fun retryAnalysis() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.reload() }
+    }
+
+    fun previousAnalysisPeriod() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.previousPeriod() }
+    }
+
+    fun nextAnalysisPeriod() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.nextPeriod() }
+    }
+
+    fun cycleAnalysisMeasure() = analysisController.cycleMeasure()
+
+    fun cycleAnalysisDimension() = analysisController.cycleDimension()
+
+    fun cycleAnalysisGranularity() = analysisController.cycleGranularity()
+
+    fun cycleAnalysisComparison() = analysisController.cycleComparison()
+
+    fun applyAnalysisFilter(): Boolean = analysisController.applyFilter()
+
+    fun prepareAnalysisExport(): Boolean = analysisController.prepareExport()
+
+    fun runAnalysisIntegrity() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.runIntegrity() }
+    }
+
+    fun repairAnalysisProjection() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.runIntegrity(repair = true) }
+    }
+
+    fun toggleAnalysisTechnicalDetails() = analysisController.toggleTechnicalDetails()
+
+    fun loadNextAnalysisDrilldown() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.loadNextDrilldown() }
+    }
+
+    fun navigateAnalysis(targetScreenId: String, report: FixedReport?, queryId: DrilldownQueryId?) {
+        val screenId = ScreenId(targetScreenId)
+        val arguments = buildMap<String, SafeRouteArgument> {
+            if (targetScreenId == "ANA-003" || targetScreenId == "ANA-004") {
+                val fixed = requireNotNull(report)
+                put(
+                    "reportKey",
+                    LedgerRouteContract.opaqueKeyArgument(
+                        screenId,
+                        "reportKey",
+                        FixedReportCatalog.definition(fixed).key.value,
+                    ),
+                )
+            }
+            if (targetScreenId == "ANA-005") {
+                put("queryId", StableIdArgument(requireNotNull(queryId).value))
+            }
+        }
+        navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
     }
 
     fun loadJournal() {

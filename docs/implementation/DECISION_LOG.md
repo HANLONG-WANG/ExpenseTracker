@@ -788,3 +788,31 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Date/stage: 2026-08-06 / P24
 - Decision: render REC-023 light, REC-024 dark and REC-025 light in deterministic 360×720 production Compose viewports and compare SHA-256 over every ARGB pixel. The frozen digests are `a207b0736bfcd848e9ab6f22d64bff60a78a6c4ca2199d0f6c2d8d459e61e044`, `8ed41793fa25efcf05748f91db243563438f3b1e73139d8102429364bf0c6745` and `a2b7abdb5d31b650f3ff52d3352be6a7e2476c2c6ca2128ff54fed58cfc61c96`.
 - Consequence: batch UI drift is machine-detectable using only production Compose, governed `LedgerTheme`, localized resources, the textual UI contract, token JSON and screen YAML. No excluded PNG/HTML visual draft was opened, parsed, sampled, measured or compared.
+
+## DL-111 — Fixed analytics uses a bounded AST and compiled whitelist, never user SQL
+
+- Date/stage: 2026-08-06 / P25
+- Surface issue: REQ-067 requires user-selectable measures, dimensions, filters, sorting and charts, while the security/query boundary forbids arbitrary SQL and the route boundary forbids moving full query objects through navigation state.
+- Decision: `ReportSpec` is a closed sealed/enumerated AST with fixed limits for measures, dimensions, sorts and filter nodes. `ReportSqlCompiler` owns the complete table/column/JOIN/aggregate whitelist and binds all values. Fixed destinations carry only a validated `ReportKey`; drilldown carries only an opaque StableId registry key. The optional ANA-003 `savedSpecId` remains a route-contract slot but P25 does not persist custom specs before P26 owns that lifecycle.
+- Consequence: malformed/unknown keys fail closed, there is no formula/SQL text surface, result size is bounded without deep OFFSET, and custom dashboards can later reuse the same safe compiler without gaining a database capability.
+
+## DL-112 — Report values retain their accounting unit and valuation revision
+
+- Date/stage: 2026-08-06 / P25
+- Surface issue: the schema correctly stores some current subledger balances in account currency and historical/economic measures in book-base currency. Formatting every result with the base code or subtracting a native balance from a base valuation would create a dimensionally invalid report.
+- Precedence applied: the frozen multi-currency evidence and accounting semantics outrank a visually uniform single-currency table.
+- Decision: `MeasureValue` may carry an explicit native `CurrencyCode`; account/credit/installment/goal/settlement measures preserve it, and the installment report groups by currency. Economic, budget, project, FX revaluation and net-position measures remain base currency. FX revaluation is current base value minus historical base Posting carrying value. Loan current principal is converted by the revisioned current valuation before it is combined with base-currency interest; unavailable foreign valuation is omitted rather than fabricated as zero.
+- Consequence: unrelated minor units are never silently summed or mislabeled, history remains frozen, and current-value output is explicitly tied to `asOfValuationRevision` rather than rewriting `book.localRevision` or historical facts.
+
+## DL-113 — Analytics projections rebuild synchronously; repair is maintenance, not another writer
+
+- Date/stage: 2026-08-06 / P25
+- Surface issue: P25 needs fast daily/monthly reports and a user-triggered repair action, but permanent financial invariants permit only the existing coordinator/application entry to mutate authoritative state.
+- Decision: the twelve narrow analytics projections rebuild inside `RoomProjectionEngine` during the same Room/SQLCipher transaction already owned by `FinancialMutationCoordinator`. Audit uses a savepoint, canonical-hashes the live and rebuilt projections, then rolls back. An explicit repair opens only through the analytics application port in maintenance state and rewrites derived projection rows; it cannot create or modify transactions, revisions, facts or receipts.
+- Consequence: every successful financial commit publishes one revision-consistent report state, stale/cache mismatches are never shown as current, and neither feature code nor a Worker/importer obtains DAO/Entity/financial SQL access.
+
+## DL-114 — P25 visual evidence is production output derived from textual contracts
+
+- Date/stage: 2026-08-06 / P25
+- Decision: render ANA-001 content light and ANA-015 failed dark in deterministic 360×720 production Compose viewports and compare SHA-256 over every ARGB pixel. The frozen digests are `3d4c0905ebeb7ae110835a2505f76a6017f549d2b440a64ecc63e373956e53c0` and `05837adc39a458f3561155595422b88d95a4d76baa509454627740ae4031103b`.
+- Consequence: analysis UI drift is machine-detectable using only production Compose, governed `LedgerTheme`, localized resources, the textual UI contract, token JSON and screen YAML. No excluded PNG/HTML visual draft was opened, parsed, sampled, measured or compared.

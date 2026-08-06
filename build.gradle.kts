@@ -1178,6 +1178,66 @@ tasks.register("p24Check") {
     )
 }
 
+val validateP25Analytics by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates typed P25 reports, accounting semantics, integrity checks, safe routes and accessible UI."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p25_analytics.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("analytics") { include("**/*") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/database/src/main") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/analysis/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP25AnalyticsFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P25 gate rejects AST, SQL, projection, route, encryption and accessibility weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p25_analytics_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p25_analytics.py",
+        "scripts/tests/test_p25_analytics_contracts.py",
+        fileTree("analytics") { include("**/*.kt") },
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/database/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/designsystem/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/analysis/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p25Check") {
+    group = "verification"
+    description = "Runs P25 static, JVM, lint and architecture evidence; SQLCipher/UI device suites run separately."
+    dependsOn(
+        validateP25Analytics,
+        validateP25AnalyticsFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":analytics:domain:test",
+        ":analytics:data:testDebugUnitTest",
+        ":feature:analysis:testDebugUnitTest",
+        ":app:lintDebug",
+        ":analytics:data:lintDebug",
+        ":feature:analysis:lintDebug",
+        ":core:database:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

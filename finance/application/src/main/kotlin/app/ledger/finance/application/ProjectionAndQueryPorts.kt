@@ -50,6 +50,7 @@ enum class ProjectionFamily {
     SETTLEMENT,
     SEARCH,
     GEOGRAPHY,
+    ANALYTICS,
     WIDGET,
 }
 

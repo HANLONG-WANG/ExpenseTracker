@@ -3,6 +3,8 @@
 package app.ledger.app
 
 import android.content.Context
+import app.ledger.analytics.data.SecureRoomAnalyticsApplicationPort
+import app.ledger.analytics.domain.AnalyticsApplicationPort
 import app.ledger.core.common.StableId
 import app.ledger.core.common.StableIdSource
 import app.ledger.core.common.getOrNull
@@ -176,6 +178,17 @@ internal object AppDependencyModule {
         keyProvider: DeviceLedgerKeyProvider,
         generator: FormalOccurrenceGenerator,
     ): AutomationApplicationPort = SecureRoomAutomationApplicationPort(context, keyProvider, generator)
+
+    @Provides
+    @Singleton
+    fun analyticsApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+    ): AnalyticsApplicationPort = SecureRoomAnalyticsApplicationPort(context) { bookId ->
+        keyProvider.open(bookId).use { keys ->
+            keys.databaseDek.useBytes(ByteArray::copyOf)
+        }
+    }
 
     @Provides
     @Singleton

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="analysis_loading">分析結果を読み込んでいます</string>
+    <string name="analysis_calculating">現在の事実から再計算しています</string>
+    <string name="analysis_query_failed">分析を完了できません。もう一度お試しください</string>
+    <string name="analysis_retry">再試行</string>
+    <string name="analysis_no_data_title">分析できるデータがありません</string>
+    <string name="analysis_no_data_body">記録を追加すると、説明可能な指標とレポートが表示されます。</string>
+    <string name="analysis_consumption">消費</string>
+    <string name="analysis_income">収入</string>
+    <string name="analysis_net_surplus">純余剰</string>
+    <string name="analysis_savings_rate">貯蓄率</string>
+    <string name="analysis_not_available">利用不可</string>
+    <string name="analysis_summary_deterministic">収入、費用、純余剰は固定の定義で、元取引まで確認できます。</string>
+    <string name="analysis_pie_fallback_summary">分類が多い場合は誤解を避けるため棒グラフに切り替えます。</string>
+    <string name="analysis_deterministic_method">ローン元金、カード返済、内部振替は費用に含めず、返金は費用を相殺します。</string>
+    <string name="analysis_all_reports">すべての固定レポート</string>
+    <string name="analysis_view_data_table">グラフには要約とデータ表があります</string>
+    <string name="analysis_previous_period">前の期間</string>
+    <string name="analysis_next_period">次の期間</string>
+    <string name="analysis_chart_summary">%1$d 行。データ表で正確な値を確認できます。</string>
+    <string name="analysis_comparison_summary">比較期間：%1$s〜%2$s</string><string name="analysis_period_kind">期間種別</string><string name="analysis_current_period">現在</string><string name="analysis_reference_period">比較期間</string>
+    <string name="analysis_custom_report">カスタムレポート</string>
+    <string name="analysis_semantics_help">金額の定義はレポートごとに固定され、元取引まで確認できます。</string>
+    <string name="analysis_pie_fallback">分類が 6 件を超えたため、全分類を保持した棒グラフに切り替えました。</string>
+    <string name="analysis_visualization_incompatible">現在のディメンションに適した説明可能なグラフへ切り替えました。</string>
+    <string name="analysis_filter">フィルターと粒度</string>
+    <string name="analysis_export">エクスポート</string>
+    <string name="analysis_drilldown">元取引を表示</string>
+    <string name="analysis_load_more">さらに読み込む</string>
+    <string name="analysis_title_home">分析</string>
+    <string name="analysis_title_catalog">固定レポート</string>
+    <string name="analysis_title_report">レポート</string>
+    <string name="analysis_title_filter">レポートフィルター</string>
+    <string name="analysis_title_drilldown">明細</string>
+    <string name="analysis_title_integrity">データ整合性レポート</string>
+    <string name="analysis_stale_projection">分析投影が古いため、安全に再構築してください。</string>
+    <string name="analysis_report_empty">この範囲に結果はありません</string>
+    <string name="analysis_report_empty_body">期間またはフィルターを変更してください。</string>
+    <string name="analysis_table_primary">このレポートはアクセシブルなデータ表を主表示にします。</string>
+    <string name="analysis_filter_invalid">フィルターの組み合わせが無効です</string>
+    <string name="analysis_no_sql_formula">許可された指標、ディメンション、フィルターのみ選択できます。SQL や任意式は入力できません。</string>
+    <string name="analysis_measure">指標</string>
+    <string name="analysis_dimension">ディメンション</string>
+    <string name="analysis_granularity">時間粒度</string>
+    <string name="analysis_comparison">比較</string>
+    <string name="analysis_none">なし</string>
+    <string name="analysis_period">期間</string>
+    <string name="analysis_filter_summary">現在の期間を許可済みの指標とディメンションで分析</string>
+    <string name="analysis_expired_query">明細クエリの期限が切れました。レポートから再度開いてください。</string>
+    <string name="analysis_drilldown_empty">一致する元取引はありません</string>
+    <string name="analysis_drilldown_empty_body">この集計行に表示できる取引はありません。</string>
+    <string name="analysis_query_summary">期間：%1$s〜%2$s</string>
+    <string name="analysis_integrity_not_run">整合性チェックは未実行です</string>
+    <string name="analysis_integrity_not_run_body">DB、外部キー、仕訳、改訂、投影、索引を確認します。会計事実は変更しません。</string>
+    <string name="analysis_run_integrity">チェックを実行</string>
+    <string name="analysis_integrity_running">読み取り専用の整合性チェックを実行中</string>
+    <string name="analysis_integrity_failed">整合性チェックを完了できませんでした</string>
+    <string name="analysis_integrity_plain_language">通常表示は影響件数のみです。技術詳細は折りたたまれ、機密情報を含みません。</string>
+    <string name="analysis_affected_count">影響件数：%1$d</string>
+    <string name="analysis_hide_technical">技術詳細を閉じる</string>
+    <string name="analysis_show_technical">匿名化した技術詳細を表示</string>
+    <string name="analysis_repair_projection">分析投影を再構築</string>
+    <string name="analysis_data_table_caption">レポートの正確なデータ</string>
+    <string name="analysis_day">日</string><string name="analysis_week">週</string><string name="analysis_month">月</string><string name="analysis_quarter">四半期</string><string name="analysis_year">年</string>
+    <string name="analysis_previous_comparison">前期比</string><string name="analysis_year_over_year">前年比</string><string name="analysis_moving_average">移動平均</string><string name="analysis_trend">トレンド</string><string name="analysis_forecast">予測</string>
+    <string name="analysis_measure_generic">指標</string><string name="analysis_dimension_generic">ディメンション</string><string name="analysis_integrity_check">整合性チェック項目</string>
+    <string name="analysis_integrity_passed">すべて合格</string><string name="analysis_integrity_warnings">警告あり</string><string name="analysis_visualization">グラフとデータ表</string>
+    <string name="report_income_expense_net">収支と純余剰の推移</string><string name="report_cash_flow">キャッシュフロー分析</string><string name="report_consumption_category">消費分類の構成</string><string name="report_category_trend">分類トレンドと構成変化</string><string name="report_merchant_ranking">加盟店ランキングと推移</string>
+    <string name="report_account_assets">口座残高と中核純金融資産</string><string name="report_fx_revaluation">外貨再評価の影響</string><string name="report_budget_execution">予算執行と繰越</string><string name="report_project_budget">プロジェクト予算とキャッシュフロー</string><string name="report_consumption_map">消費マップ</string>
+    <string name="report_credit_debt">カード負債、請求、利用枠</string><string name="report_installment">分割残高と手数料</string><string name="report_loan">ローン元金、利息、進捗、予測</string><string name="report_goal">目標資金分析</string><string name="report_recurrence">定期取引と購読分析</string>
+    <string name="report_refunds">返金と費用相殺</string><string name="report_settlement">立替ポジションと精算</string><string name="report_multi_currency">多通貨資産と為替コスト</string><string name="report_multi_dimensional">多次元クロス分析</string><string name="report_data_integrity">データ整合性レポート</string>
+    <string name="report_group_income_expense">収支と消費</string><string name="report_group_assets_liabilities">資産と負債</string><string name="report_group_planning">予算、プロジェクト、目標</string><string name="report_group_relationships">自動化、返金、精算</string><string name="report_group_data_quality">多通貨、クロス分析、データ品質</string>
+</resources>

@@ -6,4 +6,6 @@ plugins {
 dependencies {
     api(project(":analytics:domain"))
     implementation(project(":core:database"))
+    implementation(libs.room.runtime)
+    implementation(libs.androidx.sqlite)
 }

@@ -42,9 +42,16 @@ import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.compose.cartesian.data.columnModel
 import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
+import com.patrykandpatrick.vico.compose.cartesian.layer.ColumnCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.compose.pie.PieChartHost
+import com.patrykandpatrick.vico.compose.pie.data.PieChartModelProducer
+import com.patrykandpatrick.vico.compose.pie.data.pieSeries
+import com.patrykandpatrick.vico.compose.pie.rememberPieChart
 
 /** Adapter implemented inside the design-system chart integration; features pass only typed models. */
 public fun interface LedgerVicoRenderer {
@@ -77,6 +84,68 @@ public object LedgerVicoLineRenderer : LedgerVicoRenderer {
             animateIn = false,
         )
     }
+}
+
+/** Governed grouped-column renderer with the same axes, grid and reduced-motion policy. */
+public object LedgerVicoColumnRenderer : LedgerVicoRenderer {
+    @Composable
+    override fun render(model: LedgerChartUiModel, modifier: Modifier) {
+        require(model.type == LedgerChartType.COLUMN)
+        LedgerVicoColumns(model, modifier, stacked = false)
+    }
+}
+
+/** Governed stacked-column renderer; the accessible table remains the exact-value authority. */
+public object LedgerVicoStackedRenderer : LedgerVicoRenderer {
+    @Composable
+    override fun render(model: LedgerChartUiModel, modifier: Modifier) {
+        require(model.type == LedgerChartType.STACKED)
+        LedgerVicoColumns(model, modifier, stacked = true)
+    }
+}
+
+/** Governed Vico pie renderer; callers must pass the six-category compatibility gate first. */
+public object LedgerVicoPieRenderer : LedgerVicoRenderer {
+    @Composable
+    override fun render(model: LedgerChartUiModel, modifier: Modifier) {
+        require(model.type == LedgerChartType.PIE)
+        val producer = remember { PieChartModelProducer() }
+        LaunchedEffect(model) {
+            producer.runTransaction {
+                pieSeries { series(model.series.flatMap(LedgerChartSeries::values)) }
+            }
+        }
+        PieChartHost(
+            chart = rememberPieChart(),
+            modelProducer = producer,
+            modifier = modifier,
+            animationSpec = snap(),
+            animateIn = false,
+        )
+    }
+}
+
+@Composable
+private fun LedgerVicoColumns(model: LedgerChartUiModel, modifier: Modifier, stacked: Boolean) {
+    val producer = remember { CartesianChartModelProducer() }
+    LaunchedEffect(model) {
+        producer.runTransaction {
+            columnModel { model.series.forEach { series -> series(series.values) } }
+        }
+    }
+    CartesianChartHost(
+        chart = rememberCartesianChart(
+            rememberColumnCartesianLayer(
+                mergeMode = { if (stacked) ColumnCartesianLayer.MergeMode.Stacked else ColumnCartesianLayer.MergeMode.Grouped() },
+            ),
+            startAxis = VerticalAxis.rememberStart(),
+            bottomAxis = HorizontalAxis.rememberBottom(),
+        ),
+        modelProducer = producer,
+        modifier = modifier,
+        animationSpec = snap(),
+        animateIn = false,
+    )
 }
 
 @Composable

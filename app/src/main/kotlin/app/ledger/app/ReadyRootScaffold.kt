@@ -79,6 +79,7 @@ internal fun ReadyRootScaffold(
             val topLevel = key.contract.screenId.value in setOf("REC-001", "JRN-001", "ACC-001", "BUD-001", "ANA-001")
             LedgerTopAppBar(
                 title = projectGoalDestinationTitleOrNull(key.contract.screenId.value)
+                    ?: analysisDestinationTitleOrNull(key.contract.screenId.value)
                     ?: automationDestinationTitleOrNull(key.contract.screenId.value)
                     ?: settlementDestinationTitleOrNull(key.contract.screenId.value)
                     ?: budgetDestinationTitleOrNull(key.contract.screenId.value)
@@ -177,7 +178,14 @@ internal fun ReadyRootScaffold(
             entryProvider = { key ->
                 NavEntry(key) {
                     val screenId = key.contract.screenId.value
-                    if (screenId.startsWith("AUT-")) {
+                    if (screenId in setOf("ANA-001", "ANA-002", "ANA-003", "ANA-004", "ANA-005", "ANA-015")) {
+                        AnalysisRootDestination(
+                            screenId,
+                            key.encodedArguments,
+                            viewModel,
+                            onNavigationChanged = { navigationEpoch += 1 },
+                        )
+                    } else if (screenId.startsWith("AUT-")) {
                         AutomationRootDestination(
                             screenId,
                             key.encodedArguments,

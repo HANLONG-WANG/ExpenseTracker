@@ -9,7 +9,6 @@ import app.ledger.finance.domain.ParticipantId
 import app.ledger.finance.domain.PlaceId
 import app.ledger.finance.domain.ProjectId
 import app.ledger.finance.domain.RecordLifecycle
-import app.ledger.finance.domain.TransactionId
 import app.ledger.finance.domain.UserAccountId
 import java.time.LocalDate
 
@@ -18,6 +17,19 @@ import java.time.LocalDate
 @JvmInline value class ReportRevisionId(val value: StableId)
 
 @JvmInline value class DashboardId(val value: StableId)
+
+@JvmInline
+value class ReportKey(val value: String) {
+    init {
+        require(KEY.matches(value))
+    }
+
+    private companion object {
+        val KEY = Regex("[a-z][a-z0-9-]{2,63}")
+    }
+}
+
+@JvmInline value class DrilldownQueryId(val value: StableId)
 
 enum class FixedReport {
     INCOME_EXPENSE_NET,
@@ -40,6 +52,14 @@ enum class FixedReport {
     MULTI_CURRENCY_FX_COST,
     MULTI_DIMENSIONAL,
     DATA_INTEGRITY,
+}
+
+enum class FixedReportGroup {
+    INCOME_AND_EXPENSE,
+    ASSETS_AND_LIABILITIES,
+    PLANNING,
+    RELATIONSHIPS,
+    DATA_QUALITY,
 }
 
 enum class Measure {
@@ -222,8 +242,27 @@ data class ReportSpec(
 ) {
     init {
         require(measures.isNotEmpty())
+        require(measures.size <= MAX_MEASURES)
+        require(dimensions.size <= MAX_DIMENSIONS)
+        require(sorting.size <= MAX_SORTS)
         require(measures.toSet().size == measures.size)
         require(dimensions.toSet().size == dimensions.size)
+        require(filterNodeCount(filters) <= MAX_FILTER_NODES)
+    }
+
+    private fun filterNodeCount(expression: FilterExpression): Int = when (expression) {
+        FilterExpression.All -> 1
+        is FilterExpression.Not -> Math.addExact(1, filterNodeCount(expression.operand))
+        is FilterExpression.And -> expression.operands.fold(1) { total, child -> Math.addExact(total, filterNodeCount(child)) }
+        is FilterExpression.Or -> expression.operands.fold(1) { total, child -> Math.addExact(total, filterNodeCount(child)) }
+        is FilterExpression.Predicate -> 1
+    }
+
+    private companion object {
+        const val MAX_MEASURES = 8
+        const val MAX_DIMENSIONS = 3
+        const val MAX_SORTS = 4
+        const val MAX_FILTER_NODES = 64
     }
 }
 
@@ -238,6 +277,31 @@ enum class ReportVisualization {
     BUDGET_PROGRESS,
     GOAL_PROGRESS,
 }
+
+data class FixedReportDefinition(
+    val report: FixedReport,
+    val key: ReportKey,
+    val group: FixedReportGroup,
+    val spec: ReportSpec,
+    val defaultVisualization: ReportVisualization,
+    val compatibleVisualizations: Set<ReportVisualization>,
+) {
+    init {
+        require(defaultVisualization in compatibleVisualizations)
+    }
+}
+
+enum class VisualizationFallbackReason {
+    TOO_MANY_PIE_CATEGORIES,
+    INCOMPATIBLE_WITH_DIMENSIONS,
+}
+
+data class VisualizationResolution(
+    val requested: ReportVisualization,
+    val resolved: ReportVisualization,
+    val mergedOther: Boolean,
+    val reason: VisualizationFallbackReason?,
+)
 
 data class ReportDefinition(
     val id: ReportDefinitionId,
@@ -295,13 +359,17 @@ data class ReportQueryPlan(
 data class ReportRow(
     val dimensionValues: List<DimensionValue>,
     val measureValues: List<MeasureValue>,
-    val drillDownTransactionIds: List<TransactionId>,
+    val drilldownQueryId: DrilldownQueryId?,
 )
 
 sealed interface DimensionValue {
     data class Date(val value: LocalDate) : DimensionValue
 
-    data class Entity(val dimension: Dimension, val id: StableId) : DimensionValue
+    data class Entity(val dimension: Dimension, val id: StableId, val label: String) : DimensionValue {
+        init {
+            require(label.isNotBlank())
+        }
+    }
 
     data class Currency(val value: CurrencyCode) : DimensionValue
 
@@ -312,9 +380,11 @@ data class MeasureValue(
     val measure: Measure,
     val minorValue: Long?,
     val decimalValue: java.math.BigDecimal?,
+    val currency: CurrencyCode? = null,
 ) {
     init {
         require((minorValue == null) != (decimalValue == null))
+        require(decimalValue == null || currency == null)
     }
 }
 

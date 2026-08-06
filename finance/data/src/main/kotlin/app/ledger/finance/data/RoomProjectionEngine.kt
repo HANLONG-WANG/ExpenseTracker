@@ -4,6 +4,7 @@ package app.ledger.finance.data
 
 import android.database.Cursor
 import androidx.sqlite.db.SupportSQLiteDatabase
+import app.ledger.core.database.AnalyticsProjectionEngine
 import app.ledger.finance.application.ProjectionFamily
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
@@ -30,6 +31,7 @@ internal class RoomProjectionEngine {
         rebuildInstallments(database, localRevision, asOfLocalDate)
         rebuildLoans(database, localRevision, asOfLocalDate)
         rebuildSettlement(database, localRevision)
+        AnalyticsProjectionEngine.rebuild(database, localRevision)
         rebuildSearch(database)
         rebuildGeography(database)
         rebuildWidgets(database, localRevision, valuationRevision)
@@ -635,7 +637,7 @@ internal class RoomProjectionEngine {
             "goal_balance_projection", "project_usage_projection", "budget_usage_projection", "refund_status_projection",
             "budget_rollover",
             "account_balance_daily", "account_balance_current", "current_transaction_projection",
-        )
+        ) + AnalyticsProjectionEngine.tables
         val VERSIONED_FAMILIES = mapOf(
             ProjectionFamily.CURRENT_TRANSACTION to listOf("current_transaction_projection"),
             ProjectionFamily.ACCOUNT_BALANCE to listOf("account_balance_current"),
@@ -652,6 +654,7 @@ internal class RoomProjectionEngine {
             ProjectionFamily.INSTALLMENT to listOf("installment_progress_projection"),
             ProjectionFamily.LOAN to listOf("loan_progress_projection", "loan_future_cashflow_projection"),
             ProjectionFamily.SETTLEMENT to listOf("settlement_position_projection"),
+            ProjectionFamily.ANALYTICS to AnalyticsProjectionEngine.tables,
             ProjectionFamily.WIDGET to listOf(
                 "widget_book_snapshot",
                 "widget_account_snapshot",
@@ -709,6 +712,18 @@ internal class RoomProjectionEngine {
             "loan_future_cashflow_projection" to
                 "SELECT * FROM loan_future_cashflow_projection ORDER BY contract_id, tranche_id, planned_date, schedule_revision_id",
             "settlement_position_projection" to "SELECT * FROM settlement_position_projection ORDER BY activity_id, participant_id",
+            "analytics_daily_total" to "SELECT * FROM analytics_daily_total ORDER BY local_date, metric",
+            "analytics_daily_category" to "SELECT * FROM analytics_daily_category ORDER BY local_date, category_id, nature",
+            "analytics_daily_account" to "SELECT * FROM analytics_daily_account ORDER BY local_date, account_id",
+            "analytics_daily_merchant" to "SELECT * FROM analytics_daily_merchant ORDER BY local_date, merchant_id",
+            "analytics_daily_project" to "SELECT * FROM analytics_daily_project ORDER BY local_date, project_id",
+            "analytics_daily_place" to "SELECT * FROM analytics_daily_place ORDER BY local_date, place_id",
+            "analytics_monthly_total" to "SELECT * FROM analytics_monthly_total ORDER BY year_month, metric",
+            "analytics_monthly_category" to "SELECT * FROM analytics_monthly_category ORDER BY year_month, category_id, nature",
+            "analytics_monthly_account" to "SELECT * FROM analytics_monthly_account ORDER BY year_month, account_id",
+            "analytics_monthly_merchant" to "SELECT * FROM analytics_monthly_merchant ORDER BY year_month, merchant_id",
+            "analytics_monthly_project" to "SELECT * FROM analytics_monthly_project ORDER BY year_month, project_id",
+            "analytics_monthly_place" to "SELECT * FROM analytics_monthly_place ORDER BY year_month, place_id",
             "transaction_fts" to "SELECT * FROM transaction_fts ORDER BY transaction_id",
             "location_rtree" to "SELECT * FROM location_rtree ORDER BY location_id",
             "place_rtree" to "SELECT * FROM place_rtree ORDER BY place_id",
