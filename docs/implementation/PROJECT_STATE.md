@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-06 (Asia/Tokyo)
-Current stage: P23 — Quick templates, recurring transactions and candidate records
-Stage status: VERIFIED (`P23-E001`—`P23-E007`); P00—P22 remain VERIFIED and P24 is the next unstarted stage
+Current stage: P24 — Batch entry and bulk edit
+Stage status: VERIFIED (`P24-E001`—`P24-E007`); P00—P23 remain VERIFIED and P25 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -371,7 +371,8 @@ P22 is `VERIFIED`. `P22_SETTLEMENT_MAPPING.md` records the exact allocation/fact
 | P21 | VERIFIED | Combination contracts/tranches, exact versioned loan schedules, formal disbursement/payment, pure prepayment simulation, strict-future projection and all 15 LIA/REC/LOA destinations; `P21-E001`—`P21-E007` |
 | P22 | VERIFIED | Exact mutual-expense allocation, unique-self activity/participants, immutable partial settlements, canonical positions/additional-settlement and REC-011/SET-001—008; `P22-E001`—`P22-E007` |
 | P23 | VERIFIED | Immutable blueprints/series, deterministic occurrence engine, restricted-headless idempotent startup/WorkManager catch-up, fact-free candidates, formal credit/loan integration and all 11 REC/AUT destinations; `P23-E001`—`P23-E007` |
-| P24—P36 | NOT_STARTED | P24 is next; do not promote later work early |
+| P24 | VERIFIED | In-memory complete-row batch editing, one coordinator-owned SQLCipher commit, exact retry, whole-batch reversal, bounded query selection, 100,000-row virtualized UI and all five REC/JRN destinations; `P24-E001`—`P24-E007` |
+| P25—P36 | NOT_STARTED | P25 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -479,3 +480,20 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p23_automation_
 ```
 
 All P23 evidence is recorded in `P23-E001`—`P23-E007`. The next entry point is P24. Preserve occurrence uniqueness and immutable blueprint/series revisions; never turn candidates into facts, acquire current location in recurrence execution, claim external payment success or add a Worker/feature financial DAO path.
+
+## P24 verified handoff
+
+P24 leaves the repository with a complete in-memory batch draft, governed virtualized summary/full-row/validation UI, safe StableId-only routes, a typed all-or-nothing application port, one coordinator-owned SQLCipher transaction, parent audit receipt, exact retry and immutable whole-batch reversal. JRN query selection remains fingerprint-plus-exclusions and its editor cannot represent amount, direction, refund relation or mutual-expense share. The reproducible P24 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p24_batch.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p24_batch_contracts -v
+./gradlew :finance:domain:test :finance:data:testDebugUnitTest :feature:record:testDebugUnitTest :feature:journal:testDebugUnitTest :core:navigation:testDebugUnitTest
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.BatchEntryApplicationPortDeviceTest
+./gradlew :feature:record:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.feature.record.BatchRecordUiContractDeviceTest
+./gradlew :feature:journal:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.feature.journal.JournalUiContractDeviceTest
+./gradlew :app:pixel6Api36DebugAndroidTest
+./gradlew p24Check
+```
+
+All P24 evidence is recorded in `P24-E001`—`P24-E007`. The next entry point is P25. Preserve the sole `FinancialMutationCoordinator` write boundary, immutable parent/child audit identities, bounded selection specs and active-only FTS semantics; do not turn batch input into a persisted draft or a large-import bypass.

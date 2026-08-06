@@ -63,8 +63,13 @@ internal class RoomProjectionEngine {
             add(ProjectionFamily.ACCOUNT_BALANCE)
             add(ProjectionFamily.WIDGET)
         }
-        val activeTransactions = count(database, "SELECT COUNT(*) FROM current_transaction_projection")
-        if (count(database, "SELECT COUNT(*) FROM transaction_fts") != activeTransactions) add(ProjectionFamily.SEARCH)
+        val searchableTransactions = count(
+            database,
+            "SELECT COUNT(*) FROM current_transaction_projection WHERE state = 0",
+        )
+        if (count(database, "SELECT COUNT(*) FROM transaction_fts") != searchableTransactions) {
+            add(ProjectionFamily.SEARCH)
+        }
         if (
             count(database, "SELECT COUNT(*) FROM location_rtree") != count(database, "SELECT COUNT(*) FROM location_record") ||
             count(database, "SELECT COUNT(*) FROM place_rtree") != count(database, "SELECT COUNT(*) FROM place")

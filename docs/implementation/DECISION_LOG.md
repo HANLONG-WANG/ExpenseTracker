@@ -761,3 +761,30 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: catch-up needs to identify an encrypted ledger, while Worker payload/privacy rules permit only `operationId`; screenshot acceptance also cannot use the excluded visual drafts.
 - Decision: the opaque book `StableId` is the P23 operation ID and is the only WorkManager input key. All rules and business fields are loaded from SQLCipher. The Worker can reach that adapter only through `AppHeadlessRecurrenceExecutor`, which acquires and releases a `HeadlessBookLease` with `RECURRENCE_WRITE` capability. AUT-001/AUT-008 goldens hash width, height and every production Compose ARGB pixel at 360×720 using only frozen textual UI contracts, token JSON, screen YAML and production state fixtures.
 - Consequence: route/WorkManager/SavedState carry no amount, note, name, attachment, coordinate or full object, and application lock does not create an unrestricted background database path. Golden hashes `0f73c7a9ae623b1482cb53b37a0a1851ac4689868ada7a8cce81e047a8d6f874` and `7b9f1701eccafa0c06de9f2bccee96be12e9a0fcb3ba330dbd0276907e77e497` detect production drift; none of the prohibited PNG/HTML drafts was opened, parsed, sampled, measured or compared.
+
+## DL-107 — Interactive P24 batches use one normal ledger transaction
+
+- Date/stage: 2026-08-06 / P24
+- Surface issue: the architecture reserves encrypted staging/shadow workflows for very large import/restore operations, while REQ-060 requires an interactive phone batch to be all-or-nothing and immediately undoable.
+- Decision: P24 validates and plans every in-memory row, then combines typed ordinary/refund children into one `BatchFinancialCommand` and one normal `FinancialMutationCoordinator`/Room transaction. It does not create a plaintext/persistent draft or reuse the P28 import staging path.
+- Consequence: errors and injected failures leave zero partial state, exact retries resolve one parent receipt, and batch undo appends legal reverse revisions. Imports large enough to require checkpoints or staging remain exclusively P28 and cannot use P24 as a fast DAO bypass.
+
+## DL-108 — Batch routes and drafts have different security lifetimes
+
+- Date/stage: 2026-08-06 / P24
+- Precedence applied: the frozen privacy boundary outranks process-death restoration convenience.
+- Decision: `REC-024` carries only a stable row ID. Amounts, expressions, note, merchant, attachment, location, allocation and all other row content live only in the root ViewModel's in-memory `BatchRecordState`; they never enter route arguments, SavedState, DataStore, logs or semantics. Process death discards the batch and the existing root runtime explains restoration loss.
+- Consequence: no sensitive batch draft survives a locked/dead process. Back or top-level navigation requires a discard confirmation rather than silently persisting or committing input.
+
+## DL-109 — Current-transaction and FTS projection populations remain intentionally different
+
+- Date/stage: 2026-08-06 / P24
+- Surface issue: the batch reversal device test exposed that `current_transaction_projection` retains trashed transactions for history/trash queries, while `transaction_fts` intentionally indexes only active transactions. The prior projection audit compared FTS against all current rows and falsely rejected a valid reversal.
+- Decision: retain both required behaviors and change only the search audit denominator to `current_transaction_projection WHERE state = ACTIVE`.
+- Consequence: trash history remains queryable, normal search cannot surface deleted rows, and synchronous projection verification now compares like populations. The real SQLCipher batch undo test proves the repaired boundary without weakening integrity checks.
+
+## DL-110 — P24 goldens are text-contract-derived production pixels
+
+- Date/stage: 2026-08-06 / P24
+- Decision: render REC-023 light, REC-024 dark and REC-025 light in deterministic 360×720 production Compose viewports and compare SHA-256 over every ARGB pixel. The frozen digests are `a207b0736bfcd848e9ab6f22d64bff60a78a6c4ca2199d0f6c2d8d459e61e044`, `8ed41793fa25efcf05748f91db243563438f3b1e73139d8102429364bf0c6745` and `a2b7abdb5d31b650f3ff52d3352be6a7e2476c2c6ca2128ff54fed58cfc61c96`.
+- Consequence: batch UI drift is machine-detectable using only production Compose, governed `LedgerTheme`, localized resources, the textual UI contract, token JSON and screen YAML. No excluded PNG/HTML visual draft was opened, parsed, sampled, measured or compared.

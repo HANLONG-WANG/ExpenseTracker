@@ -43,6 +43,7 @@ internal fun ReadyRootScaffold(
     val referencePending by viewModel.referenceMutationPending.collectAsStateWithLifecycle()
     val recordState by viewModel.ordinaryRecord.collectAsStateWithLifecycle()
     val recordPending by viewModel.ordinaryRecordPending.collectAsStateWithLifecycle()
+    val batchState by viewModel.batchRecord.collectAsStateWithLifecycle()
     val specializedState by viewModel.specializedTransaction.collectAsStateWithLifecycle()
     val specializedPending by viewModel.specializedTransactionPending.collectAsStateWithLifecycle()
     val refundState by viewModel.refund.collectAsStateWithLifecycle()
@@ -60,7 +61,9 @@ internal fun ReadyRootScaffold(
     val automationState by viewModel.automation.collectAsStateWithLifecycle()
     val automationPending by viewModel.automationPending.collectAsStateWithLifecycle()
     val launchAttachmentPicker = rememberRecordAttachmentPicker { uri ->
-        if (viewModel.navigator.currentKey.contract.screenId.value == "REC-013") {
+        if (viewModel.navigator.currentKey.contract.screenId.value == "REC-024") {
+            viewModel.importBatchAttachment(uri)
+        } else if (viewModel.navigator.currentKey.contract.screenId.value == "REC-013") {
             viewModel.importSpecializedAttachment(uri)
         } else {
             viewModel.importRecordAttachment(uri)
@@ -241,6 +244,7 @@ internal fun ReadyRootScaffold(
                             referenceState = referenceState,
                             referencePending = referencePending,
                             recordState = recordState,
+                            batchState = batchState,
                             specializedState = specializedState,
                             currencySettings = currencySettings,
                             journalState = journalState,

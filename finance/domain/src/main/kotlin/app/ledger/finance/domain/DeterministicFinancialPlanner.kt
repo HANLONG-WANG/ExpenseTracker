@@ -182,7 +182,9 @@ object DeterministicFinancialPlanner {
         require(command.commands.size == snapshot.batchSnapshots.size, "planningSnapshot.batchSnapshots")
         val childPlans = command.commands.zip(snapshot.batchSnapshots).map { (child, childSnapshot) ->
             require(
-                child is EditTransactionCommand || child is MoveTransactionToTrashCommand,
+                child is RecordTransactionCommand<*> ||
+                    child is EditTransactionCommand ||
+                    child is MoveTransactionToTrashCommand,
                 "batchFinancialCommand.childType",
             )
             require(childSnapshot.book == snapshot.book, "batchFinancialCommand.book")

@@ -1116,6 +1116,68 @@ tasks.register("p23Check") {
     )
 }
 
+val validateP24Batch by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates atomic P24 batch entry/edit, safe routes, virtualisation and coordinator boundaries."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p24_batch.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/record/src") { include("**/*") },
+        fileTree("feature/journal/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*.kt") },
+        fileTree("finance/data/src") { include("**/*.kt") },
+        fileTree("finance/domain/src") { include("**/*.kt") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP24BatchFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P24 gate rejects coordinator, route, virtualisation and bulk-field weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p24_batch_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p24_batch.py",
+        "scripts/tests/test_p24_batch_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/designsystem/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/record/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/journal/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/domain/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p24Check") {
+    group = "verification"
+    description = "Runs P24 static, JVM, lint and architecture evidence; device suites run separately."
+    dependsOn(
+        validateP24Batch,
+        validateP24BatchFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":finance:domain:test",
+        ":finance:data:testDebugUnitTest",
+        ":feature:record:testDebugUnitTest",
+        ":feature:journal:testDebugUnitTest",
+        ":core:navigation:testDebugUnitTest",
+        ":app:lintDebug",
+        ":feature:record:lintDebug",
+        ":feature:journal:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

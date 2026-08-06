@@ -198,22 +198,7 @@ class RoomFinancialCommitRepository(
                 abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
             }
         }
-        if (command is BatchFinancialCommand) {
-            command.commands.forEach { child ->
-                val targetId = child.transactionIdOrNull()
-                    ?: abort(FinanceDataError.CorruptData)
-                val expected = child.expectedRevisionId
-                    ?: abort(FinanceDataError.CorruptData)
-                val actual = connection.queryOne(
-                    "SELECT tr.uid FROM business_transaction bt JOIN transaction_revision tr " +
-                        "ON tr.id = bt.current_revision_id WHERE bt.uid = ?",
-                    arrayOf(targetId.value.bytes),
-                ) { cursor -> cursor.stableId("uid") }
-                if (actual != expected.value) {
-                    abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
-                }
-            }
-        }
+        if (command is BatchFinancialCommand) verifyBatchPreconditions(connection, command, plan)
         if (command is ConfigureBudgetMonthCommand) {
             val actual = connection.queryOne(
                 "SELECT r.uid FROM budget_month m LEFT JOIN budget_month_revision r ON r.id=m.current_revision_id WHERE m.uid=?",
@@ -399,6 +384,41 @@ class RoomFinancialCommitRepository(
         DomainResult.Failure(FinanceDataError.NumericRangeExceeded)
     } catch (_: Exception) {
         DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    }
+}
+
+private fun verifyBatchPreconditions(
+    connection: androidx.sqlite.db.SupportSQLiteDatabase,
+    command: BatchFinancialCommand,
+    plan: FinancialMutationPlan,
+) {
+    if (command.commands.size != plan.transactions.size) abort(FinanceDataError.CorruptData)
+    command.commands.zip(plan.transactions).forEach { (child, plannedTransaction) ->
+        if (child is RecordTransactionCommand<*>) {
+            val exists = connection.queryOne(
+                "SELECT 1 FROM business_transaction WHERE uid=?",
+                arrayOf(plannedTransaction.id.value.bytes),
+            ) { true } ?: false
+            if (exists) abort(app.ledger.finance.domain.DomainViolation.DuplicateCommandPayloadMismatch)
+        } else {
+            verifyExistingBatchChildPrecondition(connection, child)
+        }
+    }
+}
+
+private fun verifyExistingBatchChildPrecondition(
+    connection: androidx.sqlite.db.SupportSQLiteDatabase,
+    child: FinancialCommand,
+) {
+    val targetId = child.transactionIdOrNull() ?: abort(FinanceDataError.CorruptData)
+    val expected = child.expectedRevisionId ?: abort(FinanceDataError.CorruptData)
+    val actual = connection.queryOne(
+        "SELECT tr.uid FROM business_transaction bt JOIN transaction_revision tr " +
+            "ON tr.id = bt.current_revision_id WHERE bt.uid = ?",
+        arrayOf(targetId.value.bytes),
+    ) { cursor -> cursor.stableId("uid") }
+    if (actual != expected.value) {
+        abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
     }
 }
 

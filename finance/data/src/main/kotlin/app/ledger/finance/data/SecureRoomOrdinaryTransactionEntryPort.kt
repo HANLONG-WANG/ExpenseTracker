@@ -62,6 +62,7 @@ import app.ledger.finance.domain.FxRateSnapshotId
 import app.ledger.finance.domain.GoalId
 import app.ledger.finance.domain.Hash256
 import app.ledger.finance.domain.IncomePayload
+import app.ledger.finance.domain.InstallmentPlanId
 import app.ledger.finance.domain.LocationRecordId
 import app.ledger.finance.domain.MerchantId
 import app.ledger.finance.domain.MissingDayPolicy
@@ -132,6 +133,24 @@ public class SecureRoomOrdinaryTransactionEntryPort(
     }
 
     private suspend fun execute(database: LedgerDatabase, request: OrdinaryTransactionWriteRequest): DomainResult<CommandReceipt> {
+        val prepared = prepare(database, request)
+        val repository = RoomFinancialCommitRepository(
+            database,
+            sideEffect = prepared.sideEffect,
+            afterFinancialWriteSideEffect = prepared.afterFinancialWriteSideEffect,
+        )
+        return DefaultFinancialMutationCoordinator(
+            writeGate = gate,
+            receiptRepository = repository,
+            snapshotRepository = object : FinancialPlanningSnapshotRepository {
+                override suspend fun load(command: app.ledger.finance.domain.FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(prepared.snapshot)
+            },
+            planner = FinancialPlanningPort(DeterministicFinancialPlanner::plan),
+            commitRepository = repository,
+        ).execute(prepared.command)
+    }
+
+    internal fun prepare(database: LedgerDatabase, request: OrdinaryTransactionWriteRequest): PreparedFinancialMutation {
         val automaticStatement = database.readLedger { db -> automaticStatement(db, request) }
         val settledActivity = database.readLedger { db -> settledActivityForEdit(db, request) }
         val snapshot = database.readLedger { db -> planningSnapshot(db, request, automaticStatement?.newStatement != null) }
@@ -173,7 +192,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
                     evidence.userInput,
                     request.settlementActivityId?.let(::SettlementActivityId),
                     request.settlementShares.map { it.toDomain() },
-                    null,
+                    request.installmentPlanId?.let(::InstallmentPlanId),
                 )
             }
             OrdinaryDirection.INCOME -> {
@@ -247,20 +266,12 @@ public class SecureRoomOrdinaryTransactionEntryPort(
         } else {
             FinancialCommitSideEffect.NONE
         }
-        val repository = RoomFinancialCommitRepository(
-            database,
-            sideEffect = sideEffect,
-            afterFinancialWriteSideEffect = candidateAcceptanceSideEffect(request.acceptedCandidateId, request.ids.transactionId),
+        return PreparedFinancialMutation(
+            command,
+            snapshot,
+            sideEffect,
+            candidateAcceptanceSideEffect(request.acceptedCandidateId, request.ids.transactionId),
         )
-        return DefaultFinancialMutationCoordinator(
-            writeGate = gate,
-            receiptRepository = repository,
-            snapshotRepository = object : FinancialPlanningSnapshotRepository {
-                override suspend fun load(command: app.ledger.finance.domain.FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
-            },
-            planner = FinancialPlanningPort(DeterministicFinancialPlanner::plan),
-            commitRepository = repository,
-        ).execute(command)
     }
 
     private fun candidateAcceptanceSideEffect(candidateUid: StableId?, transactionUid: StableId): FinancialCommitSideEffect {

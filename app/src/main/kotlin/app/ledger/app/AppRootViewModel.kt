@@ -104,6 +104,9 @@ import app.ledger.feature.planning.ProjectGoalLoadState
 import app.ledger.feature.planning.ProjectGoalPolicy
 import app.ledger.feature.planning.ProjectGoalPresentation
 import app.ledger.feature.planning.ProjectTransactionPagingSource
+import app.ledger.feature.record.BatchRecordState
+import app.ledger.feature.record.BatchRowDraft
+import app.ledger.feature.record.BatchSort
 import app.ledger.feature.record.OrdinaryRecordEditorState
 import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.record.OrdinaryRecordPolicy
@@ -140,6 +143,8 @@ import app.ledger.finance.application.AttachmentContentSource
 import app.ledger.finance.application.AttachmentImportRequest
 import app.ledger.finance.application.AutomationApplicationPort
 import app.ledger.finance.application.AutomationMutationIds
+import app.ledger.finance.application.BatchEntryApplicationPort
+import app.ledger.finance.application.BatchEntryField
 import app.ledger.finance.application.BlueprintDraft
 import app.ledger.finance.application.BookAttachmentObjectPort
 import app.ledger.finance.application.BudgetApplicationPort
@@ -357,6 +362,7 @@ internal class AppRootViewModel @Inject constructor(
     private val journalApplicationPort: JournalApplicationPort,
     private val openingBalanceWritePort: OpeningBalanceWritePort,
     private val ordinaryTransactionEntryPort: OrdinaryTransactionEntryPort,
+    batchEntryApplicationPort: BatchEntryApplicationPort,
     private val refundApplicationPort: RefundApplicationPort,
     private val budgetApplicationPort: BudgetApplicationPort,
     private val projectGoalApplicationPort: ProjectGoalApplicationPort,
@@ -369,6 +375,15 @@ internal class AppRootViewModel @Inject constructor(
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
 ) : ViewModel() {
+    private val batchEntryController = BatchEntryController(
+        batchEntryApplicationPort,
+        ordinaryTransactionEntryPort,
+        refundApplicationPort,
+        installmentApplicationPort,
+        runtimeSources,
+    )
+    val batchRecord: StateFlow<BatchRecordState?> = batchEntryController.state
+    val batchRecordPending: StateFlow<Boolean> = batchEntryController.pending
     private val mutableRootState = MutableStateFlow<AppRootState>(AppRootState.Starting)
     val rootState: StateFlow<AppRootState> = mutableRootState.asStateFlow()
 
@@ -485,6 +500,7 @@ internal class AppRootViewModel @Inject constructor(
     private val scrollStates = mutableMapOf<TopLevelDestination, Pair<String, Int>>()
     private var recordLocationSession: ForegroundLocationSaveSession? = null
     private var recordAttachmentImportJob: Job? = null
+    private var pendingBatchAttachmentRowId: StableId? = null
     private var specializedAttachmentImportJob: Job? = null
     private var pendingRecordExit: PendingRecordExit? = null
 
@@ -1130,6 +1146,104 @@ internal class AppRootViewModel @Inject constructor(
         }
     }
 
+    fun openBatchEntry() {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.current()
+            if (batchEntryController.open(requireBookId(saved), ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }))) {
+                navigator.navigate(LedgerRouteContract.destination(ScreenId("REC-023")), SessionGateState.READY)
+            }
+        }
+    }
+
+    fun openBatchRow(rowId: StableId) {
+        batchEntryController.selectRow(rowId)
+        val screenId = ScreenId("REC-024")
+        navigator.navigate(
+            LedgerRouteContract.destination(screenId, mapOf("rowId" to StableIdArgument(rowId))),
+            SessionGateState.READY,
+        )
+    }
+
+    fun addBatchRow() = batchEntryController.add()
+    fun copyBatchRow(rowId: StableId) = batchEntryController.copy(rowId)
+    fun deleteBatchRow(rowId: StableId) = batchEntryController.delete(rowId)
+    fun moveBatchRow(rowId: StableId, targetIndex: Int) = batchEntryController.move(rowId, targetIndex)
+    fun sortBatchRows(order: BatchSort) = batchEntryController.sort(order)
+    fun pasteBatchRows(text: String) = batchEntryController.paste(text)
+    fun updateBatchRow(row: BatchRowDraft) = batchEntryController.updateRow(row)
+    fun cycleBatchReference(rowId: StableId, field: BatchEntryField) = batchEntryController.cycle(rowId, field)
+
+    fun requestBatchAttachment(rowId: StableId) {
+        pendingBatchAttachmentRowId = rowId
+    }
+
+    fun importBatchAttachment(uri: Uri) {
+        val rowId = pendingBatchAttachmentRowId ?: return
+        pendingBatchAttachmentRowId = null
+        viewModelScope.launch(Dispatchers.IO) {
+            val state = batchRecord.value ?: return@launch
+            val metadata = attachmentMetadata(uri) ?: return@launch
+            val request = AttachmentImportRequest(
+                displayName = metadata.first,
+                mimeType = context.contentResolver.getType(uri),
+                extension = metadata.first.substringAfterLast('.', "").takeIf(String::isNotBlank),
+                declaredSize = metadata.second,
+                content = AttachmentContentSource { requireNotNull(context.contentResolver.openInputStream(uri)) },
+            )
+            when (val result = bookAttachmentObjectPort.import(state.snapshot.references.bookId, request)) {
+                is DomainResult.Success -> batchEntryController.attach(rowId, result.value.attachmentId.value)
+                is DomainResult.Failure -> Unit
+            }
+        }
+    }
+
+    fun validateBatchEntry() {
+        if (navigator.currentKey.contract.screenId.value != "REC-025") {
+            navigator.navigate(LedgerRouteContract.destination(ScreenId("REC-025")), SessionGateState.READY)
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            batchEntryController.validate()
+        }
+    }
+
+    fun confirmBatchWarnings() = batchEntryController.confirmWarnings()
+
+    fun submitBatchEntry() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (batchEntryController.submit()) {
+                val bookId = batchRecord.value?.snapshot?.references?.bookId
+                if (bookId != null) loadReferenceDataAfterMutation(bookId)
+                loadJournal()
+                while (navigator.currentKey.contract.screenId.value != "REC-023" && navigator.currentBackStack.size > 1) navigator.pop()
+            }
+        }
+    }
+
+    fun undoBatchEntry() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = batchRecord.value?.snapshot?.references?.bookId
+            if (batchEntryController.undo()) {
+                if (bookId != null) loadReferenceDataAfterMutation(bookId)
+                loadJournal()
+                discardBatchEntry()
+            }
+        }
+    }
+
+    fun discardBatchEntry() {
+        batchEntryController.discard()
+        pendingBatchAttachmentRowId = null
+        while (navigator.currentKey.contract.screenId.value != "REC-001" && navigator.currentBackStack.size > 1) navigator.pop()
+    }
+
+    fun keepEditingBatchEntry() = batchEntryController.keepEditing()
+
+    fun jumpToBatchIssue(issue: app.ledger.finance.application.BatchValidationIssue) {
+        val rowId = issue.rowId ?: return
+        openBatchRow(rowId)
+    }
+
     fun selectRecordTab(tab: RecordTab) = updateRecordContent { copy(tab = tab, search = "") }
     fun updateRecordSearch(value: String) = updateRecordContent { copy(search = value.take(RECORD_SEARCH_LIMIT)) }
 
@@ -1175,6 +1289,10 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun navigateRecord(target: String, stable: Map<String, StableId>, enums: Map<String, String>) {
+        if (target == "REC-023") {
+            openBatchEntry()
+            return
+        }
         val screenId = ScreenId(target)
         val arguments = buildMap<String, SafeRouteArgument> {
             stable.forEach { (name, value) -> put(name, StableIdArgument(value)) }
@@ -3505,7 +3623,9 @@ internal class AppRootViewModel @Inject constructor(
     fun requestRootBack() {
         val screen = navigator.currentKey.contract.screenId.value
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
-        if (screen == "REC-003" && editor?.draft?.dirty == true) {
+        if (screen in setOf("REC-023", "REC-024", "REC-025") && batchRecord.value?.presentation != app.ledger.feature.record.BatchRecordPresentation.COMMITTED) {
+            batchEntryController.requestDiscardConfirmation()
+        } else if (screen == "REC-003" && editor?.draft?.dirty == true) {
             pendingRecordExit = PendingRecordExit.Back
             updateEditor { it.copy(showUnsavedDialog = true) }
         } else {
@@ -3516,7 +3636,9 @@ internal class AppRootViewModel @Inject constructor(
     fun selectRootTopLevel(target: TopLevelDestination) {
         val screen = navigator.currentKey.contract.screenId.value
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
-        if (screen == "REC-003" && editor?.draft?.dirty == true) {
+        if (screen in setOf("REC-023", "REC-024", "REC-025") && batchRecord.value?.presentation != app.ledger.feature.record.BatchRecordPresentation.COMMITTED) {
+            batchEntryController.requestDiscardConfirmation()
+        } else if (screen == "REC-003" && editor?.draft?.dirty == true) {
             pendingRecordExit = PendingRecordExit.TopLevel(target)
             updateEditor { it.copy(showUnsavedDialog = true) }
         } else {

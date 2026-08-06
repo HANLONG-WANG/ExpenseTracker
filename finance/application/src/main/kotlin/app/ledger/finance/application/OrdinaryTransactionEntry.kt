@@ -184,6 +184,8 @@ public data class OrdinaryTransactionWriteRequest(
     val createdAt: Instant,
     /** Operation link consumed atomically when a user confirms a fact-free recurrence candidate. */
     val acceptedCandidateId: StableId? = null,
+    /** Optional existing plan; the purchase remains one complete expense transaction. */
+    val installmentPlanId: StableId? = null,
 ) {
     init {
         require(expectedRevisionId == null || expectedRevisionId != ids.revisionId)

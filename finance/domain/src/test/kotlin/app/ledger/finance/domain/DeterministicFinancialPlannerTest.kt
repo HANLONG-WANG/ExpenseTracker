@@ -778,6 +778,65 @@ class DeterministicFinancialPlannerTest {
     }
 
     @Test
+    fun `batch creates are one balanced deterministic commit and retain every complete row`() {
+        val sharedBook = book()
+        val sharedCommit = BookCommitId(stableId(47_900L))
+        val sharedCreatedAt = Instant.parse("2026-08-06T01:00:00Z")
+        val sharedDevice = DeviceInstanceId(stableId(47_901L))
+        val commands = listOf(
+            PlannerFixtures.expenseCommand(1_200L, commandSeed = 47_000L),
+            PlannerFixtures.expenseCommand(3_400L, commandSeed = 47_100L),
+        )
+        val snapshots = commands.mapIndexed { index, _ ->
+            val scalar = PlannerFixtures.snapshot(
+                listOf(
+                    PlannerFixtures.sameCurrencyEvidence(
+                        AmountRole.PRIMARY,
+                        if (index == 0) 1_200L else 3_400L,
+                        PlannerFixtures.bankJpyId,
+                    ),
+                ),
+                seed = 47_200L + index * 100L,
+                sourceBook = sharedBook,
+            )
+            scalar.copy(
+                accountingContext = scalar.accountingContext!!.copy(
+                    identities = scalar.accountingContext.identities.copy(commitId = sharedCommit),
+                    createdAt = sharedCreatedAt,
+                    deviceInstanceId = sharedDevice,
+                ),
+            )
+        }
+        val unsigned = BatchFinancialCommand(CommandId(stableId(47_800L)), hash(0), commands)
+        val command = unsigned.copy(payloadHash = CanonicalFinancialHash.command(unsigned))
+        val root = PlanningSnapshot(
+            sharedBook,
+            null,
+            null,
+            emptyList(),
+            emptySet(),
+            emptyList(),
+            null,
+            emptyList(),
+            batchSnapshots = snapshots,
+        )
+
+        val first = DeterministicFinancialPlanner.plan(command, root).success()
+        val replay = DeterministicFinancialPlanner.plan(command, root).success()
+
+        first shouldBe replay
+        first.commit.kind shouldBe CommitKind.BATCH_MUTATION
+        first.targetLocalRevision shouldBe sharedBook.localRevision.next().success()
+        first.transactions shouldHaveSize 2
+        first.revisions.shouldHaveSize(2)
+        first.revisions.all { it.action == RevisionAction.CREATE }.shouldBeTrue()
+        first.journalBundles.shouldHaveSize(2)
+        first.journalBundles.all { it.entry.baseDebitTotalMinor == it.entry.baseCreditTotalMinor }.shouldBeTrue()
+        first.economicEffects.map { it.baseAmount.minor.value }.sorted() shouldBe listOf(1_200L, 3_400L)
+        FinancialMutationPlanValidator.validate(command, root, first).success() shouldBe first
+    }
+
+    @Test
     fun `trash nets current facts to zero and restore appends a new revision`() {
         val amount = PlannerFixtures.sameCurrencyEvidence(AmountRole.PRIMARY, 800L, PlannerFixtures.bankJpyId)
         val createSnapshot = PlannerFixtures.snapshot(listOf(amount), seed = 50_000L)

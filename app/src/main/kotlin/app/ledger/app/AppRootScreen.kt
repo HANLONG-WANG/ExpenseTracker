@@ -77,6 +77,7 @@ import app.ledger.feature.journal.JournalDestination
 import app.ledger.feature.journal.JournalLoadState
 import app.ledger.feature.onboarding.OnboardingActions
 import app.ledger.feature.onboarding.OnboardingScreen
+import app.ledger.feature.record.BatchRecordState
 import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.record.SpecializedTransactionLoadState
 import app.ledger.feature.settings.CurrencySettingsDestination
@@ -87,6 +88,7 @@ import app.ledger.feature.settings.ReferenceManagementDestination
 import kotlinx.coroutines.delay
 import java.util.Locale
 import app.ledger.feature.journal.R as JournalR
+import app.ledger.feature.record.R as RecordR
 
 @Composable
 internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
@@ -386,6 +388,7 @@ internal fun RootDestination(
     referenceState: AppReferenceDataState,
     referencePending: Boolean,
     recordState: OrdinaryRecordLoadState,
+    batchState: BatchRecordState?,
     specializedState: SpecializedTransactionLoadState,
     currencySettings: CurrencySettingsState?,
     journalState: JournalLoadState,
@@ -454,6 +457,14 @@ internal fun RootDestination(
             state = specializedState,
             viewModel = viewModel,
             onAddAttachment = onAddAttachment,
+        )
+    } else if (screenId in setOf("REC-023", "REC-024", "REC-025") && batchState != null) {
+        BatchRecordRootDestination(
+            screenId,
+            batchState,
+            viewModel,
+            onAddAttachment,
+            onNavigationChanged,
         )
     } else if (screenId.startsWith("REC-")) {
         OrdinaryRecordRootDestination(
@@ -686,6 +697,8 @@ internal fun destinationTitle(key: LedgerDestinationKey): String {
 
 private fun rootDestinationTitleResource(screenId: String): Int? = if (screenId == "REC-001") {
     R.string.global_record_title
+} else if (screenId in setOf("REC-023", "REC-024", "REC-025")) {
+    RecordR.string.batch_entry_title
 } else if (screenId == "JRN-001") {
     R.string.global_journal_title
 } else if (screenId == "JRN-002") {

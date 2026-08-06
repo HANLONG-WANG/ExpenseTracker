@@ -40,6 +40,7 @@ import app.ledger.finance.domain.FrozenAmountEvidence
 import app.ledger.finance.domain.FrozenFxConversion
 import app.ledger.finance.domain.FxRateSnapshotId
 import app.ledger.finance.domain.GoalId
+import app.ledger.finance.domain.LocationRecordId
 import app.ledger.finance.domain.MerchantId
 import app.ledger.finance.domain.NewTransactionInput
 import app.ledger.finance.domain.ParticipantId
@@ -95,19 +96,44 @@ public class SecureRoomRefundApplicationPort(
     }
 
     override suspend fun submit(request: RefundWriteRequest): DomainResult<CommandReceipt> = withDatabase(request.ids.bookId) { database ->
-        val snapshot = database.readLedger { planningSnapshot(it, request) }
-        val draft = RecordRefundCommand(request.ids.commandId, zeroHash(), NewTransactionInput(context(request), payload(snapshot, request)))
-        val command = draft.copy(payloadHash = CanonicalFinancialHash.command(draft))
-        val repository = RoomFinancialCommitRepository(database)
+        val prepared = prepare(database, request)
+        val repository = RoomFinancialCommitRepository(database, sideEffect = prepared.sideEffect)
         DefaultFinancialMutationCoordinator(
             writeGate,
             repository,
             object : FinancialPlanningSnapshotRepository {
-                override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
+                override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(prepared.snapshot)
             },
             FinancialPlanningPort(DeterministicFinancialPlanner::plan),
             repository,
-        ).execute(command)
+        ).execute(prepared.command)
+    }
+
+    internal fun prepare(database: LedgerDatabase, request: RefundWriteRequest): PreparedFinancialMutation {
+        val snapshot = database.readLedger { planningSnapshot(it, request) }
+        val draft = RecordRefundCommand(request.ids.commandId, zeroHash(), NewTransactionInput(context(request), payload(snapshot, request)))
+        val command = draft.copy(payloadHash = CanonicalFinancialHash.command(draft))
+        val sideEffect = request.newLocation?.let { location ->
+            FinancialCommitSideEffect { db, plan ->
+                val internalId = db.allocateInternalId("location_record", location.id)
+                db.execSQL(
+                    "INSERT INTO location_record(id,uid,lat_e7,lon_e7,accuracy_mm,captured_at,source,provider,place_id,created_commit_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    arrayOf<Any?>(
+                        internalId,
+                        location.id.bytes,
+                        location.latitudeE7,
+                        location.longitudeE7,
+                        location.accuracyMillimeters,
+                        location.capturedAt.toStorageEpochMillis(),
+                        if (location.provider == app.ledger.finance.application.OrdinaryLocationProvider.MANUAL) 1 else 0,
+                        location.provider.name,
+                        db.optionalInternalId("place", location.placeId),
+                        db.commitId(plan.commit.id),
+                    ),
+                )
+            }
+        } ?: FinancialCommitSideEffect.NONE
+        return PreparedFinancialMutation(command, snapshot, sideEffect)
     }
 
     private fun planningSnapshot(db: SupportSQLiteDatabase, request: RefundWriteRequest): PlanningSnapshot {
@@ -179,7 +205,7 @@ public class SecureRoomRefundApplicationPort(
         merchantId = request.merchantId?.let(::MerchantId),
         projectId = request.projectId?.let(::ProjectId),
         goalId = request.goalId?.let(::GoalId),
-        locationRecordId = null,
+        locationRecordId = request.locationRecordId?.let(::LocationRecordId),
         note = request.note,
         amountExpression = request.amountExpression,
         source = TransactionSource.MANUAL,

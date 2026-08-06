@@ -251,6 +251,7 @@ private fun OtherTransactionCards(actions: OrdinaryRecordActions) {
         "LOA-007" to R.string.record_other_loan,
         "REC-020" to R.string.record_other_adjustment,
         "REC-021" to R.string.record_other_fx,
+        "REC-023" to R.string.batch_entry_title,
     )
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         targets.forEach { (target, label) -> LedgerButton(stringResource(label), { actions.onNavigate(target, emptyMap(), emptyMap()) }, variant = LedgerButtonVariant.TONAL) }

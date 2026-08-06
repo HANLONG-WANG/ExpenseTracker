@@ -148,6 +148,8 @@ public data class RefundWriteRequest(
     val note: String?,
     val attachmentIds: List<StableId>,
     val createdAt: Instant,
+    val locationRecordId: StableId? = null,
+    val newLocation: OrdinaryLocationDraft? = null,
 ) {
     init {
         require(independent == allocations.isEmpty())
@@ -157,6 +159,7 @@ public data class RefundWriteRequest(
         require(note == null || note.isNotBlank())
         require(attachmentIds.toSet().size == attachmentIds.size)
         require((budgetPolicy == RefundBudgetPolicy.DO_NOT_RESTORE) == (budgetTargetMonth == null))
+        require(newLocation == null || newLocation.id == locationRecordId)
     }
 }
 

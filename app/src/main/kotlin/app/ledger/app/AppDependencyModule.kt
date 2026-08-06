@@ -17,6 +17,7 @@ import app.ledger.core.time.InjectedJavaClock
 import app.ledger.core.time.JavaTimeLedgerClock
 import app.ledger.core.time.LedgerClock
 import app.ledger.finance.application.AutomationApplicationPort
+import app.ledger.finance.application.BatchEntryApplicationPort
 import app.ledger.finance.application.BookAttachmentObjectPort
 import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.CreditApplicationPort
@@ -33,6 +34,7 @@ import app.ledger.finance.application.RefundApplicationPort
 import app.ledger.finance.application.SettlementApplicationPort
 import app.ledger.finance.application.SpecializedTransactionEntryPort
 import app.ledger.finance.data.SecureRoomAutomationApplicationPort
+import app.ledger.finance.data.SecureRoomBatchEntryApplicationPort
 import app.ledger.finance.data.SecureRoomBudgetApplicationPort
 import app.ledger.finance.data.SecureRoomCreditApplicationPort
 import app.ledger.finance.data.SecureRoomInstallmentApplicationPort
@@ -197,6 +199,14 @@ internal object AppDependencyModule {
         keyProvider: DeviceLedgerKeyProvider,
         referenceDataPort: ReferenceDataManagementPort,
     ): OrdinaryTransactionEntryPort = SecureRoomOrdinaryTransactionEntryPort(context, keyProvider, referenceDataPort)
+
+    @Provides
+    @Singleton
+    fun batchEntryApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+        referenceDataPort: ReferenceDataManagementPort,
+    ): BatchEntryApplicationPort = SecureRoomBatchEntryApplicationPort(context, keyProvider, referenceDataPort)
 
     @Provides
     @Singleton

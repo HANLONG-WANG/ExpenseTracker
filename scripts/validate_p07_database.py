@@ -333,6 +333,14 @@ def validate_ledgers() -> int:
                 **{f"AUT-{number:03d}": "VERIFIED" for number in range(1, 11)},
             },
         )
+    if current_stage_number >= 24:
+        permitted_promotions.update(
+            {
+                "REC-023": "VERIFIED",
+                "REC-024": "VERIFIED",
+                "REC-025": "VERIFIED",
+            },
+        )
     require(
         len(screen_rows) == 215
         and all(row["status"] == permitted_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),
