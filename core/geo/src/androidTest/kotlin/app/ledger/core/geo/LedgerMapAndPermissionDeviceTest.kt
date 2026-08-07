@@ -41,6 +41,12 @@ class LedgerMapAndPermissionDeviceTest {
                             ),
                         ),
                         accessibleRows = listOf(LedgerMapAccessibleRow("Recorded place", "One transaction")),
+                        userLocation = LedgerMapPoint(
+                            StableId.fromUuid(UUID(0, 2)),
+                            latitudeE7 = 356_800_000,
+                            longitudeE7 = 1397_600_000,
+                            weight = 1,
+                        ),
                     ),
                     styleConfiguration = TEST_STYLE,
                     accessibleCaption = "Accessible locations",

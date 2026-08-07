@@ -4,6 +4,7 @@
     "LongParameterList",
     "SpreadOperator",
     "TooManyFunctions",
+    "ReturnCount",
 )
 
 package app.ledger.core.geo
@@ -33,6 +34,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.ledger.core.common.StableId
+import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.AccessibleDataTable
 import app.ledger.core.designsystem.AccessibleTableUiModel
 import app.ledger.core.designsystem.LedgerButton
@@ -53,6 +55,7 @@ import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.HeatmapLayer
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
+import org.maplibre.android.style.layers.PropertyFactory.circleOpacity
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
@@ -73,6 +76,7 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
+import kotlin.math.roundToInt
 
 enum class LedgerMapMode { CLUSTERS, HEATMAP, SINGLE_POINTS }
 
@@ -124,6 +128,23 @@ data class LedgerMapPoint(
     }
 }
 
+data class LedgerMapViewport(
+    val minimumLatitudeE7: Int,
+    val maximumLatitudeE7: Int,
+    val minimumLongitudeE7: Int,
+    val maximumLongitudeE7: Int,
+    val zoomBucket: Int,
+) {
+    init {
+        require(minimumLatitudeE7 in MIN_LATITUDE_E7..MAX_LATITUDE_E7)
+        require(maximumLatitudeE7 in MIN_LATITUDE_E7..MAX_LATITUDE_E7)
+        require(minimumLatitudeE7 <= maximumLatitudeE7)
+        require(minimumLongitudeE7 in MIN_LONGITUDE_E7..MAX_LONGITUDE_E7)
+        require(maximumLongitudeE7 in MIN_LONGITUDE_E7..MAX_LONGITUDE_E7)
+        require(zoomBucket in 0..MAX_ZOOM_BUCKET)
+    }
+}
+
 data class LedgerMapAccessibleRow(
     val primaryText: String,
     val secondaryText: String,
@@ -142,6 +163,7 @@ sealed interface LedgerMapState {
         val mode: LedgerMapMode,
         val points: List<LedgerMapPoint>,
         val accessibleRows: List<LedgerMapAccessibleRow>,
+        val userLocation: LedgerMapPoint? = null,
     ) : LedgerMapState
 
     data class Unavailable(
@@ -159,6 +181,8 @@ fun LedgerMap(
     showAccessibleListLabel: String,
     hideAccessibleListLabel: String,
     onFailure: (LedgerMapFailure) -> Unit,
+    onViewportChanged: (LedgerMapViewport) -> Unit = {},
+    onPointSelected: (StableId) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     require(accessibleColumnHeaders.size == ACCESSIBLE_COLUMN_COUNT)
@@ -183,7 +207,7 @@ fun LedgerMap(
             model = LedgerMapUiModel(summary, availability, styleConfiguration.attribution),
             mapContent = {
                 val available = state as LedgerMapState.Available
-                MapLibreContent(available, styleConfiguration, onFailure)
+                MapLibreContent(available, styleConfiguration, onFailure, onViewportChanged, onPointSelected)
             },
             fallbackContent = {
                 if (rows.isNotEmpty()) AccessibleMapRows(accessibleCaption, accessibleColumnHeaders, rows)
@@ -222,6 +246,8 @@ private fun MapLibreContent(
     state: LedgerMapState.Available,
     configuration: LedgerMapStyleConfiguration,
     onFailure: (LedgerMapFailure) -> Unit,
+    onViewportChanged: (LedgerMapViewport) -> Unit,
+    onPointSelected: (StableId) -> Unit,
 ) {
     if (LocalInspectionMode.current) {
         onFailure(LedgerMapFailure.RENDERER_UNAVAILABLE)
@@ -230,6 +256,8 @@ private fun MapLibreContent(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val latestFailure by rememberUpdatedState(onFailure)
+    val latestViewport by rememberUpdatedState(onViewportChanged)
+    val latestPointSelected by rememberUpdatedState(onPointSelected)
     val dark = LedgerTheme.colors.material.background.luminance() < DARK_LUMINANCE_THRESHOLD
     val design = LedgerMapDesignContract.current()
     val density = LocalDensity.current
@@ -238,6 +266,7 @@ private fun MapLibreContent(
             style = if (dark) configuration.dark else configuration.light,
             mode = state.mode,
             points = state.points,
+            userLocation = state.userLocation,
             clusterLowRadius = design.clusterLowDiameter.toPx() / DIAMETER_TO_RADIUS,
             clusterMediumRadius = design.clusterMediumDiameter.toPx() / DIAMETER_TO_RADIUS,
             clusterHighRadius = design.clusterHighDiameter.toPx() / DIAMETER_TO_RADIUS,
@@ -247,12 +276,18 @@ private fun MapLibreContent(
             heatColors = design.heatSequence.map { it.toArgb() },
             pointStrokeColor = LedgerTheme.colors.material.surface.toArgb(),
             clusterTextColor = LedgerTheme.colors.material.onPrimary.toArgb(),
+            userLocationColor = design.userLocationColor.toArgb(),
             cameraPaddingPixels = LedgerTheme.spacing.sm.toPx().toInt(),
         )
     }
     val controller = remember(context) {
         MapLibre.getInstance(context.applicationContext)
-        LedgerMapController(context) { latestFailure(LedgerMapFailure.STYLE_OR_NETWORK_UNAVAILABLE) }
+        LedgerMapController(
+            context,
+            { latestFailure(LedgerMapFailure.STYLE_OR_NETWORK_UNAVAILABLE) },
+            { latestViewport(it) },
+            { latestPointSelected(it) },
+        )
     }
     controller.render(renderSpec)
     DisposableEffect(controller, lifecycle) {
@@ -272,6 +307,7 @@ private data class MapRenderSpec(
     val style: LedgerMapStyleSource,
     val mode: LedgerMapMode,
     val points: List<LedgerMapPoint>,
+    val userLocation: LedgerMapPoint?,
     val clusterLowRadius: Float,
     val clusterMediumRadius: Float,
     val clusterHighRadius: Float,
@@ -281,12 +317,15 @@ private data class MapRenderSpec(
     val heatColors: List<Int>,
     val pointStrokeColor: Int,
     val clusterTextColor: Int,
+    val userLocationColor: Int,
     val cameraPaddingPixels: Int,
 )
 
 private class LedgerMapController(
     context: Context,
     private val onFailure: () -> Unit,
+    private val onViewportChanged: (LedgerMapViewport) -> Unit,
+    private val onPointSelected: (StableId) -> Unit,
 ) {
     val view: MapView = MapView(context)
     private var map: MapLibreMap? = null
@@ -295,6 +334,7 @@ private class LedgerMapController(
     private var started = false
     private var resumed = false
     private var destroyed = false
+    private var cameraInitialized = false
     private val lifecycleObserver = LifecycleEventObserver { _, event ->
         when (event) {
             Lifecycle.Event.ON_START -> start()
@@ -313,6 +353,8 @@ private class LedgerMapController(
             map = ready
             ready.uiSettings.isAttributionEnabled = true
             ready.uiSettings.isLogoEnabled = true
+            ready.addOnCameraIdleListener { dispatchViewport(ready) }
+            ready.addOnMapClickListener { coordinate -> handleMapClick(ready, coordinate) }
             desired?.let(::apply)
         }
     }
@@ -335,10 +377,11 @@ private class LedgerMapController(
 
     private fun apply(spec: MapRenderSpec) {
         val ready = map ?: return
-        val styleSignature = spec.copy(points = emptyList()).hashCode()
+        val styleSignature = spec.copy(points = emptyList(), userLocation = null).hashCode()
         if (renderedStyleSignature == styleSignature) {
             ready.style?.getSourceAs<GeoJsonSource>(SOURCE_ID)?.setGeoJson(spec.featureCollection())
-            moveCamera(ready, spec)
+            ready.style?.getSourceAs<GeoJsonSource>(USER_SOURCE_ID)?.setGeoJson(spec.userFeatureCollection())
+            initializeCamera(ready, spec)
             return
         }
         renderedStyleSignature = styleSignature
@@ -348,8 +391,42 @@ private class LedgerMapController(
         }
         ready.setStyle(builder) { style ->
             addOverlay(style, spec)
-            moveCamera(ready, spec)
+            initializeCamera(ready, spec)
         }
+    }
+
+    private fun initializeCamera(ready: MapLibreMap, spec: MapRenderSpec) {
+        if (cameraInitialized || spec.points.isEmpty()) return
+        moveCamera(ready, spec)
+        cameraInitialized = true
+    }
+
+    private fun dispatchViewport(ready: MapLibreMap) {
+        val bounds = ready.projection.visibleRegion.latLngBounds
+        onViewportChanged(
+            LedgerMapViewport(
+                (bounds.latitudeSouth * E7_DIVISOR).roundToInt().coerceIn(MIN_LATITUDE_E7, MAX_LATITUDE_E7),
+                (bounds.latitudeNorth * E7_DIVISOR).roundToInt().coerceIn(MIN_LATITUDE_E7, MAX_LATITUDE_E7),
+                (bounds.longitudeWest * E7_DIVISOR).roundToInt().coerceIn(MIN_LONGITUDE_E7, MAX_LONGITUDE_E7),
+                (bounds.longitudeEast * E7_DIVISOR).roundToInt().coerceIn(MIN_LONGITUDE_E7, MAX_LONGITUDE_E7),
+                ready.cameraPosition.zoom.roundToInt().coerceIn(0, MAX_ZOOM_BUCKET),
+            ),
+        )
+    }
+
+    private fun handleMapClick(ready: MapLibreMap, coordinate: LatLng): Boolean {
+        val screen = ready.projection.toScreenLocation(coordinate)
+        val point = ready.queryRenderedFeatures(screen, POINT_LAYER_ID).firstOrNull()
+        val stable = point?.id()?.let(StableId::parse)?.getOrNull()
+        if (stable != null) {
+            onPointSelected(stable)
+            return true
+        }
+        if (ready.queryRenderedFeatures(screen, CLUSTER_LAYER_ID).isNotEmpty()) {
+            ready.easeCamera(CameraUpdateFactory.newLatLngZoom(coordinate, (ready.cameraPosition.zoom + CLUSTER_ZOOM_STEP).coerceAtMost(MAX_ZOOM_BUCKET.toDouble())))
+            return true
+        }
+        return false
     }
 
     private fun start() {
@@ -405,6 +482,26 @@ private fun addOverlay(style: Style, spec: MapRenderSpec) {
         LedgerMapMode.HEATMAP -> addHeatmapLayer(style, spec)
         LedgerMapMode.SINGLE_POINTS -> addPointLayer(style, spec)
     }
+    addUserLocationLayers(style, spec)
+}
+
+private fun addUserLocationLayers(style: Style, spec: MapRenderSpec) {
+    style.addSource(GeoJsonSource(USER_SOURCE_ID, spec.userFeatureCollection()))
+    style.addLayer(
+        CircleLayer(USER_OUTER_LAYER_ID, USER_SOURCE_ID).withProperties(
+            circleColor(spec.userLocationColor),
+            circleOpacity(0f),
+            circleRadius(spec.selectedPointRadius),
+            circleStrokeColor(spec.userLocationColor),
+            circleStrokeWidth(USER_LOCATION_STROKE_WIDTH_PIXELS),
+        ),
+    )
+    style.addLayer(
+        CircleLayer(USER_INNER_LAYER_ID, USER_SOURCE_ID).withProperties(
+            circleColor(spec.userLocationColor),
+            circleRadius(spec.pointRadius / DIAMETER_TO_RADIUS),
+        ),
+    )
 }
 
 private fun addClusterLayers(style: Style, spec: MapRenderSpec) {
@@ -481,6 +578,14 @@ private fun MapRenderSpec.featureCollection(): FeatureCollection = FeatureCollec
     },
 )
 
+private fun MapRenderSpec.userFeatureCollection(): FeatureCollection = FeatureCollection.fromFeatures(
+    listOfNotNull(
+        userLocation?.let { point ->
+            Feature.fromGeometry(Point.fromLngLat(point.longitudeE7 / E7_DIVISOR, point.latitudeE7 / E7_DIVISOR))
+        },
+    ),
+)
+
 private fun moveCamera(map: MapLibreMap, spec: MapRenderSpec) {
     if (spec.points.isEmpty()) return
     val coordinates = spec.points.map { LatLng(it.latitudeE7 / E7_DIVISOR, it.longitudeE7 / E7_DIVISOR) }
@@ -509,11 +614,17 @@ private const val POINT_STROKE_WIDTH_PIXELS = 2f
 private const val HEATMAP_INTENSITY = 1f
 private const val HEATMAP_OPACITY = 0.82f
 private const val SINGLE_POINT_ZOOM = 14.0
+private const val CLUSTER_ZOOM_STEP = 2.0
+private const val MAX_ZOOM_BUCKET = 22
+private const val USER_LOCATION_STROKE_WIDTH_PIXELS = 3f
 private const val SOURCE_ID = "ledger-location-source"
 private const val CLUSTER_LAYER_ID = "ledger-location-clusters"
 private const val CLUSTER_COUNT_LAYER_ID = "ledger-location-cluster-counts"
 private const val POINT_LAYER_ID = "ledger-location-points"
 private const val HEATMAP_LAYER_ID = "ledger-location-heatmap"
+private const val USER_SOURCE_ID = "ledger-user-location-source"
+private const val USER_OUTER_LAYER_ID = "ledger-user-location-outer"
+private const val USER_INNER_LAYER_ID = "ledger-user-location-inner"
 private const val CLUSTER_COUNT_PROPERTY = "point_count"
 private const val CLUSTER_ABBREVIATED_COUNT_PROPERTY = "point_count_abbreviated"
 private const val POINT_RADIUS_PROPERTY = "point_radius"

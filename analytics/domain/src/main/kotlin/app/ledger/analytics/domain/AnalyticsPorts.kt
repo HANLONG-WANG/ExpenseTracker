@@ -248,6 +248,16 @@ interface AnalyticsApplicationPort : AnalyticsQueryPort {
     suspend fun anomalyFindings(bookId: StableId, period: ReportPeriod): DomainResult<List<AnomalyFinding>>
 
     suspend fun forecast(bookId: StableId, key: ForecastKey, today: LocalDate): DomainResult<ForecastResult>
+
+    suspend fun consumptionMap(bookId: StableId, query: ConsumptionMapQuery): DomainResult<ConsumptionMapResult>
+
+    suspend fun consumptionMapFilterOptions(bookId: StableId): DomainResult<ConsumptionMapFilterOptions>
+
+    suspend fun consumptionMapDetail(
+        bookId: StableId,
+        query: ConsumptionMapQuery,
+        pointId: StableId,
+    ): DomainResult<ConsumptionMapDetail>
 }
 
 data class TimeSeriesPoint(

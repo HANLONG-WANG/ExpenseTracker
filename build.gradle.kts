@@ -1301,6 +1301,65 @@ tasks.register("p26Check") {
     )
 }
 
+val validateP27ConsumptionMap by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P27 RTree map queries, bounded MapLibre rendering, privacy, accessibility and safe routes."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p27_consumption_map.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("analytics/domain/src") { include("**/*") },
+        fileTree("analytics/data/src") { include("**/*") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("core/geo/src") { include("**/*") },
+        fileTree("feature/analysis/src") { include("**/*") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP27ConsumptionMapFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P27 gate rejects RTree, node-bound, exclusion, color, accessibility, route and geocoder weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p27_consumption_map_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p27_consumption_map.py",
+        "scripts/tests/test_p27_consumption_map_contracts.py",
+        fileTree("analytics/domain/src") { include("**/*.kt") },
+        fileTree("analytics/data/src") { include("**/*.kt") },
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/designsystem/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/geo/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/analysis/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p27Check") {
+    group = "verification"
+    description = "Runs P27 static, JVM, lint and architecture evidence; SQLCipher/MapLibre/UI managed-device suites run separately."
+    dependsOn(
+        validateP27ConsumptionMap,
+        validateP27ConsumptionMapFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":analytics:domain:test",
+        ":analytics:data:testDebugUnitTest",
+        ":core:geo:test",
+        ":feature:analysis:testDebugUnitTest",
+        ":app:lintDebug",
+        ":analytics:data:lintDebug",
+        ":core:geo:lintDebug",
+        ":feature:analysis:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

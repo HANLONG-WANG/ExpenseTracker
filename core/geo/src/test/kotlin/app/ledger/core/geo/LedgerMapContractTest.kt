@@ -30,4 +30,15 @@ class LedgerMapContractTest {
             )
         }
     }
+
+    @Test
+    fun viewportIsFixedPointBoundedAndAllowsDateLineCrossing() {
+        assertEquals(8, LedgerMapViewport(-10, 10, 1_700_000_000, -1_700_000_000, 8).zoomBucket)
+        assertThrows(IllegalArgumentException::class.java) {
+            LedgerMapViewport(-900_000_001, 10, 0, 0, 8)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            LedgerMapViewport(-10, 10, 0, 0, 23)
+        }
+    }
 }

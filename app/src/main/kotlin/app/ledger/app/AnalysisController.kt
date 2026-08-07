@@ -15,6 +15,7 @@ import app.ledger.analytics.domain.DrilldownQueryId
 import app.ledger.analytics.domain.FixedReport
 import app.ledger.analytics.domain.FixedReportCatalog
 import app.ledger.analytics.domain.ForecastKey
+import app.ledger.analytics.domain.MapViewport
 import app.ledger.analytics.domain.ReportDefinitionId
 import app.ledger.analytics.domain.ReportExecution
 import app.ledger.analytics.domain.ReportExportFormat
@@ -69,6 +70,7 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
     private var anomalyDraftType: AnomalyRuleType = AnomalyRuleType.HISTORICAL_MEAN_STANDARD_DEVIATION
     private var anomalyThresholdText: String = "2.0"
     private var anomalyLookbackText: String = "12"
+    private val consumptionMap = ConsumptionMapController(application)
 
     suspend fun open(
         bookId: StableId,
@@ -90,6 +92,7 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
             reportDraftId = null
             dashboardDraftId = null
             dashboardItems = emptyList()
+            consumptionMap.reset()
         }
         this.baseCurrency = baseCurrency
         this.today = today
@@ -328,6 +331,56 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
 
     fun toggleTechnicalDetails() = updateCurrent { it.copy(technicalDetailsExpanded = !it.technicalDetailsExpanded) }
 
+    suspend fun cycleMapMode() = updateMap { consumptionMap.cycleMode(requirePeriod()) }
+
+    suspend fun cycleMapWeight() = updateMap { consumptionMap.cycleWeight(requirePeriod()) }
+
+    suspend fun cycleMapAggregation() = updateMap { consumptionMap.cycleAggregation(requirePeriod()) }
+
+    suspend fun cycleMapPresentation() = updateMap { consumptionMap.cyclePresentation(requirePeriod()) }
+
+    suspend fun toggleMapSpecialTransactions() = updateMap { consumptionMap.toggleSpecialTransactions(requirePeriod()) }
+
+    suspend fun resetMapFilters() {
+        period = AnalysisPolicy.initialPeriod(requireNotNull(today))
+        updateMap { consumptionMap.resetFilters(requirePeriod()) }
+    }
+
+    suspend fun cycleMapAccountFilter() = cycleMapFilter(ConsumptionMapFilterDimension.ACCOUNT)
+
+    suspend fun cycleMapCategoryFilter() = cycleMapFilter(ConsumptionMapFilterDimension.CATEGORY)
+
+    suspend fun cycleMapMerchantFilter() = cycleMapFilter(ConsumptionMapFilterDimension.MERCHANT)
+
+    suspend fun cycleMapPlaceFilter() = cycleMapFilter(ConsumptionMapFilterDimension.PLACE)
+
+    suspend fun cycleMapProjectFilter() = cycleMapFilter(ConsumptionMapFilterDimension.PROJECT)
+
+    suspend fun cycleMapAmountFilter() = updateMap { consumptionMap.cycleAmount(requirePeriod()) }
+
+    suspend fun removeMapFilter(stableKey: String) = updateMap {
+        consumptionMap.removeFilter(requirePeriod(), stableKey)
+    }
+
+    private suspend fun cycleMapFilter(dimension: ConsumptionMapFilterDimension) = updateMap {
+        consumptionMap.cycleFilter(requireBookId(), requirePeriod(), dimension)
+    }
+
+    suspend fun updateMapViewport(viewport: MapViewport) {
+        if (consumptionMap.updateViewport(requirePeriod(), viewport)) loadMapIntoState()
+    }
+
+    fun markMapUnavailable() {
+        consumptionMap.markUnavailable()
+        updateCurrent { current ->
+            if (current.screenId == "ANA-011" && current.consumptionMap != null) {
+                current.copy(presentation = AnalysisPresentation.MAP_UNAVAILABLE)
+            } else {
+                current
+            }
+        }
+    }
+
     private suspend fun loadCurrent() {
         mutableState.value = AnalysisLoadState.Loading
         mutableState.value = when (screenId) {
@@ -341,6 +394,8 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
             "ANA-008" -> loadBuilder()
             "ANA-009" -> loadVisualizationPicker()
             "ANA-010" -> loadExport()
+            "ANA-011" -> loadMap()
+            "ANA-012" -> loadMapDetail()
             "ANA-013" -> loadAnomalies()
             "ANA-014" -> loadForecast()
             "ANA-015" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.NOT_RUN))
@@ -485,6 +540,28 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
             is DomainResult.Success -> AnalysisLoadState.Content(baseState("ANA-014", AnalysisPresentation.CONTENT).copy(forecastKey = key, forecast = result.value))
             is DomainResult.Failure -> AnalysisLoadState.Content(baseState("ANA-014", AnalysisPresentation.INSUFFICIENT_DATA).copy(forecastKey = key, failureCode = result.error.code))
         }
+    }
+
+    private suspend fun loadMap(): AnalysisLoadState = consumptionMap.loadMap(requireBookId(), requirePeriod()) { presentation ->
+        baseState("ANA-011", presentation)
+    }
+
+    private suspend fun loadMapIntoState() {
+        val expected = consumptionMap.current(requirePeriod())
+        val loaded = loadMap()
+        if (expected == consumptionMap.current(requirePeriod()) && screenId == "ANA-011") mutableState.value = loaded
+    }
+
+    private suspend fun loadMapDetail(): AnalysisLoadState {
+        val pointId = entityId ?: return AnalysisLoadState.Failure("ANA-012", "MAP_POINT_ID_INVALID")
+        return consumptionMap.loadDetail(requireBookId(), requirePeriod(), pointId) { presentation ->
+            baseState("ANA-012", presentation)
+        }
+    }
+
+    private suspend fun updateMap(action: suspend () -> Unit) {
+        action()
+        loadMapIntoState()
     }
 
     private fun editDraft(transform: (ReportSpec) -> ReportSpec) {

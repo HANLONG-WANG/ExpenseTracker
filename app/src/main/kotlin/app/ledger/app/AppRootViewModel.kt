@@ -1003,6 +1003,60 @@ internal class AppRootViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) { analysisController.loadNextDrilldown() }
     }
 
+    fun cycleConsumptionMapMode() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapMode() }
+    }
+
+    fun cycleConsumptionMapWeight() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapWeight() }
+    }
+
+    fun cycleConsumptionMapAggregation() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapAggregation() }
+    }
+
+    fun cycleConsumptionMapPresentation() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapPresentation() }
+    }
+
+    fun toggleConsumptionMapSpecialTransactions() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.toggleMapSpecialTransactions() }
+    }
+
+    fun resetConsumptionMapFilters() {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.resetMapFilters() }
+    }
+
+    fun cycleConsumptionMapAccountFilter() = viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapAccountFilter() }
+
+    fun cycleConsumptionMapCategoryFilter() = viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapCategoryFilter() }
+
+    fun cycleConsumptionMapMerchantFilter() = viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapMerchantFilter() }
+
+    fun cycleConsumptionMapPlaceFilter() = viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapPlaceFilter() }
+
+    fun cycleConsumptionMapProjectFilter() = viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapProjectFilter() }
+
+    fun cycleConsumptionMapAmountFilter() = viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapAmountFilter() }
+
+    fun removeConsumptionMapFilter(stableKey: String) {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.removeMapFilter(stableKey) }
+    }
+
+    fun updateConsumptionMapViewport(viewport: app.ledger.analytics.domain.MapViewport) {
+        viewModelScope.launch(Dispatchers.IO) { analysisController.updateMapViewport(viewport) }
+    }
+
+    fun markConsumptionMapUnavailable() = analysisController.markMapUnavailable()
+
+    fun navigateConsumptionMapDetail(pointId: StableId) {
+        val screenId = ScreenId("ANA-012")
+        navigator.navigate(
+            LedgerRouteContract.destination(screenId, mapOf("placeOrClusterId" to StableIdArgument(pointId))),
+            SessionGateState.READY,
+        )
+    }
+
     fun navigateAnalysis(targetScreenId: String, report: FixedReport?, queryId: DrilldownQueryId?) {
         val screenId = ScreenId(targetScreenId)
         val arguments = buildMap<String, SafeRouteArgument> {

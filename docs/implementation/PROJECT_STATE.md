@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-06 (Asia/Tokyo)
-Current stage: P26 — Custom reports, dashboards, anomaly and forecast
-Stage status: VERIFIED (`P26-E001`—`P26-E007`); P00—P25 remain VERIFIED and P27 is the next unstarted stage
+Last updated: 2026-08-07 (Asia/Tokyo)
+Current stage: P27 — Consumption map
+Stage status: VERIFIED (`P27-E001`—`P27-E007`); P00—P26 remain VERIFIED and P28 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -340,14 +340,26 @@ P22 is `VERIFIED`. `P22_SETTLEMENT_MAPPING.md` records the exact allocation/fact
 | Schema migration | Schema v2 adds 12 normalized analytics configuration tables; registered non-destructive v1→v2 SQLCipher migration retains predecessor data, switches the contract hash and reopens cleanly | VERIFIED (`P26-E003`) |
 | UI, routes and export boundary | ANA-006—010/013/014 cover all 16 states in three languages and responsive/font/theme/accessibility matrices; routes carry only StableId/closed keys; export stops at a typed payload for P29 | VERIFIED (`P26-E001`, `P26-E004`, `P26-E005`) |
 
-P26 is `VERIFIED`. `P26_CUSTOM_ANALYTICS_MAPPING.md` records the complete AST/configuration/algorithm/Schema v2/UI boundary. Actual export file generation remains P29; P27 and later stages are not promoted.
+P26 is `VERIFIED`. `P26_CUSTOM_ANALYTICS_MAPPING.md` records the complete AST/configuration/algorithm/Schema v2/UI boundary. Actual export file generation remains P29; P28 and later stages are not promoted.
+
+### P27 result (verified)
+
+| Area | P27 result | Classification |
+|---|---|---|
+| Typed map query | Current-month consumption defaults, four closed modes, amount/count weights, merchant/place aggregation, three presentations, full typed account/category/merchant/place/project/kind/amount filters, same-dimension OR chips with independent removal, cross-dimension AND and default transfer/repayment/loan exclusion are complete | VERIFIED (`P27-E001`—`P27-E004`) |
+| R*Tree and scale | SQLCipher performs viewport R*Tree candidate selection, exact E7 containment, current-revision/fact filtering and database aggregation before returning at most 512 render nodes; the inherited typed radius service retains R*Tree plus Kotlin Haversine filtering | VERIFIED (`P27-E002`, `P27-E003`) |
+| Historical semantics | Consumption/refund, all-expense, cash-flow and all-located values read immutable base-currency EconomicEffect/Posting/evidence; current FX never rewrites history | VERIFIED (`P27-E002`, `P27-E003`) |
+| MapLibre and fallback | App-owned `LedgerMap` provides incremental source updates, clusters, sequential-teal heatmap, single points, point/cluster interaction, attribution and a graphically distinct optional user location; failure retains the same accessible location data | VERIFIED (`P27-E001`, `P27-E004`) |
+| UI, routes and pixels | ANA-011/012 cover all 9 YAML states, three languages, responsive/font/theme boundaries, coordinate-masked semantics, category table, preview and opaque StableId-only drilldown; two production Compose digests freeze the contract | VERIFIED (`P27-E004`, `P27-E005`) |
+
+P27 is `VERIFIED`. `P27_CONSUMPTION_MAP_MAPPING.md` records the query/index/SDK/UI/privacy boundary. P28 and later stages are not promoted.
 
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 57 requirements are `VERIFIED`; 30 are `IN_PROGRESS`; 3 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 161 are `VERIFIED`; 54 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 58 requirements are `VERIFIED`; 29 are `IN_PROGRESS`; 3 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 163 are `VERIFIED`; 52 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-011 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-012—015 and ADR-018—020 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
 | Permanent domain invariants | 35 | 26 are `VERIFIED`, including settlement conservation/local-account/history invariants (`INV-022`—`INV-024`); 9 retain later evidence |
@@ -386,7 +398,8 @@ P26 is `VERIFIED`. `P26_CUSTOM_ANALYTICS_MAPPING.md` records the complete AST/co
 | P24 | VERIFIED | In-memory complete-row batch editing, one coordinator-owned SQLCipher commit, exact retry, whole-batch reversal, bounded query selection, 100,000-row virtualized UI and all five REC/JRN destinations; `P24-E001`—`P24-E007` |
 | P25 | VERIFIED | Closed bounded ReportSpec AST, whitelist compiler, 20 fixed reports, twelve synchronous analytics rollups, nine integrity checks and all six ANA destinations; `P25-E001`—`P25-E007` |
 | P26 | VERIFIED | Revisioned custom reports/dashboards/anomaly rules, exact deterministic forecast/derived series, non-destructive SQLCipher Schema v2 and all seven ANA destinations; `P26-E001`—`P26-E007` |
-| P27—P36 | NOT_STARTED | P27 is next; do not promote later work early |
+| P27 | VERIFIED | R*Tree-bounded consumption-map aggregation, immutable historical values, governed MapLibre cluster/heat/single rendering, accessible failure list and ANA-011/012; `P27-E001`—`P27-E007` |
+| P28—P36 | NOT_STARTED | P28 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -546,4 +559,24 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p26_custom_anal
 ./gradlew p26Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
 ```
 
-All P26 evidence is recorded in `P26-E001`—`P26-E007`. The next entry point is P27. Preserve the typed report language, exact algorithm/version disclosures, normalized Schema v2, opaque route registry and P29 export ownership; do not introduce AI/OCR, user formulas/scripts, plaintext configuration or another financial writer.
+All P26 evidence is recorded in `P26-E001`—`P26-E007`. P27 has subsequently completed the map surface. Preserve the typed report language, exact algorithm/version disclosures, normalized Schema v2, opaque route registry and P29 export ownership; do not introduce AI/OCR, user formulas/scripts, plaintext configuration or another financial writer.
+
+## P27 verified handoff
+
+P27 leaves the repository with a typed current-month consumption-map query, four accounting modes, amount/count weighting, merchant/place aggregation, same-dimension OR/cross-dimension AND filters with independently removable chips, R*Tree viewport candidates with exact E7 filtering, immutable historical base values and a 512-node render ceiling. The app-owned MapLibre host supports cluster/heat/single layers, viewport updates, point/cluster interaction, attribution and a distinct user-location graphic; failure retains the same data as an accessible list and drilldown. ANA-011/012 cover all nine frozen states with StableId-only navigation.
+
+The reproducible P27 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p27_consumption_map.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p27_consumption_map_contracts -v
+./gradlew :analytics:domain:test :core:geo:test :app:compileDebugKotlin
+./gradlew :app:testDebugUnitTest --tests app.ledger.app.ConsumptionMapFilterRemovalTest
+./gradlew :analytics:data:pixel6Api36DebugAndroidTest
+./gradlew :core:geo:pixel6Api36DebugAndroidTest
+./gradlew :feature:analysis:pixel6Api36DebugAndroidTest
+./gradlew :app:pixel6Api36DebugAndroidTest
+./gradlew p27Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+```
+
+All P27 evidence is recorded in `P27-E001`—`P27-E007`. The next entry point is P28. Preserve the R*Tree/query bound, immutable historical FX semantics, feature/application/SDK boundary and accessible fallback; do not create online place search, reverse geocoding, coordinate-bearing routes or another financial writer.

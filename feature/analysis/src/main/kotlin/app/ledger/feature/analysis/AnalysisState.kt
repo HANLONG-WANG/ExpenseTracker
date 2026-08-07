@@ -8,6 +8,9 @@ import app.ledger.analytics.domain.AnomalyFinding
 import app.ledger.analytics.domain.AnomalyRuleId
 import app.ledger.analytics.domain.AnomalyRuleType
 import app.ledger.analytics.domain.ComparisonMode
+import app.ledger.analytics.domain.ConsumptionMapDetail
+import app.ledger.analytics.domain.ConsumptionMapFilterOptions
+import app.ledger.analytics.domain.ConsumptionMapResult
 import app.ledger.analytics.domain.DashboardItem
 import app.ledger.analytics.domain.Dimension
 import app.ledger.analytics.domain.DimensionValue
@@ -66,6 +69,14 @@ enum class AnalysisPresentation {
     PREVIEWING,
     AUTO_FALLBACK_TO_BAR,
     INSUFFICIENT_DATA,
+    CLUSTERS,
+    HEATMAP,
+    SINGLE_POINTS,
+    NO_LOCATION_DATA,
+    MAP_UNAVAILABLE,
+    PLACE,
+    CLUSTER,
+    SINGLE_TRANSACTION,
 }
 
 data class AnalysisFeatureState(
@@ -98,6 +109,9 @@ data class AnalysisFeatureState(
     val forecast: ForecastResult? = null,
     val exportFormat: ReportExportFormat = ReportExportFormat.CSV,
     val exportPayload: ReportExportPayload? = null,
+    val consumptionMap: ConsumptionMapResult? = null,
+    val consumptionMapDetail: ConsumptionMapDetail? = null,
+    val consumptionMapFilterOptions: ConsumptionMapFilterOptions? = null,
 )
 
 sealed interface AnalysisLoadState {

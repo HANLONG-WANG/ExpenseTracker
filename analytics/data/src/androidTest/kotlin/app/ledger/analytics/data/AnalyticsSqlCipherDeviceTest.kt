@@ -10,6 +10,11 @@ import app.ledger.analytics.domain.AnalyticsAlgorithmVersion
 import app.ledger.analytics.domain.AnalyticsError
 import app.ledger.analytics.domain.AnomalyRule
 import app.ledger.analytics.domain.AnomalyRuleType
+import app.ledger.analytics.domain.ConsumptionMapFilters
+import app.ledger.analytics.domain.ConsumptionMapMode
+import app.ledger.analytics.domain.ConsumptionMapPresentation
+import app.ledger.analytics.domain.ConsumptionMapQuery
+import app.ledger.analytics.domain.ConsumptionMapResult
 import app.ledger.analytics.domain.DashboardItem
 import app.ledger.analytics.domain.DashboardItemWidth
 import app.ledger.analytics.domain.Dimension
@@ -17,6 +22,7 @@ import app.ledger.analytics.domain.FilterExpression
 import app.ledger.analytics.domain.FixedReportCatalog
 import app.ledger.analytics.domain.ForecastKey
 import app.ledger.analytics.domain.IntegritySeverity
+import app.ledger.analytics.domain.MapViewport
 import app.ledger.analytics.domain.Measure
 import app.ledger.analytics.domain.ReportExecution
 import app.ledger.analytics.domain.ReportPeriod
@@ -190,9 +196,115 @@ class AnalyticsSqlCipherDeviceTest {
         assertTrue(application.executeFixed(BOOK_ID, FixedReportCatalog.definitions.first().report, AUGUST).success() is ReportExecution.Content)
     }
 
+    @Test
+    fun consumptionMapUsesRTreeFrozenBaseAmountsDefaultExclusionsAndOpaqueDrilldown() = runBlocking {
+        val defaultQuery = ConsumptionMapQuery(AUGUST, MapViewport.World)
+        val map = application.consumptionMap(BOOK_ID, defaultQuery).success()
+        assertEquals(3_000L, map.viewportBaseAmountMinor)
+        assertEquals(2L, map.viewportTransactionCount)
+        assertEquals(2, map.points.size)
+        assertTrue(map.query.filters.hidesTransfersRepaymentsAndLoans)
+        val options = application.consumptionMapFilterOptions(BOOK_ID).success()
+        assertEquals(listOf("Account 1", "Account 2"), options.accounts.map { it.label })
+        assertTrue(options.categories.isEmpty())
+        assertTrue(options.merchants.isEmpty())
+        assertTrue(options.places.isEmpty())
+        assertTrue(options.projects.isEmpty())
+
+        val expenseLocationId = id(502)
+        val detail = application.consumptionMapDetail(BOOK_ID, defaultQuery, expenseLocationId).success()
+        assertEquals(4_000L, detail.point.baseAmountMinor)
+        assertEquals(1L, detail.point.transactionCount)
+        assertEquals(1, detail.transactionPreview.size)
+        val drilldown = application.drillDown(BOOK_ID, detail.drilldownQueryId, null, 20).success()
+        assertEquals(listOf(id(102)), drilldown.rows.map { it.transactionId })
+
+        val allLocated = application.consumptionMap(
+            BOOK_ID,
+            defaultQuery.copy(
+                mode = ConsumptionMapMode.ALL_LOCATED_TRANSACTIONS,
+                presentation = ConsumptionMapPresentation.SINGLE_POINTS,
+                filters = ConsumptionMapFilters().withSpecialTransactions(true),
+            ),
+        ).success()
+        assertEquals(4L, allLocated.viewportTransactionCount)
+        assertEquals(17_000L, allLocated.viewportBaseAmountMinor)
+        assertEquals(4, allLocated.points.size)
+    }
+
+    @Test
+    fun tenThousandLocatedTransactionsRemainDatabaseAggregatedViewportBoundedAndNodeBounded() = runBlocking {
+        seedTenThousandLocatedTransactions()
+        val filters = ConsumptionMapFilters().withSpecialTransactions(true)
+        val world = application.consumptionMap(
+            BOOK_ID,
+            ConsumptionMapQuery(
+                AUGUST,
+                MapViewport.World,
+                mode = ConsumptionMapMode.ALL_LOCATED_TRANSACTIONS,
+                filters = filters,
+            ),
+        ).success()
+        assertEquals(10_004L, world.viewportTransactionCount)
+        assertEquals(ConsumptionMapResult.MAX_RENDERED_POINTS, world.points.size)
+        assertTrue(world.resultLimited)
+
+        val narrow = application.consumptionMap(
+            BOOK_ID,
+            world.query.copy(
+                viewport = MapViewport(350_000_000, 350_100_000, 1_390_000_000, 1_390_100_000, 15),
+            ),
+        ).success()
+        assertTrue(narrow.viewportTransactionCount in 1..200)
+        assertTrue(narrow.points.size <= narrow.viewportTransactionCount)
+        assertFalse(narrow.resultLimited)
+    }
+
     private fun mutateDatabase(sql: String) {
         val database = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
         database.inLedgerTransaction { it.execSQL(sql) }
+        database.close()
+    }
+
+    private fun seedTenThousandLocatedTransactions() {
+        val database = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
+        database.inLedgerTransaction { connection ->
+            connection.execSQL(
+                "WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<10000) " +
+                    "INSERT INTO location_record(id,uid,lat_e7,lon_e7,accuracy_mm,captured_at,source,provider,created_commit_id) " +
+                    "SELECT 40000+value,randomblob(16),350000000+value*1000,1390000000+value*1000,1000,1786000000000+value,0,'device',1 FROM n",
+            )
+            connection.execSQL(
+                "WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<10000) " +
+                    "INSERT INTO business_transaction(id,uid,kind,current_revision_id,lifecycle_state,created_commit_id,last_commit_id,row_version,content_hash) " +
+                    "SELECT 1000+value,randomblob(16),0,NULL,0,1,1,1,randomblob(32) FROM n",
+            )
+            connection.execSQL(
+                "WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<10000) " +
+                    "INSERT INTO transaction_revision(id,uid,transaction_id,revision_no,action,resulting_state,created_commit_id,created_at,occurred_at,zone_id,local_date,location_record_id,source_type,content_hash) " +
+                    "SELECT 20000+value,randomblob(16),1000+value,1,0,0,1,value,1786000000000+value,'Asia/Tokyo',20260806,40000+value,0,randomblob(32) FROM n",
+            )
+            connection.execSQL(
+                "WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<10000) " +
+                    "INSERT INTO expense_revision_detail(revision_id,payer_kind,payer_account_id) SELECT 20000+value,0,1 FROM n",
+            )
+            connection.execSQL(
+                "WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<10000) " +
+                    "UPDATE business_transaction SET current_revision_id=20000+(id-1000) WHERE id IN (SELECT 1000+value FROM n)",
+            )
+            connection.execSQL(
+                "WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<10000) " +
+                    "INSERT INTO current_transaction_projection(transaction_id,transaction_uid,kind,state,current_revision_id,occurred_at,local_date,primary_account_id," +
+                    "input_amount_minor,input_currency,account_amount_minor,account_currency,economic_base_minor,has_attachment,has_location,is_refund,is_refunded,has_installment,source_type,as_of_local_revision) " +
+                    "SELECT bt.id,bt.uid,0,0,20000+value,1786000000000+value,20260806,1,1,'JPY',1,'JPY',1,0,1,0,0,0,0,1 " +
+                    "FROM n JOIN business_transaction bt ON bt.id=1000+value",
+            )
+            connection.execSQL(
+                "WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<10000) " +
+                    "INSERT INTO location_rtree(location_id,min_lat,max_lat,min_lon,max_lon) " +
+                    "SELECT id,lat_e7/10000000.0,lat_e7/10000000.0,lon_e7/10000000.0,lon_e7/10000000.0 FROM location_record WHERE id IN (SELECT 40000+value FROM n)",
+            )
+        }
         database.close()
     }
 
@@ -241,16 +353,25 @@ class AnalyticsSqlCipherDeviceTest {
     ) {
         val transactionId = row
         val revisionId = 100 + row
+        val locationId = 500 + row
         val transactionUid = id(100L + row)
+        database.execSQL(
+            "INSERT INTO location_record(id,uid,lat_e7,lon_e7,accuracy_mm,captured_at,source,provider,created_commit_id) VALUES (?,?,?,?,1000,?,0,'device',1)",
+            arrayOf<Any>(locationId, id(500L + row).bytes, 356_000_000 + row * 10_000, 1_397_000_000 + row * 10_000, 1_786_000_000_000L + row),
+        )
+        database.execSQL(
+            "INSERT INTO location_rtree(location_id,min_lat,max_lat,min_lon,max_lon) VALUES (?,?,?,?,?)",
+            arrayOf<Any>(locationId, (356_000_000 + row * 10_000) / 10_000_000.0, (356_000_000 + row * 10_000) / 10_000_000.0, (1_397_000_000 + row * 10_000) / 10_000_000.0, (1_397_000_000 + row * 10_000) / 10_000_000.0),
+        )
         database.execSQL(
             "INSERT INTO business_transaction(id,uid,kind,current_revision_id,lifecycle_state,created_commit_id,last_commit_id,row_version,content_hash) " +
                 "VALUES (?,?,?,NULL,0,1,1,1,?)",
             arrayOf<Any>(transactionId, transactionUid.bytes, kind, blob(50 + row, 32)),
         )
         database.execSQL(
-            "INSERT INTO transaction_revision(id,uid,transaction_id,revision_no,action,resulting_state,created_commit_id,created_at,occurred_at,zone_id,local_date,source_type,content_hash) " +
-                "VALUES (?,?,?,1,0,0,1,?,?, 'Asia/Tokyo',20260806,0,?)",
-            arrayOf<Any>(revisionId, id(200L + row).bytes, transactionId, row.toLong(), 1_786_000_000_000L + row, blob(70 + row, 32)),
+            "INSERT INTO transaction_revision(id,uid,transaction_id,revision_no,action,resulting_state,created_commit_id,created_at,occurred_at,zone_id,local_date,location_record_id,source_type,content_hash) " +
+                "VALUES (?,?,?,1,0,0,1,?,?, 'Asia/Tokyo',20260806,?,0,?)",
+            arrayOf<Any>(revisionId, id(200L + row).bytes, transactionId, row.toLong(), 1_786_000_000_000L + row, locationId, blob(70 + row, 32)),
         )
         when (subtype) {
             "income" -> database.execSQL("INSERT INTO income_revision_detail(revision_id,receiving_account_id) VALUES (?,1)", arrayOf<Any>(revisionId))
@@ -272,8 +393,8 @@ class AnalyticsSqlCipherDeviceTest {
         database.execSQL(
             "INSERT INTO current_transaction_projection(transaction_id,transaction_uid,kind,state,current_revision_id,occurred_at,local_date,primary_account_id,secondary_account_id," +
                 "input_amount_minor,input_currency,account_amount_minor,account_currency,economic_base_minor,has_attachment,has_location,is_refund,is_refunded,has_installment,source_type,as_of_local_revision) " +
-                "VALUES (?,?,?,0,?,?,20260806,1,?,?,'JPY',?,'JPY',?,0,0,?,0,0,0,1)",
-            arrayOf<Any?>(transactionId, transactionUid.bytes, kind, revisionId, 1_786_000_000_000L + row, if (kind == 2) 2 else null, amount, amount, nature?.let { amount }, if (kind == 3) 1 else 0),
+                "VALUES (?,?,?,0,?,?,20260806,1,?,?,'JPY',?,'JPY',?,0,1,?,0,0,0,1)",
+            arrayOf<Any?>(transactionId, transactionUid.bytes, kind, revisionId, 1_786_000_000_000L + row, if (kind == 2) 2 else null, amount, amount, amount, if (kind == 3) 1 else 0),
         )
         database.execSQL(
             "INSERT INTO transaction_fts(transaction_id,category_name,merchant_name,merchant_aliases,note,project_name,settlement_activity_name,participant_names,attachment_names,lifecycle_state) " +

@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import app.ledger.analytics.domain.AnomalyRuleId
 import app.ledger.analytics.domain.ComparisonMode
+import app.ledger.analytics.domain.ConsumptionMapResult
 import app.ledger.analytics.domain.DashboardId
 import app.ledger.analytics.domain.Dimension
 import app.ledger.analytics.domain.DrilldownQueryId
@@ -36,6 +37,7 @@ import app.ledger.analytics.domain.FixedReportGroup
 import app.ledger.analytics.domain.ForecastKey
 import app.ledger.analytics.domain.IntegrityCheckKey
 import app.ledger.analytics.domain.IntegritySeverity
+import app.ledger.analytics.domain.MapViewport
 import app.ledger.analytics.domain.Measure
 import app.ledger.analytics.domain.ReportDefinitionId
 import app.ledger.analytics.domain.ReportExecution
@@ -110,10 +112,31 @@ data class AnalysisActions(
     val onAnomalyLookbackChanged: (String) -> Unit = {},
     val onSelectExportFormat: (ReportExportFormat) -> Unit = {},
     val onPrepareExport: () -> Unit = {},
+    val onCycleMapMode: () -> Unit = {},
+    val onCycleMapWeight: () -> Unit = {},
+    val onCycleMapAggregation: () -> Unit = {},
+    val onCycleMapPresentation: () -> Unit = {},
+    val onToggleMapSpecialTransactions: () -> Unit = {},
+    val onResetMapFilters: () -> Unit = {},
+    val onCycleMapAccountFilter: () -> Unit = {},
+    val onCycleMapCategoryFilter: () -> Unit = {},
+    val onCycleMapMerchantFilter: () -> Unit = {},
+    val onCycleMapPlaceFilter: () -> Unit = {},
+    val onCycleMapProjectFilter: () -> Unit = {},
+    val onCycleMapAmountFilter: () -> Unit = {},
+    val onRemoveMapFilter: (String) -> Unit = {},
+    val onMapViewportChanged: (MapViewport) -> Unit = {},
+    val onSelectMapPoint: (app.ledger.core.common.StableId) -> Unit = {},
+    val onOpenMapTransactions: (app.ledger.analytics.domain.DrilldownQueryId) -> Unit = {},
 )
 
 @Composable
-fun AnalysisDestination(screenId: String, state: AnalysisLoadState, actions: AnalysisActions) {
+fun AnalysisDestination(
+    screenId: String,
+    state: AnalysisLoadState,
+    actions: AnalysisActions,
+    mapContent: @Composable (ConsumptionMapResult, Boolean) -> Unit = { _, _ -> },
+) {
     if (state === AnalysisLoadState.Loading) {
         LedgerLoadingState(
             Modifier.fillMaxSize().analysisRootTag(screenId),
@@ -142,6 +165,8 @@ fun AnalysisDestination(screenId: String, state: AnalysisLoadState, actions: Ana
         "ANA-008" -> ReportBuilderScreen(content, actions)
         "ANA-009" -> VisualizationPickerScreen(content, actions)
         "ANA-010" -> ReportExportScreen(content, actions)
+        "ANA-011" -> ConsumptionMapScreen(content, actions, mapContent)
+        "ANA-012" -> ConsumptionMapDetailScreen(content, actions)
         "ANA-013" -> AnomalyRulesScreen(content, actions)
         "ANA-014" -> ForecastDetailScreen(content, actions)
         "ANA-015" -> IntegrityReport(content, actions)
@@ -281,7 +306,11 @@ private fun ReportCatalog(state: AnalysisFeatureState, actions: AnalysisActions)
                     Modifier.fillMaxWidth(),
                     onClick = {
                         actions.onNavigate(
-                            if (definition.report == FixedReport.DATA_INTEGRITY) "ANA-015" else "ANA-003",
+                            when (definition.report) {
+                                FixedReport.DATA_INTEGRITY -> "ANA-015"
+                                FixedReport.CONSUMPTION_MAP -> "ANA-011"
+                                else -> "ANA-003"
+                            },
                             definition.report,
                             null,
                         )

@@ -9,6 +9,15 @@ import app.ledger.analytics.domain.AnomalyFinding
 import app.ledger.analytics.domain.AnomalyRule
 import app.ledger.analytics.domain.AnomalyRuleId
 import app.ledger.analytics.domain.AnomalyRuleType
+import app.ledger.analytics.domain.ConsumptionMapCategoryComposition
+import app.ledger.analytics.domain.ConsumptionMapDetail
+import app.ledger.analytics.domain.ConsumptionMapFilterOption
+import app.ledger.analytics.domain.ConsumptionMapFilterOptions
+import app.ledger.analytics.domain.ConsumptionMapFilters
+import app.ledger.analytics.domain.ConsumptionMapGroupKind
+import app.ledger.analytics.domain.ConsumptionMapPoint
+import app.ledger.analytics.domain.ConsumptionMapQuery
+import app.ledger.analytics.domain.ConsumptionMapResult
 import app.ledger.analytics.domain.Dashboard
 import app.ledger.analytics.domain.DashboardId
 import app.ledger.analytics.domain.DashboardItem
@@ -26,6 +35,7 @@ import app.ledger.analytics.domain.ForecastResult
 import app.ledger.analytics.domain.IntegrityCheckKey
 import app.ledger.analytics.domain.IntegrityCheckResult
 import app.ledger.analytics.domain.IntegritySeverity
+import app.ledger.analytics.domain.MapViewport
 import app.ledger.analytics.domain.Measure
 import app.ledger.analytics.domain.MeasureValue
 import app.ledger.analytics.domain.QuerySource
@@ -46,7 +56,9 @@ import app.ledger.analytics.domain.VisualizationResolution
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.money.CurrencyCode
+import app.ledger.finance.domain.CategoryId
 import app.ledger.finance.domain.LocalRevision
+import app.ledger.finance.domain.UserAccountId
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.UUID
@@ -72,6 +84,8 @@ object AnalysisDeviceFixtures {
     val period = ReportPeriod(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31))
     val currency: CurrencyCode = CurrencyCode.parse("JPY").success()
     val revision: LocalRevision = LocalRevision.of(42).success()
+    val mapAccountOneId: StableId = id(1_130)
+    val mapAccountTwoId: StableId = id(1_131)
     val definition = FixedReportCatalog.definition(FixedReport.INCOME_EXPENSE_NET)
     private val queryId = DrilldownQueryId(id(800))
 
@@ -107,6 +121,54 @@ object AnalysisDeviceFixtures {
         anomalyFindings = anomalyFindings(),
         forecastKey = ForecastKey.MONTH_END_SPENDING,
         forecast = forecast(),
+        consumptionMap = consumptionMap(),
+        consumptionMapDetail = consumptionMapDetail(),
+    )
+
+    fun consumptionMap(): ConsumptionMapResult = ConsumptionMapResult(
+        query = ConsumptionMapQuery(period, MapViewport.World),
+        baseCurrency = currency,
+        points = listOf(
+            ConsumptionMapPoint(id(1_100), ConsumptionMapGroupKind.PLACE, "新宿", 356_900_000, 1_397_000_000, 12_800, 4),
+            ConsumptionMapPoint(id(1_101), ConsumptionMapGroupKind.RECORDED_LOCATION, null, 356_800_000, 1_397_500_000, 6_200, 2),
+        ),
+        viewportBaseAmountMinor = 19_000,
+        viewportTransactionCount = 6,
+        asOfLocalRevision = revision,
+        resultLimited = false,
+    )
+
+    fun consumptionMapWithSelectedAccounts(): ConsumptionMapResult = consumptionMap().let { result ->
+        result.copy(
+            query = result.query.copy(
+                filters = ConsumptionMapFilters(
+                    accountIds = setOf(UserAccountId(mapAccountOneId), UserAccountId(mapAccountTwoId)),
+                ),
+            ),
+        )
+    }
+
+    fun consumptionMapFilterOptions(): ConsumptionMapFilterOptions = ConsumptionMapFilterOptions(
+        accounts = listOf(
+            ConsumptionMapFilterOption(mapAccountOneId, "Account 1"),
+            ConsumptionMapFilterOption(mapAccountTwoId, "Account 2"),
+        ),
+        categories = emptyList(),
+        merchants = emptyList(),
+        places = emptyList(),
+        projects = emptyList(),
+    )
+
+    fun consumptionMapDetail(): ConsumptionMapDetail = ConsumptionMapDetail(
+        point = consumptionMap().points.first(),
+        baseCurrency = currency,
+        categories = listOf(
+            ConsumptionMapCategoryComposition(CategoryId(id(1_120)), "餐饮", 8_000, 2),
+            ConsumptionMapCategoryComposition(CategoryId(id(1_121)), "交通", 4_800, 2),
+        ),
+        transactionPreview = drilldown().rows,
+        drilldownQueryId = queryId,
+        asOfLocalRevision = revision,
     )
 
     fun savedReports(): List<SavedReportDefinition> {

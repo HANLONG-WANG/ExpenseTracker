@@ -18,6 +18,10 @@ import app.ledger.analytics.domain.AnalyticsError
 import app.ledger.analytics.domain.AnalyticsIntegrityReport
 import app.ledger.analytics.domain.AnomalyFinding
 import app.ledger.analytics.domain.AnomalyRuleId
+import app.ledger.analytics.domain.ConsumptionMapDetail
+import app.ledger.analytics.domain.ConsumptionMapFilterOptions
+import app.ledger.analytics.domain.ConsumptionMapQuery
+import app.ledger.analytics.domain.ConsumptionMapResult
 import app.ledger.analytics.domain.DashboardId
 import app.ledger.analytics.domain.Dimension
 import app.ledger.analytics.domain.DimensionValue
@@ -86,6 +90,7 @@ class SecureRoomAnalyticsApplicationPort(
     private val applicationContext = context.applicationContext
     private val drilldowns = DrilldownRegistry()
     private val customAnalytics = CustomAnalyticsStore(ids, clock)
+    private val consumptionMaps = ConsumptionMapStore()
 
     override fun fixedReports(): List<FixedReportDefinition> = FixedReportCatalog.definitions
 
@@ -187,9 +192,13 @@ class SecureRoomAnalyticsApplicationPort(
         limit: Int,
     ): DomainResult<DrilldownPage> {
         if (limit !in 1..MAX_DRILLDOWN_PAGE) return DomainResult.Failure(AnalyticsError.InvalidReportSpec)
-        val context = drilldowns.get(queryId) ?: return DomainResult.Failure(AnalyticsError.ExpiredDrilldown)
+        val mapSelection = consumptionMaps.selection(queryId)
+        val context = drilldowns.get(queryId)
+        if (mapSelection == null && context == null) return DomainResult.Failure(AnalyticsError.ExpiredDrilldown)
         return withDatabase(bookId) { database ->
             database.readLedger { connection ->
+                if (mapSelection != null) return@readLedger consumptionMaps.drillDown(connection, mapSelection, cursor, limit)
+                requireNotNull(context)
                 val version = readVersion(connection)?.first ?: return@readLedger DomainResult.Failure(AnalyticsError.DatabaseUnavailable)
                 if (version != context.localRevision) return@readLedger DomainResult.Failure(AnalyticsError.ExpiredDrilldown)
                 val args = mutableListOf<Any?>(context.period.start.storageKey(), context.period.endInclusive.storageKey())
@@ -307,6 +316,25 @@ class SecureRoomAnalyticsApplicationPort(
         today: LocalDate,
     ): DomainResult<ForecastResult> = withDatabase(bookId) { database ->
         database.readLedger { connection -> customAnalytics.forecast(connection, key, today) }
+    }
+
+    override suspend fun consumptionMap(
+        bookId: StableId,
+        query: ConsumptionMapQuery,
+    ): DomainResult<ConsumptionMapResult> = withDatabase(bookId) { database ->
+        database.readLedger { connection -> consumptionMaps.query(connection, query) }
+    }
+
+    override suspend fun consumptionMapFilterOptions(bookId: StableId): DomainResult<ConsumptionMapFilterOptions> = withDatabase(bookId) { database ->
+        database.readLedger(consumptionMaps::filterOptions)
+    }
+
+    override suspend fun consumptionMapDetail(
+        bookId: StableId,
+        query: ConsumptionMapQuery,
+        pointId: StableId,
+    ): DomainResult<ConsumptionMapDetail> = withDatabase(bookId) { database ->
+        database.readLedger { connection -> consumptionMaps.detail(connection, query, pointId) }
     }
 
     private fun executeOnConnection(

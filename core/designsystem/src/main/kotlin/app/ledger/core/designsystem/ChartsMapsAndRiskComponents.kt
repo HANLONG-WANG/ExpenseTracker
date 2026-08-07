@@ -283,6 +283,7 @@ public data class LedgerMapDesignSubset(
     val pointDiameter: androidx.compose.ui.unit.Dp,
     val selectedPointDiameter: androidx.compose.ui.unit.Dp,
     val clusterColor: androidx.compose.ui.graphics.Color,
+    val userLocationColor: androidx.compose.ui.graphics.Color,
     val heatSequence: List<androidx.compose.ui.graphics.Color>,
 )
 
@@ -295,6 +296,7 @@ public object LedgerMapDesignContract {
         pointDiameter = LedgerTheme.spacing.xxl,
         selectedPointDiameter = LedgerTheme.spacing.xxxl,
         clusterColor = LedgerTheme.colors.material.primary,
+        userLocationColor = LedgerTheme.colors.info.base,
         heatSequence = LedgerTheme.colors.chart.sequentialTeal,
     )
 }

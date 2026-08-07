@@ -31,7 +31,7 @@ class AnalysisPolicyTest {
     }
 
     @Test
-    fun `all P25 and P26 YAML presentation states are closed`() {
+    fun `all P25 P26 and P27 YAML presentation states are closed`() {
         AnalysisPresentation.entries.toSet() shouldBe setOf(
             AnalysisPresentation.CONTENT,
             AnalysisPresentation.NO_DATA,
@@ -55,6 +55,14 @@ class AnalysisPolicyTest {
             AnalysisPresentation.PREVIEWING,
             AnalysisPresentation.AUTO_FALLBACK_TO_BAR,
             AnalysisPresentation.INSUFFICIENT_DATA,
+            AnalysisPresentation.CLUSTERS,
+            AnalysisPresentation.HEATMAP,
+            AnalysisPresentation.SINGLE_POINTS,
+            AnalysisPresentation.NO_LOCATION_DATA,
+            AnalysisPresentation.MAP_UNAVAILABLE,
+            AnalysisPresentation.PLACE,
+            AnalysisPresentation.CLUSTER,
+            AnalysisPresentation.SINGLE_TRANSACTION,
         )
     }
 

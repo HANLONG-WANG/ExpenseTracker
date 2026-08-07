@@ -851,3 +851,43 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Context: the P26 Schema v2 migration replay exposed a stale `logicalSchemaVersion = 1` literal in the shared UI/headless startup inspector. The encrypted database was valid, but both session paths were incorrectly classified as recovery-required.
 - Decision: source the startup predicate from `LedgerMigrations.CURRENT_VERSION`; the P26 static gate mutates this dependency back to `1` and must reject the drift.
 - Consequence: the registered Room migration version, SQLCipher registry and security session decision advance together. Focused headless/cold-start device tests pass 2/2 and the complete application device suite passes 11/11.
+
+## DL-120 — Map scale is bounded at the encrypted query boundary
+
+- Date/stage: 2026-08-07 / P27
+- Surface issue: ANA-011 must handle target-scale location data, while turning every transaction/location into an in-memory or Compose/MapLibre node would violate the performance contract.
+- Decision: query `location_rtree` for viewport candidates, apply exact E7 containment and every typed transaction filter in SQLCipher, aggregate by the selected merchant/place/transaction key, then return at most 512 points. Full viewport amount/count uses a separate aggregate over the same bounded candidate CTE and is not truncated.
+- Consequence: the UI and SDK never receive the raw 10,000-row device fixture, viewport movement is incremental, and summary totals stay accurate when render points are capped.
+
+## DL-121 — Consumption-map history reads frozen facts, not current rates
+
+- Date/stage: 2026-08-07 / P27
+- Precedence applied: immutable accounting facts and multi-currency evidence outrank a simpler current-value geographic query.
+- Decision: consumption/all-expense modes use immutable EconomicEffect base amounts; cash flow uses base-denominated cash/bank Postings; all-located selects frozen effect/posting evidence. Transfer, credit repayment, loan disbursement and loan repayment are excluded by default and require an explicit include action.
+- Consequence: refreshing current FX/valuation cannot rewrite historical map totals or increment financial revisions, and accounting modes retain the P25 meanings.
+
+## DL-122 — The app owns MapLibre while the feature owns typed presentation
+
+- Date/stage: 2026-08-07 / P27
+- Surface issue: the feature boundary forbids SDK/infrastructure access, but ANA-011 needs a real MapLibre lifecycle and interactions.
+- Decision: `:core:geo` implements `LedgerMap`; the app root supplies it through a composable slot; `:feature:analysis` receives only typed map results/actions. ANA-012 navigation carries an opaque StableId, while selection details remain in a bounded in-memory revision-aware registry.
+- Consequence: no feature imports MapLibre, Room or analytics data code; coordinates, money, names and complete results never enter route/SavedState, and stale detail selections fail closed.
+
+## DL-123 — Map failure and exact-coordinate semantics preserve access and privacy
+
+- Date/stage: 2026-08-07 / P27
+- Decision: map/style/network failure retains the same bounded location list, summary and drilldown. ANA-012 may display exact coordinates, but its semantic node replaces them with a privacy-safe recorded-location description. User location has a separate double-ring source and graphic from transaction points.
+- Consequence: TalkBack users can complete the map flow without the visual renderer; coordinates are not spoken or serialized, and user versus transaction location is not conveyed by color alone.
+
+## DL-124 — P27 heat and pixel evidence use only governed textual inputs
+
+- Date/stage: 2026-08-07 / P27
+- Decision: heat uses the governed sequential teal tokens, never red/green risk semantics. ANA-011 light and ANA-012 dark render at 360×720 and hash every production Compose ARGB pixel. After the complete-filter contract gained explicit period controls and independently removable multi-value chips, the frozen digests are `4bfbfc87834852c480b51e4fd411ce3f26b4d04217c1a40ae50f459bf181304d` and `bcf9ce902212d1aa707f3e5a5b5f8e901c63e9255deddf0fe4f6740792e3cc61`.
+- Consequence: visual drift is machine-detectable from production Compose, `LedgerTheme`, localized resources, token JSON and textual/YAML contracts. No excluded PNG/HTML visual draft was opened, parsed, sampled, measured or compared.
+
+## DL-125 — Complete map filters preserve same-dimension OR in the controller and UI
+
+- Date/stage: 2026-08-07 / P27
+- Surface issue: the typed query accepted multiple values per dimension, but a selector that replaced the previous value would not satisfy the FilterBuilder contract's same-dimension “任一” semantics or independently removable selected conditions.
+- Decision: keep map query state in a dedicated `ConsumptionMapController`; accumulate up to 64 stable IDs within each dimension, expose every selected value as its own typed chip, remove only the addressed aggregate ID, and combine dimensions with SQL AND. Period navigation is explicit and reset restores the current-month/default-exclusion query.
+- Consequence: UI behavior and SQL semantics now agree; mutation, unit and API 36 interaction tests reject regression to singleton replacement or cross-type ID parsing. No financial write path or sensitive route state is introduced.

@@ -12,11 +12,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -39,7 +42,7 @@ class AnalysisUiContractDeviceTest {
     @Test
     fun everyFrozenRequiredStateRendersAcrossWidthFontLocaleAndThemeMatrix() {
         val cases = cases()
-        assertEquals(36, cases.size)
+        assertEquals(45, cases.size)
         assertEquals(EXPECTED, cases.groupBy(Case::screen).mapValues { (_, values) -> values.map(Case::stateName).toSet() })
         val active = mutableStateOf(cases.first())
         composeRule.setContent {
@@ -56,7 +59,12 @@ class AnalysisUiContractDeviceTest {
             ) {
                 LedgerTheme(case.theme, dynamicColor = false, reduceMotion = true) {
                     Box(Modifier.size(case.width.dp, 1_700.dp)) {
-                        AnalysisDestination(case.screen, AnalysisLoadState.Content(case.state), AnalysisDeviceFixtures.actions)
+                        AnalysisDestination(
+                            case.screen,
+                            AnalysisLoadState.Content(case.state),
+                            AnalysisDeviceFixtures.actions,
+                            mapContent = { _, _ -> Box(Modifier.size(320.dp, 280.dp).testTag("p27_map_host")) },
+                        )
                     }
                 }
             }
@@ -94,6 +102,78 @@ class AnalysisUiContractDeviceTest {
         composeRule.onNodeWithTag(LedgerTestTags.DATA_TABLE).assertExists()
     }
 
+    @Test
+    fun mapFailureHasEquivalentListAndDetailMasksCoordinatesFromAccessibilityAtTwoHundredPercentFont() {
+        val activeDetail = mutableStateOf(false)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, 2f)) {
+                LedgerTheme(ThemeMode.DARK, dynamicColor = false, reduceMotion = true) {
+                    Box(Modifier.size(320.dp, 1_700.dp)) {
+                        if (activeDetail.value) {
+                            AnalysisDestination(
+                                "ANA-012",
+                                AnalysisLoadState.Content(
+                                    AnalysisDeviceFixtures.base("ANA-012", AnalysisPresentation.PLACE),
+                                ),
+                                AnalysisDeviceFixtures.actions,
+                            )
+                        } else {
+                            AnalysisDestination(
+                                "ANA-011",
+                                AnalysisLoadState.Content(
+                                    AnalysisDeviceFixtures.base("ANA-011", AnalysisPresentation.MAP_UNAVAILABLE),
+                                ),
+                                AnalysisDeviceFixtures.actions,
+                                mapContent = { _, _ -> Box(Modifier.size(320.dp, 220.dp).testTag("p27_map_failed_host")) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithTag(LedgerTestTags.CONSUMPTION_MAP).assertExists()
+        composeRule.onNodeWithTag(LedgerTestTags.CONSUMPTION_MAP).performScrollToNode(
+            androidx.compose.ui.test.hasText("新宿"),
+        )
+        composeRule.runOnIdle { activeDetail.value = true }
+        composeRule.waitForIdle()
+        val detail = composeRule.onNodeWithTag(LedgerTestTags.CONSUMPTION_MAP_DETAIL)
+        detail.performScrollToNode(androidx.compose.ui.test.hasTestTag(LedgerTestTags.DATA_TABLE))
+        composeRule.onNodeWithTag(LedgerTestTags.DATA_TABLE).assertExists()
+        composeRule.onNodeWithTag(LedgerTestTags.CONSUMPTION_MAP_LOCATION).assert(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription),
+        )
+    }
+
+    @Test
+    fun mapFilterBuilderExposesSameDimensionOrAsIndependentlyRemovableChips() {
+        var removedStableKey: String? = null
+        val state = AnalysisDeviceFixtures.base("ANA-011", AnalysisPresentation.CLUSTERS).copy(
+            consumptionMap = AnalysisDeviceFixtures.consumptionMapWithSelectedAccounts(),
+            consumptionMapFilterOptions = AnalysisDeviceFixtures.consumptionMapFilterOptions(),
+        )
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 1_700.dp)) {
+                    AnalysisDestination(
+                        "ANA-011",
+                        AnalysisLoadState.Content(state),
+                        AnalysisDeviceFixtures.actions.copy(onRemoveMapFilter = { removedStableKey = it }),
+                        mapContent = { _, _ -> Box(Modifier.size(320.dp, 220.dp)) },
+                    )
+                }
+            }
+        }
+        val root = composeRule.onNodeWithTag(LedgerTestTags.CONSUMPTION_MAP)
+        root.performScrollToNode(androidx.compose.ui.test.hasText("Account 1"))
+        composeRule.onNodeWithText("Account 1").performClick()
+        composeRule.runOnIdle {
+            assertEquals("account:${AnalysisDeviceFixtures.mapAccountOneId}", removedStableKey)
+        }
+        root.performScrollToNode(androidx.compose.ui.test.hasText("Account 2"))
+        composeRule.onNodeWithText("Account 2").assertExists()
+    }
+
     private fun cases(): List<Case> {
         val raw = listOf(
             Case("ANA-001", "content", LedgerTestTags.ANALYSIS_HOME, AnalysisDeviceFixtures.base("ANA-001", AnalysisPresentation.CONTENT)),
@@ -127,6 +207,15 @@ class AnalysisUiContractDeviceTest {
             Case("ANA-009", "content", LedgerTestTags.VISUALIZATION_PICKER, AnalysisDeviceFixtures.base("ANA-009", AnalysisPresentation.CONTENT)),
             Case("ANA-009", "autoFallbackToBar", LedgerTestTags.VISUALIZATION_PICKER, AnalysisDeviceFixtures.base("ANA-009", AnalysisPresentation.AUTO_FALLBACK_TO_BAR)),
             Case("ANA-010", "content", LedgerTestTags.REPORT_EXPORT, AnalysisDeviceFixtures.base("ANA-010", AnalysisPresentation.CONTENT)),
+            Case("ANA-011", "loading", LedgerTestTags.CONSUMPTION_MAP, AnalysisDeviceFixtures.base("ANA-011", AnalysisPresentation.LOADING)),
+            Case("ANA-011", "clusters", LedgerTestTags.CONSUMPTION_MAP, AnalysisDeviceFixtures.base("ANA-011", AnalysisPresentation.CLUSTERS)),
+            Case("ANA-011", "heatmap", LedgerTestTags.CONSUMPTION_MAP, AnalysisDeviceFixtures.base("ANA-011", AnalysisPresentation.HEATMAP)),
+            Case("ANA-011", "singlePoints", LedgerTestTags.CONSUMPTION_MAP, AnalysisDeviceFixtures.base("ANA-011", AnalysisPresentation.SINGLE_POINTS)),
+            Case("ANA-011", "noLocationData", LedgerTestTags.CONSUMPTION_MAP, AnalysisDeviceFixtures.base("ANA-011", AnalysisPresentation.NO_LOCATION_DATA).copy(consumptionMap = null)),
+            Case("ANA-011", "mapUnavailable", LedgerTestTags.CONSUMPTION_MAP, AnalysisDeviceFixtures.base("ANA-011", AnalysisPresentation.MAP_UNAVAILABLE)),
+            Case("ANA-012", "place", LedgerTestTags.CONSUMPTION_MAP_DETAIL, AnalysisDeviceFixtures.base("ANA-012", AnalysisPresentation.PLACE)),
+            Case("ANA-012", "cluster", LedgerTestTags.CONSUMPTION_MAP_DETAIL, AnalysisDeviceFixtures.base("ANA-012", AnalysisPresentation.CLUSTER)),
+            Case("ANA-012", "singleTransaction", LedgerTestTags.CONSUMPTION_MAP_DETAIL, AnalysisDeviceFixtures.base("ANA-012", AnalysisPresentation.SINGLE_TRANSACTION)),
             Case("ANA-013", "content", LedgerTestTags.ANOMALY_RULES, AnalysisDeviceFixtures.base("ANA-013", AnalysisPresentation.CONTENT)),
             Case("ANA-013", "empty", LedgerTestTags.ANOMALY_RULES, AnalysisDeviceFixtures.base("ANA-013", AnalysisPresentation.EMPTY).copy(anomalyRules = emptyList(), anomalyFindings = emptyList())),
             Case("ANA-013", "invalid", LedgerTestTags.ANOMALY_RULES, AnalysisDeviceFixtures.base("ANA-013", AnalysisPresentation.INVALID)),
@@ -171,6 +260,8 @@ class AnalysisUiContractDeviceTest {
             "ANA-008" to setOf("editing", "invalid", "previewing"),
             "ANA-009" to setOf("content", "autoFallbackToBar"),
             "ANA-010" to setOf("content"),
+            "ANA-011" to setOf("loading", "clusters", "heatmap", "singlePoints", "noLocationData", "mapUnavailable"),
+            "ANA-012" to setOf("place", "cluster", "singleTransaction"),
             "ANA-013" to setOf("content", "empty", "invalid"),
             "ANA-014" to setOf("content", "insufficientData"),
             "ANA-015" to setOf("notRun", "running", "passed", "warnings", "failed"),
