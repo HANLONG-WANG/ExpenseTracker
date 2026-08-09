@@ -78,6 +78,7 @@ class SecureRoomProjectGoalApplicationPort(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
     private val references: ReferenceDataManagementPort = SecureRoomReferenceDataManagementPort(context, keyProvider),
+    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
 ) : ProjectGoalApplicationPort {
     private val applicationContext = context.applicationContext
     private val writeGate: LedgerWriteGate = ProjectGoalWriteGate()
@@ -458,7 +459,7 @@ class SecureRoomProjectGoalApplicationPort(
         block: suspend (LedgerDatabase) -> DomainResult<T>,
     ): DomainResult<T> = try {
         keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
+            val database = keys.databaseDek.useBytes { openSelectedLedger(applicationContext, it, databaseName) }
             try {
                 block(database)
             } finally {

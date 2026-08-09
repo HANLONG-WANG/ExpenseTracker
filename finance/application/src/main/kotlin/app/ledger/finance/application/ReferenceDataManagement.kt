@@ -137,6 +137,7 @@ public sealed interface ReferenceMutation {
     public data class SaveMerchant(val draft: MerchantDraft) : ReferenceMutation
     public data class MergeMerchant(val sourceId: StableId, val targetId: StableId) : ReferenceMutation
     public data class SavePlace(val draft: PlaceDraft) : ReferenceMutation
+    public data class SaveLocation(val draft: OrdinaryLocationDraft) : ReferenceMutation
     public data class MergePlace(val sourceId: StableId, val targetId: StableId) : ReferenceMutation
     public data class SplitPlace(
         val sourceId: StableId,

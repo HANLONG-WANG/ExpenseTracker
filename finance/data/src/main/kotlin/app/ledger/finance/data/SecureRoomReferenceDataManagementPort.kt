@@ -88,6 +88,7 @@ import java.time.Instant
 public class SecureRoomReferenceDataManagementPort(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
+    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
 ) : ReferenceDataManagementPort {
     private val applicationContext = context.applicationContext
     private val projections = RoomProjectionEngine()
@@ -127,6 +128,7 @@ public class SecureRoomReferenceDataManagementPort(
             is ReferenceMutation.SaveMerchant -> saveMerchant(connection, command.ids, mutation, book, nextRevision)
             is ReferenceMutation.MergeMerchant -> mergeMerchant(connection, command.ids, mutation, book, nextRevision)
             is ReferenceMutation.SavePlace -> savePlace(connection, command.ids, mutation, book, nextRevision)
+            is ReferenceMutation.SaveLocation -> saveLocation(connection, command.ids, mutation, book, nextRevision)
             is ReferenceMutation.MergePlace -> mergePlace(connection, command.ids, mutation, book, nextRevision)
             is ReferenceMutation.SplitPlace -> splitPlace(connection, command.ids, mutation, book, nextRevision)
             is ReferenceMutation.SaveCheckpoint -> saveCheckpoint(connection, command.ids, mutation, book, nextRevision)
@@ -865,6 +867,59 @@ public class SecureRoomReferenceDataManagementPort(
         finish(db, ids, revision, book.valuationRevision)
     }
 
+    private fun saveLocation(
+        db: SupportSQLiteDatabase,
+        ids: ReferenceMutationIds,
+        mutation: ReferenceMutation.SaveLocation,
+        book: BookRow,
+        revision: Long,
+    ) {
+        val draft = mutation.draft
+        validateCoordinates(draft.latitudeE7, draft.longitudeE7)
+        if (count(db, "SELECT COUNT(*) FROM location_record WHERE uid=?", draft.id.bytes) != 0L) {
+            abort(ReferenceDataViolation.InvalidField("location.id"))
+        }
+        val snapshot = canonical(
+            "location",
+            draft.id.toString(),
+            draft.latitudeE7.toString(),
+            draft.longitudeE7.toString(),
+            draft.accuracyMillimeters?.toString().orEmpty(),
+            draft.capturedAt.toString(),
+            draft.provider.name,
+            draft.placeId?.toString().orEmpty(),
+        )
+        startCommit(db, ids, book, revision, snapshot)
+        db.execSQL(
+            "INSERT INTO location_record(id,uid,lat_e7,lon_e7,accuracy_mm,captured_at,source,provider,place_id,created_commit_id) " +
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            arrayOf<Any?>(
+                db.allocateInternalId("location_record", draft.id),
+                draft.id.bytes,
+                draft.latitudeE7,
+                draft.longitudeE7,
+                draft.accuracyMillimeters,
+                draft.capturedAt.toStorageEpochMillis(),
+                if (draft.provider == app.ledger.finance.application.OrdinaryLocationProvider.MANUAL) 1 else 0,
+                draft.provider.name,
+                db.optionalInternalId("place", draft.placeId),
+                db.requireInternalId("book_commit", ids.commitId),
+            ),
+        )
+        audit(
+            db,
+            ids,
+            EntityType.LOCATION_RECORD,
+            draft.id,
+            1,
+            EntityRevisionAction.CREATE,
+            EntityChangeOperation.CREATE,
+            null,
+            snapshot,
+        )
+        finish(db, ids, revision, book.valuationRevision)
+    }
+
     private fun mergePlace(db: SupportSQLiteDatabase, ids: ReferenceMutationIds, mutation: ReferenceMutation.MergePlace, book: BookRow, revision: Long) {
         if (mutation.sourceId == mutation.targetId) abort(ReferenceDataViolation.MergeCycle)
         val source = db.requireInternalId("place", mutation.sourceId)
@@ -1231,7 +1286,9 @@ public class SecureRoomReferenceDataManagementPort(
 
     private suspend inline fun <T> withDatabase(bookId: StableId, crossinline block: suspend (LedgerDatabase) -> T): DomainResult<T> = try {
         keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { passphrase -> EncryptedDatabaseFactory.openPrimary(applicationContext, passphrase) }
+            val database = keys.databaseDek.useBytes { passphrase ->
+                openSelectedLedger(applicationContext, passphrase, databaseName)
+            }
             try {
                 DomainResult.Success(block(database))
             } finally {

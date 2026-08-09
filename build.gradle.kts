@@ -1360,6 +1360,68 @@ tasks.register("p27Check") {
     )
 }
 
+val validateP28Import by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P28 streaming parsers, encrypted staging, atomic commits, recovery, privacy and UI coverage."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p28_import.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/security/src") { include("**/*") },
+        fileTree("feature/transfer/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*") },
+        fileTree("finance/data/src") { include("**/*") },
+        fileTree("transfer/domain/src") { include("**/*") },
+        fileTree("transfer/data/src") { include("**/*") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+        "gradle/libs.versions.toml",
+    )
+}
+
+val validateP28ImportFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P28 gate rejects parser, staging, atomicity, duplicate, split, privacy and entity-coverage weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p28_import_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p28_import.py",
+        "scripts/tests/test_p28_import_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/security/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/transfer/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+        fileTree("transfer/domain/src/main/kotlin") { include("**/*.kt") },
+        fileTree("transfer/data/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p28Check") {
+    group = "verification"
+    description = "Runs P28 static, JVM, lint and architecture evidence; SQLCipher/runtime/UI managed-device suites run separately."
+    dependsOn(
+        validateP28Import,
+        validateP28ImportFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":transfer:domain:test",
+        ":transfer:data:testDebugUnitTest",
+        ":finance:application:test",
+        ":app:lintDebug",
+        ":core:security:lintDebug",
+        ":feature:transfer:lintDebug",
+        ":finance:data:lintDebug",
+        ":transfer:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

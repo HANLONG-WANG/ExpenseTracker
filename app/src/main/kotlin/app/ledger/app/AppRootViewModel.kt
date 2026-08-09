@@ -141,6 +141,7 @@ import app.ledger.feature.settlement.SettlementLoadState
 import app.ledger.feature.settlement.SettlementParticipantDraft
 import app.ledger.feature.settlement.SettlementPolicy
 import app.ledger.feature.settlement.SettlementPresentation
+import app.ledger.feature.transfer.ImportModeUi
 import app.ledger.finance.application.AccountDraft
 import app.ledger.finance.application.ApplyInstallmentSettlementRequest
 import app.ledger.finance.application.ApplyLoanSimulationRequest
@@ -166,6 +167,7 @@ import app.ledger.finance.application.CreditStatementMutationIds
 import app.ledger.finance.application.CreditTransactionMutationIds
 import app.ledger.finance.application.GoalCompletionStrategy
 import app.ledger.finance.application.GoalMovementMutationIds
+import app.ledger.finance.application.ImportFinancialApplicationPort
 import app.ledger.finance.application.InitialAccountCommand
 import app.ledger.finance.application.InitialCategoryCommand
 import app.ledger.finance.application.InitializeLedgerCommand
@@ -246,6 +248,7 @@ import app.ledger.finance.application.SpecializedTransactionContext
 import app.ledger.finance.application.SpecializedTransactionEntryPort
 import app.ledger.finance.application.SpecializedTransactionWriteIds
 import app.ledger.finance.application.SpecializedTransactionWriteRequest
+import app.ledger.finance.application.StructuredImportApplicationPort
 import app.ledger.finance.application.UpdateBookLocaleCommand
 import app.ledger.finance.data.RoomLedgerStartupInspector
 import app.ledger.finance.domain.AutoGenerationMode
@@ -377,12 +380,23 @@ internal class AppRootViewModel @Inject constructor(
     private val loanApplicationPort: LoanApplicationPort,
     private val settlementApplicationPort: SettlementApplicationPort,
     private val automationApplicationPort: AutomationApplicationPort,
+    importFinancialApplicationPort: ImportFinancialApplicationPort,
+    structuredImportApplicationPort: StructuredImportApplicationPort,
     analyticsApplicationPort: AnalyticsApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
 ) : ViewModel() {
     private val analysisController = AnalysisController(analyticsApplicationPort)
+    private val importController = ImportController(
+        context,
+        keyProvider,
+        referenceDataPort,
+        importFinancialApplicationPort,
+        structuredImportApplicationPort,
+        runtimeSources,
+    )
+    val importWizard = importController.state
     val analysis: StateFlow<AnalysisLoadState> = analysisController.state
     private val batchEntryController = BatchEntryController(
         batchEntryApplicationPort,
@@ -4666,6 +4680,77 @@ internal class AppRootViewModel @Inject constructor(
             name.takeIf(String::isNotBlank)?.let { it to size }
         }
     }.getOrNull()
+
+    fun navigateImportSource() {
+        navigator.navigate(LedgerRouteContract.destination(ScreenId("IMP-001")), SessionGateState.READY)
+    }
+
+    fun navigateImportHistory() {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        viewModelScope.launch {
+            importController.showHistory(ready.bookId)
+            navigator.navigate(LedgerRouteContract.destination(ScreenId("IMP-010")), SessionGateState.READY)
+        }
+    }
+
+    fun selectImportMode(mode: ImportModeUi) = importController.selectMode(mode)
+
+    fun selectImportSheet(name: String) = importController.selectSheet(name)
+    fun changeImportEncoding(value: String) = importController.changeEncoding(value)
+    fun changeImportHeaderRow(value: String) = importController.changeHeaderRow(value)
+    fun cycleImportFieldMapping(source: String) = importController.cycleFieldMapping(source)
+    fun changeImportMissingCreation(type: String, enabled: Boolean) = importController.setCreateMissing(type, enabled)
+    fun changeImportFxRate(sourceCurrency: String, value: String) = importController.setFxRate(sourceCurrency, value)
+    fun resolveImportDuplicate(rowNumber: Long, resolution: app.ledger.transfer.domain.DuplicateResolution) {
+        viewModelScope.launch(Dispatchers.IO) { importController.resolveDuplicate(rowNumber, resolution) }
+    }
+
+    fun selectImportSource(uri: Uri) {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        val zone = runCatching { ZoneId.of(settings.value.zoneId.ifBlank { DEFAULT_ZONE }) }.getOrDefault(ZoneId.of(DEFAULT_ZONE))
+        viewModelScope.launch(Dispatchers.IO) {
+            importController.selectSource(ready.bookId, zone, uri)
+            navigateImportStage()
+        }
+    }
+
+    fun nextImportStage() {
+        viewModelScope.launch(Dispatchers.IO) {
+            importController.next()
+            navigateImportStage()
+        }
+    }
+
+    fun previousImportStage() {
+        importController.previous()
+        navigateImportStage()
+    }
+
+    fun pauseImport() = importController.togglePause()
+    fun cancelImport() = importController.cancel()
+    fun retryImport() {
+        viewModelScope.launch(Dispatchers.IO) {
+            importController.retry()
+            navigateImportStage()
+        }
+    }
+    fun rollbackImport() {
+        viewModelScope.launch(Dispatchers.IO) { importController.rollback() }
+    }
+
+    private fun navigateImportStage() {
+        val screen = when (importWizard.value.showHistory) {
+            true -> "IMP-010"
+            false -> "IMP-${(importWizard.value.stage.ordinal + 1).toString().padStart(3, '0')}"
+        }
+        val operation = importController.currentOperationId()
+        val arguments = if (screen in setOf("IMP-001", "IMP-010") || operation == null) {
+            emptyMap()
+        } else {
+            mapOf("operationId" to StableIdArgument(operation))
+        }
+        navigator.navigate(LedgerRouteContract.destination(ScreenId(screen), arguments), SessionGateState.READY)
+    }
 
     private fun sanitizeCode(value: String): String = value.uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9_]"), "_").take(48).ifBlank { "RECORD_FAILURE" }
 

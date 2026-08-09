@@ -1,3 +1,5 @@
+@file:Suppress("ComplexCondition", "LongParameterList", "ReturnCount")
+
 package app.ledger.transfer.domain
 
 import app.ledger.core.common.DomainResult
@@ -69,7 +71,15 @@ sealed interface OperationParameters {
         val sourceHandleId: StableId,
         val format: ImportFormat,
         val defaultAccountId: UserAccountId?,
-    ) : OperationParameters
+        val userCharset: String? = null,
+        val headerRowNumber: Long = 1L,
+        val commit: ImportCommitParameters? = null,
+    ) : OperationParameters {
+        init {
+            require(userCharset == null || userCharset.isNotBlank())
+            require(headerRowNumber > 0L)
+        }
+    }
 
     data class Export(
         val destinationHandleId: StableId,
@@ -95,6 +105,27 @@ sealed interface OperationParameters {
     data class AttachmentMigration(val attachmentIds: List<AttachmentId>) : OperationParameters
 
     data class DatabaseMaintenance(val kind: MaintenanceKind) : OperationParameters
+}
+
+data class ImportCommitParameters(
+    val importRecordId: StableId,
+    val batchId: StableId,
+    val baseCurrency: String,
+    val zoneId: String,
+    val totalPreparedRows: Long,
+    val transactionRows: Long,
+    val sourceFingerprint: Hash256,
+    val firstSourceRowNumber: Long,
+    val useStructuredUndo: Boolean,
+) {
+    init {
+        require(importRecordId != batchId)
+        require(baseCurrency.matches(Regex("[A-Z]{3}")))
+        require(zoneId.isNotBlank())
+        require(totalPreparedRows > 0L)
+        require(transactionRows in 0L..totalPreparedRows)
+        require(firstSourceRowNumber > 0L)
+    }
 }
 
 enum class ImportFormat {
@@ -166,6 +197,30 @@ data class BackgroundOperation private constructor(
         )
     }
 
+    fun advance(progress: OperationProgress, at: Instant): DomainResult<BackgroundOperation> {
+        if (state !in CHECKPOINTABLE_STATES || at < updatedAt) {
+            return DomainResult.Failure(OperationError.InvalidTransition(state, state))
+        }
+        return DomainResult.Success(
+            copy(
+                updatedAt = at,
+                progress = progress,
+                checkpointVersion = Math.addExact(checkpointVersion, 1L),
+            ),
+        )
+    }
+
+    fun configureImportCommit(parameters: OperationParameters.Import, at: Instant): DomainResult<BackgroundOperation> {
+        val current = this.parameters as? OperationParameters.Import
+            ?: return DomainResult.Failure(OperationError.InvalidParameters)
+        if (state != BackgroundOperationState.RUNNING || at < updatedAt ||
+            current.sourceHandleId != parameters.sourceHandleId || current.format != parameters.format || parameters.commit == null
+        ) {
+            return DomainResult.Failure(OperationError.InvalidParameters)
+        }
+        return DomainResult.Success(copy(parameters = parameters, updatedAt = at, checkpointVersion = Math.addExact(checkpointVersion, 1L)))
+    }
+
     companion object {
         fun queued(
             id: BackgroundOperationId,
@@ -185,6 +240,38 @@ data class BackgroundOperation private constructor(
             cancelRequested = false,
             parameters = parameters,
         )
+
+        /** Persistence-only reconstruction; runtime and persisted states share the same invariants. */
+        fun restore(
+            id: BackgroundOperationId,
+            type: BackgroundOperationType,
+            state: BackgroundOperationState,
+            createdAt: Instant,
+            startedAt: Instant?,
+            updatedAt: Instant,
+            progress: OperationProgress,
+            checkpointVersion: Long,
+            errorCode: String?,
+            cancelRequested: Boolean,
+            parameters: OperationParameters,
+        ): BackgroundOperation {
+            require(updatedAt >= createdAt)
+            require(startedAt == null || startedAt in createdAt..updatedAt)
+            require(checkpointVersion >= 0L)
+            val failed = state == BackgroundOperationState.FAILED_RETRYABLE || state == BackgroundOperationState.FAILED_FINAL
+            require(failed == (errorCode != null))
+            require(
+                !cancelRequested || state in setOf(
+                    BackgroundOperationState.CANCEL_REQUESTED,
+                    BackgroundOperationState.ROLLING_BACK,
+                    BackgroundOperationState.FAILED_FINAL,
+                ),
+            )
+            return BackgroundOperation(
+                id, type, state, createdAt, startedAt, updatedAt, progress, checkpointVersion,
+                errorCode, cancelRequested, parameters,
+            )
+        }
 
         private val ALLOWED_TRANSITIONS: Map<BackgroundOperationState, Set<BackgroundOperationState>> = mapOf(
             BackgroundOperationState.QUEUED to setOf(
@@ -229,10 +316,20 @@ data class BackgroundOperation private constructor(
             ),
             BackgroundOperationState.SUCCEEDED to emptySet(),
         )
+        private val CHECKPOINTABLE_STATES = setOf(
+            BackgroundOperationState.PREPARING,
+            BackgroundOperationState.RUNNING,
+            BackgroundOperationState.COMMITTING,
+            BackgroundOperationState.ROLLING_BACK,
+        )
     }
 }
 
 sealed interface OperationError : app.ledger.core.common.DomainError {
+    data object InvalidParameters : OperationError {
+        override val code: String = "OPERATION_INVALID_PARAMETERS"
+    }
+
     data class InvalidTransition(
         val from: BackgroundOperationState,
         val to: BackgroundOperationState,

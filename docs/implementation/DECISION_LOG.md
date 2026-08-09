@@ -891,3 +891,54 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: the typed query accepted multiple values per dimension, but a selector that replaced the previous value would not satisfy the FilterBuilder contract's same-dimension “任一” semantics or independently removable selected conditions.
 - Decision: keep map query state in a dedicated `ConsumptionMapController`; accumulate up to 64 stable IDs within each dimension, expose every selected value as its own typed chip, remove only the addressed aggregate ID, and combine dimensions with SQL AND. Period navigation is explicit and reset restores the current-month/default-exclusion query.
 - Consequence: UI behavior and SQL semantics now agree; mutation, unit and API 36 interaction tests reject regression to singleton replacement or cross-type ID parsing. No financial write path or sensitive route state is introduced.
+
+## DL-126 — ICU4J supplies the required charset detector on Android
+
+- Date/stage: 2026-08-09 / P28
+- Surface issue: the frozen import stack requires ICU encoding detection, but the Android platform API does not expose `android.icu.text.CharsetDetector` as a public application API.
+- Priority applied: the frozen parser/encoding behavior outranks an unavailable class spelling; silently reducing detection to UTF-8 or heuristics would violate the import requirement.
+- Decision: use locked ICU4J 78.3 `com.ibm.icu.text.CharsetDetector`, after explicit user charset and BOM detection. The reader remains streaming and records the selected charset.
+- Consequence: non-ASCII legacy CSV input receives a real ICU detector on every supported API. Invalid explicit charsets fail typed validation; there is no guessed-success fallback.
+
+## DL-127 — FastExcel Android compatibility does not authorize a POI fallback
+
+- Date/stage: 2026-08-09 / P28
+- Surface issue: FastExcel/Aalto references the standard StAX API, whose official API artifact is not shipped as a complete Android boot-class library on every supported API.
+- Decision: add the narrow locked `stax-api` compatibility artifact and keep FastExcel 0.20.2 as the only XLSX parser. OLE2 files are reported unsupported and corrupt OOXML fails closed. No Apache POI dependency, reflection fallback or in-memory workbook parser is permitted.
+- Consequence: API 28/34/36 execute the same FastExcel path; a future hard incompatibility must produce reproducible evidence and return to the frozen fallback decision process rather than silently changing libraries.
+
+## DL-128 — Atomic commit begins at a non-cancelable boundary
+
+- Date/stage: 2026-08-09 / P28
+- Surface issue: chunked parsing can pause or cancel safely, but the current typed financial application ports do not expose an interrupt point inside a small SQLite transaction or a validated shadow exchange.
+- Decision: parsing/checkpointing remains pausable and cancelable after each durable 256-row chunk. After confirmation persists the complete commit descriptor and transitions to `COMMITTING`, the UI exposes the phase as non-cancelable until success or rollback. Process death is recovered by the persisted WorkManager operation and idempotent source fingerprint.
+- Consequence: cancellation can never claim success while an atomic transaction continues. Final parsing failure/cancel removes encrypted staging and source handles; commit failure discards the shadow and records failed-final.
+
+## DL-129 — Structured whole-batch undo restores the retained encrypted safety database
+
+- Date/stage: 2026-08-09 / P28
+- Surface issue: ordinary financial rows have legal reversal commands, but a structured batch may create accounts, cards, categories, locations, planning objects and recurrence configuration. Deleting these objects piecemeal would violate history and dependency rules.
+- Priority applied: atomic whole-batch undo and domain invariants outrank reuse of transaction-only reversal semantics.
+- Decision: structured and general-create-missing commits retain the encrypted pre-exchange safety database. Undo is allowed only while the imported revision remains the live head; it builds a rollback shadow from that safety database, appends an explicit RESTORE audit, validates all integrity/projection invariants and atomically exchanges. Financial-only imports continue to use legal reversal commands.
+- Consequence: undo is all-or-nothing and cannot erase later unrelated work. A changed live head returns an explicit ineligible/conflict result; retained safety material is destroyed after successful undo or when no longer needed.
+
+## DL-130 — General row import accepts ordinary expense/income, specialized state uses structured sheets
+
+- Date/stage: 2026-08-09 / P28
+- Surface issue: the general mapper can safely express one-account, one-category ordinary rows; transfer, refund, credit repayment, installment and loan operations require additional typed evidence and relationships that a generic flat mapping cannot infer.
+- Decision: general CSV/XLSX rows accept ordinary expense and income only. Specialized kinds fail during validation with `TRANSACTION_KIND_UNSUPPORTED`; the structured workbook sheets and typed application ports carry the richer account/card/statement/installment/loan/budget/goal/recurrence/location state. Split category or payer data always fails with `IMPORT_SEPARATE_TRANSACTIONS_REQUIRED` and must be expanded to multiple rows.
+- Consequence: no late commit failure, guessed accounting evidence or expansion of the product split model occurs. The decision changes no frozen requirement: both general and structured import remain available, while every financial write reuses the planner/coordinator.
+
+## DL-131 — Import state machines keep fail-fast exits and positional codec indexes explicit
+
+- Date/stage: 2026-08-09 / P28
+- Surface issue: Detekt's generic size, return-count, nesting and magic-number thresholds flag the nine-stage fail-fast workflow and the fixed SQLCipher cursor/codec layouts even though flattening them would obscure rollback boundaries or detach column indexes from their statements.
+- Decision: keep every Detekt rule enabled globally, fix the actual swallowed-exception translation and API-level literal, and apply only named file-local metric suppressions to P28 state-machine, typed-port, Compose and positional-codec files. Compose naming uses the same narrow convention suppression as existing screens. No correctness, exception, privacy, SQL, dependency or architecture rule is suppressed.
+- Consequence: `detekt` remains a zero-finding gate while the atomic/cancel/recovery branches and fixed encrypted row layouts stay reviewable; the P28 aggregate must still run formatting, source policy, architecture, Lint and all behavioral tests.
+
+## DL-132 — Shadow financial SQL and undo identities follow the frozen ownership boundaries
+
+- Date/stage: 2026-08-09 / P28
+- Surface issue: the first aggregate replay found shadow-state SQL in `core:security` and a data adapter allocating undo identities from a private random source, conflicting with the frozen financial-SQL ownership and deterministic-ID injection rules.
+- Decision: move `SecureShadowLedgerAccess` into `finance:data`, leaving `core:security` with key and narrow encrypted-database access only. Inject the application `StableIdSource` into `SecureRoomImportFinancialApplicationPort` and use it for every undo command/revision/fact identity. Fixed duplicate UI test tags contain no row/runtime value.
+- Consequence: only `finance:data`/`core:database` own financial SQL, ID generation is testable and centrally governed, and `verifySourcePolicies` passes all 244 production files without an exception or allowlist expansion.

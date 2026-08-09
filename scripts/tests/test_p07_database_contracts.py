@@ -95,6 +95,22 @@ class P07DatabaseContractMutationTest(unittest.TestCase):
             with self.assertRaisesRegex(validator.ValidationError, "P07 project state"):
                 validator.validate_ledgers()
 
+    def test_p07_validator_rejects_screen_promotion_beyond_current_stage(self) -> None:
+        original_read = validator.read
+
+        def mutated_read(path):
+            value = original_read(path)
+            if path.name == "SCREEN_COVERAGE.csv":
+                rows = value.splitlines()
+                row_index = next(index for index, row in enumerate(rows) if row.startswith("EXP-001,"))
+                rows[row_index] = rows[row_index].replace(",NOT_STARTED,,,P29", ",VERIFIED,,,P29")
+                return "\n".join(rows) + "\n"
+            return value
+
+        with patch.object(validator, "read", side_effect=mutated_read):
+            with self.assertRaisesRegex(validator.ValidationError, "promotion outside"):
+                validator.validate_ledgers()
+
 
 if __name__ == "__main__":
     unittest.main()

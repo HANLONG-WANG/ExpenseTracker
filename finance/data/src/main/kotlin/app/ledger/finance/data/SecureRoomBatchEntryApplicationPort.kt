@@ -47,6 +47,8 @@ public class SecureRoomBatchEntryApplicationPort(
     private val keyProvider: DeviceLedgerKeyProvider,
     referenceDataPort: ReferenceDataManagementPort,
     private val failureInjector: FinancialCommitFailureInjector = FinancialCommitFailureInjector.NONE,
+    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
+    private val additionalAfterFinancialSideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
 ) : BatchEntryApplicationPort {
     private val applicationContext = context.applicationContext
     private val gate: LedgerWriteGate = BatchLedgerWriteGate()
@@ -71,6 +73,7 @@ public class SecureRoomBatchEntryApplicationPort(
         }
         val afterSideEffect = FinancialCommitSideEffect { connection, plan ->
             prepared.forEach { it.afterFinancialWriteSideEffect.apply(connection, plan) }
+            additionalAfterFinancialSideEffect.apply(connection, plan)
         }
         val repository = RoomFinancialCommitRepository(
             database,
@@ -263,7 +266,13 @@ public class SecureRoomBatchEntryApplicationPort(
         block: suspend (LedgerDatabase) -> DomainResult<T>,
     ): DomainResult<T> = try {
         keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
+            val database = keys.databaseDek.useBytes {
+                if (databaseName == EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME) {
+                    EncryptedDatabaseFactory.openPrimary(applicationContext, it)
+                } else {
+                    EncryptedDatabaseFactory.openLedgerCopy(applicationContext, databaseName, it)
+                }
+            }
             try {
                 block(database)
             } finally {

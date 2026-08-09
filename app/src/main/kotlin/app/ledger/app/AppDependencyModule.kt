@@ -24,6 +24,7 @@ import app.ledger.finance.application.BookAttachmentObjectPort
 import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.CreditApplicationPort
 import app.ledger.finance.application.FormalOccurrenceGenerator
+import app.ledger.finance.application.ImportFinancialApplicationPort
 import app.ledger.finance.application.InstallmentApplicationPort
 import app.ledger.finance.application.JournalApplicationPort
 import app.ledger.finance.application.LedgerInitializationPort
@@ -35,10 +36,12 @@ import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.RefundApplicationPort
 import app.ledger.finance.application.SettlementApplicationPort
 import app.ledger.finance.application.SpecializedTransactionEntryPort
+import app.ledger.finance.application.StructuredImportApplicationPort
 import app.ledger.finance.data.SecureRoomAutomationApplicationPort
 import app.ledger.finance.data.SecureRoomBatchEntryApplicationPort
 import app.ledger.finance.data.SecureRoomBudgetApplicationPort
 import app.ledger.finance.data.SecureRoomCreditApplicationPort
+import app.ledger.finance.data.SecureRoomImportFinancialApplicationPort
 import app.ledger.finance.data.SecureRoomInstallmentApplicationPort
 import app.ledger.finance.data.SecureRoomJournalApplicationPort
 import app.ledger.finance.data.SecureRoomLedgerInitializationPort
@@ -50,6 +53,7 @@ import app.ledger.finance.data.SecureRoomReferenceDataManagementPort
 import app.ledger.finance.data.SecureRoomRefundApplicationPort
 import app.ledger.finance.data.SecureRoomSettlementApplicationPort
 import app.ledger.finance.data.SecureRoomSpecializedTransactionEntryPort
+import app.ledger.finance.data.SecureRoomStructuredImportApplicationPort
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -226,6 +230,22 @@ internal object AppDependencyModule {
         keyProvider: DeviceLedgerKeyProvider,
         referenceDataPort: ReferenceDataManagementPort,
     ): BatchEntryApplicationPort = SecureRoomBatchEntryApplicationPort(context, keyProvider, referenceDataPort)
+
+    @Provides
+    @Singleton
+    fun importFinancialApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+        referenceDataPort: ReferenceDataManagementPort,
+        stableIds: StableIdSource,
+    ): ImportFinancialApplicationPort = SecureRoomImportFinancialApplicationPort(context, keyProvider, referenceDataPort, stableIds)
+
+    @Provides
+    @Singleton
+    fun structuredImportApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+    ): StructuredImportApplicationPort = SecureRoomStructuredImportApplicationPort(context, keyProvider)
 
     @Provides
     @Singleton

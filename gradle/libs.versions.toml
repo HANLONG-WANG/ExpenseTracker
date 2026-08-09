@@ -24,6 +24,9 @@ protobuf-plugin = "0.10.0"
 bouncycastle = "1.84"
 biometric = "1.1.0"
 fastexcel = "0.20.2"
+commons-csv = "1.14.1"
+icu4j = "78.3"
+stax-api = "1.0-2"
 junit = "5.14.2"
 kotest = "6.1.11"
 mockk = "1.14.11"
@@ -102,6 +105,11 @@ profileinstaller = { module = "androidx.profileinstaller:profileinstaller", vers
 jankstats = { module = "androidx.metrics:metrics-performance", version.ref = "jankstats" }
 work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 detekt-cli = { module = "io.gitlab.arturbosch.detekt:detekt-cli", version.ref = "detekt" }
+commons-csv = { module = "org.apache.commons:commons-csv", version.ref = "commons-csv" }
+fastexcel = { module = "org.dhatim:fastexcel", version.ref = "fastexcel" }
+fastexcel-reader = { module = "org.dhatim:fastexcel-reader", version.ref = "fastexcel" }
+icu4j = { module = "com.ibm.icu:icu4j", version.ref = "icu4j" }
+stax-api = { module = "javax.xml.stream:stax-api", version.ref = "stax-api" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

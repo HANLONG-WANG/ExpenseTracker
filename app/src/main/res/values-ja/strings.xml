@@ -18,4 +18,6 @@
     <string name="global_installments">クレジット分割払い</string><string name="global_installments_explanation">予定、未計上の約束、返金影響、繰上完済を管理</string><string name="global_loans">ローンと負債</string><string name="global_loans_explanation">組合せローン、版管理条項、予定、実返済、独立試算を管理</string>
     <string name="global_settlements">割り勘と精算</string><string name="global_settlements_explanation">参加者、分担ポジション、部分精算、追加精算を管理</string>
     <string name="global_automation">テンプレートと定期取引</string><string name="global_automation_explanation">クイックテンプレート、決定的なルール、未記帳候補を管理</string>
+    <string name="import_worker_channel">帳簿のインポート</string><string name="import_worker_title">インポートを準備中</string><string name="import_worker_progress">%1$d 行を安全に処理しました</string>
+    <string name="global_import">データをインポート</string><string name="global_import_explanation">CSV または構造化 Excel を安全に取り込みます</string><string name="global_import_history">インポート履歴</string><string name="global_import_history_explanation">監査記録を確認し、バッチ全体を取り消します</string>
 </resources>

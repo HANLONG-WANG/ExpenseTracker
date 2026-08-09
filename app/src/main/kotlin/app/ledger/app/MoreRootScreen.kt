@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -76,6 +78,14 @@ internal fun MoreRootDestination(
             viewModel.navigateAutomation("AUT-001", null)
             onNavigationChanged()
         },
+        onImport = {
+            viewModel.navigateImportSource()
+            onNavigationChanged()
+        },
+        onImportHistory = {
+            viewModel.navigateImportHistory()
+            onNavigationChanged()
+        },
     )
 }
 
@@ -93,6 +103,8 @@ internal fun MoreScreen(
     onLoans: () -> Unit = {},
     onSettlements: () -> Unit = {},
     onAutomation: () -> Unit = {},
+    onImport: () -> Unit = {},
+    onImportHistory: () -> Unit = {},
 ) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
@@ -117,6 +129,8 @@ internal fun MoreScreen(
             onLoans = onLoans,
             onSettlements = onSettlements,
             onAutomation = onAutomation,
+            onImport = onImport,
+            onImportHistory = onImportHistory,
         )
     }
 }
@@ -136,25 +150,36 @@ internal fun MoreContent(
     onLoans: () -> Unit = {},
     onSettlements: () -> Unit = {},
     onAutomation: () -> Unit = {},
+    onImport: () -> Unit = {},
+    onImportHistory: () -> Unit = {},
 ) {
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+    val entries = listOf(
+        Triple(stringResource(R.string.global_operations), stringResource(R.string.global_operations_explanation), onOperations),
+        Triple(stringResource(R.string.global_help), stringResource(R.string.global_help_explanation), onHelp),
+        Triple(stringResource(R.string.global_management), stringResource(R.string.global_management_explanation), onManagement),
+        Triple(stringResource(R.string.global_currencies), stringResource(R.string.global_currencies_explanation), onCurrencies),
+        Triple(stringResource(R.string.global_projects), stringResource(R.string.global_projects_explanation), onProjects),
+        Triple(stringResource(R.string.global_goals), stringResource(R.string.global_goals_explanation), onGoals),
+        Triple(stringResource(R.string.global_credit), stringResource(R.string.global_credit_explanation), onCredit),
+        Triple(stringResource(R.string.global_installments), stringResource(R.string.global_installments_explanation), onInstallments),
+        Triple(stringResource(R.string.global_loans), stringResource(R.string.global_loans_explanation), onLoans),
+        Triple(stringResource(R.string.global_settlements), stringResource(R.string.global_settlements_explanation), onSettlements),
+        Triple(stringResource(R.string.global_automation), stringResource(R.string.global_automation_explanation), onAutomation),
+        Triple(stringResource(R.string.global_import), stringResource(R.string.global_import_explanation), onImport),
+        Triple(stringResource(R.string.global_import_history), stringResource(R.string.global_import_history_explanation), onImportHistory),
+    )
+    LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (presentation == MorePresentation.BADGE_UPDATES) {
-            LedgerBanner(stringResource(R.string.global_badge_updates), LedgerBannerVariant.INFO)
+            item {
+                LedgerBanner(stringResource(R.string.global_badge_updates), LedgerBannerVariant.INFO)
+            }
         }
         if (presentation == MorePresentation.OPERATION_IN_PROGRESS) {
-            LedgerBanner(stringResource(R.string.global_active_operation), LedgerBannerVariant.WARNING)
+            item {
+                LedgerBanner(stringResource(R.string.global_active_operation), LedgerBannerVariant.WARNING)
+            }
         }
-        FeatureHubItem(stringResource(R.string.global_operations), stringResource(R.string.global_operations_explanation), onOperations)
-        FeatureHubItem(stringResource(R.string.global_help), stringResource(R.string.global_help_explanation), onHelp)
-        FeatureHubItem(stringResource(R.string.global_management), stringResource(R.string.global_management_explanation), onManagement)
-        FeatureHubItem(stringResource(R.string.global_currencies), stringResource(R.string.global_currencies_explanation), onCurrencies)
-        FeatureHubItem(stringResource(R.string.global_projects), stringResource(R.string.global_projects_explanation), onProjects)
-        FeatureHubItem(stringResource(R.string.global_goals), stringResource(R.string.global_goals_explanation), onGoals)
-        FeatureHubItem(stringResource(R.string.global_credit), stringResource(R.string.global_credit_explanation), onCredit)
-        FeatureHubItem(stringResource(R.string.global_installments), stringResource(R.string.global_installments_explanation), onInstallments)
-        FeatureHubItem(stringResource(R.string.global_loans), stringResource(R.string.global_loans_explanation), onLoans)
-        FeatureHubItem(stringResource(R.string.global_settlements), stringResource(R.string.global_settlements_explanation), onSettlements)
-        FeatureHubItem(stringResource(R.string.global_automation), stringResource(R.string.global_automation_explanation), onAutomation)
+        items(entries) { entry -> FeatureHubItem(entry.first, entry.second, entry.third) }
     }
 }
 

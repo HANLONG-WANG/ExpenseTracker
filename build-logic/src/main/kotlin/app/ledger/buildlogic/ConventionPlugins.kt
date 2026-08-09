@@ -30,6 +30,7 @@ private const val COMPILE_SDK = 36
 private const val MIN_SDK = 28
 private const val TARGET_SDK = 36
 private const val JDK_VERSION = 17
+private const val REPRESENTATIVE_API = 34
 
 private fun Project.androidNamespace(): String = "app.ledger" + path.split(':').filter(String::isNotBlank).joinToString("") { segment ->
     "." + segment.replace("-", "")
@@ -83,6 +84,12 @@ private fun ApplicationExtension.configureManagedDevices() {
         systemImageSource = "google"
         testedAbi = "x86_64"
     }
+    testOptions.managedDevices.localDevices.create("pixel6Api34") {
+        device = "Pixel 6"
+        apiLevel = REPRESENTATIVE_API
+        systemImageSource = "google"
+        testedAbi = "x86_64"
+    }
 }
 
 private fun LibraryExtension.configureLibraryManagedDevices(includeMinSdk: Boolean) {
@@ -95,6 +102,12 @@ private fun LibraryExtension.configureLibraryManagedDevices(includeMinSdk: Boole
             testedAbi = "x86"
         }
     }
+    testOptions.managedDevices.localDevices.create("pixel6Api34") {
+        device = "Pixel 6"
+        apiLevel = REPRESENTATIVE_API
+        systemImageSource = "google"
+        testedAbi = "x86_64"
+    }
     testOptions.managedDevices.localDevices.create("pixel6Api36") {
         device = "Pixel 6"
         apiLevel = TARGET_SDK
@@ -104,6 +117,12 @@ private fun LibraryExtension.configureLibraryManagedDevices(includeMinSdk: Boole
 }
 
 private fun TestExtension.configureManagedDevices() {
+    testOptions.managedDevices.localDevices.create("pixel6Api34") {
+        device = "Pixel 6"
+        apiLevel = REPRESENTATIVE_API
+        systemImageSource = "google"
+        testedAbi = "x86_64"
+    }
     testOptions.managedDevices.localDevices.create("pixel6Api36") {
         device = "Pixel 6"
         apiLevel = TARGET_SDK
@@ -142,7 +161,7 @@ private fun LibraryExtension.configureAndroidLibrary(project: Project) {
         targetCompatibility = JavaVersion.VERSION_17
     }
     if (project.path in DEVICE_TEST_LIBRARY_PATHS) {
-        configureLibraryManagedDevices(includeMinSdk = false)
+        configureLibraryManagedDevices(includeMinSdk = project.path == ":transfer:data")
     }
     if (project.path == ":core:designsystem") {
         configureLibraryManagedDevices(includeMinSdk = true)
@@ -165,6 +184,8 @@ private val DEVICE_TEST_LIBRARY_PATHS = setOf(
     ":feature:analysis",
     ":feature:settings",
     ":feature:onboarding",
+    ":feature:transfer",
+    ":transfer:data",
 )
 
 class AndroidApplicationConventionPlugin : Plugin<Project> {

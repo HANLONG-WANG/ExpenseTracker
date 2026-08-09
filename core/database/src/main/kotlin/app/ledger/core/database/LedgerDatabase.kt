@@ -31,6 +31,11 @@ abstract class LedgerDatabase : RoomDatabase() {
 )
 abstract class ImportStagingDatabase : RoomDatabase() {
     internal abstract fun schemaRegistryDao(): StagingSchemaRegistryDao
+
+    /** Staging is an isolated operation database; every append batch has its own SQLCipher transaction. */
+    fun <T> inStagingTransaction(block: (SupportSQLiteDatabase) -> T): T = runInTransaction<T> { block(openHelper.writableDatabase) }
+
+    fun <T> readStaging(block: (SupportSQLiteDatabase) -> T): T = block(openHelper.readableDatabase)
 }
 
 object EncryptedDatabaseFactory {
@@ -40,6 +45,15 @@ object EncryptedDatabaseFactory {
         context: Context,
         passphrase: ByteArray,
     ): LedgerDatabase = openPrimaryNamed(context, passphrase, PRIMARY_DATABASE_NAME)
+
+    fun openLedgerCopy(
+        context: Context,
+        operationFileName: String,
+        passphrase: ByteArray,
+    ): LedgerDatabase {
+        require(LEDGER_COPY_NAME.matches(operationFileName)) { "invalid opaque ledger copy name" }
+        return openPrimaryNamed(context, passphrase, operationFileName)
+    }
 
     private fun openPrimaryNamed(context: Context, passphrase: ByteArray, name: String): LedgerDatabase {
         validatePassphrase(passphrase)
@@ -74,6 +88,7 @@ object EncryptedDatabaseFactory {
     }
 
     private val STAGING_NAME = Regex("import_[0-9a-f]{32}\\.db")
+    private val LEDGER_COPY_NAME = Regex("ledger_(shadow|safety)_[0-9a-f]{32}\\.db")
     private const val MINIMUM_PASSPHRASE_BYTES = 32
 }
 

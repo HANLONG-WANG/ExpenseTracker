@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-07 (Asia/Tokyo)
-Current stage: P27 — Consumption map
-Stage status: VERIFIED (`P27-E001`—`P27-E007`); P00—P26 remain VERIFIED and P28 is the next unstarted stage
+Last updated: 2026-08-09 (Asia/Tokyo)
+Current stage: P28 — CSV/XLSX general and structured import
+Stage status: VERIFIED (`P28-E001`—`P28-E008`); P00—P27 remain VERIFIED and P29 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -76,7 +76,7 @@ Baseline conclusion: this is a documentation-only repository, not a partial Andr
 | Build governance | AGP built-in Kotlin, Kotlin Compose compiler plugin, KSP 2.3.10, version catalog and seven convention/architecture plugins in the included `:build-logic` build | VERIFIED |
 | Module topology | 35 prescribed leaf modules plus five zero-dependency Gradle grouping projects; `:build-logic` is an included build | VERIFIED |
 | Dependency direction | Exact allowlisted project graph enforces UI → Application → Domain ← Infrastructure; eight domain/common modules are pure Kotlin/JVM; feature modules have no feature/data/DAO/Room-entity edge | VERIFIED |
-| Reproducibility | Wrapper distribution SHA-256 pinned; 37 lockfiles cover root, build logic and all leaf modules; strict dependency verification contains 1,366 components and 2,819 SHA-256 entries after the P15 Paging graph was sealed | VERIFIED |
+| Reproducibility | Wrapper distribution SHA-256 pinned; 37 lockfiles cover root, build logic and all leaf modules; strict dependency verification contains 1,382 components and 2,848 SHA-256 entries after the P28 streaming-import graph was sealed | VERIFIED |
 | Production source | Secure application manifest only; no business screen, DAO, persistence, placeholder component or fake functionality was added | Correct for P01 |
 | Tests and scripts | P00 and P01 structural validators, Gradle architecture/version checks, Android Lint and all configured JVM test tasks | VERIFIED for P01 scope |
 | CI, advanced quality and release | Detekt/format/Kover/SBOM/license/CI/Baseline Profile/release AAB are not introduced early | P02/P36 scope |
@@ -354,18 +354,30 @@ P26 is `VERIFIED`. `P26_CUSTOM_ANALYTICS_MAPPING.md` records the complete AST/co
 
 P27 is `VERIFIED`. `P27_CONSUMPTION_MAP_MAPPING.md` records the query/index/SDK/UI/privacy boundary. P28 and later stages are not promoted.
 
+### P28 result (verified)
+
+| Area | P28 result | Classification |
+|---|---|---|
+| Streaming parsers | Apache Commons CSV 1.14.1 with explicit charset/BOM/ICU4J detection and FastExcel 0.20.2 sheet/row streaming preserve non-ASCII, exact numeric/date/shared-string/cached-formula values; legacy/corrupt/cancel fail typed and the 100,000-row suite is capped at 256 MiB | VERIFIED (`P28-E001`—`P28-E003`) |
+| Encrypted staging and recovery | Seven-table independent SQLCipher staging persists raw/parsed rows, mappings, errors, duplicates, prepared commands and attachments; 256-row checkpoints support pause, safe cancel and crash retry while source handles and commit descriptors remain encrypted | VERIFIED (`P28-E002`, `P28-E004`) |
+| Preparation and structured coverage | General mapping, missing entities, manual FX, explicit duplicate resolution and no-split rejection are complete; all 15 structured workbook entity kinds are dependency ordered and applied through existing typed ports | VERIFIED (`P28-E001`, `P28-E002`, `P28-E005`) |
+| Atomic application and undo | Small imports use one coordinator-owned batch transaction; large/structured imports use a validated same-filesystem shadow exchange. Source fingerprints make replay idempotent; row 99,999 failure leaves the primary unchanged; audit/history and financial or structured whole-batch undo pass on SQLCipher | VERIFIED (`P28-E005`) |
+| UI, routes and pixels | IMP-001—010 cover all 34 YAML states, three languages, responsive/font/theme boundaries, 100,000-row virtualized preview, masked sample semantics and opaque operation routes; two production Compose digests freeze the textual/token-derived contract | VERIFIED (`P28-E001`, `P28-E006`) |
+
+P28 is `VERIFIED`. `P28_IMPORT_MAPPING.md` records the parser/staging/recovery/atomicity/UI boundary. P29 and later stages are not promoted.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 58 requirements are `VERIFIED`; 29 are `IN_PROGRESS`; 3 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 163 are `VERIFIED`; 52 remain `NOT_STARTED` |
-| Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-011 and ADR-016/017 are `VERIFIED`; ADR-007A, ADR-012—015 and ADR-018—020 are `IN_PROGRESS` |
-| UI ADRs | 12 | UI-ADR-002/007/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006/008 are `IN_PROGRESS`; UI-ADR-009 remains `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 61 requirements are `VERIFIED`; 27 are `IN_PROGRESS`; 2 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 173 are `VERIFIED`; 42 remain `NOT_STARTED` |
+| Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-012, ADR-016—018 and ADR-020 are `VERIFIED`; ADR-007A, ADR-013—015 and ADR-019 are `IN_PROGRESS` |
+| UI ADRs | 12 | UI-ADR-002/007/008/009/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006 are `IN_PROGRESS` |
 | Permanent domain invariants | 35 | 26 are `VERIFIED`, including settlement conservation/local-account/history invariants (`INV-022`—`INV-024`); 9 retain later evidence |
 | Logical schema families | 12 | All 12 frozen physical Schema v1 families remain `VERIFIED`; P26 registers and device-verifies the normalized non-destructive analytics-configuration Schema v2 expansion |
 | Projection families | 7 + search/geographic indexes | Current transaction, account, budget/project/goal, liabilities, settlement and analytics plus both indexes are `VERIFIED`; widget runtime completion remains later-owned |
-| Durable/staging/backup operation inventories | 4 groups | Encrypted physical records `VERIFIED` by P07; operation runtime remains `IN_PROGRESS` for P28—P31 |
+| Durable/staging/backup operation inventories | 4 groups | Import operation/staging/audit runtime is `VERIFIED` by P28; backup/restore runtime remains `IN_PROGRESS` for P29—P31 |
 
 ## Stage progression
 
@@ -399,7 +411,8 @@ P27 is `VERIFIED`. `P27_CONSUMPTION_MAP_MAPPING.md` records the query/index/SDK/
 | P25 | VERIFIED | Closed bounded ReportSpec AST, whitelist compiler, 20 fixed reports, twelve synchronous analytics rollups, nine integrity checks and all six ANA destinations; `P25-E001`—`P25-E007` |
 | P26 | VERIFIED | Revisioned custom reports/dashboards/anomaly rules, exact deterministic forecast/derived series, non-destructive SQLCipher Schema v2 and all seven ANA destinations; `P26-E001`—`P26-E007` |
 | P27 | VERIFIED | R*Tree-bounded consumption-map aggregation, immutable historical values, governed MapLibre cluster/heat/single rendering, accessible failure list and ANA-011/012; `P27-E001`—`P27-E007` |
-| P28—P36 | NOT_STARTED | P28 is next; do not promote later work early |
+| P28 | VERIFIED | Commons CSV/ICU and FastExcel streaming, independent SQLCipher staging, durable resume, explicit mapping/duplicates/FX, all 15 structured kinds, coordinator/shadow atomic commit, audit/undo and IMP-001—010; `P28-E001`—`P28-E008` |
+| P29—P36 | NOT_STARTED | P29 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -580,3 +593,24 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p27_consumption
 ```
 
 All P27 evidence is recorded in `P27-E001`—`P27-E007`. The next entry point is P28. Preserve the R*Tree/query bound, immutable historical FX semantics, feature/application/SDK boundary and accessible fallback; do not create online place search, reverse geocoding, coordinate-bearing routes or another financial writer.
+
+## P28 verified handoff
+
+P28 leaves the repository with a nine-stage CSV/XLSX import flow plus history, bounded Commons CSV/ICU and FastExcel 0.20.2 streams, independently encrypted SQLCipher staging, durable foreground operation descriptors/checkpoints, explicit mappings/FX/duplicate decisions, and 15 dependency-ordered structured entity kinds. Small all-financial commits use the existing atomic batch port; large and structured commits use a validated shadow ledger and atomic exchange. Source fingerprints prevent replay, source row 99,999 failure cannot mutate the primary, and whole-batch undo remains auditable.
+
+The reproducible P28 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p28_import.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p28_import_contracts -v
+./gradlew :transfer:domain:test :transfer:data:testDebugUnitTest :finance:application:test
+./gradlew :transfer:data:pixel2Api28DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.transfer.data.ImportParserCompatibilityDeviceTest
+./gradlew :transfer:data:pixel6Api34DebugAndroidTest
+./gradlew :transfer:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.transfer.data.ImportParserCompatibilityDeviceTest
+./gradlew :finance:data:pixel6Api34DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.ImportFinancialApplicationPortDeviceTest,app.ledger.finance.data.StructuredImportApplicationPortDeviceTest
+./gradlew :feature:transfer:pixel6Api36DebugAndroidTest
+./gradlew :app:pixel6Api36DebugAndroidTest
+./gradlew p28Check --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+```
+
+All P28 evidence is recorded in `P28-E001`—`P28-E008`. The next entry point is P29. Preserve the FastExcel/no-POI parser boundary, encrypted staging/source descriptors, operationId-only route/Worker payloads, explicit no-split and duplicate decisions, coordinator-only financial writes and validated atomic exchange; do not promote export/backup/restore stages early.

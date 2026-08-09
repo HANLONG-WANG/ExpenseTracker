@@ -18,4 +18,6 @@
     <string name="global_installments">Credit installments</string><string name="global_installments_explanation">Manage schedules, unposted commitments, refund impacts, and early settlement</string><string name="global_loans">Loans and liabilities</string><string name="global_loans_explanation">Combined loans, versioned terms, schedules, actual repayments, and sandbox simulations</string>
     <string name="global_settlements">Shared expenses</string><string name="global_settlements_explanation">Participants, allocated positions, partial payments, and additional settlement</string>
     <string name="global_automation">Templates and recurrence</string><string name="global_automation_explanation">Manage quick templates, deterministic schedules, and unposted candidates</string>
+    <string name="import_worker_channel">Ledger imports</string><string name="import_worker_title">Preparing import</string><string name="import_worker_progress">%1$d rows safely processed</string>
+    <string name="global_import">Import data</string><string name="global_import_explanation">Safely import CSV or structured Excel data</string><string name="global_import_history">Import history</string><string name="global_import_history_explanation">Review audit records and undo a whole batch</string>
 </resources>

@@ -105,6 +105,7 @@ import java.time.LocalDate
 class SecureRoomLoanApplicationPort(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
+    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
 ) : LoanApplicationPort {
     private val applicationContext = context.applicationContext
     private val mapper = RoomReferenceFinancialSnapshotMapper()
@@ -873,7 +874,7 @@ class SecureRoomLoanApplicationPort(
         block: suspend (LedgerDatabase) -> DomainResult<T>,
     ): DomainResult<T> = try {
         keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
+            val database = keys.databaseDek.useBytes { openSelectedLedger(applicationContext, it, databaseName) }
             try {
                 block(database)
             } finally {

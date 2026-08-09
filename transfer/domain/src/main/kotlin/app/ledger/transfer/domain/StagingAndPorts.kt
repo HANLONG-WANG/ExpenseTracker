@@ -1,11 +1,15 @@
+@file:Suppress("TooManyFunctions")
+
 package app.ledger.transfer.domain
 
+import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.finance.application.FinancialMutationCoordinator
 import app.ledger.finance.domain.AttachmentId
 import app.ledger.finance.domain.CommandReceipt
 import app.ledger.finance.domain.FinancialCommand
+import app.ledger.finance.domain.FinancialCommandType
 import app.ledger.finance.domain.Hash256
 import app.ledger.finance.domain.LifecycleRecord
 import app.ledger.finance.domain.RecordLifecycle
@@ -86,6 +90,9 @@ enum class ImportTargetField {
     INSTALLMENT,
     SETTLEMENT_SHARE,
     LOCATION,
+    PAYER,
+    PAYEE,
+    FX_RATE,
 }
 
 data class StagingMapping(
@@ -127,11 +134,40 @@ data class StagingDuplicateCandidate(
     override val lifecycle: RecordLifecycle.Operation = RecordLifecycle.Operation
 }
 
+class PreparedCommandPayload private constructor(bytes: ByteArray) {
+    private val stored = bytes.copyOf()
+
+    val bytes: ByteArray get() = stored.copyOf()
+
+    override fun equals(other: Any?): Boolean = other is PreparedCommandPayload && stored.contentEquals(other.stored)
+    override fun hashCode(): Int = stored.contentHashCode()
+
+    companion object {
+        fun of(bytes: ByteArray): DomainResult<PreparedCommandPayload> = if (bytes.isNotEmpty()) {
+            DomainResult.Success(PreparedCommandPayload(bytes))
+        } else {
+            DomainResult.Failure(StagingError.InvalidRow)
+        }
+    }
+}
+
+enum class PreparedCommandValidationState { PENDING, DOMAIN_VALIDATED, DUPLICATE_SKIPPED }
+
 data class StagingPreparedCommand(
     val rowNumber: Long,
-    val command: FinancialCommand,
+    val commandId: CommandId,
+    val commandType: FinancialCommandType?,
+    val structuredKind: StructuredEntityKind?,
+    val payload: PreparedCommandPayload,
+    val payloadHash: Hash256,
+    val validationState: PreparedCommandValidationState,
 ) : LifecycleRecord<RecordLifecycle.Operation> {
     override val lifecycle: RecordLifecycle.Operation = RecordLifecycle.Operation
+
+    init {
+        require(rowNumber > 0L)
+        require((commandType != null) xor (structuredKind != null))
+    }
 }
 
 data class StagingAttachment(
@@ -178,9 +214,27 @@ interface EncryptedStagingRepository {
 
     suspend fun saveAttachments(attachments: List<StagingAttachment>): DomainResult<Unit>
 
-    suspend fun preparedCommands(): DomainResult<List<StagingPreparedCommand>>
+    suspend fun rawRows(offsetExclusive: Long, limit: Int): DomainResult<List<StagingRawRow>>
+
+    suspend fun parsedRows(offsetExclusive: Long, limit: Int): DomainResult<List<StagingParsedRow>>
+
+    suspend fun preparedCommands(offsetExclusive: Long, limit: Int): DomainResult<List<StagingPreparedCommand>>
+
+    suspend fun counts(): DomainResult<StagingCounts>
 
     suspend fun destroy(): DomainResult<Unit>
+}
+
+data class StagingCounts(
+    val raw: Long,
+    val parsed: Long,
+    val errors: Long,
+    val duplicates: Long,
+    val prepared: Long,
+) {
+    init {
+        require(listOf(raw, parsed, errors, duplicates, prepared).all { it >= 0L })
+    }
 }
 
 interface ShadowLedgerRepository {

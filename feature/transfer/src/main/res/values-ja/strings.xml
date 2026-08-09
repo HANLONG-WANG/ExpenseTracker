@@ -1,0 +1,27 @@
+<resources>
+    <string name="import_title">インポート</string><string name="import_resume">再開</string><string name="import_cancel">キャンセル</string>
+    <string name="import_previous">戻る</string><string name="import_next">次へ</string>
+    <string name="import_source_heading">インポート元を選択</string><string name="import_source_supporting">汎用 CSV/XLSX または構造化ワークブックを選択します。</string>
+    <string name="import_permission_error">ファイル権限が失効しました。もう一度選択してください。</string><string name="import_mode">インポート形式</string>
+    <string name="import_mode_general">汎用インポート</string><string name="import_mode_structured">構造化ワークブック</string><string name="import_choose_file">ファイルを選択</string>
+    <string name="import_structure_heading">シートと形式</string><string name="import_structure_supporting">シート、見出し行、文字コードを選択してサンプルを確認します。</string>
+    <string name="import_parsing">ファイルをストリーミング解析中</string><string name="import_paused">永続化済みのチャンク境界で一時停止しました。再開すると続行します。</string><string name="import_corrupt">ファイルが破損しているためインポートできません。</string><string name="import_unsupported">このファイル形式はサポートされていません。</string>
+    <string name="import_sheets">シート</string><string name="import_encoding">文字コード</string><string name="import_encoding_value">文字コード：%1$s</string><string name="import_header_row">見出し行</string>
+    <string name="import_mapping_heading">フィールド対応</string><string name="import_mapping_supporting">元の列を帳簿フィールドに対応付けます。</string><string name="import_required_missing">必須の対応付けがありません</string><string name="import_not_mapped">インポートしない</string><string name="import_change_mapping">対象を変更</string>
+    <string name="import_entity_heading">エンティティ対応</string><string name="import_entity_supporting">口座、カテゴリ、加盟店などを対応付け、不足項目を確認します。</string>
+    <string name="import_missing_count">不足 %1$d 件</string><string name="import_create_missing">不足エンティティを作成</string><string name="import_map_existing">既存エンティティに対応</string>
+    <string name="import_fx_heading">通貨と為替レート</string><string name="import_fx_supporting">外貨行には明示的な為替レート方針が必要です。</string><string name="import_rate_missing">レートがありません</string><string name="import_manual_rate_required">有効な正の為替レートを入力してください</string><string name="import_fx_rate">%1$s レート</string>
+    <string name="import_validation_heading">検証と重複候補</string><string name="import_validation_supporting">すべてのエラーを修正し、重複候補を個別に処理してください。</string>
+    <string name="import_validating">検証中</string><string name="import_validation_errors">インポートを妨げるエラーがあります</string><string name="import_validation_warnings">確認が必要な警告があります</string><string name="import_validation_valid">検証に合格しました</string>
+    <string name="import_confirm_heading">インポートを確認</string><string name="import_confirm_supporting">新規エンティティ、取引サンプル、原子性を確認してから確定します。</string>
+    <string name="import_atomic_title">原子的な確定</string><string name="import_atomic_explanation">失敗しても帳簿に部分変更は残りません。大規模バッチはシャドーデータベースで検証後に一括置換します。</string><string name="import_no_split">分割購入は複数の取引に分ける必要があり、インポートで単一取引の境界は拡張しません。</string>
+    <string name="import_execution_heading">インポート進捗</string><string name="import_execution_supporting">安全な境界で一時停止またはキャンセルできます。原子的置換は中断できません。</string><string name="import_operation_name">帳簿インポート</string>
+    <string name="import_phase_preparing">準備中</string><string name="import_phase_shadow">シャドーデータベースへ適用中</string><string name="import_phase_validating">整合性を検証中</string><string name="import_phase_committing">原子的置換中</string><string name="import_phase_cancel_requested">安全なキャンセル地点を待機中</string><string name="import_phase_cancelled">安全にキャンセル済み</string><string name="import_phase_failed">インポート失敗</string><string name="import_phase_succeeded">インポート完了</string>
+    <string name="import_processed_unknown">%1$d 行を処理済み</string><string name="import_processed_total">%1$d / %2$d 行を処理済み</string><string name="import_safe_commit">原子的置換中のためキャンセルできません。</string><string name="import_safe_cancel">現在のチャンク完了後に一時停止またはキャンセルします。</string>
+    <string name="import_result_heading">インポート結果</string><string name="import_result_supporting">件数、警告、バッチ全体の取り消し可否を確認します。</string><string name="import_result_success">インポートに成功しました</string><string name="import_result_cancelled">安全にキャンセルされ、主帳簿は変更されていません</string><string name="import_result_failed">インポートに失敗し、主帳簿に部分変更は残っていません</string><string name="import_open_journal">仕訳帳を開く</string><string name="import_rollback_batch">バッチ全体を取り消す</string><string name="import_cleanup_complete">一時ソースとステージングファイルを安全に削除しました。</string>
+    <string name="import_history_heading">インポート履歴</string><string name="import_history_supporting">各バッチにソース指紋、監査記録、取り消し状態を保持します。</string><string name="import_history_empty">インポート履歴はありません</string><string name="import_history_empty_supporting">CSV または XLSX を選択して開始します。</string>
+    <string name="import_rows_count">%1$d 行</string><string name="import_reversible">バッチ全体を取り消し可能</string><string name="import_not_reversible">取り消し済み、または対象外</string>
+    <string name="import_preview">仮想化プレビュー</string><string name="import_row_number">%1$d 行目</string>
+    <string name="import_errors">エラー</string><string name="import_warnings">警告</string><string name="import_duplicates">重複候補</string><string name="import_missing_entities">不足エンティティ</string>
+    <string name="import_duplicate_candidates">重複候補</string><string name="import_duplicate_row">元データ %1$d 行目</string><string name="import_duplicate_skip">スキップ</string><string name="import_duplicate_anyway">そのままインポート</string>
+</resources>

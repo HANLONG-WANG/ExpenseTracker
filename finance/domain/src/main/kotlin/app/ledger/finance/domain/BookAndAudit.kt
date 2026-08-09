@@ -122,6 +122,7 @@ enum class EntityType {
     RECURRENCE_SERIES,
     ATTACHMENT,
     BLOB,
+    LOCATION_RECORD,
 }
 
 enum class EntityChangeOperation {
