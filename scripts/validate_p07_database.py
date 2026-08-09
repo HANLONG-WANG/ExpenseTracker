@@ -373,6 +373,8 @@ def validate_ledgers() -> int:
         )
     if current_stage_number >= 28:
         permitted_promotions.update({f"IMP-{number:03d}": "VERIFIED" for number in range(1, 11)})
+    if current_stage_number >= 29:
+        permitted_promotions.update({f"EXP-{number:03d}": "VERIFIED" for number in range(1, 5)})
     require(
         len(screen_rows) == 215
         and all(row["status"] == permitted_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),

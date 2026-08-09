@@ -942,3 +942,64 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: the first aggregate replay found shadow-state SQL in `core:security` and a data adapter allocating undo identities from a private random source, conflicting with the frozen financial-SQL ownership and deterministic-ID injection rules.
 - Decision: move `SecureShadowLedgerAccess` into `finance:data`, leaving `core:security` with key and narrow encrypted-database access only. Inject the application `StableIdSource` into `SecureRoomImportFinancialApplicationPort` and use it for every undo command/revision/fact identity. Fixed duplicate UI test tags contain no row/runtime value.
 - Consequence: only `finance:data`/`core:database` own financial SQL, ID generation is testable and centrally governed, and `verifySourcePolicies` passes all 244 production files without an exception or allowlist expansion.
+
+## DL-133 — Ordinary export is never represented as complete backup
+
+- Date/stage: 2026-08-09 / P29
+- Surface issue: REQ-074 lists ordinary CSV/XLSX/report files beside a separately encrypted complete backup, while a full workbook intentionally omits settings, attachments, key material, immutable database internals and vault secrets.
+- Priority applied: the product security and backup invariants outrank convenient reuse of an export writer.
+- Decision: the ordinary `ExportDescriptor` accepts current filter, full workbook or prepared report and rejects `PORTABLE_BACKUP`. Every ordinary output carries schema/application version, generation time, scope, filter/report summary, local/valuation revision and an explicit “not a complete backup” disclaimer. Complete backup remains P30+.
+- Consequence: an XLSX file cannot be mistaken for a restorable safety copy or routed through backup code; REQ-074 remains cross-stage `IN_PROGRESS` even though its P29 ordinary-export slice is fully verified.
+
+## DL-134 — Sensitive export fields are a closed positive allowlist
+
+- Date/stage: 2026-08-09 / P29
+- Decision: `ExportField` is the only selectable ordinary transaction vocabulary. Full card/account numbers, security codes, vault values, passwords and ciphertext have no enum or UI representation. Cards expose `last_four` only. Latitude/longitude are paired fields behind one explicit sensitive switch and are absent from the default selection.
+- Consequence: UI labels cannot accidentally expose a secret query column. Actual SQLCipher tests insert a unique vault sentinel and scan all 15 workbook sources plus the current-filter adapter; source-policy mutation tests also reject forbidden names.
+
+## DL-135 — FastExcel's producer version is decoupled from export metadata
+
+- Date/stage: 2026-08-09 / P29
+- Surface issue: FastExcel 0.20.2 validates its workbook application-version constructor argument as a dotted numeric Excel producer version, while the Android package version is not guaranteed to match that grammar.
+- Decision: pass the stable compatible producer value `1.0` to FastExcel and store the actual application version in the visible metadata sheet together with the export schema and ledger revisions. FastExcel 0.20.2 remains the sole XLSX writer and Apache POI remains forbidden.
+- Consequence: arbitrary Android version names cannot corrupt workbook construction, consumers retain the real provenance, and the 100,000-row/API 36 round-trip uses the frozen library without fallback.
+
+## DL-136 — SAF publication trusts operations, not advisory capability flags
+
+- Date/stage: 2026-08-09 / P29
+- Surface issue: third-party `DocumentsProvider` implementations can report incomplete advisory `canWrite` flags even while `createDocument` and `openOutputStream` are authorized; treating the flag as final would reject usable persisted trees.
+- Decision: validate the tree, then let provider query/create/open/rename operations determine the typed result. Generate in an app-private file, copy to `.partial`, retain an existing destination as `.previous`, rename the complete partial to the requested name and restore the previous file on failure. Security, I/O and ENOSPC failures stay distinct.
+- Consequence: local and remote SAF providers share the same safe path, overwrite never destroys the previous file before complete publication, and cancel/failure cleanup is device-tested without granting broad storage access.
+
+## DL-137 — Remote provider exports use UIDT; local generation remains foreground WorkManager
+
+- Date/stage: 2026-08-09 / P29
+- Decision: on API 34+ a user-selected remote document provider schedules a user-initiated data-transfer job with a visible system notification. Local providers and API 28–33 use the existing foreground `CoroutineWorker`. Both payloads contain exactly `operationId`; encrypted operation parameters and the encrypted SAF handle are resolved inside the application process.
+- Consequence: the platform execution class follows the frozen stack without serializing URI, filters, report rows or financial data into JobScheduler/WorkManager. UIDT has no silent automatic retry; final state invites an explicit user retry, while WorkManager caps transient retries and persists retry exhaustion as final.
+
+## DL-138 — Report snapshots trade recomputation for bounded encrypted consistency
+
+- Date/stage: 2026-08-09 / P29
+- Surface issue: ANA-010 must export the exact displayed report revision after navigation/process scheduling, but rerunning a query later could change its as-of values and passing rows in a route or Worker payload is forbidden.
+- Decision: persist the P26-prepared `ExportReportSnapshot` only inside the encrypted operation parameter codec. It is closed to 64 columns, 100,000 rows and 8,192 characters per cell; production P26 report results are already more tightly bounded. Background payloads retain only the operation ID.
+- Consequence: CSV/XLSX/PDF/PNG share one consistent report cut with local/valuation revisions, while route, SavedState and platform scheduler data remain opaque.
+
+## DL-139 — PNG export is a bounded report artifact, not a rasterized data dump
+
+- Date/stage: 2026-08-09 / P29
+- Surface issue: rasterizing 100,000 table rows into one bitmap would exceed Android bitmap limits and would contradict the report-image product meaning.
+- Decision: scan and checkpoint the full source for truthful row count/progress, but retain only 22 display rows in a fixed 1200×900 bitmap alongside metadata and the non-backup disclaimer. CSV/XLSX are the complete tabular formats; PDF is paginated; PNG is the human-viewable report summary.
+- Consequence: image memory is constant and a 100,000-row source completes without OOM or pretending that clipped pixels are a complete data interchange file.
+
+## DL-140 — P29 pixel evidence derives only from governed textual inputs
+
+- Date/stage: 2026-08-09 / P29
+- Decision: EXP-001 light and EXP-004 failed dark render at 360×720 and hash every production Compose ARGB pixel. The frozen digests are `a487270b1501caa3751747c2db458be0e0ef85f8352209daf76a8059ec5cc3a2` and `93d8c476896c3d7f087cbbd80e47a86db0b156ae75b1024239e89505349d225b`.
+- Consequence: export visual drift is machine-detectable from production Compose, governed components, token JSON and textual/YAML contracts. No excluded PNG/HTML visual draft was opened, parsed, sampled, measured or compared.
+
+## DL-141 — Export state-machine and fixed-layout metric suppressions stay local and named
+
+- Date/stage: 2026-08-09 / P29
+- Surface issue: the durable QUEUED/PREPARING/RUNNING/COMMITTING/failure recovery flow, allowlisted SQL cursor conversion, operation-parameter codec and writer-format dispatcher exceed generic Detekt complexity/return/function-count thresholds when their fail-closed exits remain explicit.
+- Decision: fix the actual swallowed-error/format/line-length findings and retain every global rule. Apply only file-local named metric suppressions to the P29 state machine, fixed SQL/codec layouts, bounded writers and closed descriptor validation. The Commons CSV header spread copies at most the closed 22-field header array and receives a named `SpreadOperator` suppression; exception-to-typed-failure translation receives `SwallowedException` because privacy policy forbids logging raw provider/source errors.
+- Consequence: `detekt` reports zero findings without disabling a rule or adding an architecture allowlist. Device fault, scale, recovery and mutation tests continue to exercise every suppressed branch and reject boundary weakening.

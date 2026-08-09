@@ -1422,6 +1422,77 @@ tasks.register("p28Check") {
     )
 }
 
+val validateP29Export by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P29 streaming exports, SAF publishing, recovery, sensitive-field exclusion and UI coverage."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p29_export.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/security/src") { include("**/*") },
+        fileTree("feature/analysis/src") { include("**/*") },
+        fileTree("feature/transfer/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*") },
+        fileTree("finance/data/src") { include("**/*") },
+        fileTree("transfer/domain/src") { include("**/*") },
+        fileTree("transfer/data/src") { include("**/*") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+        "gradle/libs.versions.toml",
+    )
+}
+
+val validateP29ExportFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P29 gate rejects writer, privacy, paging, SAF, payload and location-opt-in weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p29_export_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p29_export.py",
+        "scripts/tests/test_p29_export_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/security/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/transfer/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+        fileTree("transfer/domain/src/main/kotlin") { include("**/*.kt") },
+        fileTree("transfer/data/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p29Check") {
+    group = "verification"
+    description = "Runs P29 static, JVM, lint and architecture evidence; SAF/runtime/UI managed-device suites run separately."
+    dependsOn(
+        validateP29Export,
+        validateP29ExportFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":transfer:domain:test",
+        ":transfer:data:testDebugUnitTest",
+        ":finance:application:test",
+        ":app:testDebugUnitTest",
+        ":app:lintDebug",
+        ":core:security:lintDebug",
+        ":feature:analysis:lintDebug",
+        ":feature:transfer:lintDebug",
+        ":finance:data:lintDebug",
+        ":transfer:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+tasks.register("p29Artifacts") {
+    group = "verification"
+    description = "Generates P29 coverage and inherited SBOM/license artifacts."
+    dependsOn("p02Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

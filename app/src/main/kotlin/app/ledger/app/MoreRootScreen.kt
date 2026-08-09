@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerCard
@@ -27,6 +29,7 @@ import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerTopAppBar
 import app.ledger.core.designsystem.LedgerTopAppBarVariant
 import app.ledger.core.navigation.LedgerDestinationKey
+import app.ledger.feature.transfer.ExportExecutionPresentation
 
 internal enum class MorePresentation { CONTENT, BADGE_UPDATES, OPERATION_IN_PROGRESS }
 
@@ -38,8 +41,19 @@ internal fun MoreRootDestination(
     onHelp: () -> Unit,
     onNavigationChanged: () -> Unit,
 ) {
+    val export by viewModel.exportFlow.collectAsStateWithLifecycle()
+    val presentation = if (
+        export.screenId == "EXP-004" && export.executionPresentation in setOf(
+            ExportExecutionPresentation.RUNNING,
+            ExportExecutionPresentation.CANCEL_REQUESTED,
+        )
+    ) {
+        MorePresentation.OPERATION_IN_PROGRESS
+    } else {
+        MorePresentation.CONTENT
+    }
     MoreContent(
-        MorePresentation.CONTENT,
+        presentation,
         onOperations,
         onHelp,
         onManagement = {
@@ -86,6 +100,10 @@ internal fun MoreRootDestination(
             viewModel.navigateImportHistory()
             onNavigationChanged()
         },
+        onExport = {
+            viewModel.navigateCurrentFilterExport()
+            onNavigationChanged()
+        },
     )
 }
 
@@ -105,6 +123,7 @@ internal fun MoreScreen(
     onAutomation: () -> Unit = {},
     onImport: () -> Unit = {},
     onImportHistory: () -> Unit = {},
+    onExport: () -> Unit = {},
 ) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
@@ -131,6 +150,7 @@ internal fun MoreScreen(
             onAutomation = onAutomation,
             onImport = onImport,
             onImportHistory = onImportHistory,
+            onExport = onExport,
         )
     }
 }
@@ -152,6 +172,7 @@ internal fun MoreContent(
     onAutomation: () -> Unit = {},
     onImport: () -> Unit = {},
     onImportHistory: () -> Unit = {},
+    onExport: () -> Unit = {},
 ) {
     val entries = listOf(
         Triple(stringResource(R.string.global_operations), stringResource(R.string.global_operations_explanation), onOperations),
@@ -167,6 +188,7 @@ internal fun MoreContent(
         Triple(stringResource(R.string.global_automation), stringResource(R.string.global_automation_explanation), onAutomation),
         Triple(stringResource(R.string.global_import), stringResource(R.string.global_import_explanation), onImport),
         Triple(stringResource(R.string.global_import_history), stringResource(R.string.global_import_history_explanation), onImportHistory),
+        Triple(stringResource(R.string.global_export), stringResource(R.string.global_export_explanation), onExport),
     )
     LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (presentation == MorePresentation.BADGE_UPDATES) {

@@ -21,6 +21,12 @@ import app.ledger.transfer.domain.BackgroundOperationId
 import app.ledger.transfer.domain.BackgroundOperationState
 import app.ledger.transfer.domain.BackgroundOperationType
 import app.ledger.transfer.domain.DuplicateMatchKind
+import app.ledger.transfer.domain.ExportContent
+import app.ledger.transfer.domain.ExportDescriptor
+import app.ledger.transfer.domain.ExportField
+import app.ledger.transfer.domain.ExportFilter
+import app.ledger.transfer.domain.ExportFormat
+import app.ledger.transfer.domain.ExportReportSnapshot
 import app.ledger.transfer.domain.ImportCommitParameters
 import app.ledger.transfer.domain.ImportFormat
 import app.ledger.transfer.domain.ImportTargetField
@@ -156,6 +162,38 @@ class SqlCipherImportStagingDeviceTest {
         assertEquals(BackgroundOperationState.COMMITTING, restored.state)
         assertEquals(commit, (restored.parameters as OperationParameters.Import).commit)
         assertFalse(context.getDatabasePath("ledger.db").readBytes().containsSubsequence("Asia/Tokyo".toByteArray()))
+    }
+
+    @Test
+    fun exportDescriptorAndReportCheckpointSurviveEncryptedRepositoryRecreation() = runBlocking {
+        val id = BackgroundOperationId(StableId.fromUuid(UUID(0x29L, 1L)))
+        val handle = StableId.fromUuid(UUID(0x29L, 2L))
+        val report = ExportReportSnapshot(
+            "monthly-report",
+            "2026-01-01",
+            "2026-08-09",
+            listOf("category", "amount"),
+            listOf(listOf("食費", "12000 JPY")),
+            42L,
+            7L,
+        )
+        val descriptor = ExportDescriptor(
+            ExportContent.REPORT,
+            ExportFormat.XLSX,
+            "report.xlsx",
+            fields = setOf(ExportField.TRANSACTION_ID, ExportField.NOTE),
+            filterSummary = "Current report · 東京",
+            filter = ExportFilter(searchText = "食費"),
+            report = report,
+        )
+        var repository = SqlCipherBackgroundOperationRepository(BOOK_ID, SecurePrimaryLedgerAccess(context, keys))
+        repository.save(
+            BackgroundOperation.queued(id, BackgroundOperationType.EXPORT, Instant.ofEpochMilli(29_000L), OperationParameters.Export(handle, descriptor)),
+        ).success()
+        repository = SqlCipherBackgroundOperationRepository(BOOK_ID, SecurePrimaryLedgerAccess(context, keys))
+        val restored = requireNotNull(repository.get(id).success())
+        assertEquals(descriptor, (restored.parameters as OperationParameters.Export).descriptor)
+        assertFalse(context.getDatabasePath("ledger.db").readBytes().containsSubsequence("Current report · 東京".toByteArray()))
     }
 
     @Test

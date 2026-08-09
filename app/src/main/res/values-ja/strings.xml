@@ -20,4 +20,5 @@
     <string name="global_automation">テンプレートと定期取引</string><string name="global_automation_explanation">クイックテンプレート、決定的なルール、未記帳候補を管理</string>
     <string name="import_worker_channel">帳簿のインポート</string><string name="import_worker_title">インポートを準備中</string><string name="import_worker_progress">%1$d 行を安全に処理しました</string>
     <string name="global_import">データをインポート</string><string name="global_import_explanation">CSV または構造化 Excel を安全に取り込みます</string><string name="global_import_history">インポート履歴</string><string name="global_import_history_explanation">監査記録を確認し、バッチ全体を取り消します</string>
+    <string name="global_export">データを書き出す</string><string name="global_export_explanation">現在の絞り込み、全データのブック、レポートを書き出す</string>
 </resources>

@@ -10,10 +10,12 @@ dependencies {
     implementation(project(":core:network"))
     implementation(project(":core:security"))
     implementation(libs.commons.csv)
+    implementation(libs.fastexcel)
     implementation(libs.fastexcel.reader)
     implementation(libs.icu4j)
     implementation(libs.stax.api)
     implementation(libs.androidx.sqlite)
+    implementation(libs.androidx.documentfile)
     implementation(libs.coroutines.core)
 
     testImplementation(libs.fastexcel)

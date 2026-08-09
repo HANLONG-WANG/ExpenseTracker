@@ -83,8 +83,7 @@ sealed interface OperationParameters {
 
     data class Export(
         val destinationHandleId: StableId,
-        val format: ExportFormat,
-        val includeAttachments: Boolean,
+        val descriptor: ExportDescriptor,
     ) : OperationParameters
 
     data class FullBackup(
@@ -139,6 +138,7 @@ enum class ExportFormat {
     CSV,
     XLSX,
     PDF,
+    IMAGE,
     PORTABLE_BACKUP,
 }
 
@@ -307,6 +307,7 @@ data class BackgroundOperation private constructor(
             BackgroundOperationState.FAILED_FINAL to emptySet(),
             BackgroundOperationState.COMMITTING to setOf(
                 BackgroundOperationState.SUCCEEDED,
+                BackgroundOperationState.FAILED_RETRYABLE,
                 BackgroundOperationState.ROLLING_BACK,
                 BackgroundOperationState.FAILED_FINAL,
             ),

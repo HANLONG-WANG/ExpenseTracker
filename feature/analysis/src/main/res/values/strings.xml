@@ -142,10 +142,10 @@
     <string name="analysis_preview">预览</string>
     <string name="analysis_result">结果</string>
     <string name="analysis_visualization_compatible">与当前指标和维度兼容</string>
-    <string name="analysis_export_interface_only">本阶段生成类型化导出数据；加密文件写出由 P29 接入。</string>
+    <string name="analysis_export_interface_only">下一步可选择字段和系统文件位置，并查看可取消的流式导出进度。</string>
     <string name="analysis_export_scope">导出范围：%1$s 至 %2$s，包含当前筛选与比较数据。</string>
     <string name="analysis_export_sensitive_notice">导出文件可能包含财务数据；开始前需确认目标与敏感字段。</string>
-    <string name="analysis_prepare_export">准备导出数据</string>
+    <string name="analysis_prepare_export">继续选择字段与位置</string>
     <string name="analysis_anomaly_empty">尚未启用异常规则</string>
     <string name="analysis_anomaly_empty_body">规则完全在本机以固定算法运行，不使用 AI 或上传数据。</string>
     <string name="analysis_add_rule">添加规则</string>

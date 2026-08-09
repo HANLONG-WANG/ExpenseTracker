@@ -109,7 +109,9 @@ internal fun AnalysisRootDestination(
             onAnomalyThresholdChanged = viewModel::updateAnalysisAnomalyThreshold,
             onAnomalyLookbackChanged = viewModel::updateAnalysisAnomalyLookback,
             onSelectExportFormat = viewModel::selectAnalysisExportFormat,
-            onPrepareExport = { viewModel.prepareCurrentAnalysisExport() },
+            onPrepareExport = {
+                if (viewModel.navigatePreparedReportExport()) onNavigationChanged()
+            },
             onCycleMapMode = viewModel::cycleConsumptionMapMode,
             onCycleMapWeight = viewModel::cycleConsumptionMapWeight,
             onCycleMapAggregation = viewModel::cycleConsumptionMapAggregation,

@@ -24,4 +24,22 @@
     <string name="import_preview">虚拟化预览</string><string name="import_row_number">第 %1$d 行</string>
     <string name="import_errors">错误</string><string name="import_warnings">警告</string><string name="import_duplicates">重复候选</string><string name="import_missing_entities">缺失实体</string>
     <string name="import_duplicate_candidates">疑似重复项</string><string name="import_duplicate_row">来源第 %1$d 行</string><string name="import_duplicate_skip">跳过</string><string name="import_duplicate_anyway">仍然导入</string>
+    <string name="export_title">导出数据</string><string name="export_continue">继续</string>
+    <string name="export_content_heading">选择导出内容与格式</string><string name="export_content_supporting">导出使用当前筛选或报表口径，并写入可解释版本元数据。</string>
+    <string name="export_current_filter">当前筛选数据</string><string name="export_current_filter_supporting">将流水页当前筛选结果导出为 CSV。</string>
+    <string name="export_full_workbook">全量工作簿</string><string name="export_full_workbook_supporting">将账本业务数据导出为多工作表 XLSX。</string>
+    <string name="export_report">当前报表</string><string name="export_report_supporting">将已生成报表导出为 CSV、XLSX、PDF 或 PNG。</string>
+    <string name="export_filter_summary">当前筛选：%1$s</string><string name="export_workbook_sheets">工作表：%1$s</string><string name="export_format_heading">格式</string>
+    <string name="export_not_backup">普通导出不是完整备份，不能用于恢复账本。</string>
+    <string name="export_fields_heading">选择字段</string><string name="export_fields_supporting">字段顺序固定，空值保留；可取消不需要的字段。</string>
+    <string name="export_vault_excluded">完整卡号、安全码和保险库字段永不出现在字段列表或普通导出中。</string>
+    <string name="export_location_coordinates">位置坐标</string><string name="export_location_sensitive">敏感字段，默认关闭。开启后经纬度会写入导出文件。</string><string name="export_location_enable">包含位置坐标</string><string name="export_location_disable">排除位置坐标</string>
+    <string name="export_destination_heading">选择文件名与位置</string><string name="export_destination_supporting">通过系统文件选择器授权目标文件夹；应用不申请广泛存储权限。</string>
+    <string name="export_permission_revoked">目标位置权限已撤销，请重新选择位置。</string><string name="export_name_conflict">该位置已有同名文件。覆盖前需要明确确认。</string><string name="export_overwrite">确认覆盖</string>
+    <string name="export_file_name">文件名</string><string name="export_choose_location">选择保存位置并开始</string><string name="export_selected_location">保存位置：%1$s</string>
+    <string name="export_progress_heading">导出进度与结果</string><string name="export_progress_supporting">可安全取消；应用重启后可从操作中心查看状态。</string>
+    <string name="export_external_unavailable">没有可处理此文件的外部应用。</string><string name="export_operation_name">数据导出</string><string name="export_cancel_requested">正在安全取消</string><string name="export_running">正在流式写出</string><string name="export_processed_rows">已写出 %1$d 行</string><string name="export_safe_cancel">停止后会清理未发布的临时文件</string>
+    <string name="export_failed">导出失败：%1$s</string><string name="export_temporary_cleaned">未完成的临时文件已清理。</string><string name="export_retry">重试</string><string name="export_succeeded">导出完成，共 %1$d 行。</string>
+    <string name="export_open">打开</string><string name="export_share">分享</string><string name="export_view_location">查看位置</string><string name="export_operations">在操作中心查看</string>
+    <string name="export_field_transaction_id">交易标识</string><string name="export_field_type">交易类型</string><string name="export_field_state">状态</string><string name="export_field_occurred">发生时间</string><string name="export_field_local_date">本地日期</string><string name="export_field_time_zone">时区</string><string name="export_field_amount">金额（最小单位）</string><string name="export_field_currency">币种</string><string name="export_field_original_amount">原币金额</string><string name="export_field_original_currency">原币币种</string><string name="export_field_account">账户</string><string name="export_field_card">实体卡显示名</string><string name="export_field_category">分类</string><string name="export_field_merchant">商户</string><string name="export_field_project">项目</string><string name="export_field_settlement">互请活动</string><string name="export_field_place">地点</string><string name="export_field_note">备注</string><string name="export_field_attachments">附件引用</string><string name="export_field_source">来源</string>
 </resources>

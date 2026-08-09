@@ -13,10 +13,12 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import app.ledger.analytics.domain.AnalyticsApplicationPort
+import app.ledger.analytics.domain.DimensionValue
 import app.ledger.analytics.domain.DrilldownQueryId
 import app.ledger.analytics.domain.FixedReport
 import app.ledger.analytics.domain.FixedReportCatalog
 import app.ledger.analytics.domain.ReportExportFormat
+import app.ledger.analytics.domain.ReportExportPayload
 import app.ledger.app.settings.DestinationProto
 import app.ledger.app.settings.LedgerAppSettings
 import app.ledger.app.settings.NavigationSnapshotProto
@@ -141,6 +143,7 @@ import app.ledger.feature.settlement.SettlementLoadState
 import app.ledger.feature.settlement.SettlementParticipantDraft
 import app.ledger.feature.settlement.SettlementPolicy
 import app.ledger.feature.settlement.SettlementPresentation
+import app.ledger.feature.transfer.ExportFlowUiState
 import app.ledger.feature.transfer.ImportModeUi
 import app.ledger.finance.application.AccountDraft
 import app.ledger.finance.application.ApplyInstallmentSettlementRequest
@@ -300,6 +303,11 @@ import app.ledger.finance.domain.TransactionLifecycleState
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountType
 import app.ledger.finance.domain.WeekendAdjustment
+import app.ledger.transfer.domain.ExportContent
+import app.ledger.transfer.domain.ExportField
+import app.ledger.transfer.domain.ExportFilter
+import app.ledger.transfer.domain.ExportFormat
+import app.ledger.transfer.domain.ExportReportSnapshot
 import com.google.protobuf.ByteString
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -396,7 +404,9 @@ internal class AppRootViewModel @Inject constructor(
         structuredImportApplicationPort,
         runtimeSources,
     )
+    private val exportController = ExportController(context, keyProvider, runtimeSources)
     val importWizard = importController.state
+    val exportFlow: StateFlow<ExportFlowUiState> = exportController.state
     val analysis: StateFlow<AnalysisLoadState> = analysisController.state
     private val batchEntryController = BatchEntryController(
         batchEntryApplicationPort,
@@ -4693,6 +4703,78 @@ internal class AppRootViewModel @Inject constructor(
         }
     }
 
+    fun navigateCurrentFilterExport() {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        val filter = (mutableJournal.value as? JournalLoadState.Content)?.filter ?: TransactionFilter()
+        exportController.beginCurrentFilter(ready.bookId, filter.toExportFilter(), journalFilterSummary())
+        navigateExport("EXP-001")
+    }
+
+    fun navigateFullWorkbookExport() {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        exportController.beginFullWorkbook(ready.bookId)
+        navigateExport("EXP-001")
+    }
+
+    fun navigatePreparedReportExport(): Boolean {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return false
+        if (!analysisController.prepareCurrentExport()) return false
+        val payload = analysisController.preparedExportForTransfer() ?: return false
+        exportController.beginReport(ready.bookId, payload.toExportSnapshot(), payload.format.toTransferFormat())
+        navigateExport("EXP-001")
+        return true
+    }
+
+    fun selectExportContent(content: ExportContent) = exportController.selectContent(content)
+    fun selectExportFormat(format: ExportFormat) = exportController.selectFormat(format)
+    fun toggleExportField(field: ExportField) = exportController.toggleField(field)
+    fun changeExportCoordinates(enabled: Boolean) = exportController.setCoordinates(enabled)
+    fun changeExportFileName(value: String) = exportController.changeFileName(value)
+
+    fun nextExportStep() {
+        navigateExport(exportController.next())
+    }
+
+    fun selectExportDestination(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (exportController.selectDestination(uri)) {
+                navigateExport("EXP-004")
+                exportController.awaitCurrent()
+            }
+        }
+    }
+
+    fun confirmExportOverwrite() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (exportController.confirmOverwrite()) {
+                navigateExport("EXP-004")
+                exportController.awaitCurrent()
+            }
+        }
+    }
+
+    fun cancelExport() = exportController.cancel()
+    fun retryExport() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (exportController.retry()) {
+                navigateExport("EXP-004")
+                exportController.awaitCurrent()
+            }
+        }
+    }
+    fun openExport() = exportController.open()
+    fun shareExport() = exportController.share()
+    fun viewExportLocation() = exportController.viewLocation()
+
+    private fun navigateExport(screenId: String) {
+        val arguments = if (screenId == "EXP-001") {
+            emptyMap()
+        } else {
+            exportController.currentOperationId()?.let { mapOf("operationId" to StableIdArgument(it)) }.orEmpty()
+        }
+        navigator.navigate(LedgerRouteContract.destination(ScreenId(screenId), arguments), SessionGateState.READY)
+    }
+
     fun selectImportMode(mode: ImportModeUi) = importController.selectMode(mode)
 
     fun selectImportSheet(name: String) = importController.selectSheet(name)
@@ -4822,4 +4904,85 @@ private data class ProjectTransactionPagingRequest(
 private sealed interface PendingRecordExit {
     data object Back : PendingRecordExit
     data class TopLevel(val target: TopLevelDestination) : PendingRecordExit
+}
+
+private fun TransactionFilter.toExportFilter(): ExportFilter = ExportFilter(
+    occurredFrom = occurredFrom,
+    occurredThrough = occurredThrough,
+    createdFrom = createdFrom,
+    createdThrough = createdThrough,
+    modifiedFrom = modifiedFrom,
+    modifiedThrough = modifiedThrough,
+    kinds = kinds.mapTo(mutableSetOf()) { it.ordinal },
+    accountIds = accountIds.mapTo(mutableSetOf()) { it.value },
+    cardIds = cardIds.mapTo(mutableSetOf()) { it.value },
+    categoryIds = categoryIds.mapTo(mutableSetOf()) { it.value },
+    merchantIds = merchantIds.mapTo(mutableSetOf()) { it.value },
+    projectIds = projectIds.mapTo(mutableSetOf()) { it.value },
+    settlementActivityIds = settlementActivityIds.mapTo(mutableSetOf()) { it.value },
+    participantIds = participantIds.mapTo(mutableSetOf()) { it.value },
+    currencies = currencies.mapTo(mutableSetOf()) { it.value },
+    statisticalNatures = statisticalNatures.mapTo(mutableSetOf()) { it.ordinal },
+    lifecycleStates = lifecycleStates.mapTo(mutableSetOf()) { it.ordinal },
+    sources = sources.mapTo(mutableSetOf()) { it.ordinal },
+    minimumAccountMinor = amountRange?.minimumAccountMinor,
+    maximumAccountMinor = amountRange?.maximumAccountMinor,
+    amountCurrency = amountRange?.currency?.value,
+    centerLatitudeE7 = geoRadius?.center?.latitudeE7,
+    centerLongitudeE7 = geoRadius?.center?.longitudeE7,
+    radiusMeters = geoRadius?.radiusMeters,
+    hasAttachment = hasAttachment,
+    isRefund = isRefund,
+    hasInstallment = hasInstallment,
+    includedInBudget = includedInBudget,
+    generatedByRecurrence = generatedByRecurrence,
+    searchText = searchText,
+)
+
+private fun ReportExportPayload.toExportSnapshot(): ExportReportSnapshot {
+    val compared = comparison != null
+    val headers = buildList {
+        if (compared) add("period_kind")
+        plan.spec.dimensions.forEach { add("dimension_${it.name.lowercase(Locale.ROOT)}") }
+        plan.spec.measures.forEach { add("measure_${it.name.lowercase(Locale.ROOT)}") }
+    }
+    fun exportRow(row: app.ledger.analytics.domain.ReportRow, periodKind: String?): List<String> = buildList {
+        if (compared) add(requireNotNull(periodKind))
+        row.dimensionValues.forEach { value ->
+            add(
+                when (value) {
+                    is DimensionValue.Date -> value.value.toString()
+                    is DimensionValue.Entity -> value.label
+                    is DimensionValue.Currency -> value.value.value
+                    is DimensionValue.ClosedKey -> value.value
+                },
+            )
+        }
+        row.measureValues.forEach { value ->
+            add(
+                value.minorValue?.toString()?.let { minor -> value.currency?.value?.let { "$minor $it" } ?: minor }
+                    ?: requireNotNull(value.decimalValue).toPlainString(),
+            )
+        }
+    }
+    val exportRows = buildList {
+        rows.forEach { add(exportRow(it, "current".takeIf { compared })) }
+        comparison?.rows?.forEach { add(exportRow(it, "reference")) }
+    }
+    return ExportReportSnapshot(
+        reportKey = reportKey?.value ?: "custom-report",
+        periodStart = period.start.toString(),
+        periodEndInclusive = period.endInclusive.toString(),
+        headers = headers,
+        rows = exportRows,
+        localRevision = plan.asOfLocalRevision.value,
+        valuationRevision = plan.asOfValuationRevision?.value,
+    )
+}
+
+private fun ReportExportFormat.toTransferFormat(): ExportFormat = when (this) {
+    ReportExportFormat.IMAGE -> ExportFormat.IMAGE
+    ReportExportFormat.PDF -> ExportFormat.PDF
+    ReportExportFormat.CSV -> ExportFormat.CSV
+    ReportExportFormat.XLSX -> ExportFormat.XLSX
 }

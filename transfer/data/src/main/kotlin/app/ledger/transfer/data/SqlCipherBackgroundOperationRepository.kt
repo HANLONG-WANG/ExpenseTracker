@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "MagicNumber", "NestedBlockDepth", "TooGenericExceptionCaught")
+@file:Suppress("LongMethod", "MagicNumber", "NestedBlockDepth", "TooGenericExceptionCaught", "TooManyFunctions")
 
 package app.ledger.transfer.data
 
@@ -19,7 +19,12 @@ import app.ledger.transfer.domain.BackgroundOperationType
 import app.ledger.transfer.domain.BackupRepositoryId
 import app.ledger.transfer.domain.BackupSnapshotId
 import app.ledger.transfer.domain.EncryptedCheckpoint
+import app.ledger.transfer.domain.ExportContent
+import app.ledger.transfer.domain.ExportDescriptor
+import app.ledger.transfer.domain.ExportField
+import app.ledger.transfer.domain.ExportFilter
 import app.ledger.transfer.domain.ExportFormat
+import app.ledger.transfer.domain.ExportReportSnapshot
 import app.ledger.transfer.domain.ImportFormat
 import app.ledger.transfer.domain.MaintenanceKind
 import app.ledger.transfer.domain.OperationCheckpoint
@@ -206,8 +211,8 @@ private object OperationParameterCodec {
                 is OperationParameters.Export -> {
                     output.writeByte(1)
                     output.id(parameters.destinationHandleId)
-                    output.writeInt(parameters.format.ordinal)
-                    output.writeBoolean(parameters.includeAttachments)
+                    output.writeByte(EXPORT_CODEC_VERSION)
+                    output.exportDescriptor(parameters.descriptor)
                 }
                 is OperationParameters.FullBackup -> {
                     output.writeByte(2)
@@ -267,7 +272,11 @@ private object OperationParameterCodec {
                     OperationParameters.Import(source, format, account, charset, header, commit)
                 }
             }
-            1 -> OperationParameters.Export(input.id(), ExportFormat.entries[input.readInt()], input.readBoolean())
+            1 -> {
+                val destination = input.id()
+                require(input.readUnsignedByte() == EXPORT_CODEC_VERSION)
+                OperationParameters.Export(destination, input.exportDescriptor())
+            }
             2 -> OperationParameters.FullBackup(BackupRepositoryId(input.id()), input.readBoolean())
             3 -> OperationParameters.DriveUpload(BackupSnapshotId(input.id()), BackupRepositoryId(input.id()))
             4 -> OperationParameters.Restore(input.id(), RestoreMode.entries[input.readInt()])
@@ -293,6 +302,138 @@ private object OperationParameterCodec {
     private fun DataInputStream.readExact(byteCount: Int): ByteArray = ByteArray(byteCount).also(::readFully)
     private fun DataInputStream.nullableId(): StableId? = if (readBoolean()) id() else null
     private fun DataInputStream.nullableUtf8(): String? = if (readBoolean()) readUTF() else null
+
+    private fun DataOutputStream.exportDescriptor(value: ExportDescriptor) {
+        writeInt(value.content.ordinal)
+        writeInt(value.format.ordinal)
+        writeUTF(value.fileName)
+        writeInt(value.fields.size)
+        value.fields.sortedBy(Enum<*>::ordinal).forEach { writeInt(it.ordinal) }
+        writeBoolean(value.includeLocationCoordinates)
+        writeUTF(value.filterSummary)
+        exportFilter(value.filter)
+        writeBoolean(value.report != null)
+        value.report?.let { exportReport(it) }
+        writeBoolean(value.overwriteConfirmed)
+    }
+
+    private fun DataInputStream.exportDescriptor(): ExportDescriptor = ExportDescriptor(
+        content = ExportContent.entries[readInt()],
+        format = ExportFormat.entries[readInt()],
+        fileName = readUTF(),
+        fields = List(boundedCount(ExportField.entries.size)) { ExportField.entries[readInt()] }.toSet(),
+        includeLocationCoordinates = readBoolean(),
+        filterSummary = readUTF(),
+        filter = exportFilter(),
+        report = if (readBoolean()) exportReport() else null,
+        overwriteConfirmed = readBoolean(),
+    )
+
+    private fun DataOutputStream.exportFilter(value: ExportFilter) {
+        nullableInstant(value.occurredFrom)
+        nullableInstant(value.occurredThrough)
+        nullableInstant(value.createdFrom)
+        nullableInstant(value.createdThrough)
+        nullableInstant(value.modifiedFrom)
+        nullableInstant(value.modifiedThrough)
+        intSet(value.kinds)
+        idSet(value.accountIds)
+        idSet(value.cardIds)
+        idSet(value.categoryIds)
+        idSet(value.merchantIds)
+        idSet(value.projectIds)
+        idSet(value.settlementActivityIds)
+        idSet(value.participantIds)
+        stringSet(value.currencies)
+        intSet(value.statisticalNatures)
+        intSet(value.lifecycleStates)
+        intSet(value.sources)
+        nullableLong(value.minimumAccountMinor)
+        nullableLong(value.maximumAccountMinor)
+        nullableUtf8(value.amountCurrency)
+        nullableInt(value.centerLatitudeE7)
+        nullableInt(value.centerLongitudeE7)
+        nullableInt(value.radiusMeters)
+        nullableBoolean(value.hasAttachment)
+        nullableBoolean(value.isRefund)
+        nullableBoolean(value.hasInstallment)
+        nullableBoolean(value.includedInBudget)
+        nullableBoolean(value.generatedByRecurrence)
+        nullableUtf8(value.searchText)
+    }
+
+    private fun DataInputStream.exportFilter(): ExportFilter = ExportFilter(
+        occurredFrom = nullableInstant(), occurredThrough = nullableInstant(),
+        createdFrom = nullableInstant(), createdThrough = nullableInstant(),
+        modifiedFrom = nullableInstant(), modifiedThrough = nullableInstant(),
+        kinds = intSet(), accountIds = idSet(), cardIds = idSet(), categoryIds = idSet(), merchantIds = idSet(),
+        projectIds = idSet(), settlementActivityIds = idSet(), participantIds = idSet(), currencies = stringSet(),
+        statisticalNatures = intSet(), lifecycleStates = intSet(), sources = intSet(),
+        minimumAccountMinor = nullableLong(), maximumAccountMinor = nullableLong(), amountCurrency = nullableUtf8(),
+        centerLatitudeE7 = nullableInt(), centerLongitudeE7 = nullableInt(), radiusMeters = nullableInt(),
+        hasAttachment = nullableBoolean(), isRefund = nullableBoolean(), hasInstallment = nullableBoolean(),
+        includedInBudget = nullableBoolean(), generatedByRecurrence = nullableBoolean(), searchText = nullableUtf8(),
+    )
+
+    private fun DataOutputStream.exportReport(value: ExportReportSnapshot) {
+        writeUTF(value.reportKey)
+        writeUTF(value.periodStart)
+        writeUTF(value.periodEndInclusive)
+        writeInt(value.headers.size)
+        value.headers.forEach(::writeUTF)
+        writeInt(value.rows.size)
+        value.rows.forEach { row -> row.forEach(::writeUTF) }
+        writeLong(value.localRevision)
+        nullableLong(value.valuationRevision)
+    }
+
+    private fun DataInputStream.exportReport(): ExportReportSnapshot {
+        val reportKey = readUTF()
+        val start = readUTF()
+        val end = readUTF()
+        val headers = List(boundedCount(MAX_REPORT_COLUMNS)) { readUTF() }
+        val rows = List(boundedCount(MAX_REPORT_ROWS)) { List(headers.size) { readUTF() } }
+        return ExportReportSnapshot(reportKey, start, end, headers, rows, readLong(), nullableLong())
+    }
+
+    private fun DataOutputStream.nullableInstant(value: Instant?) = nullableLong(value?.toEpochMilli())
+    private fun DataInputStream.nullableInstant(): Instant? = nullableLong()?.let(Instant::ofEpochMilli)
+    private fun DataOutputStream.nullableLong(value: Long?) {
+        writeBoolean(value != null)
+        if (value != null) writeLong(value)
+    }
+    private fun DataInputStream.nullableLong(): Long? = if (readBoolean()) readLong() else null
+    private fun DataOutputStream.nullableInt(value: Int?) {
+        writeBoolean(value != null)
+        if (value != null) writeInt(value)
+    }
+    private fun DataInputStream.nullableInt(): Int? = if (readBoolean()) readInt() else null
+    private fun DataOutputStream.nullableBoolean(value: Boolean?) {
+        writeBoolean(value != null)
+        if (value != null) writeBoolean(value)
+    }
+    private fun DataInputStream.nullableBoolean(): Boolean? = if (readBoolean()) readBoolean() else null
+    private fun DataOutputStream.idSet(values: Set<StableId>) {
+        writeInt(values.size)
+        values.sorted().forEach { id(it) }
+    }
+    private fun DataInputStream.idSet(): Set<StableId> = List(boundedCount(MAX_FILTER_VALUES)) { id() }.toSet()
+    private fun DataOutputStream.intSet(values: Set<Int>) {
+        writeInt(values.size)
+        values.sorted().forEach { writeInt(it) }
+    }
+    private fun DataInputStream.intSet(): Set<Int> = List(boundedCount(MAX_FILTER_VALUES)) { readInt() }.toSet()
+    private fun DataOutputStream.stringSet(values: Set<String>) {
+        writeInt(values.size)
+        values.sorted().forEach { writeUTF(it) }
+    }
+    private fun DataInputStream.stringSet(): Set<String> = List(boundedCount(MAX_FILTER_VALUES)) { readUTF() }.toSet()
+    private fun DataInputStream.boundedCount(maximum: Int): Int = readInt().also { require(it in 0..maximum) }
+
+    private const val EXPORT_CODEC_VERSION = 29
+    private const val MAX_FILTER_VALUES = 10_000
+    private const val MAX_REPORT_COLUMNS = 64
+    private const val MAX_REPORT_ROWS = 100_000
 }
 
 private fun SupportSQLiteDatabase.operationInternalId(uid: StableId): Long? = query("SELECT id FROM background_operation WHERE uid=?", arrayOf(uid.bytes)).use { cursor ->

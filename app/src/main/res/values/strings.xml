@@ -20,5 +20,5 @@
     <string name="global_settlements">互请与结算</string><string name="global_settlements_explanation">管理参与人、分摊头寸、多次部分结算和补充结算</string>
     <string name="global_automation">模板与周期</string><string name="global_automation_explanation">管理快捷模板、周期规则和未入账候选</string>
     <string name="import_worker_channel">账本导入</string><string name="import_worker_title">正在准备导入</string><string name="import_worker_progress">已安全处理 %1$d 行</string>
-    <string name="global_import">导入数据</string><string name="global_import_explanation">从 CSV 或结构化 Excel 安全导入</string><string name="global_import_history">导入历史</string><string name="global_import_history_explanation">查看审计记录并整批撤销</string>
+    <string name="global_import">导入数据</string><string name="global_import_explanation">从 CSV 或结构化 Excel 安全导入</string><string name="global_import_history">导入历史</string><string name="global_import_history_explanation">查看审计记录并整批撤销</string><string name="global_export">导出数据</string><string name="global_export_explanation">导出当前筛选、全量工作簿或报表</string>
 </resources>

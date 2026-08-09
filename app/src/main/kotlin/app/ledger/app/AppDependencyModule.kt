@@ -27,6 +27,7 @@ import app.ledger.finance.application.FormalOccurrenceGenerator
 import app.ledger.finance.application.ImportFinancialApplicationPort
 import app.ledger.finance.application.InstallmentApplicationPort
 import app.ledger.finance.application.JournalApplicationPort
+import app.ledger.finance.application.LedgerExportQueryPort
 import app.ledger.finance.application.LedgerInitializationPort
 import app.ledger.finance.application.LoanApplicationPort
 import app.ledger.finance.application.OpeningBalanceWritePort
@@ -44,6 +45,7 @@ import app.ledger.finance.data.SecureRoomCreditApplicationPort
 import app.ledger.finance.data.SecureRoomImportFinancialApplicationPort
 import app.ledger.finance.data.SecureRoomInstallmentApplicationPort
 import app.ledger.finance.data.SecureRoomJournalApplicationPort
+import app.ledger.finance.data.SecureRoomLedgerExportQueryPort
 import app.ledger.finance.data.SecureRoomLedgerInitializationPort
 import app.ledger.finance.data.SecureRoomLoanApplicationPort
 import app.ledger.finance.data.SecureRoomOpeningBalanceWritePort
@@ -123,6 +125,13 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
     ): JournalApplicationPort = SecureRoomJournalApplicationPort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun ledgerExportQueryPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+    ): LedgerExportQueryPort = SecureRoomLedgerExportQueryPort(context, keyProvider)
 
     @Provides
     @Singleton

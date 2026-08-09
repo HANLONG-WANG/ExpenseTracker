@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-09 (Asia/Tokyo)
-Current stage: P28 — CSV/XLSX general and structured import
-Stage status: VERIFIED (`P28-E001`—`P28-E008`); P00—P27 remain VERIFIED and P29 is the next unstarted stage
+Current stage: P29 — CSV/XLSX/PDF/image export
+Stage status: VERIFIED (`P29-E001`—`P29-E007`); P00—P28 remain VERIFIED and P30 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -366,18 +366,30 @@ P27 is `VERIFIED`. `P27_CONSUMPTION_MAP_MAPPING.md` records the query/index/SDK/
 
 P28 is `VERIFIED`. `P28_IMPORT_MAPPING.md` records the parser/staging/recovery/atomicity/UI boundary. P29 and later stages are not promoted.
 
+### P29 result (verified)
+
+| Area | P29 result | Classification |
+|---|---|---|
+| Ordinary export formats | Current-filter CSV, the complete 15-data-sheet workbook plus metadata, and prepared report CSV/XLSX/PDF/PNG use Commons CSV, FastExcel 0.20.2 and Android PdfDocument without a POI or backup-container path | VERIFIED (`P29-E001`—`P29-E003`) |
+| Streaming and scale | Every source is keyset/page bounded; the API 36 512 MiB device completes 100,000-row CSV/XLSX, 12,000-row 267-page PDF and a complete 100,000-row image-source scan without OOM | VERIFIED (`P29-E002`, `P29-E003`) |
+| Privacy and metadata | Closed fields exclude vault/account-secret data, card output is last-four only and location coordinates are explicit/default-off; schema/app versions, revisions, scope and the non-backup disclaimer accompany output | VERIFIED (`P29-E001`—`P29-E005`) |
+| SAF and recovery | App-private generation, provider `.partial`/`.previous` publication, encrypted handles/descriptors, operation checkpoints, safe cancel/cleanup, crash recovery, conflict confirmation and typed permission/space/unavailable failures pass on devices | VERIFIED (`P29-E003`, `P29-E004`) |
+| UI, routes and pixels | EXP-001—004 and ANA-010 cover all 10 EXP states, three languages, responsive/font/theme boundaries, opaque routes, external-app failure and operation-center mapping; two production Compose digests freeze the textual/token-derived contract | VERIFIED (`P29-E001`, `P29-E006`) |
+
+P29 is `VERIFIED`. `P29_EXPORT_MAPPING.md` records the content/format/field/SAF/recovery/UI boundary. P30 and later stages are not promoted.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
 | Requirements `REQ-001`—`REQ-090` | 90 | 61 requirements are `VERIFIED`; 27 are `IN_PROGRESS`; 2 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 173 are `VERIFIED`; 42 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 177 are `VERIFIED`; 38 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-012, ADR-016—018 and ADR-020 are `VERIFIED`; ADR-007A, ADR-013—015 and ADR-019 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/008/009/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006 are `IN_PROGRESS` |
 | Permanent domain invariants | 35 | 26 are `VERIFIED`, including settlement conservation/local-account/history invariants (`INV-022`—`INV-024`); 9 retain later evidence |
 | Logical schema families | 12 | All 12 frozen physical Schema v1 families remain `VERIFIED`; P26 registers and device-verifies the normalized non-destructive analytics-configuration Schema v2 expansion |
 | Projection families | 7 + search/geographic indexes | Current transaction, account, budget/project/goal, liabilities, settlement and analytics plus both indexes are `VERIFIED`; widget runtime completion remains later-owned |
-| Durable/staging/backup operation inventories | 4 groups | Import operation/staging/audit runtime is `VERIFIED` by P28; backup/restore runtime remains `IN_PROGRESS` for P29—P31 |
+| Durable/staging/backup operation inventories | 4 groups | Import operation/staging/audit and export operation runtime are `VERIFIED` by P28/P29; backup/restore runtime remains `IN_PROGRESS` for P30—P31 |
 
 ## Stage progression
 
@@ -412,7 +424,8 @@ P28 is `VERIFIED`. `P28_IMPORT_MAPPING.md` records the parser/staging/recovery/a
 | P26 | VERIFIED | Revisioned custom reports/dashboards/anomaly rules, exact deterministic forecast/derived series, non-destructive SQLCipher Schema v2 and all seven ANA destinations; `P26-E001`—`P26-E007` |
 | P27 | VERIFIED | R*Tree-bounded consumption-map aggregation, immutable historical values, governed MapLibre cluster/heat/single rendering, accessible failure list and ANA-011/012; `P27-E001`—`P27-E007` |
 | P28 | VERIFIED | Commons CSV/ICU and FastExcel streaming, independent SQLCipher staging, durable resume, explicit mapping/duplicates/FX, all 15 structured kinds, coordinator/shadow atomic commit, audit/undo and IMP-001—010; `P28-E001`—`P28-E008` |
-| P29—P36 | NOT_STARTED | P29 is next; do not promote later work early |
+| P29 | VERIFIED | Current-filter CSV, 15-sheet XLSX, report CSV/XLSX/PDF/PNG, closed sensitive fields, bounded streaming, SAF atomic publication, durable UIDT/WorkManager execution and EXP-001—004/ANA-010; `P29-E001`—`P29-E007` |
+| P30—P36 | NOT_STARTED | P30 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -614,3 +627,24 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p28_import_cont
 ```
 
 All P28 evidence is recorded in `P28-E001`—`P28-E008`. The next entry point is P29. Preserve the FastExcel/no-POI parser boundary, encrypted staging/source descriptors, operationId-only route/Worker payloads, explicit no-split and duplicate decisions, coordinator-only financial writes and validated atomic exchange; do not promote export/backup/restore stages early.
+
+## P29 verified handoff
+
+P29 leaves the repository with bounded ordinary export for the current journal filter, a complete 15-sheet business workbook and prepared reports in CSV/XLSX/PDF/PNG. SAF destinations publish through recoverable temporary names; encrypted handles/descriptors and durable operations survive process restart; coordinates remain default-off and vault secrets have no ordinary-export representation. Ordinary export is explicitly versioned and labeled as not being a complete backup.
+
+The reproducible P29 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p29_export.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p29_export_contracts -v
+./gradlew :transfer:domain:test :transfer:data:testDebugUnitTest :finance:application:test :app:testDebugUnitTest
+./gradlew :transfer:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.transfer.data.StreamingExportScaleDeviceTest,app.ledger.transfer.data.SafExportDestinationDeviceTest
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.LedgerExportQueryDeviceTest
+./gradlew :transfer:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.transfer.data.SqlCipherImportStagingDeviceTest#exportDescriptorAndReportCheckpointSurviveEncryptedRepositoryRecreation
+./gradlew :app:pixel6Api34DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.app.ExportUidtSchedulingDeviceTest
+./gradlew :feature:transfer:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.feature.transfer.ExportUiContractDeviceTest
+./gradlew :app:pixel6Api36DebugAndroidTest
+./gradlew p29Check p29Artifacts --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+```
+
+All P29 evidence is recorded in `P29-E001`—`P29-E007`. The next entry point is P30. Preserve the ordinary-export/backup separation, closed sensitive allowlist, default-off coordinates, revision metadata, bounded sources, encrypted operation descriptors, operationId-only background payloads and recoverable SAF publication; do not reuse ordinary export as a backup container or promote P30+ work early.

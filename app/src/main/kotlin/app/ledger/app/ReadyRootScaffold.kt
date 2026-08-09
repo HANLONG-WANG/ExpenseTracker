@@ -76,7 +76,7 @@ internal fun ReadyRootScaffold(
         snackbarController = snackbarController,
         topBar = {
             val key = navigator.currentKey
-            if (key.contract.screenId.value.startsWith("IMP-")) return@LedgerScaffold
+            if (key.contract.screenId.value.startsWith("IMP-") || key.contract.screenId.value.startsWith("EXP-")) return@LedgerScaffold
             val topLevel = key.contract.screenId.value in setOf("REC-001", "JRN-001", "ACC-001", "BUD-001", "ANA-001")
             LedgerTopAppBar(
                 title = projectGoalDestinationTitleOrNull(key.contract.screenId.value)
@@ -181,6 +181,8 @@ internal fun ReadyRootScaffold(
                     val screenId = key.contract.screenId.value
                     if (screenId.startsWith("IMP-")) {
                         ImportRootDestination(viewModel)
+                    } else if (screenId.startsWith("EXP-")) {
+                        ExportRootDestination(screenId, viewModel, onNavigationChanged = { navigationEpoch += 1 })
                     } else if (screenId in setOf(
                             "ANA-001", "ANA-002", "ANA-003", "ANA-004", "ANA-005", "ANA-006", "ANA-007",
                             "ANA-008", "ANA-009", "ANA-010", "ANA-011", "ANA-012", "ANA-013", "ANA-014", "ANA-015",

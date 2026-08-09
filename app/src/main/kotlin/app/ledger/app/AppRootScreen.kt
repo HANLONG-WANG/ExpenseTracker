@@ -85,6 +85,7 @@ import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.ManagementActions
 import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ReferenceManagementDestination
+import app.ledger.feature.transfer.ExportExecutionPresentation
 import kotlinx.coroutines.delay
 import java.util.Locale
 import app.ledger.feature.journal.R as JournalR
@@ -530,7 +531,9 @@ internal fun RootDestination(
             )
         }
     } else if (screenId == "G-007") {
-        OperationCenterContent(OperationCenterPresentation.EMPTY, onBack)
+        val export by viewModel.exportFlow.collectAsStateWithLifecycle()
+        val presentation = exportOperationCenterPresentation(export.screenId, export.executionPresentation)
+        OperationCenterContent(presentation, onBack)
     } else if (screenId == "G-008") {
         HelpContent(key.encodedArguments["topicKey"], onBack)
     } else {
@@ -604,6 +607,19 @@ private fun AppReferenceDataState.toManagementState(): ManagementDataState = whe
 }
 
 internal enum class OperationCenterPresentation { ACTIVE, PAUSED, FAILED, COMPLETED, EMPTY }
+
+internal fun exportOperationCenterPresentation(
+    screenId: String,
+    execution: ExportExecutionPresentation,
+): OperationCenterPresentation = if (screenId != "EXP-004") {
+    OperationCenterPresentation.EMPTY
+} else {
+    when (execution) {
+        ExportExecutionPresentation.RUNNING, ExportExecutionPresentation.CANCEL_REQUESTED -> OperationCenterPresentation.ACTIVE
+        ExportExecutionPresentation.FAILED -> OperationCenterPresentation.FAILED
+        ExportExecutionPresentation.SUCCEEDED -> OperationCenterPresentation.COMPLETED
+    }
+}
 
 @Composable
 internal fun OperationCenterScreen(presentation: OperationCenterPresentation, onBack: () -> Unit) {
