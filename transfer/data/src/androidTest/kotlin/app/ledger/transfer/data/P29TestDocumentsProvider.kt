@@ -36,13 +36,14 @@ class P29TestDocumentsProvider : DocumentsProvider() {
 
     override fun queryChildDocuments(parentDocumentId: String, projection: Array<out String>?, sortOrder: String?): Cursor {
         enforceAvailable()
-        if (parentDocumentId != ROOT_ID) throw FileNotFoundException(parentDocumentId)
+        val parent = file(parentDocumentId)
+        if (!parent.isDirectory) throw FileNotFoundException(parentDocumentId)
         return MatrixCursor(projection ?: DOCUMENT_COLUMNS).apply {
-            storage().listFiles().orEmpty().sortedBy { it.name }.forEach { include(it, "$ROOT_ID/${it.name}") }
+            parent.listFiles().orEmpty().sortedBy { it.name }.forEach { include(it, "$parentDocumentId/${it.name}") }
         }
     }
 
-    override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean = parentDocumentId == ROOT_ID && documentId.startsWith("$ROOT_ID/")
+    override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean = documentId.startsWith("$parentDocumentId/")
 
     override fun openDocument(documentId: String, mode: String, signal: CancellationSignal?): ParcelFileDescriptor {
         enforceAvailable()
@@ -51,10 +52,13 @@ class P29TestDocumentsProvider : DocumentsProvider() {
 
     override fun createDocument(parentDocumentId: String, mimeType: String, displayName: String): String {
         enforceAvailable()
-        require(parentDocumentId == ROOT_ID)
-        val target = storage().resolve(displayName)
-        if (!target.createNewFile()) throw FileNotFoundException(displayName)
-        return "$ROOT_ID/$displayName"
+        require(!displayName.contains('/') && !displayName.contains(".."))
+        val parent = file(parentDocumentId)
+        if (!parent.isDirectory) throw FileNotFoundException(parentDocumentId)
+        val target = parent.resolve(displayName)
+        val created = if (mimeType == Document.MIME_TYPE_DIR) target.mkdir() else target.createNewFile()
+        if (!created) throw FileNotFoundException(displayName)
+        return "$parentDocumentId/$displayName"
     }
 
     override fun deleteDocument(documentId: String) {
@@ -65,9 +69,10 @@ class P29TestDocumentsProvider : DocumentsProvider() {
     override fun renameDocument(documentId: String, displayName: String): String {
         enforceAvailable()
         val source = file(documentId)
-        val target = storage().resolve(displayName)
+        val parent = requireNotNull(source.parentFile)
+        val target = parent.resolve(displayName)
         if (!source.renameTo(target)) throw FileNotFoundException(documentId)
-        return "$ROOT_ID/$displayName"
+        return documentId.substringBeforeLast('/', ROOT_ID) + "/$displayName"
     }
 
     private fun MatrixCursor.include(target: File, documentId: String) {
@@ -89,7 +94,12 @@ class P29TestDocumentsProvider : DocumentsProvider() {
         }
     }
 
-    private fun file(documentId: String): File = if (documentId == ROOT_ID) storage() else storage().resolve(documentId.substringAfter('/'))
+    private fun file(documentId: String): File {
+        if (documentId == ROOT_ID) return storage()
+        val relative = documentId.removePrefix("$ROOT_ID/")
+        require(relative.isNotBlank() && relative.split('/').none { it.isBlank() || it == ".." })
+        return storage().resolve(relative)
+    }
     private fun storage(): File = requireNotNull(storageRoot)
     private fun enforceAvailable() {
         if (permissionRevoked) throw SecurityException("P29 permission revoked")

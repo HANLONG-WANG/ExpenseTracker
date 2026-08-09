@@ -148,6 +148,23 @@ class DeviceLedgerKeys internal constructor(
     private val attachmentRootKeyset: SecretBytes,
     private val secureSettingsKeyset: SecretBytes,
 ) : AutoCloseable {
+    /** Exported only into a recovery-password protected backup package. */
+    fun portableKeyMaterial(): SecretBytes = ByteArrayOutputStream().use { bytes ->
+        DataOutputStream(bytes).use { output ->
+            output.writeInt(PORTABLE_KEY_MAGIC)
+            output.writeInt(PORTABLE_KEY_VERSION)
+            databaseDek.useBytes { writePortableSecret(output, it) }
+            attachmentRootKeyset.useBytes { writePortableSecret(output, it) }
+            secureSettingsKeyset.useBytes { writePortableSecret(output, it) }
+        }
+        val encoded = bytes.toByteArray()
+        try {
+            SecretBytes.copyOf(encoded)
+        } finally {
+            encoded.fill(0)
+            bytes.reset()
+        }
+    }
     fun secureSettingsAead(): Aead = secureSettingsKeyset.useBytes(LedgerTink::aead)
 
     fun encryptSecureSettings(plaintext: ByteArray, associatedData: ByteArray): ByteArray = secureSettingsKeyset.useBytes { keyset ->
@@ -180,4 +197,15 @@ class DeviceLedgerKeys internal constructor(
     }
 
     override fun toString(): String = "DeviceLedgerKeys(redacted)"
+
+    private fun writePortableSecret(output: DataOutputStream, value: ByteArray) {
+        require(value.isNotEmpty())
+        output.writeInt(value.size)
+        output.write(value)
+    }
+
+    private companion object {
+        const val PORTABLE_KEY_MAGIC = 0x4c504b4d
+        const val PORTABLE_KEY_VERSION = 1
+    }
 }

@@ -29,6 +29,7 @@ import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerTopAppBar
 import app.ledger.core.designsystem.LedgerTopAppBarVariant
 import app.ledger.core.navigation.LedgerDestinationKey
+import app.ledger.feature.transfer.BackupExecutionPresentation
 import app.ledger.feature.transfer.ExportExecutionPresentation
 
 internal enum class MorePresentation { CONTENT, BADGE_UPDATES, OPERATION_IN_PROGRESS }
@@ -42,11 +43,12 @@ internal fun MoreRootDestination(
     onNavigationChanged: () -> Unit,
 ) {
     val export by viewModel.exportFlow.collectAsStateWithLifecycle()
+    val backup by viewModel.backupFlow.collectAsStateWithLifecycle()
     val presentation = if (
         export.screenId == "EXP-004" && export.executionPresentation in setOf(
             ExportExecutionPresentation.RUNNING,
             ExportExecutionPresentation.CANCEL_REQUESTED,
-        )
+        ) || backup.execution in setOf(BackupExecutionPresentation.RUNNING, BackupExecutionPresentation.CANCEL_REQUESTED)
     ) {
         MorePresentation.OPERATION_IN_PROGRESS
     } else {
@@ -104,6 +106,10 @@ internal fun MoreRootDestination(
             viewModel.navigateCurrentFilterExport()
             onNavigationChanged()
         },
+        onBackup = {
+            viewModel.openBackup()
+            onNavigationChanged()
+        },
     )
 }
 
@@ -124,6 +130,7 @@ internal fun MoreScreen(
     onImport: () -> Unit = {},
     onImportHistory: () -> Unit = {},
     onExport: () -> Unit = {},
+    onBackup: () -> Unit = {},
 ) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
@@ -151,6 +158,7 @@ internal fun MoreScreen(
             onImport = onImport,
             onImportHistory = onImportHistory,
             onExport = onExport,
+            onBackup = onBackup,
         )
     }
 }
@@ -173,6 +181,7 @@ internal fun MoreContent(
     onImport: () -> Unit = {},
     onImportHistory: () -> Unit = {},
     onExport: () -> Unit = {},
+    onBackup: () -> Unit = {},
 ) {
     val entries = listOf(
         Triple(stringResource(R.string.global_operations), stringResource(R.string.global_operations_explanation), onOperations),
@@ -189,6 +198,7 @@ internal fun MoreContent(
         Triple(stringResource(R.string.global_import), stringResource(R.string.global_import_explanation), onImport),
         Triple(stringResource(R.string.global_import_history), stringResource(R.string.global_import_history_explanation), onImportHistory),
         Triple(stringResource(R.string.global_export), stringResource(R.string.global_export_explanation), onExport),
+        Triple(stringResource(R.string.global_backup), stringResource(R.string.global_backup_explanation), onBackup),
     )
     LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (presentation == MorePresentation.BADGE_UPDATES) {

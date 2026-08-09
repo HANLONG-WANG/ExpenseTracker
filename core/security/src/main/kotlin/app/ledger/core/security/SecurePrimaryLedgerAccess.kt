@@ -5,6 +5,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.common.StableId
 import app.ledger.core.database.EncryptedDatabaseFactory
 
+/** Privileged transaction gate implemented only by the financial persistence owner. */
+interface SecureLedgerFactPurgeAccess {
+    fun <T> write(bookId: StableId, block: (SupportSQLiteDatabase) -> T): T
+}
+
 /** Narrow infrastructure bridge for encrypted non-financial operation metadata. */
 class SecurePrimaryLedgerAccess(
     context: Context,

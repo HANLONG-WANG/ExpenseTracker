@@ -20,5 +20,7 @@
     <string name="global_automation">テンプレートと定期取引</string><string name="global_automation_explanation">クイックテンプレート、決定的なルール、未記帳候補を管理</string>
     <string name="import_worker_channel">帳簿のインポート</string><string name="import_worker_title">インポートを準備中</string><string name="import_worker_progress">%1$d 行を安全に処理しました</string>
     <string name="global_import">データをインポート</string><string name="global_import_explanation">CSV または構造化 Excel を安全に取り込みます</string><string name="global_import_history">インポート履歴</string><string name="global_import_history_explanation">監査記録を確認し、バッチ全体を取り消します</string>
-    <string name="global_export">データを書き出す</string><string name="global_export_explanation">現在の絞り込み、全データのブック、レポートを書き出す</string>
+    <string name="global_export">データを書き出す</string><string name="global_export_explanation">現在の絞り込み、全データのブック、レポートを書き出す</string><string name="global_backup">バックアップ</string><string name="global_backup_explanation">ローカルまたは Google Drive の暗号化バックアップを作成・検証・管理</string>
+    <string name="backup_worker_channel">暗号化バックアップ</string><string name="backup_worker_title">暗号化バックアップを作成中</string><string name="backup_worker_progress">%1$s · %2$d バイト処理済み</string>
+    <string name="backup_worker_phase_database">データベースのスナップショット</string><string name="backup_worker_phase_objects">オブジェクト処理</string><string name="backup_worker_phase_writing">アップロードまたは書き込み</string><string name="backup_worker_phase_verifying">検証</string><string name="backup_worker_phase_manifest">マニフェスト公開</string><string name="backup_worker_phase_retention">保持処理</string><string name="backup_worker_phase_complete">完了</string>
 </resources>

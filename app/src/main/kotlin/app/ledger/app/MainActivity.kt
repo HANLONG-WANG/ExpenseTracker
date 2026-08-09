@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 class MainActivity : FragmentActivity() {
     private val viewModel: AppRootViewModel by viewModels()
     private lateinit var prompt: BiometricPrompt
+    private lateinit var backupVaultPrompt: BiometricPrompt
     private lateinit var privacy: app.ledger.core.security.AndroidScreenPrivacyController
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,9 +54,27 @@ class MainActivity : FragmentActivity() {
                 }
             },
         )
+        backupVaultPrompt = BiometricPrompt(
+            this,
+            ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    viewModel.backupVaultAuthenticationSucceeded(result.cryptoObject)
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    viewModel.backupVaultAuthenticationCancelled()
+                }
+            },
+        )
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.authenticationRequests.collect { authenticateApplicationUi() }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.backupVaultAuthenticationRequests.collect(::authenticateVaultBackupEnrollment)
             }
         }
         setContent { LedgerAppRoot(viewModel) }
@@ -89,6 +108,18 @@ class MainActivity : FragmentActivity() {
                 .setSubtitle(getString(R.string.global_locked_message))
                 .setAllowedAuthenticators(authenticators)
                 .build(),
+        )
+    }
+
+    private fun authenticateVaultBackupEnrollment(cryptoObject: BiometricPrompt.CryptoObject) {
+        backupVaultPrompt.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle(getString(app.ledger.feature.transfer.R.string.backup_include_vault))
+                .setSubtitle(getString(app.ledger.feature.transfer.R.string.backup_include_vault_supporting))
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .setNegativeButtonText(getString(android.R.string.cancel))
+                .build(),
+            cryptoObject,
         )
     }
 }

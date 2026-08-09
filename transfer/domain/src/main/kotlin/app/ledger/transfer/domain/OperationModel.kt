@@ -41,6 +41,7 @@ enum class BackgroundOperationType {
     RESTORE_MERGE,
     ATTACHMENT_MIGRATION,
     DATABASE_MAINTENANCE,
+    BACKUP_KEY_ROTATION,
 }
 
 enum class BackgroundOperationState {
@@ -89,10 +90,15 @@ sealed interface OperationParameters {
     data class FullBackup(
         val repositoryId: BackupRepositoryId,
         val portable: Boolean,
+        val destinationHandleId: StableId? = null,
     ) : OperationParameters
 
     data class DriveUpload(
         val snapshotId: BackupSnapshotId,
+        val repositoryId: BackupRepositoryId,
+    ) : OperationParameters
+
+    data class BackupRecoveryReencryption(
         val repositoryId: BackupRepositoryId,
     ) : OperationParameters
 

@@ -1003,3 +1003,57 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: the durable QUEUED/PREPARING/RUNNING/COMMITTING/failure recovery flow, allowlisted SQL cursor conversion, operation-parameter codec and writer-format dispatcher exceed generic Detekt complexity/return/function-count thresholds when their fail-closed exits remain explicit.
 - Decision: fix the actual swallowed-error/format/line-length findings and retain every global rule. Apply only file-local named metric suppressions to the P29 state machine, fixed SQL/codec layouts, bounded writers and closed descriptor validation. The Commons CSV header spread copies at most the closed 22-field header array and receives a named `SpreadOperator` suppression; exception-to-typed-failure translation receives `SwallowedException` because privacy policy forbids logging raw provider/source errors.
 - Consequence: `detekt` reports zero findings without disabling a rule or adding an architecture allowlist. Device fault, scale, recovery and mutation tests continue to exercise every suppressed branch and reject boundary weakening.
+
+## DL-142 — A backup snapshot is an immutable publication fact
+
+- Date/stage: 2026-08-09 / P30
+- Surface issue: updating a provisional snapshot row to `COMPLETE` could expose a half-published graph after process death and would conflict with the append-only backup facts in the frozen schema.
+- Decision: objects are streamed, authenticated and re-opened for checksum verification first; the encrypted manifest is published next; only then does one transaction insert the immutable COMPLETE snapshot and ordered object references. There is no snapshot-status update path. An exact retry returns the existing snapshot only when metadata, manifest hash and reference order match; otherwise it fails closed. Retention removes immutable facts only through the schema's narrow purge guard and deletes objects only after a same-repository unreferenced query.
+- Consequence: only final-manifest publications are valid, post-publication progress/retention reporting cannot make a durable success false, retry cannot duplicate or mutate history and interrupted objects remain safely collectible.
+
+## DL-143 — Recovery and Vault use separate wraps without background secret disclosure
+
+- Date/stage: 2026-08-09 / P30
+- Decision: every repository key has a device-envelope wrap and an independent recovery-password wrap with a fresh random salt plus serialized Argon2id memory/iteration/parallelism parameters. Password change is either future-only or a durable streaming re-encryption of all accessible historical manifests. Vault inclusion is unavailable without a recovery password; a foreground biometric CryptoObject produces only the Vault ciphertext and recovery-wrapped Vault key, so the background backup path never receives a full card number or CVC.
+- Consequence: loss of the recovery password has the explicitly disclosed no-recovery result, password rotation does not reuse salts, and an unattended backup cannot turn Vault authentication into a reusable plaintext session.
+
+## DL-144 — Drive backup is repository-scoped resumable object publication
+
+- Date/stage: 2026-08-09 / P30
+- Surface issue: a broad Drive scope or a single multipart upload would violate least privilege and could duplicate final snapshots after connection loss.
+- Decision: Google Identity 21.6.0 requests only `drive.file`; access tokens remain memory-only. OkHttp calls Drive REST v3 inside an idempotently found/created repository folder. Upload-session URL and `Long` offset are stored in SQLCipher, chunks use `Content-Range`, ambiguous responses are reconciled with a zero-length Range probe, and completed files are verified against transport metadata before checkpoint removal. Header/objects/retained manifests upload before the current manifest; that current manifest is the sole final publication artifact. Reference GC lists every page and deletes only stale managed names inside the repository folder.
+- Consequence: interruption resumes without replaying acknowledged bytes or publishing twice, unrelated Drive files are unreachable to the collector, and Drive remains explicitly labelled backup rather than sync.
+
+## DL-145 — SAF atomicity follows provider operations with recoverable names
+
+- Date/stage: 2026-08-09 / P30
+- Decision: persisted tree authorization is revalidated at use time. Managed objects and portable containers stream to provider `.partial` names; an existing final is retained as `.previous` until the complete replacement is renamed. Cancel, permission revocation, ENOSPC and unavailable-provider failures are distinct and cleanup restores the prior final when possible.
+- Consequence: a provider cannot expose a valid-looking partial backup, permission repair has an explicit UI state and no complete document is buffered in app memory.
+
+## DL-146 — Automatic backup observes successful financial commits once per local day
+
+- Date/stage: 2026-08-09 / P30
+- Decision: `FinancialMutationCoordinator` emits a post-commit observer signal only after the unified transaction succeeds. The automatic scheduler compares the committed ledger revision and local date to its encrypted checkpoint and enqueues at most the first newer revision each day. Startup re-enqueues unfinished operations. WorkManager foreground execution and API 34+ user-initiated Drive transfer both carry only `operationId`; unmetered policy is expressed as the platform network capability.
+- Consequence: failed writes and repeated changes do not create duplicate daily backups, process death does not lose an accepted operation, and neither financial values nor repository credentials enter platform scheduler payloads.
+
+## DL-147 — P30 scale evidence uses a real sparse stream, not an allocated data buffer
+
+- Date/stage: 2026-08-09 / P30
+- Surface issue: allocating tens of gigabytes for a fixture would measure the test host rather than prove the production stream and would itself violate the bounded-memory requirement.
+- Decision: the JVM gate creates a real 48 GiB sparse file, passes it through the production Drive chunk source, transmits one 256 KiB chunk and persists the acknowledged position as `Long` while the JVM is capped at 256 MiB. ZIP64 and repository tests separately stream real encrypted content through their complete writer/reader loops.
+- Consequence: the proof crosses `Int.MAX_VALUE` without whole-source allocation and detects regressions to `Int` offsets or read-all implementations while remaining repeatable on the build host.
+
+## DL-148 — Backup retention enters append-only purge through the financial persistence owner
+
+- Date/stage: 2026-08-09 / P30
+- Surface issue: immutable backup rows use the same schema purge guard as other facts, but letting `transfer:data` switch `book.state` would violate the frozen financial-SQL ownership even though the deleted rows themselves are backup metadata.
+- Priority applied: the architecture and coordinator/security boundary outrank infrastructure convenience.
+- Decision: `core:security` exposes only the generic encrypted-database maintenance gate contract. `finance:data` implements the atomic state/guard transition in `SecureFinancialFactPurgeAccess`; app composition injects it into `SqlCipherBackupCatalog`. The catalog contains only backup-table insert/query/delete SQL and cannot update `book` or the guard. The app does not gain a `core:database` dependency.
+- Consequence: retention remains one guarded SQLCipher transaction, triggers stay enabled, the frozen 40-project graph is unchanged and source policy rejects any future transfer-owned financial mutation.
+
+## DL-149 — P30 streaming state-machine metric suppressions remain local and named
+
+- Date/stage: 2026-08-09 / P30
+- Surface issue: explicit cancellation, post-publication truth, Range reconciliation, provider rollback and typed exception mapping exceed generic complexity/return/nesting thresholds when every fail-closed boundary remains visible.
+- Decision: retain every global Detekt rule, fix the actual unused parameter, dynamic test tag and module-boundary findings, and use file-local named suppressions only for complexity, fixed-layout numbers/lines and intentional exception-to-typed-failure translation in P30 workflow files. No SQL, privacy, dependency or correctness rule is suppressed.
+- Consequence: Detekt has zero findings; frozen architecture and source-policy gates independently cover 40 projects and 280 production files, while device/fault/mutation suites execute the suppressed branches.

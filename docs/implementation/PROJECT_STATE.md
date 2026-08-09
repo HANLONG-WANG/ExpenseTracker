@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-09 (Asia/Tokyo)
-Current stage: P29 — CSV/XLSX/PDF/image export
-Stage status: VERIFIED (`P29-E001`—`P29-E007`); P00—P28 remain VERIFIED and P30 is the next unstarted stage
+Current stage: P30 — local and Google Drive encrypted backup
+Stage status: VERIFIED (`P30-E001`—`P30-E008`); P00—P29 remain VERIFIED and P31 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -378,18 +378,31 @@ P28 is `VERIFIED`. `P28_IMPORT_MAPPING.md` records the parser/staging/recovery/a
 
 P29 is `VERIFIED`. `P29_EXPORT_MAPPING.md` records the content/format/field/SAF/recovery/UI boundary. P30 and later stages are not promoted.
 
+### P30 result (verified)
+
+| Area | P30 result | Classification |
+|---|---|---|
+| Managed repository | Versioned authenticated headers, immutable COMPLETE manifests, fixed SQLCipher chunks, attachment reuse, ordered references, configurable retention and reference-only GC provide logical-full/physical-incremental snapshots | VERIFIED (`P30-E001`, `P30-E002`, `P30-E004`) |
+| Portable encrypted backup | Apache Commons Compress ZIP64 is emitted under Tink Streaming AEAD and contains database, settings, attachments, history, portable key material and optional recovery-wrapped Vault material without whole-document buffering | VERIFIED (`P30-E002`, `P30-E003`, `P30-E005`) |
+| Recovery and Vault security | Device and recovery envelopes use independent random Argon2id salts/parameters; password changes support future-only or accessible-history re-encryption; background Vault inclusion sees only ciphertext and requires a configured recovery password | VERIFIED (`P30-E001`—`P30-E003`) |
+| SAF and Drive | Persisted SAF directories publish through recoverable temporary names; Google Identity `drive.file` and Drive REST v3 use a repository-specific folder, resumable sessions, Range recovery, object verification, final manifest publication and scoped stale-object GC | VERIFIED (`P30-E001`, `P30-E002`, `P30-E005`) |
+| Scheduling and operation lifecycle | The first committed financial change per local day schedules at most one backup; durable encrypted state supports progress, safe cancellation, process restart and cleanup while platform payloads carry only `operationId` | VERIFIED (`P30-E002`, `P30-E004`) |
+| UI, routes and pixels | BKP-001—007 and SYS-003 cover all 28 YAML states in zh-CN/en-US/ja-JP, responsive/font/theme/accessibility boundaries, password-redacted semantics, Operation Center linkage and two production Compose digests | VERIFIED (`P30-E001`, `P30-E006`) |
+
+P30 is `VERIFIED`. `P30_BACKUP_MAPPING.md` records the repository/container/key/transport/scheduling/UI boundary. Restore, replacement and merge remain P31 and are not promoted.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 61 requirements are `VERIFIED`; 27 are `IN_PROGRESS`; 2 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 177 are `VERIFIED`; 38 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 63 requirements are `VERIFIED`; 25 are `IN_PROGRESS`; 2 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 185 are `VERIFIED`; 30 remain `NOT_STARTED` |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-012, ADR-016—018 and ADR-020 are `VERIFIED`; ADR-007A, ADR-013—015 and ADR-019 are `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/008/009/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006 are `IN_PROGRESS` |
 | Permanent domain invariants | 35 | 26 are `VERIFIED`, including settlement conservation/local-account/history invariants (`INV-022`—`INV-024`); 9 retain later evidence |
 | Logical schema families | 12 | All 12 frozen physical Schema v1 families remain `VERIFIED`; P26 registers and device-verifies the normalized non-destructive analytics-configuration Schema v2 expansion |
 | Projection families | 7 + search/geographic indexes | Current transaction, account, budget/project/goal, liabilities, settlement and analytics plus both indexes are `VERIFIED`; widget runtime completion remains later-owned |
-| Durable/staging/backup operation inventories | 4 groups | Import operation/staging/audit and export operation runtime are `VERIFIED` by P28/P29; backup/restore runtime remains `IN_PROGRESS` for P30—P31 |
+| Durable/staging/backup operation inventories | 4 groups | Import operation/staging/audit, export runtime and backup repository/operation runtime are `VERIFIED` by P28—P30; restore/merge runtime remains `IN_PROGRESS` for P31 |
 
 ## Stage progression
 
@@ -425,7 +438,8 @@ P29 is `VERIFIED`. `P29_EXPORT_MAPPING.md` records the content/format/field/SAF/
 | P27 | VERIFIED | R*Tree-bounded consumption-map aggregation, immutable historical values, governed MapLibre cluster/heat/single rendering, accessible failure list and ANA-011/012; `P27-E001`—`P27-E007` |
 | P28 | VERIFIED | Commons CSV/ICU and FastExcel streaming, independent SQLCipher staging, durable resume, explicit mapping/duplicates/FX, all 15 structured kinds, coordinator/shadow atomic commit, audit/undo and IMP-001—010; `P28-E001`—`P28-E008` |
 | P29 | VERIFIED | Current-filter CSV, 15-sheet XLSX, report CSV/XLSX/PDF/PNG, closed sensitive fields, bounded streaming, SAF atomic publication, durable UIDT/WorkManager execution and EXP-001—004/ANA-010; `P29-E001`—`P29-E007` |
-| P30—P36 | NOT_STARTED | P30 is next; do not promote later work early |
+| P30 | VERIFIED | Always-encrypted managed and portable backup, chunk/object reuse, retention/GC, recovery/Vault wrapping, SAF/Drive resumability, daily scheduling and BKP-001—007/SYS-003; `P30-E001`—`P30-E008` |
+| P31—P36 | NOT_STARTED | P31 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -648,3 +662,22 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p29_export_cont
 ```
 
 All P29 evidence is recorded in `P29-E001`—`P29-E007`. The next entry point is P30. Preserve the ordinary-export/backup separation, closed sensitive allowlist, default-off coordinates, revision metadata, bounded sources, encrypted operation descriptors, operationId-only background payloads and recoverable SAF publication; do not reuse ordinary export as a backup container or promote P30+ work early.
+
+## P30 verified handoff
+
+P30 leaves the repository with an always-encrypted logical-full/physical-incremental backup repository, an independently recoverable ZIP64 portable container and resumable SAF/Drive publication. A snapshot becomes visible only after every encrypted object and checksum verifies and its manifest is published; unfinished objects remain collectible. The background path never decrypts Vault PAN/CVC data, and restore-password absence closes the Vault option.
+
+The reproducible P30 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p30_backup.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p30_backup_contracts -v
+./gradlew :transfer:domain:test :transfer:data:testDebugUnitTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :core:security:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.core.security.BackupKeyEnvelopeDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :app:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.app.ManagedBackupSqlCipherDeviceTest,app.ledger.app.BackupUidtSchedulingDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :transfer:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.transfer.data.SafBackupRepositoryDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :feature:transfer:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.feature.transfer.BackupUiContractDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p30Check p30Artifacts --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+```
+
+All P30 evidence is recorded in `P30-E001`—`P30-E008`. The next entry point is P31. Preserve immutable final-manifest publication, authenticated object hashes, reference-only GC, independent recovery salts/parameters, background-ciphertext-only Vault handling, repository-scoped Drive access, persisted resumable checkpoints and operationId-only platform payloads; reuse these artifacts for restore verification without promoting P31 before its shadow rebuild/exchange and rollback gates pass.

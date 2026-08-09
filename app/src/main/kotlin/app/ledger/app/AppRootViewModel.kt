@@ -2,10 +2,13 @@
 
 package app.ledger.app
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import androidx.biometric.BiometricPrompt
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -143,6 +146,7 @@ import app.ledger.feature.settlement.SettlementLoadState
 import app.ledger.feature.settlement.SettlementParticipantDraft
 import app.ledger.feature.settlement.SettlementPolicy
 import app.ledger.feature.settlement.SettlementPresentation
+import app.ledger.feature.transfer.BackupFlowUiState
 import app.ledger.feature.transfer.ExportFlowUiState
 import app.ledger.feature.transfer.ImportModeUi
 import app.ledger.finance.application.AccountDraft
@@ -303,11 +307,14 @@ import app.ledger.finance.domain.TransactionLifecycleState
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountType
 import app.ledger.finance.domain.WeekendAdjustment
+import app.ledger.transfer.domain.BackupNetworkPolicy
+import app.ledger.transfer.domain.BackupRepositoryKind
 import app.ledger.transfer.domain.ExportContent
 import app.ledger.transfer.domain.ExportField
 import app.ledger.transfer.domain.ExportFilter
 import app.ledger.transfer.domain.ExportFormat
 import app.ledger.transfer.domain.ExportReportSnapshot
+import app.ledger.transfer.domain.RecoveryPasswordChangeMode
 import com.google.protobuf.ByteString
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -405,8 +412,10 @@ internal class AppRootViewModel @Inject constructor(
         runtimeSources,
     )
     private val exportController = ExportController(context, keyProvider, runtimeSources)
+    private val backupController = BackupController(context, keyProvider, runtimeSources)
     val importWizard = importController.state
     val exportFlow: StateFlow<ExportFlowUiState> = exportController.state
+    val backupFlow: StateFlow<BackupFlowUiState> = backupController.state
     val analysis: StateFlow<AnalysisLoadState> = analysisController.state
     private val batchEntryController = BatchEntryController(
         batchEntryApplicationPort,
@@ -425,6 +434,9 @@ internal class AppRootViewModel @Inject constructor(
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val authenticationRequests = mutableAuthenticationRequests.asSharedFlow()
+
+    private val mutableBackupVaultAuthenticationRequests = MutableSharedFlow<BiometricPrompt.CryptoObject>(extraBufferCapacity = 1)
+    val backupVaultAuthenticationRequests = mutableBackupVaultAuthenticationRequests.asSharedFlow()
 
     private val mutableGlobalSnackbarMessages = MutableSharedFlow<GlobalSnackbarMessage>(extraBufferCapacity = 1)
     val globalSnackbarMessages = mutableGlobalSnackbarMessages.asSharedFlow()
@@ -4773,6 +4785,95 @@ internal class AppRootViewModel @Inject constructor(
             exportController.currentOperationId()?.let { mapOf("operationId" to StableIdArgument(it)) }.orEmpty()
         }
         navigator.navigate(LedgerRouteContract.destination(ScreenId(screenId), arguments), SessionGateState.READY)
+    }
+
+    fun openBackup() {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            backupController.begin(ready.bookId)
+            withContext(Dispatchers.Main.immediate) { navigateBackup("BKP-001") }
+        }
+    }
+
+    fun navigateBackup(screenId: String) {
+        backupController.setScreen(screenId)
+        navigator.navigate(LedgerRouteContract.destination(ScreenId(screenId)), SessionGateState.READY)
+    }
+
+    fun selectBackupRepository(kind: BackupRepositoryKind) = backupController.selectRepositoryKind(kind)
+
+    fun selectBackupDirectory(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) { backupController.selectDirectory(uri) }
+    }
+
+    fun requestBackupDriveAuthorization(launchResolution: (PendingIntent) -> Unit) {
+        viewModelScope.launch {
+            backupController.authorizeDrive()?.let(launchResolution)
+        }
+    }
+
+    fun completeBackupDriveAuthorization(intent: Intent?) = backupController.completeDriveAuthorization(intent)
+
+    fun disconnectBackupDrive() {
+        viewModelScope.launch { backupController.disconnectDrive() }
+    }
+
+    fun changeBackupRecoveryPassword(value: String) = backupController.changeRecoveryPassword(value)
+    fun changeBackupRecoveryConfirmation(value: String) = backupController.changeRecoveryConfirmation(value)
+    fun changeBackupRecoveryMode(mode: RecoveryPasswordChangeMode) = backupController.changePasswordMode(mode)
+
+    fun saveBackupRecoveryPassword() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val saved = backupController.saveRecoveryPassword()
+            if (saved.succeeded) {
+                saved.vaultCryptoObject?.let { mutableBackupVaultAuthenticationRequests.emit(it) }
+                backupController.awaitCurrent()
+            }
+        }
+    }
+
+    fun backupVaultAuthenticationSucceeded(cryptoObject: BiometricPrompt.CryptoObject?) {
+        if (cryptoObject == null || !backupController.completeVaultBackupEnrollment(cryptoObject)) {
+            backupController.cancelVaultBackupEnrollment()
+        }
+    }
+
+    fun backupVaultAuthenticationCancelled() = backupController.cancelVaultBackupEnrollment()
+
+    fun changeAutomaticBackup(enabled: Boolean) = backupController.setAutomaticBackup(enabled)
+    fun changeBackupRetentionCount(value: String) = backupController.changeRetentionCount(value)
+    fun changeBackupRetentionDays(value: String) = backupController.changeRetentionDays(value)
+    fun changeBackupIncludeVault(enabled: Boolean) = backupController.setIncludeVault(enabled)
+    fun changeBackupNetworkPolicy(policy: BackupNetworkPolicy) = backupController.setNetworkPolicy(policy)
+    fun saveBackupSettings() {
+        backupController.saveSettings()
+    }
+
+    fun selectBackupSnapshot(snapshotId: String): Boolean {
+        if (!backupController.selectSnapshot(snapshotId)) return false
+        val stableId = StableId.parse(snapshotId).getOrNull() ?: return false
+        navigator.navigate(
+            LedgerRouteContract.destination(ScreenId("BKP-006"), mapOf("snapshotId" to StableIdArgument(stableId))),
+            SessionGateState.READY,
+        )
+        return true
+    }
+
+    fun changePortableBackup(enabled: Boolean) = backupController.setPortable(enabled)
+    fun changePortableBackupName(value: String) = backupController.changePortableName(value)
+
+    fun startBackup(treeUri: Uri?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (backupController.startBackup(treeUri)) backupController.awaitCurrent()
+        }
+    }
+
+    fun cancelBackup() = backupController.cancel()
+
+    fun retryBackup() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (backupController.retry()) backupController.awaitCurrent()
+        }
     }
 
     fun selectImportMode(mode: ImportModeUi) = importController.selectMode(mode)

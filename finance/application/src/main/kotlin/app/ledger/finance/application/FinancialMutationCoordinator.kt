@@ -1,3 +1,5 @@
+@file:Suppress("NestedBlockDepth")
+
 package app.ledger.finance.application
 
 import app.ledger.core.common.CommandId
@@ -9,9 +11,28 @@ import app.ledger.finance.domain.FinancialCommand
 import app.ledger.finance.domain.FinancialMutationPlan
 import app.ledger.finance.domain.FinancialMutationPlanValidator
 import app.ledger.finance.domain.PlanningSnapshot
+import java.util.concurrent.CopyOnWriteArraySet
 
 interface FinancialMutationCoordinator {
     suspend fun execute(command: FinancialCommand): DomainResult<CommandReceipt>
+}
+
+fun interface FinancialCommitObserver {
+    fun onCommitted(receipt: CommandReceipt)
+}
+
+/** Process-local fan-out invoked only after a new atomic financial commit succeeds. */
+object FinancialCommitObserverRegistry {
+    private val observers = CopyOnWriteArraySet<FinancialCommitObserver>()
+
+    fun register(observer: FinancialCommitObserver): AutoCloseable {
+        observers += observer
+        return AutoCloseable { observers -= observer }
+    }
+
+    internal fun notifyCommitted(receipt: CommandReceipt) {
+        observers.forEach { observer -> runCatching { observer.onCommitted(receipt) } }
+    }
 }
 
 interface LedgerWriteGate {
@@ -91,7 +112,10 @@ class DefaultFinancialMutationCoordinator(
                 val validated = FinancialMutationPlanValidator.validate(command, snapshot.value, proposed.value)
             ) {
                 is DomainResult.Failure -> validated
-                is DomainResult.Success -> commitRepository.commit(command, validated.value)
+                is DomainResult.Success -> when (val committed = commitRepository.commit(command, validated.value)) {
+                    is DomainResult.Failure -> committed
+                    is DomainResult.Success -> committed.also { FinancialCommitObserverRegistry.notifyCommitted(it.value) }
+                }
             }
         }
     }

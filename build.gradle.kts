@@ -1493,6 +1493,72 @@ tasks.register("p29Artifacts") {
     dependsOn("p02Artifacts")
 }
 
+val validateP30Backup by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P30 encrypted repositories, portable ZIP64, SAF/Drive recovery, retention, privacy and UI coverage."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p30_backup.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/security/src") { include("**/*") },
+        fileTree("feature/transfer/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*") },
+        fileTree("transfer/domain/src") { include("**/*") },
+        fileTree("transfer/data/src") { include("**/*") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+        "gradle/libs.versions.toml",
+    )
+}
+
+val validateP30BackupFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P30 gate rejects encryption, ZIP64, immutable publication, Drive, payload and privacy weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p30_backup_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p30_backup.py",
+        "scripts/tests/test_p30_backup_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/security/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/transfer/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("transfer/domain/src/main/kotlin") { include("**/*.kt") },
+        fileTree("transfer/data/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p30Check") {
+    group = "verification"
+    description = "Runs P30 static, JVM, lint and architecture evidence; Keystore/SQLCipher/SAF/UIDT/UI managed-device suites run separately."
+    dependsOn(
+        validateP30Backup,
+        validateP30BackupFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":transfer:domain:test",
+        ":transfer:data:testDebugUnitTest",
+        ":finance:application:test",
+        ":app:testDebugUnitTest",
+        ":app:lintDebug",
+        ":core:security:lintDebug",
+        ":feature:transfer:lintDebug",
+        ":transfer:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+tasks.register("p30Artifacts") {
+    group = "verification"
+    description = "Generates P30 coverage and inherited SBOM/license artifacts."
+    dependsOn("p02Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

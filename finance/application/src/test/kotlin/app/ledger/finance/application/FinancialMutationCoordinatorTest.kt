@@ -113,6 +113,30 @@ class FinancialMutationCoordinatorTest {
         coVerify(exactly = 1) { commitRepository.commit(command, plan) }
     }
 
+    @Test
+    fun `automatic backup observer receives only a newly committed receipt`() = runTest {
+        val command = command()
+        val book = book()
+        val snapshot = snapshot(book)
+        val plan = plan(command, book)
+        val receipt = receipt(command)
+        val receiptRepository = mockk<CommandReceiptRepository>()
+        val snapshotRepository = mockk<FinancialPlanningSnapshotRepository>()
+        val planner = mockk<FinancialPlanningPort>()
+        val commitRepository = mockk<AtomicFinancialCommitRepository>()
+        coEvery { receiptRepository.find(command.commandId) } returnsMany listOf(DomainResult.Success(null), DomainResult.Success(receipt))
+        coEvery { snapshotRepository.load(command) } returns DomainResult.Success(snapshot)
+        every { planner.plan(command, snapshot) } returns DomainResult.Success(plan)
+        coEvery { commitRepository.commit(command, plan) } returns DomainResult.Success(receipt)
+        val observed = mutableListOf<CommandReceipt>()
+        FinancialCommitObserverRegistry.register(FinancialCommitObserver(observed::add)).use {
+            val coordinator = coordinator(receiptRepository, snapshotRepository, planner, commitRepository)
+            coordinator.execute(command) shouldBe DomainResult.Success(receipt)
+            coordinator.execute(command) shouldBe DomainResult.Success(receipt)
+        }
+        observed shouldBe listOf(receipt)
+    }
+
     private fun coordinator(
         receipts: CommandReceiptRepository,
         snapshots: FinancialPlanningSnapshotRepository,

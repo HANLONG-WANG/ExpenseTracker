@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.common.StableId
 import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.EncryptedDatabaseFactory
+import app.ledger.core.database.LedgerMigrations
 import app.ledger.core.security.DeviceLedgerKeyProvider
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -34,6 +35,7 @@ class SecureShadowLedgerAccess(
     private val keyProvider: DeviceLedgerKeyProvider,
 ) {
     private val applicationContext = context.applicationContext
+    val currentDatabaseSchemaVersion: Int get() = LedgerMigrations.CURRENT_VERSION
 
     fun createSnapshot(bookId: StableId, operationId: StableId): ShadowSnapshot {
         val shadowName = shadowName(operationId)

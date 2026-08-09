@@ -16,9 +16,14 @@ dependencies {
     implementation(libs.stax.api)
     implementation(libs.androidx.sqlite)
     implementation(libs.androidx.documentfile)
+    implementation(libs.commons.compress)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.tink)
     implementation(libs.coroutines.core)
 
     testImplementation(libs.fastexcel)
+    testImplementation(libs.mockwebserver)
     androidTestImplementation(libs.fastexcel)
 }
 

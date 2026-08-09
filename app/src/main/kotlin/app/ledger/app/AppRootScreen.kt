@@ -85,6 +85,7 @@ import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.ManagementActions
 import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ReferenceManagementDestination
+import app.ledger.feature.transfer.BackupExecutionPresentation
 import app.ledger.feature.transfer.ExportExecutionPresentation
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -532,7 +533,8 @@ internal fun RootDestination(
         }
     } else if (screenId == "G-007") {
         val export by viewModel.exportFlow.collectAsStateWithLifecycle()
-        val presentation = exportOperationCenterPresentation(export.screenId, export.executionPresentation)
+        val backup by viewModel.backupFlow.collectAsStateWithLifecycle()
+        val presentation = operationCenterPresentation(export.screenId, export.executionPresentation, backup.execution)
         OperationCenterContent(presentation, onBack)
     } else if (screenId == "G-008") {
         HelpContent(key.encodedArguments["topicKey"], onBack)
@@ -618,6 +620,26 @@ internal fun exportOperationCenterPresentation(
         ExportExecutionPresentation.RUNNING, ExportExecutionPresentation.CANCEL_REQUESTED -> OperationCenterPresentation.ACTIVE
         ExportExecutionPresentation.FAILED -> OperationCenterPresentation.FAILED
         ExportExecutionPresentation.SUCCEEDED -> OperationCenterPresentation.COMPLETED
+    }
+}
+
+internal fun operationCenterPresentation(
+    exportScreenId: String,
+    exportExecution: ExportExecutionPresentation,
+    backupExecution: BackupExecutionPresentation,
+): OperationCenterPresentation {
+    val export = exportOperationCenterPresentation(exportScreenId, exportExecution)
+    val backup = when (backupExecution) {
+        BackupExecutionPresentation.READY -> OperationCenterPresentation.EMPTY
+        BackupExecutionPresentation.RUNNING, BackupExecutionPresentation.CANCEL_REQUESTED -> OperationCenterPresentation.ACTIVE
+        BackupExecutionPresentation.FAILED -> OperationCenterPresentation.FAILED
+        BackupExecutionPresentation.SUCCEEDED -> OperationCenterPresentation.COMPLETED
+    }
+    return when {
+        OperationCenterPresentation.ACTIVE in setOf(export, backup) -> OperationCenterPresentation.ACTIVE
+        OperationCenterPresentation.FAILED in setOf(export, backup) -> OperationCenterPresentation.FAILED
+        OperationCenterPresentation.COMPLETED in setOf(export, backup) -> OperationCenterPresentation.COMPLETED
+        else -> OperationCenterPresentation.EMPTY
     }
 }
 

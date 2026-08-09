@@ -41,6 +41,9 @@ dependencies {
     implementation(libs.paging.compose)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.documentfile)
+    implementation(libs.androidx.sqlite)
+    implementation(libs.okhttp)
+    implementation(libs.play.services.auth)
     implementation(libs.work.runtime.ktx)
 }
 

@@ -2,6 +2,10 @@ package app.ledger.core.security
 
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.params.Argon2Parameters
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.security.GeneralSecurityException
 import java.security.SecureRandom
 import javax.crypto.AEADBadTagException
@@ -223,4 +227,53 @@ class RecoveryPasswordKeyWrapper(
         const val GCM_TAG_BITS = 128
         const val CIPHER_TRANSFORMATION = "AES/GCM/NoPadding"
     }
+}
+
+object RecoveryWrappedKeyMaterialCodec {
+    fun encode(value: RecoveryWrappedKeyMaterial): ByteArray = ByteArrayOutputStream().use { bytes ->
+        DataOutputStream(bytes).use { output ->
+            output.writeInt(MAGIC)
+            output.writeInt(value.envelopeVersion)
+            output.writeInt(value.parameters.formatVersion)
+            output.writeInt(value.parameters.memoryKiB)
+            output.writeInt(value.parameters.iterations)
+            output.writeInt(value.parameters.parallelism)
+            output.writeInt(value.parameters.outputBytes)
+            output.bytes(value.salt)
+            output.bytes(value.nonce)
+            output.bytes(value.ciphertext)
+        }
+        bytes.toByteArray()
+    }
+
+    fun decode(encoded: ByteArray): RecoveryWrappedKeyMaterial = DataInputStream(ByteArrayInputStream(encoded)).use { input ->
+        require(input.readInt() == MAGIC) { "invalid recovery envelope" }
+        val envelopeVersion = input.readInt()
+        val parameters = Argon2idParameters(
+            input.readInt(),
+            input.readInt(),
+            input.readInt(),
+            input.readInt(),
+            input.readInt(),
+        )
+        val value = RecoveryWrappedKeyMaterial(envelopeVersion, parameters, input.bytes(), input.bytes(), input.bytes())
+        require(input.read() == -1) { "trailing recovery envelope data" }
+        value
+    }
+
+    private fun DataOutputStream.bytes(value: ByteArray) {
+        require(value.size in 1..MAX_FIELD_BYTES)
+        writeInt(value.size)
+        write(value)
+        value.fill(0)
+    }
+
+    private fun DataInputStream.bytes(): ByteArray {
+        val size = readInt()
+        require(size in 1..MAX_FIELD_BYTES)
+        return ByteArray(size).also(::readFully)
+    }
+
+    private const val MAGIC = 0x4c525745
+    private const val MAX_FIELD_BYTES = 1024 * 1024
 }

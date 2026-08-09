@@ -41,6 +41,27 @@ class SqlCipherBackgroundOperationRepository(
     private val bookId: StableId,
     private val access: SecurePrimaryLedgerAccess,
 ) : BackgroundOperationRepository {
+    suspend fun recoverableBackupOperations(): List<BackgroundOperation> {
+        val ids = access.read(bookId) { database ->
+            database.query(
+                "SELECT uid FROM background_operation WHERE type IN (?,?) AND state NOT IN (?,?) ORDER BY created_at,id",
+                arrayOf(
+                    BackgroundOperationType.FULL_BACKUP.ordinal,
+                    BackgroundOperationType.BACKUP_KEY_ROTATION.ordinal,
+                    BackgroundOperationState.SUCCEEDED.ordinal,
+                    BackgroundOperationState.FAILED_FINAL.ordinal,
+                ),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        StableId.fromBytes(cursor.getBlob(0)).requireValue().let { add(BackgroundOperationId(it)) }
+                    }
+                }
+            }
+        }
+        return ids.mapNotNull { id -> (get(id) as? DomainResult.Success)?.value }
+    }
+
     override suspend fun get(id: BackgroundOperationId): DomainResult<BackgroundOperation?> = protect {
         val stored = access.read(bookId) { database ->
             database.query(
@@ -218,10 +239,15 @@ private object OperationParameterCodec {
                     output.writeByte(2)
                     output.id(parameters.repositoryId.value)
                     output.writeBoolean(parameters.portable)
+                    output.nullableId(parameters.destinationHandleId)
                 }
                 is OperationParameters.DriveUpload -> {
                     output.writeByte(3)
                     output.id(parameters.snapshotId.value)
+                    output.id(parameters.repositoryId.value)
+                }
+                is OperationParameters.BackupRecoveryReencryption -> {
+                    output.writeByte(7)
                     output.id(parameters.repositoryId.value)
                 }
                 is OperationParameters.Restore -> {
@@ -277,11 +303,16 @@ private object OperationParameterCodec {
                 require(input.readUnsignedByte() == EXPORT_CODEC_VERSION)
                 OperationParameters.Export(destination, input.exportDescriptor())
             }
-            2 -> OperationParameters.FullBackup(BackupRepositoryId(input.id()), input.readBoolean())
+            2 -> {
+                val repositoryId = BackupRepositoryId(input.id())
+                val portable = input.readBoolean()
+                OperationParameters.FullBackup(repositoryId, portable, if (input.available() > 0) input.nullableId() else null)
+            }
             3 -> OperationParameters.DriveUpload(BackupSnapshotId(input.id()), BackupRepositoryId(input.id()))
             4 -> OperationParameters.Restore(input.id(), RestoreMode.entries[input.readInt()])
             5 -> OperationParameters.AttachmentMigration(List(input.readInt()) { AttachmentId(input.id()) })
             6 -> OperationParameters.DatabaseMaintenance(MaintenanceKind.entries[input.readInt()])
+            7 -> OperationParameters.BackupRecoveryReencryption(BackupRepositoryId(input.id()))
             else -> error("invalid operation parameters")
         }
         require(input.read() == -1)

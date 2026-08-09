@@ -15,7 +15,7 @@ import java.time.Instant
 enum class BackupRepositoryKind {
     APP_PRIVATE,
     USER_SELECTED_DIRECTORY,
-    GOOGLE_DRIVE_APP_DATA,
+    GOOGLE_DRIVE,
 }
 
 data class BackupRepository(
@@ -48,10 +48,11 @@ data class BackupSnapshot(
 }
 
 enum class BackupObjectKind {
-    DATABASE,
+    DATABASE_CHUNK,
     ATTACHMENT,
-    MANIFEST,
+    SETTINGS,
     KEY_ENVELOPE,
+    VAULT_ENVELOPE,
 }
 
 data class BackupObject(
