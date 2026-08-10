@@ -16,6 +16,8 @@ import app.ledger.finance.application.InitialCategoryCommand
 import app.ledger.finance.application.InitializeLedgerCommand
 import app.ledger.finance.application.LedgerGenesisIds
 import app.ledger.finance.application.LedgerWorkbookSheet
+import app.ledger.finance.application.VaultCiphertext
+import app.ledger.finance.application.VaultSecretRecord
 import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.SystemLedgerCode
@@ -85,6 +87,24 @@ class LedgerExportQueryDeviceTest {
         ).success()
         insertCardAndVaultSentinel()
 
+        val vault = SecureRoomVaultSecretApplicationPort(context, keys)
+        val stored = requireNotNull(vault.read(BOOK_ID, id(20)).success())
+        assertTrue(requireNotNull(stored.primaryNumber).copyBytes().contentEquals(VAULT_SENTINEL.toByteArray()))
+        assertEquals(setOf(id(20)), vault.listCardIds(BOOK_ID).success())
+        vault.save(
+            BOOK_ID,
+            VaultSecretRecord(
+                id(20),
+                VaultCiphertext.copyOf(VAULT_SENTINEL.toByteArray()),
+                VaultCiphertext.copyOf(VAULT_SENTINEL.toByteArray()),
+                VaultCiphertext.copyOf(VAULT_SENTINEL.toByteArray()),
+                VaultCiphertext.copyOf(VAULT_SENTINEL.toByteArray()),
+                VaultCiphertext.copyOf(VAULT_SENTINEL.toByteArray()),
+                2,
+                Instant.ofEpochMilli(5_000L),
+            ),
+        ).success()
+
         val port = SecureRoomLedgerExportQueryPort(context, keys)
         assertTrue(port.metadata(BOOK_ID).success().localRevision >= 3L)
         LedgerWorkbookSheet.entries.forEach { sheet ->
@@ -109,6 +129,34 @@ class LedgerExportQueryDeviceTest {
             256,
         ).success()
         assertEquals(0, current.rows.size)
+        assertVaultSentinelAbsentFromFtsAuditAndRevisionSnapshots()
+        vault.delete(BOOK_ID, id(20)).success()
+        assertEquals(null, vault.read(BOOK_ID, id(20)).success())
+    }
+
+    private fun assertVaultSentinelAbsentFromFtsAuditAndRevisionSnapshots() {
+        keys.open(BOOK_ID).use { opened ->
+            val database = opened.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(context, it) }
+            try {
+                database.readLedger { db ->
+                    val queries = listOf(
+                        "SELECT COUNT(*) FROM transaction_fts WHERE instr(" +
+                            "coalesce(category_name,'')||coalesce(merchant_name,'')||coalesce(merchant_aliases,'')||" +
+                            "coalesce(note,'')||coalesce(project_name,'')||coalesce(settlement_activity_name,'')||" +
+                            "coalesce(participant_names,'')||coalesce(attachment_names,''),?)>0" to VAULT_SENTINEL,
+                        "SELECT COUNT(*) FROM entity_revision WHERE instr(CAST(canonical_snapshot_blob AS TEXT),?)>0" to VAULT_SENTINEL,
+                    )
+                    queries.forEach { (sql, value) ->
+                        db.query(sql, arrayOf(value)).use { cursor ->
+                            assertTrue(cursor.moveToFirst())
+                            assertEquals(0L, cursor.getLong(0))
+                        }
+                    }
+                }
+            } finally {
+                database.close()
+            }
+        }
     }
 
     private fun insertCardAndVaultSentinel() {

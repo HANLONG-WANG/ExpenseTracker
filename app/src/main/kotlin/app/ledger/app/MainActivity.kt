@@ -2,6 +2,7 @@ package app.ledger.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.biometric.BiometricManager
@@ -19,6 +20,8 @@ class MainActivity : FragmentActivity() {
     private val viewModel: AppRootViewModel by viewModels()
     private lateinit var prompt: BiometricPrompt
     private lateinit var backupVaultPrompt: BiometricPrompt
+    private lateinit var vaultPrompt: BiometricPrompt
+    private lateinit var sensitiveSettingsPrompt: BiometricPrompt
     private lateinit var privacy: app.ledger.core.security.AndroidScreenPrivacyController
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,7 +36,7 @@ class MainActivity : FragmentActivity() {
                 }
 
                 override fun onAuthenticationFailed() {
-                    viewModel.authenticationFailed(AppAuthenticationError.FAILED)
+                    // A non-terminal failed attempt keeps the application-unlock prompt active.
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -67,6 +70,40 @@ class MainActivity : FragmentActivity() {
                 }
             },
         )
+        vaultPrompt = BiometricPrompt(
+            this,
+            ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    viewModel.vaultAuthenticationSucceeded(result.cryptoObject)
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    viewModel.vaultAuthenticationFailed(vaultError(errorCode))
+                }
+
+                override fun onAuthenticationFailed() {
+                    // A non-terminal failed attempt keeps this exact CryptoObject prompt active.
+                }
+            },
+        )
+        sensitiveSettingsPrompt = BiometricPrompt(
+            this,
+            ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    viewModel.sensitiveSettingsAuthenticationSucceeded()
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    viewModel.sensitiveSettingsAuthenticationFailed()
+                }
+
+                override fun onAuthenticationFailed() {
+                    // The system prompt remains active until success or a terminal error.
+                }
+            },
+        )
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.authenticationRequests.collect { authenticateApplicationUi() }
@@ -75,6 +112,28 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.backupVaultAuthenticationRequests.collect(::authenticateVaultBackupEnrollment)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.vaultAuthenticationRequests.collect(::authenticateVaultAction)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.sensitiveSettingsAuthenticationRequests.collect(::authenticateSensitiveSettingsAction)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.screenPrivacyPolicy.collect(privacy::apply)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.openSystemSecurityRequests.collect {
+                    startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+                }
             }
         }
         setContent { LedgerAppRoot(viewModel) }
@@ -89,12 +148,12 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        privacy.apply(app.ledger.core.security.ScreenPrivacyPolicy(applicationInBackground = false))
+        privacy.apply(viewModel.screenPrivacyPolicy.value.copy(applicationInBackground = false))
         viewModel.onApplicationForegrounded()
     }
 
     override fun onStop() {
-        privacy.apply(app.ledger.core.security.ScreenPrivacyPolicy(applicationInBackground = true))
+        privacy.apply(viewModel.screenPrivacyPolicy.value.copy(applicationInBackground = true))
         viewModel.onApplicationBackgrounded()
         super.onStop()
     }
@@ -121,5 +180,58 @@ class MainActivity : FragmentActivity() {
                 .build(),
             cryptoObject,
         )
+    }
+
+    private fun authenticateVaultAction(request: VaultAuthenticationPrompt) {
+        val title = when (request.purpose) {
+            VaultAuthenticationPurpose.REVEAL_PAN -> getString(app.ledger.feature.vault.R.string.vault_primary_number)
+            VaultAuthenticationPurpose.COPY_PAN -> getString(app.ledger.feature.vault.R.string.vault_primary_number)
+            VaultAuthenticationPurpose.REVEAL_CVC -> getString(app.ledger.feature.vault.R.string.vault_security_code)
+            VaultAuthenticationPurpose.EDIT_VAULT -> getString(app.ledger.feature.vault.R.string.vault_edit)
+        }
+        vaultPrompt.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle(title)
+                .setSubtitle(getString(app.ledger.feature.vault.R.string.vault_security_banner))
+                .setAllowedAuthenticators(
+                    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+                )
+                .setConfirmationRequired(true)
+                .build(),
+            request.cryptoObject,
+        )
+    }
+
+    private fun authenticateSensitiveSettingsAction(purpose: SensitiveSettingsAuthenticationPurpose) {
+        val title = when (purpose) {
+            SensitiveSettingsAuthenticationPurpose.ENABLE_APP_LOCK -> getString(app.ledger.feature.settings.R.string.security_app_lock)
+            SensitiveSettingsAuthenticationPurpose.CLEAR_LOCAL -> getString(app.ledger.feature.settings.R.string.clear_local)
+            SensitiveSettingsAuthenticationPurpose.DELETE_CLOUD -> getString(app.ledger.feature.transfer.R.string.clear_cloud_title)
+        }
+        sensitiveSettingsPrompt.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle(title)
+                .setAllowedAuthenticators(
+                    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+                )
+                .setConfirmationRequired(true)
+                .build(),
+        )
+    }
+
+    private fun vaultError(errorCode: Int): app.ledger.core.security.BiometricErrorCode = when (errorCode) {
+        BiometricPrompt.ERROR_CANCELED,
+        BiometricPrompt.ERROR_USER_CANCELED,
+        BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+        -> app.ledger.core.security.BiometricErrorCode.CANCELLED
+        BiometricPrompt.ERROR_LOCKOUT,
+        BiometricPrompt.ERROR_LOCKOUT_PERMANENT,
+        -> app.ledger.core.security.BiometricErrorCode.LOCKED_OUT
+        BiometricPrompt.ERROR_NO_BIOMETRICS -> app.ledger.core.security.BiometricErrorCode.DEVICE_SECURITY_CHANGED
+        BiometricPrompt.ERROR_HW_NOT_PRESENT,
+        BiometricPrompt.ERROR_HW_UNAVAILABLE,
+        BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL,
+        -> app.ledger.core.security.BiometricErrorCode.UNAVAILABLE
+        else -> app.ledger.core.security.BiometricErrorCode.UNKNOWN
     }
 }

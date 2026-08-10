@@ -14,6 +14,7 @@ dependencies {
     implementation(project(":core:time"))
     implementation(project(":core:background"))
     implementation(project(":core:geo"))
+    implementation(project(":core:telemetry"))
     implementation(project(":core:files"))
     implementation(project(":finance:application"))
     implementation(project(":finance:data"))
@@ -45,6 +46,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.play.services.auth)
     implementation(libs.work.runtime.ktx)
+    debugImplementation(libs.leakcanary.android)
 }
 
 hilt {

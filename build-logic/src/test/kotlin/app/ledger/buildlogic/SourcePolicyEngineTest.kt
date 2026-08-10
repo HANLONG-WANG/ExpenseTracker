@@ -2,6 +2,7 @@ package app.ledger.buildlogic
 
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
@@ -268,6 +269,19 @@ class SourcePolicyEngineTest {
             """.trimIndent(),
         )
         rules.shouldContainAll("PRIVACY-TELEMETRY-MAP", "PRIVACY-LOGGING")
+    }
+
+    @Test
+    fun `allows a typed telemetry caller to keep unrelated route maps`() {
+        val rules = scan(
+            "app/src/main/kotlin/AppRootViewModel.kt",
+            """
+                fun navigate() = mapOf("cardId" to StableIdArgument(id))
+                fun record(event: FeatureDiagnosticEvent) = TelemetryRuntime.record(event)
+            """.trimIndent(),
+        )
+
+        rules.shouldNotContain("PRIVACY-TELEMETRY-MAP")
     }
 
     @Test

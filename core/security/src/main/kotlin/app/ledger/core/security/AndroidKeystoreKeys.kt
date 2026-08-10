@@ -20,7 +20,11 @@ import javax.crypto.spec.GCMParameterSpec
 
 @Suppress("TooManyFunctions")
 class AndroidKeystoreKeys(context: Context) {
-    private val applicationContext = context.applicationContext
+    // During Application.attachBaseContext the framework has not yet published the
+    // process Application as applicationContext. The supplied ContextImpl is already
+    // process-scoped and is the only safe early-startup fallback for ACRA capability
+    // classification.
+    private val applicationContext = context.applicationContext ?: context
     private val keyguardManager = applicationContext.getSystemService(KeyguardManager::class.java)
     private val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
 

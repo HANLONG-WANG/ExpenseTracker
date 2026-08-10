@@ -210,6 +210,20 @@ class VaultBackupEnvelopeStore(
     fun readForAutomaticBackup(bookId: StableId): ByteArray? = File(directory, bookId.toString() + SUFFIX)
         .takeIf(File::isFile)?.let { AtomicFile(it).readFully() }
 
+    /** Recovery-only Vault DEK opening used solely to bind the restored key to this device's fresh auth KEK. */
+    fun openWithRecoveryPassword(
+        bookId: StableId,
+        password: RecoveryPassword,
+        encodedEnvelope: ByteArray = requireNotNull(readForAutomaticBackup(bookId)),
+    ): SecretBytes {
+        val associatedData = associatedData(bookId)
+        return try {
+            wrapper.unwrap(password, RecoveryWrappedKeyMaterialCodec.decode(encodedEnvelope), associatedData)
+        } finally {
+            associatedData.fill(0)
+        }
+    }
+
     fun isConfigured(bookId: StableId): Boolean = File(directory, bookId.toString() + SUFFIX).isFile
 
     fun delete(bookId: StableId) = AtomicFile(File(directory, bookId.toString() + SUFFIX)).delete()

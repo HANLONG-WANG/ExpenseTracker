@@ -6,6 +6,7 @@
     "ktlint:standard:function-naming",
     "FunctionNaming",
     "ComplexCondition",
+    "CyclomaticComplexMethod",
 )
 
 package app.ledger.app
@@ -85,14 +86,20 @@ import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.ManagementActions
 import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ReferenceManagementDestination
+import app.ledger.feature.settings.SecurityPrivacySettingsActions
+import app.ledger.feature.settings.SecurityPrivacySettingsDestination
 import app.ledger.feature.transfer.BackupExecutionPresentation
 import app.ledger.feature.transfer.ExportExecutionPresentation
 import app.ledger.feature.transfer.RestoreFlowUiState
 import app.ledger.feature.transfer.RestoreResultPresentation
+import app.ledger.feature.vault.VaultActions
+import app.ledger.feature.vault.VaultDestination
 import kotlinx.coroutines.delay
 import java.util.Locale
 import app.ledger.feature.journal.R as JournalR
 import app.ledger.feature.record.R as RecordR
+import app.ledger.feature.settings.R as SettingsR
+import app.ledger.feature.vault.R as VaultR
 
 @Composable
 internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
@@ -459,6 +466,71 @@ internal fun RootDestination(
             placeMap = { places, unavailable -> PlaceMapContent(places, unavailable) },
             pending = referencePending,
         )
+    } else if (screenId.startsWith("VLT-")) {
+        val vaultState by viewModel.vault.collectAsStateWithLifecycle()
+        VaultDestination(
+            vaultState,
+            VaultActions(
+                onCard = viewModel::openVaultCard,
+                onEdit = viewModel::openVaultEditor,
+                onRevealPrimaryNumber = viewModel::revealVaultPrimaryNumber,
+                onCopyPrimaryNumber = viewModel::copyVaultPrimaryNumber,
+                onRevealSecurityCode = viewModel::revealVaultSecurityCode,
+                onHide = viewModel::hideVaultSensitive,
+                onAuthenticateEdit = viewModel::authenticateVaultEdit,
+                onSave = viewModel::saveVault,
+                onOpenDeviceSecurity = { viewModel.openSecurityPrivacySettings("SYS-004") },
+            ),
+        )
+    } else if (screenId in app.ledger.feature.settings.SUPPORTED_SECURITY_SETTINGS_SCREENS) {
+        val securityState by viewModel.securityPrivacy.collectAsStateWithLifecycle()
+        SecurityPrivacySettingsDestination(
+            securityState.copy(
+                screenId = screenId,
+                presentation = securityState.presentation.takeIf { it.screenId == screenId }
+                    ?: when (screenId) {
+                        "SETG-007" -> app.ledger.feature.settings.SecuritySettingsRequiredState.SETG_007_CONTENT
+                        "SETG-008" -> app.ledger.feature.settings.SecuritySettingsRequiredState.SETG_008_CONTENT
+                        "SETG-009" -> app.ledger.feature.settings.SecuritySettingsRequiredState.SETG_009_DISABLED
+                        "SETG-010" -> app.ledger.feature.settings.SecuritySettingsRequiredState.SETG_010_EMPTY
+                        "SETG-011" -> app.ledger.feature.settings.SecuritySettingsRequiredState.SETG_011_EMPTY
+                        "CLR-001" -> app.ledger.feature.settings.SecuritySettingsRequiredState.CLR_001_CONTENT
+                        "SYS-004" -> app.ledger.feature.settings.SecuritySettingsRequiredState.SYS_004_MISSING
+                        else -> app.ledger.feature.settings.SecuritySettingsRequiredState.SETG_006_DISABLED
+                    },
+            ),
+            SecurityPrivacySettingsActions(
+                onAppLockEnabled = viewModel::updateAppLockEnabled,
+                onAppLockTimeout = viewModel::updateAppLockTimeout,
+                onTestLock = viewModel::testAppLock,
+                onGlobalScreenshotBlocked = viewModel::updateGlobalScreenshotBlocked,
+                onObscureRecentTasks = viewModel::updateObscureRecentTasks,
+                onTrashRetention = viewModel::updateTrashRetention,
+                onOpenTrash = {
+                    val trash = ScreenId("JRN-011")
+                    viewModel.navigator.navigate(LedgerRouteContract.destination(trash), app.ledger.core.navigation.SessionGateState.READY)
+                    onNavigationChanged()
+                },
+                onTelemetryEnabled = viewModel::updateTelemetryEnabled,
+                onCrashEnabled = viewModel::updateCrashEnabled,
+                onOpenFeatureQueue = {
+                    viewModel.openSecurityPrivacySettings("SETG-010")
+                    onNavigationChanged()
+                },
+                onOpenCrashQueue = {
+                    viewModel.openSecurityPrivacySettings("SETG-011")
+                    onNavigationChanged()
+                },
+                onOpenPrivacyPolicy = onHelp,
+                onDeleteFeatureQueue = viewModel::deleteFeatureDiagnosticQueue,
+                onDeleteCrashQueue = viewModel::deleteCrashDiagnosticQueue,
+                onBeginLocalClear = viewModel::beginLocalClear,
+                onCancelLocalClear = viewModel::cancelLocalClear,
+                onConfirmLocalClear = viewModel::confirmLocalClear,
+                onOpenSystemSecurity = viewModel::openSystemSecuritySettings,
+                onSecurityConfigured = viewModel::deviceSecurityConfigured,
+            ),
+        )
     } else if (screenId in setOf("REC-013", "REC-020", "REC-021", "REC-022")) {
         SpecializedTransactionRootDestination(
             screenId = screenId,
@@ -803,6 +875,28 @@ private fun rootDestinationTitleResource(screenId: String): Int? = if (screenId 
     R.string.p14_title_opening_balance
 } else if (screenId == "SETG-004") {
     R.string.global_currencies
+} else if (screenId == "VLT-001") {
+    VaultR.string.vault_title
+} else if (screenId == "VLT-002") {
+    VaultR.string.vault_card_title
+} else if (screenId == "VLT-003") {
+    VaultR.string.vault_edit_title
+} else if (screenId == "SETG-006") {
+    SettingsR.string.security_app_lock
+} else if (screenId == "SETG-007") {
+    SettingsR.string.security_block_screenshots
+} else if (screenId == "SETG-008") {
+    SettingsR.string.security_open_trash
+} else if (screenId == "SETG-009") {
+    SettingsR.string.diagnostics_privacy_policy
+} else if (screenId == "SETG-010") {
+    SettingsR.string.diagnostics_feature
+} else if (screenId == "SETG-011") {
+    SettingsR.string.diagnostics_crash
+} else if (screenId == "CLR-001") {
+    SettingsR.string.clear_local
+} else if (screenId == "SYS-004") {
+    SettingsR.string.security_open_system
 } else {
     null
 }

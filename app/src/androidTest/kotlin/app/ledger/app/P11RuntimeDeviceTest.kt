@@ -84,6 +84,7 @@ class P11RuntimeDeviceTest {
             assertEquals("JPY", saved.baseCurrency)
             assertEquals("Asia/Tokyo", saved.zoneId)
             assertTrue(saved.privacyAccepted)
+            assertTrue(saved.diagnosticsChoiceRecorded)
             assertFalse(saved.telemetryEnabled)
             assertFalse(saved.crashReportingEnabled)
             assertFalse(saved.appLockEnabled)
@@ -108,6 +109,9 @@ class P11RuntimeDeviceTest {
 
             // Leave the device test with no locally persisted book or recovery material.
             viewModel.clearLocalBookData()
+            // Authentication behavior is exercised with a real credential in the P32
+            // security suite; this callback completes only this test's cleanup request.
+            viewModel.sensitiveSettingsAuthenticationSucceeded()
             awaitStep(viewModel, OnboardingStep.LANGUAGE)
         }
     }

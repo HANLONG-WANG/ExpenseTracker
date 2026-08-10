@@ -277,7 +277,7 @@ internal object SourcePolicyEngine {
             }
 
         val telemetryContext = normalizedPath.contains("/telemetry/") ||
-            Regex("(?i)\\b(?:class|object|interface)\\s+\\w*Telemetry\\w*|\\b\\w*Telemetry\\w*\\s*\\.")
+            Regex("(?i)\\b(?:class|object|interface)\\s+\\w*Telemetry\\w*")
                 .containsMatchIn(source)
         if (telemetryContext) {
             Regex("\\b(?:Map\\s*<|MutableMap\\s*<|mapOf\\s*\\(|mutableMapOf\\s*\\()")

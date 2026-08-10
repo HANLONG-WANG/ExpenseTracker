@@ -56,6 +56,7 @@ import app.ledger.core.security.AppLockSettings
 import app.ledger.core.security.AppLockState
 import app.ledger.core.security.AppLockTimeout
 import app.ledger.core.security.Argon2idCalibrator
+import app.ledger.core.security.BiometricErrorCode
 import app.ledger.core.security.BookSessionManager
 import app.ledger.core.security.BookSessionState
 import app.ledger.core.security.DefaultLedgerStartupInspector
@@ -65,10 +66,12 @@ import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.RecoveryPassword
 import app.ledger.core.security.RecoveryPasswordKeyWrapper
 import app.ledger.core.security.RecoveryWrappedKeyMaterial
+import app.ledger.core.security.ScreenPrivacyPolicy
 import app.ledger.core.security.SecretBytes
 import app.ledger.core.security.SecurityAssociatedData
 import app.ledger.core.security.SqlCipherBookDatabaseResourceFactory
 import app.ledger.core.security.VaultExposureRegistry
+import app.ledger.core.telemetry.TelemetryRuntime
 import app.ledger.core.time.InjectedJavaClock
 import app.ledger.feature.accounts.AccountEditorSubmission
 import app.ledger.feature.accounts.CardEditorSubmission
@@ -138,10 +141,15 @@ import app.ledger.feature.record.SpecializedTransactionKind
 import app.ledger.feature.record.SpecializedTransactionLoadState
 import app.ledger.feature.record.SpecializedTransactionPolicy
 import app.ledger.feature.settings.CategorySubmission
+import app.ledger.feature.settings.CrashQueueRow
 import app.ledger.feature.settings.CurrencySettingsPolicy
 import app.ledger.feature.settings.CurrencySettingsState
+import app.ledger.feature.settings.FeatureQueueRow
 import app.ledger.feature.settings.MerchantSubmission
 import app.ledger.feature.settings.PlaceSubmission
+import app.ledger.feature.settings.SecurityPrivacySettingsState
+import app.ledger.feature.settings.SecuritySettingsRequiredState
+import app.ledger.feature.settings.TrashRetention
 import app.ledger.feature.settlement.SettlementFeatureState
 import app.ledger.feature.settlement.SettlementField
 import app.ledger.feature.settlement.SettlementLoadState
@@ -152,6 +160,8 @@ import app.ledger.feature.transfer.BackupFlowUiState
 import app.ledger.feature.transfer.ExportFlowUiState
 import app.ledger.feature.transfer.ImportModeUi
 import app.ledger.feature.transfer.RestoreFlowUiState
+import app.ledger.feature.vault.VaultEditSubmission
+import app.ledger.feature.vault.VaultPresentationState
 import app.ledger.finance.application.AccountDraft
 import app.ledger.finance.application.ApplyInstallmentSettlementRequest
 import app.ledger.finance.application.ApplyLoanSimulationRequest
@@ -262,6 +272,7 @@ import app.ledger.finance.application.SpecializedTransactionWriteIds
 import app.ledger.finance.application.SpecializedTransactionWriteRequest
 import app.ledger.finance.application.StructuredImportApplicationPort
 import app.ledger.finance.application.UpdateBookLocaleCommand
+import app.ledger.finance.application.VaultSecretApplicationPort
 import app.ledger.finance.data.RoomLedgerStartupInspector
 import app.ledger.finance.data.SecureRoomControlledPurgeApplicationPort
 import app.ledger.finance.domain.AutoGenerationMode
@@ -354,6 +365,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.util.Locale
 import javax.inject.Inject
+import app.ledger.feature.settings.AppLockTimeout as SettingsAppLockTimeout
 import app.ledger.finance.application.SettlementParticipantDraft as SettlementParticipantWriteDraft
 
 internal sealed interface AppRootState {
@@ -378,6 +390,8 @@ internal enum class AppAuthenticationError { FAILED, LOCKED_OUT, CANCELED, DEVIC
 
 internal enum class GlobalSnackbarMessage { SETTINGS_WRITE_FAILED, LOCAL_CLEAR_FAILED }
 
+internal enum class SensitiveSettingsAuthenticationPurpose { ENABLE_APP_LOCK, CLEAR_LOCAL, DELETE_CLOUD }
+
 internal sealed interface AppReferenceDataState {
     data object Loading : AppReferenceDataState
     data class Content(val snapshot: ReferenceDataSnapshot) : AppReferenceDataState
@@ -391,6 +405,7 @@ internal class AppRootViewModel @Inject constructor(
     private val keyProvider: DeviceLedgerKeyProvider,
     private val initializationPort: LedgerInitializationPort,
     private val referenceDataPort: ReferenceDataManagementPort,
+    vaultSecretApplicationPort: VaultSecretApplicationPort,
     private val journalApplicationPort: JournalApplicationPort,
     private val openingBalanceWritePort: OpeningBalanceWritePort,
     private val ordinaryTransactionEntryPort: OrdinaryTransactionEntryPort,
@@ -410,6 +425,26 @@ internal class AppRootViewModel @Inject constructor(
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
     private val runtimeSources: AppRuntimeSources,
 ) : ViewModel() {
+    private val vaultExposureRegistry = VaultExposureRegistry(SystemClock::elapsedRealtime)
+    private val vaultController = VaultController(
+        context,
+        vaultSecretApplicationPort,
+        vaultExposureRegistry,
+        viewModelScope,
+        runtimeSources.clock::now,
+    )
+    val vault: StateFlow<VaultPresentationState> = vaultController.state
+    val vaultAuthenticationRequests = vaultController.authentication
+    private val mutableSecurityPrivacy = MutableStateFlow(defaultSecurityPrivacyState())
+    val securityPrivacy: StateFlow<SecurityPrivacySettingsState> = mutableSecurityPrivacy.asStateFlow()
+    private val mutableSensitiveSettingsAuthenticationRequests =
+        MutableSharedFlow<SensitiveSettingsAuthenticationPurpose>(extraBufferCapacity = 1)
+    val sensitiveSettingsAuthenticationRequests = mutableSensitiveSettingsAuthenticationRequests.asSharedFlow()
+    private var pendingSensitiveSettingsPurpose: SensitiveSettingsAuthenticationPurpose? = null
+    private val mutableScreenPrivacyPolicy = MutableStateFlow(ScreenPrivacyPolicy())
+    val screenPrivacyPolicy: StateFlow<ScreenPrivacyPolicy> = mutableScreenPrivacyPolicy.asStateFlow()
+    private val mutableOpenSystemSecurityRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val openSystemSecurityRequests = mutableOpenSystemSecurityRequests.asSharedFlow()
     private val analysisController = AnalysisController(analyticsApplicationPort)
     private val importController = ImportController(
         context,
@@ -577,8 +612,8 @@ internal class AppRootViewModel @Inject constructor(
                 baseCurrency = saved.baseCurrency.takeIf(String::isNotBlank) ?: DEFAULT_CURRENCY,
                 zoneId = saved.zoneId.takeIf(String::isNotBlank) ?: ZoneId.systemDefault().id.takeIf { it == DEFAULT_ZONE },
                 privacyAccepted = saved.privacyAccepted,
-                telemetryEnabled = saved.telemetryEnabled,
-                crashReportingEnabled = saved.crashReportingEnabled,
+                telemetryEnabled = if (saved.diagnosticsChoiceRecorded) saved.telemetryEnabled else true,
+                crashReportingEnabled = if (saved.diagnosticsChoiceRecorded) saved.crashReportingEnabled else true,
                 appLockEnabled = saved.appLockEnabled,
                 appLockTimeoutMillis = saved.appLockTimeoutMillis.takeIf { it in OnboardingUiState.ALLOWED_TIMEOUTS } ?: 60_000L,
                 firstAccountCreated = saved.firstAccountCreated,
@@ -669,6 +704,7 @@ internal class AppRootViewModel @Inject constructor(
             OnboardingStep.TELEMETRY -> settingsRepository.update {
                 it.telemetryEnabled = onboardingState.telemetryEnabled
                 it.crashReportingEnabled = onboardingState.crashReportingEnabled
+                it.diagnosticsChoiceRecorded = true
             }
             OnboardingStep.APP_LOCK -> {
                 val securityCapability = AndroidKeystoreKeys(context).deviceSecurityCapability()
@@ -803,6 +839,13 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     private suspend fun openSavedBook(saved: LedgerAppSettings) {
+        if (!saved.securitySettingsInitialized) {
+            settingsRepository.update {
+                it.securitySettingsInitialized = true
+                it.obscureRecentTasks = true
+                it.trashRetentionDays = 30
+            }
+        }
         val bookId = requireBookId(saved)
         restoreNavigationIfAllowed(saved)
         unsavedContentLossNotice = settingsRepository.consumeUnsavedContentLoss()
@@ -813,11 +856,12 @@ internal class AppRootViewModel @Inject constructor(
                 context,
                 listOf(DefaultLedgerStartupInspector, RoomLedgerStartupInspector()),
             ),
-            VaultExposureRegistry(SystemClock::elapsedRealtime),
+            vaultExposureRegistry,
         )
         sessionManager = manager
         val lockSettings = AppLockSettings(saved.appLockEnabled, timeout(saved.appLockTimeoutMillis))
         appLockController = AppLockController(lockSettings, SystemClock::elapsedRealtime) {
+            vaultController.onApplicationLocked()
             viewModelScope.launch { manager.lockUi() }
         }
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -883,6 +927,7 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun onApplicationBackgrounded() {
+        vaultController.onApplicationBackgrounded()
         appLockController?.onApplicationBackgrounded()
         viewModelScope.launch { persistNavigationIfAllowed() }
     }
@@ -898,7 +943,261 @@ internal class AppRootViewModel @Inject constructor(
         if (state == BookSessionState.Locked) viewModelScope.launch { sessionManager?.unlockUi() }
     }
 
-    fun clearLocalBookData() {
+    fun openVault() {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        val references = (mutableReferenceData.value as? AppReferenceDataState.Content)?.snapshot ?: return
+        vaultController.openList(ready.bookId, references.cards)
+        navigator.navigate(LedgerRouteContract.destination(ScreenId("VLT-001")), SessionGateState.READY)
+    }
+
+    fun openVaultCard(cardId: StableId) {
+        vaultController.openCard(cardId)
+        val screen = ScreenId("VLT-002")
+        navigator.navigate(
+            LedgerRouteContract.destination(screen, mapOf("cardId" to StableIdArgument(cardId))),
+            SessionGateState.READY,
+        )
+    }
+
+    fun openVaultEditor(cardId: StableId) {
+        vaultController.openEditor(cardId)
+        val screen = ScreenId("VLT-003")
+        navigator.navigate(
+            LedgerRouteContract.destination(screen, mapOf("cardId" to StableIdArgument(cardId))),
+            SessionGateState.READY,
+        )
+    }
+
+    fun revealVaultPrimaryNumber(cardId: StableId) = vaultController.requestRevealPrimaryNumber(cardId)
+    fun copyVaultPrimaryNumber(cardId: StableId) = vaultController.requestCopyPrimaryNumber(cardId)
+    fun revealVaultSecurityCode(cardId: StableId) = vaultController.requestRevealSecurityCode(cardId)
+    fun hideVaultSensitive() = vaultController.hideSensitive()
+    fun authenticateVaultEdit(cardId: StableId) = vaultController.requestEditAuthentication(cardId)
+    fun saveVault(cardId: StableId, submission: VaultEditSubmission) = vaultController.save(cardId, submission)
+    fun vaultAuthenticationSucceeded(cryptoObject: BiometricPrompt.CryptoObject?) = vaultController.authenticationSucceeded(cryptoObject)
+    fun vaultAuthenticationFailed(error: BiometricErrorCode) = vaultController.authenticationFailed(error)
+
+    fun openSecurityPrivacySettings(screenId: String) {
+        require(screenId in app.ledger.feature.settings.SUPPORTED_SECURITY_SETTINGS_SCREENS)
+        refreshSecurityPrivacy(screenId)
+        navigator.navigate(LedgerRouteContract.destination(ScreenId(screenId)), SessionGateState.READY)
+    }
+
+    fun refreshSecurityPrivacy(screenId: String = mutableSecurityPrivacy.value.screenId) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.current()
+            val snapshot = TelemetryRuntime.snapshot()
+            val deviceSecurity = AndroidKeystoreKeys(context).deviceSecurityCapability() != DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL
+            val appLockTimeout = when (saved.appLockTimeoutMillis) {
+                0L -> SettingsAppLockTimeout.IMMEDIATE
+                60_000L -> SettingsAppLockTimeout.ONE_MINUTE
+                300_000L -> SettingsAppLockTimeout.FIVE_MINUTES
+                900_000L -> SettingsAppLockTimeout.FIFTEEN_MINUTES
+                else -> SettingsAppLockTimeout.CUSTOM
+            }
+            val presentation = when (screenId) {
+                "SETG-006" -> when {
+                    !deviceSecurity -> SecuritySettingsRequiredState.SETG_006_DEVICE_SECURITY_MISSING
+                    saved.appLockEnabled -> SecuritySettingsRequiredState.SETG_006_ENABLED
+                    else -> SecuritySettingsRequiredState.SETG_006_DISABLED
+                }
+                "SETG-007" -> SecuritySettingsRequiredState.SETG_007_CONTENT
+                "SETG-008" -> SecuritySettingsRequiredState.SETG_008_CONTENT
+                "SETG-009" -> when {
+                    !saved.privacyAccepted -> SecuritySettingsRequiredState.SETG_009_PRE_CONSENT
+                    saved.telemetryEnabled || saved.crashReportingEnabled -> SecuritySettingsRequiredState.SETG_009_ENABLED
+                    else -> SecuritySettingsRequiredState.SETG_009_DISABLED
+                }
+                "SETG-010" -> if (snapshot?.featureEvents.isNullOrEmpty()) SecuritySettingsRequiredState.SETG_010_EMPTY else SecuritySettingsRequiredState.SETG_010_CONTENT
+                "SETG-011" -> if (snapshot?.crashEvents.isNullOrEmpty()) SecuritySettingsRequiredState.SETG_011_EMPTY else SecuritySettingsRequiredState.SETG_011_CONTENT
+                "CLR-001" -> mutableSecurityPrivacy.value.presentation.takeIf { it.screenId == "CLR-001" }
+                    ?: SecuritySettingsRequiredState.CLR_001_CONTENT
+                "SYS-004" -> if (deviceSecurity) SecuritySettingsRequiredState.SYS_004_CONFIGURED else SecuritySettingsRequiredState.SYS_004_MISSING
+                else -> error("unsupported security settings screen")
+            }
+            mutableSecurityPrivacy.value = SecurityPrivacySettingsState(
+                screenId = screenId,
+                presentation = presentation,
+                appLockEnabled = saved.appLockEnabled,
+                appLockTimeout = appLockTimeout,
+                customTimeoutMinutes = (saved.appLockTimeoutMillis / 60_000L).toInt().coerceIn(1, 1_440),
+                deviceSecurityConfigured = deviceSecurity,
+                globalScreenshotBlocked = saved.globalFlagSecure,
+                obscureRecentTasks = if (saved.securitySettingsInitialized) saved.obscureRecentTasks else true,
+                trashRetention = TrashRetention.entries.singleOrNull { it.days == saved.trashRetentionDays } ?: TrashRetention.THIRTY_DAYS,
+                privacyAccepted = saved.privacyAccepted,
+                telemetryEnabled = if (saved.diagnosticsChoiceRecorded) saved.telemetryEnabled else true,
+                crashEnabled = if (saved.diagnosticsChoiceRecorded) saved.crashReportingEnabled else true,
+                featureRows = snapshot?.featureEvents.orEmpty().map { entry ->
+                    FeatureQueueRow(
+                        entry.occurredAtEpochMillis,
+                        entry.event.name.name,
+                        entry.event.entry.name,
+                        entry.event.outcome.name,
+                        entry.event.duration.name,
+                        entry.event.errorCode.name,
+                    )
+                },
+                crashRows = snapshot?.crashEvents.orEmpty().map { entry ->
+                    CrashQueueRow(
+                        entry.occurredAtEpochMillis,
+                        entry.diagnostic.kind.name,
+                        entry.diagnostic.errorCode.name,
+                        entry.diagnostic.frames.size,
+                    )
+                },
+                errorCode = mutableSecurityPrivacy.value.errorCode,
+            )
+        }
+    }
+
+    fun updateAppLockEnabled(enabled: Boolean) {
+        if (enabled) {
+            if (AndroidKeystoreKeys(context).deviceSecurityCapability() == DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL) {
+                openSecurityPrivacySettings("SYS-004")
+            } else {
+                requestSensitiveSettingsAuthentication(SensitiveSettingsAuthenticationPurpose.ENABLE_APP_LOCK)
+            }
+        } else {
+            viewModelScope.launch(Dispatchers.IO) {
+                val updated = settingsRepository.update { it.appLockEnabled = false }
+                appLockController?.updateSettings(AppLockSettings(false, timeout(updated.appLockTimeoutMillis)), authenticated = false)
+                refreshSecurityPrivacy("SETG-006")
+            }
+        }
+    }
+
+    fun updateAppLockTimeout(value: SettingsAppLockTimeout, customMinutes: Int) {
+        val millis = if (value == SettingsAppLockTimeout.CUSTOM) customMinutes.coerceIn(1, 1_440) * 60_000L else value.millis
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = settingsRepository.update { it.appLockTimeoutMillis = millis }
+            appLockController?.updateSettings(AppLockSettings(updated.appLockEnabled, timeout(millis)), authenticated = false)
+            refreshSecurityPrivacy("SETG-006")
+        }
+    }
+
+    fun testAppLock() {
+        vaultController.onApplicationLocked()
+        appLockController?.forceLock()
+        viewModelScope.launch { sessionManager?.lockUi() }
+    }
+
+    fun updateGlobalScreenshotBlocked(enabled: Boolean) = updateSecuritySetting("SETG-007") { it.globalFlagSecure = enabled }
+    fun updateObscureRecentTasks(enabled: Boolean) = updateSecuritySetting("SETG-007") { it.obscureRecentTasks = enabled }
+    fun updateTrashRetention(retention: TrashRetention) = updateSecuritySetting("SETG-008") { it.trashRetentionDays = retention.days }
+
+    private fun updateSecuritySetting(screenId: String, update: (LedgerAppSettings.Builder) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsRepository.update {
+                it.securitySettingsInitialized = true
+                update(it)
+            }
+            refreshSecurityPrivacy(screenId)
+        }
+    }
+
+    fun updateTelemetryEnabled(enabled: Boolean) = updateDiagnosticConsent(feature = enabled, crash = null)
+    fun updateCrashEnabled(enabled: Boolean) = updateDiagnosticConsent(feature = null, crash = enabled)
+
+    private fun updateDiagnosticConsent(feature: Boolean?, crash: Boolean?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = settingsRepository.update {
+                it.diagnosticsChoiceRecorded = true
+                feature?.let { value -> it.telemetryEnabled = value }
+                crash?.let { value -> it.crashReportingEnabled = value }
+            }
+            TelemetryRuntime.applyConsent(updated.privacyAccepted, updated.telemetryEnabled, updated.crashReportingEnabled)
+            refreshSecurityPrivacy("SETG-009")
+        }
+    }
+
+    fun deleteFeatureDiagnosticQueue() {
+        TelemetryRuntime.deleteFeatureQueue()
+        refreshSecurityPrivacy("SETG-010")
+    }
+
+    fun deleteCrashDiagnosticQueue() {
+        TelemetryRuntime.deleteCrashQueue()
+        refreshSecurityPrivacy("SETG-011")
+    }
+
+    fun beginLocalClear() {
+        refreshLocalClear(SecuritySettingsRequiredState.CLR_001_CONFIRMING)
+    }
+
+    fun cancelLocalClear() {
+        pendingSensitiveSettingsPurpose = null
+        refreshLocalClear(SecuritySettingsRequiredState.CLR_001_CONTENT)
+    }
+
+    fun confirmLocalClear() = requestSensitiveSettingsAuthentication(SensitiveSettingsAuthenticationPurpose.CLEAR_LOCAL)
+
+    private fun requestSensitiveSettingsAuthentication(purpose: SensitiveSettingsAuthenticationPurpose) {
+        check(pendingSensitiveSettingsPurpose == null) { "a sensitive settings authentication is already pending" }
+        pendingSensitiveSettingsPurpose = purpose
+        mutableSensitiveSettingsAuthenticationRequests.tryEmit(purpose)
+    }
+
+    fun sensitiveSettingsAuthenticationSucceeded() {
+        when (pendingSensitiveSettingsPurpose.also { pendingSensitiveSettingsPurpose = null }) {
+            SensitiveSettingsAuthenticationPurpose.ENABLE_APP_LOCK -> viewModelScope.launch(Dispatchers.IO) {
+                val updated = settingsRepository.update { it.appLockEnabled = true }
+                appLockController?.updateSettings(AppLockSettings(true, timeout(updated.appLockTimeoutMillis)), authenticated = true)
+                appLockController?.authenticationSucceeded()
+                refreshSecurityPrivacy("SETG-006")
+            }
+            SensitiveSettingsAuthenticationPurpose.CLEAR_LOCAL -> {
+                refreshLocalClear(SecuritySettingsRequiredState.CLR_001_CLEARING)
+                clearLocalBookDataAuthenticated()
+            }
+            SensitiveSettingsAuthenticationPurpose.DELETE_CLOUD -> loadCloudBackupsForDeletionAuthenticated()
+            null -> Unit
+        }
+    }
+
+    fun sensitiveSettingsAuthenticationFailed() {
+        val purpose = pendingSensitiveSettingsPurpose
+        pendingSensitiveSettingsPurpose = null
+        if (purpose == SensitiveSettingsAuthenticationPurpose.CLEAR_LOCAL) {
+            refreshLocalClear(SecuritySettingsRequiredState.CLR_001_FAILED, "AUTHENTICATION_REJECTED")
+        }
+    }
+
+    fun openSystemSecuritySettings() {
+        mutableOpenSystemSecurityRequests.tryEmit(Unit)
+    }
+
+    fun deviceSecurityConfigured() {
+        if (AndroidKeystoreKeys(context).deviceSecurityCapability() == DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL) {
+            refreshSecurityPrivacy("SYS-004")
+        } else {
+            requestRootBack()
+        }
+    }
+
+    fun screenVisibilityChanged(screenId: String) {
+        val saved = settings.value
+        mutableScreenPrivacyPolicy.value = ScreenPrivacyPolicy(
+            obscureRecentTasks = if (saved.securitySettingsInitialized) saved.obscureRecentTasks else true,
+            globalFlagSecure = saved.globalFlagSecure,
+            vaultVisible = screenId.startsWith("VLT-"),
+            applicationInBackground = false,
+        )
+        if (screenId.startsWith("VLT-")) vaultController.synchronizeVisibleScreen(screenId)
+        if (!screenId.startsWith("VLT-") && vault.value.screenId.startsWith("VLT-")) vaultController.hideSensitive(autoHidden = false)
+    }
+
+    private fun refreshLocalClear(presentation: SecuritySettingsRequiredState, errorCode: String? = null) {
+        mutableSecurityPrivacy.value = mutableSecurityPrivacy.value.copy(
+            screenId = "CLR-001",
+            presentation = presentation,
+            errorCode = errorCode,
+        )
+    }
+
+    fun clearLocalBookData() = requestSensitiveSettingsAuthentication(SensitiveSettingsAuthenticationPurpose.CLEAR_LOCAL)
+
+    private fun clearLocalBookDataAuthenticated() {
         viewModelScope.launch(Dispatchers.IO) {
             val saved = settingsRepository.current()
             val bookId = saved.bookId.toByteArray().takeIf { it.size == StableId.BYTE_COUNT }
@@ -912,6 +1211,7 @@ internal class AppRootViewModel @Inject constructor(
             }.getOrDefault(false)
             if (!workStopped) {
                 mutableGlobalSnackbarMessages.tryEmit(GlobalSnackbarMessage.LOCAL_CLEAR_FAILED)
+                refreshLocalClear(SecuritySettingsRequiredState.CLR_001_FAILED, "WORK_CANCELLATION_FAILED")
                 return@launch
             }
             sessionManager?.close()
@@ -919,10 +1219,12 @@ internal class AppRootViewModel @Inject constructor(
             val cleared = bookId?.let { initializationPort.clearLocalBook(it) }
             if (cleared !is DomainResult.Success) {
                 mutableGlobalSnackbarMessages.tryEmit(GlobalSnackbarMessage.LOCAL_CLEAR_FAILED)
+                refreshLocalClear(SecuritySettingsRequiredState.CLR_001_FAILED, "LEDGER_CLEAR_FAILED")
                 openSavedBook(saved)
                 return@launch
             }
             val artifactsCleared = LocalBookArtifactCleaner(context, keyProvider).clear(bookId, backupConfiguration)
+            TelemetryRuntime.deleteAllLocal()
             settingsRepository.reset()
             onboardingState = OnboardingUiState(
                 baseCurrency = DEFAULT_CURRENCY,
@@ -932,6 +1234,11 @@ internal class AppRootViewModel @Inject constructor(
             if (!artifactsCleared) mutableGlobalSnackbarMessages.tryEmit(GlobalSnackbarMessage.LOCAL_CLEAR_FAILED)
         }
     }
+
+    private fun defaultSecurityPrivacyState(): SecurityPrivacySettingsState = SecurityPrivacySettingsState(
+        "SETG-006",
+        SecuritySettingsRequiredState.SETG_006_DISABLED,
+    )
 
     /** Parses only registered no-argument route IDs and keeps the pending destination in memory behind SessionGate. */
     fun handleDeepLink(uri: Uri?) {
@@ -3945,6 +4252,7 @@ internal class AppRootViewModel @Inject constructor(
             return
         }
         val screen = navigator.currentKey.contract.screenId.value
+        if (screen.startsWith("VLT-")) vaultController.hideSensitive(autoHidden = false)
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
         if (screen in setOf("REC-023", "REC-024", "REC-025") && batchRecord.value?.presentation != app.ledger.feature.record.BatchRecordPresentation.COMMITTED) {
             batchEntryController.requestDiscardConfirmation()
@@ -3958,6 +4266,7 @@ internal class AppRootViewModel @Inject constructor(
 
     fun selectRootTopLevel(target: TopLevelDestination) {
         val screen = navigator.currentKey.contract.screenId.value
+        if (screen.startsWith("VLT-")) vaultController.hideSensitive(autoHidden = false)
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
         if (screen in setOf("REC-023", "REC-024", "REC-025") && batchRecord.value?.presentation != app.ledger.feature.record.BatchRecordPresentation.COMMITTED) {
             batchEntryController.requestDiscardConfirmation()
@@ -4349,7 +4658,7 @@ internal class AppRootViewModel @Inject constructor(
         60_000L -> AppLockTimeout.OneMinute
         300_000L -> AppLockTimeout.FiveMinutes
         900_000L -> AppLockTimeout.FifteenMinutes
-        else -> AppLockTimeout.Immediately
+        else -> runCatching { AppLockTimeout.Custom.of(value) }.getOrDefault(AppLockTimeout.Immediately)
     }
 
     private fun requireBookId(saved: LedgerAppSettings): StableId = requireNotNull(
@@ -5060,10 +5369,11 @@ internal class AppRootViewModel @Inject constructor(
         val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
         restoreController.begin(ready.bookId)
         navigateRestore("CLR-002")
-        loadCloudBackupsForDeletion()
     }
 
-    fun loadCloudBackupsForDeletion() {
+    fun loadCloudBackupsForDeletion() = requestSensitiveSettingsAuthentication(SensitiveSettingsAuthenticationPurpose.DELETE_CLOUD)
+
+    private fun loadCloudBackupsForDeletionAuthenticated() {
         viewModelScope.launch(Dispatchers.IO) { restoreController.loadCloudBackups() }
     }
 
@@ -5080,11 +5390,16 @@ internal class AppRootViewModel @Inject constructor(
             if (!recovering) manager.enterMaintenance(MaintenanceReason.CONTROLLED_MAINTENANCE)
             manager.close()
             val succeeded = block()
+            val recoveredVaultDek = if (succeeded) restoreController.takeRecoveredVaultDek() else null
             if (!recovering) {
                 manager.finishMaintenance()
             } else if (succeeded) {
                 sessionManager = null
                 openSavedBook(settingsRepository.current())
+            }
+            recoveredVaultDek?.let { key ->
+                runCatching { vaultController.requestRecoveredVaultRewrap(requireBookId(settingsRepository.current()), key) }
+                    .onFailure { key.close() }
             }
             withContext(Dispatchers.Main.immediate) { navigateRestore("RST-007") }
         }

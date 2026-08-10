@@ -222,11 +222,26 @@ class VaultProvisioningRequest internal constructor(
     private val consumed = AtomicBoolean(false)
 
     fun complete(authenticatedCryptoObject: BiometricPrompt.CryptoObject) {
+        completeInternal(authenticatedCryptoObject, createEditor = false)?.close()
+    }
+
+    /** Provisions and grants only this same authenticated create/edit action one encryption use. */
+    fun completeForEditing(authenticatedCryptoObject: BiometricPrompt.CryptoObject): OneShotVaultEditor = requireNotNull(
+        completeInternal(authenticatedCryptoObject, createEditor = true),
+    )
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun completeInternal(
+        authenticatedCryptoObject: BiometricPrompt.CryptoObject,
+        createEditor: Boolean,
+    ): OneShotVaultEditor? {
         check(consumed.compareAndSet(false, true)) { "vault provisioning request was already consumed" }
+        var editorKey: SecretBytes? = null
         try {
             val authenticatedCipher = requireAuthenticatedCipher(authenticatedCryptoObject, cipher)
             authenticatedCipher.updateAAD(associatedData)
             vaultDek.useBytes { serialized ->
+                if (createEditor) editorKey = SecretBytes.copyOf(serialized)
                 completeEnvelope(
                     WrappedKeyMaterial(
                         formatVersion = 1,
@@ -236,8 +251,13 @@ class VaultProvisioningRequest internal constructor(
                     ),
                 )
             }
+            return editorKey?.let(::OneShotVaultEditor)
         } catch (error: GeneralSecurityException) {
+            editorKey?.close()
             throw SecurityException.AuthenticationFailed(error)
+        } catch (error: RuntimeException) {
+            editorKey?.close()
+            throw error
         } finally {
             vaultDek.close()
             associatedData.fill(0)
@@ -311,7 +331,7 @@ class VaultEditRequest internal constructor(
         check(consumed.compareAndSet(false, true)) { "vault edit request was already consumed" }
         return try {
             OneShotVaultEditor(
-                authenticatedVaultAead(
+                authenticatedVaultKeyset(
                     authenticatedCryptoObject,
                     cipher,
                     wrappedVaultDek,
@@ -328,12 +348,95 @@ class VaultEditRequest internal constructor(
     }
 }
 
-class OneShotVaultEditor internal constructor(private val aead: Aead) {
+class VaultPlaintextFields(
+    val holderName: SecretBytes?,
+    val primaryNumber: SecretBytes?,
+    val expiry: SecretBytes?,
+    val securityCode: SecretBytes?,
+    val customFields: SecretBytes?,
+) : AutoCloseable {
+    init {
+        require(listOf(holderName, primaryNumber, expiry, securityCode, customFields).any { it != null })
+    }
+
+    override fun close() {
+        holderName?.close()
+        primaryNumber?.close()
+        expiry?.close()
+        securityCode?.close()
+        customFields?.close()
+    }
+
+    override fun toString(): String = "VaultPlaintextFields(redacted)"
+}
+
+data class VaultEncryptedFields(
+    val holderName: VaultFieldCiphertext?,
+    val primaryNumber: VaultFieldCiphertext?,
+    val expiry: VaultFieldCiphertext?,
+    val securityCode: VaultFieldCiphertext?,
+    val customFields: VaultFieldCiphertext?,
+)
+
+class OneShotVaultEditor internal constructor(private val serializedVaultKey: SecretBytes) : AutoCloseable {
     private val consumed = AtomicBoolean(false)
 
     fun encrypt(plaintext: SecretBytes, associatedData: ByteArray): VaultFieldCiphertext {
         check(consumed.compareAndSet(false, true)) { "vault editor authorization was already consumed" }
-        return plaintext.useBytes { VaultFieldCiphertext(aead.encrypt(it, associatedData)) }
+        return try {
+            serializedVaultKey.useBytes { key ->
+                plaintext.useBytes { value -> VaultFieldCiphertext(LedgerTink.aead(key).encrypt(value, associatedData)) }
+            }
+        } finally {
+            serializedVaultKey.close()
+            plaintext.close()
+            associatedData.fill(0)
+        }
+    }
+
+    fun encryptFields(
+        bookId: StableId,
+        cardId: StableId,
+        schemaVersion: Int,
+        plaintext: VaultPlaintextFields,
+    ): VaultEncryptedFields {
+        check(consumed.compareAndSet(false, true)) { "vault editor authorization was already consumed" }
+        return try {
+            serializedVaultKey.useBytes { key ->
+                val aead = LedgerTink.aead(key)
+                VaultEncryptedFields(
+                    holderName = encryptField(aead, plaintext.holderName, bookId, cardId, VaultFieldType.HOLDER_NAME, schemaVersion),
+                    primaryNumber = encryptField(aead, plaintext.primaryNumber, bookId, cardId, VaultFieldType.PAN, schemaVersion),
+                    expiry = encryptField(aead, plaintext.expiry, bookId, cardId, VaultFieldType.EXPIRY, schemaVersion),
+                    securityCode = encryptField(aead, plaintext.securityCode, bookId, cardId, VaultFieldType.SECURITY_CODE, schemaVersion),
+                    customFields = encryptField(aead, plaintext.customFields, bookId, cardId, VaultFieldType.CUSTOM_FIELDS, schemaVersion),
+                )
+            }
+        } finally {
+            serializedVaultKey.close()
+            plaintext.close()
+        }
+    }
+
+    override fun close() {
+        if (consumed.compareAndSet(false, true)) serializedVaultKey.close()
+    }
+
+    @Suppress("LongParameterList")
+    private fun encryptField(
+        aead: Aead,
+        value: SecretBytes?,
+        bookId: StableId,
+        cardId: StableId,
+        fieldType: VaultFieldType,
+        schemaVersion: Int,
+    ): VaultFieldCiphertext? = value?.useBytes { bytes ->
+        val associatedData = SecurityAssociatedData.vaultField(bookId, cardId, fieldType, schemaVersion)
+        try {
+            VaultFieldCiphertext(aead.encrypt(bytes, associatedData))
+        } finally {
+            associatedData.fill(0)
+        }
     }
 }
 

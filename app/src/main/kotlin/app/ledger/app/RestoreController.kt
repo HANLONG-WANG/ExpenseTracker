@@ -1,4 +1,5 @@
 @file:Suppress(
+    "LargeClass",
     "LongMethod",
     "MagicNumber",
     "NestedBlockDepth",
@@ -19,9 +20,11 @@ import app.ledger.core.security.AndroidKeystoreKeys
 import app.ledger.core.security.DeviceKeyHierarchy
 import app.ledger.core.security.DeviceLedgerKeyProvider
 import app.ledger.core.security.RecoveryPassword
+import app.ledger.core.security.SecretBytes
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.core.security.SecureTransferHandleStore
 import app.ledger.core.security.SecurityEnvelopeStore
+import app.ledger.core.security.VaultBackupEnvelopeStore
 import app.ledger.feature.transfer.CloudClearPresentation
 import app.ledger.feature.transfer.RestoreConflictUi
 import app.ledger.feature.transfer.RestoreFlowUiState
@@ -98,6 +101,7 @@ internal class RestoreController(
     private var operationId: StableId? = null
     private var source: EncryptedRestoreSource? = null
     private var materialized: RestoreMaterializationResult? = null
+    private var recoveredVaultDek: SecretBytes? = null
     private var mergePreview: MergeRestorePreview? = null
     private val resolutions = linkedMapOf<StableId, MergeResolution>()
     private val cancelled = AtomicBoolean(false)
@@ -263,6 +267,24 @@ internal class RestoreController(
                         false
                     }
                     is DomainResult.Success -> {
+                        recoveredVaultDek?.close()
+                        val vaultEnvelope = result.value.targetDirectory.resolve("keys/vault-recovery.envelope").takeIf(File::isFile)
+                        val recoveredVault = runCatching {
+                            vaultEnvelope?.readBytes()?.let { encoded ->
+                                try {
+                                    VaultBackupEnvelopeStore(applicationContext)
+                                        .openWithRecoveryPassword(activeBook, password, encoded)
+                                } finally {
+                                    encoded.fill(0)
+                                }
+                            }
+                        }
+                        if (recoveredVault.isFailure) {
+                            result.value.targetDirectory.walkBottomUp().forEach { file -> check(!file.exists() || file.delete()) }
+                            failInspection("RESTORE_VAULT_RECOVERY_FAILED")
+                            return@use false
+                        }
+                        recoveredVaultDek = recoveredVault.getOrNull()
                         val packageValue = result.value.toFinancePackage(activeBook, activeOperation)
                         val ledgerInspection = restoreLedger.prepareReplacement(packageValue)
                         val prepared = (ledgerInspection as? DomainResult.Success)?.value
@@ -301,6 +323,8 @@ internal class RestoreController(
         operation = changed.value
         runCatching { operations(activeBook).saveImmediately(changed.value) }
     }
+
+    fun takeRecoveredVaultDek(): SecretBytes? = recoveredVaultDek.also { recoveredVaultDek = null }
 
     fun highRiskPhraseChanged(value: String) {
         mutableState.value = mutableState.value.copy(highRiskPhrase = value.take(80))
@@ -677,6 +701,8 @@ internal class RestoreController(
             }
         }
         materialized = null
+        recoveredVaultDek?.close()
+        recoveredVaultDek = null
         mergePreview = null
         resolutions.clear()
         cancelled.set(false)

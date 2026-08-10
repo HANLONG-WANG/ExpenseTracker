@@ -11,6 +11,7 @@ package app.ledger.app
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +77,7 @@ internal fun ReadyRootScaffold(
         }
     }
     var navigationEpoch by remember { mutableIntStateOf(0) }
+    SideEffect { viewModel.screenVisibilityChanged(navigator.currentKey.contract.screenId.value) }
     val selected = navigator.currentTopLevel.toDesignTopLevel()
     LedgerScaffold(
         modifier = Modifier.fillMaxSize(),

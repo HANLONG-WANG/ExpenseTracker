@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-10 (Asia/Tokyo)
-Current stage: P31 — restore, merge, conflict, controlled purge and fault recovery
-Stage status: VERIFIED (`P31-E001`—`P31-E008`); P00—P30 remain VERIFIED and P32 is the next unstarted stage
+Current stage: P32 — card Vault, privacy diagnostics, telemetry, crash and security settings
+Stage status: VERIFIED (`P32-E001`—`P32-E008`); P00—P31 remain VERIFIED and P33 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -453,7 +453,8 @@ P31 is `VERIFIED`. `P31_RESTORE_MERGE_PURGE_MAPPING.md` records the authenticate
 | P29 | VERIFIED | Current-filter CSV, 15-sheet XLSX, report CSV/XLSX/PDF/PNG, closed sensitive fields, bounded streaming, SAF atomic publication, durable UIDT/WorkManager execution and EXP-001—004/ANA-010; `P29-E001`—`P29-E007` |
 | P30 | VERIFIED | Always-encrypted managed and portable backup, chunk/object reuse, retention/GC, recovery/Vault wrapping, SAF/Drive resumability, daily scheduling and BKP-001—007/SYS-003; `P30-E001`—`P30-E008` |
 | P31 | VERIFIED | Authenticated bounded restore, SQLCipher shadow validation/atomic exchange, commit-graph merge, controlled purge/tombstone, clear/recovery integration and RST/JRN/CLR/G flows; `P31-E001`—`P31-E008` |
-| P32—P36 | NOT_STARTED | P32 is next; do not promote later work early |
+| P32 | VERIFIED | Per-action Vault authentication, ciphertext-only persistence, recovery rewrap, clipboard/screen privacy, closed-schema telemetry/ACRA, scoped clear and all VLT/SETG/CLR/SYS contracts pass; see `P32-E001`—`P32-E008` |
+| P33—P36 | NOT_STARTED | P33 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -715,3 +716,26 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p31_restore_con
 ```
 
 All P31 evidence is recorded in `P31-E001`—`P31-E008`. The next entry point is P32. Preserve the authenticated source/hash boundary, PREPARED/FINALIZED recovery markers, same-filesystem atomic move requirement, no-timestamp merge, forced tombstone precedence, purge revalidation and coordinator-only financial writes; do not weaken local/cloud deletion authority or promote P32+ work early.
+
+## P32 verified handoff
+
+P32 leaves the repository with a ciphertext-only SQLCipher card Vault, authentication-validity-zero Keystore wrapping and a fresh identity-bound `CryptoObject` for every reveal/copy/edit action. PAN clipboard content is marked sensitive and cleared on a 30-second timer/background; CVC has no copy API; all exposure/editor material clears on timeout, lock, background, leave and close. A recovery-wrapped Vault DEK is rebound to a fresh device-authentication KEK after restore without background card-field decryption.
+
+Privacy diagnostics now use closed feature/crash schemas, separate consent/queues/128-bit IDs, 30-day rotation, 90/180-day retention, bounded atomic no-backup storage, a replaceable HTTPS whitelist sender with final string scan, ACRA 5.13.1 custom reports and `ApplicationExitInfo`. Settings cover app lock, screenshot/recent-task privacy, trash retention, diagnostic queue audit/delete, scoped authenticated local clear and device-security recovery. INV-032 is device-proven across SQLCipher, all ordinary workbook sheets, FTS, audit snapshots, telemetry/crash persistence and merged/unmerged Compose semantics.
+
+The reproducible P32 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p32_security_privacy.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p32_security_privacy_contracts -v
+./gradlew :core:security:testDebugUnitTest :core:telemetry:testDebugUnitTest :feature:vault:testDebugUnitTest :feature:settings:testDebugUnitTest --no-configuration-cache --max-workers=2 --dependency-verification=strict --console=plain
+./gradlew :core:security:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=2 --dependency-verification=strict --console=plain
+./gradlew :core:telemetry:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=2 --dependency-verification=strict --console=plain --no-daemon
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.LedgerExportQueryDeviceTest --no-configuration-cache --max-workers=2 --dependency-verification=strict --console=plain
+./gradlew :feature:vault:pixel6Api36DebugAndroidTest :feature:settings:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=2 --dependency-verification=strict --console=plain
+./gradlew :app:pixel6Api36DebugAndroidTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain --no-daemon
+./gradlew p32Check --no-configuration-cache --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g --dependency-verification=strict --console=plain
+./gradlew p32Artifacts --no-configuration-cache --max-workers=1 -Dorg.gradle.jvmargs=-Xmx2g --dependency-verification=strict --console=plain
+```
+
+All P32 evidence is recorded in `P32-E001`—`P32-E008`. The next entry point is P33. Preserve the independent app/Vault gates, ciphertext-only data boundary, zero-free-text telemetry schemas, consent deletion semantics, `FLAG_SECURE`, sensitive-semantic exclusion and local/cloud authority split; do not expose Vault data through widgets or promote P33+ work early.

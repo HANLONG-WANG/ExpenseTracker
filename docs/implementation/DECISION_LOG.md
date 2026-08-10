@@ -1107,3 +1107,25 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: the safety snapshot needs the raw encrypted database artifact location, while `:app` may not acquire a direct `:core:database` edge; recovery password editing also cannot retain a raw unbounded `String`, and merge timestamps must remain deterministic under tests and retries.
 - Decision: expose only the encrypted primary artifact path through the existing `SecurePrimaryLedgerAccess` security bridge, keep database/schema inspection behind that bridge, store password input in a bounded clearable `CharArray` wrapper, and inject the application clock into merge command/session persistence.
 - Consequence: the 40-project frozen dependency graph remains unchanged, password state is redacted and zeroized on replacement, and identical merge inputs plus injected IDs/time remain reproducible without weakening SQLCipher ownership.
+
+## DL-157 — VLT `unlockedSession` is a safe list state, not reusable Vault authentication
+
+- Date/stage: 2026-08-10 / P32
+- Surface issue: VLT-001 YAML names an `unlockedSession` state, while the higher-priority product requirement and UI main contract require every PAN reveal, PAN copy, CVC reveal and edit action to authenticate independently and prohibit a general unlocked Vault session.
+- Priority applied: the product/security invariant and UI main-contract interaction outrank the lower-priority YAML state label.
+- Decision: interpret `unlockedSession` only as the device-secure, tail-only card-list/navigation state. It contains display name, last four digits and whether ciphertext is configured; it contains no Vault DEK, plaintext or reusable authorization. Every sensitive action creates a new auth-validity-zero Keystore cipher and exact `CryptoObject` request.
+- Consequence: all YAML states remain represented without weakening per-action authentication. A successful app unlock cannot open Vault material, and a successful Vault prompt cannot change the app-lock state.
+
+## DL-158 — Android telemetry exposes a replaceable HTTPS sender without inventing a receiver URL
+
+- Date/stage: 2026-08-10 / P32
+- Surface issue: the frozen technical stack requires an OkHttp whitelist client and states explicitly that receiver infrastructure is outside this Android-only repository, but supplies no production endpoint or deployment trust material.
+- Decision: implement a replaceable HTTPS-only sender interface, the two exact manual JSON schemas, durable consent-gated queues, retry semantics and a final upload string scan. Application composition does not hard-code an unapproved URL; until an externally approved endpoint is supplied, user-auditable events remain queued rather than being reported as sent.
+- Consequence: the complete Android privacy boundary is production-ready and testable with MockWebServer, cleartext remains test-only, and adding receiver configuration later cannot expand the event schema. No fake-success network path or undocumented server is introduced.
+
+## DL-159 — Sensitive visual text clears both merged and unmerged Compose semantics
+
+- Date/stage: 2026-08-10 / P32
+- Surface issue: the governed `SensitiveValueField` replaced the parent accessibility node with a safe masked/revealed description, but an API 36 UI test found the inner revealed `Text` in the unmerged semantics tree.
+- Decision: retain the safe parent description and independently clear semantics on the visual value node itself. PAN/CVC remain visually renderable after authentication while neither value can be discovered in merged or unmerged accessibility semantics; CVC still has no copy action.
+- Consequence: the failing real-device privacy test became a passing regression gate without hiding the defect by weakening the assertion or omitting accessibility coverage.

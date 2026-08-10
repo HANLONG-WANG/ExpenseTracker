@@ -1630,6 +1630,82 @@ tasks.register("p31Artifacts") {
     dependsOn("p02Artifacts")
 }
 
+val validateP32SecurityPrivacy by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P32 per-action Vault authentication, privacy diagnostics, app lock, clearing and governed UI coverage."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p32_security_privacy.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/security/src") { include("**/*") },
+        fileTree("core/telemetry/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature/vault/src") { include("**/*") },
+        fileTree("feature/settings/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*") },
+        fileTree("finance/data/src") { include("**/*") },
+        fileTree("core/database/src/main/assets") { include("**/*.sql") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "gradle/libs.versions.toml",
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP32SecurityPrivacyFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P32 gate rejects authentication reuse, delayed cleanup, generic telemetry, ACRA and local-clear weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p32_security_privacy_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p32_security_privacy.py",
+        "scripts/tests/test_p32_security_privacy_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/security/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/telemetry/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/designsystem/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/vault/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/settings/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p32Check") {
+    group = "verification"
+    description = "Runs P32 static, JVM, lint and architecture evidence; Keystore/SQLCipher/UI managed-device suites run separately."
+    dependsOn(
+        validateP32SecurityPrivacy,
+        validateP32SecurityPrivacyFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":core:security:testDebugUnitTest",
+        ":core:telemetry:testDebugUnitTest",
+        ":feature:vault:testDebugUnitTest",
+        ":feature:settings:testDebugUnitTest",
+        ":finance:application:test",
+        ":finance:data:testDebugUnitTest",
+        ":app:testDebugUnitTest",
+        ":app:lintDebug",
+        ":core:security:lintDebug",
+        ":core:telemetry:lintDebug",
+        ":feature:vault:lintDebug",
+        ":feature:settings:lintDebug",
+        ":finance:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+tasks.register("p32Artifacts") {
+    group = "verification"
+    description = "Generates P32 coverage and inherited SBOM/license artifacts."
+    dependsOn("p02Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

@@ -25,4 +25,10 @@
     <string name="backup_worker_phase_database">数据库快照</string><string name="backup_worker_phase_objects">对象处理</string><string name="backup_worker_phase_writing">上传或写入</string><string name="backup_worker_phase_verifying">验证</string><string name="backup_worker_phase_manifest">发布清单</string><string name="backup_worker_phase_retention">执行保留策略</string><string name="backup_worker_phase_complete">完成</string>
     <string name="global_restore">恢复</string><string name="global_restore_explanation">检查备份并选择原子替换或三方合并</string>
     <string name="global_delete_cloud_backups">删除云端备份</string><string name="global_delete_cloud_backups_explanation">重新认证后删除选中的加密 Drive 快照</string>
+    <string name="global_vault">卡片保险库</string><string name="global_vault_explanation">每次敏感动作独立认证；卡号自动隐藏且剪贴板定时清理</string>
+    <string name="global_app_lock_settings">应用锁</string><string name="global_app_lock_settings_explanation">设置返回应用时的设备认证和超时</string>
+    <string name="global_screen_privacy">屏幕隐私</string><string name="global_screen_privacy_explanation">管理截图阻止和最近任务遮挡</string>
+    <string name="global_trash_settings">回收站设置</string><string name="global_trash_settings_explanation">设置保留期并打开回收站</string>
+    <string name="global_diagnostics">隐私与诊断</string><string name="global_diagnostics_explanation">审核固定白名单队列和独立开关</string>
+    <string name="global_clear_local">清除本机数据</string><string name="global_clear_local_explanation">经认证删除本机数据；不删除导出或云端备份</string>
 </resources>

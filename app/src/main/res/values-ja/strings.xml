@@ -25,4 +25,10 @@
     <string name="backup_worker_phase_database">データベースのスナップショット</string><string name="backup_worker_phase_objects">オブジェクト処理</string><string name="backup_worker_phase_writing">アップロードまたは書き込み</string><string name="backup_worker_phase_verifying">検証</string><string name="backup_worker_phase_manifest">マニフェスト公開</string><string name="backup_worker_phase_retention">保持処理</string><string name="backup_worker_phase_complete">完了</string>
     <string name="global_restore">復元</string><string name="global_restore_explanation">バックアップを検査し、原子的置換または三方向結合を選択します</string>
     <string name="global_delete_cloud_backups">クラウドバックアップを削除</string><string name="global_delete_cloud_backups_explanation">再認証後、選択した暗号化 Drive スナップショットを削除します</string>
+    <string name="global_vault">カード保管庫</string><string name="global_vault_explanation">機密操作ごとに認証し、自動非表示とクリップボード消去を行います</string>
+    <string name="global_app_lock_settings">アプリロック</string><string name="global_app_lock_settings_explanation">復帰認証とタイムアウトを設定</string>
+    <string name="global_screen_privacy">画面プライバシー</string><string name="global_screen_privacy_explanation">撮影禁止と最近のタスクの遮蔽を管理</string>
+    <string name="global_trash_settings">ごみ箱設定</string><string name="global_trash_settings_explanation">保持期間を設定してごみ箱を開く</string>
+    <string name="global_diagnostics">プライバシーと診断</string><string name="global_diagnostics_explanation">固定許可リストのキューと個別設定を監査</string>
+    <string name="global_clear_local">ローカルデータを消去</string><string name="global_clear_local_explanation">認証後に端末内だけを削除し、エクスポートとクラウドは残します</string>
 </resources>

@@ -125,6 +125,30 @@ internal fun MoreRootDestination(
             viewModel.openCloudBackupDeletion()
             onNavigationChanged()
         },
+        onVault = {
+            viewModel.openVault()
+            onNavigationChanged()
+        },
+        onAppLock = {
+            viewModel.openSecurityPrivacySettings("SETG-006")
+            onNavigationChanged()
+        },
+        onScreenPrivacy = {
+            viewModel.openSecurityPrivacySettings("SETG-007")
+            onNavigationChanged()
+        },
+        onTrash = {
+            viewModel.openSecurityPrivacySettings("SETG-008")
+            onNavigationChanged()
+        },
+        onDiagnostics = {
+            viewModel.openSecurityPrivacySettings("SETG-009")
+            onNavigationChanged()
+        },
+        onClearLocal = {
+            viewModel.openSecurityPrivacySettings("CLR-001")
+            onNavigationChanged()
+        },
     )
 }
 
@@ -148,6 +172,12 @@ internal fun MoreScreen(
     onBackup: () -> Unit = {},
     onRestore: () -> Unit = {},
     onDeleteCloudBackups: () -> Unit = {},
+    onVault: () -> Unit = {},
+    onAppLock: () -> Unit = {},
+    onScreenPrivacy: () -> Unit = {},
+    onTrash: () -> Unit = {},
+    onDiagnostics: () -> Unit = {},
+    onClearLocal: () -> Unit = {},
 ) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
@@ -178,6 +208,12 @@ internal fun MoreScreen(
             onBackup = onBackup,
             onRestore = onRestore,
             onDeleteCloudBackups = onDeleteCloudBackups,
+            onVault = onVault,
+            onAppLock = onAppLock,
+            onScreenPrivacy = onScreenPrivacy,
+            onTrash = onTrash,
+            onDiagnostics = onDiagnostics,
+            onClearLocal = onClearLocal,
         )
     }
 }
@@ -203,6 +239,12 @@ internal fun MoreContent(
     onBackup: () -> Unit = {},
     onRestore: () -> Unit = {},
     onDeleteCloudBackups: () -> Unit = {},
+    onVault: () -> Unit = {},
+    onAppLock: () -> Unit = {},
+    onScreenPrivacy: () -> Unit = {},
+    onTrash: () -> Unit = {},
+    onDiagnostics: () -> Unit = {},
+    onClearLocal: () -> Unit = {},
 ) {
     val entries = listOf(
         Triple(stringResource(R.string.global_operations), stringResource(R.string.global_operations_explanation), onOperations),
@@ -222,6 +264,12 @@ internal fun MoreContent(
         Triple(stringResource(R.string.global_backup), stringResource(R.string.global_backup_explanation), onBackup),
         Triple(stringResource(R.string.global_restore), stringResource(R.string.global_restore_explanation), onRestore),
         Triple(stringResource(R.string.global_delete_cloud_backups), stringResource(R.string.global_delete_cloud_backups_explanation), onDeleteCloudBackups),
+        Triple(stringResource(R.string.global_vault), stringResource(R.string.global_vault_explanation), onVault),
+        Triple(stringResource(R.string.global_app_lock_settings), stringResource(R.string.global_app_lock_settings_explanation), onAppLock),
+        Triple(stringResource(R.string.global_screen_privacy), stringResource(R.string.global_screen_privacy_explanation), onScreenPrivacy),
+        Triple(stringResource(R.string.global_trash_settings), stringResource(R.string.global_trash_settings_explanation), onTrash),
+        Triple(stringResource(R.string.global_diagnostics), stringResource(R.string.global_diagnostics_explanation), onDiagnostics),
+        Triple(stringResource(R.string.global_clear_local), stringResource(R.string.global_clear_local_explanation), onClearLocal),
     )
     LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (presentation == MorePresentation.BADGE_UPDATES) {

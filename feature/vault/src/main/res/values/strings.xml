@@ -1,0 +1,10 @@
+<resources>
+    <string name="vault_title">卡片保险库</string><string name="vault_card_title">保险库卡片</string><string name="vault_edit_title">编辑保险库内容</string>
+    <string name="vault_security_banner">保险库始终独立锁定。每次查看、复制或编辑都会重新验证；应用解锁不会解锁保险库。</string>
+    <string name="vault_device_security_missing">设备尚未设置安全屏幕锁，无法启用保险库。</string><string name="vault_open_security_settings">打开系统安全设置</string>
+    <string name="vault_empty">没有可用卡片</string><string name="vault_empty_body">先在账户中创建实体卡，再为其保存保险库内容。</string><string name="vault_open_cards">打开系统设置</string>
+    <string name="vault_tail">尾号 %1$s</string><string name="vault_no_tail">未保存尾号</string><string name="vault_configured">已配置</string><string name="vault_not_configured">未配置</string>
+    <string name="vault_auto_hidden">敏感内容已自动隐藏。</string><string name="vault_auth_failed">身份验证失败；敏感内容仍为隐藏状态。</string><string name="vault_authenticating">正在使用设备安全验证</string><string name="vault_auth_success">身份验证成功</string><string name="vault_auth_cancelled">已取消身份验证</string>
+    <string name="vault_security_code">安全码</string><string name="vault_edit">编辑保险库内容</string><string name="vault_edit_auth_required">编辑前需要一次新的设备安全验证。</string><string name="vault_authenticate_edit">验证并编辑</string><string name="vault_saving">正在加密并保存</string>
+    <string name="vault_holder">持卡人</string><string name="vault_primary_number">完整卡号</string><string name="vault_expiry">有效期</string><string name="vault_custom_fields">自定义敏感字段</string><string name="vault_save">加密保存</string>
+</resources>

@@ -25,4 +25,10 @@
     <string name="backup_worker_phase_database">Database snapshot</string><string name="backup_worker_phase_objects">Object processing</string><string name="backup_worker_phase_writing">Upload or write</string><string name="backup_worker_phase_verifying">Verification</string><string name="backup_worker_phase_manifest">Manifest publication</string><string name="backup_worker_phase_retention">Retention</string><string name="backup_worker_phase_complete">Complete</string>
     <string name="global_restore">Restore</string><string name="global_restore_explanation">Inspect a backup, then atomically replace or three-way merge</string>
     <string name="global_delete_cloud_backups">Delete cloud backups</string><string name="global_delete_cloud_backups_explanation">Reauthenticate and delete selected encrypted Drive snapshots</string>
+    <string name="global_vault">Card vault</string><string name="global_vault_explanation">Authenticate every sensitive action; auto-hide numbers and clear the clipboard</string>
+    <string name="global_app_lock_settings">App lock</string><string name="global_app_lock_settings_explanation">Configure return authentication and timeout</string>
+    <string name="global_screen_privacy">Screen privacy</string><string name="global_screen_privacy_explanation">Manage screenshot blocking and recent-task obscuring</string>
+    <string name="global_trash_settings">Trash settings</string><string name="global_trash_settings_explanation">Configure retention and open trash</string>
+    <string name="global_diagnostics">Privacy and diagnostics</string><string name="global_diagnostics_explanation">Audit fixed allowlist queues and independent controls</string>
+    <string name="global_clear_local">Clear local data</string><string name="global_clear_local_explanation">Authenticated local deletion; exports and cloud backups remain</string>
 </resources>

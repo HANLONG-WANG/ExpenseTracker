@@ -389,7 +389,11 @@ public fun SensitiveValueField(
             .clearAndSetSemantics { contentDescription = semantic },
     ) {
         Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (revealed) revealedValue else "•••• •••• •••• ••••", Modifier.weight(1f), style = LedgerTheme.typography.amountMedium)
+            Text(
+                if (revealed) revealedValue else "•••• •••• •••• ••••",
+                Modifier.weight(1f).clearAndSetSemantics { },
+                style = LedgerTheme.typography.amountMedium,
+            )
             if (revealed && secondsRemaining > 0) Text("${secondsRemaining}s", style = LedgerTheme.typography.labelMedium)
             LedgerButton(
                 stringResource(if (revealed) R.string.ledger_hide else R.string.ledger_reveal),
