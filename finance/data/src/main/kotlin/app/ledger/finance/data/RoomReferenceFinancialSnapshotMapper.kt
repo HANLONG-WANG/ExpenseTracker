@@ -93,6 +93,7 @@ import app.ledger.finance.domain.PlanningCategory
 import app.ledger.finance.domain.PlanningGoal
 import app.ledger.finance.domain.PlanningIdentitySet
 import app.ledger.finance.domain.PlanningLoanLedger
+import app.ledger.finance.domain.PlanningOperationContext
 import app.ledger.finance.domain.PlanningProject
 import app.ledger.finance.domain.PlanningReferenceData
 import app.ledger.finance.domain.PlanningSettlementLedger
@@ -155,6 +156,35 @@ internal data class ReferenceEditSource(
 /** Rehydrates only immutable, typed data needed by P12 context/category revision fan-out. */
 internal class RoomReferenceFinancialSnapshotMapper {
     private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
+
+    /** Purge planning needs identity/state only; a trashed revision intentionally has no live APPLY facts. */
+    fun loadForPurge(
+        db: SupportSQLiteDatabase,
+        transactionId: StableId,
+        commitId: StableId,
+        createdAt: Instant,
+        deviceInstanceId: StableId,
+    ): PlanningSnapshot {
+        val book = RoomBookRepository.mapCurrent(db)
+        val references = references(db)
+        val transaction = readTransaction(db, transactionId)
+        val currentRevision = readRevision(db, transaction, references, transaction.currentRevisionId)
+        return PlanningSnapshot(
+            book = book,
+            currentTransaction = transaction,
+            currentRevision = currentRevision,
+            dependencies = readDependencies(db, transaction.id),
+            reversedApplyEntryIds = readReversedEntryIds(db, currentRevision.id),
+            refundStatuses = emptyList(),
+            budgetRevision = null,
+            participants = emptyList(),
+            operationContext = PlanningOperationContext(
+                BookCommitId(commitId),
+                createdAt,
+                DeviceInstanceId(deviceInstanceId),
+            ),
+        )
+    }
 
     fun load(
         db: SupportSQLiteDatabase,

@@ -78,6 +78,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
@@ -389,15 +390,17 @@ public fun LedgerChoiceRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     supportingText: String? = null,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = LedgerTheme.dimensions.touchTargetMin)
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .semantics {
                 role = Role.RadioButton
                 stateDescription = if (selected) "selected" else "not selected"
+                if (!enabled) disabled()
             }
             .padding(vertical = LedgerTheme.spacing.xs),
         verticalAlignment = Alignment.CenterVertically,

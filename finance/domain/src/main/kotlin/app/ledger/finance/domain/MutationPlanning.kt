@@ -36,6 +36,21 @@ enum class FinancialCommandType {
     APPLY_INSTALLMENT_SETTLEMENT,
     SAVE_LOAN_CONTRACT,
     APPLY_LOAN_PAYMENT,
+    MERGE_RESTORE,
+}
+
+enum class MergeEntitySource { LOCAL, INCOMING, PURGE_TOMBSTONE }
+
+data class MergeEntitySelection(
+    val entity: StableEntityReference,
+    val source: MergeEntitySource,
+    val contentHash: ContentHash?,
+    val generation: Long,
+) {
+    init {
+        require(generation >= 0L)
+        require(source == MergeEntitySource.PURGE_TOMBSTONE || contentHash != null || generation == 0L)
+    }
 }
 
 sealed interface FinancialCommand {
@@ -240,6 +255,24 @@ data class PurgeTransactionCommand(
     val eligibility: PurgeEligibility,
 ) : FinancialCommand {
     override val commandType: FinancialCommandType = FinancialCommandType.PURGE_TRANSACTION
+}
+
+/** A resolved same-book three-way merge. The opaque operation id resolves only finance-owned shadow state. */
+data class MergeRestoreCommand(
+    override val commandId: CommandId,
+    override val payloadHash: Hash256,
+    val operationId: StableId,
+    val commonAncestorCommitId: BookCommitId,
+    val incomingHeadCommitId: BookCommitId,
+    val selections: List<MergeEntitySelection>,
+) : FinancialCommand {
+    override val expectedRevisionId: TransactionRevisionId? = null
+    override val commandType: FinancialCommandType = FinancialCommandType.MERGE_RESTORE
+
+    init {
+        require(selections.isNotEmpty())
+        require(selections.map(MergeEntitySelection::entity).toSet().size == selections.size)
+    }
 }
 
 data class RecordGoalMovementCommand(
@@ -611,7 +644,12 @@ object FinancialMutationPlanValidator {
         if (plan.commandId != command.commandId || plan.commandType != command.commandType) return false
         if (plan.payloadHash != command.payloadHash || plan.targetLocalRevision != expectedNext.value) return false
         if (plan.commit.commandId != command.commandId) return false
-        if (plan.commit.parentIds != listOf(snapshot.book.headCommitId)) return false
+        val expectedParents = if (command is MergeRestoreCommand) {
+            listOf(snapshot.book.headCommitId, command.incomingHeadCommitId)
+        } else {
+            listOf(snapshot.book.headCommitId)
+        }
+        if (plan.commit.parentIds != expectedParents) return false
         if (plan.projectionChanges.targetRevision != plan.targetLocalRevision) return false
         if (plan.ruleSetVersion != snapshot.book.ruleSetVersion) return false
         if (command is RecordGoalMovementCommand) {
@@ -771,6 +809,10 @@ object FinancialMutationPlanValidator {
         is PurgeTransactionCommand -> plan.purgeTombstones.any { tombstone ->
             tombstone.entity.stableId == command.transactionId.value
         } && plan.commit.kind == CommitKind.PURGE
+        is MergeRestoreCommand ->
+            plan.commit.kind == CommitKind.MERGE &&
+                plan.entityChanges.map(EntityChange::entity).toSet() == command.selections
+                    .filter { it.source != MergeEntitySource.LOCAL }.map(MergeEntitySelection::entity).toSet()
         is RecordGoalMovementCommand ->
             plan.goalMovements == listOf(command.movement) &&
                 plan.goalEffects.singleOrNull()?.let { effect ->

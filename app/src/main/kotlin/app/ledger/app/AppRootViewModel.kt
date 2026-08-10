@@ -15,6 +15,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.work.WorkManager
 import app.ledger.analytics.domain.AnalyticsApplicationPort
 import app.ledger.analytics.domain.DimensionValue
 import app.ledger.analytics.domain.DrilldownQueryId
@@ -60,6 +61,7 @@ import app.ledger.core.security.BookSessionState
 import app.ledger.core.security.DefaultLedgerStartupInspector
 import app.ledger.core.security.DeviceLedgerKeyProvider
 import app.ledger.core.security.DeviceSecurityCapability
+import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.RecoveryPassword
 import app.ledger.core.security.RecoveryPasswordKeyWrapper
 import app.ledger.core.security.RecoveryWrappedKeyMaterial
@@ -149,6 +151,7 @@ import app.ledger.feature.settlement.SettlementPresentation
 import app.ledger.feature.transfer.BackupFlowUiState
 import app.ledger.feature.transfer.ExportFlowUiState
 import app.ledger.feature.transfer.ImportModeUi
+import app.ledger.feature.transfer.RestoreFlowUiState
 import app.ledger.finance.application.AccountDraft
 import app.ledger.finance.application.ApplyInstallmentSettlementRequest
 import app.ledger.finance.application.ApplyLoanSimulationRequest
@@ -167,6 +170,8 @@ import app.ledger.finance.application.CardDraft
 import app.ledger.finance.application.CategoryDraft
 import app.ledger.finance.application.ChangeProjectStatusRequest
 import app.ledger.finance.application.CompleteGoalRequest
+import app.ledger.finance.application.ControlledPurgeApplicationPort
+import app.ledger.finance.application.ControlledPurgeRequest
 import app.ledger.finance.application.CreditApplicationPort
 import app.ledger.finance.application.CreditMutationIds
 import app.ledger.finance.application.CreditPaymentContext
@@ -258,6 +263,7 @@ import app.ledger.finance.application.SpecializedTransactionWriteRequest
 import app.ledger.finance.application.StructuredImportApplicationPort
 import app.ledger.finance.application.UpdateBookLocaleCommand
 import app.ledger.finance.data.RoomLedgerStartupInspector
+import app.ledger.finance.data.SecureRoomControlledPurgeApplicationPort
 import app.ledger.finance.domain.AutoGenerationMode
 import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.BudgetAdjustmentKind
@@ -314,7 +320,9 @@ import app.ledger.transfer.domain.ExportField
 import app.ledger.transfer.domain.ExportFilter
 import app.ledger.transfer.domain.ExportFormat
 import app.ledger.transfer.domain.ExportReportSnapshot
+import app.ledger.transfer.domain.MergeResolution
 import app.ledger.transfer.domain.RecoveryPasswordChangeMode
+import app.ledger.transfer.domain.RestoreMode
 import com.google.protobuf.ByteString
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -413,9 +421,13 @@ internal class AppRootViewModel @Inject constructor(
     )
     private val exportController = ExportController(context, keyProvider, runtimeSources)
     private val backupController = BackupController(context, keyProvider, runtimeSources)
+    private val restoreController = RestoreController(context, keyProvider, runtimeSources)
+    private val controlledPurgeApplicationPort: ControlledPurgeApplicationPort =
+        SecureRoomControlledPurgeApplicationPort(context, keyProvider)
     val importWizard = importController.state
     val exportFlow: StateFlow<ExportFlowUiState> = exportController.state
     val backupFlow: StateFlow<BackupFlowUiState> = backupController.state
+    val restoreFlow: StateFlow<RestoreFlowUiState> = restoreController.state
     val analysis: StateFlow<AnalysisLoadState> = analysisController.state
     private val batchEntryController = BatchEntryController(
         batchEntryApplicationPort,
@@ -428,6 +440,8 @@ internal class AppRootViewModel @Inject constructor(
     val batchRecordPending: StateFlow<Boolean> = batchEntryController.pending
     private val mutableRootState = MutableStateFlow<AppRootState>(AppRootState.Starting)
     val rootState: StateFlow<AppRootState> = mutableRootState.asStateFlow()
+    private val mutableRecoveryRestoreActive = MutableStateFlow(false)
+    val recoveryRestoreActive: StateFlow<Boolean> = mutableRecoveryRestoreActive.asStateFlow()
 
     private val mutableAuthenticationRequests = MutableSharedFlow<Unit>(
         extraBufferCapacity = 1,
@@ -538,6 +552,7 @@ internal class AppRootViewModel @Inject constructor(
 
     private var onboardingState = OnboardingUiState()
     private var sessionManager: BookSessionManager? = null
+    private var restoreRecoveryRunning = false
     private var appLockController: AppLockController? = null
     private var unsavedContentLossNotice: Boolean = false
     val navigator: FiveStackNavigator = FiveStackNavigator()
@@ -814,6 +829,20 @@ internal class AppRootViewModel @Inject constructor(
                     loadOrdinaryRecord()
                     loadJournal()
                     catchUpAutomation(bookId)
+                } else if (
+                    state is BookSessionState.Maintenance &&
+                    state.reason == MaintenanceReason.UNFINISHED_OPERATION &&
+                    !restoreRecoveryRunning
+                ) {
+                    restoreRecoveryRunning = true
+                    viewModelScope.launch(Dispatchers.IO) {
+                        try {
+                            manager.close()
+                            if (restoreController.recoverInterrupted(bookId)) manager.finishMaintenance()
+                        } finally {
+                            restoreRecoveryRunning = false
+                        }
+                    }
                 }
             }
         }
@@ -874,6 +903,17 @@ internal class AppRootViewModel @Inject constructor(
             val saved = settingsRepository.current()
             val bookId = saved.bookId.toByteArray().takeIf { it.size == StableId.BYTE_COUNT }
                 ?.let { StableId.fromBytes(it).getOrNull() }
+            val backupConfiguration = bookId?.let { id ->
+                runCatching { app.ledger.transfer.data.BackupConfigurationStore(context, keyProvider).read(id) }.getOrNull()
+            }
+            val workStopped = runCatching {
+                WorkManager.getInstance(context).cancelAllWork().result.get()
+                true
+            }.getOrDefault(false)
+            if (!workStopped) {
+                mutableGlobalSnackbarMessages.tryEmit(GlobalSnackbarMessage.LOCAL_CLEAR_FAILED)
+                return@launch
+            }
             sessionManager?.close()
             sessionManager = null
             val cleared = bookId?.let { initializationPort.clearLocalBook(it) }
@@ -882,12 +922,14 @@ internal class AppRootViewModel @Inject constructor(
                 openSavedBook(saved)
                 return@launch
             }
+            val artifactsCleared = LocalBookArtifactCleaner(context, keyProvider).clear(bookId, backupConfiguration)
             settingsRepository.reset()
             onboardingState = OnboardingUiState(
                 baseCurrency = DEFAULT_CURRENCY,
                 zoneId = ZoneId.systemDefault().id.takeIf { it == DEFAULT_ZONE },
             )
             withContext(Dispatchers.Main.immediate) { publishOnboarding() }
+            if (!artifactsCleared) mutableGlobalSnackbarMessages.tryEmit(GlobalSnackbarMessage.LOCAL_CLEAR_FAILED)
         }
     }
 
@@ -1326,9 +1368,43 @@ internal class AppRootViewModel @Inject constructor(
     fun verifyJournalPurge(transactionId: StableId) {
         viewModelScope.launch(Dispatchers.IO) {
             val bookId = requireBookId(settingsRepository.current())
-            when (val result = journalApplicationPort.assessPurge(bookId, transactionId, runtimeSources.clock.now())) {
+            when (val result = controlledPurgeApplicationPort.assess(bookId, transactionId, runtimeSources.clock.now())) {
                 is DomainResult.Success -> updateJournalContent { copy(purgeAssessment = result.value) }
                 is DomainResult.Failure -> mutableJournal.value = JournalLoadState.Failure(sanitizeCode(result.error.code))
+            }
+        }
+    }
+
+    fun purgeJournalTransaction(transactionId: StableId) {
+        val content = mutableJournal.value as? JournalLoadState.Content ?: return
+        val assessment = content.purgeAssessment?.takeIf { it.transactionId == transactionId && it.canPurgeNow } ?: return
+        val expectedRevision = content.history.firstOrNull()?.revisionId ?: return
+        if (content.operation in setOf(JournalOperationState.VALIDATING, JournalOperationState.COMMITTING)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            updateJournalContent { copy(operation = JournalOperationState.COMMITTING) }
+            val request = ControlledPurgeRequest(
+                bookId = requireBookId(settingsRepository.current()),
+                commandId = nextId(),
+                transactionId = transactionId,
+                expectedRevisionId = expectedRevision,
+                purgeCommitId = nextId(),
+                deviceInstanceId = nextId(),
+                evaluatedAt = assessment.evaluatedAt,
+            )
+            when (controlledPurgeApplicationPort.purge(request)) {
+                is DomainResult.Success -> {
+                    updateJournalContent {
+                        copy(
+                            detail = null,
+                            history = emptyList(),
+                            purgeAssessment = null,
+                            operation = JournalOperationState.SUCCEEDED,
+                        )
+                    }
+                    refreshJournalPaging()
+                    withContext(Dispatchers.Main.immediate) { requestRootBack() }
+                }
+                is DomainResult.Failure -> updateJournalContent { copy(operation = JournalOperationState.FAILED) }
             }
         }
     }
@@ -3864,6 +3940,10 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun requestRootBack() {
+        if (mutableRecoveryRestoreActive.value) {
+            mutableRecoveryRestoreActive.value = false
+            return
+        }
         val screen = navigator.currentKey.contract.screenId.value
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
         if (screen in setOf("REC-023", "REC-024", "REC-025") && batchRecord.value?.presentation != app.ledger.feature.record.BatchRecordPresentation.COMMITTED) {
@@ -4874,6 +4954,150 @@ internal class AppRootViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             if (backupController.retry()) backupController.awaitCurrent()
         }
+    }
+
+    fun openRestore() {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        restoreController.begin(ready.bookId)
+        navigateRestore("RST-001")
+    }
+
+    fun openRestoreFromRecovery() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val activeBook = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
+            restoreController.begin(activeBook)
+            mutableRecoveryRestoreActive.value = true
+        }
+    }
+
+    fun openRestoreSnapshot(snapshotId: String) {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        restoreController.begin(ready.bookId)
+        if (restoreController.selectRepositorySnapshot(snapshotId)) navigateRestore("RST-002")
+    }
+
+    fun selectRestorePortable(uri: Uri): Boolean {
+        if (!restoreController.selectPortable(uri)) return false
+        navigateRestore("RST-002")
+        return true
+    }
+
+    fun selectLatestRestoreRepository(): Boolean {
+        if (!restoreController.selectLatestRepository()) return false
+        navigateRestore("RST-002")
+        return true
+    }
+
+    fun requestRestoreDriveAuthorization(
+        launchResolution: (PendingIntent) -> Unit,
+        onSelected: () -> Unit,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val resolution = restoreController.selectLatestDriveRepository()
+            withContext(Dispatchers.Main.immediate) {
+                if (resolution != null) {
+                    launchResolution(resolution)
+                } else if (restoreController.state.value.screenId == "RST-002") {
+                    navigateRestore("RST-002")
+                    onSelected()
+                }
+            }
+        }
+    }
+
+    fun completeRestoreDriveAuthorization(intent: Intent?, onSelected: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            restoreController.selectLatestDriveRepository(intent)
+            withContext(Dispatchers.Main.immediate) {
+                if (restoreController.state.value.screenId == "RST-002") {
+                    navigateRestore("RST-002")
+                    onSelected()
+                }
+            }
+        }
+    }
+
+    fun changeRestorePassword(value: String) = restoreController.passwordChanged(value)
+
+    fun verifyRestorePassword() {
+        viewModelScope.launch(Dispatchers.IO) {
+            restoreController.verifyAndInspect()
+            withContext(Dispatchers.Main.immediate) { navigateRestore(restoreController.state.value.screenId) }
+        }
+    }
+
+    fun selectRestoreMode(mode: RestoreMode) = restoreController.selectMode(mode)
+    fun changeRestoreHighRiskPhrase(value: String) = restoreController.highRiskPhraseChanged(value)
+
+    fun startRestore() {
+        if (restoreController.state.value.mode == RestoreMode.MERGE) {
+            viewModelScope.launch(Dispatchers.IO) {
+                restoreController.start()
+                withContext(Dispatchers.Main.immediate) { navigateRestore(restoreController.state.value.screenId) }
+            }
+        } else {
+            executeRestoreMaintenance { restoreController.start() }
+        }
+    }
+
+    fun resolveRestoreConflict(conflictId: String, resolution: MergeResolution) = restoreController.resolve(conflictId, resolution)
+
+    fun applyRestoreMerge() = executeRestoreMaintenance { restoreController.applyMerge() }
+    fun cancelRestore() = restoreController.cancel()
+
+    fun retryRestore() {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        restoreController.begin(ready.bookId)
+        navigateRestore("RST-001")
+    }
+
+    fun finishRestoreFlow() {
+        mutableRecoveryRestoreActive.value = false
+        selectRootTopLevel(TopLevelDestination.JOURNAL)
+    }
+
+    fun openCloudBackupDeletion() {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        restoreController.begin(ready.bookId)
+        navigateRestore("CLR-002")
+        loadCloudBackupsForDeletion()
+    }
+
+    fun loadCloudBackupsForDeletion() {
+        viewModelScope.launch(Dispatchers.IO) { restoreController.loadCloudBackups() }
+    }
+
+    fun selectCloudBackupForDeletion(value: String) = restoreController.selectCloudSnapshot(value)
+    fun changeCloudBackupDeletePhrase(value: String) = restoreController.cloudPhraseChanged(value)
+    fun deleteSelectedCloudBackups() {
+        viewModelScope.launch(Dispatchers.IO) { restoreController.deleteSelectedCloudBackups() }
+    }
+
+    private fun executeRestoreMaintenance(block: suspend () -> Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val manager = sessionManager ?: return@launch
+            val recovering = manager.state.value is BookSessionState.RecoveryRequired
+            if (!recovering) manager.enterMaintenance(MaintenanceReason.CONTROLLED_MAINTENANCE)
+            manager.close()
+            val succeeded = block()
+            if (!recovering) {
+                manager.finishMaintenance()
+            } else if (succeeded) {
+                sessionManager = null
+                openSavedBook(settingsRepository.current())
+            }
+            withContext(Dispatchers.Main.immediate) { navigateRestore("RST-007") }
+        }
+    }
+
+    private fun navigateRestore(screenId: String) {
+        restoreController.setScreen(screenId)
+        val arguments = if (screenId in setOf("RST-001", "CLR-002")) {
+            emptyMap()
+        } else {
+            restoreController.currentOperationId()?.let { mapOf("operationId" to StableIdArgument(it)) }.orEmpty()
+        }
+        navigator.navigate(LedgerRouteContract.destination(ScreenId(screenId), arguments), SessionGateState.READY)
     }
 
     fun selectImportMode(mode: ImportModeUi) = importController.selectMode(mode)

@@ -104,7 +104,7 @@ class PortableBackupWriter {
                     var completedBytes = 0L
                     input.sources().forEachIndexed { index, source ->
                         checkCancelled(cancelled)
-                        val name = entryName(index, source)
+                        val name = entryName(source)
                         val entry = ZipArchiveEntry(name).apply { size = source.size }
                         zip.putArchiveEntry(entry)
                         source.open().use { opened -> copyExactly(opened, zip, source.size, cancelled) }
@@ -150,8 +150,8 @@ class PortableBackupWriter {
         output.writeBoolean(input.vaultRecoveryEnvelope != null)
         val sources = input.sources()
         output.writeInt(sources.size)
-        sources.forEachIndexed { index, source ->
-            output.writeUTF(entryName(index, source))
+        sources.forEach { source ->
+            output.writeUTF(entryName(source))
             output.writeInt(source.kind.ordinal)
             output.writeLong(source.size)
             output.write(source.hash.bytes)
@@ -160,10 +160,11 @@ class PortableBackupWriter {
         zip.closeArchiveEntry()
     }
 
-    private fun entryName(index: Int, source: ReopenableBackupSource): String = when (source.kind) {
+    private fun entryName(source: ReopenableBackupSource): String = when (source.kind) {
         BackupObjectKind.DATABASE_CHUNK -> "database/ledger.db"
-        BackupObjectKind.ATTACHMENT -> "attachments/${index.toString().padStart(8, '0')}.object"
-        BackupObjectKind.SETTINGS -> "settings/${index.toString().padStart(8, '0')}.settings"
+        BackupObjectKind.ATTACHMENT,
+        BackupObjectKind.SETTINGS,
+        -> source.logicalName
         BackupObjectKind.KEY_ENVELOPE -> "keys/portable-key-material.envelope"
         BackupObjectKind.VAULT_ENVELOPE -> "keys/vault-recovery.envelope"
     }

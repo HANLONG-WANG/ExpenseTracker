@@ -1559,6 +1559,77 @@ tasks.register("p30Artifacts") {
     dependsOn("p02Artifacts")
 }
 
+val validateP31Restore by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P31 authenticated restore, atomic exchange, three-way merge, controlled purge, recovery and UI coverage."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p31_restore.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/security/src") { include("**/*") },
+        fileTree("feature/transfer/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*") },
+        fileTree("finance/data/src") { include("**/*") },
+        fileTree("finance/domain/src") { include("**/*") },
+        fileTree("transfer/domain/src") { include("**/*") },
+        fileTree("transfer/data/src") { include("**/*") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP31RestoreFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P31 gate rejects streaming, atomicity, coordinator, tombstone, purge, cleanup and privacy weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p31_restore_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p31_restore.py",
+        "scripts/tests/test_p31_restore_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/security/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/transfer/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/domain/src/main/kotlin") { include("**/*.kt") },
+        fileTree("transfer/domain/src/main/kotlin") { include("**/*.kt") },
+        fileTree("transfer/data/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p31Check") {
+    group = "verification"
+    description = "Runs P31 static, JVM, lint and architecture evidence; SQLCipher/Keystore/UI managed-device suites run separately."
+    dependsOn(
+        validateP31Restore,
+        validateP31RestoreFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":transfer:domain:test",
+        ":transfer:data:testDebugUnitTest",
+        ":finance:domain:test",
+        ":finance:application:test",
+        ":app:testDebugUnitTest",
+        ":app:lintDebug",
+        ":core:security:lintDebug",
+        ":feature:transfer:lintDebug",
+        ":finance:data:lintDebug",
+        ":transfer:data:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+tasks.register("p31Artifacts") {
+    group = "verification"
+    description = "Generates P31 coverage and inherited SBOM/license artifacts."
+    dependsOn("p02Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

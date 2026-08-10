@@ -119,6 +119,7 @@ data class BackupFlowActions(
     val onCancel: () -> Unit,
     val onRetry: () -> Unit,
     val onOperations: () -> Unit,
+    val onRestoreSnapshot: (String) -> Unit = {},
 )
 
 @Composable
@@ -133,7 +134,7 @@ fun BackupFlowScreen(state: BackupFlowUiState, actions: BackupFlowActions) {
             "BKP-003" -> RecoveryPassword(state, actions, Modifier.padding(padding))
             "BKP-004" -> BackupSettings(state, actions, Modifier.padding(padding))
             "BKP-005" -> BackupHistory(state, actions, Modifier.padding(padding))
-            "BKP-006" -> BackupDetails(state, Modifier.padding(padding))
+            "BKP-006" -> BackupDetails(state, actions, Modifier.padding(padding))
             "BKP-007" -> ManualBackup(state, actions, Modifier.padding(padding))
             "SYS-003" -> DriveAuthorization(state, actions, Modifier.padding(padding))
             else -> error("unknown backup screen")
@@ -292,7 +293,7 @@ private fun BackupHistory(state: BackupFlowUiState, actions: BackupFlowActions, 
 }
 
 @Composable
-private fun BackupDetails(state: BackupFlowUiState, modifier: Modifier) {
+private fun BackupDetails(state: BackupFlowUiState, actions: BackupFlowActions, modifier: Modifier) {
     val snapshot = state.selectedSnapshot
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (snapshot == null) {
@@ -305,7 +306,12 @@ private fun BackupDetails(state: BackupFlowUiState, modifier: Modifier) {
         SummaryCard(R.string.backup_snapshot_increment_label, snapshot.physicalIncrement)
         SummaryCard(R.string.backup_repository, repositoryDisplayLabel(snapshot.repositoryKind, snapshot.locationDetail))
         SummaryCard(R.string.backup_vault_policy, if (snapshot.includesVault) stringResource(R.string.backup_vault_included) else stringResource(R.string.backup_vault_excluded))
-        LedgerText(stringResource(R.string.backup_restore_deferred), LedgerTextRole.SUPPORTING)
+        LedgerButton(
+            stringResource(R.string.backup_restore_action),
+            { actions.onRestoreSnapshot(snapshot.snapshotId) },
+            Modifier.fillMaxWidth(),
+            enabled = snapshot.integrity == BackupIntegrityPresentation.VERIFIED,
+        )
     }
 }
 

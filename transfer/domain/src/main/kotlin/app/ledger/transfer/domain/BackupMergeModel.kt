@@ -10,6 +10,7 @@ import app.ledger.finance.domain.LifecycleRecord
 import app.ledger.finance.domain.LocalRevision
 import app.ledger.finance.domain.PurgeTombstone
 import app.ledger.finance.domain.RecordLifecycle
+import app.ledger.finance.domain.StableEntityReference
 import java.time.Instant
 
 enum class BackupRepositoryKind {
@@ -71,9 +72,17 @@ data class BackupObject(
 }
 
 enum class RestoreState {
+    READING_SOURCE,
+    AUTHENTICATING_PASSWORD,
+    VERIFYING_OBJECTS,
+    MIGRATING,
+    CHECKING_INTEGRITY,
+    REBUILDING_PROJECTIONS,
     VALIDATING,
     READY_TO_EXCHANGE,
     EXCHANGING,
+    VERIFYING_LIVE,
+    ROLLING_BACK,
     COMPLETE,
     FAILED,
 }
@@ -120,6 +129,109 @@ data class MergeEntityVersion(
     val commitId: BookCommitId,
     val generation: Long,
 )
+
+/** One immutable commit-graph vertex. Ordering is graph-derived; wall-clock time is intentionally absent. */
+data class MergeCommitVertex(
+    val id: BookCommitId,
+    val parentIds: List<BookCommitId>,
+) {
+    init {
+        require(parentIds.size <= 2)
+        require(id !in parentIds)
+        require(parentIds.distinct().size == parentIds.size)
+    }
+}
+
+data class MergeBookIdentity(
+    val bookId: StableId,
+    val baseCurrencyCode: String,
+) {
+    init {
+        require(baseCurrencyCode.matches(Regex("[A-Z]{3}")))
+    }
+}
+
+data class ThreeWayMergeInput(
+    val localBook: MergeBookIdentity,
+    val incomingBook: MergeBookIdentity,
+    val graph: List<MergeCommitVertex>,
+    val localHead: BookCommitId,
+    val incomingHead: BookCommitId,
+    val ancestorVersions: Map<StableEntityReference, MergeEntityVersion>,
+    val localVersions: Map<StableEntityReference, MergeEntityVersion>,
+    val incomingVersions: Map<StableEntityReference, MergeEntityVersion>,
+    val localTombstones: Map<StableEntityReference, PurgeTombstone>,
+    val incomingTombstones: Map<StableEntityReference, PurgeTombstone>,
+)
+
+sealed interface MergeDecision {
+    val entity: StableEntityReference
+
+    data class KeepLocal(override val entity: StableEntityReference, val version: MergeEntityVersion?) : MergeDecision
+    data class KeepIncoming(override val entity: StableEntityReference, val version: MergeEntityVersion?) : MergeDecision
+    data class KeepPurgeTombstone(override val entity: StableEntityReference, val tombstone: PurgeTombstone) : MergeDecision
+}
+
+data class ThreeWayMergePlan(
+    val commonAncestor: BookCommitId,
+    val localHead: BookCommitId,
+    val incomingHead: BookCommitId,
+    val automaticDecisions: List<MergeDecision>,
+    val conflicts: List<MergeConflict>,
+) {
+    val readyToApply: Boolean = conflicts.isEmpty()
+}
+
+sealed interface RestoreFailure : app.ledger.core.common.DomainError {
+    data object WrongPassword : RestoreFailure {
+        override val code: String = "RESTORE_WRONG_PASSWORD"
+    }
+    data object CorruptHeader : RestoreFailure {
+        override val code: String = "RESTORE_CORRUPT_HEADER"
+    }
+    data object CorruptObject : RestoreFailure {
+        override val code: String = "RESTORE_CORRUPT_OBJECT"
+    }
+    data object UnsupportedVersion : RestoreFailure {
+        override val code: String = "RESTORE_UNSUPPORTED_VERSION"
+    }
+    data object BookMismatch : RestoreFailure {
+        override val code: String = "RESTORE_BOOK_MISMATCH"
+    }
+    data object BaseCurrencyMismatch : RestoreFailure {
+        override val code: String = "RESTORE_BASE_CURRENCY_MISMATCH"
+    }
+    data object MigrationFailed : RestoreFailure {
+        override val code: String = "RESTORE_MIGRATION_FAILED"
+    }
+    data object IntegrityFailed : RestoreFailure {
+        override val code: String = "RESTORE_INTEGRITY_FAILED"
+    }
+    data object ProjectionFailed : RestoreFailure {
+        override val code: String = "RESTORE_PROJECTION_FAILED"
+    }
+    data object InsufficientSpace : RestoreFailure {
+        override val code: String = "RESTORE_INSUFFICIENT_SPACE"
+    }
+    data object PermissionRevoked : RestoreFailure {
+        override val code: String = "RESTORE_PERMISSION_REVOKED"
+    }
+    data object SafetySnapshotFailed : RestoreFailure {
+        override val code: String = "RESTORE_SAFETY_SNAPSHOT_FAILED"
+    }
+    data object LiveHeadChanged : RestoreFailure {
+        override val code: String = "RESTORE_LIVE_HEAD_CHANGED"
+    }
+    data object ExplicitResolutionRequired : RestoreFailure {
+        override val code: String = "RESTORE_EXPLICIT_RESOLUTION_REQUIRED"
+    }
+    data object Cancelled : RestoreFailure {
+        override val code: String = "RESTORE_CANCELLED"
+    }
+    data object RolledBack : RestoreFailure {
+        override val code: String = "RESTORE_ROLLED_BACK"
+    }
+}
 
 enum class MergeConflictKind {
     BOTH_MODIFIED,

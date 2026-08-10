@@ -13,6 +13,7 @@ import app.ledger.core.money.CurrencyCode
 import app.ledger.core.security.AndroidKeystoreKeys
 import app.ledger.core.security.DeviceKeyHierarchy
 import app.ledger.core.security.SecurityEnvelopeStore
+import app.ledger.finance.application.ControlledPurgeRequest
 import app.ledger.finance.application.InitialAccountCommand
 import app.ledger.finance.application.InitialCategoryCommand
 import app.ledger.finance.application.InitializeLedgerCommand
@@ -178,6 +179,91 @@ class JournalApplicationPortDeviceTest {
         assertTrue(encryptedFiles.single().readBytes().indexOf(secret.toByteArray()) < 0)
     }
 
+    @Test
+    fun controlledPurgeIsAtomicIdempotentAndTombstoneContainsNoFinancialPayload() = runBlocking {
+        val purgeAfter = Instant.parse("2026-08-08T00:00:00Z")
+        val evaluatedAt = purgeAfter.plusSeconds(1)
+        val activeA = requireNotNull(journal.detail(BOOK_ID, TRANSACTION_A).success()).transaction
+        journal.mutate(
+            JournalMutationRequest.MoveToTrash(
+                mutationIds(40_000, TRANSACTION_A),
+                activeA.revisionId,
+                Instant.parse("2026-08-07T00:00:00Z"),
+                purgeAfter,
+            ),
+        ).success()
+        val trashedA = requireNotNull(journal.detail(BOOK_ID, TRANSACTION_A).success()).transaction
+        val purge = SecureRoomControlledPurgeApplicationPort(context, keys)
+        val requestA = ControlledPurgeRequest(
+            BOOK_ID,
+            id(50_000),
+            TRANSACTION_A,
+            trashedA.revisionId,
+            id(50_001),
+            id(50_002),
+            evaluatedAt,
+        )
+        val first = purge.purge(requestA).success()
+        val repeated = purge.purge(requestA).success()
+        assertEquals(first.receipt, repeated.receipt)
+        assertEquals(0, repeated.detachedAttachmentCount)
+        withDatabase { database ->
+            assertEquals(0L, database.scalar("SELECT COUNT(*) FROM business_transaction WHERE uid=?", arrayOf(TRANSACTION_A.bytes)))
+            assertEquals(1L, database.scalar("SELECT COUNT(*) FROM purge_tombstone WHERE entity_uid=?", arrayOf(TRANSACTION_A.bytes)))
+            assertEquals(1L, database.scalar("SELECT COUNT(*) FROM command_receipt WHERE command_uid=?", arrayOf(requestA.commandId.bytes)))
+            val columns = database.query("PRAGMA table_info(purge_tombstone)").use { cursor ->
+                buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
+            }
+            assertEquals(setOf("entity_type", "entity_uid", "purge_commit_id", "purged_at", "purge_generation"), columns)
+        }
+
+        val activeB = requireNotNull(journal.detail(BOOK_ID, TRANSACTION_B).success()).transaction
+        journal.mutate(
+            JournalMutationRequest.MoveToTrash(
+                mutationIds(60_000, TRANSACTION_B),
+                activeB.revisionId,
+                Instant.parse("2026-08-07T01:00:00Z"),
+                purgeAfter,
+            ),
+        ).success()
+        val trashedB = requireNotNull(journal.detail(BOOK_ID, TRANSACTION_B).success()).transaction
+        val before = withDatabase { database ->
+            database.query("SELECT bc.uid,b.local_revision FROM book b JOIN book_commit bc ON bc.id=b.head_commit_id WHERE b.id=1").use {
+                assertTrue(it.moveToFirst())
+                it.getBlob(0).toList() to it.getLong(1)
+            }
+        }
+        val injected = SecureRoomControlledPurgeApplicationPort(
+            context,
+            keys,
+            failureInjector = FinancialCommitFailureInjector { phase ->
+                if (phase == FinancialCommitPhase.AFTER_IMMUTABLE_FACTS) error("injected purge failure")
+            },
+        )
+        val failed = injected.purge(
+            ControlledPurgeRequest(
+                BOOK_ID,
+                id(70_000),
+                TRANSACTION_B,
+                trashedB.revisionId,
+                id(70_001),
+                id(70_002),
+                evaluatedAt,
+            ),
+        )
+        assertTrue(failed is DomainResult.Failure)
+        withDatabase { database ->
+            assertEquals(1L, database.scalar("SELECT COUNT(*) FROM business_transaction WHERE uid=?", arrayOf(TRANSACTION_B.bytes)))
+            assertEquals(0L, database.scalar("SELECT COUNT(*) FROM purge_tombstone WHERE entity_uid=?", arrayOf(TRANSACTION_B.bytes)))
+            val after = database.query("SELECT bc.uid,b.local_revision FROM book b JOIN book_commit bc ON bc.id=b.head_commit_id WHERE b.id=1").use {
+                assertTrue(it.moveToFirst())
+                it.getBlob(0).toList() to it.getLong(1)
+            }
+            assertEquals(before, after)
+            assertEquals(0L, database.scalar("SELECT allow_fact_purge FROM _schema_runtime_guard WHERE id=1"))
+        }
+    }
+
     private fun createRequest(seed: Long, transactionId: StableId, note: String): OrdinaryTransactionWriteRequest = OrdinaryTransactionWriteRequest(
         ids = OrdinaryTransactionWriteIds(BOOK_ID, id(seed), transactionId, id(seed + 1), id(seed + 2), id(seed + 3), (seed + 10..seed + 300).map(::id), (seed + 400..seed + 407).map(::id)),
         expectedRevisionId = null, direction = OrdinaryDirection.EXPENSE, categoryId = CATEGORY_ID,
@@ -199,6 +285,15 @@ class JournalApplicationPortDeviceTest {
     )
 
     private fun ByteArray.indexOf(needle: ByteArray): Int = indices.firstOrNull { start -> start + needle.size <= size && needle.indices.all { this[start + it] == needle[it] } } ?: -1
+    private fun <T> withDatabase(block: (androidx.sqlite.db.SupportSQLiteDatabase) -> T): T = keys.open(BOOK_ID).use { opened ->
+        val database = opened.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(context, it) }
+        try {
+            database.readLedger(block)
+        } finally {
+            database.close()
+        }
+    }
+    private fun androidx.sqlite.db.SupportSQLiteDatabase.scalar(sql: String, args: Array<out Any?> = emptyArray()): Long = query(sql, args).use { if (it.moveToFirst()) it.getLong(0) else 0L }
     private fun currency(value: String): CurrencyCode = requireNotNull(CurrencyCode.parse(value).getOrNull())
     private fun id(value: Long): StableId = StableId.fromUuid(UUID(0x25L, value))
     private fun <T> DomainResult<T>.success(): T = when (this) {

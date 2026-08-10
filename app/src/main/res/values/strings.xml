@@ -23,4 +23,6 @@
     <string name="global_import">导入数据</string><string name="global_import_explanation">从 CSV 或结构化 Excel 安全导入</string><string name="global_import_history">导入历史</string><string name="global_import_history_explanation">查看审计记录并整批撤销</string><string name="global_export">导出数据</string><string name="global_export_explanation">导出当前筛选、全量工作簿或报表</string><string name="global_backup">备份</string><string name="global_backup_explanation">创建、验证并管理本地或 Google Drive 加密备份</string>
     <string name="backup_worker_channel">加密备份</string><string name="backup_worker_title">正在创建加密备份</string><string name="backup_worker_progress">%1$s · 已处理 %2$d 字节</string>
     <string name="backup_worker_phase_database">数据库快照</string><string name="backup_worker_phase_objects">对象处理</string><string name="backup_worker_phase_writing">上传或写入</string><string name="backup_worker_phase_verifying">验证</string><string name="backup_worker_phase_manifest">发布清单</string><string name="backup_worker_phase_retention">执行保留策略</string><string name="backup_worker_phase_complete">完成</string>
+    <string name="global_restore">恢复</string><string name="global_restore_explanation">检查备份并选择原子替换或三方合并</string>
+    <string name="global_delete_cloud_backups">删除云端备份</string><string name="global_delete_cloud_backups_explanation">重新认证后删除选中的加密 Drive 快照</string>
 </resources>

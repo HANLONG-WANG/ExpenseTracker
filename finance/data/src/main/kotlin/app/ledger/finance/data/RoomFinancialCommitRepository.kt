@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber", "TooManyFunctions")
+
 package app.ledger.finance.data
 
 import android.database.sqlite.SQLiteFullException
@@ -21,6 +23,7 @@ import app.ledger.finance.domain.FinancialCommand
 import app.ledger.finance.domain.FinancialCommandType
 import app.ledger.finance.domain.FinancialMutationPlan
 import app.ledger.finance.domain.InstallmentPlanMutation
+import app.ledger.finance.domain.MergeRestoreCommand
 import app.ledger.finance.domain.MoveTransactionToTrashCommand
 import app.ledger.finance.domain.PurgeTransactionCommand
 import app.ledger.finance.domain.RecordBudgetAdjustmentCommand
@@ -66,12 +69,14 @@ fun interface FinancialCommitSideEffect {
 class RoomFinancialCommitRepository(
     private val database: LedgerDatabase,
     private val failureInjector: FinancialCommitFailureInjector = FinancialCommitFailureInjector.NONE,
+    private val beforeCommitSideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
     private val sideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
     private val afterFinancialWriteSideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
 ) : AtomicFinancialCommitRepository,
     CommandReceiptRepository {
     private val writer = RoomFinancialPlanWriter()
     private val projections = RoomProjectionEngine()
+    private val privacyPurgeWriter = RoomPrivacyPurgeWriter()
 
     override suspend fun find(commandId: CommandId): DomainResult<CommandReceipt?> = protect {
         database.readLedger { connection ->
@@ -85,7 +90,11 @@ class RoomFinancialCommitRepository(
         plan: FinancialMutationPlan,
     ): DomainResult<CommandReceipt> {
         if (command is PurgeTransactionCommand || plan.commit.kind == CommitKind.PURGE) {
-            return DomainResult.Failure(FinanceDataError.MaintenanceRequired)
+            return if (command is PurgeTransactionCommand && plan.commit.kind == CommitKind.PURGE) {
+                commitPrivacyPurge(command, plan)
+            } else {
+                DomainResult.Failure(FinanceDataError.CorruptData)
+            }
         }
         return protect {
             database.inLedgerTransaction { connection ->
@@ -114,6 +123,7 @@ class RoomFinancialCommitRepository(
                     connection,
                     plan,
                     failureInjector::checkpoint,
+                    beforeCommitSideEffect::apply,
                     sideEffect::apply,
                     afterFinancialWriteSideEffect::apply,
                 )
@@ -163,6 +173,82 @@ class RoomFinancialCommitRepository(
         }
     }
 
+    private suspend fun commitPrivacyPurge(
+        command: PurgeTransactionCommand,
+        plan: FinancialMutationPlan,
+    ): DomainResult<CommandReceipt> = protect {
+        database.inLedgerTransaction { connection ->
+            connection.commandReceipt(command.commandId)?.let { stored ->
+                val receipt = stored.toDomain()
+                if (receipt.payloadHash == command.payloadHash && receipt.commandType == command.commandType) {
+                    return@inLedgerTransaction DomainResult.Success(receipt)
+                }
+                abort(app.ledger.finance.domain.DomainViolation.DuplicateCommandPayloadMismatch)
+            }
+            val book = connection.queryOne(
+                "SELECT head_commit_id,local_revision,valuation_revision,rule_set_version,state,default_zone_id FROM book WHERE id=1",
+            ) { cursor ->
+                BookWriteState(
+                    cursor.nullableLong("head_commit_id"),
+                    cursor.namedLong("local_revision"),
+                    cursor.namedLong("valuation_revision"),
+                    cursor.namedInt("rule_set_version"),
+                    cursor.namedInt("state"),
+                    cursor.namedString("default_zone_id"),
+                )
+            } ?: abort(FinanceDataError.CorruptData)
+            verifyCommitPreconditions(connection, command, plan, book)
+            val entered = connection.compileStatement("UPDATE book SET state=1 WHERE id=1 AND state=0")
+                .executeUpdateDelete()
+            if (entered != 1) abort(FinanceDataError.MaintenanceRequired)
+            connection.execSQL("UPDATE _schema_runtime_guard SET allow_fact_purge=1 WHERE id=1")
+            privacyPurgeWriter.revalidate(connection, command)
+            writer.write(
+                connection,
+                plan,
+                failureInjector::checkpoint,
+                beforeCommitSideEffect::apply,
+                sideEffect::apply,
+            ) { database, mutationPlan ->
+                val purgeCommit = database.commitId(mutationPlan.commit.id)
+                privacyPurgeWriter.deleteChain(database, command, purgeCommit)
+                afterFinancialWriteSideEffect.apply(database, mutationPlan)
+            }
+            val projectionDate = plan.commit.createdAt.atZone(ZoneId.of(book.defaultZoneId)).toLocalDate().toStorageInt()
+            projections.rebuildAll(connection, plan.targetLocalRevision.value, book.valuationRevision, projectionDate)
+            failureInjector.checkpoint(FinancialCommitPhase.AFTER_PROJECTIONS)
+            verifyNewState(connection, plan, book.valuationRevision)
+            failureInjector.checkpoint(FinancialCommitPhase.BEFORE_BOOK_ADVANCE)
+            connection.execSQL("UPDATE _schema_runtime_guard SET allow_fact_purge=0 WHERE id=1")
+            val advanced = connection.compileStatement(
+                "UPDATE book SET head_commit_id=?,local_revision=?,state=0 WHERE id=1 AND local_revision=? AND head_commit_id=? AND state=1",
+            ).apply {
+                bindLong(1, connection.commitId(plan.commit.id))
+                bindLong(2, plan.targetLocalRevision.value)
+                bindLong(3, book.localRevision)
+                bindLong(4, book.headCommitId ?: abort(FinanceDataError.CorruptData))
+            }.executeUpdateDelete()
+            if (advanced != 1) abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+            failureInjector.checkpoint(FinancialCommitPhase.BEFORE_RECEIPT)
+            val entity = primaryEntity(plan)
+            connection.execSQL(
+                "INSERT INTO command_receipt(command_uid,command_type,payload_hash,commit_id,primary_entity_uid,executed_at) " +
+                    "VALUES(?,?,?,?,?,?)",
+                arrayOf<Any?>(
+                    command.commandId.stableId.bytes,
+                    command.commandType.ordinal,
+                    command.payloadHash.bytes,
+                    connection.commitId(plan.commit.id),
+                    entity?.stableId?.bytes,
+                    plan.commit.createdAt.toStorageEpochMillis(),
+                ),
+            )
+            val receipt = connection.commandReceipt(command.commandId)?.toDomain()
+                ?: abort(FinanceDataError.CorruptData)
+            DomainResult.Success(receipt)
+        }
+    }
+
     private fun verifyCommitPreconditions(
         connection: androidx.sqlite.db.SupportSQLiteDatabase,
         command: FinancialCommand,
@@ -175,14 +261,17 @@ class RoomFinancialCommitRepository(
         if (
             plan.commandId != command.commandId ||
             plan.expectedRevisionId != command.expectedRevisionId ||
-            plan.commit.parentIds.size != 1
+            plan.commit.parentIds.size != if (command is app.ledger.finance.domain.MergeRestoreCommand) 2 else 1
         ) {
             abort(FinanceDataError.CorruptData)
         }
-        if (
-            plan.targetLocalRevision.value != book.localRevision + 1L ||
-            book.headCommitId == null ||
-            connection.commitId(plan.commit.parentIds.single()) != book.headCommitId
+        val revisionAdvancesExactly = if (command is MergeRestoreCommand) {
+            plan.targetLocalRevision.value > book.localRevision
+        } else {
+            plan.targetLocalRevision.value == book.localRevision + 1L
+        }
+        if (!revisionAdvancesExactly || book.headCommitId == null ||
+            connection.commitId(plan.commit.parentIds.first()) != book.headCommitId
         ) {
             abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
         }
@@ -635,6 +724,7 @@ private fun FinancialCommand.transactionIdOrNull(): TransactionId? = when (this)
     is SaveCreditStatementCommand,
     is SaveInstallmentPlanCommand,
     is SaveLoanContractCommand,
+    is MergeRestoreCommand,
     is BatchFinancialCommand,
     -> null
 }

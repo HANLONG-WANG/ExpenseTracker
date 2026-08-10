@@ -53,6 +53,20 @@ object CanonicalFinancialHash {
                 stableId(command.transactionId.value)
                 purgeEligibility(command.eligibility)
             }
+            is MergeRestoreCommand -> {
+                stableId(command.operationId)
+                stableId(command.commonAncestorCommitId.value)
+                stableId(command.incomingHeadCommitId.value)
+                integer(command.selections.size)
+                command.selections.sortedWith(compareBy({ it.entity.type.ordinal }, { it.entity.stableId.toString() }))
+                    .forEach { selection ->
+                        text(selection.entity.type.name)
+                        stableId(selection.entity.stableId)
+                        text(selection.source.name)
+                        nullableHash(selection.contentHash?.value)
+                        long(selection.generation)
+                    }
+            }
             is RecordGoalMovementCommand -> {
                 goalMovement(command.movement)
                 stableId(command.effectId.value)
@@ -77,6 +91,11 @@ object CanonicalFinancialHash {
                 }
             }
         }
+    }
+
+    private fun CanonicalWriter.nullableHash(value: Hash256?) {
+        boolean(value != null)
+        if (value != null) hash(value)
     }
 
     private fun CanonicalWriter.settlementPaymentRecord(record: SettlementPaymentRecord) {

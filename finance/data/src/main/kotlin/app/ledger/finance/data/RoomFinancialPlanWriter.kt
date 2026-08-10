@@ -1,4 +1,4 @@
-@file:Suppress("LargeClass", "LongMethod", "TooManyFunctions")
+@file:Suppress("LargeClass", "LongMethod", "LongParameterList", "TooManyFunctions")
 
 package app.ledger.finance.data
 
@@ -30,9 +30,11 @@ internal class RoomFinancialPlanWriter {
         database: SupportSQLiteDatabase,
         plan: FinancialMutationPlan,
         checkpoint: (FinancialCommitPhase) -> Unit,
+        beforeCommitHeader: (SupportSQLiteDatabase, FinancialMutationPlan) -> Unit = { _, _ -> },
         afterCommitHeader: (SupportSQLiteDatabase, FinancialMutationPlan) -> Unit = { _, _ -> },
         afterFinancialWrite: (SupportSQLiteDatabase, FinancialMutationPlan) -> Unit = { _, _ -> },
     ) {
+        beforeCommitHeader(database, plan)
         insertCommit(database, plan)
         checkpoint(FinancialCommitPhase.AFTER_COMMIT_HEADER)
         afterCommitHeader(database, plan)
@@ -49,9 +51,28 @@ internal class RoomFinancialPlanWriter {
         insertSubledgerFacts(database, plan)
         insertEffects(database, plan)
         insertEntityChanges(database, plan)
+        insertPurgeTombstones(database, plan)
         checkpoint(FinancialCommitPhase.AFTER_IMMUTABLE_FACTS)
         updateCurrentTransactions(database, plan)
         afterFinancialWrite(database, plan)
+    }
+
+    private fun insertPurgeTombstones(database: SupportSQLiteDatabase, plan: FinancialMutationPlan) {
+        plan.purgeTombstones.forEach { tombstone ->
+            database.execSQL(
+                "INSERT INTO purge_tombstone(entity_type,entity_uid,purge_commit_id,purged_at,purge_generation) " +
+                    "VALUES(?,?,?,?,?) ON CONFLICT(entity_type,entity_uid) DO UPDATE SET " +
+                    "purge_commit_id=excluded.purge_commit_id,purged_at=excluded.purged_at," +
+                    "purge_generation=excluded.purge_generation WHERE excluded.purge_generation>purge_tombstone.purge_generation",
+                arrayOf<Any>(
+                    tombstone.entity.type.ordinal,
+                    tombstone.entity.stableId.bytes,
+                    database.commitId(tombstone.purgeCommitId),
+                    tombstone.purgedAt.toStorageEpochMillis(),
+                    tombstone.purgeGeneration,
+                ),
+            )
+        }
     }
 
     private fun insertSettlementPaymentRecords(database: SupportSQLiteDatabase, plan: FinancialMutationPlan) {

@@ -642,8 +642,22 @@ class SecureRoomJournalApplicationPort(
             "SELECT ste.currency_code currency,SUM(ste.signed_delta_minor) net FROM settlement_effect ste JOIN transaction_revision tr ON tr.id=ste.source_revision_id WHERE tr.transaction_id=? GROUP BY ste.currency_code",
         ).flatMap { sql -> db.queryList(sql, arrayOf(lifecycle.third)) { it.getLong(1) } }
         if (effectNets.any { it != 0L }) reasons += PurgeIneligibilityReason.EFFECT_NET_NON_ZERO
-        if (dependencies(db, id).any { it.childState == TransactionLifecycleState.ACTIVE }) reasons += PurgeIneligibilityReason.DEPENDENCIES_OPEN
-        val operationRefs = db.queryOne("SELECT COUNT(*) FROM import_source_reference WHERE transaction_id=?", arrayOf(lifecycle.third)) { it.getLong(0) } ?: 0L
+        val dependencyCount = listOf(
+            "SELECT COUNT(*) FROM transaction_dependency WHERE parent_transaction_id=?1 OR child_transaction_id=?2",
+            "SELECT COUNT(*) FROM installment_plan WHERE purchase_transaction_id=?1 OR purchase_transaction_id=?2",
+            "SELECT COUNT(*) FROM recurrence_occurrence WHERE transaction_id=?1 OR transaction_id=?2",
+            "SELECT COUNT(*) FROM account_balance_checkpoint WHERE adjustment_transaction_id=?1 OR adjustment_transaction_id=?2",
+            "SELECT COUNT(*) FROM refund_allocation WHERE (refund_transaction_id=?1 AND original_transaction_id<>?2) OR " +
+                "(original_transaction_id=?1 AND refund_transaction_id<>?2)",
+        ).sumOf { sql -> db.queryOne(sql, arrayOf(lifecycle.third, lifecycle.third)) { it.getLong(0) } ?: 0L }
+        if (dependencyCount > 0L) reasons += PurgeIneligibilityReason.DEPENDENCIES_OPEN
+        val operationRefs = (db.queryOne("SELECT COUNT(*) FROM import_source_reference WHERE transaction_id=?", arrayOf(lifecycle.third)) { it.getLong(0) } ?: 0L) +
+            (
+                db.queryOne(
+                    "SELECT COUNT(*) FROM merge_conflict WHERE entity_type=? AND entity_uid=? AND resolution IS NULL",
+                    arrayOf(app.ledger.finance.domain.EntityType.TRANSACTION.ordinal, id.bytes),
+                ) { it.getLong(0) } ?: 0L
+                )
         if (operationRefs > 0) reasons += PurgeIneligibilityReason.OPERATION_REFERENCE
         val backupReads = db.queryOne(
             "SELECT COUNT(*) FROM transaction_revision tr JOIN transaction_revision_attachment tra ON tra.revision_id=tr.id " +

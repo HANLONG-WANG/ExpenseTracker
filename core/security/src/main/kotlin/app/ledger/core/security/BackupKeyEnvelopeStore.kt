@@ -212,6 +212,8 @@ class VaultBackupEnvelopeStore(
 
     fun isConfigured(bookId: StableId): Boolean = File(directory, bookId.toString() + SUFFIX).isFile
 
+    fun delete(bookId: StableId) = AtomicFile(File(directory, bookId.toString() + SUFFIX)).delete()
+
     private fun associatedData(bookId: StableId): ByteArray = "ledger-backup-vault-v1\u0000".toByteArray(Charsets.US_ASCII) + bookId.bytes
 
     private companion object {

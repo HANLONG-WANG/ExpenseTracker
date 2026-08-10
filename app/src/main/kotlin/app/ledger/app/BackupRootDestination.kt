@@ -61,6 +61,10 @@ internal fun BackupRootDestination(
                 viewModel.navigator.navigate(LedgerRouteContract.destination(ScreenId("G-007")), SessionGateState.READY)
                 onNavigationChanged()
             },
+            onRestoreSnapshot = { snapshotId ->
+                viewModel.openRestoreSnapshot(snapshotId)
+                onNavigationChanged()
+            },
         ),
     )
 }

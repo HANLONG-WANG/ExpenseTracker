@@ -86,6 +86,8 @@ internal fun ReadyRootScaffold(
                 key.contract.screenId.value.startsWith("IMP-") ||
                 key.contract.screenId.value.startsWith("EXP-") ||
                 key.contract.screenId.value.startsWith("BKP-") ||
+                key.contract.screenId.value.startsWith("RST-") ||
+                key.contract.screenId.value == "CLR-002" ||
                 key.contract.screenId.value == "SYS-003"
             ) {
                 return@LedgerScaffold
@@ -198,6 +200,8 @@ internal fun ReadyRootScaffold(
                         ExportRootDestination(screenId, viewModel, onNavigationChanged = { navigationEpoch += 1 })
                     } else if (screenId.startsWith("BKP-") || screenId == "SYS-003") {
                         BackupRootDestination(screenId, viewModel, onNavigationChanged = { navigationEpoch += 1 })
+                    } else if (screenId.startsWith("RST-") || screenId == "CLR-002") {
+                        RestoreRootDestination(screenId, viewModel, onNavigationChanged = { navigationEpoch += 1 })
                     } else if (screenId in setOf(
                             "ANA-001", "ANA-002", "ANA-003", "ANA-004", "ANA-005", "ANA-006", "ANA-007",
                             "ANA-008", "ANA-009", "ANA-010", "ANA-011", "ANA-012", "ANA-013", "ANA-014", "ANA-015",

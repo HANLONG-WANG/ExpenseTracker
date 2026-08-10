@@ -31,6 +31,7 @@ import app.ledger.core.designsystem.LedgerTopAppBarVariant
 import app.ledger.core.navigation.LedgerDestinationKey
 import app.ledger.feature.transfer.BackupExecutionPresentation
 import app.ledger.feature.transfer.ExportExecutionPresentation
+import app.ledger.feature.transfer.RestoreProgressPresentation
 
 internal enum class MorePresentation { CONTENT, BADGE_UPDATES, OPERATION_IN_PROGRESS }
 
@@ -44,12 +45,18 @@ internal fun MoreRootDestination(
 ) {
     val export by viewModel.exportFlow.collectAsStateWithLifecycle()
     val backup by viewModel.backupFlow.collectAsStateWithLifecycle()
-    val presentation = if (
-        export.screenId == "EXP-004" && export.executionPresentation in setOf(
-            ExportExecutionPresentation.RUNNING,
-            ExportExecutionPresentation.CANCEL_REQUESTED,
-        ) || backup.execution in setOf(BackupExecutionPresentation.RUNNING, BackupExecutionPresentation.CANCEL_REQUESTED)
-    ) {
+    val restore by viewModel.restoreFlow.collectAsStateWithLifecycle()
+    val exportRunning = export.screenId == "EXP-004" && export.executionPresentation in setOf(
+        ExportExecutionPresentation.RUNNING,
+        ExportExecutionPresentation.CANCEL_REQUESTED,
+    )
+    val backupRunning = backup.execution in setOf(
+        BackupExecutionPresentation.RUNNING,
+        BackupExecutionPresentation.CANCEL_REQUESTED,
+    )
+    val restoreRunning = restore.screenId == "RST-006" &&
+        restore.progressPresentation == RestoreProgressPresentation.RUNNING
+    val presentation = if (exportRunning || backupRunning || restoreRunning) {
         MorePresentation.OPERATION_IN_PROGRESS
     } else {
         MorePresentation.CONTENT
@@ -110,6 +117,14 @@ internal fun MoreRootDestination(
             viewModel.openBackup()
             onNavigationChanged()
         },
+        onRestore = {
+            viewModel.openRestore()
+            onNavigationChanged()
+        },
+        onDeleteCloudBackups = {
+            viewModel.openCloudBackupDeletion()
+            onNavigationChanged()
+        },
     )
 }
 
@@ -131,6 +146,8 @@ internal fun MoreScreen(
     onImportHistory: () -> Unit = {},
     onExport: () -> Unit = {},
     onBackup: () -> Unit = {},
+    onRestore: () -> Unit = {},
+    onDeleteCloudBackups: () -> Unit = {},
 ) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
@@ -159,6 +176,8 @@ internal fun MoreScreen(
             onImportHistory = onImportHistory,
             onExport = onExport,
             onBackup = onBackup,
+            onRestore = onRestore,
+            onDeleteCloudBackups = onDeleteCloudBackups,
         )
     }
 }
@@ -182,6 +201,8 @@ internal fun MoreContent(
     onImportHistory: () -> Unit = {},
     onExport: () -> Unit = {},
     onBackup: () -> Unit = {},
+    onRestore: () -> Unit = {},
+    onDeleteCloudBackups: () -> Unit = {},
 ) {
     val entries = listOf(
         Triple(stringResource(R.string.global_operations), stringResource(R.string.global_operations_explanation), onOperations),
@@ -199,6 +220,8 @@ internal fun MoreContent(
         Triple(stringResource(R.string.global_import_history), stringResource(R.string.global_import_history_explanation), onImportHistory),
         Triple(stringResource(R.string.global_export), stringResource(R.string.global_export_explanation), onExport),
         Triple(stringResource(R.string.global_backup), stringResource(R.string.global_backup_explanation), onBackup),
+        Triple(stringResource(R.string.global_restore), stringResource(R.string.global_restore_explanation), onRestore),
+        Triple(stringResource(R.string.global_delete_cloud_backups), stringResource(R.string.global_delete_cloud_backups_explanation), onDeleteCloudBackups),
     )
     LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (presentation == MorePresentation.BADGE_UPDATES) {

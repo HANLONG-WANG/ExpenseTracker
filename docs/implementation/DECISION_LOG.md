@@ -1057,3 +1057,53 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: explicit cancellation, post-publication truth, Range reconciliation, provider rollback and typed exception mapping exceed generic complexity/return/nesting thresholds when every fail-closed boundary remains visible.
 - Decision: retain every global Detekt rule, fix the actual unused parameter, dynamic test tag and module-boundary findings, and use file-local named suppressions only for complexity, fixed-layout numbers/lines and intentional exception-to-typed-failure translation in P30 workflow files. No SQL, privacy, dependency or correctness rule is suppressed.
 - Consequence: Detekt has zero findings; frozen architecture and source-policy gates independently cover 40 projects and 280 production files, while device/fault/mutation suites execute the suppressed branches.
+
+## DL-150 — Imported merge commits receive local consecutive revisions inside the shadow transaction
+
+- Date/stage: 2026-08-10 / P31
+- Surface issue: two branches can contain the same frozen commit identities but overlapping device-local revision numbers. Copying the incoming numeric revision verbatim would violate the primary book's monotonic unique revision invariant before the final merge commit.
+- Priority applied: commit-graph identity/parentage and single-ledger monotonic revision invariants outrank preserving a branch-local sequence number.
+- Decision: retain every incoming stable commit ID, parent edge, kind, time and root hash, but assign missing reachable commits consecutive revisions beginning at the local shadow head plus one. The two-parent merge commit targets the next revision after all imported commits. Import plus merge header/entity changes executes in one `FinancialMutationCoordinator`/Room transaction.
+- Consequence: ancestry and audit identity remain exact, local revision uniqueness is preserved and a failed import/merge cannot leave a partial graph. No timestamp participates in entity resolution.
+
+## DL-151 — Tombstones are absolute for merge, while explicit replacement retains snapshot semantics
+
+- Date/stage: 2026-08-10 / P31
+- Surface issue: treating every restore mode as tombstone-aware merge would silently change the frozen meaning of replacing the entire ledger with a selected historical snapshot.
+- Decision: in three-way merge, an either-side purge tombstone always supersedes an older/equal entity generation and cannot be overridden by the resolution UI. In explicit high-risk replacement restore, the verified snapshot replaces the complete ledger and may therefore contain an entity absent from the current ledger; RST-004 discloses that old-snapshot consequence before exchange.
+- Consequence: routine merge never resurrects purged data, while replacement remains a deliberate disaster-recovery operation instead of an undocumented partial merge.
+
+## DL-152 — Unreadable live ledgers use raw encrypted safety bytes, not a weaker validation path
+
+- Date/stage: 2026-08-10 / P31
+- Surface issue: G-005 must permit recovery when the live SQLCipher database or key is unreadable, so a normal logical safety snapshot cannot be created or validated from that source.
+- Decision: validate the restore source completely in its own shadow, then copy the existing live database/WAL/SHM/journal and key/artifact recovery material byte-for-byte before exchange. The marker records that the old live database was unreadable, so rollback restores exact encrypted bytes without trying to open or normalize them. A separately verified backup-repository snapshot is preferred when available; the raw quarantine is the fail-safe rollback artifact.
+- Consequence: corrupt input is never trusted as restore data, but failure after exchange can still return the device to its exact prior recovery-required state.
+
+## DL-153 — Trashed-transaction purge planning omits live APPLY facts
+
+- Date/stage: 2026-08-10 / P31
+- Surface issue: the generic edit snapshot mapper requires at least one current APPLY Journal/effect bundle. A correctly trashed and completely reversed transaction has no live APPLY facts by definition, so using that mapper made eligible purge fail before the domain planner.
+- Decision: add a purge-specific planning snapshot containing the current transaction/revision, book, dependency identities and operation context but no accounting context. Eligibility nets are independently assessed and then repeated from SQL rows inside the purge commit transaction.
+- Consequence: the domain still verifies the expected trashed revision and PURGE plan identity without inventing financial facts; the maintenance writer remains the only physical-delete boundary.
+
+## DL-154 — Device-local clear excludes user-controlled SAF and Drive data
+
+- Date/stage: 2026-08-10 / P31
+- Surface issue: app-private automatic backups and restore work are device-local data, while SAF exports/directories and Drive backups are independently user-controlled external resources. Recursively deleting an authorized external tree during G-004 would exceed “clear this device” scope and bypass CLR-002 authentication.
+- Decision: after all work is cancelled and joined, local clear destroys the primary/key and every app-owned attachment, private repository, safety, staging/shadow, checkpoint, configuration/handle and Vault envelope. It does not traverse a SAF tree or call Drive. CLR-002 performs a separate Google reauthentication and typed-confirmation flow; it removes manifests before reference-only object GC.
+- Consequence: no app-owned local recovery material remains, ordinary exports and external backup copies survive local clear, and cloud deletion cannot occur through a local-clear action.
+
+## DL-155 — P31 metric suppressions stay local to explicit recovery and fixed-layout paths
+
+- Date/stage: 2026-08-10 / P31
+- Surface issue: exchange/rollback markers, recursive commit/entity import, full purge dependency revalidation and the RST state renderer exceed generic complexity/function thresholds when every fail-closed branch remains visible.
+- Decision: retain all global Detekt rules and use only named file-local metric/intentional typed-exception suppressions where formatting cannot reduce complexity without hiding an atomic boundary. No SQL ownership, privacy, dependency, placeholder or correctness rule is disabled.
+- Consequence: `p31Check` remains a zero-finding aggregate and mutation/device tests independently execute the high-risk branches.
+
+## DL-156 — Restore orchestration keeps the frozen app dependency edge and secret/time boundaries
+
+- Date/stage: 2026-08-10 / P31
+- Surface issue: the safety snapshot needs the raw encrypted database artifact location, while `:app` may not acquire a direct `:core:database` edge; recovery password editing also cannot retain a raw unbounded `String`, and merge timestamps must remain deterministic under tests and retries.
+- Decision: expose only the encrypted primary artifact path through the existing `SecurePrimaryLedgerAccess` security bridge, keep database/schema inspection behind that bridge, store password input in a bounded clearable `CharArray` wrapper, and inject the application clock into merge command/session persistence.
+- Consequence: the 40-project frozen dependency graph remains unchanged, password state is redacted and zeroized on replacement, and identical merge inputs plus injected IDs/time remain reproducible without weakening SQLCipher ownership.

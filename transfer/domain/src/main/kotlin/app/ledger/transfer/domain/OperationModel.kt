@@ -227,6 +227,22 @@ data class BackgroundOperation private constructor(
         return DomainResult.Success(copy(parameters = parameters, updatedAt = at, checkpointVersion = Math.addExact(checkpointVersion, 1L)))
     }
 
+    fun configureRestoreMode(mode: RestoreMode, at: Instant): DomainResult<BackgroundOperation> {
+        val current = parameters as? OperationParameters.Restore
+            ?: return DomainResult.Failure(OperationError.InvalidParameters)
+        if (state != BackgroundOperationState.RUNNING || at < updatedAt) {
+            return DomainResult.Failure(OperationError.InvalidParameters)
+        }
+        return DomainResult.Success(
+            copy(
+                type = if (mode == RestoreMode.REPLACE) BackgroundOperationType.RESTORE_REPLACE else BackgroundOperationType.RESTORE_MERGE,
+                parameters = current.copy(mode = mode),
+                updatedAt = at,
+                checkpointVersion = Math.addExact(checkpointVersion, 1L),
+            ),
+        )
+    }
+
     companion object {
         fun queued(
             id: BackgroundOperationId,

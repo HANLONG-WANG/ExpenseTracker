@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.common.StableId
 import app.ledger.core.database.EncryptedDatabaseFactory
+import java.io.File
 
 /** Privileged transaction gate implemented only by the financial persistence owner. */
 interface SecureLedgerFactPurgeAccess {
@@ -24,6 +25,9 @@ class SecurePrimaryLedgerAccess(
     fun <T> read(bookId: StableId, block: (SupportSQLiteDatabase) -> T): T = withDatabase(bookId) { database ->
         database.readLedger(block)
     }
+
+    /** Raw encrypted artifact location for streaming backup/restore; callers never receive the database key. */
+    fun encryptedDatabaseFile(): File = applicationContext.getDatabasePath(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
 
     fun seal(bookId: StableId, operationId: StableId, purpose: String, plaintext: ByteArray): ByteArray = keyProvider.open(bookId).use { keys ->
         keys.encryptSecureSettings(plaintext, associatedData(operationId, purpose))

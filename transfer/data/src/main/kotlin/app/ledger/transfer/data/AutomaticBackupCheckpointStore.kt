@@ -84,6 +84,12 @@ class AutomaticBackupCheckpointStore(context: Context, private val keyProvider: 
         }
     }
 
+    @Synchronized
+    fun delete(bookId: StableId): Boolean {
+        val source = directory.resolve(bookId.toString() + SUFFIX)
+        return !source.exists() || source.delete()
+    }
+
     private fun associatedData(bookId: StableId): ByteArray = "ledger-automatic-backup-v1\u0000".toByteArray(Charsets.US_ASCII) + bookId.bytes
 
     private companion object {

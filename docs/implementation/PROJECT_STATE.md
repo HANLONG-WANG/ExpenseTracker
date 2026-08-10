@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-09 (Asia/Tokyo)
-Current stage: P30 — local and Google Drive encrypted backup
-Stage status: VERIFIED (`P30-E001`—`P30-E008`); P00—P29 remain VERIFIED and P31 is the next unstarted stage
+Last updated: 2026-08-10 (Asia/Tokyo)
+Current stage: P31 — restore, merge, conflict, controlled purge and fault recovery
+Stage status: VERIFIED (`P31-E001`—`P31-E008`); P00—P30 remain VERIFIED and P32 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -391,18 +391,31 @@ P29 is `VERIFIED`. `P29_EXPORT_MAPPING.md` records the content/format/field/SAF/
 
 P30 is `VERIFIED`. `P30_BACKUP_MAPPING.md` records the repository/container/key/transport/scheduling/UI boundary. Restore, replacement and merge remain P31 and are not promoted.
 
+### P31 result (verified)
+
+| Area | P31 result | Classification |
+|---|---|---|
+| Authenticated replacement restore | Streaming AEAD/hash/length verification, registered migration, SQLCipher shadow rebuild and Journal/FK/subtype/projection validation precede a pre-restore safety snapshot and atomic live/key/settings/attachment/Vault exchange | VERIFIED (`P31-E001`—`P31-E003`) |
+| Crash and failure recovery | PREPARED/FINALIZED markers, exact live sidecar/key/artifact safety copies and a `NonCancellable` exchange/rollback boundary prevent half-restored state across process death, ENOSPC and every injected exchange point; unreadable live bytes are recoverable | VERIFIED (`P31-E003`) |
+| Three-way merge | Same-book/base-currency commit DAG merge selects the closest ancestor, never compares timestamps, requires explicit transaction-fork resolution and appends a coordinator-owned two-parent merge commit in the validated shadow | VERIFIED (`P31-E002`, `P31-E003`) |
+| Controlled purge | Fully reversed/closed transaction chains are revalidated under maintenance inside the financial transaction; facts/history/attachment references are removed, blobs enter GC and an idempotent PURGE commit plus payload-free tombstone advances atomically | VERIFIED (`P31-E004`) |
+| Clear and cloud-delete boundaries | App-owned local data, backup/safety/operation artifacts and keys are removed only after work cancellation while user SAF/Drive data survives; CLR-002 reauthenticates and deletes manifest first then unreferenced Drive objects | VERIFIED (`P31-E002`, `P31-E005`) |
+| UI, routes and pixels | RST-001—007/CLR-002, final JRN-012 and G-004/G-005 integration cover all frozen states, three languages, responsive/font/theme/accessibility boundaries, redacted password semantics and tombstone non-resurrection | VERIFIED (`P31-E004`—`P31-E006`) |
+
+P31 is `VERIFIED`. `P31_RESTORE_MERGE_PURGE_MAPPING.md` records the authenticated materialization/shadow/exchange/merge/purge/clear/UI boundary. P32 and later stages are not promoted.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 63 requirements are `VERIFIED`; 25 are `IN_PROGRESS`; 2 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 185 are `VERIFIED`; 30 remain `NOT_STARTED` |
-| Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-012, ADR-016—018 and ADR-020 are `VERIFIED`; ADR-007A, ADR-013—015 and ADR-019 are `IN_PROGRESS` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 67 requirements are `VERIFIED`; 21 are `IN_PROGRESS`; 2 remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 193 are `VERIFIED`; 22 remain `NOT_STARTED` |
+| Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-018 and ADR-020 plus ADR-007A are `VERIFIED`; ADR-019 remains `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/008/009/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006 are `IN_PROGRESS` |
 | Permanent domain invariants | 35 | 26 are `VERIFIED`, including settlement conservation/local-account/history invariants (`INV-022`—`INV-024`); 9 retain later evidence |
 | Logical schema families | 12 | All 12 frozen physical Schema v1 families remain `VERIFIED`; P26 registers and device-verifies the normalized non-destructive analytics-configuration Schema v2 expansion |
 | Projection families | 7 + search/geographic indexes | Current transaction, account, budget/project/goal, liabilities, settlement and analytics plus both indexes are `VERIFIED`; widget runtime completion remains later-owned |
-| Durable/staging/backup operation inventories | 4 groups | Import operation/staging/audit, export runtime and backup repository/operation runtime are `VERIFIED` by P28—P30; restore/merge runtime remains `IN_PROGRESS` for P31 |
+| Durable/staging/backup operation inventories | 4 groups | Import operation/staging/audit, export/backup runtime and restore/merge records, checkpoints and crash recovery are `VERIFIED` by P28—P31 |
 
 ## Stage progression
 
@@ -439,7 +452,8 @@ P30 is `VERIFIED`. `P30_BACKUP_MAPPING.md` records the repository/container/key/
 | P28 | VERIFIED | Commons CSV/ICU and FastExcel streaming, independent SQLCipher staging, durable resume, explicit mapping/duplicates/FX, all 15 structured kinds, coordinator/shadow atomic commit, audit/undo and IMP-001—010; `P28-E001`—`P28-E008` |
 | P29 | VERIFIED | Current-filter CSV, 15-sheet XLSX, report CSV/XLSX/PDF/PNG, closed sensitive fields, bounded streaming, SAF atomic publication, durable UIDT/WorkManager execution and EXP-001—004/ANA-010; `P29-E001`—`P29-E007` |
 | P30 | VERIFIED | Always-encrypted managed and portable backup, chunk/object reuse, retention/GC, recovery/Vault wrapping, SAF/Drive resumability, daily scheduling and BKP-001—007/SYS-003; `P30-E001`—`P30-E008` |
-| P31—P36 | NOT_STARTED | P31 is next; do not promote later work early |
+| P31 | VERIFIED | Authenticated bounded restore, SQLCipher shadow validation/atomic exchange, commit-graph merge, controlled purge/tombstone, clear/recovery integration and RST/JRN/CLR/G flows; `P31-E001`—`P31-E008` |
+| P32—P36 | NOT_STARTED | P32 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -681,3 +695,23 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p30_backup_cont
 ```
 
 All P30 evidence is recorded in `P30-E001`—`P30-E008`. The next entry point is P31. Preserve immutable final-manifest publication, authenticated object hashes, reference-only GC, independent recovery salts/parameters, background-ciphertext-only Vault handling, repository-scoped Drive access, persisted resumable checkpoints and operationId-only platform payloads; reuse these artifacts for restore verification without promoting P31 before its shadow rebuild/exchange and rollback gates pass.
+
+## P31 verified handoff
+
+P31 leaves the repository with bounded authenticated restore materialization, a clearable bounded password input, injected deterministic merge clocks, registered migration and complete SQLCipher shadow validation; crash-recoverable atomic database/key/settings/attachment/Vault exchange; closest-ancestor stable-ID three-way merge with explicit transaction-fork choices; and maintenance-locked, coordinator-owned closed-chain purge with a payload-free non-resurrection tombstone. G-004/G-005 and CLR-002 retain strict local/external/cloud authority boundaries.
+
+The reproducible P31 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p31_restore.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p31_restore_contracts -v
+./gradlew :transfer:domain:test :transfer:data:testDebugUnitTest :finance:domain:test :finance:application:test :app:testDebugUnitTest --no-configuration-cache --max-workers=2 --dependency-verification=strict --console=plain
+./gradlew :transfer:data:testDebugUnitTest --tests app.ledger.transfer.data.RestoreMaterializerTest --no-configuration-cache --max-workers=1 -Dorg.gradle.jvmargs=-Xmx256m --dependency-verification=strict --console=plain
+./gradlew :app:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.app.RestoreExchangeSqlCipherDeviceTest,app.ledger.app.MergeRestoreSqlCipherDeviceTest,app.ledger.app.LocalBookArtifactCleanerDeviceTest --no-configuration-cache --max-workers=1 -Dorg.gradle.jvmargs=-Xmx2g --dependency-verification=strict --console=plain
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.JournalApplicationPortDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew :feature:transfer:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.feature.transfer.RestoreUiContractDeviceTest --no-configuration-cache --max-workers=1 --dependency-verification=strict --console=plain
+./gradlew p31Check --no-configuration-cache --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g --dependency-verification=strict --console=plain
+./gradlew p31Artifacts --no-configuration-cache --max-workers=1 -Dorg.gradle.jvmargs=-Xmx2g --dependency-verification=strict --console=plain
+```
+
+All P31 evidence is recorded in `P31-E001`—`P31-E008`. The next entry point is P32. Preserve the authenticated source/hash boundary, PREPARED/FINALIZED recovery markers, same-filesystem atomic move requirement, no-timestamp merge, forced tombstone precedence, purge revalidation and coordinator-only financial writes; do not weaken local/cloud deletion authority or promote P32+ work early.

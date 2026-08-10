@@ -1,5 +1,8 @@
+@file:Suppress("TooGenericExceptionCaught", "TooManyFunctions")
+
 package app.ledger.core.security
 
+import android.util.AtomicFile
 import app.ledger.core.common.StableId
 import com.google.crypto.tink.Aead
 import com.google.crypto.tink.StreamingAead
@@ -7,6 +10,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.io.File
 import java.security.SecureRandom
 
 interface DeviceLedgerKeyProvider {
@@ -22,6 +26,56 @@ class DeviceKeyHierarchy(
     private val envelopeStore: SecurityEnvelopeStore,
     private val secureRandom: SecureRandom = SecureRandom(),
 ) : DeviceLedgerKeyProvider {
+    /** Prepares a device-KEK wrapped replacement without changing the currently active ledger keys. */
+    fun preparePortableReplacement(
+        bookId: StableId,
+        portableMaterial: SecretBytes,
+    ): PreparedDeviceLedgerKeyReplacement {
+        val suffix = SecurityEnvelopeStore.aliasSuffix(bookId)
+        val previous = envelopeStore.readDeviceBundle(bookId) ?: throw SecurityException.KeyUnavailable()
+        if (!keystore.hasDeviceLedgerKek(suffix)) throw SecurityException.KeyUnavailable()
+        val decoded = portableMaterial.useBytes(::decodePortableBundle)
+        try {
+            val bundle = try {
+                encodeBundleFromSecrets(decoded.databaseDek, decoded.attachmentRoot, decoded.secureSettings)
+            } finally {
+                decoded.attachmentRoot.fill(0)
+                decoded.secureSettings.fill(0)
+            }
+            val associatedData = SecurityAssociatedData.keyEnvelope(bookId, KeyMaterialPurpose.DEVICE_LEDGER_BUNDLE)
+            val replacement = try {
+                keystore.wrapWithDeviceLedgerKek(
+                    suffix,
+                    bundle,
+                    associatedData,
+                    KeyMaterialPurpose.DEVICE_LEDGER_BUNDLE,
+                )
+            } finally {
+                bundle.fill(0)
+                associatedData.fill(0)
+            }
+            return PreparedDeviceLedgerKeyReplacement(
+                bookId,
+                envelopeStore,
+                previous,
+                replacement,
+                SecretBytes.copyOf(decoded.databaseDek),
+            )
+        } finally {
+            decoded.databaseDek.fill(0)
+        }
+    }
+
+    /** Restores the pre-exchange wrapped bundle after a process death. No plaintext key is persisted. */
+    fun recoverPortableReplacement(bookId: StableId, recoveryFile: File): Boolean {
+        if (!recoveryFile.isFile) return false
+        val previous = WrappedKeyMaterialCodec.decode(AtomicFile(recoveryFile).readFully())
+        require(previous.purpose == KeyMaterialPurpose.DEVICE_LEDGER_BUNDLE)
+        envelopeStore.writeDeviceBundle(bookId, previous)
+        AtomicFile(recoveryFile).delete()
+        return true
+    }
+
     @Suppress("TooGenericExceptionCaught")
     override fun initialize(bookId: StableId) {
         val suffix = SecurityEnvelopeStore.aliasSuffix(bookId)
@@ -101,6 +155,35 @@ class DeviceKeyHierarchy(
         bytes.toByteArray()
     }
 
+    private fun encodeBundleFromSecrets(
+        databaseDek: ByteArray,
+        attachmentRoot: ByteArray,
+        secureSettings: ByteArray,
+    ): ByteArray = ByteArrayOutputStream().use { bytes ->
+        DataOutputStream(bytes).use { output ->
+            output.writeInt(BUNDLE_MAGIC)
+            output.writeInt(BUNDLE_VERSION)
+            writeSecret(output, databaseDek)
+            writeSecret(output, attachmentRoot)
+            writeSecret(output, secureSettings)
+        }
+        bytes.toByteArray()
+    }
+
+    private fun decodePortableBundle(bytes: ByteArray): PortableLedgerSecrets = try {
+        DataInputStream(ByteArrayInputStream(bytes)).use { input ->
+            require(input.readInt() == PORTABLE_KEY_MAGIC) { "invalid portable key material" }
+            require(input.readInt() == PORTABLE_KEY_VERSION) { "unsupported portable key material" }
+            val databaseDek = readSecret(input, DATABASE_DEK_BYTES, DATABASE_DEK_BYTES)
+            val attachmentRoot = readSecret(input, MINIMUM_TINK_KEYSET_BYTES, MAXIMUM_TINK_KEYSET_BYTES)
+            val secureSettings = readSecret(input, MINIMUM_TINK_KEYSET_BYTES, MAXIMUM_TINK_KEYSET_BYTES)
+            require(input.read() == -1) { "trailing portable key material" }
+            PortableLedgerSecrets(databaseDek, attachmentRoot, secureSettings)
+        }
+    } catch (error: IllegalArgumentException) {
+        throw SecurityException.CorruptEnvelope(error)
+    }
+
     private fun decodeBundle(bytes: ByteArray): DeviceLedgerKeys = try {
         DataInputStream(ByteArrayInputStream(bytes)).use { input ->
             require(input.readInt() == BUNDLE_MAGIC) { "invalid device key bundle" }
@@ -140,7 +223,68 @@ class DeviceKeyHierarchy(
         const val DATABASE_DEK_BYTES = 32
         const val MINIMUM_TINK_KEYSET_BYTES = 32
         const val MAXIMUM_TINK_KEYSET_BYTES = 64 * 1024
+        const val PORTABLE_KEY_MAGIC = 0x4c504b4d
+        const val PORTABLE_KEY_VERSION = 1
     }
+}
+
+private data class PortableLedgerSecrets(
+    val databaseDek: ByteArray,
+    val attachmentRoot: ByteArray,
+    val secureSettings: ByteArray,
+)
+
+/** Activation and rollback are AtomicFile writes; the database exchange remains owned by finance:data. */
+class PreparedDeviceLedgerKeyReplacement internal constructor(
+    private val bookId: StableId,
+    private val envelopeStore: SecurityEnvelopeStore,
+    private val previous: WrappedKeyMaterial,
+    private val replacement: WrappedKeyMaterial,
+    val restoredDatabaseDek: SecretBytes,
+) : AutoCloseable {
+    private var activated = false
+
+    @Synchronized
+    fun activate(recoveryFile: File) {
+        check(!activated) { "restored key material is already active" }
+        require(!recoveryFile.exists()) { "key recovery marker already exists" }
+        val atomic = AtomicFile(recoveryFile)
+        val encoded = WrappedKeyMaterialCodec.encode(previous)
+        val output = atomic.startWrite()
+        try {
+            output.write(encoded)
+            output.fd.sync()
+            atomic.finishWrite(output)
+        } catch (error: Exception) {
+            atomic.failWrite(output)
+            throw error
+        } finally {
+            encoded.fill(0)
+        }
+        envelopeStore.writeDeviceBundle(bookId, replacement)
+        activated = true
+    }
+
+    @Synchronized
+    fun rollback() {
+        if (activated) {
+            envelopeStore.writeDeviceBundle(bookId, previous)
+            activated = false
+        }
+    }
+
+    @Synchronized
+    fun commit(recoveryFile: File) {
+        check(activated) { "restored key material is not active" }
+        AtomicFile(recoveryFile).delete()
+    }
+
+    @Synchronized
+    override fun close() {
+        restoredDatabaseDek.close()
+    }
+
+    override fun toString(): String = "PreparedDeviceLedgerKeyReplacement(redacted,activated=$activated)"
 }
 
 class DeviceLedgerKeys internal constructor(

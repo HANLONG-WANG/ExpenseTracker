@@ -13,10 +13,12 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 
@@ -230,6 +232,62 @@ class DriveResumableBackupClientTest {
         }
     }
 
+    @Test
+    fun repositoryDownloadResumesOpaqueObjectAndPublishesManifestLast() {
+        MockWebServer().use { server ->
+            val objectName = "0123456789abcdef0123456789abcdef.object"
+            val manifestName = "1123456789abcdef0123456789abcdef.manifest"
+            val contents = mapOf(
+                "header_id" to "header-value".toByteArray(),
+                "object_id" to "0123456789abcdef".toByteArray(),
+                "manifest_id" to "encrypted-manifest".toByteArray(),
+            )
+            val downloadOrder = mutableListOf<String>()
+            val destination = temporary.resolve("drive-repository")
+            destination.resolve("objects").mkdirs()
+            destination.resolve("objects/.$objectName.partial").writeBytes(contents.getValue("object_id").copyOfRange(0, 5))
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.url.encodedPath == "/drive/v3/files") {
+                        fun item(id: String, name: String): String {
+                            val bytes = contents.getValue(id)
+                            return "{\"id\":\"$id\",\"name\":\"$name\",\"size\":\"${bytes.size}\",\"md5Checksum\":\"${bytes.md5()}\"}"
+                        }
+                        return MockResponse.Builder().code(200).body(
+                            "{\"files\":[${item("manifest_id", manifestName)},${item("object_id", objectName)},${item("header_id", "repository-header.header")}]}",
+                        ).build()
+                    }
+                    val id = request.url.encodedPath.substringAfterLast('/')
+                    val value = contents.getValue(id)
+                    val offset = request.headers["Range"]?.removePrefix("bytes=")?.removeSuffix("-")?.toInt() ?: 0
+                    downloadOrder += id
+                    if (id == "manifest_id") {
+                        assertTrue(destination.resolve("repository-header.header").isFile)
+                        assertTrue(destination.resolve("objects/$objectName").isFile)
+                        assertFalse(destination.resolve("snapshots/$manifestName").exists())
+                    }
+                    return MockResponse.Builder().code(if (offset == 0) 200 else 206)
+                        .apply { if (offset > 0) addHeader("Content-Range", "bytes $offset-${value.lastIndex}/${value.size}") }
+                        .body(okio.Buffer().write(value, offset, value.size - offset)).build()
+                }
+            }
+            val downloader = DriveBackupRepositoryDownloader(client(server))
+            val first = downloader.download("token", "folder_31", destination) as DomainResult.Success
+            assertEquals("manifest_id", downloadOrder.last())
+            assertEquals(setOf("header_id", "object_id"), downloadOrder.dropLast(1).toSet())
+            assertEquals((contents.values.sumOf { it.size } - 5).toLong(), first.value.downloadedBytes)
+            assertEquals(listOf(manifestName), first.value.manifestNames)
+            assertTrue(destination.resolve("snapshots/$manifestName").isFile)
+            assertFalse(destination.resolve("objects/.$objectName.partial").exists())
+
+            val requestCount = downloadOrder.size
+            val second = downloader.download("token", "folder_31", destination) as DomainResult.Success
+            assertEquals(requestCount, downloadOrder.size)
+            assertEquals(0L, second.value.downloadedBytes)
+            assertEquals(3, second.value.reusedFiles)
+        }
+    }
+
     private fun client(server: MockWebServer): DriveResumableBackupClient {
         if (!server.started) server.start()
         return DriveResumableBackupClient(
@@ -247,6 +305,9 @@ class DriveResumableBackupClientTest {
         val REPOSITORY = BackupRepositoryId(StableId.fromUuid(UUID(30, 23)))
     }
 }
+
+private fun ByteArray.md5(): String = MessageDigest.getInstance("MD5").digest(this)
+    .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
 private class MemoryDriveSessionStore : DriveBackupSessionStore {
     var value: DurableDriveBackupSession? = null

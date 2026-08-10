@@ -29,6 +29,8 @@ object DeterministicFinancialPlanner {
             is RestoreHistoricalRevisionCommand -> planHistoricalRestore(command, snapshot)
             is MoveTransactionToTrashCommand -> planTrash(command, snapshot)
             is RestoreTransactionCommand -> planRestore(command, snapshot)
+            is PurgeTransactionCommand -> planPurge(command, snapshot)
+            is MergeRestoreCommand -> planMerge(command, snapshot)
             is BatchFinancialCommand -> planBatch(command, snapshot)
             is ConfigureBudgetMonthCommand,
             is SaveBudgetTemplateCommand,
@@ -40,7 +42,6 @@ object DeterministicFinancialPlanner {
             -> planCreditMutation(command, snapshot)
             is SaveInstallmentPlanCommand -> planInstallmentMutation(command, snapshot)
             is SaveLoanContractCommand -> planLoanContractMutation(command, snapshot)
-            else -> reject("financialCommand.transactionPlannerScope")
         }
     } catch (rejected: PlannerRejected) {
         DomainResult.Failure(rejected.violation)
@@ -334,6 +335,153 @@ object DeterministicFinancialPlanner {
         require(transaction.kind == command.replacement.payload.kind, "restoreHistoricalRevision.kind")
         require(command.sourceRevisionId != snapshot.currentRevision?.id, "restoreHistoricalRevision.current")
         return planLifecycle(command, snapshot, command.replacement, RevisionAction.RESTORE, TransactionLifecycleState.ACTIVE)
+    }
+
+    /**
+     * Plans only the durable PURGE commit and non-sensitive tombstone. Physical deletion is performed
+     * by the finance-owned maintenance repository after it repeats every eligibility query in the
+     * same SQLite transaction.
+     */
+    private fun planPurge(
+        command: PurgeTransactionCommand,
+        snapshot: PlanningSnapshot,
+    ): DomainResult<FinancialMutationPlan> = try {
+        val transaction = currentTransaction(command.transactionId, snapshot, TransactionLifecycleState.TRASHED)
+        require(command.eligibility.transactionId == transaction.id, "purgeEligibility.transactionId")
+        require(command.eligibility.eligible, "purgeEligibility")
+        val operation = snapshot.operationContext ?: reject("planningSnapshot.operationContext")
+        val target = snapshot.book.localRevision.next().orReject()
+        val entity = StableEntityReference(EntityType.TRANSACTION, transaction.id.value)
+        val tombstone = PurgeTombstone(
+            entity = entity,
+            purgeCommitId = operation.commitId,
+            purgedAt = operation.createdAt,
+            purgeGeneration = transaction.rowVersion.value,
+        )
+        val plan = FinancialMutationPlan(
+            commandId = command.commandId,
+            commandType = command.commandType,
+            payloadHash = command.payloadHash,
+            expectedRevisionId = command.expectedRevisionId,
+            targetLocalRevision = target,
+            commit = CommitDraft(
+                operation.commitId,
+                CommitKind.PURGE,
+                listOf(snapshot.book.headCommitId),
+                operation.createdAt,
+                command.commandId,
+                operation.deviceInstanceId,
+                CanonicalFinancialHash.commitRoot(command.commandId, command.payloadHash, target, listOf(ContentHash(command.payloadHash))),
+            ),
+            transactions = emptyList(),
+            revisions = emptyList(),
+            revisionAmounts = emptyList(),
+            fxRateSnapshots = emptyList(),
+            journalBundles = emptyList(),
+            economicEffects = emptyList(),
+            budgetEffects = emptyList(),
+            projectEffects = emptyList(),
+            goalEffects = emptyList(),
+            statementEffects = emptyList(),
+            loanEffects = emptyList(),
+            settlementEffects = emptyList(),
+            refundAllocations = emptyList(),
+            goalMovements = emptyList(),
+            budgetAdjustments = emptyList(),
+            purgeTombstones = listOf(tombstone),
+            blobGcCandidates = emptyList(),
+            dependencyResolutions = emptyList(),
+            projectionChanges = ProjectionChangeSet(
+                target,
+                listOf(
+                    ProjectionChange.CurrentTransaction(transaction.id, target),
+                    ProjectionChange.SearchAndMap(transaction.id, target),
+                    ProjectionChange.Widget(snapshot.book.id, target),
+                ),
+            ),
+            entityChanges = listOf(
+                EntityChange(
+                    operation.commitId,
+                    entity,
+                    EntityChangeOperation.PURGE,
+                    transaction.contentHash,
+                    null,
+                    null,
+                ),
+            ),
+            ruleSetVersion = snapshot.book.ruleSetVersion,
+        )
+        FinancialMutationPlanValidator.validate(command, snapshot, plan)
+    } catch (rejected: PlannerRejected) {
+        DomainResult.Failure(rejected.violation)
+    }
+
+    private fun planMerge(
+        command: MergeRestoreCommand,
+        snapshot: PlanningSnapshot,
+    ): DomainResult<FinancialMutationPlan> = try {
+        val operation = snapshot.operationContext ?: reject("planningSnapshot.operationContext")
+        require(snapshot.book.headCommitId != command.incomingHeadCommitId, "merge.incomingHead")
+        val target = snapshot.book.localRevision.next().orReject()
+        val changes = command.selections.filter { it.source != MergeEntitySource.LOCAL }.map { selection ->
+            EntityChange(
+                operation.commitId,
+                selection.entity,
+                if (selection.source == MergeEntitySource.PURGE_TOMBSTONE) {
+                    EntityChangeOperation.PURGE
+                } else {
+                    EntityChangeOperation.UPDATE
+                },
+                null,
+                selection.contentHash,
+                null,
+            )
+        }
+        val plan = FinancialMutationPlan(
+            command.commandId,
+            command.commandType,
+            command.payloadHash,
+            null,
+            target,
+            CommitDraft(
+                operation.commitId,
+                CommitKind.MERGE,
+                listOf(snapshot.book.headCommitId, command.incomingHeadCommitId),
+                operation.createdAt,
+                command.commandId,
+                operation.deviceInstanceId,
+                CanonicalFinancialHash.commitRoot(
+                    command.commandId,
+                    command.payloadHash,
+                    target,
+                    changes.mapNotNull(EntityChange::afterHash),
+                ),
+            ),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            ProjectionChangeSet(target, emptyList()),
+            changes,
+            snapshot.book.ruleSetVersion,
+        )
+        FinancialMutationPlanValidator.validate(command, snapshot, plan)
+    } catch (rejected: PlannerRejected) {
+        DomainResult.Failure(rejected.violation)
     }
 
     @Suppress("CyclomaticComplexMethod", "LongMethod")

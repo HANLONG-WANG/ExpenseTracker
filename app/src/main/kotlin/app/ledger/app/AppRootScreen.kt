@@ -87,6 +87,8 @@ import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ReferenceManagementDestination
 import app.ledger.feature.transfer.BackupExecutionPresentation
 import app.ledger.feature.transfer.ExportExecutionPresentation
+import app.ledger.feature.transfer.RestoreFlowUiState
+import app.ledger.feature.transfer.RestoreResultPresentation
 import kotlinx.coroutines.delay
 import java.util.Locale
 import app.ledger.feature.journal.R as JournalR
@@ -95,6 +97,8 @@ import app.ledger.feature.record.R as RecordR
 @Composable
 internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
     val root by viewModel.rootState.collectAsStateWithLifecycle()
+    val recoveryRestoreActive by viewModel.recoveryRestoreActive.collectAsStateWithLifecycle()
+    val restoreState by viewModel.restoreFlow.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val baseContext = LocalContext.current
     val baseConfiguration = LocalConfiguration.current
@@ -135,7 +139,9 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
         }
         LedgerTheme(ThemeMode.FOLLOW_SYSTEM, dynamicColor = false, reduceMotion = false) {
             val state = root
-            if (state === AppRootState.Starting) {
+            if (recoveryRestoreActive) {
+                RestoreRootDestination(restoreState.screenId, viewModel, onNavigationChanged = {})
+            } else if (state === AppRootState.Starting) {
                 LedgerLoadingState(Modifier.fillMaxSize())
             } else if (state is AppRootState.Onboarding) {
                 OnboardingScreen(
@@ -187,11 +193,12 @@ private fun SessionGateScreen(
         } else if (session is BookSessionState.Maintenance) {
             MaintenanceScreen(session.reason, MaintenancePresentation.RUNNING)
         } else if (session is BookSessionState.RecoveryRequired) {
+            val restoreAvailable = session.diagnosticCode != RecoveryDiagnosticCode.KEY_UNAVAILABLE
             RecoveryRequiredScreen(
                 session.diagnosticCode,
-                RecoveryPresentation.NO_BACKUP,
+                if (restoreAvailable) RecoveryPresentation.RESTORE_AVAILABLE else RecoveryPresentation.NO_BACKUP,
                 viewModel::retryOpen,
-                onRestore = {},
+                onRestore = viewModel::openRestoreFromRecovery,
                 onClear = viewModel::clearLocalBookData,
             )
         } else if (session is BookSessionState.Ready) {
@@ -510,7 +517,7 @@ internal fun RootDestination(
                 onCompareRevisions = viewModel::compareJournalRevisions,
                 onRestoreRevision = viewModel::restoreJournalRevision,
                 onVerifyPurge = viewModel::verifyJournalPurge,
-                onPurgeRequested = viewModel::verifyJournalPurge,
+                onPurgeRequested = viewModel::purgeJournalTransaction,
             ),
         )
     } else if (screenId == "ACC-001") {
@@ -534,7 +541,8 @@ internal fun RootDestination(
     } else if (screenId == "G-007") {
         val export by viewModel.exportFlow.collectAsStateWithLifecycle()
         val backup by viewModel.backupFlow.collectAsStateWithLifecycle()
-        val presentation = operationCenterPresentation(export.screenId, export.executionPresentation, backup.execution)
+        val restore by viewModel.restoreFlow.collectAsStateWithLifecycle()
+        val presentation = operationCenterPresentation(export.screenId, export.executionPresentation, backup.execution, restore)
         OperationCenterContent(presentation, onBack)
     } else if (screenId == "G-008") {
         HelpContent(key.encodedArguments["topicKey"], onBack)
@@ -627,6 +635,7 @@ internal fun operationCenterPresentation(
     exportScreenId: String,
     exportExecution: ExportExecutionPresentation,
     backupExecution: BackupExecutionPresentation,
+    restore: RestoreFlowUiState,
 ): OperationCenterPresentation {
     val export = exportOperationCenterPresentation(exportScreenId, exportExecution)
     val backup = when (backupExecution) {
@@ -635,10 +644,19 @@ internal fun operationCenterPresentation(
         BackupExecutionPresentation.FAILED -> OperationCenterPresentation.FAILED
         BackupExecutionPresentation.SUCCEEDED -> OperationCenterPresentation.COMPLETED
     }
+    val restoreOperation = when (restore.screenId) {
+        "RST-006" -> OperationCenterPresentation.ACTIVE
+        "RST-007" -> if (restore.resultPresentation == RestoreResultPresentation.SUCCESS) {
+            OperationCenterPresentation.COMPLETED
+        } else {
+            OperationCenterPresentation.FAILED
+        }
+        else -> OperationCenterPresentation.EMPTY
+    }
     return when {
-        OperationCenterPresentation.ACTIVE in setOf(export, backup) -> OperationCenterPresentation.ACTIVE
-        OperationCenterPresentation.FAILED in setOf(export, backup) -> OperationCenterPresentation.FAILED
-        OperationCenterPresentation.COMPLETED in setOf(export, backup) -> OperationCenterPresentation.COMPLETED
+        OperationCenterPresentation.ACTIVE in setOf(export, backup, restoreOperation) -> OperationCenterPresentation.ACTIVE
+        OperationCenterPresentation.FAILED in setOf(export, backup, restoreOperation) -> OperationCenterPresentation.FAILED
+        OperationCenterPresentation.COMPLETED in setOf(export, backup, restoreOperation) -> OperationCenterPresentation.COMPLETED
         else -> OperationCenterPresentation.EMPTY
     }
 }

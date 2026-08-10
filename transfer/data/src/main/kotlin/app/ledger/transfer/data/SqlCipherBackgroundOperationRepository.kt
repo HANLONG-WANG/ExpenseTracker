@@ -62,6 +62,27 @@ class SqlCipherBackgroundOperationRepository(
         return ids.mapNotNull { id -> (get(id) as? DomainResult.Success)?.value }
     }
 
+    suspend fun recoverableRestoreOperations(): List<BackgroundOperation> {
+        val ids = access.read(bookId) { database ->
+            database.query(
+                "SELECT uid FROM background_operation WHERE type IN (?,?) AND state NOT IN (?,?) ORDER BY created_at,id",
+                arrayOf(
+                    BackgroundOperationType.RESTORE_REPLACE.ordinal,
+                    BackgroundOperationType.RESTORE_MERGE.ordinal,
+                    BackgroundOperationState.SUCCEEDED.ordinal,
+                    BackgroundOperationState.FAILED_FINAL.ordinal,
+                ),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        add(BackgroundOperationId(StableId.fromBytes(cursor.getBlob(0)).requireValue()))
+                    }
+                }
+            }
+        }
+        return ids.mapNotNull { id -> (get(id) as? DomainResult.Success)?.value }
+    }
+
     override suspend fun get(id: BackgroundOperationId): DomainResult<BackgroundOperation?> = protect {
         val stored = access.read(bookId) { database ->
             database.query(
@@ -91,7 +112,9 @@ class SqlCipherBackgroundOperationRepository(
         }
     }
 
-    override suspend fun save(operation: BackgroundOperation): DomainResult<Unit> = protectUnit {
+    override suspend fun save(operation: BackgroundOperation): DomainResult<Unit> = saveImmediately(operation)
+
+    fun saveImmediately(operation: BackgroundOperation): DomainResult<Unit> = protectUnit {
         val encoded = OperationParameterCodec.encode(operation.parameters)
         val sealed = try {
             access.seal(bookId, operation.id.value, PARAMETERS_PURPOSE, encoded)
