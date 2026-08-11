@@ -1706,6 +1706,81 @@ tasks.register("p32Artifacts") {
     dependsOn("p02Artifacts")
 }
 
+val validateP33WidgetNavigation by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P33 Glance snapshots, grouped navigation, durable operations, remaining settings and notifications."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p33_widget_navigation.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/background/src") { include("**/*") },
+        fileTree("core/database/src") { include("**/*") },
+        fileTree("feature/settings/src") { include("**/*") },
+        fileTree("feature/transfer/src") { include("**/*") },
+        fileTree("finance/application/src") { include("**/*") },
+        fileTree("finance/data/src") { include("**/*") },
+        fileTree("transfer/data/src") { include("**/*") },
+        fileTree("widget/src") { include("**/*") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+    )
+}
+
+val validateP33WidgetNavigationFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P33 gate rejects widget privacy, snapshot, deep-link, navigation, notification and cancellation weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p33_widget_navigation_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p33_widget_navigation.py",
+        "scripts/tests/test_p33_widget_navigation_contracts.py",
+        fileTree("app/src/main/kotlin") { include("**/*.kt") },
+        fileTree("core/background/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/settings/src/main/kotlin") { include("**/*.kt") },
+        fileTree("feature/transfer/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/application/src/main/kotlin") { include("**/*.kt") },
+        fileTree("finance/data/src/main/kotlin") { include("**/*.kt") },
+        fileTree("widget/src/main/kotlin") { include("**/*.kt") },
+    )
+}
+
+tasks.register("p33Check") {
+    group = "verification"
+    description = "Runs P33 static, JVM, lint and architecture evidence; SQLCipher/Glance/UI managed-device suites run separately."
+    dependsOn(
+        validateP33WidgetNavigation,
+        validateP33WidgetNavigationFixtures,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":core:database:testDebugUnitTest",
+        ":finance:application:test",
+        ":finance:data:testDebugUnitTest",
+        ":transfer:data:testDebugUnitTest",
+        ":widget:testDebugUnitTest",
+        ":app:testDebugUnitTest",
+        ":app:lintDebug",
+        ":core:background:lintDebug",
+        ":core:database:lintDebug",
+        ":feature:settings:lintDebug",
+        ":feature:transfer:lintDebug",
+        ":finance:data:lintDebug",
+        ":transfer:data:lintDebug",
+        ":widget:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+tasks.register("p33Artifacts") {
+    group = "verification"
+    description = "Generates P33 coverage and inherited SBOM/license artifacts."
+    dependsOn("p02Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."

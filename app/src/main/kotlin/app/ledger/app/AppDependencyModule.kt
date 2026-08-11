@@ -39,6 +39,8 @@ import app.ledger.finance.application.SettlementApplicationPort
 import app.ledger.finance.application.SpecializedTransactionEntryPort
 import app.ledger.finance.application.StructuredImportApplicationPort
 import app.ledger.finance.application.VaultSecretApplicationPort
+import app.ledger.finance.application.WidgetSnapshotApplicationPort
+import app.ledger.finance.application.WidgetSnapshotRefreshApplicationPort
 import app.ledger.finance.data.SecureRoomAutomationApplicationPort
 import app.ledger.finance.data.SecureRoomBatchEntryApplicationPort
 import app.ledger.finance.data.SecureRoomBudgetApplicationPort
@@ -58,6 +60,7 @@ import app.ledger.finance.data.SecureRoomSettlementApplicationPort
 import app.ledger.finance.data.SecureRoomSpecializedTransactionEntryPort
 import app.ledger.finance.data.SecureRoomStructuredImportApplicationPort
 import app.ledger.finance.data.SecureRoomVaultSecretApplicationPort
+import app.ledger.finance.data.SecureRoomWidgetSnapshotApplicationPort
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -141,6 +144,20 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
     ): LedgerExportQueryPort = SecureRoomLedgerExportQueryPort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun widgetSnapshotApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+    ): WidgetSnapshotApplicationPort = SecureRoomWidgetSnapshotApplicationPort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun widgetSnapshotRefreshApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+    ): WidgetSnapshotRefreshApplicationPort = SecureRoomWidgetSnapshotApplicationPort(context, keyProvider)
 
     @Provides
     @Singleton

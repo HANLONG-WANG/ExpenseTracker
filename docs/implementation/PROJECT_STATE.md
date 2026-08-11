@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-10 (Asia/Tokyo)
-Current stage: P32 — card Vault, privacy diagnostics, telemetry, crash and security settings
-Stage status: VERIFIED (`P32-E001`—`P32-E008`); P00—P31 remain VERIFIED and P33 is the next unstarted stage
+Last updated: 2026-08-11 (Asia/Tokyo)
+Current stage: P33 — desktop widgets, More hub and remaining system/settings flows
+Stage status: VERIFIED (`P33-E001`—`P33-E008`); P00—P32 remain VERIFIED and P34 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -404,17 +404,29 @@ P30 is `VERIFIED`. `P30_BACKUP_MAPPING.md` records the repository/container/key/
 
 P31 is `VERIFIED`. `P31_RESTORE_MERGE_PURGE_MAPPING.md` records the authenticated materialization/shadow/exchange/merge/purge/clear/UI boundary. P32 and later stages are not promoted.
 
+### P33 result (verified)
+
+| Area | P33 result | Classification |
+|---|---|---|
+| Glance widgets | One Glance provider/configuration Activity supports the nine frozen types; launcher rendering reads only four bounded SQLCipher snapshot projections and quick entry opens a validated complete form without committing | VERIFIED (`P33-E001`—`P33-E004`) |
+| Snapshot/privacy lifecycle | Schema v3 extends the governed widget projections with date/month/budget/available/selection fields; foreground date boundaries rebuild only those projections transactionally. Amounts default hidden per widget and app lock is not consulted for already-authorized launcher content | VERIFIED (`P33-E002`—`P33-E004`) |
+| Navigation and remaining settings | The single grouped More hub reaches every non-bottom capability without a drawer; appearance/language-region/currency/calendar/trash/about and the transfer hub reuse governed components and persisted settings | VERIFIED (`P33-E001`, `P33-E005`) |
+| Operations and notifications | The encrypted operation center exposes all durable states without parameters; safe cancel is checkpointed, long-task notifications deep-link to G-007 and every Worker input remains exactly `operationId` | VERIFIED (`P33-E001`, `P33-E006`, `P33-E007`) |
+| Compatibility and localization | WGT-001—003 pass on API 28 and API 36; G/SETG/TRF/SYS flows and all 26 exact P33 states pass on API 36 in zh-CN/ja-JP/en-US | VERIFIED (`P33-E004`, `P33-E005`) |
+
+P33 is `VERIFIED`. `P33_WIDGET_MORE_SETTINGS_MAPPING.md` records widget/snapshot/privacy/navigation/operation/settings ownership. P34 and later stages are not promoted.
+
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 67 requirements are `VERIFIED`; 21 are `IN_PROGRESS`; 2 remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 193 are `VERIFIED`; 22 remain `NOT_STARTED` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 73 requirements are `VERIFIED`; 17 are `IN_PROGRESS`; none remain `NOT_STARTED` |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All 215 are `VERIFIED`; later whole-product replay remains P34/P36 |
 | Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-018 and ADR-020 plus ADR-007A are `VERIFIED`; ADR-019 remains `IN_PROGRESS` |
 | UI ADRs | 12 | UI-ADR-002/007/008/009/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006 are `IN_PROGRESS` |
 | Permanent domain invariants | 35 | 26 are `VERIFIED`, including settlement conservation/local-account/history invariants (`INV-022`—`INV-024`); 9 retain later evidence |
 | Logical schema families | 12 | All 12 frozen physical Schema v1 families remain `VERIFIED`; P26 registers and device-verifies the normalized non-destructive analytics-configuration Schema v2 expansion |
-| Projection families | 7 + search/geographic indexes | Current transaction, account, budget/project/goal, liabilities, settlement and analytics plus both indexes are `VERIFIED`; widget runtime completion remains later-owned |
+| Projection families | 7 + search/geographic indexes | All seven projection families plus both indexes are `VERIFIED`; P33 closes bounded widget runtime and date-boundary refresh |
 | Durable/staging/backup operation inventories | 4 groups | Import operation/staging/audit, export/backup runtime and restore/merge records, checkpoints and crash recovery are `VERIFIED` by P28—P31 |
 
 ## Stage progression
@@ -454,7 +466,8 @@ P31 is `VERIFIED`. `P31_RESTORE_MERGE_PURGE_MAPPING.md` records the authenticate
 | P30 | VERIFIED | Always-encrypted managed and portable backup, chunk/object reuse, retention/GC, recovery/Vault wrapping, SAF/Drive resumability, daily scheduling and BKP-001—007/SYS-003; `P30-E001`—`P30-E008` |
 | P31 | VERIFIED | Authenticated bounded restore, SQLCipher shadow validation/atomic exchange, commit-graph merge, controlled purge/tombstone, clear/recovery integration and RST/JRN/CLR/G flows; `P31-E001`—`P31-E008` |
 | P32 | VERIFIED | Per-action Vault authentication, ciphertext-only persistence, recovery rewrap, clipboard/screen privacy, closed-schema telemetry/ACRA, scoped clear and all VLT/SETG/CLR/SYS contracts pass; see `P32-E001`—`P32-E008` |
-| P33—P36 | NOT_STARTED | P33 is next; do not promote later work early |
+| P33 | VERIFIED | Nine snapshot-only Glance widgets, default-hidden per-widget privacy, full-form quick entry, one More/transfer/settings/help surface, durable operation center and notification deep links pass on API 28/API 36; see `P33-E001`—`P33-E008` |
+| P34—P36 | NOT_STARTED | P34 is next; do not promote later work early |
 
 ## P17 verified handoff
 
@@ -739,3 +752,27 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p32_security_pr
 ```
 
 All P32 evidence is recorded in `P32-E001`—`P32-E008`. The next entry point is P33. Preserve the independent app/Vault gates, ciphertext-only data boundary, zero-free-text telemetry schemas, consent deletion semantics, `FLAG_SECURE`, sensitive-semantic exclusion and local/cloud authority split; do not expose Vault data through widgets or promote P33+ work early.
+
+## P33 verified handoff
+
+P33 leaves the repository with nine Glance widget types backed only by four bounded SQLCipher projections, per-widget default-hidden amount consent, closed key-unavailable/stale/no-data states and a quick-entry deep link that validates a category/template then opens the complete record form without writing. Foreground/open transitions refresh date-sensitive widget projections transactionally; launcher rendering never performs the refresh or complex SQL and never consults app-lock state.
+
+The single grouped More surface reaches every non-bottom capability without a drawer. Transfer, encrypted durable operations, long-task notification deep links, offline allowlisted help and remaining appearance/language-region/currency/calendar/trash/about settings are integrated in zh-CN, ja-JP and en-US. Worker platform payloads remain exactly `operationId`.
+
+The reproducible P33 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p33_widget_navigation.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p33_widget_navigation_contracts -v
+./gradlew :widget:testDebugUnitTest :app:testDebugUnitTest :finance:data:testDebugUnitTest :transfer:data:testDebugUnitTest --no-configuration-cache --dependency-verification=strict --console=plain
+./gradlew :core:database:pixel6Api36DebugAndroidTest --no-configuration-cache --dependency-verification=strict --console=plain
+./gradlew :finance:data:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.finance.data.WidgetSnapshotApplicationPortDeviceTest --no-configuration-cache --dependency-verification=strict --console=plain
+./gradlew :transfer:data:pixel6Api36DebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=app.ledger.transfer.data.SqlCipherImportStagingDeviceTest#durableOperationCenterListsNewestEncryptedOperationsWithoutParameters' --no-configuration-cache --dependency-verification=strict --console=plain
+./gradlew :widget:pixel6Api36DebugAndroidTest --no-configuration-cache --dependency-verification=strict --console=plain
+./gradlew :widget:pixel2Api28DebugAndroidTest --no-configuration-cache --dependency-verification=strict --console=plain
+./gradlew :app:pixel6Api36DebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.ledger.app.P33UiContractDeviceTest --no-configuration-cache --dependency-verification=strict --console=plain
+./gradlew p33Check --no-configuration-cache --dependency-verification=strict --console=plain
+./gradlew p33Artifacts --no-configuration-cache --dependency-verification=strict --console=plain
+```
+
+All P33 evidence is recorded in `P33-E001`—`P33-E008`. The next entry point is P34. Preserve the four-table snapshot-only launcher boundary, default-hidden per-widget permission, no app-lock inference, no quick-entry write, closed deep-link allowlists, operationId-only Worker payloads and the single More hub; do not promote P34+ work early.

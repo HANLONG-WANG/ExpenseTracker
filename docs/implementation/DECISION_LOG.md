@@ -1129,3 +1129,52 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: the governed `SensitiveValueField` replaced the parent accessibility node with a safe masked/revealed description, but an API 36 UI test found the inner revealed `Text` in the unmerged semantics tree.
 - Decision: retain the safe parent description and independently clear semantics on the visual value node itself. PAN/CVC remain visually renderable after authentication while neither value can be discovered in merged or unmerged accessibility semantics; CVC still has no copy action.
 - Consequence: the failing real-device privacy test became a passing regression gate without hiding the defect by weakening the assertion or omitting accessibility coverage.
+
+## DL-160 — P33 retains the four governed widget snapshot tables
+
+- Date/stage: 2026-08-11 / P33
+- Surface issue: architecture text uses `widget_snapshot` as a conceptual singular boundary while the frozen domain schema and pre-P33 database define `widget_book_snapshot`, `widget_account_snapshot`, `widget_credit_snapshot` and `widget_goal_snapshot`.
+- Decision: Primary Schema v3 extends those four governed projection tables instead of creating a parallel generic snapshot. Glance reads only them; configuration-only category/template lookup is a separately named method and cannot run during rendering.
+- Consequence: the higher-priority domain schema remains authoritative and every launcher row stays typed, bounded and free of transaction/location/Vault fields.
+
+## DL-161 — WGT systemActivity screens are one Android configuration state machine
+
+- Date/stage: 2026-08-11 / P33
+- Surface issue: WGT-001—003 are three `systemActivity` routes carrying one launcher `appWidgetId`, while Android invokes one declared configuration Activity.
+- Decision: one launcher configuration Activity implements TYPE → DATA → PRIVACY as three closed Compose states with back/no-data behavior and returns the standard configured result only after persistence.
+- Consequence: all three route semantics are realized without inventing free-form internal routes or exposing the widget ID outside the platform callback.
+
+## DL-162 — The only production layout XML is the AppWidget bootstrap view
+
+- Date/stage: 2026-08-11 / P33
+- Surface issue: Android AppWidget metadata requires an `initialLayout` before Glance supplies RemoteViews, while the repository prohibits XML feature UI and uses Compose/Glance.
+- Decision: `ledger_widget_loading.xml` is allowed only as the inert AppWidget bootstrap referenced by provider metadata. Widget content uses Glance and configuration uses Compose. The P01 gate is narrowed to this one named file and rejects every other production layout XML.
+- Consequence: the mandatory platform bootstrap is present without creating a second UI system or consulting excluded visual drafts.
+
+## DL-163 — App lock does not reinterpret launcher privacy consent
+
+- Date/stage: 2026-08-11 / P33
+- Surface issue: UI §12.31 says application lock must not pretend to hide content already explicitly authorized for the system launcher.
+- Decision: widget resolution has no app-lock dependency. SQLCipher/key unavailability produces a truthful locked state; an available current snapshot obeys that widget instance's default-false amount flag.
+- Consequence: lock/background transitions do not silently rewrite explicit per-widget consent and one widget's opt-in cannot affect another.
+
+## DL-164 — Core-net change uses prior local-day facts and current valuation evidence
+
+- Date/stage: 2026-08-11 / P33
+- Surface issue: the core-net-assets widget requires a change value, but historical foreign-exchange revaluation is not a new product/reporting surface in P33.
+- Decision: prior core net assets use each base-currency account's last daily close before the snapshot date; foreign-currency accounts retain current committed valuation evidence for both sides of the short comparison.
+- Consequence: P33 does not fabricate historical FX or reinterpret facts; the bounded comparison remains explainable and authoritative analytics/history semantics are unchanged.
+
+## DL-165 — Date-sensitive widget refresh is foreground derived maintenance
+
+- Date/stage: 2026-08-11 / P33
+- Surface issue: financial commits rebuild widget projections, but month/day values can become stale across midnight with no write. Glance may not execute complex SQL.
+- Decision: Ready-session and foreground entry compare `snapshot_local_date` in the saved user zone. A mismatch rebuilds only the four widget tables in one SQLCipher transaction and then requests Glance updates; same-day calls are no-ops.
+- Consequence: rendering remains strictly read-only, and a failed refresh leaves the prior snapshot visibly stale rather than displaying unverified current data.
+
+## DL-166 — Operation cancel remains durable until cleanup runs
+
+- Date/stage: 2026-08-11 / P33
+- Surface issue: directly cancelling WorkManager after a G-007 cancel tap can prevent import/export/backup rollback and temporary cleanup from executing.
+- Decision: G-007 persists `CANCEL_REQUESTED` and signals the in-process registry but does not terminate the Worker. Each Worker handles pre-start and in-flight requests through its typed rollback/cleanup path before publishing terminal state.
+- Consequence: safe cancellation is recoverable, and the platform payload remains exactly `operationId`.

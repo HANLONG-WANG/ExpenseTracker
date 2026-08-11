@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -429,9 +430,13 @@ public fun LedgerToggleRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = LedgerTheme.dimensions.touchTargetMin)
-            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
             .semantics {
-                role = Role.Switch
                 stateDescription = if (checked) "on" else "off"
             }
             .padding(vertical = LedgerTheme.spacing.xs),

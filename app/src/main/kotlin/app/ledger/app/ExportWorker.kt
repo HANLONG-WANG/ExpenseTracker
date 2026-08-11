@@ -9,8 +9,6 @@
 package app.ledger.app
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.job.JobParameters
 import android.app.job.JobService
 import android.content.ComponentName
@@ -19,7 +17,6 @@ import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
 import android.os.PersistableBundle
-import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -28,6 +25,8 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import app.ledger.core.background.OperationNotificationContent
+import app.ledger.core.background.OperationNotificationCoordinator
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
@@ -155,6 +154,10 @@ private class ExportOperationRunner(private val context: Context) {
         val treeUri = Uri.parse(persisted.substringBefore('\n'))
         val alreadyPublished = persisted.substringAfter('\n', "").takeIf(String::isNotBlank)?.let(Uri::parse)
         val destination = SafExportDestination(context, operationStableId, treeUri, parameters.descriptor)
+        if (operation.state == BackgroundOperationState.CANCEL_REQUESTED) {
+            destination.cleanup()
+            return cancel(operation, operations, dependencies.clock().now())
+        }
         val control = ExportRunControlRegistry.control(operationStableId)
         if (operation.state == BackgroundOperationState.SUCCEEDED) return ExportRunOutcome.SUCCEEDED
         if (operation.state == BackgroundOperationState.COMMITTING && alreadyPublished != null) {
@@ -372,17 +375,14 @@ private fun exportForegroundInfo(context: Context, rows: Long): ForegroundInfo =
     if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0,
 )
 
-private fun exportNotification(context: Context, rows: Long): Notification {
-    val manager = context.getSystemService(NotificationManager::class.java)
-    manager.createNotificationChannel(NotificationChannel(EXPORT_CHANNEL_ID, "Data export", NotificationManager.IMPORTANCE_LOW))
-    return NotificationCompat.Builder(context, EXPORT_CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.stat_sys_upload)
-        .setContentTitle("Exporting ledger data")
-        .setContentText("$rows rows written")
-        .setOngoing(true)
-        .setOnlyAlertOnce(true)
-        .build()
-}
+private fun exportNotification(context: Context, rows: Long): Notification = OperationNotificationCoordinator.create(
+    context,
+    OperationNotificationContent(
+        context.getString(R.string.export_worker_channel),
+        context.getString(R.string.export_worker_title),
+        context.getString(R.string.export_worker_progress, rows),
+    ),
+)
 
 private fun ExportFormat.mimeType(): String = when (this) {
     ExportFormat.CSV -> "text/csv"
@@ -394,5 +394,4 @@ private fun ExportFormat.mimeType(): String = when (this) {
 
 private fun <T> DomainResult<T>.successOrNull(): T? = (this as? DomainResult.Success)?.value
 
-private const val EXPORT_CHANNEL_ID = "ledger-export"
 private const val EXPORT_NOTIFICATION_ID = 29_001

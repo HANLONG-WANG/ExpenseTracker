@@ -11,8 +11,6 @@
 package app.ledger.app
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.job.JobParameters
 import android.app.job.JobService
 import android.content.ComponentName
@@ -21,7 +19,6 @@ import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
 import android.os.PersistableBundle
-import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -30,6 +27,8 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import app.ledger.core.background.OperationNotificationContent
+import app.ledger.core.background.OperationNotificationCoordinator
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
@@ -163,6 +162,9 @@ private class BackupOperationRunner(private val context: Context) {
             ?.takeIf { it.repositoryId == repositoryId } ?: return fail(operation, operations, BackupFailure.RepositoryUnavailable, dependencies.clock(), false)
         if (configuration.policy.validate(BackupKeyEnvelopeStore(context, dependencies.keyProvider()).isConfigured(configuration.repositoryId.value)) is DomainResult.Failure) {
             return fail(operation, operations, BackupFailure.RecoveryPasswordRequired, dependencies.clock(), false)
+        }
+        if (operation.state == BackgroundOperationState.CANCEL_REQUESTED) {
+            return cancel(operation, operations, dependencies.clock())
         }
         if (operation.state == BackgroundOperationState.FAILED_RETRYABLE) {
             operation = operation.transition(BackgroundOperationState.QUEUED, dependencies.clock().now(), errorCode = null).successOrNull()
@@ -601,19 +603,14 @@ private fun backupForegroundInfo(context: Context, phase: BackupPhase, bytes: Lo
     if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0,
 )
 
-private fun backupNotification(context: Context, phase: BackupPhase, bytes: Long): Notification {
-    val manager = context.getSystemService(NotificationManager::class.java)
-    manager.createNotificationChannel(
-        NotificationChannel(BACKUP_CHANNEL_ID, context.getString(R.string.backup_worker_channel), NotificationManager.IMPORTANCE_LOW),
-    )
-    return NotificationCompat.Builder(context, BACKUP_CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.stat_sys_upload)
-        .setContentTitle(context.getString(R.string.backup_worker_title))
-        .setContentText(context.getString(R.string.backup_worker_progress, context.getString(phase.labelResource()), bytes))
-        .setOngoing(true)
-        .setOnlyAlertOnce(true)
-        .build()
-}
+private fun backupNotification(context: Context, phase: BackupPhase, bytes: Long): Notification = OperationNotificationCoordinator.create(
+    context,
+    OperationNotificationContent(
+        context.getString(R.string.backup_worker_channel),
+        context.getString(R.string.backup_worker_title),
+        context.getString(R.string.backup_worker_progress, context.getString(phase.labelResource()), bytes),
+    ),
+)
 
 private fun BackupPhase.labelResource(): Int = when (this) {
     BackupPhase.DATABASE_SNAPSHOT -> R.string.backup_worker_phase_database
@@ -628,5 +625,4 @@ private fun BackupPhase.labelResource(): Int = when (this) {
 private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xff) }
 private fun app.ledger.transfer.domain.BackupRepositoryId.driveFolderName(): String = value.bytes.toHex() + ".ledger-repository"
 private fun <T> DomainResult<T>.successOrNull(): T? = (this as? DomainResult.Success)?.value
-private const val BACKUP_CHANNEL_ID = "ledger-backup"
 private const val BACKUP_NOTIFICATION_ID = 30_001

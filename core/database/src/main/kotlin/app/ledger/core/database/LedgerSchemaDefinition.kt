@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import java.security.MessageDigest
 
 internal object LedgerSchemaDefinition {
-    const val PRIMARY_VERSION: Int = 2
+    const val PRIMARY_VERSION: Int = 3
     const val STAGING_VERSION: Int = 1
 
     internal val primaryV1Assets: List<String> = listOf(
@@ -17,8 +17,12 @@ internal object LedgerSchemaDefinition {
         "ledger_schema_v1_indices_views.sql",
     )
 
-    val primaryAssets: List<String> = primaryV1Assets + listOf(
+    private val primaryV2Assets: List<String> = primaryV1Assets + listOf(
         "ledger_schema_v2_analytics_configuration.sql",
+    )
+
+    val primaryAssets: List<String> = primaryV2Assets + listOf(
+        "ledger_schema_v3_widget_snapshot.sql",
     )
 
     val stagingAssets: List<String> = listOf("import_staging_schema_v1.sql")
@@ -110,6 +114,18 @@ internal object LedgerSchemaDefinition {
         SchemaSqlAssets.install(context, database, listOf("ledger_schema_v2_analytics_configuration.sql"))
         database.execSQL(
             "UPDATE _room_schema_registry SET logicalSchemaVersion=?, contractSha256=? WHERE id=1",
+            arrayOf<Any>(2, primaryV2ContractSha256(context)),
+        )
+    }
+
+    fun migratePrimaryV2ToV3(context: Context, database: SupportSQLiteDatabase) {
+        SchemaSqlAssets.install(context, database, listOf("ledger_schema_v3_widget_snapshot.sql"))
+        database.execSQL("DELETE FROM widget_goal_snapshot")
+        database.execSQL("DELETE FROM widget_credit_snapshot")
+        database.execSQL("DELETE FROM widget_account_snapshot")
+        database.execSQL("DELETE FROM widget_book_snapshot")
+        database.execSQL(
+            "UPDATE _room_schema_registry SET logicalSchemaVersion=?, contractSha256=? WHERE id=1",
             arrayOf<Any>(PRIMARY_VERSION, primaryContractSha256(context)),
         )
     }
@@ -117,6 +133,10 @@ internal object LedgerSchemaDefinition {
     fun primaryContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryAssets)
 
     internal fun primaryV1ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV1Assets)
+
+    internal fun primaryV2ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV2Assets)
+
+    internal fun primaryV1Statements(context: Context): List<String> = SchemaSqlAssets.statements(context, primaryV1Assets)
 
     internal fun expectedPrimaryV2TableNames(context: Context): Set<String> = SchemaSqlAssets.statements(
         context,

@@ -1,0 +1,4 @@
+<resources>
+    <string name="transfer_hub_notifications_unavailable">操作通知は許可されていませんが、状態とチェックポイントは暗号化された操作センターに保存されます。</string>
+    <string name="transfer_hub_title">インポート、エクスポート、バックアップ</string><string name="transfer_hub_active">長時間の操作が実行中です。操作センターで段階、エラー、利用可能な操作を確認できます。</string><string name="transfer_hub_import">インポート</string><string name="transfer_hub_import_body">CSV または XLSX を確認・検証して原子的に取り込みます</string><string name="transfer_hub_export">エクスポート</string><string name="transfer_hub_export_body">絞り込みデータ、ブック、レポートを書き出します。エクスポートはバックアップではありません</string><string name="transfer_hub_backup">バックアップ</string><string name="transfer_hub_backup_body">常時暗号化されたローカルまたは Drive バックアップを作成します</string><string name="transfer_hub_restore">復元</string><string name="transfer_hub_restore_body">検査後に台帳を置換またはマージします</string><string name="transfer_hub_operations">操作センター</string><string name="transfer_hub_operations_body">インポート、エクスポート、バックアップ、復元の永続状態を確認します</string>
+</resources>

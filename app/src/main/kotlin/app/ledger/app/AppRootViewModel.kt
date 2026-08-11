@@ -23,11 +23,16 @@ import app.ledger.analytics.domain.FixedReport
 import app.ledger.analytics.domain.FixedReportCatalog
 import app.ledger.analytics.domain.ReportExportFormat
 import app.ledger.analytics.domain.ReportExportPayload
+import app.ledger.app.settings.DateFormatProto
 import app.ledger.app.settings.DestinationProto
 import app.ledger.app.settings.LedgerAppSettings
 import app.ledger.app.settings.NavigationSnapshotProto
 import app.ledger.app.settings.RouteArgumentProto
+import app.ledger.app.settings.ThemeModeProto
 import app.ledger.app.settings.TopLevelStackProto
+import app.ledger.app.settings.WeekStartProto
+import app.ledger.core.background.NotificationPermissionStatus
+import app.ledger.core.background.OperationNotificationCoordinator
 import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
@@ -68,6 +73,7 @@ import app.ledger.core.security.RecoveryPasswordKeyWrapper
 import app.ledger.core.security.RecoveryWrappedKeyMaterial
 import app.ledger.core.security.ScreenPrivacyPolicy
 import app.ledger.core.security.SecretBytes
+import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.core.security.SecurityAssociatedData
 import app.ledger.core.security.SqlCipherBookDatabaseResourceFactory
 import app.ledger.core.security.VaultExposureRegistry
@@ -147,8 +153,12 @@ import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.FeatureQueueRow
 import app.ledger.feature.settings.MerchantSubmission
 import app.ledger.feature.settings.PlaceSubmission
+import app.ledger.feature.settings.RemainingSettingsState
 import app.ledger.feature.settings.SecurityPrivacySettingsState
 import app.ledger.feature.settings.SecuritySettingsRequiredState
+import app.ledger.feature.settings.SettingsDateFormat
+import app.ledger.feature.settings.SettingsThemeMode
+import app.ledger.feature.settings.SettingsWeekStart
 import app.ledger.feature.settings.TrashRetention
 import app.ledger.feature.settlement.SettlementFeatureState
 import app.ledger.feature.settlement.SettlementField
@@ -273,6 +283,9 @@ import app.ledger.finance.application.SpecializedTransactionWriteRequest
 import app.ledger.finance.application.StructuredImportApplicationPort
 import app.ledger.finance.application.UpdateBookLocaleCommand
 import app.ledger.finance.application.VaultSecretApplicationPort
+import app.ledger.finance.application.WidgetQuickDirection
+import app.ledger.finance.application.WidgetQuickTargetKind
+import app.ledger.finance.application.WidgetSnapshotRefreshApplicationPort
 import app.ledger.finance.data.RoomLedgerStartupInspector
 import app.ledger.finance.data.SecureRoomControlledPurgeApplicationPort
 import app.ledger.finance.domain.AutoGenerationMode
@@ -324,6 +337,11 @@ import app.ledger.finance.domain.TransactionLifecycleState
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountType
 import app.ledger.finance.domain.WeekendAdjustment
+import app.ledger.transfer.data.SqlCipherBackgroundOperationRepository
+import app.ledger.transfer.domain.BackgroundOperation
+import app.ledger.transfer.domain.BackgroundOperationId
+import app.ledger.transfer.domain.BackgroundOperationState
+import app.ledger.transfer.domain.BackgroundOperationType
 import app.ledger.transfer.domain.BackupNetworkPolicy
 import app.ledger.transfer.domain.BackupRepositoryKind
 import app.ledger.transfer.domain.ExportContent
@@ -334,6 +352,7 @@ import app.ledger.transfer.domain.ExportReportSnapshot
 import app.ledger.transfer.domain.MergeResolution
 import app.ledger.transfer.domain.RecoveryPasswordChangeMode
 import app.ledger.transfer.domain.RestoreMode
+import app.ledger.widget.LedgerWidgetRuntime
 import com.google.protobuf.ByteString
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -358,11 +377,14 @@ import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.text.NumberFormat
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Locale
 import javax.inject.Inject
 import app.ledger.feature.settings.AppLockTimeout as SettingsAppLockTimeout
@@ -388,9 +410,28 @@ internal enum class AppAuthenticationState {
 
 internal enum class AppAuthenticationError { FAILED, LOCKED_OUT, CANCELED, DEVICE_SECURITY_CHANGED }
 
-internal enum class GlobalSnackbarMessage { SETTINGS_WRITE_FAILED, LOCAL_CLEAR_FAILED }
+internal enum class GlobalSnackbarMessage { SETTINGS_WRITE_FAILED, LOCAL_CLEAR_FAILED, EXTERNAL_APP_UNAVAILABLE }
+
+internal sealed interface OperationCenterLoadState {
+    data object Loading : OperationCenterLoadState
+    data class Content(val operations: List<BackgroundOperation>) : OperationCenterLoadState
+    data class Failure(val code: String) : OperationCenterLoadState
+}
 
 internal enum class SensitiveSettingsAuthenticationPurpose { ENABLE_APP_LOCK, CLEAR_LOCAL, DELETE_CLOUD }
+
+internal enum class NotificationPermissionPresentation { FIRST_ASK, DENIED, GRANTED }
+
+private data class WidgetQuickDeepLink(
+    val kind: WidgetQuickTargetKind,
+    val direction: WidgetQuickDirection,
+    val targetId: StableId,
+)
+
+private sealed interface WidgetDeepLink {
+    data class Destination(val destination: LedgerDestinationKey) : WidgetDeepLink
+    data class Quick(val value: WidgetQuickDeepLink) : WidgetDeepLink
+}
 
 internal sealed interface AppReferenceDataState {
     data object Loading : AppReferenceDataState
@@ -423,6 +464,7 @@ internal class AppRootViewModel @Inject constructor(
     analyticsApplicationPort: AnalyticsApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: BookAttachmentObjectPort,
+    private val widgetSnapshotRefreshApplicationPort: WidgetSnapshotRefreshApplicationPort,
     private val runtimeSources: AppRuntimeSources,
 ) : ViewModel() {
     private val vaultExposureRegistry = VaultExposureRegistry(SystemClock::elapsedRealtime)
@@ -445,6 +487,13 @@ internal class AppRootViewModel @Inject constructor(
     val screenPrivacyPolicy: StateFlow<ScreenPrivacyPolicy> = mutableScreenPrivacyPolicy.asStateFlow()
     private val mutableOpenSystemSecurityRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val openSystemSecurityRequests = mutableOpenSystemSecurityRequests.asSharedFlow()
+    private val mutableExternalLinkRequests = MutableSharedFlow<Uri>(extraBufferCapacity = 1)
+    val externalLinkRequests = mutableExternalLinkRequests.asSharedFlow()
+    private val mutableNotificationPermissionRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val notificationPermissionRequests = mutableNotificationPermissionRequests.asSharedFlow()
+    private val mutableOpenNotificationSettingsRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val openNotificationSettingsRequests = mutableOpenNotificationSettingsRequests.asSharedFlow()
+    private val availableZoneIds: List<String> = ZoneId.getAvailableZoneIds().sorted()
     private val analysisController = AnalysisController(analyticsApplicationPort)
     private val importController = ImportController(
         context,
@@ -463,6 +512,8 @@ internal class AppRootViewModel @Inject constructor(
     val exportFlow: StateFlow<ExportFlowUiState> = exportController.state
     val backupFlow: StateFlow<BackupFlowUiState> = backupController.state
     val restoreFlow: StateFlow<RestoreFlowUiState> = restoreController.state
+    private val mutableOperationCenter = MutableStateFlow<OperationCenterLoadState>(OperationCenterLoadState.Loading)
+    val operationCenter: StateFlow<OperationCenterLoadState> = mutableOperationCenter.asStateFlow()
     val analysis: StateFlow<AnalysisLoadState> = analysisController.state
     private val batchEntryController = BatchEntryController(
         batchEntryApplicationPort,
@@ -592,12 +643,14 @@ internal class AppRootViewModel @Inject constructor(
     private var unsavedContentLossNotice: Boolean = false
     val navigator: FiveStackNavigator = FiveStackNavigator()
     private var pendingDeepLink: LedgerDestinationKey? = null
+    private var pendingWidgetQuickDeepLink: WidgetQuickDeepLink? = null
     private val scrollStates = mutableMapOf<TopLevelDestination, Pair<String, Int>>()
     private var recordLocationSession: ForegroundLocationSaveSession? = null
     private var recordAttachmentImportJob: Job? = null
     private var pendingBatchAttachmentRowId: StableId? = null
     private var specializedAttachmentImportJob: Job? = null
     private var pendingRecordExit: PendingRecordExit? = null
+    private var pendingTransferSource: LedgerDestinationKey? = null
 
     init {
         viewModelScope.launch { start() }
@@ -868,6 +921,7 @@ internal class AppRootViewModel @Inject constructor(
             manager.state.collectLatest { state ->
                 publishSession(state)
                 if (state is BookSessionState.Ready) {
+                    refreshWidgetSnapshot(state.bookId)
                     consumePendingDeepLink()
                     loadReferenceData()
                     loadOrdinaryRecord()
@@ -935,6 +989,18 @@ internal class AppRootViewModel @Inject constructor(
     fun onApplicationForegrounded() {
         if (appLockController?.onApplicationForegrounded() == AppLockState.Locked) {
             viewModelScope.launch { sessionManager?.lockUi() }
+        }
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready
+        if (ready != null) refreshWidgetSnapshot(ready.bookId)
+    }
+
+    private fun refreshWidgetSnapshot(bookId: StableId) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.current()
+            val zone = runCatching { ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }) }.getOrDefault(ZoneId.of(DEFAULT_ZONE))
+            val today = runtimeSources.clock.now().atZone(zone).toLocalDate()
+            val refreshed = (widgetSnapshotRefreshApplicationPort.refreshIfStale(bookId, today) as? DomainResult.Success)?.value
+            if (refreshed == true) LedgerWidgetRuntime.updateAll(context)
         }
     }
 
@@ -1085,6 +1151,163 @@ internal class AppRootViewModel @Inject constructor(
     fun updateGlobalScreenshotBlocked(enabled: Boolean) = updateSecuritySetting("SETG-007") { it.globalFlagSecure = enabled }
     fun updateObscureRecentTasks(enabled: Boolean) = updateSecuritySetting("SETG-007") { it.obscureRecentTasks = enabled }
     fun updateTrashRetention(retention: TrashRetention) = updateSecuritySetting("SETG-008") { it.trashRetentionDays = retention.days }
+
+    fun remainingSettingsState(screenId: String): RemainingSettingsState {
+        require(screenId in REMAINING_SETTINGS_SCREENS)
+        val saved = settings.value
+        val locale = Locale.forLanguageTag(saved.languageTag.ifBlank { "zh-CN" })
+        val zone = runCatching { ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }) }.getOrDefault(ZoneId.of(DEFAULT_ZONE))
+        val date = runtimeSources.clock.now().atZone(zone).toLocalDate()
+        val dateFormat = saved.dateFormat.toFeature()
+        return RemainingSettingsState(
+            screenId = screenId,
+            themeMode = saved.themeMode.toFeature(),
+            dynamicColor = saved.dynamicColorEnabled,
+            defaultAmountsHidden = saved.defaultAmountsHidden,
+            reduceMotion = saved.reduceMotionEnabled,
+            languageTag = saved.languageTag.ifBlank { "zh-CN" },
+            dateFormat = dateFormat,
+            numberFormatSummary = NumberFormat.getNumberInstance(locale).format(12_345.67),
+            zoneId = zone.id,
+            availableZoneIds = availableZoneIds,
+            weekStart = saved.weekStart.toFeature(),
+            datePreview = formatSettingsDate(date, dateFormat, locale),
+            appVersion = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
+                .orEmpty().ifBlank { "0" },
+            licenses = OPEN_SOURCE_NOTICES,
+        )
+    }
+
+    fun updateSettingsThemeMode(value: SettingsThemeMode) = updateRemainingSettings { it.themeMode = value.toProto() }
+    fun updateSettingsDynamicColor(value: Boolean) = updateRemainingSettings { it.dynamicColorEnabled = value }
+    fun updateSettingsDefaultAmountsHidden(value: Boolean) = updateRemainingSettings { it.defaultAmountsHidden = value }
+    fun updateSettingsReduceMotion(value: Boolean) = updateRemainingSettings { it.reduceMotionEnabled = value }
+    fun updateSettingsLanguage(value: String) {
+        if (value !in SUPPORTED_LANGUAGE_TAGS) return
+        updateRemainingSettings { it.languageTag = value }
+    }
+    fun updateSettingsDateFormat(value: SettingsDateFormat) = updateRemainingSettings { it.dateFormat = value.toProto() }
+    fun updateSettingsWeekStart(value: SettingsWeekStart) = updateRemainingSettings { it.weekStart = value.toProto() }
+    fun updateSettingsZone(value: String) {
+        val zone = runCatching { ZoneId.of(value) }.getOrNull() ?: return
+        updateRemainingSettings { it.zoneId = zone.id }
+    }
+
+    fun openSourceCode() {
+        mutableExternalLinkRequests.tryEmit(Uri.parse(SOURCE_CODE_URL))
+    }
+
+    fun externalApplicationUnavailable() {
+        mutableGlobalSnackbarMessages.tryEmit(GlobalSnackbarMessage.EXTERNAL_APP_UNAVAILABLE)
+    }
+
+    fun openTransferHub(source: LedgerDestinationKey) {
+        if (
+            OperationNotificationCoordinator.permissionStatus(context) == NotificationPermissionStatus.REQUIRED &&
+            !settings.value.notificationPermissionExplained
+        ) {
+            pendingTransferSource = source
+            navigator.navigate(LedgerRouteContract.destination(ScreenId("SYS-002")), SessionGateState.READY)
+        } else {
+            navigator.navigate(LedgerRouteContract.destination(ScreenId("TRF-001")), SessionGateState.READY)
+        }
+    }
+
+    fun notificationPermissionPresentation(): NotificationPermissionPresentation = when {
+        OperationNotificationCoordinator.permissionStatus(context) == NotificationPermissionStatus.GRANTED ->
+            NotificationPermissionPresentation.GRANTED
+        settings.value.notificationPermissionExplained -> NotificationPermissionPresentation.DENIED
+        else -> NotificationPermissionPresentation.FIRST_ASK
+    }
+
+    fun requestNotificationPermission() {
+        viewModelScope.launch {
+            settingsRepository.update { it.notificationPermissionExplained = true }
+            mutableNotificationPermissionRequests.emit(Unit)
+        }
+    }
+
+    fun notificationPermissionResult(granted: Boolean) {
+        if (granted || settings.value.notificationPermissionExplained) finishNotificationPermissionFlow()
+    }
+
+    fun dismissNotificationPermission() {
+        viewModelScope.launch {
+            settingsRepository.update { it.notificationPermissionExplained = true }
+            finishNotificationPermissionFlow()
+        }
+    }
+
+    fun openNotificationSettings() {
+        mutableOpenNotificationSettingsRequests.tryEmit(Unit)
+    }
+
+    private fun finishNotificationPermissionFlow() {
+        val source = pendingTransferSource
+        pendingTransferSource = null
+        if (source != null) {
+            navigator.navigate(LedgerRouteContract.destination(ScreenId("TRF-001")), SessionGateState.READY)
+        } else if (navigator.currentKey.contract.screenId.value == "SYS-002") {
+            navigator.pop()
+        }
+    }
+
+    fun loadOperationCenter() {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        viewModelScope.launch(Dispatchers.IO) {
+            mutableOperationCenter.value = OperationCenterLoadState.Loading
+            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull()
+                ?: return@launch run { mutableOperationCenter.value = OperationCenterLoadState.Failure("OPERATION_BOOK_UNAVAILABLE") }
+            val repository = SqlCipherBackgroundOperationRepository(
+                bookId,
+                SecurePrimaryLedgerAccess(context, keyProvider),
+            )
+            mutableOperationCenter.value = when (val result = repository.list()) {
+                is DomainResult.Success -> OperationCenterLoadState.Content(result.value)
+                is DomainResult.Failure -> OperationCenterLoadState.Failure(sanitizeCode(result.error.code))
+            }
+        }
+    }
+
+    fun cancelOperation(operationId: BackgroundOperationId) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
+            val repository = SqlCipherBackgroundOperationRepository(bookId, SecurePrimaryLedgerAccess(context, keyProvider))
+            val operation = (repository.get(operationId) as? DomainResult.Success)?.value ?: return@launch
+            if (operation.state !in CANCELABLE_OPERATION_STATES) return@launch
+            val cancelling = (operation.transition(BackgroundOperationState.CANCEL_REQUESTED, runtimeSources.clock.now()) as? DomainResult.Success)
+                ?.value ?: return@launch
+            if (repository.save(cancelling) !is DomainResult.Success) return@launch
+            when (operation.type) {
+                BackgroundOperationType.IMPORT -> {
+                    ImportRunControlRegistry.cancel(operation.id.value)
+                }
+                BackgroundOperationType.EXPORT -> {
+                    ExportRunControlRegistry.cancel(operation.id.value)
+                }
+                BackgroundOperationType.FULL_BACKUP,
+                BackgroundOperationType.DRIVE_UPLOAD,
+                BackgroundOperationType.BACKUP_KEY_ROTATION,
+                -> {
+                    BackupRunControlRegistry.cancel(operation.id.value)
+                }
+                BackgroundOperationType.RESTORE_REPLACE,
+                BackgroundOperationType.RESTORE_MERGE,
+                -> restoreController.cancel()
+                BackgroundOperationType.ATTACHMENT_MIGRATION,
+                BackgroundOperationType.DATABASE_MAINTENANCE,
+                -> Unit
+            }
+            loadOperationCenter()
+        }
+    }
+
+    private fun updateRemainingSettings(update: (LedgerAppSettings.Builder) -> Unit) {
+        viewModelScope.launch {
+            runCatching { settingsRepository.update(update) }
+                .onFailure { mutableGlobalSnackbarMessages.tryEmit(GlobalSnackbarMessage.SETTINGS_WRITE_FAILED) }
+        }
+    }
 
     private fun updateSecuritySetting(screenId: String, update: (LedgerAppSettings.Builder) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -1240,10 +1463,18 @@ internal class AppRootViewModel @Inject constructor(
         SecuritySettingsRequiredState.SETG_006_DISABLED,
     )
 
-    /** Parses only registered no-argument route IDs and keeps the pending destination in memory behind SessionGate. */
+    /** Parses only closed deep-link targets and keeps them in memory behind SessionGate. */
     fun handleDeepLink(uri: Uri?) {
-        val destination = uri?.let(::parseDeepLink) ?: return
-        pendingDeepLink = destination
+        val value = uri ?: return
+        if (value.scheme == DEEP_LINK_SCHEME && value.host == WIDGET_DEEP_LINK_HOST) {
+            val widget = parseWidgetDeepLink(value) ?: return
+            when (widget) {
+                is WidgetDeepLink.Destination -> pendingDeepLink = widget.destination
+                is WidgetDeepLink.Quick -> pendingWidgetQuickDeepLink = widget.value
+            }
+        } else {
+            pendingDeepLink = parseDeepLink(value) ?: return
+        }
         consumePendingDeepLink()
     }
 
@@ -1257,6 +1488,53 @@ internal class AppRootViewModel @Inject constructor(
             LedgerRouteContract.destination(contract.screenId)
         }
     }.getOrNull()
+
+    private fun parseWidgetDeepLink(uri: Uri): WidgetDeepLink? = runCatching {
+        require(uri.scheme == DEEP_LINK_SCHEME && uri.host == WIDGET_DEEP_LINK_HOST && uri.query == null)
+        val segments = uri.pathSegments
+        when (segments.firstOrNull()) {
+            "quick" -> {
+                require(segments.size == 4)
+                val kind = WidgetQuickTargetKind.valueOf(segments[1])
+                val direction = WidgetQuickDirection.valueOf(segments[2])
+                val id = StableId.parse(segments[3]).getOrNull() ?: error("invalid stable identifier")
+                WidgetDeepLink.Quick(WidgetQuickDeepLink(kind, direction, id))
+            }
+            "open" -> WidgetDeepLink.Destination(parseWidgetDestination(segments.drop(1)))
+            else -> error("unknown widget deep link")
+        }
+    }.getOrNull()
+
+    private fun parseWidgetDestination(segments: List<String>): LedgerDestinationKey {
+        val screen = segments.firstOrNull() ?: error("missing widget destination")
+        val screenId = ScreenId(screen)
+        return when (screen) {
+            "ACC-001", "ANA-001", "BUD-001" -> {
+                require(segments.size == 1)
+                LedgerRouteContract.destination(screenId)
+            }
+            "ACC-005", "CRD-001", "GOL-003" -> {
+                require(segments.size == 2)
+                val stableId = StableId.parse(segments[1]).getOrNull() ?: error("invalid stable identifier")
+                val parameter = if (screen == "GOL-003") "goalId" else "accountId"
+                LedgerRouteContract.destination(screenId, mapOf(parameter to StableIdArgument(stableId)))
+            }
+            "ANA-003" -> {
+                require(segments == listOf("ANA-003", WIDGET_CONSUMPTION_REPORT_KEY))
+                LedgerRouteContract.destination(
+                    screenId,
+                    mapOf(
+                        "reportKey" to LedgerRouteContract.opaqueKeyArgument(
+                            screenId,
+                            "reportKey",
+                            WIDGET_CONSUMPTION_REPORT_KEY,
+                        ),
+                    ),
+                )
+            }
+            else -> error("widget destination is not allowlisted")
+        }
+    }
 
     fun updateScrollState(topLevel: TopLevelDestination, stableKey: String, offset: Int) {
         require(Regex("[A-Za-z][A-Za-z0-9._-]{0,63}").matches(stableKey))
@@ -4584,9 +4862,77 @@ internal class AppRootViewModel @Inject constructor(
     private fun consumePendingDeepLink() {
         val state = (mutableRootState.value as? AppRootState.Session)?.state
         if (state !is BookSessionState.Ready) return
+        pendingWidgetQuickDeepLink?.let { quick ->
+            pendingWidgetQuickDeepLink = null
+            openWidgetQuickForm(quick)
+            return
+        }
         val destination = pendingDeepLink ?: return
         if (navigator.navigate(destination, SessionGateState.READY) == app.ledger.core.navigation.NavigationOutcome.Navigated) {
             pendingDeepLink = null
+        }
+    }
+
+    /** Reads a fresh snapshot and opens a prefilled complete form; this path never submits a mutation. */
+    private fun openWidgetQuickForm(link: WidgetQuickDeepLink) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.current()
+            val bookId = runCatching { requireBookId(saved) }.getOrNull() ?: return@launch
+            val snapshot = when (val result = ordinaryTransactionEntryPort.snapshot(bookId)) {
+                is DomainResult.Success -> result.value
+                is DomainResult.Failure -> {
+                    mutableOrdinaryRecord.value = OrdinaryRecordLoadState.Failure(sanitizeCode(result.error.code))
+                    return@launch
+                }
+            }
+            val requestedDirection = if (link.direction == WidgetQuickDirection.INCOME) {
+                OrdinaryDirection.INCOME
+            } else {
+                OrdinaryDirection.EXPENSE
+            }
+            val seed = when (link.kind) {
+                WidgetQuickTargetKind.CATEGORY -> {
+                    val category = snapshot.references.categories.singleOrNull { it.id == link.targetId }
+                        ?: return@launch
+                    val compatible = if (category.direction == CategoryDirection.INCOME) OrdinaryDirection.INCOME else OrdinaryDirection.EXPENSE
+                    require(compatible == requestedDirection)
+                    WidgetFormSeed(RecordEditorMode.CREATE, compatible, category.id, null)
+                }
+                WidgetQuickTargetKind.TEMPLATE -> {
+                    val template = snapshot.templates.singleOrNull { it.id == link.targetId } ?: return@launch
+                    require(template.direction == requestedDirection)
+                    WidgetFormSeed(RecordEditorMode.TEMPLATE, template.direction, template.categoryId, template.id)
+                }
+            }
+            val zone = runCatching { ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }) }.getOrDefault(ZoneId.of(DEFAULT_ZONE))
+            val editor = OrdinaryRecordPolicy.createEditor(
+                snapshot,
+                seed.mode,
+                seed.direction,
+                seed.categoryId,
+                seed.sourceId,
+                runtimeSources.clock.now(),
+                zone,
+                recordLocale(),
+            )
+            mutableOrdinaryRecord.value = OrdinaryRecordLoadState.Content(
+                snapshot,
+                if (seed.direction == OrdinaryDirection.EXPENSE) RecordTab.EXPENSE else RecordTab.INCOME,
+                selectedCategoryId = editor.draft.categoryId,
+                editor = editor,
+            )
+            val platformClock = InjectedJavaClock(runtimeSources.clock)
+            recordLocationSession = ForegroundLocationSaveSession(
+                ProductionForegroundLocationClient(context, platformClock),
+                platformClock,
+                SystemClock::elapsedRealtime,
+            ).also { it.prefetch(viewModelScope) }
+            val editorScreen = ScreenId("REC-003")
+            val arguments = buildMap<String, SafeRouteArgument> {
+                put("mode", LedgerRouteContract.enumArgument(editorScreen, "mode", seed.mode.name))
+                seed.sourceId?.let { put("transactionId", StableIdArgument(it)) }
+            }
+            navigator.navigate(LedgerRouteContract.destination(editorScreen, arguments), SessionGateState.READY)
         }
     }
 
@@ -5520,14 +5866,87 @@ internal class AppRootViewModel @Inject constructor(
         const val RECOVERY_VERIFIER_BYTES = 32
         const val DEEP_LINK_SCHEME = "ledger"
         const val DEEP_LINK_HOST = "screen"
+        const val WIDGET_DEEP_LINK_HOST = "widget"
+        const val WIDGET_CONSUMPTION_REPORT_KEY = "consumption-category-structure"
+        const val SOURCE_CODE_URL = "https://github.com/HANLONG-WANG/ExpenseTracker"
         const val REFERENCE_REVISION_ID_RESERVE = 128
         const val FINANCIAL_FACT_ID_RESERVE = 256
         const val FX_ID_RESERVE = 8
         const val RECORD_SEARCH_LIMIT = 80
         const val RECORD_ATTACHMENT_NAME_LIMIT = 255
         const val JOURNAL_RETENTION_SECONDS = 30L * 24L * 60L * 60L
+        val REMAINING_SETTINGS_SCREENS = setOf("SETG-001", "SETG-002", "SETG-003", "SETG-005", "SETG-012")
+        val SUPPORTED_LANGUAGE_TAGS = setOf("zh-CN", "ja", "en")
+        val CANCELABLE_OPERATION_STATES = setOf(
+            BackgroundOperationState.QUEUED,
+            BackgroundOperationState.PREPARING,
+            BackgroundOperationState.RUNNING,
+            BackgroundOperationState.PAUSED,
+        )
+        val OPEN_SOURCE_NOTICES = listOf(
+            "AndroidX · Apache License 2.0",
+            "Jetpack Compose · Apache License 2.0",
+            "SQLCipher · BSD-style license",
+            "Tink · Apache License 2.0",
+            "Apache Commons CSV/Compress · Apache License 2.0",
+            "FastExcel · Apache License 2.0",
+            "MapLibre Native · BSD 2-Clause License",
+            "Vico · Apache License 2.0",
+            "ACRA · Apache License 2.0",
+        )
     }
 }
+
+private fun ThemeModeProto.toFeature(): SettingsThemeMode = when (this) {
+    ThemeModeProto.THEME_MODE_LIGHT -> SettingsThemeMode.LIGHT
+    ThemeModeProto.THEME_MODE_DARK -> SettingsThemeMode.DARK
+    ThemeModeProto.THEME_MODE_FOLLOW_SYSTEM, ThemeModeProto.UNRECOGNIZED -> SettingsThemeMode.FOLLOW_SYSTEM
+}
+
+private fun SettingsThemeMode.toProto(): ThemeModeProto = when (this) {
+    SettingsThemeMode.FOLLOW_SYSTEM -> ThemeModeProto.THEME_MODE_FOLLOW_SYSTEM
+    SettingsThemeMode.LIGHT -> ThemeModeProto.THEME_MODE_LIGHT
+    SettingsThemeMode.DARK -> ThemeModeProto.THEME_MODE_DARK
+}
+
+private fun DateFormatProto.toFeature(): SettingsDateFormat = when (this) {
+    DateFormatProto.DATE_FORMAT_YEAR_MONTH_DAY -> SettingsDateFormat.YEAR_MONTH_DAY
+    DateFormatProto.DATE_FORMAT_DAY_MONTH_YEAR -> SettingsDateFormat.DAY_MONTH_YEAR
+    DateFormatProto.DATE_FORMAT_MONTH_DAY_YEAR -> SettingsDateFormat.MONTH_DAY_YEAR
+    DateFormatProto.DATE_FORMAT_LOCALE_DEFAULT, DateFormatProto.UNRECOGNIZED -> SettingsDateFormat.LOCALE_DEFAULT
+}
+
+private fun SettingsDateFormat.toProto(): DateFormatProto = when (this) {
+    SettingsDateFormat.LOCALE_DEFAULT -> DateFormatProto.DATE_FORMAT_LOCALE_DEFAULT
+    SettingsDateFormat.YEAR_MONTH_DAY -> DateFormatProto.DATE_FORMAT_YEAR_MONTH_DAY
+    SettingsDateFormat.DAY_MONTH_YEAR -> DateFormatProto.DATE_FORMAT_DAY_MONTH_YEAR
+    SettingsDateFormat.MONTH_DAY_YEAR -> DateFormatProto.DATE_FORMAT_MONTH_DAY_YEAR
+}
+
+private fun WeekStartProto.toFeature(): SettingsWeekStart = when (this) {
+    WeekStartProto.WEEK_START_MONDAY -> SettingsWeekStart.MONDAY
+    WeekStartProto.WEEK_START_SUNDAY -> SettingsWeekStart.SUNDAY
+    WeekStartProto.WEEK_START_LOCALE_DEFAULT, WeekStartProto.UNRECOGNIZED -> SettingsWeekStart.LOCALE_DEFAULT
+}
+
+private fun SettingsWeekStart.toProto(): WeekStartProto = when (this) {
+    SettingsWeekStart.LOCALE_DEFAULT -> WeekStartProto.WEEK_START_LOCALE_DEFAULT
+    SettingsWeekStart.MONDAY -> WeekStartProto.WEEK_START_MONDAY
+    SettingsWeekStart.SUNDAY -> WeekStartProto.WEEK_START_SUNDAY
+}
+
+private fun formatSettingsDate(
+    date: java.time.LocalDate,
+    format: SettingsDateFormat,
+    locale: Locale,
+): String = date.format(
+    when (format) {
+        SettingsDateFormat.LOCALE_DEFAULT -> DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
+        SettingsDateFormat.YEAR_MONTH_DAY -> DateTimeFormatter.ofPattern("uuuu/MM/dd", locale)
+        SettingsDateFormat.DAY_MONTH_YEAR -> DateTimeFormatter.ofPattern("dd/MM/uuuu", locale)
+        SettingsDateFormat.MONTH_DAY_YEAR -> DateTimeFormatter.ofPattern("MM/dd/uuuu", locale)
+    },
+)
 
 private data class JournalPagingRequest(
     val bookId: StableId,
@@ -5539,6 +5958,13 @@ private data class JournalPagingRequest(
 private data class ProjectTransactionPagingRequest(
     val bookId: StableId,
     val projectId: StableId,
+)
+
+private data class WidgetFormSeed(
+    val mode: RecordEditorMode,
+    val direction: OrdinaryDirection,
+    val categoryId: StableId?,
+    val sourceId: StableId?,
 )
 
 private sealed interface PendingRecordExit {

@@ -1,9 +1,12 @@
 package app.ledger.app
 
+import android.Manifest
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -23,6 +26,9 @@ class MainActivity : FragmentActivity() {
     private lateinit var vaultPrompt: BiometricPrompt
     private lateinit var sensitiveSettingsPrompt: BiometricPrompt
     private lateinit var privacy: app.ledger.core.security.AndroidScreenPrivacyController
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        viewModel.notificationPermissionResult(it)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -133,6 +139,44 @@ class MainActivity : FragmentActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.openSystemSecurityRequests.collect {
                     startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+                }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.externalLinkRequests.collect { uri ->
+                    val request = Intent(Intent.ACTION_VIEW, uri)
+                    if (request.resolveActivity(packageManager) == null) {
+                        viewModel.externalApplicationUnavailable()
+                    } else {
+                        runCatching { startActivity(request) }
+                            .onFailure { viewModel.externalApplicationUnavailable() }
+                    }
+                }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.notificationPermissionRequests.collect {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        viewModel.notificationPermissionResult(true)
+                    }
+                }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.openNotificationSettingsRequests.collect {
+                    val request = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                    if (request.resolveActivity(packageManager) == null) {
+                        viewModel.externalApplicationUnavailable()
+                    } else {
+                        runCatching { startActivity(request) }
+                            .onFailure { viewModel.externalApplicationUnavailable() }
+                    }
                 }
             }
         }

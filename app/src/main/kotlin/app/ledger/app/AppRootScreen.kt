@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -86,14 +88,22 @@ import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.ManagementActions
 import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ReferenceManagementDestination
+import app.ledger.feature.settings.RemainingSettingsActions
+import app.ledger.feature.settings.RemainingSettingsDestination
 import app.ledger.feature.settings.SecurityPrivacySettingsActions
 import app.ledger.feature.settings.SecurityPrivacySettingsDestination
 import app.ledger.feature.transfer.BackupExecutionPresentation
 import app.ledger.feature.transfer.ExportExecutionPresentation
 import app.ledger.feature.transfer.RestoreFlowUiState
 import app.ledger.feature.transfer.RestoreResultPresentation
+import app.ledger.feature.transfer.TransferHubActions
+import app.ledger.feature.transfer.TransferHubScreen
+import app.ledger.feature.transfer.TransferHubState
 import app.ledger.feature.vault.VaultActions
 import app.ledger.feature.vault.VaultDestination
+import app.ledger.transfer.domain.BackgroundOperation
+import app.ledger.transfer.domain.BackgroundOperationState
+import app.ledger.transfer.domain.BackgroundOperationType
 import kotlinx.coroutines.delay
 import java.util.Locale
 import app.ledger.feature.journal.R as JournalR
@@ -137,14 +147,24 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
         val snackbarController = rememberLedgerSnackbarController()
         val settingsWriteFailed = stringResource(R.string.global_settings_write_failed)
         val localClearFailed = stringResource(R.string.global_local_clear_failed)
-        LaunchedEffect(viewModel, snackbarController, settingsWriteFailed, localClearFailed) {
+        val externalAppUnavailable = stringResource(R.string.global_external_app_unavailable)
+        LaunchedEffect(viewModel, snackbarController, settingsWriteFailed, localClearFailed, externalAppUnavailable) {
             viewModel.globalSnackbarMessages.collect { message ->
                 snackbarController.show(
-                    if (message == GlobalSnackbarMessage.SETTINGS_WRITE_FAILED) settingsWriteFailed else localClearFailed,
+                    when (message) {
+                        GlobalSnackbarMessage.SETTINGS_WRITE_FAILED -> settingsWriteFailed
+                        GlobalSnackbarMessage.LOCAL_CLEAR_FAILED -> localClearFailed
+                        GlobalSnackbarMessage.EXTERNAL_APP_UNAVAILABLE -> externalAppUnavailable
+                    },
                 )
             }
         }
-        LedgerTheme(ThemeMode.FOLLOW_SYSTEM, dynamicColor = false, reduceMotion = false) {
+        val themeMode = when (settings.themeMode) {
+            app.ledger.app.settings.ThemeModeProto.THEME_MODE_LIGHT -> ThemeMode.LIGHT
+            app.ledger.app.settings.ThemeModeProto.THEME_MODE_DARK -> ThemeMode.DARK
+            else -> ThemeMode.FOLLOW_SYSTEM
+        }
+        LedgerTheme(themeMode, dynamicColor = settings.dynamicColorEnabled, reduceMotion = settings.reduceMotionEnabled) {
             val state = root
             if (recoveryRestoreActive) {
                 RestoreRootDestination(restoreState.screenId, viewModel, onNavigationChanged = {})
@@ -598,6 +618,65 @@ internal fun RootDestination(
         EmptyTopLevel(R.string.global_analysis_empty_title, R.string.global_analysis_empty_message, onMore)
     } else if (screenId == "G-006") {
         MoreRootDestination(viewModel, key, onOperations, onHelp, onNavigationChanged)
+    } else if (screenId == "TRF-001") {
+        val export by viewModel.exportFlow.collectAsStateWithLifecycle()
+        val backup by viewModel.backupFlow.collectAsStateWithLifecycle()
+        val restore by viewModel.restoreFlow.collectAsStateWithLifecycle()
+        val durableOperations by viewModel.operationCenter.collectAsStateWithLifecycle()
+        LaunchedEffect(screenId) { viewModel.loadOperationCenter() }
+        val durableActive = (durableOperations as? OperationCenterLoadState.Content)?.operations.orEmpty()
+            .any { it.state in ACTIVE_OPERATION_STATES }
+        val active = durableActive || operationCenterPresentation(
+            export.screenId,
+            export.executionPresentation,
+            backup.execution,
+            restore,
+        ) == OperationCenterPresentation.ACTIVE
+        TransferHubScreen(
+            TransferHubState(
+                operationActive = active,
+                notificationPermissionAvailable = viewModel.notificationPermissionPresentation() ==
+                    NotificationPermissionPresentation.GRANTED,
+            ),
+            TransferHubActions(
+                openImport = {
+                    viewModel.navigateImportSource()
+                    onNavigationChanged()
+                },
+                openExport = {
+                    viewModel.navigateCurrentFilterExport()
+                    onNavigationChanged()
+                },
+                openBackup = {
+                    viewModel.openBackup()
+                    onNavigationChanged()
+                },
+                openRestore = {
+                    viewModel.openRestore()
+                    onNavigationChanged()
+                },
+                openOperations = onOperations,
+            ),
+        )
+    } else if (screenId in setOf("SETG-001", "SETG-002", "SETG-003", "SETG-005", "SETG-012")) {
+        RemainingSettingsDestination(
+            state = viewModel.remainingSettingsState(screenId),
+            actions = RemainingSettingsActions(
+                navigate = { target ->
+                    viewModel.navigateP12(key, target, emptyMap())
+                    onNavigationChanged()
+                },
+                setThemeMode = viewModel::updateSettingsThemeMode,
+                setDynamicColor = viewModel::updateSettingsDynamicColor,
+                setDefaultAmountsHidden = viewModel::updateSettingsDefaultAmountsHidden,
+                setReduceMotion = viewModel::updateSettingsReduceMotion,
+                setLanguageTag = viewModel::updateSettingsLanguage,
+                setDateFormat = viewModel::updateSettingsDateFormat,
+                setZoneId = viewModel::updateSettingsZone,
+                setWeekStart = viewModel::updateSettingsWeekStart,
+                openSourceCode = viewModel::openSourceCode,
+            ),
+        )
     } else if (screenId == "SETG-004") {
         val state = currencySettings
         if (state == null) {
@@ -611,13 +690,18 @@ internal fun RootDestination(
             )
         }
     } else if (screenId == "G-007") {
-        val export by viewModel.exportFlow.collectAsStateWithLifecycle()
-        val backup by viewModel.backupFlow.collectAsStateWithLifecycle()
-        val restore by viewModel.restoreFlow.collectAsStateWithLifecycle()
-        val presentation = operationCenterPresentation(export.screenId, export.executionPresentation, backup.execution, restore)
-        OperationCenterContent(presentation, onBack)
+        val operations by viewModel.operationCenter.collectAsStateWithLifecycle()
+        LaunchedEffect(screenId) { viewModel.loadOperationCenter() }
+        DurableOperationCenterContent(operations, onBack, viewModel::loadOperationCenter, viewModel::cancelOperation)
     } else if (screenId == "G-008") {
         HelpContent(key.encodedArguments["topicKey"], onBack)
+    } else if (screenId == "SYS-002") {
+        NotificationPermissionContent(
+            viewModel.notificationPermissionPresentation(),
+            viewModel::requestNotificationPermission,
+            viewModel::dismissNotificationPermission,
+            viewModel::openNotificationSettings,
+        )
     } else {
         LedgerErrorState(
             code = UiErrorCode("DESTINATION_NOT_REGISTERED"),
@@ -786,6 +870,105 @@ private fun OperationCenterContent(
 }
 
 @Composable
+internal fun DurableOperationCenterContent(
+    state: OperationCenterLoadState,
+    onBack: () -> Unit,
+    onRetry: () -> Unit,
+    onCancel: (app.ledger.transfer.domain.BackgroundOperationId) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when (state) {
+        OperationCenterLoadState.Loading -> LedgerLoadingState(modifier.fillMaxSize())
+        is OperationCenterLoadState.Failure -> LedgerErrorState(
+            UiErrorCode(state.code),
+            stringResource(R.string.global_operations_load_failed),
+            onRetry,
+            modifier,
+        )
+        is OperationCenterLoadState.Content -> if (state.operations.isEmpty()) {
+            LedgerEmptyState(
+                stringResource(R.string.global_operations_empty_title),
+                stringResource(R.string.global_operations_empty_message),
+                stringResource(R.string.global_back),
+                onBack,
+                modifier,
+            )
+        } else {
+            LazyColumn(
+                modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+            ) {
+                items(state.operations, key = { it.id.value.toString() }) { operation ->
+                    DurableOperationRow(operation, onCancel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DurableOperationRow(
+    operation: BackgroundOperation,
+    onCancel: (app.ledger.transfer.domain.BackgroundOperationId) -> Unit,
+) {
+    val type = stringResource(operationTypeResource(operation.type))
+    val phase = stringResource(operationStateResource(operation.state))
+    val totalText = operation.progress.total?.toString() ?: stringResource(R.string.global_operations_total_unknown)
+    val cancelable = operation.state in setOf(
+        BackgroundOperationState.QUEUED,
+        BackgroundOperationState.PREPARING,
+        BackgroundOperationState.RUNNING,
+        BackgroundOperationState.PAUSED,
+    )
+    val progress = operation.progress.total?.takeIf { it > 0L }?.let { total ->
+        (operation.progress.current.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 1f)
+    }
+    OperationProgressPanel(
+        OperationProgressUiModel(
+            name = type,
+            phase = phase,
+            processedText = stringResource(R.string.global_operations_processed, operation.progress.current, totalText),
+            progress = progress,
+            capability = if (cancelable) OperationCapability.CANCELABLE else OperationCapability.NON_CANCELABLE_COMMIT,
+            statusExplanation = stringResource(
+                if (operation.state == BackgroundOperationState.COMMITTING) {
+                    R.string.global_operations_committing_explanation
+                } else {
+                    R.string.global_operations_durable_explanation
+                },
+            ),
+            failureCode = operation.errorCode?.let(::UiErrorCode),
+        ),
+        onCancel = { onCancel(operation.id) }.takeIf { cancelable },
+    )
+}
+
+private fun operationTypeResource(type: BackgroundOperationType): Int = when (type) {
+    BackgroundOperationType.IMPORT -> R.string.global_operation_import
+    BackgroundOperationType.EXPORT -> R.string.global_operation_export
+    BackgroundOperationType.FULL_BACKUP -> R.string.global_operation_backup
+    BackgroundOperationType.DRIVE_UPLOAD -> R.string.global_operation_drive
+    BackgroundOperationType.RESTORE_REPLACE -> R.string.global_operation_restore_replace
+    BackgroundOperationType.RESTORE_MERGE -> R.string.global_operation_restore_merge
+    BackgroundOperationType.ATTACHMENT_MIGRATION -> R.string.global_operation_attachment
+    BackgroundOperationType.DATABASE_MAINTENANCE -> R.string.global_operation_maintenance
+    BackgroundOperationType.BACKUP_KEY_ROTATION -> R.string.global_operation_key_rotation
+}
+
+private fun operationStateResource(state: BackgroundOperationState): Int = when (state) {
+    BackgroundOperationState.QUEUED -> R.string.global_operation_queued
+    BackgroundOperationState.PREPARING -> R.string.global_operation_preparing
+    BackgroundOperationState.RUNNING -> R.string.global_operation_running
+    BackgroundOperationState.PAUSED -> R.string.global_operation_paused
+    BackgroundOperationState.CANCEL_REQUESTED -> R.string.global_operation_cancel_requested
+    BackgroundOperationState.FAILED_RETRYABLE -> R.string.global_operation_failed_retryable
+    BackgroundOperationState.FAILED_FINAL -> R.string.global_operation_failed_final
+    BackgroundOperationState.COMMITTING -> R.string.global_operation_committing
+    BackgroundOperationState.ROLLING_BACK -> R.string.global_operation_rolling_back
+    BackgroundOperationState.SUCCEEDED -> R.string.global_operation_succeeded
+}
+
+@Composable
 internal fun HelpScreen(topicKey: String?, onBack: () -> Unit) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
@@ -797,10 +980,11 @@ internal fun HelpScreen(topicKey: String?, onBack: () -> Unit) {
 
 @Composable
 private fun HelpContent(topicKey: String?, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    if (topicKey == "getting-started") {
+    val topic = HelpTopic.entries.singleOrNull { it.key == topicKey }
+    if (topic != null) {
         Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-            LedgerText(stringResource(R.string.global_help_getting_started), LedgerTextRole.TITLE)
-            LedgerText(stringResource(R.string.global_help_body), LedgerTextRole.BODY)
+            LedgerText(stringResource(topic.title), LedgerTextRole.TITLE)
+            LedgerText(stringResource(topic.body), LedgerTextRole.BODY)
         }
     } else {
         LedgerEmptyState(
@@ -809,6 +993,44 @@ private fun HelpContent(topicKey: String?, onBack: () -> Unit, modifier: Modifie
             stringResource(R.string.global_back),
             onBack,
             modifier,
+        )
+    }
+}
+
+private enum class HelpTopic(val key: String, val title: Int, val body: Int) {
+    GETTING_STARTED("getting-started", R.string.global_help_getting_started, R.string.global_help_body),
+    DATA_TRANSFER("data-transfer", R.string.global_help_data_transfer, R.string.global_help_data_transfer_body),
+    BACKUP_RESTORE("backup-restore", R.string.global_help_backup_restore, R.string.global_help_backup_restore_body),
+    PRIVACY("privacy", R.string.global_help_privacy, R.string.global_help_privacy_body),
+    WIDGETS("widgets", R.string.global_help_widgets, R.string.global_help_widgets_body),
+}
+
+@Composable
+internal fun NotificationPermissionContent(
+    presentation: NotificationPermissionPresentation,
+    onContinue: () -> Unit,
+    onNotNow: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxSize().padding(LedgerTheme.spacing.lg),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        LedgerText(stringResource(R.string.global_notification_title), LedgerTextRole.TITLE)
+        LedgerText(stringResource(R.string.global_notification_rationale), LedgerTextRole.BODY)
+        if (presentation == NotificationPermissionPresentation.DENIED) {
+            LedgerBanner(stringResource(R.string.global_notification_denied), LedgerBannerVariant.WARNING)
+            LedgerButton(stringResource(R.string.global_notification_open_settings), onOpenSettings, Modifier.fillMaxWidth())
+        } else if (presentation == NotificationPermissionPresentation.FIRST_ASK) {
+            LedgerButton(stringResource(R.string.global_notification_continue), onContinue, Modifier.fillMaxWidth())
+        } else {
+            LedgerBanner(stringResource(R.string.global_notification_granted), LedgerBannerVariant.INFO)
+        }
+        LedgerButton(
+            stringResource(R.string.global_notification_not_now),
+            onNotNow,
+            Modifier.fillMaxWidth(),
+            LedgerButtonVariant.SECONDARY,
         )
     }
 }
@@ -863,6 +1085,10 @@ private fun rootDestinationTitleResource(screenId: String): Int? = if (screenId 
     R.string.global_operations
 } else if (screenId == "G-008") {
     R.string.global_help_title
+} else if (screenId == "TRF-001") {
+    app.ledger.feature.transfer.R.string.transfer_hub_title
+} else if (screenId == "SYS-002") {
+    R.string.global_notification_title
 } else if (screenId == "MGT-001") {
     R.string.global_management
 } else if (screenId == "REC-013") {
@@ -873,8 +1099,16 @@ private fun rootDestinationTitleResource(screenId: String): Int? = if (screenId 
     R.string.p14_title_fx_exchange
 } else if (screenId == "REC-022") {
     R.string.p14_title_opening_balance
+} else if (screenId == "SETG-001") {
+    SettingsR.string.settings_title
+} else if (screenId == "SETG-002") {
+    SettingsR.string.settings_appearance
+} else if (screenId == "SETG-003") {
+    SettingsR.string.settings_language_region
 } else if (screenId == "SETG-004") {
     R.string.global_currencies
+} else if (screenId == "SETG-005") {
+    SettingsR.string.settings_calendar
 } else if (screenId == "VLT-001") {
     VaultR.string.vault_title
 } else if (screenId == "VLT-002") {
@@ -893,6 +1127,8 @@ private fun rootDestinationTitleResource(screenId: String): Int? = if (screenId 
     SettingsR.string.diagnostics_feature
 } else if (screenId == "SETG-011") {
     SettingsR.string.diagnostics_crash
+} else if (screenId == "SETG-012") {
+    SettingsR.string.settings_about
 } else if (screenId == "CLR-001") {
     SettingsR.string.clear_local
 } else if (screenId == "SYS-004") {

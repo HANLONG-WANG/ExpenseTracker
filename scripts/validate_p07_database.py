@@ -386,6 +386,12 @@ def validate_ledgers() -> int:
         permitted_promotions.update({f"SETG-{number:03d}": "VERIFIED" for number in range(6, 12)})
         permitted_promotions["CLR-001"] = "VERIFIED"
         permitted_promotions["SYS-004"] = "VERIFIED"
+    if current_stage_number >= 33:
+        permitted_promotions.update({f"WGT-{number:03d}": "VERIFIED" for number in range(1, 4)})
+        permitted_promotions.update({f"SETG-{number:03d}": "VERIFIED" for number in range(1, 6)})
+        permitted_promotions["SETG-012"] = "VERIFIED"
+        permitted_promotions["TRF-001"] = "VERIFIED"
+        permitted_promotions["SYS-002"] = "VERIFIED"
     require(
         len(screen_rows) == 215
         and all(row["status"] == permitted_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows),

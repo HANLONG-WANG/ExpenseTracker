@@ -39,23 +39,41 @@ object LedgerMigrations {
     const val CURRENT_VERSION: Int = LedgerSchemaDefinition.PRIMARY_VERSION
 
     fun registered(context: Context): List<Migration> = listOf(
-        object : Migration(1, 2) {
+        object : Migration(PRIMARY_V1, PRIMARY_V2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 LedgerSchemaDefinition.migratePrimaryV1ToV2(context, db)
+            }
+        },
+        object : Migration(PRIMARY_V2, PRIMARY_V3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                LedgerSchemaDefinition.migratePrimaryV2ToV3(context, db)
             }
         },
     )
 
     val contracts: List<MigrationContract> = listOf(
         MigrationContract(
-            1,
-            2,
+            PRIMARY_V1,
+            PRIMARY_V2,
             listOf(
                 MigrationStep(MigrationPhase.EXPAND, "add normalized custom report dashboard and anomaly rule tables"),
                 MigrationStep(MigrationPhase.SWITCH, "register primary logical schema v2 contract"),
             ),
         ),
+        MigrationContract(
+            PRIMARY_V2,
+            PRIMARY_V3,
+            listOf(
+                MigrationStep(MigrationPhase.EXPAND, "add complete widget snapshot fields without changing financial facts"),
+                MigrationStep(MigrationPhase.BACKFILL, "invalidate old incomplete widget rows for deterministic projection rebuild"),
+                MigrationStep(MigrationPhase.SWITCH, "register primary logical schema v3 contract"),
+            ),
+        ),
     )
+
+    private const val PRIMARY_V1: Int = 1
+    private const val PRIMARY_V2: Int = 2
+    private const val PRIMARY_V3: Int = 3
 }
 
 object StagingMigrations {

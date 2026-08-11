@@ -197,6 +197,36 @@ class SqlCipherImportStagingDeviceTest {
     }
 
     @Test
+    fun durableOperationCenterListsNewestEncryptedOperationsWithoutParameters() = runBlocking {
+        val repository = SqlCipherBackgroundOperationRepository(BOOK_ID, SecurePrimaryLedgerAccess(context, keys))
+        val older = BackgroundOperation.queued(
+            BackgroundOperationId(StableId.fromUuid(UUID(0x33L, 31L))),
+            BackgroundOperationType.IMPORT,
+            Instant.ofEpochMilli(31_000L),
+            OperationParameters.Import(StableId.fromUuid(UUID(0x33L, 32L)), ImportFormat.CSV, null),
+        )
+        val newer = BackgroundOperation.queued(
+            BackgroundOperationId(StableId.fromUuid(UUID(0x33L, 33L))),
+            BackgroundOperationType.EXPORT,
+            Instant.ofEpochMilli(33_000L),
+            OperationParameters.Export(
+                StableId.fromUuid(UUID(0x33L, 34L)),
+                ExportDescriptor(ExportContent.CURRENT_FILTER, ExportFormat.CSV, "private-name.csv"),
+            ),
+        ).transition(BackgroundOperationState.PREPARING, Instant.ofEpochMilli(33_001L)).success()
+        repository.save(older).success()
+        repository.save(newer).success()
+
+        val listed = SqlCipherBackgroundOperationRepository(
+            BOOK_ID,
+            SecurePrimaryLedgerAccess(context, keys),
+        ).list(100).success()
+        assertEquals(listOf(newer.id, older.id), listed.map { it.id })
+        assertEquals(listOf(BackgroundOperationState.PREPARING, BackgroundOperationState.QUEUED), listed.map { it.state })
+        assertFalse(context.getDatabasePath("ledger.db").readBytes().containsSubsequence("private-name.csv".toByteArray()))
+    }
+
+    @Test
     fun mappingsAndDuplicateCandidatesRemainDurableAcrossStagingReopen() = runBlocking {
         var repository = repository()
         repository.create(OPERATION_ID).success()

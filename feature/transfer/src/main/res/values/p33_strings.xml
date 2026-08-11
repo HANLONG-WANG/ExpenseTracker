@@ -1,0 +1,4 @@
+<resources>
+    <string name="transfer_hub_notifications_unavailable">操作通知未获允许；任务仍会将状态与检查点写入加密操作中心。</string>
+    <string name="transfer_hub_title">导入、导出与备份</string><string name="transfer_hub_active">有长任务正在运行；可在操作中心查看阶段、错误或可用操作。</string><string name="transfer_hub_import">导入</string><string name="transfer_hub_import_body">从 CSV 或 XLSX 预览、校验并原子导入</string><string name="transfer_hub_export">导出</string><string name="transfer_hub_export_body">导出筛选数据、工作簿或报表；导出不是备份</string><string name="transfer_hub_backup">备份</string><string name="transfer_hub_backup_body">创建始终加密的本地或 Drive 备份</string><string name="transfer_hub_restore">恢复</string><string name="transfer_hub_restore_body">检查后替换或合并账本</string><string name="transfer_hub_operations">操作中心</string><string name="transfer_hub_operations_body">查看导入、导出、备份和恢复的持久状态</string>
+</resources>

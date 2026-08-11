@@ -2,13 +2,10 @@
 
 package app.ledger.app
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
-import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -17,6 +14,8 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import app.ledger.core.background.OperationNotificationContent
+import app.ledger.core.background.OperationNotificationCoordinator
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
@@ -74,6 +73,29 @@ internal class ImportWorker(
         }
         val parameters = operation.parameters as? OperationParameters.Import ?: return Result.failure()
         val persistedCommit = parameters.commit
+        if (operation.state == BackgroundOperationState.CANCEL_REQUESTED) {
+            var cancelled = operation.transition(BackgroundOperationState.ROLLING_BACK, dependencies.clock().now())
+                .valueOrNull() ?: return Result.failure()
+            operations.save(cancelled)
+            val stagingRemoved = SqlCipherStagingRepository(
+                bookId,
+                operationId,
+                SecureImportStagingAccess(applicationContext, dependencies.keyProvider()),
+            ).destroy() is DomainResult.Success
+            val handleRemoved = removeSourceHandle(bookId, parameters.sourceHandleId, dependencies)
+            cancelled = cancelled.transition(
+                BackgroundOperationState.FAILED_FINAL,
+                dependencies.clock().now(),
+                errorCode = ImportFailure.Cancelled.code,
+            ).valueOrNull() ?: return Result.failure()
+            operations.save(cancelled)
+            return Result.success(
+                Data.Builder()
+                    .putBoolean(OUTPUT_CANCELLED, true)
+                    .putBoolean(OUTPUT_CLEANUP_COMPLETE, stagingRemoved && handleRemoved)
+                    .build(),
+            )
+        }
         if (operation.state == BackgroundOperationState.SUCCEEDED && persistedCommit != null) {
             val stagingRemoved = SqlCipherStagingRepository(
                 bookId,
@@ -370,20 +392,14 @@ internal class ImportWorker(
     private fun <T> DomainResult<T>.valueOrNull(): T? = (this as? DomainResult.Success)?.value
 
     private fun foregroundInfo(rows: Long): ForegroundInfo {
-        val manager = applicationContext.getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, applicationContext.getString(R.string.import_worker_channel), NotificationManager.IMPORTANCE_LOW),
-            )
-        }
-        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle(applicationContext.getString(R.string.import_worker_title))
-            .setContentText(applicationContext.getString(R.string.import_worker_progress, rows))
-            .setOnlyAlertOnce(true)
-            .setOngoing(true)
-            .setProgress(0, 0, true)
-            .build()
+        val notification = OperationNotificationCoordinator.create(
+            applicationContext,
+            OperationNotificationContent(
+                applicationContext.getString(R.string.import_worker_channel),
+                applicationContext.getString(R.string.import_worker_title),
+                applicationContext.getString(R.string.import_worker_progress, rows),
+            ),
+        )
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
@@ -404,7 +420,6 @@ internal class ImportWorker(
         const val OUTPUT_CLEANUP_COMPLETE = "cleanupComplete"
         const val OUTPUT_ERROR_CODE = "errorCode"
         private const val MAX_RETRIES = 3
-        private const val CHANNEL_ID = "ledger-import"
         private const val NOTIFICATION_ID = 28_001
     }
 }
@@ -422,6 +437,9 @@ internal interface ImportWorkerEntryPoint {
 internal object ImportRunControlRegistry {
     private val controls = ConcurrentHashMap<StableId, ImportRunControl>()
     fun get(operationId: StableId): ImportRunControl = controls.getOrPut(operationId, ::ImportRunControl)
+    fun cancel(operationId: StableId) {
+        get(operationId).cancel()
+    }
     fun remove(operationId: StableId) {
         controls.remove(operationId)
     }

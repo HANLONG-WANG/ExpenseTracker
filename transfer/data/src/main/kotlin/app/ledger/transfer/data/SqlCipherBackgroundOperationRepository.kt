@@ -41,6 +41,38 @@ class SqlCipherBackgroundOperationRepository(
     private val bookId: StableId,
     private val access: SecurePrimaryLedgerAccess,
 ) : BackgroundOperationRepository {
+    suspend fun list(limit: Int = 100): DomainResult<List<BackgroundOperation>> {
+        require(limit in 1..500)
+        val ids: List<BackgroundOperationId> = try {
+            access.read(bookId) { database ->
+                database.query(
+                    "SELECT uid FROM background_operation ORDER BY updated_at DESC,id DESC LIMIT ?",
+                    arrayOf(limit),
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            add(BackgroundOperationId(StableId.fromBytes(cursor.getBlob(0)).requireValue()))
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            return DomainResult.Failure(OperationPersistenceError.UnavailableOrCorrupt)
+        }
+        val result = ArrayList<BackgroundOperation>(ids.size)
+        var readError: DomainError? = null
+        for (id in ids) {
+            when (val operation = get(id)) {
+                is DomainResult.Success -> operation.value?.let(result::add)
+                is DomainResult.Failure -> {
+                    readError = operation.error
+                    break
+                }
+            }
+        }
+        return readError?.let { DomainResult.Failure(it) } ?: DomainResult.Success(result)
+    }
+
     suspend fun recoverableBackupOperations(): List<BackgroundOperation> {
         val ids = access.read(bookId) { database ->
             database.query(

@@ -103,7 +103,7 @@ class P07DatabaseContractMutationTest(unittest.TestCase):
             if path.name == "SCREEN_COVERAGE.csv":
                 rows = value.splitlines()
                 row_index = next(index for index, row in enumerate(rows) if row.startswith("SETG-001,"))
-                rows[row_index] = rows[row_index].replace(",NOT_STARTED,,,P33", ",VERIFIED,,,P33")
+                rows[row_index] = rows[row_index].replace(",VERIFIED,", ",IN_PROGRESS,", 1)
                 return "\n".join(rows) + "\n"
             return value
 

@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions")
+@file:Suppress("LargeClass", "TooManyFunctions")
 
 package app.ledger.finance.data
 
@@ -34,7 +34,22 @@ internal class RoomProjectionEngine {
         AnalyticsProjectionEngine.rebuild(database, localRevision)
         rebuildSearch(database)
         rebuildGeography(database)
-        rebuildWidgets(database, localRevision, valuationRevision)
+        rebuildWidgetSnapshot(database, localRevision, valuationRevision, asOfLocalDate)
+    }
+
+    fun rebuildWidgetSnapshot(
+        database: SupportSQLiteDatabase,
+        localRevision: Long,
+        valuationRevision: Long,
+        asOfLocalDate: Int,
+    ) {
+        listOf(
+            "widget_goal_snapshot",
+            "widget_credit_snapshot",
+            "widget_account_snapshot",
+            "widget_book_snapshot",
+        ).forEach { table -> database.execSQL("DELETE FROM $table") }
+        rebuildWidgets(database, localRevision, valuationRevision, asOfLocalDate)
     }
 
     fun mismatchedFamilies(
@@ -575,25 +590,65 @@ internal class RoomProjectionEngine {
         )
     }
 
-    private fun rebuildWidgets(database: SupportSQLiteDatabase, revision: Long, valuationRevision: Long) {
+    private fun rebuildWidgets(
+        database: SupportSQLiteDatabase,
+        revision: Long,
+        valuationRevision: Long,
+        asOfLocalDate: Int,
+    ) {
+        val today = asOfLocalDate.toProjectionDate()
+        val monthKey = java.time.YearMonth.from(today).toProjectionInt()
+        val previousMonthKey = java.time.YearMonth.from(today).minusMonths(1).toProjectionInt()
+        val remainingDays = today.lengthOfMonth() - today.dayOfMonth + 1
         database.execSQL(
-            "INSERT INTO widget_account_snapshot(account_id, balance_minor, currency_code, as_of_local_revision) " +
-                "SELECT account_id, normal_balance_minor, currency_code, ? FROM account_balance_current",
-            arrayOf<Any>(revision),
-        )
-        database.execSQL(
-            "INSERT INTO widget_credit_snapshot(account_id, debt_minor, available_limit_minor, currency_code, as_of_local_revision) " +
-                "SELECT account_id, debt_minor, available_limit_minor, currency_code, ? FROM credit_account_projection",
-            arrayOf<Any>(revision),
-        )
-        database.execSQL(
-            "INSERT INTO widget_goal_snapshot(goal_id, balance_minor, target_minor, currency_code, as_of_local_revision) " +
-                "SELECT goal_id, balance_minor, target_minor, currency_code, ? FROM goal_balance_projection",
+            """
+            INSERT INTO widget_account_snapshot(
+              account_id,balance_minor,currency_code,as_of_local_revision,account_uid,display_name,available_minor
+            )
+            SELECT abc.account_id,abc.normal_balance_minor,abc.currency_code,?,ua.uid,ua.name,
+              abc.normal_balance_minor-COALESCE((
+                SELECT SUM(gbp.balance_minor) FROM goal g JOIN goal_balance_projection gbp ON gbp.goal_id=g.id
+                WHERE g.account_id=abc.account_id AND g.status=0
+              ),0)
+            FROM account_balance_current abc JOIN user_account ua ON ua.id=abc.account_id
+            """.trimIndent(),
             arrayOf<Any>(revision),
         )
         database.execSQL(
             """
-            INSERT INTO widget_book_snapshot(id, core_net_financial_assets_base_minor, adjusted_net_financial_position_base_minor, base_currency, as_of_local_revision, as_of_valuation_revision)
+            INSERT INTO widget_credit_snapshot(
+              account_id,debt_minor,available_limit_minor,currency_code,as_of_local_revision,
+              account_uid,display_name,statement_remaining_minor,statement_due_date
+            )
+            SELECT cap.account_id,cap.debt_minor,cap.available_limit_minor,cap.currency_code,?,ua.uid,ua.name,
+              (SELECT csp.remaining_amount_minor FROM credit_statement cs
+                 JOIN credit_statement_projection csp ON csp.statement_id=cs.id
+                 WHERE cs.credit_account_id=cap.account_id ORDER BY cs.cycle_end DESC,cs.id DESC LIMIT 1),
+              (SELECT cs.due_date FROM credit_statement cs
+                 WHERE cs.credit_account_id=cap.account_id ORDER BY cs.cycle_end DESC,cs.id DESC LIMIT 1)
+            FROM credit_account_projection cap JOIN user_account ua ON ua.id=cap.account_id
+            """.trimIndent(),
+            arrayOf<Any>(revision),
+        )
+        database.execSQL(
+            """
+            INSERT INTO widget_goal_snapshot(
+              goal_id,balance_minor,target_minor,currency_code,as_of_local_revision,goal_uid,display_name
+            )
+            SELECT gbp.goal_id,gbp.balance_minor,gbp.target_minor,gbp.currency_code,?,g.uid,g.name
+            FROM goal_balance_projection gbp JOIN goal g ON g.id=gbp.goal_id
+            """.trimIndent(),
+            arrayOf<Any>(revision),
+        )
+        database.execSQL(
+            """
+            INSERT INTO widget_book_snapshot(
+              id,core_net_financial_assets_base_minor,adjusted_net_financial_position_base_minor,
+              base_currency,as_of_local_revision,as_of_valuation_revision,snapshot_local_date,month_key,
+              month_consumption_base_minor,previous_month_consumption_base_minor,
+              month_budget_available_base_minor,month_budget_used_base_minor,today_available_base_minor,
+              previous_core_net_financial_assets_base_minor
+            )
             WITH core AS (
               SELECT COALESCE(SUM(CASE WHEN ua.type IN (0,1) THEN
                     CASE WHEN abc.currency_code = b.base_currency THEN abc.normal_balance_minor ELSE COALESCE(avc.current_base_value_minor, 0) END
@@ -603,10 +658,46 @@ internal class RoomProjectionEngine {
             ), settlement AS (
               SELECT COALESCE(SUM(spp.net_position_minor), 0) AS value FROM settlement_position_projection spp
                 JOIN participant p ON p.id = spp.participant_id WHERE p.is_self = 1
+            ), previous_core AS (
+              SELECT COALESCE(SUM(CASE WHEN ua.type IN (0,1) THEN
+                    CASE WHEN ua.currency_code=b.base_currency THEN COALESCE((
+                      SELECT abd.closing_minor FROM account_balance_daily abd
+                      WHERE abd.account_id=ua.id AND abd.local_date<? ORDER BY abd.local_date DESC LIMIT 1
+                    ),0) ELSE COALESCE(avc.current_base_value_minor,0) END
+                  ELSE -CASE WHEN ua.currency_code=b.base_currency THEN ABS(COALESCE((
+                      SELECT abd.closing_minor FROM account_balance_daily abd
+                      WHERE abd.account_id=ua.id AND abd.local_date<? ORDER BY abd.local_date DESC LIMIT 1
+                    ),0)) ELSE ABS(COALESCE(avc.current_base_value_minor,0)) END END),0) AS value
+              FROM book b JOIN user_account ua LEFT JOIN account_valuation_current avc ON avc.account_id=ua.id
+            ), current_budget AS (
+              SELECT base_budget_minor+rollover_minor+adjustment_minor AS available,used_minor,remaining_minor
+              FROM budget_usage_projection WHERE year_month=? AND category_id IS NULL
+            ), future_reservations AS (
+              SELECT COALESCE(SUM(reserved_base_minor),0) AS amount FROM budget_future_reservation
+              WHERE year_month=? AND occurrence_date>=?
             )
-            SELECT 1, core.value, core.value + settlement.value, b.base_currency, ?, ? FROM book b, core, settlement WHERE b.id = 1
+            SELECT 1,core.value,core.value+settlement.value,b.base_currency,?,?,?,?,
+              COALESCE((SELECT amount_base_minor FROM analytics_monthly_total WHERE year_month=? AND metric=2),0),
+              COALESCE((SELECT amount_base_minor FROM analytics_monthly_total WHERE year_month=? AND metric=2),0),
+              current_budget.available,current_budget.used_minor,
+              (current_budget.remaining_minor-future_reservations.amount)/?,previous_core.value
+            FROM book b,core,settlement,previous_core LEFT JOIN current_budget ON 1=1 LEFT JOIN future_reservations ON 1=1
+            WHERE b.id=1
             """.trimIndent(),
-            arrayOf<Any>(revision, valuationRevision),
+            arrayOf<Any>(
+                asOfLocalDate,
+                asOfLocalDate,
+                monthKey,
+                monthKey,
+                asOfLocalDate,
+                revision,
+                valuationRevision,
+                asOfLocalDate,
+                monthKey,
+                monthKey,
+                previousMonthKey,
+                remainingDays,
+            ),
         )
     }
 
@@ -753,6 +844,13 @@ private data class BudgetProjectionRow(
 private fun exactSum(values: Collection<Long>): Long = values.fold(0L, Math::addExact)
 private fun Int.toProjectionMonth(): java.time.YearMonth = java.time.YearMonth.of(this / PROJECTION_MONTH_RADIX, this % PROJECTION_MONTH_RADIX)
 
+private fun Int.toProjectionDate(): java.time.LocalDate = java.time.LocalDate.of(
+    this / PROJECTION_DATE_YEAR_RADIX,
+    this / PROJECTION_MONTH_RADIX % PROJECTION_MONTH_RADIX,
+    this % PROJECTION_MONTH_RADIX,
+)
+
 private fun java.time.YearMonth.toProjectionInt(): Int = year * PROJECTION_MONTH_RADIX + monthValue
 
 private const val PROJECTION_MONTH_RADIX = 100
+private const val PROJECTION_DATE_YEAR_RADIX = 10_000

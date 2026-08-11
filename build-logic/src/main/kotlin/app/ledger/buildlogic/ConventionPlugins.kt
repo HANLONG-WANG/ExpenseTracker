@@ -161,7 +161,7 @@ private fun LibraryExtension.configureAndroidLibrary(project: Project) {
         targetCompatibility = JavaVersion.VERSION_17
     }
     if (project.path in DEVICE_TEST_LIBRARY_PATHS) {
-        configureLibraryManagedDevices(includeMinSdk = project.path == ":transfer:data")
+        configureLibraryManagedDevices(includeMinSdk = project.path in MIN_SDK_DEVICE_TEST_LIBRARY_PATHS)
     }
     if (project.path == ":core:designsystem") {
         configureLibraryManagedDevices(includeMinSdk = true)
@@ -188,7 +188,10 @@ private val DEVICE_TEST_LIBRARY_PATHS = setOf(
     ":feature:onboarding",
     ":feature:transfer",
     ":transfer:data",
+    ":widget",
 )
+
+private val MIN_SDK_DEVICE_TEST_LIBRARY_PATHS = setOf(":transfer:data", ":widget")
 
 class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {

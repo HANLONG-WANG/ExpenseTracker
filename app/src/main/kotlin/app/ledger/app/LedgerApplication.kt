@@ -16,6 +16,8 @@ import app.ledger.core.telemetry.PrivacyDiagnosticRuntime
 import app.ledger.core.telemetry.TelemetryRuntime
 import app.ledger.finance.application.FinancialCommitObserver
 import app.ledger.finance.application.FinancialCommitObserverRegistry
+import app.ledger.finance.application.WidgetSnapshotApplicationPort
+import app.ledger.widget.LedgerWidgetRuntime
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +25,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -32,6 +35,8 @@ class LedgerApplication : Application() {
     @Inject internal lateinit var keyProvider: DeviceLedgerKeyProvider
 
     @Inject internal lateinit var runtimeSources: AppRuntimeSources
+
+    @Inject internal lateinit var widgetSnapshots: WidgetSnapshotApplicationPort
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var financialCommitRegistration: AutoCloseable? = null
     private lateinit var privacyDiagnostics: PrivacyDiagnosticManager
@@ -59,6 +64,14 @@ class LedgerApplication : Application() {
             ),
         )
         TelemetryRuntime.install(privacyDiagnostics)
+        LedgerWidgetRuntime.install(
+            widgetSnapshots,
+            AppWidgetConfigurationRepository(settingsRepository),
+        ) {
+            val configured = settingsRepository.current().zoneId.takeIf(String::isNotBlank)
+            val zone = runCatching { ZoneId.of(configured ?: "UTC") }.getOrDefault(ZoneId.of("UTC"))
+            runtimeSources.clock.now().atZone(zone).toLocalDate()
+        }
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
             StrictMode.setThreadPolicy(
                 StrictMode.ThreadPolicy.Builder().detectAll().penaltyLog().build(),
@@ -79,9 +92,17 @@ class LedgerApplication : Application() {
         }
         val scheduler = AutomaticBackupScheduler(this, settingsRepository, keyProvider, runtimeSources)
         financialCommitRegistration = FinancialCommitObserverRegistry.register(
-            FinancialCommitObserver { applicationScope.launch { scheduler.scheduleIfDue() } },
+            FinancialCommitObserver {
+                applicationScope.launch {
+                    scheduler.scheduleIfDue()
+                    LedgerWidgetRuntime.updateAll(this@LedgerApplication)
+                }
+            },
         )
-        applicationScope.launch { scheduler.scheduleIfDue() }
+        applicationScope.launch {
+            scheduler.scheduleIfDue()
+            LedgerWidgetRuntime.updateAll(this@LedgerApplication)
+        }
     }
 
     override fun onTerminate() {

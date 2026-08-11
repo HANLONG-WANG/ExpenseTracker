@@ -21,6 +21,57 @@ enum SessionRestorePolicyProto {
   SESSION_RESTORE_ALWAYS_LAST_PAGE = 1;
 }
 
+enum ThemeModeProto {
+  THEME_MODE_FOLLOW_SYSTEM = 0;
+  THEME_MODE_LIGHT = 1;
+  THEME_MODE_DARK = 2;
+}
+
+enum DateFormatProto {
+  DATE_FORMAT_LOCALE_DEFAULT = 0;
+  DATE_FORMAT_YEAR_MONTH_DAY = 1;
+  DATE_FORMAT_DAY_MONTH_YEAR = 2;
+  DATE_FORMAT_MONTH_DAY_YEAR = 3;
+}
+
+enum WeekStartProto {
+  WEEK_START_LOCALE_DEFAULT = 0;
+  WEEK_START_MONDAY = 1;
+  WEEK_START_SUNDAY = 2;
+}
+
+enum WidgetTypeProto {
+  WIDGET_TYPE_QUICK_ENTRY = 0;
+  WIDGET_TYPE_MONTH_CONSUMPTION = 1;
+  WIDGET_TYPE_MONTH_BUDGET = 2;
+  WIDGET_TYPE_TODAY_AVAILABLE = 3;
+  WIDGET_TYPE_ACCOUNT = 4;
+  WIDGET_TYPE_CORE_NET_ASSETS = 5;
+  WIDGET_TYPE_CREDIT_CARD = 6;
+  WIDGET_TYPE_GOAL = 7;
+  WIDGET_TYPE_FINANCIAL_OVERVIEW = 8;
+}
+
+enum WidgetQuickTargetKindProto {
+  WIDGET_QUICK_TARGET_CATEGORY = 0;
+  WIDGET_QUICK_TARGET_TEMPLATE = 1;
+}
+
+enum WidgetQuickDirectionProto {
+  WIDGET_QUICK_DIRECTION_EXPENSE = 0;
+  WIDGET_QUICK_DIRECTION_INCOME = 1;
+}
+
+message WidgetConfigurationProto {
+  int32 app_widget_id = 1;
+  bytes book_id = 2;
+  WidgetTypeProto type = 3;
+  bytes selected_id = 4;
+  WidgetQuickTargetKindProto quick_target_kind = 5;
+  WidgetQuickDirectionProto quick_direction = 6;
+  bool reveal_amounts = 7;
+}
+
 message RouteArgumentProto {
   string name = 1;
   string encoded_value = 2;
@@ -68,4 +119,12 @@ message LedgerAppSettings {
   bool obscure_recent_tasks = 22;
   int32 trash_retention_days = 23;
   bool security_settings_initialized = 24;
+  repeated WidgetConfigurationProto widget_configurations = 25;
+  ThemeModeProto theme_mode = 26;
+  bool dynamic_color_enabled = 27;
+  bool default_amounts_hidden = 28;
+  bool reduce_motion_enabled = 29;
+  DateFormatProto date_format = 30;
+  WeekStartProto week_start = 31;
+  bool notification_permission_explained = 32;
 }

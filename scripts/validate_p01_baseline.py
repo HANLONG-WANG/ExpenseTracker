@@ -193,9 +193,13 @@ def main() -> int:
         text = path.read_text(encoding="utf-8")
         if re.search(r"\bTODO\b|NotImplementedError|NotImplemented", text):
             fail(f"placeholder production content in {path.relative_to(ROOT)}")
-    layout_xml = list(ROOT.glob("**/src/main/res/layout*/*.xml"))
-    if layout_xml:
-        fail(f"XML main UI found: {[str(path.relative_to(ROOT)) for path in layout_xml]}")
+    layout_xml = {path.relative_to(ROOT).as_posix() for path in ROOT.glob("**/src/main/res/layout*/*.xml")}
+    allowed_system_bootstrap_layouts = {"widget/src/main/res/layout/ledger_widget_loading.xml"}
+    if layout_xml != allowed_system_bootstrap_layouts:
+        fail(
+            "XML UI inventory differs from the single AppWidget initialLayout bootstrap: "
+            f"{sorted(layout_xml)}",
+        )
 
     wrapper = (ROOT / "gradle/wrapper/gradle-wrapper.properties").read_text(encoding="utf-8")
     if "gradle-9.5.1-bin.zip" not in wrapper:
@@ -335,11 +339,16 @@ def main() -> int:
         **{f"SETG-{number:03d}": "VERIFIED" for number in range(6, 12)},
         "CLR-001": "VERIFIED",
         "SYS-004": "VERIFIED",
+        **{f"WGT-{number:03d}": "VERIFIED" for number in range(1, 4)},
+        **{f"SETG-{number:03d}": "VERIFIED" for number in range(1, 6)},
+        "SETG-012": "VERIFIED",
+        "TRF-001": "VERIFIED",
+        "SYS-002": "VERIFIED",
     }
     if len(screen_coverage) != 215 or any(
         row["status"] != cumulative_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_coverage
     ):
-        fail("screen coverage contains a promotion outside the cumulative P32 scope")
+        fail("screen coverage contains a promotion outside the cumulative P33 scope")
 
     print("P01 build baseline: PASS")
     print(f"leaf_modules={len(LEAF_MODULES)} grouping_projects=5 included_builds=1")
@@ -347,7 +356,7 @@ def main() -> int:
     print(f"dependency_lockfiles={len(lockfiles)} verification_components={len(components)} sha256_entries={len(checksums)}")
     print(f"wrapper_jar_sha256={wrapper_jar_sha}")
     print("token_scalar_paths=434 requirements=90 screens=215 unique_ids=215 unique_routes=215")
-    print("production_placeholders=0 xml_main_ui_files=0 forbidden_stack_references=0 prerelease_production_lock_entries=0")
+    print("production_placeholders=0 xml_main_ui_files=1_appwidget_bootstrap_only forbidden_stack_references=0 prerelease_production_lock_entries=0")
     return 0
 
 
