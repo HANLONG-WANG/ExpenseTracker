@@ -5,6 +5,8 @@ import app.ledger.core.money.MoneyUiModel
 
 public object LedgerTestTags {
     public const val ROOT: String = "ledger_root"
+    public const val CONTENT: String = "ledger_content"
+    public const val FIXED_ACTION: String = "ledger_fixed_action"
     public const val TOP_APP_BAR: String = "ledger_top_app_bar"
     public const val BOTTOM_NAVIGATION: String = "ledger_bottom_navigation"
     public const val SAVE: String = "ledger_save"

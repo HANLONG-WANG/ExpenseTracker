@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.designsystem.HighRiskConfirmation
@@ -898,6 +899,16 @@ internal fun DurableOperationCenterContent(
                 modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
             ) {
+                item {
+                    LedgerText(
+                        pluralStringResource(
+                            R.plurals.global_operation_count,
+                            state.operations.size,
+                            state.operations.size,
+                        ),
+                        LedgerTextRole.SUPPORTING,
+                    )
+                }
                 items(state.operations, key = { it.id.value.toString() }) { operation ->
                     DurableOperationRow(operation, onCancel)
                 }

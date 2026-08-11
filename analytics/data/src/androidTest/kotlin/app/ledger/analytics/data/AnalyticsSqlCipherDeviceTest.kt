@@ -123,7 +123,7 @@ class AnalyticsSqlCipherDeviceTest {
 
         val reopened = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
         reopened.readLedger { connection ->
-            assertEquals(2L, singleLong(connection, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
+            assertEquals(3L, singleLong(connection, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
             assertEquals(2L, singleLong(connection, "SELECT COUNT(*) FROM analytics_report_definition"))
             assertEquals(2L, singleLong(connection, "SELECT COUNT(*) FROM analytics_report_revision"))
             assertEquals(1L, singleLong(connection, "SELECT COUNT(*) FROM analytics_dashboard_revision"))

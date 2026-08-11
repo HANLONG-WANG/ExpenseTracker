@@ -40,6 +40,8 @@
     <string name="ledger_pause">暂停</string>
     <string name="ledger_copy">复制</string>
     <string name="ledger_attachment_import_progress">附件导入进度</string>
+    <string name="ledger_previous_page">上一页</string>
+    <string name="ledger_next_page">下一页</string>
     <string name="ledger_style_icon_record">记录</string><string name="ledger_style_icon_account">账户</string><string name="ledger_style_icon_budget">预算</string><string name="ledger_style_icon_analysis">分析</string><string name="ledger_style_icon_journal">流水</string><string name="ledger_style_icon_location">地点</string><string name="ledger_style_icon_transfer">转账</string><string name="ledger_style_icon_refund">退款</string>
     <string name="ledger_style_color_red">红色</string><string name="ledger_style_color_orange">橙色</string><string name="ledger_style_color_amber">琥珀色</string><string name="ledger_style_color_yellow">黄色</string><string name="ledger_style_color_lime">青柠色</string><string name="ledger_style_color_green">绿色</string><string name="ledger_style_color_emerald">翠绿色</string><string name="ledger_style_color_teal">蓝绿色</string><string name="ledger_style_color_cyan">青色</string><string name="ledger_style_color_sky">天蓝色</string><string name="ledger_style_color_blue">蓝色</string><string name="ledger_style_color_indigo">靛蓝色</string><string name="ledger_style_color_violet">紫罗兰色</string><string name="ledger_style_color_purple">紫色</string><string name="ledger_style_color_pink">粉色</string><string name="ledger_style_color_slate">石板灰</string>
 </resources>

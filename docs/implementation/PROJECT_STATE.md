@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-11 (Asia/Tokyo)
-Current stage: P33 — desktop widgets, More hub and remaining system/settings flows
-Stage status: VERIFIED (`P33-E001`—`P33-E008`); P00—P32 remain VERIFIED and P34 is the next unstarted stage
+Current stage: P34 — three languages, accessibility, adaptation and 215-screen contract closure
+Stage status: VERIFIED (`P34-E001`—`P34-E008`); P00—P33 remain VERIFIED and P35 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -414,16 +414,28 @@ P31 is `VERIFIED`. `P31_RESTORE_MERGE_PURGE_MAPPING.md` records the authenticate
 | Operations and notifications | The encrypted operation center exposes all durable states without parameters; safe cancel is checkpointed, long-task notifications deep-link to G-007 and every Worker input remains exactly `operationId` | VERIFIED (`P33-E001`, `P33-E006`, `P33-E007`) |
 | Compatibility and localization | WGT-001—003 pass on API 28 and API 36; G/SETG/TRF/SYS flows and all 26 exact P33 states pass on API 36 in zh-CN/ja-JP/en-US | VERIFIED (`P33-E004`, `P33-E005`) |
 
-P33 is `VERIFIED`. `P33_WIDGET_MORE_SETTINGS_MAPPING.md` records widget/snapshot/privacy/navigation/operation/settings ownership. P34 and later stages are not promoted.
+At the P33 close, `P33_WIDGET_MORE_SETTINGS_MAPPING.md` recorded widget/snapshot/privacy/navigation/operation/settings ownership without promoting P34.
+
+### P34 result (verified)
+
+| Area | P34 result | Classification |
+|---|---|---|
+| Exact screen/state closure | Every YAML route, param/result, presentation, component, note and ordered state list matches the 215 / 215 `VERIFIED` screen rows; all 646 required states retain owning-stage evidence and P34 aggregate replay | VERIFIED (`P34-E001`) |
+| Three-language/region behavior | All 17 UI-bearing modules have Simplified Chinese, Japanese and English key/type/format parity, production plurals and locale-aware money/date/region boundaries | VERIFIED (`P34-E002`) |
+| Adaptation and accessibility | 320/360/480/600dp, 100/130/160/200% font, light/dark/dynamic color, reduced motion, grayscale, 48dp targets, traversal order, chart table and map fallback pass; a real TalkBack service completes the critical recording flow | VERIFIED (`P34-E003`, `P34-E004`) |
+| Pixels and privacy semantics | Contract/token-derived critical goldens replay with exact digests; hidden money and Vault/account/location-sensitive data do not enter merged or unmerged semantics, routes, state or ordinary output | VERIFIED (`P34-E004`, `P34-E005`) |
+| Whole-product regression | All 21 API 36 Android modules report 184/184 tests with zero failed/error/skipped; static/JVM/Lint/format/Detekt, mutation, artifact and frozen-baseline gates pass | VERIFIED (`P34-E006`—`P34-E008`) |
+
+P34 is `VERIFIED`. `P34_UI_CONTRACT_CLOSURE.md` records exact coverage, adaptation, TalkBack, golden provenance and privacy closure. P35 remains unstarted and retains `REQ-084` target-scale performance acceptance; P36 release work is not promoted.
 
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 73 requirements are `VERIFIED`; 17 are `IN_PROGRESS`; none remain `NOT_STARTED` |
-| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | All 215 are `VERIFIED`; later whole-product replay remains P34/P36 |
-| Architecture ADRs | 20 + ADR-007A | ADR-001—ADR-018 and ADR-020 plus ADR-007A are `VERIFIED`; ADR-019 remains `IN_PROGRESS` |
-| UI ADRs | 12 | UI-ADR-002/007/008/009/010/011/012 are `VERIFIED`; UI-ADR-001/003/004/005/006 are `IN_PROGRESS` |
+| Requirements `REQ-001`—`REQ-090` | 90 | 89 VERIFIED; only `REQ-084` remains `IN_PROGRESS` for P35 target-scale performance |
+| YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 215 / 215 are `VERIFIED` with all 646 required states indexed to owning-stage and P34 evidence |
+| Architecture ADRs | 20 + ADR-007A | All 20 plus ADR-007A are `VERIFIED`; P34 replays typed-report compiler security evidence for ADR-019 |
+| UI ADRs | 12 | All 12 are `VERIFIED`; P34 closes whole-product navigation, category, form-recovery, validation and operation-center replay |
 | Permanent domain invariants | 35 | 26 are `VERIFIED`, including settlement conservation/local-account/history invariants (`INV-022`—`INV-024`); 9 retain later evidence |
 | Logical schema families | 12 | All 12 frozen physical Schema v1 families remain `VERIFIED`; P26 registers and device-verifies the normalized non-destructive analytics-configuration Schema v2 expansion |
 | Projection families | 7 + search/geographic indexes | All seven projection families plus both indexes are `VERIFIED`; P33 closes bounded widget runtime and date-boundary refresh |
@@ -467,7 +479,8 @@ P33 is `VERIFIED`. `P33_WIDGET_MORE_SETTINGS_MAPPING.md` records widget/snapshot
 | P31 | VERIFIED | Authenticated bounded restore, SQLCipher shadow validation/atomic exchange, commit-graph merge, controlled purge/tombstone, clear/recovery integration and RST/JRN/CLR/G flows; `P31-E001`—`P31-E008` |
 | P32 | VERIFIED | Per-action Vault authentication, ciphertext-only persistence, recovery rewrap, clipboard/screen privacy, closed-schema telemetry/ACRA, scoped clear and all VLT/SETG/CLR/SYS contracts pass; see `P32-E001`—`P32-E008` |
 | P33 | VERIFIED | Nine snapshot-only Glance widgets, default-hidden per-widget privacy, full-form quick entry, one More/transfer/settings/help surface, durable operation center and notification deep links pass on API 28/API 36; see `P33-E001`—`P33-E008` |
-| P34—P36 | NOT_STARTED | P34 is next; do not promote later work early |
+| P34 | VERIFIED | Three-language, adaptation, real TalkBack, privacy semantics, critical golden and exact 215-screen/646-state closure pass; see `P34-E001`—`P34-E008` |
+| P35—P36 | NOT_STARTED | P35 is next; `REQ-084` and release work remain unpromoted |
 
 ## P17 verified handoff
 

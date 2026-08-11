@@ -818,10 +818,6 @@ internal class RoomProjectionEngine {
             "transaction_fts" to "SELECT * FROM transaction_fts ORDER BY transaction_id",
             "location_rtree" to "SELECT * FROM location_rtree ORDER BY location_id",
             "place_rtree" to "SELECT * FROM place_rtree ORDER BY place_id",
-            "widget_book_snapshot" to "SELECT * FROM widget_book_snapshot ORDER BY id",
-            "widget_account_snapshot" to "SELECT * FROM widget_account_snapshot ORDER BY account_id",
-            "widget_credit_snapshot" to "SELECT * FROM widget_credit_snapshot ORDER BY account_id",
-            "widget_goal_snapshot" to "SELECT * FROM widget_goal_snapshot ORDER BY goal_id",
         )
     }
 }

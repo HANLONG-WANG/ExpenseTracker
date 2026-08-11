@@ -1,8 +1,8 @@
 # Domain and Schema Coverage Baseline
 
-Last updated: 2026-08-06 (Asia/Tokyo)
-Stage: P24
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P24 verifies typed complete-row batch commands, one atomic coordinator commit, immutable batch reversal, bounded journal selection/editing and REC/JRN integration. It does not promote analytics, large import, performance or later workflows.
+Last updated: 2026-08-11 (Asia/Tokyo)
+Stage: P34
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P34 closes the three-language, adaptive, accessible and privacy-safe UI projection of the already verified domain/schema surface. It adds no financial writer or schema migration; P35 performance and P36 release evidence remain unpromoted.
 
 ## P05 domain/application result
 
@@ -125,19 +125,19 @@ Source: `docs/规格冻结_v1.0/系统架构.md` §22, except ADR-007A from `doc
 | ADR-016 | Ledger, vault and recovery-password key hierarchies are separate | VERIFIED (`P09-E001`, `P09-E003`, `P09-E004`: DeviceLedgerKEK/database/attachment/settings, auth-bound Vault KEK/DEK and Argon2id recovery wrapping are independent) | Keystore/Tink device security tests |
 | ADR-017 | App lock is UI access control; vault uses a cryptographic authentication gate | VERIFIED (`P09-E001`, `P09-E002`, `P09-E004`, `P32-E003`, `P32-E006`: app lock drops UI access while every Vault reveal/copy/edit uses a fresh identity-bound CryptoObject; real credential tests prove neither gate unlocks the other) | Biometric/device-credential tests |
 | ADR-018 | WorkManager carries only opaque operation IDs | VERIFIED (`P05-E001`, `P05-E002`, `P07-E001`, `P28-E001`, `P28-E002`, `P28-E004`, `P28-E007`, `P29-E001`, `P29-E004`: import/export Worker and API 34 UIDT inputs contain only operation ID, complete descriptors/SAF handles remain encrypted, reopen recovery and static privacy rejection pass) | Static InputData privacy audit |
-| ADR-019 | Reports use a typed AST and never accept user SQL | IN_PROGRESS (`P05-E001`, `P05-E002`: closed `ReportSpec` AST; SQL compiler remains later) | Compiler whitelist/security tests |
+| ADR-019 | Reports use a typed AST and never accept user SQL | VERIFIED (`P05-E001`, `P05-E002`, `P25-E001`—`P25-E003`, `P26-E001`—`P26-E003`, `P34-E005`: closed `ReportSpec` AST, whitelist compiler and full UI/static replay reject user SQL) | Compiler whitelist/security tests |
 | ADR-020 | The domain model enforces the no-split-transaction limitation | VERIFIED (`P05-E001`, `P05-E002`, `P28-E001`, `P28-E002`: compile-time closed category/payer shapes plus import delimiter/count rejection require separate transactions and the mutation gate prevents removal) | Domain/import/report contract tests |
 
 The 12 UI-derived decisions from UI contract §18 are separately registered below. P04 may verify a closed cross-cutting contract, while decisions that require actual screen/application behavior remain `IN_PROGRESS` or `NOT_STARTED`.
 
 | ID | Frozen UI decision | Status |
 |---|---|---|
-| UI-ADR-001 | Every top-level page has the same top-right More Features entry. | IN_PROGRESS (`P04-E003`: fixed top-app-bar variant; pages remain P11+) |
+| UI-ADR-001 | Every top-level page has the same top-right More Features entry. | VERIFIED (`P04-E003`, `P11-E002`, `P33-E001`, `P33-E005`, `P34-E001`: fixed app-bar variant and all production destinations share the More entry) |
 | UI-ADR-002 | Financial records do not use swipe-to-delete. | VERIFIED (`P04-E005`: source rule and real rejection fixture) |
-| UI-ADR-003 | Category hierarchy uses first-level groups and the same selectable tile component. | IN_PROGRESS (`P04-E003`: governed grouped grid/tile; category screens remain P12) |
-| UI-ADR-004 | Unsaved forms are discarded with explanation after process death because sensitive SavedState and drafts are prohibited. | IN_PROGRESS (`P02-E004`, `P04-E004`: sensitive state closure; process-death UX remains later) |
-| UI-ADR-005 | Invalid ordinary forms keep Save actionable so validation can explain errors; only absolute prerequisites disable it. | IN_PROGRESS (`P04-E003`: validation summary/save component contract; form reducers remain later) |
-| UI-ADR-006 | Long operations share one Operation Center. | IN_PROGRESS (`P04-E003`, `P28-E006`, `P29-E006`, `P30-E006`: import export and backup use the governed operation-progress model/panel and shared operation-center presentation; restore remains P31) |
+| UI-ADR-003 | Category hierarchy uses first-level groups and the same selectable tile component. | VERIFIED (`P04-E003`, `P12-E004`, `P13-E004`, `P34-E003`: management and recording reuse the governed accessible grouped tile) |
+| UI-ADR-004 | Unsaved forms are discarded with explanation after process death because sensitive SavedState and drafts are prohibited. | VERIFIED (`P02-E004`, `P04-E004`, `P11-E004`, `P13-E004`, `P34-E005`: production restoration retains only safe IDs/state and explains discarded drafts) |
+| UI-ADR-005 | Invalid ordinary forms keep Save actionable so validation can explain errors; only absolute prerequisites disable it. | VERIFIED (`P04-E003`, `P13-E002`, `P13-E004`, `P34-E003`, `P34-E004`: form reducer and TalkBack flow expose validation while retaining the save action) |
+| UI-ADR-006 | Long operations share one Operation Center. | VERIFIED (`P04-E003`, `P28-E006`, `P29-E006`, `P30-E006`, `P31-E006`, `P33-E001`, `P33-E006`, `P34-E001`: all long operations share G-007) |
 | UI-ADR-007 | Transaction lists have no swipe quick-edit/delete gesture. | VERIFIED (`P04-E003`, `P04-E005`: non-swipe row plus static rejection) |
 | UI-ADR-008 | Map failure provides a list alternative. | VERIFIED (`P04-E007`, `P04-E008`, `P10-E004`: token contract and actual MapLibre unavailable/style paths render the accessible data table) |
 | UI-ADR-009 | Settlement suggestions may be displayed only when returned by a domain/application query service; UI never writes its own calculation. | VERIFIED (`P22-E001`—`P22-E004`: `SettlementSuggestionPolicy` runs behind the typed application snapshot and the SET feature only renders returned suggestions) |
@@ -374,6 +374,12 @@ P33 adds no financial fact or writer. Primary Schema v3 non-destructively extend
 | Durable operation list | G-007 loads newest encrypted `background_operation` rows by opaque ID then uses the existing typed repository decode. Parameters/checkpoints never enter UI or notification payloads (`P33-E001`, `P33-E006`) |
 | Worker/notification boundary | Import/export/backup Workers validate an exact singleton `operationId` input. Notifications contain progress/status and a closed G-007 deep link; safe cancel persists `CANCEL_REQUESTED` so cleanup/rollback remains runnable (`P33-E001`, `P33-E006`, `P33-E007`) |
 
+## P34 UI projection and widget-cache audit boundary
+
+P34 adds no schema, financial fact or mutation path. The whole-product UI replay consumes only typed application/query models, and its semantics scanners preserve the same sensitive-data boundary as routes, SavedState, diagnostics, exports and widgets.
+
+The four `widget_*_snapshot` tables remain derived Cache projections and continue to participate in family-version, row-count, valuation-revision and stale-date checks. Because a foreground local-date refresh legitimately changes these caches without changing ledger facts, they are deliberately excluded from `RoomProjectionEngine.canonicalHash`; all authoritative current/analytics/search/geographic projections remain hashed. API 36 SQLCipher rebuild/idempotency tests and a P34 mutation test enforce this distinction (`P34-E005`, `P34-E006`; see `DL-167`).
+
 ## Logical schema families
 
 Source: domain/schema document §25. The inventory names every logical table, including the 11 typed transaction-detail tables. P07 verifies all 12 physical Schema v1 families; P08 verifies normalized plan mapping and transactional behavior for the financial write families while later feature/operation workflows retain their owning stages.
@@ -433,6 +439,6 @@ Worker/UIDT/service payloads may contain only `operationId`; full parameters rem
 | Keystore, BiometricPrompt, SAF, location and foreground/UIDT behavior on actual devices | Tech stack §16 | IN_PROGRESS (`P09-E003`, `P09-E004`, `P10-E003`, `P10-E004`, `P28-E003`, `P28-E004`, `P29-E004`, `P29-E005`, `P30-E003`—`P30-E005`, `P31-E003`, `P31-E005`, `P31-E006`, `P32-E003`—`P32-E005`: Keystore/credential/recovery, per-action Vault auth, clipboard/FLAG_SECURE, ACRA/exit queues, SAF, foreground/UIDT and SQLCipher exchange pass on API 36; later whole-product device acceptance remains) |
 | Failure injection for attachment, commits, Drive, storage, restore exchange, Keystore, biometrics, row 99,999 and projection versions | Architecture §21.3 | IN_PROGRESS (`P08-E003`, `P09-E003`, `P09-E004`, `P10-E003`, `P28-E002`, `P28-E005`, `P30-E002`—`P30-E005`, `P31-E002`—`P31-E005`: commit/projection, key/auth, attachment/import/Drive/ENOSPC plus every restore swap point/process-death and purge checkpoint rollback pass; later whole-product fault acceptance remains) |
 | Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`, `P08-E001`, `P08-E002`, `P10-E006`, `P15-E001`, `P15-E007`, `P16-E001`, `P16-E006`, `P17-E001`, `P17-E006`, `P18-E001`, `P18-E006`, `P22-E001`, `P22-E006`, `P23-E001`, `P23-E006`, `P24-E001`, `P24-E006`, `P27-E001`, `P27-E006`, `P28-E001`, `P28-E007`, `P29-E001`, `P29-E005`, `P29-E007`, `P32-E001`, `P32-E007`: feature SDK/infrastructure, privileged ports, SQL/DAO/fact, sensitive field/route/Worker/diagnostic payload, generic telemetry Map and direct-writer bypasses are rejected) |
-| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | IN_PROGRESS (`P04-E001`—`P04-E008`, `P10-E004`, `P10-E005`, `P11-E004`—`P11-E006`, `P14-E005`, `P14-E006`, `P15-E005`, `P15-E006`, `P16-E004`, `P16-E005`, `P17-E004`, `P17-E005`, `P18-E004`, `P18-E005`, `P22-E004`, `P22-E005`, `P23-E004`, `P23-E005`, `P24-E004`, `P24-E005`, `P25-E004`, `P25-E005`, `P26-E004`, `P26-E005`, `P27-E004`, `P27-E005`, `P28-E006`, `P29-E006`, `P30-E006`, `P31-E006`, `P32-E006`, `P33-E004`, `P33-E005`: route/state rows now all have owning-stage evidence including WGT/G/SETG/TRF/SYS; P34/P36 whole-product replay and release pixels remain) |
+| 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | VERIFIED (`P04-E001`—`P04-E008`, all owning-stage UI evidence through `P33-E005`, and `P34-E001`—`P34-E006`: exact 215/215 routes, all 646 states, 17 three-language modules, width/font/theme matrix, real TalkBack critical flow, contract-derived goldens and sensitive semantic scans pass; P36 retains only release replay) |
 | Target-scale paging, reports, map, 100k-row import and tens-of-GB streaming operations | Requirements §25; UI contract §16.5 | IN_PROGRESS (`P10-E003`, `P10-E004`, `P15-E003`, `P25-E002`, `P25-E003`, `P27-E003`, `P27-E004`, `P28-E002`, `P28-E004`, `P28-E006`, `P29-E002`, `P29-E003`, `P30-E002`, `P30-E004`, `P31-E002`: bounded streaming, real 500,000-row paging, bounded reports/maps, 100,000-row import/export, 48 GiB Drive backup and 20 GiB authenticated restore all cross `Int.MAX_VALUE` under 256 MiB; later performance acceptance remains) |
 | Release AAB, Baseline Profile, locks, verification metadata, SBOM, licenses, NOTICE and privacy/release documentation | Tech stack §16.4 and release plan | IN_PROGRESS (`P02-E006` verifies locks/SBOM/license task infrastructure only; release evidence remains P36) |

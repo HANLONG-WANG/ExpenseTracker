@@ -33,7 +33,9 @@ import app.ledger.core.money.MoneyUiModel
 @Preview(name = "Dark 360", widthDp = 360, showBackground = true, uiMode = 0x20)
 @Preview(name = "Compact 200% zh", widthDp = 320, fontScale = 2f, locale = "zh-rCN", showBackground = true)
 @Preview(name = "Standard 130% ja", widthDp = 360, fontScale = 1.3f, locale = "ja", showBackground = true)
+@Preview(name = "Wide 160% English", widthDp = 480, fontScale = 1.6f, locale = "en", showBackground = true)
 @Preview(name = "Wide English", widthDp = 480, locale = "en", showBackground = true)
+@Preview(name = "Foldable 200% Japanese", widthDp = 600, fontScale = 2f, locale = "ja", showBackground = true)
 private annotation class LedgerComponentPreviews
 
 private object PreviewFixtures {

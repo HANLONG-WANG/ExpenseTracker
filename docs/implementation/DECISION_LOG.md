@@ -1178,3 +1178,11 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: directly cancelling WorkManager after a G-007 cancel tap can prevent import/export/backup rollback and temporary cleanup from executing.
 - Decision: G-007 persists `CANCEL_REQUESTED` and signals the in-process registry but does not terminate the Worker. Each Worker handles pre-start and in-flight requests through its typed rollback/cleanup path before publishing terminal state.
 - Consequence: safe cancellation is recoverable, and the platform payload remains exactly `operationId`.
+
+## DL-167 — Date-sensitive widget caches do not define the canonical ledger projection hash
+
+- Date/stage: 2026-08-11 / P34
+- Surface issue: P33 correctly refreshes four widget Cache projections when the local date changes without a financial mutation. Including those rows in `RoomProjectionEngine.canonicalHash` made the same immutable ledger facts appear non-idempotent after a legitimate date-boundary refresh.
+- Priority applied: the domain lifecycle classification and accounting/projection integrity semantics outrank treating every derived table identically. Widget snapshots are explicitly Cache, while the canonical hash proves deterministic authoritative fact projections.
+- Decision: exclude `widget_book_snapshot`, `widget_account_snapshot`, `widget_credit_snapshot` and `widget_goal_snapshot` from `HASH_QUERIES`. Keep them in derived rebuild ownership, `ProjectionFamily.WIDGET`, local/valuation revision checks, row-count expectations and stale-date validation.
+- Consequence: financial projection integrity remains stable across time-only cache refreshes, while corrupt/stale widget data still fails its independent checks. SQLCipher integration and a P34 weakening-mutation test guard both sides of the boundary.

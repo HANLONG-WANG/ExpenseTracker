@@ -81,11 +81,13 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -117,7 +119,7 @@ public fun LedgerScaffold(
     content: @Composable BoxScope.(PaddingValues) -> Unit,
 ) {
     Scaffold(
-        modifier = modifier.testTag(LedgerTestTags.ROOT),
+        modifier = modifier.testTag(LedgerTestTags.ROOT).semantics { isTraversalGroup = true },
         topBar = topBar,
         bottomBar = bottomBar,
         snackbarHost = { LedgerSnackbarHost(snackbarController.hostState) },
@@ -130,19 +132,30 @@ public fun LedgerScaffold(
                     .fillMaxSize()
                     .widthIn(max = maxContentWidth)
                     .align(Alignment.TopCenter)
+                    .testTag(LedgerTestTags.CONTENT)
+                    .semantics { traversalIndex = CONTENT_TRAVERSAL_INDEX }
                     .padding(horizontal = horizontal)
                     .padding(bottom = if (fixedAction == null) LedgerTheme.spacing.none else LedgerTheme.dimensions.bottomActionInset),
             ) {
                 content(PaddingValues())
             }
-            if (banner != null) Box(Modifier.align(Alignment.TopCenter).widthIn(max = LedgerTheme.dimensions.contentMaxWidth)) { banner() }
+            if (banner != null) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .widthIn(max = LedgerTheme.dimensions.contentMaxWidth)
+                        .semantics { traversalIndex = BANNER_TRAVERSAL_INDEX },
+                ) { banner() }
+            }
             if (fixedAction != null) {
                 Box(
                     Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
                         .imePadding()
-                        .padding(LedgerTheme.spacing.md),
+                        .padding(LedgerTheme.spacing.md)
+                        .testTag(LedgerTestTags.FIXED_ACTION)
+                        .semantics { traversalIndex = FIXED_ACTION_TRAVERSAL_INDEX },
                     content = fixedAction,
                 )
             }
@@ -166,7 +179,10 @@ public fun LedgerTopAppBar(
         else -> null
     }
     TopAppBar(
-        modifier = modifier.heightIn(min = LedgerTheme.dimensions.topAppBarHeight).testTag(LedgerTestTags.TOP_APP_BAR),
+        modifier = modifier
+            .heightIn(min = LedgerTheme.dimensions.topAppBarHeight)
+            .testTag(LedgerTestTags.TOP_APP_BAR)
+            .semantics { traversalIndex = TOP_BAR_TRAVERSAL_INDEX },
         title = {
             Text(
                 text = if (variant == LedgerTopAppBarVariant.SELECTION) "$title · $selectionCount" else title,
@@ -223,7 +239,10 @@ public fun LedgerNavigationBar(
         Triple(LedgerTopLevel.ANALYSIS, labels.analysis, LedgerIcon.ANALYSIS),
     )
     NavigationBar(
-        modifier = modifier.heightIn(min = LedgerTheme.dimensions.bottomNavigationHeight).testTag(LedgerTestTags.BOTTOM_NAVIGATION),
+        modifier = modifier
+            .heightIn(min = LedgerTheme.dimensions.bottomNavigationHeight)
+            .testTag(LedgerTestTags.BOTTOM_NAVIGATION)
+            .semantics { traversalIndex = BOTTOM_NAVIGATION_TRAVERSAL_INDEX },
         containerColor = LedgerTheme.colors.material.surface,
     ) {
         items.forEach { (destination, label, icon) ->
@@ -277,7 +296,11 @@ public fun LedgerSaveFab(
             text = { Text(save) },
             icon = icon,
             onClick = onClick,
-            modifier = modifier.heightIn(min = LedgerTheme.dimensions.fab).widthIn(min = LedgerTheme.dimensions.fabExtendedMinWidth).testTag(LedgerTestTags.SAVE),
+            modifier = modifier
+                .heightIn(min = LedgerTheme.dimensions.fab)
+                .widthIn(min = LedgerTheme.dimensions.fabExtendedMinWidth)
+                .testTag(LedgerTestTags.SAVE)
+                .semantics { contentDescription = save },
             containerColor = if (enabled) LedgerTheme.colors.material.primary else LedgerTheme.colors.material.surfaceContainerHighest,
             contentColor = if (enabled) LedgerTheme.colors.material.onPrimary else LedgerTheme.colors.material.onSurfaceVariant,
         )
@@ -393,6 +416,11 @@ public fun LedgerChoiceRow(
     supportingText: String? = null,
     enabled: Boolean = true,
 ) {
+    val localizedSelectionState = if (selected) {
+        stringResource(R.string.ledger_selected)
+    } else {
+        stringResource(R.string.ledger_not_selected)
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -400,7 +428,7 @@ public fun LedgerChoiceRow(
             .clickable(enabled = enabled, onClick = onClick)
             .semantics {
                 role = Role.RadioButton
-                stateDescription = if (selected) "selected" else "not selected"
+                stateDescription = localizedSelectionState
                 if (!enabled) disabled()
             }
             .padding(vertical = LedgerTheme.spacing.xs),
@@ -630,11 +658,16 @@ public fun LedgerChip(
     selected: Boolean = false,
     enabled: Boolean = true,
 ) {
+    val localizedSelectionState = if (selected) {
+        stringResource(R.string.ledger_selected)
+    } else {
+        stringResource(R.string.ledger_not_selected)
+    }
     AssistChip(
         onClick = onClick,
         label = { Text(label, style = LedgerTheme.typography.labelMedium) },
         modifier = modifier.heightIn(min = LedgerTheme.dimensions.chipHeight).semantics {
-            stateDescription = if (selected) "selected" else "not selected"
+            stateDescription = localizedSelectionState
         },
         enabled = enabled,
         border = BorderStroke(
@@ -862,3 +895,9 @@ public fun LedgerDateTimePickerFlow(
 public fun LedgerListDivider(modifier: Modifier = Modifier) {
     HorizontalDivider(modifier, color = LedgerTheme.colors.material.outlineVariant)
 }
+
+private const val TOP_BAR_TRAVERSAL_INDEX = -1f
+private const val CONTENT_TRAVERSAL_INDEX = 0f
+private const val BANNER_TRAVERSAL_INDEX = .5f
+private const val FIXED_ACTION_TRAVERSAL_INDEX = 1f
+private const val BOTTOM_NAVIGATION_TRAVERSAL_INDEX = 2f

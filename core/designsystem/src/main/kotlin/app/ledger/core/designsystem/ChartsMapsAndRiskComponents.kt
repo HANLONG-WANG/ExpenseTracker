@@ -256,9 +256,23 @@ public fun AccessibleDataTable(
         }
         if (pageCount > 1) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                if (onPreviousPage != null) LedgerButton("‹", onPreviousPage, variant = LedgerButtonVariant.TEXT, enabled = pageIndex > 0)
+                if (onPreviousPage != null) {
+                    LedgerButton(
+                        stringResource(R.string.ledger_previous_page),
+                        onPreviousPage,
+                        variant = LedgerButtonVariant.TEXT,
+                        enabled = pageIndex > 0,
+                    )
+                }
                 Text("${pageIndex + 1} / $pageCount", style = LedgerTheme.typography.labelMedium)
-                if (onNextPage != null) LedgerButton("›", onNextPage, variant = LedgerButtonVariant.TEXT, enabled = pageIndex + 1 < pageCount)
+                if (onNextPage != null) {
+                    LedgerButton(
+                        stringResource(R.string.ledger_next_page),
+                        onNextPage,
+                        variant = LedgerButtonVariant.TEXT,
+                        enabled = pageIndex + 1 < pageCount,
+                    )
+                }
             }
         }
     }

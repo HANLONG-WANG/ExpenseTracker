@@ -5,19 +5,23 @@ import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.LocaleList
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
@@ -184,7 +188,9 @@ class DesignSystemDeviceTest {
             RenderCase(320, 1f, dark = false, reduceMotion = false),
             RenderCase(320, 2f, dark = true, reduceMotion = true),
             RenderCase(360, 1.3f, dark = false, reduceMotion = true),
+            RenderCase(480, 1.6f, dark = false, reduceMotion = false),
             RenderCase(480, 1f, dark = true, reduceMotion = false),
+            RenderCase(600, 2f, dark = true, reduceMotion = true),
         )
         cases.forEach { case ->
             composeRule.runOnIdle { active.value = case }
@@ -228,6 +234,145 @@ class DesignSystemDeviceTest {
             composeRule.onNodeWithText(localeCase.second).assertExists()
         }
     }
+
+    @Test
+    fun dynamicColorChangesOnlyTheMaterialShellAndPreservesLedgerSemanticColors() {
+        val dynamic = mutableStateOf(false)
+        var observed: ColorBoundary? = null
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = dynamic.value, reduceMotion = false) {
+                val colors = LedgerTheme.colors
+                SideEffect {
+                    observed = ColorBoundary(
+                        positive = colors.positive.base.toArgb(),
+                        warning = colors.warning.base.toArgb(),
+                        danger = colors.danger.base.toArgb(),
+                        info = colors.info.base.toArgb(),
+                        neutral = colors.neutralTransaction.base.toArgb(),
+                        categories = colors.categoryPalette.map { it.foreground.toArgb() to it.container.toArgb() },
+                        chart = colors.chart.categorical.map { it.toArgb() },
+                    )
+                }
+                Text("boundary")
+            }
+        }
+        composeRule.waitForIdle()
+        val fixed = requireNotNull(observed)
+        composeRule.runOnIdle { dynamic.value = true }
+        composeRule.waitForIdle()
+        assertEquals(fixed, observed)
+    }
+
+    @Test
+    fun selectionAndDataTablePagingSemanticsAreLocalizedInAllThreeLanguages() {
+        val locales = listOf(
+            Triple(Locale.SIMPLIFIED_CHINESE, "已选中", "上一页"),
+            Triple(Locale.JAPANESE, "選択済み", "前のページ"),
+            Triple(Locale.ENGLISH, "Selected", "Previous page"),
+        )
+        val active = mutableStateOf(locales.first())
+        composeRule.setContent {
+            val context = localizedTargetContext(active.value.first)
+            CompositionLocalProvider(
+                LocalContext provides context,
+                LocalConfiguration provides context.resources.configuration,
+            ) {
+                LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                    Column {
+                        LedgerChoiceRow(
+                            title = "Locale fixture",
+                            selected = true,
+                            onClick = {},
+                            modifier = Modifier.testTag(SELECTION_TAG),
+                        )
+                        AccessibleDataTable(
+                            AccessibleTableUiModel("Fixture", listOf("Key"), listOf(listOf("Value"))),
+                            pageIndex = 0,
+                            pageCount = 2,
+                            onPreviousPage = {},
+                            onNextPage = {},
+                        )
+                    }
+                }
+            }
+        }
+        locales.forEach { localeCase ->
+            composeRule.runOnIdle { active.value = localeCase }
+            composeRule.waitForIdle()
+            val state = composeRule.onNodeWithTag(SELECTION_TAG).fetchSemanticsNode()
+                .config[SemanticsProperties.StateDescription]
+            assertEquals(localeCase.second, state)
+            composeRule.onNodeWithText(localeCase.third).assertExists()
+        }
+    }
+
+    @Test
+    fun scaffoldTraversalOrderPlacesFieldsThenFixedSaveBeforeBottomNavigation() {
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                LedgerScaffold(
+                    topBar = { LedgerTopAppBar("Editor", LedgerTopAppBarVariant.TOP_LEVEL) },
+                    bottomBar = { LedgerNavigationBar(LedgerTopLevel.RECORD, {}) },
+                    fixedAction = { LedgerSaveFab({}) },
+                    formContent = true,
+                ) { LedgerTextField("", {}, "Amount") }
+            }
+        }
+        val top = traversalIndex(LedgerTestTags.TOP_APP_BAR)
+        val content = traversalIndex(LedgerTestTags.CONTENT)
+        val save = traversalIndex(LedgerTestTags.FIXED_ACTION)
+        val navigation = traversalIndex(LedgerTestTags.BOTTOM_NAVIGATION)
+        assertTrue(top < content)
+        assertTrue(content < save)
+        assertTrue(save < navigation)
+    }
+
+    @Test
+    fun transactionMeaningAndAccessibleTextSurviveGrayscaleRendering() {
+        val accessible = "Expense, Food, lunch, negative 12 Japanese yen"
+        composeRule.setContent {
+            CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides Density(1f, 1f)) {
+                LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                    Box(Modifier.size(320.dp, 120.dp).testTag(GRAYSCALE_TAG)) {
+                        JournalTransactionRow(
+                            JournalTransactionUiModel(
+                                stableKey = "fictional_transaction",
+                                categoryOrType = "Food",
+                                summary = "Lunch",
+                                accountAndCard = "Wallet",
+                                amount = MoneyUiModel(
+                                    formatted = "−¥12",
+                                    fullAccessibleText = "negative 12 Japanese yen",
+                                    semantic = AmountSemantic.OUTFLOW,
+                                    visibility = AmountVisibility.VISIBLE,
+                                ),
+                                typeLabel = "Expense",
+                                icon = LedgerIcon.RECORD,
+                                badges = listOf("Receipt"),
+                                accessibleText = accessible,
+                            ),
+                            onClick = {},
+                            onLongClick = {},
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithContentDescription(accessible).assertExists()
+        val bitmap = composeRule.onNodeWithTag(GRAYSCALE_TAG).captureToImage().asAndroidBitmap()
+        val grayLevels = buildSet {
+            for (y in 0 until bitmap.height step 4) {
+                for (x in 0 until bitmap.width step 4) {
+                    val pixel = bitmap.getPixel(x, y)
+                    add((Color.red(pixel) * 299 + Color.green(pixel) * 587 + Color.blue(pixel) * 114) / 1_000)
+                }
+            }
+        }
+        assertTrue("grayscale rendering lost structural contrast", grayLevels.size >= 8)
+    }
+
+    private fun traversalIndex(tag: String): Float = composeRule.onNodeWithTag(tag)
+        .fetchSemanticsNode().config[SemanticsProperties.TraversalIndex]
 
     private fun comparePixels(expected: android.graphics.Bitmap, actual: android.graphics.Bitmap): PixelComparison {
         var changed = 0
@@ -275,6 +420,16 @@ class DesignSystemDeviceTest {
         val firstDifference: String,
     )
 
+    private data class ColorBoundary(
+        val positive: Int,
+        val warning: Int,
+        val danger: Int,
+        val info: Int,
+        val neutral: Int,
+        val categories: List<Pair<Int, Int>>,
+        val chart: List<Int>,
+    )
+
     private companion object {
         const val GOLDEN_TAG = "token_palette_golden"
         const val GOLDEN_ASSET = "goldens/p04_token_palette.png"
@@ -282,5 +437,7 @@ class DesignSystemDeviceTest {
         const val MATRIX_ROOT_TAG = "matrix_root"
         const val HIGH_RISK_TAG = "high_risk_confirmation"
         const val TABLE_TAG = "data_table_matrix"
+        const val SELECTION_TAG = "localized_selection_state"
+        const val GRAYSCALE_TAG = "grayscale_transaction"
     }
 }

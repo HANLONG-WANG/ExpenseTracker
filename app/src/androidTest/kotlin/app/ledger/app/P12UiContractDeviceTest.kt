@@ -2,15 +2,18 @@ package app.ledger.app
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.os.LocaleList
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -54,6 +57,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.nio.ByteBuffer
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDate
 import java.util.Locale
@@ -149,6 +154,40 @@ class P12UiContractDeviceTest {
             composeRule.waitForIdle()
             composeRule.onNodeWithText(case.second).assertExists()
         }
+    }
+
+    @Test
+    fun accountHomeGoldenMatchesTokenAndYamlDerivedPixels() {
+        composeRule.setContent {
+            CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides Density(1f, 1f)) {
+                LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                    Box(Modifier.size(360.dp, 720.dp).testTag(ACCOUNT_GOLDEN_TAG)) {
+                        AccountsDestination(
+                            screenId = "ACC-001",
+                            encodedArguments = emptyMap(),
+                            dataState = AccountsDataState.Content(representativeSnapshot()),
+                            actions = accountActions,
+                            selectedAccountType = UserAccountType.BANK,
+                            pending = false,
+                            stateOverride = AccountsRequiredState.ACC_001_CONTENT,
+                        )
+                    }
+                }
+            }
+        }
+        val digest = composeRule.onNodeWithTag(ACCOUNT_GOLDEN_TAG).captureToImage().asAndroidBitmap().pixelSha256()
+        println("P34_GOLDEN_ACC_001=$digest")
+        assertEquals(ACCOUNT_GOLDEN_SHA256, digest)
+    }
+
+    private fun Bitmap.pixelSha256(): String {
+        val pixels = IntArray(width * height)
+        getPixels(pixels, 0, width, 0, 0, width, height)
+        val buffer = ByteBuffer.allocate(Int.SIZE_BYTES * (pixels.size + 2))
+        buffer.putInt(width)
+        buffer.putInt(height)
+        pixels.forEach(buffer::putInt)
+        return MessageDigest.getInstance("SHA-256").digest(buffer.array()).joinToString("") { "%02x".format(it) }
     }
 
     @androidx.compose.runtime.Composable
@@ -294,5 +333,7 @@ class P12UiContractDeviceTest {
         val FOURTH_ID: StableId = StableId.fromUuid(UUID(0x12, 4))
         const val STATE_HOST_TAG = "p12_contract_state_host"
         const val MATRIX_TAG = "p12_layout_matrix"
+        const val ACCOUNT_GOLDEN_TAG = "p34_account_home_golden"
+        const val ACCOUNT_GOLDEN_SHA256 = "d335201e139a3632b4eb5777addf1eafdae5d78286b6501718251804ac9ffc93"
     }
 }

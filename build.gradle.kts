@@ -1781,6 +1781,165 @@ tasks.register("p33Artifacts") {
     dependsOn("p02Artifacts")
 }
 
+val validateP34UiClosure by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P34 closure of all 215 screens, 646 states, three locales, adaptive UI and accessibility governance."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p34_ui_closure.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        fileTree("scripts") { include("**/*.py") },
+        fileTree("app/src") { include("**/*") },
+        fileTree("analytics") { include("**/src/**/*") },
+        fileTree("core") { include("**/src/**/*") },
+        fileTree("feature") { include("**/src/**/*") },
+        fileTree("finance") { include("**/src/**/*") },
+        fileTree("transfer") { include("**/src/**/*") },
+        fileTree("widget/src") { include("**/*") },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+        "docs/UI设计稿与实现契约_v1.0/UI需求追踪矩阵_v1.csv",
+    )
+}
+
+val validateP34UiClosureFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P34 gate rejects screen, state, locale, format, accessibility, adaptation and component-governance drift."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p34_ui_closure_contracts", "-v")
+    environment("PYTHONDWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p34_ui_closure.py",
+        "scripts/tests/test_p34_ui_closure_contracts.py",
+        fileTree("app/src") { include("**/*") },
+        fileTree("core/designsystem/src") { include("**/*") },
+        fileTree("feature") { include("**/src/**/*") },
+        fileTree("finance/data/src") { include("**/*") },
+        fileTree("widget/src") { include("**/*") },
+    )
+}
+
+tasks.register("p34Check") {
+    group = "verification"
+    description = "Runs P34 whole-product static, JVM, lint, resource and architecture evidence; API 36 device suites run via p34DeviceCheck."
+    dependsOn(
+        validateP34UiClosure,
+        validateP34UiClosureFixtures,
+        validateP02Specs,
+        "verifyArchitecture",
+        "verifySourcePolicies",
+        "spotlessCheck",
+        "detekt",
+        ":app:testDebugUnitTest",
+        ":core:designsystem:testDebugUnitTest",
+        ":feature:accounts:testDebugUnitTest",
+        ":feature:analysis:testDebugUnitTest",
+        ":feature:automation:testDebugUnitTest",
+        ":feature:journal:testDebugUnitTest",
+        ":feature:liabilities:testDebugUnitTest",
+        ":feature:onboarding:testDebugUnitTest",
+        ":feature:planning:testDebugUnitTest",
+        ":feature:record:testDebugUnitTest",
+        ":feature:settings:testDebugUnitTest",
+        ":feature:settlement:testDebugUnitTest",
+        ":feature:transfer:testDebugUnitTest",
+        ":feature:vault:testDebugUnitTest",
+        ":widget:testDebugUnitTest",
+        ":app:lintDebug",
+        ":core:designsystem:lintDebug",
+        ":feature:accounts:lintDebug",
+        ":feature:analysis:lintDebug",
+        ":feature:automation:lintDebug",
+        ":feature:journal:lintDebug",
+        ":feature:liabilities:lintDebug",
+        ":feature:onboarding:lintDebug",
+        ":feature:planning:lintDebug",
+        ":feature:record:lintDebug",
+        ":feature:settings:lintDebug",
+        ":feature:settlement:lintDebug",
+        ":feature:transfer:lintDebug",
+        ":feature:vault:lintDebug",
+        ":widget:lintDebug",
+        gradle.includedBuild("build-logic").task(":test"),
+    )
+}
+
+val prepareP34TalkBackService by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Enables the installed TalkBack service before the P34 instrumentation process starts."
+    commandLine(
+        "adb",
+        "shell",
+        "settings",
+        "put",
+        "secure",
+        "enabled_accessibility_services",
+        "com.google.android.marvin.talkback/.TalkBackService",
+    )
+}
+
+val prepareP34Accessibility by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Enables Android accessibility for the prepared P34 TalkBack service."
+    dependsOn(prepareP34TalkBackService)
+    commandLine("adb", "shell", "settings", "put", "secure", "accessibility_enabled", "1")
+}
+
+val restoreP34TalkBackService by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Removes the P34 TalkBack service setting from the dedicated test device."
+    commandLine("adb", "shell", "settings", "delete", "secure", "enabled_accessibility_services")
+}
+
+val restoreP34Accessibility by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Restores disabled accessibility on the dedicated P34 test device."
+    mustRunAfter(restoreP34TalkBackService)
+    commandLine("adb", "shell", "settings", "put", "secure", "accessibility_enabled", "0")
+}
+
+tasks.register("p34DeviceCheck") {
+    group = "verification"
+    description = "Runs every repository API 36 Android instrumentation suite required for P34 whole-product UI closure."
+    dependsOn(
+        prepareP34Accessibility,
+        ":app:connectedDebugAndroidTest",
+        ":analytics:data:connectedDebugAndroidTest",
+        ":core:database:connectedDebugAndroidTest",
+        ":core:designsystem:connectedDebugAndroidTest",
+        ":core:files:connectedDebugAndroidTest",
+        ":core:geo:connectedDebugAndroidTest",
+        ":core:security:connectedDebugAndroidTest",
+        ":core:telemetry:connectedDebugAndroidTest",
+        ":feature:analysis:connectedDebugAndroidTest",
+        ":feature:automation:connectedDebugAndroidTest",
+        ":feature:journal:connectedDebugAndroidTest",
+        ":feature:liabilities:connectedDebugAndroidTest",
+        ":feature:planning:connectedDebugAndroidTest",
+        ":feature:record:connectedDebugAndroidTest",
+        ":feature:settings:connectedDebugAndroidTest",
+        ":feature:settlement:connectedDebugAndroidTest",
+        ":feature:transfer:connectedDebugAndroidTest",
+        ":feature:vault:connectedDebugAndroidTest",
+        ":finance:data:connectedDebugAndroidTest",
+        ":transfer:data:connectedDebugAndroidTest",
+        ":widget:connectedDebugAndroidTest",
+    )
+    finalizedBy(restoreP34TalkBackService, restoreP34Accessibility)
+}
+
+project(":app").tasks.configureEach {
+    if (name == "connectedDebugAndroidTest") {
+        mustRunAfter(prepareP34Accessibility)
+    }
+}
+
+tasks.register("p34Artifacts") {
+    group = "verification"
+    description = "Generates P34 whole-product coverage and inherited SBOM/license artifacts."
+    dependsOn("p02Artifacts")
+}
+
 tasks.register<Exec>("generateLicenseReport") {
     group = "reporting"
     description = "Generates auditable CSV and HTML OSS inventories from the aggregate CycloneDX SBOM."
