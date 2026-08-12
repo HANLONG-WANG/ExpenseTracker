@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import java.security.MessageDigest
 
 internal object LedgerSchemaDefinition {
-    const val PRIMARY_VERSION: Int = 3
+    const val PRIMARY_VERSION: Int = 4
     const val STAGING_VERSION: Int = 1
 
     internal val primaryV1Assets: List<String> = listOf(
@@ -21,8 +21,12 @@ internal object LedgerSchemaDefinition {
         "ledger_schema_v2_analytics_configuration.sql",
     )
 
-    val primaryAssets: List<String> = primaryV2Assets + listOf(
+    private val primaryV3Assets: List<String> = primaryV2Assets + listOf(
         "ledger_schema_v3_widget_snapshot.sql",
+    )
+
+    val primaryAssets: List<String> = primaryV3Assets + listOf(
+        "ledger_schema_v4_projection_generation.sql",
     )
 
     val stagingAssets: List<String> = listOf("import_staging_schema_v1.sql")
@@ -126,6 +130,23 @@ internal object LedgerSchemaDefinition {
         database.execSQL("DELETE FROM widget_book_snapshot")
         database.execSQL(
             "UPDATE _room_schema_registry SET logicalSchemaVersion=?, contractSha256=? WHERE id=1",
+            arrayOf<Any>(PRIMARY_V3_VERSION, primaryV3ContractSha256(context)),
+        )
+    }
+
+    fun migratePrimaryV3ToV4(context: Context, database: SupportSQLiteDatabase) {
+        SchemaSqlAssets.install(context, database, listOf("ledger_schema_v4_projection_generation.sql"))
+        database.execSQL(
+            "INSERT INTO projection_family_state(family,as_of_local_revision,as_of_valuation_revision) " +
+                "SELECT value,b.local_revision,b.valuation_revision FROM book b " +
+                "JOIN (SELECT 0 value UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL " +
+                "SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL " +
+                "SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL " +
+                "SELECT $LAST_PROJECTION_FAMILY_ID) " +
+                "WHERE b.id=1",
+        )
+        database.execSQL(
+            "UPDATE _room_schema_registry SET logicalSchemaVersion=?, contractSha256=? WHERE id=1",
             arrayOf<Any>(PRIMARY_VERSION, primaryContractSha256(context)),
         )
     }
@@ -135,6 +156,8 @@ internal object LedgerSchemaDefinition {
     internal fun primaryV1ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV1Assets)
 
     internal fun primaryV2ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV2Assets)
+
+    internal fun primaryV3ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV3Assets)
 
     internal fun primaryV1Statements(context: Context): List<String> = SchemaSqlAssets.statements(context, primaryV1Assets)
 
@@ -180,6 +203,9 @@ internal object LedgerSchemaDefinition {
         )
     }
 }
+
+private const val LAST_PROJECTION_FAMILY_ID = 14
+private const val PRIMARY_V3_VERSION = 3
 
 private object SchemaSqlAssets {
     fun install(context: Context, database: SupportSQLiteDatabase, assets: List<String>) {

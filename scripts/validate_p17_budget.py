@@ -127,7 +127,7 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     require_tokens(errors, projection, "rebuildable budget projection", (
         "rebuildBudget", "budget_usage_projection", "budget_rollover", "FROM budget_effect", "FROM budget_adjustment",
         "UPDATE budget_future_reservation SET as_of_local_revision=?", '"budget_future_reservation" to',
-        "ProjectionFamily.BUDGET", "as_of_local_revision", "Math.addExact", "Math.subtractExact",
+        "ProjectionChange.BudgetFromMonth", "publishProjectionGeneration", "as_of_local_revision", "Math.addExact", "Math.subtractExact",
     ))
     root = next((s for p, s in sources.items() if p.endswith("BudgetRootDestination.kt")), "")
     require_tokens(errors, root, "safe budget root", ("toBudgetYearMonthOrNull", 'encodedArguments["yearMonth"]', "BudgetDestination"))

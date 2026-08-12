@@ -106,7 +106,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
     private val currencies = JvmLegalTenderCurrencyCatalog.create()
 
     override suspend fun snapshot(bookId: StableId, transactionId: StableId?): DomainResult<OrdinaryTransactionEntrySnapshot> {
-        val references = when (val result = referenceDataPort.snapshot(bookId)) {
+        val references = when (val result = referenceDataPort.entrySnapshot(bookId)) {
             is DomainResult.Success -> result.value
             is DomainResult.Failure -> return result
         }
@@ -504,10 +504,11 @@ public class SecureRoomOrdinaryTransactionEntryPort(
     }
 
     private fun recentDefaults(db: SupportSQLiteDatabase): List<OrdinaryRecentDefaultView> = db.queryList(
-        "SELECT bt.kind,c.uid category_uid,ua.uid account_uid,pc.uid card_uid,tr.occurred_at FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id " +
-            "JOIN category c ON c.id=tr.category_id LEFT JOIN expense_revision_detail erd ON erd.revision_id=tr.id LEFT JOIN income_revision_detail ird ON ird.revision_id=tr.id " +
-            "LEFT JOIN user_account ua ON ua.id=COALESCE(erd.payer_account_id,ird.receiving_account_id) LEFT JOIN payment_card pc ON pc.id=erd.payer_card_id " +
-            "WHERE bt.lifecycle_state=0 AND bt.kind IN (0,1) ORDER BY tr.occurred_at DESC LIMIT 50",
+        "SELECT recent.kind,c.uid category_uid,ua.uid account_uid,pc.uid card_uid,recent.occurred_at FROM (" +
+            "SELECT kind,category_id,primary_account_id,card_id,occurred_at,transaction_id FROM current_transaction_projection INDEXED BY ix_current_transaction_keyset " +
+            "WHERE state=0 AND kind IN (0,1) ORDER BY occurred_at DESC,transaction_id DESC LIMIT 50" +
+            ") recent JOIN category c ON c.id=recent.category_id LEFT JOIN user_account ua ON ua.id=recent.primary_account_id " +
+            "LEFT JOIN payment_card pc ON pc.id=recent.card_id ORDER BY recent.occurred_at DESC,recent.transaction_id DESC",
     ) {
         OrdinaryRecentDefaultView(if (it.getInt(0) == 0) OrdinaryDirection.EXPENSE else OrdinaryDirection.INCOME, it.stableId("category_uid"), it.nullableStableId("account_uid"), it.nullableStableId("card_uid"), it.getLong(4).toStoredInstant())
     }

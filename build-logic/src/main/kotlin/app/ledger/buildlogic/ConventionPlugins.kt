@@ -117,6 +117,12 @@ private fun LibraryExtension.configureLibraryManagedDevices(includeMinSdk: Boole
 }
 
 private fun TestExtension.configureManagedDevices() {
+    testOptions.managedDevices.localDevices.create("pixel2Api28") {
+        device = "Pixel 2"
+        apiLevel = MIN_SDK
+        systemImageSource = "google"
+        testedAbi = "x86"
+    }
     testOptions.managedDevices.localDevices.create("pixel6Api34") {
         device = "Pixel 6"
         apiLevel = REPRESENTATIVE_API
@@ -191,7 +197,15 @@ private val DEVICE_TEST_LIBRARY_PATHS = setOf(
     ":widget",
 )
 
-private val MIN_SDK_DEVICE_TEST_LIBRARY_PATHS = setOf(":transfer:data", ":widget")
+private val MIN_SDK_DEVICE_TEST_LIBRARY_PATHS = setOf(
+    ":analytics:data",
+    ":core:database",
+    ":core:files",
+    ":core:security",
+    ":finance:data",
+    ":transfer:data",
+    ":widget",
+)
 
 class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
@@ -505,6 +519,7 @@ abstract class VerifyArchitectureTask : DefaultTask() {
                     ":core:security",
                     ":core:time",
                     ":core:background",
+                    ":core:database",
                     ":core:files",
                     ":core:geo",
                     ":core:telemetry",

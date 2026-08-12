@@ -112,6 +112,10 @@ def is_production_source(path: Path) -> bool:
     relative = path.relative_to(ROOT)
     if any(part in {".git", ".gradle", ".kotlin", "build", "docs", "quality"} for part in relative.parts):
         return False
+    # Baseline Profiles are generated ART method/class rules. Dependency symbols such as
+    # NotImplementedError and Material placeholder APIs are data, not production source.
+    if path.name == "baseline-prof.txt":
+        return False
     return any(
         relative.parts[index : index + 2] == ("src", "main")
         for index in range(len(relative.parts) - 1)

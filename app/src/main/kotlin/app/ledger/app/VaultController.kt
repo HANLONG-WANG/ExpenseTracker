@@ -9,7 +9,6 @@ import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.security.AndroidKeystoreKeys
 import app.ledger.core.security.BiometricErrorCode
-import app.ledger.core.security.DeviceSecurityCapability
 import app.ledger.core.security.OneShotVaultEditor
 import app.ledger.core.security.SecretBytes
 import app.ledger.core.security.SecurityEnvelopeStore
@@ -87,7 +86,7 @@ internal class VaultController(
         cards = sourceCards.associate { card ->
             card.id to VaultCardSummary(card.id, card.displayName, card.lastFour, hasSecret = false)
         }
-        if (keystore.deviceSecurityCapability() == DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL) {
+        if (!keystore.vaultAuthenticationAvailable()) {
             mutableState.value = VaultPresentationState(
                 "VLT-001",
                 VaultRequiredState.VLT_001_DEVICE_SECURITY_MISSING,
@@ -138,7 +137,7 @@ internal class VaultController(
             "VLT-001" -> mutableState.value = VaultPresentationState(
                 "VLT-001",
                 when {
-                    keystore.deviceSecurityCapability() == DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL ->
+                    !keystore.vaultAuthenticationAvailable() ->
                         VaultRequiredState.VLT_001_DEVICE_SECURITY_MISSING
                     cards.isEmpty() -> VaultRequiredState.VLT_001_EMPTY
                     else -> VaultRequiredState.VLT_001_LOCKED

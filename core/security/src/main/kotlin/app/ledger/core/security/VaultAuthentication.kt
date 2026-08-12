@@ -1,5 +1,7 @@
 package app.ledger.core.security
 
+import android.os.Build
+import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.fragment.app.FragmentActivity
 import app.ledger.core.common.StableId
@@ -108,6 +110,7 @@ class VaultKeyHierarchy(
 
     fun beginProvisioning(bookId: StableId): VaultProvisioningRequest {
         check(envelopeStore.readVaultDek(bookId) == null) { "vault is already provisioned" }
+        if (!keystore.vaultAuthenticationAvailable()) throw SecurityException.DeviceSecurityUnavailable()
         val suffix = SecurityEnvelopeStore.aliasSuffix(bookId)
         keystore.ensureVaultAuthenticationKek(suffix)
         val associatedData = SecurityAssociatedData.keyEnvelope(bookId, KeyMaterialPurpose.VAULT_DEK)
@@ -129,6 +132,7 @@ class VaultKeyHierarchy(
 
     fun beginRestore(bookId: StableId, recoveredVaultDek: SecretBytes): VaultProvisioningRequest {
         check(envelopeStore.readVaultDek(bookId) == null) { "vault is already provisioned" }
+        if (!keystore.vaultAuthenticationAvailable()) throw SecurityException.DeviceSecurityUnavailable()
         val suffix = SecurityEnvelopeStore.aliasSuffix(bookId)
         keystore.ensureVaultAuthenticationKek(suffix)
         val associatedData = SecurityAssociatedData.keyEnvelope(bookId, KeyMaterialPurpose.VAULT_DEK)
@@ -182,7 +186,7 @@ class VaultKeyHierarchy(
     }
 
     private fun beginUnwrap(bookId: StableId): VaultUnwrapParts {
-        if (keystore.deviceSecurityCapability() == DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL) {
+        if (!keystore.vaultAuthenticationAvailable()) {
             throw SecurityException.DeviceSecurityUnavailable()
         }
         val suffix = SecurityEnvelopeStore.aliasSuffix(bookId)
@@ -527,6 +531,7 @@ class AndroidBiometricPromptGateway(
     activity: FragmentActivity,
     executor: Executor,
 ) {
+    private val cancelText = activity.getString(android.R.string.cancel)
     private var callback: ((BiometricAuthenticationResult) -> Unit)? = null
     private val prompt = BiometricPrompt(
         activity,
@@ -562,12 +567,22 @@ class AndroidBiometricPromptGateway(
     ) {
         check(callback == null) { "an authentication request is already active" }
         callback = result
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
             .setTitle(text.title)
             .setSubtitle(text.subtitle)
-            .setAllowedAuthenticators(AndroidKeystoreKeys.VAULT_AUTHENTICATORS)
             .setConfirmationRequired(true)
-            .build()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            promptInfoBuilder.setAllowedAuthenticators(AndroidKeystoreKeys.VAULT_AUTHENTICATORS)
+        } else {
+            // AndroidX rejects BIOMETRIC_STRONG | DEVICE_CREDENTIAL with a CryptoObject before
+            // API 30. The pre-R one-use Keystore key is biometric-bound, so keep the operation
+            // fail-closed and expose credential cancellation separately instead of creating a
+            // reusable authentication-validity window.
+            promptInfoBuilder
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .setNegativeButtonText(cancelText)
+        }
+        val promptInfo = promptInfoBuilder.build()
         prompt.authenticate(promptInfo, cryptoObject)
     }
 

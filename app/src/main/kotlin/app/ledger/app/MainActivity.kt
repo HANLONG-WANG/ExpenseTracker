@@ -26,6 +26,7 @@ class MainActivity : FragmentActivity() {
     private lateinit var vaultPrompt: BiometricPrompt
     private lateinit var sensitiveSettingsPrompt: BiometricPrompt
     private lateinit var privacy: app.ledger.core.security.AndroidScreenPrivacyController
+    private lateinit var jankMonitor: app.ledger.core.designsystem.LedgerJankMonitor
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.notificationPermissionResult(it)
     }
@@ -181,6 +182,7 @@ class MainActivity : FragmentActivity() {
             }
         }
         setContent { LedgerAppRoot(viewModel) }
+        jankMonitor = app.ledger.core.designsystem.LedgerJankMonitor.attach(window)
         viewModel.handleDeepLink(intent?.data)
     }
 
@@ -202,15 +204,17 @@ class MainActivity : FragmentActivity() {
         super.onStop()
     }
 
+    override fun onDestroy() {
+        jankMonitor.close()
+        super.onDestroy()
+    }
+
     private fun authenticateApplicationUi() {
-        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
-            BiometricManager.Authenticators.DEVICE_CREDENTIAL
         prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle(getString(R.string.global_locked_title))
-                .setSubtitle(getString(R.string.global_locked_message))
-                .setAllowedAuthenticators(authenticators)
-                .build(),
+            nonCryptoPromptInfo(
+                getString(R.string.global_locked_title),
+                getString(R.string.global_locked_message),
+            ),
         )
     }
 
@@ -234,14 +238,11 @@ class MainActivity : FragmentActivity() {
             VaultAuthenticationPurpose.EDIT_VAULT -> getString(app.ledger.feature.vault.R.string.vault_edit)
         }
         vaultPrompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle(title)
-                .setSubtitle(getString(app.ledger.feature.vault.R.string.vault_security_banner))
-                .setAllowedAuthenticators(
-                    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
-                )
-                .setConfirmationRequired(true)
-                .build(),
+            cryptoPromptInfo(
+                title,
+                getString(app.ledger.feature.vault.R.string.vault_security_banner),
+                getString(android.R.string.cancel),
+            ),
             request.cryptoObject,
         )
     }
@@ -253,29 +254,52 @@ class MainActivity : FragmentActivity() {
             SensitiveSettingsAuthenticationPurpose.DELETE_CLOUD -> getString(app.ledger.feature.transfer.R.string.clear_cloud_title)
         }
         sensitiveSettingsPrompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle(title)
-                .setAllowedAuthenticators(
-                    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
-                )
-                .setConfirmationRequired(true)
-                .build(),
+            nonCryptoPromptInfo(title, null),
         )
     }
+}
 
-    private fun vaultError(errorCode: Int): app.ledger.core.security.BiometricErrorCode = when (errorCode) {
-        BiometricPrompt.ERROR_CANCELED,
-        BiometricPrompt.ERROR_USER_CANCELED,
-        BiometricPrompt.ERROR_NEGATIVE_BUTTON,
-        -> app.ledger.core.security.BiometricErrorCode.CANCELLED
-        BiometricPrompt.ERROR_LOCKOUT,
-        BiometricPrompt.ERROR_LOCKOUT_PERMANENT,
-        -> app.ledger.core.security.BiometricErrorCode.LOCKED_OUT
-        BiometricPrompt.ERROR_NO_BIOMETRICS -> app.ledger.core.security.BiometricErrorCode.DEVICE_SECURITY_CHANGED
-        BiometricPrompt.ERROR_HW_NOT_PRESENT,
-        BiometricPrompt.ERROR_HW_UNAVAILABLE,
-        BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL,
-        -> app.ledger.core.security.BiometricErrorCode.UNAVAILABLE
-        else -> app.ledger.core.security.BiometricErrorCode.UNKNOWN
+private fun cryptoPromptInfo(title: String, subtitle: String?, cancelText: String): BiometricPrompt.PromptInfo {
+    val builder = BiometricPrompt.PromptInfo.Builder()
+        .setTitle(title)
+        .setSubtitle(subtitle)
+        .setConfirmationRequired(true)
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        builder.setAllowedAuthenticators(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+        ).build()
+    } else {
+        builder
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+            .setNegativeButtonText(cancelText)
+            .build()
     }
+}
+
+@Suppress("DEPRECATION")
+private fun nonCryptoPromptInfo(title: String, subtitle: String?): BiometricPrompt.PromptInfo {
+    val builder = BiometricPrompt.PromptInfo.Builder().setTitle(title).setSubtitle(subtitle).setConfirmationRequired(true)
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        builder.setAllowedAuthenticators(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+        ).build()
+    } else {
+        builder.setDeviceCredentialAllowed(true).build()
+    }
+}
+
+private fun vaultError(errorCode: Int): app.ledger.core.security.BiometricErrorCode = when (errorCode) {
+    BiometricPrompt.ERROR_CANCELED,
+    BiometricPrompt.ERROR_USER_CANCELED,
+    BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+    -> app.ledger.core.security.BiometricErrorCode.CANCELLED
+    BiometricPrompt.ERROR_LOCKOUT,
+    BiometricPrompt.ERROR_LOCKOUT_PERMANENT,
+    -> app.ledger.core.security.BiometricErrorCode.LOCKED_OUT
+    BiometricPrompt.ERROR_NO_BIOMETRICS -> app.ledger.core.security.BiometricErrorCode.DEVICE_SECURITY_CHANGED
+    BiometricPrompt.ERROR_HW_NOT_PRESENT,
+    BiometricPrompt.ERROR_HW_UNAVAILABLE,
+    BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL,
+    -> app.ledger.core.security.BiometricErrorCode.UNAVAILABLE
+    else -> app.ledger.core.security.BiometricErrorCode.UNKNOWN
 }

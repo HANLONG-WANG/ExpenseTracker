@@ -267,8 +267,8 @@ class SecureRoomProjectGoalApplicationPort(
     private fun readSnapshot(db: SupportSQLiteDatabase, bookId: StableId): ProjectGoalSnapshot {
         val book = RoomBookRepository.mapCurrent(db)
         if (book.id.value != bookId) abort(FinanceDataError.CorruptData)
-        val stale = count(db, "SELECT COUNT(*) FROM project_usage_projection WHERE as_of_local_revision<>?", book.localRevision.value) > 0L ||
-            count(db, "SELECT COUNT(*) FROM goal_balance_projection WHERE as_of_local_revision<>?", book.localRevision.value) > 0L
+        val stale = !db.isProjectionFamilyCurrent(app.ledger.finance.application.ProjectionFamily.PROJECT, book.localRevision) ||
+            !db.isProjectionFamilyCurrent(app.ledger.finance.application.ProjectionFamily.GOAL, book.localRevision)
         if (stale) {
             return ProjectGoalSnapshot(bookId, book.baseCurrency, book.localRevision, PlanningProjectionReadiness.FAILED, emptyList(), emptyList(), emptyList())
         }
@@ -485,8 +485,6 @@ class SecureRoomProjectGoalApplicationPort(
 
     private fun zeroHash() = app.ledger.finance.domain.Hash256.fromBytes(ByteArray(HASH_SIZE_BYTES)).valueOrAbort()
     private fun currency(code: String): CurrencyCode = CurrencyCode.parse(code).valueOrAbort()
-    private fun count(db: SupportSQLiteDatabase, sql: String, vararg args: Any?): Long = db.queryOne(sql, args) { it.getLong(0) } ?: 0L
-
     private data class StoredGoal(val goal: Goal, val zoneId: ZoneId, val balanceMinor: Long)
     private data class GoalDelta(val date: LocalDate, val kind: GoalEffectKind, val polarity: EffectPolarity, val amount: Long)
 }

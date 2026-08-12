@@ -103,8 +103,9 @@ class SecureRoomSettlementApplicationPort(
         database.readLedger { db ->
             val book = RoomBookRepository.mapCurrent(db)
             if (book.id.value != bookId) abort(FinanceDataError.CorruptData)
-            val stale = count(db, "SELECT COUNT(*) FROM settlement_position_projection WHERE as_of_local_revision<>?", book.localRevision.value)
-            if (stale != 0L) abort(FinanceDataError.ProjectionMismatch)
+            if (!db.isProjectionFamilyCurrent(app.ledger.finance.application.ProjectionFamily.SETTLEMENT, book.localRevision)) {
+                abort(FinanceDataError.ProjectionMismatch)
+            }
             val participants = participants(db)
             DomainResult.Success(
                 SettlementSnapshot(
@@ -112,7 +113,7 @@ class SecureRoomSettlementApplicationPort(
                     book.baseCurrency,
                     book.localRevision,
                     participants,
-                    activities(db, participants, book.localRevision),
+                    activities(db, participants),
                     accounts(db),
                     projects(db),
                 ),
@@ -372,7 +373,6 @@ class SecureRoomSettlementApplicationPort(
     private fun activities(
         db: SupportSQLiteDatabase,
         participants: List<SettlementParticipantView>,
-        revision: app.ledger.finance.domain.LocalRevision,
     ): List<SettlementActivityView> = db.queryList(
         "SELECT sa.uid,sa.name,sa.description,sa.settlement_currency,p.uid project_uid,sa.start_date,sa.end_date,sa.status,sa.requires_additional_settlement,bc.uid commit_uid FROM settlement_activity sa LEFT JOIN project p ON p.id=sa.project_id JOIN book_commit bc ON bc.id=sa.last_commit_id ORDER BY sa.status,sa.start_date DESC,sa.id",
     ) { row ->
@@ -381,7 +381,7 @@ class SecureRoomSettlementApplicationPort(
             "SELECT p.uid FROM settlement_activity_participant sap JOIN settlement_activity sa ON sa.id=sap.activity_id JOIN participant p ON p.id=sap.participant_id WHERE sa.uid=? AND sap.left_at IS NULL ORDER BY sap.sort_order,p.uid",
             arrayOf(id.bytes),
         ) { it.stableId("uid") }
-        val positions = positions(db, id, revision.value)
+        val positions = positions(db, id)
         val suggestions = SettlementSuggestionPolicy.suggest(
             positions.associate { ParticipantId(it.participantId) to it.netPositionMinor },
         ).valueOrAbort()
@@ -394,11 +394,10 @@ class SecureRoomSettlementApplicationPort(
         )
     }
 
-    private fun positions(db: SupportSQLiteDatabase, activityId: StableId, revision: Long): List<SettlementPositionView> = db.queryList(
-        "SELECT p.uid,spp.paid_minor,spp.owed_minor,spp.settled_paid_minor,spp.settled_received_minor,spp.net_position_minor,spp.as_of_local_revision FROM settlement_position_projection spp JOIN settlement_activity sa ON sa.id=spp.activity_id JOIN participant p ON p.id=spp.participant_id WHERE sa.uid=? ORDER BY p.is_self DESC,p.name,p.uid",
+    private fun positions(db: SupportSQLiteDatabase, activityId: StableId): List<SettlementPositionView> = db.queryList(
+        "SELECT p.uid,spp.paid_minor,spp.owed_minor,spp.settled_paid_minor,spp.settled_received_minor,spp.net_position_minor FROM settlement_position_projection spp JOIN settlement_activity sa ON sa.id=spp.activity_id JOIN participant p ON p.id=spp.participant_id WHERE sa.uid=? ORDER BY p.is_self DESC,p.name,p.uid",
         arrayOf(activityId.bytes),
     ) {
-        if (it.long("as_of_local_revision") != revision) abort(FinanceDataError.ProjectionMismatch)
         SettlementPositionView(it.stableId("uid"), it.long("paid_minor"), it.long("owed_minor"), it.long("settled_paid_minor"), it.long("settled_received_minor"), it.long("net_position_minor"))
     }
 
@@ -682,8 +681,6 @@ class SecureRoomSettlementApplicationPort(
     private fun zeroHash(): Hash256 = Hash256.fromBytes(ByteArray(32)).valueOrAbort()
     private fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
     private fun canonical(vararg values: String): ByteArray = values.joinToString("\u001f").toByteArray(Charsets.UTF_8)
-    private fun count(db: SupportSQLiteDatabase, sql: String, vararg args: Any?): Long = db.queryOne(sql, args) { it.getLong(0) } ?: 0L
-
     private data class BookRow(val uid: ByteArray, val headCommitId: Long, val localRevision: Long, val valuationRevision: Long, val state: Int)
     private data class ActivityCurrent(val id: Long, val lastCommitId: StableId, val status: Int, val requiresAdditional: Boolean)
     private data class ParticipantCurrent(val id: Long, val name: String, val isSelf: Boolean, val status: Int)

@@ -9,9 +9,11 @@ import app.ledger.core.common.DomainError
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.finance.application.FinanceDataError
+import app.ledger.finance.application.ProjectionFamily
 import app.ledger.finance.domain.BookCommitId
 import app.ledger.finance.domain.ContentHash
 import app.ledger.finance.domain.Hash256
+import app.ledger.finance.domain.LocalRevision
 import java.nio.ByteBuffer
 import java.time.Instant
 import java.time.LocalDate
@@ -109,6 +111,14 @@ internal fun SupportSQLiteDatabase.requireInternalId(table: String, uid: StableI
 internal fun SupportSQLiteDatabase.optionalInternalId(table: String, uid: StableId?): Long? = uid?.let { requireInternalId(table, it) }
 
 internal fun SupportSQLiteDatabase.commitId(uid: BookCommitId): Long = requireInternalId("book_commit", uid.value)
+
+internal fun SupportSQLiteDatabase.isProjectionFamilyCurrent(
+    family: ProjectionFamily,
+    revision: LocalRevision,
+): Boolean = queryOne(
+    "SELECT COUNT(*) FROM projection_family_state WHERE family=? AND as_of_local_revision=?",
+    arrayOf<Any>(family.ordinal, revision.value),
+) { it.getLong(0) } == 1L
 
 internal fun SupportSQLiteDatabase.commandReceipt(commandId: CommandId): StoredCommandReceipt? = queryOne(
     "SELECT cr.command_uid, cr.command_type, cr.payload_hash, bc.uid AS commit_uid, cr.primary_entity_uid, cr.executed_at " +

@@ -236,6 +236,12 @@ internal class CustomAnalyticsStore(
 
     fun forecast(db: SupportSQLiteDatabase, key: ForecastKey, today: LocalDate): DomainResult<ForecastResult> {
         val revision = db.localRevision() ?: return DomainResult.Failure(AnalyticsError.DatabaseUnavailable)
+        val budgetCurrent = db.query(
+            "SELECT COUNT(*) FROM projection_family_state WHERE family=? AND as_of_local_revision=? " +
+                "AND as_of_valuation_revision=(SELECT valuation_revision FROM book WHERE id=1)",
+            arrayOf<Any>(BUDGET_FAMILY, revision.value),
+        ).use { cursor -> cursor.moveToFirst() && cursor.getLong(0) == 1L }
+        if (!budgetCurrent) return DomainResult.Failure(AnalyticsError.StaleProjection)
         val through = today.withDayOfMonth(today.lengthOfMonth())
         val earliest = today.minusYears(HISTORICAL_YEARS.toLong()).withDayOfYear(1)
         val observations = db.query(
@@ -243,8 +249,8 @@ internal class CustomAnalyticsStore(
             arrayOf<Any?>(AnalyticsProjectionEngine.EXPENSE_METRIC, earliest.storageKey(), today.storageKey()),
         ).use { cursor -> buildList { while (cursor.moveToNext()) add(TimeSeriesPoint(cursor.getInt(0).date(), cursor.getLong(1))) } }
         val recurrence = db.query(
-            "SELECT occurrence_date,reserved_base_minor FROM budget_future_reservation WHERE occurrence_date>? AND occurrence_date<=? AND as_of_local_revision=? ORDER BY occurrence_date,recurrence_series_id",
-            arrayOf<Any?>(today.storageKey(), through.storageKey(), revision.value),
+            "SELECT occurrence_date,reserved_base_minor FROM budget_future_reservation WHERE occurrence_date>? AND occurrence_date<=? ORDER BY occurrence_date,recurrence_series_id",
+            arrayOf<Any?>(today.storageKey(), through.storageKey()),
         ).use { cursor ->
             buildMap {
                 while (cursor.moveToNext()) {
@@ -576,6 +582,7 @@ internal class CustomAnalyticsStore(
 
     private companion object {
         const val ALGORITHM_VERSION: Int = 1
+        const val BUDGET_FAMILY: Int = 4
         const val DEFAULT_LOOKBACK: Int = 12
         const val HISTORICAL_YEARS: Int = 5
     }

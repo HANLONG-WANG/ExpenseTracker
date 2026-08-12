@@ -155,7 +155,13 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         errors,
         projection,
         "refund projection rebuild",
-        ("refund_status_projection", "transaction_dependency", "FROM refund_allocation", "ProjectionFamily.REFUND"),
+        (
+            "refund_status_projection",
+            "transaction_dependency",
+            "FROM refund_allocation",
+            "ProjectionChange.Refund",
+            "publishProjectionGeneration",
+        ),
     )
     journal = next((s for p, s in sources.items() if p.endswith("SecureRoomJournalApplicationPort.kt")), "")
     require_tokens(

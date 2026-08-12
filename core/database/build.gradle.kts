@@ -4,7 +4,7 @@ plugins {
 }
 
 dependencies {
-    implementation(libs.room.runtime)
+    api(libs.room.runtime)
     implementation(libs.androidx.sqlite)
     implementation(libs.sqlcipher.android)
     ksp(libs.room.compiler)

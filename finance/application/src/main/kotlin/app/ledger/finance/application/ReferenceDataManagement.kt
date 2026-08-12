@@ -310,5 +310,8 @@ public data class ReferenceDataSnapshot(
 
 public interface ReferenceDataManagementPort {
     public suspend fun snapshot(bookId: StableId): DomainResult<ReferenceDataSnapshot>
+
+    /** Entry flows do not need history counts, checkpoints, goals, or account transaction rows. */
+    public suspend fun entrySnapshot(bookId: StableId): DomainResult<ReferenceDataSnapshot> = snapshot(bookId)
     public suspend fun mutate(command: ReferenceMutationCommand): DomainResult<Unit>
 }

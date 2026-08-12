@@ -7,9 +7,9 @@ import org.junit.jupiter.api.Test
 
 class MigrationContractTest {
     @Test
-    fun versionThreeRegistersEveryPredecessorWithoutDestructiveFallback() {
-        assertEquals(3, LedgerMigrations.CURRENT_VERSION)
-        assertEquals(listOf(1 to 2, 2 to 3), LedgerMigrations.contracts.map { it.fromVersion to it.toVersion })
+    fun versionFourRegistersEveryPredecessorWithoutDestructiveFallback() {
+        assertEquals(4, LedgerMigrations.CURRENT_VERSION)
+        assertEquals(listOf(1 to 2, 2 to 3, 3 to 4), LedgerMigrations.contracts.map { it.fromVersion to it.toVersion })
         assertEquals(
             listOf(MigrationPhase.EXPAND, MigrationPhase.BACKFILL, MigrationPhase.SWITCH),
             LedgerMigrations.contracts.last().steps.map(MigrationStep::phase),

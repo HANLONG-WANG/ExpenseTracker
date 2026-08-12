@@ -49,6 +49,11 @@ object LedgerMigrations {
                 LedgerSchemaDefinition.migratePrimaryV2ToV3(context, db)
             }
         },
+        object : Migration(PRIMARY_V3, PRIMARY_V4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                LedgerSchemaDefinition.migratePrimaryV3ToV4(context, db)
+            }
+        },
     )
 
     val contracts: List<MigrationContract> = listOf(
@@ -69,11 +74,21 @@ object LedgerMigrations {
                 MigrationStep(MigrationPhase.SWITCH, "register primary logical schema v3 contract"),
             ),
         ),
+        MigrationContract(
+            PRIMARY_V3,
+            PRIMARY_V4,
+            listOf(
+                MigrationStep(MigrationPhase.EXPAND, "add constant-size authoritative projection family generations"),
+                MigrationStep(MigrationPhase.BACKFILL, "seed every family from the existing book revisions"),
+                MigrationStep(MigrationPhase.SWITCH, "validate family generations instead of rewriting unchanged projection rows"),
+            ),
+        ),
     )
 
     private const val PRIMARY_V1: Int = 1
     private const val PRIMARY_V2: Int = 2
     private const val PRIMARY_V3: Int = 3
+    private const val PRIMARY_V4: Int = 4
 }
 
 object StagingMigrations {

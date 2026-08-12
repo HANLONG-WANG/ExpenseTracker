@@ -460,9 +460,16 @@ class SecureRoomAnalyticsApplicationPort(
         return AnalyticsIntegrityReport(checks, revision, analyticsAudit.liveHash, analyticsAudit.rebuiltHash)
     }
 
-    private fun projectionVersionErrors(connection: SupportSQLiteDatabase, revision: Long): Int = PROJECTION_TABLES.sumOf { table ->
-        (connection.singleLong("SELECT COUNT(*) FROM $table WHERE as_of_local_revision<>?", arrayOf(revision)) ?: 0L)
-            .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    private fun projectionVersionErrors(connection: SupportSQLiteDatabase, revision: Long): Int {
+        val invalid = connection.singleLong(
+            "SELECT COUNT(*) FROM projection_family_state WHERE as_of_local_revision<>? " +
+                "OR as_of_valuation_revision<>(SELECT valuation_revision FROM book WHERE id=1)",
+            arrayOf(revision),
+        ) ?: return PROJECTION_FAMILY_COUNT
+        val published = connection.singleLong("SELECT COUNT(*) FROM projection_family_state") ?: 0L
+        return (invalid + (PROJECTION_FAMILY_COUNT - published).coerceAtLeast(0L))
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
     }
 
     private fun check(key: IntegrityCheckKey, count: Long, code: String, warning: Boolean = false): IntegrityCheckResult = IntegrityCheckResult(
@@ -643,17 +650,11 @@ class SecureRoomAnalyticsApplicationPort(
     private companion object {
         const val MAX_DRILLDOWN_PAGE = 100
         const val MAX_DRILLDOWN_CONTEXTS = 128
+        const val PROJECTION_FAMILY_COUNT = 15
         val TRANSACTION_KINDS = listOf(
             "EXPENSE", "INCOME", "TRANSFER", "REFUND", "CREDIT_PAYMENT", "LOAN_DISBURSEMENT", "LOAN_PAYMENT",
             "BALANCE_ADJUSTMENT", "FX_EXCHANGE", "SETTLEMENT_PAYMENT", "OPENING_BALANCE",
         )
-        val PROJECTION_TABLES = listOf(
-            "current_transaction_projection", "account_balance_current", "account_balance_daily", "refund_status_projection",
-            "budget_usage_projection", "project_usage_projection", "goal_balance_projection", "credit_statement_projection",
-            "credit_account_projection", "installment_progress_projection", "loan_progress_projection",
-            "loan_future_cashflow_projection", "settlement_position_projection", "widget_book_snapshot", "widget_account_snapshot",
-            "widget_credit_snapshot", "widget_goal_snapshot",
-        ) + AnalyticsProjectionEngine.tables
         val DRILLDOWN_ENTITY_COLUMNS = mapOf(
             Dimension.CATEGORY to "c.uid",
             Dimension.MERCHANT to "m.uid",

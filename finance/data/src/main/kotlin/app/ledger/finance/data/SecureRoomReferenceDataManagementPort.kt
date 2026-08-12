@@ -96,7 +96,11 @@ public class SecureRoomReferenceDataManagementPort(
     private val financialSnapshotMapper = RoomReferenceFinancialSnapshotMapper()
 
     override suspend fun snapshot(bookId: StableId): DomainResult<ReferenceDataSnapshot> = withDatabase(bookId) { database ->
-        database.readLedger { connection -> readSnapshot(connection, bookId) }
+        database.readLedger { connection -> readSnapshot(connection, bookId, ReferenceSnapshotContent.FULL) }
+    }
+
+    override suspend fun entrySnapshot(bookId: StableId): DomainResult<ReferenceDataSnapshot> = withDatabase(bookId) { database ->
+        database.readLedger { connection -> readSnapshot(connection, bookId, ReferenceSnapshotContent.ENTRY) }
     }
 
     override suspend fun mutate(command: ReferenceMutationCommand): DomainResult<Unit> = withDatabase(command.ids.bookId) { database ->
@@ -296,7 +300,11 @@ public class SecureRoomReferenceDataManagementPort(
         }
     }
 
-    private fun readSnapshot(connection: SupportSQLiteDatabase, bookId: StableId): ReferenceDataSnapshot {
+    private fun readSnapshot(
+        connection: SupportSQLiteDatabase,
+        bookId: StableId,
+        content: ReferenceSnapshotContent,
+    ): ReferenceDataSnapshot {
         val book = requireBook(connection, bookId)
         val baseCurrency = CurrencyCode.parse(book.baseCurrency).valueOrAbort()
         val accounts = connection.queryList(
@@ -333,14 +341,15 @@ public class SecureRoomReferenceDataManagementPort(
                 currentValuationRate = cursor.nullableString("rate_decimal")?.toBigDecimal(),
             )
         }
-        val cards = readCards(connection)
-        val categories = readCategories(connection)
-        val merchants = readMerchants(connection)
-        val places = readPlaces(connection)
-        val locations = readLocations(connection)
-        val checkpoints = readCheckpoints(connection)
-        val accountTransactions = readAccountTransactions(connection)
-        val accountGoals = readAccountGoals(connection)
+        val includeHistoryMetadata = content == ReferenceSnapshotContent.FULL
+        val cards = readCards(connection, includeHistoryMetadata)
+        val categories = readCategories(connection, includeHistoryMetadata)
+        val merchants = readMerchants(connection, includeHistoryMetadata)
+        val places = readPlaces(connection, includeHistoryMetadata)
+        val locations = readLocations(connection, includeHistoryMetadata)
+        val checkpoints = if (includeHistoryMetadata) readCheckpoints(connection) else emptyList()
+        val accountTransactions = if (includeHistoryMetadata) readAccountTransactions(connection) else emptyList()
+        val accountGoals = if (includeHistoryMetadata) readAccountGoals(connection) else emptyList()
         val missingValuation = accounts.any { it.status == EntityStatus.ACTIVE && it.currency != baseCurrency && it.currentBaseValueMinor == null }
         val core = if (missingValuation) null else checkedNetPosition(accounts, baseCurrency)
         val settlement = connection.queryList(
@@ -370,11 +379,11 @@ public class SecureRoomReferenceDataManagementPort(
         )
     }
 
-    private fun readCards(connection: SupportSQLiteDatabase): List<CardReferenceView> = connection.queryList(
+    private fun readCards(connection: SupportSQLiteDatabase, includeHistoryMetadata: Boolean): List<CardReferenceView> = connection.queryList(
         """
         SELECT pc.uid, ua.uid account_uid, pc.card_type, pc.display_name, pc.last_four, pc.status,
           replacement.uid replacement_uid, pc.icon_key, pc.color_argb, pc.sort_order, pc.row_version,
-          (SELECT COUNT(*) FROM current_transaction_projection ctp WHERE ctp.card_id = pc.id) history_count
+          ${if (includeHistoryMetadata) "(SELECT COUNT(*) FROM current_transaction_projection ctp WHERE ctp.card_id = pc.id)" else "0"} history_count
         FROM payment_card pc JOIN user_account ua ON ua.id = pc.account_id
           LEFT JOIN payment_card replacement ON replacement.id = pc.replacement_of_card_id
         ORDER BY pc.sort_order, pc.id
@@ -396,13 +405,13 @@ public class SecureRoomReferenceDataManagementPort(
         )
     }
 
-    private fun readCategories(connection: SupportSQLiteDatabase): List<CategoryReferenceView> = connection.queryList(
+    private fun readCategories(connection: SupportSQLiteDatabase, includeHistoryMetadata: Boolean): List<CategoryReferenceView> = connection.queryList(
         """
         SELECT c.uid, c.direction, parent.uid parent_uid, c.depth, c.name, c.icon_key, c.color_argb, c.sort_order,
           c.status, c.statistical_nature, da.uid default_account_uid, dc.uid default_card_uid,
           dm.uid default_merchant_uid, c.row_version,
-          (SELECT COUNT(*) FROM transaction_revision tr WHERE tr.category_id = c.id) history_count,
-          (SELECT COUNT(*) FROM category child WHERE child.parent_id = c.id) child_count
+          ${if (includeHistoryMetadata) "(SELECT COUNT(*) FROM transaction_revision tr WHERE tr.category_id = c.id)" else "0"} history_count,
+          ${if (includeHistoryMetadata) "(SELECT COUNT(*) FROM category child WHERE child.parent_id = c.id)" else "0"} child_count
         FROM category c LEFT JOIN category parent ON parent.id = c.parent_id
           LEFT JOIN user_account da ON da.id = c.default_account_id LEFT JOIN payment_card dc ON dc.id = c.default_card_id
           LEFT JOIN merchant dm ON dm.id = c.default_merchant_id
@@ -429,40 +438,57 @@ public class SecureRoomReferenceDataManagementPort(
         )
     }
 
-    private fun readMerchants(connection: SupportSQLiteDatabase): List<MerchantReferenceView> = connection.queryList(
-        """
+    private fun readMerchants(connection: SupportSQLiteDatabase, includeHistoryMetadata: Boolean): List<MerchantReferenceView> {
+        val aliases = connection.queryList(
+            "SELECT m.uid,ma.alias FROM merchant_alias ma JOIN merchant m ON m.id=ma.merchant_id ORDER BY m.uid,ma.normalized_alias",
+        ) { it.stableId("uid") to it.getString(1) }.groupBy(Pair<StableId, String>::first, Pair<StableId, String>::second)
+        val historyJoins = if (includeHistoryMetadata) {
+            "LEFT JOIN (SELECT merchant_id,COUNT(*) transaction_count FROM current_transaction_projection " +
+                "WHERE merchant_id IS NOT NULL GROUP BY merchant_id) transaction_counts ON transaction_counts.merchant_id=m.id " +
+                "LEFT JOIN (SELECT merchant_id,COUNT(*) place_count FROM place WHERE merchant_id IS NOT NULL GROUP BY merchant_id) " +
+                "place_counts ON place_counts.merchant_id=m.id"
+        } else {
+            ""
+        }
+        return connection.queryList(
+            """
         SELECT m.uid, m.name, m.status, merged.uid merged_uid, m.row_version,
-          (SELECT COUNT(*) FROM current_transaction_projection ctp WHERE ctp.merchant_id = m.id) transaction_count,
-          (SELECT COUNT(*) FROM place p WHERE p.merchant_id = m.id) place_count
-        FROM merchant m LEFT JOIN merchant merged ON merged.id = m.merged_into_id ORDER BY m.name, m.id
-        """.trimIndent(),
-    ) { cursor ->
-        val id = cursor.stableId("uid")
-        MerchantReferenceView(
-            id,
-            cursor.getString(cursor.getColumnIndexOrThrow("name")),
-            connection.queryList("SELECT alias FROM merchant_alias WHERE merchant_id = (SELECT id FROM merchant WHERE uid = ?) ORDER BY normalized_alias", arrayOf(id.bytes)) { it.getString(0) },
-            EntityStatus.entries[cursor.getInt(cursor.getColumnIndexOrThrow("status"))],
-            cursor.nullableStableId("merged_uid"),
-            cursor.getLong(cursor.getColumnIndexOrThrow("row_version")),
-            cursor.getLong(cursor.getColumnIndexOrThrow("transaction_count")),
-            cursor.getLong(cursor.getColumnIndexOrThrow("place_count")),
-        )
+          ${if (includeHistoryMetadata) "COALESCE(transaction_counts.transaction_count,0)" else "0"} transaction_count,
+          ${if (includeHistoryMetadata) "COALESCE(place_counts.place_count,0)" else "0"} place_count
+        FROM merchant m LEFT JOIN merchant merged ON merged.id = m.merged_into_id $historyJoins ORDER BY m.name, m.id
+            """.trimIndent(),
+        ) { cursor ->
+            val id = cursor.stableId("uid")
+            MerchantReferenceView(
+                id,
+                cursor.getString(cursor.getColumnIndexOrThrow("name")),
+                aliases[id].orEmpty(),
+                EntityStatus.entries[cursor.getInt(cursor.getColumnIndexOrThrow("status"))],
+                cursor.nullableStableId("merged_uid"),
+                cursor.getLong(cursor.getColumnIndexOrThrow("row_version")),
+                cursor.getLong(cursor.getColumnIndexOrThrow("transaction_count")),
+                cursor.getLong(cursor.getColumnIndexOrThrow("place_count")),
+            )
+        }
     }
 
-    private fun readPlaces(connection: SupportSQLiteDatabase): List<PlaceReferenceView> = connection.queryList(
+    private fun readPlaces(connection: SupportSQLiteDatabase, includeHistoryMetadata: Boolean): List<PlaceReferenceView> = connection.queryList(
         """
         SELECT p.uid, p.name, p.center_lat_e7, p.center_lon_e7,
           COALESCE(resolved_merchant.uid, m.uid) merchant_uid, p.status,
           merged.uid merged_uid, p.row_version,
-          (
+          ${if (includeHistoryMetadata) {
+            """(
             WITH RECURSIVE place_descendant(id) AS (
               SELECT p.id
               UNION ALL
               SELECT child.id FROM place child JOIN place_descendant parent ON child.merged_into_id = parent.id
             )
             SELECT COUNT(*) FROM location_record lr WHERE lr.place_id IN (SELECT id FROM place_descendant)
-          ) location_count
+          )"""
+        } else {
+            "0"
+        }} location_count
         FROM place p LEFT JOIN merchant m ON m.id = p.merchant_id
           LEFT JOIN merchant resolved_merchant ON resolved_merchant.id = (
             WITH RECURSIVE merchant_chain(id, merged_into_id) AS (
@@ -513,48 +539,59 @@ public class SecureRoomReferenceDataManagementPort(
         )
     }
 
-    private fun readLocations(connection: SupportSQLiteDatabase): List<LocationReferenceView> = connection.queryList(
-        """
+    private fun readLocations(connection: SupportSQLiteDatabase, includeHistoryMetadata: Boolean): List<LocationReferenceView> {
+        val historyJoin = if (includeHistoryMetadata) {
+            "LEFT JOIN (SELECT tr.location_record_id,COUNT(*) current_transaction_count FROM current_transaction_projection ctp " +
+                "JOIN transaction_revision tr ON tr.id=ctp.current_revision_id WHERE tr.location_record_id IS NOT NULL " +
+                "GROUP BY tr.location_record_id) current_counts ON current_counts.location_record_id=lr.id"
+        } else {
+            ""
+        }
+        return connection.queryList(
+            """
         SELECT lr.uid, lr.lat_e7, lr.lon_e7, lr.captured_at, p.uid place_uid,
-          (SELECT COUNT(*) FROM current_transaction_projection ctp
-            JOIN transaction_revision tr ON tr.id = ctp.current_revision_id
-            WHERE tr.location_record_id = lr.id) current_transaction_count
-        FROM location_record lr LEFT JOIN place p ON p.id = lr.place_id
+          ${if (includeHistoryMetadata) "COALESCE(current_counts.current_transaction_count,0)" else "0"} current_transaction_count
+        FROM location_record lr LEFT JOIN place p ON p.id = lr.place_id $historyJoin
         ORDER BY lr.captured_at DESC, lr.id
-        """.trimIndent(),
-    ) { cursor ->
-        LocationReferenceView(
-            cursor.stableId("uid"),
-            cursor.getInt(cursor.getColumnIndexOrThrow("lat_e7")),
-            cursor.getInt(cursor.getColumnIndexOrThrow("lon_e7")),
-            cursor.getLong(cursor.getColumnIndexOrThrow("captured_at")).toStoredInstant(),
-            cursor.nullableStableId("place_uid"),
-            cursor.getLong(cursor.getColumnIndexOrThrow("current_transaction_count")),
-        )
+            """.trimIndent(),
+        ) { cursor ->
+            LocationReferenceView(
+                cursor.stableId("uid"),
+                cursor.getInt(cursor.getColumnIndexOrThrow("lat_e7")),
+                cursor.getInt(cursor.getColumnIndexOrThrow("lon_e7")),
+                cursor.getLong(cursor.getColumnIndexOrThrow("captured_at")).toStoredInstant(),
+                cursor.nullableStableId("place_uid"),
+                cursor.getLong(cursor.getColumnIndexOrThrow("current_transaction_count")),
+            )
+        }
     }
 
     private fun readAccountTransactions(connection: SupportSQLiteDatabase): List<AccountTransactionReferenceView> = connection.queryList(
         """
-        WITH account_impacts AS (
+        WITH recent_transactions AS (
+          SELECT transaction_id, current_revision_id, kind, local_date, occurred_at
+          FROM current_transaction_projection INDEXED BY ix_current_transaction_keyset
+          WHERE state = 0 ORDER BY occurred_at DESC, transaction_id DESC LIMIT $RECENT_ACCOUNT_TRANSACTION_LIMIT
+        ), account_impacts AS (
           SELECT bt.uid transaction_uid, tr.uid revision_uid, ua.uid account_uid,
-            tr.local_date, tr.occurred_at, bt.kind, ua.currency_code,
+            recent.local_date, recent.occurred_at, recent.kind, ua.currency_code,
             SUM(CASE WHEN p.side = la.normal_side THEN p.account_amount_minor ELSE -p.account_amount_minor END) impact_minor,
-            ctp.transaction_id
-          FROM current_transaction_projection ctp
-          JOIN business_transaction bt ON bt.id = ctp.transaction_id
-          JOIN transaction_revision tr ON tr.id = ctp.current_revision_id
+            recent.transaction_id, ua.id account_internal_id
+          FROM recent_transactions recent
+          JOIN business_transaction bt ON bt.id = recent.transaction_id
+          JOIN transaction_revision tr ON tr.id = recent.current_revision_id
           JOIN journal_entry je ON je.applies_revision_id = tr.id AND je.entry_role = 0
           JOIN posting p ON p.journal_entry_id = je.id
           JOIN ledger_account la ON la.id = p.ledger_account_id
           JOIN user_account ua ON ua.ledger_account_id = la.id
-          WHERE ctp.state = 0
-          GROUP BY ctp.transaction_id, ua.id
+          GROUP BY recent.transaction_id, ua.id
         ), running AS (
-          SELECT *, SUM(impact_minor) OVER (
-            PARTITION BY account_uid ORDER BY occurred_at, transaction_id
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-          ) running_minor
-          FROM account_impacts
+          SELECT impacts.*,
+            current.normal_balance_minor - COALESCE(SUM(impact_minor) OVER (
+              PARTITION BY account_uid ORDER BY occurred_at DESC, transaction_id DESC
+              ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+            ), 0) running_minor
+          FROM account_impacts impacts JOIN account_balance_current current ON current.account_id=impacts.account_internal_id
         )
         SELECT * FROM running ORDER BY account_uid, occurred_at DESC, transaction_id DESC
         """.trimIndent(),
@@ -571,6 +608,8 @@ public class SecureRoomReferenceDataManagementPort(
             currency = CurrencyCode.parse(cursor.getString(cursor.getColumnIndexOrThrow("currency_code"))).valueOrAbort(),
         )
     }
+
+    private enum class ReferenceSnapshotContent { FULL, ENTRY }
 
     private fun readAccountGoals(connection: SupportSQLiteDatabase): List<AccountGoalReferenceView> = connection.queryList(
         """
@@ -1410,3 +1449,5 @@ private fun androidx.sqlite.db.SupportSQLiteStatement.bindNullableLong(index: In
 private fun android.database.Cursor.int(name: String): Int = getInt(getColumnIndexOrThrow(name))
 private fun android.database.Cursor.long(name: String): Long = getLong(getColumnIndexOrThrow(name))
 private fun android.database.Cursor.string(name: String): String = getString(getColumnIndexOrThrow(name))
+
+private const val RECENT_ACCOUNT_TRANSACTION_LIMIT = 200

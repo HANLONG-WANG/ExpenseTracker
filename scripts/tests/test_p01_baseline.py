@@ -20,6 +20,10 @@ class ProductionSourceDiscoveryTest(unittest.TestCase):
         generated = ROOT / "finance/domain/build/generated/src/main/kotlin/Generated.kt"
         self.assertFalse(is_production_source(generated))
 
+    def test_generated_art_baseline_profile_is_not_treated_as_source(self) -> None:
+        profile = ROOT / "app/src/main/baseline-prof.txt"
+        self.assertFalse(is_production_source(profile))
+
 
 if __name__ == "__main__":
     unittest.main()

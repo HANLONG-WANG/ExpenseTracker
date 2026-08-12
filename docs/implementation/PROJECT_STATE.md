@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-11 (Asia/Tokyo)
-Current stage: P34 — three languages, accessibility, adaptation and 215-screen contract closure
-Stage status: VERIFIED (`P34-E001`—`P34-E008`); P00—P33 remain VERIFIED and P35 is the next unstarted stage
+Last updated: 2026-08-12 (Asia/Tokyo)
+Current stage: P35 — target-scale performance, fault injection and security audit
+Stage status: VERIFIED (`P35-E001`—`P35-E008`); P00—P34 remain VERIFIED and P36 is the next unstarted stage
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -426,17 +426,29 @@ At the P33 close, `P33_WIDGET_MORE_SETTINGS_MAPPING.md` recorded widget/snapshot
 | Pixels and privacy semantics | Contract/token-derived critical goldens replay with exact digests; hidden money and Vault/account/location-sensitive data do not enter merged or unmerged semantics, routes, state or ordinary output | VERIFIED (`P34-E004`, `P34-E005`) |
 | Whole-product regression | All 21 API 36 Android modules report 184/184 tests with zero failed/error/skipped; static/JVM/Lint/format/Detekt, mutation, artifact and frozen-baseline gates pass | VERIFIED (`P34-E006`—`P34-E008`) |
 
-P34 is `VERIFIED`. `P34_UI_CONTRACT_CLOSURE.md` records exact coverage, adaptation, TalkBack, golden provenance and privacy closure. P35 remains unstarted and retains `REQ-084` target-scale performance acceptance; P36 release work is not promoted.
+At P34 close, `P34_UI_CONTRACT_CLOSURE.md` recorded exact coverage, adaptation, TalkBack, golden provenance and privacy closure while P35 was still unstarted. P35 is now closed below; P36 release work is not promoted.
+
+### P35 result (verified)
+
+| Area | P35 result | Classification |
+|---|---|---|
+| Fixed target scale | A benchmark-only SQLCipher fixture generates 500,000 current transactions, 2,000,000 history/change rows, 100,000 attachment links, 50,000 object files, 10,000 merchant/place rows and reuses the existing 100,000-row/48 GiB/20 GiB streaming suites | VERIFIED (`P35-E001`, `P35-E002`, `P35-E005`) |
+| Performance/runtime | Keyset/FTS/report/R*Tree queries, record-entry defaults, cold start, large-list/navigation/save/long-operation Macrobenchmarks, a checked-in Baseline Profile and value-free JankStats remain within the recorded interaction/memory/descriptor budgets | VERIFIED (`P35-E002`—`P35-E004`) |
+| Database scalability | Schema v4 stores 15 bounded projection-family generation rows; startup no longer scans target-size projections, financial writes update affected families atomically and maintenance retains full integrity/hash reconstruction | VERIFIED (`P35-E001`, `P35-E002`, `P35-E006`) |
+| Fault and compatibility | Database/attachment, Drive, SAF, ENOSPC, restore swap, Keystore, biometric, row-99,999, ten-year budget and stale-projection faults preserve atomicity/recovery; API 28 and API 36 emulator suites exercise min/target behavior | VERIFIED (`P35-E005`, `P35-E006`) |
+| Security/supply chain | Cleartext/WebView/provider/log/route/SavedState/diagnostic boundaries, production-sensitive scans, CycloneDX/license inventory and the unchanged 248-component release-runtime OSV scope pass; non-release findings remain recorded | VERIFIED (`P35-E001`, `P35-E007`, `P35-E008`) |
+
+P35 is `VERIFIED`. `P35_PERFORMANCE_FAULT_SECURITY_AUDIT.md` records exact scale, budgets, emulator provenance, measurements, fault matrix and security scope. The user's explicit emulator substitution is not represented as physical-device evidence. P36 release packaging/signing/final acceptance remains unpromoted.
 
 ## Coverage summary
 
 | Baseline item | Count | State |
 |---|---:|---|
-| Requirements `REQ-001`—`REQ-090` | 90 | 89 VERIFIED; only `REQ-084` remains `IN_PROGRESS` for P35 target-scale performance |
+| Requirements `REQ-001`—`REQ-090` | 90 | 90 / 90 VERIFIED; `REQ-084` target-scale performance is closed by P35 |
 | YAML screens/modes/dialogs/system flows `G-001`—`WGT-003` | 215 | 215 / 215 are `VERIFIED` with all 646 required states indexed to owning-stage and P34 evidence |
 | Architecture ADRs | 20 + ADR-007A | All 20 plus ADR-007A are `VERIFIED`; P34 replays typed-report compiler security evidence for ADR-019 |
 | UI ADRs | 12 | All 12 are `VERIFIED`; P34 closes whole-product navigation, category, form-recovery, validation and operation-center replay |
-| Permanent domain invariants | 35 | 26 are `VERIFIED`, including settlement conservation/local-account/history invariants (`INV-022`—`INV-024`); 9 retain later evidence |
+| Permanent domain invariants | 35 | All 35 are `VERIFIED`; P35 replays the remaining performance/failure/security-scale evidence without changing accounting semantics |
 | Logical schema families | 12 | All 12 frozen physical Schema v1 families remain `VERIFIED`; P26 registers and device-verifies the normalized non-destructive analytics-configuration Schema v2 expansion |
 | Projection families | 7 + search/geographic indexes | All seven projection families plus both indexes are `VERIFIED`; P33 closes bounded widget runtime and date-boundary refresh |
 | Durable/staging/backup operation inventories | 4 groups | Import operation/staging/audit, export/backup runtime and restore/merge records, checkpoints and crash recovery are `VERIFIED` by P28—P31 |
@@ -480,7 +492,8 @@ P34 is `VERIFIED`. `P34_UI_CONTRACT_CLOSURE.md` records exact coverage, adaptati
 | P32 | VERIFIED | Per-action Vault authentication, ciphertext-only persistence, recovery rewrap, clipboard/screen privacy, closed-schema telemetry/ACRA, scoped clear and all VLT/SETG/CLR/SYS contracts pass; see `P32-E001`—`P32-E008` |
 | P33 | VERIFIED | Nine snapshot-only Glance widgets, default-hidden per-widget privacy, full-form quick entry, one More/transfer/settings/help surface, durable operation center and notification deep links pass on API 28/API 36; see `P33-E001`—`P33-E008` |
 | P34 | VERIFIED | Three-language, adaptation, real TalkBack, privacy semantics, critical golden and exact 215-screen/646-state closure pass; see `P34-E001`—`P34-E008` |
-| P35—P36 | NOT_STARTED | P35 is next; `REQ-084` and release work remain unpromoted |
+| P35 | VERIFIED | Fixed target-scale SQLCipher, Macrobenchmark/Baseline Profile/JankStats, bounded streaming, complete fault matrix, API 28/API 36 emulator regression and security/supply-chain audit pass; see `P35-E001`—`P35-E008` |
+| P36 | NOT_STARTED | Release AAB/signing/store configuration/final acceptance remain unpromoted |
 
 ## P17 verified handoff
 
@@ -789,3 +802,23 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p33_widget_navi
 ```
 
 All P33 evidence is recorded in `P33-E001`—`P33-E008`. The next entry point is P34. Preserve the four-table snapshot-only launcher boundary, default-hidden per-widget permission, no app-lock inference, no quick-entry write, closed deep-link allowlists, operationId-only Worker payloads and the single More hub; do not promote P34+ work early.
+
+## P35 verified handoff
+
+P35 leaves the repository with a benchmark-only, bounded-batch SQLCipher target fixture for 500,000 current transactions, 2,000,000 history/change rows, 100,000 attachment links, 50,000 files and 10,000 merchant/place rows. Production startup validates 15 constant-size projection-family generations; full integrity/hash reconstruction remains an explicit maintenance/restore path. Keyset, FTS5, report and R*Tree plans, WAL/checkpoint, heap/file-descriptor bounds, the checked-in Baseline Profile and value-free JankStats are executable gates.
+
+The full failure matrix covers database/attachment boundaries, process interruption, Drive resume, SAF revocation, ENOSPC, restore exchange, Keystore/biometric, import row 99,999, long budget history and stale projections. The security audit covers ordinary-output plaintext, logs/diagnostics, route/SavedState, providers, Web/network configuration, locked release dependencies, CycloneDX and licenses. API 28/API 36 evidence is explicitly the user-authorized emulator substitution and is not represented as physical-device evidence.
+
+The reproducible final P35 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p35_performance_security.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+./gradlew p35Check --no-configuration-cache --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g --dependency-verification=strict --console=plain
+./gradlew :app:assembleRelease generateLicenseReport --no-configuration-cache --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g --dependency-verification=strict --console=plain
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_spec_baseline.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p01_baseline.py
+git diff --check
+```
+
+All P35 evidence is recorded in `P35-E001`—`P35-E008` and `P35_PERFORMANCE_FAULT_SECURITY_AUDIT.md`. The repository is ready to enter P36, but P36 remains unstarted and execution is paused until the user explicitly resumes it. Preserve the bounded startup-generation boundary, coordinator-owned financial mutations, benchmark-only fixture isolation, fail-closed platform authentication policy and truthful emulator provenance.

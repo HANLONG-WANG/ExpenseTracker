@@ -1,6 +1,5 @@
 package app.ledger.finance.data
 
-import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.security.LedgerStartupInspector
 import app.ledger.core.security.MaintenanceReason
@@ -17,24 +16,20 @@ public class RoomLedgerStartupInspector : LedgerStartupInspector {
                 "SELECT local_revision, valuation_revision, state FROM book WHERE id = 1",
             ) { cursor -> Triple(cursor.getLong(0), cursor.getLong(1), cursor.getInt(2)) }
                 ?: return@readLedger StartupInspection.RecoveryRequired(RecoveryDiagnosticCode.SCHEMA_INVALID)
-            val integrity = DatabaseIntegrityAudit.run(connection)
-            if (!integrity.isValid || book.third == 2) {
-                return@readLedger StartupInspection.RecoveryRequired(RecoveryDiagnosticCode.SCHEMA_INVALID)
-            }
-            val invalidSubtype = connection.queryOne(
-                "SELECT COUNT(*) FROM current_transaction_subtype_audit WHERE has_matching_detail = 0",
-            ) { it.getLong(0) } ?: 0L
-            if (invalidSubtype > 0L) {
+            // Room schema validation, SQLCipher opening and DefaultLedgerStartupInspector already
+            // establish schema/key/cipher availability. Full PRAGMA integrity_check, foreign-key,
+            // journal and projection-cardinality audits belong to maintenance/restore, not startup.
+            if (book.third == 2) {
                 return@readLedger StartupInspection.RecoveryRequired(RecoveryDiagnosticCode.SCHEMA_INVALID)
             }
             if (book.third == 1) return@readLedger StartupInspection.Maintenance(MaintenanceReason.CONTROLLED_MAINTENANCE)
-            if (projections.mismatchedFamilies(connection, book.first, book.second).isNotEmpty()) {
+            if (projections.mismatchedFamiliesAtStartup(connection, book.first, book.second).isNotEmpty()) {
                 return@readLedger StartupInspection.Maintenance(MaintenanceReason.PROJECTION_REBUILD)
             }
             val unfinished = connection.queryOne(
-                "SELECT COUNT(*) FROM background_operation WHERE state NOT IN (8,9,10)",
-            ) { it.getLong(0) } ?: 0L
-            if (unfinished > 0L) {
+                "SELECT EXISTS(SELECT 1 FROM background_operation WHERE state NOT IN (8,9,10) LIMIT 1)",
+            ) { it.getInt(0) == 1 } ?: false
+            if (unfinished) {
                 StartupInspection.Maintenance(MaintenanceReason.UNFINISHED_OPERATION)
             } else {
                 StartupInspection.Ready

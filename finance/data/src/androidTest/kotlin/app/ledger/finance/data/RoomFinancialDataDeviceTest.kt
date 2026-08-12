@@ -154,7 +154,7 @@ class RoomFinancialDataDeviceTest {
 
         val maintenance: ProjectionMaintenancePort = RoomProjectionMaintenanceService(database)
         val originalAudit = maintenance.audit().success()
-        assertTrue(originalAudit.isConsistent)
+        assertTrue("projection differences=${projectionDifferences()}", originalAudit.isConsistent)
         database.inLedgerTransaction { connection ->
             connection.execSQL("UPDATE budget_usage_projection SET used_minor = used_minor + 1")
         }
@@ -163,6 +163,24 @@ class RoomFinancialDataDeviceTest {
         assertTrue(rebuilt.isConsistent)
         assertEquals(originalAudit.liveHash, rebuilt.liveHash)
         assertEquals(0L, scalar("SELECT state FROM book WHERE id = 1"))
+    }
+
+    private fun projectionDifferences(): Set<String> = database.inLedgerTransaction { connection ->
+        val engine = RoomProjectionEngine()
+        val before = engine.canonicalTableHashes(connection)
+        val revision = connection.query("SELECT local_revision,valuation_revision FROM book WHERE id=1").use { cursor ->
+            check(cursor.moveToFirst())
+            cursor.getLong(0) to cursor.getLong(1)
+        }
+        connection.execSQL("SAVEPOINT projection_test_diagnostics")
+        val after = try {
+            engine.rebuildAll(connection, revision.first, revision.second)
+            engine.canonicalTableHashes(connection)
+        } finally {
+            connection.execSQL("ROLLBACK TO SAVEPOINT projection_test_diagnostics")
+            connection.execSQL("RELEASE SAVEPOINT projection_test_diagnostics")
+        }
+        before.keys.filterTo(mutableSetOf()) { table -> before[table] != after[table] }
     }
 
     @Test
@@ -520,8 +538,9 @@ class RoomFinancialDataDeviceTest {
 
     private fun assertProjectionRevision(expected: Long) {
         VERSIONED_PROJECTIONS.forEach { table ->
-            assertEquals(0L, scalar("SELECT COUNT(*) FROM $table WHERE as_of_local_revision <> $expected"))
+            assertEquals(0L, scalar("SELECT COUNT(*) FROM $table WHERE as_of_local_revision > $expected"))
         }
+        assertEquals(15L, scalar("SELECT COUNT(*) FROM projection_family_state WHERE as_of_local_revision=$expected"))
         assertEquals(expected, scalar("SELECT as_of_local_revision FROM widget_book_snapshot WHERE id = 1"))
         assertEquals(1L, scalar("SELECT as_of_valuation_revision FROM widget_book_snapshot WHERE id = 1"))
     }

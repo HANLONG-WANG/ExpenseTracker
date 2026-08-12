@@ -55,6 +55,13 @@ class VaultAuthenticationDeviceTest {
         assertFalse("locksettings failed: $setResult", setResult.contains("Error", ignoreCase = true))
         assertTrue(waitForDeviceSecure())
         assertEquals(DeviceSecurityCapability.DEVICE_CREDENTIAL_ONLY, keystore.deviceSecurityCapability())
+        if (!keystore.vaultAuthenticationAvailable()) {
+            assertThrows(SecurityException.DeviceSecurityUnavailable::class.java) {
+                VaultKeyHierarchy(keystore, envelopeStore, VaultExposureRegistry(SystemClock::elapsedRealtime))
+                    .beginProvisioning(BOOK_ID)
+            }
+            return
+        }
 
         val exposures = VaultExposureRegistry(SystemClock::elapsedRealtime)
         val vault = VaultKeyHierarchy(keystore, envelopeStore, exposures)

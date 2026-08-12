@@ -161,7 +161,7 @@ class RoomTransactionQueryService(
         isRefunded = cursor.getInt(cursor.getColumnIndexOrThrow("is_refunded")) == 1,
         hasInstallment = cursor.getInt(cursor.getColumnIndexOrThrow("has_installment")) == 1,
         source = TransactionSource.entries[cursor.getInt(cursor.getColumnIndexOrThrow("source_type"))],
-        asOfLocalRevision = LocalRevision.of(cursor.getLong(cursor.getColumnIndexOrThrow("as_of_local_revision"))).valueOrAbort(),
+        asOfLocalRevision = LocalRevision.of(cursor.getLong(cursor.getColumnIndexOrThrow("projection_generation"))).valueOrAbort(),
     )
 
     private inline fun <T> protect(block: () -> DomainResult<T>): DomainResult<T> = try {
@@ -324,7 +324,7 @@ internal object TransactionSqlCompiler {
     }
 
     val BASE_SELECT = """
-        SELECT ctp.*,
+        SELECT ctp.*,(SELECT as_of_local_revision FROM projection_family_state WHERE family=0) AS projection_generation,
           tr.uid AS current_revision_uid,
           pa.uid AS primary_account_uid, sa.uid AS secondary_account_uid, pc.uid AS card_uid,
           c.uid AS category_uid, m.uid AS merchant_uid, pr.uid AS project_uid, g.uid AS goal_uid,

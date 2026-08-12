@@ -326,9 +326,13 @@ def validate_requirements(rows: list[dict[str, str]] | None = None) -> list[str]
         errors.append("implementation requirement IDs differ from the frozen matrix")
     for row in rows:
         requirement = row["requirement_id"]
-        expected = "IN_PROGRESS" if requirement == "REQ-084" else "VERIFIED"
-        if row["status"] != expected:
-            errors.append(f"{requirement} must be {expected} after P34")
+        if requirement == "REQ-084":
+            if row["status"] not in {"IN_PROGRESS", "VERIFIED"}:
+                errors.append("REQ-084 must remain IN_PROGRESS after P34 or be VERIFIED by P35")
+            if row["status"] == "VERIFIED" and "P35-E" not in row["verification_evidence"]:
+                errors.append("REQ-084 P35 promotion lacks P35 evidence")
+        elif row["status"] != "VERIFIED":
+            errors.append(f"{requirement} must remain VERIFIED at or after P34")
         if requirement != "REQ-084" and "P34-E" not in row["verification_evidence"]:
             errors.append(f"{requirement} lacks P34 UI review evidence")
     return errors
@@ -341,9 +345,13 @@ def validate_ledgers() -> list[str]:
     decision = read("docs/implementation/DECISION_LOG.md")
     mapping_path = ROOT / "docs/implementation/P34_UI_CONTRACT_CLOSURE.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
-    for marker in ("Current stage: P34", "Stage status: VERIFIED", "215 / 215", "89 VERIFIED"):
+    for marker in ("Stage status: VERIFIED", "215 / 215"):
         if marker not in state:
             errors.append(f"PROJECT_STATE missing {marker}")
+    if not re.search(r"Current stage: P(?:34|35|36)\b", state):
+        errors.append("PROJECT_STATE is not at or after P34")
+    if "89 VERIFIED" not in state and "90 / 90 VERIFIED" not in state:
+        errors.append("PROJECT_STATE lacks a valid P34-or-later requirement total")
     for index in range(1, 9):
         if f"P34-E{index:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P34-E{index:03d}")

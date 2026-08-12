@@ -40,6 +40,35 @@ object AnalyticsProjectionEngine {
         rebuildDailyTotals(database, localRevision)
         rebuildDailyDimensions(database, localRevision)
         rebuildMonthly(database, localRevision)
+        publishGeneration(database, localRevision)
+    }
+
+    /**
+     * Replaces only the daily and monthly buckets touched by a financial commit.
+     *
+     * Every statement remains inside the caller's financial SQLite transaction, while the
+     * amount of fact data read is bounded by the commit's affected local dates.
+     */
+    fun rebuildDates(
+        database: SupportSQLiteDatabase,
+        localRevision: Long,
+        localDates: Set<Int>,
+    ) {
+        require(localRevision >= 0L)
+        if (localDates.isEmpty()) return
+        localDates.sorted().forEach { localDate ->
+            DAILY_TABLES.forEach { table ->
+                database.execSQL("DELETE FROM $table WHERE local_date=?", arrayOf<Any>(localDate))
+            }
+            rebuildDailyTotal(database, localRevision, localDate)
+            rebuildDailyDimensions(database, localRevision, localDate)
+        }
+        localDates.map { it / 100 }.toSortedSet().forEach { month ->
+            MONTHLY_TABLES.forEach { table ->
+                database.execSQL("DELETE FROM $table WHERE year_month=?", arrayOf<Any>(month))
+            }
+            rebuildMonth(database, localRevision, month)
+        }
     }
 
     /** Enters the book maintenance state before replacing only derived analytics rows. */
@@ -84,14 +113,13 @@ object AnalyticsProjectionEngine {
     }
 
     fun staleTables(database: SupportSQLiteDatabase, localRevision: Long): Set<String> = buildSet {
-        tables.forEach { table ->
-            val mismatched = singleLong(
-                database,
-                "SELECT COUNT(*) FROM $table WHERE as_of_local_revision <> ?",
-                arrayOf(localRevision),
-            )
-            if (mismatched > 0L) add(table)
-        }
+        val currentGeneration = singleLong(
+            database,
+            "SELECT COUNT(*) FROM projection_family_state WHERE family=? AND as_of_local_revision=? " +
+                "AND as_of_valuation_revision=(SELECT valuation_revision FROM book WHERE id=1)",
+            arrayOf<Any>(ANALYTICS_FAMILY, localRevision),
+        ) == 1L
+        if (!currentGeneration) addAll(tables)
         val effects = singleLong(database, "SELECT COUNT(*) FROM economic_effect")
         val current = singleLong(database, "SELECT COUNT(*) FROM current_transaction_projection WHERE state=0")
         if (effects > 0L && singleLong(database, "SELECT COUNT(*) FROM analytics_daily_total") == 0L) {
@@ -146,6 +174,43 @@ object AnalyticsProjectionEngine {
         )
     }
 
+    private fun rebuildDailyTotal(database: SupportSQLiteDatabase, revision: Long, localDate: Int) {
+        database.execSQL(
+            """
+            INSERT INTO analytics_daily_total(local_date,metric,amount_base_minor,as_of_local_revision)
+            SELECT ?,$INCOME_METRIC,COALESCE(SUM(CASE WHEN nature=0 THEN polarity*base_amount_minor ELSE 0 END),0),?
+              FROM economic_effect WHERE accrual_local_date=?
+            UNION ALL SELECT ?,$EXPENSE_METRIC,COALESCE(SUM(CASE WHEN nature=1 THEN polarity*base_amount_minor WHEN nature=2 THEN -polarity*base_amount_minor ELSE 0 END),0),?
+              FROM economic_effect WHERE accrual_local_date=?
+            UNION ALL SELECT ?,$CONSUMPTION_METRIC,COALESCE(SUM(CASE WHEN nature=1 AND is_consumption=1 THEN polarity*base_amount_minor WHEN nature=2 AND is_consumption=1 THEN -polarity*base_amount_minor ELSE 0 END),0),?
+              FROM economic_effect WHERE accrual_local_date=?
+            UNION ALL SELECT ?,$NON_CONSUMPTION_EXPENSE_METRIC,COALESCE(SUM(CASE WHEN nature=1 AND is_consumption=0 THEN polarity*base_amount_minor WHEN nature=2 AND is_consumption=0 THEN -polarity*base_amount_minor ELSE 0 END),0),?
+              FROM economic_effect WHERE accrual_local_date=?
+            UNION ALL SELECT ?,$CONTRA_EXPENSE_METRIC,COALESCE(SUM(CASE WHEN nature=2 THEN polarity*base_amount_minor ELSE 0 END),0),?
+              FROM economic_effect WHERE accrual_local_date=?
+            UNION ALL SELECT ?,$NET_CASH_FLOW_METRIC,COALESCE(SUM(CASE WHEN p.side=la.normal_side THEN p.base_amount_minor ELSE -p.base_amount_minor END),0),?
+              FROM posting p JOIN journal_entry je ON je.id=p.journal_entry_id
+                JOIN ledger_account la ON la.id=p.ledger_account_id
+                JOIN user_account ua ON ua.ledger_account_id=la.id AND ua.type IN (0,1)
+              WHERE je.local_date=?
+            UNION ALL SELECT ?,$LOAN_INTEREST_METRIC,COALESCE(SUM(CASE WHEN nature=1 AND component=1 THEN polarity*base_amount_minor ELSE 0 END),0),?
+              FROM economic_effect WHERE accrual_local_date=?
+            UNION ALL SELECT ?,$TRANSACTION_COUNT_METRIC,COUNT(*),?
+              FROM current_transaction_projection WHERE state=0 AND local_date=?
+            """.trimIndent(),
+            arrayOf<Any>(
+                localDate, revision, localDate,
+                localDate, revision, localDate,
+                localDate, revision, localDate,
+                localDate, revision, localDate,
+                localDate, revision, localDate,
+                localDate, revision, localDate,
+                localDate, revision, localDate,
+                localDate, revision, localDate,
+            ),
+        )
+    }
+
     private fun rebuildDailyDimensions(database: SupportSQLiteDatabase, revision: Long) {
         database.execSQL(
             """
@@ -183,6 +248,42 @@ object AnalyticsProjectionEngine {
             GROUP BY ee.accrual_local_date,lr.place_id
             """.trimIndent(),
             arrayOf<Any>(revision),
+        )
+    }
+
+    private fun rebuildDailyDimensions(database: SupportSQLiteDatabase, revision: Long, localDate: Int) {
+        database.execSQL(
+            "INSERT INTO analytics_daily_category(local_date,category_id,nature,amount_base_minor,as_of_local_revision) " +
+                "SELECT accrual_local_date,category_id,nature,SUM(polarity*base_amount_minor),? FROM economic_effect " +
+                "WHERE accrual_local_date=? AND category_id IS NOT NULL GROUP BY accrual_local_date,category_id,nature",
+            arrayOf<Any>(revision, localDate),
+        )
+        database.execSQL(
+            "INSERT INTO analytics_daily_account(local_date,account_id,inflow_base_minor,outflow_base_minor,as_of_local_revision) " +
+                "SELECT je.local_date,ua.id,SUM(CASE WHEN p.side=la.normal_side THEN p.base_amount_minor ELSE 0 END)," +
+                "SUM(CASE WHEN p.side<>la.normal_side THEN p.base_amount_minor ELSE 0 END),? " +
+                "FROM posting p JOIN journal_entry je ON je.id=p.journal_entry_id " +
+                "JOIN ledger_account la ON la.id=p.ledger_account_id JOIN user_account ua ON ua.ledger_account_id=la.id " +
+                "WHERE je.local_date=? GROUP BY je.local_date,ua.id",
+            arrayOf<Any>(revision, localDate),
+        )
+        listOf("merchant", "project").forEach { dimension ->
+            database.execSQL(
+                "INSERT INTO analytics_daily_$dimension(local_date,${dimension}_id,amount_base_minor,as_of_local_revision) " +
+                    "SELECT accrual_local_date,${dimension}_id,SUM(CASE WHEN nature=1 THEN polarity*base_amount_minor " +
+                    "WHEN nature=2 THEN -polarity*base_amount_minor ELSE 0 END),? FROM economic_effect " +
+                    "WHERE accrual_local_date=? AND ${dimension}_id IS NOT NULL GROUP BY accrual_local_date,${dimension}_id",
+                arrayOf<Any>(revision, localDate),
+            )
+        }
+        database.execSQL(
+            "INSERT INTO analytics_daily_place(local_date,place_id,amount_base_minor,as_of_local_revision) " +
+                "SELECT ee.accrual_local_date,lr.place_id,SUM(CASE WHEN ee.nature=1 THEN ee.polarity*ee.base_amount_minor " +
+                "WHEN ee.nature=2 THEN -ee.polarity*ee.base_amount_minor ELSE 0 END),? " +
+                "FROM economic_effect ee JOIN transaction_revision tr ON tr.id=ee.source_revision_id " +
+                "JOIN location_record lr ON lr.id=tr.location_record_id WHERE ee.accrual_local_date=? " +
+                "AND lr.place_id IS NOT NULL GROUP BY ee.accrual_local_date,lr.place_id",
+            arrayOf<Any>(revision, localDate),
         )
     }
 
@@ -226,6 +327,31 @@ object AnalyticsProjectionEngine {
         }
     }
 
+    private fun rebuildMonth(database: SupportSQLiteDatabase, revision: Long, month: Int) {
+        database.execSQL(
+            "INSERT INTO analytics_monthly_total SELECT local_date/100,metric,SUM(amount_base_minor),? " +
+                "FROM analytics_daily_total WHERE local_date/100=? GROUP BY local_date/100,metric",
+            arrayOf<Any>(revision, month),
+        )
+        database.execSQL(
+            "INSERT INTO analytics_monthly_category SELECT local_date/100,category_id,nature,SUM(amount_base_minor),? " +
+                "FROM analytics_daily_category WHERE local_date/100=? GROUP BY local_date/100,category_id,nature",
+            arrayOf<Any>(revision, month),
+        )
+        database.execSQL(
+            "INSERT INTO analytics_monthly_account SELECT local_date/100,account_id,SUM(inflow_base_minor),SUM(outflow_base_minor),? " +
+                "FROM analytics_daily_account WHERE local_date/100=? GROUP BY local_date/100,account_id",
+            arrayOf<Any>(revision, month),
+        )
+        listOf("merchant", "project", "place").forEach { dimension ->
+            database.execSQL(
+                "INSERT INTO analytics_monthly_$dimension SELECT local_date/100,${dimension}_id,SUM(amount_base_minor),? " +
+                    "FROM analytics_daily_$dimension WHERE local_date/100=? GROUP BY local_date/100,${dimension}_id",
+                arrayOf<Any>(revision, month),
+            )
+        }
+    }
+
     private fun singleLong(
         database: SupportSQLiteDatabase,
         sql: String,
@@ -236,8 +362,9 @@ object AnalyticsProjectionEngine {
     }
 
     private fun writeRow(output: DataOutputStream, cursor: Cursor) {
-        output.writeInt(cursor.columnCount)
-        for (index in 0 until cursor.columnCount) {
+        val included = (0 until cursor.columnCount).filter { cursor.getColumnName(it) != "as_of_local_revision" }
+        output.writeInt(included.size)
+        for (index in included) {
             output.writeInt(cursor.getType(index))
             when (cursor.getType(index)) {
                 Cursor.FIELD_TYPE_NULL -> Unit
@@ -252,6 +379,24 @@ object AnalyticsProjectionEngine {
         writeInt(value.size)
         write(value)
     }
+
+    private fun publishGeneration(database: SupportSQLiteDatabase, localRevision: Long) {
+        val valuationRevision = singleLong(database, "SELECT valuation_revision FROM book WHERE id=1")
+        database.execSQL(
+            "INSERT INTO projection_family_state(family,as_of_local_revision,as_of_valuation_revision) VALUES(?,?,?) " +
+                "ON CONFLICT(family) DO UPDATE SET as_of_local_revision=excluded.as_of_local_revision," +
+                "as_of_valuation_revision=excluded.as_of_valuation_revision",
+            arrayOf<Any>(ANALYTICS_FAMILY, localRevision, valuationRevision),
+        )
+    }
+
+    private val DAILY_TABLES: List<String>
+        get() = tables.filter { it.startsWith("analytics_daily_") }
+
+    private val MONTHLY_TABLES: List<String>
+        get() = tables.filter { it.startsWith("analytics_monthly_") }
+
+    private const val ANALYTICS_FAMILY: Int = 13
 }
 
 data class AnalyticsProjectionAudit(

@@ -17,6 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,6 +57,7 @@ class VaultPrivacyLifecycleDeviceTest {
 
     @Test
     fun independentActionsUseFreshCryptoObjectsAndBackgroundClearsEveryExposure() {
+        assumeTrue("zero-duration vault authentication unavailable on this device", keys.vaultAuthenticationAvailable())
         var elapsed = 1_000L
         val exposure = VaultExposureRegistry { elapsed }
         val appLock = AppLockController(AppLockSettings(true, AppLockTimeout.Immediately), { elapsed }) {
@@ -118,6 +120,7 @@ class VaultPrivacyLifecycleDeviceTest {
 
     @Test
     fun recoveryWrappedVaultDekIsReboundToFreshDeviceAuthenticationKek() {
+        assumeTrue("zero-duration vault authentication unavailable on this device", keys.vaultAuthenticationAvailable())
         val passwordChars = "P32-Recovery-Password".toCharArray()
         val password = RecoveryPassword.copyOf(passwordChars)
         passwordChars.fill('\u0000')
@@ -162,7 +165,11 @@ class VaultPrivacyLifecycleDeviceTest {
                     controller.copyPrimaryNumber(first)
                     first.close()
                     assertNotNull(clipboard.primaryClip)
-                    assertTrue(clipboard.primaryClipDescription?.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        assertTrue(clipboard.primaryClipDescription?.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true)
+                    } else {
+                        assertTrue(clipboard.primaryClipDescription?.label?.toString() == "ledger-vault-sensitive")
+                    }
                 }
                 SystemClock.sleep(500L)
                 scenario.onActivity {
@@ -206,8 +213,10 @@ class VaultPrivacyLifecycleDeviceTest {
                 }
             }
             SystemClock.sleep(1_000L)
-            shell("input text $PIN")
-            shell("input keyevent KEYCODE_ENTER")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                shell("input text $PIN")
+                shell("input keyevent KEYCODE_ENTER")
+            }
             assertTrue(completed.await(20L, TimeUnit.SECONDS))
         }
         return (result.get() as BiometricAuthenticationResult.Success).cryptoObject

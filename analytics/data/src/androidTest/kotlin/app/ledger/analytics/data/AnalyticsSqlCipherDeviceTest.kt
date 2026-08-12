@@ -123,7 +123,7 @@ class AnalyticsSqlCipherDeviceTest {
 
         val reopened = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
         reopened.readLedger { connection ->
-            assertEquals(3L, singleLong(connection, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
+            assertEquals(4L, singleLong(connection, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
             assertEquals(2L, singleLong(connection, "SELECT COUNT(*) FROM analytics_report_definition"))
             assertEquals(2L, singleLong(connection, "SELECT COUNT(*) FROM analytics_report_revision"))
             assertEquals(1L, singleLong(connection, "SELECT COUNT(*) FROM analytics_dashboard_revision"))
@@ -189,7 +189,7 @@ class AnalyticsSqlCipherDeviceTest {
         assertEquals(IntegritySeverity.PASS, repaired.severity)
         assertEquals(repaired.liveProjectionHash, repaired.rebuiltProjectionHash)
 
-        mutateDatabase("UPDATE analytics_monthly_total SET as_of_local_revision=0")
+        mutateDatabase("UPDATE projection_family_state SET as_of_local_revision=0 WHERE family=13")
         val stale = application.executeFixed(BOOK_ID, FixedReportCatalog.definitions.first().report, AUGUST).success()
         assertTrue(stale is ReportExecution.StaleProjection)
         application.repairAnalyticsProjections(BOOK_ID).success()
@@ -341,6 +341,11 @@ class AnalyticsSqlCipherDeviceTest {
         seedTransaction(database, 3, kind = 3, amount = 1_000, nature = 2, subtype = "refund")
         seedTransaction(database, 4, kind = 2, amount = 2_000, nature = null, subtype = "transfer")
         AnalyticsProjectionEngine.rebuild(database, 1)
+        database.execSQL(
+            "WITH RECURSIVE family(value) AS (SELECT 0 UNION ALL SELECT value+1 FROM family WHERE value<14) " +
+                "INSERT OR REPLACE INTO projection_family_state(family,as_of_local_revision,as_of_valuation_revision) " +
+                "SELECT value,1,1 FROM family",
+        )
     }
 
     private fun seedTransaction(

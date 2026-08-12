@@ -102,7 +102,7 @@ class DeviceKeyAndSessionDeviceTest {
 
     @Test
     fun vaultKeyPolicyIsPerActionAndRetainsTheCredentialFallbackAcrossEnrollmentChanges() {
-        if (keystore.deviceSecurityCapability() == DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL) {
+        if (!keystore.vaultAuthenticationAvailable()) {
             assertThrows(SecurityException.DeviceSecurityUnavailable::class.java) {
                 keystore.ensureVaultAuthenticationKek(SecurityEnvelopeStore.aliasSuffix(BOOK_ID))
             }

@@ -116,12 +116,9 @@ class SecureRoomLoanApplicationPort(
         database.readLedger { db ->
             val book = RoomBookRepository.mapCurrent(db)
             if (book.id.value != bookId) abort(FinanceDataError.CorruptData)
-            val stale = db.queryOne(
-                "SELECT (SELECT COUNT(*) FROM loan_progress_projection WHERE as_of_local_revision<>?) + " +
-                    "(SELECT COUNT(*) FROM loan_future_cashflow_projection WHERE as_of_local_revision<>?)",
-                arrayOf<Any>(book.localRevision.value, book.localRevision.value),
-            ) { it.getLong(0) } ?: 0L
-            if (stale != 0L) abort(FinanceDataError.ProjectionMismatch)
+            if (!db.isProjectionFamilyCurrent(app.ledger.finance.application.ProjectionFamily.LOAN, book.localRevision)) {
+                abort(FinanceDataError.ProjectionMismatch)
+            }
             val contracts = db.queryList("SELECT uid FROM loan_contract ORDER BY status,id") { it.stableId("uid") }
                 .map { loadContract(db, it) }
             DomainResult.Success(

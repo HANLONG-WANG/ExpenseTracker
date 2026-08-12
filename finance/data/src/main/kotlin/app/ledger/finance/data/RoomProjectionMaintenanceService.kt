@@ -4,6 +4,7 @@ import android.database.sqlite.SQLiteFullException
 import app.ledger.core.common.DomainResult
 import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.LedgerDatabase
+import app.ledger.core.database.LedgerMigrations
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.ProjectionAuditResult
 import app.ledger.finance.application.ProjectionMaintenancePort
@@ -91,26 +92,23 @@ class RoomProjectionMaintenanceService(
                 if (book.third == 1) add("BOOK_MAINTENANCE")
                 if (book.third == 2) add("BOOK_RECOVERY_REQUIRED")
                 if (
-                    projections.mismatchedFamilies(connection, book.first, book.second).isNotEmpty()
+                    projections.mismatchedFamiliesAtStartup(connection, book.first, book.second).isNotEmpty()
                 ) {
                     add("PROJECTION_VERSION_MISMATCH")
                 }
                 val unfinished = connection.queryOne(
-                    "SELECT COUNT(*) FROM background_operation WHERE state NOT IN (8,9,10)",
-                ) { it.getLong(0) } ?: 0L
-                if (unfinished > 0L) add("UNFINISHED_OPERATION")
-                val invalidSubtype = connection.queryOne(
-                    "SELECT COUNT(*) FROM current_transaction_subtype_audit WHERE has_matching_detail = 0",
-                ) { it.getLong(0) } ?: 0L
-                if (invalidSubtype > 0L) add("CURRENT_SUBTYPE_INVALID")
+                    "SELECT EXISTS(SELECT 1 FROM background_operation WHERE state NOT IN (8,9,10) LIMIT 1)",
+                ) { it.getInt(0) == 1 } ?: false
+                if (unfinished) add("UNFINISHED_OPERATION")
                 val registry = connection.queryOne(
-                    "SELECT COUNT(*) FROM _room_schema_registry WHERE id = 1 AND logicalSchemaVersion = 1",
+                    "SELECT COUNT(*) FROM _room_schema_registry WHERE id = 1 AND logicalSchemaVersion = ?",
+                    arrayOf(LedgerMigrations.CURRENT_VERSION),
                 ) { it.getLong(0) } ?: 0L
                 if (registry != 1L) add("SCHEMA_CONTRACT_MISSING")
             }
             val disposition = when {
-                "BOOK_RECOVERY_REQUIRED" in reasons || "SCHEMA_CONTRACT_MISSING" in reasons ||
-                    "CURRENT_SUBTYPE_INVALID" in reasons -> StartupDisposition.RECOVERY_REQUIRED
+                "BOOK_RECOVERY_REQUIRED" in reasons || "SCHEMA_CONTRACT_MISSING" in reasons ->
+                    StartupDisposition.RECOVERY_REQUIRED
                 reasons.isNotEmpty() -> StartupDisposition.MAINTENANCE_REQUIRED
                 else -> StartupDisposition.READY
             }

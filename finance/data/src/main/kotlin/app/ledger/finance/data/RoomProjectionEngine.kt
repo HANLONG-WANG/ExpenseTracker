@@ -6,6 +6,8 @@ import android.database.Cursor
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.database.AnalyticsProjectionEngine
 import app.ledger.finance.application.ProjectionFamily
+import app.ledger.finance.domain.ProjectionChange
+import app.ledger.finance.domain.ProjectionChangeSet
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.security.MessageDigest
@@ -35,6 +37,110 @@ internal class RoomProjectionEngine {
         rebuildSearch(database)
         rebuildGeography(database)
         rebuildWidgetSnapshot(database, localRevision, valuationRevision, asOfLocalDate)
+        publishProjectionGeneration(database, localRevision, valuationRevision)
+    }
+
+    /**
+     * Applies a planner-owned projection change set without rescanning the target-scale ledger.
+     * Unchanged rows are stamped to the new synchronous generation; only affected content is
+     * recomputed. The caller owns the surrounding financial transaction.
+     */
+    fun applyIncremental(
+        database: SupportSQLiteDatabase,
+        changes: ProjectionChangeSet,
+        commitId: Long,
+        valuationRevision: Long,
+        asOfLocalDate: Int,
+    ) {
+        val revision = changes.targetRevision.value
+        val transactionUids = changes.changes.mapNotNull { change ->
+            when (change) {
+                is ProjectionChange.CurrentTransaction -> change.transactionId.value.bytes
+                is ProjectionChange.SearchAndMap -> change.transactionId.value.bytes
+                else -> null
+            }
+        }.fold(mutableListOf<ByteArray>()) { unique, candidate ->
+            if (unique.none { existing -> existing.contentEquals(candidate) }) unique += candidate
+            unique
+        }
+        val refundUids = changes.changes.filterIsInstance<ProjectionChange.Refund>()
+            .map { it.originalTransactionId.value.bytes }
+        val refundProjectionUids = (transactionUids + refundUids).fold(mutableListOf<ByteArray>()) { unique, candidate ->
+            if (unique.none { existing -> existing.contentEquals(candidate) }) unique += candidate
+            unique
+        }
+        val before = transactionImpacts(database, transactionUids)
+        val refundBefore = transactionImpacts(database, refundProjectionUids)
+
+        if (transactionUids.isNotEmpty()) {
+            val oldIds = before.map(TransactionProjectionImpact::transactionId)
+            deleteIds(database, "current_transaction_projection", "transaction_id", oldIds)
+            rebuildCurrentTransactions(database, revision, transactionUids)
+            val after = transactionImpacts(database, transactionUids)
+            val affectedIds = (oldIds + after.map(TransactionProjectionImpact::transactionId)).distinct()
+            deleteIds(database, "transaction_fts", "transaction_id", affectedIds)
+            rebuildSearch(database, affectedIds)
+            rebuildGeographyForTransactions(database, affectedIds)
+            AnalyticsProjectionEngine.rebuildDates(
+                database,
+                revision,
+                (before + after).map(TransactionProjectionImpact::localDate).toSet(),
+            )
+        }
+        if (refundProjectionUids.isNotEmpty()) {
+            val refundAfter = transactionImpacts(database, refundProjectionUids)
+            deleteIds(
+                database,
+                "refund_status_projection",
+                "original_transaction_id",
+                (refundBefore + refundAfter).map(TransactionProjectionImpact::transactionId).distinct(),
+            )
+            rebuildRefunds(database, revision, refundProjectionUids)
+        }
+
+        applyAccountDeltas(database, commitId, revision)
+
+        if (changes.changes.any { it is ProjectionChange.BudgetFromMonth }) {
+            database.execSQL("DELETE FROM budget_usage_projection")
+            database.execSQL("DELETE FROM budget_rollover")
+            rebuildBudget(database, revision)
+        }
+        if (changes.changes.any { it is ProjectionChange.Project }) {
+            database.execSQL("DELETE FROM project_usage_projection")
+            rebuildProjects(database, revision)
+        }
+        if (changes.changes.any { it is ProjectionChange.Goal }) {
+            database.execSQL("DELETE FROM goal_balance_projection")
+            rebuildGoals(database, revision)
+        }
+        if (
+            changes.changes.any { it is ProjectionChange.Statement } ||
+            hasAffectedCreditAccount(database, commitId)
+        ) {
+            database.execSQL("DELETE FROM credit_statement_projection")
+            database.execSQL("DELETE FROM credit_account_projection")
+            rebuildCredit(database, revision, asOfLocalDate)
+        }
+        if (changes.changes.any { it is ProjectionChange.Installment }) {
+            database.execSQL("DELETE FROM installment_progress_projection")
+            rebuildInstallments(database, revision, asOfLocalDate)
+        }
+        if (changes.changes.any { it is ProjectionChange.Loan }) {
+            database.execSQL("DELETE FROM loan_future_cashflow_projection")
+            database.execSQL("DELETE FROM loan_progress_projection")
+            rebuildLoans(database, revision, asOfLocalDate)
+        }
+        if (changes.changes.any { it is ProjectionChange.Settlement }) {
+            database.execSQL("DELETE FROM settlement_position_projection")
+            rebuildSettlement(database, revision)
+        }
+        if (changes.changes.any { it is ProjectionChange.Refund }) {
+            rebuildRefundDependencies(database)
+        }
+        if (changes.changes.any { it is ProjectionChange.Widget }) {
+            rebuildWidgetSnapshot(database, revision, valuationRevision, asOfLocalDate)
+        }
+        publishProjectionGeneration(database, revision, valuationRevision)
     }
 
     fun rebuildWidgetSnapshot(
@@ -57,10 +163,16 @@ internal class RoomProjectionEngine {
         localRevision: Long,
         valuationRevision: Long,
     ): Set<ProjectionFamily> = buildSet {
-        VERSIONED_FAMILIES.forEach { (family, tables) ->
-            if (tables.any { table -> count(database, "SELECT COUNT(*) FROM $table WHERE as_of_local_revision <> ?", localRevision) > 0 }) {
-                add(family)
-            }
+        ProjectionFamily.entries.forEach { family ->
+            val valid = count(
+                database,
+                "SELECT COUNT(*) FROM projection_family_state WHERE family=? AND as_of_local_revision=? " +
+                    "AND as_of_valuation_revision=?",
+                family.ordinal,
+                localRevision,
+                valuationRevision,
+            ) == 1L
+            if (!valid) add(family)
         }
         ROW_COUNT_EXPECTATIONS.forEach { (family, queries) ->
             if (count(database, queries.first) != count(database, queries.second)) add(family)
@@ -95,10 +207,39 @@ internal class RoomProjectionEngine {
         }
     }
 
+    /**
+     * Constant-size launch gate for authoritative projection-family generations.
+     * Row revisions describe the last content replacement; this singleton family state proves that
+     * every planner-declared change was published atomically with the Book revision.
+     */
+    fun mismatchedFamiliesAtStartup(
+        database: SupportSQLiteDatabase,
+        localRevision: Long,
+        valuationRevision: Long,
+    ): Set<ProjectionFamily> = buildSet {
+        ProjectionFamily.entries.forEach { family ->
+            val valid = count(
+                database,
+                "SELECT COUNT(*) FROM projection_family_state WHERE family=? AND as_of_local_revision=? " +
+                    "AND as_of_valuation_revision=?",
+                family.ordinal,
+                localRevision,
+                valuationRevision,
+            ) == 1L
+            if (!valid) add(family)
+        }
+    }
+
     fun canonicalHash(database: SupportSQLiteDatabase): String {
         val digest = MessageDigest.getInstance("SHA-256")
         HASH_QUERIES.forEach { (table, query) -> digestTable(database, digest, table, query) }
         return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    internal fun canonicalTableHashes(database: SupportSQLiteDatabase): Map<String, String> = HASH_QUERIES.associate { (table, query) ->
+        val digest = MessageDigest.getInstance("SHA-256")
+        digestTable(database, digest, table, query)
+        table to digest.digest().joinToString("") { byte -> "%02x".format(byte) }
     }
 
     private fun digestTable(
@@ -112,23 +253,35 @@ internal class RoomProjectionEngine {
             val row = ByteArrayOutputStream()
             val output = DataOutputStream(row)
             while (cursor.moveToNext()) {
-                writeRow(output, cursor)
+                writeRow(output, cursor, IGNORED_HASH_COLUMNS)
             }
             output.flush()
             digest.update(row.toByteArray())
         }
     }
 
-    private fun writeRow(output: DataOutputStream, cursor: Cursor) {
-        output.writeInt(cursor.columnCount)
-        for (column in 0 until cursor.columnCount) writeColumn(output, cursor, column)
+    private fun writeRow(output: DataOutputStream, cursor: Cursor, ignoredColumns: Set<String>) {
+        val included = (0 until cursor.columnCount).filter { cursor.getColumnName(it) !in ignoredColumns }
+        output.writeInt(included.size)
+        included.forEach { column -> writeColumn(output, cursor, column) }
     }
 
     private fun clearDerivedState(database: SupportSQLiteDatabase) {
         DERIVED_TABLES.forEach { table -> database.execSQL("DELETE FROM $table") }
     }
 
-    private fun rebuildCurrentTransactions(database: SupportSQLiteDatabase, revision: Long) {
+    private fun rebuildCurrentTransactions(
+        database: SupportSQLiteDatabase,
+        revision: Long,
+        transactionUids: List<ByteArray>? = null,
+    ) {
+        if (transactionUids?.isEmpty() == true) return
+        val transactionFilter = transactionUids?.let { values ->
+            " AND bt.uid IN (${values.joinToString(",") { "?" }})"
+        }.orEmpty()
+        val arguments = mutableListOf<Any>(revision).apply {
+            transactionUids?.forEach(::add)
+        }.toTypedArray()
         database.execSQL(
             """
             INSERT INTO current_transaction_projection(
@@ -200,9 +353,9 @@ internal class RoomProjectionEngine {
             LEFT JOIN fx_exchange_revision_detail fxd ON fxd.revision_id = tr.id
             LEFT JOIN settlement_payment_revision_detail spd ON spd.revision_id = tr.id
             LEFT JOIN opening_balance_revision_detail obd ON obd.revision_id = tr.id
-            WHERE NOT (bt.kind = 9 AND spd.local_account_id IS NULL)
+            WHERE NOT (bt.kind = 9 AND spd.local_account_id IS NULL)$transactionFilter
             """.trimIndent(),
-            arrayOf<Any>(revision),
+            arguments,
         )
     }
 
@@ -245,7 +398,19 @@ internal class RoomProjectionEngine {
         )
     }
 
-    private fun rebuildRefunds(database: SupportSQLiteDatabase, revision: Long) {
+    private fun rebuildRefunds(
+        database: SupportSQLiteDatabase,
+        revision: Long,
+        transactionUids: List<ByteArray>? = null,
+    ) {
+        if (transactionUids?.isEmpty() == true) return
+        val transactionFilter = transactionUids?.let { values ->
+            " AND bt.uid IN (${values.joinToString(",") { "?" }})"
+        }.orEmpty()
+        val arguments = mutableListOf<Any>().apply {
+            transactionUids?.forEach(::add)
+            add(revision)
+        }.toTypedArray()
         database.execSQL(
             """
             INSERT INTO refund_status_projection(original_transaction_id, gross_refundable_minor, refunded_minor, remaining_minor, currency_code, as_of_local_revision)
@@ -259,7 +424,7 @@ internal class RoomProjectionEngine {
                 AND ra.role IN (0,9) AND NOT EXISTS (
                   SELECT 1 FROM revision_amount earlier WHERE earlier.revision_id = ra.revision_id AND earlier.representation = 0
                     AND (earlier.component_index < ra.component_index OR (earlier.component_index = ra.component_index AND earlier.role < ra.role))
-                )
+                )$transactionFilter
             )
             SELECT gross.transaction_id, gross.amount_minor,
               CASE WHEN COALESCE(refunds.refunded,0) > gross.amount_minor THEN gross.amount_minor ELSE COALESCE(refunds.refunded,0) END,
@@ -268,7 +433,7 @@ internal class RoomProjectionEngine {
             FROM gross LEFT JOIN refunds ON gross.transaction_id = refunds.original_transaction_id
             WHERE COALESCE(refunds.refunded,0) >= 0
             """.trimIndent(),
-            arrayOf<Any>(revision),
+            arguments,
         )
     }
 
@@ -561,7 +726,11 @@ internal class RoomProjectionEngine {
         )
     }
 
-    private fun rebuildSearch(database: SupportSQLiteDatabase) {
+    private fun rebuildSearch(database: SupportSQLiteDatabase, transactionIds: List<Long>? = null) {
+        if (transactionIds?.isEmpty() == true) return
+        val transactionFilter = transactionIds?.let { ids ->
+            " AND ctp.transaction_id IN (${ids.joinToString(",") { "?" }})"
+        }.orEmpty()
         database.execSQL(
             """
             INSERT INTO transaction_fts(transaction_id, category_name, merchant_name, merchant_aliases, note, project_name, settlement_activity_name, participant_names, attachment_names, lifecycle_state)
@@ -574,10 +743,197 @@ internal class RoomProjectionEngine {
             FROM current_transaction_projection ctp JOIN transaction_revision tr ON tr.id = ctp.current_revision_id
               LEFT JOIN category c ON c.id = ctp.category_id LEFT JOIN merchant m ON m.id = ctp.merchant_id
               LEFT JOIN project pr ON pr.id = ctp.project_id LEFT JOIN settlement_activity sa ON sa.id = ctp.settlement_activity_id
-            WHERE ctp.state = 0
+            WHERE ctp.state = 0$transactionFilter
             """.trimIndent(),
+            transactionIds?.map { it as Any }?.toTypedArray() ?: emptyArray(),
         )
     }
+
+    private fun publishProjectionGeneration(
+        database: SupportSQLiteDatabase,
+        localRevision: Long,
+        valuationRevision: Long,
+    ) {
+        ProjectionFamily.entries.forEach { family ->
+            database.execSQL(
+                "INSERT INTO projection_family_state(family,as_of_local_revision,as_of_valuation_revision) VALUES(?,?,?) " +
+                    "ON CONFLICT(family) DO UPDATE SET as_of_local_revision=excluded.as_of_local_revision," +
+                    "as_of_valuation_revision=excluded.as_of_valuation_revision",
+                arrayOf<Any>(family.ordinal, localRevision, valuationRevision),
+            )
+        }
+    }
+
+    private fun transactionImpacts(
+        database: SupportSQLiteDatabase,
+        transactionUids: List<ByteArray>,
+    ): List<TransactionProjectionImpact> {
+        if (transactionUids.isEmpty()) return emptyList()
+        return database.queryList(
+            "SELECT transaction_id,local_date " +
+                "FROM current_transaction_projection WHERE transaction_uid IN " +
+                "(${transactionUids.joinToString(",") { "?" }})",
+            transactionUids.map { it as Any }.toTypedArray(),
+        ) { cursor ->
+            TransactionProjectionImpact(cursor.getLong(0), cursor.getInt(1))
+        }
+    }
+
+    private fun deleteIds(
+        database: SupportSQLiteDatabase,
+        table: String,
+        column: String,
+        ids: List<Long>,
+    ) {
+        if (ids.isEmpty()) return
+        require(table in setOf("current_transaction_projection", "transaction_fts", "refund_status_projection"))
+        require(column in setOf("transaction_id", "original_transaction_id"))
+        database.execSQL(
+            "DELETE FROM $table WHERE $column IN (${ids.joinToString(",") { "?" }})",
+            ids.map { it as Any }.toTypedArray(),
+        )
+    }
+
+    private fun rebuildGeographyForTransactions(database: SupportSQLiteDatabase, transactionIds: List<Long>) {
+        if (transactionIds.isEmpty()) return
+        val placeholders = transactionIds.joinToString(",") { "?" }
+        val arguments = transactionIds.map { it as Any }.toTypedArray()
+        database.execSQL(
+            "INSERT OR REPLACE INTO location_rtree(location_id,min_lat,max_lat,min_lon,max_lon) " +
+                "SELECT lr.id,lr.lat_e7/$E7_COORDINATE_SCALE,lr.lat_e7/$E7_COORDINATE_SCALE," +
+                "lr.lon_e7/$E7_COORDINATE_SCALE,lr.lon_e7/$E7_COORDINATE_SCALE " +
+                "FROM location_record lr JOIN transaction_revision tr ON tr.location_record_id=lr.id " +
+                "JOIN business_transaction bt ON bt.current_revision_id=tr.id WHERE bt.id IN ($placeholders)",
+            arguments,
+        )
+        database.execSQL(
+            "INSERT OR REPLACE INTO place_rtree(place_id,min_lat,max_lat,min_lon,max_lon) " +
+                "SELECT p.id,p.center_lat_e7/$E7_COORDINATE_SCALE,p.center_lat_e7/$E7_COORDINATE_SCALE," +
+                "p.center_lon_e7/$E7_COORDINATE_SCALE,p.center_lon_e7/$E7_COORDINATE_SCALE " +
+                "FROM place p JOIN location_record lr ON lr.place_id=p.id JOIN transaction_revision tr ON tr.location_record_id=lr.id " +
+                "JOIN business_transaction bt ON bt.current_revision_id=tr.id WHERE bt.id IN ($placeholders)",
+            arguments,
+        )
+    }
+
+    private fun applyAccountDeltas(database: SupportSQLiteDatabase, commitId: Long, revision: Long) {
+        val deltas = database.queryList(
+            "SELECT ua.id account_id,je.local_date local_date,la.normal_side normal_side," +
+                "SUM(CASE WHEN p.side=la.normal_side THEN p.account_amount_minor ELSE -p.account_amount_minor END) normal_delta," +
+                "SUM(CASE WHEN p.side=0 THEN p.account_amount_minor ELSE 0 END) debit_delta," +
+                "SUM(CASE WHEN p.side=1 THEN p.account_amount_minor ELSE 0 END) credit_delta," +
+                "SUM(CASE WHEN p.side=la.normal_side THEN p.account_amount_minor ELSE 0 END) inflow_delta," +
+                "SUM(CASE WHEN p.side<>la.normal_side THEN p.account_amount_minor ELSE 0 END) outflow_delta " +
+                "FROM journal_entry je JOIN posting p ON p.journal_entry_id=je.id " +
+                "JOIN ledger_account la ON la.id=p.ledger_account_id JOIN user_account ua ON ua.ledger_account_id=la.id " +
+                "WHERE je.created_commit_id=? GROUP BY ua.id,je.local_date,la.normal_side ORDER BY ua.id,je.local_date",
+            arrayOf(commitId),
+        ) { cursor ->
+            AccountProjectionDelta(
+                cursor.getLong(cursor.getColumnIndexOrThrow("account_id")),
+                cursor.getInt(cursor.getColumnIndexOrThrow("local_date")),
+                cursor.getLong(cursor.getColumnIndexOrThrow("normal_delta")),
+                cursor.getLong(cursor.getColumnIndexOrThrow("debit_delta")),
+                cursor.getLong(cursor.getColumnIndexOrThrow("credit_delta")),
+                cursor.getLong(cursor.getColumnIndexOrThrow("inflow_delta")),
+                cursor.getLong(cursor.getColumnIndexOrThrow("outflow_delta")),
+            )
+        }
+        deltas.groupBy(AccountProjectionDelta::accountId).forEach { (accountId, accountDeltas) ->
+            val exists = count(database, "SELECT COUNT(*) FROM account_balance_current WHERE account_id=?", accountId) == 1L
+            if (!exists) {
+                rebuildSingleAccount(database, revision, accountId)
+                return@forEach
+            }
+            val normalDelta = exactSum(accountDeltas.map(AccountProjectionDelta::normalDelta))
+            val debitDelta = exactSum(accountDeltas.map(AccountProjectionDelta::debitDelta))
+            val creditDelta = exactSum(accountDeltas.map(AccountProjectionDelta::creditDelta))
+            database.execSQL(
+                "UPDATE account_balance_current SET normal_balance_minor=normal_balance_minor+?," +
+                    "total_debit_minor=total_debit_minor+?,total_credit_minor=total_credit_minor+?,as_of_local_revision=? " +
+                    "WHERE account_id=?",
+                arrayOf<Any>(normalDelta, debitDelta, creditDelta, revision, accountId),
+            )
+            accountDeltas.forEach { delta -> applyDailyAccountDelta(database, revision, delta) }
+        }
+    }
+
+    private fun applyDailyAccountDelta(
+        database: SupportSQLiteDatabase,
+        revision: Long,
+        delta: AccountProjectionDelta,
+    ) {
+        val existing = count(
+            database,
+            "SELECT COUNT(*) FROM account_balance_daily WHERE account_id=? AND local_date=?",
+            delta.accountId,
+            delta.localDate,
+        ) == 1L
+        if (existing) {
+            database.execSQL(
+                "UPDATE account_balance_daily SET inflow_minor=inflow_minor+?,outflow_minor=outflow_minor+?," +
+                    "closing_minor=closing_minor+?,as_of_local_revision=? WHERE account_id=? AND local_date=?",
+                arrayOf<Any>(delta.inflowDelta, delta.outflowDelta, delta.normalDelta, revision, delta.accountId, delta.localDate),
+            )
+        } else {
+            database.execSQL(
+                "INSERT INTO account_balance_daily(account_id,local_date,opening_minor,inflow_minor,outflow_minor,closing_minor,currency_code,as_of_local_revision) " +
+                    "SELECT ua.id,?,COALESCE((SELECT closing_minor FROM account_balance_daily WHERE account_id=ua.id AND local_date<? " +
+                    "ORDER BY local_date DESC LIMIT 1),0),?,?,COALESCE((SELECT closing_minor FROM account_balance_daily " +
+                    "WHERE account_id=ua.id AND local_date<? ORDER BY local_date DESC LIMIT 1),0)+?,ua.currency_code,? " +
+                    "FROM user_account ua WHERE ua.id=?",
+                arrayOf<Any>(
+                    delta.localDate,
+                    delta.localDate,
+                    delta.inflowDelta,
+                    delta.outflowDelta,
+                    delta.localDate,
+                    delta.normalDelta,
+                    revision,
+                    delta.accountId,
+                ),
+            )
+        }
+        database.execSQL(
+            "UPDATE account_balance_daily SET opening_minor=opening_minor+?,closing_minor=closing_minor+?," +
+                "as_of_local_revision=? WHERE account_id=? AND local_date>?",
+            arrayOf<Any>(delta.normalDelta, delta.normalDelta, revision, delta.accountId, delta.localDate),
+        )
+    }
+
+    private fun rebuildSingleAccount(database: SupportSQLiteDatabase, revision: Long, accountId: Long) {
+        database.execSQL(
+            "INSERT INTO account_balance_current(account_id,normal_balance_minor,currency_code,total_debit_minor,total_credit_minor,as_of_local_revision) " +
+                "SELECT ua.id,CASE la.normal_side WHEN 0 THEN COALESCE(SUM(CASE p.side WHEN 0 THEN p.account_amount_minor ELSE -p.account_amount_minor END),0) " +
+                "ELSE COALESCE(SUM(CASE p.side WHEN 1 THEN p.account_amount_minor ELSE -p.account_amount_minor END),0) END,ua.currency_code," +
+                "COALESCE(SUM(CASE p.side WHEN 0 THEN p.account_amount_minor ELSE 0 END),0)," +
+                "COALESCE(SUM(CASE p.side WHEN 1 THEN p.account_amount_minor ELSE 0 END),0),? " +
+                "FROM user_account ua JOIN ledger_account la ON la.id=ua.ledger_account_id LEFT JOIN posting p ON p.ledger_account_id=la.id " +
+                "WHERE ua.id=? GROUP BY ua.id,la.normal_side,ua.currency_code",
+            arrayOf<Any>(revision, accountId),
+        )
+        database.execSQL(
+            "INSERT INTO account_balance_daily(account_id,local_date,opening_minor,inflow_minor,outflow_minor,closing_minor,currency_code,as_of_local_revision) " +
+                "WITH daily AS (SELECT ua.id account_id,je.local_date,ua.currency_code," +
+                "SUM(CASE WHEN p.side=la.normal_side THEN p.account_amount_minor ELSE 0 END) inflow," +
+                "SUM(CASE WHEN p.side<>la.normal_side THEN p.account_amount_minor ELSE 0 END) outflow," +
+                "SUM(CASE WHEN p.side=la.normal_side THEN p.account_amount_minor ELSE -p.account_amount_minor END) net " +
+                "FROM user_account ua JOIN ledger_account la ON la.id=ua.ledger_account_id JOIN posting p ON p.ledger_account_id=la.id " +
+                "JOIN journal_entry je ON je.id=p.journal_entry_id WHERE ua.id=? GROUP BY ua.id,je.local_date,ua.currency_code)," +
+                "running AS (SELECT account_id,local_date,currency_code,inflow,outflow," +
+                "COALESCE(SUM(net) OVER (PARTITION BY account_id ORDER BY local_date ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) opening," +
+                "SUM(net) OVER (PARTITION BY account_id ORDER BY local_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) closing FROM daily) " +
+                "SELECT account_id,local_date,opening,inflow,outflow,closing,currency_code,? FROM running",
+            arrayOf<Any>(accountId, revision),
+        )
+    }
+
+    private fun hasAffectedCreditAccount(database: SupportSQLiteDatabase, commitId: Long): Boolean = count(
+        database,
+        "SELECT COUNT(*) FROM journal_entry je JOIN posting p ON p.journal_entry_id=je.id " +
+            "JOIN user_account ua ON ua.ledger_account_id=p.ledger_account_id WHERE je.created_commit_id=? AND ua.type=2 LIMIT 1",
+        commitId,
+    ) > 0L
 
     private fun rebuildGeography(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -720,6 +1076,7 @@ internal class RoomProjectionEngine {
     }
 
     private companion object {
+        val IGNORED_HASH_COLUMNS = setOf("as_of_local_revision")
         val DERIVED_TABLES = listOf(
             "transaction_fts", "location_rtree", "place_rtree", "widget_goal_snapshot", "widget_credit_snapshot",
             "widget_account_snapshot", "widget_book_snapshot", "settlement_position_projection", "loan_future_cashflow_projection",
@@ -729,30 +1086,6 @@ internal class RoomProjectionEngine {
             "budget_rollover",
             "account_balance_daily", "account_balance_current", "current_transaction_projection",
         ) + AnalyticsProjectionEngine.tables
-        val VERSIONED_FAMILIES = mapOf(
-            ProjectionFamily.CURRENT_TRANSACTION to listOf("current_transaction_projection"),
-            ProjectionFamily.ACCOUNT_BALANCE to listOf("account_balance_current"),
-            ProjectionFamily.ACCOUNT_DAILY to listOf("account_balance_daily"),
-            ProjectionFamily.REFUND to listOf("refund_status_projection"),
-            ProjectionFamily.BUDGET to listOf(
-                "budget_usage_projection",
-                "budget_rollover",
-                "budget_future_reservation",
-            ),
-            ProjectionFamily.PROJECT to listOf("project_usage_projection"),
-            ProjectionFamily.GOAL to listOf("goal_balance_projection"),
-            ProjectionFamily.CREDIT to listOf("credit_statement_projection", "credit_account_projection"),
-            ProjectionFamily.INSTALLMENT to listOf("installment_progress_projection"),
-            ProjectionFamily.LOAN to listOf("loan_progress_projection", "loan_future_cashflow_projection"),
-            ProjectionFamily.SETTLEMENT to listOf("settlement_position_projection"),
-            ProjectionFamily.ANALYTICS to AnalyticsProjectionEngine.tables,
-            ProjectionFamily.WIDGET to listOf(
-                "widget_book_snapshot",
-                "widget_account_snapshot",
-                "widget_credit_snapshot",
-                "widget_goal_snapshot",
-            ),
-        )
         val ROW_COUNT_EXPECTATIONS = listOf(
             ProjectionFamily.CURRENT_TRANSACTION to Pair(
                 "SELECT COUNT(*) FROM current_transaction_projection",
@@ -823,6 +1156,21 @@ internal class RoomProjectionEngine {
 }
 
 private data class BudgetConfigured(val month: Int, val total: Long, val revisionId: Long)
+
+private data class TransactionProjectionImpact(
+    val transactionId: Long,
+    val localDate: Int,
+)
+
+private data class AccountProjectionDelta(
+    val accountId: Long,
+    val localDate: Int,
+    val normalDelta: Long,
+    val debitDelta: Long,
+    val creditDelta: Long,
+    val inflowDelta: Long,
+    val outflowDelta: Long,
+)
 private data class BudgetAmount(val month: Int, val categoryId: Long?, val amount: Long)
 private data class BudgetProjectionRow(
     val categoryId: Long?,
@@ -850,3 +1198,4 @@ private fun java.time.YearMonth.toProjectionInt(): Int = year * PROJECTION_MONTH
 
 private const val PROJECTION_MONTH_RADIX = 100
 private const val PROJECTION_DATE_YEAR_RADIX = 10_000
+private const val E7_COORDINATE_SCALE = 10_000_000.0

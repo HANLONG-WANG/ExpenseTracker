@@ -197,12 +197,12 @@ class SecureRoomBudgetApplicationPort(
         val categories = categories(db)
         val history = current?.first?.let { budgetHistory(db, it.id) }.orEmpty()
         val rows = composition(db, month, book.localRevision, categories)
-        val stale = rows.any { it.asOfLocalRevision != book.localRevision }
+        val stale = !db.isProjectionFamilyCurrent(app.ledger.finance.application.ProjectionFamily.BUDGET, book.localRevision)
         val readiness = if (stale) BudgetProjectionReadiness.FAILED else BudgetProjectionReadiness.CURRENT
         val reservations = if (readiness == BudgetProjectionReadiness.CURRENT) {
             db.queryOne(
-                "SELECT COALESCE(SUM(reserved_base_minor),0) FROM budget_future_reservation WHERE year_month=? AND occurrence_date>=? AND as_of_local_revision=?",
-                arrayOf<Any>(month.toStorageInt(), today.toStorageInt(), book.localRevision.value),
+                "SELECT COALESCE(SUM(reserved_base_minor),0) FROM budget_future_reservation WHERE year_month=? AND occurrence_date>=?",
+                arrayOf<Any>(month.toStorageInt(), today.toStorageInt()),
             ) { it.getLong(0) } ?: 0L
         } else {
             0L
@@ -342,8 +342,8 @@ class SecureRoomBudgetApplicationPort(
         ) { cursor ->
             val id = cursor.nullableStableId("uid")
             val category = id?.let(categories::get)
-            BudgetCompositionView(id, category?.name, category?.parentCategoryId, category?.depth ?: 0, cursor.long("base_budget_minor"), cursor.long("rollover_minor"), cursor.long("adjustment_minor"), cursor.long("used_minor"), cursor.long("remaining_minor"), LocalRevision.of(cursor.long("as_of_local_revision")).valueOrAbort())
-        }.also { rows -> if (rows.any { it.asOfLocalRevision.value > revision.value }) abort(FinanceDataError.CorruptData) }
+            BudgetCompositionView(id, category?.name, category?.parentCategoryId, category?.depth ?: 0, cursor.long("base_budget_minor"), cursor.long("rollover_minor"), cursor.long("adjustment_minor"), cursor.long("used_minor"), cursor.long("remaining_minor"), revision)
+        }
     }
 
     private fun adjustments(db: SupportSQLiteDatabase, month: YearMonth): List<BudgetAdjustmentView> = db.queryList(

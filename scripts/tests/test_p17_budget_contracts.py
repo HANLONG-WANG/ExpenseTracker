@@ -25,7 +25,7 @@ class P17BudgetMutationTest(unittest.TestCase):
         self.assertTrue(self.mutate("BudgetProjectGoal.kt", 'DomainViolation.Invariant("INV-018")', 'DomainViolation.Invariant("BYPASS")'))
 
     def test_rebuildable_rollover_projection_cannot_be_removed(self) -> None:
-        self.assertTrue(self.mutate("RoomProjectionEngine.kt", "ProjectionFamily.BUDGET", "ProjectionFamily.GOAL"))
+        self.assertTrue(self.mutate("RoomProjectionEngine.kt", "ProjectionChange.BudgetFromMonth", "ProjectionChange.Goal"))
 
     def test_stale_projection_guard_cannot_be_removed(self) -> None:
         self.assertTrue(self.mutate("SecureRoomBudgetApplicationPort.kt", "budget_future_reservation", "unversioned_future_reservation"))

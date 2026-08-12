@@ -1,6 +1,6 @@
 # Decision Log
 
-Last updated: 2026-08-02 (Asia/Tokyo)
+Last updated: 2026-08-12 (Asia/Tokyo)
 
 This log records interpretations; it does not modify frozen specifications. Later stages must append a dated entry before relying on any new conflict resolution.
 
@@ -1186,3 +1186,39 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Priority applied: the domain lifecycle classification and accounting/projection integrity semantics outrank treating every derived table identically. Widget snapshots are explicitly Cache, while the canonical hash proves deterministic authoritative fact projections.
 - Decision: exclude `widget_book_snapshot`, `widget_account_snapshot`, `widget_credit_snapshot` and `widget_goal_snapshot` from `HASH_QUERIES`. Keep them in derived rebuild ownership, `ProjectionFamily.WIDGET`, local/valuation revision checks, row-count expectations and stale-date validation.
 - Consequence: financial projection integrity remains stable across time-only cache refreshes, while corrupt/stale widget data still fails its independent checks. SQLCipher integration and a P34 weakening-mutation test guard both sides of the boundary.
+
+## DL-168 — Startup trusts bounded projection-family generations, not target-sized row scans
+
+- Date/stage: 2026-08-12 / P35
+- Surface issue: applying every historical row-count/hash audit during cold start makes launch work proportional to a 500,000-transaction ledger, while omitting an integrity signal would permit stale projections to be shown.
+- Priority applied: the architecture's synchronous-projection and startup-performance invariants require both atomic correctness and bounded launch work.
+- Decision: Primary Schema v4 stores exactly one generation row for each of the 15 authoritative projection families. Coordinator-owned commits update affected projections and generation rows in the same SQLCipher transaction; startup checks only this constant-size set. Full row-count, foreign-key and canonical-hash reconstruction remains mandatory for maintenance, restore and explicit integrity audit.
+- Consequence: cold start no longer scans target-sized projections, a partially published generation fails closed, and maintenance verification is not weakened.
+
+## DL-169 — P35 device evidence uses the user-authorized emulator substitution
+
+- Date/stage: 2026-08-12 / P35
+- Surface issue: the frozen acceptance normally requires API 28 and API 36 physical-device regression, but the user explicitly required emulators for this P35 run.
+- Decision: execute SQLCipher, Keystore, BiometricPrompt/CryptoObject, SAF, process/background and Macrobenchmark evidence on KVM-backed API 28/API 36 Android system images, and label every such result as emulator evidence. Robolectric is not used for these platform boundaries and no result is described as physical-device evidence.
+- Consequence: P35 is evaluated under the user's explicit substitution without falsifying provenance; a later physical-device release run, if requested, would be new evidence rather than a reinterpretation of this stage.
+
+## DL-170 — Pre-R Vault CryptoObject authentication excludes device credential
+
+- Date/stage: 2026-08-12 / P35
+- Surface issue: Android 9 rejects `BIOMETRIC_STRONG | DEVICE_CREDENTIAL` when a `CryptoObject` is supplied, although the same combination is valid on newer Android versions.
+- Decision: API 28/29 cryptographic Vault actions require enrolled strong biometric and expose an explicit localized cancel action; credential fallback remains available only for non-cryptographic app-lock prompts. A pre-R credential-only device fails Vault enable/action closed. API 30+ retains the supported authenticator policy.
+- Consequence: every PAN/CVC action still uses a fresh validity-zero cipher, no authentication is reused, and min-SDK behavior is truthful instead of crashing or silently weakening encryption.
+
+## DL-171 — Compose owns the benchmarked window without a platform ActionBar
+
+- Date/stage: 2026-08-12 / P35
+- Surface issue: target-scale Macrobenchmark exposed a platform ActionBar overlay that was not part of the Compose navigation/design-system contract and distorted startup/render measurements.
+- Decision: use an explicit light/dark no-ActionBar application theme while preserving the governed Compose top bars and system-bar behavior.
+- Consequence: measured frames represent the contracted UI, no duplicate navigation chrome remains, and the change does not derive from or compare against an excluded visual draft.
+
+## DL-172 — OSV closure is tied to the unchanged release lock, with fresh-upload limits disclosed
+
+- Date/stage: 2026-08-12 / P35
+- Surface issue: the execution environment rejected a fresh OSV batch upload under its external dependency-metadata policy after the current SBOM and license reports were generated.
+- Decision: use the successful 2026-08-11 OSV report only for the byte-identical 248-component release scope, prove `app/gradle.lockfile` remains SHA-256 `a9f1266f3f27609cf9f34804e9619f971f08e6ab64407f14a4a4d3e976baa264`, and record that the fresh response was not obtained. CI retains the live `p35Artifacts` OSV gate where network policy permits it.
+- Consequence: zero vulnerable release components is evidence-backed for the unchanged lock, 18 non-release tooling/test findings remain visible, and no current-network result is fabricated.

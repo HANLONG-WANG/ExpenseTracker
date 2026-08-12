@@ -25,7 +25,7 @@ class P16RefundMutationTest(unittest.TestCase):
         self.assertTrue(self.mutate("TransactionModel.kt", "RefundAllocationFact", "MutableRefundAllocation"))
 
     def test_refund_projection_rebuild_cannot_be_removed(self) -> None:
-        self.assertTrue(self.mutate("RoomProjectionEngine.kt", "ProjectionFamily.REFUND", "ProjectionFamily.BUDGET"))
+        self.assertTrue(self.mutate("RoomProjectionEngine.kt", "ProjectionChange.Refund", "ProjectionChange.BudgetFromMonth"))
 
     def test_high_risk_second_confirmation_cannot_be_removed(self) -> None:
         self.assertTrue(self.mutate("RefundState.kt", "confirmExcessRisk", "silentlyAllowExcess"))

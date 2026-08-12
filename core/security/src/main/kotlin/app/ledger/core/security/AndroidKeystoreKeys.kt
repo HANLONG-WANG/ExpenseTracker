@@ -43,13 +43,20 @@ class AndroidKeystoreKeys(context: Context) {
         }
     }
 
+    /** Whether this API/device can satisfy the vault's zero-duration, CryptoObject-bound action. */
+    fun vaultAuthenticationAvailable(): Boolean = when (deviceSecurityCapability()) {
+        DeviceSecurityCapability.BIOMETRIC_OR_CREDENTIAL -> true
+        DeviceSecurityCapability.DEVICE_CREDENTIAL_ONLY -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL -> false
+    }
+
     fun ensureDeviceLedgerKek(bookAliasSuffix: String) {
         val alias = deviceAlias(bookAliasSuffix)
         if (!keyStore.containsAlias(alias)) generateDeviceLedgerKek(alias)
     }
 
     fun ensureVaultAuthenticationKek(bookAliasSuffix: String) {
-        if (!keyguardManager.isDeviceSecure) throw SecurityException.DeviceSecurityUnavailable()
+        if (!vaultAuthenticationAvailable()) throw SecurityException.DeviceSecurityUnavailable()
         val alias = vaultAlias(bookAliasSuffix)
         if (!keyStore.containsAlias(alias)) generateVaultAuthenticationKek(alias)
     }

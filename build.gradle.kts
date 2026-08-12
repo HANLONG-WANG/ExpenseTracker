@@ -1789,13 +1789,7 @@ val validateP34UiClosure by tasks.registering(Exec::class) {
     environment("PYTHONDONTWRITEBYTECODE", "1")
     inputs.files(
         fileTree("scripts") { include("**/*.py") },
-        fileTree("app/src") { include("**/*") },
-        fileTree("analytics") { include("**/src/**/*") },
-        fileTree("core") { include("**/src/**/*") },
-        fileTree("feature") { include("**/src/**/*") },
-        fileTree("finance") { include("**/src/**/*") },
-        fileTree("transfer") { include("**/src/**/*") },
-        fileTree("widget/src") { include("**/*") },
+        subprojects.map { project -> project.fileTree("src") { include("**/*") } },
         fileTree("docs/implementation") { include("*.csv", "*.md") },
         "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
         "docs/UI设计稿与实现契约_v1.0/UI需求追踪矩阵_v1.csv",
@@ -1811,11 +1805,7 @@ val validateP34UiClosureFixtures by tasks.registering(Exec::class) {
     inputs.files(
         "scripts/validate_p34_ui_closure.py",
         "scripts/tests/test_p34_ui_closure_contracts.py",
-        fileTree("app/src") { include("**/*") },
-        fileTree("core/designsystem/src") { include("**/*") },
-        fileTree("feature") { include("**/src/**/*") },
-        fileTree("finance/data/src") { include("**/*") },
-        fileTree("widget/src") { include("**/*") },
+        subprojects.map { project -> project.fileTree("src") { include("**/*") } },
     )
 }
 
@@ -1938,6 +1928,84 @@ tasks.register("p34Artifacts") {
     group = "verification"
     description = "Generates P34 whole-product coverage and inherited SBOM/license artifacts."
     dependsOn("p02Artifacts")
+}
+
+val validateP35PerformanceSecurity by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates P35 fixed target scale, real benchmark wiring, fault matrix, security boundaries and evidence ledgers."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p35_performance_security.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "quality/performance/p35_budgets.json",
+        "scripts/validate_p35_performance_security.py",
+        fileTree("app/src") { include("**/*") },
+        fileTree("benchmark/src") { include("**/*") },
+        subprojects.map { project ->
+            project.fileTree("src") { include("**/*") }
+        },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+    )
+}
+
+val validateP35PerformanceSecurityFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the P35 gate rejects reduced scale, unbounded batches, weakened benchmarks, missing faults and unsafe WebView use."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p35_performance_security_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p35_performance_security.py",
+        "scripts/tests/test_p35_performance_security_contracts.py",
+        "quality/performance/p35_budgets.json",
+    )
+}
+
+tasks.register("p35Check") {
+    group = "verification"
+    description = "Runs the P35 static, JVM, lint, benchmark compilation, architecture and security release gates."
+    dependsOn(
+        "p34Check",
+        validateP35PerformanceSecurity,
+        validateP35PerformanceSecurityFixtures,
+        ":benchmark:assembleBenchmark",
+        ":core:designsystem:testDebugUnitTest",
+        ":finance:domain:test",
+        ":finance:data:testDebugUnitTest",
+        ":transfer:data:testDebugUnitTest",
+        ":app:lintBenchmark",
+    )
+}
+
+tasks.register("p35DeviceCheck") {
+    group = "verification"
+    description = "Runs P35 API 36 emulator SQLCipher, security, fault, streaming and target-scale Macrobenchmark evidence."
+    dependsOn(
+        ":app:connectedDebugAndroidTest",
+        ":core:database:connectedDebugAndroidTest",
+        ":core:files:connectedDebugAndroidTest",
+        ":core:security:connectedDebugAndroidTest",
+        ":finance:data:connectedDebugAndroidTest",
+        ":transfer:data:connectedDebugAndroidTest",
+        ":benchmark:connectedBenchmarkAndroidTest",
+    )
+}
+
+val auditP35Osv by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Audits the generated Maven CycloneDX inventory against the current OSV batch API."
+    dependsOn("cyclonedxBom")
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/audit_p35_osv.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files("scripts/audit_p35_osv.py", layout.buildDirectory.file("reports/cyclonedx/bom.json"))
+    outputs.file(layout.buildDirectory.file("reports/security/p35-osv.json"))
+}
+
+tasks.register("p35Artifacts") {
+    group = "verification"
+    description = "Generates P35 coverage, SBOM, license and current dependency-vulnerability audit artifacts."
+    dependsOn("p34Artifacts", auditP35Osv)
 }
 
 tasks.register<Exec>("generateLicenseReport") {

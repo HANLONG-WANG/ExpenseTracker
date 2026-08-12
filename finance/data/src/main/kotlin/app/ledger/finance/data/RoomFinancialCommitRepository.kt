@@ -6,7 +6,6 @@ import android.database.sqlite.SQLiteFullException
 import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
-import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.finance.application.AtomicFinancialCommitRepository
 import app.ledger.finance.application.CommandReceiptRepository
@@ -131,9 +130,10 @@ class RoomFinancialCommitRepository(
                     .atZone(ZoneId.of(book.defaultZoneId))
                     .toLocalDate()
                     .toStorageInt()
-                projections.rebuildAll(
+                projections.applyIncremental(
                     connection,
-                    plan.targetLocalRevision.value,
+                    plan.projectionChanges,
+                    connection.commitId(plan.commit.id),
                     book.valuationRevision,
                     projectionDate,
                 )
@@ -394,10 +394,21 @@ class RoomFinancialCommitRepository(
             "SELECT COUNT(*) FROM journal_entry WHERE created_commit_id = ? AND base_debit_total_minor <> base_credit_total_minor",
             arrayOf(commitId),
         ) { it.getLong(0) } ?: 0L
-        val invalidSubtype = connection.queryOne(
-            "SELECT COUNT(*) FROM current_transaction_subtype_audit WHERE has_matching_detail = 0",
-        ) { it.getLong(0) } ?: 0L
-        val mismatches = projections.mismatchedFamilies(
+        val transactionUids = plan.transactions.map { it.id.value.bytes }.fold(mutableListOf<ByteArray>()) { unique, candidate ->
+            if (unique.none { existing -> existing.contentEquals(candidate) }) unique += candidate
+            unique
+        }
+        val invalidSubtype = if (transactionUids.isEmpty()) {
+            0L
+        } else {
+            connection.queryOne(
+                "SELECT COUNT(*) FROM current_transaction_subtype_audit WHERE has_matching_detail=0 " +
+                    "AND transaction_id IN (SELECT id FROM business_transaction WHERE uid IN " +
+                    "(${transactionUids.joinToString(",") { "?" }}))",
+                transactionUids.map { it as Any }.toTypedArray(),
+            ) { it.getLong(0) } ?: 0L
+        }
+        val mismatches = projections.mismatchedFamiliesAtStartup(
             connection,
             plan.targetLocalRevision.value,
             valuationRevision,
@@ -406,26 +417,6 @@ class RoomFinancialCommitRepository(
             abort(app.ledger.finance.domain.DomainViolation.Invariant("INV-001"))
         }
         if (mismatches.isNotEmpty()) abort(FinanceDataError.ProjectionMismatch)
-        val audit = DatabaseIntegrityAudit.run(connection)
-        if (audit.foreignKeyViolationCount != 0) {
-            abort(app.ledger.finance.domain.DomainViolation.Invariant("INV-003"))
-        }
-        if (audit.unbalancedJournalCount != 0) {
-            abort(app.ledger.finance.domain.DomainViolation.Invariant("INV-001"))
-        }
-        if (audit.invalidCurrentSubtypeCount != 0) {
-            abort(app.ledger.finance.domain.DomainViolation.Invariant("INV-005"))
-        }
-        if (audit.integrityCheck != "ok") {
-            abort(app.ledger.finance.domain.DomainViolation.InvalidField("database.integrityCheck"))
-        }
-        val missingRequiredCapability = !audit.capability.fts5 ||
-            !audit.capability.rTree ||
-            !audit.capability.json ||
-            !audit.capability.windowFunctions
-        if (missingRequiredCapability) {
-            abort(FinanceDataError.CorruptData)
-        }
     }
 
     private fun primaryEntity(plan: FinancialMutationPlan): StableEntityReference? = plan.transactions.firstOrNull()?.let {

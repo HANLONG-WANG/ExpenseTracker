@@ -74,6 +74,20 @@ class BudgetRolloverPropertyTest {
     }
 
     @Test
+    fun tenYearHistoryEditRecomputesEveryLaterRolloverWithoutUnboundedState() {
+        val original = (0L until 120L).map { offset -> input(START.plusMonths(offset), 1_000L, used = if (offset == 0L) 1_200L else 0L) }
+        val edited = original.toMutableList().also { rows -> rows[0] = input(START, 2_000L, used = 1_200L) }
+        val before = (BudgetRolloverEngine.rebuild(original) as DomainResult.Success).value
+        val after = (BudgetRolloverEngine.rebuild(edited) as DomainResult.Success).value
+
+        before shouldHaveSize 120
+        after shouldHaveSize 120
+        before.last().total.rolloverMinor shouldBe 117_800L
+        after.last().total.rolloverMinor shouldBe 118_800L
+        after shouldBe (BudgetRolloverEngine.rebuild(edited) as DomainResult.Success).value
+    }
+
+    @Test
     fun `daily available subtracts future fixed reservations before exact integer division`() {
         val value = (DailyAvailableBudgetPolicy.calculate(START, 3_100L, 310L, 31, REVISION) as DomainResult.Success).value
         value.dailyAvailableBaseMinor shouldBe 90L

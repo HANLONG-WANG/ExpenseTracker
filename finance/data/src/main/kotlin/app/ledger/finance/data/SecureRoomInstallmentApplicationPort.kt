@@ -107,11 +107,9 @@ class SecureRoomInstallmentApplicationPort(
                     cursor.getInt(cursor.getColumnIndexOrThrow("status")) == 0,
                 )
             }
-            val staleProjection = db.queryOne(
-                "SELECT COUNT(*) FROM installment_progress_projection WHERE as_of_local_revision<>?",
-                arrayOf(book.localRevision.value),
-            ) { it.getLong(0) } ?: 0L
-            if (staleProjection != 0L) abort(FinanceDataError.ProjectionMismatch)
+            if (!db.isProjectionFamilyCurrent(app.ledger.finance.application.ProjectionFamily.INSTALLMENT, book.localRevision)) {
+                abort(FinanceDataError.ProjectionMismatch)
+            }
             DomainResult.Success(InstallmentSnapshot(bookId, book.baseCurrency, book.localRevision, plans, purchases, paymentAccounts))
         }
     }

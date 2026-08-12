@@ -6,6 +6,17 @@ plugins {
     alias(libs.plugins.protobuf)
 }
 
+android {
+    buildTypes {
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+            isDebuggable = false
+        }
+    }
+}
+
 dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:designsystem"))
@@ -46,6 +57,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.play.services.auth)
     implementation(libs.work.runtime.ktx)
+    implementation(libs.profileinstaller)
+    add("benchmarkImplementation", project(":core:database"))
     debugImplementation(libs.leakcanary.android)
 }
 

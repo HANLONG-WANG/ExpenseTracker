@@ -46,6 +46,22 @@ internal fun ReadyRootScaffold(
     snackbarController: LedgerSnackbarController,
 ) {
     val navigator = viewModel.navigator
+    var navigationEpoch by remember { mutableIntStateOf(0) }
+    // FiveStackNavigator is deliberately platform-independent rather than SnapshotState-backed.
+    // Reading the epoch while deriving navigation values makes every stack mutation invalidate
+    // the whole shell (top bar, destination and selected bottom item), not only NavDisplay.
+    val selected = navigationEpoch.let { navigator.currentTopLevel.toDesignTopLevel() }
+    SideEffect {
+        app.ledger.core.designsystem.LedgerPerformanceRuntime.enter(
+            when (viewModel.navigator.currentTopLevel) {
+                app.ledger.core.navigation.TopLevelDestination.RECORD -> app.ledger.core.designsystem.LedgerPerformanceScene.RECORD
+                app.ledger.core.navigation.TopLevelDestination.JOURNAL -> app.ledger.core.designsystem.LedgerPerformanceScene.JOURNAL
+                app.ledger.core.navigation.TopLevelDestination.ACCOUNTS -> app.ledger.core.designsystem.LedgerPerformanceScene.ACCOUNTS
+                app.ledger.core.navigation.TopLevelDestination.BUDGET -> app.ledger.core.designsystem.LedgerPerformanceScene.BUDGET
+                app.ledger.core.navigation.TopLevelDestination.ANALYSIS -> app.ledger.core.designsystem.LedgerPerformanceScene.ANALYSIS
+            },
+        )
+    }
     val referenceState by viewModel.referenceData.collectAsStateWithLifecycle()
     val referencePending by viewModel.referenceMutationPending.collectAsStateWithLifecycle()
     val recordState by viewModel.ordinaryRecord.collectAsStateWithLifecycle()
@@ -76,9 +92,7 @@ internal fun ReadyRootScaffold(
             viewModel.importRecordAttachment(uri)
         }
     }
-    var navigationEpoch by remember { mutableIntStateOf(0) }
     SideEffect { viewModel.screenVisibilityChanged(navigator.currentKey.contract.screenId.value) }
-    val selected = navigator.currentTopLevel.toDesignTopLevel()
     LedgerScaffold(
         modifier = Modifier.fillMaxSize(),
         snackbarController = snackbarController,
@@ -185,7 +199,6 @@ internal fun ReadyRootScaffold(
             null
         },
     ) { padding ->
-        navigationEpoch
         NavDisplay(
             backStack = navigator.currentBackStack,
             onBack = {

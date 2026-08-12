@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "environment": "Android emulator evidence; API 28 x86 and API 36 x86_64",
+  "targetScale": {
+    "currentTransactions": 500000,
+    "transactionRevisions": 1000000,
+    "postings": 1000000,
+    "historyAndChanges": 2000000,
+    "attachmentAssociations": 100000,
+    "attachmentFiles": 50000,
+    "merchants": 5000,
+    "places": 5000,
+    "importRows": 100000,
+    "streamBytes": 51539607552
+  },
+  "deviceAudit": {
+    "pagingMillisMax": 5000,
+    "searchMillisMax": 5000,
+    "reportMillisMax": 10000,
+    "mapMillisMax": 10000,
+    "javaHeapGrowthBytesMax": 67108864,
+    "fileDescriptorGrowthMax": 8,
+    "financialSeedBatchRowsMax": 1000
+  },
+  "macrobenchmark": {
+    "coldStartupP95MillisMax": 3000,
+    "frameOverrunP95MillisMax": 32,
+    "jankPercentMax": 5.0,
+    "iterationsMin": 3
+  },
+  "streaming": {
+    "workingBufferBytesMax": 1048576,
+    "unboundedMaterializationAllowed": false
+  }
+}

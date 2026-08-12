@@ -116,17 +116,17 @@ class EncryptedSchemaV1DeviceTest {
     }
 
     @Test
-    fun schemaVersionThreeHasRegisteredNonDestructivePredecessorMigrations() {
-        assertEquals(3, LedgerMigrations.CURRENT_VERSION)
-        assertEquals(2, LedgerMigrations.registered(context).size)
-        assertEquals(2, LedgerMigrations.contracts.size)
+    fun schemaVersionFourHasRegisteredNonDestructivePredecessorMigrations() {
+        assertEquals(4, LedgerMigrations.CURRENT_VERSION)
+        assertEquals(3, LedgerMigrations.registered(context).size)
+        assertEquals(3, LedgerMigrations.contracts.size)
         assertEquals(1, StagingMigrations.CURRENT_VERSION)
         assertTrue(StagingMigrations.registered.isEmpty())
         assertTrue(StagingMigrations.contracts.isEmpty())
     }
 
     @Test
-    fun encryptedVersionOneDatabaseMigratesToVersionThreeWithoutLosingLedgerData() {
+    fun encryptedVersionOneDatabaseMigratesToVersionFourWithoutLosingLedgerData() {
         val passphrase = passphrase(0x63)
         val initial = EncryptedDatabaseFactory.openPrimary(context, passphrase)
         val current = initial.openHelper.writableDatabase
@@ -145,6 +145,7 @@ class EncryptedSchemaV1DeviceTest {
         listOf("widget_goal_snapshot", "widget_credit_snapshot", "widget_account_snapshot", "widget_book_snapshot").forEach {
             current.execSQL("DROP TABLE $it")
         }
+        current.execSQL("DROP TABLE projection_family_state")
         LedgerSchemaDefinition.primaryV1Statements(context)
             .filter { statement -> statement.startsWith("CREATE TABLE widget_") }
             .forEach(current::execSQL)
@@ -157,9 +158,9 @@ class EncryptedSchemaV1DeviceTest {
 
         val migrated = EncryptedDatabaseFactory.openPrimary(context, passphrase)
         val database = migrated.openHelper.writableDatabase
-        assertEquals(3L, singleLong(database, "PRAGMA user_version"))
+        assertEquals(4L, singleLong(database, "PRAGMA user_version"))
         assertEquals(1L, singleLong(database, "SELECT count(*) FROM book WHERE base_currency='JPY'"))
-        assertEquals(3L, singleLong(database, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
+        assertEquals(4L, singleLong(database, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
         assertEquals(
             LedgerSchemaDefinition.primaryContractSha256(context),
             singleString(database, "SELECT contractSha256 FROM _room_schema_registry WHERE id=1"),
@@ -167,6 +168,7 @@ class EncryptedSchemaV1DeviceTest {
         assertTrue(sqliteObjectNames(database, "table").containsAll(LedgerSchemaDefinition.expectedPrimaryV2TableNames(context)))
         assertTrue(columnNames(database, "widget_book_snapshot").contains("today_available_base_minor"))
         assertTrue(columnNames(database, "widget_book_snapshot").contains("previous_core_net_financial_assets_base_minor"))
+        assertEquals(15L, singleLong(database, "SELECT COUNT(*) FROM projection_family_state"))
         assertTrue(DatabaseIntegrityAudit.run(database).isValid)
         migrated.close()
 
