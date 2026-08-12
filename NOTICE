@@ -1,0 +1,22 @@
+ExpenseTracker 1.0.0
+
+This product includes open-source software maintained by its respective authors
+and contributors, including AndroidX and Jetpack Compose, SQLCipher, Tink,
+Apache Commons CSV and Compress, FastExcel, MapLibre Native, Vico, ACRA,
+OkHttp, Kotlin, Room, Coil, Bouncy Castle, ICU and their transitive dependencies.
+
+The exact version, package URL and declared license for every locked third-party
+component is generated from the release CycloneDX graph by:
+
+    ./gradlew generateLicenseReport
+
+The resulting files are:
+
+    build/reports/dependency-license/licenses.csv
+    build/reports/dependency-license/index.html
+    build/reports/dependency-license/THIRD_PARTY_NOTICES.txt
+
+Copyright and license rights remain with each upstream project. The generated
+inventory identifies the source distribution from which complete license and
+copyright text can be obtained. No dependency is accepted with unresolved
+license metadata by the P36 release gate.

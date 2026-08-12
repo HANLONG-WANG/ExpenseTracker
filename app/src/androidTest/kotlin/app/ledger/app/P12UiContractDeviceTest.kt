@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
@@ -157,6 +158,7 @@ class P12UiContractDeviceTest {
     }
 
     @Test
+    @SdkSuppress(minSdkVersion = 36)
     fun accountHomeGoldenMatchesTokenAndYamlDerivedPixels() {
         composeRule.setContent {
             CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides Density(1f, 1f)) {

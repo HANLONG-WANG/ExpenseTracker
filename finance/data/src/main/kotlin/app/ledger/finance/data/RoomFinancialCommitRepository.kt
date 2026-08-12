@@ -71,6 +71,7 @@ class RoomFinancialCommitRepository(
     private val beforeCommitSideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
     private val sideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
     private val afterFinancialWriteSideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
+    private val forceFullProjectionRebuild: Boolean = false,
 ) : AtomicFinancialCommitRepository,
     CommandReceiptRepository {
     private val writer = RoomFinancialPlanWriter()
@@ -130,13 +131,22 @@ class RoomFinancialCommitRepository(
                     .atZone(ZoneId.of(book.defaultZoneId))
                     .toLocalDate()
                     .toStorageInt()
-                projections.applyIncremental(
-                    connection,
-                    plan.projectionChanges,
-                    connection.commitId(plan.commit.id),
-                    book.valuationRevision,
-                    projectionDate,
-                )
+                if (forceFullProjectionRebuild) {
+                    projections.rebuildAll(
+                        connection,
+                        plan.targetLocalRevision.value,
+                        book.valuationRevision,
+                        projectionDate,
+                    )
+                } else {
+                    projections.applyIncremental(
+                        connection,
+                        plan.projectionChanges,
+                        connection.commitId(plan.commit.id),
+                        book.valuationRevision,
+                        projectionDate,
+                    )
+                }
                 failureInjector.checkpoint(FinancialCommitPhase.AFTER_PROJECTIONS)
                 verifyNewState(connection, plan, book.valuationRevision)
                 failureInjector.checkpoint(FinancialCommitPhase.BEFORE_BOOK_ADVANCE)

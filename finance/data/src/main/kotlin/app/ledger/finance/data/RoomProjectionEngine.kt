@@ -53,7 +53,7 @@ internal class RoomProjectionEngine {
         asOfLocalDate: Int,
     ) {
         val revision = changes.targetRevision.value
-        val transactionUids = changes.changes.mapNotNull { change ->
+        val directlyChangedTransactionUids = changes.changes.mapNotNull { change ->
             when (change) {
                 is ProjectionChange.CurrentTransaction -> change.transactionId.value.bytes
                 is ProjectionChange.SearchAndMap -> change.transactionId.value.bytes
@@ -65,10 +65,14 @@ internal class RoomProjectionEngine {
         }
         val refundUids = changes.changes.filterIsInstance<ProjectionChange.Refund>()
             .map { it.originalTransactionId.value.bytes }
-        val refundProjectionUids = (transactionUids + refundUids).fold(mutableListOf<ByteArray>()) { unique, candidate ->
+        // A refund mutates the original transaction's derived `is_refunded` flag even though
+        // its immutable current revision does not change. Treat that original as an affected
+        // current transaction, search row and analytics date as well as a refund projection.
+        val transactionUids = (directlyChangedTransactionUids + refundUids).fold(mutableListOf<ByteArray>()) { unique, candidate ->
             if (unique.none { existing -> existing.contentEquals(candidate) }) unique += candidate
             unique
         }
+        val refundProjectionUids = transactionUids
         val before = transactionImpacts(database, transactionUids)
         val refundBefore = transactionImpacts(database, refundProjectionUids)
 
@@ -84,7 +88,10 @@ internal class RoomProjectionEngine {
             AnalyticsProjectionEngine.rebuildDates(
                 database,
                 revision,
-                (before + after).map(TransactionProjectionImpact::localDate).toSet(),
+                (
+                    (before + after).map(TransactionProjectionImpact::localDate) +
+                        economicEffectDates(database, transactionUids)
+                    ).toSet(),
             )
         }
         if (refundProjectionUids.isNotEmpty()) {
@@ -777,6 +784,20 @@ internal class RoomProjectionEngine {
         ) { cursor ->
             TransactionProjectionImpact(cursor.getLong(0), cursor.getInt(1))
         }
+    }
+
+    private fun economicEffectDates(
+        database: SupportSQLiteDatabase,
+        transactionUids: List<ByteArray>,
+    ): List<Int> {
+        if (transactionUids.isEmpty()) return emptyList()
+        return database.queryList(
+            "SELECT DISTINCT ee.accrual_local_date FROM economic_effect ee " +
+                "JOIN transaction_revision tr ON tr.id=ee.source_revision_id " +
+                "JOIN business_transaction bt ON bt.id=tr.transaction_id " +
+                "WHERE bt.uid IN (${transactionUids.joinToString(",") { "?" }})",
+            transactionUids.map { it as Any }.toTypedArray(),
+        ) { cursor -> cursor.getInt(0) }
     }
 
     private fun deleteIds(

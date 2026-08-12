@@ -55,8 +55,17 @@ public class P35BenchmarkFixtureProvider : ContentProvider() {
             METHOD_SEED -> seed()
             METHOD_AUDIT -> audit()
             METHOD_REFERENCE_AUDIT -> referenceAudit()
+            METHOD_RELEASE_REFLECTION_AUDIT -> releaseReflectionAudit(arg)
             else -> Bundle().apply { putString(KEY_ERROR, "UNKNOWN_METHOD") }
         }
+    }
+
+    private fun releaseReflectionAudit(className: String?): Bundle = try {
+        require(!className.isNullOrBlank())
+        Class.forName(className).getDeclaredConstructor().newInstance()
+        result("audited")
+    } catch (failure: Exception) {
+        Bundle().apply { putString(KEY_ERROR, failure::class.java.simpleName) }
     }
 
     private suspend fun seed(): Bundle = fixtureMutex.withLock {
@@ -219,6 +228,7 @@ public class P35BenchmarkFixtureProvider : ContentProvider() {
         const val METHOD_SEED = "seed"
         const val METHOD_AUDIT = "audit"
         const val METHOD_REFERENCE_AUDIT = "references"
+        const val METHOD_RELEASE_REFLECTION_AUDIT = "release-reflection"
         const val KEY_STATUS = "status"
         const val KEY_ELAPSED = "elapsedMillis"
         const val KEY_SUMMARY = "summary"

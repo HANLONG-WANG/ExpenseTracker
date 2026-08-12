@@ -29,6 +29,8 @@ data class RestoreIntegrityReport(
     val attachmentsValid: Boolean,
     val bookIdentityValid: Boolean,
     val baseCurrencyValid: Boolean,
+    /** Fixed, non-sensitive projection-family identifiers for explainable repair diagnostics. */
+    val projectionFailureCodes: Set<String> = emptySet(),
 ) {
     val isValid: Boolean = schemaVersionSupported && migrationsApplied && sqlCipherReadable && aeadAndHashesValid &&
         foreignKeysValid && journalsBalanced && projectionsValid && transactionSubtypesValid && attachmentsValid &&
@@ -82,7 +84,7 @@ sealed interface FinanceRestoreError : DomainError {
     data object IntegrityFailed : FinanceRestoreError {
         override val code = "FINANCE_RESTORE_INTEGRITY_FAILED"
     }
-    data object ProjectionFailed : FinanceRestoreError {
+    data class ProjectionFailed(val familyCodes: Set<String>) : FinanceRestoreError {
         override val code = "FINANCE_RESTORE_PROJECTION_FAILED"
     }
     data object LiveHeadChanged : FinanceRestoreError {

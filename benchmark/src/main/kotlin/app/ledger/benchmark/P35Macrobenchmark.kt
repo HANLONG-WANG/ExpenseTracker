@@ -31,6 +31,20 @@ private const val PROVIDER_URI = "content://$PACKAGE_NAME.p35-benchmark"
 private const val WAIT_MILLIS = 120_000L
 
 @RunWith(AndroidJUnit4::class)
+class P36ReleaseMinificationAuditDeviceTest {
+    private val device: UiDevice = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+
+    @Test
+    fun workManagerInputMergerConstructorRemainsReflectivelyAvailable() {
+        assertShellSuccess(
+            device.executeShellCommand(
+                "content call --uri $PROVIDER_URI --method release-reflection --arg androidx.work.OverwritingInputMerger",
+            ),
+        )
+    }
+}
+
+@RunWith(AndroidJUnit4::class)
 class P35TargetScaleAuditDeviceTest {
     private val device: UiDevice = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 

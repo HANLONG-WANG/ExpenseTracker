@@ -408,9 +408,9 @@ class LoanApplicationPortDeviceTest {
             database.inLedgerTransaction { db ->
                 val book = RoomBookRepository.mapCurrent(db)
                 val engine = RoomProjectionEngine()
-                val before = engine.canonicalHash(db)
+                val before = engine.canonicalTableHashes(db)
                 engine.rebuildAll(db, book.localRevision.value, book.valuationRevision.value, LocalDate.of(2026, 9, 2).toStorageInt())
-                assertEquals(before, engine.canonicalHash(db))
+                assertEquals(before, engine.canonicalTableHashes(db))
                 assertTrue(engine.mismatchedFamilies(db, book.localRevision.value, book.valuationRevision.value).isEmpty())
             }
         } finally {

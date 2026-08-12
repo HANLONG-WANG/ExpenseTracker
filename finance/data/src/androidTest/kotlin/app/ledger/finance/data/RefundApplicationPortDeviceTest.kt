@@ -136,10 +136,10 @@ class RefundApplicationPortDeviceTest {
             val database = opened.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(context, it) }
             try {
                 database.inLedgerTransaction { db ->
-                    val before = RoomProjectionEngine().canonicalHash(db)
+                    val before = RoomProjectionEngine().canonicalTableHashes(db)
                     val book = RoomBookRepository.mapCurrent(db)
                     RoomProjectionEngine().rebuildAll(db, book.localRevision.value, book.valuationRevision.value, LocalDate.of(2026, 9, 20).toStorageInt())
-                    assertEquals(before, RoomProjectionEngine().canonicalHash(db))
+                    assertEquals(before, RoomProjectionEngine().canonicalTableHashes(db))
                     assertEquals(3L, scalar(db, "SELECT COUNT(*) FROM refund_revision_detail WHERE independent=0"))
                     assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM refund_revision_detail WHERE independent=1"))
                     assertEquals(3L, scalar(db, "SELECT COUNT(*) FROM transaction_dependency WHERE dependency_type=0"))

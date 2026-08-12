@@ -151,6 +151,7 @@ class SecureRoomMergeRestoreApplicationPort(
                         plan.targetLocalRevision.value,
                     )
                 },
+                forceFullProjectionRebuild = true,
             )
             val result = DefaultFinancialMutationCoordinator(
                 writeGate,
@@ -167,6 +168,7 @@ class SecureRoomMergeRestoreApplicationPort(
             }
             shadow.readLedger { it.query("PRAGMA wal_checkpoint(TRUNCATE)").close() }
             val report = shadow.readLedger { validateMerged(it, session.inspection.bookId, receipt.commitId) }
+            if (!report.projectionsValid) abort(FinanceRestoreError.ProjectionFailed(report.projectionFailureCodes))
             if (!report.isValid) abort(FinanceRestoreError.IntegrityFailed)
             restoreExchange.registerPreparedMerge(operationId, session.inspection.bookId, receipt.commitId, session.inspection.localHead)
             DomainResult.Success(PreparedRestoreLedger(operationId, receipt.commitId, session.inspection.localHead, report))
@@ -307,6 +309,7 @@ class SecureRoomMergeRestoreApplicationPort(
             true,
             identity.bookId == bookId && identity.head == head,
             identity.currency.matches(Regex("[A-Z]{3}")),
+            if (mismatches == 0L) emptySet() else setOf("PROJECTION_REVISION_AUDIT"),
         )
     }
 

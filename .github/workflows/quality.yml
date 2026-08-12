@@ -33,11 +33,11 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Install contract parser
         run: python3 -m pip install PyYAML==6.0.3
-      - name: Verify frozen baseline and P35 quality gates
+      - name: Verify frozen baseline and P36 release gates
         run: |
           python3 scripts/validate_spec_baseline.py
           python3 scripts/validate_p01_baseline.py
-          ./gradlew p35Check p35Artifacts koverXmlReport koverHtmlReport --configuration-cache --console=plain
+          ./gradlew p36Check p36Artifacts koverXmlReport koverHtmlReport --configuration-cache --console=plain
       - name: Prove source policies reject real violations
         run: |
           python3 scripts/prove_p01_architecture_rejection.py
@@ -57,6 +57,9 @@ jobs:
             build/reports/cyclonedx/
             build/reports/dependency-license/
             build/reports/security/
+            build/reports/release/
+            build/reports/release/p36-artifacts.sha256
+            app/build/outputs/bundle/release/app-release.aab
             **/build/reports/lint-results-*.html
             **/build/test-results/
 
@@ -84,15 +87,8 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run API-specific Gradle Managed Device tests
-        run: ./gradlew :app:${{ matrix.device }}DebugAndroidTest --configuration-cache --console=plain
-      - name: Run P04 design-system golden and accessibility matrix
-        run: ./gradlew :core:designsystem:${{ matrix.device }}DebugAndroidTest --configuration-cache --console=plain
-      - name: Execute P35 target-scale Macrobenchmark and Baseline Profile gate
-        if: matrix.device == 'pixel6Api36'
-        run: ./gradlew :benchmark:pixel6Api36BenchmarkAndroidTest --configuration-cache --console=plain
-      - name: Execute Keystore and SQLCipher regression at both supported API boundaries
-        run: ./gradlew :core:security:${{ matrix.device }}DebugAndroidTest :core:database:${{ matrix.device }}DebugAndroidTest --configuration-cache --console=plain
+      - name: Run complete API-specific P36 emulator release matrix
+        run: ./gradlew p36${{ matrix.device == 'pixel2Api28' && 'Api28' || 'Api36' }}ManagedDeviceCheck --configuration-cache --console=plain
       - name: Upload device results
         if: always()
         uses: actions/upload-artifact@v4

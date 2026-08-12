@@ -6,8 +6,44 @@ plugins {
     alias(libs.plugins.protobuf)
 }
 
+val signingStoreFile = providers.gradleProperty("ledgerSigningStoreFile").orNull
+val signingStorePassword = providers.gradleProperty("ledgerSigningStorePassword").orNull
+val signingKeyAlias = providers.gradleProperty("ledgerSigningKeyAlias").orNull
+val signingKeyPassword = providers.gradleProperty("ledgerSigningKeyPassword").orNull
+val signingValues = listOf(signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword)
+val hasExternalSigning = signingValues.all { !it.isNullOrBlank() }
+check(signingValues.none { !it.isNullOrBlank() } || hasExternalSigning) {
+    "Release signing is partially configured. Supply all four ledgerSigning* Gradle properties or none."
+}
+
 android {
+    signingConfigs {
+        if (hasExternalSigning) {
+            create("externalRelease") {
+                val resolvedStore = rootProject.file(requireNotNull(signingStoreFile))
+                check(resolvedStore.isFile) { "The external release keystore does not exist." }
+                storeFile = resolvedStore
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
+    }
     buildTypes {
+        getByName("release") {
+            isDebuggable = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (hasExternalSigning) signingConfig = signingConfigs.getByName("externalRelease")
+        }
         create("benchmark") {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")

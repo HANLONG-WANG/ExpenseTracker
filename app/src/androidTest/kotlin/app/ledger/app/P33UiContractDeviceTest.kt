@@ -11,9 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.common.StableId
@@ -85,7 +87,12 @@ class P33UiContractDeviceTest {
             CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides context.resources.configuration) {
                 LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = false) {
                     Column {
-                        MoreContent(MorePresentation.CONTENT, {}, {})
+                        MoreContent(
+                            MorePresentation.CONTENT,
+                            {},
+                            {},
+                            modifier = Modifier.testTag(MORE_LIST_TAG),
+                        )
                         TransferHubScreen(TransferHubState(true, false), noOpTransferActions)
                         NotificationPermissionContent(NotificationPermissionPresentation.DENIED, {}, {}, {})
                     }
@@ -99,6 +106,7 @@ class P33UiContractDeviceTest {
         ).forEach { (target, expected) ->
             composeRule.runOnIdle { locale.value = target }
             composeRule.waitForIdle()
+            composeRule.onNodeWithTag(MORE_LIST_TAG).performScrollToNode(hasText(expected))
             composeRule.onNodeWithText(expected).assertExists()
         }
     }
@@ -172,5 +180,6 @@ class P33UiContractDeviceTest {
 
     private companion object {
         const val HOST_TAG = "p33_state_host"
+        const val MORE_LIST_TAG = "p33_more_locale_list"
     }
 }

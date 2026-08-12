@@ -1285,7 +1285,7 @@ private fun proportionalMinorAllocation(totalMinor: Long, weights: List<Long>): 
     val total = BigInteger.valueOf(totalMinor)
     val denominator = BigInteger.valueOf(weightTotal)
     val allocated = weights.map { weight ->
-        total.multiply(BigInteger.valueOf(weight)).divide(denominator).longValueExact()
+        CheckedArithmetic.toLongExact(total.multiply(BigInteger.valueOf(weight)).divide(denominator)).orReject()
     }.toMutableList()
     val allocatedTotal = CheckedArithmetic.sum(allocated).orReject()
     var residual = Math.subtractExact(totalMinor, allocatedTotal)

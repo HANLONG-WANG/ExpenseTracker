@@ -175,9 +175,9 @@ class SettlementApplicationPortDeviceTest {
         assertEquals(DomainViolation.StaleExpectedRevision, (stale as DomainResult.Failure).error)
         assertEquals(2L, scalar("SELECT COUNT(*) FROM transaction_revision WHERE transaction_id=(SELECT id FROM business_transaction WHERE uid=?)", SELF_EXPENSE_ID.bytes))
 
-        val before = withDatabase { RoomProjectionEngine().canonicalHash(it) }
+        val before = withDatabase { RoomProjectionEngine().canonicalTableHashes(it) }
         settlements.rebuildAndAudit(BOOK_ID).success()
-        val after = withDatabase { RoomProjectionEngine().canonicalHash(it) }
+        val after = withDatabase { RoomProjectionEngine().canonicalTableHashes(it) }
         assertEquals(before, after)
         assertEquals(0L, unbalancedJournals())
         assertEquals("ok", textScalar("PRAGMA integrity_check"))

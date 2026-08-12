@@ -2,6 +2,7 @@
 
 package app.ledger.analytics.domain
 
+import app.ledger.core.common.CheckedArithmetic
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.finance.domain.LocalRevision
@@ -237,7 +238,7 @@ class DefaultDeterministicAnalyticsEngine : DeterministicAnalyticsEngine {
         require(observations.isNotEmpty())
         val observed = exactLong(observations.map { BigInteger.valueOf(it.amountMinor) })
         val elapsedDays = Math.addExact(ChronoUnit.DAYS.between(start, request.today), 1L)
-        val average = BigInteger.valueOf(observed).divide(BigInteger.valueOf(elapsedDays)).longValueExact()
+        val average = BigInteger.valueOf(observed).divide(BigInteger.valueOf(elapsedDays)).toCompatibleLongExact()
         val futureDays = ChronoUnit.DAYS.between(request.today, request.throughDate)
         val recurring = if (includeRecurrence) {
             exactLong(request.futureRecurrenceMinorByDate.filterKeys { it > request.today && it <= request.throughDate }.values.map(BigInteger::valueOf))
@@ -273,7 +274,7 @@ class DefaultDeterministicAnalyticsEngine : DeterministicAnalyticsEngine {
             .map { year -> exactLong(year.map { BigInteger.valueOf(it.amountMinor) }) }
         require(totals.isNotEmpty())
         val projected = BigInteger.valueOf(exactLong(totals.map(BigInteger::valueOf)))
-            .divide(BigInteger.valueOf(totals.size.toLong())).longValueExact()
+            .divide(BigInteger.valueOf(totals.size.toLong())).toCompatibleLongExact()
         return ForecastResult(
             request.method,
             projected,
@@ -291,7 +292,11 @@ class DefaultDeterministicAnalyticsEngine : DeterministicAnalyticsEngine {
 
     private fun average(values: List<BigInteger>): BigDecimal = BigDecimal(values.reduce(BigInteger::add)).divide(BigDecimal.valueOf(values.size.toLong()), MC)
 
-    private fun exactLong(values: List<BigInteger>): Long = if (values.isEmpty()) 0L else values.reduce(BigInteger::add).longValueExact()
+    private fun exactLong(values: List<BigInteger>): Long = if (values.isEmpty()) {
+        0L
+    } else {
+        values.reduce(BigInteger::add).toCompatibleLongExact()
+    }
 
     private companion object {
         val MC: MathContext = MathContext(24, RoundingMode.HALF_EVEN)
@@ -355,7 +360,12 @@ object ReportDerivationPolicy {
         val samples = window.map { (_, values) -> values.single { it.measure == measure } }
         return if (samples.first().minorValue != null) {
             val total = samples.map { BigInteger.valueOf(requireNotNull(it.minorValue)) }.reduce(BigInteger::add)
-            MeasureValue(measure, total.divide(BigInteger.valueOf(samples.size.toLong())).longValueExact(), null, currency)
+            MeasureValue(
+                measure,
+                total.divide(BigInteger.valueOf(samples.size.toLong())).toCompatibleLongExact(),
+                null,
+                currency,
+            )
         } else {
             val total = samples.map { requireNotNull(it.decimalValue) }.reduce(BigDecimal::add)
             MeasureValue(measure, null, total.divide(BigDecimal.valueOf(samples.size.toLong()), 8, RoundingMode.HALF_EVEN))
@@ -385,3 +395,8 @@ object ReportDerivationPolicy {
 }
 
 fun StableId.asReportDefinitionId(): ReportDefinitionId = ReportDefinitionId(this)
+
+private fun BigInteger.toCompatibleLongExact(): Long = when (val result = CheckedArithmetic.toLongExact(this)) {
+    is DomainResult.Success -> result.value
+    is DomainResult.Failure -> throw ArithmeticException(result.error.code)
+}

@@ -8,3 +8,6 @@ captures/
 .idea/
 __pycache__/
 *.py[cod]
+*.jks
+*.keystore
+release-signing.properties

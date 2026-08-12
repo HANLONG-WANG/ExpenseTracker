@@ -31,6 +31,9 @@ private const val MIN_SDK = 28
 private const val TARGET_SDK = 36
 private const val JDK_VERSION = 17
 private const val REPRESENTATIVE_API = 34
+private const val RELEASE_VERSION_CODE = 1
+private const val RELEASE_VERSION_NAME = "1.0.0"
+private const val DEVELOPMENT_APPLICATION_ID = "app.ledger.expensetracker"
 
 private fun Project.androidNamespace(): String = "app.ledger" + path.split(':').filter(String::isNotBlank).joinToString("") { segment ->
     "." + segment.replace("-", "")
@@ -138,14 +141,21 @@ private fun TestExtension.configureManagedDevices() {
 }
 
 private fun ApplicationExtension.configureAndroidApplication(project: Project) {
+    val configuredApplicationId = project.providers.gradleProperty("ledgerApplicationId").orNull
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?: DEVELOPMENT_APPLICATION_ID
+    require(configuredApplicationId.matches(Regex("[a-zA-Z][a-zA-Z0-9_]*(?:\\.[a-zA-Z][a-zA-Z0-9_]*)+"))) {
+        "ledgerApplicationId must be a valid reverse-DNS Android application ID"
+    }
     namespace = project.androidNamespace()
     compileSdk = COMPILE_SDK
     defaultConfig {
-        applicationId = "app.ledger.expensetracker"
+        applicationId = configuredApplicationId
         minSdk = MIN_SDK
         targetSdk = TARGET_SDK
-        versionCode = 1
-        versionName = "0.2.0-p02"
+        versionCode = RELEASE_VERSION_CODE
+        versionName = RELEASE_VERSION_NAME
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {

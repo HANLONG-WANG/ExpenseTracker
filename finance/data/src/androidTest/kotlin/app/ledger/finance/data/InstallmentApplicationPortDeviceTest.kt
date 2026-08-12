@@ -273,9 +273,9 @@ class InstallmentApplicationPortDeviceTest {
             database.inLedgerTransaction { db ->
                 val book = RoomBookRepository.mapCurrent(db)
                 val engine = RoomProjectionEngine()
-                val before = engine.canonicalHash(db)
+                val before = engine.canonicalTableHashes(db)
                 engine.rebuildAll(db, book.localRevision.value, book.valuationRevision.value, date.toStorageInt())
-                assertEquals(before, engine.canonicalHash(db))
+                assertEquals(before, engine.canonicalTableHashes(db))
                 assertTrue(engine.mismatchedFamilies(db, book.localRevision.value, book.valuationRevision.value).isEmpty())
             }
         } finally {

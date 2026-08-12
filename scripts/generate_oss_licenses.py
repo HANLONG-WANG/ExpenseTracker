@@ -13,6 +13,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SBOM = ROOT / "build/reports/cyclonedx/bom.json"
 OUTPUT = ROOT / "build/reports/dependency-license"
+FIRST_PARTY_GROUP_PREFIX = "app.ledger"
+MANUAL_LICENSES = {
+    ("javax.annotation", "javax.annotation-api", "1.3.2"): "CDDL-1.1 OR GPL-2.0-only WITH Classpath-exception-2.0",
+    ("net.zetetic", "sqlcipher-android", "4.17.0"): "SQLCipher Community Edition License (BSD-style)",
+}
 
 
 def license_text(component: dict[str, object]) -> str:
@@ -25,7 +30,12 @@ def license_text(component: dict[str, object]) -> str:
         value = license_data.get("id") or license_data.get("name")
         if value:
             values.append(str(value))
-    return " OR ".join(sorted(set(values))) or "UNKNOWN"
+    coordinate = (
+        str(component.get("group", "")),
+        str(component.get("name", "")),
+        str(component.get("version", "")),
+    )
+    return " OR ".join(sorted(set(values))) or MANUAL_LICENSES.get(coordinate, "UNKNOWN")
 
 
 def main() -> int:
@@ -43,7 +53,7 @@ def main() -> int:
                 str(component.get("purl", "")),
             )
             for component in document.get("components", [])
-            if component.get("name")
+            if component.get("name") and not str(component.get("group", "")).startswith(FIRST_PARTY_GROUP_PREFIX)
         },
     )
     if not rows:
@@ -66,8 +76,23 @@ def main() -> int:
         f"</tr></thead><tbody>{table_rows}</tbody></table></body></html>\n",
         encoding="utf-8",
     )
+    notice_rows = "\n".join(
+        f"{group}:{name}:{version}\n  License: {license_name}\n  Package: {purl}"
+        for group, name, version, license_name, purl in rows
+    )
+    (OUTPUT / "THIRD_PARTY_NOTICES.txt").write_text(
+        "ExpenseTracker 1.0.0 — Third-Party Notices\n\n"
+        "This deterministic inventory is generated from the locked CycloneDX dependency graph. "
+        "Copyright remains with the respective authors and contributors. Refer to the package "
+        "coordinates and upstream source distributions for the complete license texts.\n\n"
+        f"{notice_rows}\n",
+        encoding="utf-8",
+    )
     unknown = sum(row[3] == "UNKNOWN" for row in rows)
-    print(f"OSS license inventory: PASS components={len(rows)} unknown={unknown}")
+    if unknown:
+        print(f"OSS license inventory contains unresolved metadata: components={len(rows)} unknown={unknown}", file=sys.stderr)
+        return 1
+    print(f"OSS license inventory: PASS third-party-components={len(rows)} unknown=0")
     return 0
 
 

@@ -1,8 +1,8 @@
 # Project State
 
 Last updated: 2026-08-12 (Asia/Tokyo)
-Current stage: P35 — target-scale performance, fault injection and security audit
-Stage status: VERIFIED (`P35-E001`—`P35-E008`); P00—P34 remain VERIFIED and P36 is the next unstarted stage
+Current stage: P36 — final full acceptance, release hardening and delivery
+Stage status: VERIFIED (`P36-E001`—`P36-E008`); P00—P35 remain VERIFIED and repository implementation is closed
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -493,7 +493,7 @@ P35 is `VERIFIED`. `P35_PERFORMANCE_FAULT_SECURITY_AUDIT.md` records exact scale
 | P33 | VERIFIED | Nine snapshot-only Glance widgets, default-hidden per-widget privacy, full-form quick entry, one More/transfer/settings/help surface, durable operation center and notification deep links pass on API 28/API 36; see `P33-E001`—`P33-E008` |
 | P34 | VERIFIED | Three-language, adaptation, real TalkBack, privacy semantics, critical golden and exact 215-screen/646-state closure pass; see `P34-E001`—`P34-E008` |
 | P35 | VERIFIED | Fixed target-scale SQLCipher, Macrobenchmark/Baseline Profile/JankStats, bounded streaming, complete fault matrix, API 28/API 36 emulator regression and security/supply-chain audit pass; see `P35-E001`—`P35-E008` |
-| P36 | NOT_STARTED | Release AAB/signing/store configuration/final acceptance remain unpromoted |
+| P36 | VERIFIED | 90/90 requirements, 215/215 screens, 35/35 invariants, full host/API 28/API 36 replay, hardened 1.0.0 AAB candidate, SBOM/licenses/NOTICE/privacy/release delivery and external publisher-input boundary; `P36-E001`—`P36-E008` |
 
 ## P17 verified handoff
 
@@ -821,4 +821,10 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p01_baseline.py
 git diff --check
 ```
 
-All P35 evidence is recorded in `P35-E001`—`P35-E008` and `P35_PERFORMANCE_FAULT_SECURITY_AUDIT.md`. The repository is ready to enter P36, but P36 remains unstarted and execution is paused until the user explicitly resumes it. Preserve the bounded startup-generation boundary, coordinator-owned financial mutations, benchmark-only fixture isolation, fail-closed platform authentication policy and truthful emulator provenance.
+All P35 evidence is recorded in `P35-E001`—`P35-E008` and `P35_PERFORMANCE_FAULT_SECURITY_AUDIT.md`. P36 has now replayed and closed the final repository acceptance without weakening the bounded startup-generation boundary, coordinator-owned financial mutations, benchmark-only fixture isolation, fail-closed platform authentication policy or truthful emulator provenance.
+
+## P36 verified handoff
+
+P36 leaves the repository at version 1.0.0/code 1 with a minified, resource-shrunk unsigned external-signing AAB candidate; deterministic artifact hashes; the checked-in Baseline Profile; locked and strictly verified dependencies; a complete CycloneDX SBOM; zero-unknown third-party license inventory; NOTICE; three-language privacy policies; About/open-source, release-note and reproducible-build delivery; and explicit fail-closed Play inputs. The release-equivalent device replay found and fixed a WorkManager/R8 reflection failure and permanently guards it in both static mutation and target-APK tests.
+
+The final local evidence is `P36-E001`—`P36-E008` and `P36_FINAL_ACCEPTANCE_AND_RELEASE_DELIVERY.md`. All 90 requirements, 215 screen contracts and 35 permanent invariants are `VERIFIED`; P00—P36 are closed. Android provenance is the user's explicitly authorized API 28/API 36 emulator substitution and is not represented as physical-device evidence. No remote CI run or Play publication is claimed. Only publisher-owned application identity, signing/Play App Signing, Drive OAuth binding, diagnostic service policy, public URLs and store material remain external inputs; no repository code gap or unexplained blocker remains.

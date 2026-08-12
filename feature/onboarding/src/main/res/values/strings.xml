@@ -32,7 +32,7 @@
     <string name="onboarding_language_en">English</string>
     <string name="onboarding_currency_search">搜索货币代码</string>
     <string name="onboarding_zone_search">搜索时区</string>
-    <string name="onboarding_privacy_document">数据默认只保存在设备的加密账本中。敏感内容不会进入路由、日志、遥测、崩溃报告或无障碍语义。</string>
+    <string name="onboarding_privacy_document">隐私政策（v1.0，2026-08-12）\n\n数据控制与存储：本应用无需在线账户，账本、附件、设置和操作记录默认只保存在本设备，并分别使用 SQLCipher、Android Keystore 和认证加密保护。保险库卡号和安全码具有独立密钥与逐次认证边界。\n\n网络与第三方：离线记账不依赖网络。只有在你主动使用时，应用才会访问地图样式、只含币种对与日期的汇率服务、Google Drive drive.file 范围内的加密备份，或你另行同意的诊断端点。应用不含广告，不出售数据，也不发送金额、账户、卡片、备注、商户、地点、附件或备份正文。\n\n诊断：功能遥测和崩溃报告分别默认关闭；接受本政策前不会收集或发送。启用后仅使用固定枚举和固定白名单字段，安装标识每 30 天轮换，功能事件保留不超过 90 天，崩溃报告保留不超过 180 天。你可以查看或删除本机队列；关闭后会删除对应队列和安装标识。\n\n权限与导出：通知、文件目录、定位、生物识别和 Drive 授权只在相关功能需要时请求。普通导出永不包含完整卡号、安全码或保险库字段，位置坐标默认关闭；备份始终加密。外部导出和 Drive 备份由你控制，不会因“清除本机数据”而被删除，云端删除有独立的重新认证入口。\n\n你的控制：你可以在设置中撤回诊断同意、清除本机数据、单独删除云端备份或卸载应用。恢复密码无法找回，丢失后没有后台或服务器绕过方式。关于页提供当前版本、源代码和开源许可。正式发布所用政策网址与支持联系信息由发布者在商店资料中公布。</string>
     <string name="onboarding_privacy_consent">我已阅读并接受隐私政策</string>
     <string name="onboarding_telemetry_summary">功能统计仅包含白名单事件与粗粒度性能信息，可随时关闭。</string>
     <string name="onboarding_telemetry_toggle">允许匿名功能统计</string>

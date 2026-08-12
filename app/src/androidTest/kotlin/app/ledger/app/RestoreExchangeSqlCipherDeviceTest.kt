@@ -83,7 +83,9 @@ class RestoreExchangeSqlCipherDeviceTest {
             val source = prepareSourceAndAdvanceLive(operation)
             val artifacts = AndroidRestoreArtifactSwapPort(context)
             val port = SecureRoomRestoreLedgerApplicationPort(context, keys, artifacts, RestoreExchangeFailureInjector(fault))
-            val prepared = port.prepareReplacement(source).success()
+            val preparation = port.prepareReplacement(source)
+            assertTrue("$label prepare -> $preparation", preparation is DomainResult.Success)
+            val prepared = preparation.success()
             val result = port.exchange(prepared, id(20_000L + index))
             assertTrue("$label -> $result", result is DomainResult.Failure)
             assertEquals(requireNotNull(prepared.expectedLiveHead), currentHead())
@@ -289,7 +291,10 @@ class RestoreExchangeSqlCipherDeviceTest {
         return digest.digest()
     }
     private fun id(value: Long): StableId = StableId.fromUuid(UUID(31, value))
-    private fun <T> DomainResult<T>.success(): T = (this as DomainResult.Success).value
+    private fun <T> DomainResult<T>.success(): T = when (this) {
+        is DomainResult.Success -> value
+        is DomainResult.Failure -> throw AssertionError("expected success, got $error")
+    }
 
     private companion object {
         val BOOK = StableId.fromUuid(UUID(31, 1))

@@ -15,6 +15,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerNavigationBar
@@ -37,6 +38,7 @@ class A11yP34TalkBackDeviceTest {
     val composeRule = createComposeRule()
 
     @Test
+    @SdkSuppress(minSdkVersion = 36)
     fun talkBackServiceCompletesTheCriticalRecordNavigationFlow() {
         instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
         val packageManager = instrumentation.targetContext.packageManager
@@ -44,7 +46,8 @@ class A11yP34TalkBackDeviceTest {
             "The API 36 accessibility device must contain the real TalkBack package",
             packageManager.getInstalledPackages(0).any { it.packageName == TALKBACK_PACKAGE },
         )
-        assertTrue("P34 device preparation did not enable TalkBack", waitForTalkBack())
+        enableTalkBackForDedicatedFlow()
+        assertTrue("The dedicated device flow could not enable TalkBack", waitForTalkBack())
         val step = mutableStateOf(RecordStep.CATEGORY)
         val amount = mutableStateOf("100")
         composeRule.setContent {
@@ -117,6 +120,12 @@ class A11yP34TalkBackDeviceTest {
         )
     }
 
+    private fun enableTalkBackForDedicatedFlow() {
+        val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        automation.executeShellCommand("settings put secure enabled_accessibility_services $TALKBACK_COMPONENT").close()
+        automation.executeShellCommand("settings put secure accessibility_enabled 1").close()
+    }
+
     private fun findAccessibilityNode(root: AccessibilityNodeInfo?, label: String): AccessibilityNodeInfo? {
         var result: AccessibilityNodeInfo? = null
         if (root != null) {
@@ -179,6 +188,8 @@ class A11yP34TalkBackDeviceTest {
         }
 
         const val TALKBACK_PACKAGE = "com.google.android.marvin.talkback"
+        const val TALKBACK_COMPONENT =
+            "com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService"
         const val SERVICE_POLL_ATTEMPTS = 30
         const val SERVICE_POLL_MILLIS = 200L
         const val CATEGORY_TAG = "p34_talkback_category"

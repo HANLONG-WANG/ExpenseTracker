@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
@@ -42,6 +43,7 @@ class P11GoldenDeviceTest {
     val composeRule = createComposeRule()
 
     @Test
+    @SdkSuppress(minSdkVersion = 36)
     fun frozenGlobalAndOnboardingGoldensMatchEveryPixel() {
         val record = InstrumentationRegistry.getArguments().getString(RECORD_ARGUMENT) == "true"
         val recordDirectory = File(

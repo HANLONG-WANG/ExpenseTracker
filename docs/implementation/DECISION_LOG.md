@@ -1222,3 +1222,31 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: the execution environment rejected a fresh OSV batch upload under its external dependency-metadata policy after the current SBOM and license reports were generated.
 - Decision: use the successful 2026-08-11 OSV report only for the byte-identical 248-component release scope, prove `app/gradle.lockfile` remains SHA-256 `a9f1266f3f27609cf9f34804e9619f971f08e6ab64407f14a4a4d3e976baa264`, and record that the fresh response was not obtained. CI retains the live `p35Artifacts` OSV gate where network policy permits it.
 - Consequence: zero vulnerable release components is evidence-backed for the unchanged lock, 18 non-release tooling/test findings remain visible, and no current-network result is fabricated.
+
+## DL-173 — Release identity/signing remain external and device provenance remains emulator-only
+
+- Date/stage: 2026-08-12 / P36
+- Surface issue: final acceptance requires a release AAB and Play configuration, but the final package identity, upload key/Play App Signing enrollment, Drive OAuth identity and public service/store records are publisher-owned. The user also explicitly authorized emulator substitution for physical-device execution.
+- Decision: build version 1.0.0/code 1 with a validated `ledgerApplicationId` property and an all-or-none four-property external signing configuration. When those inputs are absent, generate and label an unsigned non-uploadable candidate; never embed a sample key, OAuth secret or endpoint. Execute API 28/API 36 Android boundaries on KVM-backed emulator system images and label them as emulator evidence, never physical-device evidence.
+- Consequence: repository implementation and delivery can be `VERIFIED` without inventing publisher credentials or falsifying provenance. Play publication remains gated by the exact checklist in `docs/release/PLAY_RELEASE_INPUTS.md`; signing/publication itself is not claimed.
+
+## DL-174 — Release-equivalent R8 reflection is a mandatory device gate
+
+- Date/stage: 2026-08-12 / P36
+- Surface issue: the first minified target-scale replay showed WorkManager 2.7.1 could retain `InputMerger` classes while R8 removed the zero-argument constructor used by its reflective factory. Debug/unit suites could not reveal this release-only failure.
+- Decision: keep only the public zero-argument constructor of every `InputMerger` subtype, add a static mutation rule, and add `P36ReleaseMinificationAuditDeviceTest`, which asks the installed benchmark-build provider to construct `androidx.work.OverwritingInputMerger` by name inside the target APK process.
+- Consequence: the fixed R8 APK passes the device test, background operation startup no longer emits `Could not create Input Merger`, and any later rule/dependency regression fails the release gate rather than reaching users.
+
+## DL-175 — Restore/analytics final fixes preserve one transaction and deterministic projection semantics
+
+- Date/stage: 2026-08-12 / P36
+- Surface issue: final API 28/API 36 replay exposed platform-incompatible exact conversion, zero-only incremental analytics rows, refund/original accrual invalidation gaps, and merge restore paths that could validate copied projections without rebuilding every family in the coordinator transaction.
+- Decision: route exact conversion through the API-28-compatible checked arithmetic helper; mirror full-rebuild grouping in bounded daily rebuilds; invalidate the original and refund transactions plus all associated accrual dates; make merge commits force the full projection rebuild inside `FinancialMutationCoordinator`, returning only fixed non-sensitive projection failure codes.
+- Consequence: per-table hash regressions pass for credit, installment, loan, refund and settlement; merge/replace restore fails typed and atomic; no new DAO writer, timestamp overwrite or sensitive diagnostic payload is introduced.
+
+## DL-176 — Release hashes depend on every generated artifact
+
+- Date/stage: 2026-08-12 / P36
+- Surface issue: rebuilding the unsigned AAB during the final artifact aggregate changed its bytes, while Gradle considered the prior hash manifest up to date because the AAB, SBOM and generated license reports were not declared as task inputs.
+- Decision: declare every generated file consumed by `p36ReleaseManifest` as an incremental input, retain its explicit producer dependencies, and add a P36 mutation test that rejects removal of the AAB input.
+- Consequence: a rebuilt AAB/SBOM/license inventory always invalidates and regenerates `release-metadata.json` and `p36-artifacts.sha256`; the published checksum can no longer silently describe an older artifact.

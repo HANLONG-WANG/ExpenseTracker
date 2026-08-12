@@ -1,8 +1,8 @@
 # Domain and Schema Coverage Baseline
 
 Last updated: 2026-08-12 (Asia/Tokyo)
-Stage: P35
-Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P35 closes target-scale, failure-recovery and security evidence without changing the financial writer or accounting semantics. P36 release packaging/signing evidence remains unpromoted.
+Stage: P36
+Status meaning: `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`. P36 closes full acceptance and release delivery without changing the financial writer, domain lifecycle or accounting semantics.
 
 ## P05 domain/application result
 
@@ -447,4 +447,10 @@ The benchmark fixture lives exclusively in `app/src/benchmark`, uses batches of 
 | Architecture/static privacy boundaries and coordinator-only financial writes | Architecture §21.4; UI contract §16.6 | VERIFIED (`P02-E003`, `P02-E004`, `P08-E001`, `P08-E002`, `P10-E006`, `P15-E001`, `P15-E007`, `P16-E001`, `P16-E006`, `P17-E001`, `P17-E006`, `P18-E001`, `P18-E006`, `P22-E001`, `P22-E006`, `P23-E001`, `P23-E006`, `P24-E001`, `P24-E006`, `P27-E001`, `P27-E006`, `P28-E001`, `P28-E007`, `P29-E001`, `P29-E005`, `P29-E007`, `P32-E001`, `P32-E007`: feature SDK/infrastructure, privileged ports, SQL/DAO/fact, sensitive field/route/Worker/diagnostic payload, generic telemetry Map and direct-writer bypasses are rejected) |
 | 215-screen route/state/component coverage, screenshots, three languages, accessibility and privacy semantics | UI contract §§13,16–17 | VERIFIED (`P04-E001`—`P04-E008`, all owning-stage UI evidence through `P33-E005`, and `P34-E001`—`P34-E006`: exact 215/215 routes, all 646 states, 17 three-language modules, width/font/theme matrix, real TalkBack critical flow, contract-derived goldens and sensitive semantic scans pass; P36 retains only release replay) |
 | Target-scale paging, reports, map, 100k-row import and tens-of-GB streaming operations | Requirements §25; UI contract §16.5 | VERIFIED (`P10-E003`, `P10-E004`, `P15-E003`, `P25-E002`, `P25-E003`, `P27-E003`, `P27-E004`, `P28-E002`, `P28-E004`, `P28-E006`, `P29-E002`, `P29-E003`, `P30-E002`, `P30-E004`, `P31-E002`, `P35-E002`—`P35-E005`: real 500,000-row SQLCipher target, bounded indexed queries/Macrobenchmark, 100,000-row import/export, 48 GiB backup and 20 GiB restore complete without OOM/full materialization) |
-| Release AAB, Baseline Profile, locks, verification metadata, SBOM, licenses, NOTICE and privacy/release documentation | Tech stack §16.4 and release plan | IN_PROGRESS (`P02-E006` verifies locks/SBOM/license task infrastructure only; release evidence remains P36) |
+| Release AAB, Baseline Profile, locks, verification metadata, SBOM, licenses, NOTICE and privacy/release documentation | Tech stack §16.4 and release plan | VERIFIED (`P36-E001`, `P36-E004`, `P36-E006`—`P36-E008`: hardened version 1.0.0/code 1 external-signing AAB candidate, 14-artifact SHA-256 manifest, locked dependencies, 886-component SBOM, 846 third-party rows with zero unknown licenses, NOTICE, three privacy locales, release notes and reproducible-build/Play-input documentation pass) |
+
+## P36 final domain/schema result
+
+P36 replays the complete 35-invariant, 21-architecture-ADR and 12-UI-ADR ledger rather than introducing a schema v5 or a second writer. API 28/API 36 SQLCipher, migrations, financial coordinator, projection hashes, restore/merge exchange, import/export/backup/restore faults and target-scale tests pass under the user's emulator substitution. Final fixes preserve exact arithmetic on API 28, make incremental analytics identical to full rebuild semantics, invalidate both original and refund projections across all accrual dates, and force merge projection reconstruction inside the coordinator-owned transaction. No financial DAO write was added to UI, Worker, import, export, backup or restore orchestration.
+
+The release candidate uses the existing Schema v4 and checked migration chain; destructive fallback remains prohibited. The final AAB is minified/resource-shrunk and its R8-reflective WorkManager boundary is tested inside the installed target APK. All 90 requirements, 215 screens and 35 invariants are `VERIFIED`; there are no unpromoted domain/schema rows or known high/medium correctness defects.

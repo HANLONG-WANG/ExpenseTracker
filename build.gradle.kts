@@ -49,7 +49,7 @@ allprojects {
     } else {
         "app.ledger.${path.split(':').first(String::isNotBlank)}"
     }
-    version = "0.2.0-p02"
+    version = "1.0.0"
 
     dependencyLocking {
         lockAllConfigurations()
@@ -2019,5 +2019,137 @@ tasks.register<Exec>("generateLicenseReport") {
     outputs.files(
         layout.buildDirectory.file("reports/dependency-license/licenses.csv"),
         layout.buildDirectory.file("reports/dependency-license/index.html"),
+        layout.buildDirectory.file("reports/dependency-license/THIRD_PARTY_NOTICES.txt"),
     )
+}
+
+val validateP36ReleaseDelivery by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates final requirement/screen/invariant closure, release hardening and delivery documents."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/validate_p36_release_delivery.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p36_release_delivery.py",
+        fileTree("app/src/main") { include("**/*") },
+        subprojects.map { project -> project.fileTree("src/main") { include("**/*") } },
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        fileTree("docs/release") { include("*.md") },
+        files(
+            "NOTICE",
+            "app/build.gradle.kts",
+            "build.gradle.kts",
+            "build-logic/src/main/kotlin/app/ledger/buildlogic/ConventionPlugins.kt",
+            ".github/workflows/quality.yml",
+        ),
+    )
+}
+
+val validateP36ReleaseDeliveryFixtures by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Proves the final release gate rejects version, signing, hardening, coverage, policy and CI weakening."
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "-m", "unittest", "scripts.tests.test_p36_release_delivery_contracts", "-v")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/validate_p36_release_delivery.py",
+        "scripts/tests/test_p36_release_delivery_contracts.py",
+        fileTree("docs/implementation") { include("*.csv", "*.md") },
+        fileTree("docs/release") { include("*.md") },
+    )
+}
+
+tasks.register("p36Check") {
+    group = "verification"
+    description = "Runs every static, JVM, Android Lint, release-hardening and final acceptance gate."
+    dependsOn(
+        "p02Check",
+        "p35Check",
+        validateP02SpecFixtures,
+        validateP36ReleaseDelivery,
+        validateP36ReleaseDeliveryFixtures,
+        ":app:lintVitalRelease",
+    )
+}
+
+tasks.register("p36Api28ManagedDeviceCheck") {
+    group = "verification"
+    description = "Runs the complete API 28 emulator-compatible SQLCipher, Keystore, UI and platform release regression."
+    dependsOn(
+        ":app:pixel2Api28DebugAndroidTest",
+        ":analytics:data:pixel2Api28DebugAndroidTest",
+        ":core:database:pixel2Api28DebugAndroidTest",
+        ":core:designsystem:pixel2Api28DebugAndroidTest",
+        ":core:files:pixel2Api28DebugAndroidTest",
+        ":core:security:pixel2Api28DebugAndroidTest",
+        ":finance:data:pixel2Api28DebugAndroidTest",
+        ":transfer:data:pixel2Api28DebugAndroidTest",
+        ":widget:pixel2Api28DebugAndroidTest",
+    )
+}
+
+tasks.register("p36Api36ManagedDeviceCheck") {
+    group = "verification"
+    description = "Runs all 21 Android instrumentation modules plus target-scale Macrobenchmark on the API 36 emulator."
+    dependsOn(
+        ":app:pixel6Api36DebugAndroidTest",
+        ":analytics:data:pixel6Api36DebugAndroidTest",
+        ":core:database:pixel6Api36DebugAndroidTest",
+        ":core:designsystem:pixel6Api36DebugAndroidTest",
+        ":core:files:pixel6Api36DebugAndroidTest",
+        ":core:geo:pixel6Api36DebugAndroidTest",
+        ":core:security:pixel6Api36DebugAndroidTest",
+        ":core:telemetry:pixel6Api36DebugAndroidTest",
+        ":feature:analysis:pixel6Api36DebugAndroidTest",
+        ":feature:automation:pixel6Api36DebugAndroidTest",
+        ":feature:journal:pixel6Api36DebugAndroidTest",
+        ":feature:liabilities:pixel6Api36DebugAndroidTest",
+        ":feature:onboarding:pixel6Api36DebugAndroidTest",
+        ":feature:planning:pixel6Api36DebugAndroidTest",
+        ":feature:record:pixel6Api36DebugAndroidTest",
+        ":feature:settings:pixel6Api36DebugAndroidTest",
+        ":feature:settlement:pixel6Api36DebugAndroidTest",
+        ":feature:transfer:pixel6Api36DebugAndroidTest",
+        ":feature:vault:pixel6Api36DebugAndroidTest",
+        ":finance:data:pixel6Api36DebugAndroidTest",
+        ":transfer:data:pixel6Api36DebugAndroidTest",
+        ":widget:pixel6Api36DebugAndroidTest",
+        ":benchmark:pixel6Api36BenchmarkAndroidTest",
+    )
+}
+
+tasks.register("p36DeviceCheck") {
+    group = "verification"
+    description = "Runs the user-authorized API 28 and API 36 emulator release matrices without Robolectric substitution."
+    dependsOn("p36Api28ManagedDeviceCheck", "p36Api36ManagedDeviceCheck")
+}
+
+val p36ReleaseManifest by tasks.registering(Exec::class) {
+    group = "reporting"
+    description = "Hashes the release AAB, Baseline Profile, SBOM, licenses, NOTICE and delivery documents."
+    dependsOn(":app:bundleRelease", "cyclonedxBom", "generateLicenseReport")
+    workingDir(layout.projectDirectory)
+    commandLine("python3", "scripts/generate_p36_release_manifest.py")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    inputs.files(
+        "scripts/generate_p36_release_manifest.py",
+        "app/build/outputs/bundle/release/app-release.aab",
+        "app/src/main/baseline-prof.txt",
+        layout.buildDirectory.file("reports/cyclonedx/bom.json"),
+        layout.buildDirectory.file("reports/dependency-license/licenses.csv"),
+        layout.buildDirectory.file("reports/dependency-license/index.html"),
+        layout.buildDirectory.file("reports/dependency-license/THIRD_PARTY_NOTICES.txt"),
+        "NOTICE",
+        fileTree("docs/release") { include("*.md") },
+    )
+    outputs.files(
+        layout.buildDirectory.file("reports/release/release-metadata.json"),
+        layout.buildDirectory.file("reports/release/p36-artifacts.sha256"),
+    )
+}
+
+tasks.register("p36Artifacts") {
+    group = "verification"
+    description = "Generates the release AAB, coverage, SBOM, license/NOTICE, OSV and deterministic artifact manifests."
+    dependsOn("p35Artifacts", p36ReleaseManifest)
 }

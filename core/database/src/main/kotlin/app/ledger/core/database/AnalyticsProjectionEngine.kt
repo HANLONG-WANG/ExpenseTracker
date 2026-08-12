@@ -178,35 +178,35 @@ object AnalyticsProjectionEngine {
         database.execSQL(
             """
             INSERT INTO analytics_daily_total(local_date,metric,amount_base_minor,as_of_local_revision)
-            SELECT ?,$INCOME_METRIC,COALESCE(SUM(CASE WHEN nature=0 THEN polarity*base_amount_minor ELSE 0 END),0),?
-              FROM economic_effect WHERE accrual_local_date=?
-            UNION ALL SELECT ?,$EXPENSE_METRIC,COALESCE(SUM(CASE WHEN nature=1 THEN polarity*base_amount_minor WHEN nature=2 THEN -polarity*base_amount_minor ELSE 0 END),0),?
-              FROM economic_effect WHERE accrual_local_date=?
-            UNION ALL SELECT ?,$CONSUMPTION_METRIC,COALESCE(SUM(CASE WHEN nature=1 AND is_consumption=1 THEN polarity*base_amount_minor WHEN nature=2 AND is_consumption=1 THEN -polarity*base_amount_minor ELSE 0 END),0),?
-              FROM economic_effect WHERE accrual_local_date=?
-            UNION ALL SELECT ?,$NON_CONSUMPTION_EXPENSE_METRIC,COALESCE(SUM(CASE WHEN nature=1 AND is_consumption=0 THEN polarity*base_amount_minor WHEN nature=2 AND is_consumption=0 THEN -polarity*base_amount_minor ELSE 0 END),0),?
-              FROM economic_effect WHERE accrual_local_date=?
-            UNION ALL SELECT ?,$CONTRA_EXPENSE_METRIC,COALESCE(SUM(CASE WHEN nature=2 THEN polarity*base_amount_minor ELSE 0 END),0),?
-              FROM economic_effect WHERE accrual_local_date=?
-            UNION ALL SELECT ?,$NET_CASH_FLOW_METRIC,COALESCE(SUM(CASE WHEN p.side=la.normal_side THEN p.base_amount_minor ELSE -p.base_amount_minor END),0),?
+            SELECT accrual_local_date,$INCOME_METRIC,SUM(CASE WHEN nature=0 THEN polarity*base_amount_minor ELSE 0 END),?
+              FROM economic_effect WHERE accrual_local_date=? GROUP BY accrual_local_date
+            UNION ALL SELECT accrual_local_date,$EXPENSE_METRIC,SUM(CASE WHEN nature=1 THEN polarity*base_amount_minor WHEN nature=2 THEN -polarity*base_amount_minor ELSE 0 END),?
+              FROM economic_effect WHERE accrual_local_date=? GROUP BY accrual_local_date
+            UNION ALL SELECT accrual_local_date,$CONSUMPTION_METRIC,SUM(CASE WHEN nature=1 AND is_consumption=1 THEN polarity*base_amount_minor WHEN nature=2 AND is_consumption=1 THEN -polarity*base_amount_minor ELSE 0 END),?
+              FROM economic_effect WHERE accrual_local_date=? GROUP BY accrual_local_date
+            UNION ALL SELECT accrual_local_date,$NON_CONSUMPTION_EXPENSE_METRIC,SUM(CASE WHEN nature=1 AND is_consumption=0 THEN polarity*base_amount_minor WHEN nature=2 AND is_consumption=0 THEN -polarity*base_amount_minor ELSE 0 END),?
+              FROM economic_effect WHERE accrual_local_date=? GROUP BY accrual_local_date
+            UNION ALL SELECT accrual_local_date,$CONTRA_EXPENSE_METRIC,SUM(CASE WHEN nature=2 THEN polarity*base_amount_minor ELSE 0 END),?
+              FROM economic_effect WHERE accrual_local_date=? GROUP BY accrual_local_date
+            UNION ALL SELECT je.local_date,$NET_CASH_FLOW_METRIC,SUM(CASE WHEN p.side=la.normal_side THEN p.base_amount_minor ELSE -p.base_amount_minor END),?
               FROM posting p JOIN journal_entry je ON je.id=p.journal_entry_id
                 JOIN ledger_account la ON la.id=p.ledger_account_id
                 JOIN user_account ua ON ua.ledger_account_id=la.id AND ua.type IN (0,1)
-              WHERE je.local_date=?
-            UNION ALL SELECT ?,$LOAN_INTEREST_METRIC,COALESCE(SUM(CASE WHEN nature=1 AND component=1 THEN polarity*base_amount_minor ELSE 0 END),0),?
-              FROM economic_effect WHERE accrual_local_date=?
-            UNION ALL SELECT ?,$TRANSACTION_COUNT_METRIC,COUNT(*),?
-              FROM current_transaction_projection WHERE state=0 AND local_date=?
+              WHERE je.local_date=? GROUP BY je.local_date
+            UNION ALL SELECT accrual_local_date,$LOAN_INTEREST_METRIC,SUM(CASE WHEN nature=1 AND component=1 THEN polarity*base_amount_minor ELSE 0 END),?
+              FROM economic_effect WHERE accrual_local_date=? GROUP BY accrual_local_date
+            UNION ALL SELECT local_date,$TRANSACTION_COUNT_METRIC,COUNT(*),?
+              FROM current_transaction_projection WHERE state=0 AND local_date=? GROUP BY local_date
             """.trimIndent(),
             arrayOf<Any>(
-                localDate, revision, localDate,
-                localDate, revision, localDate,
-                localDate, revision, localDate,
-                localDate, revision, localDate,
-                localDate, revision, localDate,
-                localDate, revision, localDate,
-                localDate, revision, localDate,
-                localDate, revision, localDate,
+                revision, localDate,
+                revision, localDate,
+                revision, localDate,
+                revision, localDate,
+                revision, localDate,
+                revision, localDate,
+                revision, localDate,
+                revision, localDate,
             ),
         )
     }

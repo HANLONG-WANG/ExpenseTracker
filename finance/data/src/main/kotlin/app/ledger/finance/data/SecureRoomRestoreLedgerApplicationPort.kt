@@ -109,6 +109,7 @@ class SecureRoomRestoreLedgerApplicationPort(
                 restored.readLedger { database -> database.query("PRAGMA wal_checkpoint(TRUNCATE)").close() }
                 restored.readLedger { database ->
                     val report = validate(database, value.bookId, identity.head)
+                    if (!report.projectionsValid) abort(FinanceRestoreError.ProjectionFailed(report.projectionFailureCodes))
                     if (!report.isValid) abort(FinanceRestoreError.IntegrityFailed)
                     identity to report
                 }
@@ -325,6 +326,7 @@ class SecureRoomRestoreLedgerApplicationPort(
             attachmentsValid = true,
             bookIdentityValid = identity.bookId == expectedBookId && identity.head == expectedHead,
             baseCurrencyValid = identity.baseCurrency.matches(Regex("[A-Z]{3}")),
+            projectionFailureCodes = mismatches.mapTo(sortedSetOf()) { it.name },
         )
     }
 

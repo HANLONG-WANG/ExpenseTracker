@@ -290,9 +290,9 @@ class CreditApplicationPortDeviceTest {
                 database.inLedgerTransaction { db ->
                     val book = RoomBookRepository.mapCurrent(db)
                     val engine = RoomProjectionEngine()
-                    val before = engine.canonicalHash(db)
+                    val before = engine.canonicalTableHashes(db)
                     engine.rebuildAll(db, book.localRevision.value, book.valuationRevision.value, LocalDate.of(2026, 9, 10).toStorageInt())
-                    assertEquals(before, engine.canonicalHash(db))
+                    assertEquals(before, engine.canonicalTableHashes(db))
                     assertTrue(engine.mismatchedFamilies(db, book.localRevision.value, book.valuationRevision.value).isEmpty())
                 }
             } finally {
@@ -307,6 +307,7 @@ class CreditApplicationPortDeviceTest {
             it.getLong(0)
         }
     }
+
     private fun textScalar(sql: String): String = query { db ->
         db.query(sql).use {
             it.moveToFirst()
