@@ -16,4 +16,5 @@ public data class LoanActions(
     val onSave: () -> Unit,
     val onSimulate: () -> Unit,
     val onApplySimulation: () -> Unit,
+    val onOpenCreditAccount: (StableId) -> Unit = {},
 )

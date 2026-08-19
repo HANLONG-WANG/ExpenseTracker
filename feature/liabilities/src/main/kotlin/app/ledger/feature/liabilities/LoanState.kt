@@ -1,6 +1,7 @@
 package app.ledger.feature.liabilities
 
 import app.ledger.core.common.StableId
+import app.ledger.finance.application.CreditAccountView
 import app.ledger.finance.application.LoanContractView
 import app.ledger.finance.application.LoanSnapshot
 import app.ledger.finance.application.LoanTrancheView
@@ -89,6 +90,8 @@ public data class LoanFeatureState(
     val simulation: LoanPrepaymentSimulation? = null,
     val validationFields: Set<String> = emptySet(),
     val wizardStep: Int = 0,
+    val creditAccounts: List<CreditAccountView> = emptyList(),
+    val creditLoadFailureCode: String? = null,
 ) {
     public val contract: LoanContractView?
         get() = selectedContractId?.let { id -> snapshot.contracts.singleOrNull { it.id == id } }

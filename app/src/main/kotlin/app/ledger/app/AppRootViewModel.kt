@@ -3859,7 +3859,16 @@ internal class AppRootViewModel @Inject constructor(
                     if (missing) {
                         LoanLoadState.Failure(LOAN_NOT_FOUND)
                     } else {
-                        val created = LoanPolicy.create(result.value, screenId, contractId, trancheId, transactionId, simulationId)
+                        val created = LoanPolicy.create(result.value, screenId, contractId, trancheId, transactionId, simulationId).let { state ->
+                            if (screenId != "LIA-001") {
+                                state
+                            } else {
+                                when (val creditResult = creditApplicationPort.snapshot(bookId)) {
+                                    is DomainResult.Success -> state.copy(creditAccounts = creditResult.value.accounts)
+                                    is DomainResult.Failure -> state.copy(creditLoadFailureCode = sanitizeCode(creditResult.error.code))
+                                }
+                            }
+                        }
                         val retained = currentLoanSimulationRequest?.takeIf { request ->
                             request.contractId == created.selectedContractId && request.simulationId == simulationId
                         }

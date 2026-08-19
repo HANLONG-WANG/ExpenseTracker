@@ -14,7 +14,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -79,6 +81,27 @@ class LoanUiContractDeviceTest {
             }
         }
         composeRule.onNodeWithTag(LedgerTestTags.LOAN_SIMULATION).assertExists()
+    }
+
+    @Test
+    fun liabilityHomeListsCreditAccountsWithoutLoansAndOpensTheSelectedAccount() {
+        var opened = false
+        val state = LoanDeviceFixtures.state(
+            "LIA-001",
+            LoanPresentation.EMPTY,
+            LoanDeviceFixtures.snapshot(emptyList()),
+        ).copy(creditAccounts = listOf(LoanDeviceFixtures.creditAccount()))
+        val actions = LoanDeviceFixtures.actions.copy(
+            onOpenCreditAccount = { accountId -> opened = accountId == LoanDeviceFixtures.creditAccountId },
+        )
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                LoanDestination("LIA-001", LoanLoadState.Content(state), emptyMap(), actions)
+            }
+        }
+
+        composeRule.onNodeWithText("Travel credit").assertExists().performClick()
+        composeRule.runOnIdle { assertEquals(true, opened) }
     }
 
     private fun cases(): List<Case> {

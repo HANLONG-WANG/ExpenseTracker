@@ -5,6 +5,7 @@ package app.ledger.feature.liabilities
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.money.CurrencyCode
+import app.ledger.finance.application.CreditAccountView
 import app.ledger.finance.application.LoanAccountOption
 import app.ledger.finance.application.LoanContractView
 import app.ledger.finance.application.LoanScheduleItemView
@@ -44,6 +45,7 @@ internal object LoanDeviceFixtures {
     val secondTrancheId = id(12)
     val transactionId = id(13)
     val simulationId = id(14)
+    val creditAccountId = id(15)
     private val jpy = (CurrencyCode.parse("JPY") as DomainResult.Success).value
     private val revision = (LocalRevision.of(28) as DomainResult.Success).value
     private val rate = (InterestRate.of(BigDecimal("0.024")) as DomainResult.Success).value
@@ -60,6 +62,21 @@ internal object LoanDeviceFixtures {
         contracts,
         listOf(LoanAccountOption(id(30), "Combined loan", jpy, "LOAN", id(31), true)),
         listOf(LoanAccountOption(id(40), "Salary bank", jpy, "BANK", id(41), true)),
+    )
+
+    fun creditAccount() = CreditAccountView(
+        creditAccountId,
+        "Travel credit",
+        jpy,
+        false,
+        null,
+        24_000L,
+        24_000L,
+        0L,
+        null,
+        8_000L,
+        0L,
+        emptyList(),
     )
 
     fun contract(status: LoanStatus = LoanStatus.ACTIVE, multi: Boolean = true): LoanContractView {

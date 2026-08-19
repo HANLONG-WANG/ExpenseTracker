@@ -128,7 +128,7 @@ internal fun MoreRootDestination(
             onNavigationChanged()
         },
         onCredit = {
-            viewModel.navigateCredit("CRD-001", null)
+            viewModel.navigateLoan(MORE_CREDIT_DESTINATION, null, null)
             onNavigationChanged()
         },
         onInstallments = {
@@ -449,3 +449,5 @@ internal val ACTIVE_OPERATION_STATES = setOf(
     BackgroundOperationState.COMMITTING,
     BackgroundOperationState.ROLLING_BACK,
 )
+
+internal const val MORE_CREDIT_DESTINATION = "LIA-001"

@@ -244,19 +244,20 @@ private fun QuickTemplatePicker(state: OrdinaryRecordLoadState.Content, actions:
 
 @Composable
 private fun OtherTransactionCards(actions: OrdinaryRecordActions) {
-    val targets = listOf(
-        "REC-013" to R.string.record_other_transfer,
-        "CRD-007" to R.string.record_other_credit_payment,
-        "REF-001" to R.string.record_other_refund,
-        "LOA-007" to R.string.record_other_loan,
-        "REC-020" to R.string.record_other_adjustment,
-        "REC-021" to R.string.record_other_fx,
-        "REC-023" to R.string.batch_entry_title,
-    )
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-        targets.forEach { (target, label) -> LedgerButton(stringResource(label), { actions.onNavigate(target, emptyMap(), emptyMap()) }, variant = LedgerButtonVariant.TONAL) }
+        OTHER_TRANSACTION_TARGETS.forEach { (target, label) -> LedgerButton(stringResource(label), { actions.onNavigate(target, emptyMap(), emptyMap()) }, variant = LedgerButtonVariant.TONAL) }
     }
 }
+
+internal val OTHER_TRANSACTION_TARGETS = listOf(
+    "REC-013" to R.string.record_other_transfer,
+    "REC-014" to R.string.record_other_credit_payment,
+    "REC-015" to R.string.record_other_refund,
+    "REC-017" to R.string.record_other_loan,
+    "REC-020" to R.string.record_other_adjustment,
+    "REC-021" to R.string.record_other_fx,
+    "REC-023" to R.string.batch_entry_title,
+)
 
 @Composable
 private fun CategorySearch(state: OrdinaryRecordLoadState.Content, actions: OrdinaryRecordActions) {

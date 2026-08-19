@@ -71,6 +71,10 @@ internal fun LoanRootDestination(
             onSave = viewModel::saveLoan,
             onSimulate = viewModel::simulateLoan,
             onApplySimulation = viewModel::applyLoanSimulation,
+            onOpenCreditAccount = { accountId ->
+                viewModel.navigateCredit("CRD-001", accountId)
+                onNavigationChanged()
+            },
         ),
     )
 }

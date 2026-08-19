@@ -45,6 +45,7 @@ import app.ledger.core.designsystem.MetricCardVariant
 import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.money.AmountSemantic
+import app.ledger.finance.application.CreditAccountView
 import app.ledger.finance.application.LoanContractView
 import app.ledger.finance.application.LoanScheduleItemView
 import app.ledger.finance.application.LoanTrancheView
@@ -95,14 +96,28 @@ public fun LoanDestination(
 
 @Composable
 private fun LiabilityHome(state: LoanFeatureState, actions: LoanActions) {
-    if (state.snapshot.contracts.isEmpty()) return LoanEmpty(Modifier.testTag(LedgerTestTags.LIABILITY_HOME), actions)
     LoanListLayout(Modifier.testTag(LedgerTestTags.LIABILITY_HOME)) {
         item { StateBanner(state) }
-        item { LoanSummary(state.snapshot.contracts) }
         item { LedgerText(stringResource(R.string.liability_credit_section), LedgerTextRole.SECTION) }
-        item { LedgerText(stringResource(R.string.liability_credit_managed), LedgerTextRole.SUPPORTING) }
+        when {
+            state.creditLoadFailureCode != null -> item {
+                LedgerBanner(stringResource(R.string.credit_load_failed), LedgerBannerVariant.DANGER)
+            }
+            state.creditAccounts.isEmpty() -> item {
+                LedgerText(stringResource(R.string.liability_credit_empty), LedgerTextRole.SUPPORTING)
+            }
+            else -> items(state.creditAccounts, key = { "credit:${it.id}" }) { account ->
+                CreditAccountRow(account, actions)
+            }
+        }
         item { LedgerText(stringResource(R.string.loan_section), LedgerTextRole.SECTION) }
-        items(state.snapshot.contracts, key = { it.id.toString() }) { LoanRow(it, actions) }
+        if (state.snapshot.contracts.isEmpty()) {
+            item { LedgerText(stringResource(R.string.loan_empty_body), LedgerTextRole.SUPPORTING) }
+            item { LedgerButton(stringResource(R.string.loan_add), { actions.onNavigate("LOA-002", null, null) }, Modifier.fillMaxWidth()) }
+        } else {
+            item { LoanSummary(state.snapshot.contracts) }
+            items(state.snapshot.contracts, key = { it.id.toString() }) { LoanRow(it, actions) }
+        }
         item { LedgerText(stringResource(R.string.liability_installment_section), LedgerTextRole.SECTION) }
         item { LedgerText(stringResource(R.string.liability_installment_managed), LedgerTextRole.SUPPORTING) }
     }
@@ -382,6 +397,17 @@ private fun LoanSummary(contracts: List<LoanContractView>) {
     val first = contracts.first()
     val total = contracts.fold(0L) { sum, contract -> Math.addExact(sum, contract.remainingPrincipalMinor) }
     MetricCard(stringResource(R.string.loan_total_remaining), CreditPolicy.money(total, first.currency, LocalLocale.current.platformLocale), Modifier.fillMaxWidth(), MetricCardVariant.EMPHASIZED)
+}
+
+@Composable
+private fun CreditAccountRow(account: CreditAccountView, actions: LoanActions) {
+    LedgerCard(Modifier.fillMaxWidth(), onClick = { actions.onOpenCreditAccount(account.id) }) {
+        Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+            LedgerText(account.name, LedgerTextRole.SECTION)
+            AmountText(CreditPolicy.money(account.debtMinor, account.currency, LocalLocale.current.platformLocale), AmountSize.MEDIUM)
+            LedgerText(stringResource(R.string.credit_debt), LedgerTextRole.SUPPORTING)
+        }
+    }
 }
 
 @Composable
