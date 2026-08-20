@@ -149,7 +149,7 @@ private fun BackupHome(state: BackupFlowUiState, actions: BackupFlowActions, mod
             when (state.homePresentation) {
                 BackupHomePresentation.NOT_CONFIGURED -> LedgerBanner(stringResource(R.string.backup_not_configured), LedgerBannerVariant.WARNING)
                 BackupHomePresentation.RUNNING -> LedgerBanner(stringResource(R.string.backup_running), LedgerBannerVariant.INFO)
-                BackupHomePresentation.FAILED -> LedgerBanner(stringResource(R.string.backup_failed, state.failureCode.orEmpty()), LedgerBannerVariant.DANGER)
+                BackupHomePresentation.FAILED -> LedgerBanner(stringResource(R.string.backup_failed, state.failureMessage()), LedgerBannerVariant.DANGER)
                 BackupHomePresentation.PERMISSION_REVOKED -> LedgerBanner(stringResource(R.string.backup_permission_revoked), LedgerBannerVariant.DANGER)
                 BackupHomePresentation.CONFIGURED -> LedgerBanner(stringResource(R.string.backup_configured), LedgerBannerVariant.INFO)
             }
@@ -263,7 +263,7 @@ private fun BackupSettings(state: BackupFlowUiState, actions: BackupFlowActions,
                 stringResource(R.string.backup_include_vault),
                 state.includeVault,
                 actions.onIncludeVaultChanged,
-                supportingText = if (state.recoveryPasswordConfigured && state.vaultBackupReady) stringResource(R.string.backup_include_vault_supporting) else stringResource(R.string.backup_vault_password_required),
+                supportingText = state.vaultSupportingText(),
                 enabled = state.recoveryPasswordConfigured && state.vaultBackupReady,
             )
         }
@@ -331,7 +331,7 @@ private fun ManualBackup(state: BackupFlowUiState, actions: BackupFlowActions, m
                 state.includeVault,
                 actions.onIncludeVaultChanged,
                 enabled = state.recoveryPasswordConfigured && state.vaultBackupReady,
-                supportingText = if (state.recoveryPasswordConfigured && state.vaultBackupReady) stringResource(R.string.backup_include_vault_supporting) else stringResource(R.string.backup_vault_password_required),
+                supportingText = state.vaultSupportingText(),
             )
         }
         if (!state.recoveryPasswordConfigured) item { LedgerBanner(stringResource(R.string.backup_manual_password_required), LedgerBannerVariant.WARNING) }
@@ -355,7 +355,7 @@ private fun ManualBackup(state: BackupFlowUiState, actions: BackupFlowActions, m
                     onCancel = actions.onCancel,
                 )
                 BackupExecutionPresentation.FAILED -> Column(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-                    LedgerBanner(stringResource(R.string.backup_failed, state.failureCode.orEmpty()), LedgerBannerVariant.DANGER)
+                    LedgerBanner(stringResource(R.string.backup_failed, state.failureMessage()), LedgerBannerVariant.DANGER)
                     if (state.temporaryCleanupComplete) LedgerText(stringResource(R.string.backup_temporary_cleaned), LedgerTextRole.SUPPORTING)
                     LedgerButton(stringResource(R.string.backup_retry), actions.onRetry, Modifier.fillMaxWidth())
                 }
@@ -388,6 +388,30 @@ private fun SummaryCard(label: Int, value: String) {
         }
     }
 }
+
+@Composable
+private fun BackupFlowUiState.vaultSupportingText(): String = stringResource(
+    when {
+        !recoveryPasswordConfigured -> R.string.backup_vault_password_required
+        !vaultBackupReady -> R.string.backup_vault_auth_required
+        else -> R.string.backup_include_vault_supporting
+    },
+)
+
+@Composable
+private fun BackupFlowUiState.failureMessage(): String = stringResource(
+    when (failureCode) {
+        "BACKUP_RECOVERY_PASSWORD_REQUIRED", "BACKUP_INVALID_RECOVERY_PASSWORD" -> R.string.backup_failure_password
+        "BACKUP_VAULT_RECOVERY_ENVELOPE_MISSING" -> R.string.backup_failure_vault
+        "BACKUP_PERMISSION_REVOKED" -> R.string.backup_permission_revoked
+        "BACKUP_DRIVE_AUTHORIZATION_REQUIRED" -> R.string.backup_failure_drive_auth
+        "BACKUP_NETWORK_UNAVAILABLE" -> R.string.backup_failure_network
+        "BACKUP_INSUFFICIENT_SPACE" -> R.string.backup_failure_space
+        "BACKUP_REPOSITORY_UNAVAILABLE" -> R.string.backup_failure_repository
+        "BACKUP_CANCELLED" -> R.string.backup_failure_cancelled
+        else -> R.string.backup_failure_generic
+    },
+)
 
 @Composable
 private fun BackupFlowUiState.title(): String = stringResource(

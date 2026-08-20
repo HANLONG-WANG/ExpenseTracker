@@ -60,6 +60,7 @@ data class JournalDetailView(
     val merchantName: String?,
     val projectName: String?,
     val locationName: String?,
+    val attachmentIds: List<StableId>,
     val attachmentNames: List<String>,
     val budgetSummary: String?,
     val statisticalNature: String?,

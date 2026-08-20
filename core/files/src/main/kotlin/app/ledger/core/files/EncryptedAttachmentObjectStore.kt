@@ -192,6 +192,8 @@ class EncryptedAttachmentObjectStore(
 
     override fun metadata(attachmentId: AttachmentId): AttachmentMetadata? = catalog.attachment(attachmentId)?.metadata()
 
+    fun activeMetadata(): List<AttachmentMetadata> = catalog.activeAttachments().map { it.metadata() }
+
     override fun openOriginal(attachmentId: AttachmentId): DecryptedAttachment = openEncryptedVariant(
         attachmentId,
         AttachmentContentVariant.ORIGINAL,

@@ -73,7 +73,7 @@ def load_sources() -> dict[str, str]:
 
 
 def named(sources: Mapping[str, str], filename: str) -> str:
-    return next((text for path, text in sources.items() if path.endswith(filename)), "")
+    return next((text for path, text in sources.items() if Path(path).name == filename), "")
 
 
 def validate_sources(sources: Mapping[str, str]) -> list[str]:
@@ -138,6 +138,11 @@ def validate_sources(sources: Mapping[str, str]) -> list[str]:
         "DatabaseIntegrityAudit.run",
         "StartupDisposition.RECOVERY_REQUIRED",
         "UPDATE book SET state = 1",
+        "RESTORE_REPLACE_OPERATION_TYPE",
+        "RESTORE_MERGE_OPERATION_TYPE",
+        "COMMITTING_OPERATION_STATE",
+        "ROLLING_BACK_OPERATION_STATE",
+        "WHERE type IN (?,?) AND state IN (?,?)",
     ):
         if required not in maintenance:
             errors.append(f"projection maintenance/audit contract missing {required}")

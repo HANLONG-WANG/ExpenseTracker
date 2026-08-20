@@ -21,6 +21,7 @@
     <string name="accounts_name">账户名称</string>
     <string name="accounts_required">必填</string>
     <string name="accounts_currency">币种</string>
+    <string name="accounts_currency_unsupported">请输入有效的法定货币代码（例如 JPY、CNY 或 USD）</string>
     <string name="accounts_institution">机构（可选）</string>
     <string name="accounts_branch">分行（可选）</string>
     <string name="accounts_type_value">类型：%1$s</string>
@@ -44,7 +45,15 @@
     <string name="accounts_amount">交易金额</string>
     <string name="accounts_running_balance">运行余额</string>
     <string name="accounts_current">当前</string>
-    <string name="accounts_observed">现实余额（最小单位）</string>
+    <string name="accounts_observed">现实余额（%1$s）</string>
+    <string name="accounts_observed_help">输入账户币种的实际金额，可包含小数。</string>
+    <string name="accounts_amount_invalid">请输入符合该币种小数位的金额。</string>
+    <string name="accounts_date_invalid">请输入有效日期，例如 2026-08-20。</string>
+    <string name="accounts_observed_value">现实余额</string>
+    <string name="accounts_latest_checkpoint">最近余额检查点</string>
+    <string name="accounts_checkpoint_date">检查日期：%1$s</string>
+    <string name="accounts_checkpoint_saved">余额检查点已保存，账面余额未改变。</string>
+    <string name="accounts_adjustment_created">已创建余额调整</string>
     <string name="accounts_book_balance">账面余额</string>
     <string name="accounts_checkpoint_match">现实余额与账面余额一致。保存检查点不会改变余额。</string>
     <string name="accounts_difference">差额</string>

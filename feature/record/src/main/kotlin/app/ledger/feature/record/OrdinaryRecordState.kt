@@ -14,6 +14,7 @@ import app.ledger.core.money.MoneyFormatRequest
 import app.ledger.core.money.MoneyUiModel
 import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.application.OrdinaryDirection
+import app.ledger.finance.application.OrdinaryLocationDraft
 import app.ledger.finance.application.OrdinaryRecentDefaultView
 import app.ledger.finance.application.OrdinarySettlementShareDraft
 import app.ledger.finance.application.OrdinaryTemplateView
@@ -113,6 +114,7 @@ public data class OrdinaryRecordDraft(
     val settlementAllocationInputs: Map<StableId, String>,
     val settlementChargeInputs: Map<StableId, String>,
     val locationRecordId: StableId?,
+    val newLocation: OrdinaryLocationDraft?,
     val note: String,
     val attachmentIds: List<StableId>,
     val origins: Map<RecordField, RecordFieldOrigin>,
@@ -135,6 +137,14 @@ public data class OrdinaryRecordEditorState(
     val attachmentImporting: Boolean = false,
     val attachmentFailureCode: String? = null,
     val uncommittedAttachmentIds: Set<StableId> = emptySet(),
+    val availableAttachments: List<RecordAvailableAttachment> = emptyList(),
+)
+
+public data class RecordAvailableAttachment(
+    val id: StableId,
+    val displayName: String,
+    val mimeType: String,
+    val sizeBytes: Long,
 )
 
 public sealed interface OrdinaryRecordLoadState {
@@ -209,6 +219,7 @@ public object OrdinaryRecordPolicy {
             settlementAllocationInputs = edit?.settlementShares.orEmpty().associate { it.participantId to minorInput(it.owedMinor, currencyCode) },
             settlementChargeInputs = emptyMap(),
             locationRecordId = edit?.locationRecordId,
+            newLocation = null,
             note = edit?.note ?: template?.noteTemplate.orEmpty(),
             attachmentIds = if (mode == RecordEditorMode.EDIT) edit?.attachmentIds.orEmpty() else emptyList(),
             origins = defaults.origins + buildMap {
@@ -273,10 +284,21 @@ public object OrdinaryRecordPolicy {
         val draft = when (field) {
             RecordField.MERCHANT -> state.draft.copy(merchantId = value)
             RecordField.PROJECT -> state.draft.copy(projectId = value)
-            RecordField.LOCATION -> state.draft.copy(locationRecordId = value)
+            RecordField.LOCATION -> state.draft.copy(locationRecordId = value, newLocation = null)
             else -> error("unsupported id field")
         }
         return state.copy(draft = draft.copy(touched = draft.touched + field, origins = draft.origins + (field to manualOrigin())), errors = state.errors.filterNot { it.field == field })
+    }
+
+    public fun updateManualLocation(state: OrdinaryRecordEditorState, location: OrdinaryLocationDraft): OrdinaryRecordEditorState {
+        require(location.provider == app.ledger.finance.application.OrdinaryLocationProvider.MANUAL)
+        val draft = state.draft.copy(
+            locationRecordId = location.id,
+            newLocation = location,
+            touched = state.draft.touched + RecordField.LOCATION,
+            origins = state.draft.origins + (RecordField.LOCATION to manualOrigin()),
+        )
+        return state.copy(draft = draft, errors = state.errors.filterNot { it.field == RecordField.LOCATION })
     }
 
     public fun updateNote(state: OrdinaryRecordEditorState, value: String): OrdinaryRecordEditorState = state.copy(

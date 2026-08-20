@@ -57,6 +57,27 @@ class ProjectGoalPolicyTest {
         )
     }
 
+    @Test
+    fun `project rejects an end date before its start date on the end field`() {
+        val state = ProjectGoalPolicy.create(snapshot(project(), goal()), LocalDate.of(2026, 8, 20), projectId = PROJECT_ID)
+
+        val updated = ProjectGoalPolicy.projectEndDate(state, "2026-07-31")
+
+        assertEquals(setOf("endDate"), updated.projectErrors)
+        assertEquals(ProjectGoalPresentation.VALIDATION_ERROR, updated.presentation)
+    }
+
+    @Test
+    fun `editing goal due date never changes suggested monthly amount`() {
+        val state = ProjectGoalPolicy.create(snapshot(project(), goal()), LocalDate.of(2026, 8, 20), goalId = GOAL_ID)
+
+        val updated = ProjectGoalPolicy.goalDueDate(state, "2026-12-31")
+
+        assertEquals(LocalDate.of(2026, 12, 31), updated.goalDraft.dueDate)
+        assertEquals("", updated.goalDraft.suggestedText)
+        assertEquals(false, "suggested" in updated.goalErrors)
+    }
+
     private fun snapshot(project: ProjectView, goal: GoalView) = ProjectGoalSnapshot(
         id(1),
         CURRENCY,

@@ -798,6 +798,7 @@ public fun LedgerDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     danger: Boolean = false,
+    dismissLabel: String? = null,
     content: (@Composable () -> Unit)? = null,
 ) {
     AlertDialog(
@@ -805,7 +806,9 @@ public fun LedgerDialog(
         confirmButton = {
             LedgerButton(confirmLabel, onConfirm, variant = if (danger) LedgerButtonVariant.DANGER else LedgerButtonVariant.PRIMARY)
         },
-        dismissButton = { LedgerButton(stringResource(R.string.ledger_cancel), onDismiss, variant = LedgerButtonVariant.SECONDARY) },
+        dismissButton = {
+            LedgerButton(dismissLabel ?: stringResource(R.string.ledger_cancel), onDismiss, variant = LedgerButtonVariant.SECONDARY)
+        },
         title = { Text(title, Modifier.semantics { heading() }) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {

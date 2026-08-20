@@ -10,6 +10,8 @@ import app.ledger.core.money.FxEvidence
 import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.CommandReceipt
 import app.ledger.finance.domain.FxValuationPolicy
+import app.ledger.finance.domain.TransactionKind
+import app.ledger.finance.domain.TransactionSource
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -17,6 +19,29 @@ import java.time.ZoneId
 public data class SpecializedTransactionSnapshot(
     val references: ReferenceDataSnapshot,
     val valuationRevision: Long,
+    val editing: SpecializedTransactionEditView? = null,
+)
+
+public data class SpecializedTransactionEditView(
+    val transactionId: StableId,
+    val revisionId: StableId,
+    val kind: TransactionKind,
+    val fromAccountId: StableId,
+    val toAccountId: StableId?,
+    val outgoingMinor: Long,
+    val incomingMinor: Long?,
+    val outgoingBaseMinor: Long,
+    val incomingBaseMinor: Long?,
+    val amountExpression: String?,
+    val occurredAt: Instant,
+    val zoneId: ZoneId,
+    val localDate: LocalDate,
+    val note: String?,
+    val attachmentIds: List<StableId>,
+    val direction: BalanceAdjustmentDirection,
+    val checkpointId: StableId?,
+    val source: TransactionSource,
+    val sourceReferenceId: StableId?,
 )
 
 public data class SpecializedFxQuote(
@@ -45,6 +70,7 @@ public data class SpecializedTransactionWriteIds(
     val deviceInstanceId: StableId,
     val factIds: List<StableId>,
     val fxRateSnapshotIds: List<StableId>,
+    val expectedRevisionId: StableId? = null,
 ) {
     init {
         require(factIds.isNotEmpty())
@@ -131,7 +157,7 @@ public sealed interface SpecializedTransactionWriteRequest {
 
 /** Single P14 application boundary; all writes terminate at FinancialMutationCoordinator. */
 public interface SpecializedTransactionEntryPort {
-    public suspend fun snapshot(bookId: StableId): DomainResult<SpecializedTransactionSnapshot>
+    public suspend fun snapshot(bookId: StableId, transactionId: StableId? = null): DomainResult<SpecializedTransactionSnapshot>
 
     public suspend fun quote(request: SpecializedFxQuoteRequest): DomainResult<SpecializedFxQuote?>
 

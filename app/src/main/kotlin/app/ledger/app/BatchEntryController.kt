@@ -421,7 +421,17 @@ internal class BatchEntryController(
                     row.copy(cardId = cards[cardIndex + 1].id)
                 } else {
                     val accountId = nextNullable(accounts, row.accountId, includeNone = false)
-                    row.copy(accountId = accountId, cardId = null, userCurrencyCode = state.snapshot.references.accounts.singleOrNull { it.id == accountId }?.currency?.value ?: row.userCurrencyCode)
+                    val account = state.snapshot.references.accounts.singleOrNull { it.id == accountId }
+                    val currencyCode = account?.currency?.value ?: row.userCurrencyCode
+                    val amountMinor = BatchRecordPolicy.majorToMinor(row.amountExpression, currencyCode)
+                    row.copy(
+                        accountId = accountId,
+                        cardId = null,
+                        userCurrencyCode = currencyCode,
+                        userMinor = amountMinor,
+                        accountMinor = amountMinor,
+                        baseMinor = amountMinor.takeIf { account?.currency == state.snapshot.references.baseCurrency },
+                    )
                 }
             }
         }

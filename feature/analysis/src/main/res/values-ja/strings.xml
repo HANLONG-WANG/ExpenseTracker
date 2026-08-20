@@ -89,4 +89,13 @@
     <string name="analysis_map_recorded_location">場所未割り当ての記録位置</string><string name="analysis_map_point_summary">%1$s・%2$d 件</string><string name="analysis_map_detail_missing">場所データが更新されました</string><string name="analysis_map_detail_missing_body">地図へ戻って更新してください。古い結果を現在値として表示しません。</string>
     <string name="analysis_map_detail_kind">種類：%1$s</string><string name="analysis_map_coordinates">座標：%1$.5f, %2$.5f</string><string name="analysis_map_location_available">位置を記録済み。プライバシー保護のため正確な座標は読み上げません</string><string name="analysis_map_category_composition">カテゴリ構成</string><string name="analysis_category">カテゴリ</string><string name="analysis_amount">金額</string><string name="analysis_transaction_count">件数</string><string name="analysis_unassigned">未分類</string><string name="analysis_map_transaction_preview">取引プレビュー</string><string name="analysis_map_open_transactions">該当取引を開く</string><string name="analysis_map_single_transaction">個別取引</string>
     <string name="analysis_map_complete_filters">詳細フィルター</string><string name="analysis_map_filter_account">口座</string><string name="analysis_map_filter_merchant">加盟店</string><string name="analysis_map_filter_place">場所</string><string name="analysis_map_filter_project">プロジェクト</string><string name="analysis_map_filter_all">すべて</string><string name="analysis_map_filter_selected">選択済み条件</string><string name="analysis_map_filter_any_count">いずれか（%1$d）</string><string name="analysis_map_filter_minimum_amount">%1$s 以上</string><string name="analysis_map_period_value">期間：%1$s — %2$s</string>
+    <string name="analysis_integrity_database">データベース構造と暗号化された可読性</string>
+    <string name="analysis_integrity_foreign_keys">エンティティ参照と外部キー</string>
+    <string name="analysis_integrity_journals">仕訳の貸借一致</string>
+    <string name="analysis_integrity_posting_currencies">転記通貨の整合性</string>
+    <string name="analysis_integrity_revisions">改訂履歴チェーン</string>
+    <string name="analysis_integrity_projections">残高と分析プロジェクション</string>
+    <string name="analysis_integrity_fts">履歴の全文検索インデックス</string>
+    <string name="analysis_integrity_rtree">場所の空間インデックス</string>
+    <string name="analysis_integrity_fact_rebuild">不変の事実から再構築した結果</string>
 </resources>

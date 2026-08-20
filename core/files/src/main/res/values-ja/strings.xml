@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="attachment_secure_image_description">安全な画像プレビュー</string>
+    <string name="attachment_preview_title">添付ファイルのプレビュー</string>
     <string name="attachment_preview_unsupported">このファイルはアプリ内でプレビューできません。メタデータを確認するか、確認後に別のアプリで開けます。</string>
     <string name="attachment_decrypt_error_title">添付ファイルを開けません</string>
     <string name="attachment_decrypt_error_message">暗号化された内容を検証または読み取れませんでした。</string>

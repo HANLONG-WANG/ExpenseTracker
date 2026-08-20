@@ -128,7 +128,28 @@ private fun ScreenPrivacySettings(state: SecurityPrivacySettingsState, actions: 
 
 @Composable
 private fun TrashSettings(state: SecurityPrivacySettingsState, actions: SecurityPrivacySettingsActions) {
-    TrashRetention.entries.forEach { retention -> LedgerChoiceRow(retention.label(), state.trashRetention == retention, { actions.onTrashRetention(retention) }) }
+    var customExpanded by remember(state.trashRetention) { mutableStateOf(state.trashRetention == TrashRetention.CUSTOM) }
+    var customDays by remember(state.customTrashRetentionDays) { mutableIntStateOf(state.customTrashRetentionDays) }
+    TrashRetention.entries.filterNot { it == TrashRetention.CUSTOM }.forEach { retention ->
+        LedgerChoiceRow(retention.label(), state.trashRetention == retention && !customExpanded, {
+            customExpanded = false
+            actions.onTrashRetention(retention)
+        })
+    }
+    LedgerChoiceRow(stringResource(R.string.security_trash_custom), customExpanded, { customExpanded = true })
+    if (customExpanded) {
+        LedgerTextField(
+            customDays.toString(),
+            { value ->
+                customDays = value.filter(Char::isDigit).toIntOrNull()?.coerceIn(
+                    SecurityPrivacySettingsState.MINIMUM_TRASH_RETENTION_DAYS,
+                    SecurityPrivacySettingsState.MAXIMUM_TRASH_RETENTION_DAYS,
+                ) ?: SecurityPrivacySettingsState.MINIMUM_TRASH_RETENTION_DAYS
+            },
+            stringResource(R.string.security_trash_custom_days),
+        )
+        LedgerButton(stringResource(R.string.security_trash_apply_custom), { actions.onCustomTrashRetention(customDays) }, Modifier.fillMaxWidth())
+    }
     LedgerText(stringResource(R.string.security_purge_summary), LedgerTextRole.SUPPORTING)
     LedgerButton(stringResource(R.string.security_open_trash), actions.onOpenTrash, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY)
 }
@@ -263,5 +284,6 @@ private fun DeviceSecurity(state: SecurityPrivacySettingsState, actions: Securit
         TrashRetention.THIRTY_DAYS -> R.string.security_trash_thirty
         TrashRetention.NINETY_DAYS -> R.string.security_trash_ninety
         TrashRetention.NEVER -> R.string.security_trash_never
+        TrashRetention.CUSTOM -> R.string.security_trash_custom
     },
 )

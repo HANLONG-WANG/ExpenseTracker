@@ -19,12 +19,13 @@ internal fun SpecializedTransactionRootDestination(
     onAddAttachment: () -> Unit,
 ) {
     val presetAccount = encodedArguments["accountId"]?.let { StableId.parse(it).getOrNull() }
-    LaunchedEffect(screenId, presetAccount) { viewModel.loadSpecializedTransaction(screenId, presetAccount) }
+    val transactionId = encodedArguments["transactionId"]?.let { StableId.parse(it).getOrNull() }
+    LaunchedEffect(screenId, presetAccount, transactionId) { viewModel.loadSpecializedTransaction(screenId, presetAccount, transactionId) }
     SpecializedTransactionDestination(
         screenId,
         state,
         SpecializedTransactionActions(
-            onRetry = { viewModel.loadSpecializedTransaction(screenId, presetAccount) },
+            onRetry = { viewModel.loadSpecializedTransaction(screenId, presetAccount, transactionId) },
             onSelectFromAccount = { viewModel.selectSpecializedAccount(false) },
             onSelectToAccount = { viewModel.selectSpecializedAccount(true) },
             onOutgoingExpression = { viewModel.specializedExpression(false, it) },

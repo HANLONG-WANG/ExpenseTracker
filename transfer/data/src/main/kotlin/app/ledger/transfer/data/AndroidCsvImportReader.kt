@@ -28,6 +28,7 @@ class AndroidCsvImportReader : ImportStreamReader {
             val detected = detectEncoding(source, request.userCharset)
             InputStreamReader(detected.stream, detected.charset).use { reader ->
                 CSVFormat.DEFAULT.builder()
+                    .setCommentMarker('#')
                     .setIgnoreEmptyLines(false)
                     .get()
                     .parse(reader)

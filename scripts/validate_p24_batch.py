@@ -86,7 +86,8 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     require_tokens(errors, state, "complete in-memory row", (
         "categoryId", "amountExpression", "accountId", "cardId", "merchantId", "occurredAt", "projectId",
         "attachmentIds", "settlementShares", "locationRecordId", "installmentPlanId", "refundOriginalTransactionId",
-        "MAX_PASTE_ROWS", "copyRow", "insertAfter", "sort", "paste",
+        "MAX_PASTE_ROWS", "copyRow", "insertAfter", "sort", "paste", "majorToMinor", "parseOccurredAt",
+        '"支出"', '"退款"',
     ))
     if re.search(r"SavedState|DataStore|Room|SharedPreferences", state):
         errors.append("batch draft escapes its in-memory lifecycle")
@@ -99,6 +100,7 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     require_tokens(errors, feature, "governed batch UI", (
         "BatchSummaryTable", "BatchToolbar", "BatchCommitBar", "ValidationSummary",
         "LedgerTestTags.BATCH_ROW_EDITOR", "rowCount = state.rows.size",
+        "BatchRecordPolicy.minorToMajor", "batch_date_hint",
     ))
 
     root = next((value for path, value in sources.items() if path.endswith("BatchRecordRootDestination.kt")), "")
@@ -120,7 +122,14 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     return errors
 
 
-def validate_tests_resources() -> list[str]:
+def batch_resource_map() -> dict[str, str]:
+    return {
+        folder: read(f"feature/record/src/main/res/{folder}/strings.xml")
+        for folder in ("values", "values-en", "values-ja")
+    }
+
+
+def validate_tests_resources(resources: dict[str, str] | None = None) -> list[str]:
     errors: list[str] = []
     tests = "\n".join(path.read_text(encoding="utf-8") for root in ("finance/domain/src/test", "finance/data/src/androidTest", "feature/record/src/androidTest", "feature/journal/src/test", "feature/journal/src/androidTest") for path in sorted((ROOT / root).rglob("*.kt")))
     require_tokens(errors, tests, "P24 automated evidence", (
@@ -128,11 +137,18 @@ def validate_tests_resources() -> list[str]:
         "AFTER_IMMUTABLE_FACTS", "100_000", "allTenYamlStatesRenderAcrossWidthsLocalesThemesAndFontScales",
         "tokenAndYamlDerivedPixelGoldensRemainStable", "JournalSelectionMode.ALL_MATCHING", "PRAGMA integrity_check",
     ))
+    resources = batch_resource_map() if resources is None else resources
     strings = []
+    user_copy = []
     for folder in ("values", "values-en", "values-ja"):
-        strings.append({name for name in re.findall(r'<string name="([^"]+)"', read(f"feature/record/src/main/res/{folder}/strings.xml")) if name.startswith("batch_")})
+        source = resources.get(folder, "")
+        strings.append({name for name in re.findall(r'<string name="([^"]+)"', source) if name.startswith("batch_")})
+        user_copy.extend(re.findall(r'<string name="batch_[^"]+"[^>]*>(.*?)</string>', source, re.DOTALL))
     if not strings[0] or strings[0] != strings[1] or strings[0] != strings[2]:
         errors.append("P24 strings incomplete across zh-CN/en/ja")
+    technical_term = re.search(r"(?:最小单位|\bminor\b|\bISO(?:\s*8601)?\b|\bFX\b)", " ".join(user_copy), re.IGNORECASE)
+    if technical_term:
+        errors.append(f"batch UI exposes implementation terminology: {technical_term.group(0)}")
     return errors
 
 

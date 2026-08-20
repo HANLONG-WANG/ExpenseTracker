@@ -95,7 +95,13 @@ private fun SpecializedEditor(state: SpecializedTransactionEditorState, actions:
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
         item { ContractStateBanners(state, from, to) }
-        item { SelectorField(stringResource(R.string.specialized_from_account), from?.accountLabel().orEmpty(), actions.onSelectFromAccount) }
+        item {
+            SelectorField(
+                stringResource(if (state.kind == SpecializedTransactionKind.BALANCE_ADJUSTMENT) R.string.specialized_adjustment_account else R.string.specialized_from_account),
+                from?.accountLabel().orEmpty(),
+                actions.onSelectFromAccount,
+            )
+        }
         if (state.kind == SpecializedTransactionKind.TRANSFER || state.kind == SpecializedTransactionKind.FX_EXCHANGE) {
             item { SelectorField(stringResource(R.string.specialized_to_account), to?.accountLabel().orEmpty(), actions.onSelectToAccount) }
         }

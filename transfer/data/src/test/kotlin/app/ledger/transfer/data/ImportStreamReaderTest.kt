@@ -68,6 +68,24 @@ class ImportStreamReaderTest {
     }
 
     @Test
+    fun csvSkipsExportMetadataCommentsBeforeHeader() = runBlocking {
+        val rows = mutableListOf<List<String?>>()
+        val csv = """
+            # export_schema_version=1
+            # generated_at=2026-08-20T00:00:00Z
+            transaction_type,amount_minor
+            EXPENSE,1500
+        """.trimIndent().toByteArray()
+
+        val summary = AndroidCsvImportReader().read(request(csv)) { row ->
+            rows += row.cells.map { it.canonicalValue }
+        }.success()
+
+        assertEquals(1L, summary.rowCount)
+        assertEquals(listOf(listOf("EXPENSE", "1500")), rows)
+    }
+
+    @Test
     fun xlsxStreamsMultipleSheetsAndCachedFormulaTypes() = runBlocking {
         val workbookBytes = ByteArrayOutputStream().use { output ->
             Workbook(output, "ledger-test", "01.2026").use { workbook ->

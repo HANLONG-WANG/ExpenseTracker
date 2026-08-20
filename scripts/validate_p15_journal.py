@@ -102,10 +102,19 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
             "stickyHeader",
             "JournalSelectionMode.ALL_MATCHING",
             "p15_journal_bulk_forbidden",
+            "p15_journal_edit_transaction",
+            "p15_journal_create_refund",
+            "p15_journal_manage_attachments",
+            "onOpenAttachment",
+            "toOptionalMinor(rangeCurrency)",
+            "JOURNAL_LOCAL_TIME",
+            "state.operation.label()",
             "onResolveDependency",
             "HighRiskConfirmation",
         ),
     )
+    destination = next((source for path, source in sources.items() if path.endswith("JournalDestination.kt")), "")
+    require_tokens(errors, destination, "journal attachment preview entry", ("actions.onOpenAttachment(attachmentId)",))
     if re.search(r"SwipeToDismiss|swipeable|detectHorizontalDragGestures", feature):
         errors.append("journal feature contains forbidden swipe deletion")
 
@@ -156,11 +165,31 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
             "EncryptedDatabaseFactory.openPrimary",
             "PHYSICAL_PURGE_REQUIRES_MAINTENANCE",
             "RoomTransactionQueryService(database).page",
+            '"SELECT a.uid,a.display_name FROM transaction_revision_attachment',
         ),
     )
     if re.search(r"DELETE\s+FROM\s+(?:business_transaction|transaction_revision|journal_entry|posting)", data, re.IGNORECASE):
         errors.append("P15 must not perform the P31 physical purge")
-    if re.search(r"(?m)^import\s+app\.ledger\.finance\.domain\.(?:JournalEntry|Posting)", next((s for p, s in sources.items() if p.endswith("AppRootViewModel.kt")), "")):
+    root = next((s for p, s in sources.items() if p.endswith("AppRootViewModel.kt")), "")
+    journal_mutation = root[root.find("private fun executeJournalMutation"):root.find("private fun refreshJournalPaging")]
+    require_tokens(errors, journal_mutation, "journal mutation refreshes financial surfaces", ("loadReferenceDataAfterMutation(bookId)",))
+    require_tokens(errors, root, "attachment lifecycle integration", (
+        "fun openAttachment", "SecureBookAttachmentSession", "attachmentExternalOpenRequests",
+        'ScreenId("ATT-001")', 'ScreenId("ATT-002")', 'ScreenId("ATT-003")',
+    ))
+    require_tokens(errors, root, "single transfer revision editor", (
+        "kind == TransactionKind.TRANSFER",
+        'ScreenId("REC-013")',
+        'mapOf("transactionId" to StableIdArgument(transactionId))',
+        "expectedRevisionId = validated.expectedRevisionId",
+    ))
+    specialized = next((s for p, s in sources.items() if p.endswith("SecureRoomSpecializedTransactionEntryPort.kt")), "")
+    require_tokens(errors, specialized, "specialized edit financial mutation", (
+        "EditTransactionCommand(",
+        "ReferenceDataViolation.StaleRevision",
+        "previous?.payload as? TransferPayload",
+    ))
+    if re.search(r"(?m)^import\s+app\.ledger\.finance\.domain\.(?:JournalEntry|Posting)", root):
         errors.append("ViewModel must not construct accounting facts")
     return errors
 
@@ -192,11 +221,16 @@ def validate_tests_and_resources() -> list[str]:
     if len(goldens) != 2 or any(path.stat().st_size < 1_000 for path in goldens):
         errors.append("exactly two non-empty P15 Compose/token goldens are required")
     resource_sets = []
+    user_copy = []
     for relative in ("values/strings.xml", "values-ja/strings.xml", "values-zh-rCN/strings.xml"):
         text = read(f"feature/journal/src/main/res/{relative}")
         resource_sets.append({key for key in re.findall(r'<string name="([^"]+)"', text) if key.startswith("p15_")})
+        user_copy.extend(re.findall(r'<string name="p15_[^"]+"[^>]*>(.*?)</string>', text, re.DOTALL))
     if resource_sets[0] != resource_sets[1] or resource_sets[0] != resource_sets[2]:
         errors.append("journal P15 strings are incomplete across en/ja/zh-CN")
+    technical_term = re.search(r"(?:\bISO(?:-?8601)?\b|\bminor[ -]units?\b|最小货币单位|最小単位)", " ".join(user_copy), re.IGNORECASE)
+    if technical_term:
+        errors.append(f"journal UI exposes implementation terminology: {technical_term.group(0)}")
     return errors
 
 

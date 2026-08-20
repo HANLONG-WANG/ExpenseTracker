@@ -109,8 +109,15 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     ))
     room = next((value for path, value in sources.items() if path.endswith("RoomProjectionEngine.kt")), "")
     require_tokens(errors, room, "synchronous projection integration", (
-        "AnalyticsProjectionEngine.rebuild", "ProjectionFamily.ANALYTICS", "+ AnalyticsProjectionEngine.tables",
+        "AnalyticsProjectionEngine.rebuild", "+ AnalyticsProjectionEngine.tables", "ProjectionFamily.entries.forEach",
     ))
+    projection_port = next((value for path, value in sources.items() if path.endswith("ProjectionAndQueryPorts.kt")), "")
+    analytics_family = re.search(r"enum class ProjectionFamily\s*\{([^}]*)\}", projection_port, re.DOTALL)
+    analytics_engine = next((value for path, value in sources.items() if path.endswith("AnalyticsProjectionEngine.kt")), "")
+    family_ordinal = re.search(r"ANALYTICS_FAMILY:\s*Int\s*=\s*(\d+)", analytics_engine)
+    members = re.findall(r"\b[A-Z][A-Z_]+\b", analytics_family.group(1)) if analytics_family else []
+    if "ANALYTICS" not in members or family_ordinal is None or members.index("ANALYTICS") != int(family_ordinal.group(1)):
+        errors.append("analytics projection-family generation is not aligned with the application enum")
 
     adapter = next((value for path, value in sources.items() if path.endswith("SecureRoomAnalyticsApplicationPort.kt")), "")
     require_tokens(errors, adapter, "encrypted query and integrity adapter", (
@@ -134,11 +141,19 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     if re.search(r"\b(?:MaterialTheme|Color\s*\(|SwipeToDismiss)\b|\b\d+(?:\.\d+)?\.dp\b", feature):
         errors.append("analysis feature bypasses frozen design tokens")
 
+    fixed_report_screen = next((value for path, value in sources.items() if path.endswith("AnalysisScreens.kt")), "")
+    require_tokens(
+        errors,
+        fixed_report_screen,
+        "fixed-report accessible table",
+        ("AccessibleTableUiModel", "private fun reportTable("),
+    )
+
     root = next((value for path, value in sources.items() if path.endswith("AnalysisRootDestination.kt")), "")
     controller = next((value for path, value in sources.items() if path.endswith("AnalysisController.kt")), "")
     require_tokens(errors, root + controller, "safe analysis route/runtime", (
         'encodedArguments["reportKey"]', 'encodedArguments["queryId"]', "StableId.parse", "ReportKey(this)",
-        "ReportExportPayload", "preparedExportForTransfer", "never enter SavedState or routes",
+        "ReportExportPayload", "private var preparedExport:", "preparedExportForTransfer",
     ))
     if re.search(r'encodedArguments\["(?:amount|note|name|card|attachment|location|sql|formula)"\]', root, re.IGNORECASE):
         errors.append("analysis route accepts business, location, SQL or formula payload")
@@ -163,7 +178,7 @@ def validate_tests_resources() -> list[str]:
         "staleProjectionIsNotShownAndFactRebuildRepairsToIdenticalHash",
         "everyFrozenRequiredStateRendersAcrossWidthFontLocaleAndThemeMatrix",
         "chartHasTextAlternativeAndExactDataTableAtTwoHundredPercentFont",
-        "reportAndIntegrityGoldensMatchEveryPixel", "assertEquals(20, cases.size)",
+        "reportAndIntegrityGoldensMatchEveryPixel", "assertEquals(45, cases.size)",
     ))
     resource_sets = []
     for folder in ("values", "values-en", "values-ja"):

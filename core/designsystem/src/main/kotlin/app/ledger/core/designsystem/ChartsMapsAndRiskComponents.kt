@@ -241,18 +241,25 @@ public fun AccessibleDataTable(
 ) {
     require(model.columnHeaders.isNotEmpty())
     require(model.rows.all { it.size == model.columnHeaders.size })
+    val horizontalScrollState = rememberScrollState()
     Column(
         modifier
             .testTag(LedgerTestTags.DATA_TABLE)
-            .semantics { paneTitle = model.caption }
-            .horizontalScroll(rememberScrollState()),
+            .semantics { paneTitle = model.caption },
     ) {
         Text(model.caption, style = LedgerTheme.typography.titleSmall)
-        Row(Modifier.background(LedgerTheme.colors.material.surfaceContainerHigh)) {
-            model.columnHeaders.forEach { header -> TableCell(header, header = true) }
-        }
-        model.rows.forEach { row ->
-            Row { row.forEach { value -> TableCell(value, header = false) } }
+        Text(
+            stringResource(R.string.ledger_data_table_horizontal_hint),
+            style = LedgerTheme.typography.bodySmall,
+            color = LedgerTheme.colors.material.onSurfaceVariant,
+        )
+        Column(Modifier.horizontalScroll(horizontalScrollState)) {
+            Row(Modifier.background(LedgerTheme.colors.material.surfaceContainerHigh)) {
+                model.columnHeaders.forEach { header -> TableCell(header, header = true) }
+            }
+            model.rows.forEach { row ->
+                Row { row.forEach { value -> TableCell(value, header = false) } }
+            }
         }
         if (pageCount > 1) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
@@ -282,10 +289,11 @@ public fun AccessibleDataTable(
 private fun TableCell(value: String, header: Boolean) {
     Text(
         value,
-        Modifier.width(LedgerTheme.spacing.giant * 2).padding(LedgerTheme.spacing.xs).semantics {
+        Modifier.width(LedgerTheme.spacing.giant * 3).padding(LedgerTheme.spacing.xs).semantics {
             if (header) heading()
         },
         style = LedgerTheme.typography.bodyMedium.copy(fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal, fontFeatureSettings = "tnum"),
+        maxLines = if (header) 2 else Int.MAX_VALUE,
     )
 }
 

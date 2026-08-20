@@ -56,6 +56,7 @@ internal fun SettlementRootDestination(
             onSelectPayee = viewModel::selectSettlementPayee,
             onSelectAccount = viewModel::selectSettlementAccount,
             onSelectProject = viewModel::selectSettlementProject,
+            onSelectCurrency = viewModel::selectSettlementCurrency,
             onSplitMethod = viewModel::selectSettlementSplitMethod,
             onChargeDistribution = viewModel::selectSettlementChargeDistribution,
             onRoundingRule = viewModel::selectSettlementRoundingRule,

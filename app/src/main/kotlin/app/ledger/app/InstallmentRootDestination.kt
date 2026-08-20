@@ -68,8 +68,10 @@ internal fun installmentFixedAction(
     onSave: () -> Unit,
 ): (@Composable BoxScope.() -> Unit)? {
     if (screenId !in setOf("REC-027", "INS-002")) return null
+    val content = (state as? InstallmentLoadState.Content)?.state
+    if (content != null && content.plan == null && content.snapshot.purchases.none { !it.alreadyLinked }) return null
     return {
-        val presentation = (state as? InstallmentLoadState.Content)?.state?.presentation
+        val presentation = content?.presentation
         LedgerSaveFab(
             onSave,
             submitting = pending || presentation == InstallmentPresentation.SAVING,

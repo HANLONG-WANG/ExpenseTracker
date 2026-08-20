@@ -97,7 +97,14 @@ class RoomProjectionMaintenanceService(
                     add("PROJECTION_VERSION_MISMATCH")
                 }
                 val unfinished = connection.queryOne(
-                    "SELECT EXISTS(SELECT 1 FROM background_operation WHERE state NOT IN (8,9,10) LIMIT 1)",
+                    "SELECT EXISTS(SELECT 1 FROM background_operation " +
+                        "WHERE type IN (?,?) AND state IN (?,?) LIMIT 1)",
+                    arrayOf(
+                        RESTORE_REPLACE_OPERATION_TYPE,
+                        RESTORE_MERGE_OPERATION_TYPE,
+                        COMMITTING_OPERATION_STATE,
+                        ROLLING_BACK_OPERATION_STATE,
+                    ),
                 ) { it.getInt(0) == 1 } ?: false
                 if (unfinished) add("UNFINISHED_OPERATION")
                 val registry = connection.queryOne(
@@ -151,6 +158,11 @@ class RoomProjectionMaintenanceService(
     }
 
     private companion object {
+        // Persisted enum ordinals from transfer/domain OperationModel. Keep the source-contract test in sync.
+        const val RESTORE_REPLACE_OPERATION_TYPE = 4
+        const val RESTORE_MERGE_OPERATION_TYPE = 5
+        const val COMMITTING_OPERATION_STATE = 7
+        const val ROLLING_BACK_OPERATION_STATE = 8
         val REASON_CODE = Regex("[A-Z][A-Z0-9_]{2,63}")
     }
 }

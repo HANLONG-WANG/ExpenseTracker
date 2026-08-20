@@ -518,8 +518,8 @@ class SecureRoomJournalApplicationPort(
         JournalTransactionView(
             cursor.stableId("uid"), cursor.stableId("revision_uid"), TransactionKind.entries[cursor.jInt("kind")],
             TransactionLifecycleState.entries[cursor.jInt("lifecycle_state")], Instant.ofEpochMilli(cursor.jLong("occurred_at")),
-            cursor.jInt("local_date").toStoredLocalDate(), cursor.jString("category_name").ifBlank { TransactionKind.entries[cursor.jInt("kind")].name },
-            cursor.jString("summary").ifBlank { TransactionKind.entries[cursor.jInt("kind")].name },
+            cursor.jInt("local_date").toStoredLocalDate(), cursor.jString("category_name"),
+            cursor.jString("summary"),
             listOfNotNull(cursor.jString("account_name").takeIf(String::isNotBlank), cursor.nullableString("card_name")).joinToString(" · "),
             cursor.jLong("account_amount_minor"), accountCurrency,
             cursor.jLong("input_amount_minor").takeIf { inputCurrency != accountCurrency }, inputCurrency.takeIf { it != accountCurrency },
@@ -548,26 +548,27 @@ class SecureRoomJournalApplicationPort(
         ) { cursor -> DetailBase.from(cursor) } ?: return null
         val item = row(db, id, null)
         val attachments = db.queryList(
-            "SELECT a.display_name FROM transaction_revision_attachment tra JOIN attachment a ON a.id=tra.attachment_id JOIN transaction_revision tr ON tr.id=tra.revision_id WHERE tr.uid=? ORDER BY tra.sort_order",
+            "SELECT a.uid,a.display_name FROM transaction_revision_attachment tra JOIN attachment a ON a.id=tra.attachment_id JOIN transaction_revision tr ON tr.id=tra.revision_id WHERE tr.uid=? ORDER BY tra.sort_order",
             arrayOf(base.revisionId.bytes),
-        ) { it.getString(0) }
+        ) { it.stableId("uid") to it.getString(1) }
         val fx = db.queryList(
             "SELECT DISTINCT fx.source_currency,fx.target_currency,fx.rate_decimal,fx.provider,fx.quoted_at,fx.manual_override,fx.stale_at_use " +
                 "FROM revision_amount ra JOIN transaction_revision tr ON tr.id=ra.revision_id JOIN fx_rate_snapshot fx ON fx.id=ra.fx_rate_snapshot_id WHERE tr.uid=? ORDER BY fx.source_currency,fx.target_currency",
             arrayOf(base.revisionId.bytes),
         ) { c -> JournalFxEvidenceView(currency(c.getString(0)), currency(c.getString(1)), c.getString(2), c.getString(3), c.nullableLong("quoted_at")?.let(Instant::ofEpochMilli), c.getInt(5) == 1, c.getInt(6) == 1) }
         val accountEffects = db.queryList(
-            "SELECT COALESCE(ua.name,la.system_code,'ledger'),p.side,p.account_amount_minor,p.account_currency FROM posting p JOIN journal_entry je ON je.id=p.journal_entry_id " +
+            "SELECT ua.name,CASE WHEN p.side=la.normal_side THEN p.account_amount_minor ELSE -p.account_amount_minor END,p.account_currency FROM posting p JOIN journal_entry je ON je.id=p.journal_entry_id " +
                 "JOIN transaction_revision tr ON tr.id=je.source_revision_id JOIN ledger_account la ON la.id=p.ledger_account_id " +
-                "LEFT JOIN user_account ua ON ua.ledger_account_id=la.id WHERE tr.uid=? ORDER BY je.entry_role,p.line_no",
+                "JOIN user_account ua ON ua.ledger_account_id=la.id WHERE tr.uid=? ORDER BY je.entry_role,p.line_no",
             arrayOf(base.revisionId.bytes),
-        ) { c -> "${c.getString(0)}:${if (c.getInt(1) == 0) "debit" else "credit"}:${c.getLong(2)} ${c.getString(3)}" }
+        ) { c -> "account-change|${c.getString(0)}|${c.getLong(1)}|${c.getString(2)}" }
         val dependencyRelations = dependencies(db, id).map { "${it.type}:${it.childTransactionId}" }
         val relations = dependencyRelations + RoomJournalRefundRelations.summaries(db, id)
         val budget = db.queryOne("SELECT COUNT(*) n FROM budget_effect be JOIN transaction_revision tr ON tr.id=be.source_revision_id WHERE tr.uid=? AND be.polarity=1", arrayOf(base.revisionId.bytes)) { it.jLong("n") }
         return JournalDetailView(
             item, base.createdAt, base.modifiedAt, base.zoneId, base.expression, base.note, base.merchant, base.project, base.place,
-            attachments, budget?.takeIf { it > 0 }?.let { "included:$it" }, base.statisticalNature, fx, relations, accountEffects,
+            attachments.map { it.first }, attachments.map { it.second },
+            budget?.takeIf { it > 0 }?.let { "included:$it" }, base.statisticalNature, fx, relations, accountEffects,
             TransactionSource.entries[base.source].name, base.purgeAfter, dependencyRelations.size,
         )
     }

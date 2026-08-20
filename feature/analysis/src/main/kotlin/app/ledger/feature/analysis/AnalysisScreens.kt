@@ -703,7 +703,17 @@ private val COMPARISON_LABELS = mapOf(
     ComparisonMode.TREND to R.string.analysis_trend,
     ComparisonMode.FORECAST to R.string.analysis_forecast,
 )
-private val INTEGRITY_LABELS = IntegrityCheckKey.entries.associateWith { R.string.analysis_integrity_check }
+private val INTEGRITY_LABELS = mapOf(
+    IntegrityCheckKey.DATABASE to R.string.analysis_integrity_database,
+    IntegrityCheckKey.FOREIGN_KEYS to R.string.analysis_integrity_foreign_keys,
+    IntegrityCheckKey.JOURNALS to R.string.analysis_integrity_journals,
+    IntegrityCheckKey.POSTING_CURRENCIES to R.string.analysis_integrity_posting_currencies,
+    IntegrityCheckKey.REVISIONS to R.string.analysis_integrity_revisions,
+    IntegrityCheckKey.PROJECTIONS to R.string.analysis_integrity_projections,
+    IntegrityCheckKey.FTS to R.string.analysis_integrity_fts,
+    IntegrityCheckKey.RTREE to R.string.analysis_integrity_rtree,
+    IntegrityCheckKey.FACT_REBUILD to R.string.analysis_integrity_fact_rebuild,
+)
 private val SEVERITY_LABELS = mapOf(
     IntegritySeverity.PASS to R.string.analysis_integrity_passed,
     IntegritySeverity.WARNING to R.string.analysis_integrity_warnings,

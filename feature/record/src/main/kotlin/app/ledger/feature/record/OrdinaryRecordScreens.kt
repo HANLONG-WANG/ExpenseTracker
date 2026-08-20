@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import app.ledger.core.common.StableId
 import app.ledger.core.designsystem.AttachmentField
 import app.ledger.core.designsystem.AttachmentTransferState
@@ -79,6 +80,9 @@ import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.SettlementChargeDistribution
 import app.ledger.finance.domain.SettlementRoundingRule
 import app.ledger.finance.domain.SettlementSplitMethod
+import app.ledger.finance.domain.StatisticalNature
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
@@ -107,7 +111,10 @@ public data class OrdinaryRecordActions(
     val onSettlementTax: (String) -> Unit,
     val onSettlementServiceFee: (String) -> Unit,
     val onOccurredAt: (dateMillis: Long, hour: Int, minute: Int) -> Unit,
+    val onManualLocation: (latitudeE7: Int, longitudeE7: Int) -> Unit,
     val onAddAttachment: () -> Unit,
+    val onReuseAttachment: (StableId) -> Unit,
+    val onOpenAttachment: (StableId) -> Unit,
     val onCancelAttachment: (index: Int) -> Unit,
     val onSave: () -> Unit,
     val onUnsavedDiscard: () -> Unit,
@@ -116,24 +123,64 @@ public data class OrdinaryRecordActions(
     val onCancelConflict: () -> Unit,
 )
 
+public data class RecordLocationMapPoint(
+    val id: StableId,
+    val latitudeE7: Int,
+    val longitudeE7: Int,
+    val selected: Boolean,
+)
+
+public data class RecordLocationMapRow(
+    val id: StableId,
+    val label: String,
+    val coordinates: String,
+)
+
+public data class RecordLocationMapModel(
+    val unavailable: Boolean,
+    val summary: String,
+    val caption: String,
+    val nameHeader: String,
+    val coordinateHeader: String,
+    val showListLabel: String,
+    val hideListLabel: String,
+    val points: List<RecordLocationMapPoint>,
+    val rows: List<RecordLocationMapRow>,
+)
+
 @Composable
 public fun OrdinaryRecordDestination(
     screenId: String,
     state: OrdinaryRecordLoadState,
     actions: OrdinaryRecordActions,
     modifier: Modifier = Modifier,
+    locationMap: @Composable (
+        model: RecordLocationMapModel,
+        onPointSelected: (StableId) -> Unit,
+        onCoordinateSelected: (Int, Int) -> Unit,
+        onFailure: () -> Unit,
+    ) -> Unit = { model, onPointSelected, _, _ ->
+        Column(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+            model.rows.forEach { row -> LedgerChoiceRow(row.label, model.points.singleOrNull { it.id == row.id }?.selected == true, { onPointSelected(row.id) }, supportingText = row.coordinates) }
+        }
+    },
 ) {
     Box(modifier.fillMaxSize().testTag(LedgerTestTags.RECORD_ROOT)) {
         when (state) {
             OrdinaryRecordLoadState.Loading -> LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
             is OrdinaryRecordLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.record_load_failed), actions.onRetry)
-            is OrdinaryRecordLoadState.Content -> RecordContent(screenId, state, actions)
+            is OrdinaryRecordLoadState.Content -> RecordContent(screenId, state, actions, locationMap)
         }
     }
 }
 
 @Composable
-private fun RecordContent(screenId: String, state: OrdinaryRecordLoadState.Content, actions: OrdinaryRecordActions) {
+private fun RecordContent(
+    screenId: String,
+    state: OrdinaryRecordLoadState.Content,
+    actions: OrdinaryRecordActions,
+    locationMap: @Composable (RecordLocationMapModel, (StableId) -> Unit, (Int, Int) -> Unit, () -> Unit) -> Unit,
+) {
     when (screenId) {
         "REC-001" -> CategoryFirstHome(state, actions)
         "REC-002" -> CategorySearch(state, actions)
@@ -143,7 +190,7 @@ private fun RecordContent(screenId: String, state: OrdinaryRecordLoadState.Conte
         "REC-006" -> state.editor?.let { CardPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-007" -> state.editor?.let { MerchantPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-008" -> state.editor?.let { ProjectPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
-        "REC-009" -> state.editor?.let { LocationPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
+        "REC-009" -> state.editor?.let { LocationPicker(it, actions, locationMap) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-010" -> state.editor?.let { AttachmentPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-011" -> state.editor?.let { SettlementAllocation(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-012" -> state.editor?.let { AdvancedSemantics(it) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
@@ -319,14 +366,14 @@ private fun OrdinaryEditor(state: OrdinaryRecordEditorState, actions: OrdinaryRe
                 }
             }
         }
-        item { LocationField(if (d.locationRecordId == null) LocationFieldState.Locating else LocationFieldState.ManuallyAdjusted, { actions.onNavigate("REC-009", emptyMap(), emptyMap()) }, mapLabel = stringResource(R.string.record_location_adjust)) }
+        item { LocationField(if (d.locationRecordId == null) LocationFieldState.ReadyAtSave else LocationFieldState.ManuallyAdjusted, { actions.onNavigate("REC-009", emptyMap(), emptyMap()) }, mapLabel = stringResource(R.string.record_location_adjust)) }
         item { LedgerTextField(d.note, actions.onNote, stringResource(R.string.record_field_note), singleLine = false, hideValueFromSemantics = true) }
         item {
             val attachments = d.attachmentIds.mapIndexed { index, _ -> AttachmentUiModel("attachment_item_$index", stringResource(R.string.record_attachment_attached), "", stringResource(R.string.record_attachment_type), state = AttachmentTransferState.READY) }
             AttachmentField(
                 attachments,
                 { actions.onNavigate("REC-010", emptyMap(), emptyMap()) },
-                {},
+                { model -> attachments.indexOf(model).takeIf { it >= 0 }?.let { d.attachmentIds.getOrNull(it) }?.let(actions.onOpenAttachment) },
                 { model -> attachments.indexOf(model).takeIf { it >= 0 }?.let(actions.onCancelAttachment) },
                 addLabel = stringResource(R.string.record_attachments_add),
             )
@@ -444,34 +491,125 @@ private fun ProjectPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRec
 }
 
 @Composable
-private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRecordActions) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-        LocationField(if (state.draft.locationRecordId == null) LocationFieldState.Locating else LocationFieldState.ManuallyAdjusted, {}, mapLabel = stringResource(R.string.record_location_adjust))
-        LedgerBanner(stringResource(R.string.record_location_three_seconds), LedgerBannerVariant.INFO)
-        state.snapshot.references.locations.forEach { location ->
+private fun LocationPicker(
+    state: OrdinaryRecordEditorState,
+    actions: OrdinaryRecordActions,
+    locationMap: @Composable (RecordLocationMapModel, (StableId) -> Unit, (Int, Int) -> Unit, () -> Unit) -> Unit,
+) {
+    val manual = state.draft.newLocation
+    val selectedSaved = state.snapshot.references.locations.singleOrNull { it.id == state.draft.locationRecordId }
+    val selectedLatitudeE7 = manual?.latitudeE7 ?: selectedSaved?.latitudeE7
+    val selectedLongitudeE7 = manual?.longitudeE7 ?: selectedSaved?.longitudeE7
+    var latitude by remember(selectedLatitudeE7) { mutableStateOf(selectedLatitudeE7?.coordinateText().orEmpty()) }
+    var longitude by remember(selectedLongitudeE7) { mutableStateOf(selectedLongitudeE7?.coordinateText().orEmpty()) }
+    var mapUnavailable by remember { mutableStateOf(false) }
+    val latitudeE7 = latitude.coordinateE7OrNull(LATITUDE_RANGE)
+    val longitudeE7 = longitude.coordinateE7OrNull(LONGITUDE_RANGE)
+    val savedPoints = state.snapshot.references.locations.map { location ->
+        RecordLocationMapPoint(location.id, location.latitudeE7, location.longitudeE7, selected = location.id == state.draft.locationRecordId)
+    }
+    val points = if (manual == null) savedPoints else savedPoints.filterNot { it.id == manual.id } + RecordLocationMapPoint(manual.id, manual.latitudeE7, manual.longitudeE7, selected = true)
+    val rows = state.snapshot.references.locations.map { location ->
+        val place = state.snapshot.references.places.singleOrNull { it.id == location.placeId }
+        RecordLocationMapRow(location.id, place?.name ?: stringResource(R.string.record_saved_location), "${location.latitudeE7.coordinateText()}, ${location.longitudeE7.coordinateText()}")
+    }
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+        item {
+            LocationField(
+                if (state.draft.locationRecordId == null) LocationFieldState.ReadyAtSave else LocationFieldState.ManuallyAdjusted,
+                {},
+                mapLabel = stringResource(R.string.record_location_adjust),
+            )
+        }
+        item {
+            locationMap(
+                RecordLocationMapModel(
+                    unavailable = mapUnavailable,
+                    summary = if (mapUnavailable) stringResource(R.string.record_location_map_unavailable) else stringResource(R.string.record_location_map_summary),
+                    caption = stringResource(R.string.record_location_map_caption),
+                    nameHeader = stringResource(R.string.record_location_map_name),
+                    coordinateHeader = stringResource(R.string.record_location_map_coordinates),
+                    showListLabel = stringResource(R.string.record_location_show_list),
+                    hideListLabel = stringResource(R.string.record_location_hide_list),
+                    points = points,
+                    rows = rows,
+                ),
+                { id -> if (id != manual?.id) actions.onSelectReference(RecordField.LOCATION, id) },
+                actions.onManualLocation,
+                { mapUnavailable = true },
+            )
+        }
+        item {
+            LedgerTextField(
+                latitude,
+                { latitude = it.filterCoordinateInput() },
+                stringResource(R.string.record_location_latitude),
+                errorText = if (latitude.isNotBlank() && latitudeE7 == null) stringResource(R.string.record_location_coordinate_invalid) else null,
+                keyboardType = KeyboardType.Decimal,
+            )
+        }
+        item {
+            LedgerTextField(
+                longitude,
+                { longitude = it.filterCoordinateInput() },
+                stringResource(R.string.record_location_longitude),
+                errorText = if (longitude.isNotBlank() && longitudeE7 == null) stringResource(R.string.record_location_coordinate_invalid) else null,
+                keyboardType = KeyboardType.Decimal,
+            )
+        }
+        item {
+            LedgerButton(
+                stringResource(R.string.record_location_apply_coordinates),
+                { actions.onManualLocation(requireNotNull(latitudeE7), requireNotNull(longitudeE7)) },
+                Modifier.fillMaxWidth(),
+                enabled = latitudeE7 != null && longitudeE7 != null,
+            )
+        }
+        item { LedgerBanner(stringResource(R.string.record_location_three_seconds), LedgerBannerVariant.INFO) }
+        items(state.snapshot.references.locations, key = { it.id.toString() }) { location ->
             val place = state.snapshot.references.places.singleOrNull { it.id == location.placeId }
             LedgerChoiceRow(place?.name ?: stringResource(R.string.record_saved_location), state.draft.locationRecordId == location.id, { actions.onSelectReference(RecordField.LOCATION, location.id) })
         }
-        LedgerButton(stringResource(R.string.record_without_location), { actions.onSelectReference(RecordField.LOCATION, null) }, variant = LedgerButtonVariant.SECONDARY)
+        item { LedgerButton(stringResource(R.string.record_without_location), { actions.onSelectReference(RecordField.LOCATION, null) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.SECONDARY) }
     }
 }
 
 @Composable
 private fun AttachmentPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRecordActions) {
-    val attachments = state.draft.attachmentIds.mapIndexed { index, _ -> AttachmentUiModel("attachment_item_$index", stringResource(R.string.record_attachment_attached), "", stringResource(R.string.record_attachment_type)) } +
+    val attachments = state.draft.attachmentIds.mapIndexed { index, id ->
+        val metadata = state.availableAttachments.singleOrNull { it.id == id }
+        AttachmentUiModel(
+            "attachment_item_$index",
+            metadata?.displayName ?: stringResource(R.string.record_attachment_attached),
+            metadata?.sizeBytes?.let { stringResource(R.string.record_attachment_size, it) }.orEmpty(),
+            metadata?.mimeType ?: stringResource(R.string.record_attachment_type),
+        )
+    } +
         if (state.attachmentImporting) listOf(AttachmentUiModel("attachment_import", stringResource(R.string.record_attachment_importing), "", stringResource(R.string.record_attachment_type), state = AttachmentTransferState.IMPORTING)) else emptyList()
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-        state.attachmentFailureCode?.let { LedgerBanner(stringResource(R.string.record_attachments_failed, it), LedgerBannerVariant.DANGER) }
-        if (attachments.isEmpty()) {
-            LedgerEmptyState(stringResource(R.string.record_attachments_empty_title), stringResource(R.string.record_attachments_empty_message), stringResource(R.string.record_attachments_add), actions.onAddAttachment)
-        } else {
+    val reusable = state.availableAttachments.filterNot { it.id in state.draft.attachmentIds }
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+        state.attachmentFailureCode?.let { code -> item { LedgerBanner(stringResource(R.string.record_attachments_failed, code), LedgerBannerVariant.DANGER) } }
+        item {
             AttachmentField(
                 attachments,
                 actions.onAddAttachment,
-                {},
+                { model -> attachments.indexOf(model).takeIf { it >= 0 }?.let { state.draft.attachmentIds.getOrNull(it) }?.let(actions.onOpenAttachment) },
                 { model -> attachments.indexOf(model).takeIf { it >= 0 }?.let(actions.onCancelAttachment) },
                 addLabel = stringResource(R.string.record_attachments_add),
             )
+        }
+        if (reusable.isNotEmpty()) {
+            item { LedgerText(stringResource(R.string.record_attachments_reuse_title), LedgerTextRole.SECTION) }
+            items(reusable, key = { it.id.toString() }) { attachment ->
+                LedgerChoiceRow(
+                    attachment.displayName,
+                    false,
+                    { actions.onReuseAttachment(attachment.id) },
+                    supportingText = stringResource(R.string.record_attachment_reuse_summary, attachment.mimeType, attachment.sizeBytes),
+                )
+            }
+        } else if (attachments.isEmpty()) {
+            item { LedgerText(stringResource(R.string.record_attachments_empty_message), LedgerTextRole.SUPPORTING) }
         }
     }
 }
@@ -623,11 +761,21 @@ private fun AdvancedSemantics(state: OrdinaryRecordEditorState) {
     val project = state.snapshot.projects.singleOrNull { it.id == state.draft.projectId }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         LedgerText(stringResource(R.string.record_advanced), LedgerTextRole.TITLE)
-        LedgerText(stringResource(R.string.record_statistical_snapshot, category?.statisticalNature?.name.orEmpty()), LedgerTextRole.BODY)
+        LedgerText(stringResource(R.string.record_statistical_snapshot, category?.statisticalNature?.label().orEmpty()), LedgerTextRole.BODY)
         LedgerText(stringResource(R.string.record_budget_snapshot, if (project == null) stringResource(R.string.record_budget_category_rule) else project.name), LedgerTextRole.BODY)
         LedgerBanner(stringResource(R.string.record_snapshot_immutable), LedgerBannerVariant.INFO)
     }
 }
+
+@Composable
+private fun StatisticalNature.label(): String = stringResource(
+    when (this) {
+        StatisticalNature.CONSUMPTION_EXPENSE -> R.string.record_nature_consumption_expense
+        StatisticalNature.NON_CONSUMPTION_EXPENSE -> R.string.record_nature_non_consumption_expense
+        StatisticalNature.REGULAR_INCOME -> R.string.record_nature_regular_income
+        StatisticalNature.NON_RECURRING_INCOME -> R.string.record_nature_non_recurring_income
+    },
+)
 
 @Composable
 private fun SelectionList(rows: List<Pair<ReferenceDataRowUiModel, StableId>>, selected: StableId?, onSelect: (StableId?) -> Unit, allowNone: Boolean = false) {
@@ -647,6 +795,11 @@ private fun categoryGroups(categories: List<CategoryReferenceView>): List<Catego
 private fun CategoryReferenceView.toTile() = CategoryTileUiModel(id.toString(), name, name, LedgerReferenceDisplayDefaults.paletteId(colorArgb), LedgerIcon.entries.firstOrNull { it.name.equals(iconKey, true) } ?: LedgerIcon.RECORD, depth == 1, childCount.toInt())
 private fun CategoryReferenceView.toRow() = ReferenceDataRowUiModel("category_item", name, null, depth, icon = LedgerIcon.entries.firstOrNull { it.name.equals(iconKey, true) } ?: LedgerIcon.RECORD, paletteId = LedgerReferenceDisplayDefaults.paletteId(colorArgb))
 private fun RecordTab.toDirection() = if (this == RecordTab.INCOME) OrdinaryDirection.INCOME else OrdinaryDirection.EXPENSE
+private fun Int.coordinateText(): String = BigDecimal.valueOf(toLong(), COORDINATE_SCALE).stripTrailingZeros().toPlainString()
+private fun String.coordinateE7OrNull(range: IntRange): Int? = runCatching {
+    BigDecimal(trim()).movePointRight(COORDINATE_SCALE).setScale(0, RoundingMode.UNNECESSARY).intValueExact()
+}.getOrNull()?.takeIf { it in range }
+private fun String.filterCoordinateInput(): String = filter { it.isDigit() || it == '-' || it == '.' }.take(COORDINATE_INPUT_LENGTH)
 
 @Composable
 private fun validationMessage(code: String): String = when (code) {
@@ -674,3 +827,7 @@ private fun RecordDefaultSource.labelResource(): Int = when (this) {
 
 private val DATE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 private const val MAX_QUICK_TEMPLATES = 5
+private const val COORDINATE_SCALE = 7
+private const val COORDINATE_INPUT_LENGTH = 18
+private val LATITUDE_RANGE = -900_000_000..900_000_000
+private val LONGITUDE_RANGE = -1_800_000_000..1_800_000_000

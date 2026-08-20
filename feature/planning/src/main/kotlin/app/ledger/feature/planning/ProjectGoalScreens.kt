@@ -452,7 +452,7 @@ private fun GoalRow(goal: GoalView, actions: ProjectGoalActions) {
         Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 LedgerText(goal.name, LedgerTextRole.SECTION)
-                StatusBadge(goal.status.name, if (goal.status == GoalStatus.ACTIVE) LedgerStatusVariant.POSITIVE else LedgerStatusVariant.NEUTRAL)
+                StatusBadge(goal.status.label(), if (goal.status == GoalStatus.ACTIVE) LedgerStatusVariant.POSITIVE else LedgerStatusVariant.NEUTRAL)
             }
             AmountText(ProjectGoalPolicy.money(goal.balanceMinor, goal.currency, LocalLocale.current.platformLocale), AmountSize.MEDIUM)
             GoalProgress(goal)
@@ -462,6 +462,15 @@ private fun GoalRow(goal: GoalView, actions: ProjectGoalActions) {
         }
     }
 }
+
+@Composable
+private fun GoalStatus.label(): String = stringResource(
+    when (this) {
+        GoalStatus.ACTIVE -> R.string.goal_status_active
+        GoalStatus.COMPLETED -> R.string.goal_status_completed
+        GoalStatus.ARCHIVED -> R.string.goal_status_archived
+    },
+)
 
 @Composable
 private fun GoalEditor(state: ProjectGoalFeatureState, actions: ProjectGoalActions) {
@@ -532,7 +541,7 @@ private fun GoalDetail(state: ProjectGoalFeatureState, actions: ProjectGoalActio
                     AccessibleTableUiModel(
                         stringResource(R.string.goal_movement_history),
                         listOf(stringResource(R.string.planning_date), stringResource(R.string.goal_movement_type), stringResource(R.string.goal_movement_amount)),
-                        goal.movements.map { listOf(it.occurredAt.toString(), it.kind.name, money(it.amountMinor, goal.currency)) },
+                        goal.movements.map { listOf(it.occurredAt.toString(), movementLabel(it.kind), money(it.amountMinor, goal.currency)) },
                     ),
                 )
             }
@@ -575,6 +584,9 @@ private fun GoalMovementEditor(state: ProjectGoalFeatureState, actions: ProjectG
     ) {
         LedgerText(movementLabel(state.movementKind), LedgerTextRole.TITLE)
         LedgerTextField(state.movementAmountText, actions.onMovementAmountChanged, stringResource(R.string.goal_movement_amount), required = true, keyboardType = KeyboardType.Decimal)
+        if (state.movementKind == GoalMovementKind.ADJUST) {
+            LedgerBanner(stringResource(R.string.goal_adjust_delta_explanation), LedgerBannerVariant.INFO)
+        }
         LedgerTextField(
             state.movementDate.toString(),
             actions.onMovementDateChanged,
@@ -614,12 +626,29 @@ private fun ProjectTransactionRow(transaction: ProjectTransactionView, state: Pr
         Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), horizontalArrangement = Arrangement.SpaceBetween) {
             Column(Modifier.weight(1f)) {
                 LedgerText(transaction.localDate.toString(), LedgerTextRole.BODY)
-                LedgerText(transaction.kind.name, LedgerTextRole.SUPPORTING)
+                LedgerText(transaction.kind.label(), LedgerTextRole.SUPPORTING)
             }
             AmountText(ProjectGoalPolicy.money(transaction.amountBaseMinor, state.snapshot.baseCurrency, LocalLocale.current.platformLocale), AmountSize.LIST)
         }
     }
 }
+
+@Composable
+private fun TransactionKind.label(): String = stringResource(
+    when (this) {
+        TransactionKind.EXPENSE -> R.string.planning_kind_expense
+        TransactionKind.INCOME -> R.string.planning_kind_income
+        TransactionKind.TRANSFER -> R.string.planning_kind_transfer
+        TransactionKind.REFUND -> R.string.planning_kind_refund
+        TransactionKind.CREDIT_PAYMENT -> R.string.planning_kind_credit_payment
+        TransactionKind.LOAN_DISBURSEMENT -> R.string.planning_kind_loan_disbursement
+        TransactionKind.LOAN_PAYMENT -> R.string.planning_kind_loan_payment
+        TransactionKind.BALANCE_ADJUSTMENT -> R.string.planning_kind_balance_adjustment
+        TransactionKind.FX_EXCHANGE -> R.string.planning_kind_fx_exchange
+        TransactionKind.SETTLEMENT_PAYMENT -> R.string.planning_kind_settlement_payment
+        TransactionKind.OPENING_BALANCE -> R.string.planning_kind_opening_balance
+    },
+)
 
 @Composable
 private fun GoalCompletion(state: ProjectGoalFeatureState, actions: ProjectGoalActions) {
@@ -669,7 +698,7 @@ private fun movementLabel(kind: GoalMovementKind): String = stringResource(
     when (kind) {
         GoalMovementKind.ALLOCATE -> R.string.goal_allocate
         GoalMovementKind.RELEASE -> R.string.goal_release
-        GoalMovementKind.ADJUST -> R.string.goal_adjust
+        GoalMovementKind.ADJUST -> R.string.goal_adjust_increase
     },
 )
 
@@ -680,7 +709,11 @@ private fun money(state: ProjectGoalFeatureState, minor: Long): String = money(m
 private fun money(minor: Long, currency: app.ledger.core.money.CurrencyCode): String = ProjectGoalPolicy.money(minor, currency, LocalLocale.current.platformLocale).formatted
 
 @Composable
-private fun error(state: ProjectGoalFeatureState, field: String): String? = stringResource(R.string.planning_invalid_field).takeIf { field in state.projectErrors }
+private fun error(state: ProjectGoalFeatureState, field: String): String? = when {
+    field !in state.projectErrors -> null
+    field == "endDate" -> stringResource(R.string.project_end_date_invalid)
+    else -> stringResource(R.string.planning_invalid_field)
+}
 
 @Composable
 private fun goalError(state: ProjectGoalFeatureState, field: String): String? = stringResource(R.string.planning_invalid_field).takeIf { field in state.goalErrors }

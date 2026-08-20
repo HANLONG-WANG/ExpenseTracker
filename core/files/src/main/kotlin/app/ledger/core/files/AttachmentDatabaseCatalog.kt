@@ -107,6 +107,16 @@ internal class AttachmentDatabaseCatalog(
         ).use { cursor -> if (cursor.moveToFirst()) cursor.storedAttachment() else null }
     }
 
+    fun activeAttachments(): List<StoredAttachmentObject> = database.readLedger { connection ->
+        connection.query(
+            "SELECT a.uid AS attachment_uid,a.display_name,a.imported_at,b.uid AS blob_uid,b.storage_name," +
+                "b.plaintext_sha256,b.plaintext_size,b.mime_type,b.extension,b.wrapped_data_key,b.encryption_version " +
+                "FROM attachment a JOIN encrypted_blob b ON b.id = a.blob_id " +
+                "WHERE a.status = ? ORDER BY a.imported_at DESC,a.id DESC",
+            arrayOf(AttachmentStatus.ACTIVE.ordinal),
+        ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.storedAttachment()) } }
+    }
+
     fun rename(attachmentId: AttachmentId, displayName: String): Boolean = database.inLedgerTransaction { connection ->
         connection.compileStatement("UPDATE attachment SET display_name = ? WHERE uid = ?").use { statement ->
             statement.bindString(1, displayName)

@@ -31,17 +31,20 @@ import app.ledger.finance.application.SpecializedAccountAmountDraft
 import app.ledger.finance.application.SpecializedFxQuote
 import app.ledger.finance.application.SpecializedFxQuoteRequest
 import app.ledger.finance.application.SpecializedTransactionEntryPort
+import app.ledger.finance.application.SpecializedTransactionEditView
 import app.ledger.finance.application.SpecializedTransactionSnapshot
 import app.ledger.finance.application.SpecializedTransactionWriteRequest
 import app.ledger.finance.domain.AccountAmount
 import app.ledger.finance.domain.AccountingPlanningContext
 import app.ledger.finance.domain.AmountEvidenceKey
 import app.ledger.finance.domain.AmountRole
+import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.BalanceAdjustmentPayload
 import app.ledger.finance.domain.BookCommitId
 import app.ledger.finance.domain.CanonicalFinancialHash
 import app.ledger.finance.domain.DeterministicFinancialPlanner
 import app.ledger.finance.domain.DeviceInstanceId
+import app.ledger.finance.domain.EditTransactionCommand
 import app.ledger.finance.domain.FinancialCommand
 import app.ledger.finance.domain.FrozenAmountEvidence
 import app.ledger.finance.domain.FrozenFxConversion
@@ -61,6 +64,7 @@ import app.ledger.finance.domain.RecordTransferCommand
 import app.ledger.finance.domain.ReferenceDataViolation
 import app.ledger.finance.domain.TransactionContextInput
 import app.ledger.finance.domain.TransactionId
+import app.ledger.finance.domain.TransactionKind
 import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.TransferPayload
@@ -85,12 +89,89 @@ public class SecureRoomSpecializedTransactionEntryPort internal constructor(
     private val writeGate = SpecializedWriteGate()
     private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
 
-    override suspend fun snapshot(bookId: app.ledger.core.common.StableId): DomainResult<SpecializedTransactionSnapshot> = when (val references = referenceDataPort.snapshot(bookId)) {
+    override suspend fun snapshot(
+        bookId: app.ledger.core.common.StableId,
+        transactionId: app.ledger.core.common.StableId?,
+    ): DomainResult<SpecializedTransactionSnapshot> = when (val references = referenceDataPort.snapshot(bookId)) {
         is DomainResult.Failure -> references
-        is DomainResult.Success -> DomainResult.Success(
-            SpecializedTransactionSnapshot(references.value, references.value.valuationRevision),
-        )
+        is DomainResult.Success -> if (transactionId == null) {
+            DomainResult.Success(SpecializedTransactionSnapshot(references.value, references.value.valuationRevision))
+        } else {
+            withDatabase(bookId) { database ->
+                DomainResult.Success(
+                    SpecializedTransactionSnapshot(
+                        references.value,
+                        references.value.valuationRevision,
+                        database.readLedger { editing(it, transactionId) },
+                    ),
+                )
+            }
+        }
     }
+
+    private fun editing(database: SupportSQLiteDatabase, transactionId: app.ledger.core.common.StableId): SpecializedTransactionEditView = database.queryOne(
+        "SELECT bt.kind,tr.uid revision_uid,tr.amount_expression,tr.occurred_at,tr.zone_id,tr.local_date,tr.note,tr.source_type,tr.source_reference_uid," +
+            "from_account.uid from_uid,to_account.uid to_uid,out_amount.amount_minor outgoing_minor,out_base.amount_minor outgoing_base_minor," +
+            "in_amount.amount_minor incoming_minor,in_base.amount_minor incoming_base_minor,COALESCE(bad.direction,0) adjustment_direction,checkpoint.uid checkpoint_uid " +
+            "FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id " +
+            "LEFT JOIN transfer_revision_detail transfer_detail ON transfer_detail.revision_id=tr.id " +
+            "LEFT JOIN fx_exchange_revision_detail fx ON fx.revision_id=tr.id " +
+            "LEFT JOIN balance_adjustment_revision_detail bad ON bad.revision_id=tr.id " +
+            "LEFT JOIN opening_balance_revision_detail opening ON opening.revision_id=tr.id " +
+            "JOIN user_account from_account ON from_account.id=COALESCE(transfer_detail.from_account_id,fx.from_account_id,bad.account_id,opening.account_id) " +
+            "LEFT JOIN user_account to_account ON to_account.id=COALESCE(transfer_detail.to_account_id,fx.to_account_id) " +
+            "JOIN revision_amount out_amount ON out_amount.revision_id=tr.id AND out_amount.component_index=0 " +
+            "AND out_amount.role=CASE WHEN bt.kind IN (?,?) THEN ? ELSE ? END AND out_amount.representation=? " +
+            "JOIN revision_amount out_base ON out_base.revision_id=tr.id AND out_base.component_index=0 AND out_base.role=out_amount.role AND out_base.representation=? " +
+            "LEFT JOIN revision_amount in_amount ON in_amount.revision_id=tr.id AND in_amount.component_index=0 AND in_amount.role=? AND in_amount.representation=? " +
+            "LEFT JOIN revision_amount in_base ON in_base.revision_id=tr.id AND in_base.component_index=0 AND in_base.role=? AND in_base.representation=? " +
+            "LEFT JOIN account_balance_checkpoint checkpoint ON checkpoint.id=bad.checkpoint_id " +
+            "WHERE bt.uid=? AND bt.lifecycle_state=0 AND bt.kind IN (?,?,?,?)",
+        arrayOf(
+            TransactionKind.TRANSFER.ordinal,
+            TransactionKind.FX_EXCHANGE.ordinal,
+            AmountRole.OUTGOING.ordinal,
+            AmountRole.PRIMARY.ordinal,
+            app.ledger.finance.domain.AmountRepresentation.ACCOUNT.ordinal,
+            app.ledger.finance.domain.AmountRepresentation.BASE.ordinal,
+            AmountRole.INCOMING.ordinal,
+            app.ledger.finance.domain.AmountRepresentation.ACCOUNT.ordinal,
+            AmountRole.INCOMING.ordinal,
+            app.ledger.finance.domain.AmountRepresentation.BASE.ordinal,
+            transactionId.bytes,
+            TransactionKind.TRANSFER.ordinal,
+            TransactionKind.BALANCE_ADJUSTMENT.ordinal,
+            TransactionKind.FX_EXCHANGE.ordinal,
+            TransactionKind.OPENING_BALANCE.ordinal,
+        ),
+    ) { cursor ->
+        val revisionId = cursor.stableId("revision_uid")
+        SpecializedTransactionEditView(
+            transactionId,
+            revisionId,
+            TransactionKind.entries[cursor.getInt(cursor.getColumnIndexOrThrow("kind"))],
+            cursor.stableId("from_uid"),
+            cursor.nullableStableId("to_uid"),
+            cursor.getLong(cursor.getColumnIndexOrThrow("outgoing_minor")),
+            cursor.nullableLong("incoming_minor"),
+            cursor.getLong(cursor.getColumnIndexOrThrow("outgoing_base_minor")),
+            cursor.nullableLong("incoming_base_minor"),
+            cursor.nullableString("amount_expression"),
+            cursor.getLong(cursor.getColumnIndexOrThrow("occurred_at")).toStoredInstant(),
+            java.time.ZoneId.of(cursor.getString(cursor.getColumnIndexOrThrow("zone_id"))),
+            cursor.getInt(cursor.getColumnIndexOrThrow("local_date")).toStoredLocalDate(),
+            cursor.nullableString("note"),
+            database.queryList(
+                "SELECT a.uid FROM transaction_revision_attachment tra JOIN attachment a ON a.id=tra.attachment_id " +
+                    "JOIN transaction_revision linked ON linked.id=tra.revision_id WHERE linked.uid=? ORDER BY tra.sort_order",
+                arrayOf(revisionId.bytes),
+            ) { it.stableId("uid") },
+            BalanceAdjustmentDirection.entries[cursor.getInt(cursor.getColumnIndexOrThrow("adjustment_direction"))],
+            cursor.nullableStableId("checkpoint_uid"),
+            TransactionSource.entries[cursor.getInt(cursor.getColumnIndexOrThrow("source_type"))],
+            cursor.nullableStableId("source_reference_uid"),
+        )
+    } ?: abort(FinanceDataError.CorruptData)
 
     override suspend fun quote(request: SpecializedFxQuoteRequest): DomainResult<SpecializedFxQuote?> = withDatabase(request.bookId) { database ->
         val book = database.readLedger(RoomBookRepository::mapCurrent)
@@ -159,7 +240,22 @@ public class SecureRoomSpecializedTransactionEntryPort internal constructor(
     ): PlanningSnapshot {
         val book = RoomBookRepository.mapCurrent(database)
         if (book.id.value != request.ids.bookId) abort(FinanceDataError.CorruptData)
-        val references = RoomReferenceFinancialSnapshotMapper().references(database)
+        val mapper = RoomReferenceFinancialSnapshotMapper()
+        val editSource = request.ids.expectedRevisionId?.let { expected ->
+            mapper.load(
+                database,
+                request.ids.transactionId,
+                request.ids.revisionId,
+                request.ids.commitId,
+                request.ids.factIds,
+                request.ids.fxRateSnapshotIds,
+                request.context.createdAt,
+                request.ids.deviceInstanceId,
+            ).also { source ->
+                if (source.revision.id.value != expected) abort(ReferenceDataViolation.StaleRevision)
+            }
+        }
+        val references = editSource?.snapshot?.accountingContext?.references ?: mapper.references(database)
         val drafts = when (request) {
             is SpecializedTransactionWriteRequest.Transfer -> listOf(AmountRole.OUTGOING to request.outgoing, AmountRole.INCOMING to request.incoming)
             is SpecializedTransactionWriteRequest.BalanceAdjustment -> listOf(AmountRole.PRIMARY to request.amount)
@@ -168,9 +264,13 @@ public class SecureRoomSpecializedTransactionEntryPort internal constructor(
         }
         if (request is SpecializedTransactionWriteRequest.Transfer) validateTransferCurrencies(references, request)
         if (request is SpecializedTransactionWriteRequest.FxExchange) validateExchangeCurrencies(references, request)
-        if (request is SpecializedTransactionWriteRequest.OpeningBalance) validateOpening(database, references, request)
+        if (request is SpecializedTransactionWriteRequest.OpeningBalance && editSource == null) validateOpening(database, references, request)
         val fxIds = request.ids.fxRateSnapshotIds.iterator()
         val evidence = drafts.map { (role, draft) -> frozenAmount(role, draft, references, book.baseCurrency, fxIds) }
+        if (editSource != null) {
+            val accounting = requireNotNull(editSource.snapshot.accountingContext)
+            return editSource.snapshot.copy(accountingContext = accounting.copy(amountEvidence = evidence))
+        }
         return PlanningSnapshot(
             book,
             null,
@@ -197,58 +297,62 @@ public class SecureRoomSpecializedTransactionEntryPort internal constructor(
     }
 
     private fun command(request: SpecializedTransactionWriteRequest, snapshot: PlanningSnapshot): FinancialCommand {
+        val previous = snapshot.currentRevision
         val context = TransactionContextInput(
             occurredAt = EffectiveTime.fromInstant(request.context.occurredAt, request.context.zoneId),
             accrualDate = request.context.localDate,
-            budgetMonth = null,
-            merchantId = null,
-            projectId = null,
-            goalId = null,
-            locationRecordId = null,
+            budgetMonth = previous?.budgetMonth,
+            merchantId = previous?.merchantId,
+            projectId = previous?.projectId,
+            goalId = previous?.goalId,
+            locationRecordId = previous?.locationRecordId,
             note = request.context.note,
             amountExpression = request.context.amountExpression,
-            source = TransactionSource.MANUAL,
-            sourceReferenceId = null,
-            statementAssignment = null,
+            source = previous?.source ?: TransactionSource.MANUAL,
+            sourceReferenceId = previous?.sourceReferenceId,
+            statementAssignment = previous?.statementAssignment,
             attachmentIds = request.context.attachmentIds.map { app.ledger.finance.domain.AttachmentId(it) },
         )
         val references = requireNotNull(snapshot.accountingContext).references
-        val draft = when (request) {
-            is SpecializedTransactionWriteRequest.Transfer -> RecordTransferCommand(
-                request.ids.commandId,
-                zeroHash(),
-                NewTransactionInput(context, TransferPayload(accountAmount(request.outgoing, references), accountAmount(request.incoming, references), null)),
+        val payload = when (request) {
+            is SpecializedTransactionWriteRequest.Transfer -> TransferPayload(
+                accountAmount(request.outgoing, references),
+                accountAmount(request.incoming, references),
+                (previous?.payload as? TransferPayload)?.sourceCardId,
             )
-            is SpecializedTransactionWriteRequest.BalanceAdjustment -> RecordBalanceAdjustmentCommand(
-                request.ids.commandId,
-                zeroHash(),
-                NewTransactionInput(context, BalanceAdjustmentPayload(accountAmount(request.amount, references), request.direction, request.checkpointId)),
-            )
-            is SpecializedTransactionWriteRequest.FxExchange -> RecordFxExchangeCommand(
-                request.ids.commandId,
-                zeroHash(),
-                NewTransactionInput(
-                    context,
-                    FxExchangePayload(
-                        null,
-                        accountAmount(request.outgoing, references),
-                        accountAmount(request.incoming, references),
-                        request.valuationPolicy,
-                        request.spreadCostBaseMinor?.let { positive(it, snapshot.book.baseCurrency) },
-                    ),
-                ),
+            is SpecializedTransactionWriteRequest.BalanceAdjustment -> BalanceAdjustmentPayload(accountAmount(request.amount, references), request.direction, request.checkpointId)
+            is SpecializedTransactionWriteRequest.FxExchange -> FxExchangePayload(
+                null,
+                accountAmount(request.outgoing, references),
+                accountAmount(request.incoming, references),
+                request.valuationPolicy,
+                request.spreadCostBaseMinor?.let { positive(it, snapshot.book.baseCurrency) },
             )
             is SpecializedTransactionWriteRequest.OpeningBalance -> {
                 val account = references.account(UserAccountId(request.amount.accountId)) ?: abort(FinanceDataError.CorruptData)
-                RecordOpeningBalanceCommand(
-                    request.ids.commandId,
-                    zeroHash(),
-                    NewTransactionInput(context, OpeningBalancePayload(accountAmount(request.amount, references), request.balanceDate, account.ledger.normalSide)),
-                )
+                OpeningBalancePayload(accountAmount(request.amount, references), request.balanceDate, account.ledger.normalSide)
             }
+        }
+        val input = NewTransactionInput(context, payload)
+        if (previous != null && previous.payload.kind != payload.kind) abort(ReferenceDataViolation.InvalidField("specialized.kind"))
+        val draft: FinancialCommand = request.ids.expectedRevisionId?.let { expected ->
+            EditTransactionCommand(
+                request.ids.commandId,
+                TransactionRevisionId(expected),
+                zeroHash(),
+                TransactionId(request.ids.transactionId),
+                input,
+                emptyList(),
+            )
+        } ?: when (request) {
+            is SpecializedTransactionWriteRequest.Transfer -> RecordTransferCommand(request.ids.commandId, zeroHash(), NewTransactionInput(context, payload as TransferPayload))
+            is SpecializedTransactionWriteRequest.BalanceAdjustment -> RecordBalanceAdjustmentCommand(request.ids.commandId, zeroHash(), NewTransactionInput(context, payload as BalanceAdjustmentPayload))
+            is SpecializedTransactionWriteRequest.FxExchange -> RecordFxExchangeCommand(request.ids.commandId, zeroHash(), NewTransactionInput(context, payload as FxExchangePayload))
+            is SpecializedTransactionWriteRequest.OpeningBalance -> RecordOpeningBalanceCommand(request.ids.commandId, zeroHash(), NewTransactionInput(context, payload as OpeningBalancePayload))
         }
         val hash = CanonicalFinancialHash.command(draft)
         return when (draft) {
+            is EditTransactionCommand -> draft.copy(payloadHash = hash)
             is RecordTransferCommand -> draft.copy(payloadHash = hash)
             is RecordBalanceAdjustmentCommand -> draft.copy(payloadHash = hash)
             is RecordFxExchangeCommand -> draft.copy(payloadHash = hash)

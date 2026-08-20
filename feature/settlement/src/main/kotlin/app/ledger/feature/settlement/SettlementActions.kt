@@ -1,6 +1,7 @@
 package app.ledger.feature.settlement
 
 import app.ledger.core.common.StableId
+import app.ledger.core.money.CurrencyCode
 import app.ledger.finance.domain.SettlementChargeDistribution
 import app.ledger.finance.domain.SettlementRoundingRule
 import app.ledger.finance.domain.SettlementSplitMethod
@@ -14,6 +15,7 @@ public data class SettlementActions(
     val onSelectPayee: (StableId) -> Unit,
     val onSelectAccount: (StableId?) -> Unit,
     val onSelectProject: (StableId?) -> Unit,
+    val onSelectCurrency: (CurrencyCode) -> Unit,
     val onSplitMethod: (SettlementSplitMethod) -> Unit,
     val onChargeDistribution: (SettlementChargeDistribution) -> Unit,
     val onRoundingRule: (SettlementRoundingRule) -> Unit,

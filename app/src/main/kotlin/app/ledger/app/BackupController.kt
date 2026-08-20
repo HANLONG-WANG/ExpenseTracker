@@ -93,7 +93,7 @@ internal class BackupController(
             repositoryLabel = config?.let { repositoryCustomLabel(activeBookId, it) }.orEmpty(),
             directoryPermissionGranted = config?.let { hasRepositoryPermission(activeBookId, it) } ?: false,
             recoveryPasswordConfigured = recoveryConfigured,
-            vaultBackupReady = VaultBackupEnvelopeStore(applicationContext).isConfigured(activeBookId),
+            vaultBackupReady = vaultCanBeBackedUp(activeBookId),
             automaticBackup = config?.policy?.automaticLocalBackup ?: true,
             retentionCount = (config?.policy?.retention?.maximumSnapshots ?: 30).toString(),
             retentionDays = config?.policy?.retention?.maximumAgeDays?.toString().orEmpty(),
@@ -239,6 +239,7 @@ internal class BackupController(
             }
             mutableState.value = mutableState.value.copy(
                 recoveryPasswordConfigured = true,
+                vaultBackupReady = vaultPrompt == null,
                 recoveryPassword = "",
                 recoveryPasswordConfirmation = "",
                 recoveryPasswordError = false,
@@ -430,6 +431,16 @@ internal class BackupController(
         pendingVaultPassword = RecoveryPassword.copyOf(passwordChars)
         pendingVaultParameters = parameters
         return request.cryptoObject
+    }
+
+    private fun vaultCanBeBackedUp(activeBook: StableId): Boolean {
+        if (VaultBackupEnvelopeStore(applicationContext).isConfigured(activeBook)) return true
+        val hierarchy = VaultKeyHierarchy(
+            AndroidKeystoreKeys(applicationContext),
+            SecurityEnvelopeStore(applicationContext),
+            VaultExposureRegistry(SystemClock::elapsedRealtime),
+        )
+        return !hierarchy.isProvisioned(activeBook)
     }
 
     private fun clearPendingVaultEnrollment() {

@@ -78,4 +78,8 @@ public data class ManagementActions(
     val onRetry: () -> Unit,
 )
 
-public typealias PlaceMapSlot = @androidx.compose.runtime.Composable (places: List<PlaceReferenceView>, unavailable: Boolean) -> Unit
+public typealias PlaceMapSlot = @androidx.compose.runtime.Composable (
+    places: List<PlaceReferenceView>,
+    unavailable: Boolean,
+    onCoordinateSelected: ((latitudeE7: Int, longitudeE7: Int) -> Unit)?,
+) -> Unit

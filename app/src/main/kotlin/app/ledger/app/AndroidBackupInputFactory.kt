@@ -6,6 +6,7 @@ import android.content.Context
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.SecurityEnvelopeStore
 import app.ledger.core.security.VaultBackupEnvelopeStore
 import app.ledger.finance.data.SecureShadowLedgerAccess
 import app.ledger.finance.domain.BookCommitId
@@ -57,8 +58,11 @@ internal class AndroidBackupInputFactory(
                 keys.portableKeyMaterial().useBytes(ByteArray::copyOf)
             }
             val vaultBytes = if (includeVault) {
-                requireNotNull(VaultBackupEnvelopeStore(applicationContext).readForAutomaticBackup(bookId)) {
-                    "vault recovery envelope is unavailable"
+                val recoveryEnvelope = VaultBackupEnvelopeStore(applicationContext).readForAutomaticBackup(bookId)
+                if (SecurityEnvelopeStore(applicationContext).readVaultDek(bookId) != null) {
+                    requireNotNull(recoveryEnvelope) { "vault recovery envelope is unavailable" }
+                } else {
+                    recoveryEnvelope
                 }
             } else {
                 null

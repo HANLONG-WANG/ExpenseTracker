@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="attachment_secure_image_description">安全图片预览</string>
+    <string name="attachment_preview_title">附件预览</string>
     <string name="attachment_preview_unsupported">此文件不支持应用内预览，可查看元数据或在确认后使用其他应用打开。</string>
     <string name="attachment_decrypt_error_title">无法打开附件</string>
     <string name="attachment_decrypt_error_message">加密内容无法验证或读取。</string>

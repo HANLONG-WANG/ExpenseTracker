@@ -106,10 +106,10 @@ class JournalUiContractDeviceTest {
             JournalRevisionView(id(4), 2, RevisionAction.EDIT, TransactionLifecycleState.ACTIVE, NOW, NOW, "Meals", "Cash", 1280, JPY, listOf("amount")),
             JournalRevisionView(id(3), 1, RevisionAction.CREATE, TransactionLifecycleState.ACTIVE, NOW.minusSeconds(60), NOW, "Meals", "Cash", 1000, JPY, listOf("created")),
         )
-        val DETAIL = JournalDetailView(ROW, NOW.minusSeconds(60), NOW, "Asia/Tokyo", "1000+280", "private note", "Local shop", "Trip", "Station", listOf("receipt.pdf"), "included", "CONSUMPTION_EXPENSE", listOf(JournalFxEvidenceView(JPY, JPY, "1", "identity", NOW, false, false)), listOf("REFUND"), listOf("Cash:credit:1280 JPY"), "MANUAL", null, 1)
+        val DETAIL = JournalDetailView(ROW, NOW.minusSeconds(60), NOW, "Asia/Tokyo", "1000+280", "private note", "Local shop", "Trip", "Station", listOf(id(5)), listOf("receipt.pdf"), "included", "CONSUMPTION_EXPENSE", listOf(JournalFxEvidenceView(JPY, JPY, "1", "identity", NOW, false, false)), listOf("REFUND"), listOf("Cash:credit:1280 JPY"), "MANUAL", null, 1)
         val ACTIONS = JournalActions(
             onNavigate = { _, _ -> }, onSearch = {}, onApplyFilter = {}, onRemoveFilter = {}, onRetry = {}, onLoadDetail = {},
-            onSelect = {}, onSelectAllMatching = {}, onClearSelection = {}, onBulkEdit = {}, onSaveFilter = {}, onApplyPreset = {},
+            onEdit = { _, _ -> }, onOpenAttachment = {}, onSelect = {}, onSelectAllMatching = {}, onClearSelection = {}, onBulkEdit = {}, onSaveFilter = {}, onApplyPreset = {},
             onCopyPreset = {}, onSetDefaultPreset = {}, onDeletePreset = {}, onReorderPresets = {}, onResolveDependency = { _, _ -> }, onMoveToTrash = { _, _, _ -> },
             onRestore = { _, _ -> }, onCompareRevisions = { _, _, _ -> }, onRestoreRevision = { _, _, _, _ -> }, onVerifyPurge = {}, onPurgeRequested = {},
         )

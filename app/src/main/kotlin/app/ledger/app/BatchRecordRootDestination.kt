@@ -25,7 +25,10 @@ internal fun BatchRecordRootDestination(
             },
             onAdd = viewModel::addBatchRow,
             onCopy = viewModel::copyBatchRow,
-            onDelete = viewModel::deleteBatchRow,
+            onDelete = {
+                viewModel.deleteBatchRow(it)
+                onNavigationChanged()
+            },
             onMove = viewModel::moveBatchRow,
             onSort = viewModel::sortBatchRows,
             onPaste = viewModel::pasteBatchRows,

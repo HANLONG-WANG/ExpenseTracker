@@ -26,7 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.paging.LoadState
@@ -36,6 +36,8 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import app.ledger.core.common.DomainResult
+import app.ledger.core.common.StableId
+import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.FilterBuilder
 import app.ledger.core.designsystem.FilterChipUiModel
 import app.ledger.core.designsystem.FilterDimensionUiModel
@@ -63,6 +65,7 @@ import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.AmountVisibility
+import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.LocaleCurrencyFormatter
 import app.ledger.core.money.Money
@@ -70,12 +73,14 @@ import app.ledger.core.money.MoneyFormatRequest
 import app.ledger.core.money.MoneyUiModel
 import app.ledger.finance.application.JournalAccountCardUpdate
 import app.ledger.finance.application.JournalBulkEditPatch
+import app.ledger.finance.application.JournalBulkEditOptions
 import app.ledger.finance.application.JournalBulkOption
 import app.ledger.finance.application.JournalDetailView
 import app.ledger.finance.application.JournalFieldUpdate
 import app.ledger.finance.application.JournalRevisionView
 import app.ledger.finance.application.JournalSelectionMode
 import app.ledger.finance.application.JournalTransactionView
+import app.ledger.finance.application.PurgeIneligibilityReason
 import app.ledger.finance.domain.CategoryId
 import app.ledger.finance.domain.DependencyPolicy
 import app.ledger.finance.domain.DependencyResolution
@@ -83,6 +88,7 @@ import app.ledger.finance.domain.MerchantId
 import app.ledger.finance.domain.ParticipantId
 import app.ledger.finance.domain.PaymentCardId
 import app.ledger.finance.domain.ProjectId
+import app.ledger.finance.domain.RevisionAction
 import app.ledger.finance.domain.SettlementActivityId
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.TransactionAmountRange
@@ -95,8 +101,12 @@ import app.ledger.finance.domain.TransactionLifecycleState
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountId
 import kotlinx.coroutines.flow.Flow
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
@@ -104,7 +114,7 @@ import java.util.Locale
 @Composable
 fun JournalDestination(
     screenId: String,
-    encodedArguments: Map<String, *>,
+    encodedArguments: Map<String, String>,
     state: JournalLoadState,
     pages: Flow<PagingData<JournalTransactionView>>,
     actions: JournalActions,
@@ -125,7 +135,11 @@ fun JournalDestination(
         screenId == "JRN-004" -> SavedFiltersScreen(content, actions)
         screenId == "JRN-005" -> SelectionScreen(content, pages, actions)
         screenId == "JRN-006" -> BulkEditScreen(content, actions)
-        screenId == "JRN-007" -> DetailScreen(content, actions)
+        screenId == "JRN-007" -> DetailScreen(
+            content,
+            actions,
+            encodedArguments["transactionId"]?.let { StableId.parse(it).getOrNull() },
+        )
         screenId == "JRN-008" -> HistoryScreen(content, actions)
         screenId == "JRN-009" -> ComparisonScreen(content, actions)
         screenId == "JRN-010" -> DependenciesScreen(content, actions)
@@ -135,7 +149,7 @@ fun JournalDestination(
     }
 }
 
-private fun journalArgumentsValid(screenId: String, arguments: Map<String, *>): Boolean {
+private fun journalArgumentsValid(screenId: String, arguments: Map<String, String>): Boolean {
     val allowed = when (screenId) {
         "JRN-003" -> setOf("presetId")
         "JRN-007", "JRN-008", "JRN-010", "JRN-012" -> setOf("transactionId")
@@ -180,49 +194,56 @@ private fun JournalSearchScreen(state: JournalLoadState.Content, pages: Flow<Pag
 @Composable
 private fun JournalFilterScreen(state: JournalLoadState.Content, actions: JournalActions) {
     var presetName by remember { mutableStateOf("") }
-    var draft by remember(state.filter) { mutableStateOf(state.filter) }
-    var occurredFrom by remember(state.filter) { mutableStateOf(state.filter.occurredFrom?.toString().orEmpty()) }
-    var occurredThrough by remember(state.filter) { mutableStateOf(state.filter.occurredThrough?.toString().orEmpty()) }
-    var createdFrom by remember(state.filter) { mutableStateOf(state.filter.createdFrom?.toString().orEmpty()) }
-    var createdThrough by remember(state.filter) { mutableStateOf(state.filter.createdThrough?.toString().orEmpty()) }
-    var modifiedFrom by remember(state.filter) { mutableStateOf(state.filter.modifiedFrom?.toString().orEmpty()) }
-    var modifiedThrough by remember(state.filter) { mutableStateOf(state.filter.modifiedThrough?.toString().orEmpty()) }
-    var minimumMinor by remember(state.filter) { mutableStateOf(state.filter.amountRange?.minimumAccountMinor?.toString().orEmpty()) }
-    var maximumMinor by remember(state.filter) { mutableStateOf(state.filter.amountRange?.maximumAccountMinor?.toString().orEmpty()) }
-    val parsedOccurredFrom = occurredFrom.toOptionalInstant()
-    val parsedOccurredThrough = occurredThrough.toOptionalInstant()
-    val parsedCreatedFrom = createdFrom.toOptionalInstant()
-    val parsedCreatedThrough = createdThrough.toOptionalInstant()
-    val parsedModifiedFrom = modifiedFrom.toOptionalInstant()
-    val parsedModifiedThrough = modifiedThrough.toOptionalInstant()
-    val parsedMinimum = minimumMinor.toOptionalLong()
-    val parsedMaximum = maximumMinor.toOptionalLong()
+    var draft by remember(state.filter) {
+        val rangeCurrency = state.filter.amountRange?.currency
+        mutableStateOf(if (rangeCurrency == null) state.filter else state.filter.copy(currencies = state.filter.currencies + rangeCurrency))
+    }
+    val zoneId = remember(state.zoneId) { runCatching { ZoneId.of(state.zoneId) }.getOrDefault(ZoneId.of("UTC")) }
+    val initialRangeCurrency = state.filter.amountRange?.currency
+    var occurredFrom by remember(state.filter, zoneId) { mutableStateOf(state.filter.occurredFrom?.localInput(zoneId).orEmpty()) }
+    var occurredThrough by remember(state.filter, zoneId) { mutableStateOf(state.filter.occurredThrough?.localInput(zoneId).orEmpty()) }
+    var createdFrom by remember(state.filter, zoneId) { mutableStateOf(state.filter.createdFrom?.localInput(zoneId).orEmpty()) }
+    var createdThrough by remember(state.filter, zoneId) { mutableStateOf(state.filter.createdThrough?.localInput(zoneId).orEmpty()) }
+    var modifiedFrom by remember(state.filter, zoneId) { mutableStateOf(state.filter.modifiedFrom?.localInput(zoneId).orEmpty()) }
+    var modifiedThrough by remember(state.filter, zoneId) { mutableStateOf(state.filter.modifiedThrough?.localInput(zoneId).orEmpty()) }
+    var minimumAmount by remember(state.filter) { mutableStateOf(journalMinorToMajor(state.filter.amountRange?.minimumAccountMinor, initialRangeCurrency)) }
+    var maximumAmount by remember(state.filter) { mutableStateOf(journalMinorToMajor(state.filter.amountRange?.maximumAccountMinor, initialRangeCurrency)) }
+    val rangeCurrency = draft.currencies.singleOrNull()
+    val parsedOccurredFrom = occurredFrom.toOptionalInstant(zoneId)
+    val parsedOccurredThrough = occurredThrough.toOptionalInstant(zoneId)
+    val parsedCreatedFrom = createdFrom.toOptionalInstant(zoneId)
+    val parsedCreatedThrough = createdThrough.toOptionalInstant(zoneId)
+    val parsedModifiedFrom = modifiedFrom.toOptionalInstant(zoneId)
+    val parsedModifiedThrough = modifiedThrough.toOptionalInstant(zoneId)
+    val parsedMinimum = minimumAmount.toOptionalMinor(rangeCurrency)
+    val parsedMaximum = maximumAmount.toOptionalMinor(rangeCurrency)
+    val amountCurrencyValid = minimumAmount.isBlank() && maximumAmount.isBlank() || rangeCurrency != null
     val rangesValid = listOf(parsedOccurredFrom, parsedOccurredThrough, parsedCreatedFrom, parsedCreatedThrough, parsedModifiedFrom, parsedModifiedThrough).all { it.valid } &&
-        parsedMinimum.valid && parsedMaximum.valid &&
+        amountCurrencyValid && parsedMinimum.valid && parsedMaximum.valid &&
         validRange(parsedOccurredFrom.value, parsedOccurredThrough.value) && validRange(parsedCreatedFrom.value, parsedCreatedThrough.value) &&
         validRange(parsedModifiedFrom.value, parsedModifiedThrough.value) && validRange(parsedMinimum.value, parsedMaximum.value)
     val dimensions = listOf(
-        FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_type), draft.kinds.map { FilterChipUiModel("kind_${it.name}", it.name) }),
-        FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_state), draft.lifecycleStates.map { FilterChipUiModel("state_${it.name}", it.name) }),
-        FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_source), draft.sources.map { FilterChipUiModel("source_${it.name}", it.name) }),
-        FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_context), contextFilterChips(draft)),
-        FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_time), timeFilterChips(draft)),
+        FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_type), draft.kinds.map { FilterChipUiModel("kind_${it.name}", it.label()) }),
+        FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_state), draft.lifecycleStates.map { FilterChipUiModel("state_${it.name}", it.label()) }),
+        FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_source), draft.sources.map { FilterChipUiModel("source_${it.name}", it.label()) }),
+        FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_context), contextFilterChips(draft, state.bulkOptions)),
+        FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_time), timeFilterChips(draft, zoneId)),
         FilterDimensionUiModel(stringResource(R.string.p15_journal_filter_amount), amountFilterChips(draft)),
     )
     LazyColumn(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         item {
             FilterChoiceSection(stringResource(R.string.p15_journal_filter_type)) {
-                TransactionKind.entries.forEach { value -> LedgerChoiceRow(value.name, value in draft.kinds, { draft = draft.copy(kinds = draft.kinds.toggled(value)) }) }
+                TransactionKind.entries.forEach { value -> LedgerChoiceRow(value.label(), value in draft.kinds, { draft = draft.copy(kinds = draft.kinds.toggled(value)) }) }
             }
         }
         item {
             FilterChoiceSection(stringResource(R.string.p15_journal_filter_state)) {
-                TransactionLifecycleState.entries.forEach { value -> LedgerChoiceRow(value.name, value in draft.lifecycleStates, { draft = draft.copy(lifecycleStates = draft.lifecycleStates.toggled(value)) }) }
+                TransactionLifecycleState.entries.forEach { value -> LedgerChoiceRow(value.label(), value in draft.lifecycleStates, { draft = draft.copy(lifecycleStates = draft.lifecycleStates.toggled(value)) }) }
             }
         }
         item {
             FilterChoiceSection(stringResource(R.string.p15_journal_filter_source)) {
-                TransactionSource.entries.forEach { value -> LedgerChoiceRow(value.name, value in draft.sources, { draft = draft.copy(sources = draft.sources.toggled(value)) }) }
+                TransactionSource.entries.forEach { value -> LedgerChoiceRow(value.label(), value in draft.sources, { draft = draft.copy(sources = draft.sources.toggled(value)) }) }
             }
         }
         item {
@@ -248,10 +269,11 @@ private fun JournalFilterScreen(state: JournalLoadState.Content, actions: Journa
         }
         item {
             FormSection(stringResource(R.string.p15_journal_filter_amount)) {
-                LedgerTextField(minimumMinor, { minimumMinor = it.take(20) }, stringResource(R.string.p15_journal_minimum_minor), errorText = stringResource(R.string.p15_journal_invalid_number).takeIf { !parsedMinimum.valid })
-                LedgerTextField(maximumMinor, { maximumMinor = it.take(20) }, stringResource(R.string.p15_journal_maximum_minor), errorText = stringResource(R.string.p15_journal_invalid_number).takeIf { !parsedMaximum.valid })
+                LedgerTextField(minimumAmount, { minimumAmount = it.take(24) }, stringResource(R.string.p15_journal_minimum_minor), errorText = stringResource(R.string.p15_journal_invalid_number).takeIf { !parsedMinimum.valid })
+                LedgerTextField(maximumAmount, { maximumAmount = it.take(24) }, stringResource(R.string.p15_journal_maximum_minor), errorText = stringResource(R.string.p15_journal_invalid_number).takeIf { !parsedMaximum.valid })
+                if (!amountCurrencyValid) LedgerBanner(stringResource(R.string.p15_journal_amount_currency_required), LedgerBannerVariant.WARNING)
                 state.bulkOptions.currencies.forEach { currency -> LedgerChoiceRow(currency.value, currency in draft.currencies, { draft = draft.copy(currencies = draft.currencies.toggled(currency)) }) }
-                StatisticalNature.entries.forEach { nature -> LedgerChoiceRow(nature.name, nature in draft.statisticalNatures, { draft = draft.copy(statisticalNatures = draft.statisticalNatures.toggled(nature)) }) }
+                StatisticalNature.entries.forEach { nature -> LedgerChoiceRow(nature.label(), nature in draft.statisticalNatures, { draft = draft.copy(statisticalNatures = draft.statisticalNatures.toggled(nature)) }) }
             }
         }
         item {
@@ -276,12 +298,12 @@ private fun JournalFilterScreen(state: JournalLoadState.Content, actions: Journa
                     createdThrough = ""
                     modifiedFrom = ""
                     modifiedThrough = ""
-                    minimumMinor = ""
-                    maximumMinor = ""
+                    minimumAmount = ""
+                    maximumAmount = ""
                 },
                 onApply = {
                     if (rangesValid) {
-                        val range = if (parsedMinimum.value != null || parsedMaximum.value != null) TransactionAmountRange(parsedMinimum.value, parsedMaximum.value, null) else null
+                        val range = if (parsedMinimum.value != null || parsedMaximum.value != null) TransactionAmountRange(parsedMinimum.value, parsedMaximum.value, rangeCurrency) else null
                         actions.onApplyFilter(
                             draft.copy(
                                 occurredFrom = parsedOccurredFrom.value,
@@ -389,7 +411,8 @@ private fun BulkEditScreen(state: JournalLoadState.Content, actions: JournalActi
     val selectedAccount = options.accounts.getOrNull(accountIndex)
     val compatibleCards = options.cards.filter { it.parentId == selectedAccount?.id }
     val selectedCard = compatibleCards.getOrNull(cardIndex)
-    val parsedTime = occurredAt.takeIf(String::isNotBlank)?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+    val zoneId = remember(state.zoneId) { runCatching { ZoneId.of(state.zoneId) }.getOrDefault(ZoneId.of("UTC")) }
+    val parsedTime = occurredAt.toOptionalInstant(zoneId).value
     val anyChange = categoryEnabled || accountEnabled || merchantEnabled || projectEnabled || timeEnabled || noteEnabled || budgetEnabled || natureEnabled
     val inputValid = state.selection != null && anyChange && (!categoryEnabled || options.categories.isNotEmpty()) &&
         (!accountEnabled || selectedAccount != null) && (!timeEnabled || parsedTime != null)
@@ -407,7 +430,14 @@ private fun BulkEditScreen(state: JournalLoadState.Content, actions: JournalActi
         item { BulkSelector(stringResource(R.string.p15_journal_bulk_project), projectEnabled, { projectEnabled = it }, options.projects.getOrNull(projectIndex)?.label ?: stringResource(R.string.p15_journal_clear_value), { projectIndex = options.projects.nextNullableIndex(projectIndex) }, true) }
         item {
             LedgerChoiceRow(stringResource(R.string.p15_journal_bulk_time), timeEnabled, { timeEnabled = !timeEnabled })
-            LedgerTextField(occurredAt, { occurredAt = it.take(40) }, stringResource(R.string.p15_journal_iso_time), enabled = timeEnabled, errorText = stringResource(R.string.p15_journal_invalid_time).takeIf { timeEnabled && occurredAt.isNotBlank() && parsedTime == null })
+            LedgerTextField(
+                occurredAt,
+                { occurredAt = it.take(40) },
+                stringResource(R.string.p15_journal_iso_time),
+                supportingText = stringResource(R.string.p15_journal_local_time_hint),
+                enabled = timeEnabled,
+                errorText = stringResource(R.string.p15_journal_invalid_time).takeIf { timeEnabled && parsedTime == null },
+            )
         }
         item {
             LedgerChoiceRow(stringResource(R.string.p15_journal_bulk_note), noteEnabled, { noteEnabled = !noteEnabled })
@@ -419,10 +449,10 @@ private fun BulkEditScreen(state: JournalLoadState.Content, actions: JournalActi
         }
         item {
             LedgerChoiceRow(stringResource(R.string.p15_journal_bulk_nature), natureEnabled, { natureEnabled = !natureEnabled })
-            SelectorField(stringResource(R.string.p15_journal_bulk_nature), StatisticalNature.entries[natureIndex].name, { natureIndex = (natureIndex + 1) % StatisticalNature.entries.size }, enabled = natureEnabled)
+            SelectorField(stringResource(R.string.p15_journal_bulk_nature), StatisticalNature.entries[natureIndex].label(), { natureIndex = (natureIndex + 1) % StatisticalNature.entries.size }, enabled = natureEnabled)
         }
         item {
-            LedgerText(state.operation.name, LedgerTextRole.SUPPORTING)
+            LedgerText(state.operation.label(), LedgerTextRole.SUPPORTING)
             LedgerButton(
                 stringResource(R.string.p15_journal_apply_atomically),
                 {
@@ -447,31 +477,112 @@ private fun BulkEditScreen(state: JournalLoadState.Content, actions: JournalActi
 }
 
 @Composable
-private fun DetailScreen(state: JournalLoadState.Content, actions: JournalActions) {
+private fun DetailScreen(state: JournalLoadState.Content, actions: JournalActions, requestedTransactionId: StableId?) {
     val detail = state.detail
     if (detail == null) {
-        LedgerEmptyState(stringResource(R.string.p15_journal_detail), stringResource(R.string.p15_journal_not_found), stringResource(R.string.p15_journal_retry), actions.onRetry, Modifier.testTag(LedgerTestTags.JOURNAL_SCREEN))
+        if (state.detailLoading) {
+            LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.p15_journal_loading))
+        } else {
+            LedgerErrorState(
+                UiErrorCode(state.detailFailureCode ?: "JOURNAL_DETAIL_UNAVAILABLE"),
+                stringResource(R.string.p15_journal_not_found),
+                { requestedTransactionId?.let(actions.onLoadDetail) ?: actions.onRetry() },
+                Modifier.testTag(LedgerTestTags.JOURNAL_SCREEN),
+            )
+        }
         return
     }
-    val locale = LocalLocale.current.platformLocale
+    val locale = LocalConfiguration.current.locales[0]
     LazyColumn(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         item { JournalTransactionRow(detail.transaction.toUi(locale), {}, {}) }
-        item { DetailSection(stringResource(R.string.p15_journal_user_input), listOfNotNull(detail.amountExpression, detail.fullNote, detail.merchantName, detail.projectName, detail.locationName)) }
-        item { DetailSection(stringResource(R.string.p15_journal_account_effects), detail.accountEffects) }
-        item { DetailSection(stringResource(R.string.p15_journal_budget_semantics), listOfNotNull(detail.budgetSummary, detail.statisticalNature)) }
-        item { DetailSection(stringResource(R.string.p15_journal_fx), detail.fxEvidence.map { "${it.sourceCurrency.value}/${it.targetCurrency.value} ${it.rate} · ${it.provider}" }) }
-        item { DetailSection(stringResource(R.string.p15_journal_relationships), detail.relationshipSummaries) }
-        item { DetailSection(stringResource(R.string.p15_journal_attachments), detail.attachmentNames) }
-        item { DetailSection(stringResource(R.string.p15_journal_source), listOf(detail.sourceDescription, detail.createdAt.toString(), detail.modifiedAt.toString())) }
+        item { DetailSection(stringResource(R.string.p15_journal_user_input), detail.userInputLabels()) }
+        item { DetailSection(stringResource(R.string.p15_journal_account_effects), detail.accountEffects.map { accountEffectLabel(it, locale) }) }
+        item {
+            DetailSection(
+                stringResource(R.string.p15_journal_budget_semantics),
+                listOf(
+                    stringResource(if (detail.budgetSummary == null) R.string.p15_journal_budget_excluded else R.string.p15_journal_budget_included),
+                    detail.statisticalNature?.let(::statisticalNatureFromName)?.label() ?: stringResource(R.string.p15_journal_nature_unspecified),
+                ),
+            )
+        }
+        item {
+            DetailSection(
+                stringResource(R.string.p15_journal_fx),
+                detail.fxEvidence.map { stringResource(R.string.p15_journal_fx_rate, it.sourceCurrency.value, it.targetCurrency.value, it.rate, it.provider) },
+            )
+        }
+        item { DetailSection(stringResource(R.string.p15_journal_relationships), detail.relationshipSummaries.map { relationshipLabel(it, locale) }) }
+        item {
+            FormSection(stringResource(R.string.p15_journal_attachments)) {
+                if (detail.attachmentNames.isEmpty()) {
+                    LedgerText("—", LedgerTextRole.SUPPORTING)
+                } else {
+                    detail.attachmentIds.zip(detail.attachmentNames).forEach { (attachmentId, displayName) ->
+                        LedgerButton(
+                            displayName,
+                            { actions.onOpenAttachment(attachmentId) },
+                            Modifier.fillMaxWidth(),
+                            LedgerButtonVariant.TEXT,
+                        )
+                    }
+                }
+                if (detail.transaction.state == TransactionLifecycleState.ACTIVE && detail.transaction.kind in ORDINARY_KINDS) {
+                    LedgerButton(
+                        stringResource(R.string.p15_journal_manage_attachments),
+                        { actions.onEdit(detail.transaction.transactionId, detail.transaction.kind) },
+                        Modifier.fillMaxWidth(),
+                        LedgerButtonVariant.SECONDARY,
+                    )
+                }
+            }
+        }
+        item {
+            DetailSection(
+                stringResource(R.string.p15_journal_source),
+                listOf(
+                    sourceFromName(detail.sourceDescription)?.label() ?: stringResource(R.string.p15_journal_source_unknown),
+                    stringResource(R.string.p15_journal_created_at, detail.createdAt.localized(detail.zoneId, locale)),
+                    stringResource(R.string.p15_journal_modified_at, detail.modifiedAt.localized(detail.zoneId, locale)),
+                ),
+            )
+        }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                 LedgerButton(stringResource(R.string.p15_journal_history), { actions.onNavigate("JRN-008", mapOf("transactionId" to detail.transaction.transactionId)) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
                 LedgerButton(stringResource(R.string.p15_journal_dependencies), { actions.onNavigate("JRN-010", mapOf("transactionId" to detail.transaction.transactionId)) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
             }
         }
+        if (detail.transaction.state == TransactionLifecycleState.ACTIVE) {
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                    LedgerButton(
+                        stringResource(R.string.p15_journal_edit_transaction),
+                        { actions.onEdit(detail.transaction.transactionId, detail.transaction.kind) },
+                        Modifier.weight(1f),
+                    )
+                    if (detail.transaction.kind == TransactionKind.EXPENSE) {
+                        LedgerButton(
+                            stringResource(R.string.p15_journal_create_refund),
+                            { actions.onNavigate("REC-015", mapOf("transactionId" to detail.transaction.transactionId)) },
+                            Modifier.weight(1f),
+                            LedgerButtonVariant.SECONDARY,
+                        )
+                    }
+                }
+            }
+        }
         item {
             if (detail.transaction.state == TransactionLifecycleState.TRASHED) {
-                LedgerButton(stringResource(R.string.p15_journal_restore), { actions.onRestore(detail.transaction.transactionId, detail.transaction.revisionId) }, Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                    LedgerButton(stringResource(R.string.p15_journal_restore), { actions.onRestore(detail.transaction.transactionId, detail.transaction.revisionId) }, Modifier.weight(1f))
+                    LedgerButton(
+                        stringResource(R.string.p15_journal_purge),
+                        { actions.onNavigate("JRN-012", mapOf("transactionId" to detail.transaction.transactionId)) },
+                        Modifier.weight(1f),
+                        LedgerButtonVariant.DANGER,
+                    )
+                }
             } else {
                 val resolved = state.dependencies.size == state.dependencyResolutions.size
                 if (!resolved) LedgerBanner(stringResource(R.string.p15_journal_dependency_blocked), LedgerBannerVariant.WARNING)
@@ -493,6 +604,8 @@ private fun DetailSection(title: String, values: List<String>) {
         if (values.isEmpty()) LedgerText("—", LedgerTextRole.SUPPORTING) else values.forEach { LedgerText(it, LedgerTextRole.BODY) }
     }
 }
+
+private val ORDINARY_KINDS = setOf(TransactionKind.EXPENSE, TransactionKind.INCOME)
 
 @Composable
 private fun BulkSelector(
@@ -517,9 +630,9 @@ private fun HistoryScreen(state: JournalLoadState.Content, actions: JournalActio
             items(history, key = { it.revisionId.toString() }) { version ->
                 LedgerCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                        LedgerText("#${version.revisionNumber} · ${version.action}", LedgerTextRole.SECTION)
-                        LedgerText(version.createdAt.toString(), LedgerTextRole.SUPPORTING)
-                        LedgerText(version.changedFields.joinToString(), LedgerTextRole.BODY)
+                        LedgerText(stringResource(R.string.p15_journal_revision_title, version.revisionNumber, version.action.label()), LedgerTextRole.SECTION)
+                        LedgerText(version.createdAt.localized(state.detail?.zoneId, LocalConfiguration.current.locales[0]), LedgerTextRole.SUPPORTING)
+                        LedgerText(version.changedFields.map { changedFieldLabel(it) }.joinToString(), LedgerTextRole.BODY)
                         val transaction = state.detail?.transaction
                         val current = history.firstOrNull()
                         if (transaction != null && current != null && version.revisionId != current.revisionId) {
@@ -548,8 +661,8 @@ private fun ComparisonScreen(state: JournalLoadState.Content, actions: JournalAc
     } else {
         Column(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
             LedgerText(stringResource(R.string.p15_journal_compare), LedgerTextRole.TITLE)
-            DetailSection("CHANGED", comparison.changedFields)
-            DetailSection("UNCHANGED", comparison.unchangedFields)
+            DetailSection(stringResource(R.string.p15_journal_changed), comparison.changedFields.map { changedFieldLabel(it) })
+            DetailSection(stringResource(R.string.p15_journal_unchanged), comparison.unchangedFields.map { changedFieldLabel(it) })
             val transaction = state.detail?.transaction
             LedgerButton(
                 stringResource(R.string.p15_journal_restore_version),
@@ -574,7 +687,7 @@ private fun DependenciesScreen(state: JournalLoadState.Content, actions: Journal
                 val index = policies.indexOf(selected).takeIf { it >= 0 } ?: -1
                 LedgerCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                        DetailSection(dependency.type.name, listOf(dependency.parentTransactionId.toString(), dependency.childTransactionId.toString(), dependency.childState.name))
+                        DetailSection(dependency.type.label(), listOf(stringResource(R.string.p15_journal_dependency_state, dependency.childState.label())))
                         SelectorField(
                             stringResource(R.string.p15_journal_dependency_strategy),
                             selected?.policyLabel() ?: stringResource(R.string.p15_journal_dependency_choose),
@@ -611,7 +724,7 @@ private fun PurgeScreen(state: JournalLoadState.Content, actions: JournalActions
             LedgerLoadingState(label = stringResource(R.string.p15_journal_loading))
         } else if (!assessment.canPurgeNow) {
             LedgerBanner(stringResource(R.string.p15_journal_purge_blocked), LedgerBannerVariant.DANGER)
-            assessment.reasons.forEach { LedgerText(it.name, LedgerTextRole.BODY) }
+            assessment.reasons.forEach { LedgerText(purgeReasonLabel(it), LedgerTextRole.BODY) }
             LedgerBanner(stringResource(R.string.p15_journal_purge_p31), LedgerBannerVariant.INFO)
         } else {
             HighRiskConfirmation(
@@ -644,7 +757,7 @@ private fun PagedJournalList(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun JournalLazyColumn(items: LazyPagingItems<JournalTransactionView>, actions: JournalActions, showRunningBalance: Boolean, selectionMode: Boolean) {
-    val locale = LocalLocale.current.platformLocale
+    val locale = LocalConfiguration.current.locales[0]
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
         var previous: LocalDate? = null
         for (index in 0 until items.itemCount) {
@@ -663,7 +776,6 @@ private fun JournalLazyColumn(items: LazyPagingItems<JournalTransactionView>, ac
                             if (selectionMode) {
                                 actions.onSelect(transaction.transactionId)
                             } else {
-                                actions.onLoadDetail(transaction.transactionId)
                                 actions.onNavigate("JRN-007", mapOf("transactionId" to transaction.transactionId))
                             }
                         },
@@ -681,6 +793,7 @@ private fun JournalLazyColumn(items: LazyPagingItems<JournalTransactionView>, ac
     }
 }
 
+@Composable
 private fun JournalTransactionView.toUi(locale: Locale): JournalTransactionUiModel {
     val secondaryMinor = secondaryAmountMinor
     val secondaryCode = secondaryCurrency
@@ -703,8 +816,12 @@ private fun JournalTransactionView.toUi(locale: Locale): JournalTransactionUiMod
             is DomainResult.Failure -> null
         }
     }
-    val accessible = listOf(kind.name, categoryOrType, summary, accountAndCard, amount.fullAccessibleText, badges.joinToString()).filter(String::isNotBlank).joinToString(". ")
-    return JournalTransactionUiModel(transactionId.toString(), categoryOrType, summary, accountAndCard, amount, kind.name, iconFor(kind), badges, running, accessible)
+    val typeLabel = kind.label()
+    val displayCategory = categoryOrType.takeUnless { it == kind.name }?.ifBlank { typeLabel } ?: typeLabel
+    val displaySummary = summary.takeUnless { it == kind.name || it == displayCategory }.orEmpty()
+    val displayBadges = badges.map { it.badgeLabel() }
+    val accessible = listOf(typeLabel, displayCategory, displaySummary, accountAndCard, amount.fullAccessibleText, displayBadges.joinToString()).filter(String::isNotBlank).joinToString(". ")
+    return JournalTransactionUiModel(transactionId.toString(), displayCategory, displaySummary, accountAndCard, amount, typeLabel, iconFor(kind), displayBadges, running, accessible)
 }
 
 private fun iconFor(kind: TransactionKind): LedgerIcon = when (kind) {
@@ -713,19 +830,241 @@ private fun iconFor(kind: TransactionKind): LedgerIcon = when (kind) {
     else -> LedgerIcon.JOURNAL
 }
 
+@Composable
+private fun TransactionKind.label(): String = stringResource(
+    when (this) {
+        TransactionKind.EXPENSE -> R.string.p15_journal_kind_expense
+        TransactionKind.INCOME -> R.string.p15_journal_kind_income
+        TransactionKind.TRANSFER -> R.string.p15_journal_kind_transfer
+        TransactionKind.REFUND -> R.string.p15_journal_kind_refund
+        TransactionKind.CREDIT_PAYMENT -> R.string.p15_journal_kind_credit_payment
+        TransactionKind.LOAN_DISBURSEMENT -> R.string.p15_journal_kind_loan_disbursement
+        TransactionKind.LOAN_PAYMENT -> R.string.p15_journal_kind_loan_payment
+        TransactionKind.BALANCE_ADJUSTMENT -> R.string.p15_journal_kind_balance_adjustment
+        TransactionKind.FX_EXCHANGE -> R.string.p15_journal_kind_fx_exchange
+        TransactionKind.SETTLEMENT_PAYMENT -> R.string.p15_journal_kind_settlement_payment
+        TransactionKind.OPENING_BALANCE -> R.string.p15_journal_kind_opening_balance
+    },
+)
+
+@Composable
+private fun TransactionLifecycleState.label(): String = stringResource(
+    when (this) {
+        TransactionLifecycleState.ACTIVE -> R.string.p15_journal_state_active
+        TransactionLifecycleState.TRASHED -> R.string.p15_journal_state_trashed
+    },
+)
+
+@Composable
+private fun TransactionSource.label(): String = stringResource(
+    when (this) {
+        TransactionSource.MANUAL -> R.string.p15_journal_source_manual
+        TransactionSource.QUICK_TEMPLATE -> R.string.p15_journal_source_quick_template
+        TransactionSource.RECURRENCE_AUTO -> R.string.p15_journal_source_recurrence_auto
+        TransactionSource.RECURRENCE_CANDIDATE -> R.string.p15_journal_source_recurrence_candidate
+        TransactionSource.CSV_IMPORT -> R.string.p15_journal_source_csv_import
+        TransactionSource.XLSX_IMPORT -> R.string.p15_journal_source_xlsx_import
+        TransactionSource.STRUCTURED_IMPORT -> R.string.p15_journal_source_structured_import
+        TransactionSource.SYSTEM_GENERATED -> R.string.p15_journal_source_system_generated
+        TransactionSource.MERGE_RESTORE -> R.string.p15_journal_source_merge_restore
+        TransactionSource.BATCH_OPERATION -> R.string.p15_journal_source_batch_operation
+    },
+)
+
+@Composable
+private fun StatisticalNature.label(): String = stringResource(
+    when (this) {
+        StatisticalNature.CONSUMPTION_EXPENSE -> R.string.p15_journal_nature_consumption_expense
+        StatisticalNature.NON_CONSUMPTION_EXPENSE -> R.string.p15_journal_nature_non_consumption_expense
+        StatisticalNature.REGULAR_INCOME -> R.string.p15_journal_nature_regular_income
+        StatisticalNature.NON_RECURRING_INCOME -> R.string.p15_journal_nature_non_recurring_income
+    },
+)
+
+@Composable
+private fun RevisionAction.label(): String = stringResource(
+    when (this) {
+        RevisionAction.CREATE -> R.string.p15_journal_action_create
+        RevisionAction.EDIT -> R.string.p15_journal_action_edit
+        RevisionAction.MOVE_TO_TRASH -> R.string.p15_journal_action_move_to_trash
+        RevisionAction.RESTORE -> R.string.p15_journal_action_restore
+        RevisionAction.BULK_EDIT -> R.string.p15_journal_action_bulk_edit
+        RevisionAction.DEPENDENCY_REWRITE -> R.string.p15_journal_action_dependency_rewrite
+    },
+)
+
+@Composable
+private fun TransactionDependencyType.label(): String = stringResource(
+    when (this) {
+        TransactionDependencyType.REFUND -> R.string.p15_journal_relation_refund
+        TransactionDependencyType.INSTALLMENT_PLAN -> R.string.p15_journal_relation_installment
+        TransactionDependencyType.CREDIT_STATEMENT -> R.string.p15_journal_relation_credit_statement
+        TransactionDependencyType.LOAN_SCHEDULE -> R.string.p15_journal_relation_loan_schedule
+        TransactionDependencyType.SETTLEMENT_ACTIVITY -> R.string.p15_journal_relation_settlement
+        TransactionDependencyType.RECURRENCE_OCCURRENCE -> R.string.p15_journal_relation_recurrence
+        TransactionDependencyType.ATTACHMENT_REFERENCE -> R.string.p15_journal_relation_attachment
+    },
+)
+
+@Composable
+private fun String.badgeLabel(): String = stringResource(
+    when (this) {
+        "attachment" -> R.string.p15_journal_badge_attachment
+        "location" -> R.string.p15_journal_badge_location
+        "refund" -> R.string.p15_journal_badge_refund
+        "refunded" -> R.string.p15_journal_badge_refunded
+        "installment" -> R.string.p15_journal_badge_installment
+        else -> R.string.p15_journal_badge_related
+    },
+)
+
+@Composable
+private fun JournalDetailView.userInputLabels(): List<String> = buildList {
+    amountExpression?.let { add(stringResource(R.string.p15_journal_input_amount, it)) }
+    fullNote?.let { add(stringResource(R.string.p15_journal_input_note, it)) }
+    merchantName?.let { add(stringResource(R.string.p15_journal_input_merchant, it)) }
+    projectName?.let { add(stringResource(R.string.p15_journal_input_project, it)) }
+    locationName?.let { add(stringResource(R.string.p15_journal_input_location, it)) }
+}
+
+@Composable
+private fun accountEffectLabel(value: String, locale: Locale): String {
+    val encoded = value.split('|')
+    if (encoded.size == 4 && encoded[0] == "account-change") {
+        val minor = encoded[2].toLongOrNull()
+        val currency = currencyFromCode(encoded[3])
+        if (minor != null && currency != null) {
+            val amount = formattedMoney(kotlin.math.abs(minor), currency, locale)
+            return stringResource(
+                if (minor >= 0) R.string.p15_journal_account_increase else R.string.p15_journal_account_decrease,
+                encoded[1],
+                amount,
+            )
+        }
+    }
+    val legacy = LEGACY_ACCOUNT_EFFECT.matchEntire(value)
+    if (legacy != null) {
+        val currency = currencyFromCode(legacy.groupValues[4])
+        val minor = legacy.groupValues[3].toLongOrNull()
+        if (currency != null && minor != null) {
+            return stringResource(R.string.p15_journal_account_change, legacy.groupValues[1], formattedMoney(kotlin.math.abs(minor), currency, locale))
+        }
+    }
+    return stringResource(R.string.p15_journal_account_change_unavailable)
+}
+
+@Composable
+private fun relationshipLabel(value: String, locale: Locale): String {
+    REFUND_PROGRESS.find(value)?.let { match ->
+        val gross = match.groupValues[1].toLongOrNull()
+        val refunded = match.groupValues[2].toLongOrNull()
+        val remaining = match.groupValues[3].toLongOrNull()
+        val currency = currencyFromCode(match.groupValues[4])
+        if (gross != null && refunded != null && remaining != null && currency != null) {
+            return stringResource(
+                R.string.p15_journal_refund_progress,
+                formattedMoney(gross, currency, locale),
+                formattedMoney(refunded, currency, locale),
+                formattedMoney(remaining, currency, locale),
+            )
+        }
+    }
+    if (value.startsWith("refund.dates:")) return stringResource(R.string.p15_journal_refund_dates_retained)
+    val dependency = value.substringBefore(':').let { raw -> TransactionDependencyType.entries.singleOrNull { it.name == raw } }
+    return dependency?.let { stringResource(R.string.p15_journal_related_record, it.label()) }
+        ?: stringResource(R.string.p15_journal_related_record_generic)
+}
+
+@Composable
+private fun changedFieldLabel(value: String): String = stringResource(
+    when (value) {
+        "created" -> R.string.p15_journal_field_created
+        "occurredAt" -> R.string.p15_journal_field_occurred_at
+        "category" -> R.string.p15_journal_field_category
+        "account" -> R.string.p15_journal_field_account
+        "amount" -> R.string.p15_journal_field_amount
+        "note" -> R.string.p15_journal_field_note
+        "merchant" -> R.string.p15_journal_field_merchant
+        "project" -> R.string.p15_journal_field_project
+        "location" -> R.string.p15_journal_field_location
+        "state" -> R.string.p15_journal_field_state
+        else -> R.string.p15_journal_field_other
+    },
+)
+
+@Composable
+private fun purgeReasonLabel(reason: PurgeIneligibilityReason): String = stringResource(
+    when (reason) {
+        PurgeIneligibilityReason.NOT_TRASHED -> R.string.p15_journal_purge_reason_not_trashed
+        PurgeIneligibilityReason.RETENTION_NOT_ELAPSED -> R.string.p15_journal_purge_reason_retention
+        PurgeIneligibilityReason.ACCOUNT_NET_NON_ZERO -> R.string.p15_journal_purge_reason_account_net
+        PurgeIneligibilityReason.BASE_NET_NON_ZERO -> R.string.p15_journal_purge_reason_base_net
+        PurgeIneligibilityReason.EFFECT_NET_NON_ZERO -> R.string.p15_journal_purge_reason_effect_net
+        PurgeIneligibilityReason.DEPENDENCIES_OPEN -> R.string.p15_journal_purge_reason_dependencies
+        PurgeIneligibilityReason.OPERATION_REFERENCE -> R.string.p15_journal_purge_reason_operation
+        PurgeIneligibilityReason.ATTACHMENTS_READ_BY_BACKUP -> R.string.p15_journal_purge_reason_backup
+        PurgeIneligibilityReason.PHYSICAL_PURGE_REQUIRES_MAINTENANCE -> R.string.p15_journal_purge_reason_maintenance
+    },
+)
+
+private fun statisticalNatureFromName(value: String): StatisticalNature? = StatisticalNature.entries.singleOrNull { it.name == value }
+
+private fun sourceFromName(value: String): TransactionSource? = TransactionSource.entries.singleOrNull { it.name == value }
+
+private fun currencyFromCode(value: String): CurrencyCode? = when (val result = CurrencyCode.parse(value)) {
+    is DomainResult.Success -> result.value
+    is DomainResult.Failure -> null
+}
+
+private fun formattedMoney(minor: Long, currency: CurrencyCode, locale: Locale): String {
+    val formatter = LocaleCurrencyFormatter(JvmLegalTenderCurrencyCatalog.create())
+    return when (val result = formatter.format(MoneyFormatRequest(Money(minor, currency), locale, AmountSemantic.NEUTRAL, AmountVisibility.VISIBLE))) {
+        is DomainResult.Success -> result.value.formatted
+        is DomainResult.Failure -> "${currency.value} $minor"
+    }
+}
+
+private fun Instant.localized(zoneId: String?, locale: Locale): String {
+    val zone = runCatching { ZoneId.of(zoneId ?: "UTC") }.getOrDefault(ZoneId.of("UTC"))
+    return DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM).withLocale(locale).withZone(zone).format(this)
+}
+
+private val LEGACY_ACCOUNT_EFFECT = Regex("^(.+):(debit|credit):(-?\\d+) ([A-Z]{3})$")
+private val REFUND_PROGRESS = Regex("gross=(-?\\d+):refunded=(-?\\d+):remaining=(-?\\d+):([A-Z]{3})")
+
 private data class OptionalInput<T>(val value: T?, val valid: Boolean)
 
-private fun String.toOptionalInstant(): OptionalInput<Instant> = if (isBlank()) {
+private fun Instant.localInput(zoneId: ZoneId): String = JOURNAL_LOCAL_TIME.format(atZone(zoneId))
+
+private fun String.toOptionalInstant(zoneId: ZoneId): OptionalInput<Instant> = if (isBlank()) {
     OptionalInput(null, true)
 } else {
-    runCatching { Instant.parse(trim()) }.fold({ OptionalInput(it, true) }, { OptionalInput(null, false) })
+    val parsed = runCatching { Instant.parse(trim()) }.getOrNull() ?: runCatching {
+        LocalDateTime.parse(trim(), JOURNAL_LOCAL_TIME).atZone(zoneId).toInstant()
+    }.getOrNull()
+    OptionalInput(parsed, parsed != null)
 }
 
-private fun String.toOptionalLong(): OptionalInput<Long> = if (isBlank()) {
+private fun String.toOptionalMinor(currency: CurrencyCode?): OptionalInput<Long> = if (isBlank()) {
     OptionalInput(null, true)
 } else {
-    toLongOrNull()?.let { OptionalInput(it, true) } ?: OptionalInput(null, false)
+    val fractionDigits = currency?.let { JvmLegalTenderCurrencyCatalog.create().find(it)?.fractionDigits }
+    val parsed = fractionDigits?.let { digits ->
+        runCatching {
+            BigDecimal(trim().replace(',', '.'))
+                .movePointRight(digits)
+                .setScale(0, RoundingMode.UNNECESSARY)
+                .longValueExact()
+        }.getOrNull()
+    }
+    OptionalInput(parsed, parsed != null)
 }
+
+private fun journalMinorToMajor(value: Long?, currency: CurrencyCode?): String = value?.let { minor ->
+    val fractionDigits = currency?.let { JvmLegalTenderCurrencyCatalog.create().find(it)?.fractionDigits }
+        ?: return@let minor.toString()
+    BigDecimal.valueOf(minor, fractionDigits).stripTrailingZeros().toPlainString()
+}.orEmpty()
 
 private fun <T : Comparable<T>> validRange(from: T?, through: T?): Boolean = from == null || through == null || through >= from
 
@@ -771,6 +1110,7 @@ private fun FilterInstantField(value: String, onValueChange: (String) -> Unit, l
         value,
         { onValueChange(it.take(40)) },
         label,
+        supportingText = stringResource(R.string.p15_journal_local_time_hint),
         errorText = stringResource(R.string.p15_journal_invalid_time).takeIf { !valid },
     )
 }
@@ -820,36 +1160,64 @@ private fun filterSummary(filter: TransactionFilter): String = buildList {
     if (listOf(filter.hasAttachment, filter.isRefund, filter.hasInstallment, filter.includedInBudget, filter.generatedByRecurrence).any { it != null }) add(stringResource(R.string.p15_journal_filter_flags))
 }.ifEmpty { listOf(stringResource(R.string.p15_journal_filter_all)) }.joinToString(" · ")
 
-private fun contextFilterChips(filter: TransactionFilter): List<FilterChipUiModel> = buildList {
-    filter.accountIds.forEach { add(FilterChipUiModel("account_$it", "ACCOUNT")) }
-    filter.cardIds.forEach { add(FilterChipUiModel("card_$it", "CARD")) }
-    filter.categoryIds.forEach { add(FilterChipUiModel("category_$it", "CATEGORY")) }
-    filter.merchantIds.forEach { add(FilterChipUiModel("merchant_$it", "MERCHANT")) }
-    filter.projectIds.forEach { add(FilterChipUiModel("project_$it", "PROJECT")) }
-    filter.settlementActivityIds.forEach { add(FilterChipUiModel("settlement_$it", "SETTLEMENT")) }
-    filter.participantIds.forEach { add(FilterChipUiModel("participant_$it", "PARTICIPANT")) }
-    filter.geoRadius?.let { add(FilterChipUiModel("geo_radius", "${it.radiusMeters}m")) }
+private fun contextFilterChips(filter: TransactionFilter, options: JournalBulkEditOptions): List<FilterChipUiModel> = buildList {
+    filter.accountIds.forEach { id -> add(FilterChipUiModel("account_$id", options.accounts.labelFor(id.value))) }
+    filter.cardIds.forEach { id -> add(FilterChipUiModel("card_$id", options.cards.labelFor(id.value))) }
+    filter.categoryIds.forEach { id -> add(FilterChipUiModel("category_$id", options.categories.labelFor(id.value))) }
+    filter.merchantIds.forEach { id -> add(FilterChipUiModel("merchant_$id", options.merchants.labelFor(id.value))) }
+    filter.projectIds.forEach { id -> add(FilterChipUiModel("project_$id", options.projects.labelFor(id.value))) }
+    filter.settlementActivityIds.forEach { id -> add(FilterChipUiModel("settlement_$id", options.settlementActivities.labelFor(id.value))) }
+    filter.participantIds.forEach { id -> add(FilterChipUiModel("participant_$id", options.participants.labelFor(id.value))) }
+    filter.geoRadius?.let { add(FilterChipUiModel("geo_radius", "${it.radiusMeters} m")) }
 }
 
-private fun timeFilterChips(filter: TransactionFilter): List<FilterChipUiModel> = buildList {
-    filter.occurredFrom?.let { add(FilterChipUiModel("occurred_from", it.toString())) }
-    filter.occurredThrough?.let { add(FilterChipUiModel("occurred_through", it.toString())) }
-    filter.createdFrom?.let { add(FilterChipUiModel("created_from", it.toString())) }
-    filter.createdThrough?.let { add(FilterChipUiModel("created_through", it.toString())) }
-    filter.modifiedFrom?.let { add(FilterChipUiModel("modified_from", it.toString())) }
-    filter.modifiedThrough?.let { add(FilterChipUiModel("modified_through", it.toString())) }
+private fun List<JournalBulkOption>.labelFor(id: app.ledger.core.common.StableId): String = singleOrNull { it.id == id }?.label.orEmpty()
+
+private fun timeFilterChips(filter: TransactionFilter, zoneId: ZoneId): List<FilterChipUiModel> = buildList {
+    filter.occurredFrom?.let { add(FilterChipUiModel("occurred_from", it.localInput(zoneId))) }
+    filter.occurredThrough?.let { add(FilterChipUiModel("occurred_through", it.localInput(zoneId))) }
+    filter.createdFrom?.let { add(FilterChipUiModel("created_from", it.localInput(zoneId))) }
+    filter.createdThrough?.let { add(FilterChipUiModel("created_through", it.localInput(zoneId))) }
+    filter.modifiedFrom?.let { add(FilterChipUiModel("modified_from", it.localInput(zoneId))) }
+    filter.modifiedThrough?.let { add(FilterChipUiModel("modified_through", it.localInput(zoneId))) }
 }
 
-private fun amountFilterChips(filter: TransactionFilter): List<FilterChipUiModel> = buildList {
-    filter.amountRange?.let { add(FilterChipUiModel("amount", "${it.minimumAccountMinor ?: ""}–${it.maximumAccountMinor ?: ""}")) }
-    filter.currencies.forEach { add(FilterChipUiModel("currency_${it.value}", it.value)) }
-    filter.statisticalNatures.forEach { add(FilterChipUiModel("nature_${it.name}", it.name)) }
-    filter.includedInBudget?.let { add(FilterChipUiModel("budget", "BUDGET:$it")) }
-    filter.hasAttachment?.let { add(FilterChipUiModel("attachment", "ATTACHMENT:$it")) }
-    filter.isRefund?.let { add(FilterChipUiModel("refund", "REFUND:$it")) }
-    filter.hasInstallment?.let { add(FilterChipUiModel("installment", "INSTALLMENT:$it")) }
-    filter.generatedByRecurrence?.let { add(FilterChipUiModel("recurrence", "RECURRENCE:$it")) }
+@Composable
+private fun amountFilterChips(filter: TransactionFilter): List<FilterChipUiModel> {
+    val chips = mutableListOf<FilterChipUiModel>()
+    filter.amountRange?.let {
+        chips += FilterChipUiModel(
+            "amount",
+            "${journalMinorToMajor(it.minimumAccountMinor, it.currency)}–${journalMinorToMajor(it.maximumAccountMinor, it.currency)} ${it.currency?.value.orEmpty()}".trim(),
+        )
+    }
+    filter.currencies.forEach { chips += FilterChipUiModel("currency_${it.value}", it.value) }
+    filter.statisticalNatures.forEach { chips += FilterChipUiModel("nature_${it.name}", it.label()) }
+    filter.includedInBudget?.let { chips += FilterChipUiModel("budget", filterFlagLabel(R.string.p15_journal_filter_budget, it)) }
+    filter.hasAttachment?.let { chips += FilterChipUiModel("attachment", filterFlagLabel(R.string.p15_journal_filter_attachment, it)) }
+    filter.isRefund?.let { chips += FilterChipUiModel("refund", filterFlagLabel(R.string.p15_journal_filter_refund, it)) }
+    filter.hasInstallment?.let { chips += FilterChipUiModel("installment", filterFlagLabel(R.string.p15_journal_filter_installment, it)) }
+    filter.generatedByRecurrence?.let { chips += FilterChipUiModel("recurrence", filterFlagLabel(R.string.p15_journal_filter_recurrence, it)) }
+    return chips
 }
+
+@Composable
+private fun filterFlagLabel(labelResource: Int, value: Boolean): String = stringResource(
+    R.string.p15_journal_filter_flag_value,
+    stringResource(labelResource),
+    stringResource(if (value) R.string.p15_journal_yes else R.string.p15_journal_no),
+)
+
+@Composable
+private fun JournalOperationState.label(): String = stringResource(
+    when (this) {
+        JournalOperationState.IDLE -> R.string.p15_journal_operation_idle
+        JournalOperationState.VALIDATING -> R.string.p15_journal_operation_validating
+        JournalOperationState.COMMITTING -> R.string.p15_journal_operation_committing
+        JournalOperationState.FAILED -> R.string.p15_journal_operation_failed
+        JournalOperationState.SUCCEEDED -> R.string.p15_journal_operation_succeeded
+    },
+)
 
 private fun <T> List<T>.nextIndex(current: Int): Int = if (isEmpty()) 0 else (current + 1).mod(size)
 
@@ -864,3 +1232,5 @@ private fun <T> List<T>.swap(first: Int, second: Int): List<T> = if (first !in i
         it[second] = value
     }
 }
+
+private val JOURNAL_LOCAL_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")

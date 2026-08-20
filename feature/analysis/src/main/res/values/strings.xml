@@ -182,4 +182,13 @@
     <string name="analysis_map_recorded_location">未归入地点的位置</string><string name="analysis_map_point_summary">%1$s · %2$d 笔</string><string name="analysis_map_detail_missing">地点数据已变化</string><string name="analysis_map_detail_missing_body">返回地图刷新后再打开，旧结果不会冒充当前数据。</string>
     <string name="analysis_map_detail_kind">类型：%1$s</string><string name="analysis_map_coordinates">坐标：%1$.5f, %2$.5f</string><string name="analysis_map_location_available">已记录位置；为保护隐私，不朗读精确坐标</string><string name="analysis_map_category_composition">分类构成</string><string name="analysis_category">分类</string><string name="analysis_amount">金额</string><string name="analysis_transaction_count">笔数</string><string name="analysis_unassigned">未分类</string><string name="analysis_map_transaction_preview">交易预览</string><string name="analysis_map_open_transactions">打开这些交易</string><string name="analysis_map_single_transaction">单笔交易</string>
     <string name="analysis_map_complete_filters">完整筛选</string><string name="analysis_map_filter_account">账户</string><string name="analysis_map_filter_merchant">商户</string><string name="analysis_map_filter_place">地点</string><string name="analysis_map_filter_project">项目</string><string name="analysis_map_filter_all">全部</string><string name="analysis_map_filter_selected">已选条件</string><string name="analysis_map_filter_any_count">任一（%1$d）</string><string name="analysis_map_filter_minimum_amount">至少 %1$s</string><string name="analysis_map_period_value">期间：%1$s — %2$s</string>
+    <string name="analysis_integrity_database">数据库结构与加密可读性</string>
+    <string name="analysis_integrity_foreign_keys">实体引用与外键</string>
+    <string name="analysis_integrity_journals">账务借贷平衡</string>
+    <string name="analysis_integrity_posting_currencies">分录币种一致性</string>
+    <string name="analysis_integrity_revisions">修订历史链</string>
+    <string name="analysis_integrity_projections">余额与分析投影</string>
+    <string name="analysis_integrity_fts">流水全文搜索索引</string>
+    <string name="analysis_integrity_rtree">地点空间索引</string>
+    <string name="analysis_integrity_fact_rebuild">从不可变事实重建结果</string>
 </resources>

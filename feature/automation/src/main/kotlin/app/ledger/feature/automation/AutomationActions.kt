@@ -33,4 +33,5 @@ public data class AutomationActions(
     val onSkipCandidate: () -> Unit,
     val onScope: (RecurrenceModificationScope) -> Unit,
     val onApplyScope: () -> Unit,
+    val onApplyRule: () -> Unit = {},
 )

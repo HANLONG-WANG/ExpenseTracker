@@ -15,6 +15,7 @@ import app.ledger.feature.liabilities.LoanActions
 import app.ledger.feature.liabilities.LoanDestination
 import app.ledger.feature.liabilities.LoanLoadState
 import app.ledger.feature.liabilities.LoanPresentation
+import app.ledger.finance.domain.UserAccountType
 import app.ledger.feature.liabilities.R as LiabilitiesR
 
 @Composable
@@ -71,6 +72,10 @@ internal fun LoanRootDestination(
             onSave = viewModel::saveLoan,
             onSimulate = viewModel::simulateLoan,
             onApplySimulation = viewModel::applyLoanSimulation,
+            onCreateLoanAccount = {
+                viewModel.selectP12AccountType(UserAccountType.LOAN, viewModel.navigator.currentKey)
+                onNavigationChanged()
+            },
             onOpenCreditAccount = { accountId ->
                 viewModel.navigateCredit("CRD-001", accountId)
                 onNavigationChanged()
@@ -86,6 +91,12 @@ internal fun loanFixedAction(
     onSave: () -> Unit,
 ): (@Composable BoxScope.() -> Unit)? {
     if (screenId !in setOf("REC-018", "REC-019", "LOA-002", "LOA-003", "LOA-004")) return null
+    val missingLoanAccount = (state as? LoanLoadState.Content)
+        ?.state
+        ?.snapshot
+        ?.loanAccounts
+        ?.none { it.active } == true
+    if (screenId == "LOA-002" && missingLoanAccount) return null
     return {
         val presentation = (state as? LoanLoadState.Content)?.state?.presentation
         LedgerSaveFab(

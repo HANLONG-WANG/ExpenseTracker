@@ -39,6 +39,7 @@ internal object SettlementDeviceFixtures {
         onSelectPayee = {},
         onSelectAccount = {},
         onSelectProject = {},
+        onSelectCurrency = {},
         onSplitMethod = {},
         onChargeDistribution = {},
         onRoundingRule = {},

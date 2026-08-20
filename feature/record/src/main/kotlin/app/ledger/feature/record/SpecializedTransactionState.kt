@@ -22,6 +22,7 @@ import app.ledger.core.money.MoneyUiModel
 import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.SpecializedAccountAmountDraft
+import app.ledger.finance.application.SpecializedTransactionEditView
 import app.ledger.finance.application.SpecializedFxQuote
 import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.EntityStatus
@@ -71,6 +72,8 @@ public data class SpecializedTransactionEditorState(
     val kind: SpecializedTransactionKind,
     val snapshot: ReferenceDataSnapshot,
     val draft: SpecializedTransactionDraft,
+    val transactionId: StableId? = null,
+    val expectedRevisionId: StableId? = null,
     val quotesToBase: Map<CurrencyCode, SpecializedFxQuote> = emptyMap(),
     val quotePending: Set<CurrencyCode> = emptySet(),
     val presentation: SpecializedPresentation = SpecializedPresentation.EDITING,
@@ -113,19 +116,49 @@ public object SpecializedTransactionPolicy {
         now: Instant,
         zoneId: ZoneId,
         locale: Locale,
+        editing: SpecializedTransactionEditView? = null,
     ): SpecializedTransactionEditorState {
+        val edit = editing?.takeIf { it.kind.toSpecializedKind() == kind }
         val accounts = activeAccounts(snapshot)
-        val from = accounts.singleOrNull { it.id == presetAccountId } ?: accounts.firstOrNull()
-        val to = accounts.firstOrNull { it.id != from?.id }
+        // Historical revisions may still reference an archived account. Keep that exact account
+        // visible while editing; only account changes cycle through the currently active set.
+        val from = snapshot.accounts.singleOrNull { it.id == edit?.fromAccountId }
+            ?: accounts.singleOrNull { it.id == presetAccountId }
+            ?: accounts.firstOrNull()
+        val to = snapshot.accounts.singleOrNull { it.id == edit?.toAccountId }
+            ?: accounts.firstOrNull { it.id != from?.id }
         val draft = SpecializedTransactionDraft(
             fromAccountId = from?.id,
             toAccountId = to?.id,
-            outgoingExpression = "",
-            occurredAt = now,
-            zoneId = zoneId,
-            localDate = now.atZone(zoneId).toLocalDate(),
+            outgoingExpression = edit?.amountExpression?.takeIf(String::isNotBlank)
+                ?: edit?.let { minorExpression(it.outgoingMinor, requireNotNull(from).currency) }.orEmpty(),
+            incomingExpression = edit?.incomingMinor?.let { minor -> minorExpression(minor, requireNotNull(to).currency) }.orEmpty(),
+            manualFromBaseRate = edit?.let { manualRate(it.outgoingMinor, requireNotNull(from).currency, it.outgoingBaseMinor, snapshot.baseCurrency) }.orEmpty(),
+            manualToBaseRate = edit?.incomingMinor?.let { minor ->
+                manualRate(minor, requireNotNull(to).currency, requireNotNull(edit.incomingBaseMinor), snapshot.baseCurrency)
+            }.orEmpty(),
+            direction = edit?.direction ?: BalanceAdjustmentDirection.INCREASE,
+            checkpointId = edit?.checkpointId ?: if (kind == SpecializedTransactionKind.BALANCE_ADJUSTMENT && presetAccountId != null) {
+                snapshot.checkpoints.firstOrNull { it.accountId == from?.id && it.adjustmentTransactionId == null }?.id
+            } else {
+                null
+            },
+            occurredAt = edit?.occurredAt ?: now,
+            zoneId = edit?.zoneId ?: zoneId,
+            localDate = edit?.localDate ?: now.atZone(zoneId).toLocalDate(),
+            note = edit?.note.orEmpty(),
+            attachmentIds = edit?.attachmentIds.orEmpty(),
         )
-        return evaluate(SpecializedTransactionEditorState(kind, snapshot, draft), locale)
+        return evaluate(
+            SpecializedTransactionEditorState(
+                kind,
+                snapshot,
+                draft,
+                transactionId = edit?.transactionId,
+                expectedRevisionId = edit?.revisionId,
+            ),
+            locale,
+        )
     }
 
     public fun updateExpression(
@@ -333,4 +366,28 @@ public object SpecializedTransactionPolicy {
     private const val MAX_RATE = 48
     private const val MAX_NOTE = 2_000
     private val MATH_CONTEXT = MathContext(34, RoundingMode.HALF_EVEN)
+}
+
+private fun app.ledger.finance.domain.TransactionKind.toSpecializedKind(): SpecializedTransactionKind? = when (this) {
+    app.ledger.finance.domain.TransactionKind.TRANSFER -> SpecializedTransactionKind.TRANSFER
+    app.ledger.finance.domain.TransactionKind.BALANCE_ADJUSTMENT -> SpecializedTransactionKind.BALANCE_ADJUSTMENT
+    app.ledger.finance.domain.TransactionKind.FX_EXCHANGE -> SpecializedTransactionKind.FX_EXCHANGE
+    app.ledger.finance.domain.TransactionKind.OPENING_BALANCE -> SpecializedTransactionKind.OPENING_BALANCE
+    else -> null
+}
+
+private fun minorExpression(minor: Long, currency: CurrencyCode): String {
+    val digits = requireNotNull(JvmLegalTenderCurrencyCatalog.create().find(currency)).fractionDigits
+    return BigDecimal.valueOf(minor, digits).stripTrailingZeros().toPlainString()
+}
+
+private fun manualRate(accountMinor: Long, accountCurrency: CurrencyCode, baseMinor: Long, baseCurrency: CurrencyCode): String {
+    if (accountCurrency == baseCurrency) return ""
+    val catalog = JvmLegalTenderCurrencyCatalog.create()
+    val accountDigits = requireNotNull(catalog.find(accountCurrency)).fractionDigits
+    val baseDigits = requireNotNull(catalog.find(baseCurrency)).fractionDigits
+    return BigDecimal.valueOf(baseMinor, baseDigits)
+        .divide(BigDecimal.valueOf(accountMinor, accountDigits), MathContext.DECIMAL128)
+        .stripTrailingZeros()
+        .toPlainString()
 }

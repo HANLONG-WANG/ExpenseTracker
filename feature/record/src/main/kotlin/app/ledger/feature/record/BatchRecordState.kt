@@ -3,6 +3,9 @@
 package app.ledger.feature.record
 
 import app.ledger.core.common.StableId
+import app.ledger.core.common.getOrNull
+import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.finance.application.BatchEntryField
 import app.ledger.finance.application.BatchValidationIssue
 import app.ledger.finance.application.BatchValidationReport
@@ -10,8 +13,13 @@ import app.ledger.finance.application.BatchValidationSeverity
 import app.ledger.finance.application.OrdinaryDirection
 import app.ledger.finance.application.OrdinarySettlementShareDraft
 import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 public enum class BatchRowKind { EXPENSE, INCOME, REFUND }
 
@@ -50,6 +58,7 @@ public data class BatchRowDraft(
     val installmentPlanId: StableId?,
     val refundOriginalTransactionId: StableId?,
     val note: String,
+    val occurredAtInput: String? = null,
 ) {
     init {
         require(attachmentIds.toSet().size == attachmentIds.size)
@@ -95,6 +104,8 @@ public data class BatchPasteResult(
 )
 
 public object BatchRecordPolicy {
+    private val currencies = JvmLegalTenderCurrencyCatalog.create()
+
     public fun changeKind(row: BatchRowDraft, kind: BatchRowKind): BatchRowDraft = row.copy(
         kind = kind,
         settlementActivityId = row.settlementActivityId.takeUnless { kind == BatchRowKind.INCOME },
@@ -173,6 +184,9 @@ public object BatchRecordPolicy {
                 if (row.userMinor == null || row.userMinor <= 0L || row.accountMinor == null || row.accountMinor <= 0L || row.baseMinor == null || row.baseMinor <= 0L) {
                     add(issue(row.rowId, BatchEntryField.AMOUNT, "AMOUNT_INVALID"))
                 }
+                if (row.occurredAtInput != null && parseOccurredAt(row.occurredAtInput, row.zoneId) == null) {
+                    add(issue(row.rowId, BatchEntryField.DATE, "DATE_INVALID"))
+                }
                 val account = snapshot.references.accounts.singleOrNull { it.id == row.accountId && it.status.name == "ACTIVE" }
                 if (account == null) add(issue(row.rowId, BatchEntryField.ACCOUNT_AND_CARD, "ACCOUNT_REQUIRED"))
                 if (row.cardId != null && snapshot.references.cards.none { it.id == row.cardId && it.accountId == row.accountId && it.status.name == "ACTIVE" }) {
@@ -197,8 +211,8 @@ public object BatchRecordPolicy {
     }
 
     /**
-     * Phone paste format is TSV: kind, category name, amount minor, account name, merchant name,
-     * ISO instant, project name. Names are resolved only against the already encrypted snapshot.
+     * Phone paste format is TSV: localized kind, category name, decimal amount, account name,
+     * local date/time, project name. Names are resolved only against the already encrypted snapshot.
      */
     public fun paste(
         text: String,
@@ -216,30 +230,37 @@ public object BatchRecordPolicy {
             }
             val cells = line.split('\t')
             val kind = when (cells.getOrNull(0)?.trim()?.uppercase()) {
-                "EXPENSE" -> BatchRowKind.EXPENSE
-                "INCOME" -> BatchRowKind.INCOME
-                "REFUND" -> BatchRowKind.REFUND
+                "EXPENSE", "支出" -> BatchRowKind.EXPENSE
+                "INCOME", "收入", "収入" -> BatchRowKind.INCOME
+                "REFUND", "退款", "返金" -> BatchRowKind.REFUND
                 else -> null
             }
-            val minor = cells.getOrNull(2)?.trim()?.toLongOrNull()
             val category = snapshot.references.categories.singleOrNull { it.name == cells.getOrNull(1)?.trim() }
             val account = snapshot.references.accounts.singleOrNull { it.name == cells.getOrNull(3)?.trim() && it.status.name == "ACTIVE" }
-            if (kind == null || minor == null || minor <= 0L || category == null || account == null) {
+            val amountText = cells.getOrNull(2)?.trim().orEmpty()
+            val minor = account?.currency?.value?.let { majorToMinor(amountText, it) }
+            val dateTimeText = cells.getOrNull(5)?.trim().orEmpty()
+            val parsedOccurredAt = dateTimeText.takeIf(String::isNotEmpty)?.let { parseOccurredAt(it, zoneId) }
+            val occurredAt = parsedOccurredAt ?: defaultInstant
+            if (
+                kind == null || minor == null || minor <= 0L || category == null || account == null ||
+                dateTimeText.isNotEmpty() && parsedOccurredAt == null
+            ) {
                 rejected += index + 1
             } else {
                 val merchant = snapshot.references.merchants.singleOrNull { it.name == cells.getOrNull(4)?.trim() }
                 val project = snapshot.projects.singleOrNull { it.name == cells.getOrNull(6)?.trim() && it.active }
-                val occurredAt = cells.getOrNull(5)?.trim()?.takeIf(String::isNotEmpty)?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: defaultInstant
                 rows += newRow(idAtLine(index), snapshot, occurredAt, zoneId, kind).copy(
                     categoryId = category.id,
-                    amountExpression = minor.toString(),
+                    amountExpression = amountText,
                     userMinor = minor,
                     accountMinor = minor,
-                    baseMinor = minor,
+                    baseMinor = minor.takeIf { account.currency == snapshot.references.baseCurrency },
                     accountId = account.id,
                     userCurrencyCode = account.currency.value,
                     merchantId = merchant?.id,
                     projectId = project?.id,
+                    occurredAtInput = dateTimeText.takeIf(String::isNotEmpty),
                 )
             }
         }
@@ -247,6 +268,31 @@ public object BatchRecordPolicy {
     }
 
     public fun mergeValidation(local: BatchValidationReport, authoritative: BatchValidationReport): BatchValidationReport = BatchValidationReport((local.issues + authoritative.issues).distinct())
+
+    public fun majorToMinor(value: String, currencyCode: String): Long? = runCatching {
+        val currency = CurrencyCode.parse(currencyCode).getOrNull() ?: return null
+        val fractionDigits = currencies.find(currency)?.fractionDigits ?: return null
+        BigDecimal(value.trim().replace(',', '.'))
+            .movePointRight(fractionDigits)
+            .setScale(0, RoundingMode.UNNECESSARY)
+            .longValueExact()
+            .takeIf { it > 0L }
+    }.getOrNull()
+
+    public fun minorToMajor(value: Long?, currencyCode: String): String = value?.let { minor ->
+        val currency = CurrencyCode.parse(currencyCode).getOrNull() ?: return@let minor.toString()
+        val fractionDigits = currencies.find(currency)?.fractionDigits ?: return@let minor.toString()
+        BigDecimal.valueOf(minor, fractionDigits).stripTrailingZeros().toPlainString()
+    }.orEmpty()
+
+    public fun parseOccurredAt(value: String, zoneId: ZoneId): Instant? = runCatching {
+        Instant.parse(value)
+    }.getOrNull() ?: runCatching {
+        LocalDateTime.parse(value.trim(), LOCAL_DATE_TIME).atZone(zoneId).toInstant()
+    }.getOrNull()
+
+    public fun occurredAtText(value: Instant, zoneId: ZoneId, locale: Locale): String =
+        LOCAL_DATE_TIME.withLocale(locale).format(value.atZone(zoneId))
 
     private fun issue(
         rowId: StableId?,
@@ -258,4 +304,5 @@ public object BatchRecordPolicy {
     private const val MAX_NOTE_LENGTH = 2_000
     private const val ATTACHMENT_WARNING_COUNT = 8
     private const val MAX_PASTE_ROWS = 10_000
+    private val LOCAL_DATE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 }

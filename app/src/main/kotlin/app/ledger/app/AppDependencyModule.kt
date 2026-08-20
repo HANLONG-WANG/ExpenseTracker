@@ -20,7 +20,6 @@ import app.ledger.core.time.JavaTimeLedgerClock
 import app.ledger.core.time.LedgerClock
 import app.ledger.finance.application.AutomationApplicationPort
 import app.ledger.finance.application.BatchEntryApplicationPort
-import app.ledger.finance.application.BookAttachmentObjectPort
 import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.CreditApplicationPort
 import app.ledger.finance.application.FormalOccurrenceGenerator
@@ -309,7 +308,7 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
         runtimeSources: AppRuntimeSources,
-    ): BookAttachmentObjectPort = SecureBookAttachmentObjectPort(
+    ): SecureBookAttachmentObjectPort = SecureBookAttachmentObjectPort(
         context,
         keyProvider,
         runtimeSources.stableIds,

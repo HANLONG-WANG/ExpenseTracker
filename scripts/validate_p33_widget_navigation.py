@@ -128,7 +128,8 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         "LedgerWidgetRuntime.resolve", "LedgerWidgetContent.Locked", "LedgerWidgetContent.Stale",
         "if (!reveal) return \"••••\"", "widget_previous_month_comparison", "widget_snapshot_change",
         "bundle.creditAccounts.firstOrNull()", "LedgerGlanceTokens", "updateAll(context.applicationContext)",
-        "GlanceAppWidgetManager(context).getAppWidgetId(id)",
+        "GlanceAppWidgetManager(context).getAppWidgetId(id)", "withLanguageTag(languageTag)",
+        "savedConfigurations[configuration.appWidgetId] = configuration",
     ))
     if "import androidx.glance.appwidget.AppWidgetId" in glance:
         errors.append("widget render path uses the restricted AppWidgetId implementation type")
@@ -141,6 +142,7 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         "widget_no_eligible_title", "onBack = { step = WidgetConfigurationStep.TYPE }", "revealAmounts",
         "widgetConfigurationsList", "selectedId", "WidgetQuickTargetKindProto", "WidgetQuickDirectionProto",
         "GlanceAppWidgetManager(this@WidgetConfigurationActivity).getGlanceIdBy(appWidgetId)",
+        "withLanguageTag(LedgerWidgetRuntime.languageTag())",
     ))
 
     root = named(sources, "AppRootViewModel.kt") + named(sources, "AppRootScreen.kt")
@@ -247,7 +249,7 @@ def validate_schema_resources_tests() -> list[str]:
         "allP33GlobalTransferSettingsAndNotificationStatesRender",
         "moreTransferSettingsHelpAndPermissionUseAllThreeLocales",
         "durableOperationCenterListsNewestEncryptedOperationsWithoutParameters",
-        "encryptedVersionOneDatabaseMigratesToVersionThreeWithoutLosingLedgerData",
+        "encryptedVersionOneDatabaseMigratesToVersionFourWithoutLosingLedgerData",
     ))
     for module in ("app", "widget", "feature/settings", "feature/transfer"):
         localized: list[set[str]] = []

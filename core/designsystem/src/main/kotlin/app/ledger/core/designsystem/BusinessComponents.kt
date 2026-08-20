@@ -427,9 +427,16 @@ public fun JournalTransactionRow(
             contentAlignment = Alignment.Center,
         ) { LedgerIconView(model.icon) }
         Column(Modifier.weight(1f)) {
-            Text("${model.typeLabel} · ${model.categoryOrType}", style = LedgerTheme.typography.bodyLarge, maxLines = 2)
-            Text(model.summary, style = LedgerTheme.typography.bodyMedium, maxLines = 1, color = LedgerTheme.colors.material.onSurfaceVariant)
-            Text(model.accountAndCard, style = LedgerTheme.typography.bodySmall, maxLines = 1)
+            val title = if (model.categoryOrType.isBlank() || model.categoryOrType == model.typeLabel) {
+                model.typeLabel
+            } else {
+                "${model.typeLabel} · ${model.categoryOrType}"
+            }
+            Text(title, style = LedgerTheme.typography.bodyLarge, maxLines = 2)
+            if (model.summary.isNotBlank() && model.summary != model.categoryOrType && model.summary != model.typeLabel) {
+                Text(model.summary, style = LedgerTheme.typography.bodyMedium, maxLines = 1, color = LedgerTheme.colors.material.onSurfaceVariant)
+            }
+            if (model.accountAndCard.isNotBlank()) Text(model.accountAndCard, style = LedgerTheme.typography.bodySmall, maxLines = 1)
             if (model.badges.isNotEmpty()) Text(model.badges.take(4).joinToString(" · "), style = LedgerTheme.typography.labelSmall)
         }
         Column(horizontalAlignment = Alignment.End) {
@@ -648,6 +655,7 @@ public fun LocationField(
 ) {
     val text = when (state) {
         LocationFieldState.Locating -> stringResource(R.string.ledger_locating)
+        LocationFieldState.ReadyAtSave -> stringResource(R.string.ledger_location_ready_at_save)
         is LocationFieldState.Located -> stringResource(R.string.ledger_location_acquired, state.accuracyText)
         LocationFieldState.Unavailable -> stringResource(R.string.ledger_location_unavailable)
         LocationFieldState.PermissionDenied -> stringResource(R.string.ledger_location_denied)

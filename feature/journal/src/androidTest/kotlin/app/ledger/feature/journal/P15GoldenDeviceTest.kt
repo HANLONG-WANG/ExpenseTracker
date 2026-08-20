@@ -95,10 +95,10 @@ class P15GoldenDeviceTest {
             JournalTransactionView(id(2), id(12), TransactionKind.INCOME, TransactionLifecycleState.ACTIVE, NOW.minusSeconds(3600), LocalDate.of(2026, 8, 3), "Salary", "August", "Bank", 320000, JPY, null, null, emptyList(), null, TransactionSource.MANUAL),
             JournalTransactionView(id(3), id(13), TransactionKind.TRANSFER, TransactionLifecycleState.ACTIVE, NOW.minusSeconds(90000), LocalDate.of(2026, 8, 2), "Transfer", "Cash to bank", "Cash · Bank", 5000, JPY, null, null, emptyList(), null, TransactionSource.MANUAL),
         )
-        val DETAIL = JournalDetailView(ROWS.first(), NOW.minusSeconds(120), NOW, "Asia/Tokyo", "1000+280", "Lunch with team", "Local shop", "August travel", "Station", listOf("receipt.pdf"), "included", "CONSUMPTION_EXPENSE", emptyList(), emptyList(), listOf("Cash:credit:1280 JPY"), "MANUAL", null, 0)
+        val DETAIL = JournalDetailView(ROWS.first(), NOW.minusSeconds(120), NOW, "Asia/Tokyo", "1000+280", "Lunch with team", "Local shop", "August travel", "Station", listOf(id(14)), listOf("receipt.pdf"), "included", "CONSUMPTION_EXPENSE", emptyList(), emptyList(), listOf("Cash:credit:1280 JPY"), "MANUAL", null, 0)
         val ACTIONS = JournalActions(
             onNavigate = { _, _ -> }, onSearch = {}, onApplyFilter = {}, onRemoveFilter = {}, onRetry = {}, onLoadDetail = {},
-            onSelect = {}, onSelectAllMatching = {}, onClearSelection = {}, onBulkEdit = {}, onSaveFilter = {}, onApplyPreset = {},
+            onEdit = { _, _ -> }, onOpenAttachment = {}, onSelect = {}, onSelectAllMatching = {}, onClearSelection = {}, onBulkEdit = {}, onSaveFilter = {}, onApplyPreset = {},
             onCopyPreset = {}, onSetDefaultPreset = {}, onDeletePreset = {}, onReorderPresets = {}, onResolveDependency = { _, _ -> }, onMoveToTrash = { _, _, _ -> },
             onRestore = { _, _ -> }, onCompareRevisions = { _, _, _ -> }, onRestoreRevision = { _, _, _, _ -> }, onVerifyPurge = {}, onPurgeRequested = {},
         )

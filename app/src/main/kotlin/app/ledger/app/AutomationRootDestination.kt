@@ -70,13 +70,20 @@ internal fun AutomationRootDestination(
             onGenerationMode = viewModel::updateAutomationGenerationMode,
             onNotifyCandidate = viewModel::updateAutomationNotifyCandidate,
             onSaveRecurrence = viewModel::saveAutomationRecurrence,
-            onTemplateSelected = viewModel::selectAutomationTemplate,
+            onTemplateSelected = { id ->
+                viewModel.selectAutomationTemplate(id)
+                onNavigationChanged()
+            },
             onCandidateSelected = viewModel::selectAutomationCandidate,
             onCandidateToggle = viewModel::toggleAutomationCandidate,
             onConfirmCandidate = viewModel::confirmAutomationCandidate,
             onSkipCandidate = viewModel::skipAutomationCandidate,
             onScope = viewModel::updateAutomationScope,
             onApplyScope = viewModel::applyAutomationScope,
+            onApplyRule = {
+                viewModel.applyAutomationRule()
+                onNavigationChanged()
+            },
         ),
     )
 }

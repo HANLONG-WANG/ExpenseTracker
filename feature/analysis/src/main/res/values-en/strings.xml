@@ -55,4 +55,13 @@
     <string name="analysis_map_recorded_location">Unassigned recorded location</string><string name="analysis_map_point_summary">%1$s · %2$d transactions</string><string name="analysis_map_detail_missing">Location data changed</string><string name="analysis_map_detail_missing_body">Return to the map and refresh. A stale result is never shown as current.</string>
     <string name="analysis_map_detail_kind">Type: %1$s</string><string name="analysis_map_coordinates">Coordinates: %1$.5f, %2$.5f</string><string name="analysis_map_location_available">Location recorded; exact coordinates are not spoken for privacy</string><string name="analysis_map_category_composition">Category composition</string><string name="analysis_category">Category</string><string name="analysis_amount">Amount</string><string name="analysis_transaction_count">Transactions</string><string name="analysis_unassigned">Unassigned</string><string name="analysis_map_transaction_preview">Transaction preview</string><string name="analysis_map_open_transactions">Open these transactions</string><string name="analysis_map_single_transaction">Individual transaction</string>
     <string name="analysis_map_complete_filters">Full filters</string><string name="analysis_map_filter_account">Account</string><string name="analysis_map_filter_merchant">Merchant</string><string name="analysis_map_filter_place">Place</string><string name="analysis_map_filter_project">Project</string><string name="analysis_map_filter_all">All</string><string name="analysis_map_filter_selected">Selected condition</string><string name="analysis_map_filter_any_count">Any (%1$d)</string><string name="analysis_map_filter_minimum_amount">At least %1$s</string><string name="analysis_map_period_value">Period: %1$s — %2$s</string>
+    <string name="analysis_integrity_database">Database structure and encrypted readability</string>
+    <string name="analysis_integrity_foreign_keys">Entity references and foreign keys</string>
+    <string name="analysis_integrity_journals">Balanced accounting entries</string>
+    <string name="analysis_integrity_posting_currencies">Posting currency consistency</string>
+    <string name="analysis_integrity_revisions">Revision history chains</string>
+    <string name="analysis_integrity_projections">Balance and analysis projections</string>
+    <string name="analysis_integrity_fts">Journal full-text search index</string>
+    <string name="analysis_integrity_rtree">Place spatial index</string>
+    <string name="analysis_integrity_fact_rebuild">Results rebuilt from immutable facts</string>
 </resources>

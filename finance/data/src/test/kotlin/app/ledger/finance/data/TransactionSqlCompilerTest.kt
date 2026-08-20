@@ -29,6 +29,17 @@ class TransactionSqlCompilerTest {
     }
 
     @Test
+    fun `one and two character search falls back to bound substring matching`() {
+        val compiled = TransactionSqlCompiler.compile(emptyFilter().copy(searchText = "餐饮"), null, 20)
+
+        compiled.sql.contains("餐饮") shouldBe false
+        compiled.sql.shouldContain("category_name LIKE ?")
+        compiled.sql.shouldContain("attachment_names LIKE ?")
+        compiled.sql.contains("transaction_fts MATCH ?") shouldBe false
+        compiled.arguments.dropLast(1) shouldBe List(8) { "%餐饮%" }
+    }
+
+    @Test
     fun `complete filters use OR within a dimension and AND across dimensions`() {
         val compiled = TransactionSqlCompiler.compile(
             TransactionFilter(

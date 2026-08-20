@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="attachment_secure_image_description">Secure image preview</string>
+    <string name="attachment_preview_title">Attachment preview</string>
     <string name="attachment_preview_unsupported">This file cannot be previewed here. You can inspect its metadata or confirm opening it in another app.</string>
     <string name="attachment_decrypt_error_title">Attachment unavailable</string>
     <string name="attachment_decrypt_error_message">The encrypted content could not be verified or read.</string>
