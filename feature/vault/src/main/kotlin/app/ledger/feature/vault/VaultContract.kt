@@ -85,19 +85,7 @@ public data class VaultEditSubmission(
     }
 }
 
-public sealed interface VaultScreenAction {
-    public data class CardSelected(val cardId: StableId) : VaultScreenAction
-    public data class Edit(val cardId: StableId) : VaultScreenAction
-    public data class RevealPrimaryNumber(val cardId: StableId) : VaultScreenAction
-    public data class CopyPrimaryNumber(val cardId: StableId) : VaultScreenAction
-    public data class RevealSecurityCode(val cardId: StableId) : VaultScreenAction
-    public data object Hide : VaultScreenAction
-    public data class AuthenticateEdit(val cardId: StableId) : VaultScreenAction
-    public data class Save(val cardId: StableId, val submission: VaultEditSubmission) : VaultScreenAction
-    public data object OpenDeviceSecurity : VaultScreenAction
-}
-
-internal class VaultActions(
+public data class VaultActions(
     val onCard: (StableId) -> Unit,
     val onEdit: (StableId) -> Unit,
     val onRevealPrimaryNumber: (StableId) -> Unit,
@@ -109,16 +97,4 @@ internal class VaultActions(
     val onAuthenticateList: () -> Unit,
     val onOpenCards: () -> Unit,
     val onOpenDeviceSecurity: () -> Unit,
-)
-
-internal fun vaultActions(onAction: (VaultScreenAction) -> Unit): VaultActions = VaultActions(
-    onCard = { onAction(VaultScreenAction.CardSelected(it)) },
-    onEdit = { onAction(VaultScreenAction.Edit(it)) },
-    onRevealPrimaryNumber = { onAction(VaultScreenAction.RevealPrimaryNumber(it)) },
-    onCopyPrimaryNumber = { onAction(VaultScreenAction.CopyPrimaryNumber(it)) },
-    onRevealSecurityCode = { onAction(VaultScreenAction.RevealSecurityCode(it)) },
-    onHide = { onAction(VaultScreenAction.Hide) },
-    onAuthenticateEdit = { onAction(VaultScreenAction.AuthenticateEdit(it)) },
-    onSave = { id, submission -> onAction(VaultScreenAction.Save(id, submission)) },
-    onOpenDeviceSecurity = { onAction(VaultScreenAction.OpenDeviceSecurity) },
 )

@@ -9,8 +9,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.ledger.feature.transfer.RestoreFlowActions
 import app.ledger.feature.transfer.RestoreFlowScreen
-import app.ledger.feature.transfer.RestoreFlowScreenAction
 
 @Composable
 internal fun RestoreRootDestination(
@@ -66,6 +66,7 @@ internal fun RestoreRootDestination(
             onCancel = viewModel::cancelRestore,
             onRetry = viewModel::retryRestore,
             onOpenApp = viewModel::finishRestoreFlow,
+            onConfirmSafetySnapshotCleanup = viewModel::confirmRestoreSafetySnapshotCleanup,
             onCloudSnapshotSelected = viewModel::selectCloudBackupForDeletion,
             onCloudConfirmationChanged = viewModel::changeCloudBackupDeletePhrase,
             onAuthenticateCloudDelete = viewModel::loadCloudBackupsForDeletion,

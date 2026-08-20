@@ -152,29 +152,7 @@ data class RestoreFlowUiState(
     val cloudConfirmationPhrase: String = "",
 )
 
-sealed interface RestoreFlowScreenAction {
-    data object Back : RestoreFlowScreenAction
-    data class PortableSource(val uri: Uri) : RestoreFlowScreenAction
-    data object RepositorySource : RestoreFlowScreenAction
-    data object DriveSource : RestoreFlowScreenAction
-    data class PasswordChanged(val value: String) : RestoreFlowScreenAction
-    data object VerifyPassword : RestoreFlowScreenAction
-    data class ModeSelected(val mode: RestoreMode) : RestoreFlowScreenAction
-    data class HighRiskPhraseChanged(val value: String) : RestoreFlowScreenAction
-    data object StartRestore : RestoreFlowScreenAction
-    data class ResolveConflict(val conflictId: String, val resolution: MergeResolution) : RestoreFlowScreenAction
-    data object ApplyMerge : RestoreFlowScreenAction
-    data object Cancel : RestoreFlowScreenAction
-    data object Retry : RestoreFlowScreenAction
-    data object OpenApp : RestoreFlowScreenAction
-    data object ConfirmSafetySnapshotCleanup : RestoreFlowScreenAction
-    data class CloudSnapshotSelected(val snapshotId: String) : RestoreFlowScreenAction
-    data class CloudConfirmationChanged(val value: String) : RestoreFlowScreenAction
-    data object AuthenticateCloudDelete : RestoreFlowScreenAction
-    data object DeleteCloudBackups : RestoreFlowScreenAction
-}
-
-private class RestoreFlowActions(
+data class RestoreFlowActions(
     val onBack: () -> Unit,
     val onPortableSource: (Uri) -> Unit,
     val onRepositorySource: () -> Unit,
@@ -199,28 +177,7 @@ private class RestoreFlowActions(
 )
 
 @Composable
-fun RestoreFlowScreen(state: RestoreFlowUiState, onAction: (RestoreFlowScreenAction) -> Unit) {
-    val actions = RestoreFlowActions(
-        onBack = { onAction(RestoreFlowScreenAction.Back) },
-        onPortableSource = { onAction(RestoreFlowScreenAction.PortableSource(it)) },
-        onRepositorySource = { onAction(RestoreFlowScreenAction.RepositorySource) },
-        onDriveSource = { onAction(RestoreFlowScreenAction.DriveSource) },
-        onPasswordChanged = { onAction(RestoreFlowScreenAction.PasswordChanged(it)) },
-        onVerifyPassword = { onAction(RestoreFlowScreenAction.VerifyPassword) },
-        onModeSelected = { onAction(RestoreFlowScreenAction.ModeSelected(it)) },
-        onHighRiskPhraseChanged = { onAction(RestoreFlowScreenAction.HighRiskPhraseChanged(it)) },
-        onStartRestore = { onAction(RestoreFlowScreenAction.StartRestore) },
-        onResolveConflict = { id, resolution -> onAction(RestoreFlowScreenAction.ResolveConflict(id, resolution)) },
-        onApplyMerge = { onAction(RestoreFlowScreenAction.ApplyMerge) },
-        onCancel = { onAction(RestoreFlowScreenAction.Cancel) },
-        onRetry = { onAction(RestoreFlowScreenAction.Retry) },
-        onOpenApp = { onAction(RestoreFlowScreenAction.OpenApp) },
-        onConfirmSafetySnapshotCleanup = { onAction(RestoreFlowScreenAction.ConfirmSafetySnapshotCleanup) },
-        onCloudSnapshotSelected = { onAction(RestoreFlowScreenAction.CloudSnapshotSelected(it)) },
-        onCloudConfirmationChanged = { onAction(RestoreFlowScreenAction.CloudConfirmationChanged(it)) },
-        onAuthenticateCloudDelete = { onAction(RestoreFlowScreenAction.AuthenticateCloudDelete) },
-        onDeleteCloudBackups = { onAction(RestoreFlowScreenAction.DeleteCloudBackups) },
-    )
+fun RestoreFlowScreen(state: RestoreFlowUiState, actions: RestoreFlowActions) {
     LedgerScaffold(
         Modifier.fillMaxSize().testTag("restore_flow_root"),
         topBar = { LedgerTopAppBar(state.title(), LedgerTopAppBarVariant.BACK, onNavigation = actions.onBack) },

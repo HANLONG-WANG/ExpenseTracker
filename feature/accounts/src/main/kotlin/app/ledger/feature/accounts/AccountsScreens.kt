@@ -113,14 +113,6 @@ public fun AccountsDestination(
     stateOverride: AccountsRequiredState? = null,
     modifier: Modifier = Modifier,
 ) {
-    val screenId = uiState.screenId
-    val encodedArguments = uiState.encodedArguments
-    val dataState = uiState.dataState
-    val selectedAccountType = uiState.selectedAccountType
-    val preferredCardAccountId = uiState.preferredCardAccountId
-    val pending = uiState.pending
-    val stateOverride = uiState.stateOverride
-    val actions = accountsActions(onAction)
     require(screenId in SUPPORTED_SCREENS)
     require(stateOverride == null || stateOverride.screenId == screenId)
     val snapshot = (dataState as? AccountsDataState.Content)?.snapshot
@@ -190,7 +182,7 @@ private fun AccountHome(snapshot: ReferenceDataSnapshot?, state: String, actions
             if (grouped.isNotEmpty()) {
                 item { LedgerText(type.label(), LedgerTextRole.SECTION) }
                 items(grouped, key = { it.id.toString() }) { account ->
-                    AccountSummaryCard(account.toUi(snapshot.baseCurrency.value, amountsVisible), { actions.onNavigate("ACC-005", mapOf("accountId" to account.id)) }, Modifier.fillMaxWidth())
+                    AccountSummaryCard(account.toUi(snapshot?.baseCurrency?.value.orEmpty(), amountsVisible), { actions.onNavigate("ACC-005", mapOf("accountId" to account.id)) }, Modifier.fillMaxWidth())
                 }
             }
         }
@@ -316,7 +308,7 @@ private fun OpeningBalance(snapshot: ReferenceDataSnapshot?, accountId: StableId
         onClick = {
             actions.onSaveOpeningBalance(OpeningBalanceSubmission(accountId, date ?: return@LedgerSaveFab, amountResult?.roundedMoney?.minor ?: return@LedgerSaveFab, baseResult?.roundedMoney?.minor))
         },
-        enabled = amountResult != null && date != null && (account == null || account.currency == snapshot?.baseCurrency || baseResult != null) && state != "saving",
+        enabled = amountResult != null && date != null && (account == null || account.currency == snapshot.baseCurrency || baseResult != null) && state != "saving",
         submitting = state == "saving",
     )
     if (showDatePicker) {

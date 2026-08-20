@@ -89,10 +89,9 @@ public fun ProjectGoalDestination(
     screenId: String,
     state: ProjectGoalLoadState,
     encodedArguments: Map<String, String>,
-    onAction: (ProjectGoalScreenAction) -> Unit,
+    actions: ProjectGoalActions,
     projectPages: Flow<PagingData<ProjectTransactionView>>? = null,
 ) {
-    val actions = projectGoalActions(onAction)
     when (state) {
         ProjectGoalLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.planning_loading))
         is ProjectGoalLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.planning_load_failed), actions.onRetry)

@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -116,53 +117,7 @@ public data class OrdinaryRecordScreenUiState(
     val submitting: Boolean = false,
 )
 
-public sealed interface OrdinaryRecordScreenAction {
-    public data object Retry : OrdinaryRecordScreenAction
-    public data class SelectTab(val tab: RecordTab) : OrdinaryRecordScreenAction
-    public data class Search(val query: String) : OrdinaryRecordScreenAction
-    public data class Navigate(
-        val screenId: String,
-        val stableArguments: Map<String, StableId>,
-        val enumArguments: Map<String, String>,
-    ) : OrdinaryRecordScreenAction
-    public data class OpenEditor(
-        val mode: RecordEditorMode,
-        val direction: OrdinaryDirection,
-        val categoryId: StableId?,
-        val sourceId: StableId?,
-    ) : OrdinaryRecordScreenAction
-    public data class Expression(val value: String) : OrdinaryRecordScreenAction
-    public data class Operator(val value: String) : OrdinaryRecordScreenAction
-    public data class SelectCategory(val categoryId: StableId) : OrdinaryRecordScreenAction
-    public data class SelectAccount(val accountId: StableId) : OrdinaryRecordScreenAction
-    public data class SelectCard(val cardId: StableId?) : OrdinaryRecordScreenAction
-    public data class SelectReference(val field: RecordField, val id: StableId?) : OrdinaryRecordScreenAction
-    public data class Note(val value: String) : OrdinaryRecordScreenAction
-    public data class SettlementEnabled(val enabled: Boolean) : OrdinaryRecordScreenAction
-    public data class SettlementActivity(val activityId: StableId) : OrdinaryRecordScreenAction
-    public data class SettlementPayer(val participantId: StableId) : OrdinaryRecordScreenAction
-    public data class SettlementSplitMethodChanged(val method: SettlementSplitMethod) : OrdinaryRecordScreenAction
-    public data class SettlementChargeDistributionChanged(val distribution: SettlementChargeDistribution) : OrdinaryRecordScreenAction
-    public data class SettlementRoundingRuleChanged(val rule: SettlementRoundingRule) : OrdinaryRecordScreenAction
-    public data class SettlementParticipantIncluded(val participantId: StableId) : OrdinaryRecordScreenAction
-    public data class SettlementAllocationInput(val participantId: StableId, val value: String) : OrdinaryRecordScreenAction
-    public data class SettlementChargeInput(val participantId: StableId, val value: String) : OrdinaryRecordScreenAction
-    public data class SettlementTax(val value: String) : OrdinaryRecordScreenAction
-    public data class SettlementServiceFee(val value: String) : OrdinaryRecordScreenAction
-    public data class OccurredAt(val dateMillis: Long, val hour: Int, val minute: Int) : OrdinaryRecordScreenAction
-    public data class ManualLocation(val latitudeE7: Int, val longitudeE7: Int) : OrdinaryRecordScreenAction
-    public data object AddAttachment : OrdinaryRecordScreenAction
-    public data class ReuseAttachment(val attachmentId: StableId) : OrdinaryRecordScreenAction
-    public data class OpenAttachment(val attachmentId: StableId) : OrdinaryRecordScreenAction
-    public data class CancelAttachment(val index: Int) : OrdinaryRecordScreenAction
-    public data object Save : OrdinaryRecordScreenAction
-    public data object UnsavedDiscard : OrdinaryRecordScreenAction
-    public data object UnsavedKeepEditing : OrdinaryRecordScreenAction
-    public data object ReloadConflict : OrdinaryRecordScreenAction
-    public data object CancelConflict : OrdinaryRecordScreenAction
-}
-
-internal class OrdinaryRecordActions(
+public data class OrdinaryRecordActions(
     val onRetry: () -> Unit,
     val onTab: (RecordTab) -> Unit,
     val onSearch: (String) -> Unit,
@@ -187,7 +142,6 @@ internal class OrdinaryRecordActions(
     val onSettlementTax: (String) -> Unit,
     val onSettlementServiceFee: (String) -> Unit,
     val onOccurredAt: (dateMillis: Long, hour: Int, minute: Int) -> Unit,
-    val onManualLocation: (latitudeE7: Int, longitudeE7: Int) -> Unit,
     val onAddAttachment: () -> Unit,
     val onOpenAttachment: (index: Int) -> Unit,
     val onCancelAttachment: (index: Int) -> Unit,
@@ -201,45 +155,6 @@ internal class OrdinaryRecordActions(
     val onLocationMapUnavailable: () -> Unit = {},
     val onUseLocation: () -> Unit = {},
     val onClearLocation: () -> Unit = {},
-)
-
-internal fun ordinaryRecordActions(onAction: (OrdinaryRecordScreenAction) -> Unit): OrdinaryRecordActions = OrdinaryRecordActions(
-    onRetry = { onAction(OrdinaryRecordScreenAction.Retry) },
-    onTab = { onAction(OrdinaryRecordScreenAction.SelectTab(it)) },
-    onSearch = { onAction(OrdinaryRecordScreenAction.Search(it)) },
-    onNavigate = { screenId, stable, enums -> onAction(OrdinaryRecordScreenAction.Navigate(screenId, stable, enums)) },
-    onOpenEditor = { mode, direction, categoryId, sourceId ->
-        onAction(OrdinaryRecordScreenAction.OpenEditor(mode, direction, categoryId, sourceId))
-    },
-    onExpression = { onAction(OrdinaryRecordScreenAction.Expression(it)) },
-    onOperator = { onAction(OrdinaryRecordScreenAction.Operator(it)) },
-    onSelectCategory = { onAction(OrdinaryRecordScreenAction.SelectCategory(it)) },
-    onSelectAccount = { onAction(OrdinaryRecordScreenAction.SelectAccount(it)) },
-    onSelectCard = { onAction(OrdinaryRecordScreenAction.SelectCard(it)) },
-    onSelectReference = { field, id -> onAction(OrdinaryRecordScreenAction.SelectReference(field, id)) },
-    onNote = { onAction(OrdinaryRecordScreenAction.Note(it)) },
-    onSettlementEnabled = { onAction(OrdinaryRecordScreenAction.SettlementEnabled(it)) },
-    onSettlementActivity = { onAction(OrdinaryRecordScreenAction.SettlementActivity(it)) },
-    onSettlementPayer = { onAction(OrdinaryRecordScreenAction.SettlementPayer(it)) },
-    onSettlementSplitMethod = { onAction(OrdinaryRecordScreenAction.SettlementSplitMethodChanged(it)) },
-    onSettlementChargeDistribution = { onAction(OrdinaryRecordScreenAction.SettlementChargeDistributionChanged(it)) },
-    onSettlementRoundingRule = { onAction(OrdinaryRecordScreenAction.SettlementRoundingRuleChanged(it)) },
-    onSettlementParticipantIncluded = { onAction(OrdinaryRecordScreenAction.SettlementParticipantIncluded(it)) },
-    onSettlementAllocationInput = { id, value -> onAction(OrdinaryRecordScreenAction.SettlementAllocationInput(id, value)) },
-    onSettlementChargeInput = { id, value -> onAction(OrdinaryRecordScreenAction.SettlementChargeInput(id, value)) },
-    onSettlementTax = { onAction(OrdinaryRecordScreenAction.SettlementTax(it)) },
-    onSettlementServiceFee = { onAction(OrdinaryRecordScreenAction.SettlementServiceFee(it)) },
-    onOccurredAt = { dateMillis, hour, minute -> onAction(OrdinaryRecordScreenAction.OccurredAt(dateMillis, hour, minute)) },
-    onManualLocation = { latitudeE7, longitudeE7 -> onAction(OrdinaryRecordScreenAction.ManualLocation(latitudeE7, longitudeE7)) },
-    onAddAttachment = { onAction(OrdinaryRecordScreenAction.AddAttachment) },
-    onReuseAttachment = { onAction(OrdinaryRecordScreenAction.ReuseAttachment(it)) },
-    onOpenAttachment = { onAction(OrdinaryRecordScreenAction.OpenAttachment(it)) },
-    onCancelAttachment = { onAction(OrdinaryRecordScreenAction.CancelAttachment(it)) },
-    onSave = { onAction(OrdinaryRecordScreenAction.Save) },
-    onUnsavedDiscard = { onAction(OrdinaryRecordScreenAction.UnsavedDiscard) },
-    onUnsavedKeepEditing = { onAction(OrdinaryRecordScreenAction.UnsavedKeepEditing) },
-    onReloadConflict = { onAction(OrdinaryRecordScreenAction.ReloadConflict) },
-    onCancelConflict = { onAction(OrdinaryRecordScreenAction.CancelConflict) },
 )
 
 public data class RecordLocationMapPoint(
@@ -270,40 +185,17 @@ public data class RecordLocationMapModel(
 @Composable
 public fun OrdinaryRecordDestination(
     screenId: String,
-    uiState: OrdinaryRecordScreenUiState,
-    onAction: (OrdinaryRecordScreenAction) -> Unit,
+    state: OrdinaryRecordLoadState,
+    actions: OrdinaryRecordActions,
     modifier: Modifier = Modifier,
-    locationMap: @Composable (
-        model: RecordLocationMapModel,
-        onPointSelected: (StableId) -> Unit,
-        onCoordinateSelected: (Int, Int) -> Unit,
-        onFailure: () -> Unit,
-    ) -> Unit = { model, onPointSelected, _, _ ->
-        Column(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-            model.rows.forEach { row -> LedgerChoiceRow(row.label, model.points.singleOrNull { it.id == row.id }?.selected == true, { onPointSelected(row.id) }, supportingText = row.coordinates) }
-        }
-    },
 ) {
-    val state = uiState.loadState
-    val actions = ordinaryRecordActions(onAction)
     Box(modifier.fillMaxSize().testTag(LedgerTestTags.RECORD_ROOT)) {
         when (state) {
             OrdinaryRecordLoadState.Loading -> LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
             is OrdinaryRecordLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.record_load_failed), actions.onRetry)
-            is OrdinaryRecordLoadState.Content -> RecordContent(screenId, state, actions, locationMap)
+            is OrdinaryRecordLoadState.Content -> RecordContent(screenId, state, actions)
         }
     }
-}
-
-/** Convenience for previews/tests; production callers should collect [OrdinaryRecordScreenUiState]. */
-@Composable
-public fun OrdinaryRecordDestination(
-    screenId: String,
-    state: OrdinaryRecordLoadState,
-    onAction: (OrdinaryRecordScreenAction) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    OrdinaryRecordDestination(screenId, OrdinaryRecordScreenUiState(state), onAction, modifier)
 }
 
 @Composable
@@ -311,7 +203,6 @@ private fun RecordContent(
     screenId: String,
     state: OrdinaryRecordLoadState.Content,
     actions: OrdinaryRecordActions,
-    locationMap: @Composable (RecordLocationMapModel, (StableId) -> Unit, (Int, Int) -> Unit, () -> Unit) -> Unit,
 ) {
     when (screenId) {
         "REC-001" -> CategoryFirstHome(state, actions)
@@ -322,7 +213,7 @@ private fun RecordContent(
         "REC-006" -> state.editor?.let { CardPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-007" -> state.editor?.let { MerchantPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-008" -> state.editor?.let { ProjectPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
-        "REC-009" -> state.editor?.let { LocationPicker(it, actions, locationMap) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
+        "REC-009" -> state.editor?.let { LocationPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-010" -> state.editor?.let { AttachmentPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-011" -> state.editor?.let { SettlementAllocation(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-012" -> OtherTransactionCards(actions)
@@ -952,19 +843,6 @@ private fun AttachmentPicker(state: OrdinaryRecordEditorState, actions: Ordinary
                 addLabel = stringResource(R.string.record_attachments_add),
                 onRetry = { actions.onAddAttachment() },
             )
-        }
-        if (reusable.isNotEmpty()) {
-            item { LedgerText(stringResource(R.string.record_attachments_reuse_title), LedgerTextRole.SECTION) }
-            items(reusable, key = { it.id.toString() }) { attachment ->
-                LedgerChoiceRow(
-                    attachment.displayName,
-                    false,
-                    { actions.onReuseAttachment(attachment.id) },
-                    supportingText = stringResource(R.string.record_attachment_reuse_summary, attachment.mimeType, attachment.sizeBytes),
-                )
-            }
-        } else if (attachments.isEmpty()) {
-            item { LedgerText(stringResource(R.string.record_attachments_empty_message), LedgerTextRole.SUPPORTING) }
         }
     }
 }

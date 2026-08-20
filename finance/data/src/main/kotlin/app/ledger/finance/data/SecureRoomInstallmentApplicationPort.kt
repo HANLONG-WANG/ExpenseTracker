@@ -541,7 +541,7 @@ class SecureRoomInstallmentApplicationPort(
             arrayOf(planUid.bytes),
         ) { cursor ->
             ScheduleHeader(
-                cursor.stableId("uid"), cursor.int("revision_no"), cursor.int("reason"), cursor.long("generated_at"), cursor.stableId("commit_uid"),
+                cursor.stableId("uid"), cursor.installmentInt("revision_no"), cursor.installmentInt("reason"), cursor.installmentLong("generated_at"), cursor.stableId("commit_uid"),
             )
         } ?: return null
         val items = db.queryList(
@@ -550,9 +550,9 @@ class SecureRoomInstallmentApplicationPort(
             arrayOf(header.id.bytes),
         ) { cursor ->
             InstallmentScheduleItem(
-                InstallmentScheduleItemId(stableIdFromInternal(cursor.long("id"))), cursor.int("installment_no"),
-                storageDate(cursor.int("statement_date")), cursor.long("principal_minor"), cursor.long("interest_minor"),
-                cursor.long("fee_minor"), cursor.long("remaining_principal_minor"),
+                InstallmentScheduleItemId(stableIdFromInternal(cursor.installmentLong("id"))), cursor.installmentInt("installment_no"),
+                storageDate(cursor.installmentInt("statement_date")), cursor.installmentLong("principal_minor"), cursor.installmentLong("interest_minor"),
+                cursor.installmentLong("fee_minor"), cursor.installmentLong("remaining_principal_minor"),
             )
         }
         return InstallmentScheduleRevision(
@@ -695,3 +695,7 @@ private fun settlementConfirmationMatches(
     request.credit.accountMinor == simulation.outstandingPrincipalMinor &&
     request.payment.accountMinor == simulation.paymentMinor &&
     request.settlementFee?.accountMinor == simulation.settlementFeeMinor.takeIf { it > 0L }
+
+private fun android.database.Cursor.installmentInt(name: String): Int = getInt(getColumnIndexOrThrow(name))
+
+private fun android.database.Cursor.installmentLong(name: String): Long = getLong(getColumnIndexOrThrow(name))

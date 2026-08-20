@@ -17,8 +17,8 @@ import app.ledger.core.geo.LedgerMapPoint
 import app.ledger.core.geo.LedgerMapState
 import app.ledger.core.geo.LedgerMapStyleConfiguration
 import app.ledger.feature.analysis.AnalysisDestination
+import app.ledger.feature.analysis.AnalysisActions
 import app.ledger.feature.analysis.AnalysisPolicy
-import app.ledger.feature.analysis.AnalysisScreenAction
 import app.ledger.feature.analysis.R as AnalysisR
 
 @Composable

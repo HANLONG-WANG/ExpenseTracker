@@ -9,8 +9,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
+import app.ledger.feature.planning.ProjectGoalActions
 import app.ledger.feature.planning.ProjectGoalDestination
-import app.ledger.feature.planning.ProjectGoalScreenAction
 import app.ledger.finance.domain.GoalMovementKind
 import app.ledger.feature.planning.R as PlanningR
 
@@ -40,13 +40,13 @@ internal fun ProjectGoalRootDestination(
     val projectId = encodedArguments.stableId("projectId")
     val goalId = encodedArguments.stableId("goalId")
     val movementKind = encodedArguments["kind"]?.let { value -> GoalMovementKind.entries.singleOrNull { it.name == value } }
-    val uiState by viewModel.projectGoalUiState.collectAsStateWithLifecycle()
+    val state by viewModel.projectGoal.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, projectId, goalId, movementKind) {
         viewModel.loadProjectGoal(screenId, projectId, goalId, movementKind)
     }
     ProjectGoalDestination(
         screenId,
-        uiState.loadState,
+        state,
         encodedArguments,
         ProjectGoalActions(
             onRetry = { viewModel.loadProjectGoal(screenId, projectId, goalId, movementKind) },

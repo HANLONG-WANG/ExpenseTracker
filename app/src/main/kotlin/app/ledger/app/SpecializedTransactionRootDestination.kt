@@ -6,9 +6,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
+import app.ledger.feature.record.SpecializedTransactionActions
 import app.ledger.feature.record.SpecializedTransactionDestination
 import app.ledger.feature.record.SpecializedTransactionLoadState
-import app.ledger.feature.record.SpecializedTransactionScreenAction
 
 @Composable
 internal fun SpecializedTransactionRootDestination(

@@ -5,8 +5,8 @@ package app.ledger.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.ledger.feature.transfer.ImportWizardActions
 import app.ledger.feature.transfer.ImportWizardScreen
-import app.ledger.feature.transfer.ImportWizardScreenAction
 
 @Composable
 internal fun ImportRootDestination(viewModel: AppRootViewModel, onNavigationChanged: () -> Unit) {

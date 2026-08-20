@@ -7,12 +7,8 @@
     <string name="record_location_permission_action">Permission settings</string>
     <string name="record_location_timeout">The 3-second location wait ended. This record will have no location and will not be updated later.</string>
     <string name="record_location_map_unavailable">The map is unavailable. You can still save the record.</string>
-    <string name="record_location_map_summary">Tap the map to set or move this transaction’s location</string>
-    <string name="record_location_map_caption">Saved locations</string>
     <string name="record_location_map_name">Name</string>
     <string name="record_location_map_coordinates">Coordinates</string>
-    <string name="record_location_show_list">Show location list</string>
-    <string name="record_location_hide_list">Hide location list</string>
     <string name="record_location_latitude">Latitude</string>
     <string name="record_location_longitude">Longitude</string>
     <string name="record_location_coordinate_invalid">Enter valid decimal-degree coordinates.</string>
@@ -113,4 +109,6 @@
     <string name="batch_entry_title">Batch entry</string><string name="batch_paste_input">Paste TSV rows</string><string name="batch_paste_format">Order: type, category, major-unit amount, account, merchant, ISO time, project. Names resolve only against encrypted local references.</string>
     <string name="batch_discard_title">Discard the batch draft?</string><string name="batch_discard_message">The draft exists only in memory. Leaving cannot be undone and the ledger will remain unchanged.</string>
     <string name="batch_undo">Undo batch with legal reversals</string>
+    <string name="batch_keep_editing">Keep editing</string>
+    <string name="batch_error_date">The date and time are invalid.</string>
 </resources>

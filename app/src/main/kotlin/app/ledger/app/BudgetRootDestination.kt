@@ -36,11 +36,11 @@ internal fun BudgetRootDestination(
 ) {
     val month = encodedArguments["yearMonth"]?.toBudgetYearMonthOrNull() ?: viewModel.currentBudgetMonth()
     val templateId = encodedArguments["templateId"]?.let { StableId.parse(it).getOrNull() }
-    val uiState by viewModel.budgetUiState.collectAsStateWithLifecycle()
+    val state by viewModel.budget.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, month, templateId) { viewModel.loadBudget(month, templateId, screenId) }
     BudgetDestination(
         screenId,
-        uiState.loadState,
+        state,
         encodedArguments,
         { action ->
             when (action) {
@@ -64,7 +64,7 @@ internal fun BudgetRootDestination(
                 is BudgetScreenAction.TemplateNameChanged -> viewModel.updateBudgetTemplateName(action.value)
                 BudgetScreenAction.SaveTemplate -> viewModel.saveBudgetTemplate()
                 is BudgetScreenAction.AdjustmentAmountChanged -> viewModel.updateBudgetAdjustmentAmount(action.value)
-                BudgetScreenAction.AdjustmentSource -> viewModel.selectBudgetAdjustmentSource()
+                BudgetScreenAction.AdjustmentSource -> viewModel.selectBudgetAdjustmentSource(archivedOnly = false)
                 BudgetScreenAction.AdjustmentTarget -> viewModel.selectBudgetAdjustmentTarget()
                 is BudgetScreenAction.SaveAdjustment -> viewModel.saveBudgetAdjustment(action.kind)
             }

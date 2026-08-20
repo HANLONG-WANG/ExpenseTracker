@@ -99,18 +99,27 @@ internal fun ReadyRootScaffold(
             },
         )
     }
-    val referenceUiState by viewModel.referenceDataUiState.collectAsStateWithLifecycle()
-    val recordUiState by viewModel.ordinaryRecordUiState.collectAsStateWithLifecycle()
+    val referenceState by viewModel.referenceData.collectAsStateWithLifecycle()
+    val referencePending by viewModel.referenceMutationPending.collectAsStateWithLifecycle()
+    val recordState by viewModel.ordinaryRecord.collectAsStateWithLifecycle()
+    val recordPending by viewModel.ordinaryRecordPending.collectAsStateWithLifecycle()
     val batchState by viewModel.batchRecord.collectAsStateWithLifecycle()
-    val specializedUiState by viewModel.specializedTransactionUiState.collectAsStateWithLifecycle()
-    val refundUiState by viewModel.refundUiState.collectAsStateWithLifecycle()
+    val specializedState by viewModel.specializedTransaction.collectAsStateWithLifecycle()
+    val specializedPending by viewModel.specializedTransactionPending.collectAsStateWithLifecycle()
+    val refundState by viewModel.refund.collectAsStateWithLifecycle()
+    val refundPending by viewModel.refundPending.collectAsStateWithLifecycle()
     val currencySettings by viewModel.currencySettings.collectAsStateWithLifecycle()
-    val journalUiState by viewModel.journalUiState.collectAsStateWithLifecycle()
-    val creditUiState by viewModel.creditUiState.collectAsStateWithLifecycle()
-    val installmentUiState by viewModel.installmentUiState.collectAsStateWithLifecycle()
-    val loanUiState by viewModel.loanUiState.collectAsStateWithLifecycle()
-    val settlementUiState by viewModel.settlementUiState.collectAsStateWithLifecycle()
-    val automationUiState by viewModel.automationUiState.collectAsStateWithLifecycle()
+    val journalState by viewModel.journal.collectAsStateWithLifecycle()
+    val creditState by viewModel.credit.collectAsStateWithLifecycle()
+    val creditPending by viewModel.creditPending.collectAsStateWithLifecycle()
+    val installmentState by viewModel.installment.collectAsStateWithLifecycle()
+    val installmentPending by viewModel.installmentPending.collectAsStateWithLifecycle()
+    val loanState by viewModel.loan.collectAsStateWithLifecycle()
+    val loanPending by viewModel.loanPending.collectAsStateWithLifecycle()
+    val settlementState by viewModel.settlement.collectAsStateWithLifecycle()
+    val settlementPending by viewModel.settlementPending.collectAsStateWithLifecycle()
+    val automationState by viewModel.automation.collectAsStateWithLifecycle()
+    val automationPending by viewModel.automationPending.collectAsStateWithLifecycle()
     val launchAttachmentPicker = rememberRecordAttachmentPicker { uri ->
         if (viewModel.navigator.currentKey.contract.screenId.value == "REC-024") {
             viewModel.importBatchAttachment(uri)
@@ -203,44 +212,44 @@ internal fun ReadyRootScaffold(
         },
         fixedAction = settlementFixedAction(
             navigator.currentKey.contract.screenId.value,
-            settlementUiState.loadState,
-            settlementUiState.submitting,
+            settlementState,
+            settlementPending,
             viewModel::saveSettlement,
         ) ?: automationFixedAction(
             navigator.currentKey.contract.screenId.value,
-            automationUiState.loadState,
-            automationUiState.submitting,
+            automationState,
+            automationPending,
             viewModel::saveAutomationBlueprint,
             viewModel::saveAutomationRecurrence,
         ) ?: loanFixedAction(
             navigator.currentKey.contract.screenId.value,
-            loanUiState.loadState,
-            loanUiState.submitting,
+            loanState,
+            loanPending,
             viewModel::saveLoan,
         ) ?: installmentFixedAction(
             navigator.currentKey.contract.screenId.value,
-            installmentUiState.loadState,
-            installmentUiState.submitting,
+            installmentState,
+            installmentPending,
             viewModel::saveInstallment,
         ) ?: creditFixedAction(
             navigator.currentKey.contract.screenId.value,
-            creditUiState.loadState,
-            creditUiState.submitting,
+            creditState,
+            creditPending,
             viewModel::saveCredit,
         ) ?: refundFixedAction(
             navigator.currentKey.contract.screenId.value,
-            refundUiState.loadState,
-            refundUiState.submitting,
+            refundState,
+            refundPending,
             viewModel::saveRefund,
         ) ?: specializedTransactionFixedAction(
             navigator.currentKey.contract.screenId.value,
-            specializedUiState.loadState,
-            specializedUiState.submitting,
+            specializedState,
+            specializedPending,
             viewModel::saveSpecializedTransaction,
         ) ?: ordinaryRecordFixedAction(
             navigator.currentKey.contract.screenId.value,
-            recordUiState.loadState,
-            recordUiState.submitting,
+            recordState,
+            recordPending,
             viewModel::saveOrdinaryRecord,
         ),
         bottomBar = {
@@ -341,7 +350,7 @@ internal fun ReadyRootScaffold(
                     val key = screenState.destination
                     val screenId = key.contract.screenId.value
                     when {
-                        screenId.startsWith("IMP-") -> ImportRootDestination(viewModel)
+                        screenId.startsWith("IMP-") -> ImportRootDestination(viewModel, onNavigationChanged = { navigationEpoch += 1 })
                         screenId.startsWith("EXP-") -> ExportRootDestination(screenId, viewModel, onNavigationChanged = { navigationEpoch += 1 })
                         screenId.startsWith("BKP-") || screenId == "SYS-003" -> BackupRootDestination(screenId, viewModel, onNavigationChanged = { navigationEpoch += 1 })
                         screenId.startsWith("RST-") || screenId == "CLR-002" -> RestoreRootDestination(screenId, viewModel, onNavigationChanged = { navigationEpoch += 1 })

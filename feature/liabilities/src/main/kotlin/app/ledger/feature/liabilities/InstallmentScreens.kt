@@ -34,6 +34,7 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
+import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
@@ -68,9 +69,8 @@ public fun InstallmentDestination(
     screenId: String,
     state: InstallmentLoadState,
     encodedArguments: Map<String, String>,
-    onAction: (InstallmentScreenAction) -> Unit,
+    actions: InstallmentActions,
 ) {
-    val actions = installmentActions(onAction)
     when (state) {
         InstallmentLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.installment_loading))
         is InstallmentLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.installment_load_failed), actions.onRetry)

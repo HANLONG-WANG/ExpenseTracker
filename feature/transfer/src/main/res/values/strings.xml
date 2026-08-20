@@ -87,4 +87,10 @@
     <string name="import_duplicate_exact_reference">来源记录与既有交易完全相同</string><string name="import_duplicate_content_hash">交易内容与既有交易相同</string><string name="import_duplicate_date_amount_account">日期、金额和账户与既有交易相同</string><string name="import_duplicate_unknown">可能与既有交易重复</string>
     <string name="import_validation_duplicate_resolution">请先决定如何处理疑似重复项。</string><string name="import_validation_entity_mapping">请为缺失实体选择现有记录或创建新记录。</string><string name="import_validation_transformation">来源字段无法按当前规则转换。</string><string name="import_validation_historical_rate">该行缺少所需的历史汇率。</string><string name="import_validation_manual_rate">该币种需要填写手工汇率。</string><string name="import_validation_multiple_columns">多个来源列映射到了同一个目标字段。</string><string name="import_validation_transaction_kind">该交易类型不受支持。</string><string name="import_validation_failed_explanation">无法完成导入校验；账本尚未改变，请重试。</string><string name="import_validation_unknown">此行包含无法导入的值，请检查来源数据。</string>
     <string name="import_preview_ready">可供校验</string><string name="import_preview_status_unknown">状态不可用</string><string name="import_history_batch">导入批次</string>
+    <string name="backup_failure_password">恢复密码无效或未配置，备份未完成。</string>
+    <string name="backup_failure_vault">无法为保险箱内容创建恢复封装，备份未完成。</string>
+    <string name="backup_failure_drive_auth">Google Drive 授权已失效，请重新登录。</string>
+    <string name="backup_failure_network">网络不可用，备份未完成。</string>
+    <string name="backup_failure_space">可用空间不足，备份未完成。</string>
+    <string name="backup_failure_cancelled">备份已取消，未发布快照。</string>
 </resources>

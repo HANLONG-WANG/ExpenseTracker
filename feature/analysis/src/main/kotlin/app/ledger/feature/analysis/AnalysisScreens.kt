@@ -62,6 +62,7 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
+import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerChartUiModel
 import app.ledger.core.designsystem.LedgerColumnChart
 import app.ledger.core.designsystem.LedgerEmptyState
@@ -93,57 +94,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 
-sealed interface AnalysisScreenAction {
-    data class Navigate(val screenId: String, val report: FixedReport?, val queryId: DrilldownQueryId?) : AnalysisScreenAction
-    data object Retry : AnalysisScreenAction
-    data object PreviousPeriod : AnalysisScreenAction
-    data object NextPeriod : AnalysisScreenAction
-    data object CycleMeasure : AnalysisScreenAction
-    data object CycleDimension : AnalysisScreenAction
-    data object CycleGranularity : AnalysisScreenAction
-    data object CycleComparison : AnalysisScreenAction
-    data object ApplyFilter : AnalysisScreenAction
-    data object Export : AnalysisScreenAction
-    data object LoadMore : AnalysisScreenAction
-    data object RunIntegrity : AnalysisScreenAction
-    data object RepairProjection : AnalysisScreenAction
-    data object ToggleTechnicalDetails : AnalysisScreenAction
-    data class NavigateP26(val screenId: String, val id: StableId?, val forecastKey: ForecastKey?) : AnalysisScreenAction
-    data class DraftNameChanged(val value: String) : AnalysisScreenAction
-    data object SaveReport : AnalysisScreenAction
-    data object PreviewReport : AnalysisScreenAction
-    data class CopyReport(val reportId: ReportDefinitionId) : AnalysisScreenAction
-    data class SelectVisualization(val visualization: ReportVisualization) : AnalysisScreenAction
-    data object SaveDashboard : AnalysisScreenAction
-    data class ToggleDashboardReport(val reportId: ReportDefinitionId) : AnalysisScreenAction
-    data class MoveDashboardReport(val reportId: ReportDefinitionId, val offset: Int) : AnalysisScreenAction
-    data class ToggleDashboardWidth(val reportId: ReportDefinitionId) : AnalysisScreenAction
-    data class SaveAnomalyRule(val ruleId: AnomalyRuleId?) : AnalysisScreenAction
-    data class EditAnomalyRule(val ruleId: AnomalyRuleId?) : AnalysisScreenAction
-    data object CycleAnomalyType : AnalysisScreenAction
-    data class AnomalyThresholdChanged(val value: String) : AnalysisScreenAction
-    data class AnomalyLookbackChanged(val value: String) : AnalysisScreenAction
-    data class SelectExportFormat(val format: ReportExportFormat) : AnalysisScreenAction
-    data object PrepareExport : AnalysisScreenAction
-    data object CycleMapMode : AnalysisScreenAction
-    data object CycleMapWeight : AnalysisScreenAction
-    data object CycleMapAggregation : AnalysisScreenAction
-    data object CycleMapPresentation : AnalysisScreenAction
-    data object ToggleMapSpecialTransactions : AnalysisScreenAction
-    data object ResetMapFilters : AnalysisScreenAction
-    data object CycleMapAccountFilter : AnalysisScreenAction
-    data object CycleMapCategoryFilter : AnalysisScreenAction
-    data object CycleMapMerchantFilter : AnalysisScreenAction
-    data object CycleMapPlaceFilter : AnalysisScreenAction
-    data object CycleMapProjectFilter : AnalysisScreenAction
-    data object CycleMapAmountFilter : AnalysisScreenAction
-    data class RemoveMapFilter(val key: String) : AnalysisScreenAction
-    data class MapViewportChanged(val viewport: MapViewport) : AnalysisScreenAction
-    data class SelectMapPoint(val pointId: StableId) : AnalysisScreenAction
-    data class OpenMapTransactions(val queryId: DrilldownQueryId) : AnalysisScreenAction
-}
-
-internal class AnalysisActions(
+data class AnalysisActions(
     val onNavigate: (screenId: String, report: FixedReport?, queryId: DrilldownQueryId?) -> Unit,
     val onRetry: () -> Unit,
     val onPreviousPeriod: () -> Unit,
@@ -204,61 +155,11 @@ internal class AnalysisActions(
     val onOpenMapTransactions: (app.ledger.analytics.domain.DrilldownQueryId) -> Unit = {},
 )
 
-internal fun analysisActions(onAction: (AnalysisScreenAction) -> Unit): AnalysisActions = AnalysisActions(
-    onNavigate = { screenId, report, query -> onAction(AnalysisScreenAction.Navigate(screenId, report, query)) },
-    onRetry = { onAction(AnalysisScreenAction.Retry) },
-    onPreviousPeriod = { onAction(AnalysisScreenAction.PreviousPeriod) },
-    onNextPeriod = { onAction(AnalysisScreenAction.NextPeriod) },
-    onCycleMeasure = { onAction(AnalysisScreenAction.CycleMeasure) },
-    onCycleDimension = { onAction(AnalysisScreenAction.CycleDimension) },
-    onCycleGranularity = { onAction(AnalysisScreenAction.CycleGranularity) },
-    onCycleComparison = { onAction(AnalysisScreenAction.CycleComparison) },
-    onApplyFilter = { onAction(AnalysisScreenAction.ApplyFilter) },
-    onExport = { onAction(AnalysisScreenAction.Export) },
-    onLoadMore = { onAction(AnalysisScreenAction.LoadMore) },
-    onRunIntegrity = { onAction(AnalysisScreenAction.RunIntegrity) },
-    onRepairProjection = { onAction(AnalysisScreenAction.RepairProjection) },
-    onToggleTechnicalDetails = { onAction(AnalysisScreenAction.ToggleTechnicalDetails) },
-    onNavigateP26 = { screenId, id, key -> onAction(AnalysisScreenAction.NavigateP26(screenId, id, key)) },
-    onDraftNameChanged = { onAction(AnalysisScreenAction.DraftNameChanged(it)) },
-    onSaveReport = { onAction(AnalysisScreenAction.SaveReport) },
-    onPreviewReport = { onAction(AnalysisScreenAction.PreviewReport) },
-    onCopyReport = { onAction(AnalysisScreenAction.CopyReport(it)) },
-    onSelectVisualization = { onAction(AnalysisScreenAction.SelectVisualization(it)) },
-    onSaveDashboard = { onAction(AnalysisScreenAction.SaveDashboard) },
-    onToggleDashboardReport = { onAction(AnalysisScreenAction.ToggleDashboardReport(it)) },
-    onMoveDashboardReport = { id, offset -> onAction(AnalysisScreenAction.MoveDashboardReport(id, offset)) },
-    onToggleDashboardWidth = { onAction(AnalysisScreenAction.ToggleDashboardWidth(it)) },
-    onSaveAnomalyRule = { onAction(AnalysisScreenAction.SaveAnomalyRule(it)) },
-    onEditAnomalyRule = { onAction(AnalysisScreenAction.EditAnomalyRule(it)) },
-    onCycleAnomalyType = { onAction(AnalysisScreenAction.CycleAnomalyType) },
-    onAnomalyThresholdChanged = { onAction(AnalysisScreenAction.AnomalyThresholdChanged(it)) },
-    onAnomalyLookbackChanged = { onAction(AnalysisScreenAction.AnomalyLookbackChanged(it)) },
-    onSelectExportFormat = { onAction(AnalysisScreenAction.SelectExportFormat(it)) },
-    onPrepareExport = { onAction(AnalysisScreenAction.PrepareExport) },
-    onCycleMapMode = { onAction(AnalysisScreenAction.CycleMapMode) },
-    onCycleMapWeight = { onAction(AnalysisScreenAction.CycleMapWeight) },
-    onCycleMapAggregation = { onAction(AnalysisScreenAction.CycleMapAggregation) },
-    onCycleMapPresentation = { onAction(AnalysisScreenAction.CycleMapPresentation) },
-    onToggleMapSpecialTransactions = { onAction(AnalysisScreenAction.ToggleMapSpecialTransactions) },
-    onResetMapFilters = { onAction(AnalysisScreenAction.ResetMapFilters) },
-    onCycleMapAccountFilter = { onAction(AnalysisScreenAction.CycleMapAccountFilter) },
-    onCycleMapCategoryFilter = { onAction(AnalysisScreenAction.CycleMapCategoryFilter) },
-    onCycleMapMerchantFilter = { onAction(AnalysisScreenAction.CycleMapMerchantFilter) },
-    onCycleMapPlaceFilter = { onAction(AnalysisScreenAction.CycleMapPlaceFilter) },
-    onCycleMapProjectFilter = { onAction(AnalysisScreenAction.CycleMapProjectFilter) },
-    onCycleMapAmountFilter = { onAction(AnalysisScreenAction.CycleMapAmountFilter) },
-    onRemoveMapFilter = { onAction(AnalysisScreenAction.RemoveMapFilter(it)) },
-    onMapViewportChanged = { onAction(AnalysisScreenAction.MapViewportChanged(it)) },
-    onSelectMapPoint = { onAction(AnalysisScreenAction.SelectMapPoint(it)) },
-    onOpenMapTransactions = { onAction(AnalysisScreenAction.OpenMapTransactions(it)) },
-)
-
 @Composable
 fun AnalysisDestination(
     screenId: String,
     state: AnalysisLoadState,
-    onAction: (AnalysisScreenAction) -> Unit,
+    actions: AnalysisActions,
     mapContent: @Composable (ConsumptionMapResult, Boolean) -> Unit = { _, _ -> },
 ) {
     if (state is AnalysisLoadState.Loading) {
@@ -1085,17 +986,7 @@ private val COMPARISON_LABELS = mapOf(
     ComparisonMode.TREND to R.string.analysis_trend,
     ComparisonMode.FORECAST to R.string.analysis_forecast,
 )
-private val INTEGRITY_LABELS = mapOf(
-    IntegrityCheckKey.DATABASE to R.string.analysis_integrity_database,
-    IntegrityCheckKey.FOREIGN_KEYS to R.string.analysis_integrity_foreign_keys,
-    IntegrityCheckKey.JOURNALS to R.string.analysis_integrity_journals,
-    IntegrityCheckKey.POSTING_CURRENCIES to R.string.analysis_integrity_posting_currencies,
-    IntegrityCheckKey.REVISIONS to R.string.analysis_integrity_revisions,
-    IntegrityCheckKey.PROJECTIONS to R.string.analysis_integrity_projections,
-    IntegrityCheckKey.FTS to R.string.analysis_integrity_fts,
-    IntegrityCheckKey.RTREE to R.string.analysis_integrity_rtree,
-    IntegrityCheckKey.FACT_REBUILD to R.string.analysis_integrity_fact_rebuild,
-)
+private val INTEGRITY_LABELS = IntegrityCheckKey.entries.associateWith { R.string.analysis_integrity_check }
 private val SEVERITY_LABELS = mapOf(
     IntegritySeverity.PASS to R.string.analysis_integrity_passed,
     IntegritySeverity.WARNING to R.string.analysis_integrity_warnings,

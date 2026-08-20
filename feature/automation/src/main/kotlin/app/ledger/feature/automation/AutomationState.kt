@@ -238,7 +238,7 @@ public object AutomationPolicy {
             else -> true
         }
         draft.blueprintId != null && ruleValid && start != null && (draft.endDate.isBlank() || end != null) &&
-            (start == null || end == null || end >= start) &&
+            (end == null || end >= start) &&
             (draft.maxOccurrences.isBlank() || draft.maxOccurrences.toIntOrNull()?.let { it > 0 } == true)
     } == true
 

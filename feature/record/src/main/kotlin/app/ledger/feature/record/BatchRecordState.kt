@@ -3,6 +3,7 @@
 package app.ledger.feature.record
 
 import app.ledger.core.common.StableId
+import app.ledger.core.common.getOrNull
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.MoneyExpressionEvaluator
@@ -18,6 +19,7 @@ import java.math.RoundingMode
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 public enum class BatchRowKind { EXPENSE, INCOME, REFUND }
@@ -121,7 +123,7 @@ public object BatchRecordPolicy {
             amountExpression = expression,
             userMinor = minor,
             accountMinor = if (accountCurrency == currency) minor else row.accountMinor,
-            baseMinor = if (snapshot.baseCurrency == currency) minor else row.baseMinor,
+            baseMinor = if (snapshot.references.baseCurrency == currency) minor else row.baseMinor,
         )
     }
 
@@ -261,11 +263,13 @@ public object BatchRecordPolicy {
             val account = snapshot.references.accounts.singleOrNull { it.name == cells.getOrNull(3)?.trim() && it.status.name == "ACTIVE" }
             val amountExpression = cells.getOrNull(2)?.trim().orEmpty()
             val minor = account?.currency?.let { parseMajorAmount(amountExpression, it, Locale.ROOT) }
-            if (kind == null || minor == null || minor <= 0L || category == null || account == null) {
+            if (kind == null || minor == null || minor <= 0L || category == null) {
                 rejected += index + 1
             } else {
                 val merchant = snapshot.references.merchants.singleOrNull { it.name == cells.getOrNull(4)?.trim() }
                 val project = snapshot.projects.singleOrNull { it.name == cells.getOrNull(6)?.trim() && it.active }
+                val dateTimeText = cells.getOrNull(5)?.trim().orEmpty()
+                val occurredAt = dateTimeText.takeIf(String::isNotEmpty)?.let { parseOccurredAt(it, zoneId) } ?: defaultInstant
                 rows += newRow(idAtLine(index), snapshot, occurredAt, zoneId, kind).copy(
                     categoryId = category.id,
                     amountExpression = amountExpression,
@@ -287,7 +291,7 @@ public object BatchRecordPolicy {
 
     public fun majorToMinor(value: String, currencyCode: String): Long? = runCatching {
         val currency = CurrencyCode.parse(currencyCode).getOrNull() ?: return null
-        val fractionDigits = currencies.find(currency)?.fractionDigits ?: return null
+        val fractionDigits = currencyCatalog.find(currency)?.fractionDigits ?: return null
         BigDecimal(value.trim().replace(',', '.'))
             .movePointRight(fractionDigits)
             .setScale(0, RoundingMode.UNNECESSARY)
@@ -297,7 +301,7 @@ public object BatchRecordPolicy {
 
     public fun minorToMajor(value: Long?, currencyCode: String): String = value?.let { minor ->
         val currency = CurrencyCode.parse(currencyCode).getOrNull() ?: return@let minor.toString()
-        val fractionDigits = currencies.find(currency)?.fractionDigits ?: return@let minor.toString()
+        val fractionDigits = currencyCatalog.find(currency)?.fractionDigits ?: return@let minor.toString()
         BigDecimal.valueOf(minor, fractionDigits).stripTrailingZeros().toPlainString()
     }.orEmpty()
 

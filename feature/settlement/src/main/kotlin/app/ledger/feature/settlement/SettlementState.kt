@@ -70,7 +70,6 @@ public data class SettlementDraft(
     val payeeParticipantId: StableId? = null,
     val accountId: StableId? = null,
     val projectId: StableId? = null,
-    val currency: CurrencyCode? = null,
     val participants: List<SettlementParticipantDraft> = emptyList(),
 )
 

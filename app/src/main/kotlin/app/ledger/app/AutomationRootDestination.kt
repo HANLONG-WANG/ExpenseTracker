@@ -11,6 +11,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerSaveFab
+import app.ledger.feature.automation.AutomationActions
 import app.ledger.feature.automation.AutomationDestination
 import app.ledger.feature.automation.AutomationLoadState
 import app.ledger.feature.automation.AutomationPresentation
@@ -43,7 +44,7 @@ internal fun AutomationRootDestination(
     val blueprintId = encodedArguments.stableId("templateId")
     val seriesId = encodedArguments.stableId("seriesId")
     val candidateId = encodedArguments.stableId("candidateId")
-    val uiState by viewModel.automationUiState.collectAsStateWithLifecycle()
+    val state by viewModel.automation.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, blueprintId, seriesId, candidateId) {
         viewModel.loadAutomation(screenId, blueprintId, seriesId, candidateId)
     }

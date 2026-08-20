@@ -143,7 +143,7 @@ public fun MetricCard(
     LedgerCard(
         modifier = modifier.heightIn(min = LedgerTheme.dimensions.cardMinHeight),
         onClick = onClick,
-        containerColor = if (variant == MetricCardVariant.EMPHASIZED) LedgerTheme.colors.material.primaryContainer else LedgerTheme.colors.material.surfaceContainer,
+        variant = if (variant == MetricCardVariant.EMPHASIZED) LedgerCardVariant.EMPHASIZED else LedgerCardVariant.STANDARD,
     ) {
         Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

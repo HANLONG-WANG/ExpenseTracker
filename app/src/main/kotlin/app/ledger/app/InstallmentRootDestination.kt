@@ -11,10 +11,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerSaveFab
+import app.ledger.feature.liabilities.InstallmentActions
 import app.ledger.feature.liabilities.InstallmentDestination
 import app.ledger.feature.liabilities.InstallmentLoadState
 import app.ledger.feature.liabilities.InstallmentPresentation
-import app.ledger.feature.liabilities.InstallmentScreenAction
 import app.ledger.feature.liabilities.R as LiabilitiesR
 
 @Composable
@@ -38,11 +38,11 @@ internal fun InstallmentRootDestination(
 ) {
     val planId = encodedArguments.stableId("planId")
     val purchaseId = encodedArguments.stableId("purchaseTransactionId")
-    val uiState by viewModel.installmentUiState.collectAsStateWithLifecycle()
+    val state by viewModel.installment.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, planId, purchaseId) { viewModel.loadInstallment(screenId, planId, purchaseId) }
     InstallmentDestination(
         screenId,
-        uiState.loadState,
+        state,
         encodedArguments,
         InstallmentActions(
             onRetry = { viewModel.loadInstallment(screenId, planId, purchaseId) },

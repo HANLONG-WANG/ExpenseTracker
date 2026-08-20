@@ -63,6 +63,7 @@ dependencies {
     implementation(project(":core:geo"))
     implementation(project(":core:telemetry"))
     implementation(project(":core:files"))
+    implementation(project(":core:database"))
     implementation(project(":finance:application"))
     implementation(project(":finance:data"))
     implementation(project(":analytics:data"))

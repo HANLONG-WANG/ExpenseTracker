@@ -35,4 +35,26 @@
     <string name="global_diagnostics">Privacy and diagnostics</string><string name="global_diagnostics_explanation">Audit fixed allowlist queues and independent controls</string>
     <string name="global_clear_local">Clear local data</string><string name="global_clear_local_explanation">Authenticated local deletion; exports and cloud backups remain</string>
     <string name="global_hide_amounts">Hide amounts</string><string name="global_show_amounts">Show amounts</string>
+    <string name="global_reference_saved">Saved</string>
+    <string name="global_reference_archived">Archived</string>
+    <string name="global_reference_deleted">Permanently deleted</string>
+    <string name="global_reference_mutation_failed">The operation was not completed. Check the fields and try again.</string>
+    <string name="global_journal_moved_to_trash">Transaction moved to Trash</string>
+    <string name="global_journal_restored">Transaction restored</string>
+    <string name="global_journal_mutation_failed">The transaction operation was not completed. Try again.</string>
+    <string name="global_journal_permanently_deleted">Transaction permanently deleted</string>
+    <string name="global_planning_updated">Project or goal updated</string>
+    <string name="global_loan_updated">Loan contract saved</string>
+    <string name="global_settlement_updated">Shared-expense activity saved</string>
+    <string name="global_automation_updated">Template or recurrence saved</string>
+    <string name="export_filter_all_transactions">All transactions</string>
+    <string name="export_filter_search">Search text</string>
+    <string name="export_filter_occurrence_time">Occurrence time</string>
+    <string name="export_filter_types">%1$d transaction types</string>
+    <string name="export_filter_accounts">%1$d accounts</string>
+    <string name="export_filter_categories">%1$d categories</string>
+    <string name="export_filter_states">%1$d states</string>
+    <string name="export_filter_amount">Amount range</string>
+    <string name="export_filter_attachment">Attachment condition</string>
+    <string name="export_filter_budget">Budget condition</string>
 </resources>

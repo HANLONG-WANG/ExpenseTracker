@@ -110,7 +110,7 @@ public sealed interface AccountsScreenAction {
     public data object Retry : AccountsScreenAction
 }
 
-internal class AccountsActions(
+public data class AccountsActions(
     val onNavigate: (screenId: String, arguments: Map<String, StableId>) -> Unit,
     val onSelectAccountType: (UserAccountType) -> Unit,
     val onSaveAccount: (AccountEditorSubmission) -> Unit,

@@ -53,29 +53,7 @@ import java.time.format.FormatStyle
 import java.util.Currency
 import java.util.Locale
 
-public sealed interface OnboardingScreenAction {
-    public data class LanguageChanged(val language: OnboardingLanguage) : OnboardingScreenAction
-    public data class CurrencySearchChanged(val query: String) : OnboardingScreenAction
-    public data class CurrencySelected(val code: String) : OnboardingScreenAction
-    public data class ZoneSearchChanged(val query: String) : OnboardingScreenAction
-    public data class ZoneSelected(val zoneId: String) : OnboardingScreenAction
-    public data class PrivacyAccepted(val accepted: Boolean) : OnboardingScreenAction
-    public data class TelemetryChanged(val enabled: Boolean) : OnboardingScreenAction
-    public data class CrashReportingChanged(val enabled: Boolean) : OnboardingScreenAction
-    public data class AppLockChanged(val enabled: Boolean) : OnboardingScreenAction
-    public data class AppLockTimeoutChanged(val timeoutMillis: Long) : OnboardingScreenAction
-    public data class RecoveryPasswordChanged(val value: String) : OnboardingScreenAction
-    public data class RecoveryPasswordConfirmationChanged(val value: String) : OnboardingScreenAction
-    public data class AccountNameChanged(val value: String) : OnboardingScreenAction
-    public data class AccountTypeChanged(val type: InitialAccountType) : OnboardingScreenAction
-    public data class CategoryNameChanged(val value: String) : OnboardingScreenAction
-    public data class CategoryDirectionChanged(val direction: InitialCategoryDirection) : OnboardingScreenAction
-    public data object Back : OnboardingScreenAction
-    public data object Next : OnboardingScreenAction
-    public data object Skip : OnboardingScreenAction
-}
-
-internal class OnboardingActions(
+public data class OnboardingActions(
     val onLanguage: (OnboardingLanguage) -> Unit,
     val onCurrencySearch: (String) -> Unit,
     val onCurrency: (String) -> Unit,
@@ -99,32 +77,10 @@ internal class OnboardingActions(
     val onSkip: () -> Unit,
 )
 
-internal fun onboardingActions(onAction: (OnboardingScreenAction) -> Unit): OnboardingActions = OnboardingActions(
-    onLanguage = { onAction(OnboardingScreenAction.LanguageChanged(it)) },
-    onCurrencySearch = { onAction(OnboardingScreenAction.CurrencySearchChanged(it)) },
-    onCurrency = { onAction(OnboardingScreenAction.CurrencySelected(it)) },
-    onZoneSearch = { onAction(OnboardingScreenAction.ZoneSearchChanged(it)) },
-    onZone = { onAction(OnboardingScreenAction.ZoneSelected(it)) },
-    onPrivacyAccepted = { onAction(OnboardingScreenAction.PrivacyAccepted(it)) },
-    onTelemetry = { onAction(OnboardingScreenAction.TelemetryChanged(it)) },
-    onCrashReporting = { onAction(OnboardingScreenAction.CrashReportingChanged(it)) },
-    onAppLock = { onAction(OnboardingScreenAction.AppLockChanged(it)) },
-    onAppLockTimeout = { onAction(OnboardingScreenAction.AppLockTimeoutChanged(it)) },
-    onRecoveryPassword = { onAction(OnboardingScreenAction.RecoveryPasswordChanged(it)) },
-    onRecoveryPasswordConfirmation = { onAction(OnboardingScreenAction.RecoveryPasswordConfirmationChanged(it)) },
-    onAccountName = { onAction(OnboardingScreenAction.AccountNameChanged(it)) },
-    onAccountType = { onAction(OnboardingScreenAction.AccountTypeChanged(it)) },
-    onCategoryName = { onAction(OnboardingScreenAction.CategoryNameChanged(it)) },
-    onCategoryDirection = { onAction(OnboardingScreenAction.CategoryDirectionChanged(it)) },
-    onBack = { onAction(OnboardingScreenAction.Back) },
-    onNext = { onAction(OnboardingScreenAction.Next) },
-    onSkip = { onAction(OnboardingScreenAction.Skip) },
-)
-
 @Composable
 public fun OnboardingScreen(
     state: OnboardingUiState,
-    onAction: (OnboardingScreenAction) -> Unit,
+    actions: OnboardingActions,
     modifier: Modifier = Modifier,
     snackbarController: LedgerSnackbarController = rememberLedgerSnackbarController(),
 ) {

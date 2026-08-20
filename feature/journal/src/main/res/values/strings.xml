@@ -22,6 +22,10 @@
     <string name="p15_journal_not_found">This transaction is unavailable.</string>
     <string name="p15_journal_user_input">User input</string>
     <string name="p15_journal_account_effects">Account impact</string>
+    <string name="p15_journal_account_increase">%1$s increased by %2$s</string>
+    <string name="p15_journal_account_decrease">%1$s decreased by %2$s</string>
+    <string name="p15_journal_account_change">%1$s changed by %2$s</string>
+    <string name="p15_journal_account_change_unavailable">Account change details unavailable</string>
     <string name="p15_journal_budget_semantics">Budget and statistics</string>
     <string name="p15_journal_fx">Foreign exchange evidence</string>
     <string name="p15_journal_rate_direction">1 %1$s = %2$s %3$s</string>

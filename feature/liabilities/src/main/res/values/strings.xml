@@ -60,4 +60,7 @@
     <string name="loan_before">调整前</string><string name="loan_after">调整后</string><string name="loan_saved_cost">预计节省成本</string><string name="loan_simulation_summary">%1$d 期 · 未来总支付 %2$s · 利息 %3$s · 费用 %4$s · 结束 %5$s</string>
     <string name="loan_apply_payment_now">本次支付总额</string><string name="loan_apply_principal">提前偿还本金</string><string name="loan_apply_penalty">违约金</string><string name="loan_apply_version_summary">将创建 %1$d 期的新计划，结束日期为 %2$s，并记录一笔实际还款。</string><string name="loan_reload_simulation">重新加载并计算</string>
     <string name="installment_rounding_other">其他舍入规则</string>
+    <string name="loan_account_required_title">需要贷款账户</string>
+    <string name="loan_account_required_body">先创建一个贷款账户，再记录贷款合同。</string>
+    <string name="loan_create_account">创建贷款账户</string>
 </resources>

@@ -11,6 +11,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerSaveFab
+import app.ledger.feature.liabilities.LoanActions
 import app.ledger.feature.liabilities.LoanDestination
 import app.ledger.feature.liabilities.LoanLoadState
 import app.ledger.feature.liabilities.LoanPresentation
@@ -48,13 +49,13 @@ internal fun LoanRootDestination(
     val trancheId = encodedArguments.loanStableId("trancheId")
     val transactionId = encodedArguments.loanStableId("transactionId")
     val simulationId = encodedArguments.loanStableId("simulationId")
-    val uiState by viewModel.loanUiState.collectAsStateWithLifecycle()
+    val state by viewModel.loan.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, contractId, trancheId, transactionId, simulationId) {
         viewModel.loadLoan(screenId, contractId, trancheId, transactionId, simulationId)
     }
     LoanDestination(
         screenId,
-        uiState.loadState,
+        state,
         encodedArguments,
         LoanActions(
             onRetry = { viewModel.loadLoan(screenId, contractId, trancheId, transactionId, simulationId) },

@@ -11,6 +11,8 @@
 
 package app.ledger.feature.journal
 
+import app.ledger.core.common.StableId
+import app.ledger.core.common.getOrNull
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,7 +86,6 @@ import app.ledger.finance.application.JournalBulkEditPatch
 import app.ledger.finance.application.JournalDetailView
 import app.ledger.finance.application.JournalFieldUpdate
 import app.ledger.finance.application.JournalRevisionView
-import app.ledger.finance.application.PurgeIneligibilityReason
 import app.ledger.finance.application.JournalSelectionMode
 import app.ledger.finance.application.JournalTransactionView
 import app.ledger.finance.application.PurgeIneligibilityReason
@@ -126,9 +127,8 @@ fun JournalDestination(
     encodedArguments: Map<String, String>,
     state: JournalLoadState,
     pages: Flow<PagingData<JournalTransactionView>>,
-    onAction: (JournalScreenAction) -> Unit,
+    actions: JournalActions,
 ) {
-    val actions = journalActions(onAction)
     val content = state as? JournalLoadState.Content
     when {
         !journalArgumentsValid(screenId, encodedArguments) -> LedgerErrorState(
@@ -699,11 +699,39 @@ private fun DetailScreen(state: JournalLoadState.Content, actions: JournalAction
         }
         item { DetailSection(stringResource(R.string.p15_journal_user_input), listOfNotNull(detail.amountExpression, detail.fullNote, detail.merchantName, detail.projectName)) }
         item { DetailSection(stringResource(R.string.p15_journal_location), listOfNotNull(detail.locationName)) }
-        item { DetailSection(stringResource(R.string.p15_journal_account_effects), detail.accountEffects) }
+        item {
+            DetailSection(
+                stringResource(R.string.p15_journal_account_effects),
+                detail.accountEffects.map { accountEffectLabel(it, locale) },
+            )
+        }
         item { DetailSection(stringResource(R.string.p15_journal_budget_semantics), listOfNotNull(detail.budgetSummary, detail.statisticalNature?.localizedNature())) }
         item { DetailSection(stringResource(R.string.p15_journal_fx), detail.fxEvidence.flatMap { it.localizedEvidence(locale, dateTimeFormatter) }) }
         item { DetailSection(stringResource(R.string.p15_journal_relationships), detail.relationshipSummaries) }
-        item { DetailSection(stringResource(R.string.p15_journal_attachments), detail.attachmentNames) }
+        item {
+            FormSection(stringResource(R.string.p15_journal_attachments)) {
+                if (detail.attachmentNames.isEmpty()) {
+                    LedgerText("—", LedgerTextRole.SUPPORTING)
+                } else {
+                    detail.attachmentIds.zip(detail.attachmentNames).forEach { (attachmentId, displayName) ->
+                        LedgerButton(
+                            displayName,
+                            { actions.onOpenAttachment(attachmentId) },
+                            Modifier.fillMaxWidth(),
+                            LedgerButtonVariant.TEXT,
+                        )
+                    }
+                }
+                if (detail.transaction.state == TransactionLifecycleState.ACTIVE && detail.transaction.kind in ORDINARY_KINDS) {
+                    LedgerButton(
+                        stringResource(R.string.p15_journal_manage_attachments),
+                        { actions.onEditById(detail.transaction.transactionId, detail.transaction.kind) },
+                        Modifier.fillMaxWidth(),
+                        LedgerButtonVariant.SECONDARY,
+                    )
+                }
+            }
+        }
         item {
             DetailSection(
                 stringResource(R.string.p15_journal_source),
@@ -725,7 +753,7 @@ private fun DetailScreen(state: JournalLoadState.Content, actions: JournalAction
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                     LedgerButton(
                         stringResource(R.string.p15_journal_edit_transaction),
-                        { actions.onEdit(detail.transaction.transactionId, detail.transaction.kind) },
+                        { actions.onEditById(detail.transaction.transactionId, detail.transaction.kind) },
                         Modifier.weight(1f),
                     )
                     if (detail.transaction.kind == TransactionKind.EXPENSE) {
@@ -792,7 +820,55 @@ private fun DetailSection(title: String, values: List<String>) {
     }
 }
 
+@Composable
+private fun accountEffectLabel(value: String, locale: Locale): String {
+    val encoded = value.split('|')
+    if (encoded.size == 4 && encoded[0] == "account-change") {
+        val minor = encoded[2].toLongOrNull()
+        val currency = currencyFromCode(encoded[3])
+        if (minor != null && currency != null) {
+            val amount = formattedMoney(kotlin.math.abs(minor), currency, locale)
+            return stringResource(
+                if (minor >= 0) R.string.p15_journal_account_increase else R.string.p15_journal_account_decrease,
+                encoded[1],
+                amount,
+            )
+        }
+    }
+    val legacy = LEGACY_ACCOUNT_EFFECT.matchEntire(value)
+    if (legacy != null) {
+        val currency = currencyFromCode(legacy.groupValues[4])
+        val minor = legacy.groupValues[3].toLongOrNull()
+        if (currency != null && minor != null) {
+            return stringResource(
+                R.string.p15_journal_account_change,
+                legacy.groupValues[1],
+                formattedMoney(kotlin.math.abs(minor), currency, locale),
+            )
+        }
+    }
+    return stringResource(R.string.p15_journal_account_change_unavailable)
+}
+
+private fun currencyFromCode(value: String): CurrencyCode? = when (val result = CurrencyCode.parse(value)) {
+    is DomainResult.Success -> result.value
+    is DomainResult.Failure -> null
+}
+
+private fun formattedMoney(minor: Long, currency: CurrencyCode, locale: Locale): String {
+    val formatter = LocaleCurrencyFormatter(JvmLegalTenderCurrencyCatalog.create())
+    return when (
+        val result = formatter.format(
+            MoneyFormatRequest(Money(minor, currency), locale, AmountSemantic.NEUTRAL, AmountVisibility.VISIBLE),
+        )
+    ) {
+        is DomainResult.Success -> result.value.formatted
+        is DomainResult.Failure -> "${currency.value} $minor"
+    }
+}
+
 private val ORDINARY_KINDS = setOf(TransactionKind.EXPENSE, TransactionKind.INCOME)
+private val LEGACY_ACCOUNT_EFFECT = Regex("^(.+):(debit|credit):(-?\\d+) ([A-Z]{3})$")
 
 @Composable
 private fun app.ledger.finance.application.JournalFxEvidenceView.localizedEvidence(
@@ -1296,7 +1372,6 @@ private fun PurgeIneligibilityReason.label(): String = stringResource(
         PurgeIneligibilityReason.DEPENDENCIES_OPEN -> R.string.p15_purge_reason_dependencies
         PurgeIneligibilityReason.OPERATION_REFERENCE -> R.string.p15_purge_reason_operation
         PurgeIneligibilityReason.ATTACHMENTS_READ_BY_BACKUP -> R.string.p15_purge_reason_backup
-        PurgeIneligibilityReason.PHYSICAL_PURGE_REQUIRES_MAINTENANCE -> R.string.p15_purge_reason_maintenance
     },
 )
 
@@ -1455,24 +1530,6 @@ private fun filterSummary(filter: TransactionFilter): String = buildList {
 
 private const val GEO_COORDINATE_SCALE = 7
 private const val HISTORY_PREVIEW_LIMIT = 3
-
-@Composable
-private fun filterFlagLabel(labelResource: Int, value: Boolean): String = stringResource(
-    R.string.p15_journal_filter_flag_value,
-    stringResource(labelResource),
-    stringResource(if (value) R.string.p15_journal_yes else R.string.p15_journal_no),
-)
-
-@Composable
-private fun JournalOperationState.label(): String = stringResource(
-    when (this) {
-        JournalOperationState.IDLE -> R.string.p15_journal_operation_idle
-        JournalOperationState.VALIDATING -> R.string.p15_journal_operation_validating
-        JournalOperationState.COMMITTING -> R.string.p15_journal_operation_committing
-        JournalOperationState.FAILED -> R.string.p15_journal_operation_failed
-        JournalOperationState.SUCCEEDED -> R.string.p15_journal_operation_succeeded
-    },
-)
 
 private fun <T> List<T>.nextIndex(current: Int): Int = if (isEmpty()) 0 else (current + 1).mod(size)
 

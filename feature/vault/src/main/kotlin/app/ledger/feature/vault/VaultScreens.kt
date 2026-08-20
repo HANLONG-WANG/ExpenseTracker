@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -41,10 +40,9 @@ import app.ledger.core.designsystem.SensitiveValueField
 @Composable
 public fun VaultDestination(
     state: VaultPresentationState,
-    onAction: (VaultScreenAction) -> Unit,
+    actions: VaultActions,
     modifier: Modifier = Modifier,
 ) {
-    val actions = vaultActions(onAction)
     Column(
         modifier.fillMaxSize().testTag("vault_root").padding(vertical = LedgerTheme.spacing.xs),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),

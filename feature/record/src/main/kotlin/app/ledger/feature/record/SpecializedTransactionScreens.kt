@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import app.ledger.core.common.StableId
@@ -37,7 +38,6 @@ import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
-import app.ledger.core.designsystem.LocalLocale
 import app.ledger.core.designsystem.MoneyExpressionField
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
@@ -54,27 +54,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 
-public sealed interface SpecializedTransactionScreenAction {
-    public data object Retry : SpecializedTransactionScreenAction
-    public data object SelectFromAccount : SpecializedTransactionScreenAction
-    public data object SelectToAccount : SpecializedTransactionScreenAction
-    public data class OutgoingExpression(val value: String) : SpecializedTransactionScreenAction
-    public data class IncomingExpression(val value: String) : SpecializedTransactionScreenAction
-    public data class OutgoingOperator(val value: String) : SpecializedTransactionScreenAction
-    public data class IncomingOperator(val value: String) : SpecializedTransactionScreenAction
-    public data class ManualFromRate(val value: String) : SpecializedTransactionScreenAction
-    public data class ManualToRate(val value: String) : SpecializedTransactionScreenAction
-    public data object RefreshRates : SpecializedTransactionScreenAction
-    public data class DirectionChanged(val direction: BalanceAdjustmentDirection) : SpecializedTransactionScreenAction
-    public data class CheckpointSelected(val checkpointId: StableId?) : SpecializedTransactionScreenAction
-    public data class DateChanged(val date: LocalDate) : SpecializedTransactionScreenAction
-    public data class NoteChanged(val value: String) : SpecializedTransactionScreenAction
-    public data object AddAttachment : SpecializedTransactionScreenAction
-    public data class CancelAttachment(val index: Int) : SpecializedTransactionScreenAction
-    public data object Save : SpecializedTransactionScreenAction
-}
-
-internal class SpecializedTransactionActions(
+public data class SpecializedTransactionActions(
     val onRetry: () -> Unit,
     val onSelectFromAccount: () -> Unit,
     val onSelectToAccount: () -> Unit,
@@ -95,34 +75,13 @@ internal class SpecializedTransactionActions(
     val onSave: () -> Unit,
 )
 
-internal fun specializedTransactionActions(onAction: (SpecializedTransactionScreenAction) -> Unit): SpecializedTransactionActions = SpecializedTransactionActions(
-    onRetry = { onAction(SpecializedTransactionScreenAction.Retry) },
-    onSelectFromAccount = { onAction(SpecializedTransactionScreenAction.SelectFromAccount) },
-    onSelectToAccount = { onAction(SpecializedTransactionScreenAction.SelectToAccount) },
-    onOutgoingExpression = { onAction(SpecializedTransactionScreenAction.OutgoingExpression(it)) },
-    onIncomingExpression = { onAction(SpecializedTransactionScreenAction.IncomingExpression(it)) },
-    onOutgoingOperator = { onAction(SpecializedTransactionScreenAction.OutgoingOperator(it)) },
-    onIncomingOperator = { onAction(SpecializedTransactionScreenAction.IncomingOperator(it)) },
-    onManualFromRate = { onAction(SpecializedTransactionScreenAction.ManualFromRate(it)) },
-    onManualToRate = { onAction(SpecializedTransactionScreenAction.ManualToRate(it)) },
-    onRefreshRates = { onAction(SpecializedTransactionScreenAction.RefreshRates) },
-    onDirection = { onAction(SpecializedTransactionScreenAction.DirectionChanged(it)) },
-    onCheckpoint = { onAction(SpecializedTransactionScreenAction.CheckpointSelected(it)) },
-    onDate = { onAction(SpecializedTransactionScreenAction.DateChanged(it)) },
-    onNote = { onAction(SpecializedTransactionScreenAction.NoteChanged(it)) },
-    onAddAttachment = { onAction(SpecializedTransactionScreenAction.AddAttachment) },
-    onCancelAttachment = { onAction(SpecializedTransactionScreenAction.CancelAttachment(it)) },
-    onSave = { onAction(SpecializedTransactionScreenAction.Save) },
-)
-
 @Composable
 public fun SpecializedTransactionDestination(
     screenId: String,
     state: SpecializedTransactionLoadState,
-    onAction: (SpecializedTransactionScreenAction) -> Unit,
+    actions: SpecializedTransactionActions,
     modifier: Modifier = Modifier,
 ) {
-    val actions = specializedTransactionActions(onAction)
     Column(modifier.fillMaxSize().testTag(LedgerTestTags.SPECIALIZED_TRANSACTION_ROOT)) {
         when (state) {
             SpecializedTransactionLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize())

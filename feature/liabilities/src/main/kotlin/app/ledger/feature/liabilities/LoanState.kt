@@ -282,7 +282,10 @@ public object LoanPolicy {
         "LOA-003" -> state.draft.trancheName.isNotBlank() && state.draft.principal.isNotBlank()
         "LOA-004" -> state.draft.paymentCount.toIntOrNull()?.let { it > 0 } == true &&
             state.draft.firstPaymentDate.toLocalDateOrNull() != null && state.draft.annualRate.isNotBlank()
-        "LOA-005" -> state.ratePeriods.isNotEmpty() && state.ratePeriods.zipWithNext().none { (first, second) -> first.effectiveTo == null || first.effectiveTo >= second.effectiveFrom }
+        "LOA-005" -> state.ratePeriods.isNotEmpty() && state.ratePeriods.zipWithNext().none { (first, second) ->
+            val effectiveTo = first.effectiveTo
+            effectiveTo == null || effectiveTo >= second.effectiveFrom
+        }
         else -> true
     }
 

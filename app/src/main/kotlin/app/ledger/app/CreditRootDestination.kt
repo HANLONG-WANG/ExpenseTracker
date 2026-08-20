@@ -11,6 +11,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerSaveFab
+import app.ledger.feature.liabilities.CreditActions
 import app.ledger.feature.liabilities.CreditDestination
 import app.ledger.feature.liabilities.CreditLoadState
 import app.ledger.feature.liabilities.CreditPresentation
@@ -41,13 +42,13 @@ internal fun CreditRootDestination(
     val accountId = encodedArguments.stableId("accountId")
     val statementId = encodedArguments.stableId("statementId")
     val transactionId = encodedArguments.stableId("transactionId")
-    val uiState by viewModel.creditUiState.collectAsStateWithLifecycle()
+    val state by viewModel.credit.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, accountId, statementId, transactionId) {
         viewModel.loadCredit(screenId, accountId, statementId, transactionId)
     }
     CreditDestination(
         screenId,
-        uiState.loadState,
+        state,
         encodedArguments,
         CreditActions(
             onRetry = { viewModel.loadCredit(screenId, accountId, statementId, transactionId) },

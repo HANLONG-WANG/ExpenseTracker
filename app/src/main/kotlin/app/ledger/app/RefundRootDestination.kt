@@ -32,9 +32,8 @@ internal fun RefundRootDestination(
     viewModel: AppRootViewModel,
     onNavigationChanged: () -> Unit,
 ) {
-    val uiState by viewModel.refundUiState.collectAsStateWithLifecycle()
-    val state = uiState.loadState
-    val pickerState = uiState.pickerState
+    val state by viewModel.refund.collectAsStateWithLifecycle()
+    val pickerState by viewModel.refundPicker.collectAsStateWithLifecycle()
     if (screenId == "REC-016") {
         LaunchedEffect(screenId) {
             if (pickerState is RefundPickerState.Loading) viewModel.loadRefundOriginals()

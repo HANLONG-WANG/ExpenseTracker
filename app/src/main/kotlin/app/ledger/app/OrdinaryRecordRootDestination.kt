@@ -3,21 +3,15 @@
 package app.ledger.app
 
 import androidx.compose.runtime.Composable
-import app.ledger.core.geo.LedgerMap
-import app.ledger.core.geo.LedgerMapAccessibleRow
-import app.ledger.core.geo.LedgerMapMode
-import app.ledger.core.geo.LedgerMapPoint
-import app.ledger.core.geo.LedgerMapState
-import app.ledger.core.geo.LedgerMapStyleConfiguration
+import app.ledger.feature.record.OrdinaryRecordActions
 import app.ledger.feature.record.OrdinaryRecordDestination
-import app.ledger.feature.record.OrdinaryRecordScreenAction
-import app.ledger.feature.record.OrdinaryRecordScreenUiState
+import app.ledger.feature.record.OrdinaryRecordLoadState
 
 /** Connects the P13 feature contract to the root without exposing persistence or journal construction. */
 @Composable
 internal fun OrdinaryRecordRootDestination(
     screenId: String,
-    uiState: OrdinaryRecordScreenUiState,
+    state: OrdinaryRecordLoadState,
     viewModel: AppRootViewModel,
     onAddAttachment: () -> Unit,
     onNavigationChanged: () -> Unit,

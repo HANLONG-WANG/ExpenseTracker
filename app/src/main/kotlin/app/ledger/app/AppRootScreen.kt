@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -74,19 +75,20 @@ import app.ledger.core.security.BookSessionState
 import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.RecoveryDiagnosticCode
 import app.ledger.feature.accounts.AccountsDataState
+import app.ledger.feature.accounts.AccountsActions
 import app.ledger.feature.accounts.AccountsDestination
-import app.ledger.feature.accounts.AccountsScreenAction
-import app.ledger.feature.accounts.AccountsScreenUiState
+import app.ledger.feature.journal.JournalActions
 import app.ledger.feature.journal.JournalDestination
-import app.ledger.feature.journal.JournalScreenAction
+import app.ledger.feature.journal.JournalLoadState
 import app.ledger.feature.onboarding.OnboardingScreen
-import app.ledger.feature.onboarding.OnboardingScreenAction
+import app.ledger.feature.onboarding.OnboardingActions
 import app.ledger.feature.record.BatchRecordState
-import app.ledger.feature.record.OrdinaryRecordScreenUiState
+import app.ledger.feature.record.OrdinaryRecordLoadState
+import app.ledger.feature.record.SpecializedTransactionLoadState
 import app.ledger.feature.settings.CurrencySettingsDestination
 import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.ManagementDataState
-import app.ledger.feature.settings.ManagementScreenAction
+import app.ledger.feature.settings.ManagementActions
 import app.ledger.feature.settings.ReferenceManagementDestination
 import app.ledger.feature.settings.RemainingSettingsDestination
 import app.ledger.feature.settings.RemainingSettingsScreenAction
@@ -100,7 +102,7 @@ import app.ledger.feature.transfer.TransferHubScreen
 import app.ledger.feature.transfer.TransferHubScreenAction
 import app.ledger.feature.transfer.TransferHubState
 import app.ledger.feature.vault.VaultDestination
-import app.ledger.feature.vault.VaultScreenAction
+import app.ledger.feature.vault.VaultActions
 import app.ledger.transfer.domain.BackgroundOperation
 import app.ledger.transfer.domain.BackgroundOperationState
 import app.ledger.transfer.domain.BackgroundOperationType
@@ -521,10 +523,11 @@ private fun recoveryDiagnosticLabel(code: RecoveryDiagnosticCode): String = stri
 internal fun RootDestination(
     key: LedgerDestinationKey,
     viewModel: AppRootViewModel,
-    referenceUiState: ReferenceDataScreenUiState,
-    recordUiState: OrdinaryRecordScreenUiState,
+    referenceState: AppReferenceDataState,
+    referencePending: Boolean,
+    recordState: OrdinaryRecordLoadState,
     batchState: BatchRecordState?,
-    specializedUiState: SpecializedTransactionScreenUiState,
+    specializedState: SpecializedTransactionLoadState,
     currencySettings: CurrencySettingsState?,
     journalState: JournalLoadState,
     accountAmountsVisible: Boolean,
@@ -666,7 +669,7 @@ internal fun RootDestination(
         SpecializedTransactionRootDestination(
             screenId = screenId,
             encodedArguments = key.encodedArguments,
-            state = specializedUiState.loadState,
+            state = specializedState,
             viewModel = viewModel,
             onAddAttachment = onAddAttachment,
             onNavigationChanged = onNavigationChanged,
@@ -682,7 +685,7 @@ internal fun RootDestination(
     } else if (screenId.startsWith("REC-")) {
         OrdinaryRecordRootDestination(
             screenId = screenId,
-            uiState = recordUiState,
+            state = recordState,
             viewModel = viewModel,
             onAddAttachment = onAddAttachment,
             onNavigationChanged = onNavigationChanged,
@@ -691,7 +694,7 @@ internal fun RootDestination(
         JournalDestination(
             screenId = screenId,
             encodedArguments = key.encodedArguments,
-            state = journalUiState.loadState,
+            state = journalState,
             pages = viewModel.journalPages,
             actions = JournalActions(
                 onNavigate = { target, stable ->
@@ -722,7 +725,9 @@ internal fun RootDestination(
                 onRestoreRevision = viewModel::restoreJournalRevision,
                 onVerifyPurge = viewModel::verifyJournalPurge,
                 onPurgeRequested = viewModel::purgeJournalTransaction,
-                onEdit = viewModel::editJournalTransaction,
+                onEditById = { id, kind -> viewModel.editJournalTransaction(id, kind) },
+                onOpenAttachment = viewModel::openAttachment,
+                onEdit = { transaction -> viewModel.editJournalTransaction(transaction) },
                 onRefund = viewModel::refundJournalTransaction,
                 onCopyTemplate = viewModel::copyJournalTransactionToTemplate,
                 onBack = onBack,
@@ -1048,7 +1053,7 @@ private fun DurableOperationRow(
 ) {
     val type = stringResource(operationTypeResource(operation.type))
     val phase = stringResource(operationStateResource(operation.state))
-    val numberFormat = java.text.NumberFormat.getIntegerInstance(app.ledger.core.designsystem.LocalLocale.current.platformLocale)
+    val numberFormat = java.text.NumberFormat.getIntegerInstance(LocalLocale.current.platformLocale)
     val totalText = operation.progress.total?.let(numberFormat::format) ?: stringResource(R.string.global_operations_total_unknown)
     val cancelable = operation.state in setOf(
         BackgroundOperationState.QUEUED,

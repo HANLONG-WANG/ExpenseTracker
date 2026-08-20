@@ -9,7 +9,6 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.OpenableColumns
-import android.text.format.Formatter
 import androidx.biometric.BiometricPrompt
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -41,14 +40,7 @@ import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.common.map
 import app.ledger.core.designsystem.LedgerReferenceDisplayDefaults
-import app.ledger.core.designsystem.UiErrorCode
-import app.ledger.core.files.AttachmentMetadata
-import app.ledger.core.files.AttachmentMetadataUiModel
-import app.ledger.core.files.AttachmentPreviewState
-import app.ledger.core.files.AttachmentRenameState
-import app.ledger.core.files.SecureAttachmentImageLoader
 import app.ledger.core.files.SecureBookAttachmentObjectPort
-import app.ledger.core.files.SecureBookAttachmentSession
 import app.ledger.core.geo.ForegroundLocationSaveSession
 import app.ledger.core.geo.LocationSaveDisposition
 import app.ledger.core.geo.ProductionForegroundLocationClient
@@ -205,7 +197,6 @@ import app.ledger.finance.application.AutomationMutationIds
 import app.ledger.finance.application.BatchEntryApplicationPort
 import app.ledger.finance.application.BatchEntryField
 import app.ledger.finance.application.BlueprintDraft
-import app.ledger.core.files.SecureBookAttachmentObjectPort
 import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.BudgetMutationIds
 import app.ledger.finance.application.CardDraft
@@ -314,7 +305,6 @@ import app.ledger.finance.domain.AutoGenerationMode
 import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.BudgetAdjustmentKind
 import app.ledger.finance.domain.CategoryDirection
-import app.ledger.finance.domain.AttachmentId
 import app.ledger.finance.domain.CategoryRemovalStrategy
 import app.ledger.finance.domain.CreditPaymentSelection
 import app.ledger.finance.domain.DependencyPolicy
@@ -382,7 +372,6 @@ import com.google.protobuf.ByteString
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -534,17 +523,6 @@ internal class AppRootViewModel @Inject constructor(
     val openSystemSecurityRequests = mutableOpenSystemSecurityRequests.asSharedFlow()
     private val mutableExternalLinkRequests = MutableSharedFlow<Uri>(extraBufferCapacity = 1)
     val externalLinkRequests = mutableExternalLinkRequests.asSharedFlow()
-    private val mutableAttachmentExternalOpenRequests = MutableSharedFlow<Intent>(extraBufferCapacity = 1)
-    val attachmentExternalOpenRequests = mutableAttachmentExternalOpenRequests.asSharedFlow()
-    private val mutableAttachmentPreview = MutableStateFlow<AttachmentPreviewState>(AttachmentPreviewState.Loading)
-    val attachmentPreview: StateFlow<AttachmentPreviewState> = mutableAttachmentPreview.asStateFlow()
-    private val mutableAttachmentRename = MutableStateFlow<AttachmentRenameState?>(null)
-    val attachmentRename: StateFlow<AttachmentRenameState?> = mutableAttachmentRename.asStateFlow()
-    private var attachmentSession: SecureBookAttachmentSession? = null
-    private var attachmentId: AttachmentId? = null
-    private var attachmentLoadJob: Job? = null
-    private var attachmentCloseJob: Job? = null
-    val attachmentImageLoader: SecureAttachmentImageLoader? get() = attachmentSession?.imageLoader
     private val mutableNotificationPermissionRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val notificationPermissionRequests = mutableNotificationPermissionRequests.asSharedFlow()
     private val mutableOpenNotificationSettingsRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -683,6 +661,7 @@ internal class AppRootViewModel @Inject constructor(
     private val mutableAutomationPending = MutableStateFlow(false)
     val automationPending: StateFlow<Boolean> = mutableAutomationPending.asStateFlow()
     private var currentAutomationScreenId: String = "AUT-001"
+    private var automationRecurrenceDraftCache: app.ledger.feature.automation.RecurrenceEditorDraft? = null
     private var pendingCandidateId: StableId? = null
     private var pendingAutomationRuleDraft: app.ledger.feature.automation.RecurrenceEditorDraft? = null
     private val mutableProjectTransactionPagingRequest = MutableStateFlow<ProjectTransactionPagingRequest?>(null)
@@ -710,7 +689,6 @@ internal class AppRootViewModel @Inject constructor(
     }.cachedIn(viewModelScope)
     var selectedAccountType: UserAccountType = UserAccountType.CASH
     var replacementCardId: StableId? = null
-        private set
         private set
     private var pendingCardAccountId: StableId? = null
     val preferredCardAccountId: StableId?
@@ -1561,17 +1539,6 @@ internal class AppRootViewModel @Inject constructor(
         )
         if (screenId.startsWith("VLT-")) vaultController.synchronizeVisibleScreen(screenId)
         if (!screenId.startsWith("VLT-") && vault.value.screenId.startsWith("VLT-")) vaultController.hideSensitive(autoHidden = false)
-        if (!screenId.startsWith("ATT-") && attachmentId != null) closeAttachmentSession()
-    }
-
-    private fun closeAttachmentSession() {
-        attachmentLoadJob?.cancel()
-        attachmentLoadJob = null
-        attachmentId = null
-        mutableAttachmentRename.value = null
-        val session = attachmentSession ?: return
-        attachmentSession = null
-        attachmentCloseJob = viewModelScope.launch(Dispatchers.IO) { session.close() }
     }
 
     private fun refreshLocalClear(
@@ -2448,141 +2415,8 @@ internal class AppRootViewModel @Inject constructor(
     fun cycleBatchReference(rowId: StableId, field: BatchEntryField) = batchEntryController.cycle(rowId, field)
 
     fun openAttachment(value: StableId) {
-        attachmentId = AttachmentId(value)
-        mutableAttachmentRename.value = null
-        mutableAttachmentPreview.value = AttachmentPreviewState.Loading
-        val screenId = ScreenId("ATT-001")
-        navigator.navigate(
-            LedgerRouteContract.destination(screenId, mapOf("attachmentId" to StableIdArgument(value))),
-            SessionGateState.READY,
-        )
-        loadAttachment()
-    }
-
-    fun retryAttachment() {
-        mutableAttachmentPreview.value = AttachmentPreviewState.Loading
-        loadAttachment()
-    }
-
-    private fun loadAttachment() {
-        val requestedId = attachmentId ?: return
-        attachmentLoadJob?.cancel()
-        attachmentLoadJob = viewModelScope.launch(Dispatchers.IO) {
-            attachmentCloseJob?.join()
-            val previous = attachmentSession
-            attachmentSession = null
-            previous?.close()
-            try {
-                val bookId = requireBookId(settingsRepository.current())
-                val session = bookAttachmentObjectPort.openSession(bookId)
-                if (attachmentId != requestedId) {
-                    session.close()
-                    return@launch
-                }
-                val metadata = session.metadata(requestedId)
-                if (metadata == null) {
-                    session.close()
-                    mutableAttachmentPreview.value = AttachmentPreviewState.DecryptError(UiErrorCode("ATTACHMENT_NOT_FOUND"))
-                    return@launch
-                }
-                attachmentSession = session
-                mutableAttachmentPreview.value = metadata.previewState()
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                mutableAttachmentPreview.value = AttachmentPreviewState.DecryptError(UiErrorCode("ATTACHMENT_DECRYPTION_FAILED"))
-            }
-        }
-    }
-
-    fun beginAttachmentRename() {
-        val displayName = attachmentPreview.value.metadataOrNull()?.displayName ?: return
-        mutableAttachmentRename.value = AttachmentRenameState.Editing(displayName)
-        val id = attachmentId ?: return
-        val screenId = ScreenId("ATT-003")
-        navigator.navigate(
-            LedgerRouteContract.destination(screenId, mapOf("attachmentId" to StableIdArgument(id.value))),
-            SessionGateState.READY,
-        )
-    }
-
-    fun updateAttachmentRename(value: String) {
-        mutableAttachmentRename.value = if (value.isBlank()) {
-            AttachmentRenameState.Invalid(value)
-        } else {
-            AttachmentRenameState.Editing(value.take(RECORD_ATTACHMENT_NAME_LIMIT))
-        }
-    }
-
-    fun confirmAttachmentRename(onNavigationChanged: () -> Unit) {
-        val id = attachmentId ?: return
-        val session = attachmentSession ?: return
-        val state = attachmentRename.value ?: return
-        val displayName = when (state) {
-            is AttachmentRenameState.Editing -> state.displayName
-            is AttachmentRenameState.Invalid -> state.displayName
-        }
-        if (displayName.isBlank()) {
-            mutableAttachmentRename.value = AttachmentRenameState.Invalid(displayName)
-            return
-        }
-        viewModelScope.launch {
-            when (val result = withContext(Dispatchers.IO) { session.rename(id, displayName) }) {
-                is DomainResult.Success -> {
-                    mutableAttachmentPreview.value = result.value.previewState()
-                    mutableAttachmentRename.value = null
-                    navigator.pop()
-                    onNavigationChanged()
-                    (mutableJournal.value as? JournalLoadState.Content)?.detail?.transaction?.transactionId?.let(::loadJournalDetail)
-                }
-                is DomainResult.Failure -> mutableAttachmentRename.value = AttachmentRenameState.Invalid(displayName)
-            }
-        }
-    }
-
-    fun beginAttachmentExternalOpen() {
-        val id = attachmentId ?: return
-        val screenId = ScreenId("ATT-002")
-        navigator.navigate(
-            LedgerRouteContract.destination(screenId, mapOf("attachmentId" to StableIdArgument(id.value))),
-            SessionGateState.READY,
-        )
-    }
-
-    fun confirmAttachmentExternalOpen(onNavigationChanged: () -> Unit) {
-        val id = attachmentId ?: return
-        val authorization = runCatching {
-            attachmentSession?.externalOpenConfirmation(id)?.authorize()
-        }.getOrNull()
-        if (authorization == null) {
-            mutableAttachmentPreview.value = AttachmentPreviewState.DecryptError(UiErrorCode("ATTACHMENT_NOT_FOUND"))
-        } else {
-            mutableAttachmentExternalOpenRequests.tryEmit(authorization.intent)
-        }
-        navigator.pop()
-        onNavigationChanged()
-    }
-
-    private suspend fun AttachmentMetadata.previewState(): AttachmentPreviewState {
-        val saved = settingsRepository.current()
-        val locale = Locale.forLanguageTag(saved.languageTag.ifBlank { Locale.getDefault().toLanguageTag() })
-        val zone = runCatching { ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }) }.getOrDefault(ZoneId.of(DEFAULT_ZONE))
-        val ui = AttachmentMetadataUiModel(
-            attachmentId = attachmentId,
-            displayName = displayName,
-            typeText = mimeType,
-            sizeText = Formatter.formatShortFileSize(context, plaintextSize),
-            importedAtText = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM).withLocale(locale).withZone(zone).format(importedAt),
-        )
-        return if (mimeType.startsWith("image/")) AttachmentPreviewState.Image(ui) else AttachmentPreviewState.UnsupportedPreview(ui)
-    }
-
-    private fun AttachmentPreviewState.metadataOrNull(): AttachmentMetadataUiModel? = when (this) {
-        is AttachmentPreviewState.Image -> metadata
-        is AttachmentPreviewState.UnsupportedPreview -> metadata
-        AttachmentPreviewState.Loading,
-        is AttachmentPreviewState.DecryptError,
-        -> null
+        val activeBook = ((mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready)?.bookId ?: return
+        openAttachment(activeBook, value)
     }
 
     fun requestBatchAttachment(rowId: StableId) {
@@ -2922,20 +2756,6 @@ internal class AppRootViewModel @Inject constructor(
         recordAttachmentImportJob?.invokeOnCompletion {
             updateEditor { it.copy(attachmentImporting = false) }
             recordAttachmentImportJob = null
-        }
-    }
-
-    fun reuseRecordAttachment(attachmentId: StableId) = updateEditor { editor ->
-        if (attachmentId !in editor.availableAttachments.map(RecordAvailableAttachment::id) || attachmentId in editor.draft.attachmentIds) {
-            editor
-        } else {
-            editor.copy(
-                draft = editor.draft.copy(
-                    attachmentIds = editor.draft.attachmentIds + attachmentId,
-                    touched = editor.draft.touched + RecordField.ATTACHMENTS,
-                ),
-                attachmentFailureCode = null,
-            )
         }
     }
 
@@ -4028,9 +3848,10 @@ internal class AppRootViewModel @Inject constructor(
         currentCreditTransactionId = transactionId
         mutableCredit.value = CreditLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
-            val appSettings = settingsRepository.current()
-            val bookId = runCatching { requireBookId(appSettings) }.getOrNull() ?: return@launch
-            mutableCredit.value = when (val result = creditApplicationPort.snapshot(bookId)) {
+            try {
+                val appSettings = settingsRepository.current()
+                val bookId = requireBookId(appSettings)
+                mutableCredit.value = when (val result = creditApplicationPort.snapshot(bookId)) {
                 is DomainResult.Failure -> CreditLoadState.Failure(sanitizeCode(result.error.code))
                 is DomainResult.Success -> {
                     val resolvedAccountId = accountId ?: statementId?.let { target ->
@@ -4055,6 +3876,7 @@ internal class AppRootViewModel @Inject constructor(
                             ),
                         )
                     }
+                }
                 }
             } catch (_: Exception) {
                 mutableCredit.value = CreditLoadState.Failure("CREDIT_LOAD_FAILED")
@@ -4709,9 +4531,10 @@ internal class AppRootViewModel @Inject constructor(
         currentLoanScreenId = screenId
         mutableLoan.value = LoanLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
-            val savedSettings = settingsRepository.current()
-            val bookId = runCatching { requireBookId(savedSettings) }.getOrNull() ?: return@launch
-            mutableLoan.value = when (val result = loanApplicationPort.snapshot(bookId)) {
+            try {
+                val savedSettings = settingsRepository.current()
+                val bookId = requireBookId(savedSettings)
+                mutableLoan.value = when (val result = loanApplicationPort.snapshot(bookId)) {
                 is DomainResult.Failure -> LoanLoadState.Failure(sanitizeCode(result.error.code))
                 is DomainResult.Success -> {
                     val missing = contractId != null && result.value.contracts.none { it.id == contractId } ||
@@ -4767,6 +4590,7 @@ internal class AppRootViewModel @Inject constructor(
                             },
                         )
                     }
+                }
                 }
             } catch (_: Exception) {
                 mutableLoan.value = LoanLoadState.Failure("LIABILITY_LOAD_FAILED")
@@ -4869,7 +4693,10 @@ internal class AppRootViewModel @Inject constructor(
             if (index != null && index in indices) set(index, candidate) else add(candidate)
         }
         val periods = edited.sortedBy { it.effectiveFrom }
-        val overlap = periods.zipWithNext().any { (first, second) -> first.effectiveTo == null || first.effectiveTo >= second.effectiveFrom }
+        val overlap = periods.zipWithNext().any { (first, second) ->
+            val effectiveTo = first.effectiveTo
+            effectiveTo == null || effectiveTo >= second.effectiveFrom
+        }
         val updated = state.copy(ratePeriods = periods, editingRatePeriodIndex = null, presentation = if (overlap) LoanPresentation.OVERLAP_ERROR else LoanPresentation.EDITING, preview = emptyList())
         syncLoanWizard(updated)
     }
@@ -5022,7 +4849,7 @@ internal class AppRootViewModel @Inject constructor(
             amounts[index]?.let {
                 LoanComponentAllocationDraft(
                     tranche.id,
-                    state.selectedScheduleInstallmentNumber,
+                    null,
                     component,
                     it.accountMinor,
                     it.baseMinor,
@@ -5412,9 +5239,6 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun selectSettlementAccount(accountId: StableId?) = updateSettlement { it.copy(draft = it.draft.copy(accountId = accountId)) }
-    fun selectSettlementCurrency(currency: CurrencyCode) = updateSettlement { state ->
-        if (state.activity != null) state else state.copy(draft = state.draft.copy(currency = currency))
-    }
     fun selectSettlementProject(projectId: StableId?) = updateSettlement { state ->
         require(projectId == null || state.snapshot.projects.any { it.id == projectId && it.active })
         state.copy(draft = state.draft.copy(projectId = projectId))
@@ -5730,7 +5554,7 @@ internal class AppRootViewModel @Inject constructor(
 
     fun saveAccount(value: AccountEditorSubmission) {
         var savedAccountId = value.accountId
-        executeReferenceMutation({ snapshot ->
+        executeReferenceMutation(factory = { snapshot ->
         val existing = value.accountId?.let { id -> snapshot.accounts.singleOrNull { it.id == id } }
         val currency = CurrencyCode.parse(value.currencyCode).getOrNull() ?: error("REFERENCE_INVALID_CURRENCY")
         val accountId = existing?.id ?: nextId()
@@ -5752,7 +5576,7 @@ internal class AppRootViewModel @Inject constructor(
                 sortOrder = existing?.sortOrder ?: snapshot.accounts.size,
             ),
         )
-        }, afterSuccess = {
+        }, onSuccess = {
             if (value.accountId == null) {
                 when (value.type) {
                     UserAccountType.CREDIT -> savedAccountId?.let { id ->
@@ -5778,7 +5602,7 @@ internal class AppRootViewModel @Inject constructor(
         onSuccess = { popToReferenceScreen("ACC-001") },
     ) { ReferenceMutation.DeleteEmptyAccount(id, rowVersion) }
 
-    fun saveCard(value: CardEditorSubmission) = executeReferenceMutation({ snapshot ->
+    fun saveCard(value: CardEditorSubmission) = executeReferenceMutation(factory = { snapshot ->
         val existing = value.cardId?.let { id -> snapshot.cards.singleOrNull { it.id == id } }
         ReferenceMutation.SaveCard(
             CardDraft(
@@ -5794,7 +5618,7 @@ internal class AppRootViewModel @Inject constructor(
                 sortOrder = existing?.sortOrder ?: snapshot.cards.size,
             ),
         )
-    }, afterSuccess = { replacementCardId = null })
+    }, onSuccess = { replacementCardId = null })
 
     fun archiveCard(id: StableId, rowVersion: Long) = executeReferenceMutation(
         successMessage = GlobalSnackbarMessage.REFERENCE_ARCHIVED,
@@ -5881,8 +5705,9 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     private fun executeReferenceMutation(
+        successMessage: GlobalSnackbarMessage = GlobalSnackbarMessage.REFERENCE_SAVED,
+        onSuccess: () -> Unit = {},
         factory: (ReferenceDataSnapshot) -> ReferenceMutation,
-        afterSuccess: (() -> Unit)? = null,
     ) {
         if (mutableReferenceMutationPending.value) return
         viewModelScope.launch(Dispatchers.IO) {
@@ -5899,11 +5724,14 @@ internal class AppRootViewModel @Inject constructor(
                 )
                 when (val result = runCatching { referenceDataPort.mutate(ReferenceMutationCommand(ids, factory(snapshot))) }.getOrNull()) {
                     is DomainResult.Success -> {
-                        loadReferenceDataAfterMutation(snapshot.bookId)
-                        if (afterSuccess != null) withContext(Dispatchers.Main.immediate) { afterSuccess() }
+                        if (loadReferenceDataAfterMutation(snapshot.bookId)) {
+                            withContext(Dispatchers.Main.immediate) { onSuccess() }
+                            mutableGlobalSnackbarMessages.emit(successMessage)
+                        } else {
+                            mutableGlobalSnackbarMessages.emit(GlobalSnackbarMessage.REFERENCE_MUTATION_FAILED)
+                        }
                     }
-                    is DomainResult.Failure -> mutableReferenceData.value = AppReferenceDataState.Error(result.error.code)
-                    null -> mutableReferenceData.value = AppReferenceDataState.Error("REFERENCE_MUTATION_FAILED")
+                    is DomainResult.Failure, null -> mutableGlobalSnackbarMessages.emit(GlobalSnackbarMessage.REFERENCE_MUTATION_FAILED)
                 }
             } finally {
                 mutableReferenceMutationPending.value = false
@@ -6285,7 +6113,7 @@ internal class AppRootViewModel @Inject constructor(
             try {
                 val result = automationApplicationPort.saveBlueprint(
                     SaveBlueprintRequest(
-                        AutomationMutationIds(snapshot.bookId, nextId(), nextId(), nextId(), snapshot.localRevision, runtimeSources.clock.now()),
+                        AutomationMutationIds(snapshot.bookId, CommandId(nextId()), nextId(), nextId(), nextId(), snapshot.localRevision, runtimeSources.clock.now()),
                         BlueprintDraft(
                             blueprint.id, nextId(), blueprint.revisionId, blueprint.name, blueprint.iconKey, blueprint.colorArgb,
                             app.ledger.finance.domain.EntityStatus.ARCHIVED, blueprint.targetKind, blueprint.categoryId,
@@ -6621,16 +6449,6 @@ internal class AppRootViewModel @Inject constructor(
     private fun updateEditor(block: (OrdinaryRecordEditorState) -> OrdinaryRecordEditorState) {
         updateRecordContent { copy(editor = editor?.let(block)) }
     }
-
-    private suspend fun hydrateRecordAttachments(editor: OrdinaryRecordEditorState): OrdinaryRecordEditorState =
-        when (val metadata = bookAttachmentObjectPort.activeMetadata(editor.snapshot.references.bookId)) {
-            is DomainResult.Success -> editor.copy(
-                availableAttachments = metadata.value.map {
-                    RecordAvailableAttachment(it.attachmentId.value, it.displayName, it.mimeType, it.plaintextSize)
-                },
-            )
-            is DomainResult.Failure -> editor.copy(attachmentFailureCode = sanitizeCode(metadata.error.code))
-        }
 
     private fun updateEditorAndPop(block: (OrdinaryRecordEditorState) -> OrdinaryRecordEditorState) {
         updateEditor(block)
@@ -7289,13 +7107,6 @@ internal class AppRootViewModel @Inject constructor(
             }
         }
         bytes.toByteArray()
-    }
-
-    override fun onCleared() {
-        attachmentLoadJob?.cancel()
-        attachmentSession?.close()
-        attachmentSession = null
-        super.onCleared()
     }
 
     private companion object {

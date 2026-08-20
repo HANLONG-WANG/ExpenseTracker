@@ -7,12 +7,8 @@
     <string name="record_location_permission_action">权限设置</string>
     <string name="record_location_timeout">定位等待已到 3 秒上限。本次将不保存位置，也不会稍后补写。</string>
     <string name="record_location_map_unavailable">地图暂不可用，不影响保存记账内容。</string>
-    <string name="record_location_map_summary">点击地图可设置或移动本次交易的位置</string>
-    <string name="record_location_map_caption">已保存位置</string>
     <string name="record_location_map_name">名称</string>
     <string name="record_location_map_coordinates">坐标</string>
-    <string name="record_location_show_list">显示位置列表</string>
-    <string name="record_location_hide_list">隐藏位置列表</string>
     <string name="record_location_latitude">纬度</string>
     <string name="record_location_longitude">经度</string>
     <string name="record_location_coordinate_invalid">请输入有效的十进制度数。</string>
@@ -182,4 +178,6 @@
     <string name="batch_entry_title">批量录入</string><string name="batch_paste_input">粘贴 TSV 行</string><string name="batch_paste_format">顺序：类型、分类、主单位金额、账户、商户、ISO 时间、项目；名称只在本地加密参考数据中解析。</string>
     <string name="batch_discard_title">放弃整批草稿？</string><string name="batch_discard_message">批量草稿只保存在内存中；离开后无法恢复，主账本不会变化。</string>
     <string name="batch_undo">撤销整批（追加合法冲销）</string>
+    <string name="batch_keep_editing">继续编辑</string>
+    <string name="batch_error_date">日期和时间无效。</string>
 </resources>

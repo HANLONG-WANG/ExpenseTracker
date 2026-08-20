@@ -60,4 +60,7 @@
     <string name="loan_before">変更前</string><string name="loan_after">変更後</string><string name="loan_saved_cost">節約見込み</string><string name="loan_simulation_summary">%1$d 回 · 将来総支払 %2$s · 利息 %3$s · 手数料 %4$s · 終了 %5$s</string>
     <string name="loan_apply_payment_now">今回の支払総額</string><string name="loan_apply_principal">繰上返済元金</string><string name="loan_apply_penalty">違約金</string><string name="loan_apply_version_summary">%2$s 終了の新しい %1$d 回予定を作成し、実返済1件を記録します。</string><string name="loan_reload_simulation">再読込して再計算</string>
     <string name="installment_rounding_other">その他の丸め規則</string>
+    <string name="loan_account_required_title">ローン口座が必要です</string>
+    <string name="loan_account_required_body">ローン契約を記録する前にローン口座を作成してください。</string>
+    <string name="loan_create_account">ローン口座を作成</string>
 </resources>

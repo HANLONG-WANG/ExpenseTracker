@@ -75,4 +75,10 @@
     <string name="import_duplicate_exact_reference">元レコードが既存取引と完全に一致</string><string name="import_duplicate_content_hash">取引内容が既存取引と一致</string><string name="import_duplicate_date_amount_account">日付、金額、口座が既存取引と一致</string><string name="import_duplicate_unknown">既存取引と重複している可能性があります</string>
     <string name="import_validation_duplicate_resolution">重複候補ごとの処理を選択してください。</string><string name="import_validation_entity_mapping">不足している項目を既存レコードへ割り当てるか、新規作成してください。</string><string name="import_validation_transformation">現在のルールでは元フィールドを変換できません。</string><string name="import_validation_historical_rate">この行に必要な過去の為替レートがありません。</string><string name="import_validation_manual_rate">この通貨の手入力レートを入力してください。</string><string name="import_validation_multiple_columns">複数の元列が同じ対象フィールドに割り当てられています。</string><string name="import_validation_transaction_kind">この取引種別には対応していません。</string><string name="import_validation_failed_explanation">インポート検証を完了できませんでした。台帳は変更されていません。再試行してください。</string><string name="import_validation_unknown">この行には取り込めない値があります。元データを確認してください。</string>
     <string name="import_preview_ready">検証可能</string><string name="import_preview_status_unknown">状態を利用できません</string><string name="import_history_batch">インポートバッチ</string>
+    <string name="backup_failure_password">復旧パスワードが未設定または無効なため、バックアップを完了できませんでした。</string>
+    <string name="backup_failure_vault">保管庫データの復旧用エンベロープを作成できず、バックアップを完了できませんでした。</string>
+    <string name="backup_failure_drive_auth">Google Drive の認証期限が切れました。もう一度ログインしてください。</string>
+    <string name="backup_failure_network">ネットワークを利用できないため、バックアップを完了できませんでした。</string>
+    <string name="backup_failure_space">空き容量が不足しているため、バックアップを完了できませんでした。</string>
+    <string name="backup_failure_cancelled">バックアップはキャンセルされ、スナップショットは公開されませんでした。</string>
 </resources>

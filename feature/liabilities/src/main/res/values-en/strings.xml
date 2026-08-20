@@ -60,4 +60,7 @@
     <string name="loan_before">Before</string><string name="loan_after">After</string><string name="loan_saved_cost">Estimated cost saved</string><string name="loan_simulation_summary">%1$d payments · future total %2$s · interest %3$s · fees %4$s · ends %5$s</string>
     <string name="loan_apply_payment_now">Payment now</string><string name="loan_apply_principal">Prepaid principal</string><string name="loan_apply_penalty">Penalty</string><string name="loan_apply_version_summary">Creates a new %1$d-payment schedule ending %2$s and records one actual payment.</string><string name="loan_reload_simulation">Reload and recalculate</string>
     <string name="installment_rounding_other">Other rounding rule</string>
+    <string name="loan_account_required_title">Loan account required</string>
+    <string name="loan_account_required_body">Create a loan account before recording a loan contract.</string>
+    <string name="loan_create_account">Create loan account</string>
 </resources>

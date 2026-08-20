@@ -63,9 +63,8 @@ import java.time.format.FormatStyle
 public fun SettlementDestination(
     screenId: String,
     state: SettlementLoadState,
-    onAction: (SettlementScreenAction) -> Unit,
+    actions: SettlementActions,
 ) {
-    val actions = settlementActions(onAction)
     when (state) {
         SettlementLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.settlement_loading))
         is SettlementLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.settlement_load_failed), actions.onRetry)
@@ -106,6 +105,7 @@ private fun SettlementHome(state: SettlementFeatureState, actions: SettlementAct
 @Composable
 private fun SettlementEditor(state: SettlementFeatureState, actions: SettlementActions) {
     val locale = LocalLocale.current.platformLocale
+    val activity = state.activity
     var startPicker by remember { mutableStateOf(false) }
     var endPicker by remember { mutableStateOf(false) }
     SettlementList(Modifier.testTag(LedgerTestTags.SETTLEMENT_EDITOR)) {
@@ -114,7 +114,7 @@ private fun SettlementEditor(state: SettlementFeatureState, actions: SettlementA
         item { LedgerTextField(state.draft.description, { actions.onFieldChanged(SettlementField.DESCRIPTION, it) }, stringResource(R.string.settlement_description), Modifier.fillMaxWidth()) }
         item { SelectorField(stringResource(R.string.settlement_start_date), state.draft.startDate.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.settlement_choose_date), { startPicker = true }, supportingText = stringResource(R.string.settlement_validation).takeIf { "startDate" in state.validationFields }) }
         item { SelectorField(stringResource(R.string.settlement_end_date), state.draft.endDate.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.settlement_no_end_date), { endPicker = true }, supportingText = stringResource(R.string.settlement_validation).takeIf { "endDate" in state.validationFields }) }
-        if (state.activity == null) {
+        if (activity == null) {
             item {
                 FormSection(stringResource(R.string.settlement_currency), description = stringResource(R.string.settlement_currency_create_support)) {
                     (listOf(state.snapshot.baseCurrency) + state.snapshot.accounts.filter { it.active }.map { it.currency }).distinct().forEach { currency ->
@@ -123,7 +123,7 @@ private fun SettlementEditor(state: SettlementFeatureState, actions: SettlementA
                 }
             }
         } else {
-            item { LedgerText(stringResource(R.string.settlement_currency_value_locked, state.activity.currency.value), LedgerTextRole.SUPPORTING) }
+            item { LedgerText(stringResource(R.string.settlement_currency_value_locked, activity.currency.value), LedgerTextRole.SUPPORTING) }
         }
         item {
             FormSection(stringResource(R.string.settlement_project), description = stringResource(R.string.settlement_project_support)) {

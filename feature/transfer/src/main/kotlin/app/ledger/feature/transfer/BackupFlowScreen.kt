@@ -109,34 +109,7 @@ data class BackupFlowUiState(
     val createdSnapshotId: String? = null,
 )
 
-sealed interface BackupFlowScreenAction {
-    data object Back : BackupFlowScreenAction
-    data class Navigate(val screenId: String) : BackupFlowScreenAction
-    data class RepositoryKindSelected(val kind: BackupRepositoryKind) : BackupFlowScreenAction
-    data class DirectorySelected(val uri: Uri) : BackupFlowScreenAction
-    data object AuthorizeDrive : BackupFlowScreenAction
-    data object DisconnectDrive : BackupFlowScreenAction
-    data class RecoveryPasswordChanged(val value: String) : BackupFlowScreenAction
-    data class RecoveryPasswordConfirmationChanged(val value: String) : BackupFlowScreenAction
-    data class RecoveryPasswordChangeModeChanged(val mode: RecoveryPasswordChangeMode) : BackupFlowScreenAction
-    data object SaveRecoveryPassword : BackupFlowScreenAction
-    data class AutomaticBackupChanged(val enabled: Boolean) : BackupFlowScreenAction
-    data class RetentionCountChanged(val value: String) : BackupFlowScreenAction
-    data class RetentionDaysChanged(val value: String) : BackupFlowScreenAction
-    data class IncludeVaultChanged(val enabled: Boolean) : BackupFlowScreenAction
-    data class NetworkPolicyChanged(val policy: BackupNetworkPolicy) : BackupFlowScreenAction
-    data object SaveSettings : BackupFlowScreenAction
-    data class SnapshotSelected(val snapshotId: String) : BackupFlowScreenAction
-    data class PortableChanged(val portable: Boolean) : BackupFlowScreenAction
-    data class PortableFileNameChanged(val value: String) : BackupFlowScreenAction
-    data class StartBackup(val destination: Uri?) : BackupFlowScreenAction
-    data object Cancel : BackupFlowScreenAction
-    data object Retry : BackupFlowScreenAction
-    data object Operations : BackupFlowScreenAction
-    data class RestoreSnapshot(val snapshotId: String) : BackupFlowScreenAction
-}
-
-private class BackupFlowActions(
+data class BackupFlowActions(
     val onBack: () -> Unit,
     val onNavigate: (String) -> Unit,
     val onRepositoryKindSelected: (BackupRepositoryKind) -> Unit,
@@ -165,33 +138,7 @@ private class BackupFlowActions(
 )
 
 @Composable
-fun BackupFlowScreen(state: BackupFlowUiState, onAction: (BackupFlowScreenAction) -> Unit) {
-    val actions = BackupFlowActions(
-        onBack = { onAction(BackupFlowScreenAction.Back) },
-        onNavigate = { onAction(BackupFlowScreenAction.Navigate(it)) },
-        onRepositoryKindSelected = { onAction(BackupFlowScreenAction.RepositoryKindSelected(it)) },
-        onDirectorySelected = { onAction(BackupFlowScreenAction.DirectorySelected(it)) },
-        onAuthorizeDrive = { onAction(BackupFlowScreenAction.AuthorizeDrive) },
-        onDisconnectDrive = { onAction(BackupFlowScreenAction.DisconnectDrive) },
-        onRecoveryPasswordChanged = { onAction(BackupFlowScreenAction.RecoveryPasswordChanged(it)) },
-        onRecoveryPasswordConfirmationChanged = { onAction(BackupFlowScreenAction.RecoveryPasswordConfirmationChanged(it)) },
-        onRecoveryPasswordChangeModeChanged = { onAction(BackupFlowScreenAction.RecoveryPasswordChangeModeChanged(it)) },
-        onSaveRecoveryPassword = { onAction(BackupFlowScreenAction.SaveRecoveryPassword) },
-        onAutomaticBackupChanged = { onAction(BackupFlowScreenAction.AutomaticBackupChanged(it)) },
-        onRetentionCountChanged = { onAction(BackupFlowScreenAction.RetentionCountChanged(it)) },
-        onRetentionDaysChanged = { onAction(BackupFlowScreenAction.RetentionDaysChanged(it)) },
-        onIncludeVaultChanged = { onAction(BackupFlowScreenAction.IncludeVaultChanged(it)) },
-        onNetworkPolicyChanged = { onAction(BackupFlowScreenAction.NetworkPolicyChanged(it)) },
-        onSaveSettings = { onAction(BackupFlowScreenAction.SaveSettings) },
-        onSnapshotSelected = { onAction(BackupFlowScreenAction.SnapshotSelected(it)) },
-        onPortableChanged = { onAction(BackupFlowScreenAction.PortableChanged(it)) },
-        onPortableFileNameChanged = { onAction(BackupFlowScreenAction.PortableFileNameChanged(it)) },
-        onStartBackup = { onAction(BackupFlowScreenAction.StartBackup(it)) },
-        onCancel = { onAction(BackupFlowScreenAction.Cancel) },
-        onRetry = { onAction(BackupFlowScreenAction.Retry) },
-        onOperations = { onAction(BackupFlowScreenAction.Operations) },
-        onRestoreSnapshot = { onAction(BackupFlowScreenAction.RestoreSnapshot(it)) },
-    )
+fun BackupFlowScreen(state: BackupFlowUiState, actions: BackupFlowActions) {
     LedgerScaffold(
         state.rootModifier(),
         topBar = { LedgerTopAppBar(state.title(), LedgerTopAppBarVariant.BACK, onNavigation = actions.onBack) },

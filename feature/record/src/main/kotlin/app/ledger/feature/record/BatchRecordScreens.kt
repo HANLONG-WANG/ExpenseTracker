@@ -27,9 +27,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import app.ledger.core.common.StableId
+import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.BatchCommitBar
 import app.ledger.core.designsystem.BatchSummaryRowUiModel
 import app.ledger.core.designsystem.BatchSummaryTable
@@ -49,7 +51,6 @@ import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
-import app.ledger.core.designsystem.LocalLocale
 import app.ledger.core.designsystem.MoneyExpressionField
 import app.ledger.core.designsystem.SearchField
 import app.ledger.core.designsystem.SelectorField
@@ -245,9 +246,9 @@ private fun BatchRowEditorScreen(state: BatchRecordState, actions: BatchRecordAc
     val merchant = references.merchants.singleOrNull { it.id == row.merchantId }?.name
     val project = snapshot.projects.singleOrNull { it.id == row.projectId }?.name
     val locale = LocalLocale.current.platformLocale
-    val userCurrency = app.ledger.core.money.CurrencyCode.parse(row.userCurrencyCode).getOrNull() ?: snapshot.baseCurrency
+    val userCurrency = app.ledger.core.money.CurrencyCode.parse(row.userCurrencyCode).getOrNull() ?: snapshot.references.baseCurrency
     val accountCurrency = selectedAccount?.currency ?: userCurrency
-    val baseCurrency = snapshot.baseCurrency
+    val baseCurrency = snapshot.references.baseCurrency
     var accountMajor by remember(row.rowId, accountCurrency, locale) { mutableStateOf(row.accountMinor.toMajorInput(accountCurrency, locale)) }
     var baseMajor by remember(row.rowId, baseCurrency, locale) { mutableStateOf(row.baseMinor.toMajorInput(baseCurrency, locale)) }
     var showDateTimePicker by remember(row.rowId) { mutableStateOf(false) }
@@ -553,7 +554,7 @@ private fun BatchRowDraft.summaryModel(state: BatchRecordState, index: Int): Bat
         rowNumber = rowNumber,
         category = categoryName,
         amount = userMinor?.let { minor ->
-            val currency = refs.accounts.singleOrNull { it.id == accountId }?.currency ?: state.snapshot.baseCurrency
+            val currency = refs.accounts.singleOrNull { it.id == accountId }?.currency ?: state.snapshot.references.baseCurrency
             RefundPolicy.format(minor, currency, locale).formatted
         }.orEmpty(),
         accountAndCard = listOfNotNull(accountName, cardName).joinToString(" · "),

@@ -67,9 +67,8 @@ public fun CreditDestination(
     screenId: String,
     state: CreditLoadState,
     encodedArguments: Map<String, String>,
-    onAction: (CreditScreenAction) -> Unit,
+    actions: CreditActions,
 ) {
-    val actions = creditActions(onAction)
     when (state) {
         CreditLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.credit_loading))
         is CreditLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.credit_load_failed), actions.onRetry)
@@ -174,12 +173,13 @@ private fun CreditAccountDetail(state: CreditFeatureState, actions: CreditAction
                 current?.let { MetricCard(stringResource(R.string.credit_paid), CreditPolicy.money(it.paidAmountMinor, account.currency, locale), Modifier.fillMaxWidth()) }
                 MetricCard(stringResource(R.string.credit_overdue), CreditPolicy.money(account.overdueMinor, account.currency, locale, AmountSemantic.OUTFLOW), Modifier.fillMaxWidth())
                 account.availableLimitMinor?.let { MetricCard(stringResource(R.string.credit_available_limit), CreditPolicy.money(it, account.currency, locale), Modifier.fillMaxWidth()) }
-                account.profile?.temporaryLimitMinor?.let { temporary ->
+                val profile = account.profile
+                profile?.temporaryLimitMinor?.let { temporary ->
                     MetricCard(
                         stringResource(R.string.credit_temporary_limit),
                         CreditPolicy.money(temporary, account.currency, locale),
                         Modifier.fillMaxWidth(),
-                        explanation = account.profile.temporaryLimitExpiresOn?.let { stringResource(R.string.credit_expires_on, it.localized(locale)) },
+                        explanation = profile.temporaryLimitExpiresOn?.let { stringResource(R.string.credit_expires_on, it.localized(locale)) },
                     )
                 }
             }

@@ -7,12 +7,8 @@
     <string name="record_location_permission_action">権限設定</string>
     <string name="record_location_timeout">位置情報の待機が3秒で終了しました。今回は場所を保存せず、後から追記もしません。</string>
     <string name="record_location_map_unavailable">地図を利用できません。記帳内容は保存できます。</string>
-    <string name="record_location_map_summary">地図をタップして、この取引の場所を設定または移動します</string>
-    <string name="record_location_map_caption">保存済みの位置</string>
     <string name="record_location_map_name">名前</string>
     <string name="record_location_map_coordinates">座標</string>
-    <string name="record_location_show_list">位置一覧を表示</string>
-    <string name="record_location_hide_list">位置一覧を非表示</string>
     <string name="record_location_latitude">緯度</string>
     <string name="record_location_longitude">経度</string>
     <string name="record_location_coordinate_invalid">有効な十進度座標を入力してください。</string>
@@ -113,4 +109,6 @@
     <string name="batch_entry_title">一括入力</string><string name="batch_paste_input">TSV 行を貼り付け</string><string name="batch_paste_format">順序：種別、カテゴリ、主単位金額、口座、加盟店、ISO 日時、プロジェクト。名称は暗号化されたローカル参照だけで解決します。</string>
     <string name="batch_discard_title">一括下書きを破棄しますか？</string><string name="batch_discard_message">下書きはメモリ内だけにあります。破棄後は復元できず、台帳は変更されません。</string>
     <string name="batch_undo">正規の反対仕訳で一括取消</string>
+    <string name="batch_keep_editing">編集を続ける</string>
+    <string name="batch_error_date">日時が正しくありません。</string>
 </resources>

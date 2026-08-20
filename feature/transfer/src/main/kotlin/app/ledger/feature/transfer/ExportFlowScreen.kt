@@ -64,25 +64,7 @@ data class ExportFlowUiState(
     val temporaryCleanupComplete: Boolean = false,
 )
 
-sealed interface ExportFlowScreenAction {
-    data object Back : ExportFlowScreenAction
-    data class ContentSelected(val content: ExportContent) : ExportFlowScreenAction
-    data class FormatSelected(val format: ExportFormat) : ExportFlowScreenAction
-    data object Continue : ExportFlowScreenAction
-    data class FieldToggled(val field: ExportField) : ExportFlowScreenAction
-    data class LocationCoordinatesChanged(val included: Boolean) : ExportFlowScreenAction
-    data class FileNameChanged(val value: String) : ExportFlowScreenAction
-    data class DestinationSelected(val uri: Uri) : ExportFlowScreenAction
-    data object ConfirmOverwrite : ExportFlowScreenAction
-    data object Cancel : ExportFlowScreenAction
-    data object Retry : ExportFlowScreenAction
-    data object Open : ExportFlowScreenAction
-    data object Share : ExportFlowScreenAction
-    data object ViewLocation : ExportFlowScreenAction
-    data object Operations : ExportFlowScreenAction
-}
-
-private class ExportFlowActions(
+data class ExportFlowActions(
     val onBack: () -> Unit,
     val onContentSelected: (ExportContent) -> Unit,
     val onFormatSelected: (ExportFormat) -> Unit,
@@ -102,31 +84,7 @@ private class ExportFlowActions(
 )
 
 @Composable
-fun ExportFlowScreen(state: ExportFlowUiState, onAction: (ExportFlowScreenAction) -> Unit) {
-    ExportFlowContent(
-        state,
-        ExportFlowActions(
-            onBack = { onAction(ExportFlowScreenAction.Back) },
-            onContentSelected = { onAction(ExportFlowScreenAction.ContentSelected(it)) },
-            onFormatSelected = { onAction(ExportFlowScreenAction.FormatSelected(it)) },
-            onContinue = { onAction(ExportFlowScreenAction.Continue) },
-            onFieldToggled = { onAction(ExportFlowScreenAction.FieldToggled(it)) },
-            onLocationCoordinatesChanged = { onAction(ExportFlowScreenAction.LocationCoordinatesChanged(it)) },
-            onFileNameChanged = { onAction(ExportFlowScreenAction.FileNameChanged(it)) },
-            onDestinationSelected = { onAction(ExportFlowScreenAction.DestinationSelected(it)) },
-            onConfirmOverwrite = { onAction(ExportFlowScreenAction.ConfirmOverwrite) },
-            onCancel = { onAction(ExportFlowScreenAction.Cancel) },
-            onRetry = { onAction(ExportFlowScreenAction.Retry) },
-            onOpen = { onAction(ExportFlowScreenAction.Open) },
-            onShare = { onAction(ExportFlowScreenAction.Share) },
-            onViewLocation = { onAction(ExportFlowScreenAction.ViewLocation) },
-            onOperations = { onAction(ExportFlowScreenAction.Operations) },
-        ),
-    )
-}
-
-@Composable
-private fun ExportFlowContent(state: ExportFlowUiState, actions: ExportFlowActions) {
+fun ExportFlowScreen(state: ExportFlowUiState, actions: ExportFlowActions) {
     LedgerScaffold(
         state.fixedRootModifier(),
         topBar = { LedgerTopAppBar(stringResource(R.string.export_title), LedgerTopAppBarVariant.BACK, onNavigation = actions.onBack) },

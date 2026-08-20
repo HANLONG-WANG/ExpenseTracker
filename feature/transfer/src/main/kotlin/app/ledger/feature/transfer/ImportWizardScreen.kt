@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -143,27 +144,7 @@ data class ImportWizardUiState(
     val resultOutcome: ImportResultOutcomeUi = ImportResultOutcomeUi.SUCCESS,
 )
 
-sealed interface ImportWizardScreenAction {
-    data object Back : ImportWizardScreenAction
-    data class SourceSelected(val uri: Uri) : ImportWizardScreenAction
-    data class ModeSelected(val mode: ImportModeUi) : ImportWizardScreenAction
-    data class SheetSelected(val sheet: String) : ImportWizardScreenAction
-    data class EncodingChanged(val encoding: String) : ImportWizardScreenAction
-    data class HeaderRowChanged(val value: String) : ImportWizardScreenAction
-    data class CycleFieldMapping(val sourceField: String) : ImportWizardScreenAction
-    data class CreateMissingChanged(val entity: String, val enabled: Boolean) : ImportWizardScreenAction
-    data class FxRateChanged(val currency: String, val value: String) : ImportWizardScreenAction
-    data class DuplicateResolved(val row: Long, val resolution: DuplicateResolution) : ImportWizardScreenAction
-    data object Previous : ImportWizardScreenAction
-    data object Next : ImportWizardScreenAction
-    data object Pause : ImportWizardScreenAction
-    data object Cancel : ImportWizardScreenAction
-    data object Retry : ImportWizardScreenAction
-    data object Rollback : ImportWizardScreenAction
-    data object OpenJournal : ImportWizardScreenAction
-}
-
-private class ImportWizardActions(
+data class ImportWizardActions(
     val onBack: () -> Unit,
     val onSourceSelected: (Uri) -> Unit,
     val onModeSelected: (ImportModeUi) -> Unit,
@@ -191,26 +172,7 @@ private class ImportWizardActions(
 )
 
 @Composable
-fun ImportWizardScreen(state: ImportWizardUiState, onAction: (ImportWizardScreenAction) -> Unit) {
-    val actions = ImportWizardActions(
-        onBack = { onAction(ImportWizardScreenAction.Back) },
-        onSourceSelected = { onAction(ImportWizardScreenAction.SourceSelected(it)) },
-        onModeSelected = { onAction(ImportWizardScreenAction.ModeSelected(it)) },
-        onSheetSelected = { onAction(ImportWizardScreenAction.SheetSelected(it)) },
-        onEncodingChanged = { onAction(ImportWizardScreenAction.EncodingChanged(it)) },
-        onHeaderRowChanged = { onAction(ImportWizardScreenAction.HeaderRowChanged(it)) },
-        onCycleFieldMapping = { onAction(ImportWizardScreenAction.CycleFieldMapping(it)) },
-        onCreateMissingChanged = { entity, enabled -> onAction(ImportWizardScreenAction.CreateMissingChanged(entity, enabled)) },
-        onFxRateChanged = { currency, value -> onAction(ImportWizardScreenAction.FxRateChanged(currency, value)) },
-        onDuplicateResolved = { row, resolution -> onAction(ImportWizardScreenAction.DuplicateResolved(row, resolution)) },
-        onPrevious = { onAction(ImportWizardScreenAction.Previous) },
-        onNext = { onAction(ImportWizardScreenAction.Next) },
-        onPause = { onAction(ImportWizardScreenAction.Pause) },
-        onCancel = { onAction(ImportWizardScreenAction.Cancel) },
-        onRetry = { onAction(ImportWizardScreenAction.Retry) },
-        onRollback = { onAction(ImportWizardScreenAction.Rollback) },
-        onOpenJournal = { onAction(ImportWizardScreenAction.OpenJournal) },
-    )
+fun ImportWizardScreen(state: ImportWizardUiState, actions: ImportWizardActions) {
     LedgerScaffold(
         Modifier.fillMaxSize().importRootTag(state),
         topBar = { LedgerTopAppBar(stringResource(R.string.import_title), LedgerTopAppBarVariant.BACK, onNavigation = actions.onBack) },
@@ -827,7 +789,7 @@ private fun SummaryCards(state: ImportWizardUiState) {
 private fun SummaryCard(label: String, count: Long, modifier: Modifier = Modifier) {
     LedgerCard(modifier) {
         Column(Modifier.padding(LedgerTheme.spacing.xs)) {
-            LedgerText(LocaleNumberFormatter.integer(count, app.ledger.core.designsystem.LocalLocale.current.platformLocale), LedgerTextRole.SECTION)
+            LedgerText(LocaleNumberFormatter.integer(count, LocalLocale.current.platformLocale), LedgerTextRole.SECTION)
             LedgerText(label, LedgerTextRole.LABEL)
         }
     }

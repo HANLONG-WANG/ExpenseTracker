@@ -359,7 +359,6 @@ private fun ReportBuilderPreview(state: AnalysisFeatureState, execution: ReportE
                     },
                 )
             },
-            trailingAlignedColumns = setOf(0),
         ),
         tableExpanded = tableExpanded,
         onToggleTable = { tableExpanded = !tableExpanded },
@@ -408,12 +407,12 @@ internal fun VisualizationPickerScreen(state: AnalysisFeatureState, actions: Ana
 
 @Composable
 internal fun ReportExportScreen(state: AnalysisFeatureState, actions: AnalysisActions) {
+    val locale = LocalLocale.current.platformLocale
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_EXPORT),
         contentPadding = PaddingValues(LedgerTheme.spacing.md),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
     ) {
-        val locale = LocalLocale.current.platformLocale
         item { LedgerBanner(stringResource(R.string.analysis_export_handoff), LedgerBannerVariant.INFO) }
         item { LedgerText(stringResource(R.string.analysis_export_scope, state.period.start.localized(locale), state.period.endInclusive.localized(locale)), LedgerTextRole.BODY) }
         item { LedgerText(stringResource(R.string.analysis_export_scope_title), LedgerTextRole.SECTION) }
@@ -453,6 +452,7 @@ internal fun AnomalyRulesScreen(state: AnalysisFeatureState, actions: AnalysisAc
     val threshold = state.anomalyThresholdText.toBigDecimalOrNull()
     val lookback = state.anomalyLookbackText.toIntOrNull()
     val valid = threshold != null && threshold.signum() >= 0 && lookback != null && lookback in 1..120
+    val locale = LocalLocale.current.platformLocale
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.ANOMALY_RULES),
         formContent = true,
@@ -481,12 +481,11 @@ internal fun AnomalyRulesScreen(state: AnalysisFeatureState, actions: AnalysisAc
                 LedgerCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                         LedgerText(anomalyTitle(saved.rule.type), LedgerTextRole.SECTION)
-                        LedgerText(stringResource(R.string.analysis_rule_details, saved.rule.version.value, saved.rule.lookbackPeriods, LocaleNumberFormatter.decimal(saved.rule.threshold, LocalLocale.current.platformLocale, 2)), LedgerTextRole.SUPPORTING)
+                        LedgerText(stringResource(R.string.analysis_rule_details, saved.rule.version.value, saved.rule.lookbackPeriods, LocaleNumberFormatter.decimal(saved.rule.threshold, locale, 2)), LedgerTextRole.SUPPORTING)
                         LedgerButton(stringResource(R.string.analysis_edit_rule), { actions.onEditAnomalyRule(saved.id) }, Modifier.fillMaxWidth(), LedgerButtonVariant.TEXT)
                     }
                 }
             }
-            val locale = LocalLocale.current.platformLocale
             items(state.anomalyFindings, key = { "${it.rule.type}-${it.seriesKey}-${it.date}" }) { finding ->
                 val observed = AnalysisPolicy.money(finding.observedMinor, state.baseCurrency, locale).formatted
                 val baseline = AnalysisPolicy.money(finding.baselineMinor, state.baseCurrency, locale).formatted

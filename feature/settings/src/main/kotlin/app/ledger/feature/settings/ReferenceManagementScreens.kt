@@ -85,6 +85,8 @@ import app.ledger.finance.domain.CategoryStatus
 import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.StatisticalNature
 import kotlinx.coroutines.delay
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -95,13 +97,12 @@ public fun ReferenceManagementDestination(
     screenId: String,
     encodedArguments: Map<String, String>,
     dataState: ManagementDataState,
-    onAction: (ManagementScreenAction) -> Unit,
+    actions: ManagementActions,
     placeMap: PlaceMapSlot,
     pending: Boolean,
     stateOverride: ManagementRequiredState? = null,
     modifier: Modifier = Modifier,
 ) {
-    val actions = managementActions(onAction)
     require(screenId in SUPPORTED_SCREENS)
     require(stateOverride == null || stateOverride.screenId == screenId)
     val snapshot = (dataState as? ManagementDataState.Content)?.snapshot
@@ -247,21 +248,21 @@ private fun CategoryEditor(snapshot: ReferenceDataSnapshot?, direction: Category
         formContent = true,
         fixedAction = {
             ManagementSaveBar(valid) {
-            actions.onSaveCategory(
-                CategorySubmission(
-                    categoryId,
-                    direction,
-                    parentId,
-                    name.trim(),
-                    nature,
-                    defaultAccountId,
-                    defaultCardId,
-                    defaultMerchantId,
-                    selectedIcon.name.lowercase(),
-                    selectedColor,
-                ),
-            )
-        },
+                actions.onSaveCategory(
+                    CategorySubmission(
+                        categoryId,
+                        direction,
+                        parentId,
+                        name.trim(),
+                        nature,
+                        defaultAccountId,
+                        defaultCardId,
+                        defaultMerchantId,
+                        selectedIcon.name.lowercase(),
+                        selectedColor,
+                    ),
+                )
+            }
         },
     ) {
         Column(

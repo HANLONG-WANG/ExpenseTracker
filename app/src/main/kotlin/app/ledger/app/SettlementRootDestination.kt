@@ -11,6 +11,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerSaveFab
+import app.ledger.feature.settlement.SettlementActions
 import app.ledger.feature.settlement.SettlementDestination
 import app.ledger.feature.settlement.SettlementLoadState
 import app.ledger.feature.settlement.SettlementPresentation
@@ -39,7 +40,7 @@ internal fun SettlementRootDestination(
 ) {
     val activityId = encodedArguments["activityId"]?.let { StableId.parse(it).getOrNull() }
     val participantId = encodedArguments["participantId"]?.let { StableId.parse(it).getOrNull() }
-    val uiState by viewModel.settlementUiState.collectAsStateWithLifecycle()
+    val state by viewModel.settlement.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, activityId, participantId) { viewModel.loadSettlement(screenId, activityId, participantId) }
     SettlementDestination(
         screenId,

@@ -36,6 +36,7 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
+import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
@@ -80,9 +81,8 @@ public fun LoanDestination(
     screenId: String,
     state: LoanLoadState,
     encodedArguments: Map<String, String>,
-    onAction: (LoanScreenAction) -> Unit,
+    actions: LoanActions,
 ) {
-    val actions = loanActions(onAction)
     when (state) {
         LoanLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.loan_loading))
         is LoanLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.loan_load_failed), actions.onRetry)
@@ -418,13 +418,14 @@ private fun LoanSchedule(state: LoanFeatureState) {
 }
 
 @Composable
-private fun LoanPaymentDetail(state: LoanFeatureState) = LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_PAYMENT_DETAIL)) {
+private fun LoanPaymentDetail(state: LoanFeatureState) {
+    val locale = LocalLocale.current.platformLocale
+    LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_PAYMENT_DETAIL)) {
     val detail = state.paymentDetail
     if (detail == null) {
         item { LedgerText(stringResource(R.string.loan_payment_not_found), LedgerTextRole.BODY) }
         return@LoanListLayout
     }
-    val locale = LocalLocale.current.platformLocale
     item { LedgerText(stringResource(R.string.loan_payment_breakdown), LedgerTextRole.TITLE) }
     item { LedgerText(stringResource(R.string.loan_payment_context, detail.contractName, detail.localDate.localized(locale), detail.paymentAccountName ?: stringResource(R.string.loan_unknown_account)), LedgerTextRole.BODY) }
     item { MetricCard(stringResource(R.string.loan_principal_component), CreditPolicy.money(detail.principalMinor, detail.currency, locale), Modifier.fillMaxWidth()) }
@@ -450,10 +451,13 @@ private fun LoanPaymentDetail(state: LoanFeatureState) = LoanListLayout(Modifier
         }
     }
     item { LedgerBanner(stringResource(R.string.loan_account_impact_detail, detail.paymentAccountName ?: stringResource(R.string.loan_unknown_account), CreditPolicy.money(detail.principalMinor, detail.currency, locale).formatted, CreditPolicy.money(detail.interestMinor + detail.feeMinor + detail.penaltyMinor, detail.currency, locale).formatted), LedgerBannerVariant.INFO) }
+    }
 }
 
 @Composable
-private fun LoanSimulation(state: LoanFeatureState, actions: LoanActions) = LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_SIMULATION)) {
+private fun LoanSimulation(state: LoanFeatureState, actions: LoanActions) {
+    val locale = LocalLocale.current.platformLocale
+    LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_SIMULATION)) {
     item { StateBanner(state) }
     item { AmountEditor(state.draft.principalComponent, LoanField.PRINCIPAL_COMPONENT, R.string.loan_prepayment_amount, actions) }
     item { StrategySelector(state, actions) }
@@ -461,7 +465,6 @@ private fun LoanSimulation(state: LoanFeatureState, actions: LoanActions) = Loan
     state.simulation?.let { simulation ->
         val contract = state.contract
         val currency = contract?.currency ?: state.snapshot.baseCurrency
-        val locale = LocalLocale.current.platformLocale
         item { LedgerText(stringResource(R.string.loan_before_after), LedgerTextRole.SECTION) }
         item { SimulationSummary(stringResource(R.string.loan_before), simulation.before, currency) }
         item { SimulationSummary(stringResource(R.string.loan_after), simulation.afterSummary, currency) }
@@ -475,15 +478,17 @@ private fun LoanSimulation(state: LoanFeatureState, actions: LoanActions) = Loan
         item { LedgerBanner(stringResource(R.string.loan_simulation_no_write), LedgerBannerVariant.NEUTRAL) }
         item { LedgerButton(stringResource(R.string.loan_apply_plan), { actions.onNavigate("LOA-011", state.selectedContractId, null) }, Modifier.fillMaxWidth()) }
     }
+    }
 }
 
 @Composable
-private fun ApplySimulation(state: LoanFeatureState, actions: LoanActions) = LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_SIMULATION_APPLY)) {
+private fun ApplySimulation(state: LoanFeatureState, actions: LoanActions) {
+    val locale = LocalLocale.current.platformLocale
+    LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_SIMULATION_APPLY)) {
     item { StateBanner(state) }
     item { LedgerBanner(stringResource(R.string.loan_apply_creates_versions), LedgerBannerVariant.WARNING) }
     state.simulation?.let { simulation ->
         val currency = state.contract?.currency ?: state.snapshot.baseCurrency
-        val locale = LocalLocale.current.platformLocale
         item { MetricCard(stringResource(R.string.loan_apply_payment_now), CreditPolicy.money(simulation.paymentNowMinor, currency, locale), Modifier.fillMaxWidth(), MetricCardVariant.EMPHASIZED) }
         item { MetricCard(stringResource(R.string.loan_apply_principal), CreditPolicy.money(simulation.prepaymentPrincipalMinor, currency, locale), Modifier.fillMaxWidth()) }
         item { MetricCard(stringResource(R.string.loan_apply_penalty), CreditPolicy.money(simulation.penaltyMinor, currency, locale), Modifier.fillMaxWidth()) }
@@ -502,6 +507,7 @@ private fun ApplySimulation(state: LoanFeatureState, actions: LoanActions) = Loa
             actions.onApplySimulation,
             {},
         )
+    }
     }
 }
 

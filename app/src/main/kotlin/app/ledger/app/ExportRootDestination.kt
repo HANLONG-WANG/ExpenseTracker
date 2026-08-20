@@ -8,8 +8,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.navigation.LedgerRouteContract
 import app.ledger.core.navigation.ScreenId
 import app.ledger.core.navigation.SessionGateState
+import app.ledger.feature.transfer.ExportFlowActions
 import app.ledger.feature.transfer.ExportFlowScreen
-import app.ledger.feature.transfer.ExportFlowScreenAction
 
 @Composable
 internal fun ExportRootDestination(

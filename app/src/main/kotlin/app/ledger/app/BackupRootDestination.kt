@@ -12,8 +12,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.navigation.LedgerRouteContract
 import app.ledger.core.navigation.ScreenId
 import app.ledger.core.navigation.SessionGateState
+import app.ledger.feature.transfer.BackupFlowActions
 import app.ledger.feature.transfer.BackupFlowScreen
-import app.ledger.feature.transfer.BackupFlowScreenAction
 
 @Composable
 internal fun BackupRootDestination(
@@ -27,12 +27,17 @@ internal fun BackupRootDestination(
     }
     BackupFlowScreen(
         state.copy(screenId = screenId),
-        { action ->
-            when (action) {
-                BackupFlowScreenAction.Back -> viewModel.requestRootBack()
-                is BackupFlowScreenAction.Navigate -> {
-                    viewModel.navigateBackup(action.screenId)
-                    onNavigationChanged()
+        BackupFlowActions(
+            onBack = viewModel::requestRootBack,
+            onNavigate = { target ->
+                viewModel.navigateBackup(target)
+                onNavigationChanged()
+            },
+            onRepositoryKindSelected = viewModel::selectBackupRepository,
+            onDirectorySelected = viewModel::selectBackupDirectory,
+            onAuthorizeDrive = {
+                viewModel.requestBackupDriveAuthorization { pendingIntent ->
+                    driveAuthorization.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
                 }
             },
             onDisconnectDrive = viewModel::disconnectBackupDrive,
