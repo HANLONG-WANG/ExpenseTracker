@@ -5,6 +5,7 @@ package app.ledger.finance.data
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
@@ -160,43 +161,69 @@ class AutomationApplicationPortDeviceTest {
     fun onlyThisFutureAndEntireScopesAppendAuditableSeriesHistory() = runBlocking {
         saveBlueprintAndCandidateSeries()
         val original = automation.snapshot(BOOK_ID).success().series.single()
-        automation.modifyOccurrence(
-            ModifyOccurrenceRequest(
-                ids(600, 5),
-                SERIES_ID,
-                LocalDate.of(2026, 8, 5),
-                RecurrenceModificationScope.THIS_OCCURRENCE,
-                recurrenceDraft(original, id(610), original.revisionId, LocalTime.of(10, 0)),
-            ),
-        ).success()
+        val onlyThisRequest = ModifyOccurrenceRequest(
+            ids(600, 5),
+            SERIES_ID,
+            LocalDate.of(2026, 8, 5),
+            RecurrenceModificationScope.THIS_OCCURRENCE,
+            recurrenceDraft(original, id(610), original.revisionId, LocalTime.of(10, 0)),
+        )
+        val onlyThisReceipt = automation.modifyOccurrence(onlyThisRequest).success()
+        assertEquals(onlyThisReceipt, automation.modifyOccurrence(onlyThisRequest).success())
         val afterOnlyThis = automation.snapshot(BOOK_ID).success()
         assertEquals(6L, afterOnlyThis.localRevision)
 
-        automation.modifyOccurrence(
-            ModifyOccurrenceRequest(
-                ids(620, 6),
-                SERIES_ID,
-                LocalDate.of(2026, 8, 5),
-                RecurrenceModificationScope.THIS_AND_FUTURE,
-                recurrenceDraft(afterOnlyThis.series.single(), id(630), original.revisionId, LocalTime.of(9, 0)),
-            ),
-        ).success()
+        val futureRequest = ModifyOccurrenceRequest(
+            ids(620, 6),
+            SERIES_ID,
+            LocalDate.of(2026, 8, 5),
+            RecurrenceModificationScope.THIS_AND_FUTURE,
+            recurrenceDraft(afterOnlyThis.series.single(), id(630), original.revisionId, LocalTime.of(9, 0)),
+        )
+        val futureReceipt = automation.modifyOccurrence(futureRequest).success()
+        assertEquals(futureReceipt, automation.modifyOccurrence(futureRequest).success())
         val afterFuture = automation.snapshot(BOOK_ID).success()
         assertEquals(LocalDate.of(2026, 8, 5), afterFuture.series.single().startDate)
 
-        automation.modifyOccurrence(
-            ModifyOccurrenceRequest(
-                ids(640, 7),
-                SERIES_ID,
-                LocalDate.of(2026, 8, 6),
-                RecurrenceModificationScope.ENTIRE_SERIES,
-                recurrenceDraft(afterFuture.series.single(), id(650), afterFuture.series.single().revisionId, LocalTime.of(9, 0)),
-            ),
-        ).success()
+        val entireRequest = ModifyOccurrenceRequest(
+            ids(640, 7),
+            SERIES_ID,
+            LocalDate.of(2026, 8, 6),
+            RecurrenceModificationScope.ENTIRE_SERIES,
+            recurrenceDraft(afterFuture.series.single(), id(650), afterFuture.series.single().revisionId, LocalTime.of(9, 0)),
+        )
+        val entireReceipt = automation.modifyOccurrence(entireRequest).success()
+        assertEquals(entireReceipt, automation.modifyOccurrence(entireRequest).success())
         read { db ->
             assertEquals(3L, scalar(db, "SELECT COUNT(*) FROM recurrence_series_revision"))
             assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM recurrence_exception"))
             assertEquals(4L, scalar(db, "SELECT COUNT(*) FROM entity_revision WHERE entity_type=${app.ledger.finance.domain.EntityType.RECURRENCE_SERIES.ordinal}"))
+            assertEquals(5L, scalar(db, "SELECT COUNT(*) FROM command_receipt"))
+            assertEquals(0L, scalar(db, "SELECT COUNT(*) FROM book_commit WHERE local_revision>=4 AND command_uid IS NULL"))
+        }
+    }
+
+    @Test
+    fun automationCommandReplayReturnsFirstReceiptBeforeStaleRevisionChecks() = runBlocking {
+        val request = SaveBlueprintRequest(
+            ids(300, 3),
+            BlueprintDraft(BLUEPRINT_ID, BLUEPRINT_REVISION_ID, null, "Daily food", "record", 0xff006c4c.toInt(), EntityStatus.ACTIVE, TransactionKind.EXPENSE, CATEGORY_ID, ACCOUNT_ID, null, null, null, null, null, null, "100", currency("JPY"), null, null),
+        )
+
+        val first = automation.saveBlueprint(request).success()
+        val replayed = automation.saveBlueprint(request).success()
+        val conflicting = automation.saveBlueprint(request.copy(draft = request.draft.copy(name = "Different payload")))
+
+        assertEquals(first, replayed)
+        assertEquals(
+            DomainResult.Failure(app.ledger.finance.domain.DomainViolation.DuplicateCommandPayloadMismatch),
+            conflicting,
+        )
+        assertEquals(CommandId(id(300)), first.commandId)
+        read { db ->
+            assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM transaction_blueprint_revision"))
+            assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM command_receipt WHERE command_uid=x'${id(300).bytes.toHex()}'"))
+            assertEquals(4L, scalar(db, "SELECT local_revision FROM book WHERE id=1"))
         }
     }
 
@@ -250,7 +277,15 @@ class AutomationApplicationPortDeviceTest {
         TransactionSource.MANUAL, candidateId, Instant.parse("2026-08-06T00:00:00Z"), candidateId,
     )
 
-    private fun ids(seed: Long, expected: Long) = AutomationMutationIds(BOOK_ID, id(seed), id(seed + 1), id(seed + 2), expected, Instant.ofEpochMilli(seed * 100))
+    private fun ids(seed: Long, expected: Long) = AutomationMutationIds(
+        BOOK_ID,
+        CommandId(id(seed)),
+        id(seed + 1),
+        id(seed + 2),
+        id(seed + 3),
+        expected,
+        Instant.ofEpochMilli(seed * 100),
+    )
     private fun read(block: (androidx.sqlite.db.SupportSQLiteDatabase) -> Unit) {
         keys.open(BOOK_ID).use { opened ->
             val database = opened.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(context, it) }

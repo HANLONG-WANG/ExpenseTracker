@@ -2,7 +2,6 @@ package app.ledger.finance.data
 
 import android.database.sqlite.SQLiteFullException
 import app.ledger.core.common.DomainResult
-import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.database.LedgerMigrations
 import app.ledger.finance.application.FinanceDataError
@@ -21,32 +20,14 @@ class RoomProjectionMaintenanceService(
     override suspend fun audit(): DomainResult<ProjectionAuditResult> = protect {
         database.inLedgerTransaction { connection ->
             val version = version(connection)
-            val liveHash = projections.canonicalHash(connection)
-            val mismatches = projections.mismatchedFamilies(
-                connection,
-                version.localRevision.value,
-                version.valuationRevision.value,
-            )
-            connection.execSQL("SAVEPOINT p08_projection_audit")
-            val rebuiltHash = try {
-                projections.rebuildAll(
-                    connection,
-                    version.localRevision.value,
-                    version.valuationRevision.value,
-                )
-                projections.canonicalHash(connection)
-            } finally {
-                connection.execSQL("ROLLBACK TO SAVEPOINT p08_projection_audit")
-                connection.execSQL("RELEASE SAVEPOINT p08_projection_audit")
-            }
-            val integrity = DatabaseIntegrityAudit.run(connection)
-            if (!integrity.isValid) abort(FinanceDataError.CorruptData)
+            val integrity = RoomLedgerIntegrityAudit.run(connection)
+            if (!integrity.authoritativeFactsValid || !integrity.standardInventoryMatches) abort(FinanceDataError.CorruptData)
             DomainResult.Success(
                 ProjectionAuditResult(
-                    liveHash = liveHash,
-                    rebuiltHash = rebuiltHash,
+                    liveHash = integrity.liveProjectionHash,
+                    rebuiltHash = integrity.rebuiltProjectionHash,
                     version = version,
-                    mismatchedFamilies = mismatches,
+                    mismatchedFamilies = integrity.mismatchedProjectionFamilies + integrity.rebuiltProjectionFamilies,
                 ),
             )
         }
@@ -68,7 +49,7 @@ class RoomProjectionMaintenanceService(
                 version.valuationRevision.value,
             )
             if (mismatches.isNotEmpty()) abort(FinanceDataError.ProjectionMismatch)
-            val integrity = DatabaseIntegrityAudit.run(connection)
+            val integrity = RoomLedgerIntegrityAudit.run(connection)
             if (!integrity.isValid) abort(FinanceDataError.CorruptData)
             connection.execSQL("UPDATE book SET state = 0 WHERE id = 1 AND state = 1")
             DomainResult.Success(ProjectionAuditResult(hash, hash, version, emptySet()))
@@ -105,9 +86,27 @@ class RoomProjectionMaintenanceService(
                     arrayOf(LedgerMigrations.CURRENT_VERSION),
                 ) { it.getLong(0) } ?: 0L
                 if (registry != 1L) add("SCHEMA_CONTRACT_MISSING")
+                val integrity = runCatching { RoomLedgerIntegrityAudit.run(connection) }.getOrNull()
+                if (integrity == null) {
+                    add("FULL_INTEGRITY_AUDIT_FAILED")
+                } else {
+                    addAll(integrity.failedInvariantIds)
+                    if (!integrity.authoritativeFactsValid) add("AUTHORITATIVE_INTEGRITY_FAILED")
+                    if (!integrity.database.isValid) add("DATABASE_INTEGRITY_FAILED")
+                    if (!integrity.projectionRebuildMatches) add("PROJECTION_REBUILD_HASH_MISMATCH")
+                    if (!integrity.standardInventoryMatches) add("INVARIANT_STANDARD_MISMATCH")
+                }
             }
             val disposition = when {
-                "BOOK_RECOVERY_REQUIRED" in reasons || "SCHEMA_CONTRACT_MISSING" in reasons ->
+                reasons.any {
+                    it in setOf(
+                        "BOOK_RECOVERY_REQUIRED",
+                        "SCHEMA_CONTRACT_MISSING",
+                        "FULL_INTEGRITY_AUDIT_FAILED",
+                        "AUTHORITATIVE_INTEGRITY_FAILED",
+                        "INVARIANT_STANDARD_MISMATCH",
+                    )
+                } ->
                     StartupDisposition.RECOVERY_REQUIRED
                 reasons.isNotEmpty() -> StartupDisposition.MAINTENANCE_REQUIRED
                 else -> StartupDisposition.READY

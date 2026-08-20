@@ -1,8 +1,10 @@
 package app.ledger.finance.application
 
+import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.money.CurrencyCode
+import app.ledger.finance.domain.CommandReceipt
 import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.PlannedRecurrenceOccurrence
 import app.ledger.finance.domain.RecurrenceCandidateStatus
@@ -20,6 +22,7 @@ import java.time.ZoneId
 
 data class AutomationMutationIds(
     val bookId: StableId,
+    val commandId: CommandId,
     val commitId: StableId,
     val entityRevisionId: StableId,
     val deviceInstanceId: StableId,
@@ -28,7 +31,7 @@ data class AutomationMutationIds(
 ) {
     init {
         require(expectedLocalRevision >= 0L)
-        require(setOf(bookId, commitId, entityRevisionId, deviceInstanceId).size == AUTOMATION_FIXED_ID_COUNT)
+        require(setOf(bookId, commandId.stableId, commitId, entityRevisionId, deviceInstanceId).size == AUTOMATION_FIXED_ID_COUNT)
     }
 }
 
@@ -217,11 +220,11 @@ fun interface FormalOccurrenceGenerator {
 interface AutomationApplicationPort {
     suspend fun snapshot(bookId: StableId): DomainResult<AutomationSnapshot>
 
-    suspend fun saveBlueprint(request: SaveBlueprintRequest): DomainResult<Unit>
+    suspend fun saveBlueprint(request: SaveBlueprintRequest): DomainResult<CommandReceipt>
 
-    suspend fun saveSeries(request: SaveRecurrenceRequest): DomainResult<Unit>
+    suspend fun saveSeries(request: SaveRecurrenceRequest): DomainResult<CommandReceipt>
 
-    suspend fun modifyOccurrence(request: ModifyOccurrenceRequest): DomainResult<Unit>
+    suspend fun modifyOccurrence(request: ModifyOccurrenceRequest): DomainResult<CommandReceipt>
 
     suspend fun catchUp(operationId: StableId, through: Instant): DomainResult<CatchUpResult>
 
@@ -234,4 +237,4 @@ interface AutomationApplicationPort {
     suspend fun skipCandidate(bookId: StableId, candidateId: StableId, changedAt: Instant): DomainResult<Unit>
 }
 
-private const val AUTOMATION_FIXED_ID_COUNT = 4
+private const val AUTOMATION_FIXED_ID_COUNT = 5

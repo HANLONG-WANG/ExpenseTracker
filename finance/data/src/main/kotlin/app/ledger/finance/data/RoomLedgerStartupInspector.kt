@@ -8,22 +8,21 @@ import app.ledger.core.security.StartupInspection
 
 /** Synchronous startup gate over P08 projections and the P07 authority database. */
 public class RoomLedgerStartupInspector : LedgerStartupInspector {
-    private val projections = RoomProjectionEngine()
-
     override fun inspect(database: LedgerDatabase): StartupInspection = try {
         database.readLedger { connection ->
-            val book = connection.queryOne(
-                "SELECT local_revision, valuation_revision, state FROM book WHERE id = 1",
-            ) { cursor -> Triple(cursor.getLong(0), cursor.getLong(1), cursor.getInt(2)) }
+            val bookState = connection.queryOne(
+                "SELECT state FROM book WHERE id = 1",
+            ) { cursor -> cursor.getInt(0) }
                 ?: return@readLedger StartupInspection.RecoveryRequired(RecoveryDiagnosticCode.SCHEMA_INVALID)
-            // Room schema validation, SQLCipher opening and DefaultLedgerStartupInspector already
-            // establish schema/key/cipher availability. Full PRAGMA integrity_check, foreign-key,
-            // journal and projection-cardinality audits belong to maintenance/restore, not startup.
-            if (book.third == 2) {
+            if (bookState == 2) {
                 return@readLedger StartupInspection.RecoveryRequired(RecoveryDiagnosticCode.SCHEMA_INVALID)
             }
-            if (book.third == 1) return@readLedger StartupInspection.Maintenance(MaintenanceReason.CONTROLLED_MAINTENANCE)
-            if (projections.mismatchedFamiliesAtStartup(connection, book.first, book.second).isNotEmpty()) {
+            if (bookState == 1) return@readLedger StartupInspection.Maintenance(MaintenanceReason.CONTROLLED_MAINTENANCE)
+            val integrity = RoomLedgerIntegrityAudit.run(connection)
+            if (!integrity.authoritativeFactsValid || !integrity.standardInventoryMatches) {
+                return@readLedger StartupInspection.RecoveryRequired(RecoveryDiagnosticCode.SCHEMA_INVALID)
+            }
+            if (!integrity.database.isValid || !integrity.projectionRebuildMatches) {
                 return@readLedger StartupInspection.Maintenance(MaintenanceReason.PROJECTION_REBUILD)
             }
             val unfinished = connection.queryOne(

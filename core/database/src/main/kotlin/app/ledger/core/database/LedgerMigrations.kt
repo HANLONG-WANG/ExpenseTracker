@@ -42,16 +42,19 @@ object LedgerMigrations {
         object : Migration(PRIMARY_V1, PRIMARY_V2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 LedgerSchemaDefinition.migratePrimaryV1ToV2(context, db)
+                MigrationPostValidation.validateOrThrow(context, db, PRIMARY_V2)
             }
         },
         object : Migration(PRIMARY_V2, PRIMARY_V3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 LedgerSchemaDefinition.migratePrimaryV2ToV3(context, db)
+                MigrationPostValidation.validateOrThrow(context, db, PRIMARY_V3)
             }
         },
         object : Migration(PRIMARY_V3, PRIMARY_V4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 LedgerSchemaDefinition.migratePrimaryV3ToV4(context, db)
+                MigrationPostValidation.validateOrThrow(context, db, PRIMARY_V4)
             }
         },
     )
