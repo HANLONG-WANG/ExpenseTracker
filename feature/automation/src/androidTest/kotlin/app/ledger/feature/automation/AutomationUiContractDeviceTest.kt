@@ -18,10 +18,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.designsystem.LedgerTestTags
@@ -120,6 +123,38 @@ class AutomationUiContractDeviceTest {
         assertEquals(cases.map(Golden::expected), actual)
     }
 
+    @Test
+    fun candidateConfirmationOpensFullEditorWithoutChangingFormalMetrics() {
+        val activeScreen = mutableStateOf("AUT-008")
+        val candidateState = state("AUT-009", snapshot(), candidateId = CANDIDATE_ID)
+        var formalMetricMinor = 0L
+        var fullEditorLaunches = 0
+        val actions = ACTIONS.copy(
+            onCandidateSelected = { candidateId ->
+                assertEquals(CANDIDATE_ID, candidateId)
+                activeScreen.value = "AUT-009"
+            },
+            onConfirmCandidate = { fullEditorLaunches += 1 },
+        )
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 800.dp)) {
+                    val current = if (activeScreen.value == "AUT-008") state("AUT-008", snapshot()) else candidateState
+                    AutomationDestination(activeScreen.value, AutomationLoadState.Content(current), actions)
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("Rent").performClick()
+        composeRule.onNodeWithTag(LedgerTestTags.AUTOMATION_CANDIDATE_EDITOR).assertExists()
+        val confirm = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.automation_confirm_and_post)
+        composeRule.onNodeWithText(confirm).performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, fullEditorLaunches)
+            assertEquals(0L, formalMetricMinor)
+        }
+    }
+
     private fun Bitmap.pixelSha256(): String {
         val pixels = IntArray(width * height)
         getPixels(pixels, 0, width, 0, 0, width, height)
@@ -189,11 +224,11 @@ class AutomationUiContractDeviceTest {
         const val EXPECTED_HUB_SHA256 = "0f73c7a9ae623b1482cb53b37a0a1851ac4689868ada7a8cce81e047a8d6f874"
         const val EXPECTED_CANDIDATE_SHA256 = "7b9f1701eccafa0c06de9f2bccee96be12e9a0fcb3ba330dbd0276907e77e497"
         val ACTIONS = AutomationActions(
-            onRetry = {}, onNavigate = { _, _ -> }, onSearch = {}, onBlueprintField = { _, _ -> }, onBlueprintKind = {},
+            onRetry = {}, onNavigate = { _, _ -> }, onSearch = {}, onTemplateFilter = {}, onTemplateSort = {}, onArchiveBlueprint = {}, onBlueprintField = { _, _ -> }, onBlueprintKind = {},
             onBlueprintReference = { _, _ -> }, onSaveBlueprint = {}, onRecurrenceField = { _, _ -> }, onRecurrenceBlueprint = {},
-            onFrequency = {}, onWeekday = {}, onMissingDay = {}, onWeekend = {}, onGenerationMode = {}, onNotifyCandidate = {},
-            onSaveRecurrence = {}, onTemplateSelected = {}, onCandidateSelected = {}, onCandidateToggle = {}, onConfirmCandidate = {},
-            onSkipCandidate = {}, onScope = {}, onApplyScope = {},
+            onFrequency = {}, onWeekday = {}, onNthWeekday = {}, onMissingDay = {}, onWeekend = {}, onGenerationMode = {}, onNotifyCandidate = {}, onFixedPlace = {},
+            onSaveRecurrence = {}, onApplyRule = {}, onSeriesFilter = {}, onTemplateSelected = {}, onCandidateSelected = {}, onCandidateToggle = {}, onReviewSelectedCandidates = {}, onSkipSelectedCandidates = {}, onConfirmCandidate = {},
+            onSkipCandidate = {}, onCancelCandidate = {}, onScope = {}, onApplyScope = {},
         )
         val EXPECTED = linkedMapOf(
             "AUT-001" to setOf("content"), "AUT-002" to setOf("content", "empty"),

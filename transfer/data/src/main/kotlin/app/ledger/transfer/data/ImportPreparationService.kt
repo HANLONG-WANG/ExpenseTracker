@@ -24,6 +24,7 @@ import app.ledger.transfer.domain.ImportTransformation
 import app.ledger.transfer.domain.ImportValidationIssue
 import app.ledger.transfer.domain.ImportValidationReport
 import app.ledger.transfer.domain.ImportValidationSeverity
+import app.ledger.transfer.domain.MissingFxPolicy
 import app.ledger.transfer.domain.PreparedCommandPayload
 import app.ledger.transfer.domain.PreparedCommandValidationState
 import app.ledger.transfer.domain.StagingDuplicateCandidate
@@ -194,11 +195,16 @@ class ImportPreparationService(
         val currency = mapped[ImportTargetField.CURRENCY]
         if (currency != null && currency != request.baseCurrency) {
             val fx = request.fxDecisions.singleOrNull { it.sourceCurrency == currency && it.targetCurrency == request.baseCurrency }
-            val rate = fx?.rate
-            if (rate == null) {
-                issues += error(row.rowNumber, ImportTargetField.FX_RATE, "FX_MANUAL_RATE_REQUIRED")
-            } else {
-                mapped[ImportTargetField.FX_RATE] = rate.toPlainString()
+            when (fx?.policy) {
+                MissingFxPolicy.USE_PROVIDED_RATE -> mapped[ImportTargetField.FX_RATE] = requireNotNull(fx.rate).toPlainString()
+                MissingFxPolicy.USE_IMPORTED_HISTORICAL_RATE -> {
+                    val imported = mapped[ImportTargetField.FX_RATE]?.toBigDecimalOrNull()
+                    if (imported == null || imported <= java.math.BigDecimal.ZERO) {
+                        issues += error(row.rowNumber, ImportTargetField.FX_RATE, "FX_HISTORICAL_RATE_REQUIRED")
+                    }
+                }
+                MissingFxPolicy.REQUIRE_MANUAL_RATE, null ->
+                    issues += error(row.rowNumber, ImportTargetField.FX_RATE, "FX_MANUAL_RATE_REQUIRED")
             }
         }
         val commandType = commandType(mapped[ImportTargetField.TRANSACTION_KIND])
@@ -223,7 +229,13 @@ class ImportPreparationService(
                 "__fx__:${decision.sourceCurrency}:${decision.targetCurrency}",
                 ImportTargetField.FX_RATE,
                 ImportTransformation.ClosedValueMap(
-                    mapOf(decision.sourceCurrency to (decision.rate?.toPlainString() ?: "manual")),
+                    mapOf(
+                        decision.sourceCurrency to when (decision.policy) {
+                            MissingFxPolicy.USE_PROVIDED_RATE -> requireNotNull(decision.rate).toPlainString()
+                            MissingFxPolicy.USE_IMPORTED_HISTORICAL_RATE -> "historical-from-import"
+                            MissingFxPolicy.REQUIRE_MANUAL_RATE -> "manual-required"
+                        },
+                    ),
                 ),
             )
         }

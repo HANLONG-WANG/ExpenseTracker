@@ -22,6 +22,8 @@ internal fun ImportRootDestination(viewModel: AppRootViewModel) {
             onHeaderRowChanged = viewModel::changeImportHeaderRow,
             onCycleFieldMapping = viewModel::cycleImportFieldMapping,
             onCreateMissingChanged = viewModel::changeImportMissingCreation,
+            onCycleEntityMapping = viewModel::cycleImportEntityMapping,
+            onFxPolicyChanged = viewModel::changeImportFxPolicy,
             onFxRateChanged = viewModel::changeImportFxRate,
             onDuplicateResolved = viewModel::resolveImportDuplicate,
             onPrevious = viewModel::previousImportStage,
@@ -31,6 +33,11 @@ internal fun ImportRootDestination(viewModel: AppRootViewModel) {
             onRetry = viewModel::retryImport,
             onRollback = viewModel::rollbackImport,
             onOpenJournal = { viewModel.selectRootTopLevel(app.ledger.core.navigation.TopLevelDestination.JOURNAL) },
+            onShowHistory = viewModel::navigateImportHistory,
+            onViewValidationIssues = viewModel::viewImportValidationIssues,
+            onCleanupTemporary = viewModel::cleanupImportTemporary,
+            onViewHistoryResult = viewModel::viewImportHistoryResult,
+            onRollbackHistory = viewModel::rollbackImportHistory,
         ),
     )
 }

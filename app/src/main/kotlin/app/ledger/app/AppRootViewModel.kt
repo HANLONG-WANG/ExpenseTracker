@@ -5,6 +5,7 @@ package app.ledger.app
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.OpenableColumns
@@ -40,8 +41,10 @@ import app.ledger.core.common.getOrNull
 import app.ledger.core.common.map
 import app.ledger.core.designsystem.LedgerReferenceDisplayDefaults
 import app.ledger.core.geo.ForegroundLocationSaveSession
+import app.ledger.core.geo.LocationSaveDisposition
 import app.ledger.core.geo.ProductionForegroundLocationClient
 import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.LocaleNumberFormatter
 import app.ledger.core.navigation.DestinationSnapshot
 import app.ledger.core.navigation.EncodedRouteArgument
 import app.ledger.core.navigation.FiveStackNavigator
@@ -83,17 +86,22 @@ import app.ledger.feature.accounts.AccountEditorSubmission
 import app.ledger.feature.accounts.CardEditorSubmission
 import app.ledger.feature.accounts.CheckpointSubmission
 import app.ledger.feature.accounts.OpeningBalanceSubmission
+import app.ledger.feature.analysis.R as AnalysisR
 import app.ledger.feature.analysis.AnalysisLoadState
 import app.ledger.feature.automation.AutomationFeatureState
 import app.ledger.feature.automation.AutomationLoadState
 import app.ledger.feature.automation.AutomationPolicy
 import app.ledger.feature.automation.AutomationPresentation
+import app.ledger.feature.automation.AutomationSeriesFilter
+import app.ledger.feature.automation.AutomationTemplateFilter
+import app.ledger.feature.automation.AutomationTemplateSort
 import app.ledger.feature.automation.BlueprintField
 import app.ledger.feature.automation.RecurrenceField
 import app.ledger.feature.journal.JournalLoadState
 import app.ledger.feature.journal.JournalOperationState
 import app.ledger.feature.journal.JournalPagingSource
 import app.ledger.feature.journal.JournalSelectionPolicy
+import app.ledger.feature.journal.R as JournalR
 import app.ledger.feature.liabilities.CreditAllocationMode
 import app.ledger.feature.liabilities.CreditFeatureState
 import app.ledger.feature.liabilities.CreditField
@@ -134,7 +142,10 @@ import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.record.OrdinaryRecordPolicy
 import app.ledger.feature.record.RecordEditorMode
 import app.ledger.feature.record.RecordEditorPresentation
+import app.ledger.feature.record.RecordAttachmentPresentation
 import app.ledger.feature.record.RecordField
+import app.ledger.feature.record.RecordLocationEditorState
+import app.ledger.feature.record.RecordPendingLocation
 import app.ledger.feature.record.RecordTab
 import app.ledger.feature.record.RefundEditorState
 import app.ledger.feature.record.RefundLoadState
@@ -183,7 +194,7 @@ import app.ledger.finance.application.AutomationMutationIds
 import app.ledger.finance.application.BatchEntryApplicationPort
 import app.ledger.finance.application.BatchEntryField
 import app.ledger.finance.application.BlueprintDraft
-import app.ledger.finance.application.BookAttachmentObjectPort
+import app.ledger.core.files.SecureBookAttachmentObjectPort
 import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.BudgetMutationIds
 import app.ledger.finance.application.CardDraft
@@ -352,6 +363,7 @@ import app.ledger.transfer.domain.ExportReportSnapshot
 import app.ledger.transfer.domain.MergeResolution
 import app.ledger.transfer.domain.RecoveryPasswordChangeMode
 import app.ledger.transfer.domain.RestoreMode
+import app.ledger.transfer.domain.StagingValue
 import app.ledger.widget.LedgerWidgetRuntime
 import com.google.protobuf.ByteString
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -371,6 +383,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -379,6 +392,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -463,7 +477,7 @@ internal class AppRootViewModel @Inject constructor(
     structuredImportApplicationPort: StructuredImportApplicationPort,
     analyticsApplicationPort: AnalyticsApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
-    private val bookAttachmentObjectPort: BookAttachmentObjectPort,
+    private val bookAttachmentObjectPort: SecureBookAttachmentObjectPort,
     private val widgetSnapshotRefreshApplicationPort: WidgetSnapshotRefreshApplicationPort,
     private val runtimeSources: AppRuntimeSources,
 ) : ViewModel() {
@@ -494,7 +508,9 @@ internal class AppRootViewModel @Inject constructor(
     private val mutableOpenNotificationSettingsRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val openNotificationSettingsRequests = mutableOpenNotificationSettingsRequests.asSharedFlow()
     private val availableZoneIds: List<String> = ZoneId.getAvailableZoneIds().sorted()
-    private val analysisController = AnalysisController(analyticsApplicationPort)
+    private val analysisController = AnalysisController(analyticsApplicationPort) { name ->
+        formatPresentationString(AnalysisR.string.analysis_copy_name, name)
+    }
     private val importController = ImportController(
         context,
         keyProvider,
@@ -502,16 +518,26 @@ internal class AppRootViewModel @Inject constructor(
         importFinancialApplicationPort,
         structuredImportApplicationPort,
         runtimeSources,
+        ::formatPresentationDateTime,
+        ::formatImportPreviewValue,
     )
     private val exportController = ExportController(context, keyProvider, runtimeSources)
-    private val backupController = BackupController(context, keyProvider, runtimeSources)
-    private val restoreController = RestoreController(context, keyProvider, runtimeSources)
+    private val backupController = BackupController(context, keyProvider, runtimeSources, ::formatPresentationDateTime)
+    private val restoreController = RestoreController(context, keyProvider, runtimeSources, ::formatPresentationDateTime)
+    private val schemaVersionMarker = LedgerSchemaVersionMarker(context)
+    private val attachmentController = AttachmentController(
+        context,
+        bookAttachmentObjectPort,
+        ::formatPresentationDateTime,
+        ::formatPresentationFileSize,
+    )
     private val controlledPurgeApplicationPort: ControlledPurgeApplicationPort =
         SecureRoomControlledPurgeApplicationPort(context, keyProvider)
     val importWizard = importController.state
     val exportFlow: StateFlow<ExportFlowUiState> = exportController.state
     val backupFlow: StateFlow<BackupFlowUiState> = backupController.state
     val restoreFlow: StateFlow<RestoreFlowUiState> = restoreController.state
+    val attachmentFlow: StateFlow<AttachmentFlowState> = attachmentController.state
     private val mutableOperationCenter = MutableStateFlow<OperationCenterLoadState>(OperationCenterLoadState.Loading)
     val operationCenter: StateFlow<OperationCenterLoadState> = mutableOperationCenter.asStateFlow()
     val analysis: StateFlow<AnalysisLoadState> = analysisController.state
@@ -528,6 +554,12 @@ internal class AppRootViewModel @Inject constructor(
     val rootState: StateFlow<AppRootState> = mutableRootState.asStateFlow()
     private val mutableRecoveryRestoreActive = MutableStateFlow(false)
     val recoveryRestoreActive: StateFlow<Boolean> = mutableRecoveryRestoreActive.asStateFlow()
+    private val mutableRecoveryBackupAvailable = MutableStateFlow<Boolean?>(null)
+    val recoveryBackupAvailable: StateFlow<Boolean?> = mutableRecoveryBackupAvailable.asStateFlow()
+    private val mutableMaintenancePresentation = MutableStateFlow<MaintenancePresentation?>(null)
+    val maintenancePresentation: StateFlow<MaintenancePresentation?> = mutableMaintenancePresentation.asStateFlow()
+    private val mutableOpeningPresentation = MutableStateFlow(OpeningPresentation.OPENING)
+    val openingPresentation: StateFlow<OpeningPresentation> = mutableOpeningPresentation.asStateFlow()
 
     private val mutableAuthenticationRequests = MutableSharedFlow<Unit>(
         extraBufferCapacity = 1,
@@ -540,6 +572,9 @@ internal class AppRootViewModel @Inject constructor(
 
     private val mutableGlobalSnackbarMessages = MutableSharedFlow<GlobalSnackbarMessage>(extraBufferCapacity = 1)
     val globalSnackbarMessages = mutableGlobalSnackbarMessages.asSharedFlow()
+
+    private val mutableSuccessHapticEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val successHapticEvents = mutableSuccessHapticEvents.asSharedFlow()
 
     val settings: StateFlow<LedgerAppSettings> = settingsRepository.data.stateIn(
         viewModelScope,
@@ -607,6 +642,7 @@ internal class AppRootViewModel @Inject constructor(
     val automationPending: StateFlow<Boolean> = mutableAutomationPending.asStateFlow()
     private var currentAutomationScreenId: String = "AUT-001"
     private var pendingCandidateId: StableId? = null
+    private var pendingAutomationRuleDraft: app.ledger.feature.automation.RecurrenceEditorDraft? = null
     private val mutableProjectTransactionPagingRequest = MutableStateFlow<ProjectTransactionPagingRequest?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -631,6 +667,8 @@ internal class AppRootViewModel @Inject constructor(
         }
     }.cachedIn(viewModelScope)
     var selectedAccountType: UserAccountType = UserAccountType.CASH
+    var replacementCardId: StableId? = null
+        private set
         private set
     private var pendingCardAccountId: StableId? = null
     val preferredCardAccountId: StableId?
@@ -665,8 +703,9 @@ internal class AppRootViewModel @Inject constructor(
                 baseCurrency = saved.baseCurrency.takeIf(String::isNotBlank) ?: DEFAULT_CURRENCY,
                 zoneId = saved.zoneId.takeIf(String::isNotBlank) ?: ZoneId.systemDefault().id.takeIf { it == DEFAULT_ZONE },
                 privacyAccepted = saved.privacyAccepted,
-                telemetryEnabled = if (saved.diagnosticsChoiceRecorded) saved.telemetryEnabled else true,
-                crashReportingEnabled = if (saved.diagnosticsChoiceRecorded) saved.crashReportingEnabled else true,
+                telemetryEnabled = if (saved.diagnosticsChoiceRecorded) saved.telemetryEnabled else false,
+                crashReportingEnabled = if (saved.diagnosticsChoiceRecorded) saved.crashReportingEnabled else false,
+                deviceSecurityAvailable = AndroidKeystoreKeys(context).deviceSecurityCapability() != DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL,
                 appLockEnabled = saved.appLockEnabled,
                 appLockTimeoutMillis = saved.appLockTimeoutMillis.takeIf { it in OnboardingUiState.ALLOWED_TIMEOUTS } ?: 60_000L,
                 firstAccountCreated = saved.firstAccountCreated,
@@ -700,6 +739,10 @@ internal class AppRootViewModel @Inject constructor(
     fun setAccountType(value: InitialAccountType) = updateOnboarding { copy(accountType = value) }
     fun updateCategoryName(value: String) = updateOnboarding { copy(categoryName = value.take(MAX_REFERENCE_NAME), errorCode = null) }
     fun setCategoryDirection(value: InitialCategoryDirection) = updateOnboarding { copy(categoryDirection = value) }
+    fun setCategoryIcon(value: app.ledger.core.designsystem.LedgerIcon) = updateOnboarding { copy(categoryIcon = value) }
+    fun setCategoryPalette(paletteId: String, colorArgb: Int) = updateOnboarding {
+        copy(categoryPaletteId = paletteId, categoryColorArgb = colorArgb)
+    }
 
     fun onboardingBack() {
         if (onboardingState.renderState == OnboardingRenderState.SUBMITTING) return
@@ -883,8 +926,8 @@ internal class AppRootViewModel @Inject constructor(
             } else {
                 StatisticalNature.REGULAR_INCOME
             },
-            iconKey = LedgerReferenceDisplayDefaults.CATEGORY_ICON_KEY,
-            colorArgb = LedgerReferenceDisplayDefaults.COLOR_ARGB,
+            iconKey = onboardingState.categoryIcon.name,
+            colorArgb = onboardingState.categoryColorArgb,
         )
         initializationPort.createFirstCategory(requireBookId(saved), command).requireSuccess()
         settingsRepository.update { it.firstCategoryCreated = true }
@@ -892,6 +935,11 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     private suspend fun openSavedBook(saved: LedgerAppSettings) {
+        mutableOpeningPresentation.value = if (schemaVersionMarker.migrationExpected()) {
+            OpeningPresentation.MIGRATION_DETECTED
+        } else {
+            OpeningPresentation.OPENING
+        }
         if (!saved.securitySettingsInitialized) {
             settingsRepository.update {
                 it.securitySettingsInitialized = true
@@ -915,12 +963,17 @@ internal class AppRootViewModel @Inject constructor(
         val lockSettings = AppLockSettings(saved.appLockEnabled, timeout(saved.appLockTimeoutMillis))
         appLockController = AppLockController(lockSettings, SystemClock::elapsedRealtime) {
             vaultController.onApplicationLocked()
+            attachmentController.close()
             viewModelScope.launch { manager.lockUi() }
         }
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             manager.state.collectLatest { state ->
                 publishSession(state)
                 if (state is BookSessionState.Ready) {
+                    runCatching { schemaVersionMarker.markCurrent() }
+                    mutableOpeningPresentation.value = OpeningPresentation.OPENING
+                    mutableMaintenancePresentation.value = null
+                    mutableRecoveryBackupAvailable.value = null
                     refreshWidgetSnapshot(state.bookId)
                     consumePendingDeepLink()
                     loadReferenceData()
@@ -932,14 +985,34 @@ internal class AppRootViewModel @Inject constructor(
                     state.reason == MaintenanceReason.UNFINISHED_OPERATION &&
                     !restoreRecoveryRunning
                 ) {
+                    mutableMaintenancePresentation.value = MaintenancePresentation.PREPARING
                     restoreRecoveryRunning = true
                     viewModelScope.launch(Dispatchers.IO) {
                         try {
+                            mutableMaintenancePresentation.value = MaintenancePresentation.RUNNING
                             manager.close()
-                            if (restoreController.recoverInterrupted(bookId)) manager.finishMaintenance()
+                            if (restoreController.recoverInterrupted(bookId)) {
+                                mutableMaintenancePresentation.value = MaintenancePresentation.SUCCEEDED
+                                delay(MAINTENANCE_RESULT_VISIBILITY_MILLIS)
+                                manager.finishMaintenance()
+                            } else {
+                                mutableMaintenancePresentation.value = MaintenancePresentation.FAILED
+                            }
                         } finally {
                             restoreRecoveryRunning = false
                         }
+                    }
+                } else if (state is BookSessionState.Maintenance) {
+                    mutableMaintenancePresentation.value = when (state.reason) {
+                        MaintenanceReason.PROJECTION_REBUILD -> MaintenancePresentation.NON_CANCELABLE
+                        MaintenanceReason.CONTROLLED_MAINTENANCE -> MaintenancePresentation.CANCELABLE
+                        MaintenanceReason.DATABASE_MIGRATION -> MaintenancePresentation.RUNNING
+                        MaintenanceReason.UNFINISHED_OPERATION -> MaintenancePresentation.PREPARING
+                    }
+                } else if (state is BookSessionState.RecoveryRequired) {
+                    mutableRecoveryBackupAvailable.value = null
+                    viewModelScope.launch(Dispatchers.IO) {
+                        mutableRecoveryBackupAvailable.value = VerifiedBackupAvailabilityStore(context).hasVerifiedBackup(bookId)
                     }
                 }
             }
@@ -1006,7 +1079,15 @@ internal class AppRootViewModel @Inject constructor(
 
     fun retryOpen() {
         val state = (mutableRootState.value as? AppRootState.Session)?.state
-        if (state == BookSessionState.Locked) viewModelScope.launch { sessionManager?.unlockUi() }
+        if (state == BookSessionState.Locked) {
+            viewModelScope.launch { sessionManager?.unlockUi() }
+        } else if (state is BookSessionState.RecoveryRequired && state.diagnosticCode == app.ledger.core.security.RecoveryDiagnosticCode.DATABASE_UNAVAILABLE) {
+            viewModelScope.launch(Dispatchers.IO) {
+                sessionManager?.close()
+                sessionManager = null
+                openSavedBook(settingsRepository.current())
+            }
+        }
     }
 
     fun openVault() {
@@ -1038,6 +1119,10 @@ internal class AppRootViewModel @Inject constructor(
     fun copyVaultPrimaryNumber(cardId: StableId) = vaultController.requestCopyPrimaryNumber(cardId)
     fun revealVaultSecurityCode(cardId: StableId) = vaultController.requestRevealSecurityCode(cardId)
     fun hideVaultSensitive() = vaultController.hideSensitive()
+    fun authenticateVaultList() = vaultController.requestListAuthentication()
+    fun openVaultCards() {
+        navigator.navigate(LedgerRouteContract.destination(ScreenId("ACC-001")), SessionGateState.READY)
+    }
     fun authenticateVaultEdit(cardId: StableId) = vaultController.requestEditAuthentication(cardId)
     fun saveVault(cardId: StableId, submission: VaultEditSubmission) = vaultController.save(cardId, submission)
     fun vaultAuthenticationSucceeded(cryptoObject: BiometricPrompt.CryptoObject?) = vaultController.authenticationSucceeded(cryptoObject)
@@ -1053,7 +1138,8 @@ internal class AppRootViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val saved = settingsRepository.current()
             val snapshot = TelemetryRuntime.snapshot()
-            val deviceSecurity = AndroidKeystoreKeys(context).deviceSecurityCapability() != DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL
+            val deviceSecurityCapability = AndroidKeystoreKeys(context).deviceSecurityCapability()
+            val deviceSecurity = deviceSecurityCapability != DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL
             val appLockTimeout = when (saved.appLockTimeoutMillis) {
                 0L -> SettingsAppLockTimeout.IMMEDIATE
                 60_000L -> SettingsAppLockTimeout.ONE_MINUTE
@@ -1088,12 +1174,17 @@ internal class AppRootViewModel @Inject constructor(
                 appLockTimeout = appLockTimeout,
                 customTimeoutMinutes = (saved.appLockTimeoutMillis / 60_000L).toInt().coerceIn(1, 1_440),
                 deviceSecurityConfigured = deviceSecurity,
+                authenticationCapability = when (deviceSecurityCapability) {
+                    DeviceSecurityCapability.BIOMETRIC_OR_CREDENTIAL -> app.ledger.feature.settings.DeviceAuthenticationCapability.STRONG_BIOMETRIC_OR_DEVICE_CREDENTIAL
+                    DeviceSecurityCapability.DEVICE_CREDENTIAL_ONLY -> app.ledger.feature.settings.DeviceAuthenticationCapability.DEVICE_CREDENTIAL_ONLY
+                    DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL -> app.ledger.feature.settings.DeviceAuthenticationCapability.UNAVAILABLE
+                },
                 globalScreenshotBlocked = saved.globalFlagSecure,
                 obscureRecentTasks = if (saved.securitySettingsInitialized) saved.obscureRecentTasks else true,
                 trashRetention = TrashRetention.entries.singleOrNull { it.days == saved.trashRetentionDays } ?: TrashRetention.THIRTY_DAYS,
                 privacyAccepted = saved.privacyAccepted,
-                telemetryEnabled = if (saved.diagnosticsChoiceRecorded) saved.telemetryEnabled else true,
-                crashEnabled = if (saved.diagnosticsChoiceRecorded) saved.crashReportingEnabled else true,
+                telemetryEnabled = if (saved.diagnosticsChoiceRecorded) saved.telemetryEnabled else false,
+                crashEnabled = if (saved.diagnosticsChoiceRecorded) saved.crashReportingEnabled else false,
                 featureRows = snapshot?.featureEvents.orEmpty().map { entry ->
                     FeatureQueueRow(
                         entry.occurredAtEpochMillis,
@@ -1112,6 +1203,8 @@ internal class AppRootViewModel @Inject constructor(
                         entry.diagnostic.frames.size,
                     )
                 },
+                zoneId = saved.zoneId.ifBlank { DEFAULT_ZONE },
+                localClearAuthenticationPending = mutableSecurityPrivacy.value.localClearAuthenticationPending,
                 errorCode = mutableSecurityPrivacy.value.errorCode,
             )
         }
@@ -1144,6 +1237,7 @@ internal class AppRootViewModel @Inject constructor(
 
     fun testAppLock() {
         vaultController.onApplicationLocked()
+        attachmentController.close()
         appLockController?.forceLock()
         viewModelScope.launch { sessionManager?.lockUi() }
     }
@@ -1353,7 +1447,10 @@ internal class AppRootViewModel @Inject constructor(
         refreshLocalClear(SecuritySettingsRequiredState.CLR_001_CONTENT)
     }
 
-    fun confirmLocalClear() = requestSensitiveSettingsAuthentication(SensitiveSettingsAuthenticationPurpose.CLEAR_LOCAL)
+    fun confirmLocalClear() {
+        refreshLocalClear(SecuritySettingsRequiredState.CLR_001_CONFIRMING, authenticationPending = true)
+        requestSensitiveSettingsAuthentication(SensitiveSettingsAuthenticationPurpose.CLEAR_LOCAL)
+    }
 
     private fun requestSensitiveSettingsAuthentication(purpose: SensitiveSettingsAuthenticationPurpose) {
         check(pendingSensitiveSettingsPurpose == null) { "a sensitive settings authentication is already pending" }
@@ -1410,10 +1507,15 @@ internal class AppRootViewModel @Inject constructor(
         if (!screenId.startsWith("VLT-") && vault.value.screenId.startsWith("VLT-")) vaultController.hideSensitive(autoHidden = false)
     }
 
-    private fun refreshLocalClear(presentation: SecuritySettingsRequiredState, errorCode: String? = null) {
+    private fun refreshLocalClear(
+        presentation: SecuritySettingsRequiredState,
+        errorCode: String? = null,
+        authenticationPending: Boolean = false,
+    ) {
         mutableSecurityPrivacy.value = mutableSecurityPrivacy.value.copy(
             screenId = "CLR-001",
             presentation = presentation,
+            localClearAuthenticationPending = authenticationPending,
             errorCode = errorCode,
         )
     }
@@ -1452,6 +1554,7 @@ internal class AppRootViewModel @Inject constructor(
             onboardingState = OnboardingUiState(
                 baseCurrency = DEFAULT_CURRENCY,
                 zoneId = ZoneId.systemDefault().id.takeIf { it == DEFAULT_ZONE },
+                deviceSecurityAvailable = AndroidKeystoreKeys(context).deviceSecurityCapability() != DeviceSecurityCapability.MISSING_DEVICE_CREDENTIAL,
             )
             withContext(Dispatchers.Main.immediate) { publishOnboarding() }
             if (!artifactsCleared) mutableGlobalSnackbarMessages.tryEmit(GlobalSnackbarMessage.LOCAL_CLEAR_FAILED)
@@ -1600,6 +1703,25 @@ internal class AppRootViewModel @Inject constructor(
 
     fun cycleAnalysisComparison() = analysisController.cycleComparison()
 
+    fun selectAnalysisMeasure(value: app.ledger.analytics.domain.Measure) = analysisController.selectMeasure(value)
+
+    fun selectAnalysisDimension(value: app.ledger.analytics.domain.Dimension) = analysisController.selectDimension(value)
+
+    fun selectAnalysisGranularity(value: app.ledger.analytics.domain.TimeGranularity) = analysisController.selectGranularity(value)
+
+    fun selectAnalysisComparison(value: app.ledger.analytics.domain.ComparisonMode?) = analysisController.selectComparison(value)
+
+    fun cycleAnalysisSort(stableKey: String) = analysisController.cycleSort(stableKey)
+
+    fun toggleAnalysisReportFilter(filter: app.ledger.feature.analysis.AnalysisEntityFilter, id: StableId) =
+        analysisController.toggleReportFilter(filter, id)
+
+    fun removeAnalysisReportFilter(stableKey: String) = analysisController.removeReportFilter(stableKey)
+
+    fun resetAnalysisReportFilters() = analysisController.resetReportFilters()
+
+    fun changeAnalysisBuilderStep(delta: Int) = analysisController.changeBuilderStep(delta)
+
     fun applyAnalysisFilter(): Boolean = analysisController.applyFilter()
 
     fun prepareAnalysisExport(): Boolean {
@@ -1650,6 +1772,8 @@ internal class AppRootViewModel @Inject constructor(
 
     fun selectAnalysisExportFormat(format: ReportExportFormat) = analysisController.selectExportFormat(format)
 
+    fun selectAnalysisExportScope(scope: app.ledger.feature.analysis.AnalysisExportScope) = analysisController.selectExportScope(scope)
+
     fun prepareCurrentAnalysisExport(): Boolean = analysisController.prepareCurrentExport()
 
     fun runAnalysisIntegrity() {
@@ -1665,6 +1789,8 @@ internal class AppRootViewModel @Inject constructor(
     fun loadNextAnalysisDrilldown() {
         viewModelScope.launch(Dispatchers.IO) { analysisController.loadNextDrilldown() }
     }
+
+    fun openAnalysisTransaction(transactionId: StableId) = openProjectTransaction(transactionId)
 
     fun cycleConsumptionMapMode() {
         viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapMode() }
@@ -1842,6 +1968,101 @@ internal class AppRootViewModel @Inject constructor(
         }
     }
 
+    fun editJournalTransaction(transaction: JournalTransactionView) {
+        when (transaction.kind) {
+            app.ledger.finance.domain.TransactionKind.EXPENSE,
+            app.ledger.finance.domain.TransactionKind.INCOME,
+            -> openRecordEditor(
+                RecordEditorMode.EDIT,
+                if (transaction.kind == app.ledger.finance.domain.TransactionKind.INCOME) OrdinaryDirection.INCOME else OrdinaryDirection.EXPENSE,
+                null,
+                transaction.transactionId,
+            )
+            app.ledger.finance.domain.TransactionKind.REFUND -> {
+                loadRefund()
+                navigateRecord("REC-015", mapOf("transactionId" to transaction.transactionId), emptyMap())
+            }
+            app.ledger.finance.domain.TransactionKind.CREDIT_PAYMENT -> {
+                loadCredit("REC-014", transactionId = transaction.transactionId)
+                navigateCredit("REC-014", transaction.transactionId)
+            }
+            app.ledger.finance.domain.TransactionKind.TRANSFER -> openSpecializedJournalEditor("REC-013", mapOf("transactionId" to transaction.transactionId))
+            app.ledger.finance.domain.TransactionKind.BALANCE_ADJUSTMENT -> openSpecializedJournalEditor("REC-020")
+            app.ledger.finance.domain.TransactionKind.FX_EXCHANGE -> openSpecializedJournalEditor("REC-021")
+            app.ledger.finance.domain.TransactionKind.OPENING_BALANCE -> openSpecializedJournalEditor("REC-022")
+            app.ledger.finance.domain.TransactionKind.LOAN_DISBURSEMENT -> navigateRecord("REC-018", emptyMap(), emptyMap())
+            app.ledger.finance.domain.TransactionKind.LOAN_PAYMENT -> navigateRecord("REC-019", emptyMap(), emptyMap())
+            app.ledger.finance.domain.TransactionKind.SETTLEMENT_PAYMENT -> openSpecializedJournalEditor("REC-013")
+        }
+    }
+
+    private fun openSpecializedJournalEditor(screenId: String, arguments: Map<String, StableId> = emptyMap()) {
+        loadSpecializedTransaction(screenId)
+        navigateRecord(screenId, arguments, emptyMap())
+    }
+
+    fun refundJournalTransaction(transactionId: StableId) {
+        loadRefund(transactionId)
+        navigateRecord("REC-015", mapOf("transactionId" to transactionId), emptyMap())
+    }
+
+    fun copyJournalTransactionToTemplate(transactionId: StableId) {
+        val detail = (mutableJournal.value as? JournalLoadState.Content)?.detail
+            ?.takeIf { it.transaction.transactionId == transactionId }
+            ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.current()
+            val bookId = runCatching { requireBookId(saved) }.getOrNull() ?: return@launch
+            val automation = automationApplicationPort.snapshot(bookId)
+            val entry = ordinaryTransactionEntryPort.snapshot(bookId)
+            if (automation !is DomainResult.Success || entry !is DomainResult.Success) return@launch
+            val zone = ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE })
+            val base = AutomationPolicy.create(
+                automation.value,
+                entry.value,
+                "AUT-003",
+                null,
+                null,
+                null,
+                zone,
+                runtimeSources.clock.now().atZone(zone).toLocalDate(),
+            )
+            val draft = requireNotNull(base.blueprintDraft)
+            val references = entry.value.references
+            val category = references.categories.firstOrNull { it.name == detail.transaction.categoryOrType }
+            val account = references.accounts.firstOrNull { detail.transaction.accountAndCard.contains(it.name) }
+            val card = references.cards.firstOrNull { detail.transaction.accountAndCard.contains(it.displayName) }
+            val merchant = detail.merchantName?.let { name -> references.merchants.firstOrNull { it.name == name } }
+            val place = detail.locationName?.let { name -> references.places.firstOrNull { it.name == name } }
+            val targetKind = when (detail.transaction.kind) {
+                app.ledger.finance.domain.TransactionKind.INCOME,
+                app.ledger.finance.domain.TransactionKind.REFUND,
+                -> app.ledger.finance.domain.TransactionKind.INCOME
+                app.ledger.finance.domain.TransactionKind.CREDIT_PAYMENT -> app.ledger.finance.domain.TransactionKind.CREDIT_PAYMENT
+                app.ledger.finance.domain.TransactionKind.LOAN_PAYMENT -> app.ledger.finance.domain.TransactionKind.LOAN_PAYMENT
+                else -> app.ledger.finance.domain.TransactionKind.EXPENSE
+            }
+            mutableAutomation.value = AutomationLoadState.Content(
+                base.copy(
+                    presentation = AutomationPresentation.EDITING,
+                    blueprintDraft = draft.copy(
+                        name = detail.transaction.summary.ifBlank { detail.transaction.categoryOrType }.take(AUTOMATION_TEMPLATE_NAME_LIMIT),
+                        targetKind = targetKind,
+                        categoryId = category?.id,
+                        primaryAccountId = account?.id,
+                        cardId = card?.id,
+                        merchantId = merchant?.id,
+                        amountExpression = detail.amountExpression.orEmpty(),
+                        currency = detail.transaction.currency.value,
+                        noteTemplate = detail.fullNote.orEmpty().take(AUTOMATION_TEMPLATE_NOTE_LIMIT),
+                        fixedPlaceId = place?.id,
+                    ),
+                ),
+            )
+            withContext(Dispatchers.Main.immediate) { navigateAutomation("AUT-003", null) }
+        }
+    }
+
     fun selectJournalTransaction(transactionId: StableId) = updateJournalContent {
         val next = selection?.let { JournalSelectionPolicy.toggle(it, transactionId) } ?: JournalSelectionPolicy.begin(filter, transactionId)
         copy(selection = next)
@@ -1864,7 +2085,13 @@ internal class AppRootViewModel @Inject constructor(
 
     fun copyJournalPreset(id: StableId) {
         val source = (mutableJournal.value as? JournalLoadState.Content)?.presets?.singleOrNull { it.id == id } ?: return
-        mutateJournalPresets(JournalSavedFilterCommand.Copy(id, nextId(), "${source.name} copy"))
+        mutateJournalPresets(
+            JournalSavedFilterCommand.Copy(
+                id,
+                nextId(),
+                formatPresentationString(JournalR.string.p15_journal_copy_name, source.name),
+            ),
+        )
     }
 
     fun setDefaultJournalPreset(id: StableId) = mutateJournalPresets(JournalSavedFilterCommand.SetDefault(id))
@@ -1951,11 +2178,12 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun verifyJournalPurge(transactionId: StableId) {
+        updateJournalContent { copy(operation = JournalOperationState.VALIDATING, purgeAssessment = null) }
         viewModelScope.launch(Dispatchers.IO) {
             val bookId = requireBookId(settingsRepository.current())
             when (val result = controlledPurgeApplicationPort.assess(bookId, transactionId, runtimeSources.clock.now())) {
-                is DomainResult.Success -> updateJournalContent { copy(purgeAssessment = result.value) }
-                is DomainResult.Failure -> mutableJournal.value = JournalLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Success -> updateJournalContent { copy(purgeAssessment = result.value, operation = JournalOperationState.IDLE) }
+                is DomainResult.Failure -> updateJournalContent { copy(operation = JournalOperationState.FAILED) }
             }
         }
     }
@@ -2175,7 +2403,8 @@ internal class AppRootViewModel @Inject constructor(
             }
             val locale = recordLocale()
             val zone = ZoneId.of(settingsRepository.current().zoneId.ifBlank { DEFAULT_ZONE })
-            val editor = OrdinaryRecordPolicy.createEditor(snapshot, mode, direction, categoryId, sourceId, runtimeSources.clock.now(), zone, locale)
+            val createdEditor = OrdinaryRecordPolicy.createEditor(snapshot, mode, direction, categoryId, sourceId, runtimeSources.clock.now(), zone, locale)
+            val editor = hydrateRecordEditor(createdEditor)
             mutableOrdinaryRecord.value = current.copy(snapshot = snapshot, selectedCategoryId = editor.draft.categoryId, editor = editor)
             val platformClock = InjectedJavaClock(runtimeSources.clock)
             recordLocationSession = ForegroundLocationSaveSession(
@@ -2197,15 +2426,146 @@ internal class AppRootViewModel @Inject constructor(
             openBatchEntry()
             return
         }
+        if (target == "REC-009" && !context.hasLedgerLocationPermission()) {
+            navigator.navigate(LedgerRouteContract.destination(ScreenId("SYS-001")), SessionGateState.READY)
+            return
+        }
         val screenId = ScreenId(target)
         val arguments = buildMap<String, SafeRouteArgument> {
             stable.forEach { (name, value) -> put(name, StableIdArgument(value)) }
             enums.forEach { (name, value) -> put(name, LedgerRouteContract.enumArgument(screenId, name, value)) }
         }
         navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
+        val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
+        if (target == "REC-009" && editor?.locationPresentation == RecordLocationEditorState.Locating) {
+            captureRecordLocationForEditor()
+        }
     }
 
     fun recordExpression(value: String) = updateEditor { OrdinaryRecordPolicy.changeExpression(it, value, recordLocale()) }
+
+    fun completeLocationPermission() {
+        if (navigator.currentKey.contract.screenId.value == "SYS-001") navigator.pop()
+        navigator.navigate(LedgerRouteContract.destination(ScreenId("REC-009")), SessionGateState.READY)
+        val platformClock = InjectedJavaClock(runtimeSources.clock)
+        recordLocationSession = ForegroundLocationSaveSession(
+            ProductionForegroundLocationClient(context, platformClock),
+            platformClock,
+            SystemClock::elapsedRealtime,
+        ).also { it.prefetch(viewModelScope) }
+        updateEditor { it.copy(locationPresentation = RecordLocationEditorState.Locating) }
+        captureRecordLocationForEditor()
+    }
+
+    fun dismissLocationPermission() {
+        if (navigator.currentKey.contract.screenId.value == "SYS-001") navigator.pop()
+        updateEditor { it.copy(locationPresentation = RecordLocationEditorState.PermissionDenied) }
+        navigator.navigate(LedgerRouteContract.destination(ScreenId("REC-009")), SessionGateState.READY)
+    }
+
+    private fun captureRecordLocationForEditor() {
+        val session = recordLocationSession ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching { session.locationForSave() }.getOrNull()
+            when (result?.disposition) {
+                LocationSaveDisposition.LOCATED -> {
+                    val location = result.location ?: return@launch
+                    val provider = when (location.provider) {
+                        app.ledger.finance.application.CapturedLocationProvider.FUSED -> OrdinaryLocationProvider.FUSED
+                        app.ledger.finance.application.CapturedLocationProvider.GPS -> OrdinaryLocationProvider.GPS
+                        app.ledger.finance.application.CapturedLocationProvider.NETWORK -> OrdinaryLocationProvider.NETWORK
+                    }
+                    val pending = RecordPendingLocation(
+                        location.latitudeE7,
+                        location.longitudeE7,
+                        location.accuracyMillimeters,
+                        location.capturedAt,
+                        provider,
+                    )
+                    val meters = location.accuracyMillimeters?.let { value ->
+                        context.getString(app.ledger.feature.record.R.string.record_accuracy_meters, value / 1000.0)
+                    } ?: context.getString(app.ledger.feature.record.R.string.record_accuracy_unknown)
+                    updateEditor { current ->
+                        if (current.locationPresentation != RecordLocationEditorState.Locating || current.draft.locationRecordId != null || current.pendingLocation != null) {
+                            return@updateEditor current
+                        }
+                        current.copy(
+                            pendingLocation = pending,
+                            locationPresentation = RecordLocationEditorState.Located(
+                                meters,
+                                context.getString(app.ledger.feature.record.R.string.record_location_new_pin),
+                            ),
+                        )
+                    }
+                }
+                LocationSaveDisposition.PERMISSION_DENIED -> updateEditor { current ->
+                    if (current.locationPresentation == RecordLocationEditorState.Locating) current.copy(locationPresentation = RecordLocationEditorState.PermissionDenied) else current
+                }
+                LocationSaveDisposition.TIMED_OUT -> updateEditor { current ->
+                    if (current.locationPresentation == RecordLocationEditorState.Locating) current.copy(locationPresentation = RecordLocationEditorState.Timeout) else current
+                }
+                LocationSaveDisposition.UNAVAILABLE, null -> updateEditor { current ->
+                    if (current.locationPresentation == RecordLocationEditorState.Locating) current.copy(locationPresentation = RecordLocationEditorState.Timeout) else current
+                }
+            }
+        }
+    }
+
+    fun selectRecordLocationPoint(locationId: StableId) = updateEditor { editor ->
+        val location = editor.snapshot.references.locations.singleOrNull { it.id == locationId } ?: return@updateEditor editor
+        val place = editor.snapshot.references.places.singleOrNull { it.id == location.placeId }
+        editor.copy(
+            draft = editor.draft.copy(
+                locationRecordId = location.id,
+                touched = editor.draft.touched + RecordField.LOCATION,
+            ),
+            pendingLocation = null,
+            locationPresentation = RecordLocationEditorState.Manual(
+                place?.name ?: context.getString(app.ledger.feature.record.R.string.record_saved_location),
+            ),
+        )
+    }
+
+    fun moveRecordLocationPin(latitudeE7: Int, longitudeE7: Int) = updateEditor { editor ->
+        editor.copy(
+            draft = editor.draft.copy(
+                locationRecordId = null,
+                touched = editor.draft.touched + RecordField.LOCATION,
+            ),
+            pendingLocation = RecordPendingLocation(
+                latitudeE7,
+                longitudeE7,
+                null,
+                runtimeSources.clock.now(),
+                OrdinaryLocationProvider.MANUAL,
+            ),
+            locationPresentation = RecordLocationEditorState.Manual(
+                context.getString(app.ledger.feature.record.R.string.record_location_new_pin),
+            ),
+        )
+    }
+
+    fun recordLocationMapUnavailable() = updateEditor {
+        it.copy(locationPresentation = RecordLocationEditorState.MapUnavailable)
+    }
+
+    fun useRecordLocation() {
+        if (navigator.currentKey.contract.screenId.value == "REC-009") navigator.pop()
+    }
+
+    fun clearRecordLocation() {
+        updateEditor { editor ->
+            editor.copy(
+                draft = editor.draft.copy(
+                    locationRecordId = null,
+                    touched = editor.draft.touched + RecordField.LOCATION,
+                ),
+                pendingLocation = null,
+                locationPresentation = RecordLocationEditorState.Timeout,
+            )
+        }
+        useRecordLocation()
+    }
     fun recordOperator(value: String) = updateEditor { OrdinaryRecordPolicy.appendOperator(it, value, recordLocale()) }
     fun selectRecordCategory(id: StableId) = updateEditorAndPop { OrdinaryRecordPolicy.selectCategory(it, id) }
     fun selectRecordAccount(id: StableId) = updateEditorAndPop { OrdinaryRecordPolicy.selectAccount(it, id, recordLocale()) }
@@ -2245,14 +2605,22 @@ internal class AppRootViewModel @Inject constructor(
             )
             when (val result = bookAttachmentObjectPort.import(editor.snapshot.references.bookId, request)) {
                 is DomainResult.Success -> updateEditor {
+                    val importedId = result.value.attachmentId.value
+                    val imported = RecordAttachmentPresentation(
+                        attachmentId = importedId,
+                        displayName = metadata.first,
+                        sizeText = formatPresentationFileSize(result.value.plaintextSize),
+                        typeLabel = request.mimeType ?: "application/octet-stream",
+                    )
                     it.copy(
                         draft = it.draft.copy(
-                            attachmentIds = it.draft.attachmentIds + result.value.attachmentId.value,
+                            attachmentIds = it.draft.attachmentIds + importedId,
                             touched = it.draft.touched + RecordField.ATTACHMENTS,
                         ),
                         attachmentImporting = false,
                         attachmentFailureCode = null,
-                        uncommittedAttachmentIds = it.uncommittedAttachmentIds + result.value.attachmentId.value,
+                        uncommittedAttachmentIds = it.uncommittedAttachmentIds + importedId,
+                        attachmentPresentations = it.attachmentPresentations + imported,
                     )
                 }
                 is DomainResult.Failure -> updateEditor { it.copy(attachmentImporting = false, attachmentFailureCode = sanitizeCode(result.error.code)) }
@@ -2279,6 +2647,7 @@ internal class AppRootViewModel @Inject constructor(
                     touched = it.draft.touched + RecordField.ATTACHMENTS,
                 ),
                 uncommittedAttachmentIds = it.uncommittedAttachmentIds - attachmentId,
+                attachmentPresentations = it.attachmentPresentations.filterNot { item -> item.attachmentId == attachmentId },
             )
         }
         if (attachmentId in editor.uncommittedAttachmentIds) {
@@ -2286,6 +2655,72 @@ internal class AppRootViewModel @Inject constructor(
                 bookAttachmentObjectPort.discardUncommitted(editor.snapshot.references.bookId, app.ledger.finance.domain.AttachmentId(attachmentId))
             }
         }
+    }
+
+    fun openRecordAttachment(index: Int) {
+        val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor ?: return
+        val id = editor.draft.attachmentIds.getOrNull(index) ?: return
+        openAttachment(editor.snapshot.references.bookId, id)
+    }
+
+    fun openSpecializedAttachment(index: Int) {
+        val editor = (mutableSpecializedTransaction.value as? SpecializedTransactionLoadState.Content)?.editor ?: return
+        val id = editor.draft.attachmentIds.getOrNull(index) ?: return
+        openAttachment(editor.snapshot.bookId, id)
+    }
+
+    fun ensureAttachmentLoaded(attachmentId: StableId) {
+        if (attachmentController.state.value.attachmentId?.value == attachmentId && attachmentController.imageLoader != null) return
+        val activeBook = ((mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready)?.bookId ?: return
+        attachmentController.prepare(app.ledger.finance.domain.AttachmentId(attachmentId))
+        viewModelScope.launch(Dispatchers.IO) {
+            attachmentController.open(activeBook, app.ledger.finance.domain.AttachmentId(attachmentId))
+        }
+    }
+
+    fun retryAttachment() {
+        viewModelScope.launch(Dispatchers.IO) { attachmentController.retry() }
+    }
+
+    fun openAttachmentRename() = navigateAttachment("ATT-003")
+
+    fun openAttachmentExternal() = navigateAttachment("ATT-002")
+
+    fun changeAttachmentName(value: String) = attachmentController.renameChanged(value)
+
+    fun saveAttachmentName(onSaved: () -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (attachmentController.commitRename()) withContext(Dispatchers.Main.immediate) {
+                navigator.pop()
+                onSaved()
+            }
+        }
+    }
+
+    fun authorizeAttachmentExternalOpen(): Intent? = attachmentController.externalOpenIntent()
+
+    fun attachmentImageLoader() = attachmentController.imageLoader
+
+    fun dismissAttachmentDialog() = navigator.pop()
+
+    private fun openAttachment(activeBook: StableId, attachmentId: StableId) {
+        val typedId = app.ledger.finance.domain.AttachmentId(attachmentId)
+        attachmentController.prepare(typedId)
+        val screenId = ScreenId("ATT-001")
+        navigator.navigate(
+            LedgerRouteContract.destination(screenId, mapOf("attachmentId" to StableIdArgument(attachmentId))),
+            SessionGateState.READY,
+        )
+        viewModelScope.launch(Dispatchers.IO) { attachmentController.open(activeBook, typedId) }
+    }
+
+    private fun navigateAttachment(target: String) {
+        val attachmentId = attachmentController.state.value.attachmentId?.value ?: return
+        val screenId = ScreenId(target)
+        navigator.navigate(
+            LedgerRouteContract.destination(screenId, mapOf("attachmentId" to StableIdArgument(attachmentId))),
+            SessionGateState.READY,
+        )
     }
 
     fun loadRefund(presetOriginalId: StableId? = null) {
@@ -2436,6 +2871,7 @@ internal class AppRootViewModel @Inject constructor(
                 )
                 when (val result = refundApplicationPort.submit(request)) {
                     is DomainResult.Success -> {
+                        mutableSuccessHapticEvents.tryEmit(Unit)
                         loadReferenceDataAfterMutation(validated.snapshot.references.bookId)
                         mutableRefund.value = RefundLoadState.Loading
                         navigator.pop()
@@ -2513,6 +2949,10 @@ internal class AppRootViewModel @Inject constructor(
 
     fun specializedCheckpoint(id: StableId?) = updateSpecialized { SpecializedTransactionPolicy.setCheckpoint(it, id) }
     fun specializedDate(date: java.time.LocalDate) = updateSpecialized { SpecializedTransactionPolicy.changeDate(it, date) }
+
+    fun specializedOccurredAt(occurredAt: Instant) = updateSpecialized {
+        SpecializedTransactionPolicy.changeOccurredAt(it, occurredAt)
+    }
     fun specializedNote(value: String) = updateSpecialized { SpecializedTransactionPolicy.setNote(it, value) }
 
     fun refreshSpecializedRates() {
@@ -2554,10 +2994,18 @@ internal class AppRootViewModel @Inject constructor(
             )
             when (val result = bookAttachmentObjectPort.import(editor.snapshot.bookId, request)) {
                 is DomainResult.Success -> updateSpecialized {
+                    val importedId = result.value.attachmentId.value
+                    val imported = RecordAttachmentPresentation(
+                        attachmentId = importedId,
+                        displayName = metadata.first,
+                        sizeText = formatPresentationFileSize(result.value.plaintextSize),
+                        typeLabel = request.mimeType ?: "application/octet-stream",
+                    )
                     it.copy(
-                        draft = it.draft.copy(attachmentIds = it.draft.attachmentIds + result.value.attachmentId.value, dirty = true),
+                        draft = it.draft.copy(attachmentIds = it.draft.attachmentIds + importedId, dirty = true),
                         attachmentImporting = false,
-                        uncommittedAttachmentIds = it.uncommittedAttachmentIds + result.value.attachmentId.value,
+                        uncommittedAttachmentIds = it.uncommittedAttachmentIds + importedId,
+                        attachmentPresentations = it.attachmentPresentations + imported,
                     )
                 }
                 is DomainResult.Failure -> updateSpecialized { it.copy(attachmentImporting = false, attachmentFailureCode = sanitizeCode(result.error.code)) }
@@ -2577,6 +3025,7 @@ internal class AppRootViewModel @Inject constructor(
             it.copy(
                 draft = it.draft.copy(attachmentIds = it.draft.attachmentIds.filterIndexed { itemIndex, _ -> itemIndex != index }, dirty = true),
                 uncommittedAttachmentIds = it.uncommittedAttachmentIds - id,
+                attachmentPresentations = it.attachmentPresentations.filterNot { item -> item.attachmentId == id },
             )
         }
         if (id in editor.uncommittedAttachmentIds) {
@@ -2624,6 +3073,7 @@ internal class AppRootViewModel @Inject constructor(
                 }
                 when (val result = specializedTransactionEntryPort.submit(request)) {
                     is DomainResult.Success -> {
+                        mutableSuccessHapticEvents.tryEmit(Unit)
                         loadReferenceDataAfterMutation(validated.snapshot.bookId)
                         mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Loading
                         navigator.pop()
@@ -2670,12 +3120,29 @@ internal class AppRootViewModel @Inject constructor(
         mutableOrdinaryRecord.value = content.copy(editor = validated.copy(presentation = RecordEditorPresentation.SAVING, errors = emptyList()))
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val locationResult = if (validated.draft.locationRecordId == null && RecordField.LOCATION !in validated.draft.touched) {
+                val locationResult = if (
+                    validated.pendingLocation == null &&
+                    validated.draft.locationRecordId == null &&
+                    RecordField.LOCATION !in validated.draft.touched
+                ) {
                     runCatching { recordLocationSession?.locationForSave() }.getOrNull()?.location
                 } else {
                     null
                 }
-                val locationId = locationResult?.let { nextId() }
+                val pendingLocation = validated.pendingLocation ?: locationResult?.let { captured ->
+                    RecordPendingLocation(
+                        captured.latitudeE7,
+                        captured.longitudeE7,
+                        captured.accuracyMillimeters,
+                        captured.capturedAt,
+                        when (captured.provider) {
+                            app.ledger.finance.application.CapturedLocationProvider.FUSED -> OrdinaryLocationProvider.FUSED
+                            app.ledger.finance.application.CapturedLocationProvider.GPS -> OrdinaryLocationProvider.GPS
+                            app.ledger.finance.application.CapturedLocationProvider.NETWORK -> OrdinaryLocationProvider.NETWORK
+                        },
+                    )
+                }
+                val locationId = pendingLocation?.let { nextId() }
                 val ids = OrdinaryTransactionWriteIds(
                     bookId = validated.snapshot.references.bookId,
                     commandId = nextId(),
@@ -2703,18 +3170,14 @@ internal class AppRootViewModel @Inject constructor(
                     settlementActivityId = validated.draft.settlementActivityId.takeIf { validated.draft.settlementEnabled },
                     settlementShares = validated.draft.settlementShares.takeIf { validated.draft.settlementEnabled }.orEmpty(),
                     locationRecordId = validated.draft.locationRecordId ?: locationId,
-                    newLocation = locationResult?.let { captured ->
+                    newLocation = pendingLocation?.let { captured ->
                         OrdinaryLocationDraft(
                             requireNotNull(locationId),
                             captured.latitudeE7,
                             captured.longitudeE7,
                             captured.accuracyMillimeters,
                             captured.capturedAt,
-                            when (captured.provider) {
-                                app.ledger.finance.application.CapturedLocationProvider.FUSED -> OrdinaryLocationProvider.FUSED
-                                app.ledger.finance.application.CapturedLocationProvider.GPS -> OrdinaryLocationProvider.GPS
-                                app.ledger.finance.application.CapturedLocationProvider.NETWORK -> OrdinaryLocationProvider.NETWORK
-                            },
+                            captured.provider,
                             null,
                         )
                     },
@@ -2727,6 +3190,7 @@ internal class AppRootViewModel @Inject constructor(
                 )
                 when (val result = ordinaryTransactionEntryPort.submit(request)) {
                     is DomainResult.Success -> {
+                        mutableSuccessHapticEvents.tryEmit(Unit)
                         if (validated.mode == RecordEditorMode.CANDIDATE) pendingCandidateId = null
                         finishRecordSave(validated, ids.transactionId)
                     }
@@ -2795,7 +3259,7 @@ internal class AppRootViewModel @Inject constructor(
     fun updateBudgetCategory(id: StableId, value: String) = updateBudget { BudgetPolicy.updateCategory(it, id, value) }
     fun updateBudgetTemplateName(value: String) = updateBudget { BudgetPolicy.updateTemplateName(it, value) }
     fun updateBudgetAdjustmentAmount(value: String) = updateBudget { BudgetPolicy.updateAdjustmentAmount(it, value) }
-    fun selectBudgetAdjustmentSource() = updateBudget(BudgetPolicy::selectNextAdjustmentSource)
+    fun selectBudgetAdjustmentSource(archivedOnly: Boolean) = updateBudget { BudgetPolicy.selectNextAdjustmentSource(it, archivedOnly) }
     fun selectBudgetAdjustmentTarget() = updateBudget(BudgetPolicy::selectNextAdjustmentTarget)
 
     fun saveBudgetMonth() {
@@ -2910,6 +3374,15 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun navigateBudget(target: String, month: YearMonth, stableId: StableId?, adjustmentKind: BudgetAdjustmentKind?) {
+        if (target == "BUD-005" && adjustmentKind == BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER) {
+            updateBudget { state ->
+                state.copy(
+                    adjustmentSourceCategoryId = state.snapshot.categories
+                        .firstOrNull { it.status == app.ledger.finance.domain.EntityStatus.ARCHIVED }
+                        ?.id,
+                )
+            }
+        }
         val screenId = ScreenId(target)
         val arguments = buildMap<String, SafeRouteArgument> {
             if (target in setOf("BUD-001", "BUD-002", "BUD-003", "BUD-004", "BUD-005", "BUD-006")) put("yearMonth", YearMonthArgument(month))
@@ -2920,6 +3393,7 @@ internal class AppRootViewModel @Inject constructor(
                     BudgetAdjustmentKind.CLEAR_ROLLOVER -> "CLEAR_ROLLOVER"
                     BudgetAdjustmentKind.INCREASE_AVAILABLE -> "ADD"
                     BudgetAdjustmentKind.DECREASE_AVAILABLE -> "SUBTRACT"
+                    BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER -> "TRANSFER"
                     else -> "TRANSFER"
                 }
                 put("type", LedgerRouteContract.enumArgument(screenId, "type", routeValue))
@@ -2994,12 +3468,12 @@ internal class AppRootViewModel @Inject constructor(
     fun updateProjectEndDate(value: String) = updateProjectGoal { ProjectGoalPolicy.projectEndDate(it, value) }
     fun updateProjectBudget(value: String) = updateProjectGoal { ProjectGoalPolicy.projectBudget(it, value) }
     fun toggleProjectMonthlyBudget() = updateProjectGoal(ProjectGoalPolicy::toggleMonthlyBudget)
-    fun selectNextProjectGoal() = updateProjectGoal(ProjectGoalPolicy::selectNextGoal)
+    fun selectProjectGoal(goalId: StableId?) = updateProjectGoal { ProjectGoalPolicy.selectGoal(it, goalId) }
     fun updateGoalName(value: String) = updateProjectGoal { ProjectGoalPolicy.goalName(it, value) }
     fun updateGoalTarget(value: String) = updateProjectGoal { ProjectGoalPolicy.goalTarget(it, value) }
     fun updateGoalSuggested(value: String) = updateProjectGoal { ProjectGoalPolicy.goalSuggested(it, value) }
     fun updateGoalDueDate(value: String) = updateProjectGoal { ProjectGoalPolicy.goalDueDate(it, value) }
-    fun selectNextGoalAccount() = updateProjectGoal(ProjectGoalPolicy::selectNextAccount)
+    fun selectGoalAccount(accountId: StableId) = updateProjectGoal { ProjectGoalPolicy.selectAccount(it, accountId) }
     fun updateGoalMovementAmount(value: String) = updateProjectGoal { ProjectGoalPolicy.movementAmount(it, value) }
     fun updateGoalMovementDate(value: String) = updateProjectGoal { ProjectGoalPolicy.movementDate(it, value) }
     fun selectProjectStatusTab(archived: Boolean) = updateProjectGoal {
@@ -3014,7 +3488,7 @@ internal class AppRootViewModel @Inject constructor(
             mutableProjectGoal.value = ProjectGoalLoadState.Content(state)
             return
         }
-        if (!beginProjectGoalMutation(state)) return
+        if (!beginProjectGoalMutation(state.copy(presentation = ProjectGoalPresentation.SAVING))) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val existing = state.project
@@ -3049,7 +3523,7 @@ internal class AppRootViewModel @Inject constructor(
             mutableProjectGoal.value = ProjectGoalLoadState.Content(state)
             return
         }
-        if (!beginProjectGoalMutation(state)) return
+        if (!beginProjectGoalMutation(state.copy(presentation = ProjectGoalPresentation.SAVING))) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val existing = state.goal
@@ -3155,6 +3629,14 @@ internal class AppRootViewModel @Inject constructor(
         navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
     }
 
+    fun openProjectTransaction(transactionId: StableId) {
+        loadJournalDetail(transactionId)
+        navigator.navigate(
+            LedgerRouteContract.destination(ScreenId("JRN-007"), mapOf("transactionId" to StableIdArgument(transactionId))),
+            SessionGateState.READY,
+        )
+    }
+
     private fun planningIds(state: ProjectGoalFeatureState, entityRevisionId: StableId) = PlanningMutationIds(
         state.snapshot.bookId,
         state.snapshot.localRevision,
@@ -3228,12 +3710,16 @@ internal class AppRootViewModel @Inject constructor(
                     } else {
                         val state = CreditPolicy.create(result.value, screenId, resolvedAccountId, statementId)
                         val zone = ZoneId.of(appSettings.zoneId.ifBlank { DEFAULT_ZONE })
+                        val transactionAmount = transactionId?.let { id ->
+                            (journalApplicationPort.detail(bookId, id) as? DomainResult.Success)?.value?.transaction?.amountMinor
+                        }
                         CreditLoadState.Content(
-                            if (state.draft.date.isBlank()) {
-                                state.copy(draft = state.draft.copy(date = runtimeSources.clock.now().atZone(zone).toLocalDate().toString()))
-                            } else {
-                                state
-                            },
+                            state.copy(
+                                draft = state.draft.copy(
+                                    date = state.draft.date.ifBlank { runtimeSources.clock.now().atZone(zone).toLocalDate().toString() },
+                                    amount = transactionAmount?.let { amount -> state.account?.let { CreditPolicy.minorText(amount, it.currency) } } ?: state.draft.amount,
+                                ),
+                            ),
                         )
                     }
                 }
@@ -3251,6 +3737,30 @@ internal class AppRootViewModel @Inject constructor(
             val current = active.indexOfFirst { it.id == state.draft.selectedPaymentAccountId }
             state.copy(draft = state.draft.copy(selectedPaymentAccountId = active[(current + 1).mod(active.size)].id))
         }
+    }
+
+    fun selectNextCreditZone() = updateCredit { state ->
+        val zones = listOf("Asia/Tokyo", "UTC", "Europe/London", "America/New_York", "America/Los_Angeles", "Australia/Sydney")
+        val current = zones.indexOf(state.draft.zoneId)
+        CreditPolicy.updateDraft(state, CreditField.ZONE, zones[(current + 1).mod(zones.size)])
+    }
+
+    fun cycleCreditDueRule() = updateCredit { state ->
+        state.copy(
+            draft = state.draft.copy(
+                dueRuleMode = if (state.draft.dueRuleMode == app.ledger.feature.liabilities.CreditDueRuleMode.FIXED_DAY) {
+                    app.ledger.feature.liabilities.CreditDueRuleMode.DAYS_AFTER_STATEMENT
+                } else {
+                    app.ledger.feature.liabilities.CreditDueRuleMode.FIXED_DAY
+                },
+            ),
+            presentation = CreditPresentation.EDITING,
+            validationFields = emptySet(),
+        )
+    }
+
+    fun toggleCreditStatementSeal(sealed: Boolean) = updateCredit { state ->
+        state.copy(draft = state.draft.copy(sealOfficial = sealed), presentation = CreditPresentation.EDITING)
     }
 
     fun selectCreditStatement(statementId: StableId?) = updateCredit { state ->
@@ -3275,12 +3785,13 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun toggleCreditAutoPayment(enabled: Boolean) = updateCredit { state ->
+        val formalEnabled = enabled && CreditPolicy.formalAutoPaymentEligible(state)
         state.copy(
-            draft = state.draft.copy(autoPaymentMode = if (enabled) AutoGenerationMode.FORMAL_TRANSACTION else AutoGenerationMode.CONFIRMATION_CANDIDATE),
+            draft = state.draft.copy(autoPaymentMode = if (formalEnabled) AutoGenerationMode.FORMAL_TRANSACTION else AutoGenerationMode.CONFIRMATION_CANDIDATE),
             presentation = CreditPolicy.autoPresentation(
                 state.account,
                 state.statement,
-                if (enabled) AutoGenerationMode.FORMAL_TRANSACTION else AutoGenerationMode.CONFIRMATION_CANDIDATE,
+                if (formalEnabled) AutoGenerationMode.FORMAL_TRANSACTION else AutoGenerationMode.CONFIRMATION_CANDIDATE,
             ),
         )
     }
@@ -3330,6 +3841,7 @@ internal class AppRootViewModel @Inject constructor(
             if (stableId != null && target in setOf("CRD-004", "CRD-005")) put("statementId", StableIdArgument(stableId))
             if (stableId != null && target in setOf("CRD-006", "CRD-007")) put("transactionId", StableIdArgument(stableId))
             if (stableId != null && target == "REC-014") put("transactionId", StableIdArgument(stableId))
+            if (stableId != null && target == "JRN-007") put("transactionId", StableIdArgument(stableId))
         }
         navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
     }
@@ -3342,12 +3854,7 @@ internal class AppRootViewModel @Inject constructor(
         val standard = state.draft.standardLimit.takeIf(String::isNotBlank)?.let { CreditPolicy.parseMinor(it, account.currency) }
         val temporary = state.draft.temporaryLimit.takeIf(String::isNotBlank)?.let { CreditPolicy.parseMinor(it, account.currency) }
         val expires = state.draft.temporaryExpires.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-        val errors = buildSet {
-            if (statementDay !in 1..31) add("statementDay")
-            if (dueDay !in 1..31) add("dueDay")
-            if (runCatching { ZoneId.of(state.draft.zoneId) }.isFailure) add("zone")
-            if ((temporary == null) != (expires == null)) add("temporaryLimit")
-        }
+        val errors = CreditPolicy.profileErrors(state)
         if (errors.isNotEmpty()) {
             mutableCredit.value = CreditLoadState.Content(state.copy(presentation = CreditPresentation.VALIDATION_ERROR, validationFields = errors))
             return
@@ -3362,7 +3869,11 @@ internal class AppRootViewModel @Inject constructor(
                         account.id,
                         account.profile?.lastCommitId,
                         StatementDateRule.DayOfMonth(requireNotNull(statementDay), MissingDayPolicy.MOVE_TO_MONTH_END),
-                        DueDateRule.FixedDay(requireNotNull(dueDay), MissingDayPolicy.MOVE_TO_MONTH_END),
+                        if (state.draft.dueRuleMode == app.ledger.feature.liabilities.CreditDueRuleMode.FIXED_DAY) {
+                            DueDateRule.FixedDay(requireNotNull(dueDay), MissingDayPolicy.MOVE_TO_MONTH_END)
+                        } else {
+                            DueDateRule.DaysAfterStatement(requireNotNull(dueDay))
+                        },
                         ZoneId.of(state.draft.zoneId),
                         standard,
                         temporary,
@@ -3410,7 +3921,7 @@ internal class AppRootViewModel @Inject constructor(
                         statement.estimatedAmountMinor,
                         official,
                         now,
-                        true,
+                        state.draft.sealOfficial,
                         now,
                     ),
                 )
@@ -3592,10 +4103,16 @@ internal class AppRootViewModel @Inject constructor(
         )
     }
 
+    fun updateInstallmentRoundingMode(mode: RoundingMode) = updateInstallment { state ->
+        state.copy(draft = state.draft.copy(roundingMode = mode), presentation = InstallmentPresentation.EDITING, previewSchedule = null)
+    }
+
     fun selectInstallmentPurchase(purchaseId: StableId) = updateInstallment { state ->
+        val purchase = state.snapshot.purchases.singleOrNull { it.transactionId == purchaseId }
         state.copy(
             selectedPurchaseId = purchaseId,
             selectedPlanId = null,
+            draft = state.draft.copy(principal = purchase?.let { CreditPolicy.minorText(it.principalMinor, it.currency) }.orEmpty()),
             presentation = InstallmentPresentation.EDITING,
             previewSchedule = null,
         )
@@ -3608,6 +4125,7 @@ internal class AppRootViewModel @Inject constructor(
             if (stableId != null && target in setOf("INS-002", "INS-003", "INS-004", "INS-005", "INS-006")) {
                 put("planId", StableIdArgument(stableId))
             }
+            if (stableId != null && target == "JRN-007") put("transactionId", StableIdArgument(stableId))
         }
         navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
     }
@@ -3728,6 +4246,8 @@ internal class AppRootViewModel @Inject constructor(
             ?: plan?.let { selected -> state.snapshot.purchases.singleOrNull { it.transactionId == selected.purchaseTransactionId } }
             ?: return null
         val termCount = state.draft.termCount.toInt().takeIf { it in 1..INSTALLMENT_MAX_TERMS } ?: return null
+        val enteredPrincipal = CreditPolicy.parseMinor(state.draft.principal, purchase.currency)
+            ?.takeIf { it > 0L && it <= purchase.principalMinor } ?: return null
         val firstStatementDate = LocalDate.parse(state.draft.firstStatementDate)
         val prepaymentFee = state.draft.prepaymentFee.takeIf(String::isNotBlank)?.let {
             CreditPolicy.parseMinor(it, purchase.currency)
@@ -3735,13 +4255,13 @@ internal class AppRootViewModel @Inject constructor(
         if (state.draft.prepaymentFee.isNotBlank() && prepaymentFee == null) return null
         val terms = installmentTerms(state, purchase.currency, prepaymentFee) ?: return null
         val planId = plan?.id ?: nextId()
-        val currentPrincipal = plan?.currentPrincipalMinor ?: purchase.principalMinor
+        val currentPrincipal = plan?.currentPrincipalMinor ?: enteredPrincipal
         SaveInstallmentPlanRequest(
             installmentMutationIds(state.snapshot.bookId, planId, termCount),
             purchase.transactionId,
             purchase.creditAccountId,
             purchase.currency,
-            plan?.originalPrincipalMinor ?: purchase.principalMinor,
+            plan?.originalPrincipalMinor ?: enteredPrincipal,
             currentPrincipal,
             termCount,
             plan?.currentRevision?.id?.value,
@@ -3796,7 +4316,7 @@ internal class AppRootViewModel @Inject constructor(
             if (prepaymentFee == null) InstallmentPrepaymentPolicy.ALLOWED_WITHOUT_FEE else InstallmentPrepaymentPolicy.ALLOWED_WITH_FEE,
             prepaymentFee,
             state.draft.refundPolicy,
-            RoundingMode.HALF_EVEN,
+            state.draft.roundingMode,
         )
     }
 
@@ -3850,7 +4370,8 @@ internal class AppRootViewModel @Inject constructor(
         currentLoanScreenId = screenId
         mutableLoan.value = LoanLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
-            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
+            val savedSettings = settingsRepository.current()
+            val bookId = runCatching { requireBookId(savedSettings) }.getOrNull() ?: return@launch
             mutableLoan.value = when (val result = loanApplicationPort.snapshot(bookId)) {
                 is DomainResult.Failure -> LoanLoadState.Failure(sanitizeCode(result.error.code))
                 is DomainResult.Success -> {
@@ -3860,23 +4381,50 @@ internal class AppRootViewModel @Inject constructor(
                         LoanLoadState.Failure(LOAN_NOT_FOUND)
                     } else {
                         val created = LoanPolicy.create(result.value, screenId, contractId, trancheId, transactionId, simulationId).let { state ->
-                            if (screenId != "LIA-001") {
-                                state
-                            } else {
-                                when (val creditResult = creditApplicationPort.snapshot(bookId)) {
-                                    is DomainResult.Success -> state.copy(creditAccounts = creditResult.value.accounts)
-                                    is DomainResult.Failure -> state.copy(creditLoadFailureCode = sanitizeCode(creditResult.error.code))
-                                }
+                            if (screenId != "LIA-001") return@let state
+                            val withCredit = when (val creditResult = creditApplicationPort.snapshot(bookId)) {
+                                is DomainResult.Success -> state.copy(creditAccounts = creditResult.value.accounts)
+                                is DomainResult.Failure -> state.copy(creditLoadFailureCode = sanitizeCode(creditResult.error.code))
                             }
+                            val today = runtimeSources.clock.now().atZone(ZoneId.of(savedSettings.zoneId.ifBlank { DEFAULT_ZONE })).toLocalDate()
+                            val enriched = when (val installmentResult = installmentApplicationPort.snapshot(bookId, today)) {
+                                is DomainResult.Success -> withCredit.copy(installmentPlans = installmentResult.value.plans)
+                                is DomainResult.Failure -> withCredit.copy(installmentLoadFailureCode = sanitizeCode(installmentResult.error.code))
+                            }
+                            val hasAny = enriched.creditAccounts.isNotEmpty() || enriched.snapshot.contracts.isNotEmpty() || enriched.installmentPlans.isNotEmpty()
+                            val loanScheduleOverdue = enriched.snapshot.contracts.flatMap { it.tranches }.flatMap { it.schedule }.any { row ->
+                                row.plannedDate < today && row.actualPrincipalMinor + row.actualInterestMinor + row.actualFeeMinor + row.actualPenaltyMinor <
+                                    row.principalMinor + row.interestMinor + row.feeMinor
+                            }
+                            val overdue = enriched.creditAccounts.any { it.overdueMinor > 0L } ||
+                                enriched.snapshot.contracts.any { it.status == LoanStatus.DEFAULTED } || loanScheduleOverdue
+                            enriched.copy(presentation = when { overdue -> LoanPresentation.OVERDUE; !hasAny -> LoanPresentation.EMPTY; else -> LoanPresentation.CONTENT })
+                        }
+                        val operationReady = if (screenId in setOf("REC-018", "REC-019")) {
+                            created.copy(
+                                operationOccurredAt = runtimeSources.clock.now(),
+                                operationZoneId = ZoneId.of(savedSettings.zoneId.ifBlank { DEFAULT_ZONE }),
+                            )
+                        } else {
+                            created
+                        }
+                        val withPayment = if (screenId == "LOA-009" && transactionId != null) {
+                            when (val payment = loanApplicationPort.paymentDetail(bookId, transactionId)) {
+                                is DomainResult.Success -> payment.value?.let { operationReady.copy(paymentDetail = it) }
+                                    ?: return@launch run { mutableLoan.value = LoanLoadState.Failure(LOAN_NOT_FOUND) }
+                                is DomainResult.Failure -> return@launch run { mutableLoan.value = LoanLoadState.Failure(sanitizeCode(payment.error.code)) }
+                            }
+                        } else {
+                            operationReady
                         }
                         val retained = currentLoanSimulationRequest?.takeIf { request ->
-                            request.contractId == created.selectedContractId && request.simulationId == simulationId
+                            request.contractId == withPayment.selectedContractId && request.simulationId == simulationId
                         }
                         LoanLoadState.Content(
                             if (screenId == "LOA-011" && retained != null) {
-                                created.copy(simulation = currentLoanSimulation)
+                                withPayment.copy(simulation = currentLoanSimulation)
                             } else {
-                                created
+                                withPayment
                             },
                         )
                     }
@@ -3885,23 +4433,119 @@ internal class AppRootViewModel @Inject constructor(
         }
     }
 
-    fun updateLoanField(field: LoanField, value: String) = updateLoan { LoanPolicy.update(it, field, value) }
+    fun updateLoanField(field: LoanField, value: String) = updateLoan { state ->
+        val updated = LoanPolicy.update(state, field, value)
+        if (currentLoanScreenId == "LOA-002") LoanPolicy.syncWizardTranche(updated) else updated
+    }
 
     fun selectLoanContract(contractId: StableId) = updateLoan { state ->
-        LoanPolicy.create(state.snapshot, currentLoanScreenId, contractId, null, state.selectedTransactionId, state.selectedSimulationId)
+        LoanPolicy.create(state.snapshot, currentLoanScreenId, contractId, null, state.selectedTransactionId, state.selectedSimulationId).copy(
+            operationOccurredAt = state.operationOccurredAt,
+            operationZoneId = state.operationZoneId,
+        )
     }
 
     fun selectLoanTranche(trancheId: StableId) = updateLoan { state ->
-        LoanPolicy.create(state.snapshot, currentLoanScreenId, state.selectedContractId, trancheId, state.selectedTransactionId, state.selectedSimulationId)
+        LoanPolicy.create(state.snapshot, currentLoanScreenId, state.selectedContractId, trancheId, state.selectedTransactionId, state.selectedSimulationId).copy(
+            operationOccurredAt = state.operationOccurredAt,
+            operationZoneId = state.operationZoneId,
+        )
+    }
+
+    fun selectLoanPaymentAccount(accountId: StableId) = updateLoan { state ->
+        state.copy(selectedPaymentAccountId = accountId, presentation = LoanPresentation.EDITING)
+    }
+
+    fun selectLoanScheduleInstallment(installmentNumber: Int) = updateLoan { state ->
+        state.copy(selectedScheduleInstallmentNumber = installmentNumber, presentation = LoanPresentation.EDITING)
+    }
+
+    fun selectLoanOperationOccurredAt(occurredAt: Instant) = updateLoan { state ->
+        state.copy(operationOccurredAt = occurredAt, presentation = LoanPresentation.EDITING)
     }
 
     fun selectLoanRepaymentMethod(method: LoanRepaymentMethod) = updateLoan { state ->
-        state.copy(draft = state.draft.copy(repaymentMethod = method), presentation = LoanPresentation.EDITING, preview = emptyList())
+        syncLoanWizard(state.copy(draft = state.draft.copy(repaymentMethod = method), presentation = LoanPresentation.EDITING, preview = emptyList()))
     }
 
     fun selectLoanStrategy(strategy: PrepaymentRecalculationStrategy) = updateLoan { state ->
-        state.copy(draft = state.draft.copy(strategy = strategy), presentation = LoanPresentation.EDITING, simulation = null)
+        syncLoanWizard(state.copy(draft = state.draft.copy(strategy = strategy), presentation = LoanPresentation.EDITING, simulation = null))
     }
+
+    fun selectLoanRateType(type: LoanRateType) = updateLoan { state ->
+        syncLoanWizard(state.copy(draft = state.draft.copy(rateType = type), presentation = LoanPresentation.EDITING, preview = emptyList()))
+    }
+
+    fun selectLoanFrequency(frequency: PaymentFrequency) = updateLoan { state ->
+        syncLoanWizard(state.copy(draft = state.draft.copy(paymentFrequency = frequency), presentation = LoanPresentation.EDITING, preview = emptyList()))
+    }
+
+    fun selectLoanPrepaymentPolicy(policy: LoanPrepaymentPolicy) = updateLoan { state ->
+        syncLoanWizard(state.copy(draft = state.draft.copy(prepaymentPolicy = policy), presentation = LoanPresentation.EDITING, preview = emptyList()))
+    }
+
+    fun selectLoanRoundingMode(mode: RoundingMode) = updateLoan { state ->
+        syncLoanWizard(state.copy(draft = state.draft.copy(roundingMode = mode), presentation = LoanPresentation.EDITING, preview = emptyList()))
+    }
+
+    fun nextLoanWizardStep() = updateLoan { state ->
+        val synced = LoanPolicy.syncWizardTranche(state)
+        val canAdvance = when (synced.wizardStep) {
+            0 -> synced.draft.name.isNotBlank() && runCatching { LocalDate.parse(synced.draft.startDate) }.isSuccess
+            1 -> synced.wizardTranches.isNotEmpty() && synced.wizardTranches.all { it.name.isNotBlank() && it.principal.isNotBlank() }
+            2 -> synced.wizardTranches.all { it.paymentCount.toIntOrNull()?.let { count -> count > 0 } == true && it.firstPaymentDate.isNotBlank() }
+            3 -> synced.wizardTranches.all { it.ratePeriods.isNotEmpty() || it.annualRate.isNotBlank() }
+            4 -> synced.preview.isNotEmpty()
+            else -> false
+        }
+        if (canAdvance) synced.copy(wizardStep = (synced.wizardStep + 1).coerceAtMost(5), presentation = LoanPresentation.EDITING) else synced.copy(presentation = LoanPresentation.INVALID)
+    }
+
+    fun previousLoanWizardStep() = updateLoan { state ->
+        LoanPolicy.syncWizardTranche(state).copy(wizardStep = (state.wizardStep - 1).coerceAtLeast(0), presentation = LoanPresentation.EDITING)
+    }
+
+    fun addLoanWizardTranche() = updateLoan { state ->
+        val synced = LoanPolicy.syncWizardTranche(state)
+        val blank = app.ledger.feature.liabilities.LoanWizardTrancheDraft(
+            "", "", "12", "", "", "", "", LoanRepaymentMethod.EQUAL_PAYMENT, LoanRateType.FIXED,
+            PaymentFrequency.MONTHLY, LoanPrepaymentPolicy.ALLOWED, PrepaymentRecalculationStrategy.SHORTEN_TERM,
+            "", RoundingMode.HALF_EVEN, emptyList(),
+        )
+        LoanPolicy.selectWizardTranche(synced.copy(wizardTranches = synced.wizardTranches + blank), synced.wizardTranches.size)
+    }
+
+    fun selectLoanWizardTranche(index: Int) = updateLoan { LoanPolicy.selectWizardTranche(it, index) }
+
+    fun addLoanRatePeriod() = updateLoan { state ->
+        val from = runCatching { LocalDate.parse(state.draft.startDate) }.getOrNull()
+        val to = state.draft.endDate.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val rate = parseLoanRate(state.draft.annualRate)
+        if (from == null || rate == null || (to != null && to < from)) return@updateLoan state.copy(presentation = LoanPresentation.INVALID)
+        val candidate = LoanRatePeriod(from, to, rate, null, null)
+        val edited = state.ratePeriods.toMutableList().apply {
+            val index = state.editingRatePeriodIndex
+            if (index != null && index in indices) set(index, candidate) else add(candidate)
+        }
+        val periods = edited.sortedBy { it.effectiveFrom }
+        val overlap = periods.zipWithNext().any { (first, second) -> first.effectiveTo == null || first.effectiveTo >= second.effectiveFrom }
+        val updated = state.copy(ratePeriods = periods, editingRatePeriodIndex = null, presentation = if (overlap) LoanPresentation.OVERLAP_ERROR else LoanPresentation.EDITING, preview = emptyList())
+        syncLoanWizard(updated)
+    }
+
+    fun editLoanRatePeriod(index: Int) = updateLoan { state ->
+        val period = state.ratePeriods.getOrNull(index) ?: return@updateLoan state
+        state.copy(
+            editingRatePeriodIndex = index,
+            draft = state.draft.copy(
+                startDate = period.effectiveFrom.toString(), endDate = period.effectiveTo?.toString().orEmpty(),
+                annualRate = period.annualRate.annualDecimal.toPlainString(),
+            ),
+            presentation = LoanPresentation.EDITING,
+        )
+    }
+
+    private fun syncLoanWizard(state: LoanFeatureState): LoanFeatureState = if (currentLoanScreenId == "LOA-002") LoanPolicy.syncWizardTranche(state) else state
 
     fun navigateLoan(target: String, primary: StableId?, secondary: StableId?) {
         val screenId = ScreenId(target)
@@ -3922,13 +4566,15 @@ internal class AppRootViewModel @Inject constructor(
                     primary?.let { put("contractId", StableIdArgument(it)) }
                     currentLoanSimulationRequest?.simulationId?.let { put("simulationId", StableIdArgument(it)) }
                 }
+                "INS-003" -> primary?.let { put("planId", StableIdArgument(it)) }
             }
         }
         navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
     }
 
     fun previewLoan() {
-        val state = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        val rawState = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        val state = if (currentLoanScreenId == "LOA-002") LoanPolicy.syncWizardTranche(rawState) else rawState
         val request = loanContractRequest(state)
         if (request == null || !beginLoanMutation(state.copy(presentation = LoanPresentation.GENERATING_SCHEDULE))) {
             if (request == null) markLoanInvalid(LoanPresentation.INVALID)
@@ -3955,7 +4601,8 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     private fun saveLoanContract() {
-        val state = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        val rawState = (mutableLoan.value as? LoanLoadState.Content)?.state ?: return
+        val state = if (currentLoanScreenId == "LOA-002") LoanPolicy.syncWizardTranche(rawState) else rawState
         val request = loanContractRequest(state)
         if (request == null || !beginLoanMutation(state.copy(presentation = LoanPresentation.SAVING))) {
             if (request == null) markLoanInvalid(LoanPresentation.INVALID)
@@ -3978,7 +4625,9 @@ internal class AppRootViewModel @Inject constructor(
         val contract = state.contract ?: return markLoanInvalid(LoanPresentation.INVALID)
         val tranche = state.tranche ?: return markLoanInvalid(LoanPresentation.ALLOCATION_ERROR)
         val amount = CreditPolicy.parseMinor(state.draft.amount, contract.currency)
-        val account = state.snapshot.paymentAccounts.firstOrNull { it.active && it.currency == contract.currency }
+        val account = state.snapshot.paymentAccounts.singleOrNull {
+            it.id == state.selectedPaymentAccountId && it.active && it.currency == contract.currency
+        }
         if (amount == null || account == null || contract.currency != state.snapshot.baseCurrency) {
             markLoanInvalid(LoanPresentation.ALLOCATION_ERROR)
             return
@@ -3987,7 +4636,7 @@ internal class AppRootViewModel @Inject constructor(
         val request = RecordLoanDisbursementRequest(
             ids,
             loanTransactionIds(),
-            loanTransactionContext(),
+            loanTransactionContext(state),
             SpecializedAccountAmountDraft(account.id, amount, amount, null),
             LoanComponentAmountDraft(amount, amount, null),
             listOf(LoanComponentAllocationDraft(tranche.id, null, LoanPaymentComponent.PRINCIPAL, amount, amount)),
@@ -4015,18 +4664,28 @@ internal class AppRootViewModel @Inject constructor(
         if (total == null || enteredTotal != total) return markLoanInvalid(LoanPresentation.SUM_MISMATCH)
         val principal = components[0] ?: 0L
         if (principal > tranche.remainingPrincipalMinor) return markLoanInvalid(LoanPresentation.PRINCIPAL_EXCEEDED)
-        val account = state.snapshot.paymentAccounts.firstOrNull { it.active && it.currency == contract.currency }
+        val account = state.snapshot.paymentAccounts.singleOrNull {
+            it.id == state.selectedPaymentAccountId && it.active && it.currency == contract.currency
+        }
         if (account == null || contract.currency != state.snapshot.baseCurrency) return markLoanInvalid(LoanPresentation.INVALID)
         val mutation = loanContractRequest(state, selectedOnly = true, principalAfter = tranche.remainingPrincipalMinor - principal)
             ?: return markLoanInvalid(LoanPresentation.INVALID)
         val amounts = components.map { minor -> minor?.let { LoanComponentAmountDraft(it, it, null) } }
         val allocation = LoanPaymentComponent.entries.mapIndexedNotNull { index, component ->
-            amounts[index]?.let { LoanComponentAllocationDraft(tranche.id, null, component, it.accountMinor, it.baseMinor) }
+            amounts[index]?.let {
+                LoanComponentAllocationDraft(
+                    tranche.id,
+                    state.selectedScheduleInstallmentNumber,
+                    component,
+                    it.accountMinor,
+                    it.baseMinor,
+                )
+            }
         }
         val request = RecordLoanPaymentRequest(
             mutation,
             loanTransactionIds(),
-            loanTransactionContext(),
+            loanTransactionContext(state),
             SpecializedAccountAmountDraft(account.id, total, total, null),
             LoanPaymentAmountsDraft(amounts[0], amounts[1], amounts[2], amounts[3]),
             allocation,
@@ -4105,7 +4764,7 @@ internal class AppRootViewModel @Inject constructor(
             request,
             mutation,
             loanTransactionIds(),
-            loanTransactionContext(),
+            loanTransactionContext(state),
             SpecializedAccountAmountDraft(account.id, simulation.paymentNowMinor, simulation.paymentNowMinor, null),
             LoanComponentAmountDraft(simulation.prepaymentPrincipalMinor, simulation.prepaymentPrincipalMinor, null),
             penalty,
@@ -4141,27 +4800,39 @@ internal class AppRootViewModel @Inject constructor(
         } else {
             contract.tranches
         }
-        val descriptors = if (views.isEmpty()) listOf(null) else views
-        val trancheRequests = descriptors.map { view ->
+        val descriptors = if (views.isEmpty() && currentLoanScreenId == "LOA-002" && state.wizardTranches.isNotEmpty()) {
+            state.wizardTranches.map { null to it }
+        } else if (currentLoanScreenId == "LOA-003" && state.creatingTranche) {
+            views.map { it to null } + (null to null)
+        } else if (views.isEmpty()) {
+            listOf(null to null)
+        } else {
+            views.map { it to null }
+        }
+        val trancheRequests = descriptors.map { (view, wizard) ->
             val selected = view == null || view.id == state.selectedTrancheId
             val currentPrincipal = when {
                 selected && principalAfter != null -> principalAfter
+                selected && currentLoanScreenId == "LOA-003" -> CreditPolicy.parseMinor(state.draft.principal, account.currency) ?: return null
                 view != null -> view.remainingPrincipalMinor
+                wizard != null -> CreditPolicy.parseMinor(wizard.principal, account.currency) ?: return null
                 else -> CreditPolicy.parseMinor(state.draft.principal, account.currency) ?: return null
             }
             val requestedCount = if (currentPrincipal == 0L) {
                 0
             } else if (selected) {
-                state.draft.paymentCount.toIntOrNull()?.takeIf { it in 1..LOAN_MAX_PAYMENTS } ?: view?.schedule?.size ?: return null
+                (wizard?.paymentCount ?: state.draft.paymentCount).toIntOrNull()?.takeIf { it in 1..LOAN_MAX_PAYMENTS } ?: view?.schedule?.size ?: return null
             } else {
                 view.schedule.size.coerceAtLeast(1)
             }
             val ids = if (selected && fixedIds != null) fixedIds else loanTrancheMutationIds(requestedCount)
-            val terms = loanTerms(state, view, requestedCount.coerceAtLeast(1)) ?: return null
+            val terms = wizard?.let { loanTerms(state, it, requestedCount.coerceAtLeast(1), account.currency) }
+                ?: loanTerms(state, view, requestedCount.coerceAtLeast(1)) ?: return null
             LoanTrancheDraft(
                 ids,
                 view?.ledgerAccountId ?: account.ledgerAccountId,
-                view?.name ?: state.draft.name.ifBlank { account.name },
+                wizard?.name?.takeIf(String::isNotBlank)
+                    ?: if (selected && state.draft.trancheName.isNotBlank()) state.draft.trancheName else view?.name ?: state.draft.name.ifBlank { account.name },
                 view?.originalPrincipalMinor ?: currentPrincipal,
                 currentPrincipal,
                 if (currentPrincipal == 0L) LoanStatus.PAID_OFF else view?.status ?: LoanStatus.ACTIVE,
@@ -4200,22 +4871,48 @@ internal class AppRootViewModel @Inject constructor(
             ?: view?.schedule?.lastOrNull()?.plannedDate ?: first.plusMonths((paymentCount - 1).toLong())
         val rate = state.draft.annualRate.takeIf(String::isNotBlank)?.let(::parseLoanRate)
             ?: view?.ratePeriods?.firstOrNull()?.annualRate ?: return null
-        val periods = if (view != null && state.draft.annualRate.isBlank()) view.ratePeriods else listOf(LoanRatePeriod(start, end, rate, null, null))
-        val fee = CreditPolicy.parseMinor(state.draft.feePerPayment, state.snapshot.baseCurrency) ?: 0L
+        val periods = state.ratePeriods.ifEmpty {
+            if (view != null && state.draft.annualRate.isBlank()) view.ratePeriods else listOf(LoanRatePeriod(start, end, rate, null, null))
+        }
+        val currency = state.contract?.currency ?: state.snapshot.loanAccounts.firstOrNull()?.currency ?: state.snapshot.baseCurrency
+        val fee = state.draft.feePerPayment.takeIf(String::isNotBlank)?.let { CreditPolicy.parseMinor(it, currency) } ?: 0L
+        val penalty = state.draft.penaltyRate.takeIf(String::isNotBlank)?.let(::parseLoanRate)
+        if (state.draft.prepaymentPolicy == LoanPrepaymentPolicy.ALLOWED_WITH_PENALTY && penalty == null) return null
         return LoanTermsDraft(
             state.draft.repaymentMethod,
-            LoanRateType.FIXED,
-            PaymentFrequency.MONTHLY,
+            state.draft.rateType,
+            state.draft.paymentFrequency,
             start,
             end,
             paymentCount,
             first,
-            RoundingMode.HALF_EVEN,
-            LoanPrepaymentPolicy.ALLOWED,
+            state.draft.roundingMode,
+            state.draft.prepaymentPolicy,
             state.draft.strategy,
-            null,
+            penalty,
             periods,
             fee,
+        )
+    }
+
+    private fun loanTerms(
+        state: LoanFeatureState,
+        draft: app.ledger.feature.liabilities.LoanWizardTrancheDraft,
+        paymentCount: Int,
+        currency: CurrencyCode,
+    ): LoanTermsDraft? {
+        val start = runCatching { LocalDate.parse(state.draft.startDate) }.getOrNull() ?: loanToday()
+        val first = runCatching { LocalDate.parse(draft.firstPaymentDate) }.getOrNull() ?: return null
+        val end = draft.endDate.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?: first.plusMonths((paymentCount - 1).toLong())
+        val rate = parseLoanRate(draft.annualRate) ?: draft.ratePeriods.firstOrNull()?.annualRate ?: return null
+        val periods = draft.ratePeriods.ifEmpty { listOf(LoanRatePeriod(start, end, rate, null, null)) }
+        val fee = draft.feePerPayment.takeIf(String::isNotBlank)?.let { CreditPolicy.parseMinor(it, currency) } ?: 0L
+        val penalty = draft.penaltyRate.takeIf(String::isNotBlank)?.let(::parseLoanRate)
+        if (draft.prepaymentPolicy == LoanPrepaymentPolicy.ALLOWED_WITH_PENALTY && penalty == null) return null
+        return LoanTermsDraft(
+            draft.repaymentMethod, draft.rateType, draft.paymentFrequency, start, end, paymentCount, first,
+            draft.roundingMode, draft.prepaymentPolicy, draft.prepaymentStrategy, penalty, periods, fee,
         )
     }
 
@@ -4235,10 +4932,10 @@ internal class AppRootViewModel @Inject constructor(
 
     private fun loanTransactionIds() = LoanTransactionIds(nextId(), nextId(), List(LOAN_FACT_ID_COUNT) { nextId() }, emptyList())
 
-    private fun loanTransactionContext(): LoanTransactionContext {
-        val now = runtimeSources.clock.now()
-        val zone = ZoneId.of(settings.value.zoneId.ifBlank { DEFAULT_ZONE })
-        return LoanTransactionContext(now, zone, now.atZone(zone).toLocalDate(), null, null)
+    private fun loanTransactionContext(state: LoanFeatureState): LoanTransactionContext {
+        val zone = state.operationZoneId ?: ZoneId.of(settings.value.zoneId.ifBlank { DEFAULT_ZONE })
+        val occurredAt = state.operationOccurredAt ?: runtimeSources.clock.now()
+        return LoanTransactionContext(occurredAt, zone, occurredAt.atZone(zone).toLocalDate(), null, null)
     }
 
     private fun loanComponents(state: LoanFeatureState, currency: CurrencyCode): List<Long?>? {
@@ -4300,6 +4997,8 @@ internal class AppRootViewModel @Inject constructor(
                         SettlementLoadState.Content(
                             if (screenId == "SET-002" && activityId == null && created.draft.startDate.isBlank()) {
                                 created.copy(draft = created.draft.copy(startDate = runtimeSources.clock.now().atZone(zone).toLocalDate().toString()))
+                            } else if (screenId == "SET-006" && created.draft.paymentDate.isBlank()) {
+                                created.copy(draft = created.draft.copy(paymentDate = runtimeSources.clock.now().atZone(zone).toLocalDate().toString()))
                             } else {
                                 created
                             },
@@ -4370,6 +5069,9 @@ internal class AppRootViewModel @Inject constructor(
         require(projectId == null || state.snapshot.projects.any { it.id == projectId && it.active })
         state.copy(draft = state.draft.copy(projectId = projectId))
     }
+    fun selectSettlementCurrency(currency: CurrencyCode) = updateSettlement { state ->
+        if (state.activity != null) state else state.copy(draft = state.draft.copy(currency = currency), presentation = SettlementPresentation.EDIT)
+    }
     fun selectSettlementSplitMethod(method: SettlementSplitMethod) = updateSettlement { it.copy(draft = it.draft.copy(splitMethod = method)) }
     fun selectSettlementChargeDistribution(distribution: SettlementChargeDistribution) = updateSettlement { it.copy(draft = it.draft.copy(chargeDistribution = distribution)) }
     fun selectSettlementRoundingRule(rule: SettlementRoundingRule) = updateSettlement { it.copy(draft = it.draft.copy(roundingRule = rule)) }
@@ -4438,7 +5140,7 @@ internal class AppRootViewModel @Inject constructor(
         )
         val request = SaveSettlementActivityRequest(
             ids, activityId, activity?.lastCommitId, state.draft.name, state.draft.description.ifBlank { null },
-            activity?.currency ?: state.snapshot.baseCurrency, state.draft.projectId, start, end,
+            activity?.currency ?: requireNotNull(state.draft.currency), state.draft.projectId, start, end,
             activity?.status ?: SettlementActivityStatus.ACTIVE,
             included.map { SettlementParticipantWriteDraft(it.id, it.name, it.isSelf) }, runtimeSources.clock.now(),
         )
@@ -4473,6 +5175,8 @@ internal class AppRootViewModel @Inject constructor(
         }
         val now = runtimeSources.clock.now()
         val zone = ZoneId.of(settings.value.zoneId.ifBlank { DEFAULT_ZONE })
+        val localDate = runCatching { LocalDate.parse(state.draft.paymentDate) }.getOrNull() ?: return markSettlementInvalid()
+        val occurredAt = localDate.atTime(now.atZone(zone).toLocalTime()).atZone(zone).toInstant()
         val request = RecordSettlementPaymentRequest(
             SettlementPaymentIds(
                 state.snapshot.bookId, CommandId(nextId()), nextId(), nextId(), nextId(), nextId(), nextId(),
@@ -4480,7 +5184,7 @@ internal class AppRootViewModel @Inject constructor(
             ),
             activity.id, payer, payee, amount, account?.id,
             account?.let { amount }, account?.let { amount }, null, null,
-            now, zone, now.atZone(zone).toLocalDate(), state.draft.note.ifBlank { null }, now,
+            occurredAt, zone, localDate, state.draft.note.ifBlank { null }, now,
         )
         if (!beginSettlementMutation(state.copy(presentation = SettlementPresentation.SAVING))) return
         viewModelScope.launch(Dispatchers.IO) {
@@ -4540,6 +5244,7 @@ internal class AppRootViewModel @Inject constructor(
         }
         val screen = navigator.currentKey.contract.screenId.value
         if (screen.startsWith("VLT-")) vaultController.hideSensitive(autoHidden = false)
+        if (screen == "ATT-001") attachmentController.close()
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
         if (screen in setOf("REC-023", "REC-024", "REC-025") && batchRecord.value?.presentation != app.ledger.feature.record.BatchRecordPresentation.COMMITTED) {
             batchEntryController.requestDiscardConfirmation()
@@ -4554,6 +5259,7 @@ internal class AppRootViewModel @Inject constructor(
     fun selectRootTopLevel(target: TopLevelDestination) {
         val screen = navigator.currentKey.contract.screenId.value
         if (screen.startsWith("VLT-")) vaultController.hideSensitive(autoHidden = false)
+        if (screen.startsWith("ATT-")) attachmentController.close()
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
         if (screen in setOf("REC-023", "REC-024", "REC-025") && batchRecord.value?.presentation != app.ledger.feature.record.BatchRecordPresentation.COMMITTED) {
             batchEntryController.requestDiscardConfirmation()
@@ -4563,6 +5269,11 @@ internal class AppRootViewModel @Inject constructor(
         } else {
             navigator.select(target)
         }
+    }
+
+    override fun onCleared() {
+        attachmentController.close()
+        super.onCleared()
     }
 
     fun discardRecordChanges() {
@@ -4634,6 +5345,7 @@ internal class AppRootViewModel @Inject constructor(
         val screenId = ScreenId(targetScreenId)
         if (source.contract.screenId.value == "ACC-009" && targetScreenId == "ACC-010") {
             pendingCardAccountId = source.encodedArguments["accountId"]?.let { StableId.parse(it).getOrNull() }
+            replacementCardId = null
         }
         val arguments = buildMap<String, SafeRouteArgument> {
             stableArguments.forEach { (name, value) -> put(name, StableIdArgument(value)) }
@@ -4648,12 +5360,22 @@ internal class AppRootViewModel @Inject constructor(
         navigateP12(source, "ACC-003", emptyMap())
     }
 
-    fun saveAccount(value: AccountEditorSubmission) = executeReferenceMutation { snapshot ->
+    fun createReplacementCard(cardId: StableId, accountId: StableId, source: LedgerDestinationKey) {
+        replacementCardId = cardId
+        pendingCardAccountId = accountId
+        navigateP12(source, "ACC-010", emptyMap())
+    }
+
+    fun saveAccount(value: AccountEditorSubmission) {
+        var savedAccountId = value.accountId
+        executeReferenceMutation({ snapshot ->
         val existing = value.accountId?.let { id -> snapshot.accounts.singleOrNull { it.id == id } }
         val currency = CurrencyCode.parse(value.currencyCode).getOrNull() ?: error("REFERENCE_INVALID_CURRENCY")
+        val accountId = existing?.id ?: nextId()
+        savedAccountId = accountId
         ReferenceMutation.SaveAccount(
             AccountDraft(
-                accountId = existing?.id ?: nextId(),
+                accountId = accountId,
                 ledgerAccountId = if (existing == null) nextId() else nextId(),
                 expectedRowVersion = existing?.rowVersion,
                 type = value.type,
@@ -4668,12 +5390,27 @@ internal class AppRootViewModel @Inject constructor(
                 sortOrder = existing?.sortOrder ?: snapshot.accounts.size,
             ),
         )
+        }, afterSuccess = {
+            if (value.accountId == null) {
+                when (value.type) {
+                    UserAccountType.CREDIT -> savedAccountId?.let { id ->
+                        loadCredit("CRD-002", accountId = id)
+                        navigateCredit("CRD-002", id)
+                    }
+                    UserAccountType.LOAN -> {
+                        loadLoan("LOA-002")
+                        navigateLoan("LOA-002", null, null)
+                    }
+                    else -> Unit
+                }
+            }
+        })
     }
 
     fun archiveAccount(id: StableId, rowVersion: Long) = executeReferenceMutation { ReferenceMutation.ArchiveAccount(id, rowVersion) }
     fun deleteEmptyAccount(id: StableId, rowVersion: Long) = executeReferenceMutation { ReferenceMutation.DeleteEmptyAccount(id, rowVersion) }
 
-    fun saveCard(value: CardEditorSubmission) = executeReferenceMutation { snapshot ->
+    fun saveCard(value: CardEditorSubmission) = executeReferenceMutation({ snapshot ->
         val existing = value.cardId?.let { id -> snapshot.cards.singleOrNull { it.id == id } }
         ReferenceMutation.SaveCard(
             CardDraft(
@@ -4689,7 +5426,7 @@ internal class AppRootViewModel @Inject constructor(
                 sortOrder = existing?.sortOrder ?: snapshot.cards.size,
             ),
         )
-    }
+    }, afterSuccess = { replacementCardId = null })
 
     fun archiveCard(id: StableId, rowVersion: Long) = executeReferenceMutation { ReferenceMutation.ArchiveCard(id, rowVersion) }
 
@@ -4756,7 +5493,10 @@ internal class AppRootViewModel @Inject constructor(
         )
     }
 
-    private fun executeReferenceMutation(factory: (ReferenceDataSnapshot) -> ReferenceMutation) {
+    private fun executeReferenceMutation(
+        factory: (ReferenceDataSnapshot) -> ReferenceMutation,
+        afterSuccess: (() -> Unit)? = null,
+    ) {
         if (mutableReferenceMutationPending.value) return
         viewModelScope.launch(Dispatchers.IO) {
             val snapshot = (mutableReferenceData.value as? AppReferenceDataState.Content)?.snapshot ?: return@launch
@@ -4771,7 +5511,10 @@ internal class AppRootViewModel @Inject constructor(
                     changedAt = runtimeSources.clock.now(),
                 )
                 when (val result = runCatching { referenceDataPort.mutate(ReferenceMutationCommand(ids, factory(snapshot))) }.getOrNull()) {
-                    is DomainResult.Success -> loadReferenceDataAfterMutation(snapshot.bookId)
+                    is DomainResult.Success -> {
+                        loadReferenceDataAfterMutation(snapshot.bookId)
+                        if (afterSuccess != null) withContext(Dispatchers.Main.immediate) { afterSuccess() }
+                    }
                     is DomainResult.Failure -> mutableReferenceData.value = AppReferenceDataState.Error(result.error.code)
                     null -> mutableReferenceData.value = AppReferenceDataState.Error("REFERENCE_MUTATION_FAILED")
                 }
@@ -4914,7 +5657,7 @@ internal class AppRootViewModel @Inject constructor(
                 }
             }
             val zone = runCatching { ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }) }.getOrDefault(ZoneId.of(DEFAULT_ZONE))
-            val editor = OrdinaryRecordPolicy.createEditor(
+            val editor = hydrateRecordEditor(OrdinaryRecordPolicy.createEditor(
                 snapshot,
                 seed.mode,
                 seed.direction,
@@ -4923,7 +5666,7 @@ internal class AppRootViewModel @Inject constructor(
                 runtimeSources.clock.now(),
                 zone,
                 recordLocale(),
-            )
+            ))
             mutableOrdinaryRecord.value = OrdinaryRecordLoadState.Content(
                 snapshot,
                 if (seed.direction == OrdinaryDirection.EXPENSE) RecordTab.EXPENSE else RecordTab.INCOME,
@@ -5037,8 +5780,7 @@ internal class AppRootViewModel @Inject constructor(
             val automationResult = automationApplicationPort.snapshot(bookId)
             val entryResult = ordinaryTransactionEntryPort.snapshot(bookId)
             mutableAutomation.value = if (automationResult is DomainResult.Success && entryResult is DomainResult.Success) {
-                AutomationLoadState.Content(
-                    AutomationPolicy.create(
+                val created = AutomationPolicy.create(
                         automationResult.value,
                         entryResult.value,
                         screenId,
@@ -5047,8 +5789,11 @@ internal class AppRootViewModel @Inject constructor(
                         candidateId,
                         zone,
                         today,
-                    ),
-                )
+                    )
+                val retainedRule = pendingAutomationRuleDraft?.takeIf { draft ->
+                    screenId == "AUT-006" || screenId == "AUT-005" && draft.id == seriesId
+                }
+                AutomationLoadState.Content(if (retainedRule == null) created else created.copy(recurrenceDraft = retainedRule, presentation = AutomationPresentation.EDITING))
             } else {
                 val code = (automationResult as? DomainResult.Failure)?.error?.code
                     ?: (entryResult as? DomainResult.Failure)?.error?.code
@@ -5059,6 +5804,9 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun navigateAutomation(target: String, stableId: StableId?) {
+        if (target == "AUT-006") {
+            pendingAutomationRuleDraft = (mutableAutomation.value as? AutomationLoadState.Content)?.state?.recurrenceDraft
+        }
         val screenId = ScreenId(target)
         val argumentName = when {
             target == "AUT-003" -> "templateId"
@@ -5071,6 +5819,9 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun updateAutomationSearch(value: String) = updateAutomationContent { copy(search = value.take(80)) }
+    fun updateAutomationTemplateFilter(value: AutomationTemplateFilter) = updateAutomationContent { copy(templateFilter = value) }
+    fun updateAutomationTemplateSort(value: AutomationTemplateSort) = updateAutomationContent { copy(templateSort = value) }
+    fun updateAutomationSeriesFilter(value: AutomationSeriesFilter) = updateAutomationContent { copy(seriesFilter = value) }
 
     fun updateAutomationBlueprintField(field: BlueprintField, value: String) = updateAutomationContent {
         AutomationPolicy.updateBlueprint(this, field, value)
@@ -5101,6 +5852,36 @@ internal class AppRootViewModel @Inject constructor(
         copy(blueprintDraft = updated, presentation = AutomationPresentation.EDITING, validationFields = emptySet())
     }
 
+    fun archiveAutomationBlueprint(id: StableId) {
+        if (mutableAutomationPending.value) return
+        val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
+        val blueprint = content.state.snapshot.blueprints.singleOrNull { it.id == id } ?: return
+        val snapshot = content.state.snapshot
+        mutableAutomationPending.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val result = automationApplicationPort.saveBlueprint(
+                    SaveBlueprintRequest(
+                        AutomationMutationIds(snapshot.bookId, nextId(), nextId(), nextId(), snapshot.localRevision, runtimeSources.clock.now()),
+                        BlueprintDraft(
+                            blueprint.id, nextId(), blueprint.revisionId, blueprint.name, blueprint.iconKey, blueprint.colorArgb,
+                            app.ledger.finance.domain.EntityStatus.ARCHIVED, blueprint.targetKind, blueprint.categoryId,
+                            blueprint.primaryAccountId, blueprint.secondaryAccountId, blueprint.cardId, blueprint.merchantId,
+                            blueprint.projectId, blueprint.goalId, blueprint.settlementActivityId, blueprint.amountExpression,
+                            blueprint.currency, blueprint.noteTemplate, blueprint.fixedPlaceId,
+                        ),
+                    ),
+                )
+                when (result) {
+                    is DomainResult.Success -> loadAutomation("AUT-002")
+                    is DomainResult.Failure -> mutableAutomation.value = AutomationLoadState.Content(content.state.copy(presentation = AutomationPresentation.VALIDATION_ERROR, failureCode = sanitizeCode(result.error.code)))
+                }
+            } finally {
+                mutableAutomationPending.value = false
+            }
+        }
+    }
+
     fun saveAutomationBlueprint() {
         if (mutableAutomationPending.value) return
         val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
@@ -5120,7 +5901,7 @@ internal class AppRootViewModel @Inject constructor(
                         revisionId = nextId(),
                         expectedRevisionId = current?.revisionId,
                         name = draft.name.trim(),
-                        iconKey = LedgerReferenceDisplayDefaults.CATEGORY_ICON_KEY,
+                        iconKey = draft.iconKey,
                         colorArgb = LedgerReferenceDisplayDefaults.COLOR_ARGB,
                         status = current?.status ?: app.ledger.finance.domain.EntityStatus.ACTIVE,
                         targetKind = draft.targetKind,
@@ -5180,6 +5961,11 @@ internal class AppRootViewModel @Inject constructor(
         copy(recurrenceDraft = draft.copy(rule = draft.rule.copy(weekdays = days)), presentation = AutomationPresentation.EDITING)
     }
 
+    fun updateAutomationNthWeekday(day: DayOfWeek) = updateAutomationContent {
+        val draft = requireNotNull(recurrenceDraft)
+        copy(recurrenceDraft = draft.copy(rule = draft.rule.copy(weekday = day)), presentation = AutomationPresentation.EDITING)
+    }
+
     fun updateAutomationMissingDay(value: MissingDayPolicy) = updateAutomationContent {
         val draft = requireNotNull(recurrenceDraft)
         copy(recurrenceDraft = draft.copy(rule = draft.rule.copy(missingDayPolicy = value)), presentation = AutomationPresentation.EDITING)
@@ -5198,6 +5984,22 @@ internal class AppRootViewModel @Inject constructor(
     fun updateAutomationNotifyCandidate(value: Boolean) = updateAutomationContent {
         val draft = requireNotNull(recurrenceDraft)
         copy(recurrenceDraft = draft.copy(notifyCandidate = value && draft.generationMode == RecurrenceGenerationMode.CANDIDATE), presentation = AutomationPresentation.EDITING)
+    }
+
+    fun updateAutomationFixedPlace(id: StableId?) = updateAutomationContent {
+        val draft = requireNotNull(recurrenceDraft)
+        copy(recurrenceDraft = draft.copy(fixedPlaceId = id), presentation = AutomationPresentation.EDITING)
+    }
+
+    fun applyAutomationRule() {
+        val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
+        val validated = AutomationPolicy.validateRecurrence(content.state)
+        if (validated.validationFields.isNotEmpty()) {
+            mutableAutomation.value = AutomationLoadState.Content(validated)
+            return
+        }
+        pendingAutomationRuleDraft = validated.recurrenceDraft
+        navigator.pop()
     }
 
     fun saveAutomationRecurrence() {
@@ -5238,6 +6040,7 @@ internal class AppRootViewModel @Inject constructor(
                 )
                 when (result) {
                     is DomainResult.Success -> {
+                        pendingAutomationRuleDraft = null
                         loadAutomation("AUT-004")
                         navigator.pop()
                         RecurrenceWorkScheduler.enqueueCatchUp(context, snapshot.bookId)
@@ -5267,6 +6070,21 @@ internal class AppRootViewModel @Inject constructor(
 
     fun toggleAutomationCandidate(id: StableId) = updateAutomationContent {
         copy(selectedCandidateIds = if (id in selectedCandidateIds) selectedCandidateIds - id else selectedCandidateIds + id, presentation = AutomationPresentation.SELECTION)
+    }
+
+    fun reviewSelectedAutomationCandidates() {
+        val state = (mutableAutomation.value as? AutomationLoadState.Content)?.state ?: return
+        state.selectedCandidateIds.firstOrNull()?.let { navigateAutomation("AUT-009", it) }
+    }
+
+    fun skipSelectedAutomationCandidates() {
+        val content = mutableAutomation.value as? AutomationLoadState.Content ?: return
+        val selected = content.state.selectedCandidateIds
+        if (selected.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            selected.forEach { id -> automationApplicationPort.skipCandidate(content.state.snapshot.bookId, id, runtimeSources.clock.now()) }
+            loadAutomation("AUT-008")
+        }
     }
 
     fun confirmAutomationCandidate() {
@@ -5313,6 +6131,10 @@ internal class AppRootViewModel @Inject constructor(
                 is DomainResult.Failure -> Unit
             }
         }
+    }
+
+    fun cancelAutomationCandidate() {
+        navigator.pop()
     }
 
     fun updateAutomationScope(value: RecurrenceModificationScope) = updateAutomationContent { copy(modificationScope = value) }
@@ -5437,6 +6259,42 @@ internal class AppRootViewModel @Inject constructor(
         return Locale.forLanguageTag(tag)
     }
 
+    private fun formatPresentationDateTime(instant: Instant): String {
+        val saved = settings.value
+        val locale = Locale.forLanguageTag(saved.languageTag.ifBlank { Locale.getDefault().toLanguageTag() })
+        val zone = runCatching { ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }) }
+            .getOrDefault(ZoneId.of(DEFAULT_ZONE))
+        val zoned = instant.atZone(zone)
+        val date = formatSettingsDate(zoned.toLocalDate(), saved.dateFormat.toFeature(), locale)
+        val time = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+            .withLocale(locale)
+            .format(zoned)
+        return "$date $time"
+    }
+
+    private fun formatImportPreviewValue(value: StagingValue): String = when (value) {
+        is StagingValue.Text -> value.value
+        is StagingValue.Integer -> LocaleNumberFormatter.integer(value.value, recordLocale())
+        is StagingValue.Decimal -> LocaleNumberFormatter.decimal(value.value, recordLocale())
+        is StagingValue.Date -> {
+            val saved = settings.value
+            formatSettingsDate(value.value, saved.dateFormat.toFeature(), recordLocale())
+        }
+        is StagingValue.InstantValue -> formatPresentationDateTime(value.value)
+        StagingValue.Empty -> ""
+    }
+
+    private fun formatPresentationFileSize(bytes: Long): String {
+        val configuration = Configuration(context.resources.configuration).apply { setLocale(recordLocale()) }
+        val localizedContext = context.createConfigurationContext(configuration)
+        return android.text.format.Formatter.formatShortFileSize(localizedContext, bytes)
+    }
+
+    private fun formatPresentationString(resourceId: Int, vararg arguments: Any): String {
+        val configuration = Configuration(context.resources.configuration).apply { setLocale(recordLocale()) }
+        return context.createConfigurationContext(configuration).getString(resourceId, *arguments)
+    }
+
     private fun attachmentMetadata(uri: Uri): Pair<String, Long?>? = runCatching {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
             if (!cursor.moveToFirst()) return@use null
@@ -5446,6 +6304,52 @@ internal class AppRootViewModel @Inject constructor(
             name.takeIf(String::isNotBlank)?.let { it to size }
         }
     }.getOrNull()
+
+    private fun recordAttachmentPresentations(
+        bookId: StableId,
+        attachmentIds: List<StableId>,
+    ): List<RecordAttachmentPresentation> {
+        if (attachmentIds.isEmpty()) return emptyList()
+        return runCatching {
+            val session = bookAttachmentObjectPort.openSession(bookId)
+            try {
+                attachmentIds.mapNotNull { id ->
+                    session.metadata(app.ledger.finance.domain.AttachmentId(id))?.let { metadata ->
+                        RecordAttachmentPresentation(
+                            attachmentId = id,
+                            displayName = metadata.displayName,
+                            sizeText = formatPresentationFileSize(metadata.plaintextSize),
+                            typeLabel = metadata.mimeType,
+                        )
+                    }
+                }
+            } finally {
+                session.close()
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun hydrateRecordEditor(editor: OrdinaryRecordEditorState): OrdinaryRecordEditorState {
+        val selectedLocation = editor.draft.locationRecordId?.let { id ->
+            editor.snapshot.references.locations.singleOrNull { it.id == id }
+        }
+        val selectedPlace = selectedLocation?.placeId?.let { placeId ->
+            editor.snapshot.references.places.singleOrNull { it.id == placeId }
+        }
+        return editor.copy(
+            attachmentPresentations = recordAttachmentPresentations(
+                editor.snapshot.references.bookId,
+                editor.draft.attachmentIds,
+            ),
+            locationPresentation = if (selectedLocation == null) {
+                editor.locationPresentation
+            } else {
+                RecordLocationEditorState.Manual(
+                    selectedPlace?.name ?: context.getString(app.ledger.feature.record.R.string.record_saved_location),
+                )
+            },
+        )
+    }
 
     fun navigateImportSource() {
         navigator.navigate(LedgerRouteContract.destination(ScreenId("IMP-001")), SessionGateState.READY)
@@ -5493,16 +6397,19 @@ internal class AppRootViewModel @Inject constructor(
 
     fun selectExportDestination(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
-            if (exportController.selectDestination(uri)) {
-                navigateExport("EXP-004")
-                exportController.awaitCurrent()
-            }
+            exportController.selectDestination(uri)
         }
     }
 
     fun confirmExportOverwrite() {
         viewModelScope.launch(Dispatchers.IO) {
-            if (exportController.confirmOverwrite()) {
+            exportController.confirmOverwrite()
+        }
+    }
+
+    fun startExport() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (exportController.start()) {
                 navigateExport("EXP-004")
                 exportController.awaitCurrent()
             }
@@ -5603,6 +6510,17 @@ internal class AppRootViewModel @Inject constructor(
         return true
     }
 
+    fun deleteBackupSnapshot(snapshotId: String) {
+        if (backupFlow.value.selectedSnapshot?.repositoryKind == BackupRepositoryKind.GOOGLE_DRIVE) {
+            openCloudBackupDeletion()
+            return
+        }
+        viewModelScope.launch {
+            val deleted = withContext(Dispatchers.IO) { backupController.deleteSnapshot(snapshotId) }
+            if (deleted) navigateBackup("BKP-005")
+        }
+    }
+
     fun changePortableBackup(enabled: Boolean) = backupController.setPortable(enabled)
     fun changePortableBackupName(value: String) = backupController.changePortableName(value)
 
@@ -5622,21 +6540,23 @@ internal class AppRootViewModel @Inject constructor(
 
     fun openRestore() {
         val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
-        restoreController.begin(ready.bookId)
+        val baseCurrency = (mutableReferenceData.value as? AppReferenceDataState.Content)?.snapshot?.baseCurrency?.value.orEmpty()
+        restoreController.begin(ready.bookId, baseCurrency)
         navigateRestore("RST-001")
     }
 
     fun openRestoreFromRecovery() {
         viewModelScope.launch(Dispatchers.IO) {
             val activeBook = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
-            restoreController.begin(activeBook)
+            restoreController.begin(activeBook, settingsRepository.current().baseCurrency)
             mutableRecoveryRestoreActive.value = true
         }
     }
 
     fun openRestoreSnapshot(snapshotId: String) {
         val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
-        restoreController.begin(ready.bookId)
+        val baseCurrency = (mutableReferenceData.value as? AppReferenceDataState.Content)?.snapshot?.baseCurrency?.value.orEmpty()
+        restoreController.begin(ready.bookId, baseCurrency)
         if (restoreController.selectRepositorySnapshot(snapshotId)) navigateRestore("RST-002")
     }
 
@@ -5647,7 +6567,11 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun selectLatestRestoreRepository(): Boolean {
-        if (!restoreController.selectLatestRepository()) return false
+        return restoreController.showRepositorySnapshots()
+    }
+
+    fun selectRestoreRepositorySnapshot(snapshotId: String): Boolean {
+        if (!restoreController.selectRepositorySnapshot(snapshotId)) return false
         navigateRestore("RST-002")
         return true
     }
@@ -5661,8 +6585,7 @@ internal class AppRootViewModel @Inject constructor(
             withContext(Dispatchers.Main.immediate) {
                 if (resolution != null) {
                     launchResolution(resolution)
-                } else if (restoreController.state.value.screenId == "RST-002") {
-                    navigateRestore("RST-002")
+                } else if (restoreController.state.value.sourcePicker == app.ledger.feature.transfer.RestoreSourcePicker.DRIVE) {
                     onSelected()
                 }
             }
@@ -5673,8 +6596,7 @@ internal class AppRootViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             restoreController.selectLatestDriveRepository(intent)
             withContext(Dispatchers.Main.immediate) {
-                if (restoreController.state.value.screenId == "RST-002") {
-                    navigateRestore("RST-002")
+                if (restoreController.state.value.sourcePicker == app.ledger.feature.transfer.RestoreSourcePicker.DRIVE) {
                     onSelected()
                 }
             }
@@ -5705,6 +6627,7 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun resolveRestoreConflict(conflictId: String, resolution: MergeResolution) = restoreController.resolve(conflictId, resolution)
+    fun changeRestoreApplyToSimilar(value: Boolean) = restoreController.applyToSimilarChanged(value)
 
     fun applyRestoreMerge() = executeRestoreMaintenance { restoreController.applyMerge() }
     fun cancelRestore() = restoreController.cancel()
@@ -5742,12 +6665,18 @@ internal class AppRootViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val manager = sessionManager ?: return@launch
             val recovering = manager.state.value is BookSessionState.RecoveryRequired
+            mutableMaintenancePresentation.value = MaintenancePresentation.PREPARING
             if (!recovering) manager.enterMaintenance(MaintenanceReason.CONTROLLED_MAINTENANCE)
             manager.close()
+            mutableMaintenancePresentation.value = MaintenancePresentation.CANCELABLE
             val succeeded = block()
             val recoveredVaultDek = if (succeeded) restoreController.takeRecoveredVaultDek() else null
             if (!recovering) {
-                manager.finishMaintenance()
+                mutableMaintenancePresentation.value = if (succeeded) MaintenancePresentation.SUCCEEDED else MaintenancePresentation.FAILED
+                if (succeeded) {
+                    delay(MAINTENANCE_RESULT_VISIBILITY_MILLIS)
+                    manager.finishMaintenance()
+                }
             } else if (succeeded) {
                 sessionManager = null
                 openSavedBook(settingsRepository.current())
@@ -5757,6 +6686,31 @@ internal class AppRootViewModel @Inject constructor(
                     .onFailure { key.close() }
             }
             withContext(Dispatchers.Main.immediate) { navigateRestore("RST-007") }
+        }
+    }
+
+    fun cancelMaintenance() = restoreController.cancel()
+
+    fun retryMaintenance() {
+        val manager = sessionManager ?: return
+        val state = manager.state.value as? BookSessionState.Maintenance ?: return
+        if (state.reason != MaintenanceReason.UNFINISHED_OPERATION || restoreRecoveryRunning) return
+        restoreRecoveryRunning = true
+        mutableMaintenancePresentation.value = MaintenancePresentation.PREPARING
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                mutableMaintenancePresentation.value = MaintenancePresentation.RUNNING
+                manager.close()
+                if (restoreController.recoverInterrupted(requireBookId(settingsRepository.current()))) {
+                    mutableMaintenancePresentation.value = MaintenancePresentation.SUCCEEDED
+                    delay(MAINTENANCE_RESULT_VISIBILITY_MILLIS)
+                    manager.finishMaintenance()
+                } else {
+                    mutableMaintenancePresentation.value = MaintenancePresentation.FAILED
+                }
+            } finally {
+                restoreRecoveryRunning = false
+            }
         }
     }
 
@@ -5777,6 +6731,9 @@ internal class AppRootViewModel @Inject constructor(
     fun changeImportHeaderRow(value: String) = importController.changeHeaderRow(value)
     fun cycleImportFieldMapping(source: String) = importController.cycleFieldMapping(source)
     fun changeImportMissingCreation(type: String, enabled: Boolean) = importController.setCreateMissing(type, enabled)
+    fun cycleImportEntityMapping(type: String, source: String) = importController.cycleEntityMapping(type, source)
+    fun changeImportFxPolicy(source: String, policy: app.ledger.feature.transfer.ImportFxPolicyUi) =
+        importController.setFxPolicy(source, policy)
     fun changeImportFxRate(sourceCurrency: String, value: String) = importController.setFxRate(sourceCurrency, value)
     fun resolveImportDuplicate(rowNumber: Long, resolution: app.ledger.transfer.domain.DuplicateResolution) {
         viewModelScope.launch(Dispatchers.IO) { importController.resolveDuplicate(rowNumber, resolution) }
@@ -5813,6 +6770,24 @@ internal class AppRootViewModel @Inject constructor(
     }
     fun rollbackImport() {
         viewModelScope.launch(Dispatchers.IO) { importController.rollback() }
+    }
+
+    fun viewImportValidationIssues() {
+        importController.viewValidationIssues()
+        navigateImportStage()
+    }
+
+    fun cleanupImportTemporary() {
+        viewModelScope.launch(Dispatchers.IO) { importController.cleanupTemporary() }
+    }
+
+    fun viewImportHistoryResult(batchId: String) {
+        importController.viewHistoryResult(batchId)
+        navigateImportStage()
+    }
+
+    fun rollbackImportHistory(batchId: String) {
+        viewModelScope.launch(Dispatchers.IO) { importController.rollbackHistory(batchId) }
     }
 
     private fun navigateImportStage() {
@@ -5858,6 +6833,7 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     private companion object {
+        const val MAINTENANCE_RESULT_VISIBILITY_MILLIS = 600L
         const val DEFAULT_CURRENCY = "JPY"
         const val DEFAULT_ZONE = "Asia/Tokyo"
         const val PROJECT_GOAL_NOT_FOUND = "PROJECT_GOAL_NOT_FOUND"
@@ -5884,6 +6860,8 @@ internal class AppRootViewModel @Inject constructor(
         const val RECORD_SEARCH_LIMIT = 80
         const val RECORD_ATTACHMENT_NAME_LIMIT = 255
         const val JOURNAL_RETENTION_SECONDS = 30L * 24L * 60L * 60L
+        const val AUTOMATION_TEMPLATE_NAME_LIMIT = 80
+        const val AUTOMATION_TEMPLATE_NOTE_LIMIT = 500
         val REMAINING_SETTINGS_SCREENS = setOf("SETG-001", "SETG-002", "SETG-003", "SETG-005", "SETG-012")
         val SUPPORTED_LANGUAGE_TAGS = setOf("zh-CN", "ja", "en")
         val CANCELABLE_OPERATION_STATES = setOf(

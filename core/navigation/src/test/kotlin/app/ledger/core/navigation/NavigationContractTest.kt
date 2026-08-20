@@ -45,6 +45,27 @@ class NavigationContractTest {
     }
 
     @Test
+    fun `feature destinations use runtime-distinct keys for EntryProviderScope ownership`() {
+        val expected = mapOf<String, Class<out LedgerDestinationKey>>(
+            ":feature:record" to RecordDestinationKey::class.java,
+            ":feature:journal" to JournalDestinationKey::class.java,
+            ":feature:accounts" to AccountsDestinationKey::class.java,
+            ":feature:planning" to PlanningDestinationKey::class.java,
+            ":feature:liabilities" to LiabilitiesDestinationKey::class.java,
+            ":feature:settlement" to SettlementDestinationKey::class.java,
+            ":feature:analysis" to AnalysisDestinationKey::class.java,
+            ":feature:automation" to AutomationDestinationKey::class.java,
+            ":feature:vault" to VaultDestinationKey::class.java,
+            ":feature:transfer" to TransferDestinationKey::class.java,
+            ":feature:settings" to SettingsDestinationKey::class.java,
+        )
+        expected.forEach { (module, keyType) ->
+            val screen = LedgerRouteContract.allScreens.first { it.module == module && it.parameters.all(ScreenParameterSpec::optional) }
+            LedgerRouteContract.destination(screen.screenId)::class.java shouldBe keyType
+        }
+    }
+
+    @Test
     fun `five Navigation 3 stacks retain independent history and current-tab reselection semantics`() {
         val navigator = FiveStackNavigator()
         navigator.backStacks.size shouldBe 5

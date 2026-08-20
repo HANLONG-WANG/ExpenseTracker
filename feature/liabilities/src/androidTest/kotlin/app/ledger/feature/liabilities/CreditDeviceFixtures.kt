@@ -34,11 +34,14 @@ internal object CreditDeviceFixtures {
         onNavigate = { _, _ -> },
         onFieldChanged = { _, _ -> },
         onNextPaymentAccount = {},
+        onNextZone = {},
+        onCycleDueRule = {},
         onSelectStatement = {},
         onSelectEarliest = {},
         onSelectUnallocated = {},
         onAssignment = {},
         onToggleAutoPayment = {},
+        onToggleSeal = {},
     )
 
     fun snapshot(

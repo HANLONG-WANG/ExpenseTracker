@@ -98,4 +98,5 @@ public data class AccountsActions(
     val onSaveCheckpoint: (CheckpointSubmission) -> Unit,
     val onSaveOpeningBalance: (OpeningBalanceSubmission) -> Unit,
     val onRetry: () -> Unit,
+    val onCreateReplacementCard: (StableId, StableId) -> Unit = { _, _ -> },
 )

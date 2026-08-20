@@ -119,7 +119,8 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         '"ANA-006"', '"ANA-007"', '"ANA-008"', '"ANA-009"', '"ANA-010"', '"ANA-013"', '"ANA-014"',
         "DASHBOARD_LIST", "DASHBOARD_EDITOR", "REPORT_BUILDER", "VISUALIZATION_PICKER", "REPORT_EXPORT",
         "ANOMALY_RULES", "FORECAST_DETAIL", "AccessibleTableUiModel", "ChartCard", "LedgerChoiceRow",
-        "analysis_anomaly_disclosure", "analysis_forecast_version", "analysis_export_interface_only",
+        "analysis_anomaly_disclosure", "analysis_forecast_version", "analysis_start_export_flow",
+        "AnalysisExportScope.entries", "actions.onPrepareExport",
         "analysis_copy_custom_report", "onMoveDashboardReport", "analysis_drilldown",
     ))
     p26_feature = next((value for path, value in sources.items() if path.endswith("P26AnalysisScreens.kt")), "")
@@ -160,9 +161,9 @@ def validate_tests_resources() -> list[str]:
         "historical same month model is deterministic and never fills missing years with zero",
         "derived moving average trend and forecast are exact versioned series",
         "customReportDashboardAnomalyAndForecastRoundTripThroughNormalizedEncryptedSchema",
-        "encryptedVersionOneDatabaseMigratesToVersionTwoWithoutLosingLedgerData",
+        "encryptedVersionOneDatabaseMigratesToVersionFourWithoutLosingLedgerData",
         "builderAndForecastGoldensMatchEveryPixel",
-        "assertEquals(36, cases.size)", '"ANA-014" to setOf("content", "insufficientData")',
+        "assertEquals(45, cases.size)", '"ANA-014" to setOf("content", "insufficientData")',
     ))
     localized = []
     for folder in ("values", "values-en", "values-ja"):

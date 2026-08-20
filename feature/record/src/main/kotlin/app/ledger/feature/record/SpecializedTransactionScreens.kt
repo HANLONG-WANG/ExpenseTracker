@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -24,21 +28,31 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerErrorState
+import app.ledger.core.designsystem.LedgerDateTimePickerFlow
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
+import app.ledger.core.designsystem.LocalLocale
 import app.ledger.core.designsystem.MoneyExpressionField
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
+import app.ledger.core.designsystem.UiText
 import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.domain.BalanceAdjustmentDirection
+import app.ledger.core.money.FxRateSource
+import java.math.BigDecimal
+import java.text.NumberFormat
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 
 public data class SpecializedTransactionActions(
     val onRetry: () -> Unit,
@@ -53,9 +67,10 @@ public data class SpecializedTransactionActions(
     val onRefreshRates: () -> Unit,
     val onDirection: (BalanceAdjustmentDirection) -> Unit,
     val onCheckpoint: (StableId?) -> Unit,
-    val onDate: (LocalDate) -> Unit,
+    val onOccurredAt: (Instant) -> Unit,
     val onNote: (String) -> Unit,
     val onAddAttachment: () -> Unit,
+    val onOpenAttachment: (Int) -> Unit,
     val onCancelAttachment: (Int) -> Unit,
     val onSave: () -> Unit,
 )
@@ -70,14 +85,14 @@ public fun SpecializedTransactionDestination(
     Column(modifier.fillMaxSize().testTag(LedgerTestTags.SPECIALIZED_TRANSACTION_ROOT)) {
         when (state) {
             SpecializedTransactionLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize())
-            is SpecializedTransactionLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.specialized_load_failed), actions.onRetry)
+            is SpecializedTransactionLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), UiText.Resource(R.string.specialized_load_failed), actions.onRetry)
             is SpecializedTransactionLoadState.Content -> {
                 if (screenId.matches(state.editor.kind)) {
                     SpecializedEditor(state.editor, actions)
                 } else {
                     LedgerErrorState(
                         UiErrorCode("ROUTE_KIND_MISMATCH"),
-                        stringResource(R.string.specialized_load_failed),
+                        UiText.Resource(R.string.specialized_load_failed),
                         actions.onRetry,
                     )
                 }
@@ -88,8 +103,10 @@ public fun SpecializedTransactionDestination(
 
 @Composable
 private fun SpecializedEditor(state: SpecializedTransactionEditorState, actions: SpecializedTransactionActions) {
+    val locale = LocalLocale.current.platformLocale
     val from = SpecializedTransactionPolicy.account(state, state.draft.fromAccountId)
     val to = SpecializedTransactionPolicy.account(state, state.draft.toAccountId)
+    var showDateTimePicker by remember { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.SPECIALIZED_TRANSACTION_FORM).padding(horizontal = LedgerTheme.spacing.sm),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
@@ -135,26 +152,75 @@ private fun SpecializedEditor(state: SpecializedTransactionEditorState, actions:
         item { FxEvidenceSection(state, from, to, actions) }
         if (state.kind == SpecializedTransactionKind.FX_EXCHANGE) item { FxExchangeSummary(state, from, to) }
         item {
-            DateTimeZoneField(
-                label = if (state.kind == SpecializedTransactionKind.OPENING_BALANCE) stringResource(R.string.specialized_opening_date) else stringResource(R.string.specialized_effective_time),
-                localDateTime = state.draft.localDate.format(DateTimeFormatter.ISO_LOCAL_DATE),
-                zoneText = state.draft.zoneId.id,
-                onClick = { actions.onDate(state.draft.localDate.plusDays(1)) },
-            )
+            if (state.kind == SpecializedTransactionKind.OPENING_BALANCE) {
+                SelectorField(
+                    label = stringResource(R.string.specialized_opening_date),
+                    selectedText = state.draft.localDate.localized(locale),
+                    onClick = { showDateTimePicker = true },
+                )
+            } else {
+                DateTimeZoneField(
+                    label = stringResource(R.string.specialized_effective_time),
+                    localDateTime = state.draft.occurredAt.localized(state.draft.zoneId, locale),
+                    zoneText = state.draft.zoneId.id,
+                    onClick = { showDateTimePicker = true },
+                )
+            }
         }
         if (state.kind == SpecializedTransactionKind.TRANSFER) {
             item { LedgerTextField(state.draft.note, actions.onNote, stringResource(R.string.specialized_note), singleLine = false) }
             item {
                 AttachmentField(
-                    attachments = state.draft.attachmentIds.mapIndexed { index, _ ->
-                        AttachmentUiModel("specialized_attachment_$index", stringResource(R.string.specialized_attachment_index, index + 1), stringResource(R.string.specialized_encrypted), stringResource(R.string.specialized_size_hidden), null, AttachmentTransferState.READY)
-                    } + if (state.attachmentImporting) listOf(AttachmentUiModel("specialized_attachment_import", stringResource(R.string.specialized_importing), stringResource(R.string.specialized_encrypted), stringResource(R.string.specialized_size_hidden), null, AttachmentTransferState.IMPORTING)) else emptyList(),
+                    attachments = state.draft.attachmentIds.mapIndexed { index, id ->
+                        val metadata = state.attachmentPresentations.singleOrNull { it.attachmentId == id }
+                        AttachmentUiModel(
+                            "specialized_attachment_$index",
+                            metadata?.displayName ?: stringResource(R.string.specialized_attachment_index, index + 1),
+                            metadata?.sizeText ?: stringResource(R.string.specialized_size_hidden),
+                            metadata?.typeLabel ?: stringResource(R.string.specialized_encrypted),
+                            null,
+                            AttachmentTransferState.READY,
+                            metadata?.typeLabel.attachmentIcon(),
+                        )
+                    } + (if (state.attachmentImporting) listOf(AttachmentUiModel("specialized_attachment_import", stringResource(R.string.specialized_importing), stringResource(R.string.specialized_size_hidden), stringResource(R.string.specialized_encrypted), null, AttachmentTransferState.IMPORTING)) else emptyList()) +
+                        (if (state.attachmentFailureCode != null) listOf(AttachmentUiModel("specialized_attachment_failed", stringResource(R.string.specialized_importing), stringResource(R.string.specialized_size_hidden), stringResource(R.string.specialized_encrypted), null, AttachmentTransferState.FAILED)) else emptyList()),
                     onAdd = actions.onAddAttachment,
-                    onOpen = {},
+                    onOpen = { model ->
+                        state.draft.attachmentIds.indices.firstOrNull { index -> "specialized_attachment_$index" == model.stableKey }
+                            ?.let(actions.onOpenAttachment)
+                    },
                     onCancel = { item -> actions.onCancelAttachment(if (item.stableKey == "specialized_attachment_import") state.draft.attachmentIds.size else item.stableKey.substringAfterLast('_').toInt()) },
                     addLabel = stringResource(R.string.specialized_add_attachment),
+                    onRetry = { actions.onAddAttachment() },
                 )
             }
+        }
+    }
+    if (showDateTimePicker) {
+        val local = state.draft.occurredAt.atZone(state.draft.zoneId)
+        val initialDateMillis = local.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        if (state.kind == SpecializedTransactionKind.OPENING_BALANCE) {
+            LedgerDatePickerFlow(
+                initialDateMillis,
+                { dateMillis ->
+                    val date = Instant.ofEpochMilli(dateMillis).atZone(ZoneOffset.UTC).toLocalDate()
+                    actions.onOccurredAt(date.atTime(local.toLocalTime()).atZone(state.draft.zoneId).toInstant())
+                    showDateTimePicker = false
+                },
+                { showDateTimePicker = false },
+            )
+        } else {
+            LedgerDateTimePickerFlow(
+                initialDateMillis = initialDateMillis,
+                initialHour = local.hour,
+                initialMinute = local.minute,
+                onConfirm = { dateMillis, hour, minute ->
+                    val date = Instant.ofEpochMilli(dateMillis).atZone(ZoneOffset.UTC).toLocalDate()
+                    actions.onOccurredAt(date.atTime(hour, minute).atZone(state.draft.zoneId).toInstant())
+                    showDateTimePicker = false
+                },
+                onDismiss = { showDateTimePicker = false },
+            )
         }
     }
 }
@@ -165,6 +231,7 @@ private fun FxExchangeSummary(
     from: AccountReferenceView?,
     to: AccountReferenceView?,
 ) {
+    val locale = LocalLocale.current.platformLocale
     val summary = SpecializedTransactionPolicy.fxDisplaySummary(state)
     FormSection(
         title = stringResource(R.string.specialized_effective_rate_title),
@@ -174,7 +241,7 @@ private fun FxExchangeSummary(
             stringResource(
                 R.string.specialized_effective_rate_value,
                 from?.currency?.value.orEmpty(),
-                summary.effectiveRate?.toPlainString() ?: stringResource(R.string.specialized_pending_value),
+                summary.effectiveRate?.localizedRate(locale) ?: stringResource(R.string.specialized_pending_value),
                 to?.currency?.value.orEmpty(),
             ),
             LedgerTextRole.BODY,
@@ -183,7 +250,7 @@ private fun FxExchangeSummary(
             stringResource(
                 R.string.specialized_reference_rate_value,
                 from?.currency?.value.orEmpty(),
-                summary.referenceRate?.toPlainString() ?: stringResource(R.string.specialized_pending_value),
+                summary.referenceRate?.localizedRate(locale) ?: stringResource(R.string.specialized_pending_value),
                 to?.currency?.value.orEmpty(),
             ),
             LedgerTextRole.SUPPORTING,
@@ -196,8 +263,9 @@ private fun FxExchangeSummary(
         LedgerText(
             stringResource(
                 R.string.specialized_fx_cost_value,
-                summary.spreadCostBaseMinor?.toString() ?: stringResource(R.string.specialized_pending_value),
-                state.snapshot.baseCurrency.value,
+                summary.spreadCostBaseMinor?.let {
+                    SpecializedTransactionPolicy.formatMoney(it, state.snapshot.baseCurrency, locale).formatted
+                } ?: stringResource(R.string.specialized_pending_value),
             ),
             LedgerTextRole.BODY,
         )
@@ -236,11 +304,12 @@ private fun ContractStateBanners(
 
 @Composable
 private fun CheckpointField(state: SpecializedTransactionEditorState, actions: SpecializedTransactionActions) {
+    val locale = LocalLocale.current.platformLocale
     val candidates = state.snapshot.checkpoints.filter { it.accountId == state.draft.fromAccountId && it.adjustmentTransactionId == null }
     val current = candidates.singleOrNull { it.id == state.draft.checkpointId }
     SelectorField(
         stringResource(R.string.specialized_checkpoint),
-        current?.asOfLocalDate?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: stringResource(R.string.specialized_none),
+        current?.asOfLocalDate?.localized(locale) ?: stringResource(R.string.specialized_none),
         { actions.onCheckpoint(if (current == null) candidates.firstOrNull()?.id else null) },
         supportingText = stringResource(R.string.specialized_checkpoint_explanation),
         enabled = candidates.isNotEmpty(),
@@ -265,19 +334,68 @@ private fun FxEvidenceSection(
 
 @Composable
 private fun RateRow(state: SpecializedTransactionEditorState, account: AccountReferenceView?, incoming: Boolean, onManualRate: (String) -> Unit) {
+    val locale = LocalLocale.current.platformLocale
     if (account == null || account.currency == state.snapshot.baseCurrency) return
     val quote = state.quotesToBase[account.currency]
     val manual = if (incoming) state.draft.manualToBaseRate else state.draft.manualFromBaseRate
     val text = when {
         account.currency in state.quotePending -> stringResource(R.string.specialized_rate_loading)
-        quote != null -> stringResource(R.string.specialized_rate_summary, account.currency.value, quote.evidence.rate.toPlainString(), state.snapshot.baseCurrency.value)
+        manual.isNotBlank() -> stringResource(
+            R.string.specialized_rate_summary_with_source,
+            account.currency.value,
+            manual.toBigDecimalOrNull()?.localizedRate(locale) ?: manual,
+            state.snapshot.baseCurrency.value,
+            stringResource(R.string.specialized_rate_source_manual),
+        )
+        quote != null -> stringResource(
+            R.string.specialized_rate_summary_with_source,
+            account.currency.value,
+            quote.evidence.rate.localizedRate(locale),
+            state.snapshot.baseCurrency.value,
+            fxSourceLabel(quote.evidence.source),
+        )
         else -> stringResource(R.string.specialized_rate_unavailable)
     }
     LedgerText(text, LedgerTextRole.SUPPORTING)
-    quote?.evidence?.quotedAt?.let { LedgerText(stringResource(R.string.specialized_rate_time, DateTimeFormatter.ISO_INSTANT.format(it.atOffset(ZoneOffset.UTC))), LedgerTextRole.SUPPORTING) }
+    quote?.let {
+        LedgerText(stringResource(R.string.specialized_rate_provider, it.evidence.provider.value), LedgerTextRole.SUPPORTING)
+        it.evidence.quotedAt?.let { quotedAt ->
+            LedgerText(stringResource(R.string.specialized_rate_time, quotedAt.localized(state.draft.zoneId, locale)), LedgerTextRole.SUPPORTING)
+        }
+        it.evidence.fetchedAt?.let { fetchedAt ->
+            LedgerText(stringResource(R.string.specialized_rate_received_time, fetchedAt.localized(state.draft.zoneId, locale)), LedgerTextRole.SUPPORTING)
+        }
+    }
     if (quote?.stale == true) LedgerBanner(stringResource(R.string.specialized_rate_stale), LedgerBannerVariant.WARNING)
     LedgerTextField(manual, onManualRate, stringResource(R.string.specialized_manual_rate, account.currency.value, state.snapshot.baseCurrency.value), supportingText = stringResource(R.string.specialized_manual_override))
 }
+
+@Composable
+private fun fxSourceLabel(source: FxRateSource): String = stringResource(
+    when (source) {
+        FxRateSource.ONLINE_LATEST -> R.string.specialized_rate_source_online
+        FxRateSource.CACHE -> R.string.specialized_rate_source_cache
+        FxRateSource.MANUAL -> R.string.specialized_rate_source_manual
+        FxRateSource.IMPLIED_FROM_ACTUAL_AMOUNTS -> R.string.specialized_rate_source_implied
+        FxRateSource.OFFICIAL_SETTLEMENT -> R.string.specialized_rate_source_official
+        FxRateSource.HISTORICAL_FALLBACK -> R.string.specialized_rate_source_historical
+    },
+)
+
+private fun BigDecimal.localizedRate(locale: Locale): String = NumberFormat.getNumberInstance(locale).apply {
+    minimumFractionDigits = 0
+    maximumFractionDigits = 10
+    isGroupingUsed = true
+}.format(this)
+
+private fun LocalDate.localized(locale: Locale): String =
+    DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(this)
+
+private fun Instant.localized(zoneId: java.time.ZoneId, locale: Locale): String =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+        .withLocale(locale)
+        .withZone(zoneId)
+        .format(this)
 
 private fun AccountReferenceView.accountLabel(): String = "$name · ${currency.value}"
 

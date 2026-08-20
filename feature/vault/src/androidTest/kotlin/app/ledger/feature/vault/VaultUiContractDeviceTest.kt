@@ -21,9 +21,11 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.common.StableId
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
@@ -108,6 +110,43 @@ class VaultUiContractDeviceTest {
     }
 
     @Test
+    fun primaryNumberAndSecurityCodeEachRequireAnIndependentAuthenticationAction() {
+        val active = mutableStateOf(stateFor(VaultRequiredState.VLT_002_MASKED))
+        var authenticationRequests = 0
+        val actions = ACTIONS.copy(
+            onRevealPrimaryNumber = { cardId ->
+                assertEquals(CARD, cardId)
+                authenticationRequests += 1
+                active.value = active.value.copy(
+                    primaryNumber = VaultSensitiveValue { it("4111111111111111") },
+                    secondsRemaining = 30,
+                    presentation = VaultRequiredState.VLT_002_REVEALED,
+                )
+            },
+            onRevealSecurityCode = { cardId ->
+                assertEquals(CARD, cardId)
+                authenticationRequests += 1
+                active.value = active.value.copy(
+                    securityCode = VaultSensitiveValue { it("123") },
+                    secondsRemaining = 30,
+                    presentation = VaultRequiredState.VLT_002_REVEALED,
+                )
+            },
+        )
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 800.dp)) { VaultDestination(active.value, actions) }
+            }
+        }
+
+        val reveal = InstrumentationRegistry.getInstrumentation().targetContext.getString(app.ledger.core.designsystem.R.string.ledger_reveal)
+        composeRule.onAllNodesWithText(reveal)[0].performClick()
+        composeRule.runOnIdle { assertEquals(1, authenticationRequests) }
+        composeRule.onAllNodesWithText(reveal)[0].performClick()
+        composeRule.runOnIdle { assertEquals(2, authenticationRequests) }
+    }
+
+    @Test
     fun contractDerivedVltScreenshotsMatchPixelBaselines() {
         val states = listOf(
             stateFor(VaultRequiredState.VLT_001_UNLOCKED_SESSION),
@@ -166,6 +205,7 @@ class VaultUiContractDeviceTest {
         val ACTIONS = VaultActions(
             onCard = {}, onEdit = {}, onRevealPrimaryNumber = {}, onCopyPrimaryNumber = {},
             onRevealSecurityCode = {}, onHide = {}, onAuthenticateEdit = {}, onSave = { _, _ -> },
+            onAuthenticateList = {}, onOpenCards = {},
             onOpenDeviceSecurity = {},
         )
         val EXPECTED_GOLDENS = listOf(

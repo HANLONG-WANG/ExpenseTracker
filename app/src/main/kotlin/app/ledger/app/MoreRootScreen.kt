@@ -58,6 +58,7 @@ internal fun MoreRootDestination(
     val automation by viewModel.automation.collectAsStateWithLifecycle()
     val settlement by viewModel.settlement.collectAsStateWithLifecycle()
     val durableOperations by viewModel.operationCenter.collectAsStateWithLifecycle()
+    val referenceData by viewModel.referenceData.collectAsStateWithLifecycle()
     LaunchedEffect(key.contract.screenId.value) {
         viewModel.loadOperationCenter()
         viewModel.loadAutomation("AUT-001")
@@ -111,12 +112,41 @@ internal fun MoreRootDestination(
             viewModel.navigateP12(key, "MGT-001", emptyMap())
             onNavigationChanged()
         },
+        onCategories = {
+            viewModel.navigateP12(key, "CAT-001", emptyMap())
+            onNavigationChanged()
+        },
+        onMerchants = {
+            viewModel.navigateP12(key, "MER-001", emptyMap())
+            onNavigationChanged()
+        },
+        onPlaces = {
+            viewModel.navigateP12(key, "PLC-001", emptyMap())
+            onNavigationChanged()
+        },
         onCards = {
-            viewModel.navigateP12(key, "ACC-009", emptyMap())
+            val accountId = (referenceData as? AppReferenceDataState.Content)?.snapshot?.accounts?.firstOrNull()?.id
+            if (accountId == null) {
+                viewModel.navigateP12(key, "ACC-001", emptyMap())
+            } else {
+                viewModel.navigateP12(key, "ACC-009", mapOf("accountId" to accountId))
+            }
             onNavigationChanged()
         },
         onCurrencies = {
             viewModel.navigateP12(key, "SETG-004", emptyMap())
+            onNavigationChanged()
+        },
+        onAppearance = {
+            viewModel.navigateP12(key, "SETG-002", emptyMap())
+            onNavigationChanged()
+        },
+        onLanguageRegion = {
+            viewModel.navigateP12(key, "SETG-003", emptyMap())
+            onNavigationChanged()
+        },
+        onAbout = {
+            viewModel.navigateP12(key, "SETG-012", emptyMap())
             onNavigationChanged()
         },
         onProjects = {
@@ -211,7 +241,11 @@ internal fun MoreScreen(
     backupUpdates: Boolean = false,
     operationUpdates: Boolean = false,
     onManagement: () -> Unit = {},
+    onCategories: () -> Unit = {},
+    onMerchants: () -> Unit = {},
+    onPlaces: () -> Unit = {},
     onCards: () -> Unit = {},
+    onCurrencies: () -> Unit = {},
     onProjects: () -> Unit = {},
     onGoals: () -> Unit = {},
     onCredit: () -> Unit = {},
@@ -231,6 +265,9 @@ internal fun MoreScreen(
     onTrash: () -> Unit = {},
     onDiagnostics: () -> Unit = {},
     onClearLocal: () -> Unit = {},
+    onAppearance: () -> Unit = {},
+    onLanguageRegion: () -> Unit = {},
+    onAbout: () -> Unit = {},
 ) {
     LedgerScaffold(
         Modifier.fillMaxSize(),
@@ -254,7 +291,11 @@ internal fun MoreScreen(
             operationUpdates = operationUpdates,
             modifier = Modifier.padding(padding),
             onManagement = onManagement,
+            onCategories = onCategories,
+            onMerchants = onMerchants,
+            onPlaces = onPlaces,
             onCards = onCards,
+            onCurrencies = onCurrencies,
             onProjects = onProjects,
             onGoals = onGoals,
             onCredit = onCredit,
@@ -274,6 +315,9 @@ internal fun MoreScreen(
             onTrash = onTrash,
             onDiagnostics = onDiagnostics,
             onClearLocal = onClearLocal,
+            onAppearance = onAppearance,
+            onLanguageRegion = onLanguageRegion,
+            onAbout = onAbout,
         )
     }
 }
@@ -291,6 +335,9 @@ internal fun MoreContent(
     operationUpdates: Boolean = false,
     modifier: Modifier = Modifier,
     onManagement: () -> Unit = {},
+    onCategories: () -> Unit = {},
+    onMerchants: () -> Unit = {},
+    onPlaces: () -> Unit = {},
     onCards: () -> Unit = {},
     onCurrencies: () -> Unit = {},
     onProjects: () -> Unit = {},
@@ -312,6 +359,9 @@ internal fun MoreContent(
     onTrash: () -> Unit = {},
     onDiagnostics: () -> Unit = {},
     onClearLocal: () -> Unit = {},
+    onAppearance: () -> Unit = {},
+    onLanguageRegion: () -> Unit = {},
+    onAbout: () -> Unit = {},
 ) {
     val groups = listOf(
         FeatureGroup(
@@ -380,7 +430,9 @@ internal fun MoreContent(
         FeatureGroup(
             R.string.global_group_reference,
             listOf(
-                FeatureEntry(stringResource(R.string.global_management), stringResource(R.string.global_management_explanation), onManagement),
+                FeatureEntry(stringResource(R.string.global_categories), stringResource(R.string.global_categories_explanation), onCategories),
+                FeatureEntry(stringResource(R.string.global_merchants), stringResource(R.string.global_merchants_explanation), onMerchants),
+                FeatureEntry(stringResource(R.string.global_places), stringResource(R.string.global_places_explanation), onPlaces),
                 FeatureEntry(stringResource(R.string.p12_title_cards), stringResource(R.string.global_cards_explanation), onCards),
                 FeatureEntry(stringResource(R.string.global_vault), stringResource(R.string.global_vault_explanation), onVault),
             ),
@@ -388,7 +440,8 @@ internal fun MoreContent(
         FeatureGroup(
             R.string.global_group_settings,
             listOf(
-                FeatureEntry(stringResource(R.string.global_settings), stringResource(R.string.global_settings_explanation), onSettings),
+                FeatureEntry(stringResource(R.string.global_appearance), stringResource(R.string.global_appearance_explanation), onAppearance),
+                FeatureEntry(stringResource(R.string.global_language_region), stringResource(R.string.global_language_region_explanation), onLanguageRegion),
                 FeatureEntry(stringResource(R.string.global_currencies), stringResource(R.string.global_currencies_explanation), onCurrencies),
                 FeatureEntry(stringResource(R.string.global_app_lock_settings), stringResource(R.string.global_app_lock_settings_explanation), onAppLock),
                 FeatureEntry(stringResource(R.string.global_screen_privacy), stringResource(R.string.global_screen_privacy_explanation), onScreenPrivacy),
@@ -396,6 +449,7 @@ internal fun MoreContent(
                 FeatureEntry(stringResource(R.string.global_diagnostics), stringResource(R.string.global_diagnostics_explanation), onDiagnostics),
                 FeatureEntry(stringResource(R.string.global_clear_local), stringResource(R.string.global_clear_local_explanation), onClearLocal),
                 FeatureEntry(stringResource(R.string.global_delete_cloud_backups), stringResource(R.string.global_delete_cloud_backups_explanation), onDeleteCloudBackups),
+                FeatureEntry(stringResource(R.string.global_about), stringResource(R.string.global_about_explanation), onAbout),
                 FeatureEntry(stringResource(R.string.global_help), stringResource(R.string.global_help_explanation), onHelp),
             ),
         ),

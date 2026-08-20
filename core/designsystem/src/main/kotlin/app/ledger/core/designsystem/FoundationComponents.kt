@@ -3,7 +3,10 @@
 package app.ledger.core.designsystem
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -65,6 +68,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,7 +76,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -87,7 +98,9 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.text
 import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -253,7 +266,7 @@ public fun LedgerNavigationBar(
                     BadgedBox(
                         badge = {
                             badges[destination]?.takeIf { it > 0 }?.let { count ->
-                                Badge(Modifier.semantics { contentDescription = "$label, $count" }) { Text(count.toString()) }
+                                Badge(Modifier.clearAndSetSemantics { text = AnnotatedString("$label, $count") }) { Text(count.toString()) }
                             }
                         },
                     ) { LedgerIconView(icon, contentDescription = null, size = LedgerTheme.dimensions.bottomNavigationIcon) }
@@ -273,6 +286,7 @@ public fun LedgerSaveFab(
     submitting: Boolean = false,
     enabled: Boolean = true,
 ) {
+    val effectiveEnabled = enabled && !submitting
     val save = stringResource(if (submitting) R.string.ledger_saving else R.string.ledger_save)
     val icon: @Composable () -> Unit = {
         if (submitting) {
@@ -287,22 +301,28 @@ public fun LedgerSaveFab(
     }
     if (compact) {
         FloatingActionButton(
-            onClick = onClick,
-            modifier = modifier.size(LedgerTheme.dimensions.fab).testTag(LedgerTestTags.SAVE).semantics { contentDescription = save },
-            containerColor = if (enabled) LedgerTheme.colors.material.primary else LedgerTheme.colors.material.surfaceContainerHighest,
+            onClick = if (effectiveEnabled) onClick else ({}),
+            modifier = modifier.size(LedgerTheme.dimensions.fab).testTag(LedgerTestTags.SAVE).semantics {
+                contentDescription = save
+                if (!effectiveEnabled) disabled()
+            },
+            containerColor = if (effectiveEnabled) LedgerTheme.colors.material.primary else LedgerTheme.colors.material.surfaceContainerHighest,
         ) { icon() }
     } else {
         ExtendedFloatingActionButton(
             text = { Text(save) },
             icon = icon,
-            onClick = onClick,
+            onClick = if (effectiveEnabled) onClick else ({}),
             modifier = modifier
                 .heightIn(min = LedgerTheme.dimensions.fab)
                 .widthIn(min = LedgerTheme.dimensions.fabExtendedMinWidth)
                 .testTag(LedgerTestTags.SAVE)
-                .semantics { contentDescription = save },
-            containerColor = if (enabled) LedgerTheme.colors.material.primary else LedgerTheme.colors.material.surfaceContainerHighest,
-            contentColor = if (enabled) LedgerTheme.colors.material.onPrimary else LedgerTheme.colors.material.onSurfaceVariant,
+                .semantics {
+                    contentDescription = save
+                    if (!effectiveEnabled) disabled()
+                },
+            containerColor = if (effectiveEnabled) LedgerTheme.colors.material.primary else LedgerTheme.colors.material.surfaceContainerHighest,
+            contentColor = if (effectiveEnabled) LedgerTheme.colors.material.onPrimary else LedgerTheme.colors.material.onSurfaceVariant,
         )
     }
 }
@@ -378,11 +398,19 @@ public fun LedgerTextField(
     singleLine: Boolean = true,
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Next,
-    onImeAction: () -> Unit = {},
+    onImeAction: (() -> Unit)? = null,
     sensitive: Boolean = false,
     hideValueFromSemantics: Boolean = false,
 ) {
     val requiredText = if (required) " · ${stringResource(R.string.ledger_required)}" else ""
+    val focusManager = LocalFocusManager.current
+    val effectiveImeAction = onImeAction ?: {
+        when (imeAction) {
+            ImeAction.Next -> focusManager.moveFocus(FocusDirection.Next)
+            ImeAction.Previous -> focusManager.moveFocus(FocusDirection.Previous)
+            else -> focusManager.clearFocus()
+        }
+    }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -402,7 +430,7 @@ public fun LedgerTextField(
         singleLine = singleLine,
         shape = LedgerTheme.shapes.md,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-        keyboardActions = KeyboardActions(onAny = { onImeAction() }),
+        keyboardActions = KeyboardActions(onAny = { effectiveImeAction() }),
         visualTransformation = if (sensitive) PasswordVisualTransformation() else VisualTransformation.None,
     )
 }
@@ -416,6 +444,7 @@ public fun LedgerChoiceRow(
     supportingText: String? = null,
     enabled: Boolean = true,
 ) {
+    val haptic = LocalHapticFeedback.current
     val localizedSelectionState = if (selected) {
         stringResource(R.string.ledger_selected)
     } else {
@@ -425,7 +454,10 @@ public fun LedgerChoiceRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = LedgerTheme.dimensions.touchTargetMin)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            }
             .semantics {
                 role = Role.RadioButton
                 stateDescription = localizedSelectionState
@@ -435,7 +467,7 @@ public fun LedgerChoiceRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
     ) {
-        RadioButton(selected = selected, onClick = null)
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
         Column(Modifier.weight(1f)) {
             Text(title, style = LedgerTheme.typography.bodyLarge)
             if (supportingText != null) {
@@ -454,6 +486,8 @@ public fun LedgerToggleRow(
     supportingText: String? = null,
     enabled: Boolean = true,
 ) {
+    val localizedToggleState = stringResource(if (checked) R.string.ledger_on else R.string.ledger_off)
+    val haptic = LocalHapticFeedback.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -462,10 +496,13 @@ public fun LedgerToggleRow(
                 value = checked,
                 enabled = enabled,
                 role = Role.Switch,
-                onValueChange = onCheckedChange,
+                onValueChange = { value ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onCheckedChange(value)
+                },
             )
             .semantics {
-                stateDescription = if (checked) "on" else "off"
+                stateDescription = localizedToggleState
             }
             .padding(vertical = LedgerTheme.spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
@@ -522,11 +559,17 @@ public fun SearchField(
     placeholder: String = stringResource(R.string.ledger_search),
     onClear: () -> Unit = {},
     onFilter: (() -> Unit)? = null,
+    autoFocus: Boolean = true,
 ) {
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) focusRequester.requestFocus()
+    }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth().heightIn(min = LedgerTheme.dimensions.searchFieldHeight),
+        modifier = modifier.focusRequester(focusRequester).fillMaxWidth().heightIn(min = LedgerTheme.dimensions.searchFieldHeight),
         placeholder = { Text(placeholder) },
         leadingIcon = { LedgerIconView(LedgerIcon.SEARCH, contentDescription = null) },
         trailingIcon = {
@@ -538,6 +581,7 @@ public fun SearchField(
         singleLine = true,
         shape = LedgerTheme.shapes.md,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
     )
 }
 
@@ -599,12 +643,13 @@ public fun FormSection(
     trailingAction: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
+    val localizedExpansionState = stringResource(if (expanded) R.string.ledger_expanded else R.string.ledger_collapsed)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = LedgerTheme.typography.titleSmall, modifier = Modifier.weight(1f).semantics { heading() })
             if (trailingAction != null) trailingAction()
             if (onToggle != null) {
-                LedgerIconButton(LedgerIcon.CHEVRON, title, onToggle, Modifier.semantics { stateDescription = if (expanded) "expanded" else "collapsed" })
+                LedgerIconButton(LedgerIcon.CHEVRON, title, onToggle, Modifier.semantics { stateDescription = localizedExpansionState })
             }
         }
         if (description != null) Text(description, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
@@ -619,8 +664,18 @@ public fun ValidationSummary(
     modifier: Modifier = Modifier,
 ) {
     if (errors.isEmpty()) return
+    val haptic = LocalHapticFeedback.current
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(errors) {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        focusRequester.requestFocus()
+    }
     LedgerCard(
-        modifier = modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Assertive },
+        modifier = modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester)
+            .focusable()
+            .semantics { liveRegion = LiveRegionMode.Assertive },
         containerColor = LedgerTheme.colors.danger.container,
         borderColor = LedgerTheme.colors.danger.base,
     ) {
@@ -633,12 +688,29 @@ public fun ValidationSummary(
     }
 }
 
+public enum class LedgerCardVariant { STANDARD, EMPHASIZED, DANGER }
+
 @Composable
 public fun LedgerCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    containerColor: Color = LedgerTheme.colors.material.surfaceContainer,
-    borderColor: Color = LedgerTheme.colors.material.outlineVariant,
+    variant: LedgerCardVariant = LedgerCardVariant.STANDARD,
+    content: @Composable () -> Unit,
+) {
+    val (container, border) = when (variant) {
+        LedgerCardVariant.STANDARD -> LedgerTheme.colors.material.surfaceContainer to LedgerTheme.colors.material.outlineVariant
+        LedgerCardVariant.EMPHASIZED -> LedgerTheme.colors.material.primaryContainer to LedgerTheme.colors.material.primary
+        LedgerCardVariant.DANGER -> LedgerTheme.colors.danger.container to LedgerTheme.colors.danger.base
+    }
+    LedgerCard(modifier, onClick, container, border, content)
+}
+
+@Composable
+internal fun LedgerCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    containerColor: Color,
+    borderColor: Color,
     content: @Composable () -> Unit,
 ) {
     val colors = CardDefaults.cardColors(containerColor = containerColor)
@@ -658,15 +730,19 @@ public fun LedgerChip(
     selected: Boolean = false,
     enabled: Boolean = true,
 ) {
+    val haptic = LocalHapticFeedback.current
     val localizedSelectionState = if (selected) {
         stringResource(R.string.ledger_selected)
     } else {
         stringResource(R.string.ledger_not_selected)
     }
     AssistChip(
-        onClick = onClick,
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onClick()
+        },
         label = { Text(label, style = LedgerTheme.typography.labelMedium) },
-        modifier = modifier.heightIn(min = LedgerTheme.dimensions.chipHeight).semantics {
+        modifier = modifier.heightIn(min = LedgerTheme.dimensions.touchTargetMin).semantics {
             stateDescription = localizedSelectionState
         },
         enabled = enabled,
@@ -746,10 +822,30 @@ public fun LedgerErrorState(
 ) {
     Column(modifier.fillMaxWidth().padding(LedgerTheme.spacing.xl), horizontalAlignment = Alignment.CenterHorizontally) {
         LedgerIconView(LedgerIcon.ERROR, tint = LedgerTheme.colors.danger.base, size = LedgerTheme.dimensions.touchTargetMin)
-        Text(message, Modifier.padding(vertical = LedgerTheme.spacing.sm), style = LedgerTheme.typography.bodyLarge)
+        Text(stringResource(R.string.ledger_error_what_happened), Modifier.padding(top = LedgerTheme.spacing.sm).semantics { heading() }, style = LedgerTheme.typography.titleSmall)
+        Text(message, Modifier.padding(bottom = LedgerTheme.spacing.sm), style = LedgerTheme.typography.bodyLarge)
+        Text(stringResource(R.string.ledger_error_write_status), Modifier.semantics { heading() }, style = LedgerTheme.typography.titleSmall)
+        Text(stringResource(R.string.ledger_error_existing_data_unchanged), Modifier.padding(bottom = LedgerTheme.spacing.sm), style = LedgerTheme.typography.bodyMedium)
+        Text(stringResource(R.string.ledger_error_next_step), Modifier.semantics { heading() }, style = LedgerTheme.typography.titleSmall)
+        Text(stringResource(R.string.ledger_error_retry_next_step), style = LedgerTheme.typography.bodyMedium)
         Text(code.value, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
         LedgerButton(stringResource(R.string.ledger_retry), onRetry, Modifier.padding(top = LedgerTheme.spacing.sm))
     }
+}
+
+@Composable
+public fun LedgerErrorState(
+    code: UiErrorCode,
+    message: UiText.Resource,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LedgerErrorState(code, message.resolve(), onRetry, modifier)
+}
+
+@Composable
+public fun UiText.resolve(): String = when (this) {
+    is UiText.Resource -> stringResource(resourceId, *arguments.toTypedArray())
 }
 
 @Composable
@@ -759,11 +855,11 @@ public fun LedgerProgressIndicator(
     accessibleText: String,
 ) {
     if (progress == null) {
-        CircularProgressIndicator(modifier.semantics { contentDescription = accessibleText })
+        CircularProgressIndicator(modifier.clearAndSetSemantics { text = AnnotatedString(accessibleText) })
     } else {
         LinearProgressIndicator(
             progress = { progress.coerceIn(0f, 1f) },
-            modifier = modifier.fillMaxWidth().semantics { contentDescription = accessibleText },
+            modifier = modifier.fillMaxWidth().clearAndSetSemantics { text = AnnotatedString(accessibleText) },
         )
     }
 }
@@ -789,6 +885,7 @@ public fun LedgerTabRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 public fun LedgerDialog(
     title: String,
@@ -800,10 +897,17 @@ public fun LedgerDialog(
     danger: Boolean = false,
     content: (@Composable () -> Unit)? = null,
 ) {
+    val modalFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { modalFocusRequester.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            LedgerButton(confirmLabel, onConfirm, variant = if (danger) LedgerButtonVariant.DANGER else LedgerButtonVariant.PRIMARY)
+            LedgerButton(
+                confirmLabel,
+                onConfirm,
+                Modifier.focusRequester(modalFocusRequester),
+                variant = if (danger) LedgerButtonVariant.DANGER else LedgerButtonVariant.PRIMARY,
+            )
         },
         dismissButton = { LedgerButton(stringResource(R.string.ledger_cancel), onDismiss, variant = LedgerButtonVariant.SECONDARY) },
         title = { Text(title, Modifier.semantics { heading() }) },
@@ -813,21 +917,36 @@ public fun LedgerDialog(
                 if (content != null) content()
             }
         },
-        modifier = modifier.widthIn(max = LedgerTheme.dimensions.dialogMaxWidth).semantics { paneTitle = title },
+        modifier = modifier
+            .widthIn(max = LedgerTheme.dimensions.dialogMaxWidth)
+            .focusRestorer()
+            .focusGroup()
+            .semantics { paneTitle = title },
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 public fun LedgerBottomSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = modifier, shape = LedgerTheme.shapes.xxl) { content() }
+    val modalFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { modalFocusRequester.requestFocus() }
+    ModalBottomSheet(onDismissRequest = onDismiss, modifier = modifier, shape = LedgerTheme.shapes.xxl) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .focusRestorer()
+                .focusGroup()
+                .focusRequester(modalFocusRequester)
+                .focusable(),
+        ) { content() }
+    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 public fun LedgerDatePickerDialog(
     state: DatePickerState,
@@ -839,11 +958,11 @@ public fun LedgerDatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = { LedgerButton(stringResource(R.string.ledger_apply), onConfirm) },
         dismissButton = { LedgerButton(stringResource(R.string.ledger_cancel), onDismiss, variant = LedgerButtonVariant.TEXT) },
-        modifier = modifier,
+        modifier = modifier.focusRestorer().focusGroup(),
     ) { DatePicker(state) }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 public fun LedgerTimePickerDialog(
     state: TimePickerState,
@@ -851,12 +970,14 @@ public fun LedgerTimePickerDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val modalFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { modalFocusRequester.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { LedgerButton(stringResource(R.string.ledger_apply), onConfirm) },
+        confirmButton = { LedgerButton(stringResource(R.string.ledger_apply), onConfirm, Modifier.focusRequester(modalFocusRequester)) },
         dismissButton = { LedgerButton(stringResource(R.string.ledger_cancel), onDismiss, variant = LedgerButtonVariant.TEXT) },
         text = { TimePicker(state) },
-        modifier = modifier,
+        modifier = modifier.focusRestorer().focusGroup(),
     )
 }
 
@@ -889,6 +1010,22 @@ public fun LedgerDateTimePickerFlow(
             onDismiss = onDismiss,
         )
     }
+}
+
+/** Date-only wrapper for domain fields that must not expose raw Material picker state. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+public fun LedgerDatePickerFlow(
+    initialDateMillis: Long,
+    onConfirm: (dateMillis: Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val date = rememberDatePickerState(initialSelectedDateMillis = initialDateMillis)
+    LedgerDatePickerDialog(
+        state = date,
+        onConfirm = { onConfirm(date.selectedDateMillis ?: initialDateMillis) },
+        onDismiss = onDismiss,
+    )
 }
 
 @Composable

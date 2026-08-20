@@ -109,7 +109,7 @@ class P12UiContractDeviceTest {
                             encodedArguments = mapOf("direction" to "EXPENSE"),
                             dataState = ManagementDataState.Content(representativeSnapshot()),
                             actions = managementActions,
-                            placeMap = { _, _ -> },
+                            placeMap = { _, _, _ -> },
                             pending = false,
                             stateOverride = ManagementRequiredState.CAT_002_VALIDATION_ERROR,
                         )
@@ -209,7 +209,7 @@ class P12UiContractDeviceTest {
                 encodedArguments = managementArguments(target.state),
                 dataState = ManagementDataState.Content(representativeSnapshot()),
                 actions = managementActions,
-                placeMap = { _, _ -> },
+                placeMap = { _, _, _ -> },
                 pending = target.state.contractName in setOf("saving", "merging", "splitting", "processing"),
                 stateOverride = target.state,
             )

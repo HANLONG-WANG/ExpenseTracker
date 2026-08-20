@@ -3,6 +3,9 @@
 package app.ledger.feature.record
 
 import app.ledger.core.common.StableId
+import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
+import app.ledger.core.money.MoneyExpressionEvaluator
 import app.ledger.finance.application.BatchEntryField
 import app.ledger.finance.application.BatchValidationIssue
 import app.ledger.finance.application.BatchValidationReport
@@ -12,6 +15,7 @@ import app.ledger.finance.application.OrdinarySettlementShareDraft
 import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
 import java.time.Instant
 import java.time.ZoneId
+import java.util.Locale
 
 public enum class BatchRowKind { EXPENSE, INCOME, REFUND }
 
@@ -95,6 +99,31 @@ public data class BatchPasteResult(
 )
 
 public object BatchRecordPolicy {
+    private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
+    private val expressionEvaluator = MoneyExpressionEvaluator()
+
+    public fun changeAmount(
+        row: BatchRowDraft,
+        expression: String,
+        locale: Locale,
+        snapshot: OrdinaryTransactionEntrySnapshot,
+    ): BatchRowDraft {
+        val currency = CurrencyCode.parse(row.userCurrencyCode).getOrNull()
+        val metadata = currency?.let(currencyCatalog::find)
+        val result = metadata?.let { expressionEvaluator.evaluate(expression, locale, it).getOrNull() }
+        val minor = result?.roundedMoney?.minor
+        val accountCurrency = snapshot.references.accounts.singleOrNull { it.id == row.accountId }?.currency
+        return row.copy(
+            amountExpression = expression,
+            userMinor = minor,
+            accountMinor = if (accountCurrency == currency) minor else row.accountMinor,
+            baseMinor = if (snapshot.baseCurrency == currency) minor else row.baseMinor,
+        )
+    }
+
+    public fun parseMajorAmount(expression: String, currency: CurrencyCode, locale: Locale): Long? =
+        currencyCatalog.find(currency)?.let { expressionEvaluator.evaluate(expression, locale, it).getOrNull()?.roundedMoney?.minor }
+
     public fun changeKind(row: BatchRowDraft, kind: BatchRowKind): BatchRowDraft = row.copy(
         kind = kind,
         settlementActivityId = row.settlementActivityId.takeUnless { kind == BatchRowKind.INCOME },
@@ -197,7 +226,7 @@ public object BatchRecordPolicy {
     }
 
     /**
-     * Phone paste format is TSV: kind, category name, amount minor, account name, merchant name,
+     * Phone paste format is TSV: kind, category name, major-unit amount, account name, merchant name,
      * ISO instant, project name. Names are resolved only against the already encrypted snapshot.
      */
     public fun paste(
@@ -221,9 +250,10 @@ public object BatchRecordPolicy {
                 "REFUND" -> BatchRowKind.REFUND
                 else -> null
             }
-            val minor = cells.getOrNull(2)?.trim()?.toLongOrNull()
             val category = snapshot.references.categories.singleOrNull { it.name == cells.getOrNull(1)?.trim() }
             val account = snapshot.references.accounts.singleOrNull { it.name == cells.getOrNull(3)?.trim() && it.status.name == "ACTIVE" }
+            val amountExpression = cells.getOrNull(2)?.trim().orEmpty()
+            val minor = account?.currency?.let { parseMajorAmount(amountExpression, it, Locale.ROOT) }
             if (kind == null || minor == null || minor <= 0L || category == null || account == null) {
                 rejected += index + 1
             } else {
@@ -232,7 +262,7 @@ public object BatchRecordPolicy {
                 val occurredAt = cells.getOrNull(5)?.trim()?.takeIf(String::isNotEmpty)?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: defaultInstant
                 rows += newRow(idAtLine(index), snapshot, occurredAt, zoneId, kind).copy(
                     categoryId = category.id,
-                    amountExpression = minor.toString(),
+                    amountExpression = amountExpression,
                     userMinor = minor,
                     accountMinor = minor,
                     baseMinor = minor,

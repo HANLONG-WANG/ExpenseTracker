@@ -126,8 +126,15 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     feature = "\n".join(value for path, value in sources.items() if path.startswith("feature/analysis/"))
     require_tokens(errors, feature, "governed accessible analysis UI", (
         "LedgerVicoLineRenderer", "LedgerVicoColumnRenderer", "LedgerVicoStackedRenderer", "LedgerVicoPieRenderer",
-        "AccessibleTableUiModel", "ChartCard", "dataTable = table", "reportTable(",
+        "ChartCard", "dataTable = table",
         "analysis_pie_fallback", "analysis_no_sql_formula", "AnalysisPresentation.STALE_REBUILD_REQUIRED",
+    ))
+    analysis_screens = next(
+        (value for path, value in sources.items() if Path(path).name == "AnalysisScreens.kt"),
+        "",
+    )
+    require_tokens(errors, analysis_screens, "P25 main report accessible UI", (
+        "AccessibleTableUiModel", "reportTable(",
     ))
     if re.search(r"^import\s+(?:androidx\.room|androidx\.compose\.material3|app\.ledger\.(?:analytics\.data|core\.database))", feature, re.MULTILINE):
         errors.append("analysis feature bypasses UI/application boundaries")
@@ -163,7 +170,7 @@ def validate_tests_resources() -> list[str]:
         "staleProjectionIsNotShownAndFactRebuildRepairsToIdenticalHash",
         "everyFrozenRequiredStateRendersAcrossWidthFontLocaleAndThemeMatrix",
         "chartHasTextAlternativeAndExactDataTableAtTwoHundredPercentFont",
-        "reportAndIntegrityGoldensMatchEveryPixel", "assertEquals(20, cases.size)",
+        "reportAndIntegrityGoldensMatchEveryPixel", "assertEquals(45, cases.size)",
     ))
     resource_sets = []
     for folder in ("values", "values-en", "values-ja"):

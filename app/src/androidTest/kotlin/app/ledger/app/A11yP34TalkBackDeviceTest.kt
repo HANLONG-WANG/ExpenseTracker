@@ -6,27 +6,26 @@ import android.content.Context
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.lifecycle.ViewModelProvider
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
-import app.ledger.core.designsystem.LedgerButton
-import app.ledger.core.designsystem.LedgerNavigationBar
-import app.ledger.core.designsystem.LedgerSaveFab
-import app.ledger.core.designsystem.LedgerScaffold
+import app.ledger.core.security.BookSessionState
 import app.ledger.core.designsystem.LedgerTestTags
-import app.ledger.core.designsystem.LedgerTextField
-import app.ledger.core.designsystem.LedgerTheme
-import app.ledger.core.designsystem.LedgerTopLevel
-import app.ledger.core.designsystem.ThemeMode
+import app.ledger.feature.record.OrdinaryRecordLoadState
+import app.ledger.feature.onboarding.OnboardingLanguage
+import app.ledger.feature.onboarding.OnboardingStep
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -35,11 +34,29 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class A11yP34TalkBackDeviceTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
     @SdkSuppress(minSdkVersion = 36)
-    fun talkBackServiceCompletesTheCriticalRecordNavigationFlow() {
+    fun talkBackServiceCompletesTheCriticalRecordNavigationFlow() = runBlocking {
+        val viewModel = ViewModelProvider(composeRule.activity)[AppRootViewModel::class.java]
+        val initial = withTimeout(DEVICE_TIMEOUT_MILLIS) {
+            viewModel.rootState.first { state ->
+                state is AppRootState.Onboarding || (state as? AppRootState.Session)?.state is BookSessionState.Ready
+            }
+        }
+        if ((initial as? AppRootState.Session)?.state is BookSessionState.Ready) {
+            composeRule.runOnUiThread {
+                viewModel.clearLocalBookData()
+                viewModel.sensitiveSettingsAuthenticationSucceeded()
+            }
+            awaitStep(viewModel, OnboardingStep.LANGUAGE)
+        }
+        completeOnboarding(viewModel)
+        withTimeout(DEVICE_TIMEOUT_MILLIS) {
+            viewModel.rootState.first { state -> (state as? AppRootState.Session)?.state is BookSessionState.Ready }
+        }
+
         instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
         val packageManager = instrumentation.targetContext.packageManager
         assertTrue(
@@ -48,57 +65,94 @@ class A11yP34TalkBackDeviceTest {
         )
         enableTalkBackForDedicatedFlow()
         assertTrue("The dedicated device flow could not enable TalkBack", waitForTalkBack())
-        val step = mutableStateOf(RecordStep.CATEGORY)
-        val amount = mutableStateOf("100")
-        composeRule.setContent {
-            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
-                LedgerScaffold(
-                    bottomBar = {
-                        LedgerNavigationBar(LedgerTopLevel.RECORD, onSelected = {})
-                    },
-                    fixedAction = if (step.value == RecordStep.FORM) {
-                        {
-                            LedgerSaveFab(
-                                onClick = { step.value = RecordStep.SAVED },
-                                modifier = Modifier.testTag(SAVE_TAG),
-                            )
-                        }
-                    } else {
-                        null
-                    },
-                    formContent = true,
-                ) { _ ->
-                    Column(Modifier.fillMaxSize()) {
-                        when (step.value) {
-                            RecordStep.CATEGORY -> LedgerButton(
-                                text = "Food and dining",
-                                onClick = { step.value = RecordStep.FORM },
-                                modifier = Modifier.testTag(CATEGORY_TAG),
-                            )
-                            RecordStep.FORM -> LedgerTextField(
-                                value = amount.value,
-                                onValueChange = { amount.value = it },
-                                label = "Amount",
-                                modifier = Modifier.testTag(AMOUNT_TAG),
-                            )
-                            RecordStep.SAVED -> LedgerButton(
-                                text = "Recorded",
-                                onClick = {},
-                                modifier = Modifier.testTag(RECORDED_TAG),
-                            )
-                        }
+
+        composeRule.waitUntil(DEVICE_TIMEOUT_MILLIS) {
+            runCatching { composeRule.onNodeWithText(CATEGORY_NAME, substring = true).fetchSemanticsNode() }.isSuccess
+        }
+        performAccessibilityClick(CATEGORY_NAME)
+        composeRule.waitUntil(DEVICE_TIMEOUT_MILLIS) {
+            composeRule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // The editor's category control must enter the same production full-grid destination,
+        // and choosing there must return to this complete editor rather than a dropdown shortcut.
+        performAccessibilityClick(CATEGORY_NAME)
+        composeRule.waitUntil(DEVICE_TIMEOUT_MILLIS) {
+            viewModel.navigator.currentKey.contract.screenId.value == "REC-004"
+        }
+        composeRule.onNodeWithTag(LedgerTestTags.CATEGORY_GRID).assertExists()
+        performAccessibilityClick(CATEGORY_NAME)
+        composeRule.waitUntil(DEVICE_TIMEOUT_MILLIS) {
+            viewModel.navigator.currentKey.contract.screenId.value == "REC-003"
+        }
+
+        // Exercise the actual amount field's parser, validation focus path and half-even currency
+        // rounding before committing through the production fixed save action.
+        composeRule.onAllNodes(hasSetTextAction())[0].performTextReplacement("1/0")
+        performAccessibilityClick("Save")
+        composeRule.onNodeWithTag(LedgerTestTags.RECORD_VALIDATION).assertExists()
+        composeRule.onAllNodes(hasSetTextAction())[0].performTextReplacement("100/3")
+        composeRule.waitUntil(DEVICE_TIMEOUT_MILLIS) {
+            ((viewModel.ordinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor?.draft?.resultMinor) == 33L
+        }
+        assertEquals(
+            33L,
+            (viewModel.ordinaryRecord.value as OrdinaryRecordLoadState.Content).editor?.draft?.resultMinor,
+        )
+        performAccessibilityClick("Save")
+        composeRule.waitUntil(DEVICE_TIMEOUT_MILLIS) {
+            viewModel.navigator.currentKey.contract.screenId.value == "REC-001"
+        }
+        composeRule.onNodeWithText(CATEGORY_NAME, substring = true).assertExists()
+        composeRule.onNodeWithText("Record").assertExists()
+        assertTrue("TalkBack stopped during the record flow", waitForTalkBack())
+
+        composeRule.runOnUiThread {
+            viewModel.clearLocalBookData()
+            viewModel.sensitiveSettingsAuthenticationSucceeded()
+        }
+    }
+
+    private suspend fun completeOnboarding(viewModel: AppRootViewModel) {
+        while (true) {
+            val root = viewModel.rootState.value
+            val state = (root as? AppRootState.Onboarding)?.state ?: return
+            composeRule.runOnUiThread {
+                when (state.step) {
+                    OnboardingStep.LANGUAGE -> viewModel.selectLanguage(OnboardingLanguage.ENGLISH)
+                    OnboardingStep.BASE_CURRENCY -> viewModel.selectCurrency("JPY")
+                    OnboardingStep.TIME_ZONE -> viewModel.selectZone("Asia/Tokyo")
+                    OnboardingStep.PRIVACY_POLICY -> viewModel.setPrivacyAccepted(true)
+                    OnboardingStep.TELEMETRY -> {
+                        viewModel.setTelemetry(false)
+                        viewModel.setCrashReporting(false)
                     }
+                    OnboardingStep.APP_LOCK, OnboardingStep.BACKUP -> Unit
+                    OnboardingStep.ACCOUNT -> viewModel.updateAccountName(ACCOUNT_NAME)
+                    OnboardingStep.CATEGORY -> viewModel.updateCategoryName(CATEGORY_NAME)
+                    OnboardingStep.COMPLETE -> Unit
+                }
+                if (state.step in setOf(OnboardingStep.APP_LOCK, OnboardingStep.BACKUP)) {
+                    viewModel.onboardingSkip()
+                } else {
+                    viewModel.onboardingNext()
+                }
+            }
+            if (state.step == OnboardingStep.COMPLETE) return
+            withTimeout(DEVICE_TIMEOUT_MILLIS) {
+                viewModel.rootState.first { next ->
+                    (next as? AppRootState.Onboarding)?.state?.let {
+                        it.step != state.step && it.renderState != app.ledger.feature.onboarding.OnboardingRenderState.SUBMITTING
+                    } == true || (next as? AppRootState.Session)?.state is BookSessionState.Ready
                 }
             }
         }
+    }
 
-        performAccessibilityClick("Food and dining")
-        composeRule.onNodeWithTag(AMOUNT_TAG).assertExists()
-        performAccessibilityClick("Save")
-        composeRule.onNodeWithTag(RECORDED_TAG).assertExists()
-        composeRule.onNodeWithTag(LedgerTestTags.BOTTOM_NAVIGATION).assertExists()
-        composeRule.onNodeWithText("Record").assertExists()
-        assertTrue("TalkBack stopped during the record flow", waitForTalkBack())
+    private suspend fun awaitStep(viewModel: AppRootViewModel, step: OnboardingStep) {
+        withTimeout(DEVICE_TIMEOUT_MILLIS) {
+            viewModel.rootState.first { state -> (state as? AppRootState.Onboarding)?.state?.step == step }
+        }
     }
 
     private fun performAccessibilityClick(label: String) {
@@ -129,7 +183,11 @@ class A11yP34TalkBackDeviceTest {
     private fun findAccessibilityNode(root: AccessibilityNodeInfo?, label: String): AccessibilityNodeInfo? {
         var result: AccessibilityNodeInfo? = null
         if (root != null) {
-            if (root.text?.toString() == label || root.contentDescription?.toString() == label || root.hintText?.toString() == label) {
+            if (
+                root.text?.toString()?.contains(label) == true ||
+                root.contentDescription?.toString()?.contains(label) == true ||
+                root.hintText?.toString()?.contains(label) == true
+            ) {
                 result = root
             } else {
                 var index = 0
@@ -169,8 +227,6 @@ class A11yP34TalkBackDeviceTest {
         assertTrue("TalkBack remained active after the dedicated flow", !waitForTalkBack(singleAttempt = true))
     }
 
-    private enum class RecordStep { CATEGORY, FORM, SAVED }
-
     companion object {
         private val instrumentation = InstrumentationRegistry.getInstrumentation()
 
@@ -192,10 +248,9 @@ class A11yP34TalkBackDeviceTest {
             "com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService"
         const val SERVICE_POLL_ATTEMPTS = 30
         const val SERVICE_POLL_MILLIS = 200L
-        const val CATEGORY_TAG = "p34_talkback_category"
-        const val AMOUNT_TAG = "p34_talkback_amount"
-        const val SAVE_TAG = "p34_talkback_save"
-        const val RECORDED_TAG = "p34_talkback_recorded"
         const val MAXIMUM_DIAGNOSTIC_NODES = 80
+        const val DEVICE_TIMEOUT_MILLIS = 60_000L
+        const val ACCOUNT_NAME = "TalkBack test cash"
+        const val CATEGORY_NAME = "TalkBack test expense"
     }
 }

@@ -15,6 +15,7 @@ import app.ledger.feature.liabilities.CreditActions
 import app.ledger.feature.liabilities.CreditDestination
 import app.ledger.feature.liabilities.CreditLoadState
 import app.ledger.feature.liabilities.CreditPresentation
+import app.ledger.feature.liabilities.CreditPolicy
 import app.ledger.feature.liabilities.R as CreditR
 
 @Composable
@@ -57,11 +58,14 @@ internal fun CreditRootDestination(
             },
             onFieldChanged = viewModel::updateCreditField,
             onNextPaymentAccount = viewModel::selectNextCreditPaymentAccount,
+            onNextZone = viewModel::selectNextCreditZone,
+            onCycleDueRule = viewModel::cycleCreditDueRule,
             onSelectStatement = viewModel::selectCreditStatement,
             onSelectEarliest = viewModel::selectCreditEarliest,
             onSelectUnallocated = viewModel::selectCreditUnallocated,
             onAssignment = viewModel::assignCreditStatement,
             onToggleAutoPayment = viewModel::toggleCreditAutoPayment,
+            onToggleSeal = viewModel::toggleCreditStatementSeal,
         ),
     )
 }
@@ -77,6 +81,13 @@ internal fun creditFixedAction(
     if (screenId !in setOf("REC-014", "CRD-002", "CRD-005", "CRD-007", "CRD-008")) return null
     return {
         val content = (state as? CreditLoadState.Content)?.state
-        LedgerSaveFab(onSave, submitting = pending || content?.presentation == CreditPresentation.SAVING, enabled = !pending)
+        val valid = when (screenId) {
+            "REC-014" -> content?.let { CreditPolicy.validatePayment(it).presentation !in setOf(CreditPresentation.VALIDATION_ERROR, CreditPresentation.OVERPAYMENT_BLOCKED) } == true
+            "CRD-002" -> content?.let { CreditPolicy.profileErrors(it).isEmpty() } == true
+            "CRD-005" -> content?.let { CreditPolicy.officialErrors(it).isEmpty() } == true
+            "CRD-008" -> content != null
+            else -> content != null
+        }
+        LedgerSaveFab(onSave, submitting = pending || content?.presentation == CreditPresentation.SAVING, enabled = !pending && valid)
     }
 }

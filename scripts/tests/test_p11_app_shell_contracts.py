@@ -21,6 +21,15 @@ class P11AppShellMutationTest(unittest.TestCase):
     def test_session_gate_removal_is_rejected(self) -> None:
         self.assertTrue(self.mutate("AppRootScreen.kt", "SessionGateScreen", "DetachedGate"))
 
+    def test_ready_nav_display_removal_is_rejected(self) -> None:
+        self.assertTrue(self.mutate("ReadyRootScaffold.kt", "NavDisplay(", "DetachedDisplay("))
+
+    def test_bottom_navigation_removal_is_rejected(self) -> None:
+        self.assertTrue(self.mutate("ReadyRootScaffold.kt", "LedgerNavigationBar(", "DetachedNavigationBar("))
+
+    def test_unsaved_loss_notice_removal_is_rejected(self) -> None:
+        self.assertTrue(self.mutate("ReadyRootScaffold.kt", "global_unsaved_lost", "global_notice_removed"))
+
     def test_ready_only_navigation_weakening_is_rejected(self) -> None:
         self.assertTrue(
             self.mutate(

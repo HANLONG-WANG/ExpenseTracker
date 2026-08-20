@@ -160,7 +160,7 @@ public value class ContractEnumArgument private constructor(private val value: S
 }
 
 @Immutable
-public class LedgerDestinationKey internal constructor(
+public open class LedgerDestinationKey internal constructor(
     public val contract: ScreenContract,
     internal val argumentValues: Map<String, SafeRouteArgument>,
 ) : NavKey {
@@ -180,6 +180,56 @@ public class LedgerDestinationKey internal constructor(
     override fun hashCode(): Int = 31 * contract.screenId.hashCode() + path.hashCode()
 
     override fun toString(): String = "LedgerDestinationKey(screenId=${contract.screenId.value})"
+}
+
+/** Runtime-distinct keys let each feature own its Navigation 3 EntryProviderScope registration. */
+public class RecordDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+public class JournalDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+public class AccountsDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+public class PlanningDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+public class LiabilitiesDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+public class SettlementDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+public class AnalysisDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+public class AutomationDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+public class VaultDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+public class TransferDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+public class SettingsDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
+    LedgerDestinationKey(contract, arguments)
+
+/** One immutable state object is created for every Navigation 3 screen entry. */
+@Immutable
+public data class LedgerScreenUiState<out K : LedgerDestinationKey>(public val destination: K)
+
+/** Closed entry-boundary intents; feature callback adapters remain implementation details below this boundary. */
+public sealed interface LedgerScreenUiAction {
+    public data class Navigate(val destination: LedgerDestinationKey) : LedgerScreenUiAction
+    public data object Back : LedgerScreenUiAction
+}
+
+/** One-shot work never lives in LedgerScreenUiState and is consumed once by the application shell. */
+public sealed interface LedgerScreenEffect {
+    public data class Navigate(val destination: LedgerDestinationKey) : LedgerScreenEffect
+    public data class Message(val resourceKey: String, val arguments: List<String> = emptyList()) : LedgerScreenEffect
 }
 
 public object LedgerRouteContract {
@@ -223,7 +273,21 @@ public object LedgerRouteContract {
                 }
             }
         }
-        return LedgerDestinationKey(contract, arguments.toMap())
+        val safeArguments = arguments.toMap()
+        return when (contract.module) {
+            ":feature:record" -> RecordDestinationKey(contract, safeArguments)
+            ":feature:journal" -> JournalDestinationKey(contract, safeArguments)
+            ":feature:accounts" -> AccountsDestinationKey(contract, safeArguments)
+            ":feature:planning" -> PlanningDestinationKey(contract, safeArguments)
+            ":feature:liabilities" -> LiabilitiesDestinationKey(contract, safeArguments)
+            ":feature:settlement" -> SettlementDestinationKey(contract, safeArguments)
+            ":feature:analysis" -> AnalysisDestinationKey(contract, safeArguments)
+            ":feature:automation" -> AutomationDestinationKey(contract, safeArguments)
+            ":feature:vault" -> VaultDestinationKey(contract, safeArguments)
+            ":feature:transfer" -> TransferDestinationKey(contract, safeArguments)
+            ":feature:settings" -> SettingsDestinationKey(contract, safeArguments)
+            else -> LedgerDestinationKey(contract, safeArguments)
+        }
     }
 
     private fun requireParameter(screenId: ScreenId, parameterName: String): ScreenParameterSpec {

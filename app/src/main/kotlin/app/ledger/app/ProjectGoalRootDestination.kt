@@ -61,14 +61,18 @@ internal fun ProjectGoalRootDestination(
             onProjectEndDateChanged = viewModel::updateProjectEndDate,
             onProjectBudgetChanged = viewModel::updateProjectBudget,
             onProjectMonthlyBudgetChanged = viewModel::toggleProjectMonthlyBudget,
-            onProjectGoalChanged = viewModel::selectNextProjectGoal,
+            onProjectGoalChanged = viewModel::selectProjectGoal,
             onSaveProject = viewModel::saveProject,
+            onOpenTransaction = { transactionId ->
+                viewModel.openProjectTransaction(transactionId)
+                onNavigationChanged()
+            },
             onChangeProjectStatus = viewModel::changeProjectStatus,
             onGoalNameChanged = viewModel::updateGoalName,
             onGoalTargetChanged = viewModel::updateGoalTarget,
             onGoalSuggestedChanged = viewModel::updateGoalSuggested,
             onGoalDueDateChanged = viewModel::updateGoalDueDate,
-            onGoalAccountChanged = viewModel::selectNextGoalAccount,
+            onGoalAccountChanged = viewModel::selectGoalAccount,
             onSaveGoal = viewModel::saveGoal,
             onMovementAmountChanged = viewModel::updateGoalMovementAmount,
             onMovementDateChanged = viewModel::updateGoalMovementDate,

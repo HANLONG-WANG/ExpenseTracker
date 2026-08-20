@@ -1,5 +1,7 @@
 package app.ledger.feature.onboarding
 
+import app.ledger.core.designsystem.LedgerIcon
+
 public enum class OnboardingStep(
     public val screenId: String,
     public val optional: Boolean,
@@ -31,12 +33,13 @@ public data class OnboardingUiState(
     val renderState: OnboardingRenderState = OnboardingRenderState.CONTENT,
     val language: OnboardingLanguage? = null,
     val currencySearch: String = "",
-    val baseCurrency: String? = null,
+    val baseCurrency: String? = "JPY",
     val zoneSearch: String = "",
     val zoneId: String? = null,
     val privacyAccepted: Boolean = false,
-    val telemetryEnabled: Boolean = true,
-    val crashReportingEnabled: Boolean = true,
+    val telemetryEnabled: Boolean = false,
+    val crashReportingEnabled: Boolean = false,
+    val deviceSecurityAvailable: Boolean = true,
     val appLockEnabled: Boolean = false,
     val appLockTimeoutMillis: Long = 60_000L,
     val recoveryPassword: String = "",
@@ -45,6 +48,9 @@ public data class OnboardingUiState(
     val accountType: InitialAccountType = InitialAccountType.CASH,
     val categoryName: String = "",
     val categoryDirection: InitialCategoryDirection = InitialCategoryDirection.EXPENSE,
+    val categoryIcon: LedgerIcon = LedgerIcon.RECORD,
+    val categoryPaletteId: String = "slate",
+    val categoryColorArgb: Int = DEFAULT_CATEGORY_COLOR_ARGB,
     val firstAccountCreated: Boolean = false,
     val firstCategoryCreated: Boolean = false,
     val recoveryConfigured: Boolean = false,
@@ -64,6 +70,7 @@ public data class OnboardingUiState(
 
     public companion object {
         public val ALLOWED_TIMEOUTS: Set<Long> = setOf(0L, 60_000L, 300_000L, 900_000L)
+        public const val DEFAULT_CATEGORY_COLOR_ARGB: Int = -11_378_326
         private val CURRENCY = Regex("[A-Z]{3}")
         private val ERROR_CODE = Regex("[A-Z][A-Z0-9_]{2,47}")
     }

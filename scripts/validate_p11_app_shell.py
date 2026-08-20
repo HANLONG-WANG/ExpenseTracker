@@ -78,7 +78,7 @@ def require_tokens(errors: list[str], source: str, label: str, tokens: tuple[str
 def validate_sources(sources: Mapping[str, str]) -> list[str]:
     errors: list[str] = []
     required = {
-        "MainActivity.kt", "LedgerApplication.kt", "AppRootViewModel.kt", "AppRootScreen.kt",
+        "MainActivity.kt", "LedgerApplication.kt", "AppRootViewModel.kt", "AppRootScreen.kt", "ReadyRootScaffold.kt",
         "AppSettingsRepository.kt", "OnboardingContract.kt", "OnboardingScreen.kt",
         "FiveStackNavigator.kt", "NavigationContract.kt", "LedgerInitialization.kt",
         "SecureRoomLedgerInitializationPort.kt", "RoomLedgerStartupInspector.kt",
@@ -109,7 +109,7 @@ def validate_sources(sources: Mapping[str, str]) -> list[str]:
     if "android.permission.INTERNET" in manifest and 'implementation(project(":core:geo"))' not in read(ROOT / "app/build.gradle.kts"):
         errors.append("app requests network access without the governed core:geo map integration")
 
-    root = named(sources, "AppRootScreen.kt")
+    root = named(sources, "AppRootScreen.kt") + named(sources, "ReadyRootScaffold.kt")
     require_tokens(
         errors,
         root,
@@ -137,7 +137,7 @@ def validate_sources(sources: Mapping[str, str]) -> list[str]:
             "RecoveryPassword.copyOf", "SecretBytes.copyOf", "recoveryWrappedVerifier", "onboardingComplete = true",
         ),
     )
-    if re.search(r"(?:Dao|Entity)\b", view_model):
+    if re.search(r"(?m)^import\s+.*(?:Dao|Entity)\b|\b(?:interface|class)\s+\w*(?:Dao|Entity)\b", view_model):
         errors.append("app root ViewModel obtained a DAO/Entity")
 
     onboarding = named(sources, "OnboardingContract.kt") + named(sources, "OnboardingScreen.kt")

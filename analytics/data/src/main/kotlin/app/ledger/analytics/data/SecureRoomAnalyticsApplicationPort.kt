@@ -569,7 +569,13 @@ class SecureRoomAnalyticsApplicationPort(
         TRANSACTION_KINDS.getOrElse(getInt(getColumnIndexOrThrow("kind"))) { "UNKNOWN" },
         getLong(getColumnIndexOrThrow("input_amount_minor")),
         CurrencyCode.parse(getString(getColumnIndexOrThrow("input_currency"))).getOrNull() ?: error("invalid transaction currency"),
+        optionalString("category_label"),
+        optionalString("account_label"),
+        optionalString("card_label"),
+        optionalString("merchant_label"),
     )
+
+    private fun Cursor.optionalString(column: String): String? = getColumnIndex(column).takeIf { it >= 0 && !isNull(it) }?.let(::getString)
 
     private fun readVersion(connection: SupportSQLiteDatabase): Pair<LocalRevision, LocalRevision?>? = connection.query(
         "SELECT local_revision,valuation_revision FROM book WHERE id=1",
@@ -677,7 +683,8 @@ class SecureRoomAnalyticsApplicationPort(
             Dimension.SETTLEMENT_ACTIVITY to ("settlement_activity" to "name"),
             Dimension.PARTICIPANT to ("participant" to "name"),
         )
-        const val DRILLDOWN_SELECT = "SELECT ctp.transaction_uid,ctp.local_date,ctp.kind,ctp.input_amount_minor,ctp.input_currency " +
+        const val DRILLDOWN_SELECT = "SELECT ctp.transaction_uid,ctp.local_date,ctp.kind,ctp.input_amount_minor,ctp.input_currency," +
+            "c.name AS category_label,ua.name AS account_label,pc.display_name AS card_label,m.name AS merchant_label " +
             "FROM current_transaction_projection ctp LEFT JOIN category c ON c.id=ctp.category_id " +
             "LEFT JOIN merchant m ON m.id=ctp.merchant_id LEFT JOIN user_account ua ON ua.id=ctp.primary_account_id " +
             "LEFT JOIN payment_card pc ON pc.id=ctp.card_id LEFT JOIN project p ON p.id=ctp.project_id " +

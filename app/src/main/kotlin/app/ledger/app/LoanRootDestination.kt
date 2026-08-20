@@ -15,6 +15,7 @@ import app.ledger.feature.liabilities.LoanActions
 import app.ledger.feature.liabilities.LoanDestination
 import app.ledger.feature.liabilities.LoanLoadState
 import app.ledger.feature.liabilities.LoanPresentation
+import app.ledger.feature.liabilities.LoanPolicy
 import app.ledger.feature.liabilities.R as LiabilitiesR
 
 @Composable
@@ -65,8 +66,21 @@ internal fun LoanRootDestination(
             onFieldChanged = viewModel::updateLoanField,
             onSelectContract = viewModel::selectLoanContract,
             onSelectTranche = viewModel::selectLoanTranche,
+            onSelectPaymentAccount = viewModel::selectLoanPaymentAccount,
+            onSelectScheduleInstallment = viewModel::selectLoanScheduleInstallment,
+            onOperationOccurredAt = viewModel::selectLoanOperationOccurredAt,
             onRepaymentMethod = viewModel::selectLoanRepaymentMethod,
             onStrategy = viewModel::selectLoanStrategy,
+            onRateType = viewModel::selectLoanRateType,
+            onFrequency = viewModel::selectLoanFrequency,
+            onPrepaymentPolicy = viewModel::selectLoanPrepaymentPolicy,
+            onRoundingMode = viewModel::selectLoanRoundingMode,
+            onWizardNext = viewModel::nextLoanWizardStep,
+            onWizardBack = viewModel::previousLoanWizardStep,
+            onAddTranche = viewModel::addLoanWizardTranche,
+            onSelectWizardTranche = viewModel::selectLoanWizardTranche,
+            onAddRatePeriod = viewModel::addLoanRatePeriod,
+            onEditRatePeriod = viewModel::editLoanRatePeriod,
             onPreview = viewModel::previewLoan,
             onSave = viewModel::saveLoan,
             onSimulate = viewModel::simulateLoan,
@@ -85,13 +99,14 @@ internal fun loanFixedAction(
     pending: Boolean,
     onSave: () -> Unit,
 ): (@Composable BoxScope.() -> Unit)? {
-    if (screenId !in setOf("REC-018", "REC-019", "LOA-002", "LOA-003", "LOA-004")) return null
+    if (screenId !in setOf("REC-018", "REC-019", "LOA-002", "LOA-003", "LOA-004", "LOA-005")) return null
     return {
-        val presentation = (state as? LoanLoadState.Content)?.state?.presentation
+        val content = (state as? LoanLoadState.Content)?.state
+        val presentation = content?.presentation
         LedgerSaveFab(
             onSave,
             submitting = pending || presentation in setOf(LoanPresentation.SAVING, LoanPresentation.GENERATING_SCHEDULE),
-            enabled = !pending,
+            enabled = !pending && content?.let { LoanPolicy.canSave(it, screenId) } == true,
         )
     }
 }

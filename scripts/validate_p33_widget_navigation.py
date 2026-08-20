@@ -247,7 +247,7 @@ def validate_schema_resources_tests() -> list[str]:
         "allP33GlobalTransferSettingsAndNotificationStatesRender",
         "moreTransferSettingsHelpAndPermissionUseAllThreeLocales",
         "durableOperationCenterListsNewestEncryptedOperationsWithoutParameters",
-        "encryptedVersionOneDatabaseMigratesToVersionThreeWithoutLosingLedgerData",
+        "encryptedVersionOneDatabaseMigratesToVersionFourWithoutLosingLedgerData",
     ))
     for module in ("app", "widget", "feature/settings", "feature/transfer"):
         localized: list[set[str]] = []

@@ -65,6 +65,15 @@ public data class CategorySubmission(
 public data class MerchantSubmission(val merchantId: StableId?, val name: String, val aliases: Set<String>)
 public data class PlaceSubmission(val placeId: StableId?, val name: String, val latitudeE7: Int, val longitudeE7: Int, val merchantId: StableId?)
 
+public data class ManagementMapPoint(
+    val id: StableId,
+    val label: String,
+    val latitudeE7: Int,
+    val longitudeE7: Int,
+    val recordCount: Long,
+    val draft: Boolean = false,
+)
+
 public data class ManagementActions(
     val onNavigate: (screenId: String, stableArguments: Map<String, StableId>, enumArguments: Map<String, String>) -> Unit,
     val onSaveCategory: (CategorySubmission) -> Unit,
@@ -78,4 +87,8 @@ public data class ManagementActions(
     val onRetry: () -> Unit,
 )
 
-public typealias PlaceMapSlot = @androidx.compose.runtime.Composable (places: List<PlaceReferenceView>, unavailable: Boolean) -> Unit
+public typealias PlaceMapSlot = @androidx.compose.runtime.Composable (
+    points: List<ManagementMapPoint>,
+    unavailable: Boolean,
+    onCoordinateSelected: (latitudeE7: Int, longitudeE7: Int) -> Unit,
+) -> Unit

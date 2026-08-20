@@ -42,6 +42,12 @@ class P24BatchMutationTest(unittest.TestCase):
     def test_large_table_cannot_be_eagerly_materialized(self) -> None:
         self.assertTrue(self.mutate("BatchRecordScreens.kt", "rowCount = state.rows.size", "rows = state.rows.map"))
 
+    def test_complex_row_cannot_fall_back_to_an_independent_lazy_column(self) -> None:
+        self.assertTrue(self.mutate("BatchRecordScreens.kt", "TransactionEditorScaffold(", "LazyColumn("))
+
+    def test_batch_reference_selector_cannot_return_to_cycle_only_behavior(self) -> None:
+        self.assertTrue(self.mutate("BatchRecordScreens.kt", "record_search_category", "cycle_category_only"))
+
     def test_swipe_delete_cannot_enter_batch_ui(self) -> None:
         sources = copy.deepcopy(self.sources)
         path = next(path for path in sources if path.endswith("BatchRecordScreens.kt"))

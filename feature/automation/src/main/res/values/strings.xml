@@ -126,4 +126,10 @@
     <string name="automation_weekend_none">不调整</string>
     <string name="automation_weekend_previous">移到前一工作日</string>
     <string name="automation_weekend_next">移到后一工作日</string>
+    <string name="automation_filter_all">全部</string><string name="automation_filter_active">使用中</string><string name="automation_filter_paused">已暂停</string><string name="automation_filter_archived">已归档</string><string name="automation_filter_empty">当前搜索或筛选下没有项目。</string><string name="automation_sort">排序</string><string name="automation_sort_name">按名称</string><string name="automation_sort_recent">按最近修订</string><string name="automation_archive_template">归档模板</string>
+    <string name="automation_icon">模板图标</string><string name="automation_icon_record">记账</string><string name="automation_icon_account">账户</string><string name="automation_icon_transfer">转账</string><string name="automation_icon_calendar">周期</string>
+    <string name="automation_none">不设置</string><string name="automation_secondary_account">第二账户</string><string name="automation_card">卡片</string><string name="automation_merchant">商户</string><string name="automation_project">项目</string><string name="automation_goal">目标</string><string name="automation_settlement">互请活动</string>
+    <string name="automation_edit_template_place">在模板中选择固定地点</string><string name="automation_nth_weekday">星期几</string><string name="automation_choose_date">选择日期</string><string name="automation_no_end_date">不设置结束日期</string><string name="automation_rule_summary">%1$s · 每 %2$d 个周期 · 从 %3$s</string>
+    <string name="automation_review_selected">逐项检查</string><string name="automation_skip_selected">跳过所选</string><string name="automation_confirm_and_post">确认并进入完整表单</string><string name="automation_cancel_candidate">取消</string>
+    <string name="automation_candidate_error_amount">模板金额需要补充或修正。</string><string name="automation_candidate_error_account">模板账户已不可用，请重新选择。</string><string name="automation_candidate_error_category">模板分类已不可用，请重新选择。</string><string name="automation_candidate_error_source">候选来源已不可用。</string><string name="automation_candidate_error_fields">模板字段不完整，请在完整表单中修正。</string>
 </resources>

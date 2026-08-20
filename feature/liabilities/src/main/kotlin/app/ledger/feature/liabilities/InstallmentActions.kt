@@ -3,6 +3,7 @@ package app.ledger.feature.liabilities
 import app.ledger.core.common.StableId
 import app.ledger.finance.domain.InstallmentFeeRateType
 import app.ledger.finance.domain.InstallmentRefundPolicy
+import java.math.RoundingMode
 
 public data class InstallmentActions(
     val onRetry: () -> Unit,
@@ -10,6 +11,7 @@ public data class InstallmentActions(
     val onFieldChanged: (InstallmentField, String) -> Unit,
     val onFeeModelChanged: (InstallmentFeeRateType) -> Unit,
     val onRefundPolicyChanged: (InstallmentRefundPolicy) -> Unit,
+    val onRoundingModeChanged: (RoundingMode) -> Unit,
     val onSelectPurchase: (StableId) -> Unit,
     val onPreview: () -> Unit,
     val onCalculateSettlement: () -> Unit,

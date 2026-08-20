@@ -11,8 +11,11 @@ package app.ledger.core.designsystem
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -30,16 +34,23 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -52,6 +63,8 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -71,7 +84,7 @@ public fun AmountText(
     val accessible = if (hidden) stringResource(R.string.ledger_amount_hidden) else model.fullAccessibleText
     Text(
         text = display,
-        modifier = modifier.testTag(LedgerTestTags.AMOUNT).clearAndSetSemantics { contentDescription = accessible },
+        modifier = modifier.testTag(LedgerTestTags.AMOUNT).clearAndSetSemantics { text = AnnotatedString(accessible) },
         style = amountStyle(size),
         color = amountColor(model.semantic),
         textAlign = if (size == AmountSize.LIST) TextAlign.End else TextAlign.Start,
@@ -133,7 +146,10 @@ public fun MetricCard(
         containerColor = if (variant == MetricCardVariant.EMPHASIZED) LedgerTheme.colors.material.primaryContainer else LedgerTheme.colors.material.surfaceContainer,
     ) {
         Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
-            Text(title, style = LedgerTheme.typography.labelMedium)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), style = LedgerTheme.typography.labelMedium)
+                if (onClick != null) LedgerIconView(LedgerIcon.CHEVRON, size = LedgerTheme.dimensions.iconXs)
+            }
             AmountText(value, if (variant == MetricCardVariant.EMPHASIZED) AmountSize.LARGE else AmountSize.MEDIUM)
             if (comparison != null) Text(comparison, style = LedgerTheme.typography.bodyMedium)
             if (explanation != null) Text(explanation, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
@@ -147,6 +163,7 @@ public fun StatusBadge(
     variant: LedgerStatusVariant,
     modifier: Modifier = Modifier,
 ) {
+    val displayedText = if (variant == LedgerStatusVariant.CANDIDATE) stringResource(R.string.ledger_candidate) else text
     val (container, content) = when (variant) {
         LedgerStatusVariant.POSITIVE -> LedgerTheme.colors.positive.container to LedgerTheme.colors.positive.onContainer
         LedgerStatusVariant.INFO -> LedgerTheme.colors.info.container to LedgerTheme.colors.info.onContainer
@@ -160,12 +177,23 @@ public fun StatusBadge(
         modifier
             .heightIn(min = LedgerTheme.dimensions.iconMd)
             .clip(LedgerTheme.shapes.full)
+            .then(
+                if (variant == LedgerStatusVariant.CANDIDATE) {
+                    Modifier.border(
+                        LedgerTheme.dimensions.strokeStandard,
+                        LedgerTheme.colors.material.secondary,
+                        LedgerTheme.shapes.full,
+                    )
+                } else {
+                    Modifier
+                },
+            )
             .background(container)
             .padding(horizontal = LedgerTheme.spacing.xs, vertical = LedgerTheme.spacing.hairline),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text,
+            displayedText,
             color = content,
             style = LedgerTheme.typography.labelMedium,
             textDecoration = if (variant == LedgerStatusVariant.DELETED) TextDecoration.LineThrough else null,
@@ -181,11 +209,13 @@ public fun CategoryGrid(
     modifier: Modifier = Modifier,
     onCreate: (() -> Unit)? = null,
     createLabel: String? = null,
+    state: androidx.compose.foundation.lazy.grid.LazyGridState = rememberLazyGridState(),
 ) {
     BoxWithConstraints(modifier.testTag(LedgerTestTags.CATEGORY_GRID)) {
         val columns = LedgerTheme.dimensions.categoryColumns(maxWidth)
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
+            state = state,
             horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
             verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
         ) {
@@ -213,16 +243,20 @@ public fun CategoryTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val haptic = LocalHapticFeedback.current
     val palette = LedgerTheme.colors.categoryPalette.firstOrNull { it.id == model.paletteId }
         ?: LedgerTheme.colors.categoryPalette.first { it.id == "slate" }
     Card(
-        onClick = onClick,
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onClick()
+        },
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = LedgerTheme.dimensions.categoryTileMinHeight)
             .semantics {
                 this.selected = selected
-                contentDescription = model.accessibleLabel
+                text = AnnotatedString(model.accessibleLabel)
                 role = Role.Button
             },
         shape = LedgerTheme.shapes.lg,
@@ -234,32 +268,57 @@ public fun CategoryTile(
             if (selected) LedgerTheme.colors.material.primary else LedgerTheme.colors.material.outlineVariant,
         ),
     ) {
-        Column(
-            Modifier.fillMaxWidth().padding(LedgerTheme.spacing.xs),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs),
-        ) {
-            Box(
-                Modifier.size(LedgerTheme.dimensions.categoryIconContainer).clip(LedgerTheme.shapes.full).background(
-                    if (model.deleted) LedgerTheme.colors.material.surfaceContainerHighest else palette.container,
-                ),
-                contentAlignment = Alignment.Center,
-            ) { LedgerIconView(model.icon, tint = if (model.deleted) LedgerTheme.colors.material.onSurfaceVariant else palette.foreground) }
-            Text(
-                model.name,
-                style = LedgerTheme.typography.bodyMedium,
-                maxLines = 2,
-                textAlign = TextAlign.Center,
-                textDecoration = if (model.deleted) TextDecoration.LineThrough else null,
-            )
-            if (model.isTopLevel) {
+        Box(Modifier.fillMaxWidth()) {
+            Column(
+                Modifier.fillMaxWidth().padding(LedgerTheme.spacing.xs),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs),
+            ) {
+                Box(
+                    Modifier.size(LedgerTheme.dimensions.categoryIconContainer).clip(LedgerTheme.shapes.full).background(
+                        if (model.deleted) LedgerTheme.colors.material.surfaceContainerHighest else palette.container,
+                    ),
+                    contentAlignment = Alignment.Center,
+                ) { LedgerIconView(model.icon, tint = if (model.deleted) LedgerTheme.colors.material.onSurfaceVariant else palette.foreground) }
                 Text(
-                    stringResource(R.string.ledger_top_level_category),
-                    style = LedgerTheme.typography.labelSmall,
-                    color = LedgerTheme.colors.material.onSurfaceVariant,
+                    model.name,
+                    style = LedgerTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    textDecoration = if (model.deleted) TextDecoration.LineThrough else null,
+                )
+                model.supportingText?.let { supporting ->
+                    Text(
+                        supporting,
+                        style = LedgerTheme.typography.labelSmall,
+                        color = LedgerTheme.colors.material.onSurfaceVariant,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                if (model.isTopLevel) {
+                    Text(
+                        stringResource(R.string.ledger_top_level_category),
+                        style = LedgerTheme.typography.labelSmall,
+                        color = LedgerTheme.colors.material.onSurfaceVariant,
+                    )
+                }
+                if (model.deleted) {
+                    Text(
+                        stringResource(R.string.ledger_deleted),
+                        style = LedgerTheme.typography.labelSmall,
+                        color = LedgerTheme.colors.material.onSurfaceVariant,
+                    )
+                }
+            }
+            if (selected) {
+                LedgerIconView(
+                    LedgerIcon.CHECK,
+                    Modifier.align(Alignment.TopEnd).padding(LedgerTheme.spacing.xs),
+                    tint = LedgerTheme.colors.material.primary,
+                    size = LedgerTheme.dimensions.iconXs,
                 )
             }
-            if (selected) LedgerIconView(LedgerIcon.CHECK, tint = LedgerTheme.colors.material.primary, size = LedgerTheme.dimensions.iconXs)
         }
     }
 }
@@ -396,29 +455,24 @@ private val REFERENCE_STYLE_ICONS: List<LedgerIcon> = listOf(
 public fun JournalTransactionRow(
     model: JournalTransactionUiModel,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     showRunningBalance: Boolean = model.runningBalance != null,
+    enabled: Boolean = true,
 ) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .heightIn(min = LedgerTheme.dimensions.listRowStandard)
-            .testTag(LedgerTestTags.JOURNAL_ROW)
-            .clearAndSetSemantics {
-                contentDescription = model.accessibleText
-                role = Role.Button
-                onClick {
-                    onClick()
-                    true
-                }
-                onLongClick {
-                    onLongClick()
-                    true
-                }
-            }
+    val rowModifier = modifier
+        .fillMaxWidth()
+        .heightIn(min = LedgerTheme.dimensions.listRowStandard)
+        .testTag(LedgerTestTags.JOURNAL_ROW)
+    val interactionModifier = if (enabled) {
+        rowModifier
+            .semantics(mergeDescendants = true) { role = Role.Button }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = LedgerTheme.spacing.xs),
+    } else {
+        rowModifier
+    }
+    Row(
+        interactionModifier.padding(vertical = LedgerTheme.spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
     ) {
@@ -512,11 +566,25 @@ public fun ReferenceDataRow(
                     Text(model.supportingText, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
                 }
             }
-            if (model.status != LedgerStatusVariant.NEUTRAL) StatusBadge(model.status.name, model.status)
+            if (model.status != LedgerStatusVariant.NEUTRAL) StatusBadge(ledgerStatusLabel(model.status), model.status)
             LedgerIconView(LedgerIcon.CHEVRON)
         }
     }
 }
+
+@Composable
+private fun ledgerStatusLabel(status: LedgerStatusVariant): String = stringResource(
+    when (status) {
+        LedgerStatusVariant.NEUTRAL -> R.string.ledger_status_neutral
+        LedgerStatusVariant.POSITIVE -> R.string.ledger_status_positive
+        LedgerStatusVariant.INFO -> R.string.ledger_status_info
+        LedgerStatusVariant.WARNING -> R.string.ledger_status_warning
+        LedgerStatusVariant.DANGER -> R.string.ledger_status_danger
+        LedgerStatusVariant.CANDIDATE -> R.string.ledger_candidate
+        LedgerStatusVariant.ARCHIVED -> R.string.ledger_status_archived
+        LedgerStatusVariant.DELETED -> R.string.ledger_deleted
+    },
+)
 
 @Composable
 public fun ProgressSummary(
@@ -528,7 +596,7 @@ public fun ProgressSummary(
         LedgerProgressState.WARNING -> LedgerTheme.colors.warning
         LedgerProgressState.OVER_LIMIT -> LedgerTheme.colors.danger
     }
-    Column(modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = model.accessibleText }) {
+    Column(modifier.fillMaxWidth().clearAndSetSemantics { text = AnnotatedString(model.accessibleText) }) {
         Row(Modifier.fillMaxWidth()) {
             Text(model.title, Modifier.weight(1f), style = LedgerTheme.typography.titleSmall)
             Text(model.valueText, style = LedgerTheme.typography.labelLarge)
@@ -556,7 +624,12 @@ public fun MoneyExpressionField(
     roundingExplanation: String? = null,
     showOperatorToolbar: Boolean = true,
     onOperator: (String) -> Unit = {},
+    autoFocus: Boolean = false,
+    focusRequester: FocusRequester = remember { FocusRequester() },
 ) {
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) focusRequester.requestFocus()
+    }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
         LedgerTextField(
             value = expression,
@@ -565,6 +638,7 @@ public fun MoneyExpressionField(
             errorText = errorText,
             keyboardType = KeyboardType.Decimal,
             required = true,
+            modifier = Modifier.focusRequester(focusRequester),
         )
         if (normalizedExpression.isNotBlank()) Text(normalizedExpression, style = LedgerTheme.typography.bodySmall)
         if (result != null) AmountText(result, AmountSize.MEDIUM)
@@ -588,6 +662,31 @@ public fun FilterBuilder(
     onReset: () -> Unit,
     onApply: () -> Unit,
     modifier: Modifier = Modifier,
+    showActions: Boolean = true,
+) {
+    if (showActions) {
+        LedgerScaffold(
+            modifier.fillMaxSize(),
+            fixedAction = { FilterBuilderActionBar(onReset, onApply) },
+        ) { padding ->
+            FilterBuilderContent(
+                dimensions,
+                naturalLanguageSummary,
+                onRemove,
+                Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
+            )
+        }
+    } else {
+        FilterBuilderContent(dimensions, naturalLanguageSummary, onRemove, modifier)
+    }
+}
+
+@Composable
+private fun FilterBuilderContent(
+    dimensions: List<FilterDimensionUiModel>,
+    naturalLanguageSummary: String,
+    onRemove: (FilterChipUiModel) -> Unit,
+    modifier: Modifier,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.lg)) {
         Text(naturalLanguageSummary, style = LedgerTheme.typography.bodyMedium)
@@ -598,7 +697,16 @@ public fun FilterBuilder(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm, Alignment.End)) {
+    }
+}
+
+@Composable
+public fun FilterBuilderActionBar(onReset: () -> Unit, onApply: () -> Unit, modifier: Modifier = Modifier) {
+    LedgerCard(modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm, Alignment.End),
+        ) {
             LedgerButton(stringResource(R.string.ledger_reset), onReset, variant = LedgerButtonVariant.SECONDARY)
             LedgerButton(stringResource(R.string.ledger_apply), onApply)
         }
@@ -613,12 +721,13 @@ public fun AttachmentField(
     onCancel: (AttachmentUiModel) -> Unit,
     modifier: Modifier = Modifier,
     addLabel: String,
+    onRetry: (AttachmentUiModel) -> Unit = {},
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         attachments.forEach { attachment ->
             LedgerCard(onClick = { onOpen(attachment) }) {
                 Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
-                    LedgerIconView(LedgerIcon.ATTACHMENT)
+                    LedgerIconView(attachment.icon)
                     Column(Modifier.weight(1f).padding(horizontal = LedgerTheme.spacing.xs)) {
                         Text(attachment.displayName, maxLines = 2)
                         Text("${attachment.typeLabel} · ${attachment.sizeText}", style = LedgerTheme.typography.bodySmall)
@@ -628,9 +737,24 @@ public fun AttachmentField(
                                 accessibleText = stringResource(R.string.ledger_attachment_import_progress),
                             )
                         }
+                        if (attachment.state == AttachmentTransferState.FAILED) {
+                            Text(
+                                stringResource(R.string.ledger_attachment_failed),
+                                style = LedgerTheme.typography.bodySmall,
+                                color = LedgerTheme.colors.danger.base,
+                            )
+                        }
                     }
                     if (attachment.state == AttachmentTransferState.IMPORTING) {
                         LedgerIconButton(LedgerIcon.CLOSE, stringResource(R.string.ledger_cancel), { onCancel(attachment) })
+                    }
+                    if (attachment.state == AttachmentTransferState.FAILED) {
+                        LedgerButton(
+                            stringResource(R.string.ledger_retry),
+                            { onRetry(attachment) },
+                            variant = LedgerButtonVariant.TEXT,
+                            compact = true,
+                        )
                     }
                 }
             }

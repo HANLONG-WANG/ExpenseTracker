@@ -7,6 +7,7 @@
     <string name="onboarding_continue">继续</string>
     <string name="onboarding_start">开始记账</string>
     <string name="onboarding_required">必须接受后才能继续</string>
+    <string name="onboarding_submitting">正在安全保存此步骤，请稍候…</string>
     <string name="onboarding_language_title">选择界面语言</string>
     <string name="onboarding_currency_title">选择本位币</string>
     <string name="onboarding_zone_title">确认默认时区</string>
@@ -32,6 +33,8 @@
     <string name="onboarding_language_en">English</string>
     <string name="onboarding_currency_search">搜索货币代码</string>
     <string name="onboarding_zone_search">搜索时区</string>
+    <string name="onboarding_system_zone">当前系统时区与时间</string>
+    <string name="onboarding_zone_preview">所选时区当前时间：%1$s</string>
     <string name="onboarding_privacy_document">隐私政策（v1.0，2026-08-12）\n\n数据控制与存储：本应用无需在线账户，账本、附件、设置和操作记录默认只保存在本设备，并分别使用 SQLCipher、Android Keystore 和认证加密保护。保险库卡号和安全码具有独立密钥与逐次认证边界。\n\n网络与第三方：离线记账不依赖网络。只有在你主动使用时，应用才会访问地图样式、只含币种对与日期的汇率服务、Google Drive drive.file 范围内的加密备份，或你另行同意的诊断端点。应用不含广告，不出售数据，也不发送金额、账户、卡片、备注、商户、地点、附件或备份正文。\n\n诊断：功能遥测和崩溃报告分别默认关闭；接受本政策前不会收集或发送。启用后仅使用固定枚举和固定白名单字段，安装标识每 30 天轮换，功能事件保留不超过 90 天，崩溃报告保留不超过 180 天。你可以查看或删除本机队列；关闭后会删除对应队列和安装标识。\n\n权限与导出：通知、文件目录、定位、生物识别和 Drive 授权只在相关功能需要时请求。普通导出永不包含完整卡号、安全码或保险库字段，位置坐标默认关闭；备份始终加密。外部导出和 Drive 备份由你控制，不会因“清除本机数据”而被删除，云端删除有独立的重新认证入口。\n\n你的控制：你可以在设置中撤回诊断同意、清除本机数据、单独删除云端备份或卸载应用。恢复密码无法找回，丢失后没有后台或服务器绕过方式。关于页提供当前版本、源代码和开源许可。正式发布所用政策网址与支持联系信息由发布者在商店资料中公布。</string>
     <string name="onboarding_privacy_consent">我已阅读并接受隐私政策</string>
     <string name="onboarding_telemetry_summary">功能统计仅包含白名单事件与粗粒度性能信息，可随时关闭。</string>
@@ -39,6 +42,8 @@
     <string name="onboarding_crash_toggle">允许脱敏崩溃报告</string>
     <string name="onboarding_lock_toggle">启用应用锁</string>
     <string name="onboarding_lock_scope">返回应用时验证设备凭据或生物识别；保险库每次操作仍需独立认证。</string>
+    <string name="onboarding_device_security_available">设备已配置安全锁屏，可以启用应用锁。</string>
+    <string name="onboarding_device_security_missing">设备尚未配置安全锁屏；请先在系统设置中配置，当前无法启用应用锁。</string>
     <string name="onboarding_timeout_immediate">立即锁定</string>
     <string name="onboarding_timeout_one_minute">1 分钟后</string>
     <string name="onboarding_timeout_five_minutes">5 分钟后</string>
@@ -47,12 +52,16 @@
     <string name="onboarding_recovery_password">恢复密码</string>
     <string name="onboarding_recovery_confirm">再次输入恢复密码</string>
     <string name="onboarding_backup_later_note">备份目的地将在备份阶段通过系统文件选择器配置；本步骤可跳过。</string>
+    <string name="onboarding_backup_destination">备份位置</string>
+    <string name="onboarding_backup_not_configured">尚未配置。完成引导后可通过系统文件选择器选择本地目录或连接 Drive。</string>
     <string name="onboarding_account_name">账户名称</string>
     <string name="onboarding_account_cash">现金</string>
     <string name="onboarding_account_bank">银行账户</string>
     <string name="onboarding_category_name">分类名称</string>
     <string name="onboarding_category_expense">支出分类</string>
     <string name="onboarding_category_income">收入分类</string>
+    <string name="onboarding_category_icon">分类图标</string>
+    <string name="onboarding_category_color">分类颜色</string>
     <string name="onboarding_complete_summary">没有在线登录，也没有导入任何示例数据。</string>
     <string name="onboarding_complete_optional_summary">首账户：%1$s\n首分类：%2$s\n恢复密码：%3$s</string>
     <string name="onboarding_created">已创建</string>

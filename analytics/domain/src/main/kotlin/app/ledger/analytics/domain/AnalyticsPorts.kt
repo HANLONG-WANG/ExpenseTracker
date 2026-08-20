@@ -134,6 +134,10 @@ data class DrilldownTransaction(
     val kindKey: String,
     val amountMinor: Long,
     val currency: CurrencyCode,
+    val categoryLabel: String? = null,
+    val accountLabel: String? = null,
+    val cardLabel: String? = null,
+    val merchantLabel: String? = null,
 )
 
 data class DrilldownPage(

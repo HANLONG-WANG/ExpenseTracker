@@ -31,6 +31,7 @@ import app.ledger.core.designsystem.AccessibleDataTable
 import app.ledger.core.designsystem.AccessibleTableUiModel
 import app.ledger.core.designsystem.FilterChipUiModel
 import app.ledger.core.designsystem.FilterDimensionUiModel
+import app.ledger.core.designsystem.FilterBuilderActionBar
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
@@ -38,11 +39,15 @@ import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerLoadingState
+import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.SelectorField
+import app.ledger.core.money.LocaleNumberFormatter
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @Composable
 internal fun ConsumptionMapScreen(
@@ -69,26 +74,31 @@ internal fun ConsumptionMapScreen(
         return
     }
     val unavailable = state.presentation == AnalysisPresentation.MAP_UNAVAILABLE
-    LazyColumn(
+    LedgerScaffold(
         Modifier.fillMaxSize().testTag(LedgerTestTags.CONSUMPTION_MAP),
-        contentPadding = PaddingValues(LedgerTheme.spacing.md),
-        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
-    ) {
-        item { MapControls(result, state.consumptionMapFilterOptions, actions) }
-        item {
-            LedgerBanner(
-                stringResource(R.string.analysis_map_historical_fx),
-                LedgerBannerVariant.INFO,
-            )
-        }
-        item { mapContent(result, unavailable) }
-        if (result.resultLimited) {
-            item { LedgerBanner(stringResource(R.string.analysis_map_viewport_limited), LedgerBannerVariant.NEUTRAL) }
-        }
-        if (unavailable) {
-            item { LedgerText(stringResource(R.string.analysis_map_list_alternative), LedgerTextRole.SECTION) }
-            items(result.points, key = { it.id.toString() }) { point ->
-                MapPointRow(result, point, actions)
+        fixedAction = { FilterBuilderActionBar(actions.onResetMapFilters, actions.onRetry) },
+    ) { padding ->
+        LazyColumn(
+            Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            item { MapControls(result, state.consumptionMapFilterOptions, actions) }
+            item {
+                LedgerBanner(
+                    stringResource(R.string.analysis_map_historical_fx),
+                    LedgerBannerVariant.INFO,
+                )
+            }
+            item { mapContent(result, unavailable) }
+            if (result.resultLimited) {
+                item { LedgerBanner(stringResource(R.string.analysis_map_viewport_limited), LedgerBannerVariant.NEUTRAL) }
+            }
+            if (unavailable) {
+                item { LedgerText(stringResource(R.string.analysis_map_list_alternative), LedgerTextRole.SECTION) }
+                items(result.points, key = { it.id.toString() }) { point ->
+                    MapPointRow(result, point, actions)
+                }
             }
         }
     }
@@ -221,6 +231,7 @@ private fun MapControls(
             onRemove = { actions.onRemoveMapFilter(it.stableKey) },
             onReset = actions.onResetMapFilters,
             onApply = actions.onRetry,
+            showActions = false,
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
             SelectorField(
@@ -392,7 +403,7 @@ private fun MapDetailContent(detail: ConsumptionMapDetail, actions: AnalysisActi
                         listOf(
                             category.label ?: stringResource(R.string.analysis_unassigned),
                             AnalysisPolicy.money(category.baseAmountMinor, detail.baseCurrency, locale).formatted,
-                            category.transactionCount.toString(),
+                            LocaleNumberFormatter.integer(category.transactionCount, locale),
                         )
                     },
                 ),
@@ -402,7 +413,10 @@ private fun MapDetailContent(detail: ConsumptionMapDetail, actions: AnalysisActi
         items(detail.transactionPreview, key = { it.transactionId.toString() }) { row ->
             LedgerCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                    LedgerText("${row.localDate} · ${row.kindKey}", LedgerTextRole.BODY)
+                    LedgerText(
+                        "${DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(row.localDate)} · ${transactionKindLabel(row.kindKey)}",
+                        LedgerTextRole.BODY,
+                    )
                     LedgerText(AnalysisPolicy.money(row.amountMinor, row.currency, locale).formatted, LedgerTextRole.SUPPORTING)
                 }
             }

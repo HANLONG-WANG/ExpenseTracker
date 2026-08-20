@@ -2,9 +2,11 @@
     <string name="vault_title">卡片保险库</string><string name="vault_card_title">保险库卡片</string><string name="vault_edit_title">编辑保险库内容</string>
     <string name="vault_security_banner">保险库始终独立锁定。每次查看、复制或编辑都会重新验证；应用解锁不会解锁保险库。</string>
     <string name="vault_device_security_missing">设备尚未设置安全屏幕锁，无法启用保险库。</string><string name="vault_open_security_settings">打开系统安全设置</string>
-    <string name="vault_empty">没有可用卡片</string><string name="vault_empty_body">先在账户中创建实体卡，再为其保存保险库内容。</string><string name="vault_open_cards">打开系统设置</string>
+    <string name="vault_empty">没有可用卡片</string><string name="vault_empty_body">先在账户中创建实体卡，再为其保存保险库内容。</string><string name="vault_open_cards">打开账户与卡片</string>
+    <string name="vault_locked_body">保险库列表已锁定。验证后可访问 %1$d 张可用卡片。</string><string name="vault_unlock_list">验证并打开保险库</string><string name="vault_unlocked_session">保险库列表已在此前台会话中通过验证。查看具体秘密仍需重新验证。</string>
     <string name="vault_tail">尾号 %1$s</string><string name="vault_no_tail">未保存尾号</string><string name="vault_configured">已配置</string><string name="vault_not_configured">未配置</string>
     <string name="vault_auto_hidden">敏感内容已自动隐藏。</string><string name="vault_auth_failed">身份验证失败；敏感内容仍为隐藏状态。</string><string name="vault_authenticating">正在使用设备安全验证</string><string name="vault_auth_success">身份验证成功</string><string name="vault_auth_cancelled">已取消身份验证</string>
     <string name="vault_security_code">安全码</string><string name="vault_edit">编辑保险库内容</string><string name="vault_edit_auth_required">编辑前需要一次新的设备安全验证。</string><string name="vault_authenticate_edit">验证并编辑</string><string name="vault_saving">正在加密并保存</string>
     <string name="vault_holder">持卡人</string><string name="vault_primary_number">完整卡号</string><string name="vault_expiry">有效期</string><string name="vault_custom_fields">自定义敏感字段</string><string name="vault_save">加密保存</string>
+    <string name="vault_custom_field_label">字段名称</string><string name="vault_custom_field_value">敏感值</string><string name="vault_add_custom_field">添加自定义字段</string><string name="vault_remove_custom_field">移除字段</string><string name="vault_custom_field_incomplete">请同时输入字段名称和敏感值，或移除未完成的字段。</string><string name="vault_custom_fields_too_long">自定义字段超出加密存储限制。</string>
 </resources>

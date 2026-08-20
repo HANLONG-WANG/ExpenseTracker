@@ -15,6 +15,7 @@ import app.ledger.feature.automation.AutomationActions
 import app.ledger.feature.automation.AutomationDestination
 import app.ledger.feature.automation.AutomationLoadState
 import app.ledger.feature.automation.AutomationPresentation
+import app.ledger.feature.automation.AutomationPolicy
 import app.ledger.feature.automation.R as AutomationR
 
 @Composable
@@ -57,6 +58,9 @@ internal fun AutomationRootDestination(
                 onNavigationChanged()
             },
             onSearch = viewModel::updateAutomationSearch,
+            onTemplateFilter = viewModel::updateAutomationTemplateFilter,
+            onTemplateSort = viewModel::updateAutomationTemplateSort,
+            onArchiveBlueprint = viewModel::archiveAutomationBlueprint,
             onBlueprintField = viewModel::updateAutomationBlueprintField,
             onBlueprintKind = viewModel::updateAutomationBlueprintKind,
             onBlueprintReference = viewModel::updateAutomationBlueprintReference,
@@ -65,16 +69,23 @@ internal fun AutomationRootDestination(
             onRecurrenceBlueprint = viewModel::selectAutomationRecurrenceBlueprint,
             onFrequency = viewModel::updateAutomationFrequency,
             onWeekday = viewModel::toggleAutomationWeekday,
+            onNthWeekday = viewModel::updateAutomationNthWeekday,
             onMissingDay = viewModel::updateAutomationMissingDay,
             onWeekend = viewModel::updateAutomationWeekend,
             onGenerationMode = viewModel::updateAutomationGenerationMode,
             onNotifyCandidate = viewModel::updateAutomationNotifyCandidate,
+            onFixedPlace = viewModel::updateAutomationFixedPlace,
             onSaveRecurrence = viewModel::saveAutomationRecurrence,
+            onApplyRule = viewModel::applyAutomationRule,
+            onSeriesFilter = viewModel::updateAutomationSeriesFilter,
             onTemplateSelected = viewModel::selectAutomationTemplate,
             onCandidateSelected = viewModel::selectAutomationCandidate,
             onCandidateToggle = viewModel::toggleAutomationCandidate,
+            onReviewSelectedCandidates = viewModel::reviewSelectedAutomationCandidates,
+            onSkipSelectedCandidates = viewModel::skipSelectedAutomationCandidates,
             onConfirmCandidate = viewModel::confirmAutomationCandidate,
             onSkipCandidate = viewModel::skipAutomationCandidate,
+            onCancelCandidate = viewModel::cancelAutomationCandidate,
             onScope = viewModel::updateAutomationScope,
             onApplyScope = viewModel::applyAutomationScope,
         ),
@@ -90,11 +101,12 @@ internal fun automationFixedAction(
 ): (@Composable BoxScope.() -> Unit)? {
     if (screenId !in setOf("AUT-003", "AUT-005")) return null
     return {
-        val presentation = (state as? AutomationLoadState.Content)?.state?.presentation
+        val content = (state as? AutomationLoadState.Content)?.state
+        val presentation = content?.presentation
         LedgerSaveFab(
             onClick = if (screenId == "AUT-003") onSaveBlueprint else onSaveRecurrence,
             submitting = pending || presentation == AutomationPresentation.SAVING,
-            enabled = !pending,
+            enabled = !pending && content?.let { if (screenId == "AUT-003") AutomationPolicy.canSaveBlueprint(it) else AutomationPolicy.canSaveRecurrence(it) } == true,
         )
     }
 }

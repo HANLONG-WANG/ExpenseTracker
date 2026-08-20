@@ -51,6 +51,10 @@ internal fun OrdinaryRecordRootDestination(
             onSettlementServiceFee = viewModel::updateRecordSettlementServiceFee,
             onOccurredAt = viewModel::updateRecordOccurredAt,
             onAddAttachment = onAddAttachment,
+            onOpenAttachment = {
+                viewModel.openRecordAttachment(it)
+                onNavigationChanged()
+            },
             onCancelAttachment = viewModel::cancelRecordAttachment,
             onSave = viewModel::saveOrdinaryRecord,
             onUnsavedDiscard = {
@@ -61,6 +65,17 @@ internal fun OrdinaryRecordRootDestination(
             onReloadConflict = viewModel::reloadRecordConflict,
             onCancelConflict = {
                 viewModel.cancelRecordConflict()
+                onNavigationChanged()
+            },
+            onLocationPoint = viewModel::selectRecordLocationPoint,
+            onLocationCoordinate = viewModel::moveRecordLocationPin,
+            onLocationMapUnavailable = viewModel::recordLocationMapUnavailable,
+            onUseLocation = {
+                viewModel.useRecordLocation()
+                onNavigationChanged()
+            },
+            onClearLocation = {
+                viewModel.clearRecordLocation()
                 onNavigationChanged()
             },
         ),

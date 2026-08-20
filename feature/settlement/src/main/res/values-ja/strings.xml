@@ -16,7 +16,7 @@
     <string name="settlement_additional_banner">精算済みの元取引が変更されました。過去の精算は変更せず、追加精算が必要です。</string>
     <string name="settlement_name">アクティビティ名</string>
     <string name="settlement_description">説明</string>
-    <string name="settlement_start_date">開始日（YYYY-MM-DD）</string>
+    <string name="settlement_start_date">開始日</string>
     <string name="settlement_end_date">終了日（任意）</string>
     <string name="settlement_currency_locked">精算通貨はすべての分担と精算に使用され、事実作成後に暗黙変更されません。</string>
     <string name="settlement_save_activity">アクティビティを保存</string>
@@ -77,5 +77,8 @@
     <string name="settlement_status_archived">アーカイブ済み</string>
     <string name="settlement_project">関連プロジェクト</string><string name="settlement_project_support">任意です。変更は現在の活動設定だけに反映され、過去取引のスナップショットは変更しません。</string><string name="settlement_no_project">プロジェクトなし</string>
     <string name="settlement_move_up">上へ</string><string name="settlement_move_down">下へ</string>
-    <string name="settlement_related_transactions">関連取引</string><string name="settlement_related_empty">この参加者に関連する取引はありません。</string><string name="settlement_related_row">%1$s · 負担は最小単位 %2$d</string>
+    <string name="settlement_related_transactions">関連取引</string><string name="settlement_related_empty">この参加者に関連する取引はありません。</string><string name="settlement_related_row">%1$s · 負担 %2$s</string>
+    <string name="settlement_choose_date">日付を選択</string><string name="settlement_no_end_date">終了日なし</string><string name="settlement_currency">精算通貨</string><string name="settlement_currency_create_support">作成時に選択し、精算事実の作成後は固定されます。</string><string name="settlement_currency_value_locked">精算通貨：%1$s（固定）</string><string name="settlement_payment_date">精算日</string>
+    <string name="settlement_project_value">関連プロジェクト：%1$s</string><string name="settlement_position_row">立替 %1$s · 負担 %2$s · 精算済み %3$s</string><string name="settlement_activity_transactions">アクティビティ取引</string><string name="settlement_activity_transactions_empty">このアクティビティにはまだ取引がありません。参加者と設定は管理できます。</string><string name="settlement_history_preview">最近の精算</string><string name="settlement_history_preview_row">%1$s が %2$s に %3$s 支払う · %4$s</string>
+    <string name="settlement_additional_comparison">追加精算の差額</string><string name="settlement_historical_settled">過去の精算</string><string name="settlement_current_theoretical">現在の理論ポジション</string><string name="settlement_difference">追加差額</string><string name="settlement_suggested_transfers">推奨振替</string>
 </resources>

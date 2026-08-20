@@ -82,7 +82,7 @@ internal object OrdinaryRecordDeviceFixtures {
         onExpression = {}, onOperator = {}, onSelectCategory = {}, onSelectAccount = {}, onSelectCard = {}, onSelectReference = { _, _ -> },
         onNote = {}, onSettlementEnabled = {}, onSettlementActivity = {}, onSettlementPayer = {}, onSettlementSplitMethod = {}, onSettlementChargeDistribution = {}, onSettlementRoundingRule = {},
         onSettlementParticipantIncluded = {}, onSettlementAllocationInput = { _, _ -> }, onSettlementChargeInput = { _, _ -> }, onSettlementTax = {}, onSettlementServiceFee = {},
-        onOccurredAt = { _, _, _ -> }, onAddAttachment = {}, onCancelAttachment = {}, onSave = {}, onUnsavedDiscard = {},
+        onOccurredAt = { _, _, _ -> }, onAddAttachment = {}, onOpenAttachment = {}, onCancelAttachment = {}, onSave = {}, onUnsavedDiscard = {},
         onUnsavedKeepEditing = {}, onReloadConflict = {}, onCancelConflict = {},
     )
 

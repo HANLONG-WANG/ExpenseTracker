@@ -77,6 +77,15 @@ internal fun AnalysisRootDestination(
             onCycleDimension = viewModel::cycleAnalysisDimension,
             onCycleGranularity = viewModel::cycleAnalysisGranularity,
             onCycleComparison = viewModel::cycleAnalysisComparison,
+            onSelectMeasure = viewModel::selectAnalysisMeasure,
+            onSelectDimension = viewModel::selectAnalysisDimension,
+            onSelectGranularity = viewModel::selectAnalysisGranularity,
+            onSelectComparison = viewModel::selectAnalysisComparison,
+            onCycleSort = viewModel::cycleAnalysisSort,
+            onToggleReportFilter = viewModel::toggleAnalysisReportFilter,
+            onRemoveReportFilter = viewModel::removeAnalysisReportFilter,
+            onResetReportFilters = viewModel::resetAnalysisReportFilters,
+            onBuilderStep = viewModel::changeAnalysisBuilderStep,
             onApplyFilter = {
                 if (viewModel.applyAnalysisFilter()) {
                     viewModel.requestRootBack()
@@ -87,6 +96,10 @@ internal fun AnalysisRootDestination(
                 if (viewModel.prepareAnalysisExport()) onNavigationChanged()
             },
             onLoadMore = viewModel::loadNextAnalysisDrilldown,
+            onOpenTransaction = { transactionId ->
+                viewModel.openAnalysisTransaction(transactionId)
+                onNavigationChanged()
+            },
             onRunIntegrity = viewModel::runAnalysisIntegrity,
             onRepairProjection = viewModel::repairAnalysisProjection,
             onToggleTechnicalDetails = viewModel::toggleAnalysisTechnicalDetails,
@@ -109,6 +122,7 @@ internal fun AnalysisRootDestination(
             onAnomalyThresholdChanged = viewModel::updateAnalysisAnomalyThreshold,
             onAnomalyLookbackChanged = viewModel::updateAnalysisAnomalyLookback,
             onSelectExportFormat = viewModel::selectAnalysisExportFormat,
+            onSelectExportScope = viewModel::selectAnalysisExportScope,
             onPrepareExport = {
                 if (viewModel.navigatePreparedReportExport()) onNavigationChanged()
             },

@@ -41,7 +41,7 @@ internal object InstallmentDeviceFixtures {
 
     val actions = InstallmentActions(
         onRetry = {}, onNavigate = { _, _ -> }, onFieldChanged = { _, _ -> }, onFeeModelChanged = {},
-        onRefundPolicyChanged = {}, onSelectPurchase = {}, onPreview = {}, onCalculateSettlement = {}, onApplySettlement = {},
+        onRefundPolicyChanged = {}, onRoundingModeChanged = {}, onSelectPurchase = {}, onPreview = {}, onCalculateSettlement = {}, onApplySettlement = {},
     )
 
     fun snapshot(plans: List<InstallmentPlanView> = listOf(plan())) = InstallmentSnapshot(

@@ -165,7 +165,12 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
             app.ledger.app.settings.ThemeModeProto.THEME_MODE_DARK -> ThemeMode.DARK
             else -> ThemeMode.FOLLOW_SYSTEM
         }
-        LedgerTheme(themeMode, dynamicColor = settings.dynamicColorEnabled, reduceMotion = settings.reduceMotionEnabled) {
+        LedgerTheme(
+            themeMode,
+            dynamicColor = settings.dynamicColorEnabled,
+            reduceMotion = settings.reduceMotionEnabled,
+            ledgerTimeZoneId = settings.zoneId.ifBlank { "UTC" },
+        ) {
             val state = root
             if (recoveryRestoreActive) {
                 RestoreRootDestination(restoreState.screenId, viewModel, onNavigationChanged = {})
@@ -191,6 +196,8 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
                         viewModel::setAccountType,
                         viewModel::updateCategoryName,
                         viewModel::setCategoryDirection,
+                        viewModel::setCategoryIcon,
+                        viewModel::setCategoryPalette,
                         viewModel::onboardingBack,
                         viewModel::onboardingNext,
                         viewModel::onboardingSkip,
@@ -210,6 +217,9 @@ private fun SessionGateScreen(
     viewModel: AppRootViewModel,
     snackbarController: LedgerSnackbarController,
 ) {
+    val maintenancePresentation by viewModel.maintenancePresentation.collectAsStateWithLifecycle()
+    val recoveryBackupAvailable by viewModel.recoveryBackupAvailable.collectAsStateWithLifecycle()
+    val openingPresentation by viewModel.openingPresentation.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().testTag(LedgerTestTags.SESSION_GATE)) {
         val session = state.state
         if (session === BookSessionState.Uninitialized) {
@@ -217,18 +227,38 @@ private fun SessionGateScreen(
         } else if (session === BookSessionState.Locked) {
             LockScreen(state.authentication, viewModel::beginAuthentication)
         } else if (session === BookSessionState.Opening) {
-            OpeningBookScreen(OpeningPresentation.OPENING, viewModel::retryOpen)
+            OpeningBookScreen(openingPresentation, viewModel::retryOpen)
+        } else if (session is BookSessionState.Maintenance && session.reason == MaintenanceReason.DATABASE_MIGRATION) {
+            OpeningBookScreen(OpeningPresentation.MIGRATION_DETECTED, viewModel::retryOpen)
         } else if (session is BookSessionState.Maintenance) {
-            MaintenanceScreen(session.reason, MaintenancePresentation.RUNNING)
-        } else if (session is BookSessionState.RecoveryRequired) {
-            val restoreAvailable = session.diagnosticCode != RecoveryDiagnosticCode.KEY_UNAVAILABLE
-            RecoveryRequiredScreen(
-                session.diagnosticCode,
-                if (restoreAvailable) RecoveryPresentation.RESTORE_AVAILABLE else RecoveryPresentation.NO_BACKUP,
-                viewModel::retryOpen,
-                onRestore = viewModel::openRestoreFromRecovery,
-                onClear = viewModel::clearLocalBookData,
+            MaintenanceScreen(
+                session.reason,
+                maintenancePresentation ?: MaintenancePresentation.PREPARING,
+                onCancel = if (session.reason == MaintenanceReason.CONTROLLED_MAINTENANCE) viewModel::cancelMaintenance else null,
+                onRetry = if (session.reason == MaintenanceReason.UNFINISHED_OPERATION) viewModel::retryMaintenance else null,
             )
+        } else if (session is BookSessionState.RecoveryRequired) {
+            if (session.diagnosticCode == RecoveryDiagnosticCode.DATABASE_UNAVAILABLE) {
+                OpeningBookScreen(OpeningPresentation.FAILED, viewModel::retryOpen)
+            } else {
+                val reasonPresentation = when (session.diagnosticCode) {
+                    RecoveryDiagnosticCode.KEY_UNAVAILABLE -> RecoveryPresentation.KEY_UNAVAILABLE
+                    RecoveryDiagnosticCode.PROJECTION_FAILURE -> RecoveryPresentation.PROJECTION_FAILURE
+                    RecoveryDiagnosticCode.SCHEMA_INVALID -> RecoveryPresentation.CORRUPT
+                    RecoveryDiagnosticCode.DATABASE_UNAVAILABLE -> error("handled as opening failure")
+                }
+                RecoveryRequiredScreen(
+                    session.diagnosticCode,
+                    when (recoveryBackupAvailable) {
+                        true -> RecoveryPresentation.RESTORE_AVAILABLE
+                        false -> RecoveryPresentation.NO_BACKUP
+                        null -> reasonPresentation
+                    },
+                    viewModel::retryOpen,
+                    onRestore = viewModel::openRestoreFromRecovery,
+                    onClear = viewModel::clearLocalBookData,
+                )
+            }
         } else if (session is BookSessionState.Ready) {
             ReadyRootScaffold(
                 viewModel = viewModel,
@@ -309,7 +339,12 @@ internal fun OpeningBookScreen(presentation: OpeningPresentation, onRetry: () ->
 internal enum class MaintenancePresentation { PREPARING, RUNNING, NON_CANCELABLE, CANCELABLE, FAILED, SUCCEEDED }
 
 @Composable
-internal fun MaintenanceScreen(reason: MaintenanceReason, presentation: MaintenancePresentation) {
+internal fun MaintenanceScreen(
+    reason: MaintenanceReason,
+    presentation: MaintenancePresentation,
+    onCancel: (() -> Unit)? = null,
+    onRetry: (() -> Unit)? = null,
+) {
     val phaseResource = if (presentation == MaintenancePresentation.PREPARING) {
         R.string.global_maintenance_preparing
     } else if (presentation == MaintenancePresentation.RUNNING) {
@@ -330,7 +365,7 @@ internal fun MaintenanceScreen(reason: MaintenanceReason, presentation: Maintena
             LedgerText(stringResource(R.string.global_maintenance_title), LedgerTextRole.TITLE)
             OperationProgressPanel(
                 OperationProgressUiModel(
-                    name = reason.name,
+                    name = maintenanceReasonLabel(reason),
                     phase = phase,
                     processedText = stringResource(R.string.global_maintenance_explanation),
                     progress = if (presentation == MaintenancePresentation.PREPARING) {
@@ -350,10 +385,22 @@ internal fun MaintenanceScreen(reason: MaintenanceReason, presentation: Maintena
                     statusExplanation = stringResource(R.string.global_maintenance_explanation),
                     failureCode = failure,
                 ),
+                onCancel = onCancel?.takeIf { presentation == MaintenancePresentation.CANCELABLE },
+                onRetry = onRetry?.takeIf { presentation == MaintenancePresentation.FAILED },
             )
         }
     }
 }
+
+@Composable
+private fun maintenanceReasonLabel(reason: MaintenanceReason): String = stringResource(
+    when (reason) {
+        MaintenanceReason.DATABASE_MIGRATION -> R.string.global_maintenance_reason_migration
+        MaintenanceReason.UNFINISHED_OPERATION -> R.string.global_maintenance_reason_interrupted
+        MaintenanceReason.PROJECTION_REBUILD -> R.string.global_maintenance_reason_projection
+        MaintenanceReason.CONTROLLED_MAINTENANCE -> R.string.global_maintenance_reason_controlled
+    },
+)
 
 internal enum class RecoveryPresentation { CORRUPT, KEY_UNAVAILABLE, PROJECTION_FAILURE, RESTORE_AVAILABLE, NO_BACKUP }
 
@@ -383,7 +430,7 @@ internal fun RecoveryRequiredScreen(
         Column(Modifier.fillMaxSize().padding(padding), verticalArrangement = Arrangement.Center) {
             LedgerText(stringResource(R.string.global_recovery_title), LedgerTextRole.TITLE)
             LedgerBanner(explanation, LedgerBannerVariant.DANGER)
-            LedgerText(stringResource(R.string.global_recovery_diagnostic, code.name), LedgerTextRole.SUPPORTING)
+            LedgerText(stringResource(R.string.global_recovery_diagnostic, recoveryDiagnosticLabel(code)), LedgerTextRole.SUPPORTING)
             LedgerButton(stringResource(R.string.global_recovery_retry), onRetry, Modifier.fillMaxWidth())
             LedgerButton(
                 stringResource(R.string.global_recovery_from_backup),
@@ -419,6 +466,16 @@ internal fun RecoveryRequiredScreen(
 }
 
 @Composable
+private fun recoveryDiagnosticLabel(code: RecoveryDiagnosticCode): String = stringResource(
+    when (code) {
+        RecoveryDiagnosticCode.SCHEMA_INVALID -> R.string.global_recovery_code_schema
+        RecoveryDiagnosticCode.KEY_UNAVAILABLE -> R.string.global_recovery_code_key
+        RecoveryDiagnosticCode.PROJECTION_FAILURE -> R.string.global_recovery_code_projection
+        RecoveryDiagnosticCode.DATABASE_UNAVAILABLE -> R.string.global_recovery_code_database
+    },
+)
+
+@Composable
 internal fun RootDestination(
     key: LedgerDestinationKey,
     viewModel: AppRootViewModel,
@@ -429,6 +486,7 @@ internal fun RootDestination(
     specializedState: SpecializedTransactionLoadState,
     currencySettings: CurrencySettingsState?,
     journalState: JournalLoadState,
+    accountAmountsVisible: Boolean,
     onAddAttachment: () -> Unit,
     onBack: () -> Unit,
     onMore: () -> Unit,
@@ -459,10 +517,16 @@ internal fun RootDestination(
                 onSaveCheckpoint = viewModel::saveCheckpoint,
                 onSaveOpeningBalance = viewModel::saveOpeningBalance,
                 onRetry = viewModel::loadReferenceData,
+                onCreateReplacementCard = { cardId, accountId ->
+                    viewModel.createReplacementCard(cardId, accountId, key)
+                    onNavigationChanged()
+                },
             ),
             selectedAccountType = viewModel.selectedAccountType,
             preferredCardAccountId = viewModel.preferredCardAccountId,
+            replacementCardId = viewModel.replacementCardId,
             pending = referencePending,
+            amountsVisible = accountAmountsVisible,
         )
     } else if (screenId == "MGT-001" || screenId.startsWith("CAT-") || screenId.startsWith("MER-") || screenId.startsWith("PLC-")) {
         ReferenceManagementDestination(
@@ -484,7 +548,7 @@ internal fun RootDestination(
                 onSplitPlace = viewModel::splitPlace,
                 onRetry = viewModel::loadReferenceData,
             ),
-            placeMap = { places, unavailable -> PlaceMapContent(places, unavailable) },
+            placeMap = { points, unavailable, onCoordinateSelected -> PlaceMapContent(points, unavailable, onCoordinateSelected) },
             pending = referencePending,
         )
     } else if (screenId.startsWith("VLT-")) {
@@ -500,6 +564,8 @@ internal fun RootDestination(
                 onHide = viewModel::hideVaultSensitive,
                 onAuthenticateEdit = viewModel::authenticateVaultEdit,
                 onSave = viewModel::saveVault,
+                onAuthenticateList = viewModel::authenticateVaultList,
+                onOpenCards = viewModel::openVaultCards,
                 onOpenDeviceSecurity = { viewModel.openSecurityPrivacySettings("SYS-004") },
             ),
         )
@@ -559,6 +625,7 @@ internal fun RootDestination(
             state = specializedState,
             viewModel = viewModel,
             onAddAttachment = onAddAttachment,
+            onNavigationChanged = onNavigationChanged,
         )
     } else if (screenId in setOf("REC-023", "REC-024", "REC-025") && batchState != null) {
         BatchRecordRootDestination(
@@ -611,6 +678,10 @@ internal fun RootDestination(
                 onRestoreRevision = viewModel::restoreJournalRevision,
                 onVerifyPurge = viewModel::verifyJournalPurge,
                 onPurgeRequested = viewModel::purgeJournalTransaction,
+                onEdit = viewModel::editJournalTransaction,
+                onRefund = viewModel::refundJournalTransaction,
+                onCopyTemplate = viewModel::copyJournalTransactionToTemplate,
+                onBack = onBack,
             ),
         )
     } else if (screenId == "ACC-001") {
@@ -723,21 +794,25 @@ private fun EmptyTopLevel(emptyTitle: Int, explanation: Int, onMore: () -> Unit)
 }
 
 @Composable
-private fun PlaceMapContent(places: List<app.ledger.finance.application.PlaceReferenceView>, unavailable: Boolean) {
-    val identity = places.joinToString(separator = "|") { "${it.id}:${it.rowVersion}" }
+private fun PlaceMapContent(
+    points: List<app.ledger.feature.settings.ManagementMapPoint>,
+    unavailable: Boolean,
+    onCoordinateSelected: (Int, Int) -> Unit,
+) {
+    val identity = points.joinToString(separator = "|") { "${it.id}:${it.latitudeE7}:${it.longitudeE7}" }
     var rendererFailed by remember(identity) { mutableStateOf(false) }
-    val summary = stringResource(R.string.global_place_map_summary, places.count())
-    val rows = places.map { place ->
-        LedgerMapAccessibleRow(place.name, stringResource(R.string.global_location_record_count, place.locationRecordCount))
+    val summary = stringResource(R.string.global_place_map_summary, points.count())
+    val rows = points.map { point ->
+        LedgerMapAccessibleRow(point.label, stringResource(R.string.global_location_record_count, point.recordCount))
     }
-    val state = if (unavailable || rendererFailed || places.none()) {
+    val state = if (unavailable || rendererFailed || points.none()) {
         LedgerMapState.Unavailable(summary, rows)
     } else {
         LedgerMapState.Available(
             summary = summary,
             mode = LedgerMapMode.CLUSTERS,
-            points = places.map { place ->
-                LedgerMapPoint(place.id, place.latitudeE7, place.longitudeE7, place.locationRecordCount)
+            points = points.map { point ->
+                LedgerMapPoint(point.id, point.latitudeE7, point.longitudeE7, point.recordCount.coerceAtLeast(1L))
             },
             accessibleRows = rows,
         )
@@ -753,10 +828,11 @@ private fun PlaceMapContent(places: List<app.ledger.finance.application.PlaceRef
         showAccessibleListLabel = stringResource(R.string.global_show_place_list),
         hideAccessibleListLabel = stringResource(R.string.global_hide_place_list),
         onFailure = { rendererFailed = true },
+        onCoordinateSelected = onCoordinateSelected,
     )
     if (unavailable || rendererFailed) {
         LedgerBanner(stringResource(R.string.global_map_renderer_unavailable), LedgerBannerVariant.INFO)
-    } else if (places.none()) {
+    } else if (points.none()) {
         LedgerText(stringResource(R.string.global_place_map_empty), LedgerTextRole.SUPPORTING)
     }
 }
@@ -924,7 +1000,8 @@ private fun DurableOperationRow(
 ) {
     val type = stringResource(operationTypeResource(operation.type))
     val phase = stringResource(operationStateResource(operation.state))
-    val totalText = operation.progress.total?.toString() ?: stringResource(R.string.global_operations_total_unknown)
+    val numberFormat = java.text.NumberFormat.getIntegerInstance(app.ledger.core.designsystem.LocalLocale.current.platformLocale)
+    val totalText = operation.progress.total?.let(numberFormat::format) ?: stringResource(R.string.global_operations_total_unknown)
     val cancelable = operation.state in setOf(
         BackgroundOperationState.QUEUED,
         BackgroundOperationState.PREPARING,

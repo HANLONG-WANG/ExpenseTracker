@@ -35,9 +35,14 @@ public enum class AutomationPresentation {
     SAVING,
 }
 
+public enum class AutomationTemplateFilter { ALL, ACTIVE, ARCHIVED }
+public enum class AutomationTemplateSort { NAME, RECENTLY_REVISED }
+public enum class AutomationSeriesFilter { ALL, ACTIVE, PAUSED, ARCHIVED }
+
 public data class BlueprintEditorDraft(
     val id: StableId?,
     val name: String = "",
+    val iconKey: String = "RECORD",
     val targetKind: TransactionKind = TransactionKind.EXPENSE,
     val categoryId: StableId? = null,
     val primaryAccountId: StableId? = null,
@@ -92,6 +97,9 @@ public data class AutomationFeatureState(
     val modificationScope: RecurrenceModificationScope = RecurrenceModificationScope.THIS_OCCURRENCE,
     val validationFields: Set<String> = emptySet(),
     val failureCode: String? = null,
+    val templateFilter: AutomationTemplateFilter = AutomationTemplateFilter.ALL,
+    val templateSort: AutomationTemplateSort = AutomationTemplateSort.NAME,
+    val seriesFilter: AutomationSeriesFilter = AutomationSeriesFilter.ALL,
 ) {
     public val selectedBlueprint: BlueprintView?
         get() = selectedBlueprintId?.let { id -> snapshot.blueprints.singleOrNull { it.id == id } }
@@ -109,7 +117,7 @@ public sealed interface AutomationLoadState {
     public data class Failure(val code: String) : AutomationLoadState
 }
 
-public enum class BlueprintField { NAME, AMOUNT, CURRENCY, NOTE }
+public enum class BlueprintField { NAME, ICON, AMOUNT, CURRENCY, NOTE }
 public enum class RecurrenceField { START_DATE, END_DATE, MAX_OCCURRENCES, INTERVAL, MONTH_DAY, NTH_WEEK }
 
 public object AutomationPolicy {
@@ -162,6 +170,7 @@ public object AutomationPolicy {
         val current = requireNotNull(state.blueprintDraft)
         val draft = when (field) {
             BlueprintField.NAME -> current.copy(name = value.take(80))
+            BlueprintField.ICON -> current.copy(iconKey = value.take(32))
             BlueprintField.AMOUNT -> current.copy(amountExpression = value.take(128))
             BlueprintField.CURRENCY -> current.copy(currency = value.uppercase().take(3))
             BlueprintField.NOTE -> current.copy(noteTemplate = value.take(500))
@@ -176,8 +185,8 @@ public object AutomationPolicy {
             RecurrenceField.END_DATE -> current.copy(endDate = value.take(10))
             RecurrenceField.MAX_OCCURRENCES -> current.copy(maxOccurrences = value.filter(Char::isDigit).take(7))
             RecurrenceField.INTERVAL -> current.copy(rule = current.rule.copy(interval = value.toIntOrNull()?.coerceIn(1, 999) ?: 1))
-            RecurrenceField.MONTH_DAY -> current.copy(rule = current.rule.copy(monthDay = value.toIntOrNull()?.coerceIn(1, 31)))
-            RecurrenceField.NTH_WEEK -> current.copy(rule = current.rule.copy(nthWeek = value.toIntOrNull()?.coerceIn(1, 5)))
+            RecurrenceField.MONTH_DAY -> current.copy(rule = current.rule.copy(monthDay = value.toIntOrNull()?.coerceIn(1, 31) ?: current.rule.monthDay ?: 1))
+            RecurrenceField.NTH_WEEK -> current.copy(rule = current.rule.copy(nthWeek = value.toIntOrNull()?.coerceIn(1, 5) ?: current.rule.nthWeek ?: 1))
         }
         return state.copy(recurrenceDraft = draft, presentation = AutomationPresentation.EDITING, validationFields = emptySet())
     }
@@ -213,9 +222,30 @@ public object AutomationPolicy {
         )
     }
 
+    public fun canSaveBlueprint(state: AutomationFeatureState): Boolean = state.blueprintDraft?.let { draft ->
+        draft.name.isNotBlank() && draft.primaryAccountId != null &&
+            (draft.targetKind !in setOf(TransactionKind.EXPENSE, TransactionKind.INCOME) || draft.categoryId != null) &&
+            (draft.currency.isBlank() || Regex("[A-Z]{3}").matches(draft.currency))
+    } == true
+
+    public fun canSaveRecurrence(state: AutomationFeatureState): Boolean = state.recurrenceDraft?.let { draft ->
+        val start = runCatching { LocalDate.parse(draft.startDate) }.getOrNull()
+        val end = draft.endDate.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val ruleValid = when (draft.rule.frequency) {
+            RecurrenceFrequency.WEEKLY, RecurrenceFrequency.BUSINESS_DAYS -> draft.rule.weekdays.isNotEmpty()
+            RecurrenceFrequency.MONTHLY_DAY -> draft.rule.monthDay != null
+            RecurrenceFrequency.MONTHLY_NTH_WEEKDAY -> draft.rule.nthWeek != null && draft.rule.weekday != null
+            else -> true
+        }
+        draft.blueprintId != null && ruleValid && start != null && (draft.endDate.isBlank() || end != null) &&
+            (start == null || end == null || end >= start) &&
+            (draft.maxOccurrences.isBlank() || draft.maxOccurrences.toIntOrNull()?.let { it > 0 } == true)
+    } == true
+
     private fun blueprintDraft(blueprint: BlueprintView?): BlueprintEditorDraft = BlueprintEditorDraft(
         id = blueprint?.id,
         name = blueprint?.name.orEmpty(),
+        iconKey = blueprint?.iconKey ?: "RECORD",
         targetKind = blueprint?.targetKind ?: TransactionKind.EXPENSE,
         categoryId = blueprint?.categoryId,
         primaryAccountId = blueprint?.primaryAccountId,

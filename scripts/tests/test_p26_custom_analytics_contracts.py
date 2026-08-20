@@ -36,6 +36,9 @@ class P26CustomAnalyticsMutationTest(unittest.TestCase):
     def test_accessible_data_table_cannot_be_removed(self) -> None:
         self.assertTrue(self.mutate("P26AnalysisScreens.kt", "AccessibleTableUiModel", "PlainTable"))
 
+    def test_report_export_cannot_be_disconnected_from_full_flow(self) -> None:
+        self.assertTrue(self.mutate("P26AnalysisScreens.kt", "actions.onPrepareExport", "{}"))
+
     def test_forecast_route_cannot_accept_formula(self) -> None:
         sources = copy.deepcopy(self.sources)
         path = next(path for path in sources if path.endswith("AnalysisRootDestination.kt"))

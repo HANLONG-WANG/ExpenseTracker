@@ -15,6 +15,7 @@ import app.ledger.feature.settlement.SettlementActions
 import app.ledger.feature.settlement.SettlementDestination
 import app.ledger.feature.settlement.SettlementLoadState
 import app.ledger.feature.settlement.SettlementPresentation
+import app.ledger.feature.settlement.SettlementPolicy
 import app.ledger.feature.settlement.R as SettlementR
 
 @Composable
@@ -56,6 +57,7 @@ internal fun SettlementRootDestination(
             onSelectPayee = viewModel::selectSettlementPayee,
             onSelectAccount = viewModel::selectSettlementAccount,
             onSelectProject = viewModel::selectSettlementProject,
+            onSelectCurrency = viewModel::selectSettlementCurrency,
             onSplitMethod = viewModel::selectSettlementSplitMethod,
             onChargeDistribution = viewModel::selectSettlementChargeDistribution,
             onRoundingRule = viewModel::selectSettlementRoundingRule,
@@ -76,11 +78,12 @@ internal fun settlementFixedAction(
 ): (@Composable BoxScope.() -> Unit)? {
     if (screenId !in setOf("SET-002", "SET-003", "SET-006")) return null
     return {
-        val presentation = (state as? SettlementLoadState.Content)?.state?.presentation
+        val content = (state as? SettlementLoadState.Content)?.state
+        val presentation = content?.presentation
         LedgerSaveFab(
             onSave,
             submitting = pending || presentation == SettlementPresentation.SAVING,
-            enabled = !pending,
+            enabled = !pending && content?.let { SettlementPolicy.canSave(it, screenId) } == true,
         )
     }
 }

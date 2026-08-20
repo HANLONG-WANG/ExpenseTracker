@@ -204,7 +204,7 @@ class ExportUiContractDeviceTest {
         const val EXPECTED_RESULT_SHA256 = "93d8c476896c3d7f087cbbd80e47a86db0b156ae75b1024239e89505349d225b"
         val ACTIONS = ExportFlowActions(
             onBack = {}, onContentSelected = {}, onFormatSelected = {}, onContinue = {}, onFieldToggled = {},
-            onLocationCoordinatesChanged = {}, onFileNameChanged = {}, onDestinationSelected = {}, onConfirmOverwrite = {},
+            onLocationCoordinatesChanged = {}, onFileNameChanged = {}, onDestinationSelected = {}, onConfirmOverwrite = {}, onStart = {},
             onCancel = {}, onRetry = {}, onOpen = {}, onShare = {}, onViewLocation = {}, onOperations = {},
         )
     }

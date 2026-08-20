@@ -10,12 +10,12 @@ class OtherTransactionNavigationTest {
     @Test
     fun cardsTargetRegisteredArgumentFreeEntryScreens() {
         assertEquals(
-            listOf("REC-013", "REC-014", "REC-015", "REC-017", "REC-020", "REC-021", "REC-023"),
-            OTHER_TRANSACTION_TARGETS.map { it.first },
+            listOf("REC-013", "REC-014", "REC-015", "REC-017", "REC-020", "REC-021"),
+            OTHER_TRANSACTION_TARGETS.map { it.screenId },
         )
 
-        OTHER_TRANSACTION_TARGETS.forEach { (target, _) ->
-            assertDoesNotThrow { LedgerRouteContract.destination(ScreenId(target)) }
+        OTHER_TRANSACTION_TARGETS.forEach { target ->
+            assertDoesNotThrow { LedgerRouteContract.destination(ScreenId(target.screenId)) }
         }
     }
 }

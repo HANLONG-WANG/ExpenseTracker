@@ -65,6 +65,10 @@ internal fun BackupRootDestination(
                 viewModel.openRestoreSnapshot(snapshotId)
                 onNavigationChanged()
             },
+            onDeleteSnapshot = { snapshotId ->
+                viewModel.deleteBackupSnapshot(snapshotId)
+                onNavigationChanged()
+            },
         ),
     )
 }

@@ -7,6 +7,7 @@
     <string name="ledger_search">検索</string>
     <string name="ledger_clear">クリア</string>
     <string name="ledger_retry">再試行</string>
+    <string name="ledger_error_what_happened">発生したこと</string><string name="ledger_error_write_status">書き込み状態</string><string name="ledger_error_existing_data_unchanged">既存データは変更されず、現在の入力はこの画面に保持されています。</string><string name="ledger_error_next_step">次の手順</string><string name="ledger_error_retry_next_step">接続または入力を確認して再試行してください。繰り返す場合は、下の匿名化エラーコードで診断できます。</string>
     <string name="ledger_cancel">キャンセル</string>
     <string name="ledger_apply">適用</string>
     <string name="ledger_reset">リセット</string>
@@ -15,6 +16,7 @@
     <string name="ledger_loading">読み込み中</string>
     <string name="ledger_view_data_table">データ表を表示</string>
     <string name="ledger_expand_data_table">データ表を展開</string>
+    <string name="ledger_collapse_data_table">データ表を折りたたむ</string>
     <string name="ledger_map_unavailable">地図を利用できません。リストと集計は表示できます</string>
     <string name="ledger_record">記録</string>
     <string name="ledger_journal">履歴</string>
@@ -40,8 +42,29 @@
     <string name="ledger_pause">一時停止</string>
     <string name="ledger_copy">コピー</string>
     <string name="ledger_attachment_import_progress">添付ファイルの読み込み進行状況</string>
+    <string name="ledger_attachment_failed">読み込みに失敗し、添付ファイルは保存されていません</string>
+    <string name="ledger_view_error">エラーを表示</string>
+    <string name="ledger_clean_temporary_files">一時ファイルを削除</string>
     <string name="ledger_previous_page">前のページ</string>
     <string name="ledger_next_page">次のページ</string>
+    <string name="ledger_page_count">%1$d / %2$d ページ</string>
+    <string name="ledger_seconds_remaining">残り %1$d 秒</string>
+    <string name="ledger_on">オン</string>
+    <string name="ledger_off">オフ</string>
+    <string name="ledger_expanded">展開済み</string>
+    <string name="ledger_collapsed">折りたたみ済み</string>
+    <string name="ledger_candidate">未記帳</string>
+    <string name="ledger_deleted">削除済み</string>
+    <string name="ledger_status_neutral">通常</string><string name="ledger_status_positive">良好</string><string name="ledger_status_info">情報</string><string name="ledger_status_warning">要確認</string><string name="ledger_status_danger">異常</string><string name="ledger_status_archived">アーカイブ済み</string>
+    <string name="ledger_explore_chart">グラフを探索</string>
+    <string name="ledger_close_chart_explorer">グラフ探索を閉じる</string>
+    <string name="ledger_chart_previous_point">前のデータポイント</string>
+    <string name="ledger_chart_next_point">次のデータポイント</string>
+    <string name="ledger_chart_marker_detail">%1$s・%2$s・%3$s</string>
+    <string name="ledger_chart_point_position">%1$d / %2$d 個目のデータポイント</string>
+    <string name="ledger_chart_stack_total">積み上げ合計：%1$s</string>
+    <string name="ledger_chart_pie_fallback">カテゴリが 6 個を超えるため、読みやすい縦棒グラフに自動切り替えしました。</string>
+    <string name="ledger_chart_no_data">現在の範囲にグラフデータがありません。</string>
     <string name="ledger_style_icon_record">記録</string><string name="ledger_style_icon_account">口座</string><string name="ledger_style_icon_budget">予算</string><string name="ledger_style_icon_analysis">分析</string><string name="ledger_style_icon_journal">取引</string><string name="ledger_style_icon_location">場所</string><string name="ledger_style_icon_transfer">振替</string><string name="ledger_style_icon_refund">返金</string>
     <string name="ledger_style_color_red">赤</string><string name="ledger_style_color_orange">オレンジ</string><string name="ledger_style_color_amber">琥珀</string><string name="ledger_style_color_yellow">黄</string><string name="ledger_style_color_lime">ライム</string><string name="ledger_style_color_green">緑</string><string name="ledger_style_color_emerald">エメラルド</string><string name="ledger_style_color_teal">ティール</string><string name="ledger_style_color_cyan">シアン</string><string name="ledger_style_color_sky">スカイ</string><string name="ledger_style_color_blue">青</string><string name="ledger_style_color_indigo">インディゴ</string><string name="ledger_style_color_violet">バイオレット</string><string name="ledger_style_color_purple">紫</string><string name="ledger_style_color_pink">ピンク</string><string name="ledger_style_color_slate">スレート</string>
 </resources>

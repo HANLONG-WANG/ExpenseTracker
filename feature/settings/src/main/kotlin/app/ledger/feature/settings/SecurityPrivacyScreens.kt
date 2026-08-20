@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import app.ledger.core.designsystem.HighRiskConfirmation
@@ -37,6 +38,10 @@ import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @Composable
 public fun SecurityPrivacySettingsDestination(
@@ -104,7 +109,17 @@ private fun AppLockSettings(state: SecurityPrivacySettingsState, actions: Securi
                 Modifier.fillMaxWidth(),
             )
         }
-        LedgerText(stringResource(R.string.security_auth_method), LedgerTextRole.SUPPORTING)
+        LedgerText(stringResource(R.string.security_auth_method_label), LedgerTextRole.SECTION)
+        LedgerText(
+            stringResource(
+                when (state.authenticationCapability) {
+                    DeviceAuthenticationCapability.STRONG_BIOMETRIC_OR_DEVICE_CREDENTIAL -> R.string.security_auth_method_biometric_or_credential
+                    DeviceAuthenticationCapability.DEVICE_CREDENTIAL_ONLY -> R.string.security_auth_method_device_credential
+                    DeviceAuthenticationCapability.UNAVAILABLE -> R.string.security_auth_method_unavailable
+                },
+            ),
+            LedgerTextRole.SUPPORTING,
+        )
         LedgerButton(stringResource(R.string.security_test_lock), actions.onTestLock, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY)
     }
 }
@@ -166,16 +181,17 @@ private fun DiagnosticsSettings(state: SecurityPrivacySettingsState, actions: Se
 @Composable
 private fun FeatureQueue(state: SecurityPrivacySettingsState, actions: SecurityPrivacySettingsActions) {
     if (state.featureRows.isEmpty()) {
-        LedgerEmptyState(
-            stringResource(R.string.diagnostics_queue_empty),
-            stringResource(R.string.diagnostics_feature_empty_body),
-            stringResource(R.string.diagnostics_delete_queue),
-            actions.onDeleteFeatureQueue,
-        )
+        QueueEmptyState(stringResource(R.string.diagnostics_feature_empty_body))
         return
     }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-        items(state.featureRows) { row -> QueueCard(row.event, "${row.entry} · ${row.outcome} · ${row.duration} · ${row.errorCode}", row.occurredAtEpochMillis) }
+        items(state.featureRows) { row ->
+            QueueCard(
+                row.event,
+                "${row.entry} · ${row.outcome} · ${row.duration} · ${row.errorCode}",
+                row.occurredAtEpochMillis.localizedDateTime(state.zoneId),
+            )
+        }
         item { LedgerButton(stringResource(R.string.diagnostics_delete_queue), actions.onDeleteFeatureQueue, Modifier.fillMaxWidth(), LedgerButtonVariant.DANGER) }
     }
 }
@@ -183,57 +199,123 @@ private fun FeatureQueue(state: SecurityPrivacySettingsState, actions: SecurityP
 @Composable
 private fun CrashQueue(state: SecurityPrivacySettingsState, actions: SecurityPrivacySettingsActions) {
     if (state.crashRows.isEmpty()) {
-        LedgerEmptyState(
-            stringResource(R.string.diagnostics_queue_empty),
-            stringResource(R.string.diagnostics_crash_empty_body),
-            stringResource(R.string.diagnostics_delete_queue),
-            actions.onDeleteCrashQueue,
-        )
+        QueueEmptyState(stringResource(R.string.diagnostics_crash_empty_body))
         return
     }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-        items(state.crashRows) { row -> QueueCard(row.kind, "${row.errorCode} · ${row.frameCount}", row.occurredAtEpochMillis) }
+        items(state.crashRows) { row ->
+            QueueCard(row.kind, "${row.errorCode} · ${row.frameCount}", row.occurredAtEpochMillis.localizedDateTime(state.zoneId))
+        }
         item { LedgerButton(stringResource(R.string.diagnostics_delete_queue), actions.onDeleteCrashQueue, Modifier.fillMaxWidth(), LedgerButtonVariant.DANGER) }
     }
 }
 
 @Composable
-private fun QueueCard(title: String, fixedFields: String, time: Long) {
+private fun QueueEmptyState(body: String) {
+    LedgerCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(LedgerTheme.spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
+        ) {
+            LedgerText(stringResource(R.string.diagnostics_queue_empty), LedgerTextRole.SECTION)
+            LedgerText(body, LedgerTextRole.SUPPORTING)
+        }
+    }
+}
+
+@Composable
+private fun QueueCard(title: String, fixedFields: String, time: String) {
     LedgerCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(LedgerTheme.spacing.sm)) {
             LedgerText(title, LedgerTextRole.SECTION)
             LedgerText(fixedFields, LedgerTextRole.SUPPORTING)
-            LedgerText(time.toString(), LedgerTextRole.LABEL)
+            LedgerText(time, LedgerTextRole.LABEL)
         }
     }
 }
 
 @Composable
 private fun LocalClear(state: SecurityPrivacySettingsState, actions: SecurityPrivacySettingsActions) {
-    LedgerBanner(stringResource(R.string.clear_scope), LedgerBannerVariant.DANGER)
-    LedgerText(stringResource(R.string.clear_not_external), LedgerTextRole.SUPPORTING)
-    if (state.presentation == SecuritySettingsRequiredState.CLR_001_FAILED) LedgerBanner(state.errorCode ?: "LOCAL_CLEAR_FAILED", LedgerBannerVariant.DANGER)
-    if (state.presentation == SecuritySettingsRequiredState.CLR_001_CLEARING) {
-        LedgerBanner(stringResource(R.string.clear_in_progress), LedgerBannerVariant.WARNING)
-        return
-    }
     var phrase by remember { mutableStateOf("") }
-    if (state.presentation == SecuritySettingsRequiredState.CLR_001_CONFIRMING) {
-        val required = stringResource(R.string.clear_phrase)
-        HighRiskConfirmation(
-            stringResource(R.string.clear_local),
-            stringResource(R.string.clear_scope),
-            stringResource(R.string.clear_consequence),
-            stringResource(R.string.clear_not_external),
-            required,
-            phrase,
-            { phrase = it },
-            actions.onConfirmLocalClear,
-            actions.onCancelLocalClear,
-        )
-    } else {
-        LedgerButton(stringResource(R.string.clear_local), actions.onBeginLocalClear, Modifier.fillMaxWidth(), LedgerButtonVariant.DANGER)
+    val scopeItems = listOf(
+        R.string.clear_scope_ledger,
+        R.string.clear_scope_attachments,
+        R.string.clear_scope_keys,
+        R.string.clear_scope_backups,
+    )
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+    ) {
+        item { LedgerBanner(stringResource(R.string.clear_scope), LedgerBannerVariant.DANGER) }
+        item { LedgerText(stringResource(R.string.clear_scope_title), LedgerTextRole.SECTION) }
+        items(scopeItems) { label ->
+            LedgerCard(Modifier.fillMaxWidth()) {
+                LedgerText(stringResource(label), LedgerTextRole.BODY, Modifier.padding(LedgerTheme.spacing.sm))
+            }
+        }
+        item { LedgerText(stringResource(R.string.clear_not_external), LedgerTextRole.SUPPORTING) }
+        if (state.presentation == SecuritySettingsRequiredState.CLR_001_FAILED) {
+            item { LedgerBanner(localClearFailureMessage(state.errorCode), LedgerBannerVariant.DANGER) }
+        }
+        item { LocalClearAuthenticationGate(state) }
+        when (state.presentation) {
+            SecuritySettingsRequiredState.CLR_001_CLEARING -> item {
+                LedgerBanner(stringResource(R.string.clear_in_progress), LedgerBannerVariant.WARNING)
+            }
+            SecuritySettingsRequiredState.CLR_001_CONFIRMING -> if (!state.localClearAuthenticationPending) {
+                item {
+                    val required = stringResource(R.string.clear_phrase)
+                    HighRiskConfirmation(
+                        stringResource(R.string.clear_local),
+                        stringResource(R.string.clear_scope),
+                        stringResource(R.string.clear_consequence),
+                        stringResource(R.string.clear_not_external),
+                        required,
+                        phrase,
+                        { phrase = it },
+                        actions.onConfirmLocalClear,
+                        actions.onCancelLocalClear,
+                    )
+                }
+            }
+            else -> item {
+                LedgerButton(stringResource(R.string.clear_local), actions.onBeginLocalClear, Modifier.fillMaxWidth(), LedgerButtonVariant.DANGER)
+            }
+        }
     }
+}
+
+@Composable
+private fun LocalClearAuthenticationGate(state: SecurityPrivacySettingsState) {
+    val message = when {
+        state.localClearAuthenticationPending -> R.string.clear_authentication_pending
+        state.presentation == SecuritySettingsRequiredState.CLR_001_CLEARING -> R.string.clear_authentication_complete
+        else -> R.string.clear_authentication_required
+    }
+    LedgerBanner(
+        stringResource(message),
+        if (state.localClearAuthenticationPending) LedgerBannerVariant.WARNING else LedgerBannerVariant.INFO,
+    )
+}
+
+@Composable
+private fun localClearFailureMessage(code: String?): String = stringResource(
+    when (code) {
+        "AUTHENTICATION_REJECTED" -> R.string.clear_failed_authentication
+        "WORK_CANCELLATION_FAILED" -> R.string.clear_failed_work
+        "LEDGER_CLEAR_FAILED" -> R.string.clear_failed_ledger
+        else -> R.string.clear_failed_generic
+    },
+)
+
+@Composable
+private fun Long.localizedDateTime(zoneId: String): String {
+    val locale = LocalLocale.current.platformLocale
+    val zone = runCatching { ZoneId.of(zoneId) }.getOrDefault(LedgerTheme.timeZone)
+    return Instant.ofEpochMilli(this).atZone(zone).format(
+        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale),
+    )
 }
 
 @Composable

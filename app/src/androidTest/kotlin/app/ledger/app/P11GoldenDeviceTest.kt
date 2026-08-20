@@ -125,7 +125,7 @@ class P11GoldenDeviceTest {
     )
 
     private val noOpActions = OnboardingActions(
-        {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
+        {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, { _, _ -> }, {}, {}, {},
     )
 
     private data class GoldenCase(val assetName: String, val content: @Composable () -> Unit)

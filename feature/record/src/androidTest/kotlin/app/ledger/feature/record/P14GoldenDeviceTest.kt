@@ -184,7 +184,7 @@ class P14GoldenDeviceTest {
         const val WIDTH = 360
         const val HEIGHT = 720
         const val RECORD_PULL_WINDOW_MILLIS = 30_000L
-        val ACTIONS = SpecializedTransactionActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+        val ACTIONS = SpecializedTransactionActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
         val NOW: Instant = Instant.parse("2026-08-03T04:05:06Z")
         val ZONE: ZoneId = ZoneId.of("Asia/Tokyo")
         val BOOK: StableId = StableId.fromUuid(UUID(0x1414L, 1))

@@ -49,6 +49,14 @@ import app.ledger.finance.application.WidgetQuickTarget
 import app.ledger.finance.application.WidgetQuickTargetKind
 import app.ledger.finance.application.WidgetSnapshotBundle
 import kotlinx.coroutines.launch
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.text.NumberFormat
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Currency
+import java.util.Locale
 
 class WidgetConfigurationActivity : ComponentActivity() {
     private var appWidgetId: Int = AppWidgetManager.INVALID_APPWIDGET_ID
@@ -173,6 +181,7 @@ internal fun WidgetConfigurationFlow(
                 )
                 WidgetConfigurationStep.PRIVACY -> WidgetPrivacy(
                     requireNotNull(selectedType),
+                    requireNotNull(data),
                     selection,
                     revealAmounts,
                     onRevealChanged = { revealAmounts = it },
@@ -246,13 +255,7 @@ private fun WidgetDataSelector(
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
         item {
-            LedgerCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm)) {
-                    LedgerText(stringResource(R.string.widget_preview), LedgerTextRole.SECTION)
-                    LedgerText(stringResource(type.titleResource()), LedgerTextRole.BODY)
-                    LedgerText("••••", LedgerTextRole.DISPLAY)
-                }
-            }
+            WidgetContentPreview(type, data, selected, revealAmounts = false)
         }
         if (!selectionRequired) {
             item { LedgerBanner(stringResource(R.string.widget_no_selection_needed), LedgerBannerVariant.INFO) }
@@ -274,6 +277,7 @@ private fun WidgetDataSelector(
 @Composable
 private fun WidgetPrivacy(
     type: LedgerWidgetType,
+    data: WidgetConfigurationData,
     selection: WidgetSelection?,
     revealAmounts: Boolean,
     onRevealChanged: (Boolean) -> Unit,
@@ -295,19 +299,113 @@ private fun WidgetPrivacy(
             )
         }
         item {
-            LedgerText(
-                selection?.label ?: stringResource(type.titleResource()),
-                LedgerTextRole.SECTION,
-            )
-            LedgerText(
-                if (revealAmounts) stringResource(R.string.widget_preview_revealed) else "••••",
-                LedgerTextRole.DISPLAY,
-            )
+            WidgetContentPreview(type, data, selection, revealAmounts)
         }
         item {
             LedgerButton(stringResource(R.string.widget_save), onSave, Modifier.fillMaxWidth())
         }
     }
+}
+
+@Composable
+private fun WidgetContentPreview(
+    type: LedgerWidgetType,
+    data: WidgetConfigurationData,
+    selection: WidgetSelection?,
+    revealAmounts: Boolean,
+) {
+    val book = data.bundle.book
+    LedgerCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
+        ) {
+            LedgerText(stringResource(R.string.widget_preview), LedgerTextRole.SECTION)
+            LedgerText(stringResource(type.titleResource()), LedgerTextRole.SUPPORTING)
+            when (type) {
+                LedgerWidgetType.QUICK_ENTRY -> {
+                    LedgerText(selection?.label ?: stringResource(R.string.widget_no_data), LedgerTextRole.BODY)
+                    LedgerText(stringResource(R.string.widget_open_full_form), LedgerTextRole.SUPPORTING)
+                }
+                LedgerWidgetType.ACCOUNT -> data.bundle.accounts.singleOrNull { it.accountId == selection?.id }?.let { account ->
+                    LedgerText(account.displayName, LedgerTextRole.BODY)
+                    LedgerText(previewAmount(account.balanceMinor, account.currency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(
+                        stringResource(R.string.widget_available_value, previewAmount(account.availableMinor, account.currency, revealAmounts)),
+                        LedgerTextRole.SUPPORTING,
+                    )
+                } ?: LedgerText(stringResource(R.string.widget_no_data), LedgerTextRole.BODY)
+                LedgerWidgetType.CREDIT_CARD -> data.bundle.creditAccounts.singleOrNull { it.accountId == selection?.id }?.let { credit ->
+                    LedgerText(credit.displayName, LedgerTextRole.BODY)
+                    LedgerText(previewAmount(credit.statementRemainingMinor ?: credit.debtMinor, credit.currency, revealAmounts), LedgerTextRole.DISPLAY)
+                    credit.statementDueDate?.let { due ->
+                        LedgerText(stringResource(R.string.widget_due_date_value, due.widgetDate()), LedgerTextRole.SUPPORTING)
+                    }
+                } ?: LedgerText(stringResource(R.string.widget_no_data), LedgerTextRole.BODY)
+                LedgerWidgetType.GOAL -> data.bundle.goals.singleOrNull { it.goalId == selection?.id }?.let { goal ->
+                    LedgerText(goal.displayName, LedgerTextRole.BODY)
+                    LedgerText(previewAmount(goal.balanceMinor, goal.currency, revealAmounts), LedgerTextRole.DISPLAY)
+                    val progress = if (goal.targetMinor > 0L) {
+                        NumberFormat.getPercentInstance().format(goal.balanceMinor.toDouble() / goal.targetMinor.toDouble())
+                    } else {
+                        stringResource(R.string.widget_no_data)
+                    }
+                    LedgerText(stringResource(R.string.widget_progress_value, progress), LedgerTextRole.SUPPORTING)
+                } ?: LedgerText(stringResource(R.string.widget_no_data), LedgerTextRole.BODY)
+                LedgerWidgetType.MONTH_CONSUMPTION -> book?.let {
+                    LedgerText(previewAmount(it.monthConsumptionBaseMinor, it.baseCurrency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(
+                        stringResource(
+                            R.string.widget_previous_month_comparison,
+                            previewAmount(it.monthConsumptionBaseMinor - it.previousMonthConsumptionBaseMinor, it.baseCurrency, revealAmounts),
+                        ),
+                        LedgerTextRole.SUPPORTING,
+                    )
+                }
+                LedgerWidgetType.MONTH_BUDGET -> book?.let {
+                    LedgerText(previewAmount(it.monthBudgetAvailableBaseMinor ?: 0L, it.baseCurrency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(stringResource(R.string.widget_used_value, previewAmount(it.monthBudgetUsedBaseMinor ?: 0L, it.baseCurrency, revealAmounts)), LedgerTextRole.SUPPORTING)
+                }
+                LedgerWidgetType.TODAY_AVAILABLE -> book?.let {
+                    LedgerText(previewAmount(it.todayAvailableBaseMinor ?: 0L, it.baseCurrency, revealAmounts), LedgerTextRole.DISPLAY)
+                }
+                LedgerWidgetType.CORE_NET_ASSETS -> book?.let {
+                    LedgerText(previewAmount(it.coreNetFinancialAssetsBaseMinor, it.baseCurrency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(
+                        stringResource(R.string.widget_snapshot_change, previewAmount(it.coreNetFinancialAssetsBaseMinor - it.previousCoreNetFinancialAssetsBaseMinor, it.baseCurrency, revealAmounts)),
+                        LedgerTextRole.SUPPORTING,
+                    )
+                }
+                LedgerWidgetType.FINANCIAL_OVERVIEW -> book?.let {
+                    LedgerText(previewAmount(it.coreNetFinancialAssetsBaseMinor, it.baseCurrency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(
+                        stringResource(
+                            R.string.widget_overview_line,
+                            previewAmount(it.monthConsumptionBaseMinor, it.baseCurrency, revealAmounts),
+                            previewAmount(it.todayAvailableBaseMinor ?: 0L, it.baseCurrency, revealAmounts),
+                        ),
+                        LedgerTextRole.SUPPORTING,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun previewAmount(minor: Long, currencyCode: String, reveal: Boolean): String {
+    if (!reveal) return "••••"
+    return runCatching {
+        val currency = Currency.getInstance(currencyCode)
+        val digits = currency.defaultFractionDigits.coerceAtLeast(0)
+        NumberFormat.getCurrencyInstance(Locale.getDefault()).apply { this.currency = currency }.format(
+            BigDecimal.valueOf(minor).movePointLeft(digits).setScale(digits, RoundingMode.UNNECESSARY),
+        )
+    }.getOrElse { NumberFormat.getIntegerInstance().format(minor) }
+}
+
+private fun Int.widgetDate(): String {
+    val date = LocalDate.of(this / 10_000, this / 100 % 100, this % 100)
+    return DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault()).format(date)
 }
 
 private fun LedgerWidgetType.requiresSelection(): Boolean = this in setOf(

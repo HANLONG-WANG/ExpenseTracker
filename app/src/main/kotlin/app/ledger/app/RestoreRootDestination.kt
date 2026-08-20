@@ -33,7 +33,7 @@ internal fun RestoreRootDestination(
                 if (viewModel.selectRestorePortable(uri)) onNavigationChanged()
             },
             onRepositorySource = {
-                if (viewModel.selectLatestRestoreRepository()) onNavigationChanged()
+                viewModel.selectLatestRestoreRepository()
             },
             onDriveSource = {
                 viewModel.requestRestoreDriveAuthorization(
@@ -42,6 +42,9 @@ internal fun RestoreRootDestination(
                     },
                     onSelected = onNavigationChanged,
                 )
+            },
+            onSnapshotSourceSelected = { snapshotId ->
+                if (viewModel.selectRestoreRepositorySnapshot(snapshotId)) onNavigationChanged()
             },
             onPasswordChanged = viewModel::changeRestorePassword,
             onVerifyPassword = {
@@ -55,6 +58,7 @@ internal fun RestoreRootDestination(
                 onNavigationChanged()
             },
             onResolveConflict = viewModel::resolveRestoreConflict,
+            onApplyToSimilarChanged = viewModel::changeRestoreApplyToSimilar,
             onApplyMerge = {
                 viewModel.applyRestoreMerge()
                 onNavigationChanged()

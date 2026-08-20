@@ -40,7 +40,7 @@ internal object BudgetDeviceFixtures {
     val actions = BudgetActions(
         navigation = BudgetNavigationActions({}, {}, { _, _, _ -> }, {}, {}),
         editor = BudgetEditorActions({}, { _, _ -> }, {}, {}, {}),
-        adjustment = BudgetAdjustmentActions({}, {}, {}, {}),
+        adjustment = BudgetAdjustmentActions({}, { _ -> }, {}, {}),
     )
 
     fun configured(configuration: Configuration = Configuration()): BudgetSnapshot {

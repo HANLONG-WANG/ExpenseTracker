@@ -11,6 +11,7 @@ import androidx.biometric.BiometricPrompt
 import androidx.documentfile.provider.DocumentFile
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
+import app.ledger.core.common.getOrNull
 import app.ledger.core.security.AndroidKeystoreKeys
 import app.ledger.core.security.Argon2idCalibrator
 import app.ledger.core.security.Argon2idParameters
@@ -34,6 +35,7 @@ import app.ledger.transfer.data.BackupConfiguration
 import app.ledger.transfer.data.BackupConfigurationStore
 import app.ledger.transfer.data.BackupProgressStore
 import app.ledger.transfer.data.BackupRepositoryInspector
+import app.ledger.transfer.data.BackupStorageArea
 import app.ledger.transfer.data.FileBackupRepositoryStorage
 import app.ledger.transfer.data.SafBackupRepositoryStorage
 import app.ledger.transfer.data.SqlCipherBackgroundOperationRepository
@@ -45,6 +47,7 @@ import app.ledger.transfer.domain.BackupNetworkPolicy
 import app.ledger.transfer.domain.BackupPolicy
 import app.ledger.transfer.domain.BackupRepositoryId
 import app.ledger.transfer.domain.BackupRepositoryKind
+import app.ledger.transfer.domain.BackupSnapshotId
 import app.ledger.transfer.domain.BackupRetentionPolicy
 import app.ledger.transfer.domain.OperationParameters
 import app.ledger.transfer.domain.RecoveryPasswordChangeMode
@@ -53,13 +56,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import java.time.Instant
 
 internal class BackupController(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
     private val runtime: AppRuntimeSources,
+    private val formatCreatedAt: (Instant) -> String,
 ) {
     private val applicationContext = context.applicationContext
     private val mutableState = MutableStateFlow(BackupFlowUiState())
@@ -100,6 +103,7 @@ internal class BackupController(
             includeVault = config?.policy?.includeVault ?: false,
             networkPolicy = config?.policy?.networkPolicy ?: BackupNetworkPolicy.ANY,
             snapshots = snapshots,
+            estimatedBytes = estimateBackupBytes(activeBookId),
         )
     }
 
@@ -310,6 +314,30 @@ internal class BackupController(
         return true
     }
 
+    fun deleteSnapshot(snapshotIdText: String): Boolean {
+        val activeBook = bookId ?: return false
+        val config = configuration ?: return false
+        if (config.repositoryKind == BackupRepositoryKind.GOOGLE_DRIVE) return false
+        val snapshotId = StableId.parse(snapshotIdText).getOrNull()?.let(::BackupSnapshotId) ?: return false
+        val catalog = createBackupCatalog(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider))
+        val snapshot = catalog.completeSnapshots(config.repositoryId).singleOrNull { it.id == snapshotId } ?: return false
+        val storage = runCatching { repositoryStorage(activeBook, config) }.getOrNull() ?: return false
+        val manifestName = snapshot.id.value.bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) } + ".manifest"
+        if (!storage.delete(BackupStorageArea.SNAPSHOTS, manifestName)) return false
+        catalog.deleteSnapshot(snapshot.id).forEach { storageName ->
+            if (catalog.deleteUnreferencedObject(config.repositoryId, storageName)) {
+                storage.delete(BackupStorageArea.OBJECTS, storageName)
+            }
+        }
+        val remaining = loadSnapshots(activeBook, config)
+        mutableState.value = mutableState.value.copy(
+            snapshots = remaining,
+            selectedSnapshot = null,
+            screenId = "BKP-005",
+        )
+        return true
+    }
+
     suspend fun startBackup(portableTree: Uri?): Boolean {
         val activeBook = bookId ?: return false
         val config = configuration ?: return false
@@ -381,6 +409,7 @@ internal class BackupController(
             }
             when (operation.state) {
                 BackgroundOperationState.SUCCEEDED -> {
+                    runCatching { VerifiedBackupAvailabilityStore(applicationContext).markVerified(activeBook) }
                     val resultScreen = if (operation.parameters is OperationParameters.BackupRecoveryReencryption) "BKP-003" else "BKP-007"
                     mutableState.value = mutableState.value.copy(
                         execution = BackupExecutionPresentation.SUCCEEDED,
@@ -388,7 +417,13 @@ internal class BackupController(
                         temporaryCleanupComplete = true,
                     )
                     begin(activeBook)
-                    mutableState.value = mutableState.value.copy(screenId = resultScreen, execution = BackupExecutionPresentation.SUCCEEDED)
+                    val created = mutableState.value.snapshots.firstOrNull()
+                    mutableState.value = mutableState.value.copy(
+                        screenId = resultScreen,
+                        execution = BackupExecutionPresentation.SUCCEEDED,
+                        selectedSnapshot = created,
+                        createdSnapshotId = created?.snapshotId,
+                    )
                     return
                 }
                 BackgroundOperationState.FAILED_FINAL, BackgroundOperationState.FAILED_RETRYABLE -> {
@@ -479,14 +514,18 @@ internal class BackupController(
                     null
                 }
                 BackupSnapshotUi(
-                    snapshot.id.value.toString(),
-                    DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(snapshot.createdAt.atZone(ZoneId.systemDefault()).toLocalDateTime()),
-                    if (manifest == null) "revision ${snapshot.localRevision.value}" else "${formatBytes(manifest.logicalBytes)} · ${manifest.objects.size} objects",
-                    manifest?.physicalIncrementBytes?.let(::formatBytes) ?: "unavailable",
-                    config.repositoryKind,
-                    repositoryCustomLabel(activeBook, config),
-                    if (manifest != null) BackupIntegrityPresentation.VERIFIED else BackupIntegrityPresentation.UNVERIFIED,
-                    manifest?.includesVault == true,
+                    snapshotId = snapshot.id.value.toString(),
+                    createdAt = formatCreatedAt(snapshot.createdAt),
+                    logicalContent = "",
+                    physicalIncrement = "",
+                    repositoryKind = config.repositoryKind,
+                    locationDetail = repositoryCustomLabel(activeBook, config),
+                    integrity = if (manifest != null) BackupIntegrityPresentation.VERIFIED else BackupIntegrityPresentation.UNVERIFIED,
+                    includesVault = manifest?.includesVault == true,
+                    localRevision = snapshot.localRevision.value,
+                    logicalBytes = manifest?.logicalBytes,
+                    objectCount = manifest?.objects?.size,
+                    physicalIncrementBytes = manifest?.physicalIncrementBytes,
                 )
             }
         } finally {
@@ -529,11 +568,16 @@ internal class BackupController(
         ""
     }
 
-    private fun formatBytes(bytes: Long): String = when {
-        bytes >= 1024L * 1024L * 1024L -> "%.2f GiB".format(bytes.toDouble() / (1024.0 * 1024.0 * 1024.0))
-        bytes >= 1024L * 1024L -> "%.2f MiB".format(bytes.toDouble() / (1024.0 * 1024.0))
-        bytes >= 1024L -> "%.2f KiB".format(bytes.toDouble() / 1024.0)
-        else -> "$bytes B"
+    private fun estimateBackupBytes(activeBook: StableId): Long {
+        val database = applicationContext.getDatabasePath(app.ledger.core.database.EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
+        val settings = applicationContext.filesDir.resolve("ledger_app_settings.pb")
+        val attachments = applicationContext.noBackupFilesDir.resolve("attachment_objects/$activeBook/objects")
+        fun size(file: File): Long = when {
+            file.isFile -> file.length()
+            file.isDirectory -> file.listFiles().orEmpty().sumOf(::size)
+            else -> 0L
+        }
+        return size(database) + size(settings) + size(attachments)
     }
 
     private fun <T> DomainResult<T>.requireSuccess(): T = when (this) {

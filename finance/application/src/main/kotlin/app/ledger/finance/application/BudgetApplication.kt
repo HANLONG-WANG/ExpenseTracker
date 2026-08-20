@@ -21,6 +21,7 @@ data class BudgetCategoryReference(
     val parentCategoryId: StableId?,
     val depth: Int,
     val status: EntityStatus,
+    val iconKey: String = "budget",
 )
 
 data class BudgetCategoryLimitDraft(val categoryId: StableId, val amountBaseMinor: Long) {

@@ -2,6 +2,7 @@
 
 package app.ledger.core.designsystem
 
+import android.animation.ValueAnimator
 import android.os.Build
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.ledger.core.designsystem.tokens.GeneratedLedgerTokenContract
+import java.time.ZoneId
 
 @Immutable
 public data class SemanticColor(
@@ -201,6 +203,7 @@ private val LocalLedgerSpacing = staticCompositionLocalOf { LedgerTokenMapping.s
 private val LocalLedgerShapes = staticCompositionLocalOf { LedgerTokenMapping.shapes }
 private val LocalLedgerMotion = compositionLocalOf { LedgerTokenMapping.motion(reduceMotion = false) }
 private val LocalLedgerDimensions = staticCompositionLocalOf { LedgerTokenMapping.dimensions }
+private val LocalLedgerTimeZone = staticCompositionLocalOf { ZoneId.of("UTC") }
 
 public object LedgerTheme {
     public val colors: LedgerColors
@@ -221,6 +224,9 @@ public object LedgerTheme {
     public val dimensions: LedgerDimensions
         @Composable @ReadOnlyComposable
         get() = LocalLedgerDimensions.current
+    public val timeZone: ZoneId
+        @Composable @ReadOnlyComposable
+        get() = LocalLedgerTimeZone.current
 }
 
 @Composable
@@ -228,6 +234,7 @@ public fun LedgerTheme(
     themeMode: ThemeMode,
     dynamicColor: Boolean,
     reduceMotion: Boolean,
+    ledgerTimeZoneId: String = "UTC",
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {
@@ -243,13 +250,16 @@ public fun LedgerTheme(
         base.material
     }
     val colors = base.copy(material = shellScheme)
+    val effectiveReduceMotion = reduceMotion || !ValueAnimator.areAnimatorsEnabled()
+    val ledgerTimeZone = runCatching { ZoneId.of(ledgerTimeZoneId) }.getOrDefault(ZoneId.of("UTC"))
     androidx.compose.runtime.CompositionLocalProvider(
         LocalLedgerColors provides colors,
         LocalLedgerTypography provides LedgerTokenMapping.typography,
         LocalLedgerSpacing provides LedgerTokenMapping.spacing,
         LocalLedgerShapes provides LedgerTokenMapping.shapes,
-        LocalLedgerMotion provides LedgerTokenMapping.motion(reduceMotion),
+        LocalLedgerMotion provides LedgerTokenMapping.motion(effectiveReduceMotion),
         LocalLedgerDimensions provides LedgerTokenMapping.dimensions,
+        LocalLedgerTimeZone provides ledgerTimeZone,
     ) {
         MaterialTheme(
             colorScheme = shellScheme,

@@ -242,7 +242,8 @@ class ImportUiContractDeviceTest {
         const val EXPECTED_VALIDATION_SHA256 = "175eb93bb5588cda9e9eef31bdefc84af52cbce53014942b5aa48d520c7cce53"
         val ACTIONS = ImportWizardActions(
             onBack = {}, onSourceSelected = {}, onModeSelected = {}, onSheetSelected = {}, onEncodingChanged = {},
-            onHeaderRowChanged = {}, onCycleFieldMapping = {}, onCreateMissingChanged = { _, _ -> }, onFxRateChanged = { _, _ -> },
+            onHeaderRowChanged = {}, onCycleFieldMapping = {}, onCreateMissingChanged = { _, _ -> },
+            onCycleEntityMapping = { _, _ -> }, onFxPolicyChanged = { _, _ -> }, onFxRateChanged = { _, _ -> },
             onDuplicateResolved = { _, _ -> }, onPrevious = {}, onNext = {}, onPause = {}, onCancel = {}, onRetry = {},
             onRollback = {}, onOpenJournal = {},
         )

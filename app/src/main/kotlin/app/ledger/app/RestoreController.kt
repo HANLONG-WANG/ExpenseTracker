@@ -17,6 +17,7 @@ import android.net.Uri
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.security.AndroidKeystoreKeys
+import app.ledger.core.security.BackupKeyEnvelopeStore
 import app.ledger.core.security.DeviceKeyHierarchy
 import app.ledger.core.security.DeviceLedgerKeyProvider
 import app.ledger.core.security.RecoveryPassword
@@ -27,17 +28,24 @@ import app.ledger.core.security.SecurityEnvelopeStore
 import app.ledger.core.security.VaultBackupEnvelopeStore
 import app.ledger.feature.transfer.CloudClearPresentation
 import app.ledger.feature.transfer.RestoreConflictUi
+import app.ledger.feature.transfer.RestoreConflictField
+import app.ledger.feature.transfer.RestoreConflictFieldUi
 import app.ledger.feature.transfer.RestoreFlowUiState
+import app.ledger.feature.transfer.RestoreIntegrityCheck
+import app.ledger.feature.transfer.RestoreIntegrityCheckUi
 import app.ledger.feature.transfer.RestoreInspectPresentation
 import app.ledger.feature.transfer.RestorePasswordInput
 import app.ledger.feature.transfer.RestorePasswordPresentation
 import app.ledger.feature.transfer.RestoreProgressPresentation
 import app.ledger.feature.transfer.RestoreResultPresentation
+import app.ledger.feature.transfer.RestoreSnapshotUi
+import app.ledger.feature.transfer.RestoreSourcePicker
 import app.ledger.finance.application.MaterializedRestorePackage
 import app.ledger.finance.data.SecureRoomMergeRestoreApplicationPort
 import app.ledger.finance.data.SecureRoomRestoreLedgerApplicationPort
 import app.ledger.transfer.data.BackupConfiguration
 import app.ledger.transfer.data.BackupConfigurationStore
+import app.ledger.transfer.data.BackupRepositoryInspector
 import app.ledger.transfer.data.DirectoryRestoreTarget
 import app.ledger.transfer.data.DriveBackupRepositoryDownloader
 import app.ledger.transfer.data.DriveSnapshotDeletionRequest
@@ -70,6 +78,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
 import java.io.File
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** In-memory secret UI state plus durable SQLCipher operation/conflict checkpoints. */
@@ -77,6 +86,7 @@ internal class RestoreController(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
     private val runtime: AppRuntimeSources,
+    private val formatCreatedAt: (Instant) -> String,
 ) {
     private val applicationContext = context.applicationContext
     private val mutableState = MutableStateFlow(RestoreFlowUiState())
@@ -109,10 +119,10 @@ internal class RestoreController(
     private var cloudFiles = emptyMap<String, app.ledger.transfer.data.DriveRemoteFile>()
     private var cloudSnapshots = emptyMap<String, app.ledger.transfer.domain.BackupSnapshot>()
 
-    fun begin(activeBookId: StableId) {
+    fun begin(activeBookId: StableId, baseCurrency: String = "") {
         cleanupTransient()
         bookId = activeBookId
-        replaceState(RestoreFlowUiState(screenId = "RST-001"))
+        replaceState(RestoreFlowUiState(screenId = "RST-001", baseCurrency = baseCurrency))
     }
 
     fun setScreen(screenId: String) {
@@ -155,6 +165,28 @@ internal class RestoreController(
         mutableState.value = mutableState.value.copy(sourcePresentation = app.ledger.feature.transfer.RestoreSourcePresentation.PERMISSION_ERROR)
         false
     } catch (_: Exception) {
+        false
+    }
+
+    fun showRepositorySnapshots(): Boolean = try {
+        val activeBook = requireNotNull(bookId)
+        val configuration = requireNotNull(BackupConfigurationStore(applicationContext, keyProvider).read(activeBook))
+        if (configuration.repositoryKind == BackupRepositoryKind.GOOGLE_DRIVE) return false
+        val snapshots = snapshotPickerItems(activeBook, configuration)
+        mutableState.value = mutableState.value.copy(
+            sourcePicker = RestoreSourcePicker.REPOSITORY,
+            repositorySnapshots = snapshots,
+            sourcePresentation = app.ledger.feature.transfer.RestoreSourcePresentation.CONTENT,
+        )
+        true
+    } catch (_: SecurityException) {
+        mutableState.value = mutableState.value.copy(sourcePresentation = app.ledger.feature.transfer.RestoreSourcePresentation.PERMISSION_ERROR)
+        false
+    } catch (_: Exception) {
+        mutableState.value = mutableState.value.copy(
+            sourcePicker = RestoreSourcePicker.REPOSITORY,
+            repositorySnapshots = emptyList(),
+        )
         false
     }
 
@@ -212,16 +244,15 @@ internal class RestoreController(
                     )
                 }
                 val storage = FileBackupRepositoryStorage(repositoryRoot(activeBook, configuration.repositoryId.value))
-                val snapshot = (downloaded as? DomainResult.Success)?.let { latestSnapshotId(storage) }
-                if (snapshot == null) {
+                if (downloaded !is DomainResult.Success) {
                     mutableState.value = mutableState.value.copy(sourcePresentation = app.ledger.feature.transfer.RestoreSourcePresentation.PERMISSION_ERROR)
                 } else {
-                    selectSource(
-                        configuration.repositoryHandleId,
-                        EncryptedRestoreSource.ManagedRepository(storage, configuration.repositoryId, snapshot),
-                        snapshot.value.toString(),
+                    mutableState.value = mutableState.value.copy(
+                        screenId = "RST-001",
+                        sourcePicker = RestoreSourcePicker.DRIVE,
+                        driveSnapshots = snapshotPickerItems(activeBook, configuration),
+                        sourcePresentation = app.ledger.feature.transfer.RestoreSourcePresentation.CONTENT,
                     )
-                    mutableState.value = mutableState.value.copy(sourcePresentation = app.ledger.feature.transfer.RestoreSourcePresentation.CONTENT)
                 }
                 null
             }
@@ -301,8 +332,15 @@ internal class RestoreController(
                             inspectPresentation = RestoreInspectPresentation.COMPATIBLE,
                             bookIdentity = result.value.bookId.toString(),
                             sourceVersion = result.value.databaseSchemaVersion?.toString() ?: "portable-v1",
-                            contentSummary = "${result.value.restoredEntries} objects · ${result.value.logicalBytes} bytes",
-                            integritySummary = "AEAD, SHA-256, SQLCipher, journal, foreign keys and projections verified",
+                            restoredObjectCount = result.value.restoredEntries,
+                            restoredLogicalBytes = result.value.logicalBytes,
+                            attachmentCount = result.value.targetDirectory.resolve("attachments")
+                                .takeIf(File::isDirectory)
+                                ?.walkTopDown()
+                                ?.count(File::isFile)
+                                ?: 0,
+                            includesVault = result.value.includesVault,
+                            integrityChecks = prepared.integrity.toUiChecks(),
                             mergeAvailable = prepared.expectedLiveHead != null,
                             screenId = "RST-004",
                         )
@@ -369,11 +407,22 @@ internal class RestoreController(
                                 conflict.id.value.toString(),
                                 conflict.kind,
                                 conflict.entityLabel(),
-                                conflict.ancestor?.contentHash?.value?.toString().orEmpty(),
-                                conflict.local?.contentHash?.value?.toString().orEmpty(),
-                                conflict.incoming?.contentHash?.value?.toString().orEmpty(),
+                                "",
+                                "",
+                                "",
                                 resolutions[conflict.id.value],
                                 conflict.purgeTombstone != null,
+                                fields = listOf(
+                                    RestoreConflictFieldUi(
+                                        RestoreConflictField.RECORD_CONTENT,
+                                        "",
+                                        "",
+                                        "",
+                                        ancestorGeneration = conflict.ancestor?.generation,
+                                        localGeneration = conflict.local?.generation,
+                                        incomingGeneration = conflict.incoming?.generation,
+                                    ),
+                                ),
                             )
                         },
                     )
@@ -387,10 +436,22 @@ internal class RestoreController(
         val preview = mergePreview ?: return
         val conflict = preview.plan.conflicts.singleOrNull { it.id.value.toString() == conflictId } ?: return
         val accepted = (conflict.resolve(resolution) as? DomainResult.Success)?.value ?: return
-        resolutions[conflict.id.value] = resolution
+        val targets = if (mutableState.value.applyToSimilar) {
+            preview.plan.conflicts.filter { it.kind == conflict.kind && it.purgeTombstone == null }
+        } else {
+            listOf(conflict)
+        }
+        targets.forEach { resolutions[it.id.value] = resolution }
+        val targetIds = targets.mapTo(hashSetOf()) { it.id.value.toString() }
         mutableState.value = mutableState.value.copy(
-            conflicts = mutableState.value.conflicts.map { if (it.id == conflictId) it.copy(resolution = accepted.resolution) else it },
+            conflicts = mutableState.value.conflicts.map {
+                if (it.id in targetIds) it.copy(resolution = accepted.resolution) else it
+            },
         )
+    }
+
+    fun applyToSimilarChanged(value: Boolean) {
+        mutableState.value = mutableState.value.copy(applyToSimilar = value)
     }
 
     suspend fun applyMerge(): Boolean {
@@ -425,7 +486,10 @@ internal class RestoreController(
         val authorization = GoogleDriveAuthorizationGateway(applicationContext).authorize()
         val token = (authorization as? DomainResult.Success)?.value as? GoogleDriveAuthorization.Authorized
         if (token == null) {
-            mutableState.value = mutableState.value.copy(cloudClearPresentation = CloudClearPresentation.AUTH_REQUIRED)
+            mutableState.value = mutableState.value.copy(
+                cloudClearPresentation = CloudClearPresentation.AUTH_REQUIRED,
+                cloudAuthenticated = false,
+            )
             return false
         }
         val client = app.ledger.transfer.data.DriveResumableBackupClient(OkHttpClient())
@@ -440,8 +504,11 @@ internal class RestoreController(
         cloudFiles = listed.associateBy { it.name }
         cloudSnapshots = catalogSnapshots.filterKeys { it in cloudFiles }
         mutableState.value = mutableState.value.copy(
-            cloudSnapshots = cloudSnapshots.keys.sorted(),
+            cloudSnapshots = cloudSnapshots.entries
+                .sortedByDescending { it.value.createdAt }
+                .map { (name, snapshot) -> snapshot.toPickerUi(name, configuration.repositoryKind, activeBook, configuration) },
             cloudClearPresentation = CloudClearPresentation.CONTENT,
+            cloudAuthenticated = true,
         )
         return true
     }
@@ -469,7 +536,10 @@ internal class RestoreController(
         val authorization = GoogleDriveAuthorizationGateway(applicationContext).authorize()
         val token = (authorization as? DomainResult.Success)?.value as? GoogleDriveAuthorization.Authorized
         if (token == null) {
-            mutableState.value = mutableState.value.copy(cloudClearPresentation = CloudClearPresentation.AUTH_REQUIRED)
+            mutableState.value = mutableState.value.copy(
+                cloudClearPresentation = CloudClearPresentation.AUTH_REQUIRED,
+                cloudAuthenticated = false,
+            )
             return false
         }
         mutableState.value = mutableState.value.copy(cloudClearPresentation = CloudClearPresentation.DELETING)
@@ -501,7 +571,7 @@ internal class RestoreController(
         }
         mutableState.value = mutableState.value.copy(
             cloudClearPresentation = if (success) CloudClearPresentation.CONTENT else CloudClearPresentation.FAILED,
-            cloudSnapshots = mutableState.value.cloudSnapshots - removed,
+            cloudSnapshots = mutableState.value.cloudSnapshots.filterNot { it.id in removed },
             selectedCloudSnapshots = selected - removed,
             cloudConfirmationPhrase = "",
         )
@@ -604,8 +674,8 @@ internal class RestoreController(
                 screenId = "RST-007",
                 progressPresentation = RestoreProgressPresentation.SUCCEEDED,
                 resultPresentation = RestoreResultPresentation.SUCCESS,
-                safetySnapshotLabel = "verified managed snapshot",
-                verificationSummary = "journal, foreign keys, projections and live head verified",
+                safetySnapshotLabel = "",
+                verificationSummary = "",
                 failureCode = null,
             )
             true
@@ -618,7 +688,8 @@ internal class RestoreController(
                 progressPresentation = RestoreProgressPresentation.FAILED_ROLLBACK,
                 resultPresentation = if (rolledBack) RestoreResultPresentation.ROLLED_BACK else RestoreResultPresentation.FAILED,
                 failureCode = result.error.code,
-                verificationSummary = if (rolledBack) "live ledger rolled back and verified" else "restore was not published",
+                safetySnapshotLabel = "",
+                verificationSummary = "",
             )
             false
         }
@@ -689,6 +760,56 @@ internal class RestoreController(
         ?.let(StableId::fromBytes)
         ?.let { (it as? DomainResult.Success)?.value }
         ?.let(::BackupSnapshotId)
+
+    private fun snapshotPickerItems(activeBook: StableId, configuration: BackupConfiguration): List<RestoreSnapshotUi> {
+        val storage = repositoryStorage(activeBook, configuration)
+        return createBackupCatalog(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider))
+            .completeSnapshots(configuration.repositoryId)
+            .filter { snapshot ->
+                storage.exists(
+                    app.ledger.transfer.data.BackupStorageArea.SNAPSHOTS,
+                    "${snapshot.id.value.hex()}.manifest",
+                )
+            }
+            .map { snapshot ->
+                snapshot.toPickerUi(snapshot.id.value.toString(), configuration.repositoryKind, activeBook, configuration)
+            }
+    }
+
+    private fun app.ledger.transfer.domain.BackupSnapshot.toPickerUi(
+        displayId: String,
+        repositoryKind: BackupRepositoryKind,
+        activeBook: StableId,
+        configuration: BackupConfiguration,
+    ): RestoreSnapshotUi {
+        val includesVault = runCatching {
+            val storage = repositoryStorage(activeBook, configuration)
+            BackupKeyEnvelopeStore(applicationContext, keyProvider)
+                .openForAutomaticBackup(activeBook, configuration.repositoryId.value)
+                .use { key -> BackupRepositoryInspector().readManifest(storage, configuration.repositoryId, id, key).includesVault }
+        }.getOrNull() == true
+        return RestoreSnapshotUi(
+            id = displayId,
+            createdAt = formatCreatedAt(createdAt),
+            repositoryKind = repositoryKind,
+            verified = manifestHash != null,
+            includesVault = includesVault,
+        )
+    }
+
+    private fun app.ledger.finance.application.RestoreIntegrityReport.toUiChecks(): List<RestoreIntegrityCheckUi> = listOf(
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.SCHEMA, schemaVersionSupported),
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.MIGRATIONS, migrationsApplied),
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.SQLCIPHER, sqlCipherReadable),
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.ENCRYPTION_AND_HASHES, aeadAndHashesValid),
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.FOREIGN_KEYS, foreignKeysValid),
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.JOURNAL_BALANCE, journalsBalanced),
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.PROJECTIONS, projectionsValid),
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.TRANSACTION_SUBTYPES, transactionSubtypesValid),
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.ATTACHMENTS, attachmentsValid),
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.BOOK_IDENTITY, bookIdentityValid),
+        RestoreIntegrityCheckUi(RestoreIntegrityCheck.BASE_CURRENCY, baseCurrencyValid),
+    )
 
     private fun cleanupTransient() {
         operationId?.let {

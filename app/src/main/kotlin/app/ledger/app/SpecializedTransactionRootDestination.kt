@@ -17,6 +17,7 @@ internal fun SpecializedTransactionRootDestination(
     state: SpecializedTransactionLoadState,
     viewModel: AppRootViewModel,
     onAddAttachment: () -> Unit,
+    onNavigationChanged: () -> Unit,
 ) {
     val presetAccount = encodedArguments["accountId"]?.let { StableId.parse(it).getOrNull() }
     LaunchedEffect(screenId, presetAccount) { viewModel.loadSpecializedTransaction(screenId, presetAccount) }
@@ -36,9 +37,13 @@ internal fun SpecializedTransactionRootDestination(
             onRefreshRates = viewModel::refreshSpecializedRates,
             onDirection = viewModel::specializedDirection,
             onCheckpoint = viewModel::specializedCheckpoint,
-            onDate = viewModel::specializedDate,
+            onOccurredAt = viewModel::specializedOccurredAt,
             onNote = viewModel::specializedNote,
             onAddAttachment = onAddAttachment,
+            onOpenAttachment = {
+                viewModel.openSpecializedAttachment(it)
+                onNavigationChanged()
+            },
             onCancelAttachment = viewModel::cancelSpecializedAttachment,
             onSave = viewModel::saveSpecializedTransaction,
         ),

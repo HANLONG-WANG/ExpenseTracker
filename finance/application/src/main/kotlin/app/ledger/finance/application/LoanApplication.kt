@@ -40,6 +40,32 @@ data class LoanScheduleItemView(
     val actualPenaltyMinor: Long,
 )
 
+data class LoanScheduleRevisionView(
+    val id: StableId,
+    val revisionNumber: Int,
+    val items: List<LoanScheduleItemView>,
+)
+
+data class LoanPaymentAllocationView(
+    val trancheName: String,
+    val installmentNumber: Int?,
+    val component: LoanPaymentComponent,
+    val amountMinor: Long,
+)
+
+data class LoanPaymentDetailView(
+    val transactionId: StableId,
+    val contractName: String,
+    val paymentAccountName: String?,
+    val currency: CurrencyCode,
+    val localDate: LocalDate,
+    val principalMinor: Long,
+    val interestMinor: Long,
+    val feeMinor: Long,
+    val penaltyMinor: Long,
+    val allocations: List<LoanPaymentAllocationView>,
+)
+
 data class LoanTrancheView(
     val id: StableId,
     val ledgerAccountId: StableId,
@@ -65,6 +91,7 @@ data class LoanTrancheView(
     val scheduleRevisionNumber: Int,
     val scheduleHistoryCount: Int,
     val schedule: List<LoanScheduleItemView>,
+    val scheduleRevisions: List<LoanScheduleRevisionView> = emptyList(),
 )
 
 data class LoanContractView(
@@ -269,6 +296,8 @@ data class ApplyLoanSimulationRequest(
 
 interface LoanApplicationPort {
     suspend fun snapshot(bookId: StableId): DomainResult<LoanSnapshot>
+
+    suspend fun paymentDetail(bookId: StableId, transactionId: StableId): DomainResult<LoanPaymentDetailView?>
 
     suspend fun preview(request: SaveLoanContractRequest): DomainResult<List<LoanScheduleRevision>>
 

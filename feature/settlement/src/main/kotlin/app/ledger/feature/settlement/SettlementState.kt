@@ -4,6 +4,7 @@ import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.AmountVisibility
+import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.LocaleCurrencyFormatter
 import app.ledger.core.money.Money
@@ -40,7 +41,7 @@ public enum class SettlementPresentation {
     RESOLVED,
 }
 
-public enum class SettlementField { NAME, DESCRIPTION, START_DATE, END_DATE, TOTAL, TAX, SERVICE_FEE, NOTE, PARTICIPANT_NAME }
+public enum class SettlementField { NAME, DESCRIPTION, START_DATE, END_DATE, PAYMENT_DATE, TOTAL, TAX, SERVICE_FEE, NOTE, PARTICIPANT_NAME }
 
 public data class SettlementParticipantDraft(
     val id: StableId,
@@ -55,6 +56,7 @@ public data class SettlementDraft(
     val description: String = "",
     val startDate: String = "",
     val endDate: String = "",
+    val paymentDate: String = "",
     val total: String = "",
     val tax: String = "0",
     val serviceFee: String = "0",
@@ -67,6 +69,7 @@ public data class SettlementDraft(
     val payeeParticipantId: StableId? = null,
     val accountId: StableId? = null,
     val projectId: StableId? = null,
+    val currency: CurrencyCode? = null,
     val participants: List<SettlementParticipantDraft> = emptyList(),
 )
 
@@ -137,6 +140,7 @@ public object SettlementPolicy {
                 description = activity?.description.orEmpty(),
                 startDate = activity?.startDate?.toString().orEmpty(),
                 endDate = activity?.endDate?.toString().orEmpty(),
+                currency = activity?.currency ?: snapshot.baseCurrency,
                 payerParticipantId = self?.id,
                 payeeParticipantId = other?.id,
                 accountId = snapshot.accounts.firstOrNull { it.active && it.currency == activity?.currency }?.id,
@@ -155,6 +159,7 @@ public object SettlementPolicy {
             SettlementField.DESCRIPTION -> state.draft.copy(description = safe)
             SettlementField.START_DATE -> state.draft.copy(startDate = safe.take(DATE_TEXT_LIMIT))
             SettlementField.END_DATE -> state.draft.copy(endDate = safe.take(DATE_TEXT_LIMIT))
+            SettlementField.PAYMENT_DATE -> state.draft.copy(paymentDate = safe.take(DATE_TEXT_LIMIT))
             SettlementField.TOTAL -> state.draft.copy(total = safe.take(MONEY_TEXT_LIMIT))
             SettlementField.TAX -> state.draft.copy(tax = safe.take(MONEY_TEXT_LIMIT))
             SettlementField.SERVICE_FEE -> state.draft.copy(serviceFee = safe.take(MONEY_TEXT_LIMIT))
@@ -178,6 +183,25 @@ public object SettlementPolicy {
             if (includedCount < MINIMUM_PARTICIPANTS || selfCount != REQUIRED_SELF_COUNT) add("participants")
         }
         return state.copy(validationFields = errors, presentation = if (errors.isEmpty()) state.presentation else SettlementPresentation.VALIDATION_ERROR)
+    }
+
+    public fun canSave(state: SettlementFeatureState, screenId: String): Boolean = when (screenId) {
+        "SET-002" -> validateActivity(state).validationFields.isEmpty() && state.draft.currency != null
+        "SET-003" -> state.draft.participants.count { it.included } >= MINIMUM_PARTICIPANTS &&
+            state.draft.participants.count { it.isSelf && it.included } == REQUIRED_SELF_COUNT
+        "SET-006" -> canSavePayment(state)
+        else -> true
+    }
+
+    private fun canSavePayment(state: SettlementFeatureState): Boolean {
+        val activity = state.activity ?: return false
+        val payer = state.draft.payerParticipantId ?: return false
+        val payee = state.draft.payeeParticipantId?.takeIf { it != payer } ?: return false
+        if (minor(state.draft.total, activity.currency)?.let { it > 0L } != true) return false
+        if (runCatching { LocalDate.parse(state.draft.paymentDate) }.isFailure) return false
+        val selfInvolved = activity.participants.any { it.isSelf && it.id in setOf(payer, payee) }
+        val account = state.draft.accountId?.let { id -> state.snapshot.accounts.singleOrNull { it.id == id && it.active } }
+        return if (selfInvolved) account?.currency == activity.currency else account == null
     }
 
     public fun minor(text: String, currency: app.ledger.core.money.CurrencyCode): Long? = runCatching {

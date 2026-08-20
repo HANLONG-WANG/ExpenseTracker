@@ -14,10 +14,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.paging.PagingData
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.designsystem.LedgerTheme
@@ -79,6 +82,54 @@ class JournalUiContractDeviceTest {
             composeRule.waitForIdle()
             composeRule.onNodeWithTag("journal_screen").assertExists()
         }
+    }
+
+    @Test
+    fun trashRestoreDispatchesOnceAndIneligiblePurgeExposesReasonWithoutPurging() {
+        val trashed = ROW.copy(
+            state = TransactionLifecycleState.TRASHED,
+            trashedAt = NOW.minusSeconds(120),
+            purgeAfter = NOW.plusSeconds(86_400),
+            dependencyCount = 1,
+        )
+        val screen = mutableStateOf("JRN-011")
+        val content = mutableStateOf(
+            JournalLoadState.Content(
+                detail = DETAIL.copy(transaction = trashed),
+                purgeAssessment = JournalPurgeAssessment(
+                    ID,
+                    NOW.minusSeconds(120),
+                    NOW.plusSeconds(86_400),
+                    setOf(PurgeIneligibilityReason.PHYSICAL_PURGE_REQUIRES_MAINTENANCE),
+                ),
+            ),
+        )
+        val page = MutableStateFlow(PagingData.from(listOf(trashed)))
+        var restores = 0
+        var purges = 0
+        val actions = ACTIONS.copy(
+            onRestore = { transactionId, revisionId ->
+                assertEquals(ID, transactionId)
+                assertEquals(trashed.revisionId, revisionId)
+                restores += 1
+            },
+            onPurgeRequested = { purges += 1 },
+        )
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 800.dp)) {
+                    JournalDestination(screen.value, emptyMap(), content.value, page, actions)
+                }
+            }
+        }
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(R.string.p15_journal_restore)).performClick()
+        composeRule.runOnIdle { assertEquals(1, restores) }
+
+        composeRule.runOnIdle { screen.value = "JRN-012" }
+        composeRule.onNodeWithText(context.getString(R.string.p15_purge_reason_maintenance)).assertExists()
+        composeRule.runOnIdle { assertEquals(0, purges) }
     }
 
     private fun cases(): List<Case> {

@@ -111,8 +111,8 @@ public object BudgetPolicy {
         presentation = if (parseMinor(value, state.snapshot) == null) BudgetPresentation.INVALID else BudgetPresentation.EDITING,
     )
 
-    public fun selectNextAdjustmentSource(state: BudgetFeatureState): BudgetFeatureState = state.copy(
-        adjustmentSourceCategoryId = nextCategory(state, state.adjustmentSourceCategoryId, state.adjustmentTargetCategoryId),
+    public fun selectNextAdjustmentSource(state: BudgetFeatureState, archivedOnly: Boolean = false): BudgetFeatureState = state.copy(
+        adjustmentSourceCategoryId = nextCategory(state, state.adjustmentSourceCategoryId, state.adjustmentTargetCategoryId, archivedOnly),
     )
 
     public fun selectNextAdjustmentTarget(state: BudgetFeatureState): BudgetFeatureState = state.copy(
@@ -201,8 +201,18 @@ public object BudgetPolicy {
         else -> BudgetPresentation.CONFIGURED
     }
 
-    private fun nextCategory(state: BudgetFeatureState, current: StableId?, excluded: StableId?): StableId? {
-        val ids = state.snapshot.categories.filter { it.status == app.ledger.finance.domain.EntityStatus.ACTIVE && it.id != excluded }.map { it.id }
+    private fun nextCategory(
+        state: BudgetFeatureState,
+        current: StableId?,
+        excluded: StableId?,
+        archivedOnly: Boolean = false,
+    ): StableId? {
+        val targetStatus = if (archivedOnly) {
+            app.ledger.finance.domain.EntityStatus.ARCHIVED
+        } else {
+            app.ledger.finance.domain.EntityStatus.ACTIVE
+        }
+        val ids = state.snapshot.categories.filter { it.status == targetStatus && it.id != excluded }.map { it.id }
         if (ids.isEmpty()) return null
         val index = ids.indexOf(current)
         return ids[(if (index < 0) 0 else index + 1) % ids.size]

@@ -33,6 +33,7 @@ internal fun ExportRootDestination(
             onFileNameChanged = viewModel::changeExportFileName,
             onDestinationSelected = viewModel::selectExportDestination,
             onConfirmOverwrite = viewModel::confirmExportOverwrite,
+            onStart = viewModel::startExport,
             onCancel = viewModel::cancelExport,
             onRetry = viewModel::retryExport,
             onOpen = { viewModel.openExport() },

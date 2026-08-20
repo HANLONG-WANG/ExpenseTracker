@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
@@ -30,6 +34,7 @@ import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
+import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerStatusVariant
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
@@ -38,6 +43,7 @@ import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
+import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.money.AmountSemantic
@@ -46,6 +52,12 @@ import app.ledger.finance.domain.SettlementActivityStatus
 import app.ledger.finance.domain.SettlementChargeDistribution
 import app.ledger.finance.domain.SettlementRoundingRule
 import app.ledger.finance.domain.SettlementSplitMethod
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @Composable
 public fun SettlementDestination(
@@ -85,33 +97,49 @@ private fun SettlementHome(state: SettlementFeatureState, actions: SettlementAct
         if (state.presentation == SettlementPresentation.REQUIRES_ADDITIONAL_SETTLEMENT) {
             item { LedgerBanner(stringResource(R.string.settlement_additional_banner), LedgerBannerVariant.WARNING) }
         }
-        items(state.snapshot.activities, key = { it.id.toString() }) { activity -> ActivityCard(activity, actions) }
+        items(state.snapshot.activities, key = { it.id.toString() }) { activity -> ActivityCard(activity, state, actions) }
         item { LedgerButton(stringResource(R.string.settlement_create), { actions.onNavigate("SET-002", null, null) }, Modifier.fillMaxWidth()) }
     }
 }
 
 @Composable
-private fun SettlementEditor(state: SettlementFeatureState, actions: SettlementActions) = SettlementList(Modifier.testTag(LedgerTestTags.SETTLEMENT_EDITOR)) {
-    item { StateBanner(state) }
-    item { LedgerTextField(state.draft.name, { actions.onFieldChanged(SettlementField.NAME, it) }, stringResource(R.string.settlement_name), Modifier.fillMaxWidth(), errorText = stringResource(R.string.settlement_validation).takeIf { "name" in state.validationFields }, required = true) }
-    item { LedgerTextField(state.draft.description, { actions.onFieldChanged(SettlementField.DESCRIPTION, it) }, stringResource(R.string.settlement_description), Modifier.fillMaxWidth()) }
-    item { LedgerTextField(state.draft.startDate, { actions.onFieldChanged(SettlementField.START_DATE, it) }, stringResource(R.string.settlement_start_date), Modifier.fillMaxWidth(), errorText = stringResource(R.string.settlement_validation).takeIf { "startDate" in state.validationFields }, required = true) }
-    item { LedgerTextField(state.draft.endDate, { actions.onFieldChanged(SettlementField.END_DATE, it) }, stringResource(R.string.settlement_end_date), Modifier.fillMaxWidth(), errorText = stringResource(R.string.settlement_validation).takeIf { "endDate" in state.validationFields }) }
-    item { LedgerText(stringResource(R.string.settlement_currency_locked), LedgerTextRole.SUPPORTING) }
-    item {
-        FormSection(stringResource(R.string.settlement_project), description = stringResource(R.string.settlement_project_support)) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                LedgerButton(stringResource(R.string.settlement_no_project), { actions.onSelectProject(null) }, variant = if (state.draft.projectId == null) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
-                state.snapshot.projects.filter { it.active }.forEach { project ->
-                    LedgerButton(project.name, { actions.onSelectProject(project.id) }, variant = if (state.draft.projectId == project.id) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
+private fun SettlementEditor(state: SettlementFeatureState, actions: SettlementActions) {
+    val locale = LocalLocale.current.platformLocale
+    var startPicker by remember { mutableStateOf(false) }
+    var endPicker by remember { mutableStateOf(false) }
+    SettlementList(Modifier.testTag(LedgerTestTags.SETTLEMENT_EDITOR)) {
+        item { StateBanner(state) }
+        item { LedgerTextField(state.draft.name, { actions.onFieldChanged(SettlementField.NAME, it) }, stringResource(R.string.settlement_name), Modifier.fillMaxWidth(), errorText = stringResource(R.string.settlement_validation).takeIf { "name" in state.validationFields }, required = true) }
+        item { LedgerTextField(state.draft.description, { actions.onFieldChanged(SettlementField.DESCRIPTION, it) }, stringResource(R.string.settlement_description), Modifier.fillMaxWidth()) }
+        item { SelectorField(stringResource(R.string.settlement_start_date), state.draft.startDate.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.settlement_choose_date), { startPicker = true }, supportingText = stringResource(R.string.settlement_validation).takeIf { "startDate" in state.validationFields }) }
+        item { SelectorField(stringResource(R.string.settlement_end_date), state.draft.endDate.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.settlement_no_end_date), { endPicker = true }, supportingText = stringResource(R.string.settlement_validation).takeIf { "endDate" in state.validationFields }) }
+        if (state.activity == null) {
+            item {
+                FormSection(stringResource(R.string.settlement_currency), description = stringResource(R.string.settlement_currency_create_support)) {
+                    (listOf(state.snapshot.baseCurrency) + state.snapshot.accounts.filter { it.active }.map { it.currency }).distinct().forEach { currency ->
+                        LedgerButton(currency.value, { actions.onSelectCurrency(currency) }, Modifier.fillMaxWidth(), if (state.draft.currency == currency) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
+                    }
+                }
+            }
+        } else {
+            item { LedgerText(stringResource(R.string.settlement_currency_value_locked, state.activity.currency.value), LedgerTextRole.SUPPORTING) }
+        }
+        item {
+            FormSection(stringResource(R.string.settlement_project), description = stringResource(R.string.settlement_project_support)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                    LedgerButton(stringResource(R.string.settlement_no_project), { actions.onSelectProject(null) }, variant = if (state.draft.projectId == null) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
+                    state.snapshot.projects.filter { it.active }.forEach { project ->
+                        LedgerButton(project.name, { actions.onSelectProject(project.id) }, variant = if (state.draft.projectId == project.id) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
+                    }
                 }
             }
         }
+        item { ParticipantChips(state, actions) }
+        item { LedgerTextField(state.draft.participantName, { actions.onFieldChanged(SettlementField.PARTICIPANT_NAME, it) }, stringResource(R.string.settlement_participant_name), Modifier.fillMaxWidth()) }
+        item { LedgerButton(stringResource(R.string.settlement_add_participant), actions.onAddParticipant, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
     }
-    item { ParticipantChips(state, actions) }
-    item { LedgerTextField(state.draft.participantName, { actions.onFieldChanged(SettlementField.PARTICIPANT_NAME, it) }, stringResource(R.string.settlement_participant_name), Modifier.fillMaxWidth()) }
-    item { LedgerButton(stringResource(R.string.settlement_add_participant), actions.onAddParticipant, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
-    item { LedgerButton(stringResource(R.string.settlement_save_activity), actions.onSave, Modifier.fillMaxWidth()) }
+    if (startPicker) SettlementDatePicker(state.draft.startDate, { actions.onFieldChanged(SettlementField.START_DATE, it); startPicker = false }, { startPicker = false })
+    if (endPicker) SettlementDatePicker(state.draft.endDate, { actions.onFieldChanged(SettlementField.END_DATE, it); endPicker = false }, { endPicker = false })
 }
 
 @Composable
@@ -160,15 +188,48 @@ private fun SettlementDetail(state: SettlementFeatureState, actions: SettlementA
             }
         }
         activity.description?.let { description -> item { LedgerText(description, LedgerTextRole.BODY) } }
+        activity.projectId?.let { projectId -> state.snapshot.projects.singleOrNull { it.id == projectId }?.let { project -> item { LedgerText(stringResource(R.string.settlement_project_value, project.name), LedgerTextRole.SUPPORTING) } } }
         item { PositionSummary(activity) }
         items(activity.positions, key = { it.participantId.toString() }) { position ->
             val participant = activity.participants.single { it.id == position.participantId }
             LedgerCard(Modifier.fillMaxWidth(), onClick = { actions.onNavigate("SET-005", activity.id, participant.id) }) {
-                Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), horizontalArrangement = Arrangement.SpaceBetween) {
-                    LedgerText(participant.name, LedgerTextRole.BODY)
-                    LedgerText(money(position.netPositionMinor, activity, LocalLocale.current.platformLocale), LedgerTextRole.BODY)
+                Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        LedgerText(participant.name, LedgerTextRole.SECTION)
+                        LedgerText(money(position.netPositionMinor, activity, LocalLocale.current.platformLocale), LedgerTextRole.BODY)
+                    }
+                    LedgerText(
+                        stringResource(
+                            R.string.settlement_position_row,
+                            money(position.paidMinor, activity, LocalLocale.current.platformLocale),
+                            money(position.owedMinor, activity, LocalLocale.current.platformLocale),
+                            money(Math.subtractExact(position.settledPaidMinor, position.settledReceivedMinor), activity, LocalLocale.current.platformLocale),
+                        ),
+                        LedgerTextRole.SUPPORTING,
+                    )
                 }
             }
+        }
+        item { LedgerText(stringResource(R.string.settlement_activity_transactions), LedgerTextRole.SECTION) }
+        if (activity.transactions.isEmpty()) item { LedgerText(stringResource(R.string.settlement_activity_transactions_empty), LedgerTextRole.SUPPORTING) }
+        items(activity.transactions.take(5), key = { "transaction:${it.transactionId}" }) { transaction ->
+            val payer = activity.participants.singleOrNull { it.id == transaction.payerParticipantId }?.name.orEmpty()
+            LedgerCard(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        LedgerText(payer, LedgerTextRole.BODY)
+                        LedgerText(transaction.occurredAt.localized(LocalLocale.current.platformLocale), LedgerTextRole.SUPPORTING)
+                    }
+                    AmountText(SettlementPolicy.money(transaction.totalMinor, activity.currency, LocalLocale.current.platformLocale), AmountSize.LIST)
+                }
+            }
+        }
+        item { LedgerText(stringResource(R.string.settlement_history_preview), LedgerTextRole.SECTION) }
+        if (activity.payments.isEmpty()) item { LedgerText(stringResource(R.string.settlement_history_empty_body), LedgerTextRole.SUPPORTING) }
+        items(activity.payments.take(3), key = { "payment:${it.id}" }) { payment ->
+            val payer = activity.participants.single { it.id == payment.payerParticipantId }
+            val payee = activity.participants.single { it.id == payment.payeeParticipantId }
+            LedgerText(stringResource(R.string.settlement_history_preview_row, payer.name, payee.name, money(payment.amountMinor, activity, LocalLocale.current.platformLocale), payment.occurredAt.localized(LocalLocale.current.platformLocale)), LedgerTextRole.BODY)
         }
         item { LedgerButton(stringResource(R.string.settlement_record_payment), { actions.onNavigate("SET-006", activity.id, null) }, Modifier.fillMaxWidth()) }
         item { LedgerButton(stringResource(R.string.settlement_payment_history), { actions.onNavigate("SET-007", activity.id, null) }, Modifier.fillMaxWidth(), LedgerButtonVariant.TEXT) }
@@ -202,7 +263,7 @@ private fun PositionDetail(state: SettlementFeatureState, actions: SettlementAct
         item { LedgerText(stringResource(R.string.settlement_related_transactions), LedgerTextRole.SECTION) }
         if (related.isEmpty()) item { LedgerText(stringResource(R.string.settlement_related_empty), LedgerTextRole.SUPPORTING) }
         items(related, key = { it.transactionId.toString() }) { transaction ->
-            LedgerText(stringResource(R.string.settlement_related_row, transaction.occurredAt.toString(), transaction.owedMinorByParticipant[selectedId] ?: 0L), LedgerTextRole.BODY)
+            LedgerText(stringResource(R.string.settlement_related_row, transaction.occurredAt.localized(locale), money(transaction.owedMinorByParticipant[selectedId] ?: 0L, activity, locale)), LedgerTextRole.BODY)
         }
         if (activity.suggestions.isEmpty()) item { LedgerBanner(stringResource(R.string.settlement_no_suggestion), LedgerBannerVariant.INFO) }
         items(activity.suggestions) { suggestion ->
@@ -216,11 +277,14 @@ private fun PositionDetail(state: SettlementFeatureState, actions: SettlementAct
 @Composable
 private fun PaymentEditor(state: SettlementFeatureState, actions: SettlementActions) {
     val activity = state.activity ?: return LedgerEmptyState(stringResource(R.string.settlement_missing), stringResource(R.string.settlement_missing_body), stringResource(R.string.settlement_reload), actions.onRetry, Modifier.fillMaxSize().testTag(LedgerTestTags.SETTLEMENT_PAYMENT))
+    val locale = LocalLocale.current.platformLocale
+    var datePicker by remember { mutableStateOf(false) }
     SettlementList(Modifier.testTag(LedgerTestTags.SETTLEMENT_PAYMENT)) {
         item { StateBanner(state) }
         item { ParticipantSelector(stringResource(R.string.settlement_payer), activity, state.draft.payerParticipantId, actions.onSelectPayer) }
         item { ParticipantSelector(stringResource(R.string.settlement_payee), activity, state.draft.payeeParticipantId, actions.onSelectPayee) }
         item { LedgerTextField(state.draft.total, { actions.onFieldChanged(SettlementField.TOTAL, it) }, stringResource(R.string.settlement_amount), Modifier.fillMaxWidth(), required = true, keyboardType = KeyboardType.Decimal) }
+        item { SelectorField(stringResource(R.string.settlement_payment_date), state.draft.paymentDate.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.settlement_choose_date), { datePicker = true }) }
         val payerSelf = activity.participants.singleOrNull { it.id == state.draft.payerParticipantId }?.isSelf == true
         val payeeSelf = activity.participants.singleOrNull { it.id == state.draft.payeeParticipantId }?.isSelf == true
         if (payerSelf || payeeSelf) {
@@ -230,8 +294,8 @@ private fun PaymentEditor(state: SettlementFeatureState, actions: SettlementActi
             item { LedgerBanner(stringResource(R.string.settlement_external_no_account), LedgerBannerVariant.INFO) }
         }
         item { LedgerTextField(state.draft.note, { actions.onFieldChanged(SettlementField.NOTE, it) }, stringResource(R.string.settlement_note), Modifier.fillMaxWidth()) }
-        item { LedgerButton(stringResource(R.string.settlement_save_payment), actions.onSave, Modifier.fillMaxWidth()) }
     }
+    if (datePicker) SettlementDatePicker(state.draft.paymentDate, { actions.onFieldChanged(SettlementField.PAYMENT_DATE, it); datePicker = false }, { datePicker = false })
 }
 
 @Composable
@@ -248,7 +312,7 @@ private fun PaymentHistory(state: SettlementFeatureState, actions: SettlementAct
                     val payee = activity.participants.single { it.id == payment.payeeParticipantId }
                     LedgerText(stringResource(R.string.settlement_payment_row, payer.name, payee.name), LedgerTextRole.SECTION)
                     AmountText(SettlementPolicy.money(payment.amountMinor, activity.currency, LocalLocale.current.platformLocale), AmountSize.LIST)
-                    LedgerText(payment.occurredAt.toString(), LedgerTextRole.SUPPORTING)
+                    LedgerText(payment.occurredAt.localized(LocalLocale.current.platformLocale), LedgerTextRole.SUPPORTING)
                     LedgerText(if (payment.linkedTransactionId == null) stringResource(R.string.settlement_subledger_only) else stringResource(R.string.settlement_linked_transaction), LedgerTextRole.SUPPORTING)
                 }
             }
@@ -265,6 +329,31 @@ private fun AdditionalSettlement(state: SettlementFeatureState, actions: Settlem
             item { LedgerBanner(stringResource(R.string.settlement_history_immutable), LedgerBannerVariant.WARNING) }
             item { LedgerText(stringResource(R.string.settlement_theoretical_recalculated), LedgerTextRole.BODY) }
             item { PositionSummary(activity) }
+            item {
+                AccessibleDataTable(
+                    AccessibleTableUiModel(
+                        stringResource(R.string.settlement_additional_comparison),
+                        listOf(stringResource(R.string.settlement_participant), stringResource(R.string.settlement_historical_settled), stringResource(R.string.settlement_current_theoretical), stringResource(R.string.settlement_difference)),
+                        activity.positions.map { position ->
+                            val participant = activity.participants.single { it.id == position.participantId }
+                            listOf(
+                                participant.name,
+                                money(Math.subtractExact(position.settledPaidMinor, position.settledReceivedMinor), activity, LocalLocale.current.platformLocale),
+                                money(Math.subtractExact(position.paidMinor, position.owedMinor), activity, LocalLocale.current.platformLocale),
+                                money(position.netPositionMinor, activity, LocalLocale.current.platformLocale),
+                            )
+                        },
+                        endAlignedColumnIndices = setOf(1, 2, 3),
+                    ),
+                )
+            }
+            item { LedgerText(stringResource(R.string.settlement_suggested_transfers), LedgerTextRole.SECTION) }
+            if (activity.suggestions.isEmpty()) item { LedgerText(stringResource(R.string.settlement_no_suggestion), LedgerTextRole.SUPPORTING) }
+            items(activity.suggestions) { suggestion ->
+                val payer = activity.participants.single { it.id == suggestion.payerParticipantId.value }
+                val payee = activity.participants.single { it.id == suggestion.payeeParticipantId.value }
+                LedgerText(stringResource(R.string.settlement_suggestion, payer.name, payee.name, money(suggestion.amountMinor, activity, LocalLocale.current.platformLocale)), LedgerTextRole.BODY)
+            }
             item { LedgerButton(stringResource(R.string.settlement_record_supplement), { actions.onNavigate("SET-006", activity.id, null) }, Modifier.fillMaxWidth()) }
         } else {
             item { LedgerBanner(stringResource(R.string.settlement_resolved), LedgerBannerVariant.INFO) }
@@ -274,7 +363,7 @@ private fun AdditionalSettlement(state: SettlementFeatureState, actions: Settlem
 }
 
 @Composable
-private fun ActivityCard(activity: SettlementActivityView, actions: SettlementActions) {
+private fun ActivityCard(activity: SettlementActivityView, state: SettlementFeatureState, actions: SettlementActions) {
     LedgerCard(Modifier.fillMaxWidth(), onClick = { actions.onNavigate("SET-004", activity.id, null) }) {
         Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -282,6 +371,8 @@ private fun ActivityCard(activity: SettlementActivityView, actions: SettlementAc
                 StatusBadge(activityStatus(activity.status), activityVariant(activity.status))
             }
             LedgerText(stringResource(R.string.settlement_member_count, activity.participants.size), LedgerTextRole.SUPPORTING)
+            activity.projectId?.let { projectId -> state.snapshot.projects.singleOrNull { it.id == projectId }?.let { project -> LedgerText(stringResource(R.string.settlement_project_value, project.name), LedgerTextRole.SUPPORTING) } }
+            if (activity.requiresAdditionalSettlement) StatusBadge(stringResource(R.string.settlement_status_additional), LedgerStatusVariant.WARNING)
             PositionSummary(activity)
         }
     }
@@ -387,3 +478,18 @@ private fun activityVariant(status: SettlementActivityStatus): LedgerStatusVaria
 }
 
 private fun money(minor: Long, activity: SettlementActivityView, locale: java.util.Locale): String = SettlementPolicy.money(minor, activity.currency, locale).formatted
+
+@Composable
+private fun SettlementDatePicker(value: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    val initial = value.toLocalDateOrNull() ?: LocalDate.now()
+    LedgerDatePickerFlow(
+        initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+        { millis -> onConfirm(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()) },
+        onDismiss,
+    )
+}
+
+private fun LocalDate.localized(locale: java.util.Locale): String = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(this)
+@Composable
+private fun Instant.localized(locale: java.util.Locale): String = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM).withLocale(locale).withZone(LedgerTheme.timeZone).format(this)
+private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()

@@ -96,7 +96,7 @@ class AnalysisUiContractDeviceTest {
         val root = composeRule.onNodeWithTag(LedgerTestTags.REPORT_DETAIL)
         root.performScrollToNode(androidx.compose.ui.test.hasTestTag(LedgerTestTags.CHART))
         composeRule.onNodeWithTag(LedgerTestTags.CHART).assert(
-            SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription),
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.Text),
         )
         root.performScrollToNode(androidx.compose.ui.test.hasTestTag(LedgerTestTags.DATA_TABLE))
         composeRule.onNodeWithTag(LedgerTestTags.DATA_TABLE).assertExists()

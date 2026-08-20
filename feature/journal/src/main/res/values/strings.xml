@@ -6,6 +6,8 @@
     <string name="p15_journal_empty_title">No transactions</string>
     <string name="p15_journal_empty_body">Transactions you record appear here in occurrence-time order.</string>
     <string name="p15_journal_retry">Retry</string>
+    <string name="p15_journal_back_to_journal">Back to journal</string>
+    <string name="p15_journal_copy_name">%1$s copy</string>
     <string name="p15_journal_error">The encrypted journal could not be loaded.</string>
     <string name="p15_journal_today">Today</string>
     <string name="p15_journal_selection">Selection</string>
@@ -22,6 +24,12 @@
     <string name="p15_journal_account_effects">Account impact</string>
     <string name="p15_journal_budget_semantics">Budget and statistics</string>
     <string name="p15_journal_fx">Foreign exchange evidence</string>
+    <string name="p15_journal_rate_direction">1 %1$s = %2$s %3$s</string>
+    <string name="p15_journal_rate_source">Source: %1$s</string>
+    <string name="p15_journal_rate_manual">Manual</string>
+    <string name="p15_journal_rate_quoted_at">Quoted at %1$s</string>
+    <string name="p15_journal_rate_stale">This rate was stale when used.</string>
+    <string name="p15_journal_rate_unavailable">Rate unavailable</string>
     <string name="p15_journal_relationships">Relationships</string>
     <string name="p15_journal_attachments">Attachments</string>
     <string name="p15_journal_source">Source</string>
@@ -50,9 +58,58 @@
     <string name="p15_journal_filter_time">Occurrence, creation and modification time</string>
     <string name="p15_journal_filter_amount">Amount, currency and budget/statistical attributes</string>
     <string name="p15_journal_no_saved_filters">No saved filters.</string>
+    <string name="p15_journal_reset">Reset</string>
+    <string name="p15_journal_filter_account">Account</string>
+    <string name="p15_journal_filter_settlement">Settlement activity</string>
+    <string name="p15_journal_filter_participant">Participant</string>
+    <string name="p15_journal_filter_radius_value">Within %1$d m</string>
+    <string name="p15_journal_minimum_amount">Minimum account amount</string>
+    <string name="p15_journal_maximum_amount">Maximum account amount</string>
+    <string name="p15_journal_invalid_amount">Enter a valid amount in the selected currency.</string>
+    <string name="p15_journal_filter_location">Location radius</string>
+    <string name="p15_journal_filter_radius_enabled">Limit results around a map point</string>
+    <string name="p15_journal_filter_latitude">Center latitude</string>
+    <string name="p15_journal_filter_longitude">Center longitude</string>
+    <string name="p15_journal_filter_radius">Radius in metres</string>
+    <string name="p15_journal_invalid_location">Enter a valid latitude, longitude and positive radius.</string>
+    <string name="p15_journal_change_summary">Change summary</string>
+    <string name="p15_journal_no_changes_selected">No fields selected</string>
+    <string name="p15_journal_choose_time">Choose date and time</string>
+    <string name="p15_journal_status">Status</string>
+    <string name="p15_journal_location">Location</string>
+    <string name="p15_journal_history_preview">Recent history</string>
+    <string name="p15_journal_history_empty">No revision preview is available.</string>
+    <string name="p15_journal_actions">Actions</string>
+    <string name="p15_journal_edit">Edit</string>
+    <string name="p15_journal_refund_action">Refund</string>
+    <string name="p15_journal_copy_as_template">Copy as template</string>
+    <string name="p15_journal_create_revision">Create a new revision from this version</string>
+    <string name="p15_journal_dependency_summary">%1$d linked records may be affected. Choose how each relationship is handled.</string>
+    <string name="p15_journal_transaction_label">Transaction</string>
+    <string name="p15_journal_purge_verifying">Verifying permanent-deletion eligibility</string>
+    <string name="p15_journal_purge_verify_failed">Eligibility verification failed.</string>
+    <string name="p15_journal_purge_running">Permanently deleting eligible data</string>
+    <string name="p15_journal_purge_dependency_summary">Dependency check complete: %1$d linked records.</string>
+    <string name="p15_journal_deleted_at">Deleted %1$s</string>
+    <string name="p15_journal_cleanup_at">Automatic cleanup %1$s</string>
+    <string name="p15_journal_dependency_count">%1$d dependencies</string>
+    <string name="p15_journal_selected_for_bulk">Selected for bulk action</string>
+    <string name="p15_revision_field_created">Initial version</string><string name="p15_revision_field_occurred_at">Occurrence time</string><string name="p15_revision_field_category">Category</string><string name="p15_revision_field_account">Account</string><string name="p15_revision_field_amount">Amount</string><string name="p15_revision_field_note">Note</string><string name="p15_revision_field_merchant">Merchant</string><string name="p15_revision_field_project">Project</string><string name="p15_revision_field_location">Location</string><string name="p15_revision_field_state">State</string><string name="p15_revision_field_other">Other field</string>
+    <string name="p15_journal_revision_number">Revision %1$d</string>
     <string name="p15_journal_save_filter">Save current filter</string><string name="p15_journal_filter_name">Filter name</string><string name="p15_journal_default_filter">Default filter</string><string name="p15_journal_apply_filter">Apply</string><string name="p15_journal_copy_filter">Copy</string><string name="p15_journal_set_default">Set default</string><string name="p15_journal_move_up">Move up</string><string name="p15_journal_move_down">Move down</string><string name="p15_journal_delete_filter">Delete saved filter</string><string name="p15_journal_clear_selection">Clear selection</string>
     <string name="p15_journal_bulk_category">Category</string><string name="p15_journal_bulk_account">Account</string><string name="p15_journal_bulk_card">Card</string><string name="p15_journal_bulk_merchant">Merchant</string><string name="p15_journal_bulk_project">Project</string><string name="p15_journal_bulk_time">Occurrence time</string><string name="p15_journal_bulk_note">Note</string><string name="p15_journal_bulk_budget">Included in budget</string><string name="p15_journal_bulk_nature">Statistical nature</string><string name="p15_journal_iso_time">ISO-8601 instant</string><string name="p15_journal_invalid_time">Enter a valid ISO-8601 instant.</string><string name="p15_journal_clear_value">Clear value</string><string name="p15_journal_enable_field">Select to include this field in the atomic change.</string><string name="p15_journal_no_options">No available value</string><string name="p15_journal_yes">Yes</string><string name="p15_journal_no">No</string>
     <string name="p15_journal_filter_flags">Attachments, refund, installment, budget and recurrence</string><string name="p15_journal_filter_attachment">Has attachment</string><string name="p15_journal_filter_refund">Is refund</string><string name="p15_journal_filter_installment">Has installment</string><string name="p15_journal_filter_budget">Included in budget</string><string name="p15_journal_filter_recurrence">Generated by recurrence</string><string name="p15_journal_any">Any</string><string name="p15_journal_filter_all">All transactions</string>
-    <string name="p15_journal_occurred_from">Occurred from (ISO-8601)</string><string name="p15_journal_occurred_through">Occurred through (ISO-8601)</string><string name="p15_journal_created_from">Created from (ISO-8601)</string><string name="p15_journal_created_through">Created through (ISO-8601)</string><string name="p15_journal_modified_from">Modified from (ISO-8601)</string><string name="p15_journal_modified_through">Modified through (ISO-8601)</string><string name="p15_journal_minimum_minor">Minimum account amount (minor units)</string><string name="p15_journal_maximum_minor">Maximum account amount (minor units)</string><string name="p15_journal_invalid_number">Enter an integer minor-unit amount.</string><string name="p15_journal_filter_invalid_range">Correct invalid values or reversed ranges before applying.</string>
+    <string name="p15_journal_occurred_from">Occurred from</string><string name="p15_journal_occurred_through">Occurred through</string><string name="p15_journal_created_from">Created from</string><string name="p15_journal_created_through">Created through</string><string name="p15_journal_modified_from">Modified from</string><string name="p15_journal_modified_through">Modified through</string><string name="p15_journal_minimum_minor">Minimum account amount (minor units)</string><string name="p15_journal_maximum_minor">Maximum account amount (minor units)</string><string name="p15_journal_invalid_number">Enter an integer minor-unit amount.</string><string name="p15_journal_filter_invalid_range">Correct invalid values or reversed ranges before applying.</string>
     <string name="p15_journal_dependency_strategy">Dependency strategy</string><string name="p15_journal_dependency_choose">Choose a strategy</string><string name="p15_journal_dependency_complete">Every dependency has an explicit strategy.</string><string name="p15_journal_dependency_reverse">Reverse dependent transactions</string><string name="p15_journal_dependency_independent_refund">Convert refund to independent</string><string name="p15_journal_dependency_cancel_installment">Cancel installment plan</string><string name="p15_journal_dependency_rebind_installment">Rebind installment plan</string><string name="p15_journal_dependency_recalculate_settlement">Recalculate settlement</string><string name="p15_journal_dependency_reopen_settlement">Reopen settled activity</string><string name="p15_journal_dependency_regenerate_statement">Regenerate credit statement</string><string name="p15_journal_dependency_recalculate_loan">Recalculate loan schedule</string>
+    <string name="p15_journal_amount_unavailable">Amount unavailable</string><string name="p15_journal_refresh_failed">Refresh failed; the previous results are still shown.</string>
+    <string name="p15_journal_created_at">Created %1$s</string><string name="p15_journal_modified_at">Modified %1$s</string><string name="p15_journal_revision_title">Revision %1$d · %2$s</string><string name="p15_journal_changed">Changed</string><string name="p15_journal_unchanged">Unchanged</string>
+    <string name="p15_journal_dependency_parent">Parent transaction %1$s</string><string name="p15_journal_dependency_child">Dependent transaction %1$s</string><string name="p15_journal_dependency_child_state">Dependent state: %1$s</string>
+    <string name="p15_kind_expense">Expense</string><string name="p15_kind_income">Income</string><string name="p15_kind_transfer">Transfer</string><string name="p15_kind_refund">Refund</string><string name="p15_kind_credit_payment">Credit card payment</string><string name="p15_kind_loan_disbursement">Loan disbursement</string><string name="p15_kind_loan_payment">Loan payment</string><string name="p15_kind_balance_adjustment">Balance adjustment</string><string name="p15_kind_fx_exchange">Foreign exchange</string><string name="p15_kind_settlement_payment">Settlement payment</string><string name="p15_kind_opening_balance">Opening balance</string>
+    <string name="p15_state_active">Active</string><string name="p15_state_trashed">In trash</string>
+    <string name="p15_source_manual">Manual</string><string name="p15_source_quick_template">Quick template</string><string name="p15_source_recurrence_auto">Automatic recurrence</string><string name="p15_source_recurrence_candidate">Recurrence candidate</string><string name="p15_source_csv_import">CSV import</string><string name="p15_source_xlsx_import">Excel import</string><string name="p15_source_structured_import">Structured import</string><string name="p15_source_system_generated">System generated</string><string name="p15_source_merge_restore">Merge restore</string><string name="p15_source_batch_operation">Batch operation</string>
+    <string name="p15_nature_consumption_expense">Consumption expense</string><string name="p15_nature_non_consumption_expense">Non-consumption expense</string><string name="p15_nature_regular_income">Regular income</string><string name="p15_nature_non_recurring_income">Non-recurring income</string>
+    <string name="p15_operation_idle">Ready to edit</string><string name="p15_operation_validating">Validating changes</string><string name="p15_operation_committing">Committing atomically</string><string name="p15_operation_failed">No changes were saved. Review the fields and retry.</string><string name="p15_operation_succeeded">All selected changes were saved.</string>
+    <string name="p15_revision_create">Created</string><string name="p15_revision_edit">Edited</string><string name="p15_revision_move_to_trash">Moved to trash</string><string name="p15_revision_restore">Restored</string><string name="p15_revision_bulk_edit">Bulk edited</string><string name="p15_revision_dependency_rewrite">Dependencies rewritten</string>
+    <string name="p15_dependency_refund">Refund relationship</string><string name="p15_dependency_installment">Installment plan</string><string name="p15_dependency_credit_statement">Credit statement</string><string name="p15_dependency_loan_schedule">Loan schedule</string><string name="p15_dependency_settlement">Settlement activity</string><string name="p15_dependency_recurrence">Recurrence occurrence</string><string name="p15_dependency_attachment">Attachment reference</string>
+    <string name="p15_purge_reason_not_trashed">Move the transaction to trash first.</string><string name="p15_purge_reason_retention">The retention period has not ended.</string><string name="p15_purge_reason_account_net">The account net effect is not zero.</string><string name="p15_purge_reason_base_net">The base-currency net effect is not zero.</string><string name="p15_purge_reason_effect_net">Derived financial effects are not zero.</string><string name="p15_purge_reason_dependencies">Resolve dependent records first.</string><string name="p15_purge_reason_operation">A running or retained operation still references this transaction.</string><string name="p15_purge_reason_backup">A backup is still reading an attachment.</string><string name="p15_purge_reason_maintenance">Physical deletion must run as controlled maintenance.</string>
 </resources>

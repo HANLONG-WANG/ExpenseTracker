@@ -17,21 +17,27 @@ import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.designsystem.LedgerSaveFab
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
 import app.ledger.finance.application.RefundSearchQuery
+import app.ledger.finance.domain.RefundBudgetPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.Locale
+import java.time.YearMonth
 
 @RunWith(AndroidJUnit4::class)
 class RefundUiContractDeviceTest {
@@ -96,6 +102,50 @@ class RefundUiContractDeviceTest {
         composeRule.onNodeWithTag(LedgerTestTags.REFUND_TIME_DIMENSIONS).assertExists()
         composeRule.onNodeWithTag(LedgerTestTags.REFUND_FORM).performScrollToNode(hasTestTag(LedgerTestTags.REFUND_EXCESS_CONFIRMATION))
         composeRule.onNodeWithTag(LedgerTestTags.REFUND_EXCESS_CONFIRMATION).assertExists()
+    }
+
+    @Test
+    fun refundRemainingLimitAndCrossMonthPolicyCompleteThroughUserActions() {
+        val active = mutableStateOf(RefundDeviceFixtures.excess())
+        var writes = 0
+        var committedBudgetMonth: YearMonth? = null
+        val actions = RefundDeviceFixtures.actions.copy(
+            onBudgetPolicy = { policy -> active.value = RefundPolicy.setBudgetPolicy(active.value, policy) },
+            onRequestExcess = { requested -> active.value = RefundPolicy.requestExcessOverride(active.value, requested) },
+            onConfirmExcess = { active.value = RefundPolicy.confirmExcessRisk(active.value) },
+        )
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 800.dp)) {
+                    LedgerScaffold(
+                        fixedAction = {
+                            LedgerSaveFab {
+                                val validated = RefundPolicy.validate(active.value)
+                                active.value = validated
+                                if (validated.errors.isEmpty()) {
+                                    committedBudgetMonth = RefundPolicy.prepare(validated).budgetMonth
+                                    writes += 1
+                                }
+                            }
+                        },
+                    ) { padding -> RefundDestination(RefundLoadState.Content(active.value), actions, Modifier.padding(padding)) }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(LedgerTestTags.SAVE).performClick()
+        composeRule.runOnIdle { assertEquals(0, writes) }
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(R.string.refund_budget_refund)).performScrollTo().performClick()
+        composeRule.onNodeWithText(context.getString(R.string.refund_excess_override)).performScrollTo().performClick()
+        composeRule.onNodeWithText(context.getString(R.string.refund_confirm_excess)).performScrollTo().performClick()
+        composeRule.onNodeWithTag(LedgerTestTags.SAVE).performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, writes)
+            assertEquals(RefundBudgetPolicy.RESTORE_REFUND_MONTH, active.value.draft.budgetPolicy)
+            assertEquals(YearMonth.of(2026, 8), committedBudgetMonth)
+        }
     }
 
     private fun cases(): List<Case> {

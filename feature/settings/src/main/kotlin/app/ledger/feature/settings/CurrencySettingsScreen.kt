@@ -86,6 +86,8 @@ public fun CurrencySettingsDestination(
 ) {
     val locale = LocalConfiguration.current.locales[0]
     val codes = CurrencySettingsPolicy.filteredCodes(state, locale)
+    val visible = codes.filter { it in state.visibleCodes }
+    val hidden = codes.filterNot { it in state.visibleCodes }
     Column(
         modifier.fillMaxSize().testTag(LedgerTestTags.CURRENCY_SETTINGS_ROOT).padding(horizontal = LedgerTheme.spacing.sm),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
@@ -93,27 +95,56 @@ public fun CurrencySettingsDestination(
         SearchField(state.query, onSearch, onClear = { onSearch("") }, placeholder = stringResource(R.string.currency_settings_search))
         LedgerText(stringResource(R.string.currency_settings_explanation), LedgerTextRole.SUPPORTING)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-            items(codes, key = CurrencyCode::value) { code ->
-                val required = code == state.baseCurrency || code in state.accountCurrencies
-                Column(Modifier.fillMaxWidth()) {
-                    LedgerToggleRow(
-                        title = "${code.value} · ${CurrencySettingsPolicy.currencyName(code, locale)}",
-                        checked = code in state.visibleCodes,
-                        onCheckedChange = { onToggle(code) },
-                        supportingText = when {
-                            code == state.baseCurrency -> stringResource(R.string.currency_settings_base_required)
-                            code in state.accountCurrencies -> stringResource(R.string.currency_settings_account_required)
-                            else -> null
-                        },
-                        enabled = !required,
-                    )
-                    if (code in state.visibleCodes) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            LedgerButton(stringResource(R.string.currency_settings_move_up), { onMove(code, -1) }, variant = LedgerButtonVariant.TEXT, compact = true)
-                            LedgerButton(stringResource(R.string.currency_settings_move_down), { onMove(code, 1) }, variant = LedgerButtonVariant.TEXT, compact = true)
-                        }
-                    }
-                }
+            item { LedgerText(stringResource(R.string.currency_settings_visible), LedgerTextRole.SECTION) }
+            items(visible, key = { "visible-${it.value}" }) { code ->
+                CurrencySettingRow(state, code, locale, onToggle, onMove)
+            }
+            item { LedgerText(stringResource(R.string.currency_settings_hidden), LedgerTextRole.SECTION) }
+            items(hidden, key = { "hidden-${it.value}" }) { code ->
+                CurrencySettingRow(state, code, locale, onToggle, onMove)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CurrencySettingRow(
+    state: CurrencySettingsState,
+    code: CurrencyCode,
+    locale: Locale,
+    onToggle: (CurrencyCode) -> Unit,
+    onMove: (CurrencyCode, Int) -> Unit,
+) {
+    val required = code == state.baseCurrency || code in state.accountCurrencies
+    val visibleIndex = state.visibleCodes.indexOf(code)
+    Column(Modifier.fillMaxWidth()) {
+        LedgerToggleRow(
+            title = "${code.value} · ${CurrencySettingsPolicy.currencyName(code, locale)}",
+            checked = visibleIndex >= 0,
+            onCheckedChange = { onToggle(code) },
+            supportingText = when {
+                code == state.baseCurrency -> stringResource(R.string.currency_settings_base_required)
+                code in state.accountCurrencies -> stringResource(R.string.currency_settings_account_required)
+                else -> null
+            },
+            enabled = !required,
+        )
+        if (visibleIndex >= 0) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                LedgerButton(
+                    stringResource(R.string.currency_settings_move_up),
+                    { onMove(code, -1) },
+                    variant = LedgerButtonVariant.TEXT,
+                    enabled = visibleIndex > 0,
+                    compact = true,
+                )
+                LedgerButton(
+                    stringResource(R.string.currency_settings_move_down),
+                    { onMove(code, 1) },
+                    variant = LedgerButtonVariant.TEXT,
+                    enabled = visibleIndex < state.visibleCodes.lastIndex,
+                    compact = true,
+                )
             }
         }
     }

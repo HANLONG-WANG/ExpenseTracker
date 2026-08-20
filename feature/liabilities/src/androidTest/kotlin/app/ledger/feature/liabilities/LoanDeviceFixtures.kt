@@ -52,7 +52,10 @@ internal object LoanDeviceFixtures {
 
     val actions = LoanActions(
         onRetry = {}, onNavigate = { _, _, _ -> }, onFieldChanged = { _, _ -> }, onSelectContract = {},
-        onSelectTranche = {}, onRepaymentMethod = {}, onStrategy = {}, onPreview = {}, onSave = {}, onSimulate = {}, onApplySimulation = {},
+        onSelectTranche = {}, onSelectPaymentAccount = {}, onSelectScheduleInstallment = {}, onOperationOccurredAt = {},
+        onRepaymentMethod = {}, onStrategy = {}, onRateType = {}, onFrequency = {}, onPrepaymentPolicy = {}, onRoundingMode = {},
+        onWizardNext = {}, onWizardBack = {}, onAddTranche = {}, onSelectWizardTranche = {}, onAddRatePeriod = {}, onEditRatePeriod = {},
+        onPreview = {}, onSave = {}, onSimulate = {}, onApplySimulation = {},
     )
 
     fun snapshot(contracts: List<LoanContractView> = listOf(contract())) = LoanSnapshot(

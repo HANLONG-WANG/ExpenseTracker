@@ -8,5 +8,6 @@ dependencies {
     implementation(project(":analytics:domain"))
     implementation(project(":transfer:domain"))
     implementation(project(":core:designsystem"))
+    implementation(project(":core:geo"))
     implementation(project(":core:navigation"))
 }

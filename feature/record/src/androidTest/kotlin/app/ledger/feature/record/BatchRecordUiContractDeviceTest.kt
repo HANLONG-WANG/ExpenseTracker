@@ -18,11 +18,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.common.StableId
 import app.ledger.core.designsystem.BatchSummaryRowUiModel
 import app.ledger.core.designsystem.BatchSummaryTable
@@ -120,6 +124,31 @@ class BatchRecordUiContractDeviceTest {
         assertTrue("LazyColumn must not compose 100k rows", composed.get() < 100)
         val clickCount = composeRule.onAllNodes(hasClickAction()).fetchSemanticsNodes().size
         assertTrue("visible semantics remain bounded", clickCount < 100)
+    }
+
+    @Test
+    fun batchCommitWithAnyValidationErrorDispatchesNoWrite() {
+        val state = errorState()
+        var writes = 0
+        val actions = ACTIONS.copy(
+            onCommit = {
+                if (state.validation.errors.isEmpty()) writes += 1
+            },
+        )
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 800.dp)) {
+                    BatchRecordDestination("REC-023", state, actions)
+                }
+            }
+        }
+
+        val label = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.batch_commit)
+        composeRule.onNodeWithText(label).assertIsNotEnabled().performClick()
+        composeRule.runOnIdle {
+            assertTrue(state.validation.errors.isNotEmpty())
+            assertEquals(0, writes)
+        }
     }
 
     @Test

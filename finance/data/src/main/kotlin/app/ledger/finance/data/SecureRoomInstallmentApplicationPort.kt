@@ -524,8 +524,40 @@ class SecureRoomInstallmentApplicationPort(
             InstallmentPlanView(
                 header.planId, header.purchaseId, header.accountId, header.accountName, header.currency,
                 header.originalPrincipal, currentPrincipal, header.termCount, plan.status, revision, schedule, progress,
-                refunded.first, refunded.second,
+                refunded.first, refunded.second, previousSchedule(db, planUid, planId),
             ),
+        )
+    }
+
+    private fun previousSchedule(
+        db: SupportSQLiteDatabase,
+        planUid: StableId,
+        planId: InstallmentPlanId,
+    ): InstallmentScheduleRevision? {
+        val header = db.queryOne(
+            "SELECT isr.uid,isr.revision_no,isr.reason,isr.generated_at,bc.uid commit_uid FROM installment_schedule_revision isr " +
+                "JOIN book_commit bc ON bc.id=isr.created_commit_id WHERE isr.plan_id=(SELECT id FROM installment_plan WHERE uid=?) " +
+                "ORDER BY isr.revision_no DESC LIMIT 1 OFFSET 1",
+            arrayOf(planUid.bytes),
+        ) { cursor ->
+            ScheduleHeader(
+                cursor.stableId("uid"), cursor.int("revision_no"), cursor.int("reason"), cursor.long("generated_at"), cursor.stableId("commit_uid"),
+            )
+        } ?: return null
+        val items = db.queryList(
+            "SELECT id,installment_no,statement_date,principal_minor,interest_minor,fee_minor,remaining_principal_minor " +
+                "FROM installment_schedule_item WHERE schedule_revision_id=(SELECT id FROM installment_schedule_revision WHERE uid=?) ORDER BY installment_no",
+            arrayOf(header.id.bytes),
+        ) { cursor ->
+            InstallmentScheduleItem(
+                InstallmentScheduleItemId(stableIdFromInternal(cursor.long("id"))), cursor.int("installment_no"),
+                storageDate(cursor.int("statement_date")), cursor.long("principal_minor"), cursor.long("interest_minor"),
+                cursor.long("fee_minor"), cursor.long("remaining_principal_minor"),
+            )
+        }
+        return InstallmentScheduleRevision(
+            InstallmentScheduleRevisionId(header.id), planId, header.revisionNumber, ScheduleRevisionReason.entries[header.reason],
+            Instant.ofEpochMilli(header.generatedAt), BookCommitId(header.createdCommitId), items,
         )
     }
 

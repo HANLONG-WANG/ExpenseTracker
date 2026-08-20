@@ -43,6 +43,11 @@ data class JournalTransactionView(
     val badges: List<String>,
     val runningBalanceMinor: Long?,
     val source: TransactionSource,
+    val trashedAt: Instant? = null,
+    val purgeAfter: Instant? = null,
+    val dependencyCount: Int = 0,
+    /** Mapper-provided boundary; the UI never scans the full loaded Paging snapshot to infer groups. */
+    val startsDateGroup: Boolean = false,
 )
 
 data class JournalPage(
@@ -93,6 +98,7 @@ data class JournalRevisionView(
     val amountMinor: Long?,
     val currency: CurrencyCode?,
     val changedFields: List<String>,
+    val source: TransactionSource = TransactionSource.MANUAL,
 )
 
 data class JournalRevisionComparison(
@@ -107,6 +113,8 @@ data class JournalDependencyView(
     val childTransactionId: StableId,
     val type: TransactionDependencyType,
     val childState: TransactionLifecycleState,
+    val parentLabel: String? = null,
+    val childLabel: String? = null,
 )
 
 enum class PurgeIneligibilityReason {

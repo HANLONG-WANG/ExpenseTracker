@@ -38,6 +38,12 @@ public enum class TrashRetention(public val days: Int) {
     NEVER(0),
 }
 
+public enum class DeviceAuthenticationCapability {
+    STRONG_BIOMETRIC_OR_DEVICE_CREDENTIAL,
+    DEVICE_CREDENTIAL_ONLY,
+    UNAVAILABLE,
+}
+
 public data class FeatureQueueRow(
     val occurredAtEpochMillis: Long,
     val event: String,
@@ -74,6 +80,7 @@ public data class SecurityPrivacySettingsState(
     val appLockTimeout: AppLockTimeout = AppLockTimeout.IMMEDIATE,
     val customTimeoutMinutes: Int = 1,
     val deviceSecurityConfigured: Boolean = true,
+    val authenticationCapability: DeviceAuthenticationCapability = DeviceAuthenticationCapability.DEVICE_CREDENTIAL_ONLY,
     val globalScreenshotBlocked: Boolean = false,
     val obscureRecentTasks: Boolean = true,
     val trashRetention: TrashRetention = TrashRetention.THIRTY_DAYS,
@@ -82,6 +89,8 @@ public data class SecurityPrivacySettingsState(
     val crashEnabled: Boolean = false,
     val featureRows: List<FeatureQueueRow> = emptyList(),
     val crashRows: List<CrashQueueRow> = emptyList(),
+    val zoneId: String = "UTC",
+    val localClearAuthenticationPending: Boolean = false,
     val errorCode: String? = null,
 ) {
     init {

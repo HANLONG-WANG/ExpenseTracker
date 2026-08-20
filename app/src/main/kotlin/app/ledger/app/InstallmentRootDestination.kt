@@ -53,6 +53,7 @@ internal fun InstallmentRootDestination(
             onFieldChanged = viewModel::updateInstallmentField,
             onFeeModelChanged = viewModel::updateInstallmentFeeModel,
             onRefundPolicyChanged = viewModel::updateInstallmentRefundPolicy,
+            onRoundingModeChanged = viewModel::updateInstallmentRoundingMode,
             onSelectPurchase = viewModel::selectInstallmentPurchase,
             onPreview = viewModel::previewInstallment,
             onCalculateSettlement = viewModel::calculateInstallmentSettlement,

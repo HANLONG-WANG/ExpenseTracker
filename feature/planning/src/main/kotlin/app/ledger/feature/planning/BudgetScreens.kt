@@ -9,15 +9,24 @@
 package app.ledger.feature.planning
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
@@ -36,8 +45,11 @@ import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChip
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
+import app.ledger.core.designsystem.LedgerIcon
+import app.ledger.core.designsystem.LedgerIconView
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerProgressIndicator
+import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
@@ -45,7 +57,11 @@ import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.finance.application.BudgetCompositionView
+import app.ledger.finance.application.BudgetRevisionView
 import app.ledger.finance.domain.BudgetAdjustmentKind
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @Composable
 public fun BudgetDestination(
@@ -68,13 +84,25 @@ public fun BudgetDestination(
         return
     }
     val content = (state as BudgetLoadState.Content).state
+    if (
+        screenId == "BUD-008" &&
+        encodedArguments["templateId"] != null &&
+        content.selectedTemplateId?.toString() != encodedArguments["templateId"]
+    ) {
+        LedgerErrorState(
+            UiErrorCode("BUDGET_TEMPLATE_NOT_FOUND"),
+            stringResource(R.string.budget_template_not_found),
+            actions.onRetry,
+        )
+        return
+    }
     when (screenId) {
         "BUD-001" -> BudgetHome(content, actions)
         "BUD-002" -> BudgetEditor(content, actions, false)
         "BUD-003" -> BudgetCategoryEditor(content, encodedArguments["categoryId"], actions)
         "BUD-004" -> BudgetAdjustments(content, actions)
         "BUD-005" -> BudgetAdjustmentEditor(content, encodedArguments["type"], actions)
-        "BUD-006" -> BudgetHistory(content, actions)
+        "BUD-006" -> BudgetHistory(content)
         "BUD-007" -> BudgetTemplates(content, actions)
         "BUD-008" -> BudgetEditor(content, actions, true)
         else -> LedgerErrorState(
@@ -88,6 +116,10 @@ public fun BudgetDestination(
 @Composable
 private fun BudgetHome(state: BudgetFeatureState, actions: BudgetActions) {
     val locale = LocalLocale.current.platformLocale
+    var expandedRootIds by remember(state.snapshot.month) { mutableStateOf(emptySet<StableId>()) }
+    val categoryRows = state.snapshot.composition.filter { row ->
+        row.categoryId != null && (row.depth == 1 || row.parentCategoryId in expandedRootIds)
+    }
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.BUDGET_HOME),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
@@ -100,7 +132,10 @@ private fun BudgetHome(state: BudgetFeatureState, actions: BudgetActions) {
                     { actions.onMonth(state.snapshot.month.minusMonths(1)) },
                     variant = LedgerButtonVariant.TEXT,
                 )
-                LedgerText(state.snapshot.month.toString(), LedgerTextRole.TITLE)
+                LedgerText(
+                    state.snapshot.month.format(DateTimeFormatter.ofPattern("LLLL y", locale)),
+                    LedgerTextRole.TITLE,
+                )
                 LedgerButton(
                     stringResource(R.string.budget_next_month),
                     { actions.onMonth(state.snapshot.month.plusMonths(1)) },
@@ -155,6 +190,11 @@ private fun BudgetHome(state: BudgetFeatureState, actions: BudgetActions) {
                                     BudgetPolicy.money(state, daily.dailyAvailableBaseMinor, locale),
                                     AmountSize.LARGE,
                                 )
+                                CompositionLine(
+                                    R.string.budget_reserved_recurrence_row,
+                                    daily.reservedRecurrenceBaseMinor,
+                                    state,
+                                )
                                 LedgerText(
                                     stringResource(
                                         R.string.budget_reserved_formula,
@@ -174,10 +214,21 @@ private fun BudgetHome(state: BudgetFeatureState, actions: BudgetActions) {
             }
             item { LedgerText(stringResource(R.string.budget_categories), LedgerTextRole.SECTION) }
             items(
-                state.snapshot.composition.filter { it.categoryId != null },
+                categoryRows,
                 key = { it.categoryId.toString() },
             ) { row ->
-                BudgetCategoryRow(state, row, actions)
+                val expanded = row.categoryId in expandedRootIds
+                BudgetCategoryRow(
+                    state,
+                    row,
+                    actions,
+                    expanded,
+                    onToggleExpanded = {
+                        row.categoryId?.let { id ->
+                            expandedRootIds = if (expanded) expandedRootIds - id else expandedRootIds + id
+                        }
+                    },
+                )
             }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
@@ -225,6 +276,7 @@ private fun BudgetHero(state: BudgetFeatureState, total: BudgetCompositionView) 
             }
             LedgerText(title, LedgerTextRole.SECTION)
             AmountText(BudgetPolicy.money(state, total.remainingMinor, locale), AmountSize.HERO)
+            CompositionLine(R.string.budget_available_total_row, total.availableMinor, state)
             CompositionLine(R.string.budget_base_row, total.baseMinor, state)
             CompositionLine(R.string.budget_rollover_row, total.rolloverMinor, state)
             CompositionLine(R.string.budget_adjustment_row, total.adjustmentMinor, state)
@@ -238,8 +290,8 @@ private fun BudgetHero(state: BudgetFeatureState, total: BudgetCompositionView) 
                 progress,
                 accessibleText = stringResource(
                     R.string.budget_progress_accessible,
-                    total.usedMinor,
-                    total.availableMinor,
+                    BudgetPolicy.money(state, total.usedMinor, locale).formatted,
+                    BudgetPolicy.money(state, total.availableMinor, locale).formatted,
                 ),
             )
             if (total.exceededMinor > 0L) {
@@ -262,8 +314,16 @@ private fun CompositionLine(resourceId: Int, amount: Long, state: BudgetFeatureS
 }
 
 @Composable
-private fun BudgetCategoryRow(state: BudgetFeatureState, row: BudgetCompositionView, actions: BudgetActions) {
+private fun BudgetCategoryRow(
+    state: BudgetFeatureState,
+    row: BudgetCompositionView,
+    actions: BudgetActions,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+) {
     val locale = LocalLocale.current.platformLocale
+    val category = state.snapshot.categories.singleOrNull { it.id == row.categoryId }
+    val icon = LedgerIcon.entries.firstOrNull { it.name.equals(category?.iconKey, ignoreCase = true) } ?: LedgerIcon.BUDGET
     LedgerCard(
         Modifier.fillMaxWidth(),
         onClick = { row.categoryId?.let { actions.onNavigate("BUD-003", it, null) } },
@@ -272,7 +332,27 @@ private fun BudgetCategoryRow(state: BudgetFeatureState, row: BudgetCompositionV
             Modifier.padding(LedgerTheme.spacing.sm),
             verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
         ) {
-            LedgerText(row.categoryName.orEmpty(), if (row.depth == 1) LedgerTextRole.SECTION else LedgerTextRole.BODY)
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+            ) {
+                if (row.depth > 1) Spacer(Modifier.size(LedgerTheme.spacing.md))
+                LedgerIconView(icon, contentDescription = null)
+                LedgerText(
+                    row.categoryName.orEmpty(),
+                    if (row.depth == 1) LedgerTextRole.SECTION else LedgerTextRole.BODY,
+                    Modifier.weight(1f),
+                )
+                if (row.depth == 1 && state.snapshot.categories.any { it.parentCategoryId == row.categoryId }) {
+                    LedgerButton(
+                        stringResource(if (expanded) R.string.budget_hide_children else R.string.budget_show_children),
+                        onToggleExpanded,
+                        variant = LedgerButtonVariant.TEXT,
+                        compact = true,
+                    )
+                }
+            }
             LedgerText(
                 stringResource(
                     R.string.budget_used_available,
@@ -280,6 +360,14 @@ private fun BudgetCategoryRow(state: BudgetFeatureState, row: BudgetCompositionV
                     BudgetPolicy.money(state, row.availableMinor, locale).formatted,
                 ),
                 LedgerTextRole.BODY,
+            )
+            LedgerProgressIndicator(
+                if (row.availableMinor <= 0L) null else row.usedMinor.toFloat() / row.availableMinor.toFloat(),
+                accessibleText = stringResource(
+                    R.string.budget_progress_accessible,
+                    BudgetPolicy.money(state, row.usedMinor, locale).formatted,
+                    BudgetPolicy.money(state, row.availableMinor, locale).formatted,
+                ),
             )
             if (row.baseMinor == 0L) {
                 LedgerText(stringResource(R.string.budget_unallocated_category), LedgerTextRole.SUPPORTING)
@@ -305,72 +393,66 @@ private fun BudgetEditor(state: BudgetFeatureState, actions: BudgetActions, temp
     } else {
         Modifier.fillMaxSize().testTag(LedgerTestTags.BUDGET_EDITOR)
     }
-    LazyColumn(
-        taggedModifier,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
-        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+    val saving = state.presentation == BudgetPresentation.SAVING
+    val valid = state.validation.valid && (!template || state.editor.templateName.isNotBlank())
+    LedgerScaffold(
+        modifier = taggedModifier,
+        formContent = true,
+        fixedAction = {
+            BudgetStickySaveBar(
+                if (template) actions.onSaveTemplate else actions.onSaveMonth,
+                enabled = valid && !saving,
+                saving = saving,
+            )
+        },
     ) {
-        if (template) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            if (template) {
+                item {
+                    LedgerTextField(
+                        state.editor.templateName,
+                        actions.onTemplateNameChanged,
+                        stringResource(R.string.budget_template_name),
+                        required = true,
+                        errorText = stringResource(R.string.budget_required).takeIf { state.editor.templateName.isBlank() },
+                    )
+                }
+            }
+            if (state.presentation == BudgetPresentation.HISTORY_RECALCULATION_WARNING) {
+                item { LedgerBanner(stringResource(R.string.budget_history_recalc_warning), LedgerBannerVariant.WARNING) }
+            }
+            if (state.presentation == BudgetPresentation.CONSTRAINT_ERROR) {
+                item { LedgerBanner(stringResource(R.string.budget_constraint_error), LedgerBannerVariant.DANGER) }
+            }
             item {
                 LedgerTextField(
-                    state.editor.templateName,
-                    actions.onTemplateNameChanged,
-                    stringResource(R.string.budget_template_name),
+                    state.editor.totalText,
+                    actions.onTotalChanged,
+                    stringResource(R.string.budget_total),
                     required = true,
+                    keyboardType = KeyboardType.Decimal,
+                    errorText = stringResource(R.string.budget_invalid_amount).takeIf { state.validation.totalMinor == null },
                 )
             }
-        }
-        if (state.presentation == BudgetPresentation.HISTORY_RECALCULATION_WARNING) {
-            item {
-                LedgerBanner(
-                    stringResource(R.string.budget_history_recalc_warning),
-                    LedgerBannerVariant.WARNING,
+            item { ConstraintMeters(state) }
+            items(
+                state.snapshot.categories.filter { it.status == app.ledger.finance.domain.EntityStatus.ACTIVE },
+                key = { it.id.toString() },
+            ) { category ->
+                val label = if (category.depth == 1) category.name else stringResource(R.string.budget_child_label, category.name)
+                LedgerTextField(
+                    state.editor.categoryTexts[category.id].orEmpty(),
+                    { actions.onCategoryChanged(category.id, it) },
+                    label,
+                    keyboardType = KeyboardType.Decimal,
+                    errorText = budgetCategoryFieldError(state, category.id),
                 )
             }
-        }
-        item {
-            LedgerTextField(
-                state.editor.totalText,
-                actions.onTotalChanged,
-                stringResource(R.string.budget_total),
-                required = true,
-                keyboardType = KeyboardType.Decimal,
-                errorText = stringResource(R.string.budget_invalid_amount)
-                    .takeIf { state.validation.totalMinor == null },
-            )
-        }
-        item { ConstraintMeters(state) }
-        items(
-            state.snapshot.categories.filter { it.status == app.ledger.finance.domain.EntityStatus.ACTIVE },
-            key = { it.id.toString() },
-        ) { category ->
-            val label = if (category.depth == 1) {
-                category.name
-            } else {
-                stringResource(R.string.budget_child_label, category.name)
-            }
-            LedgerTextField(
-                state.editor.categoryTexts[category.id].orEmpty(),
-                { actions.onCategoryChanged(category.id, it) },
-                label,
-                keyboardType = KeyboardType.Decimal,
-                errorText = stringResource(R.string.budget_invalid_amount)
-                    .takeIf { category.id in state.validation.invalidCategoryIds },
-            )
-        }
-        item { LedgerBanner(stringResource(R.string.budget_rollover_excluded_constraint), LedgerBannerVariant.NEUTRAL) }
-        item {
-            val label = if (state.presentation == BudgetPresentation.SAVING) {
-                stringResource(R.string.budget_saving)
-            } else {
-                stringResource(R.string.budget_save)
-            }
-            LedgerButton(
-                label,
-                if (template) actions.onSaveTemplate else actions.onSaveMonth,
-                Modifier.fillMaxWidth(),
-                enabled = state.presentation != BudgetPresentation.SAVING,
-            )
+            item { LedgerBanner(stringResource(R.string.budget_rollover_excluded_constraint), LedgerBannerVariant.NEUTRAL) }
         }
     }
 }
@@ -378,6 +460,7 @@ private fun BudgetEditor(state: BudgetFeatureState, actions: BudgetActions, temp
 @Composable
 private fun ConstraintMeters(state: BudgetFeatureState) {
     val report = state.validation.report ?: return
+    val locale = LocalLocale.current.platformLocale
     LedgerCard(Modifier.fillMaxWidth().testTag(LedgerTestTags.BUDGET_CONSTRAINT_METERS)) {
         Column(
             Modifier.padding(LedgerTheme.spacing.sm),
@@ -386,14 +469,14 @@ private fun ConstraintMeters(state: BudgetFeatureState) {
             LedgerText(
                 stringResource(
                     R.string.budget_allocation_total,
-                    report.total.allocatedBaseMinor,
-                    report.total.limitBaseMinor,
+                    BudgetPolicy.money(state, report.total.allocatedBaseMinor, locale).formatted,
+                    BudgetPolicy.money(state, report.total.limitBaseMinor, locale).formatted,
                 ),
                 LedgerTextRole.BODY,
             )
             if (report.total.excessBaseMinor > 0L) {
                 LedgerBanner(
-                    stringResource(R.string.budget_over_limit, report.total.excessBaseMinor),
+                    stringResource(R.string.budget_over_limit, BudgetPolicy.money(state, report.total.excessBaseMinor, locale).formatted),
                     LedgerBannerVariant.DANGER,
                 )
             }
@@ -401,14 +484,14 @@ private fun ConstraintMeters(state: BudgetFeatureState) {
                 LedgerText(
                     stringResource(
                         R.string.budget_child_allocation,
-                        meter.allocatedBaseMinor,
-                        meter.limitBaseMinor,
+                        BudgetPolicy.money(state, meter.allocatedBaseMinor, locale).formatted,
+                        BudgetPolicy.money(state, meter.limitBaseMinor, locale).formatted,
                     ),
                     LedgerTextRole.SUPPORTING,
                 )
                 if (meter.excessBaseMinor > 0L) {
                     LedgerBanner(
-                        stringResource(R.string.budget_over_limit, meter.excessBaseMinor),
+                        stringResource(R.string.budget_over_limit, BudgetPolicy.money(state, meter.excessBaseMinor, locale).formatted),
                         LedgerBannerVariant.DANGER,
                     )
                 }
@@ -416,7 +499,7 @@ private fun ConstraintMeters(state: BudgetFeatureState) {
             LedgerText(
                 stringResource(
                     R.string.budget_unallocated,
-                    maxOf(report.total.limitBaseMinor - report.total.allocatedBaseMinor, 0L),
+                    BudgetPolicy.money(state, maxOf(report.total.limitBaseMinor - report.total.allocatedBaseMinor, 0L), locale).formatted,
                 ),
                 LedgerTextRole.SUPPORTING,
             )
@@ -436,36 +519,51 @@ private fun BudgetCategoryEditor(state: BudgetFeatureState, encodedCategoryId: S
         )
         return
     }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(LedgerTheme.spacing.md)
-            .testTag(LedgerTestTags.BUDGET_CATEGORY_EDITOR),
-        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+    val saving = state.presentation == BudgetPresentation.SAVING
+    LedgerScaffold(
+        modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.BUDGET_CATEGORY_EDITOR),
+        formContent = true,
+        fixedAction = { BudgetStickySaveBar(actions.onSaveMonth, state.validation.valid && !saving, saving) },
     ) {
-        FormSection(category.name, description = stringResource(R.string.budget_parent_limit_summary)) {
-            LedgerTextField(
-                state.editor.categoryTexts[category.id].orEmpty(),
-                { actions.onCategoryChanged(category.id, it) },
-                stringResource(R.string.budget_category_limit),
-                keyboardType = KeyboardType.Decimal,
-            )
-            state.snapshot.categories.filter { it.parentCategoryId == category.id }.forEach { child ->
-                LedgerTextField(
-                    state.editor.categoryTexts[child.id].orEmpty(),
-                    { actions.onCategoryChanged(child.id, it) },
-                    child.name,
-                    keyboardType = KeyboardType.Decimal,
-                )
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            if (state.presentation == BudgetPresentation.CONSTRAINT_ERROR) {
+                item { LedgerBanner(stringResource(R.string.budget_constraint_error), LedgerBannerVariant.DANGER) }
+            }
+            item {
+                FormSection(category.name, description = stringResource(R.string.budget_parent_limit_summary)) {
+                    LedgerTextField(
+                        state.editor.categoryTexts[category.id].orEmpty(),
+                        { actions.onCategoryChanged(category.id, it) },
+                        stringResource(R.string.budget_category_limit),
+                        keyboardType = KeyboardType.Decimal,
+                        errorText = budgetCategoryFieldError(state, category.id),
+                    )
+                    state.snapshot.categories.filter { it.parentCategoryId == category.id }.forEach { child ->
+                        LedgerTextField(
+                            state.editor.categoryTexts[child.id].orEmpty(),
+                            { actions.onCategoryChanged(child.id, it) },
+                            child.name,
+                            keyboardType = KeyboardType.Decimal,
+                            errorText = budgetCategoryFieldError(state, child.id),
+                        )
+                    }
+                }
+            }
+            item { ConstraintMeters(state) }
+            if (saving) {
+                item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.budget_saving)) }
             }
         }
-        ConstraintMeters(state)
-        LedgerButton(stringResource(R.string.budget_save), actions.onSaveMonth, Modifier.fillMaxWidth())
     }
 }
 
 @Composable
 private fun BudgetAdjustments(state: BudgetFeatureState, actions: BudgetActions) {
+    val locale = LocalLocale.current.platformLocale
     LazyColumn(
         Modifier
             .fillMaxSize()
@@ -491,11 +589,16 @@ private fun BudgetAdjustments(state: BudgetFeatureState, actions: BudgetActions)
                 )
             }
         }
-        items(state.snapshot.adjustments, key = { it.id.toString() }) { value ->
+        itemsIndexed(state.snapshot.adjustments, key = { _, value -> value.id.toString() }) { index, value ->
             LedgerCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(LedgerTheme.spacing.sm)) {
                     LedgerText(kindLabel(value.kind), LedgerTextRole.SECTION)
-                    LedgerText(value.amountBaseMinor.toString(), LedgerTextRole.BODY)
+                    LedgerText(BudgetPolicy.money(state, value.amountBaseMinor, locale).formatted, LedgerTextRole.BODY)
+                    LedgerText(
+                        stringResource(R.string.budget_adjustment_version, state.snapshot.adjustments.size - index),
+                        LedgerTextRole.SUPPORTING,
+                    )
+                    LedgerText(value.createdAt.localizedDateTime(locale), LedgerTextRole.SUPPORTING)
                     LedgerText(stringResource(R.string.budget_adjustment_immutable), LedgerTextRole.SUPPORTING)
                 }
             }
@@ -510,6 +613,7 @@ private fun BudgetAdjustmentChoices(actions: BudgetActions) {
         BudgetAdjustmentKind.INCREASE_AVAILABLE,
         BudgetAdjustmentKind.DECREASE_AVAILABLE,
         BudgetAdjustmentKind.TRANSFER_IN,
+        BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER,
     )
     FlowRow(
         Modifier.fillMaxWidth(),
@@ -527,61 +631,87 @@ private fun BudgetAdjustmentEditor(state: BudgetFeatureState, encodedKind: Strin
     val kind = when (encodedKind) {
         "CLEAR_ROLLOVER" -> BudgetAdjustmentKind.CLEAR_ROLLOVER
         "SUBTRACT" -> BudgetAdjustmentKind.DECREASE_AVAILABLE
-        "TRANSFER" -> BudgetAdjustmentKind.TRANSFER_IN
+        "TRANSFER" -> if (
+            state.snapshot.categories.singleOrNull { it.id == state.adjustmentSourceCategoryId }?.status ==
+            app.ledger.finance.domain.EntityStatus.ARCHIVED
+        ) {
+            BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER
+        } else {
+            BudgetAdjustmentKind.TRANSFER_IN
+        }
         else -> BudgetAdjustmentKind.INCREASE_AVAILABLE
     }
-    LazyColumn(
-        Modifier.fillMaxSize().testTag(LedgerTestTags.BUDGET_ADJUSTMENT_EDITOR),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
-        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+    val amountValid = kind == BudgetAdjustmentKind.CLEAR_ROLLOVER || BudgetPolicy.adjustmentMinor(state) != null
+    val source = state.snapshot.categories.singleOrNull { it.id == state.adjustmentSourceCategoryId }
+    val target = state.snapshot.categories.singleOrNull { it.id == state.adjustmentTargetCategoryId }
+    val sourceValid = kind == BudgetAdjustmentKind.INCREASE_AVAILABLE || source?.status == if (
+        kind == BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER
     ) {
-        item { LedgerBanner(stringResource(R.string.budget_no_account_impact), LedgerBannerVariant.INFO) }
-        item { LedgerText(kindLabel(kind), LedgerTextRole.TITLE) }
-        if (kind != BudgetAdjustmentKind.CLEAR_ROLLOVER) {
-            item {
-                LedgerTextField(
-                    state.adjustmentAmountText,
-                    actions.onAdjustmentAmountChanged,
-                    stringResource(R.string.budget_adjustment_amount),
-                    keyboardType = KeyboardType.Decimal,
-                    errorText = stringResource(R.string.budget_invalid_amount)
-                        .takeIf { BudgetPolicy.adjustmentMinor(state) == null },
-                )
-            }
-        }
-        if (kind != BudgetAdjustmentKind.INCREASE_AVAILABLE) {
-            item {
-                LedgerButton(
-                    stringResource(
-                        R.string.budget_source_category,
-                        categoryName(state, state.adjustmentSourceCategoryId),
-                    ),
-                    actions.onAdjustmentSource,
-                    Modifier.fillMaxWidth(),
-                    LedgerButtonVariant.SECONDARY,
-                )
-            }
-        }
-        if (kind.requiresTargetCategory()) {
-            item {
-                LedgerButton(
-                    stringResource(
-                        R.string.budget_target_category,
-                        categoryName(state, state.adjustmentTargetCategoryId),
-                    ),
-                    actions.onAdjustmentTarget,
-                    Modifier.fillMaxWidth(),
-                    LedgerButtonVariant.SECONDARY,
-                )
-            }
-        }
-        item { LedgerText(stringResource(R.string.budget_adjustment_category_hint), LedgerTextRole.SUPPORTING) }
-        item {
-            LedgerButton(
-                stringResource(R.string.budget_save),
+        app.ledger.finance.domain.EntityStatus.ARCHIVED
+    } else {
+        app.ledger.finance.domain.EntityStatus.ACTIVE
+    }
+    val targetValid = !kind.requiresTargetCategory() || target?.status == app.ledger.finance.domain.EntityStatus.ACTIVE
+    val saving = state.presentation == BudgetPresentation.SAVING
+    val valid = amountValid && sourceValid && targetValid
+    LedgerScaffold(
+        modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.BUDGET_ADJUSTMENT_EDITOR),
+        formContent = true,
+        fixedAction = {
+            BudgetStickySaveBar(
                 { actions.onSaveAdjustment(kind) },
-                Modifier.fillMaxWidth(),
+                enabled = valid && !saving,
+                saving = saving,
             )
+        },
+    ) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            item { LedgerBanner(stringResource(R.string.budget_no_account_impact), LedgerBannerVariant.INFO) }
+            if (state.presentation == BudgetPresentation.INVALID) {
+                item { LedgerBanner(stringResource(R.string.budget_adjustment_invalid), LedgerBannerVariant.DANGER) }
+            }
+            if (saving) {
+                item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.budget_saving)) }
+            }
+            item { LedgerText(kindLabel(kind), LedgerTextRole.TITLE) }
+            if (kind != BudgetAdjustmentKind.CLEAR_ROLLOVER) {
+                item {
+                    LedgerTextField(
+                        state.adjustmentAmountText,
+                        actions.onAdjustmentAmountChanged,
+                        stringResource(R.string.budget_adjustment_amount),
+                        keyboardType = KeyboardType.Decimal,
+                        errorText = stringResource(R.string.budget_invalid_amount).takeIf { !amountValid },
+                    )
+                }
+            }
+            if (kind != BudgetAdjustmentKind.INCREASE_AVAILABLE) {
+                item {
+                    LedgerButton(
+                        stringResource(R.string.budget_source_category, categoryName(state, state.adjustmentSourceCategoryId)),
+                        { actions.onAdjustmentSource(kind == BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER) },
+                        Modifier.fillMaxWidth(),
+                        LedgerButtonVariant.SECONDARY,
+                    )
+                    if (!sourceValid) LedgerText(stringResource(R.string.budget_category_required), LedgerTextRole.SUPPORTING)
+                }
+            }
+            if (kind.requiresTargetCategory()) {
+                item {
+                    LedgerButton(
+                        stringResource(R.string.budget_target_category, categoryName(state, state.adjustmentTargetCategoryId)),
+                        actions.onAdjustmentTarget,
+                        Modifier.fillMaxWidth(),
+                        LedgerButtonVariant.SECONDARY,
+                    )
+                    if (!targetValid) LedgerText(stringResource(R.string.budget_category_required), LedgerTextRole.SUPPORTING)
+                }
+            }
+            item { LedgerText(stringResource(R.string.budget_adjustment_category_hint), LedgerTextRole.SUPPORTING) }
         }
     }
 }
@@ -590,10 +720,15 @@ private fun BudgetAdjustmentKind.requiresTargetCategory(): Boolean = this == Bud
     this == BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER ||
     this == BudgetAdjustmentKind.INCREASE_AVAILABLE
 
-private fun categoryName(state: BudgetFeatureState, id: StableId?): String = state.snapshot.categories.singleOrNull { it.id == id }?.name.orEmpty()
+@Composable
+private fun categoryName(state: BudgetFeatureState, id: StableId?): String =
+    state.snapshot.categories.singleOrNull { it.id == id }?.name ?: stringResource(R.string.budget_choose_category)
 
 @Composable
-private fun BudgetHistory(state: BudgetFeatureState, actions: BudgetActions) {
+private fun BudgetHistory(state: BudgetFeatureState) {
+    val locale = LocalLocale.current.platformLocale
+    val history = state.snapshot.revisionHistory.sortedByDescending { it.revisionNumber }
+    var comparisonVisible by remember(state.snapshot.month) { mutableStateOf(false) }
     LazyColumn(
         Modifier
             .fillMaxSize()
@@ -601,26 +736,77 @@ private fun BudgetHistory(state: BudgetFeatureState, actions: BudgetActions) {
             .testTag(LedgerTestTags.BUDGET_HISTORY),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
-        items(state.snapshot.revisionHistory, key = { it.id.toString() }) { revision ->
-            LedgerCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                    LedgerText(
-                        stringResource(R.string.budget_revision, revision.revisionNumber),
-                        LedgerTextRole.SECTION,
-                    )
-                    LedgerText(revision.totalBaseMinor.toString(), LedgerTextRole.BODY)
-                    LedgerText(revision.createdAt.toString(), LedgerTextRole.SUPPORTING)
+        itemsIndexed(history, key = { _, revision -> revision.id.toString() }) { index, revision ->
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    LedgerIconView(LedgerIcon.INFO, contentDescription = stringResource(R.string.budget_timeline_marker))
+                    if (index < history.lastIndex) {
+                        Spacer(Modifier.size(LedgerTheme.spacing.md))
+                    }
+                }
+                LedgerCard(Modifier.weight(1f)) {
+                    Column(Modifier.padding(LedgerTheme.spacing.sm)) {
+                        LedgerText(stringResource(R.string.budget_revision, revision.revisionNumber), LedgerTextRole.SECTION)
+                        LedgerText(BudgetPolicy.money(state, revision.totalBaseMinor, locale).formatted, LedgerTextRole.BODY)
+                        LedgerText(revision.createdAt.localizedDateTime(locale), LedgerTextRole.SUPPORTING)
+                    }
                 }
             }
         }
-        if (state.snapshot.revisionHistory.size > 1) {
+        if (history.size > 1) {
             item {
                 LedgerButton(
-                    stringResource(R.string.budget_compare),
-                    actions.onRetry,
+                    stringResource(if (comparisonVisible) R.string.budget_close_comparison else R.string.budget_compare),
+                    { comparisonVisible = !comparisonVisible },
                     Modifier.fillMaxWidth(),
                     LedgerButtonVariant.SECONDARY,
                 )
+            }
+            if (comparisonVisible) {
+                item { BudgetRevisionComparison(state, history[1], history[0]) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BudgetRevisionComparison(state: BudgetFeatureState, older: BudgetRevisionView, newer: BudgetRevisionView) {
+    val locale = LocalLocale.current.platformLocale
+    val olderLimits = older.limits.associate { it.categoryId to it.amountBaseMinor }
+    val newerLimits = newer.limits.associate { it.categoryId to it.amountBaseMinor }
+    val changedIds = (olderLimits.keys + newerLimits.keys).filter { olderLimits[it] != newerLimits[it] }
+    LedgerCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
+        ) {
+            LedgerText(stringResource(R.string.budget_comparison_title, older.revisionNumber, newer.revisionNumber), LedgerTextRole.SECTION)
+            LedgerText(
+                stringResource(
+                    R.string.budget_comparison_total,
+                    BudgetPolicy.money(state, older.totalBaseMinor, locale).formatted,
+                    BudgetPolicy.money(state, newer.totalBaseMinor, locale).formatted,
+                ),
+                LedgerTextRole.BODY,
+            )
+            if (changedIds.isEmpty()) {
+                LedgerText(stringResource(R.string.budget_comparison_no_category_changes), LedgerTextRole.SUPPORTING)
+            } else {
+                changedIds.forEach { id ->
+                    LedgerText(
+                        stringResource(
+                            R.string.budget_comparison_category,
+                            state.snapshot.categories.singleOrNull { it.id == id }?.name.orEmpty(),
+                            BudgetPolicy.money(state, olderLimits[id] ?: 0L, locale).formatted,
+                            BudgetPolicy.money(state, newerLimits[id] ?: 0L, locale).formatted,
+                        ),
+                        LedgerTextRole.BODY,
+                    )
+                }
             }
         }
     }
@@ -628,6 +814,7 @@ private fun BudgetHistory(state: BudgetFeatureState, actions: BudgetActions) {
 
 @Composable
 private fun BudgetTemplates(state: BudgetFeatureState, actions: BudgetActions) {
+    val locale = LocalLocale.current.platformLocale
     LazyColumn(
         Modifier
             .fillMaxSize()
@@ -649,7 +836,7 @@ private fun BudgetTemplates(state: BudgetFeatureState, actions: BudgetActions) {
             LedgerCard(Modifier.fillMaxWidth(), onClick = { actions.onNavigate("BUD-008", template.id, null) }) {
                 Column(Modifier.padding(LedgerTheme.spacing.sm)) {
                     LedgerText(template.name, LedgerTextRole.SECTION)
-                    LedgerText(template.revision.totalBaseMinor.toString(), LedgerTextRole.BODY)
+                    LedgerText(BudgetPolicy.money(state, template.revision.totalBaseMinor, locale).formatted, LedgerTextRole.BODY)
                 }
             }
         }
@@ -673,3 +860,41 @@ private fun kindLabel(kind: BudgetAdjustmentKind): String = when (kind) {
     BudgetAdjustmentKind.TRANSFER_IN, BudgetAdjustmentKind.TRANSFER_OUT -> stringResource(R.string.budget_transfer)
     BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER -> stringResource(R.string.budget_archive_transfer)
 }
+
+@Composable
+private fun BudgetStickySaveBar(onSave: () -> Unit, enabled: Boolean, saving: Boolean) {
+    LedgerCard(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm)) {
+            LedgerButton(
+                stringResource(if (saving) R.string.budget_saving else R.string.budget_save),
+                onSave,
+                Modifier.fillMaxWidth(),
+                enabled = enabled,
+            )
+        }
+    }
+}
+
+@Composable
+private fun budgetCategoryFieldError(state: BudgetFeatureState, categoryId: StableId): String? {
+    if (categoryId in state.validation.invalidCategoryIds) return stringResource(R.string.budget_invalid_amount)
+    val category = state.snapshot.categories.singleOrNull { it.id == categoryId } ?: return null
+    val report = state.validation.report ?: return null
+    if (category.depth == 1 && report.total.excessBaseMinor > 0L) {
+        return stringResource(R.string.budget_field_over_total)
+    }
+    if (
+        category.depth > 1 &&
+        report.parents.any { meter -> meter.scopeCategoryId?.value == category.parentCategoryId && meter.excessBaseMinor > 0L }
+    ) {
+        return stringResource(R.string.budget_field_over_parent)
+    }
+    return null
+}
+
+@Composable
+private fun java.time.Instant.localizedDateTime(locale: java.util.Locale): String =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+        .withLocale(locale)
+        .withZone(LedgerTheme.timeZone)
+        .format(this)

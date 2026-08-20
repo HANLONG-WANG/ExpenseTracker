@@ -79,6 +79,7 @@ public data class SpecializedTransactionEditorState(
     val attachmentImporting: Boolean = false,
     val attachmentFailureCode: String? = null,
     val uncommittedAttachmentIds: Set<StableId> = emptySet(),
+    val attachmentPresentations: List<RecordAttachmentPresentation> = emptyList(),
 )
 
 public sealed interface SpecializedTransactionLoadState {
@@ -105,6 +106,16 @@ public object SpecializedTransactionPolicy {
     private val evaluator = MoneyExpressionEvaluator()
     private val formatter = LocaleCurrencyFormatter(catalog)
     private val converter = FxConverter()
+
+    public fun formatMoney(minor: Long, currency: CurrencyCode, locale: Locale): MoneyUiModel =
+        (formatter.format(
+            MoneyFormatRequest(
+                money = Money(minor, currency),
+                locale = locale,
+                semantic = AmountSemantic.NEUTRAL,
+                visibility = AmountVisibility.VISIBLE,
+            ),
+        ) as DomainResult.Success).value
 
     public fun create(
         kind: SpecializedTransactionKind,
@@ -175,6 +186,15 @@ public object SpecializedTransactionPolicy {
         val localTime = state.draft.occurredAt.atZone(state.draft.zoneId).toLocalTime()
         return state.copy(draft = state.draft.copy(localDate = date, occurredAt = date.atTime(localTime).atZone(state.draft.zoneId).toInstant(), dirty = true))
     }
+
+    public fun changeOccurredAt(state: SpecializedTransactionEditorState, occurredAt: Instant): SpecializedTransactionEditorState =
+        state.copy(
+            draft = state.draft.copy(
+                occurredAt = occurredAt,
+                localDate = occurredAt.atZone(state.draft.zoneId).toLocalDate(),
+                dirty = true,
+            ),
+        )
 
     public fun withQuote(state: SpecializedTransactionEditorState, currency: CurrencyCode, quote: SpecializedFxQuote?): SpecializedTransactionEditorState = state.copy(
         quotesToBase = if (quote == null) state.quotesToBase - currency else state.quotesToBase + (currency to quote),

@@ -74,6 +74,7 @@ data class ExportFlowActions(
     val onFileNameChanged: (String) -> Unit,
     val onDestinationSelected: (Uri) -> Unit,
     val onConfirmOverwrite: () -> Unit,
+    val onStart: () -> Unit,
     val onCancel: () -> Unit,
     val onRetry: () -> Unit,
     val onOpen: () -> Unit,
@@ -88,8 +89,14 @@ fun ExportFlowScreen(state: ExportFlowUiState, actions: ExportFlowActions) {
         state.fixedRootModifier(),
         topBar = { LedgerTopAppBar(stringResource(R.string.export_title), LedgerTopAppBarVariant.BACK, onNavigation = actions.onBack) },
         fixedAction = {
-            if (state.screenId in setOf("EXP-001", "EXP-002")) {
-                LedgerButton(stringResource(R.string.export_continue), actions.onContinue)
+            when (state.screenId) {
+                "EXP-001", "EXP-002" -> LedgerButton(stringResource(R.string.export_continue), actions.onContinue)
+                "EXP-003" -> LedgerButton(
+                    stringResource(R.string.export_start),
+                    actions.onStart,
+                    enabled = state.fileName.isNotBlank() && state.destinationLabel != null &&
+                        state.destinationPresentation == ExportDestinationPresentation.CONTENT,
+                )
             }
         },
     ) { padding ->
@@ -177,7 +184,7 @@ private fun ExportDestinationContent(state: ExportFlowUiState, actions: ExportFl
             )
         }
         LedgerTextField(state.fileName, actions.onFileNameChanged, stringResource(R.string.export_file_name), required = true)
-        LedgerButton(stringResource(R.string.export_choose_location), { picker.launch(null) }, Modifier.fillMaxWidth())
+        LedgerButton(stringResource(R.string.export_choose_location_only), { picker.launch(null) }, Modifier.fillMaxWidth())
         state.destinationLabel?.let { LedgerText(stringResource(R.string.export_selected_location, it), LedgerTextRole.SUPPORTING) }
     }
 }
