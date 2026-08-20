@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import java.security.MessageDigest
 
 internal object LedgerSchemaDefinition {
-    const val PRIMARY_VERSION: Int = 4
+    const val PRIMARY_VERSION: Int = 5
     const val STAGING_VERSION: Int = 1
 
     internal val primaryV1Assets: List<String> = listOf(
@@ -25,8 +25,12 @@ internal object LedgerSchemaDefinition {
         "ledger_schema_v3_widget_snapshot.sql",
     )
 
-    val primaryAssets: List<String> = primaryV3Assets + listOf(
+    private val primaryV4Assets: List<String> = primaryV3Assets + listOf(
         "ledger_schema_v4_projection_generation.sql",
+    )
+
+    val primaryAssets: List<String> = primaryV4Assets + listOf(
+        "ledger_schema_v5_architecture_alignment.sql",
     )
 
     val stagingAssets: List<String> = listOf("import_staging_schema_v1.sql")
@@ -37,7 +41,6 @@ internal object LedgerSchemaDefinition {
         "command_receipt",
         "entity_change",
         "entity_revision",
-        "purge_tombstone",
         "account_balance_checkpoint",
         "location_record",
         "transaction_revision",
@@ -99,12 +102,6 @@ internal object LedgerSchemaDefinition {
 
     fun installPrimary(context: Context, database: SupportSQLiteDatabase) {
         SchemaSqlAssets.install(context, database, primaryAssets)
-        database.execSQL(
-            "CREATE TABLE _schema_runtime_guard (" +
-                "id INTEGER PRIMARY KEY CHECK (id = 1), " +
-                "allow_fact_purge INTEGER NOT NULL CHECK (allow_fact_purge IN (0,1)))",
-        )
-        database.execSQL("INSERT INTO _schema_runtime_guard(id, allow_fact_purge) VALUES (1, 0)")
         immutableTables.sorted().forEach { table -> installAppendOnlyTriggers(database, table) }
         registerPrimaryContract(context, database)
     }
@@ -147,6 +144,24 @@ internal object LedgerSchemaDefinition {
         )
         database.execSQL(
             "UPDATE _room_schema_registry SET logicalSchemaVersion=?, contractSha256=? WHERE id=1",
+            arrayOf<Any>(PRIMARY_V4_VERSION, primaryV4ContractSha256(context)),
+        )
+    }
+
+    fun migratePrimaryV4ToV5(context: Context, database: SupportSQLiteDatabase) {
+        immutableTables.sorted().forEach { table ->
+            database.execSQL("DROP TRIGGER IF EXISTS ${table}_reject_update")
+            database.execSQL("DROP TRIGGER IF EXISTS ${table}_reject_delete")
+        }
+        database.execSQL("DROP TRIGGER IF EXISTS purge_tombstone_reject_update")
+        database.execSQL("DROP TRIGGER IF EXISTS purge_tombstone_reject_delete")
+        SchemaSqlAssets.install(context, database, listOf("ledger_schema_v5_architecture_alignment.sql"))
+        immutableTables.sorted().forEach { table ->
+            installAppendOnlyTriggers(database, table)
+        }
+        database.execSQL("DROP TABLE IF EXISTS _schema_runtime_guard")
+        database.execSQL(
+            "UPDATE _room_schema_registry SET logicalSchemaVersion=?, contractSha256=? WHERE id=1",
             arrayOf<Any>(PRIMARY_VERSION, primaryContractSha256(context)),
         )
     }
@@ -159,6 +174,8 @@ internal object LedgerSchemaDefinition {
 
     internal fun primaryV3ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV3Assets)
 
+    internal fun primaryV4ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV4Assets)
+
     internal fun primaryV1Statements(context: Context): List<String> = SchemaSqlAssets.statements(context, primaryV1Assets)
 
     internal fun expectedPrimaryV2TableNames(context: Context): Set<String> = SchemaSqlAssets.statements(
@@ -168,8 +185,7 @@ internal object LedgerSchemaDefinition {
 
     fun stagingContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, stagingAssets)
 
-    fun expectedPrimaryTableNames(context: Context): Set<String> = SchemaSqlAssets.statements(context, primaryAssets).mapNotNull(SchemaSqlAssets::createdTableName).toSet() +
-        "_schema_runtime_guard"
+    fun expectedPrimaryTableNames(context: Context): Set<String> = SchemaSqlAssets.statements(context, primaryAssets).mapNotNull(SchemaSqlAssets::createdTableName).toSet()
 
     fun expectedPrimaryViewNames(context: Context): Set<String> = SchemaSqlAssets.statements(context, primaryAssets).mapNotNull(SchemaSqlAssets::createdViewName).toSet()
 
@@ -180,13 +196,12 @@ internal object LedgerSchemaDefinition {
             "CREATE TRIGGER ${table}_reject_update BEFORE UPDATE ON $table " +
                 "BEGIN SELECT RAISE(ABORT, 'immutable table update rejected'); END",
         )
-        database.execSQL(
-            "CREATE TRIGGER ${table}_reject_delete BEFORE DELETE ON $table " +
-                "WHEN NOT (" +
-                "EXISTS(SELECT 1 FROM book WHERE id = 1 AND state = 1) AND " +
-                "EXISTS(SELECT 1 FROM _schema_runtime_guard WHERE id = 1 AND allow_fact_purge = 1)" +
-                ") BEGIN SELECT RAISE(ABORT, 'immutable table delete rejected'); END",
-        )
+        if (table !in retentionManagedTables) {
+            database.execSQL(
+                "CREATE TRIGGER ${table}_reject_delete BEFORE DELETE ON $table " +
+                    "BEGIN SELECT RAISE(ABORT, 'immutable table delete rejected'); END",
+            )
+        }
     }
 
     private fun registerPrimaryContract(context: Context, database: SupportSQLiteDatabase) {
@@ -204,8 +219,11 @@ internal object LedgerSchemaDefinition {
     }
 }
 
+private val retentionManagedTables = setOf("backup_snapshot", "backup_object", "backup_snapshot_object")
+
 private const val LAST_PROJECTION_FAMILY_ID = 14
 private const val PRIMARY_V3_VERSION = 3
+private const val PRIMARY_V4_VERSION = 4
 
 private object SchemaSqlAssets {
     fun install(context: Context, database: SupportSQLiteDatabase, assets: List<String>) {

@@ -11,10 +11,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerSaveFab
-import app.ledger.feature.liabilities.InstallmentActions
 import app.ledger.feature.liabilities.InstallmentDestination
 import app.ledger.feature.liabilities.InstallmentLoadState
 import app.ledger.feature.liabilities.InstallmentPresentation
+import app.ledger.feature.liabilities.InstallmentScreenAction
 import app.ledger.feature.liabilities.R as LiabilitiesR
 
 @Composable
@@ -38,26 +38,28 @@ internal fun InstallmentRootDestination(
 ) {
     val planId = encodedArguments.stableId("planId")
     val purchaseId = encodedArguments.stableId("purchaseTransactionId")
-    val state by viewModel.installment.collectAsStateWithLifecycle()
+    val uiState by viewModel.installmentUiState.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, planId, purchaseId) { viewModel.loadInstallment(screenId, planId, purchaseId) }
     InstallmentDestination(
         screenId,
-        state,
+        uiState.loadState,
         encodedArguments,
-        InstallmentActions(
-            onRetry = { viewModel.loadInstallment(screenId, planId, purchaseId) },
-            onNavigate = { target, stableId ->
-                viewModel.navigateInstallment(target, stableId)
-                onNavigationChanged()
-            },
-            onFieldChanged = viewModel::updateInstallmentField,
-            onFeeModelChanged = viewModel::updateInstallmentFeeModel,
-            onRefundPolicyChanged = viewModel::updateInstallmentRefundPolicy,
-            onSelectPurchase = viewModel::selectInstallmentPurchase,
-            onPreview = viewModel::previewInstallment,
-            onCalculateSettlement = viewModel::calculateInstallmentSettlement,
-            onApplySettlement = viewModel::applyInstallmentSettlement,
-        ),
+        { action ->
+            when (action) {
+                InstallmentScreenAction.Retry -> viewModel.loadInstallment(screenId, planId, purchaseId)
+                is InstallmentScreenAction.Navigate -> {
+                    viewModel.navigateInstallment(action.screenId, action.id)
+                    onNavigationChanged()
+                }
+                is InstallmentScreenAction.FieldChanged -> viewModel.updateInstallmentField(action.field, action.value)
+                is InstallmentScreenAction.FeeModelChanged -> viewModel.updateInstallmentFeeModel(action.type)
+                is InstallmentScreenAction.RefundPolicyChanged -> viewModel.updateInstallmentRefundPolicy(action.policy)
+                is InstallmentScreenAction.SelectPurchase -> viewModel.selectInstallmentPurchase(action.transactionId)
+                InstallmentScreenAction.Preview -> viewModel.previewInstallment()
+                InstallmentScreenAction.CalculateSettlement -> viewModel.calculateInstallmentSettlement()
+                InstallmentScreenAction.ApplySettlement -> viewModel.applyInstallmentSettlement()
+            }
+        },
     )
 }
 

@@ -470,8 +470,8 @@ class SecureRoomProjectGoalApplicationPort(
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
         DomainResult.Failure(FinanceDataError.NumericRangeExceeded)
-    } catch (_: Exception) {
-        DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    } catch (failure: Exception) {
+        DomainResult.Failure(failure.toFinanceDatabaseError())
     }
 
     private fun app.ledger.finance.application.PlanningMutationIds.toReferenceIds(changedAt: Instant) = ReferenceMutationIds(

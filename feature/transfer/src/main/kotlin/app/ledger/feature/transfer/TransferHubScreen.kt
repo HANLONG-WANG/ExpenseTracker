@@ -24,7 +24,15 @@ data class TransferHubState(
     val notificationPermissionAvailable: Boolean = true,
 )
 
-data class TransferHubActions(
+sealed interface TransferHubScreenAction {
+    data object OpenImport : TransferHubScreenAction
+    data object OpenExport : TransferHubScreenAction
+    data object OpenBackup : TransferHubScreenAction
+    data object OpenRestore : TransferHubScreenAction
+    data object OpenOperations : TransferHubScreenAction
+}
+
+private class TransferHubActions(
     val openImport: () -> Unit,
     val openExport: () -> Unit,
     val openBackup: () -> Unit,
@@ -35,9 +43,16 @@ data class TransferHubActions(
 @Composable
 fun TransferHubScreen(
     state: TransferHubState,
-    actions: TransferHubActions,
+    onAction: (TransferHubScreenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val actions = TransferHubActions(
+        openImport = { onAction(TransferHubScreenAction.OpenImport) },
+        openExport = { onAction(TransferHubScreenAction.OpenExport) },
+        openBackup = { onAction(TransferHubScreenAction.OpenBackup) },
+        openRestore = { onAction(TransferHubScreenAction.OpenRestore) },
+        openOperations = { onAction(TransferHubScreenAction.OpenOperations) },
+    )
     val entries = listOf(
         TransferEntry(R.string.transfer_hub_import, R.string.transfer_hub_import_body, actions.openImport),
         TransferEntry(R.string.transfer_hub_export, R.string.transfer_hub_export_body, actions.openExport),

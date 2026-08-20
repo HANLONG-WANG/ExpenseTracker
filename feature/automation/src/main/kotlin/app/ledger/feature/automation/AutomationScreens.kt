@@ -56,8 +56,9 @@ import java.time.format.DateTimeFormatter
 public fun AutomationDestination(
     screenId: String,
     state: AutomationLoadState,
-    actions: AutomationActions,
+    onAction: (AutomationScreenAction) -> Unit,
 ) {
+    val actions = automationActions(onAction)
     when (state) {
         AutomationLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.automation_loading))
         is AutomationLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.automation_load_failed), actions.onRetry)

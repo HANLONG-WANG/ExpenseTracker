@@ -54,8 +54,9 @@ public fun CreditDestination(
     screenId: String,
     state: CreditLoadState,
     encodedArguments: Map<String, String>,
-    actions: CreditActions,
+    onAction: (CreditScreenAction) -> Unit,
 ) {
+    val actions = creditActions(onAction)
     when (state) {
         CreditLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.credit_loading))
         is CreditLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.credit_load_failed), actions.onRetry)

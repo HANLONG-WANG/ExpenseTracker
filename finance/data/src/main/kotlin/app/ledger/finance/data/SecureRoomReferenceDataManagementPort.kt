@@ -1280,6 +1280,22 @@ public class SecureRoomReferenceDataManagementPort(
             "INSERT INTO entity_change(commit_id,entity_type,entity_uid,operation,before_hash,after_hash,entity_revision_uid) VALUES(?,?,?,?,?,?,?)",
             arrayOf<Any?>(db.requireInternalId("book_commit", ids.commitId), type.ordinal, entityId.bytes, operation.ordinal, before?.let(::sha256), sha256(after), revisionId.bytes),
         )
+        val currentTable = when (type) {
+            EntityType.ACCOUNT -> "user_account"
+            EntityType.CARD -> "payment_card"
+            EntityType.CATEGORY -> "category"
+            EntityType.MERCHANT -> "merchant"
+            EntityType.PLACE -> "place"
+            EntityType.PROJECT -> "project"
+            EntityType.GOAL -> "goal"
+            else -> null
+        }
+        currentTable?.let { table ->
+            db.execSQL(
+                "UPDATE $table SET last_commit_id=?,row_version=?,content_hash=? WHERE uid=?",
+                arrayOf<Any>(db.requireInternalId("book_commit", ids.commitId), revisionNumber, sha256(after), entityId.bytes),
+            )
+        }
     }
 
     private fun finish(db: SupportSQLiteDatabase, ids: ReferenceMutationIds, revision: Long, valuationRevision: Long) {
@@ -1338,8 +1354,8 @@ public class SecureRoomReferenceDataManagementPort(
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
         DomainResult.Failure(FinanceDataError.NumericRangeExceeded)
-    } catch (_: Exception) {
-        DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    } catch (failure: Exception) {
+        DomainResult.Failure(failure.toFinanceDatabaseError())
     }
 
     private fun nextEntityRevision(db: SupportSQLiteDatabase, type: EntityType, id: StableId): Int = Math.addExact(

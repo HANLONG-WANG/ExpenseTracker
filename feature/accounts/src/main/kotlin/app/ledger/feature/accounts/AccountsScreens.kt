@@ -77,16 +77,18 @@ import java.time.LocalDate
 
 @Composable
 public fun AccountsDestination(
-    screenId: String,
-    encodedArguments: Map<String, String>,
-    dataState: AccountsDataState,
-    actions: AccountsActions,
-    selectedAccountType: UserAccountType,
-    preferredCardAccountId: StableId? = null,
-    pending: Boolean,
-    stateOverride: AccountsRequiredState? = null,
+    uiState: AccountsScreenUiState,
+    onAction: (AccountsScreenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val screenId = uiState.screenId
+    val encodedArguments = uiState.encodedArguments
+    val dataState = uiState.dataState
+    val selectedAccountType = uiState.selectedAccountType
+    val preferredCardAccountId = uiState.preferredCardAccountId
+    val pending = uiState.pending
+    val stateOverride = uiState.stateOverride
+    val actions = accountsActions(onAction)
     require(screenId in SUPPORTED_SCREENS)
     require(stateOverride == null || stateOverride.screenId == screenId)
     val snapshot = (dataState as? AccountsDataState.Content)?.snapshot

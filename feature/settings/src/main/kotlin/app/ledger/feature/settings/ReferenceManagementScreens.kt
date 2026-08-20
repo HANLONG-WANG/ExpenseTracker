@@ -73,12 +73,13 @@ public fun ReferenceManagementDestination(
     screenId: String,
     encodedArguments: Map<String, String>,
     dataState: ManagementDataState,
-    actions: ManagementActions,
+    onAction: (ManagementScreenAction) -> Unit,
     placeMap: PlaceMapSlot,
     pending: Boolean,
     stateOverride: ManagementRequiredState? = null,
     modifier: Modifier = Modifier,
 ) {
+    val actions = managementActions(onAction)
     require(screenId in SUPPORTED_SCREENS)
     require(stateOverride == null || stateOverride.screenId == screenId)
     val snapshot = (dataState as? ManagementDataState.Content)?.snapshot

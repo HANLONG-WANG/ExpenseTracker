@@ -74,7 +74,7 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         "BackupMergeModel.kt", "CommitGraphMergePlanner.kt", "SqlCipherMergeSessionStore.kt",
         "RestoreLedgerApplication.kt", "MergeRestoreApplication.kt", "ControlledPurgeApplication.kt",
         "SecureRoomRestoreLedgerApplicationPort.kt", "SecureRoomMergeRestoreApplicationPort.kt",
-        "RoomMergeImporter.kt", "SecureRoomControlledPurgeApplicationPort.kt", "RoomPrivacyPurgeWriter.kt",
+        "RoomMergeImporter.kt", "SecureRoomControlledPurgeApplicationPort.kt", "RoomLogicalPurgeValidator.kt",
         "AndroidRestoreArtifactSwapPort.kt", "AndroidPreRestoreSafetySnapshotPort.kt", "AndroidMergeLedgerPort.kt",
         "RestoreController.kt", "LocalBookArtifactCleaner.kt", "DriveSnapshotDeletionService.kt", "RestoreFlowScreen.kt",
     }
@@ -131,13 +131,15 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         "command is MergeRestoreCommand", "commitPrivacyPurge", "beforeCommitSideEffect::apply",
     ))
 
-    purge = named(sources, "RoomPrivacyPurgeWriter.kt") + named(sources, "SecureRoomControlledPurgeApplicationPort.kt") + repository + named(sources, "RoomFinancialPlanWriter.kt")
-    require_tokens(errors, purge, "controlled privacy purge", (
-        "DefaultFinancialMutationCoordinator", "loadForPurge", "UPDATE book SET state=1", "allow_fact_purge=1",
+    purge = named(sources, "RoomLogicalPurgeValidator.kt") + named(sources, "SecureRoomControlledPurgeApplicationPort.kt") + repository + named(sources, "RoomFinancialPlanWriter.kt")
+    require_tokens(errors, purge, "append-only controlled privacy purge", (
+        "DefaultFinancialMutationCoordinator", "loadForPurge", "RoomLogicalPurgeValidator", "revalidate",
         "nonZeroAccountNets", "nonZeroBaseNets", "nonZeroEffectNets", "dependencyReferences",
-        "backupAttachmentReads", "DELETE FROM entity_revision", "DELETE FROM entity_change",
-        "blob_gc_candidate", "purge_tombstone",
+        "backupAttachmentReads", "immutable revisions and", "financial facts are never updated or deleted",
+        "purge_tombstone",
     ))
+    if re.search(r"DELETE\s+FROM\s+(?:business_transaction|transaction_revision|entity_revision|journal_entry|posting)", purge, re.IGNORECASE):
+        errors.append("controlled privacy purge must never physically delete immutable facts")
     model = named(sources, "BookAndAudit.kt")
     tombstone = re.search(r"data class PurgeTombstone\(([\s\S]*?)\n\)", model)
     if not tombstone or re.search(r"amount|text|note|description", tombstone.group(1), re.IGNORECASE):
@@ -205,7 +207,7 @@ def validate_ledgers() -> list[str]:
     evidence = read("docs/implementation/TEST_EVIDENCE.md")
     mapping_path = ROOT / "docs/implementation/P31_RESTORE_MERGE_PURGE_MAPPING.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
-    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P31", "Stage status: VERIFIED"))
+    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "P00—P35 remain VERIFIED"))
     for index in range(1, 9):
         if f"P31-E{index:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P31-E{index:03d}")

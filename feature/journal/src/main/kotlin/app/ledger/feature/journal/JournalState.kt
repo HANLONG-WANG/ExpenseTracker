@@ -47,7 +47,43 @@ enum class JournalOperationState { IDLE, VALIDATING, COMMITTING, FAILED, SUCCEED
 
 typealias JournalFilterPreset = JournalSavedFilter
 
-data class JournalActions(
+/** All user intents emitted by a Journal screen. No persistence callback crosses the feature boundary. */
+sealed interface JournalScreenAction {
+    data class Navigate(val screenId: String, val arguments: Map<String, StableId>) : JournalScreenAction
+    data class Search(val query: String) : JournalScreenAction
+    data class ApplyFilter(val filter: TransactionFilter) : JournalScreenAction
+    data class RemoveFilter(val key: String) : JournalScreenAction
+    data object Retry : JournalScreenAction
+    data class LoadDetail(val transactionId: StableId) : JournalScreenAction
+    data class Select(val transactionId: StableId) : JournalScreenAction
+    data object SelectAllMatching : JournalScreenAction
+    data object ClearSelection : JournalScreenAction
+    data class BulkEdit(val patch: JournalBulkEditPatch) : JournalScreenAction
+    data class SaveFilter(val name: String) : JournalScreenAction
+    data class ApplyPreset(val presetId: StableId) : JournalScreenAction
+    data class CopyPreset(val presetId: StableId) : JournalScreenAction
+    data class SetDefaultPreset(val presetId: StableId) : JournalScreenAction
+    data class DeletePreset(val presetId: StableId) : JournalScreenAction
+    data class ReorderPresets(val presetIds: List<StableId>) : JournalScreenAction
+    data class ResolveDependency(val dependency: JournalDependencyView, val policy: DependencyPolicy) : JournalScreenAction
+    data class MoveToTrash(
+        val transactionId: StableId,
+        val expectedRevisionId: StableId,
+        val resolutions: List<DependencyResolution>,
+    ) : JournalScreenAction
+    data class Restore(val transactionId: StableId, val expectedRevisionId: StableId) : JournalScreenAction
+    data class CompareRevisions(val transactionId: StableId, val leftRevisionId: StableId, val rightRevisionId: StableId) : JournalScreenAction
+    data class RestoreRevision(
+        val transactionId: StableId,
+        val expectedCurrentRevisionId: StableId,
+        val sourceRevisionId: StableId,
+        val resolutions: List<DependencyResolution>,
+    ) : JournalScreenAction
+    data class VerifyPurge(val transactionId: StableId) : JournalScreenAction
+    data class PurgeRequested(val transactionId: StableId) : JournalScreenAction
+}
+
+internal class JournalActions(
     val onNavigate: (String, Map<String, StableId>) -> Unit,
     val onSearch: (String) -> Unit,
     val onApplyFilter: (TransactionFilter) -> Unit,
@@ -71,6 +107,38 @@ data class JournalActions(
     val onRestoreRevision: (StableId, StableId, StableId, List<DependencyResolution>) -> Unit,
     val onVerifyPurge: (StableId) -> Unit,
     val onPurgeRequested: (StableId) -> Unit,
+)
+
+internal fun journalActions(onAction: (JournalScreenAction) -> Unit): JournalActions = JournalActions(
+    onNavigate = { screenId, arguments -> onAction(JournalScreenAction.Navigate(screenId, arguments)) },
+    onSearch = { onAction(JournalScreenAction.Search(it)) },
+    onApplyFilter = { onAction(JournalScreenAction.ApplyFilter(it)) },
+    onRemoveFilter = { onAction(JournalScreenAction.RemoveFilter(it)) },
+    onRetry = { onAction(JournalScreenAction.Retry) },
+    onLoadDetail = { onAction(JournalScreenAction.LoadDetail(it)) },
+    onSelect = { onAction(JournalScreenAction.Select(it)) },
+    onSelectAllMatching = { onAction(JournalScreenAction.SelectAllMatching) },
+    onClearSelection = { onAction(JournalScreenAction.ClearSelection) },
+    onBulkEdit = { onAction(JournalScreenAction.BulkEdit(it)) },
+    onSaveFilter = { onAction(JournalScreenAction.SaveFilter(it)) },
+    onApplyPreset = { onAction(JournalScreenAction.ApplyPreset(it)) },
+    onCopyPreset = { onAction(JournalScreenAction.CopyPreset(it)) },
+    onSetDefaultPreset = { onAction(JournalScreenAction.SetDefaultPreset(it)) },
+    onDeletePreset = { onAction(JournalScreenAction.DeletePreset(it)) },
+    onReorderPresets = { onAction(JournalScreenAction.ReorderPresets(it)) },
+    onResolveDependency = { dependency, policy -> onAction(JournalScreenAction.ResolveDependency(dependency, policy)) },
+    onMoveToTrash = { transactionId, revisionId, resolutions ->
+        onAction(JournalScreenAction.MoveToTrash(transactionId, revisionId, resolutions))
+    },
+    onRestore = { transactionId, revisionId -> onAction(JournalScreenAction.Restore(transactionId, revisionId)) },
+    onCompareRevisions = { transactionId, left, right ->
+        onAction(JournalScreenAction.CompareRevisions(transactionId, left, right))
+    },
+    onRestoreRevision = { transactionId, expectedCurrentRevisionId, sourceRevisionId, resolutions ->
+        onAction(JournalScreenAction.RestoreRevision(transactionId, expectedCurrentRevisionId, sourceRevisionId, resolutions))
+    },
+    onVerifyPurge = { onAction(JournalScreenAction.VerifyPurge(it)) },
+    onPurgeRequested = { onAction(JournalScreenAction.PurgeRequested(it)) },
 )
 
 class JournalPagingSource(

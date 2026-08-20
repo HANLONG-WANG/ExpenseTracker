@@ -62,27 +62,18 @@ internal fun ReadyRootScaffold(
             },
         )
     }
-    val referenceState by viewModel.referenceData.collectAsStateWithLifecycle()
-    val referencePending by viewModel.referenceMutationPending.collectAsStateWithLifecycle()
-    val recordState by viewModel.ordinaryRecord.collectAsStateWithLifecycle()
-    val recordPending by viewModel.ordinaryRecordPending.collectAsStateWithLifecycle()
+    val referenceUiState by viewModel.referenceDataUiState.collectAsStateWithLifecycle()
+    val recordUiState by viewModel.ordinaryRecordUiState.collectAsStateWithLifecycle()
     val batchState by viewModel.batchRecord.collectAsStateWithLifecycle()
-    val specializedState by viewModel.specializedTransaction.collectAsStateWithLifecycle()
-    val specializedPending by viewModel.specializedTransactionPending.collectAsStateWithLifecycle()
-    val refundState by viewModel.refund.collectAsStateWithLifecycle()
-    val refundPending by viewModel.refundPending.collectAsStateWithLifecycle()
+    val specializedUiState by viewModel.specializedTransactionUiState.collectAsStateWithLifecycle()
+    val refundUiState by viewModel.refundUiState.collectAsStateWithLifecycle()
     val currencySettings by viewModel.currencySettings.collectAsStateWithLifecycle()
-    val journalState by viewModel.journal.collectAsStateWithLifecycle()
-    val creditState by viewModel.credit.collectAsStateWithLifecycle()
-    val creditPending by viewModel.creditPending.collectAsStateWithLifecycle()
-    val installmentState by viewModel.installment.collectAsStateWithLifecycle()
-    val installmentPending by viewModel.installmentPending.collectAsStateWithLifecycle()
-    val loanState by viewModel.loan.collectAsStateWithLifecycle()
-    val loanPending by viewModel.loanPending.collectAsStateWithLifecycle()
-    val settlementState by viewModel.settlement.collectAsStateWithLifecycle()
-    val settlementPending by viewModel.settlementPending.collectAsStateWithLifecycle()
-    val automationState by viewModel.automation.collectAsStateWithLifecycle()
-    val automationPending by viewModel.automationPending.collectAsStateWithLifecycle()
+    val journalUiState by viewModel.journalUiState.collectAsStateWithLifecycle()
+    val creditUiState by viewModel.creditUiState.collectAsStateWithLifecycle()
+    val installmentUiState by viewModel.installmentUiState.collectAsStateWithLifecycle()
+    val loanUiState by viewModel.loanUiState.collectAsStateWithLifecycle()
+    val settlementUiState by viewModel.settlementUiState.collectAsStateWithLifecycle()
+    val automationUiState by viewModel.automationUiState.collectAsStateWithLifecycle()
     val launchAttachmentPicker = rememberRecordAttachmentPicker { uri ->
         if (viewModel.navigator.currentKey.contract.screenId.value == "REC-024") {
             viewModel.importBatchAttachment(uri)
@@ -137,44 +128,44 @@ internal fun ReadyRootScaffold(
         },
         fixedAction = settlementFixedAction(
             navigator.currentKey.contract.screenId.value,
-            settlementState,
-            settlementPending,
+            settlementUiState.loadState,
+            settlementUiState.submitting,
             viewModel::saveSettlement,
         ) ?: automationFixedAction(
             navigator.currentKey.contract.screenId.value,
-            automationState,
-            automationPending,
+            automationUiState.loadState,
+            automationUiState.submitting,
             viewModel::saveAutomationBlueprint,
             viewModel::saveAutomationRecurrence,
         ) ?: loanFixedAction(
             navigator.currentKey.contract.screenId.value,
-            loanState,
-            loanPending,
+            loanUiState.loadState,
+            loanUiState.submitting,
             viewModel::saveLoan,
         ) ?: installmentFixedAction(
             navigator.currentKey.contract.screenId.value,
-            installmentState,
-            installmentPending,
+            installmentUiState.loadState,
+            installmentUiState.submitting,
             viewModel::saveInstallment,
         ) ?: creditFixedAction(
             navigator.currentKey.contract.screenId.value,
-            creditState,
-            creditPending,
+            creditUiState.loadState,
+            creditUiState.submitting,
             viewModel::saveCredit,
         ) ?: refundFixedAction(
             navigator.currentKey.contract.screenId.value,
-            refundState,
-            refundPending,
+            refundUiState.loadState,
+            refundUiState.submitting,
             viewModel::saveRefund,
         ) ?: specializedTransactionFixedAction(
             navigator.currentKey.contract.screenId.value,
-            specializedState,
-            specializedPending,
+            specializedUiState.loadState,
+            specializedUiState.submitting,
             viewModel::saveSpecializedTransaction,
         ) ?: ordinaryRecordFixedAction(
             navigator.currentKey.contract.screenId.value,
-            recordState,
-            recordPending,
+            recordUiState.loadState,
+            recordUiState.submitting,
             viewModel::saveOrdinaryRecord,
         ),
         bottomBar = {
@@ -292,13 +283,12 @@ internal fun ReadyRootScaffold(
                         RootDestination(
                             key,
                             viewModel = viewModel,
-                            referenceState = referenceState,
-                            referencePending = referencePending,
-                            recordState = recordState,
+                            referenceUiState = referenceUiState,
+                            recordUiState = recordUiState,
                             batchState = batchState,
-                            specializedState = specializedState,
+                            specializedUiState = specializedUiState,
                             currencySettings = currencySettings,
-                            journalState = journalState,
+                            journalUiState = journalUiState,
                             onAddAttachment = launchAttachmentPicker,
                             onBack = {
                                 navigator.pop()

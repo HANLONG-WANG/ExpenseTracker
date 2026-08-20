@@ -61,6 +61,11 @@ interface RestoreLedgerApplicationPort {
     suspend fun finalizeExchange(bookId: StableId, operationId: StableId): DomainResult<Unit>
     suspend fun rollback(bookId: StableId, operationId: StableId, safetySnapshotId: StableId): DomainResult<Unit>
     suspend fun recoverInterrupted(bookId: StableId, operationId: StableId): DomainResult<Boolean>
+
+    /** Removes a finalized restore's pre-restore database, key and artifact copies after explicit user confirmation. */
+    fun confirmSafetySnapshotCleanup(operationId: StableId): DomainResult<Unit>
+
+    /** Discards transient preparation state but must retain finalized pre-restore safety artifacts. */
     fun cleanup(operationId: StableId)
 }
 

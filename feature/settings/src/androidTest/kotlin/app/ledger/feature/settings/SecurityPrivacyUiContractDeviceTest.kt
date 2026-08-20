@@ -160,13 +160,7 @@ class SecurityPrivacyUiContractDeviceTest {
         const val GOLDEN_TAG = "p32_security_settings_golden_root"
         val FEATURE_ROWS = listOf(FeatureQueueRow(1_700_000_000_000L, "FEATURE_OPENED", "VAULT", "SUCCEEDED", "UNDER_1_SECOND", "NONE"))
         val CRASH_ROWS = listOf(CrashQueueRow(1_700_000_100_000L, "APPLICATION_NOT_RESPONDING", "APPLICATION_NOT_RESPONDING", 4))
-        val ACTIONS = SecurityPrivacySettingsActions(
-            onAppLockEnabled = {}, onAppLockTimeout = { _, _ -> }, onTestLock = {},
-            onGlobalScreenshotBlocked = {}, onObscureRecentTasks = {}, onTrashRetention = {}, onOpenTrash = {},
-            onTelemetryEnabled = {}, onCrashEnabled = {}, onOpenFeatureQueue = {}, onOpenCrashQueue = {},
-            onOpenPrivacyPolicy = {}, onDeleteFeatureQueue = {}, onDeleteCrashQueue = {}, onBeginLocalClear = {},
-            onCancelLocalClear = {}, onConfirmLocalClear = {}, onOpenSystemSecurity = {}, onSecurityConfigured = {},
-        )
+        val ACTIONS: (SecurityPrivacyScreenAction) -> Unit = {}
         val EXPECTED_GOLDENS = listOf(
             "ebb3f04446dc337f1b77293df7ba03e70f10f59b88a21e501d5a54c34fa14ec3",
             "456b29e952cdb0b499368ecf880fdde0bd17a959a3f1bed2326c4aa9e52fd864",

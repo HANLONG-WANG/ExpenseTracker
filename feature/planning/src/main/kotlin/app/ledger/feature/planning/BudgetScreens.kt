@@ -52,8 +52,9 @@ public fun BudgetDestination(
     screenId: String,
     state: BudgetLoadState,
     encodedArguments: Map<String, String>,
-    actions: BudgetActions,
+    onAction: (BudgetScreenAction) -> Unit,
 ) {
+    val actions = budgetActions(onAction)
     if (state === BudgetLoadState.Loading) {
         LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.budget_loading))
         return

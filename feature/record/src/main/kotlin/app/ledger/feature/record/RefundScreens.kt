@@ -46,7 +46,37 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-public data class RefundActions(
+public sealed interface RefundScreenAction {
+    public data object Retry : RefundScreenAction
+    public data object PickOriginal : RefundScreenAction
+    public data class IndependentChanged(val independent: Boolean) : RefundScreenAction
+    public data class ExpressionChanged(val value: String) : RefundScreenAction
+    public data class Operator(val value: String) : RefundScreenAction
+    public data object Account : RefundScreenAction
+    public data object Card : RefundScreenAction
+    public data object Category : RefundScreenAction
+    public data object Merchant : RefundScreenAction
+    public data object Project : RefundScreenAction
+    public data object Goal : RefundScreenAction
+    public data class DateChanged(val date: LocalDate) : RefundScreenAction
+    public data class AccrualPolicyChanged(val policy: RefundAccrualPolicy) : RefundScreenAction
+    public data class BudgetPolicyChanged(val policy: RefundBudgetPolicy) : RefundScreenAction
+    public data class ProjectPolicyChanged(val policy: RefundProjectPolicy) : RefundScreenAction
+    public data class GoalPolicyChanged(val policy: RefundGoalPolicy) : RefundScreenAction
+    public data class NoteChanged(val value: String) : RefundScreenAction
+    public data class RequestExcess(val requested: Boolean) : RefundScreenAction
+    public data object ConfirmExcess : RefundScreenAction
+}
+
+public sealed interface RefundPickerScreenAction {
+    public data object Retry : RefundPickerScreenAction
+    public data class QueryChanged(val query: String) : RefundPickerScreenAction
+    public data class PartialOnlyChanged(val enabled: Boolean) : RefundPickerScreenAction
+    public data class Choose(val transactionId: StableId) : RefundPickerScreenAction
+    public data object Independent : RefundPickerScreenAction
+}
+
+internal class RefundActions(
     val onRetry: () -> Unit,
     val onPickOriginal: () -> Unit,
     val onIndependent: (Boolean) -> Unit,
@@ -68,7 +98,7 @@ public data class RefundActions(
     val onConfirmExcess: () -> Unit,
 )
 
-public data class RefundPickerActions(
+internal class RefundPickerActions(
     val onRetry: () -> Unit,
     val onQuery: (String) -> Unit,
     val onPartialOnly: (Boolean) -> Unit,
@@ -76,12 +106,43 @@ public data class RefundPickerActions(
     val onIndependent: () -> Unit,
 )
 
+internal fun refundActions(onAction: (RefundScreenAction) -> Unit): RefundActions = RefundActions(
+    onRetry = { onAction(RefundScreenAction.Retry) },
+    onPickOriginal = { onAction(RefundScreenAction.PickOriginal) },
+    onIndependent = { onAction(RefundScreenAction.IndependentChanged(it)) },
+    onExpression = { onAction(RefundScreenAction.ExpressionChanged(it)) },
+    onOperator = { onAction(RefundScreenAction.Operator(it)) },
+    onAccount = { onAction(RefundScreenAction.Account) },
+    onCard = { onAction(RefundScreenAction.Card) },
+    onCategory = { onAction(RefundScreenAction.Category) },
+    onMerchant = { onAction(RefundScreenAction.Merchant) },
+    onProject = { onAction(RefundScreenAction.Project) },
+    onGoal = { onAction(RefundScreenAction.Goal) },
+    onDate = { onAction(RefundScreenAction.DateChanged(it)) },
+    onAccrualPolicy = { onAction(RefundScreenAction.AccrualPolicyChanged(it)) },
+    onBudgetPolicy = { onAction(RefundScreenAction.BudgetPolicyChanged(it)) },
+    onProjectPolicy = { onAction(RefundScreenAction.ProjectPolicyChanged(it)) },
+    onGoalPolicy = { onAction(RefundScreenAction.GoalPolicyChanged(it)) },
+    onNote = { onAction(RefundScreenAction.NoteChanged(it)) },
+    onRequestExcess = { onAction(RefundScreenAction.RequestExcess(it)) },
+    onConfirmExcess = { onAction(RefundScreenAction.ConfirmExcess) },
+)
+
+internal fun refundPickerActions(onAction: (RefundPickerScreenAction) -> Unit): RefundPickerActions = RefundPickerActions(
+    onRetry = { onAction(RefundPickerScreenAction.Retry) },
+    onQuery = { onAction(RefundPickerScreenAction.QueryChanged(it)) },
+    onPartialOnly = { onAction(RefundPickerScreenAction.PartialOnlyChanged(it)) },
+    onChoose = { onAction(RefundPickerScreenAction.Choose(it)) },
+    onIndependent = { onAction(RefundPickerScreenAction.Independent) },
+)
+
 @Composable
 public fun RefundDestination(
     state: RefundLoadState,
-    actions: RefundActions,
+    onAction: (RefundScreenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val actions = refundActions(onAction)
     Column(modifier.fillMaxSize().testTag(LedgerTestTags.REFUND_ROOT)) {
         when (state) {
             RefundLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize())
@@ -253,7 +314,12 @@ private fun ExcessConfirmation(state: RefundEditorState, actions: RefundActions)
 }
 
 @Composable
-public fun RefundOriginalPickerDestination(state: RefundPickerState, actions: RefundPickerActions, modifier: Modifier = Modifier) {
+public fun RefundOriginalPickerDestination(
+    state: RefundPickerState,
+    onAction: (RefundPickerScreenAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val actions = refundPickerActions(onAction)
     Column(modifier.fillMaxSize().testTag(LedgerTestTags.REFUND_PICKER)) {
         when (state) {
             RefundPickerState.Loading -> LedgerLoadingState(Modifier.fillMaxSize())

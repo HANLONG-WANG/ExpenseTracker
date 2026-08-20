@@ -170,6 +170,7 @@ internal class RoomProjectionEngine {
         localRevision: Long,
         valuationRevision: Long,
     ): Set<ProjectionFamily> = buildSet {
+        if (!projectionContractIsCurrent(database)) addAll(ProjectionFamily.entries)
         ProjectionFamily.entries.forEach { family ->
             val valid = count(
                 database,
@@ -224,6 +225,7 @@ internal class RoomProjectionEngine {
         localRevision: Long,
         valuationRevision: Long,
     ): Set<ProjectionFamily> = buildSet {
+        if (!projectionContractIsCurrent(database)) addAll(ProjectionFamily.entries)
         ProjectionFamily.entries.forEach { family ->
             val valid = count(
                 database,
@@ -360,7 +362,9 @@ internal class RoomProjectionEngine {
             LEFT JOIN fx_exchange_revision_detail fxd ON fxd.revision_id = tr.id
             LEFT JOIN settlement_payment_revision_detail spd ON spd.revision_id = tr.id
             LEFT JOIN opening_balance_revision_detail obd ON obd.revision_id = tr.id
-            WHERE NOT (bt.kind = 9 AND spd.local_account_id IS NULL)$transactionFilter
+            WHERE NOT (bt.kind = 9 AND spd.local_account_id IS NULL)
+              AND NOT EXISTS(SELECT 1 FROM purge_tombstone pt WHERE pt.entity_type=6 AND pt.entity_uid=bt.uid)
+              $transactionFilter
             """.trimIndent(),
             arguments,
         )
@@ -475,11 +479,12 @@ internal class RoomProjectionEngine {
         }
         val usages = database.queryList(
             "SELECT target_year_month,category_id,SUM(CASE kind WHEN 0 THEN polarity*base_amount_minor ELSE -polarity*base_amount_minor END) " +
-                "FROM budget_effect GROUP BY target_year_month,category_id",
+                "FROM budget_effect_line WHERE kind<>2 GROUP BY target_year_month,category_id",
         ) { cursor -> BudgetAmount(cursor.getInt(0), if (cursor.isNull(1)) null else cursor.getLong(1), cursor.getLong(2)) }
             .groupBy(BudgetAmount::month)
         val adjustments = database.queryList(
-            "SELECT year_month,category_id,SUM(amount_base_minor) FROM budget_adjustment GROUP BY year_month,category_id",
+            "SELECT target_year_month,category_id,SUM(polarity*base_amount_minor) FROM budget_effect_line " +
+                "WHERE kind=2 GROUP BY target_year_month,category_id",
         ) { cursor -> BudgetAmount(cursor.getInt(0), if (cursor.isNull(1)) null else cursor.getLong(1), cursor.getLong(2)) }
             .groupBy(BudgetAmount::month)
         val relevant = (configured.map(BudgetConfigured::month) + usages.keys + adjustments.keys).distinct().sorted()
@@ -769,7 +774,17 @@ internal class RoomProjectionEngine {
                 arrayOf<Any>(family.ordinal, localRevision, valuationRevision),
             )
         }
+        database.execSQL(
+            "UPDATE projection_contract_state SET contract_version=?,rebuilt_at_local_revision=? WHERE id=1",
+            arrayOf<Any>(CURRENT_PROJECTION_CONTRACT_VERSION, localRevision),
+        )
     }
+
+    private fun projectionContractIsCurrent(database: SupportSQLiteDatabase): Boolean = count(
+        database,
+        "SELECT COUNT(*) FROM projection_contract_state WHERE id=1 AND contract_version=?",
+        CURRENT_PROJECTION_CONTRACT_VERSION,
+    ) == 1L
 
     private fun transactionImpacts(
         database: SupportSQLiteDatabase,
@@ -1097,6 +1112,7 @@ internal class RoomProjectionEngine {
     }
 
     private companion object {
+        const val CURRENT_PROJECTION_CONTRACT_VERSION = 2
         val IGNORED_HASH_COLUMNS = setOf("as_of_local_revision")
         val DERIVED_TABLES = listOf(
             "transaction_fts", "location_rtree", "place_rtree", "widget_goal_snapshot", "widget_credit_snapshot",

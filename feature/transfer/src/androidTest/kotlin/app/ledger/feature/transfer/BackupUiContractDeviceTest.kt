@@ -202,13 +202,6 @@ class BackupUiContractDeviceTest {
             "6df8dddbc7b4ca608c9882cfe77347c67c06c689e06576f5670a3cd6e3f740f1",
             "ca479c356c7098cd04d1c9191824655e65786e9c1972bf44f772166dce5e8bac",
         )
-        val ACTIONS = BackupFlowActions(
-            onBack = {}, onNavigate = {}, onRepositoryKindSelected = {}, onDirectorySelected = {}, onAuthorizeDrive = {},
-            onDisconnectDrive = {}, onRecoveryPasswordChanged = {}, onRecoveryPasswordConfirmationChanged = {},
-            onRecoveryPasswordChangeModeChanged = {}, onSaveRecoveryPassword = {}, onAutomaticBackupChanged = {},
-            onRetentionCountChanged = {}, onRetentionDaysChanged = {}, onIncludeVaultChanged = {}, onNetworkPolicyChanged = {},
-            onSaveSettings = {}, onSnapshotSelected = {}, onPortableChanged = {}, onPortableFileNameChanged = {},
-            onStartBackup = {}, onCancel = {}, onRetry = {}, onOperations = {},
-        )
+        val ACTIONS: (BackupFlowScreenAction) -> Unit = {}
     }
 }

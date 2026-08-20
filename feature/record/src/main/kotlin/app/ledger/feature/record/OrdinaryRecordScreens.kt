@@ -82,7 +82,55 @@ import app.ledger.finance.domain.SettlementSplitMethod
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
-public data class OrdinaryRecordActions(
+public data class OrdinaryRecordScreenUiState(
+    val loadState: OrdinaryRecordLoadState,
+    val submitting: Boolean = false,
+)
+
+public sealed interface OrdinaryRecordScreenAction {
+    public data object Retry : OrdinaryRecordScreenAction
+    public data class SelectTab(val tab: RecordTab) : OrdinaryRecordScreenAction
+    public data class Search(val query: String) : OrdinaryRecordScreenAction
+    public data class Navigate(
+        val screenId: String,
+        val stableArguments: Map<String, StableId>,
+        val enumArguments: Map<String, String>,
+    ) : OrdinaryRecordScreenAction
+    public data class OpenEditor(
+        val mode: RecordEditorMode,
+        val direction: OrdinaryDirection,
+        val categoryId: StableId?,
+        val sourceId: StableId?,
+    ) : OrdinaryRecordScreenAction
+    public data class Expression(val value: String) : OrdinaryRecordScreenAction
+    public data class Operator(val value: String) : OrdinaryRecordScreenAction
+    public data class SelectCategory(val categoryId: StableId) : OrdinaryRecordScreenAction
+    public data class SelectAccount(val accountId: StableId) : OrdinaryRecordScreenAction
+    public data class SelectCard(val cardId: StableId?) : OrdinaryRecordScreenAction
+    public data class SelectReference(val field: RecordField, val id: StableId?) : OrdinaryRecordScreenAction
+    public data class Note(val value: String) : OrdinaryRecordScreenAction
+    public data class SettlementEnabled(val enabled: Boolean) : OrdinaryRecordScreenAction
+    public data class SettlementActivity(val activityId: StableId) : OrdinaryRecordScreenAction
+    public data class SettlementPayer(val participantId: StableId) : OrdinaryRecordScreenAction
+    public data class SettlementSplitMethodChanged(val method: SettlementSplitMethod) : OrdinaryRecordScreenAction
+    public data class SettlementChargeDistributionChanged(val distribution: SettlementChargeDistribution) : OrdinaryRecordScreenAction
+    public data class SettlementRoundingRuleChanged(val rule: SettlementRoundingRule) : OrdinaryRecordScreenAction
+    public data class SettlementParticipantIncluded(val participantId: StableId) : OrdinaryRecordScreenAction
+    public data class SettlementAllocationInput(val participantId: StableId, val value: String) : OrdinaryRecordScreenAction
+    public data class SettlementChargeInput(val participantId: StableId, val value: String) : OrdinaryRecordScreenAction
+    public data class SettlementTax(val value: String) : OrdinaryRecordScreenAction
+    public data class SettlementServiceFee(val value: String) : OrdinaryRecordScreenAction
+    public data class OccurredAt(val dateMillis: Long, val hour: Int, val minute: Int) : OrdinaryRecordScreenAction
+    public data object AddAttachment : OrdinaryRecordScreenAction
+    public data class CancelAttachment(val index: Int) : OrdinaryRecordScreenAction
+    public data object Save : OrdinaryRecordScreenAction
+    public data object UnsavedDiscard : OrdinaryRecordScreenAction
+    public data object UnsavedKeepEditing : OrdinaryRecordScreenAction
+    public data object ReloadConflict : OrdinaryRecordScreenAction
+    public data object CancelConflict : OrdinaryRecordScreenAction
+}
+
+internal class OrdinaryRecordActions(
     val onRetry: () -> Unit,
     val onTab: (RecordTab) -> Unit,
     val onSearch: (String) -> Unit,
@@ -116,13 +164,51 @@ public data class OrdinaryRecordActions(
     val onCancelConflict: () -> Unit,
 )
 
+internal fun ordinaryRecordActions(onAction: (OrdinaryRecordScreenAction) -> Unit): OrdinaryRecordActions = OrdinaryRecordActions(
+    onRetry = { onAction(OrdinaryRecordScreenAction.Retry) },
+    onTab = { onAction(OrdinaryRecordScreenAction.SelectTab(it)) },
+    onSearch = { onAction(OrdinaryRecordScreenAction.Search(it)) },
+    onNavigate = { screenId, stable, enums -> onAction(OrdinaryRecordScreenAction.Navigate(screenId, stable, enums)) },
+    onOpenEditor = { mode, direction, categoryId, sourceId ->
+        onAction(OrdinaryRecordScreenAction.OpenEditor(mode, direction, categoryId, sourceId))
+    },
+    onExpression = { onAction(OrdinaryRecordScreenAction.Expression(it)) },
+    onOperator = { onAction(OrdinaryRecordScreenAction.Operator(it)) },
+    onSelectCategory = { onAction(OrdinaryRecordScreenAction.SelectCategory(it)) },
+    onSelectAccount = { onAction(OrdinaryRecordScreenAction.SelectAccount(it)) },
+    onSelectCard = { onAction(OrdinaryRecordScreenAction.SelectCard(it)) },
+    onSelectReference = { field, id -> onAction(OrdinaryRecordScreenAction.SelectReference(field, id)) },
+    onNote = { onAction(OrdinaryRecordScreenAction.Note(it)) },
+    onSettlementEnabled = { onAction(OrdinaryRecordScreenAction.SettlementEnabled(it)) },
+    onSettlementActivity = { onAction(OrdinaryRecordScreenAction.SettlementActivity(it)) },
+    onSettlementPayer = { onAction(OrdinaryRecordScreenAction.SettlementPayer(it)) },
+    onSettlementSplitMethod = { onAction(OrdinaryRecordScreenAction.SettlementSplitMethodChanged(it)) },
+    onSettlementChargeDistribution = { onAction(OrdinaryRecordScreenAction.SettlementChargeDistributionChanged(it)) },
+    onSettlementRoundingRule = { onAction(OrdinaryRecordScreenAction.SettlementRoundingRuleChanged(it)) },
+    onSettlementParticipantIncluded = { onAction(OrdinaryRecordScreenAction.SettlementParticipantIncluded(it)) },
+    onSettlementAllocationInput = { id, value -> onAction(OrdinaryRecordScreenAction.SettlementAllocationInput(id, value)) },
+    onSettlementChargeInput = { id, value -> onAction(OrdinaryRecordScreenAction.SettlementChargeInput(id, value)) },
+    onSettlementTax = { onAction(OrdinaryRecordScreenAction.SettlementTax(it)) },
+    onSettlementServiceFee = { onAction(OrdinaryRecordScreenAction.SettlementServiceFee(it)) },
+    onOccurredAt = { dateMillis, hour, minute -> onAction(OrdinaryRecordScreenAction.OccurredAt(dateMillis, hour, minute)) },
+    onAddAttachment = { onAction(OrdinaryRecordScreenAction.AddAttachment) },
+    onCancelAttachment = { onAction(OrdinaryRecordScreenAction.CancelAttachment(it)) },
+    onSave = { onAction(OrdinaryRecordScreenAction.Save) },
+    onUnsavedDiscard = { onAction(OrdinaryRecordScreenAction.UnsavedDiscard) },
+    onUnsavedKeepEditing = { onAction(OrdinaryRecordScreenAction.UnsavedKeepEditing) },
+    onReloadConflict = { onAction(OrdinaryRecordScreenAction.ReloadConflict) },
+    onCancelConflict = { onAction(OrdinaryRecordScreenAction.CancelConflict) },
+)
+
 @Composable
 public fun OrdinaryRecordDestination(
     screenId: String,
-    state: OrdinaryRecordLoadState,
-    actions: OrdinaryRecordActions,
+    uiState: OrdinaryRecordScreenUiState,
+    onAction: (OrdinaryRecordScreenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val state = uiState.loadState
+    val actions = ordinaryRecordActions(onAction)
     Box(modifier.fillMaxSize().testTag(LedgerTestTags.RECORD_ROOT)) {
         when (state) {
             OrdinaryRecordLoadState.Loading -> LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
@@ -130,6 +216,17 @@ public fun OrdinaryRecordDestination(
             is OrdinaryRecordLoadState.Content -> RecordContent(screenId, state, actions)
         }
     }
+}
+
+/** Convenience for previews/tests; production callers should collect [OrdinaryRecordScreenUiState]. */
+@Composable
+public fun OrdinaryRecordDestination(
+    screenId: String,
+    state: OrdinaryRecordLoadState,
+    onAction: (OrdinaryRecordScreenAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OrdinaryRecordDestination(screenId, OrdinaryRecordScreenUiState(state), onAction, modifier)
 }
 
 @Composable

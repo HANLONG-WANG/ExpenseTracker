@@ -73,8 +73,8 @@ internal object RefundDeviceFixtures {
 
     fun excess(locale: Locale = Locale.ENGLISH): RefundEditorState = RefundPolicy.updateExpression(linked(locale), "700", locale)
 
-    val actions = RefundActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
-    val pickerActions = RefundPickerActions({}, {}, {}, {}, {})
+    val actions: (RefundScreenAction) -> Unit = {}
+    val pickerActions: (RefundPickerScreenAction) -> Unit = {}
 
     private fun id(value: Long) = StableId.fromUuid(UUID(0x1617L, value))
 }

@@ -364,7 +364,7 @@ object CanonicalFinancialHash {
         commitId: BookCommitId,
     ): ContentHash = ContentHash(
         digest {
-            text("JOURNAL_ENTRY_V1")
+            text("JOURNAL_ENTRY_V2")
             stableId(id.value)
             stableId(sourceRevisionId.value)
             stableId(appliesRevisionId.value)
@@ -925,6 +925,7 @@ private class CanonicalWriter {
         positiveMoney(value.accountAmount)
         positiveMoney(value.baseAmount)
         decimal(value.valuationRate)
+        text(value.valuationSource.name)
         text(value.role.name)
         nullableStableId(value.reversalOfPostingId?.value)
     }

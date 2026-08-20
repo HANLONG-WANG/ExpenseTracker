@@ -23,10 +23,10 @@ import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
 import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.RecoveryDiagnosticCode
-import app.ledger.feature.onboarding.OnboardingActions
 import app.ledger.feature.onboarding.OnboardingLanguage
 import app.ledger.feature.onboarding.OnboardingRenderState
 import app.ledger.feature.onboarding.OnboardingScreen
+import app.ledger.feature.onboarding.OnboardingScreenAction
 import app.ledger.feature.onboarding.OnboardingStep
 import app.ledger.feature.onboarding.OnboardingUiState
 import org.junit.Assert.assertEquals
@@ -124,9 +124,7 @@ class P11GoldenDeviceTest {
         },
     )
 
-    private val noOpActions = OnboardingActions(
-        {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
-    )
+    private val noOpActions: (OnboardingScreenAction) -> Unit = {}
 
     private data class GoldenCase(val assetName: String, val content: @Composable () -> Unit)
 

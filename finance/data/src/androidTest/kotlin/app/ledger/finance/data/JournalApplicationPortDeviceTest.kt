@@ -31,7 +31,6 @@ import app.ledger.finance.application.OrdinaryAmountDraft
 import app.ledger.finance.application.OrdinaryDirection
 import app.ledger.finance.application.OrdinaryTransactionWriteIds
 import app.ledger.finance.application.OrdinaryTransactionWriteRequest
-import app.ledger.finance.application.PurgeIneligibilityReason
 import app.ledger.finance.domain.CategoryDirection
 import app.ledger.finance.domain.RevisionAction
 import app.ledger.finance.domain.StatisticalNature
@@ -43,7 +42,6 @@ import app.ledger.finance.domain.UserAccountType
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -155,8 +153,8 @@ class JournalApplicationPortDeviceTest {
         ).success()
         val assessment = journal.assessPurge(BOOK_ID, TRANSACTION_A, purgeAfter.plusSeconds(1)).success()
         assertTrue(assessment.financiallyEligible)
-        assertFalse(assessment.canPurgeNow)
-        assertEquals(setOf(PurgeIneligibilityReason.PHYSICAL_PURGE_REQUIRES_MAINTENANCE), assessment.reasons)
+        assertTrue(assessment.canPurgeNow)
+        assertTrue(assessment.reasons.isEmpty())
         assertEquals(TransactionLifecycleState.TRASHED, requireNotNull(journal.detail(BOOK_ID, TRANSACTION_A).success()).transaction.state)
     }
 
@@ -208,7 +206,11 @@ class JournalApplicationPortDeviceTest {
         assertEquals(first.receipt, repeated.receipt)
         assertEquals(0, repeated.detachedAttachmentCount)
         withDatabase { database ->
-            assertEquals(0L, database.scalar("SELECT COUNT(*) FROM business_transaction WHERE uid=?", arrayOf(TRANSACTION_A.bytes)))
+            assertEquals(1L, database.scalar("SELECT COUNT(*) FROM business_transaction WHERE uid=?", arrayOf(TRANSACTION_A.bytes)))
+            assertTrue(database.scalar("SELECT COUNT(*) FROM transaction_revision tr JOIN business_transaction bt ON bt.id=tr.transaction_id WHERE bt.uid=?", arrayOf(TRANSACTION_A.bytes)) > 0L)
+            assertTrue(database.scalar("SELECT COUNT(*) FROM journal_entry je JOIN transaction_revision tr ON tr.id=je.source_revision_id JOIN business_transaction bt ON bt.id=tr.transaction_id WHERE bt.uid=?", arrayOf(TRANSACTION_A.bytes)) > 0L)
+            assertTrue(database.scalar("SELECT COUNT(*) FROM posting p JOIN journal_entry je ON je.id=p.journal_entry_id JOIN transaction_revision tr ON tr.id=je.source_revision_id JOIN business_transaction bt ON bt.id=tr.transaction_id WHERE bt.uid=?", arrayOf(TRANSACTION_A.bytes)) > 0L)
+            assertEquals(0L, database.scalar("SELECT COUNT(*) FROM current_transaction_projection ctp JOIN business_transaction bt ON bt.id=ctp.transaction_id WHERE bt.uid=?", arrayOf(TRANSACTION_A.bytes)))
             assertEquals(1L, database.scalar("SELECT COUNT(*) FROM purge_tombstone WHERE entity_uid=?", arrayOf(TRANSACTION_A.bytes)))
             assertEquals(1L, database.scalar("SELECT COUNT(*) FROM command_receipt WHERE command_uid=?", arrayOf(requestA.commandId.bytes)))
             val columns = database.query("PRAGMA table_info(purge_tombstone)").use { cursor ->
@@ -260,7 +262,6 @@ class JournalApplicationPortDeviceTest {
                 it.getBlob(0).toList() to it.getLong(1)
             }
             assertEquals(before, after)
-            assertEquals(0L, database.scalar("SELECT allow_fact_purge FROM _schema_runtime_guard WHERE id=1"))
         }
     }
 

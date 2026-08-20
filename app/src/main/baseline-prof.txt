@@ -25551,10 +25551,6 @@ SPLapp/ledger/finance/data/RoomLedgerStartupInspector$$ExternalSyntheticLambda0;
 SPLapp/ledger/finance/data/RoomLedgerStartupInspector$$ExternalSyntheticLambda0;->invoke(Ljava/lang/Object;)Ljava/lang/Object;
 PLapp/ledger/finance/data/RoomLoanContractWriter;-><init>()V
 PLapp/ledger/finance/data/RoomLoanContractWriter;->write(Landroidx/sqlite/db/SupportSQLiteDatabase;Lapp/ledger/finance/domain/FinancialMutationPlan;)V
-PLapp/ledger/finance/data/RoomPrivacyPurgeWriter;-><clinit>()V
-PLapp/ledger/finance/data/RoomPrivacyPurgeWriter;-><init>()V
-PLapp/ledger/finance/data/RoomPrivacyPurgeWriter$Companion;-><init>()V
-PLapp/ledger/finance/data/RoomPrivacyPurgeWriter$Companion;-><init>(Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 Lapp/ledger/finance/data/RoomProjectionEngine;
 PLapp/ledger/finance/data/RoomProjectionEngine;->$r8$lambda$3xXl0agDvthJEFU6cnQon1ZFkrM([B)Ljava/lang/CharSequence;
 PLapp/ledger/finance/data/RoomProjectionEngine;->$r8$lambda$XJXoki3D1PKdHTdeMjnowMGV5zc([B)Ljava/lang/CharSequence;

@@ -377,8 +377,8 @@ class SecureRoomBudgetApplicationPort(
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
         DomainResult.Failure(FinanceDataError.NumericRangeExceeded)
-    } catch (_: Exception) {
-        DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    } catch (failure: Exception) {
+        DomainResult.Failure(failure.toFinanceDatabaseError())
     }
 
     private fun zeroHash() = app.ledger.finance.domain.Hash256.fromBytes(ByteArray(HASH_BYTE_COUNT)).valueOrAbort()

@@ -123,7 +123,7 @@ class AnalyticsSqlCipherDeviceTest {
 
         val reopened = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
         reopened.readLedger { connection ->
-            assertEquals(4L, singleLong(connection, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
+            assertEquals(5L, singleLong(connection, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
             assertEquals(2L, singleLong(connection, "SELECT COUNT(*) FROM analytics_report_definition"))
             assertEquals(2L, singleLong(connection, "SELECT COUNT(*) FROM analytics_report_revision"))
             assertEquals(1L, singleLong(connection, "SELECT COUNT(*) FROM analytics_dashboard_revision"))
@@ -194,6 +194,25 @@ class AnalyticsSqlCipherDeviceTest {
         assertTrue(stale is ReportExecution.StaleProjection)
         application.repairAnalyticsProjections(BOOK_ID).success()
         assertTrue(application.executeFixed(BOOK_ID, FixedReportCatalog.definitions.first().report, AUGUST).success() is ReportExecution.Content)
+    }
+
+    @Test
+    fun sqliteAmountOverflowReturnsExplicitNumericRangeError() = runBlocking {
+        val database = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
+        database.inLedgerTransaction { connection ->
+            connection.execSQL(
+                "UPDATE analytics_daily_total SET amount_base_minor=? WHERE local_date=20260806 AND metric=?",
+                arrayOf<Any>(Long.MAX_VALUE, AnalyticsProjectionEngine.INCOME_METRIC),
+            )
+            connection.execSQL(
+                "INSERT INTO analytics_daily_total(local_date,metric,amount_base_minor,as_of_local_revision) VALUES(20260807,?,?,1)",
+                arrayOf<Any>(AnalyticsProjectionEngine.INCOME_METRIC, Long.MAX_VALUE),
+            )
+        }
+        database.close()
+
+        val result = application.overview(BOOK_ID, AUGUST)
+        assertEquals(AnalyticsError.NumericRangeExceeded, (result as DomainResult.Failure).error)
     }
 
     @Test

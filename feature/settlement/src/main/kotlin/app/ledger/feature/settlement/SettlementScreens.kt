@@ -51,8 +51,9 @@ import app.ledger.finance.domain.SettlementSplitMethod
 public fun SettlementDestination(
     screenId: String,
     state: SettlementLoadState,
-    actions: SettlementActions,
+    onAction: (SettlementScreenAction) -> Unit,
 ) {
+    val actions = settlementActions(onAction)
     when (state) {
         SettlementLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.settlement_loading))
         is SettlementLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.settlement_load_failed), actions.onRetry)

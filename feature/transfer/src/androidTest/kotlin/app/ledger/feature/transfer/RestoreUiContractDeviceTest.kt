@@ -227,12 +227,6 @@ class RestoreUiContractDeviceTest {
             "339869d466d26e53fb877e81270de09a6894e8d2eee1610784bf1881653d9fda",
             "ec6e99eac7c059e541b19ec577e264ca75351b5d0f0d28c8b69199454da421b8",
         )
-        val ACTIONS = RestoreFlowActions(
-            onBack = {}, onPortableSource = {}, onRepositorySource = {}, onDriveSource = {},
-            onPasswordChanged = {}, onVerifyPassword = {}, onModeSelected = {}, onHighRiskPhraseChanged = {},
-            onStartRestore = {}, onResolveConflict = { _, _ -> }, onApplyMerge = {}, onCancel = {}, onRetry = {},
-            onOpenApp = {}, onCloudSnapshotSelected = {}, onCloudConfirmationChanged = {},
-            onAuthenticateCloudDelete = {}, onDeleteCloudBackups = {},
-        )
+        val ACTIONS: (RestoreFlowScreenAction) -> Unit = {}
     }
 }

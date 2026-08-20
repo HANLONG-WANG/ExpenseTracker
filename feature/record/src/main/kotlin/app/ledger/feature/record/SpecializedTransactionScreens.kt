@@ -40,7 +40,27 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
-public data class SpecializedTransactionActions(
+public sealed interface SpecializedTransactionScreenAction {
+    public data object Retry : SpecializedTransactionScreenAction
+    public data object SelectFromAccount : SpecializedTransactionScreenAction
+    public data object SelectToAccount : SpecializedTransactionScreenAction
+    public data class OutgoingExpression(val value: String) : SpecializedTransactionScreenAction
+    public data class IncomingExpression(val value: String) : SpecializedTransactionScreenAction
+    public data class OutgoingOperator(val value: String) : SpecializedTransactionScreenAction
+    public data class IncomingOperator(val value: String) : SpecializedTransactionScreenAction
+    public data class ManualFromRate(val value: String) : SpecializedTransactionScreenAction
+    public data class ManualToRate(val value: String) : SpecializedTransactionScreenAction
+    public data object RefreshRates : SpecializedTransactionScreenAction
+    public data class DirectionChanged(val direction: BalanceAdjustmentDirection) : SpecializedTransactionScreenAction
+    public data class CheckpointSelected(val checkpointId: StableId?) : SpecializedTransactionScreenAction
+    public data class DateChanged(val date: LocalDate) : SpecializedTransactionScreenAction
+    public data class NoteChanged(val value: String) : SpecializedTransactionScreenAction
+    public data object AddAttachment : SpecializedTransactionScreenAction
+    public data class CancelAttachment(val index: Int) : SpecializedTransactionScreenAction
+    public data object Save : SpecializedTransactionScreenAction
+}
+
+internal class SpecializedTransactionActions(
     val onRetry: () -> Unit,
     val onSelectFromAccount: () -> Unit,
     val onSelectToAccount: () -> Unit,
@@ -60,13 +80,34 @@ public data class SpecializedTransactionActions(
     val onSave: () -> Unit,
 )
 
+internal fun specializedTransactionActions(onAction: (SpecializedTransactionScreenAction) -> Unit): SpecializedTransactionActions = SpecializedTransactionActions(
+    onRetry = { onAction(SpecializedTransactionScreenAction.Retry) },
+    onSelectFromAccount = { onAction(SpecializedTransactionScreenAction.SelectFromAccount) },
+    onSelectToAccount = { onAction(SpecializedTransactionScreenAction.SelectToAccount) },
+    onOutgoingExpression = { onAction(SpecializedTransactionScreenAction.OutgoingExpression(it)) },
+    onIncomingExpression = { onAction(SpecializedTransactionScreenAction.IncomingExpression(it)) },
+    onOutgoingOperator = { onAction(SpecializedTransactionScreenAction.OutgoingOperator(it)) },
+    onIncomingOperator = { onAction(SpecializedTransactionScreenAction.IncomingOperator(it)) },
+    onManualFromRate = { onAction(SpecializedTransactionScreenAction.ManualFromRate(it)) },
+    onManualToRate = { onAction(SpecializedTransactionScreenAction.ManualToRate(it)) },
+    onRefreshRates = { onAction(SpecializedTransactionScreenAction.RefreshRates) },
+    onDirection = { onAction(SpecializedTransactionScreenAction.DirectionChanged(it)) },
+    onCheckpoint = { onAction(SpecializedTransactionScreenAction.CheckpointSelected(it)) },
+    onDate = { onAction(SpecializedTransactionScreenAction.DateChanged(it)) },
+    onNote = { onAction(SpecializedTransactionScreenAction.NoteChanged(it)) },
+    onAddAttachment = { onAction(SpecializedTransactionScreenAction.AddAttachment) },
+    onCancelAttachment = { onAction(SpecializedTransactionScreenAction.CancelAttachment(it)) },
+    onSave = { onAction(SpecializedTransactionScreenAction.Save) },
+)
+
 @Composable
 public fun SpecializedTransactionDestination(
     screenId: String,
     state: SpecializedTransactionLoadState,
-    actions: SpecializedTransactionActions,
+    onAction: (SpecializedTransactionScreenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val actions = specializedTransactionActions(onAction)
     Column(modifier.fillMaxSize().testTag(LedgerTestTags.SPECIALIZED_TRANSACTION_ROOT)) {
         when (state) {
             SpecializedTransactionLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize())

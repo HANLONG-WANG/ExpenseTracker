@@ -4,7 +4,24 @@ import app.ledger.core.common.StableId
 import app.ledger.finance.domain.BudgetAdjustmentKind
 import java.time.YearMonth
 
-public data class BudgetActions(
+public sealed interface BudgetScreenAction {
+    public data object Retry : BudgetScreenAction
+    public data class MonthSelected(val month: YearMonth) : BudgetScreenAction
+    public data class Navigate(val screenId: String, val id: StableId?, val adjustmentKind: BudgetAdjustmentKind?) : BudgetScreenAction
+    public data object Edit : BudgetScreenAction
+    public data object Operations : BudgetScreenAction
+    public data class TotalChanged(val value: String) : BudgetScreenAction
+    public data class CategoryChanged(val categoryId: StableId, val value: String) : BudgetScreenAction
+    public data object SaveMonth : BudgetScreenAction
+    public data class TemplateNameChanged(val value: String) : BudgetScreenAction
+    public data object SaveTemplate : BudgetScreenAction
+    public data class AdjustmentAmountChanged(val value: String) : BudgetScreenAction
+    public data object AdjustmentSource : BudgetScreenAction
+    public data object AdjustmentTarget : BudgetScreenAction
+    public data class SaveAdjustment(val kind: BudgetAdjustmentKind) : BudgetScreenAction
+}
+
+internal class BudgetActions(
     val navigation: BudgetNavigationActions,
     val editor: BudgetEditorActions,
     val adjustment: BudgetAdjustmentActions,
@@ -25,7 +42,7 @@ public data class BudgetActions(
     val onSaveAdjustment: (BudgetAdjustmentKind) -> Unit get() = adjustment.onSave
 }
 
-public data class BudgetNavigationActions(
+internal class BudgetNavigationActions(
     val onRetry: () -> Unit,
     val onMonth: (YearMonth) -> Unit,
     val onNavigate: (String, StableId?, BudgetAdjustmentKind?) -> Unit,
@@ -33,7 +50,7 @@ public data class BudgetNavigationActions(
     val onOperations: () -> Unit,
 )
 
-public data class BudgetEditorActions(
+internal class BudgetEditorActions(
     val onTotalChanged: (String) -> Unit,
     val onCategoryChanged: (StableId, String) -> Unit,
     val onSaveMonth: () -> Unit,
@@ -41,9 +58,32 @@ public data class BudgetEditorActions(
     val onSaveTemplate: () -> Unit,
 )
 
-public data class BudgetAdjustmentActions(
+internal class BudgetAdjustmentActions(
     val onAmountChanged: (String) -> Unit,
     val onSource: () -> Unit,
     val onTarget: () -> Unit,
     val onSave: (BudgetAdjustmentKind) -> Unit,
+)
+
+internal fun budgetActions(onAction: (BudgetScreenAction) -> Unit): BudgetActions = BudgetActions(
+    navigation = BudgetNavigationActions(
+        onRetry = { onAction(BudgetScreenAction.Retry) },
+        onMonth = { onAction(BudgetScreenAction.MonthSelected(it)) },
+        onNavigate = { screenId, id, kind -> onAction(BudgetScreenAction.Navigate(screenId, id, kind)) },
+        onEdit = { onAction(BudgetScreenAction.Edit) },
+        onOperations = { onAction(BudgetScreenAction.Operations) },
+    ),
+    editor = BudgetEditorActions(
+        onTotalChanged = { onAction(BudgetScreenAction.TotalChanged(it)) },
+        onCategoryChanged = { id, value -> onAction(BudgetScreenAction.CategoryChanged(id, value)) },
+        onSaveMonth = { onAction(BudgetScreenAction.SaveMonth) },
+        onTemplateNameChanged = { onAction(BudgetScreenAction.TemplateNameChanged(it)) },
+        onSaveTemplate = { onAction(BudgetScreenAction.SaveTemplate) },
+    ),
+    adjustment = BudgetAdjustmentActions(
+        onAmountChanged = { onAction(BudgetScreenAction.AdjustmentAmountChanged(it)) },
+        onSource = { onAction(BudgetScreenAction.AdjustmentSource) },
+        onTarget = { onAction(BudgetScreenAction.AdjustmentTarget) },
+        onSave = { onAction(BudgetScreenAction.SaveAdjustment(it)) },
+    ),
 )

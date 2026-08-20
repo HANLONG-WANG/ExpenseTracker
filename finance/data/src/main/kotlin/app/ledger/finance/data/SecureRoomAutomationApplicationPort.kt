@@ -528,6 +528,15 @@ class SecureRoomAutomationApplicationPort(
             "INSERT INTO entity_change(commit_id,entity_type,entity_uid,operation,before_hash,after_hash,entity_revision_uid) VALUES(?,?,?,?,NULL,?,?)",
             arrayOf<Any>(db.requireInternalId("book_commit", commitId), type.ordinal, entityId.bytes, if (create) EntityChangeOperation.CREATE.ordinal else EntityChangeOperation.UPDATE.ordinal, digest, revisionId.bytes),
         )
+        val currentTable = when (type) {
+            EntityType.BLUEPRINT -> "transaction_blueprint"
+            EntityType.RECURRENCE_SERIES -> "recurrence_series"
+            else -> abort(FinanceDataError.CorruptData)
+        }
+        db.execSQL(
+            "UPDATE $currentTable SET last_commit_id=?,row_version=?,content_hash=? WHERE uid=?",
+            arrayOf<Any>(db.requireInternalId("book_commit", commitId), number, digest, entityId.bytes),
+        )
     }
 
     private fun finishReferenceCommit(

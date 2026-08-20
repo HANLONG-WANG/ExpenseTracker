@@ -30,7 +30,6 @@ import app.ledger.finance.application.JournalPurgeAssessment
 import app.ledger.finance.application.JournalRevisionComparison
 import app.ledger.finance.application.JournalRevisionView
 import app.ledger.finance.application.JournalTransactionView
-import app.ledger.finance.application.PurgeIneligibilityReason
 import app.ledger.finance.domain.RevisionAction
 import app.ledger.finance.domain.TransactionDependencyType
 import app.ledger.finance.domain.TransactionKind
@@ -87,7 +86,7 @@ class JournalUiContractDeviceTest {
             history = HISTORY,
             comparison = JournalRevisionComparison(HISTORY[1], HISTORY[0], listOf("amount"), listOf("account")),
             dependencies = listOf(JournalDependencyView(ID, id(30), TransactionDependencyType.REFUND, TransactionLifecycleState.ACTIVE)),
-            purgeAssessment = JournalPurgeAssessment(ID, NOW, NOW.minusSeconds(1), setOf(PurgeIneligibilityReason.PHYSICAL_PURGE_REQUIRES_MAINTENANCE)),
+            purgeAssessment = JournalPurgeAssessment(ID, NOW, NOW.minusSeconds(1), emptySet()),
         )
         val raw = EXPECTED.flatMap { (screen, states) -> states.map { screen to it } }
         return raw.mapIndexed { index, (screen, state) ->
@@ -107,12 +106,7 @@ class JournalUiContractDeviceTest {
             JournalRevisionView(id(3), 1, RevisionAction.CREATE, TransactionLifecycleState.ACTIVE, NOW.minusSeconds(60), NOW, "Meals", "Cash", 1000, JPY, listOf("created")),
         )
         val DETAIL = JournalDetailView(ROW, NOW.minusSeconds(60), NOW, "Asia/Tokyo", "1000+280", "private note", "Local shop", "Trip", "Station", listOf("receipt.pdf"), "included", "CONSUMPTION_EXPENSE", listOf(JournalFxEvidenceView(JPY, JPY, "1", "identity", NOW, false, false)), listOf("REFUND"), listOf("Cash:credit:1280 JPY"), "MANUAL", null, 1)
-        val ACTIONS = JournalActions(
-            onNavigate = { _, _ -> }, onSearch = {}, onApplyFilter = {}, onRemoveFilter = {}, onRetry = {}, onLoadDetail = {},
-            onSelect = {}, onSelectAllMatching = {}, onClearSelection = {}, onBulkEdit = {}, onSaveFilter = {}, onApplyPreset = {},
-            onCopyPreset = {}, onSetDefaultPreset = {}, onDeletePreset = {}, onReorderPresets = {}, onResolveDependency = { _, _ -> }, onMoveToTrash = { _, _, _ -> },
-            onRestore = { _, _ -> }, onCompareRevisions = { _, _, _ -> }, onRestoreRevision = { _, _, _, _ -> }, onVerifyPurge = {}, onPurgeRequested = {},
-        )
+        val ACTIONS: (JournalScreenAction) -> Unit = {}
         val EXPECTED = linkedMapOf(
             "JRN-001" to setOf("loading", "content", "empty", "error", "refreshing"),
             "JRN-002" to setOf("idle", "typing", "results", "empty", "error"),

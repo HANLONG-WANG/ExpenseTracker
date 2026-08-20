@@ -192,7 +192,6 @@ class SecureRoomRestoreLedgerApplicationPort(
         val session = sessions[operationId] ?: return@protect DomainResult.Failure(FinanceRestoreError.RecoveryRequired)
         require(session.bookId == bookId)
         writeExchangeMarker(operationId, bookId, EXCHANGE_PHASE_FINALIZED, session.liveReadable)
-        session.keys?.commit(keyRecoveryFile(operationId))
         DomainResult.Success(Unit)
     }
 
@@ -214,10 +213,8 @@ class SecureRoomRestoreLedgerApplicationPort(
             return@protect DomainResult.Failure(FinanceRestoreError.IntegrityFailed)
         }
         if (storedMarker?.phase == EXCHANGE_PHASE_FINALIZED) {
-            AtomicFile(keyMarker).delete()
-            artifacts.cleanup(operationId)
-            applicationContext.deleteDatabase(safetyName(operationId))
-            AtomicFile(marker).delete()
+            // A finalized exchange is not an interrupted operation. Its recovery copy remains until
+            // the user explicitly confirms cleanup from the restore result UI.
             return@protect DomainResult.Success(true)
         }
         val artifactRecovered = artifacts.recover(operationId)
@@ -226,9 +223,33 @@ class SecureRoomRestoreLedgerApplicationPort(
         DomainResult.Success(true)
     }
 
+    override fun confirmSafetySnapshotCleanup(operationId: StableId): DomainResult<Unit> = protect {
+        val marker = exchangeMarker(operationId)
+        val stored = marker.takeIf(File::isFile)?.let { readExchangeMarker(operationId) }
+            ?: return@protect DomainResult.Failure(FinanceRestoreError.RecoveryRequired)
+        if (stored.phase != EXCHANGE_PHASE_FINALIZED) {
+            return@protect DomainResult.Failure(FinanceRestoreError.RecoveryRequired)
+        }
+        sessions.remove(operationId)?.let { session ->
+            session.keys?.commit(keyRecoveryFile(operationId))
+            session.close()
+        }
+        applicationContext.deleteDatabase(shadowName(operationId))
+        applicationContext.deleteDatabase(safetyName(operationId))
+        artifacts.cleanup(operationId)
+        AtomicFile(marker).delete()
+        AtomicFile(keyRecoveryFile(operationId)).delete()
+        DomainResult.Success(Unit)
+    }
+
     override fun cleanup(operationId: StableId) {
         sessions.remove(operationId)?.close()
         applicationContext.deleteDatabase(shadowName(operationId))
+        val finalized = runCatching {
+            exchangeMarker(operationId).takeIf(File::isFile)?.let { readExchangeMarker(operationId) }?.phase ==
+                EXCHANGE_PHASE_FINALIZED
+        }.getOrDefault(false)
+        if (finalized) return
         applicationContext.deleteDatabase(safetyName(operationId))
         artifacts.cleanup(operationId)
         AtomicFile(exchangeMarker(operationId)).delete()

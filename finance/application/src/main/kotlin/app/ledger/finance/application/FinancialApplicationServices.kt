@@ -53,7 +53,7 @@ class DefaultSubmitFinancialCommandUseCase(
 
 /**
  * The only application command entry exposed to UI, Worker and import adapters.
- * Physical privacy purge remains maintenance-only and is deliberately routed to P31.
+ * Logical privacy purge remains coordinator-owned and preserves every immutable financial fact.
  */
 class FinancialCommandHandler(
     private val submit: SubmitFinancialCommandUseCase,

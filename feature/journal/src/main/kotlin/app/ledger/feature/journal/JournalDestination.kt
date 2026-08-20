@@ -107,8 +107,9 @@ fun JournalDestination(
     encodedArguments: Map<String, *>,
     state: JournalLoadState,
     pages: Flow<PagingData<JournalTransactionView>>,
-    actions: JournalActions,
+    onAction: (JournalScreenAction) -> Unit,
 ) {
+    val actions = journalActions(onAction)
     val content = state as? JournalLoadState.Content
     when {
         !journalArgumentsValid(screenId, encodedArguments) -> LedgerErrorState(

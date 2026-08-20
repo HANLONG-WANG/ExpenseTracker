@@ -145,8 +145,10 @@ class RoomProjectionMaintenanceService(
         DomainResult.Failure(FinanceDataError.StorageFull)
     } catch (_: ArithmeticException) {
         DomainResult.Failure(FinanceDataError.NumericRangeExceeded)
-    } catch (_: Exception) {
-        DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    } catch (failure: Exception) {
+        DomainResult.Failure(
+            if (failure.isSqliteNumericRangeFailure()) FinanceDataError.NumericRangeExceeded else FinanceDataError.DatabaseUnavailable,
+        )
     }
 
     private companion object {

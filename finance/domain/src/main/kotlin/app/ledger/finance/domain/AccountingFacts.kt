@@ -24,6 +24,27 @@ enum class PostingRole {
     ROUNDING,
 }
 
+/** Auditable provenance for the historical base-currency valuation stored on every posting. */
+enum class PostingValuationSource {
+    /** The account and book use the same currency, so no conversion was required. */
+    SAME_CURRENCY,
+
+    /** The line uses a frozen FX evidence rate persisted with the transaction revision. */
+    FROZEN_FX_EVIDENCE,
+
+    /** The line is an allocation of a transaction-level frozen valuation. */
+    ALLOCATED_FROM_FROZEN_TRANSACTION,
+    ;
+
+    companion object {
+        fun infer(accountCurrencyEqualsBase: Boolean, valuationRate: BigDecimal?): PostingValuationSource = when {
+            accountCurrencyEqualsBase -> SAME_CURRENCY
+            valuationRate != null -> FROZEN_FX_EVIDENCE
+            else -> ALLOCATED_FROM_FROZEN_TRANSACTION
+        }
+    }
+}
+
 data class LedgerAccountSnapshot(
     val id: LedgerAccountId,
     val accountClass: LedgerAccountClass,
@@ -42,6 +63,7 @@ data class Posting private constructor(
     val accountAmount: PositiveMoney,
     val baseAmount: PositiveMoney,
     val valuationRate: BigDecimal?,
+    val valuationSource: PostingValuationSource,
     val role: PostingRole,
     val reversalOfPostingId: PostingId?,
 ) : LifecycleRecord<RecordLifecycle.Fact> {
@@ -61,13 +83,19 @@ data class Posting private constructor(
             valuationRate: BigDecimal?,
             role: PostingRole,
             reversalOfPostingId: PostingId?,
+            valuationSource: PostingValuationSource = PostingValuationSource.infer(
+                accountAmount.currency == baseCurrency,
+                valuationRate,
+            ),
         ): DomainResult<Posting> {
+            val inferredSource = PostingValuationSource.infer(accountAmount.currency == baseCurrency, valuationRate)
             if (
                 lineNumber < 1 ||
                 ledgerAccount.currency != accountAmount.currency ||
                 baseAmount.currency != baseCurrency ||
                 ledgerAccount.status != EntityStatus.ACTIVE ||
-                (valuationRate != null && valuationRate.signum() <= 0)
+                (valuationRate != null && valuationRate.signum() <= 0) ||
+                valuationSource != inferredSource
             ) {
                 return DomainResult.Failure(DomainViolation.Invariant("INV-002"))
             }
@@ -81,6 +109,7 @@ data class Posting private constructor(
                     accountAmount = accountAmount,
                     baseAmount = baseAmount,
                     valuationRate = valuationRate?.stripTrailingZeros(),
+                    valuationSource = valuationSource,
                     role = role,
                     reversalOfPostingId = reversalOfPostingId,
                 ),
@@ -119,6 +148,7 @@ data class Posting private constructor(
                     accountAmount = original.accountAmount,
                     baseAmount = original.baseAmount,
                     valuationRate = original.valuationRate,
+                    valuationSource = original.valuationSource,
                     role = original.role,
                     reversalOfPostingId = original.id,
                 ),
@@ -153,6 +183,7 @@ data class Posting private constructor(
                     accountAmount = original.accountAmount,
                     baseAmount = original.baseAmount,
                     valuationRate = original.valuationRate,
+                    valuationSource = original.valuationSource,
                     role = original.role,
                     reversalOfPostingId = null,
                 ),
@@ -278,6 +309,7 @@ data class EconomicEffect(
 enum class BudgetEffectKind {
     USE,
     RESTORE,
+    ADJUST,
 }
 
 data class BudgetEffect(

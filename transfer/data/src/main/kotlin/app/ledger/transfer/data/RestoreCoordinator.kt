@@ -75,7 +75,7 @@ class ReplaceRestoreCoordinator(
         progress: RestoreProgressObserver = RestoreProgressObserver { },
     ): DomainResult<ReplaceRestoreResult> {
         var safetyId: StableId? = null
-        var retainRecoveryArtifacts = false
+        var exchangeFinalized = false
         try {
             if (cancelled()) return DomainResult.Failure(RestoreFailure.Cancelled)
             safetyId = when (val safety = safetySnapshots.create(bookId, operationId)) {
@@ -93,45 +93,37 @@ class ReplaceRestoreCoordinator(
             progress.onProgress(RestoreProgress(RestoreState.READY_TO_EXCHANGE, materialized.logicalBytes, materialized.logicalBytes))
             if (cancelled()) return DomainResult.Failure(RestoreFailure.Cancelled)
             progress.onProgress(RestoreProgress(RestoreState.EXCHANGING, materialized.logicalBytes, materialized.logicalBytes))
-            retainRecoveryArtifacts = true
             return withContext(NonCancellable) {
                 val exchanged = when (val result = ledger.exchange(prepared, safetyId)) {
-                    is DomainResult.Success -> result.value.also { retainRecoveryArtifacts = false }
+                    is DomainResult.Success -> result.value
                     is DomainResult.Failure -> {
-                        if (ledger.rollback(bookId, operationId, safetyId) is DomainResult.Success) {
-                            retainRecoveryArtifacts = false
-                        }
+                        ledger.rollback(bookId, operationId, safetyId)
                         return@withContext DomainResult.Failure(RestoreFailure.RolledBack)
                     }
                 }
-                retainRecoveryArtifacts = true
                 progress.onProgress(RestoreProgress(RestoreState.VERIFYING_LIVE, materialized.logicalBytes, materialized.logicalBytes))
                 when (val post = ledger.validateLive(bookId, exchanged.resultingHead)) {
                     is DomainResult.Success -> if (post.value.isValid) {
                         if (ledger.finalizeExchange(bookId, operationId) is DomainResult.Failure) {
                             return@withContext DomainResult.Failure(RestoreFailure.IntegrityFailed)
                         }
-                        retainRecoveryArtifacts = false
+                        exchangeFinalized = true
                         progress.onProgress(RestoreProgress(RestoreState.COMPLETE, materialized.logicalBytes, materialized.logicalBytes))
                         DomainResult.Success(
                             ReplaceRestoreResult(exchanged.resultingHead, exchanged.retainedSafetySnapshotId, materialized.logicalBytes),
                         )
                     } else {
-                        if (ledger.rollback(bookId, operationId, safetyId) is DomainResult.Success) {
-                            retainRecoveryArtifacts = false
-                        }
+                        ledger.rollback(bookId, operationId, safetyId)
                         DomainResult.Failure(RestoreFailure.RolledBack)
                     }
                     is DomainResult.Failure -> {
-                        if (ledger.rollback(bookId, operationId, safetyId) is DomainResult.Success) {
-                            retainRecoveryArtifacts = false
-                        }
+                        ledger.rollback(bookId, operationId, safetyId)
                         DomainResult.Failure(RestoreFailure.RolledBack)
                     }
                 }
             }
         } finally {
-            if (!retainRecoveryArtifacts) ledger.cleanup(operationId)
+            if (!exchangeFinalized) ledger.cleanup(operationId)
             materialized.targetDirectory.deleteRecursivelyScoped()
         }
     }
@@ -310,7 +302,6 @@ class MergeRestoreCoordinator(
                                 if (restoreLedger.finalizeExchange(bookId, operationId) is DomainResult.Failure) {
                                     return@withContext rollbackAndCleanup(bookId, operationId, preview)
                                 }
-                                restoreLedger.cleanup(operationId)
                                 mergeLedger.cleanup(operationId)
                                 preview.materialized.targetDirectory.deleteRecursivelyScoped()
                                 DomainResult.Success(

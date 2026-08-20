@@ -106,6 +106,7 @@ internal class RestoreController(
     private val resolutions = linkedMapOf<StableId, MergeResolution>()
     private val cancelled = AtomicBoolean(false)
     private var operation: BackgroundOperation? = null
+    private var retainedSafetyOperationId: StableId? = null
     private var cloudFiles = emptyMap<String, app.ledger.transfer.data.DriveRemoteFile>()
     private var cloudSnapshots = emptyMap<String, app.ledger.transfer.domain.BackupSnapshot>()
 
@@ -597,14 +598,32 @@ internal class RestoreController(
         transition(state, value.completedBytes, value.totalBytes)
     }
 
+    fun confirmSafetySnapshotCleanup(): Boolean {
+        val retained = retainedSafetyOperationId ?: return false
+        return when (restoreLedger.confirmSafetySnapshotCleanup(retained)) {
+            is DomainResult.Success -> {
+                retainedSafetyOperationId = null
+                mutableState.value = mutableState.value.copy(
+                    safetySnapshotRetained = false,
+                    safetySnapshotLabel = "cleanup confirmed",
+                )
+                true
+            }
+            is DomainResult.Failure -> false
+        }
+    }
+
     private fun finish(result: DomainResult<*>): Boolean = when (result) {
         is DomainResult.Success -> {
+            val restore = result.value as? app.ledger.transfer.data.ReplaceRestoreResult
+            retainedSafetyOperationId = operationId
             transition(BackgroundOperationState.SUCCEEDED, mutableState.value.completedBytes, mutableState.value.totalBytes)
             mutableState.value = mutableState.value.copy(
                 screenId = "RST-007",
                 progressPresentation = RestoreProgressPresentation.SUCCEEDED,
                 resultPresentation = RestoreResultPresentation.SUCCESS,
-                safetySnapshotLabel = "verified managed snapshot",
+                safetySnapshotLabel = restore?.safetySnapshotId?.toString() ?: "verified managed snapshot",
+                safetySnapshotRetained = true,
                 verificationSummary = "journal, foreign keys, projections and live head verified",
                 failureCode = null,
             )

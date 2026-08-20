@@ -41,9 +41,10 @@ import app.ledger.core.designsystem.LedgerToggleRow
 @Composable
 public fun SecurityPrivacySettingsDestination(
     state: SecurityPrivacySettingsState,
-    actions: SecurityPrivacySettingsActions,
+    onAction: (SecurityPrivacyScreenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val actions = securityPrivacyActions(onAction)
     Column(
         modifier.fillMaxSize().testTag("security_settings_root").padding(vertical = LedgerTheme.spacing.xs),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),

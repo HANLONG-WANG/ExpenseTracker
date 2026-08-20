@@ -46,6 +46,9 @@ enum class FinancialCommitPhase {
     AFTER_PROJECTIONS,
     BEFORE_BOOK_ADVANCE,
     BEFORE_RECEIPT,
+
+    /** Runs only after SQLite has durably committed and cannot participate in rollback. */
+    AFTER_DATABASE_COMMIT,
 }
 
 fun interface FinancialCommitFailureInjector {
@@ -76,7 +79,7 @@ class RoomFinancialCommitRepository(
     CommandReceiptRepository {
     private val writer = RoomFinancialPlanWriter()
     private val projections = RoomProjectionEngine()
-    private val privacyPurgeWriter = RoomPrivacyPurgeWriter()
+    private val logicalPurgeValidator = RoomLogicalPurgeValidator()
 
     override suspend fun find(commandId: CommandId): DomainResult<CommandReceipt?> = protect {
         database.readLedger { connection ->
@@ -94,6 +97,8 @@ class RoomFinancialCommitRepository(
                 commitPrivacyPurge(command, plan)
             } else {
                 DomainResult.Failure(FinanceDataError.CorruptData)
+            }.also { committed ->
+                if (committed is DomainResult.Success) failureInjector.checkpoint(FinancialCommitPhase.AFTER_DATABASE_COMMIT)
             }
         }
         return protect {
@@ -180,6 +185,8 @@ class RoomFinancialCommitRepository(
                     ?: abort(FinanceDataError.CorruptData)
                 DomainResult.Success(receipt)
             }
+        }.also { committed ->
+            if (committed is DomainResult.Success) failureInjector.checkpoint(FinancialCommitPhase.AFTER_DATABASE_COMMIT)
         }
     }
 
@@ -211,25 +218,20 @@ class RoomFinancialCommitRepository(
             val entered = connection.compileStatement("UPDATE book SET state=1 WHERE id=1 AND state=0")
                 .executeUpdateDelete()
             if (entered != 1) abort(FinanceDataError.MaintenanceRequired)
-            connection.execSQL("UPDATE _schema_runtime_guard SET allow_fact_purge=1 WHERE id=1")
-            privacyPurgeWriter.revalidate(connection, command)
+            logicalPurgeValidator.revalidate(connection, command)
             writer.write(
                 connection,
                 plan,
                 failureInjector::checkpoint,
                 beforeCommitSideEffect::apply,
                 sideEffect::apply,
-            ) { database, mutationPlan ->
-                val purgeCommit = database.commitId(mutationPlan.commit.id)
-                privacyPurgeWriter.deleteChain(database, command, purgeCommit)
-                afterFinancialWriteSideEffect.apply(database, mutationPlan)
-            }
+                afterFinancialWrite = afterFinancialWriteSideEffect::apply,
+            )
             val projectionDate = plan.commit.createdAt.atZone(ZoneId.of(book.defaultZoneId)).toLocalDate().toStorageInt()
             projections.rebuildAll(connection, plan.targetLocalRevision.value, book.valuationRevision, projectionDate)
             failureInjector.checkpoint(FinancialCommitPhase.AFTER_PROJECTIONS)
             verifyNewState(connection, plan, book.valuationRevision)
             failureInjector.checkpoint(FinancialCommitPhase.BEFORE_BOOK_ADVANCE)
-            connection.execSQL("UPDATE _schema_runtime_guard SET allow_fact_purge=0 WHERE id=1")
             val advanced = connection.compileStatement(
                 "UPDATE book SET head_commit_id=?,local_revision=?,state=0 WHERE id=1 AND local_revision=? AND head_commit_id=? AND state=1",
             ).apply {
@@ -257,6 +259,8 @@ class RoomFinancialCommitRepository(
                 ?: abort(FinanceDataError.CorruptData)
             DomainResult.Success(receipt)
         }
+    }.also { committed ->
+        if (committed is DomainResult.Success) failureInjector.checkpoint(FinancialCommitPhase.AFTER_DATABASE_COMMIT)
     }
 
     private fun verifyCommitPreconditions(
@@ -476,8 +480,10 @@ class RoomFinancialCommitRepository(
         DomainResult.Failure(FinanceDataError.StorageFull)
     } catch (_: ArithmeticException) {
         DomainResult.Failure(FinanceDataError.NumericRangeExceeded)
-    } catch (_: Exception) {
-        DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    } catch (failure: Exception) {
+        DomainResult.Failure(
+            if (failure.isSqliteNumericRangeFailure()) FinanceDataError.NumericRangeExceeded else FinanceDataError.DatabaseUnavailable,
+        )
     }
 }
 

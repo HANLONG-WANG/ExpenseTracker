@@ -24,9 +24,9 @@ import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
 import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.RecoveryDiagnosticCode
-import app.ledger.feature.onboarding.OnboardingActions
 import app.ledger.feature.onboarding.OnboardingRenderState
 import app.ledger.feature.onboarding.OnboardingScreen
+import app.ledger.feature.onboarding.OnboardingScreenAction
 import app.ledger.feature.onboarding.OnboardingStep
 import app.ledger.feature.onboarding.OnboardingUiState
 import org.junit.Assert.assertEquals
@@ -198,9 +198,7 @@ class P11UiContractDeviceTest {
 
     private data class RenderCase(val width: Int, val fontScale: Float, val theme: ThemeMode, val dynamic: Boolean)
 
-    private val noOpActions = OnboardingActions(
-        {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
-    )
+    private val noOpActions: (OnboardingScreenAction) -> Unit = {}
 
     private companion object {
         const val STATE_HOST_TAG = "p11_contract_state_host"

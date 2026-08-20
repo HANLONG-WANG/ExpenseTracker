@@ -11,10 +11,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerSaveFab
-import app.ledger.feature.settlement.SettlementActions
 import app.ledger.feature.settlement.SettlementDestination
 import app.ledger.feature.settlement.SettlementLoadState
 import app.ledger.feature.settlement.SettlementPresentation
+import app.ledger.feature.settlement.SettlementScreenAction
 import app.ledger.feature.settlement.R as SettlementR
 
 @Composable
@@ -39,32 +39,34 @@ internal fun SettlementRootDestination(
 ) {
     val activityId = encodedArguments["activityId"]?.let { StableId.parse(it).getOrNull() }
     val participantId = encodedArguments["participantId"]?.let { StableId.parse(it).getOrNull() }
-    val state by viewModel.settlement.collectAsStateWithLifecycle()
+    val uiState by viewModel.settlementUiState.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, activityId, participantId) { viewModel.loadSettlement(screenId, activityId, participantId) }
     SettlementDestination(
         screenId,
-        state,
-        SettlementActions(
-            onRetry = { viewModel.loadSettlement(screenId, activityId, participantId) },
-            onNavigate = { target, id, selectedParticipantId ->
-                viewModel.navigateSettlement(target, id, selectedParticipantId)
-                onNavigationChanged()
-            },
-            onFieldChanged = viewModel::updateSettlementField,
-            onSelectActivity = viewModel::selectSettlementActivity,
-            onSelectPayer = viewModel::selectSettlementPayer,
-            onSelectPayee = viewModel::selectSettlementPayee,
-            onSelectAccount = viewModel::selectSettlementAccount,
-            onSelectProject = viewModel::selectSettlementProject,
-            onSplitMethod = viewModel::selectSettlementSplitMethod,
-            onChargeDistribution = viewModel::selectSettlementChargeDistribution,
-            onRoundingRule = viewModel::selectSettlementRoundingRule,
-            onToggleParticipant = viewModel::toggleSettlementParticipant,
-            onMoveParticipant = viewModel::moveSettlementParticipant,
-            onAddParticipant = viewModel::addSettlementParticipant,
-            onSave = viewModel::saveSettlement,
-            onRebuild = viewModel::rebuildSettlement,
-        ),
+        uiState.loadState,
+        { action ->
+            when (action) {
+                SettlementScreenAction.Retry -> viewModel.loadSettlement(screenId, activityId, participantId)
+                is SettlementScreenAction.Navigate -> {
+                    viewModel.navigateSettlement(action.screenId, action.activityId, action.participantId)
+                    onNavigationChanged()
+                }
+                is SettlementScreenAction.FieldChanged -> viewModel.updateSettlementField(action.field, action.value)
+                is SettlementScreenAction.SelectActivity -> viewModel.selectSettlementActivity(action.activityId)
+                is SettlementScreenAction.SelectPayer -> viewModel.selectSettlementPayer(action.participantId)
+                is SettlementScreenAction.SelectPayee -> viewModel.selectSettlementPayee(action.participantId)
+                is SettlementScreenAction.SelectAccount -> viewModel.selectSettlementAccount(action.accountId)
+                is SettlementScreenAction.SelectProject -> viewModel.selectSettlementProject(action.projectId)
+                is SettlementScreenAction.SplitMethodChanged -> viewModel.selectSettlementSplitMethod(action.method)
+                is SettlementScreenAction.ChargeDistributionChanged -> viewModel.selectSettlementChargeDistribution(action.distribution)
+                is SettlementScreenAction.RoundingRuleChanged -> viewModel.selectSettlementRoundingRule(action.rule)
+                is SettlementScreenAction.ToggleParticipant -> viewModel.toggleSettlementParticipant(action.participantId)
+                is SettlementScreenAction.MoveParticipant -> viewModel.moveSettlementParticipant(action.participantId, action.offset)
+                SettlementScreenAction.AddParticipant -> viewModel.addSettlementParticipant()
+                SettlementScreenAction.Save -> viewModel.saveSettlement()
+                SettlementScreenAction.Rebuild -> viewModel.rebuildSettlement()
+            }
+        },
     )
 }
 

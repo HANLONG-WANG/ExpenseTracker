@@ -31,7 +31,7 @@ class P31RestoreContractMutationTest(unittest.TestCase):
         self.assertTrue(self.mutate("SecureRoomMergeRestoreApplicationPort.kt", "DefaultFinancialMutationCoordinator", "RemovedCoordinator"))
 
     def test_purge_revalidation_is_required(self) -> None:
-        self.assertTrue(self.mutate("RoomPrivacyPurgeWriter.kt", "nonZeroAccountNets", "removedAccountNetCheck"))
+        self.assertTrue(self.mutate("RoomLogicalPurgeValidator.kt", "nonZeroAccountNets", "removedAccountNetCheck"))
 
     def test_purge_tombstone_priority_is_required(self) -> None:
         self.assertTrue(self.mutate("CommitGraphMergePlanner.kt", "KeepPurgeTombstone", "KeepIncoming"))

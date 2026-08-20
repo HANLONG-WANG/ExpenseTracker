@@ -594,9 +594,11 @@ class SecureRoomAnalyticsApplicationPort(
                 database.close()
             }
         } catch (_: ArithmeticException) {
-            DomainResult.Failure(AnalyticsError.InvalidReportSpec)
-        } catch (_: Exception) {
-            DomainResult.Failure(AnalyticsError.DatabaseUnavailable)
+            DomainResult.Failure(AnalyticsError.NumericRangeExceeded)
+        } catch (failure: Exception) {
+            DomainResult.Failure(
+                if (failure.isSqliteNumericRangeFailure()) AnalyticsError.NumericRangeExceeded else AnalyticsError.DatabaseUnavailable,
+            )
         } finally {
             passphrase.fill(0)
         }
@@ -685,4 +687,14 @@ class SecureRoomAnalyticsApplicationPort(
             "LEFT JOIN location_record lr ON lr.id=tr.location_record_id LEFT JOIN place pl ON pl.id=lr.place_id " +
             "LEFT JOIN settlement_activity sa ON sa.id=ctp.settlement_activity_id LEFT JOIN participant part ON part.id=ctp.payer_participant_id"
     }
+}
+
+internal fun Throwable.isSqliteNumericRangeFailure(): Boolean {
+    var current: Throwable? = this
+    while (current != null) {
+        val message = current.message.orEmpty().lowercase()
+        if ("integer overflow" in message || "numeric value out of range" in message) return true
+        current = current.cause
+    }
+    return false
 }

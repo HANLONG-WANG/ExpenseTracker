@@ -174,12 +174,7 @@ class BatchRecordUiContractDeviceTest {
         private val ROW_ID = id(100)
         private val ERROR = BatchValidationIssue(ROW_ID, BatchEntryField.AMOUNT, "AMOUNT_INVALID", BatchValidationSeverity.ERROR)
         private val WARNING = BatchValidationIssue(ROW_ID, BatchEntryField.ATTACHMENTS, "MANY_ATTACHMENTS", BatchValidationSeverity.WARNING)
-        private val ACTIONS = BatchRecordActions(
-            onOpenRow = {}, onAdd = {}, onCopy = {}, onDelete = {}, onMove = { _, _ -> },
-            onSort = {}, onPaste = {}, onRowChange = {}, onCycleReference = { _, _ -> },
-            onAddAttachment = {}, onValidate = {}, onConfirmWarnings = {}, onCommit = {}, onUndo = {},
-            onDiscard = {}, onKeepEditing = {}, onJumpToIssue = {},
-        )
+        private val ACTIONS: (BatchRecordScreenAction) -> Unit = {}
 
         private fun baseState(): BatchRecordState {
             val snapshot = OrdinaryRecordDeviceFixtures.snapshot()

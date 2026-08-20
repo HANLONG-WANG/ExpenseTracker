@@ -15,7 +15,12 @@ internal data class PostingSpec(
     val baseAmount: PositiveMoney,
     val valuationRate: BigDecimal?,
     val role: PostingRole,
-)
+) {
+    val valuationSource: PostingValuationSource = PostingValuationSource.infer(
+        accountAmount.currency == baseAmount.currency,
+        valuationRate,
+    )
+}
 
 internal data class JournalSpec(
     val postings: List<PostingSpec>,

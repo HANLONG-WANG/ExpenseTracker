@@ -1250,3 +1250,10 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: rebuilding the unsigned AAB during the final artifact aggregate changed its bytes, while Gradle considered the prior hash manifest up to date because the AAB, SBOM and generated license reports were not declared as task inputs.
 - Decision: declare every generated file consumed by `p36ReleaseManifest` as an incremental input, retain its explicit producer dependencies, and add a P36 mutation test that rejects removal of the AAB input.
 - Consequence: a rebuilt AAB/SBOM/license inventory always invalidates and regenerates `release-metadata.json` and `p36-artifacts.sha256`; the published checksum can no longer silently describe an older artifact.
+
+## DL-177 — Privacy purge is a logical tombstone and never deletes financial facts
+
+- Date/stage: 2026-08-20 / architecture repair
+- Surface issue: the former maintenance gate allowed an eligible privacy purge to delete transaction revisions, Journal entries and Postings, contradicting the unconditional append-only accounting contract and frozen ADR-003/ADR-007 semantics.
+- Decision: retire the financial-fact purge gate and physical writer. Controlled purge still revalidates retention, zero-net, dependency and backup-read conditions inside the financial commit transaction, but commits only a content-free `purge_tombstone` and rebuilds current projections. Immutable transaction revisions and every financial fact remain stored permanently. Backup catalog retention uses its own scoped encrypted write access and can delete only backup catalog/object-reference rows.
+- Consequence: current UI and queries no longer expose purged content, merge tombstone priority still prevents resurrection, and no maintenance mode can update or delete Journal/Posting history. This decision supersedes the physical-fact deletion portion of DL-142 and DL-151 without weakening their atomicity, privacy or backup-retention requirements.
