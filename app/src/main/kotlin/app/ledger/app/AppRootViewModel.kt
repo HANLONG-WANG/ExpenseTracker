@@ -5114,7 +5114,7 @@ internal class AppRootViewModel @Inject constructor(
                 val snapshot = validated.snapshot
                 val current = draft.id?.let { id -> snapshot.blueprints.singleOrNull { it.id == id } }
                 val request = SaveBlueprintRequest(
-                    AutomationMutationIds(snapshot.bookId, nextId(), nextId(), nextId(), snapshot.localRevision, runtimeSources.clock.now()),
+                    AutomationMutationIds(snapshot.bookId, CommandId(nextId()), nextId(), nextId(), nextId(), snapshot.localRevision, runtimeSources.clock.now()),
                     BlueprintDraft(
                         id = draft.id ?: nextId(),
                         revisionId = nextId(),
@@ -5232,7 +5232,7 @@ internal class AppRootViewModel @Inject constructor(
                 )
                 val result = automationApplicationPort.saveSeries(
                     SaveRecurrenceRequest(
-                        AutomationMutationIds(snapshot.bookId, nextId(), nextId(), nextId(), snapshot.localRevision, runtimeSources.clock.now()),
+                        AutomationMutationIds(snapshot.bookId, CommandId(nextId()), nextId(), nextId(), nextId(), snapshot.localRevision, runtimeSources.clock.now()),
                         draft,
                     ),
                 )
@@ -5343,7 +5343,7 @@ internal class AppRootViewModel @Inject constructor(
             when (
                 automationApplicationPort.modifyOccurrence(
                     ModifyOccurrenceRequest(
-                        AutomationMutationIds(state.snapshot.bookId, nextId(), nextId(), nextId(), state.snapshot.localRevision, runtimeSources.clock.now()),
+                        AutomationMutationIds(state.snapshot.bookId, CommandId(nextId()), nextId(), nextId(), nextId(), state.snapshot.localRevision, runtimeSources.clock.now()),
                         selected.id,
                         date,
                         state.modificationScope,

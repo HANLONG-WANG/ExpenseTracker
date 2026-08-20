@@ -537,6 +537,13 @@ private class RuleSession(
     }
 
     fun loanPayment(payload: LoanPaymentPayload): AccountingRuleOutput {
+        require(
+            payload.classification == null ||
+                payload.components.interest != null ||
+                payload.components.fee != null ||
+                payload.components.penalty != null,
+            "loanPayment.classification",
+        )
         payload.classification?.let(::category)
         val paymentAccount = account(payload.payment, setOf(LedgerAccountClass.ASSET))
         if (payload.allocations.map { it.trancheId }.distinct().size > 1) {
@@ -727,6 +734,9 @@ private class RuleSession(
         require(outgoing.accountAmount.currency != incoming.accountAmount.currency, "fxExchange.currency")
         val journals = transferJournals(outgoingAccount, incomingAccount, outgoing, incoming).toMutableList()
         val difference = subtractExact(outgoing.baseAmount.minor.value, incoming.baseAmount.minor.value)
+        val hasClassifiableComponent = difference < 0L || (difference > 0L && payload.spreadCost != null)
+        require(payload.classification == null || hasClassifiableComponent, "fxExchange.classification")
+        payload.classification?.let(::category)
         payload.spreadCost?.let { spread ->
             require(
                 difference > 0L &&

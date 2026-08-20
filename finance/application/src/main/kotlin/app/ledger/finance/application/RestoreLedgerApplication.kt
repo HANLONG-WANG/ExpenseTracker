@@ -31,10 +31,14 @@ data class RestoreIntegrityReport(
     val baseCurrencyValid: Boolean,
     /** Fixed, non-sensitive projection-family identifiers for explainable repair diagnostics. */
     val projectionFailureCodes: Set<String> = emptySet(),
+    /** Frozen INV-001..INV-035 identifiers that failed database/restoration validation. */
+    val invariantFailureCodes: Set<String> = emptySet(),
+    /** Database and domain use the same complete frozen invariant inventory. */
+    val permanentInvariantStandardValid: Boolean = true,
 ) {
     val isValid: Boolean = schemaVersionSupported && migrationsApplied && sqlCipherReadable && aeadAndHashesValid &&
         foreignKeysValid && journalsBalanced && projectionsValid && transactionSubtypesValid && attachmentsValid &&
-        bookIdentityValid && baseCurrencyValid
+        bookIdentityValid && baseCurrencyValid && invariantFailureCodes.isEmpty() && permanentInvariantStandardValid
 }
 
 data class PreparedRestoreLedger(

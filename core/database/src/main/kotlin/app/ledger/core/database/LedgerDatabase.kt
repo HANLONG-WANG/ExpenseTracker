@@ -92,7 +92,7 @@ object EncryptedDatabaseFactory {
     private const val MINIMUM_PASSPHRASE_BYTES = 32
 }
 
-private object SqlCipherNativeLibrary {
+internal object SqlCipherNativeLibrary {
     @Volatile private var loaded: Boolean = false
 
     fun ensureLoaded() {
@@ -120,7 +120,7 @@ private abstract class SecureDatabaseCallback : RoomDatabase.Callback() {
     }
 }
 
-private object SecureSqlCipherHook : SQLiteDatabaseHook {
+internal object SecureSqlCipherHook : SQLiteDatabaseHook {
     override fun preKey(connection: SQLiteConnection) = Unit
 
     override fun postKey(connection: SQLiteConnection) {

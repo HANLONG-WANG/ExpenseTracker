@@ -5,6 +5,7 @@ package app.ledger.finance.data
 import android.content.Context
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.common.DomainResult
+import app.ledger.core.common.CommandId
 import app.ledger.core.common.StableId
 import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.EncryptedDatabaseFactory
@@ -28,12 +29,16 @@ import app.ledger.finance.application.RecurrenceSeriesView
 import app.ledger.finance.application.SaveBlueprintRequest
 import app.ledger.finance.application.SaveRecurrenceRequest
 import app.ledger.finance.domain.BookCommitId
+import app.ledger.finance.domain.CommandReceipt
 import app.ledger.finance.domain.CommitKind
 import app.ledger.finance.domain.DomainViolation
 import app.ledger.finance.domain.EntityChangeOperation
 import app.ledger.finance.domain.EntityRevisionAction
 import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.EntityType
+import app.ledger.finance.domain.FinancialCommandType
+import app.ledger.finance.domain.Hash256
+import app.ledger.finance.domain.StableEntityReference
 import app.ledger.finance.domain.MissingDayPolicy
 import app.ledger.finance.domain.RecurrenceCandidateStatus
 import app.ledger.finance.domain.RecurrenceEngine
@@ -51,7 +56,8 @@ import app.ledger.finance.domain.RecurrenceStatus
 import app.ledger.finance.domain.TransactionBlueprintRevisionId
 import app.ledger.finance.domain.TransactionKind
 import app.ledger.finance.domain.WeekendAdjustment
-import java.security.MessageDigest
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -85,8 +91,13 @@ class SecureRoomAutomationApplicationPort(
         }
     }
 
-    override suspend fun saveBlueprint(request: SaveBlueprintRequest): DomainResult<Unit> = withDatabase(request.ids.bookId) { database ->
+    override suspend fun saveBlueprint(request: SaveBlueprintRequest): DomainResult<CommandReceipt> = withDatabase(request.ids.bookId) { database ->
         database.inLedgerTransaction { db ->
+            val canonical = canonicalBlueprint(request.draft)
+            val payloadHash = Hash256.sha256(canonical)
+            repeatedReceipt(db, request.ids.commandId, FinancialCommandType.SAVE_TRANSACTION_BLUEPRINT, payloadHash)?.let {
+                return@inLedgerTransaction DomainResult.Success(it)
+            }
             val book = requireBook(db, request.ids.bookId)
             requireExpectedRevision(book, request.ids.expectedLocalRevision)
             val existingRevision = db.queryOne(
@@ -96,8 +107,7 @@ class SecureRoomAutomationApplicationPort(
             if (existingRevision != request.draft.expectedRevisionId) abort(DomainViolation.StaleExpectedRevision)
             validateBlueprintReferences(db, request.draft)
             val next = Math.addExact(book.localRevision, 1L)
-            val canonical = canonicalBlueprint(request.draft)
-            startCommit(db, request.ids.commitId, request.ids.deviceInstanceId, request.ids.changedAt, book, next, canonical)
+            startCommit(db, request.ids.commandId, request.ids.commitId, request.ids.deviceInstanceId, request.ids.changedAt, book, next, payloadHash)
             val commitId = db.requireInternalId("book_commit", request.ids.commitId)
             val blueprintId = db.queryOne("SELECT id FROM transaction_blueprint WHERE uid=?", arrayOf(request.draft.id.bytes)) { it.getLong(0) }
                 ?: db.allocateInternalId("transaction_blueprint", request.draft.id).also { id ->
@@ -124,35 +134,59 @@ class SecureRoomAutomationApplicationPort(
                 arrayOf<Any>(request.draft.name.trim(), revisionId, request.draft.status.ordinal, request.draft.iconKey, request.draft.colorArgb, blueprintId),
             )
             audit(db, request.ids.entityRevisionId, request.ids.commitId, EntityType.BLUEPRINT, request.draft.id, existingRevision == null, canonical)
-            finishReferenceCommit(db, request.ids.commitId, next, book.valuationRevision)
-            DomainResult.Success(Unit)
+            DomainResult.Success(
+                finishReferenceCommit(
+                    db,
+                    request.ids.commandId,
+                    request.ids.commitId,
+                    FinancialCommandType.SAVE_TRANSACTION_BLUEPRINT,
+                    payloadHash,
+                    request.draft.id,
+                    request.ids.changedAt,
+                    next,
+                    book.valuationRevision,
+                ),
+            )
         }
     }
 
-    override suspend fun saveSeries(request: SaveRecurrenceRequest): DomainResult<Unit> = withDatabase(request.ids.bookId) { database ->
+    override suspend fun saveSeries(request: SaveRecurrenceRequest): DomainResult<CommandReceipt> = withDatabase(request.ids.bookId) { database ->
         database.inLedgerTransaction { db ->
-            persistSeries(db, request)
-            DomainResult.Success(Unit)
+            DomainResult.Success(persistSeries(db, request))
         }
     }
 
-    override suspend fun modifyOccurrence(request: ModifyOccurrenceRequest): DomainResult<Unit> = withDatabase(request.ids.bookId) { database ->
+    override suspend fun modifyOccurrence(request: ModifyOccurrenceRequest): DomainResult<CommandReceipt> = withDatabase(request.ids.bookId) { database ->
         database.inLedgerTransaction { db ->
+            val canonical = canonicalOccurrenceModification(request)
+            val payloadHash = Hash256.sha256(canonical)
+            repeatedReceipt(db, request.ids.commandId, FinancialCommandType.MODIFY_RECURRENCE_OCCURRENCE, payloadHash)?.let {
+                return@inLedgerTransaction DomainResult.Success(it)
+            }
             val book = requireBook(db, request.ids.bookId)
             requireExpectedRevision(book, request.ids.expectedLocalRevision)
             val seriesInternal = db.requireInternalId("recurrence_series", request.seriesId)
-            when (request.scope) {
+            val receipt = when (request.scope) {
                 RecurrenceModificationScope.THIS_OCCURRENCE -> {
-                    val canonical = canonical("occurrenceOverride", request.seriesId.toString(), request.occurrenceLocalDate.toString(), request.replacement.occurrenceTime.toString())
                     val next = Math.addExact(book.localRevision, 1L)
-                    startCommit(db, request.ids.commitId, request.ids.deviceInstanceId, request.ids.changedAt, book, next, canonical)
+                    startCommit(db, request.ids.commandId, request.ids.commitId, request.ids.deviceInstanceId, request.ids.changedAt, book, next, payloadHash)
                     val instant = request.occurrenceLocalDate.atTime(request.replacement.occurrenceTime).atZone(request.replacement.zoneId).toInstant()
                     db.execSQL(
                         "INSERT OR REPLACE INTO recurrence_exception(series_id,occurrence_local_date,action,override_blueprint_revision_id,override_instant) VALUES(?,?,?,?,?)",
                         arrayOf<Any?>(seriesInternal, request.occurrenceLocalDate.toStorageInt(), RecurrenceExceptionAction.MOVE.ordinal, null, instant.toEpochMilli()),
                     )
                     audit(db, request.ids.entityRevisionId, request.ids.commitId, EntityType.RECURRENCE_SERIES, request.seriesId, false, canonical)
-                    finishReferenceCommit(db, request.ids.commitId, next, book.valuationRevision)
+                    finishReferenceCommit(
+                        db,
+                        request.ids.commandId,
+                        request.ids.commitId,
+                        FinancialCommandType.MODIFY_RECURRENCE_OCCURRENCE,
+                        payloadHash,
+                        request.seriesId,
+                        request.ids.changedAt,
+                        next,
+                        book.valuationRevision,
+                    )
                 }
                 RecurrenceModificationScope.THIS_AND_FUTURE, RecurrenceModificationScope.ENTIRE_SERIES -> {
                     val originalStart = db.queryOne(
@@ -164,10 +198,15 @@ class SecureRoomAutomationApplicationPort(
                         "UPDATE recurrence_occurrence SET status=? WHERE series_id=? AND local_date>=? AND status IN (?,?)",
                         arrayOf<Any>(RecurrenceOccurrenceStatus.CANCELLED.ordinal, seriesInternal, request.occurrenceLocalDate.toStorageInt(), RecurrenceOccurrenceStatus.PENDING.ordinal, RecurrenceOccurrenceStatus.FAILED.ordinal),
                     )
-                    persistSeries(db, SaveRecurrenceRequest(request.ids, request.replacement.copy(id = request.seriesId, startDate = start)))
+                    persistSeries(
+                        db,
+                        SaveRecurrenceRequest(request.ids, request.replacement.copy(id = request.seriesId, startDate = start)),
+                        FinancialCommandType.MODIFY_RECURRENCE_OCCURRENCE,
+                        canonical,
+                    )
                 }
             }
-            DomainResult.Success(Unit)
+            DomainResult.Success(receipt)
         }
     }
 
@@ -236,7 +275,14 @@ class SecureRoomAutomationApplicationPort(
         }
     }
 
-    private fun persistSeries(db: SupportSQLiteDatabase, request: SaveRecurrenceRequest) {
+    private fun persistSeries(
+        db: SupportSQLiteDatabase,
+        request: SaveRecurrenceRequest,
+        commandType: FinancialCommandType = FinancialCommandType.SAVE_RECURRENCE_SERIES,
+        canonical: ByteArray = canonicalSeries(request.draft, request.exceptions),
+    ): CommandReceipt {
+        val payloadHash = Hash256.sha256(canonical)
+        repeatedReceipt(db, request.ids.commandId, commandType, payloadHash)?.let { return it }
         val book = requireBook(db, request.ids.bookId)
         requireExpectedRevision(book, request.ids.expectedLocalRevision)
         val blueprint = db.queryOne(
@@ -252,8 +298,7 @@ class SecureRoomAutomationApplicationPort(
         ) { it.getLong(0) to if (it.isNull(1)) null else it.stableId("uid") }
         if (existing?.second != request.draft.expectedRevisionId) abort(DomainViolation.StaleExpectedRevision)
         val next = Math.addExact(book.localRevision, 1L)
-        val canonical = canonicalSeries(request.draft, request.exceptions)
-        startCommit(db, request.ids.commitId, request.ids.deviceInstanceId, request.ids.changedAt, book, next, canonical)
+        startCommit(db, request.ids.commandId, request.ids.commitId, request.ids.deviceInstanceId, request.ids.changedAt, book, next, payloadHash)
         val commitId = db.requireInternalId("book_commit", request.ids.commitId)
         val seriesId = existing?.first ?: db.allocateInternalId("recurrence_series", request.draft.id).also { id ->
             db.execSQL(
@@ -281,7 +326,17 @@ class SecureRoomAutomationApplicationPort(
             arrayOf<Any>(blueprint.first, revisionId, request.draft.status.ordinal, seriesId),
         )
         audit(db, request.ids.entityRevisionId, request.ids.commitId, EntityType.RECURRENCE_SERIES, request.draft.id, existing == null, canonical)
-        finishReferenceCommit(db, request.ids.commitId, next, book.valuationRevision)
+        return finishReferenceCommit(
+            db,
+            request.ids.commandId,
+            request.ids.commitId,
+            commandType,
+            payloadHash,
+            request.draft.id,
+            request.ids.changedAt,
+            next,
+            book.valuationRevision,
+        )
     }
 
     private fun reserveDue(db: SupportSQLiteDatabase, bookId: StableId, through: Instant): List<ReservedOccurrence> {
@@ -454,10 +509,10 @@ class SecureRoomAutomationApplicationPort(
         if (draft.targetKind in setOf(TransactionKind.EXPENSE, TransactionKind.INCOME) && draft.categoryId == null) abort(DomainViolation.InvalidField("blueprint.category"))
     }
 
-    private fun startCommit(db: SupportSQLiteDatabase, commitId: StableId, deviceId: StableId, changedAt: Instant, book: BookRow, revision: Long, canonical: ByteArray) {
+    private fun startCommit(db: SupportSQLiteDatabase, commandId: CommandId, commitId: StableId, deviceId: StableId, changedAt: Instant, book: BookRow, revision: Long, payloadHash: Hash256) {
         db.execSQL(
-            "INSERT INTO book_commit(id,uid,local_revision,kind,command_uid,device_instance_uid,created_at,root_hash) VALUES(?,?,?,?,NULL,?,?,?)",
-            arrayOf<Any>(db.allocateInternalId("book_commit", commitId), commitId.bytes, revision, CommitKind.REFERENCE_DATA_CHANGE.ordinal, deviceId.bytes, changedAt.toEpochMilli(), sha256(canonical)),
+            "INSERT INTO book_commit(id,uid,local_revision,kind,command_uid,device_instance_uid,created_at,root_hash) VALUES(?,?,?,?,?,?,?,?)",
+            arrayOf<Any>(db.allocateInternalId("book_commit", commitId), commitId.bytes, revision, CommitKind.REFERENCE_DATA_CHANGE.ordinal, commandId.stableId.bytes, deviceId.bytes, changedAt.toEpochMilli(), payloadHash.bytes),
         )
         db.execSQL("INSERT INTO book_commit_parent(commit_id,parent_commit_id,ordinal) VALUES(?,?,0)", arrayOf<Any>(db.requireInternalId("book_commit", commitId), book.headCommitId))
     }
@@ -475,11 +530,46 @@ class SecureRoomAutomationApplicationPort(
         )
     }
 
-    private fun finishReferenceCommit(db: SupportSQLiteDatabase, commitId: StableId, revision: Long, valuationRevision: Long) {
+    private fun finishReferenceCommit(
+        db: SupportSQLiteDatabase,
+        commandId: CommandId,
+        commitId: StableId,
+        commandType: FinancialCommandType,
+        payloadHash: Hash256,
+        primaryEntityId: StableId,
+        executedAt: Instant,
+        revision: Long,
+        valuationRevision: Long,
+    ): CommandReceipt {
         db.execSQL("UPDATE book SET head_commit_id=?,local_revision=? WHERE id=1", arrayOf<Any>(db.requireInternalId("book_commit", commitId), revision))
         projections.rebuildAll(db, revision, valuationRevision)
         if (projections.mismatchedFamilies(db, revision, valuationRevision).isNotEmpty()) abort(FinanceDataError.ProjectionMismatch)
         if (!DatabaseIntegrityAudit.run(db).isValid) abort(FinanceDataError.CorruptData)
+        db.execSQL(
+            "INSERT INTO command_receipt(command_uid,command_type,payload_hash,commit_id,primary_entity_uid,executed_at) VALUES(?,?,?,?,?,?)",
+            arrayOf<Any>(commandId.stableId.bytes, commandType.ordinal, payloadHash.bytes, db.requireInternalId("book_commit", commitId), primaryEntityId.bytes, executedAt.toEpochMilli()),
+        )
+        return CommandReceipt(commandId, commandType, payloadHash, BookCommitId(commitId), StableEntityReference(commandType.entityType(), primaryEntityId), executedAt)
+    }
+
+    private fun repeatedReceipt(
+        db: SupportSQLiteDatabase,
+        commandId: CommandId,
+        commandType: FinancialCommandType,
+        payloadHash: Hash256,
+    ): CommandReceipt? {
+        val stored = db.commandReceipt(commandId) ?: return null
+        if (stored.commandTypeOrdinal != commandType.ordinal || stored.payloadHash != payloadHash) {
+            abort(DomainViolation.DuplicateCommandPayloadMismatch)
+        }
+        return CommandReceipt(
+            commandId,
+            commandType,
+            payloadHash,
+            stored.commitId,
+            stored.primaryEntityId?.let { StableEntityReference(commandType.entityType(), it) },
+            stored.executedAt,
+        )
     }
 
     private fun requireBook(db: SupportSQLiteDatabase, bookId: StableId): BookRow = db.queryOne(
@@ -516,10 +606,92 @@ class SecureRoomAutomationApplicationPort(
         return StableId.fromBytes(digest.copyOf(StableId.BYTE_COUNT)).valueOrAbort()
     }
 
-    private fun canonicalBlueprint(d: BlueprintDraft): ByteArray = canonical("blueprint", d.id.toString(), d.revisionId.toString(), d.name.trim(), d.iconKey, d.colorArgb.toString(), d.status.name, d.targetKind.name, d.categoryId?.toString().orEmpty(), d.primaryAccountId?.toString().orEmpty(), d.secondaryAccountId?.toString().orEmpty(), d.cardId?.toString().orEmpty(), d.merchantId?.toString().orEmpty(), d.projectId?.toString().orEmpty(), d.goalId?.toString().orEmpty(), d.settlementActivityId?.toString().orEmpty(), d.amountExpression.orEmpty(), d.currency?.value.orEmpty(), d.noteTemplate.orEmpty(), d.fixedPlaceId?.toString().orEmpty())
-    private fun canonicalSeries(d: RecurrenceSeriesDraft, exceptions: List<RecurrenceExceptionDraft>): ByteArray = canonical("series", d.id.toString(), d.revisionId.toString(), d.blueprintId.toString(), d.status.name, d.rule.toString(), d.startDate.toString(), d.endDate?.toString().orEmpty(), d.maxOccurrences?.toString().orEmpty(), d.zoneId.id, d.generationMode.name, d.fixedPlaceId?.toString().orEmpty(), d.notifyCandidate.toString(), exceptions.joinToString("|") { it.toString() })
-    private fun canonical(vararg values: String): ByteArray = values.joinToString("\u001f").toByteArray(Charsets.UTF_8)
-    private fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
+    private fun canonicalBlueprint(d: BlueprintDraft): ByteArray = canonical(
+        "blueprint",
+        d.id.toString(),
+        d.revisionId.toString(),
+        d.expectedRevisionId?.toString().orEmpty(),
+        d.name.trim(),
+        d.iconKey,
+        d.colorArgb.toString(),
+        d.status.name,
+        d.targetKind.name,
+        d.categoryId?.toString().orEmpty(),
+        d.primaryAccountId?.toString().orEmpty(),
+        d.secondaryAccountId?.toString().orEmpty(),
+        d.cardId?.toString().orEmpty(),
+        d.merchantId?.toString().orEmpty(),
+        d.projectId?.toString().orEmpty(),
+        d.goalId?.toString().orEmpty(),
+        d.settlementActivityId?.toString().orEmpty(),
+        d.amountExpression.orEmpty(),
+        d.currency?.value.orEmpty(),
+        d.noteTemplate.orEmpty(),
+        d.fixedPlaceId?.toString().orEmpty(),
+    )
+
+    private fun canonicalSeries(d: RecurrenceSeriesDraft, exceptions: List<RecurrenceExceptionDraft>): ByteArray =
+        canonical(*seriesCanonicalValues(d, exceptions).toTypedArray())
+
+    private fun canonicalOccurrenceModification(request: ModifyOccurrenceRequest): ByteArray = canonical(
+        *(
+            listOf(
+                "recurrenceModification",
+                request.seriesId.toString(),
+                request.occurrenceLocalDate.toString(),
+                request.scope.name,
+            ) + seriesCanonicalValues(request.replacement, emptyList())
+            ).toTypedArray(),
+    )
+
+    private fun seriesCanonicalValues(
+        draft: RecurrenceSeriesDraft,
+        exceptions: List<RecurrenceExceptionDraft>,
+    ): List<String> = buildList {
+        add("series")
+        add(draft.id.toString())
+        add(draft.revisionId.toString())
+        add(draft.expectedRevisionId?.toString().orEmpty())
+        add(draft.blueprintId.toString())
+        add(draft.status.name)
+        add(draft.rule.frequency.name)
+        add(draft.rule.interval.toString())
+        add(draft.rule.weekdays.sortedBy(DayOfWeek::getValue).joinToString(",") { it.value.toString() })
+        add(draft.rule.monthDay?.toString().orEmpty())
+        add(draft.rule.nthWeek?.toString().orEmpty())
+        add(draft.rule.weekday?.value?.toString().orEmpty())
+        add(draft.rule.missingDayPolicy.name)
+        add(draft.rule.weekendAdjustment.name)
+        add(draft.startDate.toString())
+        add(draft.endDate?.toString().orEmpty())
+        add(draft.maxOccurrences?.toString().orEmpty())
+        add(draft.occurrenceTime.toString())
+        add(draft.zoneId.id)
+        add(draft.generationMode.name)
+        add(draft.fixedPlaceId?.toString().orEmpty())
+        add(draft.notifyCandidate.toString())
+        add(exceptions.size.toString())
+        exceptions.sortedBy(RecurrenceExceptionDraft::localDate).forEach { exception ->
+            add(exception.localDate.toString())
+            add(exception.action.name)
+            add(exception.overrideBlueprintRevisionId?.toString().orEmpty())
+            add(exception.overrideInstant?.toString().orEmpty())
+        }
+    }
+
+    private fun canonical(vararg values: String): ByteArray = ByteArrayOutputStream().use { bytes ->
+        DataOutputStream(bytes).use { output ->
+            output.writeInt(values.size)
+            values.forEach { value ->
+                val encoded = value.toByteArray(Charsets.UTF_8)
+                output.writeInt(encoded.size)
+                output.write(encoded)
+            }
+        }
+        bytes.toByteArray()
+    }
+
+    private fun sha256(bytes: ByteArray): ByteArray = Hash256.sha256(bytes).bytes
 
     private data class BookRow(val uid: ByteArray, val headCommitId: Long, val localRevision: Long, val valuationRevision: Long, val state: Int)
     private data class ReservedOccurrence(val id: StableId, val series: RecurrenceSeriesView, val blueprint: BlueprintView, val instant: Instant, val localDate: LocalDate, val status: RecurrenceOccurrenceStatus)
@@ -528,6 +700,14 @@ class SecureRoomAutomationApplicationPort(
         val DEFAULT_OCCURRENCE_TIME: LocalTime = LocalTime.of(9, 0)
         val ZERO_ID: StableId = StableId.fromBytes(ByteArray(StableId.BYTE_COUNT)).valueOrAbort()
     }
+}
+
+private fun FinancialCommandType.entityType(): EntityType = when (this) {
+    FinancialCommandType.SAVE_TRANSACTION_BLUEPRINT -> EntityType.BLUEPRINT
+    FinancialCommandType.SAVE_RECURRENCE_SERIES,
+    FinancialCommandType.MODIFY_RECURRENCE_OCCURRENCE,
+    -> EntityType.RECURRENCE_SERIES
+    else -> error("not an automation command type: $this")
 }
 
 private fun android.database.Cursor.stableIdAt(index: Int): StableId = StableId.fromBytes(getBlob(index)).valueOrAbort()

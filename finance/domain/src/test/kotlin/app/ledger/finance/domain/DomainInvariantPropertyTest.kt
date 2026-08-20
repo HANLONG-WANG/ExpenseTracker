@@ -11,6 +11,14 @@ import org.junit.jupiter.api.Test
 
 class DomainInvariantPropertyTest {
     @Test
+    fun `frozen permanent invariant inventory contains every shared rule exactly once`() {
+        PermanentInvariant.entries.size shouldBe 35
+        PermanentInvariant.ids shouldBe (1..35).mapTo(linkedSetOf()) {
+            "INV-${it.toString().padStart(3, '0')}"
+        }
+    }
+
+    @Test
     fun `balanced journal preserves exact totals for generated positive amounts`() = runTest {
         checkAll(iterations = 1_000, Arb.long(1L, 1_000_000_000L)) { amount ->
             val entryId = JournalEntryId(stableId(200))

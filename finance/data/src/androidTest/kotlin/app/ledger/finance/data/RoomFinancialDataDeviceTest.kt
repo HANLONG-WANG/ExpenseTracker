@@ -13,6 +13,8 @@ import app.ledger.core.common.StableId
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
+import app.ledger.core.security.MaintenanceReason
+import app.ledger.core.security.StartupInspection
 import app.ledger.core.money.Money
 import app.ledger.core.time.EffectiveTime
 import app.ledger.finance.application.FinanceDataError
@@ -155,9 +157,20 @@ class RoomFinancialDataDeviceTest {
         val maintenance: ProjectionMaintenancePort = RoomProjectionMaintenanceService(database)
         val originalAudit = maintenance.audit().success()
         assertTrue("projection differences=${projectionDifferences()}", originalAudit.isConsistent)
+        val fullAudit = database.inLedgerTransaction(RoomLedgerIntegrityAudit::run)
+        assertTrue("invariants=${fullAudit.failedInvariantIds}", fullAudit.isValid)
+        assertEquals(35, fullAudit.database.permanentInvariantViolationCounts.size)
+        assertEquals(0, fullAudit.database.postingCurrencyViolationCount)
+        assertEquals(0, fullAudit.database.invalidActiveApplyChainCount)
+        assertEquals(0, fullAudit.database.nonZeroTrashedTransactionCount)
+        assertEquals(StartupInspection.Ready, RoomLedgerStartupInspector().inspect(database))
         database.inLedgerTransaction { connection ->
             connection.execSQL("UPDATE budget_usage_projection SET used_minor = used_minor + 1")
         }
+        assertEquals(
+            StartupInspection.Maintenance(MaintenanceReason.PROJECTION_REBUILD),
+            RoomLedgerStartupInspector().inspect(database),
+        )
         assertFalse(maintenance.audit().success().isConsistent)
         val rebuilt = maintenance.rebuild().success()
         assertTrue(rebuilt.isConsistent)

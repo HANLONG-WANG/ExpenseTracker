@@ -451,6 +451,10 @@ class RoomFinancialCommitRepository(
             FinancialCommandType.APPLY_INSTALLMENT_SETTLEMENT -> EntityType.TRANSACTION
             FinancialCommandType.SAVE_LOAN_CONTRACT -> EntityType.LOAN
             FinancialCommandType.APPLY_LOAN_PAYMENT -> EntityType.TRANSACTION
+            FinancialCommandType.SAVE_TRANSACTION_BLUEPRINT -> EntityType.BLUEPRINT
+            FinancialCommandType.SAVE_RECURRENCE_SERIES,
+            FinancialCommandType.MODIFY_RECURRENCE_OCCURRENCE,
+            -> EntityType.RECURRENCE_SERIES
             FinancialCommandType.BATCH_MUTATION -> null
             else -> EntityType.TRANSACTION
         }

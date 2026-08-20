@@ -8,7 +8,6 @@ import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.StableIdSource
-import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
@@ -293,23 +292,24 @@ class SecureRoomMergeRestoreApplicationPort(
     }
 
     private fun validateMerged(database: SupportSQLiteDatabase, bookId: StableId, head: BookCommitId): RestoreIntegrityReport {
-        val audit = DatabaseIntegrityAudit.run(database)
+        val audit = RoomLedgerIntegrityAudit.run(database)
         val identity = database.identity()
-        val mismatches = database.query("SELECT COUNT(*) FROM projection_revision_audit WHERE min_revision<>book_revision OR max_revision<>book_revision")
-            .use { if (it.moveToFirst()) it.getLong(0) else 1L }
+        val mismatches = audit.mismatchedProjectionFamilies + audit.rebuiltProjectionFamilies
         return RestoreIntegrityReport(
             true,
             true,
-            audit.capability.sqlCipherVersion.isNotBlank(),
+            audit.database.capability.sqlCipherVersion.isNotBlank(),
             true,
-            audit.foreignKeyViolationCount == 0,
-            audit.unbalancedJournalCount == 0,
-            mismatches == 0L,
-            audit.invalidCurrentSubtypeCount == 0,
+            audit.database.foreignKeyViolationCount == 0,
+            audit.database.unbalancedJournalCount == 0,
+            audit.projectionRebuildMatches,
+            audit.database.invalidCurrentSubtypeCount == 0,
             true,
             identity.bookId == bookId && identity.head == head,
             identity.currency.matches(Regex("[A-Z]{3}")),
-            if (mismatches == 0L) emptySet() else setOf("PROJECTION_REVISION_AUDIT"),
+            mismatches.mapTo(sortedSetOf()) { it.name },
+            audit.failedInvariantIds,
+            audit.standardInventoryMatches,
         )
     }
 

@@ -15,7 +15,6 @@ import android.util.AtomicFile
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
-import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.database.LedgerMigrations
@@ -308,25 +307,23 @@ class SecureRoomRestoreLedgerApplicationPort(
         expectedHead: BookCommitId,
     ): RestoreIntegrityReport {
         val identity = database.bookIdentity()
-        val audit = DatabaseIntegrityAudit.run(database)
-        val mismatches = RoomProjectionEngine().mismatchedFamilies(
-            database,
-            identity.localRevision,
-            identity.valuationRevision,
-        )
+        val audit = RoomLedgerIntegrityAudit.run(database)
+        val mismatches = audit.mismatchedProjectionFamilies + audit.rebuiltProjectionFamilies
         return RestoreIntegrityReport(
             schemaVersionSupported = database.version == LedgerMigrations.CURRENT_VERSION,
             migrationsApplied = database.version == LedgerMigrations.CURRENT_VERSION,
-            sqlCipherReadable = audit.capability.sqlCipherVersion.isNotBlank(),
+            sqlCipherReadable = audit.database.capability.sqlCipherVersion.isNotBlank(),
             aeadAndHashesValid = true,
-            foreignKeysValid = audit.foreignKeyViolationCount == 0,
-            journalsBalanced = audit.unbalancedJournalCount == 0,
-            projectionsValid = mismatches.isEmpty(),
-            transactionSubtypesValid = audit.invalidCurrentSubtypeCount == 0,
+            foreignKeysValid = audit.database.foreignKeyViolationCount == 0,
+            journalsBalanced = audit.database.unbalancedJournalCount == 0,
+            projectionsValid = audit.projectionRebuildMatches,
+            transactionSubtypesValid = audit.database.invalidCurrentSubtypeCount == 0,
             attachmentsValid = true,
             bookIdentityValid = identity.bookId == expectedBookId && identity.head == expectedHead,
             baseCurrencyValid = identity.baseCurrency.matches(Regex("[A-Z]{3}")),
             projectionFailureCodes = mismatches.mapTo(sortedSetOf()) { it.name },
+            invariantFailureCodes = audit.failedInvariantIds,
+            permanentInvariantStandardValid = audit.standardInventoryMatches,
         )
     }
 

@@ -5,7 +5,6 @@ package app.ledger.finance.data
 import android.content.Context
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.common.StableId
-import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerMigrations
 import app.ledger.core.security.DeviceLedgerKeyProvider
@@ -24,9 +23,12 @@ data class SecureShadowValidation(
     val journalsBalanced: Boolean,
     val projectionsAligned: Boolean,
     val subtypeDetailsComplete: Boolean,
+    val permanentInvariantsValid: Boolean,
+    val projectionHashMatches: Boolean,
 ) {
     val isValid: Boolean = sqlCipherReadable && integrityCheckPassed && foreignKeyCheckPassed &&
-        journalsBalanced && projectionsAligned && subtypeDetailsComplete
+        journalsBalanced && projectionsAligned && subtypeDetailsComplete && permanentInvariantsValid &&
+        projectionHashMatches
 }
 
 /** Crash-recoverable same-filesystem shadow copy and atomic replacement primitive. */
@@ -183,18 +185,16 @@ class SecureShadowLedgerAccess(
     }
 
     private fun validateDatabase(database: SupportSQLiteDatabase): SecureShadowValidation {
-        val audit = DatabaseIntegrityAudit.run(database)
-        val localRevision = database.singleLong("SELECT local_revision FROM book WHERE id=1")
-        val projectionAhead = PROJECTION_TABLES.sumOf { table ->
-            database.singleLong("SELECT COUNT(*) FROM $table WHERE as_of_local_revision > $localRevision")
-        }
+        val audit = RoomLedgerIntegrityAudit.run(database)
         return SecureShadowValidation(
-            sqlCipherReadable = audit.capability.sqlCipherVersion.isNotBlank(),
-            integrityCheckPassed = audit.integrityCheck == "ok",
-            foreignKeyCheckPassed = audit.foreignKeyViolationCount == 0,
-            journalsBalanced = audit.unbalancedJournalCount == 0,
-            projectionsAligned = projectionAhead == 0L,
-            subtypeDetailsComplete = audit.invalidCurrentSubtypeCount == 0,
+            sqlCipherReadable = audit.database.capability.sqlCipherVersion.isNotBlank(),
+            integrityCheckPassed = audit.database.integrityCheck == "ok",
+            foreignKeyCheckPassed = audit.database.foreignKeyViolationCount == 0,
+            journalsBalanced = audit.database.unbalancedJournalCount == 0,
+            projectionsAligned = audit.mismatchedProjectionFamilies.isEmpty() && audit.rebuiltProjectionFamilies.isEmpty(),
+            subtypeDetailsComplete = audit.database.invalidCurrentSubtypeCount == 0,
+            permanentInvariantsValid = audit.database.isValid && audit.standardInventoryMatches,
+            projectionHashMatches = audit.liveProjectionHash == audit.rebuiltProjectionHash,
         )
     }
 
@@ -232,17 +232,6 @@ class SecureShadowLedgerAccess(
 
     private companion object {
         val exchangeMutex = Mutex()
-        val PROJECTION_TABLES = listOf(
-            "current_transaction_projection",
-            "budget_usage_projection",
-            "project_usage_projection",
-            "goal_balance_projection",
-            "credit_statement_projection",
-            "credit_account_projection",
-            "installment_progress_projection",
-            "loan_progress_projection",
-            "settlement_position_projection",
-        )
     }
 }
 

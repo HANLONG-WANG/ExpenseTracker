@@ -352,6 +352,88 @@ class DeterministicFinancialPlannerTest {
     }
 
     @Test
+    fun `classification is rejected when loan payment or exchange has no expense or income component`() {
+        val references = PlannerFixtures.references()
+        val classification = CategoryAssignment(
+            PlannerFixtures.nonConsumptionCategoryId,
+            CategoryDirection.EXPENSE,
+            StatisticalNature.NON_CONSUMPTION_EXPENSE,
+        )
+        val principalOnly = LoanPaymentPayload(
+            classification = classification,
+            loanContractId = PlannerFixtures.loanContractId,
+            payment = PlannerFixtures.accountAmount(PlannerFixtures.bankJpyId, 1_000L, references),
+            scheduleRevisionId = null,
+            components = LoanPaymentComponents(
+                principal = positive(1_000L, PlannerFixtures.jpy),
+                interest = null,
+                fee = null,
+                penalty = null,
+            ),
+            allocations = emptyList(),
+        )
+        val loanResult = DeterministicFinancialPlanner.plan(
+            canonicalLoanPayment(principalOnly),
+            PlannerFixtures.snapshot(
+                listOf(
+                    PlannerFixtures.sameCurrencyEvidence(AmountRole.OUTGOING, 1_000L, PlannerFixtures.bankJpyId),
+                    PlannerFixtures.sameCurrencyEvidence(AmountRole.PRINCIPAL, 1_000L, null),
+                ),
+                seed = 14_200L,
+            ),
+        )
+        loanResult shouldBe DomainResult.Failure(DomainViolation.InvalidField("loanPayment.classification"))
+
+        val zeroDifference = FxExchangePayload(
+            classification,
+            PlannerFixtures.accountAmount(PlannerFixtures.bankUsdId, 1_000L, references),
+            PlannerFixtures.accountAmount(PlannerFixtures.bankJpyId, 1_500L, references),
+            FxValuationPolicy.PROVIDED_RATE,
+            null,
+        )
+        val fxResult = DeterministicFinancialPlanner.plan(
+            canonicalFx(zeroDifference),
+            PlannerFixtures.snapshot(
+                listOf(
+                    PlannerFixtures.usdToJpyEvidence(
+                        AmountRole.OUTGOING,
+                        usdMinor = 1_000L,
+                        jpyMinor = 1_500L,
+                        accountId = PlannerFixtures.bankUsdId,
+                        rate = "150",
+                        id = 14_201L,
+                    ),
+                    PlannerFixtures.sameCurrencyEvidence(AmountRole.INCOMING, 1_500L, PlannerFixtures.bankJpyId),
+                ),
+                seed = 14_300L,
+            ),
+        )
+        fxResult shouldBe DomainResult.Failure(DomainViolation.InvalidField("fxExchange.classification"))
+
+        val equityDifference = zeroDifference.copy(
+            outgoing = PlannerFixtures.accountAmount(PlannerFixtures.bankUsdId, 1_000L, references),
+        )
+        val equityDifferenceResult = DeterministicFinancialPlanner.plan(
+            canonicalFx(equityDifference),
+            PlannerFixtures.snapshot(
+                listOf(
+                    PlannerFixtures.usdToJpyEvidence(
+                        AmountRole.OUTGOING,
+                        usdMinor = 1_000L,
+                        jpyMinor = 1_600L,
+                        accountId = PlannerFixtures.bankUsdId,
+                        rate = "160",
+                        id = 14_202L,
+                    ),
+                    PlannerFixtures.sameCurrencyEvidence(AmountRole.INCOMING, 1_500L, PlannerFixtures.bankJpyId),
+                ),
+                seed = 14_400L,
+            ),
+        )
+        equityDifferenceResult shouldBe DomainResult.Failure(DomainViolation.InvalidField("fxExchange.classification"))
+    }
+
+    @Test
     fun `credit loan refund and settlement extensions generate their authoritative effects`() {
         val references = PlannerFixtures.references()
         val creditExpense = PlannerFixtures.expenseCommand(

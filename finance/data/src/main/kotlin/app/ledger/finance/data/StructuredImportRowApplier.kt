@@ -372,6 +372,7 @@ internal class StructuredImportRowApplier(
             SaveBlueprintRequest(
                 AutomationMutationIds(
                     bookId,
+                    CommandId(derived(row, "recurrence:blueprint:command")),
                     blueprintCommit,
                     derived(row, "recurrence:blueprint:entity-revision"),
                     derived(row, "recurrence:blueprint:device"),
@@ -409,6 +410,7 @@ internal class StructuredImportRowApplier(
             SaveRecurrenceRequest(
                 AutomationMutationIds(
                     bookId,
+                    CommandId(derived(row, "recurrence:series:command")),
                     seriesCommit,
                     derived(row, "recurrence:series:entity-revision"),
                     derived(row, "recurrence:series:device"),
