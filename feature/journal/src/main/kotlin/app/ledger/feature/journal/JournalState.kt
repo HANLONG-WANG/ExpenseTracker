@@ -21,11 +21,13 @@ import app.ledger.finance.application.JournalTransactionView
 import app.ledger.finance.domain.DependencyPolicy
 import app.ledger.finance.domain.DependencyResolution
 import app.ledger.finance.domain.TransactionFilter
+import app.ledger.finance.domain.TransactionKind
 
 sealed interface JournalLoadState {
     data object Loading : JournalLoadState
     data class Content(
         val filter: TransactionFilter = TransactionFilter(),
+        val zoneId: String = "UTC",
         val searchText: String = "",
         val resultCount: Long? = null,
         val presets: List<JournalFilterPreset> = emptyList(),
@@ -33,6 +35,8 @@ sealed interface JournalLoadState {
         val activePresetId: StableId? = null,
         val selection: JournalSelectionSpec? = null,
         val detail: JournalDetailView? = null,
+        val detailLoading: Boolean = false,
+        val detailFailureCode: String? = null,
         val history: List<JournalRevisionView> = emptyList(),
         val comparison: JournalRevisionComparison? = null,
         val dependencies: List<JournalDependencyView> = emptyList(),
@@ -55,6 +59,8 @@ sealed interface JournalScreenAction {
     data class RemoveFilter(val key: String) : JournalScreenAction
     data object Retry : JournalScreenAction
     data class LoadDetail(val transactionId: StableId) : JournalScreenAction
+    data class Edit(val transactionId: StableId, val kind: TransactionKind) : JournalScreenAction
+    data class OpenAttachment(val attachmentId: StableId) : JournalScreenAction
     data class Select(val transactionId: StableId) : JournalScreenAction
     data object SelectAllMatching : JournalScreenAction
     data object ClearSelection : JournalScreenAction
@@ -90,6 +96,8 @@ internal class JournalActions(
     val onRemoveFilter: (String) -> Unit,
     val onRetry: () -> Unit,
     val onLoadDetail: (StableId) -> Unit,
+    val onEdit: (StableId, TransactionKind) -> Unit,
+    val onOpenAttachment: (StableId) -> Unit,
     val onSelect: (StableId) -> Unit,
     val onSelectAllMatching: () -> Unit,
     val onClearSelection: () -> Unit,
@@ -116,6 +124,8 @@ internal fun journalActions(onAction: (JournalScreenAction) -> Unit): JournalAct
     onRemoveFilter = { onAction(JournalScreenAction.RemoveFilter(it)) },
     onRetry = { onAction(JournalScreenAction.Retry) },
     onLoadDetail = { onAction(JournalScreenAction.LoadDetail(it)) },
+    onEdit = { transactionId, kind -> onAction(JournalScreenAction.Edit(transactionId, kind)) },
+    onOpenAttachment = { onAction(JournalScreenAction.OpenAttachment(it)) },
     onSelect = { onAction(JournalScreenAction.Select(it)) },
     onSelectAllMatching = { onAction(JournalScreenAction.SelectAllMatching) },
     onClearSelection = { onAction(JournalScreenAction.ClearSelection) },

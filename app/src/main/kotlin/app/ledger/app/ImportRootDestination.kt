@@ -9,13 +9,13 @@ import app.ledger.feature.transfer.ImportWizardScreen
 import app.ledger.feature.transfer.ImportWizardScreenAction
 
 @Composable
-internal fun ImportRootDestination(viewModel: AppRootViewModel) {
+internal fun ImportRootDestination(viewModel: AppRootViewModel, onNavigationChanged: () -> Unit) {
     val state by viewModel.importWizard.collectAsStateWithLifecycle()
     ImportWizardScreen(
         state,
         { action ->
             when (action) {
-                ImportWizardScreenAction.Back -> viewModel.requestRootBack()
+                ImportWizardScreenAction.Back -> viewModel.exitImport(onNavigationChanged)
                 is ImportWizardScreenAction.SourceSelected -> viewModel.selectImportSource(action.uri)
                 is ImportWizardScreenAction.ModeSelected -> viewModel.selectImportMode(action.mode)
                 is ImportWizardScreenAction.SheetSelected -> viewModel.selectImportSheet(action.sheet)

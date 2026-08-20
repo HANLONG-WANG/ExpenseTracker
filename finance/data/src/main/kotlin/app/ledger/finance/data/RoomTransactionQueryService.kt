@@ -230,9 +230,19 @@ internal object TransactionSqlCompiler {
         enumSet("ctp.source_type", filter.sources.map(TransactionSource::ordinal), clauses, args)
         enumSet("ctp.state", filter.lifecycleStates.map(TransactionLifecycleState::ordinal), clauses, args)
         filter.searchText?.trim()?.takeIf(String::isNotEmpty)?.let { search ->
-            val literal = "\"${search.replace("\"", "\"\"")}\""
-            clauses += "ctp.transaction_id IN (SELECT transaction_id FROM transaction_fts WHERE transaction_fts MATCH ?)"
-            args += literal
+            if (search.codePointCount(0, search.length) < FTS_TRIGRAM_LENGTH) {
+                val pattern = "%${search.escapeLikePattern()}%"
+                clauses += "ctp.transaction_id IN (SELECT transaction_id FROM transaction_fts WHERE " +
+                    listOf(
+                        "category_name", "merchant_name", "merchant_aliases", "note", "project_name",
+                        "settlement_activity_name", "participant_names", "attachment_names",
+                    ).joinToString(" OR ") { "$it LIKE ? ESCAPE '\\'" } + ")"
+                repeat(FTS_TEXT_COLUMN_COUNT) { args += pattern }
+            } else {
+                val literal = "\"${search.replace("\"", "\"\"")}\""
+                clauses += "ctp.transaction_id IN (SELECT transaction_id FROM transaction_fts WHERE transaction_fts MATCH ?)"
+                args += literal
+            }
         }
         cursor?.let {
             clauses += "(ctp.occurred_at < ? OR (ctp.occurred_at = ? AND ctp.transaction_id < (SELECT id FROM business_transaction WHERE uid = ?)))"
@@ -251,6 +261,11 @@ internal object TransactionSqlCompiler {
             args.addAll(values)
         }
     }
+
+    private fun String.escapeLikePattern(): String = replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+    private const val FTS_TRIGRAM_LENGTH = 3
+    private const val FTS_TEXT_COLUMN_COUNT = 8
 
     private fun stableSet(
         column: String,

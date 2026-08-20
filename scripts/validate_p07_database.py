@@ -195,7 +195,8 @@ def validate_kotlin_and_build() -> None:
     require("FrameworkSQLiteOpenHelperFactory" not in production_text, "unencrypted framework SQLite path is forbidden")
     require("MigrationPhase.EXPAND" in production_text and "MigrationPhase.SWITCH" in production_text, "migration phase order contract missing")
     require(
-        "LedgerMigrations.registered.forEach" in production_text and "addMigrations(migration)" in production_text,
+        re.search(r"LedgerMigrations\.registered\([^)]*\)\.forEach\s*\{\s*migration\s*->\s*addMigrations\(migration\)", production_text)
+        is not None,
         "primary migration registry is not wired",
     )
     require(

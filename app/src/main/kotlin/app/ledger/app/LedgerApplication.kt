@@ -65,13 +65,17 @@ class LedgerApplication : Application() {
         )
         TelemetryRuntime.install(privacyDiagnostics)
         LedgerWidgetRuntime.install(
-            widgetSnapshots,
-            AppWidgetConfigurationRepository(settingsRepository),
-        ) {
-            val configured = settingsRepository.current().zoneId.takeIf(String::isNotBlank)
-            val zone = runCatching { ZoneId.of(configured ?: "UTC") }.getOrDefault(ZoneId.of("UTC"))
-            runtimeSources.clock.now().atZone(zone).toLocalDate()
-        }
+            snapshots = widgetSnapshots,
+            configurations = AppWidgetConfigurationRepository(settingsRepository),
+            languageTag = {
+                settingsRepository.current().languageTag.ifBlank { java.util.Locale.getDefault().toLanguageTag() }
+            },
+            localDate = {
+                val configured = settingsRepository.current().zoneId.takeIf(String::isNotBlank)
+                val zone = runCatching { ZoneId.of(configured ?: "UTC") }.getOrDefault(ZoneId.of("UTC"))
+                runtimeSources.clock.now().atZone(zone).toLocalDate()
+            },
+        )
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
             StrictMode.setThreadPolicy(
                 StrictMode.ThreadPolicy.Builder().detectAll().penaltyLog().build(),

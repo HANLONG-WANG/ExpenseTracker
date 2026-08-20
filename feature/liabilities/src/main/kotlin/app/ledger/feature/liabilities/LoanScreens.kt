@@ -165,15 +165,22 @@ private fun LoanList(state: LoanFeatureState, actions: LoanActions) {
 }
 
 @Composable
-private fun LoanWizard(state: LoanFeatureState, actions: LoanActions) = LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_WIZARD)) {
-    item { StateBanner(state) }
-    item { LedgerText(stringResource(R.string.loan_wizard_step, state.wizardStep + 1, 6), LedgerTextRole.SECTION) }
-    item { BasicFields(state, actions) }
-    item { TrancheFields(state, actions) }
-    item { TermsFields(state, actions) }
-    item { LedgerButton(stringResource(R.string.loan_generate_schedule), actions.onPreview, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
-    if (state.preview.isNotEmpty()) item { PreviewTable(state) }
-    item { LedgerButton(stringResource(R.string.loan_review_save), actions.onSave, Modifier.fillMaxWidth()) }
+private fun LoanWizard(state: LoanFeatureState, actions: LoanActions) {
+    if (state.snapshot.loanAccounts.none { it.active }) {
+        LoanAccountRequired(Modifier.testTag(LedgerTestTags.LOAN_WIZARD), actions)
+        return
+    }
+    LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_WIZARD)) {
+        item { StateBanner(state) }
+        item { LedgerText(stringResource(R.string.loan_wizard_step, state.wizardStep + 1, 6), LedgerTextRole.SECTION) }
+        item { BasicFields(state, actions) }
+        item { TrancheFields(state, actions) }
+        item { TermsFields(state, actions) }
+        item { StateBanner(state) }
+        item { LedgerButton(stringResource(R.string.loan_generate_schedule), actions.onPreview, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
+        if (state.preview.isNotEmpty()) item { PreviewTable(state) }
+        item { LedgerButton(stringResource(R.string.loan_review_save), actions.onSave, Modifier.fillMaxWidth()) }
+    }
 }
 
 @Composable
@@ -492,6 +499,16 @@ private fun StateBanner(state: LoanFeatureState) {
 @Composable
 private fun LoanEmpty(modifier: Modifier, actions: LoanActions) = Box(modifier.fillMaxSize()) {
     LedgerEmptyState(stringResource(R.string.loan_empty), stringResource(R.string.loan_empty_body), stringResource(R.string.loan_add), { actions.onNavigate("LOA-002", null, null) })
+}
+
+@Composable
+private fun LoanAccountRequired(modifier: Modifier, actions: LoanActions) = Box(modifier.fillMaxSize()) {
+    LedgerEmptyState(
+        stringResource(R.string.loan_account_required_title),
+        stringResource(R.string.loan_account_required_body),
+        stringResource(R.string.loan_create_account),
+        actions.onCreateLoanAccount,
+    )
 }
 
 @Composable

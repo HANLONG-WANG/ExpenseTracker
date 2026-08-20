@@ -33,6 +33,7 @@ public sealed interface AutomationScreenAction {
     public data object SkipCandidate : AutomationScreenAction
     public data class ScopeChanged(val scope: RecurrenceModificationScope) : AutomationScreenAction
     public data object ApplyScope : AutomationScreenAction
+    public data object ApplyRule : AutomationScreenAction
 }
 
 internal class AutomationActions(
@@ -59,6 +60,7 @@ internal class AutomationActions(
     val onSkipCandidate: () -> Unit,
     val onScope: (RecurrenceModificationScope) -> Unit,
     val onApplyScope: () -> Unit,
+    val onApplyRule: () -> Unit = {},
 )
 
 internal fun automationActions(onAction: (AutomationScreenAction) -> Unit): AutomationActions = AutomationActions(
@@ -85,4 +87,5 @@ internal fun automationActions(onAction: (AutomationScreenAction) -> Unit): Auto
     onSkipCandidate = { onAction(AutomationScreenAction.SkipCandidate) },
     onScope = { onAction(AutomationScreenAction.ScopeChanged(it)) },
     onApplyScope = { onAction(AutomationScreenAction.ApplyScope) },
+    onApplyRule = { onAction(AutomationScreenAction.ApplyRule) },
 )

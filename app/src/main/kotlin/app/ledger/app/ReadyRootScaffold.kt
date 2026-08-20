@@ -201,7 +201,7 @@ internal fun ReadyRootScaffold(
                 NavEntry(key) {
                     val screenId = key.contract.screenId.value
                     if (screenId.startsWith("IMP-")) {
-                        ImportRootDestination(viewModel)
+                        ImportRootDestination(viewModel, onNavigationChanged = { navigationEpoch += 1 })
                     } else if (screenId.startsWith("EXP-")) {
                         ExportRootDestination(screenId, viewModel, onNavigationChanged = { navigationEpoch += 1 })
                     } else if (screenId.startsWith("BKP-") || screenId == "SYS-003") {
@@ -276,6 +276,12 @@ internal fun ReadyRootScaffold(
                         RefundRootDestination(
                             screenId = screenId,
                             encodedArguments = key.encodedArguments,
+                            viewModel = viewModel,
+                            onNavigationChanged = { navigationEpoch += 1 },
+                        )
+                    } else if (screenId.startsWith("ATT-")) {
+                        AttachmentRootDestination(
+                            screenId = screenId,
                             viewModel = viewModel,
                             onNavigationChanged = { navigationEpoch += 1 },
                         )

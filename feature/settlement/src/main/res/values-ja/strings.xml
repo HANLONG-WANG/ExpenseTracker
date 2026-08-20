@@ -78,4 +78,5 @@
     <string name="settlement_project">関連プロジェクト</string><string name="settlement_project_support">任意です。変更は現在の活動設定だけに反映され、過去取引のスナップショットは変更しません。</string><string name="settlement_no_project">プロジェクトなし</string>
     <string name="settlement_move_up">上へ</string><string name="settlement_move_down">下へ</string>
     <string name="settlement_related_transactions">関連取引</string><string name="settlement_related_empty">この参加者に関連する取引はありません。</string><string name="settlement_related_row">%1$s · 負担は最小単位 %2$d</string>
+    <string name="settlement_currency">精算通貨</string>
 </resources>

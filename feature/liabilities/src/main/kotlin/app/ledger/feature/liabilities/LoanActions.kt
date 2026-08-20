@@ -16,6 +16,7 @@ public sealed interface LoanScreenAction {
     public data object Save : LoanScreenAction
     public data object Simulate : LoanScreenAction
     public data object ApplySimulation : LoanScreenAction
+    public data object CreateLoanAccount : LoanScreenAction
     public data class OpenCreditAccount(val accountId: StableId) : LoanScreenAction
 }
 
@@ -31,6 +32,7 @@ internal class LoanActions(
     val onSave: () -> Unit,
     val onSimulate: () -> Unit,
     val onApplySimulation: () -> Unit,
+    val onCreateLoanAccount: () -> Unit = {},
     val onOpenCreditAccount: (StableId) -> Unit = {},
 )
 
@@ -46,5 +48,6 @@ internal fun loanActions(onAction: (LoanScreenAction) -> Unit): LoanActions = Lo
     onSave = { onAction(LoanScreenAction.Save) },
     onSimulate = { onAction(LoanScreenAction.Simulate) },
     onApplySimulation = { onAction(LoanScreenAction.ApplySimulation) },
+    onCreateLoanAccount = { onAction(LoanScreenAction.CreateLoanAccount) },
     onOpenCreditAccount = { onAction(LoanScreenAction.OpenCreditAccount(it)) },
 )

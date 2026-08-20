@@ -158,6 +158,18 @@ class MainActivity : FragmentActivity() {
         }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.attachmentExternalOpenRequests.collect { request ->
+                    if (request.resolveActivity(packageManager) == null) {
+                        viewModel.externalApplicationUnavailable()
+                    } else {
+                        runCatching { startActivity(request) }
+                            .onFailure { viewModel.externalApplicationUnavailable() }
+                    }
+                }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.notificationPermissionRequests.collect {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)

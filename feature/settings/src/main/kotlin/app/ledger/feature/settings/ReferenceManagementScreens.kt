@@ -12,6 +12,8 @@
 
 package app.ledger.feature.settings
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerBanner
@@ -67,6 +70,8 @@ import app.ledger.finance.domain.CategoryRemovalStrategy
 import app.ledger.finance.domain.CategoryStatus
 import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.StatisticalNature
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 @Composable
 public fun ReferenceManagementDestination(
@@ -84,9 +89,19 @@ public fun ReferenceManagementDestination(
     require(stateOverride == null || stateOverride.screenId == screenId)
     val snapshot = (dataState as? ManagementDataState.Content)?.snapshot
     val state = stateOverride?.contractName ?: actualState(screenId, encodedArguments, snapshot, pending)
+    val rootModifier = modifier
+        .fillMaxSize()
+        .testTag(LedgerTestTags.P12_MANAGEMENT_ROOT)
+        .padding(vertical = LedgerTheme.spacing.xs)
+        .let { base ->
+            if (screenId in VERTICALLY_SCROLLABLE_SCREENS) {
+                base.verticalScroll(rememberScrollState())
+            } else {
+                base
+            }
+        }
     Column(
-        modifier.fillMaxSize().testTag(LedgerTestTags.P12_MANAGEMENT_ROOT)
-            .padding(vertical = LedgerTheme.spacing.xs),
+        rootModifier,
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
         when {
@@ -372,12 +387,14 @@ private fun MerchantMerge(snapshot: ReferenceDataSnapshot?, state: String, actio
 private fun PlaceList(snapshot: ReferenceDataSnapshot?, state: String, actions: ManagementActions, map: PlaceMapSlot) {
     var query by remember { mutableStateOf("") }
     val places = snapshot?.places.orEmpty().filter { query.isBlank() || it.name.contains(query, true) }
-    SearchField(query, { query = it.take(MAX_NAME) }, onClear = { query = "" })
-    map(places, false)
-    if (state == "empty" || places.isEmpty()) {
-        LedgerEmptyState(stringResource(R.string.management_places_empty), stringResource(R.string.management_places_empty_body), stringResource(R.string.management_add_place), { actions.onNavigate("PLC-002", emptyMap(), emptyMap()) })
-    } else {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+        item { SearchField(query, { query = it.take(MAX_NAME) }, onClear = { query = "" }) }
+        item { map(places, false, null) }
+        if (state == "empty" || places.isEmpty()) {
+            item {
+                LedgerEmptyState(stringResource(R.string.management_places_empty), stringResource(R.string.management_places_empty_body), stringResource(R.string.management_add_place), { actions.onNavigate("PLC-002", emptyMap(), emptyMap()) })
+            }
+        } else {
             items(places, key = { it.id.toString() }) { place -> PlaceRow(place) { actions.onNavigate("PLC-002", mapOf("placeId" to place.id), emptyMap()) } }
             item { LedgerButton(stringResource(R.string.management_add_place), { actions.onNavigate("PLC-002", emptyMap(), emptyMap()) }, Modifier.fillMaxWidth()) }
         }
@@ -393,21 +410,44 @@ private fun PlaceRow(place: PlaceReferenceView, onClick: () -> Unit) {
 private fun PlaceEditor(snapshot: ReferenceDataSnapshot?, placeId: StableId?, state: String, actions: ManagementActions, map: PlaceMapSlot) {
     val existing = snapshot?.places?.singleOrNull { it.id == placeId }
     var name by remember(placeId) { mutableStateOf(existing?.name.orEmpty()) }
-    var latitude by remember(placeId) { mutableStateOf(existing?.latitudeE7?.toString().orEmpty()) }
-    var longitude by remember(placeId) { mutableStateOf(existing?.longitudeE7?.toString().orEmpty()) }
+    var latitude by remember(placeId) { mutableStateOf(existing?.latitudeE7?.coordinateText().orEmpty()) }
+    var longitude by remember(placeId) { mutableStateOf(existing?.longitudeE7?.coordinateText().orEmpty()) }
     var merchant by remember(placeId) { mutableStateOf(existing?.merchantId) }
+    val latitudeE7 = latitude.coordinateE7OrNull()
+    val longitudeE7 = longitude.coordinateE7OrNull()
+    val preview = if (snapshot != null && latitudeE7 in LATITUDE_RANGE && longitudeE7 in LONGITUDE_RANGE) {
+        listOf(
+            PlaceReferenceView(
+                existing?.id ?: snapshot.bookId,
+                name.ifBlank { stringResource(R.string.management_new_place_marker) },
+                requireNotNull(latitudeE7),
+                requireNotNull(longitudeE7),
+                merchant,
+                existing?.status ?: EntityStatus.ACTIVE,
+                existing?.mergedIntoId,
+                existing?.rowVersion ?: 0L,
+                existing?.locationRecordCount ?: 0L,
+            ),
+        )
+    } else {
+        emptyList()
+    }
     if (state == "mapUnavailable") LedgerBanner(stringResource(R.string.management_map_unavailable), LedgerBannerVariant.INFO)
-    map(listOfNotNull(existing), state == "mapUnavailable")
+    map(preview, state == "mapUnavailable") { selectedLatitude, selectedLongitude ->
+        latitude = selectedLatitude.coordinateText()
+        longitude = selectedLongitude.coordinateText()
+    }
+    LedgerText(stringResource(R.string.management_map_pick), LedgerTextRole.SUPPORTING)
     LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.management_place_name), required = true)
-    LedgerTextField(latitude, { latitude = it.filter { char -> char.isDigit() || char == '-' }.take(COORDINATE_LENGTH) }, stringResource(R.string.management_latitude_e7), required = true)
-    LedgerTextField(longitude, { longitude = it.filter { char -> char.isDigit() || char == '-' }.take(COORDINATE_LENGTH) }, stringResource(R.string.management_longitude_e7), required = true)
+    LedgerTextField(latitude, { latitude = it.filterCoordinate().take(COORDINATE_LENGTH) }, stringResource(R.string.management_latitude), required = true, keyboardType = KeyboardType.Decimal)
+    LedgerTextField(longitude, { longitude = it.filterCoordinate().take(COORDINATE_LENGTH) }, stringResource(R.string.management_longitude), required = true, keyboardType = KeyboardType.Decimal)
     SelectorField(stringResource(R.string.management_optional_merchant), snapshot?.merchants?.singleOrNull { it.id == merchant }?.name ?: stringResource(R.string.management_none), { merchant = if (merchant == null) snapshot?.merchants?.firstOrNull { it.status == EntityStatus.ACTIVE }?.id else null })
     LedgerBanner(stringResource(R.string.management_no_reverse_geocoding), LedgerBannerVariant.INFO)
     LedgerSaveFab({
-        val lat = latitude.toIntOrNull() ?: return@LedgerSaveFab
-        val lon = longitude.toIntOrNull() ?: return@LedgerSaveFab
+        val lat = latitudeE7 ?: return@LedgerSaveFab
+        val lon = longitudeE7 ?: return@LedgerSaveFab
         actions.onSavePlace(PlaceSubmission(placeId, name.trim(), lat, lon, merchant))
-    }, enabled = name.isNotBlank() && latitude.toIntOrNull() in LATITUDE_RANGE && longitude.toIntOrNull() in LONGITUDE_RANGE)
+    }, enabled = name.isNotBlank() && latitudeE7 in LATITUDE_RANGE && longitudeE7 in LONGITUDE_RANGE)
 }
 
 @Composable
@@ -421,7 +461,7 @@ private fun PlaceMergeSplit(snapshot: ReferenceDataSnapshot?, sourceId: StableId
         onSelected = { selectedTab = it },
     )
     val relevantLocations = snapshot.locations.filter { it.placeId == sourceId }
-    map(listOf(source), false)
+    map(listOf(source), false, null)
     if (selectedTab == 0) {
         var target by remember { mutableStateOf<StableId?>(null) }
         snapshot.places.filter { it.id != sourceId && it.status == EntityStatus.ACTIVE }.forEach { LedgerChoiceRow(it.name, target == it.id, { target = it.id }) }
@@ -476,8 +516,19 @@ private fun CategoryDirection.alternateNature(): StatisticalNature = if (this ==
 @Composable private fun CategoryDirection.secondNatureLabel(): String = stringResource(if (this == CategoryDirection.EXPENSE) R.string.management_non_consumption else R.string.management_non_recurring_income)
 
 private val SUPPORTED_SCREENS = setOf("MGT-001", "CAT-001", "CAT-002", "CAT-003", "CAT-004", "MER-001", "MER-002", "MER-003", "PLC-001", "PLC-002", "PLC-003")
+private val VERTICALLY_SCROLLABLE_SCREENS = setOf("MGT-001", "CAT-002", "CAT-004", "MER-002", "MER-003", "PLC-002", "PLC-003")
 private const val MAX_NAME = 80
 private const val MAX_ALIASES = 600
-private const val COORDINATE_LENGTH = 11
+private const val COORDINATE_LENGTH = 18
 private val LATITUDE_RANGE = -900_000_000..900_000_000
 private val LONGITUDE_RANGE = -1_800_000_000..1_800_000_000
+
+private fun Int.coordinateText(): String = BigDecimal.valueOf(toLong(), 7).stripTrailingZeros().toPlainString()
+
+private fun String.coordinateE7OrNull(): Int? = runCatching {
+    BigDecimal(trim()).movePointRight(7).setScale(0, RoundingMode.HALF_UP).intValueExact()
+}.getOrNull()
+
+private fun String.filterCoordinate(): String = filterIndexed { index, character ->
+    character.isDigit() || character == '.' || character == '-' && index == 0
+}

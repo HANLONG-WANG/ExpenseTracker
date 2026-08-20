@@ -26,7 +26,11 @@ public class RoomLedgerStartupInspector : LedgerStartupInspector {
                 return@readLedger StartupInspection.Maintenance(MaintenanceReason.PROJECTION_REBUILD)
             }
             val unfinished = connection.queryOne(
-                "SELECT EXISTS(SELECT 1 FROM background_operation WHERE state NOT IN (8,9,10) LIMIT 1)",
+                // Staged imports, exports and backups do not mutate the live ledger and must not
+                // gate startup. Only an interrupted atomic restore publication/rollback is an
+                // exclusive maintenance condition; ordinary durable work resumes in WorkManager.
+                "SELECT EXISTS(SELECT 1 FROM background_operation " +
+                    "WHERE type IN (4,5) AND state IN (7,8) LIMIT 1)",
             ) { it.getInt(0) == 1 } ?: false
             if (unfinished) {
                 StartupInspection.Maintenance(MaintenanceReason.UNFINISHED_OPERATION)

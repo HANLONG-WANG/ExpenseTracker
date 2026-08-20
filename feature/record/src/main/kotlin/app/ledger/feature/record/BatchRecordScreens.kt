@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import app.ledger.core.common.StableId
@@ -52,7 +53,6 @@ import app.ledger.core.designsystem.ValidationSummary
 import app.ledger.finance.application.BatchEntryField
 import app.ledger.finance.application.BatchValidationIssue
 import app.ledger.finance.application.BatchValidationSeverity
-import java.time.Instant
 
 public sealed interface BatchRecordScreenAction {
     public data class OpenRow(val rowId: StableId) : BatchRecordScreenAction
@@ -137,6 +137,7 @@ public fun BatchRecordDestination(
             actions.onKeepEditing,
             Modifier.testTag(LedgerTestTags.BATCH_DISCARD),
             danger = true,
+            dismissLabel = stringResource(R.string.batch_keep_editing),
         )
     }
 }
@@ -228,6 +229,10 @@ private fun BatchRowEditorScreen(state: BatchRecordState, actions: BatchRecordAc
     val card = references.cards.singleOrNull { it.id == row.cardId }?.displayName
     val merchant = references.merchants.singleOrNull { it.id == row.merchantId }?.name
     val project = snapshot.projects.singleOrNull { it.id == row.projectId }?.name
+    val locale = LocalConfiguration.current.locales[0]
+    val selectedAccount = references.accounts.singleOrNull { it.id == row.accountId }
+    val accountCurrency = selectedAccount?.currency?.value ?: row.userCurrencyCode
+    val baseCurrency = references.baseCurrency.value
     LazyColumn(
         modifier.fillMaxSize().imePadding().testTag(LedgerTestTags.BATCH_ROW_EDITOR),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
@@ -253,12 +258,41 @@ private fun BatchRowEditorScreen(state: BatchRecordState, actions: BatchRecordAc
         item {
             FormSection(stringResource(R.string.batch_field_amount), description = stringResource(R.string.batch_amount_evidence)) {
                 LedgerTextField(row.amountExpression, { value ->
-                    val minor = value.trim().toLongOrNull()
-                    actions.onRowChange(row.copy(amountExpression = value, userMinor = minor))
+                    val minor = BatchRecordPolicy.majorToMinor(value, row.userCurrencyCode)
+                    val accountMinor = if (row.userCurrencyCode == accountCurrency) minor else row.accountMinor
+                    val baseMinor = when {
+                        row.userCurrencyCode == baseCurrency -> minor
+                        accountCurrency == baseCurrency -> accountMinor
+                        else -> row.baseMinor
+                    }
+                    actions.onRowChange(row.copy(amountExpression = value, userMinor = minor, accountMinor = accountMinor, baseMinor = baseMinor))
                 }, stringResource(R.string.batch_amount_expression))
-                LedgerTextField(row.userCurrencyCode, { actions.onRowChange(row.copy(userCurrencyCode = it.uppercase().take(3))) }, stringResource(R.string.batch_currency))
-                LedgerTextField(row.accountMinor?.toString().orEmpty(), { actions.onRowChange(row.copy(accountMinor = it.trim().toLongOrNull())) }, stringResource(R.string.batch_account_amount))
-                LedgerTextField(row.baseMinor?.toString().orEmpty(), { actions.onRowChange(row.copy(baseMinor = it.trim().toLongOrNull())) }, stringResource(R.string.batch_base_amount))
+                LedgerTextField(row.userCurrencyCode, { value ->
+                    val code = value.uppercase().take(3)
+                    val minor = BatchRecordPolicy.majorToMinor(row.amountExpression, code)
+                    actions.onRowChange(
+                        row.copy(
+                            userCurrencyCode = code,
+                            userMinor = minor,
+                            accountMinor = minor.takeIf { code == accountCurrency } ?: row.accountMinor,
+                            baseMinor = minor.takeIf { code == baseCurrency } ?: row.baseMinor,
+                        ),
+                    )
+                }, stringResource(R.string.batch_currency))
+                if (row.userCurrencyCode != accountCurrency) {
+                    LedgerTextField(
+                        BatchRecordPolicy.minorToMajor(row.accountMinor, accountCurrency),
+                        { actions.onRowChange(row.copy(accountMinor = BatchRecordPolicy.majorToMinor(it, accountCurrency))) },
+                        stringResource(R.string.batch_account_amount, accountCurrency),
+                    )
+                }
+                if (accountCurrency != baseCurrency) {
+                    LedgerTextField(
+                        BatchRecordPolicy.minorToMajor(row.baseMinor, baseCurrency),
+                        { actions.onRowChange(row.copy(baseMinor = BatchRecordPolicy.majorToMinor(it, baseCurrency))) },
+                        stringResource(R.string.batch_base_amount, baseCurrency),
+                    )
+                }
             }
         }
         item { SelectorField(stringResource(R.string.batch_field_account_card), listOfNotNull(account, card).joinToString(" · ").ifBlank { stringResource(R.string.batch_none) }, { actions.onCycleReference(row.rowId, BatchEntryField.ACCOUNT_AND_CARD) }) }
@@ -266,10 +300,16 @@ private fun BatchRowEditorScreen(state: BatchRecordState, actions: BatchRecordAc
         item {
             val dateIssue = rowIssues.firstOrNull { it.field == BatchEntryField.DATE }
             LedgerTextField(
-                row.occurredAt.toString(),
-                { value -> runCatching { Instant.parse(value) }.getOrNull()?.let { actions.onRowChange(row.copy(occurredAt = it)) } },
+                row.occurredAtInput ?: BatchRecordPolicy.occurredAtText(row.occurredAt, row.zoneId, locale),
+                { value ->
+                    val parsed = BatchRecordPolicy.parseOccurredAt(value, row.zoneId)
+                    actions.onRowChange(row.copy(occurredAt = parsed ?: row.occurredAt, occurredAtInput = value))
+                },
                 stringResource(R.string.batch_field_date),
-                errorText = if (dateIssue == null) null else issueMessage(dateIssue),
+                supportingText = stringResource(R.string.batch_date_hint),
+                errorText = if (
+                    dateIssue == null && row.occurredAtInput?.let { BatchRecordPolicy.parseOccurredAt(it, row.zoneId) == null } != true
+                ) null else stringResource(R.string.batch_error_date),
             )
         }
         item { SelectorField(stringResource(R.string.batch_field_project), project ?: stringResource(R.string.batch_none), { actions.onCycleReference(row.rowId, BatchEntryField.PROJECT) }) }
@@ -371,7 +411,7 @@ private fun BatchRowDraft.summaryModel(state: BatchRecordState, index: Int): Bat
         stableKey = "batch_row_${index.toString().padStart(6, '0')}",
         rowNumber = rowNumber,
         category = categoryName,
-        amount = listOfNotNull(userMinor?.toString(), userCurrencyCode).joinToString(" "),
+        amount = listOf(BatchRecordPolicy.minorToMajor(userMinor, userCurrencyCode), userCurrencyCode).joinToString(" "),
         accountAndCard = listOfNotNull(accountName, cardName).joinToString(" · "),
         merchant = merchantName,
         date = occurredAt.atZone(zoneId).toLocalDate().toString(),
@@ -395,6 +435,7 @@ private fun issueMessage(issue: BatchValidationIssue): String = stringResource(
     when (issue.code) {
         "CATEGORY_REQUIRED" -> R.string.batch_error_category
         "AMOUNT_INVALID" -> R.string.batch_error_amount
+        "DATE_INVALID" -> R.string.batch_error_date
         "ACCOUNT_REQUIRED" -> R.string.batch_error_account
         "CARD_INCOMPATIBLE" -> R.string.batch_error_card
         "SETTLEMENT_INCOMPLETE" -> R.string.batch_error_settlement

@@ -423,13 +423,11 @@ class SecureRoomProjectGoalApplicationPort(
             arrayOf(goalId.bytes),
         ) { cursor -> GoalDelta(cursor.int("local_date").toStoredLocalDate(), GoalEffectKind.entries[cursor.int("kind")], if (cursor.int("polarity") == 1) EffectPolarity.APPLY else EffectPolarity.REVERSE, cursor.long("amount_minor")) }
         var balance = 0L
-        return rows.groupBy(GoalDelta::date).toSortedMap().map { (date, deltas) ->
-            deltas.forEach { delta ->
-                val positive = delta.kind in setOf(GoalEffectKind.ALLOCATE, GoalEffectKind.RESTORE, GoalEffectKind.ADJUST)
-                val signed = if (positive) delta.amount else Math.negateExact(delta.amount)
-                balance = Math.addExact(balance, if (delta.polarity == EffectPolarity.APPLY) signed else Math.negateExact(signed))
-            }
-            GoalTrendPoint(date, balance)
+        return rows.map { delta ->
+            val positive = delta.kind in setOf(GoalEffectKind.ALLOCATE, GoalEffectKind.RESTORE, GoalEffectKind.ADJUST)
+            val signed = if (positive) delta.amount else Math.negateExact(delta.amount)
+            balance = Math.addExact(balance, if (delta.polarity == EffectPolarity.APPLY) signed else Math.negateExact(signed))
+            GoalTrendPoint(delta.date, balance)
         }
     }
 

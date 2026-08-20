@@ -78,4 +78,5 @@
     <string name="settlement_project">关联项目</string><string name="settlement_project_support">可选；项目变更只影响活动当前配置，不改写历史交易快照。</string><string name="settlement_no_project">不关联项目</string>
     <string name="settlement_move_up">上移</string><string name="settlement_move_down">下移</string>
     <string name="settlement_related_transactions">相关交易</string><string name="settlement_related_empty">此参与人暂无相关交易。</string><string name="settlement_related_row">%1$s · 承担 %2$d 个最小货币单位</string>
+    <string name="settlement_currency">结算币种</string>
 </resources>

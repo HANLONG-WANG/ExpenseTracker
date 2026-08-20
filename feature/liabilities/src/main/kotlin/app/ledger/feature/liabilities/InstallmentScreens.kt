@@ -81,6 +81,16 @@ public fun InstallmentDestination(
 private fun InstallmentEditor(state: InstallmentFeatureState, actions: InstallmentActions, modifier: Modifier) {
     val purchase = state.snapshot.purchases.singleOrNull { it.transactionId == state.selectedPurchaseId }
     val plan = state.plan
+    if (purchase == null && plan == null) {
+        LedgerEmptyState(
+            stringResource(R.string.installment_no_eligible_purchase),
+            stringResource(R.string.installment_no_eligible_purchase_body),
+            stringResource(R.string.installment_open_credit_accounts),
+            { actions.onNavigate("LIA-001", null) },
+            modifier.fillMaxSize(),
+        )
+        return
+    }
     ScreenList(modifier) {
         if (state.presentation == InstallmentPresentation.INVALID) item { LedgerBanner(stringResource(R.string.installment_validation_error), LedgerBannerVariant.DANGER) }
         item {
@@ -167,8 +177,14 @@ private fun RefundPolicyEditor(state: InstallmentFeatureState, actions: Installm
 @Composable
 private fun InstallmentList(state: InstallmentFeatureState, actions: InstallmentActions) {
     if (state.snapshot.plans.isEmpty()) {
+        val hasEligiblePurchase = state.snapshot.purchases.any { !it.alreadyLinked }
         Box(Modifier.fillMaxSize().testTag(LedgerTestTags.INSTALLMENT_LIST)) {
-            LedgerEmptyState(stringResource(R.string.installment_empty), stringResource(R.string.installment_empty_body), stringResource(R.string.installment_create), { actions.onNavigate("INS-002", null) })
+            LedgerEmptyState(
+                stringResource(if (hasEligiblePurchase) R.string.installment_empty else R.string.installment_no_eligible_purchase),
+                stringResource(if (hasEligiblePurchase) R.string.installment_empty_body else R.string.installment_no_eligible_purchase_body),
+                stringResource(if (hasEligiblePurchase) R.string.installment_create else R.string.installment_open_credit_accounts),
+                { actions.onNavigate(if (hasEligiblePurchase) "INS-002" else "LIA-001", null) },
+            )
         }
         return
     }

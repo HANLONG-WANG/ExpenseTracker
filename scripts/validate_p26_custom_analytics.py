@@ -160,9 +160,9 @@ def validate_tests_resources() -> list[str]:
         "historical same month model is deterministic and never fills missing years with zero",
         "derived moving average trend and forecast are exact versioned series",
         "customReportDashboardAnomalyAndForecastRoundTripThroughNormalizedEncryptedSchema",
-        "encryptedVersionOneDatabaseMigratesToVersionTwoWithoutLosingLedgerData",
+        "encryptedVersionOneDatabaseMigratesToVersionFourWithoutLosingLedgerData",
         "builderAndForecastGoldensMatchEveryPixel",
-        "assertEquals(36, cases.size)", '"ANA-014" to setOf("content", "insufficientData")',
+        "assertEquals(45, cases.size)", '"ANA-014" to setOf("content", "insufficientData")',
     ))
     localized = []
     for folder in ("values", "values-en", "values-ja"):

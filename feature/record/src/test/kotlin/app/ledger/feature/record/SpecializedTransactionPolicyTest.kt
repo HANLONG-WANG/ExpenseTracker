@@ -10,13 +10,18 @@ import app.ledger.core.money.FxRateSource
 import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.SpecializedFxQuote
+import app.ledger.finance.application.SpecializedTransactionEditView
+import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.EntityStatus
+import app.ledger.finance.domain.TransactionKind
+import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Locale
 
@@ -76,6 +81,94 @@ class SpecializedTransactionPolicyTest {
         state = SpecializedTransactionPolicy.updateExpression(state, false, "1", Locale.ENGLISH)
 
         assertTrue(SpecializedTransactionPolicy.validate(state).errors.any { it.code == "SAME_ACCOUNT" })
+    }
+
+    @Test
+    fun `transfer edit restores the immutable revision into a single transaction editor`() {
+        val transactionId = id(40)
+        val revisionId = id(41)
+        val edit = SpecializedTransactionEditView(
+            transactionId,
+            revisionId,
+            TransactionKind.TRANSFER,
+            id(2),
+            id(3),
+            1_000L,
+            900L,
+            1_500L,
+            1_500L,
+            "5+5",
+            NOW,
+            ZONE,
+            LocalDate.of(2026, 8, 3),
+            "original note",
+            listOf(id(42)),
+            BalanceAdjustmentDirection.INCREASE,
+            null,
+            TransactionSource.MANUAL,
+            null,
+        )
+
+        val state = SpecializedTransactionPolicy.create(
+            SpecializedTransactionKind.TRANSFER,
+            snapshot(),
+            null,
+            NOW.plusSeconds(60),
+            ZONE,
+            Locale.ENGLISH,
+            edit,
+        )
+
+        assertEquals(transactionId, state.transactionId)
+        assertEquals(revisionId, state.expectedRevisionId)
+        assertEquals("5+5", state.draft.outgoingExpression)
+        assertEquals("9", state.draft.incomingExpression)
+        assertEquals(1_000L, state.draft.outgoingMinor)
+        assertEquals(listOf(id(42)), state.draft.attachmentIds)
+        assertEquals("original note", state.draft.note)
+    }
+
+    @Test
+    fun `editing keeps historically referenced archived accounts selected`() {
+        val transactionId = id(80)
+        val revisionId = id(81)
+        val archivedFrom = account(id(82), "Archived wallet", usd, 0).copy(status = EntityStatus.ARCHIVED)
+        val activeTo = account(id(83), "Active wallet", eur, 1)
+        val snapshot = snapshot().copy(accounts = listOf(archivedFrom, activeTo))
+        val edit = SpecializedTransactionEditView(
+            transactionId,
+            revisionId,
+            TransactionKind.TRANSFER,
+            archivedFrom.id,
+            activeTo.id,
+            1_000L,
+            900L,
+            1_500L,
+            1_500L,
+            "10",
+            NOW,
+            ZONE,
+            LocalDate.of(2026, 8, 3),
+            null,
+            emptyList(),
+            BalanceAdjustmentDirection.INCREASE,
+            null,
+            TransactionSource.MANUAL,
+            null,
+        )
+
+        val state = SpecializedTransactionPolicy.create(
+            SpecializedTransactionKind.TRANSFER,
+            snapshot,
+            null,
+            NOW,
+            ZONE,
+            Locale.ENGLISH,
+            edit,
+        )
+
+        assertEquals(archivedFrom.id, state.draft.fromAccountId)
+        assertEquals(activeTo.id, state.draft.toAccountId)
     }
 
     private fun snapshot(): ReferenceDataSnapshot = ReferenceDataSnapshot(

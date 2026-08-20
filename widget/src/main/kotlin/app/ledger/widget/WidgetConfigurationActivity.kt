@@ -18,12 +18,15 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.lifecycle.lifecycleScope
@@ -64,13 +67,21 @@ class WidgetConfigurationActivity : ComponentActivity() {
             finish()
             return
         }
-        setContent {
-            LedgerTheme(ThemeMode.FOLLOW_SYSTEM, dynamicColor = false, reduceMotion = false) {
-                WidgetConfigurationFlow(
-                    appWidgetId = appWidgetId,
-                    onCancel = ::finish,
-                    onSave = ::save,
-                )
+        lifecycleScope.launch {
+            val localizedContext = this@WidgetConfigurationActivity.withLanguageTag(LedgerWidgetRuntime.languageTag())
+            setContent {
+                CompositionLocalProvider(
+                    LocalContext provides localizedContext,
+                    LocalConfiguration provides localizedContext.resources.configuration,
+                ) {
+                    LedgerTheme(ThemeMode.FOLLOW_SYSTEM, dynamicColor = false, reduceMotion = false) {
+                        WidgetConfigurationFlow(
+                            appWidgetId = appWidgetId,
+                            onCancel = ::finish,
+                            onSave = ::save,
+                        )
+                    }
+                }
             }
         }
     }

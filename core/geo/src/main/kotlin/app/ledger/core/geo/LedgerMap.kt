@@ -183,6 +183,7 @@ fun LedgerMap(
     onFailure: (LedgerMapFailure) -> Unit,
     onViewportChanged: (LedgerMapViewport) -> Unit = {},
     onPointSelected: (StableId) -> Unit = {},
+    onCoordinateSelected: ((latitudeE7: Int, longitudeE7: Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     require(accessibleColumnHeaders.size == ACCESSIBLE_COLUMN_COUNT)
@@ -207,7 +208,7 @@ fun LedgerMap(
             model = LedgerMapUiModel(summary, availability, styleConfiguration.attribution),
             mapContent = {
                 val available = state as LedgerMapState.Available
-                MapLibreContent(available, styleConfiguration, onFailure, onViewportChanged, onPointSelected)
+                MapLibreContent(available, styleConfiguration, onFailure, onViewportChanged, onPointSelected, onCoordinateSelected)
             },
             fallbackContent = {
                 if (rows.isNotEmpty()) AccessibleMapRows(accessibleCaption, accessibleColumnHeaders, rows)
@@ -248,6 +249,7 @@ private fun MapLibreContent(
     onFailure: (LedgerMapFailure) -> Unit,
     onViewportChanged: (LedgerMapViewport) -> Unit,
     onPointSelected: (StableId) -> Unit,
+    onCoordinateSelected: ((latitudeE7: Int, longitudeE7: Int) -> Unit)?,
 ) {
     if (LocalInspectionMode.current) {
         onFailure(LedgerMapFailure.RENDERER_UNAVAILABLE)
@@ -258,6 +260,7 @@ private fun MapLibreContent(
     val latestFailure by rememberUpdatedState(onFailure)
     val latestViewport by rememberUpdatedState(onViewportChanged)
     val latestPointSelected by rememberUpdatedState(onPointSelected)
+    val latestCoordinateSelected by rememberUpdatedState(onCoordinateSelected)
     val dark = LedgerTheme.colors.material.background.luminance() < DARK_LUMINANCE_THRESHOLD
     val design = LedgerMapDesignContract.current()
     val density = LocalDensity.current
@@ -287,6 +290,7 @@ private fun MapLibreContent(
             { latestFailure(LedgerMapFailure.STYLE_OR_NETWORK_UNAVAILABLE) },
             { latestViewport(it) },
             { latestPointSelected(it) },
+            { latitudeE7, longitudeE7 -> latestCoordinateSelected?.invoke(latitudeE7, longitudeE7) },
         )
     }
     controller.render(renderSpec)
@@ -326,6 +330,7 @@ private class LedgerMapController(
     private val onFailure: () -> Unit,
     private val onViewportChanged: (LedgerMapViewport) -> Unit,
     private val onPointSelected: (StableId) -> Unit,
+    private val onCoordinateSelected: (latitudeE7: Int, longitudeE7: Int) -> Unit,
 ) {
     val view: MapView = MapView(context)
     private var map: MapLibreMap? = null
@@ -426,7 +431,11 @@ private class LedgerMapController(
             ready.easeCamera(CameraUpdateFactory.newLatLngZoom(coordinate, (ready.cameraPosition.zoom + CLUSTER_ZOOM_STEP).coerceAtMost(MAX_ZOOM_BUCKET.toDouble())))
             return true
         }
-        return false
+        onCoordinateSelected(
+            (coordinate.latitude * E7_DIVISOR).roundToInt().coerceIn(MIN_LATITUDE_E7, MAX_LATITUDE_E7),
+            (coordinate.longitude * E7_DIVISOR).roundToInt().coerceIn(MIN_LONGITUDE_E7, MAX_LONGITUDE_E7),
+        )
+        return true
     }
 
     private fun start() {

@@ -521,15 +521,16 @@ private fun VirtualPreview(state: ImportWizardUiState) {
     LazyColumn(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         items(state.previewRowCount, key = { index -> state.previewRow(index).rowNumber }) { index ->
             val row = state.previewRow(index)
+            val status = if (row.status == "READY") stringResource(R.string.import_preview_ready) else row.status
             LedgerCard(
                 Modifier.fillMaxWidth().clearAndSetSemantics {
-                    contentDescription = "${row.rowNumber}, ${row.status}"
+                    contentDescription = "${row.rowNumber}, $status"
                 },
             ) {
                 Column(Modifier.padding(LedgerTheme.spacing.sm)) {
                     LedgerText(stringResource(R.string.import_row_number, row.rowNumber), LedgerTextRole.LABEL)
                     LedgerText(row.summary, LedgerTextRole.BODY, Modifier.clearAndSetSemantics { })
-                    LedgerText(row.status, LedgerTextRole.SUPPORTING)
+                    LedgerText(status, LedgerTextRole.SUPPORTING)
                 }
             }
         }

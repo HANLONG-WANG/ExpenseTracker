@@ -57,6 +57,7 @@ internal fun SettlementRootDestination(
                 is SettlementScreenAction.SelectPayee -> viewModel.selectSettlementPayee(action.participantId)
                 is SettlementScreenAction.SelectAccount -> viewModel.selectSettlementAccount(action.accountId)
                 is SettlementScreenAction.SelectProject -> viewModel.selectSettlementProject(action.projectId)
+                is SettlementScreenAction.SelectCurrency -> viewModel.selectSettlementCurrency(action.currency)
                 is SettlementScreenAction.SplitMethodChanged -> viewModel.selectSettlementSplitMethod(action.method)
                 is SettlementScreenAction.ChargeDistributionChanged -> viewModel.selectSettlementChargeDistribution(action.distribution)
                 is SettlementScreenAction.RoundingRuleChanged -> viewModel.selectSettlementRoundingRule(action.rule)

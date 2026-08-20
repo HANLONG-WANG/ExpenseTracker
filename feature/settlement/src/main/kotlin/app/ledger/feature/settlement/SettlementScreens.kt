@@ -98,7 +98,30 @@ private fun SettlementEditor(state: SettlementFeatureState, actions: SettlementA
     item { LedgerTextField(state.draft.description, { actions.onFieldChanged(SettlementField.DESCRIPTION, it) }, stringResource(R.string.settlement_description), Modifier.fillMaxWidth()) }
     item { LedgerTextField(state.draft.startDate, { actions.onFieldChanged(SettlementField.START_DATE, it) }, stringResource(R.string.settlement_start_date), Modifier.fillMaxWidth(), errorText = stringResource(R.string.settlement_validation).takeIf { "startDate" in state.validationFields }, required = true) }
     item { LedgerTextField(state.draft.endDate, { actions.onFieldChanged(SettlementField.END_DATE, it) }, stringResource(R.string.settlement_end_date), Modifier.fillMaxWidth(), errorText = stringResource(R.string.settlement_validation).takeIf { "endDate" in state.validationFields }) }
-    item { LedgerText(stringResource(R.string.settlement_currency_locked), LedgerTextRole.SUPPORTING) }
+    item {
+        FormSection(
+            stringResource(R.string.settlement_currency),
+            description = stringResource(R.string.settlement_currency_locked),
+        ) {
+            val currencies = (listOf(state.snapshot.baseCurrency) + state.snapshot.accounts.filter { it.active }.map { it.currency })
+                .distinct()
+                .sorted()
+            val existingActivity = state.activity
+            if (existingActivity != null) {
+                LedgerText(existingActivity.currency.value, LedgerTextRole.BODY)
+            } else {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                    currencies.forEach { currency ->
+                        LedgerButton(
+                            currency.value,
+                            { actions.onSelectCurrency(currency) },
+                            variant = if (state.draft.currency == currency) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT,
+                        )
+                    }
+                }
+            }
+        }
+    }
     item {
         FormSection(stringResource(R.string.settlement_project), description = stringResource(R.string.settlement_project_support)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
@@ -112,6 +135,7 @@ private fun SettlementEditor(state: SettlementFeatureState, actions: SettlementA
     item { ParticipantChips(state, actions) }
     item { LedgerTextField(state.draft.participantName, { actions.onFieldChanged(SettlementField.PARTICIPANT_NAME, it) }, stringResource(R.string.settlement_participant_name), Modifier.fillMaxWidth()) }
     item { LedgerButton(stringResource(R.string.settlement_add_participant), actions.onAddParticipant, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
+    item { StateBanner(state) }
     item { LedgerButton(stringResource(R.string.settlement_save_activity), actions.onSave, Modifier.fillMaxWidth()) }
 }
 

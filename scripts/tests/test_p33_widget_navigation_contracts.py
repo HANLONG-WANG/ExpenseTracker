@@ -27,6 +27,18 @@ class P33WidgetNavigationContractMutationTest(unittest.TestCase):
     def test_widget_render_must_not_depend_on_app_lock(self) -> None:
         self.assertTrue(self.mutate("LedgerGlanceWidget.kt", "LedgerWidgetRuntime.resolve", "AppLock.resolve"))
 
+    def test_widget_render_must_use_the_in_app_language(self) -> None:
+        self.assertTrue(self.mutate("LedgerGlanceWidget.kt", "withLanguageTag(languageTag)", "applicationContext"))
+
+    def test_first_launcher_refresh_must_retain_the_saved_configuration(self) -> None:
+        self.assertTrue(
+            self.mutate(
+                "LedgerWidgetRuntime.kt",
+                "savedConfigurations[configuration.appWidgetId] = configuration",
+                "savedConfigurations.clear()",
+            ),
+        )
+
     def test_quick_entry_destination_remains_allowlisted(self) -> None:
         self.assertTrue(self.mutate("AppRootViewModel.kt", "widget destination is not allowlisted", "open arbitrary route"))
 

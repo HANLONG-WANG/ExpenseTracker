@@ -28,6 +28,12 @@ class P10FilesGeoContractMutationTest(unittest.TestCase):
         )
         self.assertTrue(any("grants.remove" in error for error in errors))
 
+    def test_rejects_disconnected_attachment_session(self) -> None:
+        errors = validator.validate_sources(
+            self.mutated("SecureBookAttachmentObjectPort.kt", "SecureAttachmentProviderProcess.install", "DetachedProvider.install")
+        )
+        self.assertTrue(any("ProviderProcess.install" in error for error in errors))
+
     def test_rejects_waiting_longer_than_three_seconds(self) -> None:
         errors = validator.validate_sources(
             self.mutated("ForegroundLocationClient.kt", "MAXIMUM_SAVE_WAIT_MILLIS: Long = 3_000L", "MAXIMUM_SAVE_WAIT_MILLIS: Long = 4_000L")
@@ -45,6 +51,12 @@ class P10FilesGeoContractMutationTest(unittest.TestCase):
             self.mutated("LedgerMap.kt", "AccessibleMapRows", "HiddenMapRows")
         )
         self.assertTrue(any("AccessibleMapRows" in error for error in errors))
+
+    def test_rejects_removing_cross_transaction_attachment_reuse(self) -> None:
+        errors = validator.validate_sources(
+            self.mutated("OrdinaryRecordScreens.kt", "actions.onReuseAttachment(attachment.id)", "Unit")
+        )
+        self.assertTrue(any("cross-transaction attachment reuse" in error for error in errors))
 
 
 if __name__ == "__main__":

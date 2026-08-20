@@ -148,14 +148,29 @@ class JournalApplicationPortDeviceTest {
         assertEquals(RevisionAction.RESTORE, journal.history(BOOK_ID, TRANSACTION_A).success().first().action)
 
         val purgeAfter = Instant.parse("2026-08-10T00:00:00Z")
+        val balanceBeforeTrash = withDatabase { database ->
+            database.scalar("SELECT normal_balance_minor FROM account_balance_current abc JOIN user_account ua ON ua.id=abc.account_id WHERE ua.uid=?", arrayOf(ACCOUNT_ID.bytes))
+        }
         journal.mutate(
             JournalMutationRequest.MoveToTrash(mutationIds(30_000, TRANSACTION_A), restored.transaction.revisionId, Instant.parse("2026-08-06T00:00:00Z"), purgeAfter),
         ).success()
+        val balanceAfterTrash = withDatabase { database ->
+            database.scalar("SELECT normal_balance_minor FROM account_balance_current abc JOIN user_account ua ON ua.id=abc.account_id WHERE ua.uid=?", arrayOf(ACCOUNT_ID.bytes))
+        }
+        assertEquals(balanceBeforeTrash + 1_250L, balanceAfterTrash)
         val assessment = journal.assessPurge(BOOK_ID, TRANSACTION_A, purgeAfter.plusSeconds(1)).success()
         assertTrue(assessment.financiallyEligible)
         assertTrue(assessment.canPurgeNow)
         assertTrue(assessment.reasons.isEmpty())
-        assertEquals(TransactionLifecycleState.TRASHED, requireNotNull(journal.detail(BOOK_ID, TRANSACTION_A).success()).transaction.state)
+        val trashed = requireNotNull(journal.detail(BOOK_ID, TRANSACTION_A).success()).transaction
+        assertEquals(TransactionLifecycleState.TRASHED, trashed.state)
+        journal.mutate(
+            JournalMutationRequest.RestoreFromTrash(mutationIds(35_000, TRANSACTION_A), trashed.revisionId, Instant.parse("2026-08-07T00:00:00Z")),
+        ).success()
+        val balanceAfterRestore = withDatabase { database ->
+            database.scalar("SELECT normal_balance_minor FROM account_balance_current abc JOIN user_account ua ON ua.id=abc.account_id WHERE ua.uid=?", arrayOf(ACCOUNT_ID.bytes))
+        }
+        assertEquals(balanceBeforeTrash, balanceAfterRestore)
     }
 
     @Test

@@ -43,7 +43,8 @@ class LedgerGlanceWidget : GlanceAppWidget() {
         val configuration = LedgerWidgetRuntime.readConfiguration(appWidgetId)
         val content = configuration?.let { LedgerWidgetRuntime.resolve(it) }
             ?: LedgerWidgetContent.NotConfigured
-        provideContent { LedgerWidgetContent(configuration, content) }
+        val languageTag = LedgerWidgetRuntime.languageTag()
+        provideContent { LedgerWidgetContent(configuration, content, languageTag) }
     }
 }
 
@@ -67,8 +68,10 @@ class LedgerGlanceWidgetReceiver : GlanceAppWidgetReceiver() {
 private fun LedgerWidgetContent(
     configuration: LedgerWidgetConfiguration?,
     content: LedgerWidgetContent,
+    languageTag: String,
 ) {
-    val context = LocalContext.current
+    val context = LocalContext.current.withLanguageTag(languageTag)
+    val locale = context.resources.configuration.locales[0]
     val tokens = LedgerGlanceTokens.light
     val colors = dayNightColorProvider(tokens.surface, LedgerGlanceTokens.dark.surface)
     val onSurface = dayNightColorProvider(tokens.onSurface, LedgerGlanceTokens.dark.onSurface)
@@ -80,28 +83,28 @@ private fun LedgerWidgetContent(
         .let { base -> if (action == null) base else base.clickable(action) }
     Column(modifier, verticalAlignment = Alignment.Vertical.CenterVertically) {
         when (content) {
-            LedgerWidgetContent.NotConfigured -> StateText(R.string.widget_not_configured, onSurface)
-            LedgerWidgetContent.NoEligibleData -> StateText(R.string.widget_no_data, onSurface)
-            LedgerWidgetContent.Locked -> StateText(R.string.widget_locked, onSurface)
-            LedgerWidgetContent.Stale -> StateText(R.string.widget_stale, onSurface)
-            is LedgerWidgetContent.Ready -> ReadyContent(requireNotNull(configuration), content, onSurface)
+            LedgerWidgetContent.NotConfigured -> StateText(context, R.string.widget_not_configured, onSurface)
+            LedgerWidgetContent.NoEligibleData -> StateText(context, R.string.widget_no_data, onSurface)
+            LedgerWidgetContent.Locked -> StateText(context, R.string.widget_locked, onSurface)
+            LedgerWidgetContent.Stale -> StateText(context, R.string.widget_stale, onSurface)
+            is LedgerWidgetContent.Ready -> ReadyContent(context, locale, requireNotNull(configuration), content, onSurface)
         }
     }
 }
 
 @Composable
-private fun StateText(resource: Int, color: ColorProvider) {
-    val context = LocalContext.current
+private fun StateText(context: Context, resource: Int, color: ColorProvider) {
     Text(context.getString(resource), style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.bodySizeSp.sp))
 }
 
 @Composable
 private fun ReadyContent(
+    context: Context,
+    locale: Locale,
     configuration: LedgerWidgetConfiguration,
     content: LedgerWidgetContent.Ready,
     color: ColorProvider,
 ) {
-    val context = LocalContext.current
     val title = context.getString(configuration.type.titleResource())
     Text(
         title,
@@ -114,18 +117,24 @@ private fun ReadyContent(
         )
         LedgerWidgetType.ACCOUNT -> content.account?.let { account ->
             Text(account.displayName, style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp))
-            AmountText(account.balanceMinor, account.currency, configuration.revealAmounts, color)
+            AmountText(account.balanceMinor, account.currency, configuration.revealAmounts, locale, color)
             Text(
                 context.getString(
                     R.string.widget_available_value,
-                    formattedAmount(account.availableMinor, account.currency, configuration.revealAmounts),
+                    formattedAmount(account.availableMinor, account.currency, configuration.revealAmounts, locale),
                 ),
                 style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
             )
         }
         LedgerWidgetType.CREDIT_CARD -> content.credit?.let { credit ->
             Text(credit.displayName, style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp))
-            AmountText(credit.statementRemainingMinor ?: credit.debtMinor, credit.currency, configuration.revealAmounts, color)
+            AmountText(
+                credit.statementRemainingMinor ?: credit.debtMinor,
+                credit.currency,
+                configuration.revealAmounts,
+                locale,
+                color,
+            )
             credit.statementDueDate?.let { due ->
                 Text(
                     context.getString(R.string.widget_due_date_value, due.toDisplayDate()),
@@ -135,19 +144,21 @@ private fun ReadyContent(
         }
         LedgerWidgetType.GOAL -> content.goal?.let { goal ->
             Text(goal.displayName, style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp))
-            AmountText(goal.balanceMinor, goal.currency, configuration.revealAmounts, color)
+            AmountText(goal.balanceMinor, goal.currency, configuration.revealAmounts, locale, color)
             Text(
                 context.getString(R.string.widget_progress_value, goalProgress(goal.balanceMinor, goal.targetMinor)),
                 style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
             )
         }
-        LedgerWidgetType.FINANCIAL_OVERVIEW -> Overview(content.bundle, configuration.revealAmounts, color)
-        else -> BookAmount(configuration, requireNotNull(content.bundle.book), color)
+        LedgerWidgetType.FINANCIAL_OVERVIEW -> Overview(context, locale, content.bundle, configuration.revealAmounts, color)
+        else -> BookAmount(context, locale, configuration, requireNotNull(content.bundle.book), color)
     }
 }
 
 @Composable
 private fun BookAmount(
+    context: Context,
+    locale: Locale,
     configuration: LedgerWidgetConfiguration,
     book: WidgetBookSnapshot,
     color: ColorProvider,
@@ -159,40 +170,42 @@ private fun BookAmount(
         LedgerWidgetType.CORE_NET_ASSETS -> book.coreNetFinancialAssetsBaseMinor
         else -> 0L
     }
-    AmountText(amount, book.baseCurrency, configuration.revealAmounts, color)
+    AmountText(amount, book.baseCurrency, configuration.revealAmounts, locale, color)
     if (configuration.type == LedgerWidgetType.MONTH_BUDGET) {
-        val context = LocalContext.current
         Text(
             context.getString(
                 R.string.widget_used_value,
-                formattedAmount(requireNotNull(book.monthBudgetUsedBaseMinor), book.baseCurrency, configuration.revealAmounts),
+                formattedAmount(
+                    requireNotNull(book.monthBudgetUsedBaseMinor),
+                    book.baseCurrency,
+                    configuration.revealAmounts,
+                    locale,
+                ),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
         )
     }
     if (configuration.type == LedgerWidgetType.MONTH_CONSUMPTION) {
-        val context = LocalContext.current
         val comparison = runCatching {
             Math.subtractExact(book.monthConsumptionBaseMinor, book.previousMonthConsumptionBaseMinor)
         }.getOrNull()
         Text(
             context.getString(
                 R.string.widget_previous_month_comparison,
-                comparison?.let { formattedAmount(it, book.baseCurrency, configuration.revealAmounts) }
+                comparison?.let { formattedAmount(it, book.baseCurrency, configuration.revealAmounts, locale) }
                     ?: context.getString(R.string.widget_no_data),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
         )
     }
     if (configuration.type == LedgerWidgetType.CORE_NET_ASSETS) {
-        val context = LocalContext.current
         val change = runCatching {
             Math.subtractExact(book.coreNetFinancialAssetsBaseMinor, book.previousCoreNetFinancialAssetsBaseMinor)
         }.getOrNull()
         Text(
             context.getString(
                 R.string.widget_snapshot_change,
-                change?.let { formattedAmount(it, book.baseCurrency, configuration.revealAmounts) }
+                change?.let { formattedAmount(it, book.baseCurrency, configuration.revealAmounts, locale) }
                     ?: context.getString(R.string.widget_no_data),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
@@ -201,9 +214,14 @@ private fun BookAmount(
 }
 
 @Composable
-private fun Overview(bundle: app.ledger.finance.application.WidgetSnapshotBundle, reveal: Boolean, color: ColorProvider) {
+private fun Overview(
+    context: Context,
+    locale: Locale,
+    bundle: app.ledger.finance.application.WidgetSnapshotBundle,
+    reveal: Boolean,
+    color: ColorProvider,
+) {
     val snapshot = requireNotNull(bundle.book)
-    val context = LocalContext.current
     val rows = listOf(
         R.string.widget_month_consumption to snapshot.monthConsumptionBaseMinor,
         R.string.widget_month_budget to snapshot.monthBudgetAvailableBaseMinor,
@@ -214,7 +232,8 @@ private fun Overview(bundle: app.ledger.finance.application.WidgetSnapshotBundle
             context.getString(
                 R.string.widget_overview_line,
                 context.getString(label),
-                amount?.let { formattedAmount(it, snapshot.baseCurrency, reveal) } ?: context.getString(R.string.widget_no_data),
+                amount?.let { formattedAmount(it, snapshot.baseCurrency, reveal, locale) }
+                    ?: context.getString(R.string.widget_no_data),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
         )
@@ -224,7 +243,7 @@ private fun Overview(bundle: app.ledger.finance.application.WidgetSnapshotBundle
             context.getString(
                 R.string.widget_overview_line,
                 context.getString(R.string.widget_credit_card),
-                formattedAmount(credit.statementRemainingMinor ?: credit.debtMinor, credit.currency, reveal),
+                formattedAmount(credit.statementRemainingMinor ?: credit.debtMinor, credit.currency, reveal, locale),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
         )
@@ -232,17 +251,17 @@ private fun Overview(bundle: app.ledger.finance.application.WidgetSnapshotBundle
 }
 
 @Composable
-private fun AmountText(minor: Long, currency: String, reveal: Boolean, color: ColorProvider) {
+private fun AmountText(minor: Long, currency: String, reveal: Boolean, locale: Locale, color: ColorProvider) {
     Text(
-        formattedAmount(minor, currency, reveal),
+        formattedAmount(minor, currency, reveal, locale),
         style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.bodySizeSp.sp, fontWeight = FontWeight.Bold),
     )
 }
 
-private fun formattedAmount(minor: Long, code: String, reveal: Boolean): String {
+private fun formattedAmount(minor: Long, code: String, reveal: Boolean, locale: Locale): String {
     if (!reveal) return "••••"
     val currency = Currency.getInstance(code)
-    val formatter = NumberFormat.getCurrencyInstance(Locale.getDefault()).apply { this.currency = currency }
+    val formatter = NumberFormat.getCurrencyInstance(locale).apply { this.currency = currency }
     val amount = BigDecimal.valueOf(minor).movePointLeft(currency.defaultFractionDigits.coerceAtLeast(0))
     return formatter.format(amount.setScale(currency.defaultFractionDigits.coerceAtLeast(0), RoundingMode.UNNECESSARY))
 }

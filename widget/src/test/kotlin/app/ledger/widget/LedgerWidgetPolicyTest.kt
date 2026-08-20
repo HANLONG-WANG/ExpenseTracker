@@ -104,6 +104,23 @@ class LedgerWidgetPolicyTest {
         }
     }
 
+    @Test
+    fun newlySavedConfigurationIsReadableDuringTheFirstLauncherRefresh() = runBlocking {
+        val saved = configuration(LedgerWidgetType.QUICK_ENTRY)
+        LedgerWidgetRuntime.install(
+            snapshots = object : WidgetSnapshotApplicationPort {
+                override suspend fun read(bookId: StableId) = DomainResult.Success(completeBundle())
+                override suspend fun quickTargets(bookId: StableId) = DomainResult.Success(emptyList<WidgetQuickTarget>())
+            },
+            configurations = InMemoryConfigurations,
+            localDate = { TODAY },
+        )
+
+        LedgerWidgetRuntime.saveConfiguration(saved)
+
+        assertEquals(saved, LedgerWidgetRuntime.readConfiguration(saved.appWidgetId))
+    }
+
     private fun configuration(type: LedgerWidgetType, revealAmounts: Boolean = false): LedgerWidgetConfiguration = LedgerWidgetConfiguration(
         appWidgetId = 42,
         bookId = BOOK_ID,

@@ -121,6 +121,15 @@ internal class ImportController(
 
     fun currentOperationId(): StableId? = operationId?.value
 
+    fun canAbandon(): Boolean = !(
+        mutableState.value.stage == ImportWizardStage.EXECUTION &&
+            mutableState.value.executionState in setOf(
+                ImportExecutionState.COMMITTING,
+                ImportExecutionState.APPLYING_SHADOW,
+                ImportExecutionState.VALIDATING,
+            )
+        )
+
     fun selectMode(mode: ImportModeUi) {
         mutableState.value = mutableState.value.copy(mode = mode)
     }
@@ -250,6 +259,58 @@ internal class ImportController(
 
     fun cancel() {
         operationId?.value?.let { ImportRunControlRegistry.get(it).cancel() }
+    }
+
+    suspend fun abandon(): Boolean = withContext(Dispatchers.IO) {
+        if (!canAbandon()) return@withContext false
+        val activeBook = bookId
+        val activeOperation = operationId
+        if (activeBook != null && activeOperation != null) {
+            val repository = operations(activeBook)
+            val loaded = repository.get(activeOperation).success()
+            val nonCancelableStates = setOf(BackgroundOperationState.COMMITTING, BackgroundOperationState.ROLLING_BACK)
+            if (loaded?.state?.let(nonCancelableStates::contains) == true) {
+                return@withContext false
+            }
+            ImportRunControlRegistry.get(activeOperation.value).cancel()
+            WorkManager.getInstance(applicationContext)
+                .cancelUniqueWork(ImportWorkScheduler.uniqueName(activeOperation.value))
+                .result
+                .get()
+            if (loaded != null && loaded.state !in setOf(BackgroundOperationState.SUCCEEDED, BackgroundOperationState.FAILED_FINAL)) {
+                var current = loaded
+                if (current.state in setOf(
+                        BackgroundOperationState.QUEUED,
+                        BackgroundOperationState.PREPARING,
+                        BackgroundOperationState.RUNNING,
+                        BackgroundOperationState.PAUSED,
+                    )
+                ) {
+                    current = current.transition(BackgroundOperationState.CANCEL_REQUESTED, runtime.clock.now()).success()
+                    repository.save(current).success()
+                }
+                if (current.state == BackgroundOperationState.CANCEL_REQUESTED) {
+                    current = current.transition(BackgroundOperationState.ROLLING_BACK, runtime.clock.now()).success()
+                    repository.save(current).success()
+                } else if (current.state == BackgroundOperationState.FAILED_RETRYABLE) {
+                    current = current.transition(BackgroundOperationState.ROLLING_BACK, runtime.clock.now()).success()
+                    repository.save(current).success()
+                }
+                if (current.state == BackgroundOperationState.ROLLING_BACK) {
+                    current = current.transition(
+                        BackgroundOperationState.FAILED_FINAL,
+                        runtime.clock.now(),
+                        errorCode = ImportFailure.Cancelled.code,
+                    ).success()
+                    repository.save(current).success()
+                }
+            }
+            staging(activeBook, activeOperation).destroy().success()
+            sourceHandleId?.let { SecureImportSourceHandleStore(applicationContext, keyProvider).destroy(it) }
+            ImportRunControlRegistry.remove(activeOperation.value)
+        }
+        resetWizard()
+        true
     }
 
     suspend fun retry() {
@@ -648,7 +709,44 @@ internal class ImportController(
 
     private fun mappingUi(): List<ImportMappingRowUi> = samples.keys.sorted().map { source ->
         val mapping = mappings.singleOrNull { it.sourceColumn == source }
-        ImportMappingRowUi(source, mapping?.targetField?.name, samples[source].orEmpty(), mapping != null)
+        val expected = AUTO_FIELDS[source.trim().lowercase()]
+        ImportMappingRowUi(
+            source,
+            mapping?.targetField?.name,
+            samples[source].orEmpty(),
+            mapping != null || expected !in REQUIRED_TRANSACTION_TARGETS,
+        )
+    }
+
+    private fun resetWizard() {
+        mutableState.value = ImportWizardUiState()
+        bookId = null
+        operationId = null
+        sourceHandleId = null
+        format = ImportFormat.CSV
+        mappings = emptyList()
+        samples = emptyMap()
+        distinctValues = emptyMap()
+        entityDecisions = emptyList()
+        allEntityDecisions = emptyList()
+        fxDecisions = emptyList()
+        duplicateResolutions = emptyMap()
+        entityCreationEnabled = emptyMap()
+        preparedRows = 0L
+        preparedTransactionRows = 0L
+        baseCurrency = null
+        zoneId = ZoneId.of("UTC")
+        batchId = null
+        importRecordId = null
+        useStructuredUndo = false
+        firstSourceRowNumber = 1L
+        appliedEncoding = null
+        appliedHeaderRowNumber = 1L
+        referenceSnapshot = null
+        samplesBySheet = emptyMap()
+        distinctBySheet = emptyMap()
+        previewsBySheet = emptyMap()
+        rowCountsBySheet = emptyMap()
     }
 
     private fun rebuildEntityDecisions(
@@ -774,19 +872,31 @@ internal class ImportController(
         val AUTO_FIELDS = mapOf(
             "kind" to ImportTargetField.TRANSACTION_KIND,
             "type" to ImportTargetField.TRANSACTION_KIND,
+            "transaction_type" to ImportTargetField.TRANSACTION_KIND,
             "category" to ImportTargetField.CATEGORY,
             "amount" to ImportTargetField.AMOUNT_EXPRESSION,
+            "amount_minor" to ImportTargetField.AMOUNT_EXPRESSION,
             "currency" to ImportTargetField.CURRENCY,
             "account" to ImportTargetField.ACCOUNT,
             "card" to ImportTargetField.CARD,
+            "card_display_name" to ImportTargetField.CARD,
             "merchant" to ImportTargetField.MERCHANT,
             "occurred_at" to ImportTargetField.OCCURRED_AT,
             "date" to ImportTargetField.OCCURRED_AT,
             "project" to ImportTargetField.PROJECT,
             "note" to ImportTargetField.NOTE,
             "location" to ImportTargetField.LOCATION,
+            "place" to ImportTargetField.LOCATION,
             "payer" to ImportTargetField.PAYER,
             "payee" to ImportTargetField.PAYEE,
+        )
+        val REQUIRED_TRANSACTION_TARGETS = setOf(
+            ImportTargetField.TRANSACTION_KIND,
+            ImportTargetField.CATEGORY,
+            ImportTargetField.AMOUNT_EXPRESSION,
+            ImportTargetField.CURRENCY,
+            ImportTargetField.ACCOUNT,
+            ImportTargetField.OCCURRED_AT,
         )
     }
 }

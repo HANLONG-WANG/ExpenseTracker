@@ -5,6 +5,9 @@ package app.ledger.transfer.data
 import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
+import app.ledger.core.common.getOrNull
+import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.finance.domain.FinancialCommandType
 import app.ledger.finance.domain.Hash256
 import app.ledger.transfer.domain.BackgroundOperationId
@@ -43,6 +46,7 @@ import java.time.format.DateTimeFormatter
 class ImportPreparationService(
     private val duplicateMatcher: ExistingTransactionMatcher = ExistingTransactionMatcher { _, _ -> DomainResult.Success(null) },
 ) {
+    private val currencies = JvmLegalTenderCurrencyCatalog.create()
     suspend fun prepare(
         operationId: BackgroundOperationId,
         format: ImportFormat,
@@ -164,6 +168,20 @@ class ImportPreparationService(
                 issues += error(row.rowNumber, mapping.targetField, "FIELD_TRANSFORMATION_INVALID")
             } else if (mapped.put(mapping.targetField, transformed) != null) {
                 issues += error(row.rowNumber, mapping.targetField, "MULTIPLE_SOURCE_COLUMNS_FOR_SINGLE_FIELD")
+            }
+        }
+        val minorUnitMapping = transactionMappings.singleOrNull {
+            it.targetField == ImportTargetField.AMOUNT_EXPRESSION && it.sourceColumn.equals("amount_minor", ignoreCase = true)
+        }
+        if (minorUnitMapping != null) {
+            val currency = mapped[ImportTargetField.CURRENCY]
+                ?.let { CurrencyCode.parse(it).getOrNull() }
+            val fractionDigits = currency?.let { currencies.find(it)?.fractionDigits }
+            val minor = mapped[ImportTargetField.AMOUNT_EXPRESSION]?.toBigDecimalOrNull()
+            if (fractionDigits == null || minor == null) {
+                issues += error(row.rowNumber, ImportTargetField.AMOUNT_EXPRESSION, "MINOR_UNIT_AMOUNT_INVALID")
+            } else {
+                mapped[ImportTargetField.AMOUNT_EXPRESSION] = minor.movePointLeft(fractionDigits).stripTrailingZeros().toPlainString()
             }
         }
         val categoryCount = raw["category_count"]?.toIntOrNull() ?: mapped[ImportTargetField.CATEGORY]?.split('|')?.size ?: 0

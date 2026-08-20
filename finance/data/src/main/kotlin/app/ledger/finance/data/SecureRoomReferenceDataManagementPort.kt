@@ -23,6 +23,7 @@ import app.ledger.core.database.DatabaseIntegrityAudit
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.security.DeviceLedgerKeyProvider
 import app.ledger.finance.application.AccountGoalReferenceView
 import app.ledger.finance.application.AccountReferenceView
@@ -91,6 +92,7 @@ public class SecureRoomReferenceDataManagementPort(
     private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
 ) : ReferenceDataManagementPort {
     private val applicationContext = context.applicationContext
+    private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
     private val projections = RoomProjectionEngine()
     private val financialWriteGate = ReferenceFinancialWriteGate()
     private val financialSnapshotMapper = RoomReferenceFinancialSnapshotMapper()
@@ -640,6 +642,7 @@ public class SecureRoomReferenceDataManagementPort(
         val draft = mutation.draft
         validateName(draft.name, "account.name")
         validateIcon(draft.iconKey)
+        if (currencyCatalog.find(draft.currency) == null) abort(ReferenceDataViolation.InvalidField("account.currency"))
         val existing = db.queryOne(
             "SELECT ua.id, ua.ledger_account_id, ua.type, ua.currency_code, ua.row_version, EXISTS(SELECT 1 FROM posting p WHERE p.ledger_account_id = ua.ledger_account_id) FROM user_account ua WHERE ua.uid = ?",
             arrayOf(draft.accountId.bytes),

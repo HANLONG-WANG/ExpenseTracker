@@ -105,21 +105,43 @@ private fun TemplateList(state: AutomationFeatureState, actions: AutomationActio
         return
     }
     ScreenList(Modifier.testTag(LedgerTestTags.AUTOMATION_TEMPLATE_LIST)) {
-        items(state.snapshot.blueprints, key = { it.id.toString() }) { template -> TemplateCard(template) { actions.onNavigate("AUT-003", template.id) } }
+        items(state.snapshot.blueprints, key = { it.id.toString() }) { template ->
+            TemplateCard(
+                template,
+                onUse = { actions.onTemplateSelected(template.id) },
+                onEdit = { actions.onNavigate("AUT-003", template.id) },
+            )
+        }
         item { LedgerButton(stringResource(R.string.automation_add_template), { actions.onNavigate("AUT-003", null) }, Modifier.fillMaxWidth()) }
     }
 }
 
 @Composable
-private fun TemplateCard(blueprint: BlueprintView, onClick: () -> Unit) {
-    LedgerCard(Modifier.fillMaxWidth(), onClick = onClick) {
-        Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column(Modifier.weight(1f)) {
-                LedgerText(blueprint.name, LedgerTextRole.SECTION)
-                LedgerText(kindLabel(blueprint.targetKind), LedgerTextRole.SUPPORTING)
-                LedgerText(blueprint.amountExpression ?: stringResource(R.string.automation_amount_when_used), LedgerTextRole.BODY)
+private fun TemplateCard(blueprint: BlueprintView, onUse: () -> Unit, onEdit: (() -> Unit)? = null) {
+    LedgerCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(Modifier.weight(1f)) {
+                    LedgerText(blueprint.name, LedgerTextRole.SECTION)
+                    LedgerText(kindLabel(blueprint.targetKind), LedgerTextRole.SUPPORTING)
+                    LedgerText(blueprint.amountExpression ?: stringResource(R.string.automation_amount_when_used), LedgerTextRole.BODY)
+                }
+                StatusBadge(if (blueprint.status == EntityStatus.ACTIVE) stringResource(R.string.automation_active) else stringResource(R.string.automation_archived), if (blueprint.status == EntityStatus.ACTIVE) LedgerStatusVariant.POSITIVE else LedgerStatusVariant.ARCHIVED)
             }
-            StatusBadge(if (blueprint.status == EntityStatus.ACTIVE) stringResource(R.string.automation_active) else stringResource(R.string.automation_archived), if (blueprint.status == EntityStatus.ACTIVE) LedgerStatusVariant.POSITIVE else LedgerStatusVariant.ARCHIVED)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                LedgerButton(
+                    stringResource(R.string.automation_use_template),
+                    onUse,
+                    enabled = blueprint.status == EntityStatus.ACTIVE,
+                    compact = true,
+                )
+                onEdit?.let {
+                    LedgerButton(stringResource(R.string.automation_edit_template), it, variant = LedgerButtonVariant.TEXT, compact = true)
+                }
+            }
         }
     }
 }
@@ -216,6 +238,9 @@ private fun SeriesEditor(state: AutomationFeatureState, actions: AutomationActio
                 state.snapshot.blueprints.filter { it.status == EntityStatus.ACTIVE }.forEach { blueprint ->
                     LedgerChoiceRow(blueprint.name, draft.blueprintId == blueprint.id, { actions.onRecurrenceBlueprint(blueprint.id) })
                 }
+                if ("blueprint" in state.validationFields) {
+                    LedgerText(stringResource(R.string.automation_required_error), LedgerTextRole.SUPPORTING)
+                }
             }
         }
         item {
@@ -234,6 +259,9 @@ private fun SeriesEditor(state: AutomationFeatureState, actions: AutomationActio
         }
         item { LedgerToggleRow(stringResource(R.string.automation_notify_candidate), draft.notifyCandidate, actions.onNotifyCandidate, supportingText = stringResource(R.string.automation_notify_candidate_body), enabled = draft.generationMode == RecurrenceGenerationMode.CANDIDATE) }
         item { LedgerBanner(stringResource(R.string.automation_fixed_place_notice), LedgerBannerVariant.INFO) }
+        if (state.validationFields.any { it != "blueprint" }) {
+            item { LedgerBanner(stringResource(R.string.automation_rule_invalid), LedgerBannerVariant.DANGER) }
+        }
         item { LedgerButton(stringResource(R.string.automation_preview_next), { actions.onNavigate("AUT-007", draft.id) }, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
         item { LedgerBanner(stringResource(R.string.automation_reality_disclaimer), LedgerBannerVariant.WARNING) }
         item { LedgerButton(stringResource(R.string.automation_save_series), actions.onSaveRecurrence, Modifier.fillMaxWidth(), enabled = state.presentation != AutomationPresentation.SAVING) }
@@ -273,7 +301,7 @@ private fun RuleEditor(state: AutomationFeatureState, actions: AutomationActions
         item { LedgerTextField(draft.startDate, { actions.onRecurrenceField(RecurrenceField.START_DATE, it) }, stringResource(R.string.automation_start_date), required = true, errorText = errorIf(state, "startDate")) }
         item { LedgerTextField(draft.endDate, { actions.onRecurrenceField(RecurrenceField.END_DATE, it) }, stringResource(R.string.automation_end_date), errorText = errorIf(state, "endDate")) }
         item { LedgerTextField(draft.maxOccurrences, { actions.onRecurrenceField(RecurrenceField.MAX_OCCURRENCES, it) }, stringResource(R.string.automation_max_occurrences), keyboardType = KeyboardType.Number, errorText = errorIf(state, "maxOccurrences")) }
-        item { LedgerButton(stringResource(R.string.automation_apply_rule), actions.onSaveRecurrence, Modifier.fillMaxWidth()) }
+        item { LedgerButton(stringResource(R.string.automation_apply_rule), actions.onApplyRule, Modifier.fillMaxWidth()) }
     }
 }
 
@@ -434,8 +462,16 @@ private fun ScreenList(modifier: Modifier, content: androidx.compose.foundation.
     },
 )
 
+@Composable
 private fun ruleSummary(series: RecurrenceSeriesView): String = ruleSummary(series.rule, series.startDate.toString())
-private fun ruleSummary(rule: app.ledger.finance.domain.RecurrenceRule, startDate: String): String = "${rule.frequency.name.lowercase().replace('_', ' ')} · ${rule.interval} · $startDate"
+
+@Composable
+private fun ruleSummary(rule: app.ledger.finance.domain.RecurrenceRule, startDate: String): String = stringResource(
+    R.string.automation_rule_summary,
+    frequencyLabel(rule.frequency),
+    rule.interval,
+    startDate,
+)
 
 private val supportedBlueprintKinds = setOf(TransactionKind.EXPENSE, TransactionKind.INCOME, TransactionKind.CREDIT_PAYMENT, TransactionKind.LOAN_PAYMENT)
 private val frequencyResources = mapOf(

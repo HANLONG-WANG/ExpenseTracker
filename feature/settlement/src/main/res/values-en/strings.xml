@@ -78,4 +78,5 @@
     <string name="settlement_project">Linked project</string><string name="settlement_project_support">Optional. Changes affect the current activity configuration and never rewrite historical transaction snapshots.</string><string name="settlement_no_project">No project</string>
     <string name="settlement_move_up">Move up</string><string name="settlement_move_down">Move down</string>
     <string name="settlement_related_transactions">Related transactions</string><string name="settlement_related_empty">No related transactions for this participant.</string><string name="settlement_related_row">%1$s · share %2$d minor units</string>
+    <string name="settlement_currency">Settlement currency</string>
 </resources>

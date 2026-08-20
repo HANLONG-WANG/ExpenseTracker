@@ -82,6 +82,7 @@ import app.ledger.feature.journal.JournalScreenAction
 import app.ledger.feature.onboarding.OnboardingScreen
 import app.ledger.feature.onboarding.OnboardingScreenAction
 import app.ledger.feature.record.BatchRecordState
+import app.ledger.feature.record.OrdinaryRecordScreenUiState
 import app.ledger.feature.settings.CurrencySettingsDestination
 import app.ledger.feature.settings.CurrencySettingsState
 import app.ledger.feature.settings.ManagementDataState
@@ -105,6 +106,7 @@ import app.ledger.transfer.domain.BackgroundOperationState
 import app.ledger.transfer.domain.BackgroundOperationType
 import kotlinx.coroutines.delay
 import java.util.Locale
+import app.ledger.core.files.R as FilesR
 import app.ledger.feature.journal.R as JournalR
 import app.ledger.feature.record.R as RecordR
 import app.ledger.feature.settings.R as SettingsR
@@ -147,13 +149,55 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
         val settingsWriteFailed = stringResource(R.string.global_settings_write_failed)
         val localClearFailed = stringResource(R.string.global_local_clear_failed)
         val externalAppUnavailable = stringResource(R.string.global_external_app_unavailable)
-        LaunchedEffect(viewModel, snackbarController, settingsWriteFailed, localClearFailed, externalAppUnavailable) {
+        val referenceSaved = stringResource(R.string.global_reference_saved)
+        val referenceArchived = stringResource(R.string.global_reference_archived)
+        val referenceDeleted = stringResource(R.string.global_reference_deleted)
+        val referenceMutationFailed = stringResource(R.string.global_reference_mutation_failed)
+        val journalMovedToTrash = stringResource(R.string.global_journal_moved_to_trash)
+        val journalRestored = stringResource(R.string.global_journal_restored)
+        val journalMutationFailed = stringResource(R.string.global_journal_mutation_failed)
+        val journalPermanentlyDeleted = stringResource(R.string.global_journal_permanently_deleted)
+        val planningUpdated = stringResource(R.string.global_planning_updated)
+        val loanUpdated = stringResource(R.string.global_loan_updated)
+        val settlementUpdated = stringResource(R.string.global_settlement_updated)
+        val automationUpdated = stringResource(R.string.global_automation_updated)
+        LaunchedEffect(
+            viewModel,
+            snackbarController,
+            settingsWriteFailed,
+            localClearFailed,
+            externalAppUnavailable,
+            referenceSaved,
+            referenceArchived,
+            referenceDeleted,
+            referenceMutationFailed,
+            journalMovedToTrash,
+            journalRestored,
+            journalMutationFailed,
+            journalPermanentlyDeleted,
+            planningUpdated,
+            loanUpdated,
+            settlementUpdated,
+            automationUpdated,
+        ) {
             viewModel.globalSnackbarMessages.collect { message ->
                 snackbarController.show(
                     when (message) {
                         GlobalSnackbarMessage.SETTINGS_WRITE_FAILED -> settingsWriteFailed
                         GlobalSnackbarMessage.LOCAL_CLEAR_FAILED -> localClearFailed
                         GlobalSnackbarMessage.EXTERNAL_APP_UNAVAILABLE -> externalAppUnavailable
+                        GlobalSnackbarMessage.REFERENCE_SAVED -> referenceSaved
+                        GlobalSnackbarMessage.REFERENCE_ARCHIVED -> referenceArchived
+                        GlobalSnackbarMessage.REFERENCE_DELETED -> referenceDeleted
+                        GlobalSnackbarMessage.REFERENCE_MUTATION_FAILED -> referenceMutationFailed
+                        GlobalSnackbarMessage.JOURNAL_MOVED_TO_TRASH -> journalMovedToTrash
+                        GlobalSnackbarMessage.JOURNAL_RESTORED -> journalRestored
+                        GlobalSnackbarMessage.JOURNAL_MUTATION_FAILED -> journalMutationFailed
+                        GlobalSnackbarMessage.JOURNAL_PERMANENTLY_DELETED -> journalPermanentlyDeleted
+                        GlobalSnackbarMessage.PLANNING_UPDATED -> planningUpdated
+                        GlobalSnackbarMessage.LOAN_UPDATED -> loanUpdated
+                        GlobalSnackbarMessage.SETTLEMENT_UPDATED -> settlementUpdated
+                        GlobalSnackbarMessage.AUTOMATION_UPDATED -> automationUpdated
                     },
                 )
             }
@@ -494,7 +538,9 @@ internal fun RootDestination(
                     ManagementScreenAction.Retry -> viewModel.loadReferenceData()
                 }
             },
-            placeMap = { places, unavailable -> PlaceMapContent(places, unavailable) },
+            placeMap = { places, unavailable, onCoordinateSelected ->
+                PlaceMapContent(places, unavailable, onCoordinateSelected)
+            },
             pending = referenceUiState.submitting,
         )
     } else if (screenId.startsWith("VLT-")) {
@@ -540,6 +586,7 @@ internal fun RootDestination(
                     is SecurityPrivacyScreenAction.GlobalScreenshotBlocked -> viewModel.updateGlobalScreenshotBlocked(action.blocked)
                     is SecurityPrivacyScreenAction.ObscureRecentTasks -> viewModel.updateObscureRecentTasks(action.enabled)
                     is SecurityPrivacyScreenAction.TrashRetentionChanged -> viewModel.updateTrashRetention(action.retention)
+                    is SecurityPrivacyScreenAction.CustomTrashRetentionChanged -> viewModel.updateCustomTrashRetention(action.days)
                     SecurityPrivacyScreenAction.OpenTrash -> {
                         val trash = ScreenId("JRN-011")
                         viewModel.navigator.navigate(LedgerRouteContract.destination(trash), app.ledger.core.navigation.SessionGateState.READY)
@@ -605,16 +652,36 @@ internal fun RootDestination(
                         onNavigationChanged()
                     }
                     is JournalScreenAction.Search -> viewModel.updateJournalSearch(action.query)
-                    is JournalScreenAction.ApplyFilter -> viewModel.applyJournalFilter(action.filter)
+                    is JournalScreenAction.ApplyFilter -> {
+                        viewModel.applyJournalFilter(action.filter)
+                        if (screenId == "JRN-003") {
+                            viewModel.requestRootBack()
+                            onNavigationChanged()
+                        }
+                    }
                     is JournalScreenAction.RemoveFilter -> viewModel.removeJournalFilter(action.key)
                     JournalScreenAction.Retry -> viewModel.loadJournal()
                     is JournalScreenAction.LoadDetail -> viewModel.loadJournalDetail(action.transactionId)
+                    is JournalScreenAction.Edit -> {
+                        viewModel.editJournalTransaction(action.transactionId, action.kind)
+                        onNavigationChanged()
+                    }
+                    is JournalScreenAction.OpenAttachment -> {
+                        viewModel.openAttachment(action.attachmentId)
+                        onNavigationChanged()
+                    }
                     is JournalScreenAction.Select -> viewModel.selectJournalTransaction(action.transactionId)
                     JournalScreenAction.SelectAllMatching -> viewModel.selectAllJournalResults()
                     JournalScreenAction.ClearSelection -> viewModel.clearJournalSelection()
                     is JournalScreenAction.BulkEdit -> viewModel.bulkEditJournal(action.patch)
                     is JournalScreenAction.SaveFilter -> viewModel.saveJournalFilter(action.name)
-                    is JournalScreenAction.ApplyPreset -> viewModel.applyJournalPreset(action.presetId)
+                    is JournalScreenAction.ApplyPreset -> {
+                        viewModel.applyJournalPreset(action.presetId)
+                        if (screenId == "JRN-004") {
+                            viewModel.requestRootBack()
+                            onNavigationChanged()
+                        }
+                    }
                     is JournalScreenAction.CopyPreset -> viewModel.copyJournalPreset(action.presetId)
                     is JournalScreenAction.SetDefaultPreset -> viewModel.setDefaultJournalPreset(action.presetId)
                     is JournalScreenAction.DeletePreset -> viewModel.deleteJournalPreset(action.presetId)
@@ -756,14 +823,18 @@ private fun EmptyTopLevel(emptyTitle: Int, explanation: Int, onMore: () -> Unit)
 }
 
 @Composable
-private fun PlaceMapContent(places: List<app.ledger.finance.application.PlaceReferenceView>, unavailable: Boolean) {
+private fun PlaceMapContent(
+    places: List<app.ledger.finance.application.PlaceReferenceView>,
+    unavailable: Boolean,
+    onCoordinateSelected: ((latitudeE7: Int, longitudeE7: Int) -> Unit)?,
+) {
     val identity = places.joinToString(separator = "|") { "${it.id}:${it.rowVersion}" }
     var rendererFailed by remember(identity) { mutableStateOf(false) }
     val summary = stringResource(R.string.global_place_map_summary, places.count())
     val rows = places.map { place ->
         LedgerMapAccessibleRow(place.name, stringResource(R.string.global_location_record_count, place.locationRecordCount))
     }
-    val state = if (unavailable || rendererFailed || places.none()) {
+    val state = if (unavailable || rendererFailed || places.none() && onCoordinateSelected == null) {
         LedgerMapState.Unavailable(summary, rows)
     } else {
         LedgerMapState.Available(
@@ -786,10 +857,11 @@ private fun PlaceMapContent(places: List<app.ledger.finance.application.PlaceRef
         showAccessibleListLabel = stringResource(R.string.global_show_place_list),
         hideAccessibleListLabel = stringResource(R.string.global_hide_place_list),
         onFailure = { rendererFailed = true },
+        onCoordinateSelected = onCoordinateSelected,
     )
     if (unavailable || rendererFailed) {
         LedgerBanner(stringResource(R.string.global_map_renderer_unavailable), LedgerBannerVariant.INFO)
-    } else if (places.none()) {
+    } else if (places.none() && onCoordinateSelected == null) {
         LedgerText(stringResource(R.string.global_place_map_empty), LedgerTextRole.SUPPORTING)
     }
 }
@@ -1117,6 +1189,12 @@ private fun rootDestinationTitleResource(screenId: String): Int? = if (screenId 
     JournalR.string.p15_journal_trash
 } else if (screenId == "JRN-012") {
     JournalR.string.p15_journal_purge
+} else if (screenId == "ATT-001") {
+    FilesR.string.attachment_preview_title
+} else if (screenId == "ATT-002") {
+    FilesR.string.attachment_external_open_title
+} else if (screenId == "ATT-003") {
+    FilesR.string.attachment_rename_title
 } else if (screenId == "ACC-001") {
     R.string.global_accounts_title
 } else if (screenId == "BUD-001") {

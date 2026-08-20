@@ -323,6 +323,7 @@ public data class AttachmentUiModel(
 
 public sealed interface LocationFieldState {
     public data object Locating : LocationFieldState
+    public data object ReadyAtSave : LocationFieldState
     public data class Located(val accuracyText: String) : LocationFieldState
     public data object Unavailable : LocationFieldState
     public data object PermissionDenied : LocationFieldState

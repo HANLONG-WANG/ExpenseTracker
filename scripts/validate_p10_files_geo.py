@@ -118,6 +118,8 @@ def validate_sources(sources: Mapping[str, str]) -> list[str]:
             "transaction_revision_attachment",
             "backup_object",
             "blob_gc_candidate",
+            "activeAttachments",
+            "WHERE a.status = ?",
         ),
     )
     coil = named(sources, "EncryptedAttachmentCoil.kt")
@@ -150,6 +152,28 @@ def validate_sources(sources: Mapping[str, str]) -> list[str]:
             "AUTHORIZATION_LIFETIME_MILLIS = 60_000L",
             "onApplicationLocked",
         ),
+    )
+    session = named(sources, "SecureBookAttachmentObjectPort.kt")
+    require_tokens(
+        errors,
+        session,
+        "visible attachment session",
+        (
+            "openSession",
+            "SecureBookAttachmentSession",
+            "SecureAttachmentImageLoader",
+            "SecureAttachmentProviderProcess.install",
+            "externalOpenConfirmation",
+            "store.rename",
+            "activeMetadata",
+        ),
+    )
+    record = named(sources, "OrdinaryRecordScreens.kt")
+    require_tokens(
+        errors,
+        record,
+        "cross-transaction attachment reuse",
+        ("onReuseAttachment", "record_attachments_reuse_title", "attachment.id"),
     )
 
     security_models = named(sources, "SecurityModels.kt")

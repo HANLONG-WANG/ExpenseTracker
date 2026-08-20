@@ -15,6 +15,7 @@
     <string name="ledger_loading">Loading</string>
     <string name="ledger_view_data_table">View data table</string>
     <string name="ledger_expand_data_table">Expand data table</string>
+    <string name="ledger_data_table_horizontal_hint">Scroll the table horizontally to view every column</string>
     <string name="ledger_map_unavailable">Map unavailable; the list and summary remain available</string>
     <string name="ledger_record">Record</string>
     <string name="ledger_journal">Journal</string>
@@ -31,6 +32,7 @@
     <string name="ledger_hide">Hide</string>
     <string name="ledger_confirm_phrase">Enter the confirmation phrase</string>
     <string name="ledger_locating">Getting location…</string>
+    <string name="ledger_location_ready_at_save">Location will be attempted on save for up to 3 seconds</string>
     <string name="ledger_location_acquired">Acquired · %1$s</string>
     <string name="ledger_location_unavailable">No location; saving remains available</string>
     <string name="ledger_location_denied">Location permission not granted</string>

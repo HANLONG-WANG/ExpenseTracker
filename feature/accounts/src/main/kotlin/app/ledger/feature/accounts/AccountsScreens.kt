@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import app.ledger.core.common.CheckedArithmetic
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
@@ -65,6 +66,8 @@ import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.AmountVisibility
+import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.MoneyUiModel
 import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.application.CardReferenceView
@@ -73,6 +76,8 @@ import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.domain.CardType
 import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.UserAccountType
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDate
 
 @Composable
@@ -203,13 +208,22 @@ private fun AccountEditor(
     var selectedPalette by remember(accountId) {
         mutableStateOf(LedgerReferenceDisplayDefaults.paletteId(selectedColor))
     }
-    val validation = state == "validationError" || name.isBlank() || currency.length != 3
+    val parsedCurrency = CurrencyCode.parse(currency).getOrNull()
+    val supportedCurrency = parsedCurrency != null && JvmLegalTenderCurrencyCatalog.create().find(parsedCurrency) != null
+    val validation = state == "validationError" || name.isBlank() || !supportedCurrency
     if (state == "currencyLocked" || existing?.hasFinancialPostings == true) {
         LedgerBanner(stringResource(R.string.accounts_currency_locked), LedgerBannerVariant.INFO)
     }
     if (validation && state == "validationError") LedgerBanner(stringResource(R.string.accounts_validation), LedgerBannerVariant.DANGER)
     LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.accounts_name), required = true, errorText = stringResource(R.string.accounts_required).takeIf { validation && name.isBlank() })
-    LedgerTextField(currency, { currency = it.uppercase().take(CURRENCY_LENGTH) }, stringResource(R.string.accounts_currency), required = true, enabled = existing?.hasFinancialPostings != true)
+    LedgerTextField(
+        currency,
+        { currency = it.uppercase().take(CURRENCY_LENGTH) },
+        stringResource(R.string.accounts_currency),
+        required = true,
+        enabled = existing?.hasFinancialPostings != true,
+        errorText = stringResource(R.string.accounts_currency_unsupported).takeIf { currency.isNotBlank() && !supportedCurrency },
+    )
     if ((existing?.type ?: selectedType) != UserAccountType.CASH) {
         LedgerTextField(institution, { institution = it.take(MAX_NAME) }, stringResource(R.string.accounts_institution))
         LedgerTextField(branch, { branch = it.take(MAX_NAME) }, stringResource(R.string.accounts_branch))
@@ -321,6 +335,33 @@ private fun AccountDetail(snapshot: ReferenceDataSnapshot?, accountId: StableId,
         LedgerButton(stringResource(R.string.accounts_transactions), { actions.onNavigate("ACC-006", mapOf("accountId" to account.id)) }, Modifier.weight(1f), variant = LedgerButtonVariant.SECONDARY)
         LedgerButton(stringResource(R.string.accounts_checkpoint), { actions.onNavigate("ACC-007", mapOf("accountId" to account.id)) }, Modifier.weight(1f), variant = LedgerButtonVariant.SECONDARY)
     }
+    snapshot.checkpoints
+        .asSequence()
+        .filter { it.accountId == accountId }
+        .maxByOrNull(CheckpointReferenceView::asOf)
+        ?.let { checkpoint ->
+            LedgerText(stringResource(R.string.accounts_latest_checkpoint), LedgerTextRole.SECTION)
+            LedgerText(stringResource(R.string.accounts_checkpoint_date, checkpoint.asOfLocalDate.toString()), LedgerTextRole.SUPPORTING)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                MetricCard(stringResource(R.string.accounts_observed_value), checkpoint.observedMinor.money(account.currency.value), Modifier.weight(1f))
+                MetricCard(stringResource(R.string.accounts_book_balance), checkpoint.calculatedMinor.money(account.currency.value), Modifier.weight(1f))
+            }
+            MetricCard(stringResource(R.string.accounts_difference), checkpoint.differenceMinor.money(account.currency.value))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                LedgerButton(
+                    stringResource(R.string.accounts_find_missing),
+                    { actions.onNavigate("ACC-006", mapOf("accountId" to account.id)) },
+                    Modifier.weight(1f),
+                    variant = LedgerButtonVariant.SECONDARY,
+                )
+                LedgerButton(
+                    if (checkpoint.adjustmentTransactionId == null) stringResource(R.string.accounts_create_adjustment) else stringResource(R.string.accounts_adjustment_created),
+                    { actions.onNavigate("REC-020", mapOf("accountId" to account.id)) },
+                    Modifier.weight(1f),
+                    enabled = checkpoint.adjustmentTransactionId == null,
+                )
+            }
+        }
     if (!account.hasFinancialPostings) {
         LedgerButton(
             stringResource(R.string.accounts_add_opening_balance),
@@ -408,7 +449,7 @@ private fun CheckpointEditor(snapshot: ReferenceDataSnapshot?, accountId: Stable
     val account = snapshot?.accounts?.singleOrNull { it.id == accountId }
     var observed by remember(accountId) { mutableStateOf("") }
     var date by remember(accountId) { mutableStateOf("") }
-    val observedMinor = observed.toLongOrNull()
+    val observedMinor = account?.let { observed.toMinorOrNull(it.currency) }
     val selectedDate = runCatching { LocalDate.parse(date) }.getOrNull()
     val calculated = if (selectedDate == null) {
         account?.balanceMinor ?: 0L
@@ -420,8 +461,22 @@ private fun CheckpointEditor(snapshot: ReferenceDataSnapshot?, accountId: Stable
             ?.runningBalanceMinor ?: 0L
     }
     val difference = observedMinor?.let { CheckedArithmetic.subtract(it, calculated).getOrNull() }
-    LedgerTextField(date, { date = it.take(DATE_LENGTH) }, stringResource(R.string.accounts_date), required = true)
-    LedgerTextField(observed, { observed = it.filter { char -> char.isDigit() || char == '-' }.take(MAX_AMOUNT_DIGITS) }, stringResource(R.string.accounts_observed), required = true)
+    LedgerTextField(
+        date,
+        { date = it.take(DATE_LENGTH) },
+        stringResource(R.string.accounts_date),
+        errorText = if (date.isNotBlank() && selectedDate == null) stringResource(R.string.accounts_date_invalid) else null,
+        required = true,
+    )
+    LedgerTextField(
+        observed,
+        { observed = it.filterAmountInput() },
+        stringResource(R.string.accounts_observed, account?.currency?.value.orEmpty()),
+        supportingText = stringResource(R.string.accounts_observed_help),
+        errorText = if (observed.isNotBlank() && observedMinor == null) stringResource(R.string.accounts_amount_invalid) else null,
+        required = true,
+        keyboardType = KeyboardType.Decimal,
+    )
     MetricCard(stringResource(R.string.accounts_book_balance), calculated.money(account?.currency?.value.orEmpty()))
     if (state == "match" || difference == 0L) LedgerBanner(stringResource(R.string.accounts_checkpoint_match), LedgerBannerVariant.INFO)
     if (state == "difference" || difference?.let { it != 0L } == true) MetricCard(stringResource(R.string.accounts_difference), (difference ?: 1L).money(account?.currency?.value.orEmpty()))
@@ -430,7 +485,7 @@ private fun CheckpointEditor(snapshot: ReferenceDataSnapshot?, accountId: Stable
             val localDate = runCatching { LocalDate.parse(date) }.getOrNull() ?: return@LedgerSaveFab
             actions.onSaveCheckpoint(CheckpointSubmission(accountId, localDate, observedMinor ?: return@LedgerSaveFab, null))
         },
-        enabled = observedMinor != null && state != "saving",
+        enabled = account != null && observedMinor != null && selectedDate != null && state != "saving",
         submitting = state == "saving",
     )
 }
@@ -442,10 +497,22 @@ private fun CheckpointResolution(snapshot: ReferenceDataSnapshot?, checkpointId:
         LedgerErrorState(UiErrorCode("CHECKPOINT_NOT_FOUND"), stringResource(R.string.accounts_checkpoint_not_found), actions.onRetry)
         return
     }
+    val account = snapshot.accounts.singleOrNull { it.id == checkpoint.accountId }
+    val currency = account?.currency?.value ?: snapshot.baseCurrency.value
+    LedgerBanner(stringResource(R.string.accounts_checkpoint_saved), LedgerBannerVariant.INFO)
     LedgerBanner(stringResource(R.string.accounts_checkpoint_does_not_change), LedgerBannerVariant.INFO)
-    MetricCard(stringResource(R.string.accounts_difference), checkpoint.differenceMinor.money(snapshot.baseCurrency.value))
+    LedgerText(stringResource(R.string.accounts_checkpoint_date, checkpoint.asOfLocalDate.toString()), LedgerTextRole.SUPPORTING)
+    MetricCard(stringResource(R.string.accounts_observed_value), checkpoint.observedMinor.money(currency))
+    MetricCard(stringResource(R.string.accounts_book_balance), checkpoint.calculatedMinor.money(currency))
+    MetricCard(stringResource(R.string.accounts_difference), checkpoint.differenceMinor.money(currency))
     LedgerButton(stringResource(R.string.accounts_find_missing), { actions.onNavigate("ACC-006", mapOf("accountId" to checkpoint.accountId)) }, Modifier.fillMaxWidth())
-    LedgerButton(stringResource(R.string.accounts_create_adjustment), { actions.onNavigate("REC-020", mapOf("accountId" to checkpoint.accountId)) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.SECONDARY)
+    LedgerButton(
+        if (checkpoint.adjustmentTransactionId == null) stringResource(R.string.accounts_create_adjustment) else stringResource(R.string.accounts_adjustment_created),
+        { actions.onNavigate("REC-020", mapOf("accountId" to checkpoint.accountId)) },
+        Modifier.fillMaxWidth(),
+        variant = LedgerButtonVariant.SECONDARY,
+        enabled = checkpoint.adjustmentTransactionId == null,
+    )
 }
 
 @Composable
@@ -595,7 +662,7 @@ private fun AccountReferenceView.toUi(): AccountSummaryUiModel = AccountSummaryU
     typeLabel = type.label(),
     balance = balanceMinor.money(currency.value),
     secondaryValue = currentBaseValueMinor?.displayMinor(currency.value),
-    status = if (status == EntityStatus.ARCHIVED) "archived" else null,
+    status = if (status == EntityStatus.ARCHIVED) stringResource(R.string.accounts_archived) else null,
     archived = status == EntityStatus.ARCHIVED,
     icon = LedgerIcon.entries.firstOrNull { it.name.equals(iconKey, ignoreCase = true) } ?: LedgerIcon.ACCOUNT,
     paletteId = LedgerReferenceDisplayDefaults.paletteId(colorArgb),
@@ -608,7 +675,25 @@ private fun Long?.money(currency: String): MoneyUiModel = MoneyUiModel(
     visibility = AmountVisibility.VISIBLE,
 )
 
-private fun Long?.displayMinor(currency: String): String = if (this == null) "—" else "$this ${currency.ifBlank { "—" }}"
+private fun Long?.displayMinor(currency: String): String {
+    if (this == null) return "—"
+    val code = CurrencyCode.parse(currency).getOrNull()
+    val fractionDigits = code?.let { CURRENCY_CATALOG.find(it)?.fractionDigits }
+    val displayed = if (fractionDigits == null) toString() else BigDecimal.valueOf(this, fractionDigits).setScale(fractionDigits).toPlainString()
+    return "$displayed ${currency.ifBlank { "—" }}"
+}
+
+private fun String.toMinorOrNull(currency: CurrencyCode): Long? {
+    val fractionDigits = CURRENCY_CATALOG.find(currency)?.fractionDigits ?: return null
+    return runCatching {
+        BigDecimal(trim().replace(',', '.'))
+            .movePointRight(fractionDigits)
+            .setScale(0, RoundingMode.UNNECESSARY)
+            .longValueExact()
+    }.getOrNull()
+}
+
+private fun String.filterAmountInput(): String = filter { it.isDigit() || it == '-' || it == '.' || it == ',' }.take(MAX_AMOUNT_INPUT_LENGTH)
 private fun String.clean(): String? = trim().takeIf(String::isNotEmpty)
 private fun Map<String, String>.stableId(name: String): StableId? = get(name)?.let { StableId.parse(it).getOrNull() }
 private fun Map<String, String>.requireStableId(name: String): StableId = requireNotNull(stableId(name))
@@ -638,8 +723,10 @@ private val SUPPORTED_SCREENS = (1..12).map { "ACC-%03d".format(it) }.toSet()
 private const val MAX_NAME = 80
 private const val CURRENCY_LENGTH = 3
 private const val MAX_AMOUNT_DIGITS = 19
+private const val MAX_AMOUNT_INPUT_LENGTH = 24
 private const val DATE_LENGTH = 10
 private const val TREND_POINT_LIMIT = 30
 private const val RECENT_TRANSACTION_LIMIT = 5
 private const val RECENT_CARD_LIMIT = 3
+private val CURRENCY_CATALOG = JvmLegalTenderCurrencyCatalog.create()
 private const val CARD_TAIL_LENGTH = 4

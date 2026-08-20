@@ -36,6 +36,7 @@ public enum class TrashRetention(public val days: Int) {
     THIRTY_DAYS(30),
     NINETY_DAYS(90),
     NEVER(0),
+    CUSTOM(-1),
 }
 
 public data class FeatureQueueRow(
@@ -77,6 +78,7 @@ public data class SecurityPrivacySettingsState(
     val globalScreenshotBlocked: Boolean = false,
     val obscureRecentTasks: Boolean = true,
     val trashRetention: TrashRetention = TrashRetention.THIRTY_DAYS,
+    val customTrashRetentionDays: Int = 30,
     val privacyAccepted: Boolean = false,
     val telemetryEnabled: Boolean = false,
     val crashEnabled: Boolean = false,
@@ -88,12 +90,15 @@ public data class SecurityPrivacySettingsState(
         require(screenId in SUPPORTED_SECURITY_SETTINGS_SCREENS)
         require(presentation.screenId == screenId)
         require(customTimeoutMinutes in MINIMUM_CUSTOM_TIMEOUT_MINUTES..MAXIMUM_CUSTOM_TIMEOUT_MINUTES)
+        require(customTrashRetentionDays in MINIMUM_TRASH_RETENTION_DAYS..MAXIMUM_TRASH_RETENTION_DAYS)
         require(errorCode == null || ERROR_CODE.matches(errorCode))
     }
 
     public companion object {
         public const val MINIMUM_CUSTOM_TIMEOUT_MINUTES: Int = 1
         public const val MAXIMUM_CUSTOM_TIMEOUT_MINUTES: Int = 1_440
+        public const val MINIMUM_TRASH_RETENTION_DAYS: Int = 1
+        public const val MAXIMUM_TRASH_RETENTION_DAYS: Int = 365
     }
 }
 
@@ -104,6 +109,7 @@ public sealed interface SecurityPrivacyScreenAction {
     public data class GlobalScreenshotBlocked(val blocked: Boolean) : SecurityPrivacyScreenAction
     public data class ObscureRecentTasks(val enabled: Boolean) : SecurityPrivacyScreenAction
     public data class TrashRetentionChanged(val retention: TrashRetention) : SecurityPrivacyScreenAction
+    public data class CustomTrashRetentionChanged(val days: Int) : SecurityPrivacyScreenAction
     public data object OpenTrash : SecurityPrivacyScreenAction
     public data class TelemetryEnabled(val enabled: Boolean) : SecurityPrivacyScreenAction
     public data class CrashEnabled(val enabled: Boolean) : SecurityPrivacyScreenAction
@@ -139,6 +145,7 @@ internal class SecurityPrivacySettingsActions(
     val onConfirmLocalClear: () -> Unit,
     val onOpenSystemSecurity: () -> Unit,
     val onSecurityConfigured: () -> Unit,
+    val onCustomTrashRetention: (Int) -> Unit = {},
 )
 
 internal fun securityPrivacyActions(onAction: (SecurityPrivacyScreenAction) -> Unit): SecurityPrivacySettingsActions = SecurityPrivacySettingsActions(
@@ -148,6 +155,7 @@ internal fun securityPrivacyActions(onAction: (SecurityPrivacyScreenAction) -> U
     onGlobalScreenshotBlocked = { onAction(SecurityPrivacyScreenAction.GlobalScreenshotBlocked(it)) },
     onObscureRecentTasks = { onAction(SecurityPrivacyScreenAction.ObscureRecentTasks(it)) },
     onTrashRetention = { onAction(SecurityPrivacyScreenAction.TrashRetentionChanged(it)) },
+    onCustomTrashRetention = { onAction(SecurityPrivacyScreenAction.CustomTrashRetentionChanged(it)) },
     onOpenTrash = { onAction(SecurityPrivacyScreenAction.OpenTrash) },
     onTelemetryEnabled = { onAction(SecurityPrivacyScreenAction.TelemetryEnabled(it)) },
     onCrashEnabled = { onAction(SecurityPrivacyScreenAction.CrashEnabled(it)) },

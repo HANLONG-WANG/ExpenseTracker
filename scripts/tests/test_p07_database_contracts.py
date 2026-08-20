@@ -76,6 +76,22 @@ class P07DatabaseContractMutationTest(unittest.TestCase):
             with self.assertRaisesRegex(validator.ValidationError, "temp_store"):
                 validator.validate_kotlin_and_build()
 
+    def test_rejects_unregistered_primary_migrations(self) -> None:
+        original_read = validator.read
+
+        def mutated_read(path):
+            value = original_read(path)
+            if path.name == "LedgerDatabase.kt":
+                return value.replace(
+                    "LedgerMigrations.registered(context.applicationContext).forEach { migration -> addMigrations(migration) }",
+                    "emptyList<androidx.room.migration.Migration>().forEach { migration -> addMigrations(migration) }",
+                )
+            return value
+
+        with patch.object(validator, "read", side_effect=mutated_read):
+            with self.assertRaisesRegex(validator.ValidationError, "primary migration registry"):
+                validator.validate_kotlin_and_build()
+
     def test_p06_validator_retains_verified_stage_during_p07(self) -> None:
         project_state = validator.read(validator.ROOT / "docs" / "implementation" / "PROJECT_STATE.md")
         self.assertEqual([], validate_project_state(project_state))

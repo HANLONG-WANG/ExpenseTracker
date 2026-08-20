@@ -71,13 +71,20 @@ internal fun AutomationRootDestination(
                 is AutomationScreenAction.GenerationModeChanged -> viewModel.updateAutomationGenerationMode(action.mode)
                 is AutomationScreenAction.NotifyCandidateChanged -> viewModel.updateAutomationNotifyCandidate(action.enabled)
                 AutomationScreenAction.SaveRecurrence -> viewModel.saveAutomationRecurrence()
-                is AutomationScreenAction.TemplateSelected -> viewModel.selectAutomationTemplate(action.templateId)
+                is AutomationScreenAction.TemplateSelected -> {
+                    viewModel.selectAutomationTemplate(action.templateId)
+                    onNavigationChanged()
+                }
                 is AutomationScreenAction.CandidateSelected -> viewModel.selectAutomationCandidate(action.candidateId)
                 is AutomationScreenAction.CandidateToggled -> viewModel.toggleAutomationCandidate(action.candidateId)
                 AutomationScreenAction.ConfirmCandidate -> viewModel.confirmAutomationCandidate()
                 AutomationScreenAction.SkipCandidate -> viewModel.skipAutomationCandidate()
                 is AutomationScreenAction.ScopeChanged -> viewModel.updateAutomationScope(action.scope)
                 AutomationScreenAction.ApplyScope -> viewModel.applyAutomationScope()
+                AutomationScreenAction.ApplyRule -> {
+                    viewModel.applyAutomationRule()
+                    onNavigationChanged()
+                }
             }
         },
     )

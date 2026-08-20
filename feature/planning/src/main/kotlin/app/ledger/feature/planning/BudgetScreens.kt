@@ -46,6 +46,9 @@ import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.finance.application.BudgetCompositionView
 import app.ledger.finance.domain.BudgetAdjustmentKind
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @Composable
 public fun BudgetDestination(
@@ -595,6 +598,8 @@ private fun categoryName(state: BudgetFeatureState, id: StableId?): String = sta
 
 @Composable
 private fun BudgetHistory(state: BudgetFeatureState, actions: BudgetActions) {
+    val locale = LocalLocale.current.platformLocale
+    val dateTimeFormatter = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale)
     LazyColumn(
         Modifier
             .fillMaxSize()
@@ -610,7 +615,7 @@ private fun BudgetHistory(state: BudgetFeatureState, actions: BudgetActions) {
                         LedgerTextRole.SECTION,
                     )
                     LedgerText(revision.totalBaseMinor.toString(), LedgerTextRole.BODY)
-                    LedgerText(revision.createdAt.toString(), LedgerTextRole.SUPPORTING)
+                    LedgerText(revision.createdAt.atZone(ZoneId.systemDefault()).format(dateTimeFormatter), LedgerTextRole.SUPPORTING)
                 }
             }
         }

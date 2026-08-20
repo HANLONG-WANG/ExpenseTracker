@@ -1,4 +1,4 @@
-@file:Suppress("ComplexCondition", "LongParameterList", "MagicNumber", "MaxLineLength", "ReturnCount", "TooManyFunctions")
+@file:Suppress("ComplexCondition", "LongParameterList", "MagicNumber", "MaxLineLength", "ReturnCount", "TooGenericExceptionCaught", "TooManyFunctions")
 
 package app.ledger.app
 
@@ -383,23 +383,27 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
 
     private suspend fun loadCurrent() {
         mutableState.value = AnalysisLoadState.Loading
-        mutableState.value = when (screenId) {
-            "ANA-001" -> loadOverview()
-            "ANA-002" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.CONTENT))
-            "ANA-003" -> loadReport()
-            "ANA-004" -> loadFilter()
-            "ANA-005" -> loadDrilldown()
-            "ANA-006" -> loadDashboards()
-            "ANA-007" -> loadDashboardEditor()
-            "ANA-008" -> loadBuilder()
-            "ANA-009" -> loadVisualizationPicker()
-            "ANA-010" -> loadExport()
-            "ANA-011" -> loadMap()
-            "ANA-012" -> loadMapDetail()
-            "ANA-013" -> loadAnomalies()
-            "ANA-014" -> loadForecast()
-            "ANA-015" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.NOT_RUN))
-            else -> AnalysisLoadState.Failure(screenId, "ANALYSIS_SCREEN_UNKNOWN")
+        mutableState.value = try {
+            when (screenId) {
+                "ANA-001" -> loadOverview()
+                "ANA-002" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.CONTENT))
+                "ANA-003" -> loadReport()
+                "ANA-004" -> loadFilter()
+                "ANA-005" -> loadDrilldown()
+                "ANA-006" -> loadDashboards()
+                "ANA-007" -> loadDashboardEditor()
+                "ANA-008" -> loadBuilder()
+                "ANA-009" -> loadVisualizationPicker()
+                "ANA-010" -> loadExport()
+                "ANA-011" -> loadMap()
+                "ANA-012" -> loadMapDetail()
+                "ANA-013" -> loadAnomalies()
+                "ANA-014" -> loadForecast()
+                "ANA-015" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.NOT_RUN))
+                else -> AnalysisLoadState.Failure(screenId, "ANALYSIS_SCREEN_UNKNOWN")
+            }
+        } catch (_: Exception) {
+            AnalysisLoadState.Failure(screenId, "ANALYSIS_LOAD_FAILED")
         }
     }
 

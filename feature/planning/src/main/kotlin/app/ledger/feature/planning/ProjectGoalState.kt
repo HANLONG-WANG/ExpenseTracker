@@ -289,7 +289,7 @@ public object ProjectGoalPolicy {
         val errors = buildSet {
             if (state.projectDraft.name.isBlank()) add("name")
             if (parseMinor(state.projectDraft.budgetText, state.snapshot.baseCurrency) == null) add("budget")
-            if (state.projectDraft.endDate?.isBefore(state.projectDraft.startDate) == true) add("dates")
+            if (state.projectDraft.endDate?.isBefore(state.projectDraft.startDate) == true) add("endDate")
         }
         return state.copy(projectErrors = errors, presentation = if (errors.isEmpty()) state.presentation else ProjectGoalPresentation.VALIDATION_ERROR)
     }

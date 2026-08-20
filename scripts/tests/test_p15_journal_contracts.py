@@ -48,6 +48,33 @@ class P15JournalMutationTest(unittest.TestCase):
             )
         )
 
+    def test_detail_must_keep_edit_and_refund_actions(self) -> None:
+        self.assertTrue(self.mutate("JournalDestination.kt", "p15_journal_create_refund", "p15_journal_history"))
+
+    def test_attachment_preview_entry_cannot_be_disconnected(self) -> None:
+        self.assertTrue(self.mutate("JournalDestination.kt", "actions.onOpenAttachment(attachmentId)", "Unit"))
+
+    def test_bulk_operation_state_cannot_return_to_raw_enum(self) -> None:
+        self.assertTrue(self.mutate("JournalDestination.kt", "state.operation.label()", "state.operation.name"))
+
+    def test_trash_and_restore_must_refresh_account_surfaces(self) -> None:
+        sources = copy.deepcopy(self.sources)
+        path = next(path for path in sources if path.endswith("AppRootViewModel.kt"))
+        source = sources[path]
+        start = source.index("private fun executeJournalMutation")
+        end = source.index("private fun refreshJournalPaging", start)
+        sources[path] = source[:start] + source[start:end].replace("loadReferenceDataAfterMutation(bookId)", "") + source[end:]
+        self.assertTrue(validator.validate_sources(sources))
+
+    def test_transfer_edit_cannot_fall_back_to_bulk_editor(self) -> None:
+        self.assertTrue(
+            self.mutate(
+                "AppRootViewModel.kt",
+                'mapOf("transactionId" to StableIdArgument(transactionId))',
+                "emptyMap()",
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

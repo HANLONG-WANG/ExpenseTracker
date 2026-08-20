@@ -26,7 +26,10 @@ internal fun BatchRecordRootDestination(
                 }
                 BatchRecordScreenAction.Add -> viewModel.addBatchRow()
                 is BatchRecordScreenAction.Copy -> viewModel.copyBatchRow(action.rowId)
-                is BatchRecordScreenAction.Delete -> viewModel.deleteBatchRow(action.rowId)
+                is BatchRecordScreenAction.Delete -> {
+                    viewModel.deleteBatchRow(action.rowId)
+                    onNavigationChanged()
+                }
                 is BatchRecordScreenAction.Move -> viewModel.moveBatchRow(action.rowId, action.offset)
                 is BatchRecordScreenAction.Sort -> viewModel.sortBatchRows(action.sort)
                 is BatchRecordScreenAction.Paste -> viewModel.pasteBatchRows(action.text)

@@ -1,6 +1,7 @@
 package app.ledger.feature.settlement
 
 import app.ledger.core.common.StableId
+import app.ledger.core.money.CurrencyCode
 import app.ledger.finance.domain.SettlementChargeDistribution
 import app.ledger.finance.domain.SettlementRoundingRule
 import app.ledger.finance.domain.SettlementSplitMethod
@@ -14,6 +15,7 @@ public sealed interface SettlementScreenAction {
     public data class SelectPayee(val participantId: StableId) : SettlementScreenAction
     public data class SelectAccount(val accountId: StableId?) : SettlementScreenAction
     public data class SelectProject(val projectId: StableId?) : SettlementScreenAction
+    public data class SelectCurrency(val currency: CurrencyCode) : SettlementScreenAction
     public data class SplitMethodChanged(val method: SettlementSplitMethod) : SettlementScreenAction
     public data class ChargeDistributionChanged(val distribution: SettlementChargeDistribution) : SettlementScreenAction
     public data class RoundingRuleChanged(val rule: SettlementRoundingRule) : SettlementScreenAction
@@ -33,6 +35,7 @@ internal class SettlementActions(
     val onSelectPayee: (StableId) -> Unit,
     val onSelectAccount: (StableId?) -> Unit,
     val onSelectProject: (StableId?) -> Unit,
+    val onSelectCurrency: (CurrencyCode) -> Unit,
     val onSplitMethod: (SettlementSplitMethod) -> Unit,
     val onChargeDistribution: (SettlementChargeDistribution) -> Unit,
     val onRoundingRule: (SettlementRoundingRule) -> Unit,
@@ -52,6 +55,7 @@ internal fun settlementActions(onAction: (SettlementScreenAction) -> Unit): Sett
     onSelectPayee = { onAction(SettlementScreenAction.SelectPayee(it)) },
     onSelectAccount = { onAction(SettlementScreenAction.SelectAccount(it)) },
     onSelectProject = { onAction(SettlementScreenAction.SelectProject(it)) },
+    onSelectCurrency = { onAction(SettlementScreenAction.SelectCurrency(it)) },
     onSplitMethod = { onAction(SettlementScreenAction.SplitMethodChanged(it)) },
     onChargeDistribution = { onAction(SettlementScreenAction.ChargeDistributionChanged(it)) },
     onRoundingRule = { onAction(SettlementScreenAction.RoundingRuleChanged(it)) },

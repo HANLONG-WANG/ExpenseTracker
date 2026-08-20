@@ -3,6 +3,12 @@
 package app.ledger.app
 
 import androidx.compose.runtime.Composable
+import app.ledger.core.geo.LedgerMap
+import app.ledger.core.geo.LedgerMapAccessibleRow
+import app.ledger.core.geo.LedgerMapMode
+import app.ledger.core.geo.LedgerMapPoint
+import app.ledger.core.geo.LedgerMapState
+import app.ledger.core.geo.LedgerMapStyleConfiguration
 import app.ledger.feature.record.OrdinaryRecordDestination
 import app.ledger.feature.record.OrdinaryRecordScreenAction
 import app.ledger.feature.record.OrdinaryRecordScreenUiState
@@ -55,7 +61,13 @@ internal fun OrdinaryRecordRootDestination(
                 is OrdinaryRecordScreenAction.SettlementTax -> viewModel.updateRecordSettlementTax(action.value)
                 is OrdinaryRecordScreenAction.SettlementServiceFee -> viewModel.updateRecordSettlementServiceFee(action.value)
                 is OrdinaryRecordScreenAction.OccurredAt -> viewModel.updateRecordOccurredAt(action.dateMillis, action.hour, action.minute)
+                is OrdinaryRecordScreenAction.ManualLocation -> viewModel.setRecordManualLocation(action.latitudeE7, action.longitudeE7)
                 OrdinaryRecordScreenAction.AddAttachment -> onAddAttachment()
+                is OrdinaryRecordScreenAction.ReuseAttachment -> viewModel.reuseRecordAttachment(action.attachmentId)
+                is OrdinaryRecordScreenAction.OpenAttachment -> {
+                    viewModel.openAttachment(action.attachmentId)
+                    onNavigationChanged()
+                }
                 is OrdinaryRecordScreenAction.CancelAttachment -> viewModel.cancelRecordAttachment(action.index)
                 OrdinaryRecordScreenAction.Save -> viewModel.saveOrdinaryRecord()
                 OrdinaryRecordScreenAction.UnsavedDiscard -> {
@@ -69,6 +81,25 @@ internal fun OrdinaryRecordRootDestination(
                     onNavigationChanged()
                 }
             }
+        },
+        locationMap = { model, onPointSelected, onCoordinateSelected, onFailure ->
+            val rows = model.rows.map { LedgerMapAccessibleRow(it.label, it.coordinates) }
+            val points = model.points.map { LedgerMapPoint(it.id, it.latitudeE7, it.longitudeE7, 1L, it.selected) }
+            LedgerMap(
+                state = if (model.unavailable) {
+                    LedgerMapState.Unavailable(model.summary, rows)
+                } else {
+                    LedgerMapState.Available(model.summary, LedgerMapMode.SINGLE_POINTS, points, rows)
+                },
+                styleConfiguration = LedgerMapStyleConfiguration.OpenFreeMap,
+                accessibleCaption = model.caption,
+                accessibleColumnHeaders = listOf(model.nameHeader, model.coordinateHeader),
+                showAccessibleListLabel = model.showListLabel,
+                hideAccessibleListLabel = model.hideListLabel,
+                onFailure = { onFailure() },
+                onPointSelected = onPointSelected,
+                onCoordinateSelected = onCoordinateSelected,
+            )
         },
     )
 }

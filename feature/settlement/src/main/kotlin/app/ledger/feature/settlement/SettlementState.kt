@@ -4,6 +4,7 @@ import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.AmountVisibility
+import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.LocaleCurrencyFormatter
 import app.ledger.core.money.Money
@@ -60,6 +61,7 @@ public data class SettlementDraft(
     val serviceFee: String = "0",
     val note: String = "",
     val participantName: String = "",
+    val currency: CurrencyCode? = null,
     val splitMethod: SettlementSplitMethod = SettlementSplitMethod.EQUAL,
     val chargeDistribution: SettlementChargeDistribution = SettlementChargeDistribution.SAME_AS_BASE,
     val roundingRule: SettlementRoundingRule = SettlementRoundingRule.PARTICIPANT_ORDER,
@@ -137,6 +139,7 @@ public object SettlementPolicy {
                 description = activity?.description.orEmpty(),
                 startDate = activity?.startDate?.toString().orEmpty(),
                 endDate = activity?.endDate?.toString().orEmpty(),
+                currency = activity?.currency ?: snapshot.baseCurrency,
                 payerParticipantId = self?.id,
                 payeeParticipantId = other?.id,
                 accountId = snapshot.accounts.firstOrNull { it.active && it.currency == activity?.currency }?.id,

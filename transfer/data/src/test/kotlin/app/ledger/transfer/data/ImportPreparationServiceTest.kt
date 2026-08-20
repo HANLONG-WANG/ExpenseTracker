@@ -157,6 +157,44 @@ class ImportPreparationServiceTest {
         assertEquals(2L, result.missingEntitiesToCreate)
     }
 
+    @Test
+    fun exportedMinorUnitsAreConvertedBackToCurrencyExpression() = runBlocking {
+        val account = UUID(0x28L, 100L).toString()
+        val category = UUID(0x28L, 101L).toString()
+        val mappings = listOf(
+            StagingMapping("transaction_type", ImportTargetField.TRANSACTION_KIND, ImportTransformation.Identity),
+            StagingMapping("category", ImportTargetField.CATEGORY, ImportTransformation.Identity),
+            StagingMapping("amount_minor", ImportTargetField.AMOUNT_EXPRESSION, ImportTransformation.Identity),
+            StagingMapping("currency", ImportTargetField.CURRENCY, ImportTransformation.Identity),
+            StagingMapping("account", ImportTargetField.ACCOUNT, ImportTransformation.Identity),
+            StagingMapping("occurred_at", ImportTargetField.OCCURRED_AT, ImportTransformation.Identity),
+        )
+        val row = StagingParsedRow(
+            1L,
+            mapOf(
+                "_sheet" to "transactions",
+                "transaction_type" to "EXPENSE",
+                "category" to category,
+                "amount_minor" to "1500",
+                "currency" to "USD",
+                "account" to account,
+                "occurred_at" to "2026-08-09T00:00:00Z",
+            ).map { (name, value) -> StagingParsedField(name, StagingValue.Text(value)) },
+        )
+        val staging = MemoryStaging(listOf(row))
+
+        val result = ImportPreparationService().prepare(
+            OPERATION_ID,
+            ImportFormat.CSV,
+            ImportPreparationRequest("USD", mappings, emptyList(), emptyList(), emptyMap(), setOf("transactions")),
+            staging,
+        ).success()
+
+        assertTrue(result.report.canCommit)
+        val payload = PreparedImportPayloadDecoder.decode(staging.prepared.single().payload)
+        assertEquals("15", payload.values.getValue(ImportTargetField.AMOUNT_EXPRESSION.name))
+    }
+
     private fun structuredRow(number: Long, kind: StructuredEntityKind): StagingParsedRow {
         val id = UUID(0x28L, number).toString()
         val fields = mutableMapOf(

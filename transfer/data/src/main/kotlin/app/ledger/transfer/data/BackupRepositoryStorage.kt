@@ -61,7 +61,10 @@ class FileBackupRepositoryStorage(root: File) : BackupRepositoryStorage {
             try {
                 Files.move(partial.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             } catch (error: AtomicMoveNotSupportedException) {
-                throw IOException("atomic repository publication is unavailable", error)
+                // Some Android filesystems reject the NIO atomic flag even though a same-directory
+                // rename is available. The fallback keeps the completed partial beside its target
+                // and replaces only at publication, so an interrupted write never exposes it.
+                Files.move(partial.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
             return target.length()
         } finally {
