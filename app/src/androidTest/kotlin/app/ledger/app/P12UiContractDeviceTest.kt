@@ -28,13 +28,14 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
 import app.ledger.core.money.CurrencyCode
-import app.ledger.feature.accounts.AccountsActions
 import app.ledger.feature.accounts.AccountsDataState
 import app.ledger.feature.accounts.AccountsDestination
 import app.ledger.feature.accounts.AccountsRequiredState
-import app.ledger.feature.settings.ManagementActions
+import app.ledger.feature.accounts.AccountsScreenAction
+import app.ledger.feature.accounts.AccountsScreenUiState
 import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ManagementRequiredState
+import app.ledger.feature.settings.ManagementScreenAction
 import app.ledger.feature.settings.ReferenceManagementDestination
 import app.ledger.finance.application.AccountGoalReferenceView
 import app.ledger.finance.application.AccountReferenceView
@@ -108,7 +109,7 @@ class P12UiContractDeviceTest {
                             screenId = "CAT-002",
                             encodedArguments = mapOf("direction" to "EXPENSE"),
                             dataState = ManagementDataState.Content(representativeSnapshot()),
-                            actions = managementActions,
+                            onAction = managementActions,
                             placeMap = { _, _ -> },
                             pending = false,
                             stateOverride = ManagementRequiredState.CAT_002_VALIDATION_ERROR,
@@ -139,13 +140,14 @@ class P12UiContractDeviceTest {
             CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides context.resources.configuration) {
                 LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = false) {
                     AccountsDestination(
-                        screenId = "ACC-001",
-                        encodedArguments = emptyMap(),
-                        dataState = AccountsDataState.Content(representativeSnapshot()),
-                        actions = accountActions,
-                        selectedAccountType = UserAccountType.CASH,
-                        pending = false,
-                        stateOverride = AccountsRequiredState.ACC_001_NO_ACCOUNTS,
+                        uiState = AccountsScreenUiState(
+                            "ACC-001",
+                            emptyMap(),
+                            AccountsDataState.Content(representativeSnapshot()),
+                            UserAccountType.CASH,
+                            stateOverride = AccountsRequiredState.ACC_001_NO_ACCOUNTS,
+                        ),
+                        onAction = accountActions,
                     )
                 }
             }
@@ -165,13 +167,14 @@ class P12UiContractDeviceTest {
                 LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
                     Box(Modifier.size(360.dp, 720.dp).testTag(ACCOUNT_GOLDEN_TAG)) {
                         AccountsDestination(
-                            screenId = "ACC-001",
-                            encodedArguments = emptyMap(),
-                            dataState = AccountsDataState.Content(representativeSnapshot()),
-                            actions = accountActions,
-                            selectedAccountType = UserAccountType.BANK,
-                            pending = false,
-                            stateOverride = AccountsRequiredState.ACC_001_CONTENT,
+                            uiState = AccountsScreenUiState(
+                                "ACC-001",
+                                emptyMap(),
+                                AccountsDataState.Content(representativeSnapshot()),
+                                UserAccountType.BANK,
+                                stateOverride = AccountsRequiredState.ACC_001_CONTENT,
+                            ),
+                            onAction = accountActions,
                         )
                     }
                 }
@@ -196,19 +199,21 @@ class P12UiContractDeviceTest {
     private fun render(target: RenderTarget) {
         when (target) {
             is RenderTarget.Account -> AccountsDestination(
-                screenId = target.state.screenId,
-                encodedArguments = accountArguments(target.state),
-                dataState = AccountsDataState.Content(representativeSnapshot()),
-                actions = accountActions,
-                selectedAccountType = UserAccountType.BANK,
-                pending = target.state.contractName == "saving",
-                stateOverride = target.state,
+                uiState = AccountsScreenUiState(
+                    target.state.screenId,
+                    accountArguments(target.state),
+                    AccountsDataState.Content(representativeSnapshot()),
+                    UserAccountType.BANK,
+                    pending = target.state.contractName == "saving",
+                    stateOverride = target.state,
+                ),
+                onAction = accountActions,
             )
             is RenderTarget.Management -> ReferenceManagementDestination(
                 screenId = target.state.screenId,
                 encodedArguments = managementArguments(target.state),
                 dataState = ManagementDataState.Content(representativeSnapshot()),
-                actions = managementActions,
+                onAction = managementActions,
                 placeMap = { _, _ -> },
                 pending = target.state.contractName in setOf("saving", "merging", "splitting", "processing"),
                 stateOverride = target.state,
@@ -325,8 +330,8 @@ class P12UiContractDeviceTest {
 
     private data class RenderCase(val width: Int, val fontScale: Float, val theme: ThemeMode, val dynamic: Boolean)
 
-    private val accountActions = AccountsActions({ _, _ -> }, {}, {}, { _, _ -> }, { _, _ -> }, {}, { _, _ -> }, {}, {}, {})
-    private val managementActions = ManagementActions({ _, _, _ -> }, {}, { _, _ -> }, { _, _, _, _ -> }, {}, { _, _ -> }, {}, { _, _ -> }, { _, _, _ -> }, {})
+    private val accountActions: (AccountsScreenAction) -> Unit = {}
+    private val managementActions: (ManagementScreenAction) -> Unit = {}
 
     private companion object {
         val TEST_ID: StableId = StableId.fromUuid(UUID(0x12, 1))

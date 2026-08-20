@@ -3,8 +3,8 @@
 package app.ledger.app
 
 import androidx.compose.runtime.Composable
-import app.ledger.feature.record.BatchRecordActions
 import app.ledger.feature.record.BatchRecordDestination
+import app.ledger.feature.record.BatchRecordScreenAction
 import app.ledger.feature.record.BatchRecordState
 
 @Composable
@@ -18,36 +18,38 @@ internal fun BatchRecordRootDestination(
     BatchRecordDestination(
         screenId,
         state,
-        BatchRecordActions(
-            onOpenRow = {
-                viewModel.openBatchRow(it)
-                onNavigationChanged()
-            },
-            onAdd = viewModel::addBatchRow,
-            onCopy = viewModel::copyBatchRow,
-            onDelete = viewModel::deleteBatchRow,
-            onMove = viewModel::moveBatchRow,
-            onSort = viewModel::sortBatchRows,
-            onPaste = viewModel::pasteBatchRows,
-            onRowChange = viewModel::updateBatchRow,
-            onCycleReference = viewModel::cycleBatchReference,
-            onAddAttachment = { rowId ->
-                viewModel.requestBatchAttachment(rowId)
-                onLaunchAttachmentPicker()
-            },
-            onValidate = {
-                viewModel.validateBatchEntry()
-                onNavigationChanged()
-            },
-            onConfirmWarnings = viewModel::confirmBatchWarnings,
-            onCommit = viewModel::submitBatchEntry,
-            onUndo = viewModel::undoBatchEntry,
-            onDiscard = viewModel::discardBatchEntry,
-            onKeepEditing = viewModel::keepEditingBatchEntry,
-            onJumpToIssue = {
-                viewModel.jumpToBatchIssue(it)
-                onNavigationChanged()
-            },
-        ),
+        { action ->
+            when (action) {
+                is BatchRecordScreenAction.OpenRow -> {
+                    viewModel.openBatchRow(action.rowId)
+                    onNavigationChanged()
+                }
+                BatchRecordScreenAction.Add -> viewModel.addBatchRow()
+                is BatchRecordScreenAction.Copy -> viewModel.copyBatchRow(action.rowId)
+                is BatchRecordScreenAction.Delete -> viewModel.deleteBatchRow(action.rowId)
+                is BatchRecordScreenAction.Move -> viewModel.moveBatchRow(action.rowId, action.offset)
+                is BatchRecordScreenAction.Sort -> viewModel.sortBatchRows(action.sort)
+                is BatchRecordScreenAction.Paste -> viewModel.pasteBatchRows(action.text)
+                is BatchRecordScreenAction.RowChange -> viewModel.updateBatchRow(action.row)
+                is BatchRecordScreenAction.CycleReference -> viewModel.cycleBatchReference(action.rowId, action.field)
+                is BatchRecordScreenAction.AddAttachment -> {
+                    viewModel.requestBatchAttachment(action.rowId)
+                    onLaunchAttachmentPicker()
+                }
+                BatchRecordScreenAction.Validate -> {
+                    viewModel.validateBatchEntry()
+                    onNavigationChanged()
+                }
+                BatchRecordScreenAction.ConfirmWarnings -> viewModel.confirmBatchWarnings()
+                BatchRecordScreenAction.Commit -> viewModel.submitBatchEntry()
+                BatchRecordScreenAction.Undo -> viewModel.undoBatchEntry()
+                BatchRecordScreenAction.Discard -> viewModel.discardBatchEntry()
+                BatchRecordScreenAction.KeepEditing -> viewModel.keepEditingBatchEntry()
+                is BatchRecordScreenAction.JumpToIssue -> {
+                    viewModel.jumpToBatchIssue(action.issue)
+                    onNavigationChanged()
+                }
+            }
+        },
     )
 }

@@ -34,9 +34,10 @@ import app.ledger.core.designsystem.SensitiveValueField
 @Composable
 public fun VaultDestination(
     state: VaultPresentationState,
-    actions: VaultActions,
+    onAction: (VaultScreenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val actions = vaultActions(onAction)
     Column(
         modifier.fillMaxSize().testTag("vault_root").padding(vertical = LedgerTheme.spacing.xs),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),

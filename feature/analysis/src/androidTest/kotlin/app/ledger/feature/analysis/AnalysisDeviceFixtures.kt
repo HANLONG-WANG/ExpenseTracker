@@ -64,22 +64,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 object AnalysisDeviceFixtures {
-    val actions = AnalysisActions(
-        onNavigate = { _, _, _ -> },
-        onRetry = {},
-        onPreviousPeriod = {},
-        onNextPeriod = {},
-        onCycleMeasure = {},
-        onCycleDimension = {},
-        onCycleGranularity = {},
-        onCycleComparison = {},
-        onApplyFilter = {},
-        onExport = {},
-        onLoadMore = {},
-        onRunIntegrity = {},
-        onRepairProjection = {},
-        onToggleTechnicalDetails = {},
-    )
+    val actions: (AnalysisScreenAction) -> Unit = {}
 
     val period = ReportPeriod(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31))
     val currency: CurrencyCode = CurrencyCode.parse("JPY").success()

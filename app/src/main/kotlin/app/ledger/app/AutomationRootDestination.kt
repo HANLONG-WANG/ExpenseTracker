@@ -11,10 +11,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerSaveFab
-import app.ledger.feature.automation.AutomationActions
 import app.ledger.feature.automation.AutomationDestination
 import app.ledger.feature.automation.AutomationLoadState
 import app.ledger.feature.automation.AutomationPresentation
+import app.ledger.feature.automation.AutomationScreenAction
 import app.ledger.feature.automation.R as AutomationR
 
 @Composable
@@ -43,41 +43,43 @@ internal fun AutomationRootDestination(
     val blueprintId = encodedArguments.stableId("templateId")
     val seriesId = encodedArguments.stableId("seriesId")
     val candidateId = encodedArguments.stableId("candidateId")
-    val state by viewModel.automation.collectAsStateWithLifecycle()
+    val uiState by viewModel.automationUiState.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, blueprintId, seriesId, candidateId) {
         viewModel.loadAutomation(screenId, blueprintId, seriesId, candidateId)
     }
     AutomationDestination(
         screenId,
-        state,
-        AutomationActions(
-            onRetry = { viewModel.loadAutomation(screenId, blueprintId, seriesId, candidateId) },
-            onNavigate = { target, stableId ->
-                viewModel.navigateAutomation(target, stableId)
-                onNavigationChanged()
-            },
-            onSearch = viewModel::updateAutomationSearch,
-            onBlueprintField = viewModel::updateAutomationBlueprintField,
-            onBlueprintKind = viewModel::updateAutomationBlueprintKind,
-            onBlueprintReference = viewModel::updateAutomationBlueprintReference,
-            onSaveBlueprint = viewModel::saveAutomationBlueprint,
-            onRecurrenceField = viewModel::updateAutomationRecurrenceField,
-            onRecurrenceBlueprint = viewModel::selectAutomationRecurrenceBlueprint,
-            onFrequency = viewModel::updateAutomationFrequency,
-            onWeekday = viewModel::toggleAutomationWeekday,
-            onMissingDay = viewModel::updateAutomationMissingDay,
-            onWeekend = viewModel::updateAutomationWeekend,
-            onGenerationMode = viewModel::updateAutomationGenerationMode,
-            onNotifyCandidate = viewModel::updateAutomationNotifyCandidate,
-            onSaveRecurrence = viewModel::saveAutomationRecurrence,
-            onTemplateSelected = viewModel::selectAutomationTemplate,
-            onCandidateSelected = viewModel::selectAutomationCandidate,
-            onCandidateToggle = viewModel::toggleAutomationCandidate,
-            onConfirmCandidate = viewModel::confirmAutomationCandidate,
-            onSkipCandidate = viewModel::skipAutomationCandidate,
-            onScope = viewModel::updateAutomationScope,
-            onApplyScope = viewModel::applyAutomationScope,
-        ),
+        uiState.loadState,
+        { action ->
+            when (action) {
+                AutomationScreenAction.Retry -> viewModel.loadAutomation(screenId, blueprintId, seriesId, candidateId)
+                is AutomationScreenAction.Navigate -> {
+                    viewModel.navigateAutomation(action.screenId, action.id)
+                    onNavigationChanged()
+                }
+                is AutomationScreenAction.Search -> viewModel.updateAutomationSearch(action.query)
+                is AutomationScreenAction.BlueprintFieldChanged -> viewModel.updateAutomationBlueprintField(action.field, action.value)
+                is AutomationScreenAction.BlueprintKindChanged -> viewModel.updateAutomationBlueprintKind(action.kind)
+                is AutomationScreenAction.BlueprintReferenceChanged -> viewModel.updateAutomationBlueprintReference(action.field, action.id)
+                AutomationScreenAction.SaveBlueprint -> viewModel.saveAutomationBlueprint()
+                is AutomationScreenAction.RecurrenceFieldChanged -> viewModel.updateAutomationRecurrenceField(action.field, action.value)
+                is AutomationScreenAction.RecurrenceBlueprintSelected -> viewModel.selectAutomationRecurrenceBlueprint(action.blueprintId)
+                is AutomationScreenAction.FrequencyChanged -> viewModel.updateAutomationFrequency(action.frequency)
+                is AutomationScreenAction.WeekdayToggled -> viewModel.toggleAutomationWeekday(action.weekday)
+                is AutomationScreenAction.MissingDayChanged -> viewModel.updateAutomationMissingDay(action.policy)
+                is AutomationScreenAction.WeekendChanged -> viewModel.updateAutomationWeekend(action.adjustment)
+                is AutomationScreenAction.GenerationModeChanged -> viewModel.updateAutomationGenerationMode(action.mode)
+                is AutomationScreenAction.NotifyCandidateChanged -> viewModel.updateAutomationNotifyCandidate(action.enabled)
+                AutomationScreenAction.SaveRecurrence -> viewModel.saveAutomationRecurrence()
+                is AutomationScreenAction.TemplateSelected -> viewModel.selectAutomationTemplate(action.templateId)
+                is AutomationScreenAction.CandidateSelected -> viewModel.selectAutomationCandidate(action.candidateId)
+                is AutomationScreenAction.CandidateToggled -> viewModel.toggleAutomationCandidate(action.candidateId)
+                AutomationScreenAction.ConfirmCandidate -> viewModel.confirmAutomationCandidate()
+                AutomationScreenAction.SkipCandidate -> viewModel.skipAutomationCandidate()
+                is AutomationScreenAction.ScopeChanged -> viewModel.updateAutomationScope(action.scope)
+                AutomationScreenAction.ApplyScope -> viewModel.applyAutomationScope()
+            }
+        },
     )
 }
 

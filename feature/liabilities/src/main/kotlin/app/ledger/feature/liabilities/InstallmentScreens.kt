@@ -53,8 +53,9 @@ public fun InstallmentDestination(
     screenId: String,
     state: InstallmentLoadState,
     encodedArguments: Map<String, String>,
-    actions: InstallmentActions,
+    onAction: (InstallmentScreenAction) -> Unit,
 ) {
+    val actions = installmentActions(onAction)
     when (state) {
         InstallmentLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.installment_loading))
         is InstallmentLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.installment_load_failed), actions.onRetry)

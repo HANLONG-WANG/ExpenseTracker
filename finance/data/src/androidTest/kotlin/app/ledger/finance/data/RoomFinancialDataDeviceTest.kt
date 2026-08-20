@@ -218,7 +218,7 @@ class RoomFinancialDataDeviceTest {
 
         resetDatabase()
         val rollbackFixture = fixture(seed = 13_000L, commandSeed = 23_000L, book = initialBook(), note = "p08-rollback")
-        FinancialCommitPhase.entries.forEach { phase ->
+        FinancialCommitPhase.entries.filterNot { it == FinancialCommitPhase.AFTER_DATABASE_COMMIT }.forEach { phase ->
             val failing = RoomFinancialCommitRepository(
                 database,
                 FinancialCommitFailureInjector { reached -> if (reached == phase) error("injected-$phase") },
@@ -232,6 +232,54 @@ class RoomFinancialDataDeviceTest {
             assertEquals(0L, scalar("SELECT COUNT(*) FROM journal_entry"))
             assertEquals(0L, scalar("SELECT COUNT(*) FROM command_receipt"))
         }
+    }
+
+    @Test
+    fun processTerminationImmediatelyAfterDurableCommitRecoversReceiptWithoutDuplicateFacts() = runBlocking {
+        val fixture = fixture(seed = 14_000L, commandSeed = 24_000L, book = initialBook(), note = "p08-post-commit-crash")
+        val crashing = RoomFinancialCommitRepository(
+            database,
+            FinancialCommitFailureInjector { phase ->
+                if (phase == FinancialCommitPhase.AFTER_DATABASE_COMMIT) error("simulated process termination")
+            },
+        )
+
+        assertTrue(runCatching { crashing.commit(fixture.command, fixture.plan) }.isFailure)
+        database.close()
+        database = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
+
+        val restarted = RoomFinancialCommitRepository(database)
+        val recovered = requireNotNull(restarted.find(fixture.command.commandId).success())
+        val replayed = restarted.commit(fixture.command, fixture.plan).success()
+        assertEquals(recovered, replayed)
+        assertEquals(1L, scalar("SELECT COUNT(*) FROM command_receipt"))
+        assertEquals(1L, scalar("SELECT COUNT(*) FROM business_transaction"))
+        assertEquals(1L, scalar("SELECT COUNT(*) FROM transaction_revision"))
+        assertEquals(1L, scalar("SELECT COUNT(*) FROM journal_entry"))
+        assertEquals(2L, scalar("SELECT COUNT(*) FROM posting"))
+        assertEquals(2L, scalar("SELECT local_revision FROM book WHERE id=1"))
+    }
+
+    @Test
+    fun applicationUpdateProjectionContractChangeForcesAndCompletesDeterministicRebuild() = runBlocking {
+        val fixture = fixture(seed = 15_000L, commandSeed = 25_000L, book = initialBook(), note = "p08-projection-update")
+        RoomFinancialCommitRepository(database).commit(fixture.command, fixture.plan).success()
+        database.inLedgerTransaction { connection ->
+            connection.execSQL("UPDATE projection_contract_state SET contract_version=1 WHERE id=1")
+        }
+        database.close()
+        database = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
+
+        val maintenance = RoomProjectionMaintenanceService(database)
+        val before = maintenance.startupCheck().success()
+        assertEquals(app.ledger.finance.application.StartupDisposition.MAINTENANCE_REQUIRED, before.disposition)
+        assertTrue("PROJECTION_VERSION_MISMATCH" in before.reasonCodes)
+
+        val rebuilt = maintenance.rebuild().success()
+        assertTrue(rebuilt.isConsistent)
+        assertEquals(2L, scalar("SELECT contract_version FROM projection_contract_state WHERE id=1"))
+        assertEquals(2L, scalar("SELECT rebuilt_at_local_revision FROM projection_contract_state WHERE id=1"))
+        assertEquals(app.ledger.finance.application.StartupDisposition.READY, maintenance.startupCheck().success().disposition)
     }
 
     @Test

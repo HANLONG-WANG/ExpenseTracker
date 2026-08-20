@@ -91,9 +91,9 @@ class LoanUiContractDeviceTest {
             LoanPresentation.EMPTY,
             LoanDeviceFixtures.snapshot(emptyList()),
         ).copy(creditAccounts = listOf(LoanDeviceFixtures.creditAccount()))
-        val actions = LoanDeviceFixtures.actions.copy(
-            onOpenCreditAccount = { accountId -> opened = accountId == LoanDeviceFixtures.creditAccountId },
-        )
+        val actions: (LoanScreenAction) -> Unit = { action ->
+            if (action is LoanScreenAction.OpenCreditAccount) opened = action.accountId == LoanDeviceFixtures.creditAccountId
+        }
         composeRule.setContent {
             LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
                 LoanDestination("LIA-001", LoanLoadState.Content(state), emptyMap(), actions)

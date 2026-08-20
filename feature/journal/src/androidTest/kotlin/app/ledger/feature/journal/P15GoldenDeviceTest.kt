@@ -96,12 +96,7 @@ class P15GoldenDeviceTest {
             JournalTransactionView(id(3), id(13), TransactionKind.TRANSFER, TransactionLifecycleState.ACTIVE, NOW.minusSeconds(90000), LocalDate.of(2026, 8, 2), "Transfer", "Cash to bank", "Cash · Bank", 5000, JPY, null, null, emptyList(), null, TransactionSource.MANUAL),
         )
         val DETAIL = JournalDetailView(ROWS.first(), NOW.minusSeconds(120), NOW, "Asia/Tokyo", "1000+280", "Lunch with team", "Local shop", "August travel", "Station", listOf("receipt.pdf"), "included", "CONSUMPTION_EXPENSE", emptyList(), emptyList(), listOf("Cash:credit:1280 JPY"), "MANUAL", null, 0)
-        val ACTIONS = JournalActions(
-            onNavigate = { _, _ -> }, onSearch = {}, onApplyFilter = {}, onRemoveFilter = {}, onRetry = {}, onLoadDetail = {},
-            onSelect = {}, onSelectAllMatching = {}, onClearSelection = {}, onBulkEdit = {}, onSaveFilter = {}, onApplyPreset = {},
-            onCopyPreset = {}, onSetDefaultPreset = {}, onDeletePreset = {}, onReorderPresets = {}, onResolveDependency = { _, _ -> }, onMoveToTrash = { _, _, _ -> },
-            onRestore = { _, _ -> }, onCompareRevisions = { _, _, _ -> }, onRestoreRevision = { _, _, _, _ -> }, onVerifyPurge = {}, onPurgeRequested = {},
-        )
+        val ACTIONS: (JournalScreenAction) -> Unit = {}
         val CASES = listOf(
             Golden("p15_journal_list_light.png", "JRN-001", ThemeMode.LIGHT, JournalLoadState.Content()),
             Golden("p15_journal_detail_dark.png", "JRN-007", ThemeMode.DARK, JournalLoadState.Content(detail = DETAIL)),

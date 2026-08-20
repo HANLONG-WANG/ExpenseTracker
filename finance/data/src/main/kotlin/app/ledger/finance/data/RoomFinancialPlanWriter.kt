@@ -418,8 +418,8 @@ internal class RoomFinancialPlanWriter {
             bundle.postings.forEach { posting ->
                 database.execSQL(
                     "INSERT INTO posting(id, uid, journal_entry_id, line_no, ledger_account_id, side, account_amount_minor, " +
-                        "account_currency, base_amount_minor, base_currency, valuation_rate_decimal, posting_role, reversal_of_posting_id) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "account_currency, base_amount_minor, base_currency, valuation_rate_decimal, valuation_source, posting_role, reversal_of_posting_id) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     arrayOf<Any?>(
                         database.allocateInternalId("posting", posting.id.value),
                         posting.id.value.bytes,
@@ -432,6 +432,7 @@ internal class RoomFinancialPlanWriter {
                         posting.baseAmount.minor.value,
                         posting.baseAmount.currency.value,
                         posting.valuationRate?.toPlainString(),
+                        posting.valuationSource.ordinal,
                         posting.role.ordinal,
                         posting.reversalOfPostingId?.let { database.requireInternalId("posting", it.value) },
                     ),
@@ -639,6 +640,22 @@ internal class RoomFinancialPlanWriter {
                     change.entityRevisionId?.value?.bytes,
                 ),
             )
+            val currentTable = CURRENT_ENTITY_TABLES[change.entity.type]
+            val afterHash = change.afterHash
+            if (currentTable != null && afterHash != null && change.entity.type != app.ledger.finance.domain.EntityType.TRANSACTION) {
+                val changed = database.compileStatement(
+                    "UPDATE $currentTable SET last_commit_id=?," +
+                        "row_version=(SELECT COUNT(*) FROM entity_change WHERE entity_type=? AND entity_uid=? AND after_hash IS NOT NULL)," +
+                        "content_hash=? WHERE uid=?",
+                ).apply {
+                    bindLong(1, database.commitId(change.commitId))
+                    bindLong(2, change.entity.type.ordinal.toLong())
+                    bindBlob(3, change.entity.stableId.bytes)
+                    bindBlob(4, afterHash.value.bytes)
+                    bindBlob(5, change.entity.stableId.bytes)
+                }.executeUpdateDelete()
+                if (changed != 1) abort(FinanceDataError.CorruptData)
+            }
         }
     }
 
@@ -664,3 +681,23 @@ internal class RoomFinancialPlanWriter {
 
 private val EffectPolarity.sqlValue: Int
     get() = if (this == EffectPolarity.APPLY) 1 else -1
+
+private val CURRENT_ENTITY_TABLES = mapOf(
+    app.ledger.finance.domain.EntityType.ACCOUNT to "user_account",
+    app.ledger.finance.domain.EntityType.CARD to "payment_card",
+    app.ledger.finance.domain.EntityType.CATEGORY to "category",
+    app.ledger.finance.domain.EntityType.MERCHANT to "merchant",
+    app.ledger.finance.domain.EntityType.PLACE to "place",
+    app.ledger.finance.domain.EntityType.TRANSACTION to "business_transaction",
+    app.ledger.finance.domain.EntityType.PROJECT to "project",
+    app.ledger.finance.domain.EntityType.GOAL to "goal",
+    app.ledger.finance.domain.EntityType.BUDGET to "budget_month",
+    app.ledger.finance.domain.EntityType.CREDIT_STATEMENT to "credit_statement",
+    app.ledger.finance.domain.EntityType.INSTALLMENT_PLAN to "installment_plan",
+    app.ledger.finance.domain.EntityType.LOAN to "loan_contract",
+    app.ledger.finance.domain.EntityType.PARTICIPANT to "participant",
+    app.ledger.finance.domain.EntityType.SETTLEMENT_ACTIVITY to "settlement_activity",
+    app.ledger.finance.domain.EntityType.BLUEPRINT to "transaction_blueprint",
+    app.ledger.finance.domain.EntityType.RECURRENCE_SERIES to "recurrence_series",
+    app.ledger.finance.domain.EntityType.BUDGET_TEMPLATE to "budget_template",
+)

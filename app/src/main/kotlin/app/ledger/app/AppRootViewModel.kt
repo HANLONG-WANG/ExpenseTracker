@@ -477,8 +477,9 @@ internal class AppRootViewModel @Inject constructor(
     )
     val vault: StateFlow<VaultPresentationState> = vaultController.state
     val vaultAuthenticationRequests = vaultController.authentication
-    private val mutableSecurityPrivacy = MutableStateFlow(defaultSecurityPrivacyState())
-    val securityPrivacy: StateFlow<SecurityPrivacySettingsState> = mutableSecurityPrivacy.asStateFlow()
+    private val securityPrivacyViewModel = SecurityPrivacyScreenViewModel(defaultSecurityPrivacyState())
+    val securityPrivacy: StateFlow<SecurityPrivacySettingsState> = securityPrivacyViewModel.state
+    private val mutableSecurityPrivacy get() = securityPrivacyViewModel.mutableState
     private val mutableSensitiveSettingsAuthenticationRequests =
         MutableSharedFlow<SensitiveSettingsAuthenticationPurpose>(extraBufferCapacity = 1)
     val sensitiveSettingsAuthenticationRequests = mutableSensitiveSettingsAuthenticationRequests.asSharedFlow()
@@ -512,8 +513,9 @@ internal class AppRootViewModel @Inject constructor(
     val exportFlow: StateFlow<ExportFlowUiState> = exportController.state
     val backupFlow: StateFlow<BackupFlowUiState> = backupController.state
     val restoreFlow: StateFlow<RestoreFlowUiState> = restoreController.state
-    private val mutableOperationCenter = MutableStateFlow<OperationCenterLoadState>(OperationCenterLoadState.Loading)
-    val operationCenter: StateFlow<OperationCenterLoadState> = mutableOperationCenter.asStateFlow()
+    private val operationCenterViewModel = OperationCenterScreenViewModel()
+    val operationCenter: StateFlow<OperationCenterLoadState> = operationCenterViewModel.state
+    private val mutableOperationCenter get() = operationCenterViewModel.mutableState
     val analysis: StateFlow<AnalysisLoadState> = analysisController.state
     private val batchEntryController = BatchEntryController(
         batchEntryApplicationPort,
@@ -547,67 +549,128 @@ internal class AppRootViewModel @Inject constructor(
         LedgerAppSettings.getDefaultInstance(),
     )
 
-    private val mutableReferenceData = MutableStateFlow<AppReferenceDataState>(AppReferenceDataState.Loading)
-    val referenceData: StateFlow<AppReferenceDataState> = mutableReferenceData.asStateFlow()
-    private val mutableReferenceMutationPending = MutableStateFlow(false)
-    val referenceMutationPending: StateFlow<Boolean> = mutableReferenceMutationPending.asStateFlow()
-    private val mutableOrdinaryRecord = MutableStateFlow<OrdinaryRecordLoadState>(OrdinaryRecordLoadState.Loading)
-    val ordinaryRecord: StateFlow<OrdinaryRecordLoadState> = mutableOrdinaryRecord.asStateFlow()
-    private val mutableOrdinaryRecordPending = MutableStateFlow(false)
-    val ordinaryRecordPending: StateFlow<Boolean> = mutableOrdinaryRecordPending.asStateFlow()
-    private val mutableRefund = MutableStateFlow<RefundLoadState>(RefundLoadState.Loading)
-    val refund: StateFlow<RefundLoadState> = mutableRefund.asStateFlow()
-    private val mutableRefundPicker = MutableStateFlow<RefundPickerState>(RefundPickerState.Loading)
-    val refundPicker: StateFlow<RefundPickerState> = mutableRefundPicker.asStateFlow()
-    private val mutableRefundPending = MutableStateFlow(false)
-    val refundPending: StateFlow<Boolean> = mutableRefundPending.asStateFlow()
-    private val mutableSpecializedTransaction = MutableStateFlow<SpecializedTransactionLoadState>(SpecializedTransactionLoadState.Loading)
-    val specializedTransaction: StateFlow<SpecializedTransactionLoadState> = mutableSpecializedTransaction.asStateFlow()
-    private val mutableSpecializedTransactionPending = MutableStateFlow(false)
-    val specializedTransactionPending: StateFlow<Boolean> = mutableSpecializedTransactionPending.asStateFlow()
-    private val mutableCurrencySettings = MutableStateFlow<CurrencySettingsState?>(null)
-    val currencySettings: StateFlow<CurrencySettingsState?> = mutableCurrencySettings.asStateFlow()
-    private val mutableJournal = MutableStateFlow<JournalLoadState>(JournalLoadState.Loading)
-    val journal: StateFlow<JournalLoadState> = mutableJournal.asStateFlow()
-    private val mutableJournalPagingRequest = MutableStateFlow<JournalPagingRequest?>(null)
-    private val mutableBudget = MutableStateFlow<BudgetLoadState>(BudgetLoadState.Loading)
-    val budget: StateFlow<BudgetLoadState> = mutableBudget.asStateFlow()
-    private val mutableBudgetPending = MutableStateFlow(false)
-    val budgetPending: StateFlow<Boolean> = mutableBudgetPending.asStateFlow()
-    private val mutableProjectGoal = MutableStateFlow<ProjectGoalLoadState>(ProjectGoalLoadState.Loading)
-    val projectGoal: StateFlow<ProjectGoalLoadState> = mutableProjectGoal.asStateFlow()
-    private val mutableProjectGoalPending = MutableStateFlow(false)
-    val projectGoalPending: StateFlow<Boolean> = mutableProjectGoalPending.asStateFlow()
-    private val mutableCredit = MutableStateFlow<CreditLoadState>(CreditLoadState.Loading)
-    val credit: StateFlow<CreditLoadState> = mutableCredit.asStateFlow()
-    private val mutableCreditPending = MutableStateFlow(false)
-    val creditPending: StateFlow<Boolean> = mutableCreditPending.asStateFlow()
-    private var currentCreditScreenId: String = "CRD-001"
-    private var currentCreditTransactionId: StableId? = null
-    private val mutableInstallment = MutableStateFlow<InstallmentLoadState>(InstallmentLoadState.Loading)
-    val installment: StateFlow<InstallmentLoadState> = mutableInstallment.asStateFlow()
-    private val mutableInstallmentPending = MutableStateFlow(false)
-    val installmentPending: StateFlow<Boolean> = mutableInstallmentPending.asStateFlow()
-    private var currentInstallmentScreenId: String = "INS-001"
-    private val mutableLoan = MutableStateFlow<LoanLoadState>(LoanLoadState.Loading)
-    val loan: StateFlow<LoanLoadState> = mutableLoan.asStateFlow()
-    private val mutableLoanPending = MutableStateFlow(false)
-    val loanPending: StateFlow<Boolean> = mutableLoanPending.asStateFlow()
-    private var currentLoanScreenId: String = "LIA-001"
-    private var currentLoanSimulationRequest: LoanSimulationRequest? = null
-    private var currentLoanSimulation: app.ledger.finance.domain.LoanPrepaymentSimulation? = null
-    private val mutableSettlement = MutableStateFlow<SettlementLoadState>(SettlementLoadState.Loading)
-    val settlement: StateFlow<SettlementLoadState> = mutableSettlement.asStateFlow()
-    private val mutableSettlementPending = MutableStateFlow(false)
-    val settlementPending: StateFlow<Boolean> = mutableSettlementPending.asStateFlow()
-    private var currentSettlementScreenId: String = "SET-001"
-    private val mutableAutomation = MutableStateFlow<AutomationLoadState>(AutomationLoadState.Loading)
-    val automation: StateFlow<AutomationLoadState> = mutableAutomation.asStateFlow()
-    private val mutableAutomationPending = MutableStateFlow(false)
-    val automationPending: StateFlow<Boolean> = mutableAutomationPending.asStateFlow()
-    private var currentAutomationScreenId: String = "AUT-001"
-    private var pendingCandidateId: StableId? = null
-    private val mutableProjectTransactionPagingRequest = MutableStateFlow<ProjectTransactionPagingRequest?>(null)
+    private val referenceDataViewModel = ReferenceDataScreenViewModel(viewModelScope)
+    val referenceData: StateFlow<AppReferenceDataState> = referenceDataViewModel.state
+    val referenceMutationPending: StateFlow<Boolean> = referenceDataViewModel.pending
+    val referenceDataUiState: StateFlow<ReferenceDataScreenUiState> = referenceDataViewModel.uiState
+    private val mutableReferenceData get() = referenceDataViewModel.mutableState
+    private val mutableReferenceMutationPending get() = referenceDataViewModel.mutablePending
+    private val ordinaryRecordViewModel = OrdinaryRecordScreenViewModel(viewModelScope)
+    val ordinaryRecord: StateFlow<OrdinaryRecordLoadState> = ordinaryRecordViewModel.state
+    val ordinaryRecordPending: StateFlow<Boolean> = ordinaryRecordViewModel.pending
+    val ordinaryRecordUiState: StateFlow<OrdinaryRecordScreenUiState> = ordinaryRecordViewModel.uiState
+    private val mutableOrdinaryRecord get() = ordinaryRecordViewModel.mutableState
+    private val mutableOrdinaryRecordPending get() = ordinaryRecordViewModel.mutablePending
+    private val refundViewModel = RefundScreenViewModel(viewModelScope)
+    val refund: StateFlow<RefundLoadState> = refundViewModel.state
+    val refundPicker: StateFlow<RefundPickerState> = refundViewModel.picker
+    val refundPending: StateFlow<Boolean> = refundViewModel.pending
+    val refundUiState: StateFlow<RefundScreenUiState> = refundViewModel.uiState
+    private val mutableRefund get() = refundViewModel.mutableState
+    private val mutableRefundPicker get() = refundViewModel.mutablePicker
+    private val mutableRefundPending get() = refundViewModel.mutablePending
+    private val specializedTransactionViewModel = SpecializedTransactionScreenViewModel(viewModelScope)
+    val specializedTransaction: StateFlow<SpecializedTransactionLoadState> = specializedTransactionViewModel.state
+    val specializedTransactionPending: StateFlow<Boolean> = specializedTransactionViewModel.pending
+    val specializedTransactionUiState: StateFlow<SpecializedTransactionScreenUiState> = specializedTransactionViewModel.uiState
+    private val mutableSpecializedTransaction get() = specializedTransactionViewModel.mutableState
+    private val mutableSpecializedTransactionPending get() = specializedTransactionViewModel.mutablePending
+    private val currencySettingsViewModel = CurrencySettingsScreenViewModel()
+    val currencySettings: StateFlow<CurrencySettingsState?> = currencySettingsViewModel.state
+    private val mutableCurrencySettings get() = currencySettingsViewModel.mutableState
+    private val journalViewModel = JournalScreenViewModel(viewModelScope)
+    val journal: StateFlow<JournalLoadState> = journalViewModel.state
+    val journalUiState: StateFlow<JournalScreenUiState> = journalViewModel.uiState
+    private val mutableJournal get() = journalViewModel.mutableState
+    private val mutableJournalPagingRequest get() = journalViewModel.pagingRequest
+    private val budgetViewModel = BudgetScreenViewModel(viewModelScope)
+    val budget: StateFlow<BudgetLoadState> = budgetViewModel.state
+    val budgetPending: StateFlow<Boolean> = budgetViewModel.pending
+    val budgetUiState: StateFlow<BudgetScreenUiState> = budgetViewModel.uiState
+    private val mutableBudget get() = budgetViewModel.mutableState
+    private val mutableBudgetPending get() = budgetViewModel.mutablePending
+    private val projectGoalViewModel = ProjectGoalScreenViewModel(viewModelScope)
+    val projectGoal: StateFlow<ProjectGoalLoadState> = projectGoalViewModel.state
+    val projectGoalPending: StateFlow<Boolean> = projectGoalViewModel.pending
+    val projectGoalUiState: StateFlow<ProjectGoalScreenUiState> = projectGoalViewModel.uiState
+    private val mutableProjectGoal get() = projectGoalViewModel.mutableState
+    private val mutableProjectGoalPending get() = projectGoalViewModel.mutablePending
+    private val mutableProjectTransactionPagingRequest get() = projectGoalViewModel.pagingRequest
+    private val creditViewModel = CreditScreenViewModel(viewModelScope)
+    val credit: StateFlow<CreditLoadState> = creditViewModel.state
+    val creditPending: StateFlow<Boolean> = creditViewModel.pending
+    val creditUiState: StateFlow<CreditScreenUiState> = creditViewModel.uiState
+    private val mutableCredit get() = creditViewModel.mutableState
+    private val mutableCreditPending get() = creditViewModel.mutablePending
+    private var currentCreditScreenId: String
+        get() = creditViewModel.currentScreenId
+        set(value) {
+            creditViewModel.currentScreenId = value
+        }
+    private var currentCreditTransactionId: StableId?
+        get() = creditViewModel.currentTransactionId
+        set(value) {
+            creditViewModel.currentTransactionId = value
+        }
+    private val installmentViewModel = InstallmentScreenViewModel(viewModelScope)
+    val installment: StateFlow<InstallmentLoadState> = installmentViewModel.state
+    val installmentPending: StateFlow<Boolean> = installmentViewModel.pending
+    val installmentUiState: StateFlow<InstallmentScreenUiState> = installmentViewModel.uiState
+    private val mutableInstallment get() = installmentViewModel.mutableState
+    private val mutableInstallmentPending get() = installmentViewModel.mutablePending
+    private var currentInstallmentScreenId: String
+        get() = installmentViewModel.currentScreenId
+        set(value) {
+            installmentViewModel.currentScreenId = value
+        }
+    private val loanViewModel = LoanScreenViewModel(viewModelScope)
+    val loan: StateFlow<LoanLoadState> = loanViewModel.state
+    val loanPending: StateFlow<Boolean> = loanViewModel.pending
+    val loanUiState: StateFlow<LoanScreenUiState> = loanViewModel.uiState
+    private val mutableLoan get() = loanViewModel.mutableState
+    private val mutableLoanPending get() = loanViewModel.mutablePending
+    private var currentLoanScreenId: String
+        get() = loanViewModel.currentScreenId
+        set(value) {
+            loanViewModel.currentScreenId = value
+        }
+    private var currentLoanSimulationRequest: LoanSimulationRequest?
+        get() = loanViewModel.currentSimulationRequest
+        set(value) {
+            loanViewModel.currentSimulationRequest = value
+        }
+    private var currentLoanSimulation: app.ledger.finance.domain.LoanPrepaymentSimulation?
+        get() = loanViewModel.currentSimulation
+        set(value) {
+            loanViewModel.currentSimulation = value
+        }
+    private val settlementViewModel = SettlementScreenViewModel(viewModelScope)
+    val settlement: StateFlow<SettlementLoadState> = settlementViewModel.state
+    val settlementPending: StateFlow<Boolean> = settlementViewModel.pending
+    val settlementUiState: StateFlow<SettlementScreenUiState> = settlementViewModel.uiState
+    private val mutableSettlement get() = settlementViewModel.mutableState
+    private val mutableSettlementPending get() = settlementViewModel.mutablePending
+    private var currentSettlementScreenId: String
+        get() = settlementViewModel.currentScreenId
+        set(value) {
+            settlementViewModel.currentScreenId = value
+        }
+    private val automationViewModel = AutomationScreenViewModel(viewModelScope)
+    val automation: StateFlow<AutomationLoadState> = automationViewModel.state
+    val automationPending: StateFlow<Boolean> = automationViewModel.pending
+    val automationUiState: StateFlow<AutomationScreenUiState> = automationViewModel.uiState
+    private val mutableAutomation get() = automationViewModel.mutableState
+    private val mutableAutomationPending get() = automationViewModel.mutablePending
+    private var currentAutomationScreenId: String
+        get() = automationViewModel.currentScreenId
+        set(value) {
+            automationViewModel.currentScreenId = value
+        }
+    private var pendingCandidateId: StableId?
+        get() = automationViewModel.pendingCandidateId
+        set(value) {
+            automationViewModel.pendingCandidateId = value
+        }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val journalPages = mutableJournalPagingRequest.flatMapLatest { request ->
@@ -5720,6 +5783,8 @@ internal class AppRootViewModel @Inject constructor(
         selectRootTopLevel(TopLevelDestination.JOURNAL)
     }
 
+    fun confirmRestoreSafetySnapshotCleanup() = restoreController.confirmSafetySnapshotCleanup()
+
     fun openCloudBackupDeletion() {
         val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
         restoreController.begin(ready.bookId)
@@ -5957,14 +6022,14 @@ private fun formatSettingsDate(
     },
 )
 
-private data class JournalPagingRequest(
+internal data class JournalPagingRequest(
     val bookId: StableId,
     val filter: TransactionFilter,
     val runningBalanceAccountId: StableId? = null,
     val refreshEpoch: Int,
 )
 
-private data class ProjectTransactionPagingRequest(
+internal data class ProjectTransactionPagingRequest(
     val bookId: StableId,
     val projectId: StableId,
 )

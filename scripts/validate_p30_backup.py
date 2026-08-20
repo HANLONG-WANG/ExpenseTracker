@@ -89,7 +89,7 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         "DriveResumableBackupClient.kt", "DriveBackupRepositoryPublisher.kt", "SqlCipherDriveCheckpointStore.kt",
         "BackupRecoveryReencryption.kt", "AutomaticBackupCheckpointStore.kt", "AndroidBackupInputFactory.kt",
         "AutomaticBackupScheduler.kt", "BackupWorker.kt", "GoogleDriveAuthorizationGateway.kt", "BackupController.kt",
-        "BackupFlowScreen.kt", "SecureFinancialFactPurgeAccess.kt",
+        "BackupFlowScreen.kt", "SecurePrimaryLedgerAccess.kt",
     }
     selected = {path: source for path, source in sources.items() if Path(path).name in required}
     missing = required - {Path(path).name for path in selected}
@@ -124,16 +124,16 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     require_tokens(errors, catalog, "SQLCipher immutable snapshot catalog and reference GC", (
         "INSERT INTO backup_snapshot", "INSERT INTO backup_snapshot_object", "BackupSnapshotState.COMPLETE",
         "DELETE FROM backup_snapshot_object", "DELETE FROM backup_snapshot", "DELETE FROM backup_object",
-        "factPurgeAccess.write", "published backup snapshot object set changed",
+        "access.write", "published backup snapshot object set changed",
     ))
     if "UPDATE backup_snapshot" in catalog:
         errors.append("append-only backup_snapshot must be published by one COMPLETE insert, never status mutation")
     if "UPDATE book" in catalog:
         errors.append("backup catalog must not mutate financial book state outside finance:data")
-    maintenance = named(sources, "SecureFinancialFactPurgeAccess.kt")
-    require_tokens(errors, maintenance, "finance-owned immutable fact purge gate", (
-        "SecureLedgerFactPurgeAccess", "UPDATE book SET state=1", "allow_fact_purge=1",
-        "allow_fact_purge=0", "UPDATE book SET state=0",
+    maintenance = named(sources, "SecurePrimaryLedgerAccess.kt")
+    require_tokens(errors, maintenance, "scoped encrypted backup catalog access", (
+        "class SecurePrimaryLedgerAccess", "fun <T> read", "fun <T> write",
+        "EncryptedDatabaseFactory.openPrimary",
     ))
 
     portable = named(sources, "PortableBackupContainer.kt")
@@ -236,7 +236,7 @@ def validate_ledgers() -> list[str]:
     evidence = read("docs/implementation/TEST_EVIDENCE.md")
     mapping_path = ROOT / "docs/implementation/P30_BACKUP_MAPPING.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
-    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P30", "Stage status: VERIFIED"))
+    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "P00—P35 remain VERIFIED"))
     for index in range(1, 9):
         if f"P30-E{index:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P30-E{index:03d}")

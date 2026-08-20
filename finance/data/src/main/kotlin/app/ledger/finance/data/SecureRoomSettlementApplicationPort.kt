@@ -274,8 +274,27 @@ class SecureRoomSettlementApplicationPort(
             val settled = nextNet.values.all { it == 0L }
             val status = if (settled) SettlementActivityStatus.SETTLED else SettlementActivityStatus.ACTIVE
             db.execSQL(
-                "UPDATE settlement_activity SET status=?,requires_additional_settlement=0,last_commit_id=? WHERE uid=?",
-                arrayOf<Any>(status.ordinal, db.commitId(plan.commit.id), request.activityId.bytes),
+                "INSERT INTO entity_change(commit_id,entity_type,entity_uid,operation,before_hash,after_hash,entity_revision_uid) VALUES(?,?,?,?,NULL,?,NULL)",
+                arrayOf<Any>(
+                    db.commitId(plan.commit.id),
+                    EntityType.SETTLEMENT_ACTIVITY.ordinal,
+                    request.activityId.bytes,
+                    EntityChangeOperation.UPDATE.ordinal,
+                    plan.payloadHash.bytes,
+                ),
+            )
+            db.execSQL(
+                "UPDATE settlement_activity SET status=?,requires_additional_settlement=0,last_commit_id=?," +
+                    "row_version=(SELECT COUNT(*) FROM entity_change WHERE entity_type=? AND entity_uid=? AND after_hash IS NOT NULL)," +
+                    "content_hash=? WHERE uid=?",
+                arrayOf<Any>(
+                    status.ordinal,
+                    db.commitId(plan.commit.id),
+                    EntityType.SETTLEMENT_ACTIVITY.ordinal,
+                    request.activityId.bytes,
+                    plan.payloadHash.bytes,
+                    request.activityId.bytes,
+                ),
             )
         }
         coordinate(database, command, snapshot, sideEffect)
@@ -645,6 +664,15 @@ class SecureRoomSettlementApplicationPort(
             "INSERT INTO entity_change(commit_id,entity_type,entity_uid,operation,before_hash,after_hash,entity_revision_uid) VALUES(?,?,?,?,NULL,?,?)",
             arrayOf<Any>(db.requireInternalId("book_commit", request.ids.commitId), type.ordinal, entityId.bytes, operation.ordinal, digest, revisionId.bytes),
         )
+        val currentTable = when (type) {
+            EntityType.PARTICIPANT -> "participant"
+            EntityType.SETTLEMENT_ACTIVITY -> "settlement_activity"
+            else -> abort(FinanceDataError.CorruptData)
+        }
+        db.execSQL(
+            "UPDATE $currentTable SET last_commit_id=?,row_version=?,content_hash=? WHERE uid=?",
+            arrayOf<Any>(db.requireInternalId("book_commit", request.ids.commitId), revisionNumber, digest, entityId.bytes),
+        )
     }
 
     private fun canonicalActivity(request: SaveSettlementActivityRequest): ByteArray = canonical(
@@ -672,8 +700,8 @@ class SecureRoomSettlementApplicationPort(
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
         DomainResult.Failure(FinanceDataError.NumericRangeExceeded)
-    } catch (_: Exception) {
-        DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    } catch (failure: Exception) {
+        DomainResult.Failure(failure.toFinanceDatabaseError())
     }
 
     private fun positive(minor: Long, currency: CurrencyCode): PositiveMoney = PositiveMoney.from(Money(minor, currency)).valueOrAbort()

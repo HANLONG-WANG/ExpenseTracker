@@ -103,6 +103,7 @@ import app.ledger.finance.domain.PositiveMoney
 import app.ledger.finance.domain.Posting
 import app.ledger.finance.domain.PostingId
 import app.ledger.finance.domain.PostingRole
+import app.ledger.finance.domain.PostingValuationSource
 import app.ledger.finance.domain.ProjectEffect
 import app.ledger.finance.domain.ProjectEffectId
 import app.ledger.finance.domain.ProjectEffectKind
@@ -689,11 +690,11 @@ internal class RoomReferenceFinancialSnapshotMapper {
         val entryId = JournalEntryId(cursor.stableId("uid"))
         val baseCurrency = currency(cursor.string("base_currency"))
         val postings = db.queryList(
-            "SELECT p.uid,la.uid ledger_uid,p.line_no,p.side,p.account_amount_minor,p.account_currency,p.base_amount_minor,p.base_currency,p.valuation_rate_decimal,p.posting_role FROM posting p JOIN ledger_account la ON la.id=p.ledger_account_id WHERE p.journal_entry_id=? ORDER BY p.line_no",
+            "SELECT p.uid,la.uid ledger_uid,p.line_no,p.side,p.account_amount_minor,p.account_currency,p.base_amount_minor,p.base_currency,p.valuation_rate_decimal,p.valuation_source,p.posting_role FROM posting p JOIN ledger_account la ON la.id=p.ledger_account_id WHERE p.journal_entry_id=? ORDER BY p.line_no",
             arrayOf(internalId),
         ) { row ->
             val ledger = LedgerAccountSnapshot(LedgerAccountId(row.stableId("ledger_uid")), LedgerAccountClass.ASSET, DebitCredit.DEBIT, currency(row.string("account_currency")), EntityStatus.ACTIVE)
-            Posting.create(PostingId(row.stableId("uid")), entryId, row.int("line_no"), ledger, DebitCredit.entries[row.int("side")], positive(row.long("account_amount_minor"), ledger.currency), positive(row.long("base_amount_minor"), currency(row.string("base_currency"))), baseCurrency, row.nullableString("valuation_rate_decimal")?.toBigDecimal(), PostingRole.entries[row.int("posting_role")], null).valueOrAbort()
+            Posting.create(PostingId(row.stableId("uid")), entryId, row.int("line_no"), ledger, DebitCredit.entries[row.int("side")], positive(row.long("account_amount_minor"), ledger.currency), positive(row.long("base_amount_minor"), currency(row.string("base_currency"))), baseCurrency, row.nullableString("valuation_rate_decimal")?.toBigDecimal(), PostingRole.entries[row.int("posting_role")], null, PostingValuationSource.entries[row.int("valuation_source")]).valueOrAbort()
         }
         val sourceRevision = db.queryOne("SELECT uid FROM transaction_revision WHERE id=?", arrayOf(cursor.long("source_revision_id"))) { TransactionRevisionId(it.stableId("uid")) } ?: abort(FinanceDataError.CorruptData)
         val appliesRevision = db.queryOne("SELECT uid FROM transaction_revision WHERE id=?", arrayOf(cursor.long("applies_revision_id"))) { TransactionRevisionId(it.stableId("uid")) } ?: abort(FinanceDataError.CorruptData)

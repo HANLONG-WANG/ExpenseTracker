@@ -100,7 +100,9 @@ class ImportUiContractDeviceTest {
     @Test
     fun duplicateCandidateRequiresAndExposesExplicitResolutionControls() {
         var resolution: DuplicateResolution? = null
-        val actions = ACTIONS.copy(onDuplicateResolved = { _, selected -> resolution = selected })
+        val actions: (ImportWizardScreenAction) -> Unit = { action ->
+            if (action is ImportWizardScreenAction.DuplicateResolved) resolution = action.resolution
+        }
         composeRule.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides composeRule.activity) {
                 LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
@@ -240,11 +242,6 @@ class ImportUiContractDeviceTest {
         const val GOLDEN_TAG = "p28_import_golden_root"
         const val EXPECTED_SOURCE_SHA256 = "12f8bfa6a52add008a6950783b219dafb642fa6fb366790532f2e7423ad09d96"
         const val EXPECTED_VALIDATION_SHA256 = "175eb93bb5588cda9e9eef31bdefc84af52cbce53014942b5aa48d520c7cce53"
-        val ACTIONS = ImportWizardActions(
-            onBack = {}, onSourceSelected = {}, onModeSelected = {}, onSheetSelected = {}, onEncodingChanged = {},
-            onHeaderRowChanged = {}, onCycleFieldMapping = {}, onCreateMissingChanged = { _, _ -> }, onFxRateChanged = { _, _ -> },
-            onDuplicateResolved = { _, _ -> }, onPrevious = {}, onNext = {}, onPause = {}, onCancel = {}, onRetry = {},
-            onRollback = {}, onOpenJournal = {},
-        )
+        val ACTIONS: (ImportWizardScreenAction) -> Unit = {}
     }
 }

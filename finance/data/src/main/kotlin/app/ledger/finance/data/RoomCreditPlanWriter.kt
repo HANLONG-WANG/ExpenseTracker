@@ -16,6 +16,14 @@ internal class RoomCreditPlanWriter {
         plan.creditProfileMutations.forEach { mutation ->
             val profile = mutation.profile
             val accountId = database.requireInternalId("user_account", profile.accountId.value)
+            val entityChange = plan.entityChanges.singleOrNull {
+                it.entity.type == app.ledger.finance.domain.EntityType.ACCOUNT && it.entity.stableId == profile.accountId.value
+            } ?: abort(app.ledger.finance.application.FinanceDataError.CorruptData)
+            val contentHash = entityChange.afterHash ?: abort(app.ledger.finance.application.FinanceDataError.CorruptData)
+            val rowVersion = database.queryOne(
+                "SELECT COUNT(*)+1 FROM entity_change WHERE entity_type=? AND entity_uid=? AND after_hash IS NOT NULL",
+                arrayOf<Any>(app.ledger.finance.domain.EntityType.ACCOUNT.ordinal, profile.accountId.value.bytes),
+            ) { cursor -> cursor.getLong(0) } ?: abort(app.ledger.finance.application.FinanceDataError.CorruptData)
             val values = arrayOf<Any?>(
                 statementRuleType(profile.statementRule),
                 (profile.statementRule as? StatementDateRule.DayOfMonth)?.day,
@@ -30,20 +38,22 @@ internal class RoomCreditPlanWriter {
                 profile.autoPaymentMode.ordinal,
                 profile.weekendAdjustment.ordinal,
                 database.commitId(profile.lastCommitId),
+                rowVersion,
+                contentHash.value.bytes,
             )
             if (mutation.expectedLastCommitId == null) {
                 database.execSQL(
                     "INSERT INTO credit_account_profile(account_id,statement_rule_type,statement_day,due_rule_type,due_day," +
                         "days_after_statement,zone_id,standard_limit_minor,temporary_limit_minor,temporary_limit_expires_on," +
-                        "default_payment_account_id,auto_payment_mode,weekend_adjustment,last_commit_id) " +
-                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "default_payment_account_id,auto_payment_mode,weekend_adjustment,last_commit_id,row_version,content_hash) " +
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (listOf(accountId) + values.toList()).toTypedArray(),
                 )
             } else {
                 val changed = database.compileStatement(
                     "UPDATE credit_account_profile SET statement_rule_type=?,statement_day=?,due_rule_type=?,due_day=?," +
                         "days_after_statement=?,zone_id=?,standard_limit_minor=?,temporary_limit_minor=?,temporary_limit_expires_on=?," +
-                        "default_payment_account_id=?,auto_payment_mode=?,weekend_adjustment=?,last_commit_id=? " +
+                        "default_payment_account_id=?,auto_payment_mode=?,weekend_adjustment=?,last_commit_id=?,row_version=?,content_hash=? " +
                         "WHERE account_id=? AND last_commit_id=?",
                 ).apply {
                     values.forEachIndexed { index, value -> bind(index + 1, value) }

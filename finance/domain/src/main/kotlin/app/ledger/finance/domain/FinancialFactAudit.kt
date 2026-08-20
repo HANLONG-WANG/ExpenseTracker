@@ -78,6 +78,7 @@ object ImmutableFactAudit {
                     reversePosting.accountAmount != posting.accountAmount ||
                     reversePosting.baseAmount != posting.baseAmount ||
                     reversePosting.valuationRate != posting.valuationRate ||
+                    reversePosting.valuationSource != posting.valuationSource ||
                     reversePosting.role != posting.role
                 ) {
                     return failure("INV-006")
@@ -220,6 +221,7 @@ private fun FinancialMutationPlan.effectReversalCount(): Int = economicEffects.c
 private fun BudgetEffectKind.reversed(): BudgetEffectKind = when (this) {
     BudgetEffectKind.USE -> BudgetEffectKind.RESTORE
     BudgetEffectKind.RESTORE -> BudgetEffectKind.USE
+    BudgetEffectKind.ADJUST -> BudgetEffectKind.ADJUST
 }
 
 private fun ProjectEffectKind.reversed(): ProjectEffectKind = when (this) {

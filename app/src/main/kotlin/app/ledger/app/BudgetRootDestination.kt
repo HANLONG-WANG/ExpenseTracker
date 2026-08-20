@@ -9,11 +9,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
-import app.ledger.feature.planning.BudgetActions
-import app.ledger.feature.planning.BudgetAdjustmentActions
 import app.ledger.feature.planning.BudgetDestination
-import app.ledger.feature.planning.BudgetEditorActions
-import app.ledger.feature.planning.BudgetNavigationActions
+import app.ledger.feature.planning.BudgetScreenAction
 import app.ledger.finance.domain.BudgetAdjustmentKind
 import java.time.YearMonth
 import app.ledger.feature.planning.R as PlanningR
@@ -39,43 +36,39 @@ internal fun BudgetRootDestination(
 ) {
     val month = encodedArguments["yearMonth"]?.toBudgetYearMonthOrNull() ?: viewModel.currentBudgetMonth()
     val templateId = encodedArguments["templateId"]?.let { StableId.parse(it).getOrNull() }
-    val budgetState by viewModel.budget.collectAsStateWithLifecycle()
+    val uiState by viewModel.budgetUiState.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, month, templateId) { viewModel.loadBudget(month, templateId, screenId) }
     BudgetDestination(
         screenId,
-        budgetState,
+        uiState.loadState,
         encodedArguments,
-        BudgetActions(
-            navigation = BudgetNavigationActions(
-                onRetry = { viewModel.loadBudget(month, templateId, screenId) },
-                onMonth = { selected ->
-                    viewModel.navigateBudget("BUD-001", selected, null, null)
+        { action ->
+            when (action) {
+                BudgetScreenAction.Retry -> viewModel.loadBudget(month, templateId, screenId)
+                is BudgetScreenAction.MonthSelected -> {
+                    viewModel.navigateBudget("BUD-001", action.month, null, null)
                     onNavigationChanged()
-                },
-                onNavigate = { target, stable, kind ->
-                    viewModel.navigateBudget(target, month, stable, kind)
+                }
+                is BudgetScreenAction.Navigate -> {
+                    viewModel.navigateBudget(action.screenId, month, action.id, action.adjustmentKind)
                     onNavigationChanged()
-                },
-                onEdit = {
+                }
+                BudgetScreenAction.Edit -> {
                     viewModel.navigateBudget("BUD-002", month, null, null)
                     onNavigationChanged()
-                },
-                onOperations = onOperations,
-            ),
-            editor = BudgetEditorActions(
-                onTotalChanged = viewModel::updateBudgetTotal,
-                onCategoryChanged = viewModel::updateBudgetCategory,
-                onSaveMonth = viewModel::saveBudgetMonth,
-                onTemplateNameChanged = viewModel::updateBudgetTemplateName,
-                onSaveTemplate = viewModel::saveBudgetTemplate,
-            ),
-            adjustment = BudgetAdjustmentActions(
-                onAmountChanged = viewModel::updateBudgetAdjustmentAmount,
-                onSource = viewModel::selectBudgetAdjustmentSource,
-                onTarget = viewModel::selectBudgetAdjustmentTarget,
-                onSave = viewModel::saveBudgetAdjustment,
-            ),
-        ),
+                }
+                BudgetScreenAction.Operations -> onOperations()
+                is BudgetScreenAction.TotalChanged -> viewModel.updateBudgetTotal(action.value)
+                is BudgetScreenAction.CategoryChanged -> viewModel.updateBudgetCategory(action.categoryId, action.value)
+                BudgetScreenAction.SaveMonth -> viewModel.saveBudgetMonth()
+                is BudgetScreenAction.TemplateNameChanged -> viewModel.updateBudgetTemplateName(action.value)
+                BudgetScreenAction.SaveTemplate -> viewModel.saveBudgetTemplate()
+                is BudgetScreenAction.AdjustmentAmountChanged -> viewModel.updateBudgetAdjustmentAmount(action.value)
+                BudgetScreenAction.AdjustmentSource -> viewModel.selectBudgetAdjustmentSource()
+                BudgetScreenAction.AdjustmentTarget -> viewModel.selectBudgetAdjustmentTarget()
+                is BudgetScreenAction.SaveAdjustment -> viewModel.saveBudgetAdjustment(action.kind)
+            }
+        },
     )
 }
 

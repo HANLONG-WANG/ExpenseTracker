@@ -23,6 +23,18 @@ internal class FinancialPersistenceAbort(val domainError: DomainError) : Runtime
 
 internal fun abort(error: DomainError): Nothing = throw FinancialPersistenceAbort(error)
 
+internal fun Throwable.isSqliteNumericRangeFailure(): Boolean {
+    var current: Throwable? = this
+    while (current != null) {
+        val message = current.message.orEmpty().lowercase()
+        if ("integer overflow" in message || "numeric value out of range" in message) return true
+        current = current.cause
+    }
+    return false
+}
+
+internal fun Throwable.toFinanceDatabaseError(): FinanceDataError = if (isSqliteNumericRangeFailure()) FinanceDataError.NumericRangeExceeded else FinanceDataError.DatabaseUnavailable
+
 internal fun StableId.internalId(): Long {
     val candidate = ByteBuffer.wrap(bytes).getLong(StableId.BYTE_COUNT - Long.SIZE_BYTES) and Long.MAX_VALUE
     return if (candidate == 0L) 1L else candidate

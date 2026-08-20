@@ -11,10 +11,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerSaveFab
-import app.ledger.feature.liabilities.CreditActions
 import app.ledger.feature.liabilities.CreditDestination
 import app.ledger.feature.liabilities.CreditLoadState
 import app.ledger.feature.liabilities.CreditPresentation
+import app.ledger.feature.liabilities.CreditScreenAction
 import app.ledger.feature.liabilities.R as CreditR
 
 @Composable
@@ -41,28 +41,30 @@ internal fun CreditRootDestination(
     val accountId = encodedArguments.stableId("accountId")
     val statementId = encodedArguments.stableId("statementId")
     val transactionId = encodedArguments.stableId("transactionId")
-    val state by viewModel.credit.collectAsStateWithLifecycle()
+    val uiState by viewModel.creditUiState.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, accountId, statementId, transactionId) {
         viewModel.loadCredit(screenId, accountId, statementId, transactionId)
     }
     CreditDestination(
         screenId,
-        state,
+        uiState.loadState,
         encodedArguments,
-        CreditActions(
-            onRetry = { viewModel.loadCredit(screenId, accountId, statementId, transactionId) },
-            onNavigate = { target, stableId ->
-                viewModel.navigateCredit(target, stableId)
-                onNavigationChanged()
-            },
-            onFieldChanged = viewModel::updateCreditField,
-            onNextPaymentAccount = viewModel::selectNextCreditPaymentAccount,
-            onSelectStatement = viewModel::selectCreditStatement,
-            onSelectEarliest = viewModel::selectCreditEarliest,
-            onSelectUnallocated = viewModel::selectCreditUnallocated,
-            onAssignment = viewModel::assignCreditStatement,
-            onToggleAutoPayment = viewModel::toggleCreditAutoPayment,
-        ),
+        { action ->
+            when (action) {
+                CreditScreenAction.Retry -> viewModel.loadCredit(screenId, accountId, statementId, transactionId)
+                is CreditScreenAction.Navigate -> {
+                    viewModel.navigateCredit(action.screenId, action.id)
+                    onNavigationChanged()
+                }
+                is CreditScreenAction.FieldChanged -> viewModel.updateCreditField(action.field, action.value)
+                CreditScreenAction.NextPaymentAccount -> viewModel.selectNextCreditPaymentAccount()
+                is CreditScreenAction.SelectStatement -> viewModel.selectCreditStatement(action.statementId)
+                CreditScreenAction.SelectEarliest -> viewModel.selectCreditEarliest()
+                CreditScreenAction.SelectUnallocated -> viewModel.selectCreditUnallocated()
+                is CreditScreenAction.Assignment -> viewModel.assignCreditStatement(action.mode)
+                is CreditScreenAction.ToggleAutoPayment -> viewModel.toggleCreditAutoPayment(action.enabled)
+            }
+        },
     )
 }
 

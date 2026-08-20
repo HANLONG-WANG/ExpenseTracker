@@ -54,7 +54,27 @@ import app.ledger.finance.application.BatchValidationIssue
 import app.ledger.finance.application.BatchValidationSeverity
 import java.time.Instant
 
-public data class BatchRecordActions(
+public sealed interface BatchRecordScreenAction {
+    public data class OpenRow(val rowId: StableId) : BatchRecordScreenAction
+    public data object Add : BatchRecordScreenAction
+    public data class Copy(val rowId: StableId) : BatchRecordScreenAction
+    public data class Delete(val rowId: StableId) : BatchRecordScreenAction
+    public data class Move(val rowId: StableId, val offset: Int) : BatchRecordScreenAction
+    public data class Sort(val sort: BatchSort) : BatchRecordScreenAction
+    public data class Paste(val text: String) : BatchRecordScreenAction
+    public data class RowChange(val row: BatchRowDraft) : BatchRecordScreenAction
+    public data class CycleReference(val rowId: StableId, val field: BatchEntryField) : BatchRecordScreenAction
+    public data class AddAttachment(val rowId: StableId) : BatchRecordScreenAction
+    public data object Validate : BatchRecordScreenAction
+    public data object ConfirmWarnings : BatchRecordScreenAction
+    public data object Commit : BatchRecordScreenAction
+    public data object Undo : BatchRecordScreenAction
+    public data object Discard : BatchRecordScreenAction
+    public data object KeepEditing : BatchRecordScreenAction
+    public data class JumpToIssue(val issue: BatchValidationIssue) : BatchRecordScreenAction
+}
+
+internal class BatchRecordActions(
     val onOpenRow: (StableId) -> Unit,
     val onAdd: () -> Unit,
     val onCopy: (StableId) -> Unit,
@@ -74,13 +94,34 @@ public data class BatchRecordActions(
     val onJumpToIssue: (BatchValidationIssue) -> Unit,
 )
 
+internal fun batchRecordActions(onAction: (BatchRecordScreenAction) -> Unit): BatchRecordActions = BatchRecordActions(
+    onOpenRow = { onAction(BatchRecordScreenAction.OpenRow(it)) },
+    onAdd = { onAction(BatchRecordScreenAction.Add) },
+    onCopy = { onAction(BatchRecordScreenAction.Copy(it)) },
+    onDelete = { onAction(BatchRecordScreenAction.Delete(it)) },
+    onMove = { id, offset -> onAction(BatchRecordScreenAction.Move(id, offset)) },
+    onSort = { onAction(BatchRecordScreenAction.Sort(it)) },
+    onPaste = { onAction(BatchRecordScreenAction.Paste(it)) },
+    onRowChange = { onAction(BatchRecordScreenAction.RowChange(it)) },
+    onCycleReference = { id, field -> onAction(BatchRecordScreenAction.CycleReference(id, field)) },
+    onAddAttachment = { onAction(BatchRecordScreenAction.AddAttachment(it)) },
+    onValidate = { onAction(BatchRecordScreenAction.Validate) },
+    onConfirmWarnings = { onAction(BatchRecordScreenAction.ConfirmWarnings) },
+    onCommit = { onAction(BatchRecordScreenAction.Commit) },
+    onUndo = { onAction(BatchRecordScreenAction.Undo) },
+    onDiscard = { onAction(BatchRecordScreenAction.Discard) },
+    onKeepEditing = { onAction(BatchRecordScreenAction.KeepEditing) },
+    onJumpToIssue = { onAction(BatchRecordScreenAction.JumpToIssue(it)) },
+)
+
 @Composable
 public fun BatchRecordDestination(
     screenId: String,
     state: BatchRecordState,
-    actions: BatchRecordActions,
+    onAction: (BatchRecordScreenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val actions = batchRecordActions(onAction)
     when (screenId) {
         "REC-023" -> BatchSummaryScreen(state, actions, modifier)
         "REC-024" -> BatchRowEditorScreen(state, actions, modifier)

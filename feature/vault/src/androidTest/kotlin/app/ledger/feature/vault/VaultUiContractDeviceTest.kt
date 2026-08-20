@@ -163,11 +163,7 @@ class VaultUiContractDeviceTest {
     private companion object {
         const val GOLDEN_TAG = "p32_vault_golden_root"
         val CARD: StableId = StableId.fromUuid(UUID(0L, 0x9322L))
-        val ACTIONS = VaultActions(
-            onCard = {}, onEdit = {}, onRevealPrimaryNumber = {}, onCopyPrimaryNumber = {},
-            onRevealSecurityCode = {}, onHide = {}, onAuthenticateEdit = {}, onSave = { _, _ -> },
-            onOpenDeviceSecurity = {},
-        )
+        val ACTIONS: (VaultScreenAction) -> Unit = {}
         val EXPECTED_GOLDENS = listOf(
             "fd9f2f0c43bbd2dbcdb5437abce574b8c89217ae34d8549dab5eaeef0a59d133",
             "2ec8932a9cb0bb480fb4a9eb19c523abe27ed4e1c8fe3da0e88b84576841188c",

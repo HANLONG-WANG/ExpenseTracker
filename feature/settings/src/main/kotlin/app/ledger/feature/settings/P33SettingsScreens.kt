@@ -44,7 +44,20 @@ data class RemainingSettingsState(
     val licenses: List<String>,
 )
 
-data class RemainingSettingsActions(
+sealed interface RemainingSettingsScreenAction {
+    data class Navigate(val screenId: String) : RemainingSettingsScreenAction
+    data class ThemeModeChanged(val mode: SettingsThemeMode) : RemainingSettingsScreenAction
+    data class DynamicColorChanged(val enabled: Boolean) : RemainingSettingsScreenAction
+    data class DefaultAmountsHiddenChanged(val hidden: Boolean) : RemainingSettingsScreenAction
+    data class ReduceMotionChanged(val enabled: Boolean) : RemainingSettingsScreenAction
+    data class LanguageTagChanged(val tag: String) : RemainingSettingsScreenAction
+    data class DateFormatChanged(val format: SettingsDateFormat) : RemainingSettingsScreenAction
+    data class ZoneIdChanged(val zoneId: String) : RemainingSettingsScreenAction
+    data class WeekStartChanged(val weekStart: SettingsWeekStart) : RemainingSettingsScreenAction
+    data object OpenSourceCode : RemainingSettingsScreenAction
+}
+
+internal class RemainingSettingsActions(
     val navigate: (String) -> Unit,
     val setThemeMode: (SettingsThemeMode) -> Unit,
     val setDynamicColor: (Boolean) -> Unit,
@@ -57,12 +70,26 @@ data class RemainingSettingsActions(
     val openSourceCode: () -> Unit,
 )
 
+internal fun remainingSettingsActions(onAction: (RemainingSettingsScreenAction) -> Unit): RemainingSettingsActions = RemainingSettingsActions(
+    navigate = { onAction(RemainingSettingsScreenAction.Navigate(it)) },
+    setThemeMode = { onAction(RemainingSettingsScreenAction.ThemeModeChanged(it)) },
+    setDynamicColor = { onAction(RemainingSettingsScreenAction.DynamicColorChanged(it)) },
+    setDefaultAmountsHidden = { onAction(RemainingSettingsScreenAction.DefaultAmountsHiddenChanged(it)) },
+    setReduceMotion = { onAction(RemainingSettingsScreenAction.ReduceMotionChanged(it)) },
+    setLanguageTag = { onAction(RemainingSettingsScreenAction.LanguageTagChanged(it)) },
+    setDateFormat = { onAction(RemainingSettingsScreenAction.DateFormatChanged(it)) },
+    setZoneId = { onAction(RemainingSettingsScreenAction.ZoneIdChanged(it)) },
+    setWeekStart = { onAction(RemainingSettingsScreenAction.WeekStartChanged(it)) },
+    openSourceCode = { onAction(RemainingSettingsScreenAction.OpenSourceCode) },
+)
+
 @Composable
 fun RemainingSettingsDestination(
     state: RemainingSettingsState,
-    actions: RemainingSettingsActions,
+    onAction: (RemainingSettingsScreenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val actions = remainingSettingsActions(onAction)
     when (state.screenId) {
         "SETG-001" -> SettingsHub(actions, modifier)
         "SETG-002" -> AppearanceSettings(state, actions, modifier)

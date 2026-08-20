@@ -21,14 +21,14 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.common.StableId
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
-import app.ledger.feature.settings.RemainingSettingsActions
 import app.ledger.feature.settings.RemainingSettingsDestination
+import app.ledger.feature.settings.RemainingSettingsScreenAction
 import app.ledger.feature.settings.RemainingSettingsState
 import app.ledger.feature.settings.SettingsDateFormat
 import app.ledger.feature.settings.SettingsThemeMode
 import app.ledger.feature.settings.SettingsWeekStart
-import app.ledger.feature.transfer.TransferHubActions
 import app.ledger.feature.transfer.TransferHubScreen
+import app.ledger.feature.transfer.TransferHubScreenAction
 import app.ledger.feature.transfer.TransferHubState
 import app.ledger.transfer.domain.BackgroundOperation
 import app.ledger.transfer.domain.BackgroundOperationId
@@ -175,8 +175,8 @@ class P33UiContractDeviceTest {
         data class Notification(val presentation: NotificationPermissionPresentation) : Target
     }
 
-    private val noOpTransferActions = TransferHubActions({}, {}, {}, {}, {})
-    private val noOpSettingsActions = RemainingSettingsActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+    private val noOpTransferActions: (TransferHubScreenAction) -> Unit = {}
+    private val noOpSettingsActions: (RemainingSettingsScreenAction) -> Unit = {}
 
     private companion object {
         const val HOST_TAG = "p33_state_host"

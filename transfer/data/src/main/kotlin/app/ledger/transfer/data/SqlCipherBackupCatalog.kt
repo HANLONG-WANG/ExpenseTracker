@@ -6,7 +6,6 @@ import android.database.Cursor
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
-import app.ledger.core.security.SecureLedgerFactPurgeAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.finance.domain.BookCommitId
 import app.ledger.finance.domain.Hash256
@@ -38,7 +37,6 @@ interface BackupCatalogPort {
 class SqlCipherBackupCatalog(
     private val bookId: StableId,
     private val access: SecurePrimaryLedgerAccess,
-    private val factPurgeAccess: SecureLedgerFactPurgeAccess,
 ) : BackupCatalogPort {
     override fun ensureRepository(
         repositoryId: BackupRepositoryId,
@@ -165,7 +163,7 @@ class SqlCipherBackupCatalog(
         ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.snapshot(repositoryId)) } }
     }
 
-    override fun deleteSnapshot(snapshotId: BackupSnapshotId): List<String> = factPurgeAccess.write(bookId) { database ->
+    override fun deleteSnapshot(snapshotId: BackupSnapshotId): List<String> = access.write(bookId) { database ->
         val snapshotInternal = database.requiredId("backup_snapshot", snapshotId.value)
         val repositoryInternal = database.query(
             "SELECT repository_id FROM backup_snapshot WHERE id=?",
@@ -191,7 +189,7 @@ class SqlCipherBackupCatalog(
         ).use { cursor -> buildList { while (cursor.moveToNext()) add(BackupObjectId(cursor.stableId(0)).storageName()) } }
     }
 
-    override fun deleteUnreferencedObject(repositoryId: BackupRepositoryId, storageName: String): Boolean = factPurgeAccess.write(bookId) { database ->
+    override fun deleteUnreferencedObject(repositoryId: BackupRepositoryId, storageName: String): Boolean = access.write(bookId) { database ->
         val objectId = storageName.removeSuffix(".object").hexStableId()
         database.compileStatement(
             "DELETE FROM backup_object WHERE uid=? AND repository_id=(SELECT id FROM backup_repository WHERE uid=?) " +

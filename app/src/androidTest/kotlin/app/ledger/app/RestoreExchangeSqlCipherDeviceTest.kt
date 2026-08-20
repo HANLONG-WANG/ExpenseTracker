@@ -120,6 +120,16 @@ class RestoreExchangeSqlCipherDeviceTest {
         assertEquals(finalizedPrepared.sourceHead, currentHead())
         assertEquals("source-$finalizedOperation", context.filesDir.resolve("ledger_app_settings.pb").readText())
         assertTrue(afterRestart.validateLive(BOOK, finalizedPrepared.sourceHead).success().isValid)
+        val safetyDatabase = context.getDatabasePath("ledger_safety_${finalizedOperation.hex()}.db")
+        val marker = context.filesDir.resolve("ledger-restore-${finalizedOperation.hex()}.marker")
+        assertTrue(safetyDatabase.isFile)
+        assertTrue(marker.isFile)
+        afterRestart.cleanup(finalizedOperation)
+        assertTrue(safetyDatabase.isFile)
+        assertTrue(marker.isFile)
+        afterRestart.confirmSafetySnapshotCleanup(finalizedOperation).success()
+        assertFalse(safetyDatabase.exists())
+        assertFalse(marker.exists())
     }
 
     @Test
@@ -291,6 +301,7 @@ class RestoreExchangeSqlCipherDeviceTest {
         return digest.digest()
     }
     private fun id(value: Long): StableId = StableId.fromUuid(UUID(31, value))
+    private fun StableId.hex(): String = bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
     private fun <T> DomainResult<T>.success(): T = when (this) {
         is DomainResult.Success -> value
         is DomainResult.Failure -> throw AssertionError("expected success, got $error")

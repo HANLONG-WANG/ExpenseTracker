@@ -619,8 +619,8 @@ class SecureRoomCreditApplicationPort(
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
         DomainResult.Failure(FinanceDataError.NumericRangeExceeded)
-    } catch (_: Exception) {
-        DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    } catch (failure: Exception) {
+        DomainResult.Failure(failure.toFinanceDatabaseError())
     }
 
     private fun zeroHash(): Hash256 = Hash256.fromBytes(ByteArray(32)).valueOrAbort()

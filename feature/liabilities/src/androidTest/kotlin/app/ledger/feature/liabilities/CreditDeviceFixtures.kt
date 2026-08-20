@@ -29,17 +29,7 @@ internal object CreditDeviceFixtures {
     private val jpy = (CurrencyCode.parse("JPY") as DomainResult.Success).value
     private val revision = (LocalRevision.of(19) as DomainResult.Success).value
 
-    val actions = CreditActions(
-        onRetry = {},
-        onNavigate = { _, _ -> },
-        onFieldChanged = { _, _ -> },
-        onNextPaymentAccount = {},
-        onSelectStatement = {},
-        onSelectEarliest = {},
-        onSelectUnallocated = {},
-        onAssignment = {},
-        onToggleAutoPayment = {},
-    )
+    val actions: (CreditScreenAction) -> Unit = {}
 
     fun snapshot(
         accounts: List<CreditAccountView> = listOf(account()),

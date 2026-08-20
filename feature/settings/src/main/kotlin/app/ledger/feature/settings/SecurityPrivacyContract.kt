@@ -97,7 +97,29 @@ public data class SecurityPrivacySettingsState(
     }
 }
 
-public data class SecurityPrivacySettingsActions(
+public sealed interface SecurityPrivacyScreenAction {
+    public data class AppLockEnabled(val enabled: Boolean) : SecurityPrivacyScreenAction
+    public data class AppLockTimeoutChanged(val timeout: AppLockTimeout, val customMinutes: Int) : SecurityPrivacyScreenAction
+    public data object TestLock : SecurityPrivacyScreenAction
+    public data class GlobalScreenshotBlocked(val blocked: Boolean) : SecurityPrivacyScreenAction
+    public data class ObscureRecentTasks(val enabled: Boolean) : SecurityPrivacyScreenAction
+    public data class TrashRetentionChanged(val retention: TrashRetention) : SecurityPrivacyScreenAction
+    public data object OpenTrash : SecurityPrivacyScreenAction
+    public data class TelemetryEnabled(val enabled: Boolean) : SecurityPrivacyScreenAction
+    public data class CrashEnabled(val enabled: Boolean) : SecurityPrivacyScreenAction
+    public data object OpenFeatureQueue : SecurityPrivacyScreenAction
+    public data object OpenCrashQueue : SecurityPrivacyScreenAction
+    public data object OpenPrivacyPolicy : SecurityPrivacyScreenAction
+    public data object DeleteFeatureQueue : SecurityPrivacyScreenAction
+    public data object DeleteCrashQueue : SecurityPrivacyScreenAction
+    public data object BeginLocalClear : SecurityPrivacyScreenAction
+    public data object CancelLocalClear : SecurityPrivacyScreenAction
+    public data object ConfirmLocalClear : SecurityPrivacyScreenAction
+    public data object OpenSystemSecurity : SecurityPrivacyScreenAction
+    public data object SecurityConfigured : SecurityPrivacyScreenAction
+}
+
+internal class SecurityPrivacySettingsActions(
     val onAppLockEnabled: (Boolean) -> Unit,
     val onAppLockTimeout: (AppLockTimeout, Int) -> Unit,
     val onTestLock: () -> Unit,
@@ -117,6 +139,28 @@ public data class SecurityPrivacySettingsActions(
     val onConfirmLocalClear: () -> Unit,
     val onOpenSystemSecurity: () -> Unit,
     val onSecurityConfigured: () -> Unit,
+)
+
+internal fun securityPrivacyActions(onAction: (SecurityPrivacyScreenAction) -> Unit): SecurityPrivacySettingsActions = SecurityPrivacySettingsActions(
+    onAppLockEnabled = { onAction(SecurityPrivacyScreenAction.AppLockEnabled(it)) },
+    onAppLockTimeout = { timeout, minutes -> onAction(SecurityPrivacyScreenAction.AppLockTimeoutChanged(timeout, minutes)) },
+    onTestLock = { onAction(SecurityPrivacyScreenAction.TestLock) },
+    onGlobalScreenshotBlocked = { onAction(SecurityPrivacyScreenAction.GlobalScreenshotBlocked(it)) },
+    onObscureRecentTasks = { onAction(SecurityPrivacyScreenAction.ObscureRecentTasks(it)) },
+    onTrashRetention = { onAction(SecurityPrivacyScreenAction.TrashRetentionChanged(it)) },
+    onOpenTrash = { onAction(SecurityPrivacyScreenAction.OpenTrash) },
+    onTelemetryEnabled = { onAction(SecurityPrivacyScreenAction.TelemetryEnabled(it)) },
+    onCrashEnabled = { onAction(SecurityPrivacyScreenAction.CrashEnabled(it)) },
+    onOpenFeatureQueue = { onAction(SecurityPrivacyScreenAction.OpenFeatureQueue) },
+    onOpenCrashQueue = { onAction(SecurityPrivacyScreenAction.OpenCrashQueue) },
+    onOpenPrivacyPolicy = { onAction(SecurityPrivacyScreenAction.OpenPrivacyPolicy) },
+    onDeleteFeatureQueue = { onAction(SecurityPrivacyScreenAction.DeleteFeatureQueue) },
+    onDeleteCrashQueue = { onAction(SecurityPrivacyScreenAction.DeleteCrashQueue) },
+    onBeginLocalClear = { onAction(SecurityPrivacyScreenAction.BeginLocalClear) },
+    onCancelLocalClear = { onAction(SecurityPrivacyScreenAction.CancelLocalClear) },
+    onConfirmLocalClear = { onAction(SecurityPrivacyScreenAction.ConfirmLocalClear) },
+    onOpenSystemSecurity = { onAction(SecurityPrivacyScreenAction.OpenSystemSecurity) },
+    onSecurityConfigured = { onAction(SecurityPrivacyScreenAction.SecurityConfigured) },
 )
 
 public val SUPPORTED_SECURITY_SETTINGS_SCREENS: Set<String> = setOf(

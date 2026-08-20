@@ -123,6 +123,7 @@ enum class EntityType {
     ATTACHMENT,
     BLOB,
     LOCATION_RECORD,
+    BUDGET_TEMPLATE,
 }
 
 enum class EntityChangeOperation {

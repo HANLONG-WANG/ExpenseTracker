@@ -11,10 +11,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerSaveFab
-import app.ledger.feature.liabilities.LoanActions
 import app.ledger.feature.liabilities.LoanDestination
 import app.ledger.feature.liabilities.LoanLoadState
 import app.ledger.feature.liabilities.LoanPresentation
+import app.ledger.feature.liabilities.LoanScreenAction
 import app.ledger.feature.liabilities.R as LiabilitiesR
 
 @Composable
@@ -48,34 +48,36 @@ internal fun LoanRootDestination(
     val trancheId = encodedArguments.loanStableId("trancheId")
     val transactionId = encodedArguments.loanStableId("transactionId")
     val simulationId = encodedArguments.loanStableId("simulationId")
-    val state by viewModel.loan.collectAsStateWithLifecycle()
+    val uiState by viewModel.loanUiState.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, contractId, trancheId, transactionId, simulationId) {
         viewModel.loadLoan(screenId, contractId, trancheId, transactionId, simulationId)
     }
     LoanDestination(
         screenId,
-        state,
+        uiState.loadState,
         encodedArguments,
-        LoanActions(
-            onRetry = { viewModel.loadLoan(screenId, contractId, trancheId, transactionId, simulationId) },
-            onNavigate = { target, primary, secondary ->
-                viewModel.navigateLoan(target, primary, secondary)
-                onNavigationChanged()
-            },
-            onFieldChanged = viewModel::updateLoanField,
-            onSelectContract = viewModel::selectLoanContract,
-            onSelectTranche = viewModel::selectLoanTranche,
-            onRepaymentMethod = viewModel::selectLoanRepaymentMethod,
-            onStrategy = viewModel::selectLoanStrategy,
-            onPreview = viewModel::previewLoan,
-            onSave = viewModel::saveLoan,
-            onSimulate = viewModel::simulateLoan,
-            onApplySimulation = viewModel::applyLoanSimulation,
-            onOpenCreditAccount = { accountId ->
-                viewModel.navigateCredit("CRD-001", accountId)
-                onNavigationChanged()
-            },
-        ),
+        { action ->
+            when (action) {
+                LoanScreenAction.Retry -> viewModel.loadLoan(screenId, contractId, trancheId, transactionId, simulationId)
+                is LoanScreenAction.Navigate -> {
+                    viewModel.navigateLoan(action.screenId, action.primaryId, action.secondaryId)
+                    onNavigationChanged()
+                }
+                is LoanScreenAction.FieldChanged -> viewModel.updateLoanField(action.field, action.value)
+                is LoanScreenAction.SelectContract -> viewModel.selectLoanContract(action.contractId)
+                is LoanScreenAction.SelectTranche -> viewModel.selectLoanTranche(action.trancheId)
+                is LoanScreenAction.RepaymentMethodChanged -> viewModel.selectLoanRepaymentMethod(action.method)
+                is LoanScreenAction.StrategyChanged -> viewModel.selectLoanStrategy(action.strategy)
+                LoanScreenAction.Preview -> viewModel.previewLoan()
+                LoanScreenAction.Save -> viewModel.saveLoan()
+                LoanScreenAction.Simulate -> viewModel.simulateLoan()
+                LoanScreenAction.ApplySimulation -> viewModel.applyLoanSimulation()
+                is LoanScreenAction.OpenCreditAccount -> {
+                    viewModel.navigateCredit("CRD-001", action.accountId)
+                    onNavigationChanged()
+                }
+            }
+        },
     )
 }
 

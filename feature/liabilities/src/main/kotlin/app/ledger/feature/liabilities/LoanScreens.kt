@@ -58,8 +58,9 @@ public fun LoanDestination(
     screenId: String,
     state: LoanLoadState,
     encodedArguments: Map<String, String>,
-    actions: LoanActions,
+    onAction: (LoanScreenAction) -> Unit,
 ) {
+    val actions = loanActions(onAction)
     when (state) {
         LoanLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.loan_loading))
         is LoanLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.loan_load_failed), actions.onRetry)

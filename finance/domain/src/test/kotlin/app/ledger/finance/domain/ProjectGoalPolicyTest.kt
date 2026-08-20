@@ -89,6 +89,7 @@ class ProjectGoalPolicyTest {
         val plan = DeterministicFinancialPlanner.plan(command, snapshot).success()
         plan.journalBundles.shouldBeEmpty()
         plan.transactions.shouldBeEmpty()
+        plan.entityChanges.shouldBeEmpty()
         plan.goalMovements shouldBe listOf(movement)
         plan.goalEffects.single().kind shouldBe GoalEffectKind.ALLOCATE
 

@@ -543,8 +543,9 @@ class SecureRoomJournalApplicationPort(
                 "FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id " +
                 "JOIN book_commit created ON created.id=bt.created_commit_id JOIN book_commit modified ON modified.id=bt.last_commit_id " +
                 "LEFT JOIN merchant m ON m.id=tr.merchant_id LEFT JOIN project p ON p.id=tr.project_id " +
-                "LEFT JOIN location_record lr ON lr.id=tr.location_record_id LEFT JOIN place pl ON pl.id=lr.place_id WHERE bt.uid=?",
-            arrayOf(id.bytes),
+                "LEFT JOIN location_record lr ON lr.id=tr.location_record_id LEFT JOIN place pl ON pl.id=lr.place_id " +
+                "WHERE bt.uid=? AND NOT EXISTS(SELECT 1 FROM purge_tombstone pt WHERE pt.entity_type=? AND pt.entity_uid=bt.uid)",
+            arrayOf(id.bytes, app.ledger.finance.domain.EntityType.TRANSACTION.ordinal),
         ) { cursor -> DetailBase.from(cursor) } ?: return null
         val item = row(db, id, null)
         val attachments = db.queryList(
@@ -666,7 +667,6 @@ class SecureRoomJournalApplicationPort(
             arrayOf(lifecycle.third),
         ) { it.getLong(0) } ?: 0L
         if (backupReads > 0) reasons += PurgeIneligibilityReason.ATTACHMENTS_READ_BY_BACKUP
-        reasons += PurgeIneligibilityReason.PHYSICAL_PURGE_REQUIRES_MAINTENANCE
         return JournalPurgeAssessment(id, now, lifecycle.second, reasons)
     }
 
@@ -683,8 +683,8 @@ class SecureRoomJournalApplicationPort(
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
         DomainResult.Failure(FinanceDataError.NumericRangeExceeded)
-    } catch (_: Exception) {
-        DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    } catch (failure: Exception) {
+        DomainResult.Failure(failure.toFinanceDatabaseError())
     }
 
     private fun <T> withKeys(bookId: StableId, block: (app.ledger.core.security.DeviceLedgerKeys) -> T): DomainResult<T> = try {

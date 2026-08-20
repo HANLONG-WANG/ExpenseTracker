@@ -188,13 +188,7 @@ class AutomationUiContractDeviceTest {
         const val GOLDEN_TAG = "p23_automation_golden_root"
         const val EXPECTED_HUB_SHA256 = "0f73c7a9ae623b1482cb53b37a0a1851ac4689868ada7a8cce81e047a8d6f874"
         const val EXPECTED_CANDIDATE_SHA256 = "7b9f1701eccafa0c06de9f2bccee96be12e9a0fcb3ba330dbd0276907e77e497"
-        val ACTIONS = AutomationActions(
-            onRetry = {}, onNavigate = { _, _ -> }, onSearch = {}, onBlueprintField = { _, _ -> }, onBlueprintKind = {},
-            onBlueprintReference = { _, _ -> }, onSaveBlueprint = {}, onRecurrenceField = { _, _ -> }, onRecurrenceBlueprint = {},
-            onFrequency = {}, onWeekday = {}, onMissingDay = {}, onWeekend = {}, onGenerationMode = {}, onNotifyCandidate = {},
-            onSaveRecurrence = {}, onTemplateSelected = {}, onCandidateSelected = {}, onCandidateToggle = {}, onConfirmCandidate = {},
-            onSkipCandidate = {}, onScope = {}, onApplyScope = {},
-        )
+        val ACTIONS: (AutomationScreenAction) -> Unit = {}
         val EXPECTED = linkedMapOf(
             "AUT-001" to setOf("content"), "AUT-002" to setOf("content", "empty"),
             "AUT-003" to setOf("create", "edit", "validationError"), "AUT-004" to setOf("content", "empty", "paused"),

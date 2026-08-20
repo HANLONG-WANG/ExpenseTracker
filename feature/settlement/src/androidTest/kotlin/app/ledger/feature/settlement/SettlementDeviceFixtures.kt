@@ -30,24 +30,7 @@ internal object SettlementDeviceFixtures {
     val accountId = id(6)
     private val jpy = currency("JPY")
 
-    val actions = SettlementActions(
-        onRetry = {},
-        onNavigate = { _, _, _ -> },
-        onFieldChanged = { _, _ -> },
-        onSelectActivity = {},
-        onSelectPayer = {},
-        onSelectPayee = {},
-        onSelectAccount = {},
-        onSelectProject = {},
-        onSplitMethod = {},
-        onChargeDistribution = {},
-        onRoundingRule = {},
-        onToggleParticipant = {},
-        onMoveParticipant = { _, _ -> },
-        onAddParticipant = {},
-        onSave = {},
-        onRebuild = {},
-    )
+    val actions: (SettlementScreenAction) -> Unit = {}
 
     fun state(screen: String, presentation: SettlementPresentation): SettlementFeatureState {
         val empty = presentation == SettlementPresentation.EMPTY

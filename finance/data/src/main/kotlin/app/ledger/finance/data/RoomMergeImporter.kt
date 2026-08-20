@@ -229,10 +229,6 @@ internal class RoomMergeImporter(
             if (!cursor.moveToFirst()) abort(FinanceDataError.CorruptData)
             Triple(mapped("book_commit", cursor.getLong(0)), cursor.getLong(1), cursor.getLong(2))
         }
-        target.execSQL("UPDATE _schema_runtime_guard SET allow_fact_purge=1 WHERE id=1")
-        if (type == EntityType.TRANSACTION && target.idForUid("business_transaction", uid) != null) {
-            RoomPrivacyPurgeWriter().deleteChainForMerge(target, uid, tombstone.first, tombstone.second)
-        }
         target.execSQL(
             "INSERT INTO purge_tombstone(entity_type,entity_uid,purge_commit_id,purged_at,purge_generation) VALUES(?,?,?,?,?) " +
                 "ON CONFLICT(entity_type,entity_uid) DO UPDATE SET purge_commit_id=excluded.purge_commit_id," +
@@ -240,7 +236,6 @@ internal class RoomMergeImporter(
                 "WHERE excluded.purge_generation>purge_tombstone.purge_generation",
             arrayOf(type.ordinal, uid, tombstone.first, tombstone.second, tombstone.third),
         )
-        target.execSQL("UPDATE _schema_runtime_guard SET allow_fact_purge=0 WHERE id=1")
     }
 
     private fun mapped(table: String, sourceId: Long): Long = targetIds[table to sourceId]
@@ -360,6 +355,7 @@ internal class RoomMergeImporter(
             EntityType.ATTACHMENT to "attachment",
             EntityType.BLOB to "encrypted_blob",
             EntityType.LOCATION_RECORD to "location_record",
+            EntityType.BUDGET_TEMPLATE to "budget_template",
         )
         val FORWARD_FACT_TABLES = setOf(
             "transaction_revision",

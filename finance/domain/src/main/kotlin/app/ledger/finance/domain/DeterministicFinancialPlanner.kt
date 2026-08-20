@@ -165,7 +165,25 @@ object DeterministicFinancialPlanner {
                 target,
                 affectedMonth?.let { listOf(ProjectionChange.BudgetFromMonth(it, target)) }.orEmpty(),
             ),
-            entityChanges = emptyList(),
+            entityChanges = monthMutations.map { mutation ->
+                EntityChange(
+                    operation.commitId,
+                    StableEntityReference(EntityType.BUDGET, mutation.month.id.value),
+                    if (mutation.expectedRevisionId == null) EntityChangeOperation.CREATE else EntityChangeOperation.UPDATE,
+                    null,
+                    ContentHash(command.payloadHash),
+                    EntityRevisionId(mutation.revision.id.value),
+                )
+            } + templateMutations.map { mutation ->
+                EntityChange(
+                    operation.commitId,
+                    StableEntityReference(EntityType.BUDGET_TEMPLATE, mutation.template.id.value),
+                    if (mutation.expectedRevisionId == null) EntityChangeOperation.CREATE else EntityChangeOperation.UPDATE,
+                    null,
+                    ContentHash(command.payloadHash),
+                    EntityRevisionId(mutation.revision.id.value),
+                )
+            },
             ruleSetVersion = snapshot.book.ruleSetVersion,
             budgetMonthMutations = monthMutations,
             budgetTemplateMutations = templateMutations,
@@ -337,11 +355,7 @@ object DeterministicFinancialPlanner {
         return planLifecycle(command, snapshot, command.replacement, RevisionAction.RESTORE, TransactionLifecycleState.ACTIVE)
     }
 
-    /**
-     * Plans only the durable PURGE commit and non-sensitive tombstone. Physical deletion is performed
-     * by the finance-owned maintenance repository after it repeats every eligibility query in the
-     * same SQLite transaction.
-     */
+    /** Plans the durable logical-purge commit and tombstone without mutating historical facts. */
     private fun planPurge(
         command: PurgeTransactionCommand,
         snapshot: PlanningSnapshot,
@@ -1155,6 +1169,7 @@ private fun materializeJournal(
             valuationRate = posting.valuationRate,
             role = posting.role,
             reversalOfPostingId = null,
+            valuationSource = posting.valuationSource,
         ).orReject()
     }
     val hash = CanonicalFinancialHash.journal(
@@ -1639,6 +1654,7 @@ private fun NewTransactionInput<TransactionPayload>.toRevision(
 private fun BudgetEffectKind.opposite(): BudgetEffectKind = when (this) {
     BudgetEffectKind.USE -> BudgetEffectKind.RESTORE
     BudgetEffectKind.RESTORE -> BudgetEffectKind.USE
+    BudgetEffectKind.ADJUST -> BudgetEffectKind.ADJUST
 }
 
 private fun ProjectEffectKind.opposite(): ProjectEffectKind = when (this) {

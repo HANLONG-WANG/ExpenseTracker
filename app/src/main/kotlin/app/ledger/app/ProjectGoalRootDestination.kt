@@ -9,8 +9,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
-import app.ledger.feature.planning.ProjectGoalActions
 import app.ledger.feature.planning.ProjectGoalDestination
+import app.ledger.feature.planning.ProjectGoalScreenAction
 import app.ledger.finance.domain.GoalMovementKind
 import app.ledger.feature.planning.R as PlanningR
 
@@ -40,41 +40,43 @@ internal fun ProjectGoalRootDestination(
     val projectId = encodedArguments.stableId("projectId")
     val goalId = encodedArguments.stableId("goalId")
     val movementKind = encodedArguments["kind"]?.let { value -> GoalMovementKind.entries.singleOrNull { it.name == value } }
-    val state by viewModel.projectGoal.collectAsStateWithLifecycle()
+    val uiState by viewModel.projectGoalUiState.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, projectId, goalId, movementKind) {
         viewModel.loadProjectGoal(screenId, projectId, goalId, movementKind)
     }
     ProjectGoalDestination(
         screenId,
-        state,
+        uiState.loadState,
         encodedArguments,
-        ProjectGoalActions(
-            onRetry = { viewModel.loadProjectGoal(screenId, projectId, goalId, movementKind) },
-            onNavigate = { target, stable, kind ->
-                viewModel.navigateProjectGoal(target, stable, kind)
-                onNavigationChanged()
-            },
-            onProjectStatusTabSelected = viewModel::selectProjectStatusTab,
-            onProjectNameChanged = viewModel::updateProjectName,
-            onProjectDescriptionChanged = viewModel::updateProjectDescription,
-            onProjectStartDateChanged = viewModel::updateProjectStartDate,
-            onProjectEndDateChanged = viewModel::updateProjectEndDate,
-            onProjectBudgetChanged = viewModel::updateProjectBudget,
-            onProjectMonthlyBudgetChanged = viewModel::toggleProjectMonthlyBudget,
-            onProjectGoalChanged = viewModel::selectNextProjectGoal,
-            onSaveProject = viewModel::saveProject,
-            onChangeProjectStatus = viewModel::changeProjectStatus,
-            onGoalNameChanged = viewModel::updateGoalName,
-            onGoalTargetChanged = viewModel::updateGoalTarget,
-            onGoalSuggestedChanged = viewModel::updateGoalSuggested,
-            onGoalDueDateChanged = viewModel::updateGoalDueDate,
-            onGoalAccountChanged = viewModel::selectNextGoalAccount,
-            onSaveGoal = viewModel::saveGoal,
-            onMovementAmountChanged = viewModel::updateGoalMovementAmount,
-            onMovementDateChanged = viewModel::updateGoalMovementDate,
-            onSaveMovement = viewModel::saveGoalMovement,
-            onCompleteGoal = viewModel::completeGoal,
-        ),
+        { action ->
+            when (action) {
+                ProjectGoalScreenAction.Retry -> viewModel.loadProjectGoal(screenId, projectId, goalId, movementKind)
+                is ProjectGoalScreenAction.Navigate -> {
+                    viewModel.navigateProjectGoal(action.screenId, action.id, action.movementKind)
+                    onNavigationChanged()
+                }
+                is ProjectGoalScreenAction.ProjectStatusTabSelected -> viewModel.selectProjectStatusTab(action.active)
+                is ProjectGoalScreenAction.ProjectNameChanged -> viewModel.updateProjectName(action.value)
+                is ProjectGoalScreenAction.ProjectDescriptionChanged -> viewModel.updateProjectDescription(action.value)
+                is ProjectGoalScreenAction.ProjectStartDateChanged -> viewModel.updateProjectStartDate(action.value)
+                is ProjectGoalScreenAction.ProjectEndDateChanged -> viewModel.updateProjectEndDate(action.value)
+                is ProjectGoalScreenAction.ProjectBudgetChanged -> viewModel.updateProjectBudget(action.value)
+                ProjectGoalScreenAction.ProjectMonthlyBudgetChanged -> viewModel.toggleProjectMonthlyBudget()
+                ProjectGoalScreenAction.ProjectGoalChanged -> viewModel.selectNextProjectGoal()
+                ProjectGoalScreenAction.SaveProject -> viewModel.saveProject()
+                ProjectGoalScreenAction.ChangeProjectStatus -> viewModel.changeProjectStatus()
+                is ProjectGoalScreenAction.GoalNameChanged -> viewModel.updateGoalName(action.value)
+                is ProjectGoalScreenAction.GoalTargetChanged -> viewModel.updateGoalTarget(action.value)
+                is ProjectGoalScreenAction.GoalSuggestedChanged -> viewModel.updateGoalSuggested(action.value)
+                is ProjectGoalScreenAction.GoalDueDateChanged -> viewModel.updateGoalDueDate(action.value)
+                ProjectGoalScreenAction.GoalAccountChanged -> viewModel.selectNextGoalAccount()
+                ProjectGoalScreenAction.SaveGoal -> viewModel.saveGoal()
+                is ProjectGoalScreenAction.MovementAmountChanged -> viewModel.updateGoalMovementAmount(action.value)
+                is ProjectGoalScreenAction.MovementDateChanged -> viewModel.updateGoalMovementDate(action.value)
+                ProjectGoalScreenAction.SaveMovement -> viewModel.saveGoalMovement()
+                is ProjectGoalScreenAction.CompleteGoal -> viewModel.completeGoal(action.strategy)
+            }
+        },
         projectPages = viewModel.projectTransactionPages,
     )
 }

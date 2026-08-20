@@ -33,6 +33,11 @@ sealed interface AnalyticsError : DomainError {
         override val code: String = "ANALYTICS_DATABASE_UNAVAILABLE"
     }
 
+    /** A persisted amount aggregate cannot be represented by the public signed 64-bit contract. */
+    data object NumericRangeExceeded : AnalyticsError {
+        override val code: String = "ANALYTICS_NUMERIC_RANGE_EXCEEDED"
+    }
+
     data object InvalidReportSpec : AnalyticsError {
         override val code: String = "ANALYTICS_INVALID_REPORT_SPEC"
     }

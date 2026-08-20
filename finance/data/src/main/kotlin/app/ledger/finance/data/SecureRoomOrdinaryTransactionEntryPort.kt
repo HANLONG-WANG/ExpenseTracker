@@ -244,21 +244,27 @@ public class SecureRoomOrdinaryTransactionEntryPort(
                 automaticStatement?.newStatement?.let { statement -> insertAutomaticStatement(db, plan, statement) }
                 settledActivity?.let { activityId ->
                     db.execSQL(
-                        "UPDATE settlement_activity SET status=?,requires_additional_settlement=1,last_commit_id=? WHERE uid=? AND status=?",
-                        arrayOf<Any>(
-                            app.ledger.finance.domain.SettlementActivityStatus.REQUIRES_ADDITIONAL_SETTLEMENT.ordinal,
-                            db.commitId(plan.commit.id),
-                            activityId.bytes,
-                            app.ledger.finance.domain.SettlementActivityStatus.SETTLED.ordinal,
-                        ),
-                    )
-                    db.execSQL(
-                        "INSERT INTO entity_change(commit_id,entity_type,entity_uid,operation,before_hash,after_hash,entity_revision_uid) VALUES(?,?,?,?,NULL,NULL,NULL)",
+                        "INSERT INTO entity_change(commit_id,entity_type,entity_uid,operation,before_hash,after_hash,entity_revision_uid) VALUES(?,?,?,?,NULL,?,NULL)",
                         arrayOf<Any>(
                             db.commitId(plan.commit.id),
                             app.ledger.finance.domain.EntityType.SETTLEMENT_ACTIVITY.ordinal,
                             activityId.bytes,
                             app.ledger.finance.domain.EntityChangeOperation.UPDATE.ordinal,
+                            plan.payloadHash.bytes,
+                        ),
+                    )
+                    db.execSQL(
+                        "UPDATE settlement_activity SET status=?,requires_additional_settlement=1,last_commit_id=?," +
+                            "row_version=(SELECT COUNT(*) FROM entity_change WHERE entity_type=? AND entity_uid=? AND after_hash IS NOT NULL)," +
+                            "content_hash=? WHERE uid=? AND status=?",
+                        arrayOf<Any>(
+                            app.ledger.finance.domain.SettlementActivityStatus.REQUIRES_ADDITIONAL_SETTLEMENT.ordinal,
+                            db.commitId(plan.commit.id),
+                            app.ledger.finance.domain.EntityType.SETTLEMENT_ACTIVITY.ordinal,
+                            activityId.bytes,
+                            plan.payloadHash.bytes,
+                            activityId.bytes,
+                            app.ledger.finance.domain.SettlementActivityStatus.SETTLED.ordinal,
                         ),
                     )
                 }
@@ -427,8 +433,9 @@ public class SecureRoomOrdinaryTransactionEntryPort(
     ) {
         val statementId = db.allocateInternalId("credit_statement", statement.statementId)
         db.execSQL(
-            "INSERT INTO credit_statement(id,uid,credit_account_id,cycle_start,cycle_end,due_date,current_revision_id,status) VALUES(?,?,?,?,?,?,NULL,0)",
-            arrayOf<Any>(statementId, statement.statementId.bytes, statement.accountInternalId, statement.cycle.cycleStart.toStorageInt(), statement.cycle.cycleEnd.toStorageInt(), statement.cycle.dueDate.toStorageInt()),
+            "INSERT INTO credit_statement(id,uid,credit_account_id,cycle_start,cycle_end,due_date,current_revision_id,status,last_commit_id,row_version,content_hash) " +
+                "VALUES(?,?,?,?,?,?,NULL,0,?,1,?)",
+            arrayOf<Any>(statementId, statement.statementId.bytes, statement.accountInternalId, statement.cycle.cycleStart.toStorageInt(), statement.cycle.cycleEnd.toStorageInt(), statement.cycle.dueDate.toStorageInt(), db.commitId(plan.commit.id), plan.payloadHash.bytes),
         )
         val revisionId = db.allocateInternalId("credit_statement_revision", statement.revisionId)
         db.execSQL(
@@ -436,6 +443,17 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             arrayOf<Any>(revisionId, statement.revisionId.bytes, statementId, statement.cycle.cycleEnd.toStorageInt(), statement.cycle.dueDate.toStorageInt(), db.commitId(plan.commit.id)),
         )
         db.execSQL("UPDATE credit_statement SET current_revision_id=? WHERE id=?", arrayOf<Any>(revisionId, statementId))
+        db.execSQL(
+            "INSERT INTO entity_change(commit_id,entity_type,entity_uid,operation,before_hash,after_hash,entity_revision_uid) VALUES(?,?,?,?,NULL,?,?)",
+            arrayOf<Any>(
+                db.commitId(plan.commit.id),
+                app.ledger.finance.domain.EntityType.CREDIT_STATEMENT.ordinal,
+                statement.statementId.bytes,
+                app.ledger.finance.domain.EntityChangeOperation.CREATE.ordinal,
+                plan.payloadHash.bytes,
+                statement.revisionId.bytes,
+            ),
+        )
     }
 
     private fun amountEvidence(

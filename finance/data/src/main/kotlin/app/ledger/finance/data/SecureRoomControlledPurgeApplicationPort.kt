@@ -19,7 +19,6 @@ import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
 import app.ledger.finance.application.JournalPurgeAssessment
 import app.ledger.finance.application.LedgerWriteGate
-import app.ledger.finance.application.PurgeIneligibilityReason
 import app.ledger.finance.domain.BookCommitId
 import app.ledger.finance.domain.CanonicalFinancialHash
 import app.ledger.finance.domain.DeterministicFinancialPlanner
@@ -50,7 +49,7 @@ class SecureRoomControlledPurgeApplicationPort(
         bookId: StableId,
         transactionId: StableId,
         now: Instant,
-    ): DomainResult<JournalPurgeAssessment> = journal.assessPurge(bookId, transactionId, now).withoutMaintenanceMarker()
+    ): DomainResult<JournalPurgeAssessment> = journal.assessPurge(bookId, transactionId, now)
 
     override suspend fun purge(request: ControlledPurgeRequest): DomainResult<ControlledPurgeResult> {
         return withDatabase(request.bookId) { database ->
@@ -75,23 +74,6 @@ class SecureRoomControlledPurgeApplicationPort(
             }
             if (!assessment.canPurgeNow) {
                 return@withDatabase DomainResult.Failure(FinanceDataError.MaintenanceRequired)
-            }
-            val counts = database.readLedger { connection ->
-                val transactionId = connection.queryOne(
-                    "SELECT id FROM business_transaction WHERE uid=?",
-                    arrayOf(request.transactionId.bytes),
-                ) { it.getLong(0) } ?: abort(FinanceDataError.CorruptData)
-                val attachmentCount = connection.queryOne(
-                    "SELECT COUNT(DISTINCT tra.attachment_id) FROM transaction_revision tr " +
-                        "JOIN transaction_revision_attachment tra ON tra.revision_id=tr.id WHERE tr.transaction_id=?",
-                    arrayOf(transactionId),
-                ) { it.getInt(0) } ?: 0
-                val blobCount = connection.queryOne(
-                    "SELECT COUNT(DISTINCT a.blob_id) FROM transaction_revision tr JOIN transaction_revision_attachment tra " +
-                        "ON tra.revision_id=tr.id JOIN attachment a ON a.id=tra.attachment_id WHERE tr.transaction_id=?",
-                    arrayOf(transactionId),
-                ) { it.getInt(0) } ?: 0
-                attachmentCount to blobCount
             }
             val snapshot = database.readLedger { connection ->
                 mapper.loadForPurge(
@@ -130,17 +112,10 @@ class SecureRoomControlledPurgeApplicationPort(
                 repository,
             ).execute(command)
             when (result) {
-                is DomainResult.Success -> DomainResult.Success(ControlledPurgeResult(result.value, counts.first, counts.second))
+                is DomainResult.Success -> DomainResult.Success(ControlledPurgeResult(result.value, 0, 0))
                 is DomainResult.Failure -> result
             }
         }
-    }
-
-    private fun DomainResult<JournalPurgeAssessment>.withoutMaintenanceMarker(): DomainResult<JournalPurgeAssessment> = when (this) {
-        is DomainResult.Failure -> this
-        is DomainResult.Success -> DomainResult.Success(
-            value.copy(reasons = value.reasons - PurgeIneligibilityReason.PHYSICAL_PURGE_REQUIRES_MAINTENANCE),
-        )
     }
 
     private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> DomainResult<T>): DomainResult<T> = try {
@@ -154,7 +129,7 @@ class SecureRoomControlledPurgeApplicationPort(
         }
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
-    } catch (_: Exception) {
-        DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
+    } catch (failure: Exception) {
+        DomainResult.Failure(failure.toFinanceDatabaseError())
     }
 }

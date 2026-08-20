@@ -143,7 +143,9 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
             "DependencyResolution",
         ),
     )
-    data = next((source for path, source in sources.items() if path.endswith("SecureRoomJournalApplicationPort.kt")), "")
+    data = next((source for path, source in sources.items() if path.endswith("SecureRoomJournalApplicationPort.kt")), "") + next(
+        (source for path, source in sources.items() if path.endswith("RoomLogicalPurgeValidator.kt")), ""
+    )
     require_tokens(
         errors,
         data,
@@ -154,7 +156,7 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
             "RevisionAction.BULK_EDIT",
             "RestoreHistoricalRevisionCommand",
             "EncryptedDatabaseFactory.openPrimary",
-            "PHYSICAL_PURGE_REQUIRES_MAINTENANCE",
+            "RoomLogicalPurgeValidator",
             "RoomTransactionQueryService(database).page",
         ),
     )
@@ -206,7 +208,7 @@ def validate_ledgers() -> list[str]:
     evidence = read("docs/implementation/TEST_EVIDENCE.md")
     mapping_path = ROOT / "docs/implementation/P15_JOURNAL_MAPPING.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
-    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P15", "Stage status: VERIFIED"))
+    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "P00—P35 remain VERIFIED"))
     for index in range(1, 9):
         if f"P15-E{index:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P15-E{index:03d}")

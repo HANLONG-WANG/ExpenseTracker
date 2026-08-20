@@ -181,7 +181,7 @@ class MergeRestoreSqlCipherDeviceTest {
             ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getBlob(0).toList()) } }
             assertEquals(setOf(LOCAL_HEAD.bytes.toList(), INCOMING_HEAD.bytes.toList()), parentUids.toSet())
         }
-        exchange.cleanup(OPERATION)
+        exchange.confirmSafetySnapshotCleanup(OPERATION).success()
         merge.cleanup(OPERATION)
     }
 

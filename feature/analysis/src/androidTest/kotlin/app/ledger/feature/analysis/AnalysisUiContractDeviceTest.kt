@@ -158,7 +158,9 @@ class AnalysisUiContractDeviceTest {
                     AnalysisDestination(
                         "ANA-011",
                         AnalysisLoadState.Content(state),
-                        AnalysisDeviceFixtures.actions.copy(onRemoveMapFilter = { removedStableKey = it }),
+                        { action ->
+                            if (action is AnalysisScreenAction.RemoveMapFilter) removedStableKey = action.key
+                        },
                         mapContent = { _, _ -> Box(Modifier.size(320.dp, 220.dp)) },
                     )
                 }

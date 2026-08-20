@@ -87,7 +87,30 @@ public data class OpeningBalanceSubmission(
     val baseMinor: Long?,
 )
 
-public data class AccountsActions(
+public data class AccountsScreenUiState(
+    val screenId: String,
+    val encodedArguments: Map<String, String>,
+    val dataState: AccountsDataState,
+    val selectedAccountType: UserAccountType,
+    val preferredCardAccountId: StableId? = null,
+    val pending: Boolean = false,
+    val stateOverride: AccountsRequiredState? = null,
+)
+
+public sealed interface AccountsScreenAction {
+    public data class Navigate(val screenId: String, val arguments: Map<String, StableId>) : AccountsScreenAction
+    public data class SelectAccountType(val type: UserAccountType) : AccountsScreenAction
+    public data class SaveAccount(val submission: AccountEditorSubmission) : AccountsScreenAction
+    public data class ArchiveAccount(val accountId: StableId, val expectedRowVersion: Long) : AccountsScreenAction
+    public data class DeleteEmptyAccount(val accountId: StableId, val expectedRowVersion: Long) : AccountsScreenAction
+    public data class SaveCard(val submission: CardEditorSubmission) : AccountsScreenAction
+    public data class ArchiveCard(val cardId: StableId, val expectedRowVersion: Long) : AccountsScreenAction
+    public data class SaveCheckpoint(val submission: CheckpointSubmission) : AccountsScreenAction
+    public data class SaveOpeningBalance(val submission: OpeningBalanceSubmission) : AccountsScreenAction
+    public data object Retry : AccountsScreenAction
+}
+
+internal class AccountsActions(
     val onNavigate: (screenId: String, arguments: Map<String, StableId>) -> Unit,
     val onSelectAccountType: (UserAccountType) -> Unit,
     val onSaveAccount: (AccountEditorSubmission) -> Unit,
@@ -98,4 +121,17 @@ public data class AccountsActions(
     val onSaveCheckpoint: (CheckpointSubmission) -> Unit,
     val onSaveOpeningBalance: (OpeningBalanceSubmission) -> Unit,
     val onRetry: () -> Unit,
+)
+
+internal fun accountsActions(onAction: (AccountsScreenAction) -> Unit): AccountsActions = AccountsActions(
+    onNavigate = { screenId, arguments -> onAction(AccountsScreenAction.Navigate(screenId, arguments)) },
+    onSelectAccountType = { onAction(AccountsScreenAction.SelectAccountType(it)) },
+    onSaveAccount = { onAction(AccountsScreenAction.SaveAccount(it)) },
+    onArchiveAccount = { id, version -> onAction(AccountsScreenAction.ArchiveAccount(id, version)) },
+    onDeleteEmptyAccount = { id, version -> onAction(AccountsScreenAction.DeleteEmptyAccount(id, version)) },
+    onSaveCard = { onAction(AccountsScreenAction.SaveCard(it)) },
+    onArchiveCard = { id, version -> onAction(AccountsScreenAction.ArchiveCard(id, version)) },
+    onSaveCheckpoint = { onAction(AccountsScreenAction.SaveCheckpoint(it)) },
+    onSaveOpeningBalance = { onAction(AccountsScreenAction.SaveOpeningBalance(it)) },
+    onRetry = { onAction(AccountsScreenAction.Retry) },
 )

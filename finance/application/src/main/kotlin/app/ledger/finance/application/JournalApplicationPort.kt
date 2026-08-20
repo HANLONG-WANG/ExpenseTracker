@@ -118,7 +118,6 @@ enum class PurgeIneligibilityReason {
     DEPENDENCIES_OPEN,
     OPERATION_REFERENCE,
     ATTACHMENTS_READ_BY_BACKUP,
-    PHYSICAL_PURGE_REQUIRES_MAINTENANCE,
 }
 
 data class JournalPurgeAssessment(
@@ -127,7 +126,7 @@ data class JournalPurgeAssessment(
     val purgeAfter: Instant?,
     val reasons: Set<PurgeIneligibilityReason>,
 ) {
-    val financiallyEligible: Boolean = reasons.none { it != PurgeIneligibilityReason.PHYSICAL_PURGE_REQUIRES_MAINTENANCE }
+    val financiallyEligible: Boolean = reasons.isEmpty()
     val canPurgeNow: Boolean = reasons.isEmpty()
 }
 

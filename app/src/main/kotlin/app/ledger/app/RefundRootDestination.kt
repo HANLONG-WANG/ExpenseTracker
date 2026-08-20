@@ -9,11 +9,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
-import app.ledger.feature.record.RefundActions
 import app.ledger.feature.record.RefundDestination
 import app.ledger.feature.record.RefundOriginalPickerDestination
-import app.ledger.feature.record.RefundPickerActions
+import app.ledger.feature.record.RefundPickerScreenAction
 import app.ledger.feature.record.RefundPickerState
+import app.ledger.feature.record.RefundScreenAction
 import app.ledger.finance.application.RefundSearchQuery
 
 @Composable
@@ -32,34 +32,37 @@ internal fun RefundRootDestination(
     viewModel: AppRootViewModel,
     onNavigationChanged: () -> Unit,
 ) {
-    val state by viewModel.refund.collectAsStateWithLifecycle()
-    val pickerState by viewModel.refundPicker.collectAsStateWithLifecycle()
+    val uiState by viewModel.refundUiState.collectAsStateWithLifecycle()
+    val state = uiState.loadState
+    val pickerState = uiState.pickerState
     if (screenId == "REC-016") {
         LaunchedEffect(screenId) {
             if (pickerState is RefundPickerState.Loading) viewModel.loadRefundOriginals()
         }
         RefundOriginalPickerDestination(
             pickerState,
-            RefundPickerActions(
-                onRetry = { viewModel.loadRefundOriginals() },
-                onQuery = { text ->
-                    val current = (viewModel.refundPicker.value as? RefundPickerState.Content)?.query ?: RefundSearchQuery()
-                    viewModel.loadRefundOriginals(current.copy(text = text))
-                },
-                onPartialOnly = { only ->
-                    val current = (viewModel.refundPicker.value as? RefundPickerState.Content)?.query ?: RefundSearchQuery()
-                    viewModel.loadRefundOriginals(current.copy(partiallyRefundedOnly = only))
-                },
-                onChoose = {
-                    viewModel.chooseRefundOriginal(it)
-                    onNavigationChanged()
-                },
-                onIndependent = {
-                    viewModel.setRefundIndependent(true)
-                    viewModel.navigator.pop()
-                    onNavigationChanged()
-                },
-            ),
+            { action ->
+                when (action) {
+                    RefundPickerScreenAction.Retry -> viewModel.loadRefundOriginals()
+                    is RefundPickerScreenAction.QueryChanged -> {
+                        val current = (viewModel.refundPicker.value as? RefundPickerState.Content)?.query ?: RefundSearchQuery()
+                        viewModel.loadRefundOriginals(current.copy(text = action.query))
+                    }
+                    is RefundPickerScreenAction.PartialOnlyChanged -> {
+                        val current = (viewModel.refundPicker.value as? RefundPickerState.Content)?.query ?: RefundSearchQuery()
+                        viewModel.loadRefundOriginals(current.copy(partiallyRefundedOnly = action.enabled))
+                    }
+                    is RefundPickerScreenAction.Choose -> {
+                        viewModel.chooseRefundOriginal(action.transactionId)
+                        onNavigationChanged()
+                    }
+                    RefundPickerScreenAction.Independent -> {
+                        viewModel.setRefundIndependent(true)
+                        viewModel.navigator.pop()
+                        onNavigationChanged()
+                    }
+                }
+            },
         )
         return
     }
@@ -67,29 +70,31 @@ internal fun RefundRootDestination(
     LaunchedEffect(screenId, originalId) { viewModel.loadRefund(originalId) }
     RefundDestination(
         state,
-        RefundActions(
-            onRetry = { viewModel.loadRefund(originalId) },
-            onPickOriginal = {
-                viewModel.openRefundOriginalPicker()
-                onNavigationChanged()
-            },
-            onIndependent = viewModel::setRefundIndependent,
-            onExpression = viewModel::refundExpression,
-            onOperator = viewModel::refundOperator,
-            onAccount = viewModel::selectNextRefundAccount,
-            onCard = viewModel::selectNextRefundCard,
-            onCategory = viewModel::selectNextRefundCategory,
-            onMerchant = viewModel::selectNextRefundMerchant,
-            onProject = viewModel::selectNextRefundProject,
-            onGoal = viewModel::selectNextRefundGoal,
-            onDate = viewModel::refundDate,
-            onAccrualPolicy = viewModel::refundAccrual,
-            onBudgetPolicy = viewModel::refundBudget,
-            onProjectPolicy = viewModel::refundProject,
-            onGoalPolicy = viewModel::refundGoal,
-            onNote = viewModel::refundNote,
-            onRequestExcess = viewModel::requestRefundExcess,
-            onConfirmExcess = viewModel::confirmRefundExcess,
-        ),
+        { action ->
+            when (action) {
+                RefundScreenAction.Retry -> viewModel.loadRefund(originalId)
+                RefundScreenAction.PickOriginal -> {
+                    viewModel.openRefundOriginalPicker()
+                    onNavigationChanged()
+                }
+                is RefundScreenAction.IndependentChanged -> viewModel.setRefundIndependent(action.independent)
+                is RefundScreenAction.ExpressionChanged -> viewModel.refundExpression(action.value)
+                is RefundScreenAction.Operator -> viewModel.refundOperator(action.value)
+                RefundScreenAction.Account -> viewModel.selectNextRefundAccount()
+                RefundScreenAction.Card -> viewModel.selectNextRefundCard()
+                RefundScreenAction.Category -> viewModel.selectNextRefundCategory()
+                RefundScreenAction.Merchant -> viewModel.selectNextRefundMerchant()
+                RefundScreenAction.Project -> viewModel.selectNextRefundProject()
+                RefundScreenAction.Goal -> viewModel.selectNextRefundGoal()
+                is RefundScreenAction.DateChanged -> viewModel.refundDate(action.date)
+                is RefundScreenAction.AccrualPolicyChanged -> viewModel.refundAccrual(action.policy)
+                is RefundScreenAction.BudgetPolicyChanged -> viewModel.refundBudget(action.policy)
+                is RefundScreenAction.ProjectPolicyChanged -> viewModel.refundProject(action.policy)
+                is RefundScreenAction.GoalPolicyChanged -> viewModel.refundGoal(action.policy)
+                is RefundScreenAction.NoteChanged -> viewModel.refundNote(action.value)
+                is RefundScreenAction.RequestExcess -> viewModel.requestRefundExcess(action.requested)
+                RefundScreenAction.ConfirmExcess -> viewModel.confirmRefundExcess()
+            }
+        },
     )
 }
