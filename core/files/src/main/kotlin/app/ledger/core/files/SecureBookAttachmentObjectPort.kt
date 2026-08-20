@@ -1,6 +1,8 @@
 package app.ledger.core.files
 
 import android.content.Context
+import android.content.Intent
+import android.os.SystemClock
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.StableIdSource
@@ -42,25 +44,28 @@ class SecureBookAttachmentObjectPort(
         DomainResult.Failure(AttachmentInfrastructureError.IO_FAILURE)
     }
 
-    /** Returns reusable attachment identities only; encrypted content remains unopened. */
-    suspend fun activeMetadata(bookId: StableId): DomainResult<List<AttachmentMetadata>> = try {
-        DomainResult.Success(withStore(bookId) { it.activeMetadata() })
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        DomainResult.Failure(AttachmentInfrastructureError.IO_FAILURE)
-    }
-
-    /** Keeps decrypted access scoped to the visible attachment flow and never persists plaintext. */
-    suspend fun openSession(bookId: StableId): SecureBookAttachmentSession {
+    /** Owns decrypted-reader capability only while an attachment destination is active. */
+    fun openSession(bookId: StableId): SecureAttachmentSession {
         val keys = keyProvider.open(bookId)
-        var database: LedgerDatabase? = null
-        try {
-            database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-            val store = EncryptedAttachmentObjectStore(applicationContext, bookId, keys, database, stableIds, clock, random)
-            return SecureBookAttachmentSession(applicationContext, keys, database, store)
+        val database = try {
+            keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
         } catch (error: Exception) {
-            database?.close()
+            keys.close()
+            throw error
+        }
+        return try {
+            val store = EncryptedAttachmentObjectStore(
+                applicationContext,
+                bookId,
+                keys,
+                database,
+                stableIds,
+                clock,
+                random,
+            )
+            SecureAttachmentSession(applicationContext, keys, database, store)
+        } catch (error: Exception) {
+            database.close()
             keys.close()
             throw error
         }
@@ -76,35 +81,29 @@ class SecureBookAttachmentObjectPort(
     }
 }
 
-class SecureBookAttachmentSession internal constructor(
+class SecureAttachmentSession internal constructor(
     context: Context,
     private val keys: DeviceLedgerKeys,
     private val database: LedgerDatabase,
     private val store: EncryptedAttachmentObjectStore,
 ) : AutoCloseable {
-    private val providerRuntime = SecureAttachmentProviderRuntime(android.os.SystemClock::elapsedRealtime)
-    val imageLoader: SecureAttachmentImageLoader = SecureAttachmentImageLoader(context, store)
+    val imageLoader = SecureAttachmentImageLoader(context, store)
+    private val providerRuntime = SecureAttachmentProviderRuntime(SystemClock::elapsedRealtime)
     private val externalOpen = SecureAttachmentExternalOpen(context, providerRuntime)
     private var closed = false
 
     init {
         providerRuntime.onBookReady(store, imageLoader)
-        try {
-            SecureAttachmentProviderProcess.install(providerRuntime)
-        } catch (error: Exception) {
-            providerRuntime.close()
-            imageLoader.close()
-            throw error
-        }
+        SecureAttachmentProviderProcess.install(providerRuntime)
     }
 
     fun metadata(attachmentId: AttachmentId): AttachmentMetadata? = store.metadata(attachmentId)
 
-    suspend fun rename(attachmentId: AttachmentId, displayName: String): DomainResult<AttachmentMetadata> =
-        store.rename(attachmentId, displayName)
+    suspend fun rename(attachmentId: AttachmentId, requestedName: String): DomainResult<AttachmentMetadata> =
+        store.rename(attachmentId, requestedName)
 
-    fun externalOpenConfirmation(attachmentId: AttachmentId): ExternalOpenConfirmation? =
-        externalOpen.beginConfirmation(attachmentId)
+    fun externalOpenIntent(attachmentId: AttachmentId): Intent? =
+        externalOpen.beginConfirmation(attachmentId)?.authorize()?.intent
 
     override fun close() {
         if (closed) return

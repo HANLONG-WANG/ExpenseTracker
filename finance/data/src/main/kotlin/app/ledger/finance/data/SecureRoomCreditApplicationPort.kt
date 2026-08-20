@@ -18,9 +18,11 @@ import app.ledger.finance.application.CreditAccountView
 import app.ledger.finance.application.CreditApplicationPort
 import app.ledger.finance.application.CreditAutoPaymentProposal
 import app.ledger.finance.application.CreditPaymentAccountView
+import app.ledger.finance.application.CreditPaymentAllocationView
 import app.ledger.finance.application.CreditProfileView
 import app.ledger.finance.application.CreditSnapshot
 import app.ledger.finance.application.CreditStatementView
+import app.ledger.finance.application.CreditStatementTransactionView
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
@@ -350,6 +352,7 @@ class SecureRoomCreditApplicationPort(
         ) { cursor ->
             val id = cursor.stableId("uid")
             val signed = cursor.long("signed_balance")
+            val installment = installmentPreview(db, id)
             CreditAccountView(
                 id,
                 cursor.string("name"),
@@ -363,6 +366,8 @@ class SecureRoomCreditApplicationPort(
                 cursor.nullableLong("estimated_unbilled_minor") ?: 0L,
                 cursor.nullableLong("overdue_minor") ?: 0L,
                 statements(db, id),
+                installment.first,
+                installment.second,
             )
         }
         val paymentAccounts = db.queryList(
@@ -370,6 +375,15 @@ class SecureRoomCreditApplicationPort(
         ) { CreditPaymentAccountView(it.stableId("uid"), it.string("name"), currency(it.string("currency_code")), it.int("status") == EntityStatus.ACTIVE.ordinal) }
         return CreditSnapshot(bookId, baseCurrency, localRevision, accounts, paymentAccounts)
     }
+
+    private fun installmentPreview(db: SupportSQLiteDatabase, accountId: StableId): Pair<Long, LocalDate?> = db.queryOne(
+        "SELECT COALESCE(SUM(ipp.unposted_committed_principal_minor),0) future_minor,MIN(ipp.next_statement_date) next_date " +
+            "FROM installment_plan ip JOIN installment_progress_projection ipp ON ipp.plan_id=ip.id " +
+            "JOIN user_account ua ON ua.id=ip.credit_account_id WHERE ua.uid=?",
+        arrayOf(accountId.bytes),
+    ) { cursor ->
+        cursor.long("future_minor") to cursor.nullableLong("next_date")?.toInt()?.toStoredLocalDate()
+    } ?: (0L to null)
 
     private fun profile(cursor: android.database.Cursor): CreditProfileView = CreditProfileView(
         statementRule(cursor.int("statement_rule_type"), cursor.nullableLong("statement_day")?.toInt()),
@@ -392,13 +406,51 @@ class SecureRoomCreditApplicationPort(
             "WHERE ua.uid=? ORDER BY cs.cycle_end DESC,cs.id DESC",
         arrayOf(accountId.bytes),
     ) { cursor ->
+        val statementId = cursor.stableId("uid")
         CreditStatementView(
-            cursor.stableId("uid"), cursor.stableId("revision_uid"), cursor.int("revision_no"),
+            statementId, cursor.stableId("revision_uid"), cursor.int("revision_no"),
             cursor.int("cycle_start").toStoredLocalDate(), cursor.int("cycle_end").toStoredLocalDate(), cursor.int("due_date").toStoredLocalDate(),
             cursor.long("estimated_amount_minor"), cursor.nullableLong("official_amount_minor"), cursor.nullableLong("difference_minor"),
             cursor.long("paid_amount_minor"), cursor.long("remaining_amount_minor"), CreditStatementStatus.entries[cursor.int("status")], cursor.int("sealed") == 1,
+            statementTransactions(db, statementId),
+            statementPaymentAllocations(db, statementId),
+            hasAutomaticPayment(db, statementId),
         )
     }
+
+    private fun statementTransactions(db: SupportSQLiteDatabase, statementId: StableId): List<CreditStatementTransactionView> = db.queryList(
+        "SELECT bt.uid transaction_uid,tr.local_date,se.amount_minor*se.polarity signed_amount,tr.note " +
+            "FROM statement_effect se JOIN credit_statement cs ON cs.id=se.statement_id " +
+            "JOIN transaction_revision tr ON tr.id=se.source_revision_id JOIN business_transaction bt ON bt.current_revision_id=tr.id " +
+            "WHERE cs.uid=? AND bt.lifecycle_state=0 ORDER BY tr.local_date DESC,tr.occurred_at DESC,bt.id DESC",
+        arrayOf(statementId.bytes),
+    ) { cursor ->
+        CreditStatementTransactionView(
+            cursor.stableId("transaction_uid"),
+            cursor.int("local_date").toStoredLocalDate(),
+            cursor.long("signed_amount"),
+            cursor.nullableString("note"),
+        )
+    }
+
+    private fun statementPaymentAllocations(db: SupportSQLiteDatabase, statementId: StableId): List<CreditPaymentAllocationView> = db.queryList(
+        "SELECT bt.uid transaction_uid,tr.local_date,cpa.amount_minor FROM credit_payment_allocation cpa " +
+            "JOIN credit_statement cs ON cs.id=cpa.statement_id JOIN transaction_revision tr ON tr.id=cpa.payment_revision_id " +
+            "JOIN business_transaction bt ON bt.current_revision_id=tr.id WHERE cs.uid=? AND bt.lifecycle_state=0 " +
+            "AND cpa.reversal_of_id IS NULL AND NOT EXISTS(SELECT 1 FROM credit_payment_allocation r WHERE r.reversal_of_id=cpa.id) " +
+            "ORDER BY tr.local_date DESC,tr.occurred_at DESC,bt.id DESC",
+        arrayOf(statementId.bytes),
+    ) { cursor ->
+        CreditPaymentAllocationView(cursor.stableId("transaction_uid"), cursor.int("local_date").toStoredLocalDate(), cursor.long("amount_minor"))
+    }
+
+    private fun hasAutomaticPayment(db: SupportSQLiteDatabase, statementId: StableId): Boolean = db.queryOne(
+        "SELECT COUNT(*) FROM credit_payment_allocation cpa JOIN credit_statement cs ON cs.id=cpa.statement_id " +
+            "JOIN transaction_revision tr ON tr.id=cpa.payment_revision_id JOIN business_transaction bt ON bt.current_revision_id=tr.id " +
+            "WHERE cs.uid=? AND tr.source_type=? AND bt.lifecycle_state=0 AND cpa.reversal_of_id IS NULL " +
+            "AND NOT EXISTS(SELECT 1 FROM credit_payment_allocation r WHERE r.reversal_of_id=cpa.id)",
+        arrayOf(statementId.bytes, TransactionSource.RECURRENCE_AUTO.ordinal),
+    ) { it.getLong(0) > 0L } ?: false
 
     private fun payableStatements(db: SupportSQLiteDatabase, accountId: StableId): List<PayableCreditStatement> = db.queryList(
         "SELECT cs.uid,cs.due_date,MAX(0,csp.remaining_amount_minor) remaining FROM credit_statement cs " +

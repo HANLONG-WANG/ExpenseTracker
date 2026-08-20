@@ -33,7 +33,31 @@ internal object ProjectGoalDeviceFixtures {
     private val currency = (CurrencyCode.parse("JPY") as DomainResult.Success).value
     private val revision = (LocalRevision.of(18) as DomainResult.Success).value
 
-    val actions: (ProjectGoalScreenAction) -> Unit = {}
+    val actions = ProjectGoalActions(
+        onRetry = {},
+        onNavigate = { _, _, _ -> },
+        onProjectStatusTabSelected = {},
+        onProjectNameChanged = {},
+        onProjectDescriptionChanged = {},
+        onProjectStartDateChanged = {},
+        onProjectEndDateChanged = {},
+        onProjectBudgetChanged = {},
+        onProjectMonthlyBudgetChanged = {},
+        onProjectGoalChanged = { _ -> },
+        onSaveProject = {},
+        onOpenTransaction = {},
+        onChangeProjectStatus = {},
+        onGoalNameChanged = {},
+        onGoalTargetChanged = {},
+        onGoalSuggestedChanged = {},
+        onGoalDueDateChanged = {},
+        onGoalAccountChanged = {},
+        onSaveGoal = {},
+        onMovementAmountChanged = {},
+        onMovementDateChanged = {},
+        onSaveMovement = {},
+        onCompleteGoal = {},
+    )
 
     fun snapshot(
         projects: List<ProjectView> = listOf(project(), project(archivedProjectId, status = ProjectStatus.ARCHIVED, name = "Archived trip")),

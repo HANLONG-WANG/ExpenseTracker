@@ -16,7 +16,7 @@
     <string name="settlement_additional_banner">A settled source transaction changed. Additional settlement is required; prior settlements remain unchanged.</string>
     <string name="settlement_name">Activity name</string>
     <string name="settlement_description">Description</string>
-    <string name="settlement_start_date">Start date (YYYY-MM-DD)</string>
+    <string name="settlement_start_date">Start date</string>
     <string name="settlement_end_date">End date (optional)</string>
     <string name="settlement_currency_locked">The settlement currency governs all shares and payments and cannot silently change after facts exist.</string>
     <string name="settlement_save_activity">Save activity</string>
@@ -77,6 +77,8 @@
     <string name="settlement_status_archived">Archived</string>
     <string name="settlement_project">Linked project</string><string name="settlement_project_support">Optional. Changes affect the current activity configuration and never rewrite historical transaction snapshots.</string><string name="settlement_no_project">No project</string>
     <string name="settlement_move_up">Move up</string><string name="settlement_move_down">Move down</string>
-    <string name="settlement_related_transactions">Related transactions</string><string name="settlement_related_empty">No related transactions for this participant.</string><string name="settlement_related_row">%1$s · share %2$d minor units</string>
-    <string name="settlement_currency">Settlement currency</string>
+    <string name="settlement_related_transactions">Related transactions</string><string name="settlement_related_empty">No related transactions for this participant.</string><string name="settlement_related_row">%1$s · share %2$s</string>
+    <string name="settlement_choose_date">Choose date</string><string name="settlement_no_end_date">No end date</string><string name="settlement_currency">Settlement currency</string><string name="settlement_currency_create_support">Choose when creating the activity; it locks after settlement facts exist.</string><string name="settlement_currency_value_locked">Settlement currency: %1$s (locked)</string><string name="settlement_payment_date">Settlement date</string>
+    <string name="settlement_project_value">Linked project: %1$s</string><string name="settlement_position_row">Paid %1$s · owed %2$s · settled %3$s</string><string name="settlement_activity_transactions">Activity transactions</string><string name="settlement_activity_transactions_empty">This activity has no transactions yet; participants and settings remain available.</string><string name="settlement_history_preview">Recent settlements</string><string name="settlement_history_preview_row">%1$s paid %2$s %3$s · %4$s</string>
+    <string name="settlement_additional_comparison">Additional settlement difference</string><string name="settlement_historical_settled">Historically settled</string><string name="settlement_current_theoretical">Current theoretical position</string><string name="settlement_difference">Difference due</string><string name="settlement_suggested_transfers">Suggested transfers</string>
 </resources>

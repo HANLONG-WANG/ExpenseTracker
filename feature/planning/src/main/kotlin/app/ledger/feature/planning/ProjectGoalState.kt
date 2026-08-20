@@ -227,6 +227,11 @@ public object ProjectGoalPolicy {
         return state.copy(projectDraft = state.projectDraft.copy(goalId = values[(values.indexOf(state.projectDraft.goalId).takeIf { it >= 0 } ?: 0).plus(1) % values.size]))
     }
 
+    public fun selectGoal(state: ProjectGoalFeatureState, goalId: StableId?): ProjectGoalFeatureState {
+        val allowed = goalId == null || state.snapshot.goals.any { it.id == goalId && it.status != GoalStatus.ARCHIVED }
+        return if (allowed) state.copy(projectDraft = state.projectDraft.copy(goalId = goalId)) else state
+    }
+
     public fun goalName(state: ProjectGoalFeatureState, value: String): ProjectGoalFeatureState = validateGoal(
         state.copy(goalDraft = state.goalDraft.copy(name = value.take(MAX_NAME)), presentation = ProjectGoalPresentation.EDIT),
     )
@@ -264,6 +269,11 @@ public object ProjectGoalPolicy {
                 )
             }
         }
+    }
+
+    public fun selectAccount(state: ProjectGoalFeatureState, accountId: StableId): ProjectGoalFeatureState {
+        if (state.goal != null || state.snapshot.accounts.none { it.id == accountId }) return state
+        return validateGoal(state.copy(goalDraft = state.goalDraft.copy(accountId = accountId)))
     }
 
     public fun movementAmount(state: ProjectGoalFeatureState, value: String): ProjectGoalFeatureState {

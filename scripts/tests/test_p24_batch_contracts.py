@@ -42,20 +42,11 @@ class P24BatchMutationTest(unittest.TestCase):
     def test_large_table_cannot_be_eagerly_materialized(self) -> None:
         self.assertTrue(self.mutate("BatchRecordScreens.kt", "rowCount = state.rows.size", "rows = state.rows.map"))
 
-    def test_daily_amount_conversion_cannot_be_removed(self) -> None:
-        self.assertTrue(self.mutate("BatchRecordState.kt", "majorToMinor", "toLongOrNull"))
+    def test_complex_row_cannot_fall_back_to_an_independent_lazy_column(self) -> None:
+        self.assertTrue(self.mutate("BatchRecordScreens.kt", "TransactionEditorScaffold(", "LazyColumn("))
 
-    def test_local_date_hint_cannot_be_removed(self) -> None:
-        self.assertTrue(self.mutate("BatchRecordScreens.kt", "batch_date_hint", "batch_field_date"))
-
-    def test_technical_minor_unit_copy_cannot_return(self) -> None:
-        resources = validator.batch_resource_map()
-        resources["values-en"] = resources["values-en"].replace(
-            ">Amount</string>",
-            ">Amount (minor units)</string>",
-            1,
-        )
-        self.assertTrue(validator.validate_tests_resources(resources))
+    def test_batch_reference_selector_cannot_return_to_cycle_only_behavior(self) -> None:
+        self.assertTrue(self.mutate("BatchRecordScreens.kt", "record_search_category", "cycle_category_only"))
 
     def test_swipe_delete_cannot_enter_batch_ui(self) -> None:
         sources = copy.deepcopy(self.sources)

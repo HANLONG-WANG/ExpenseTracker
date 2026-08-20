@@ -44,22 +44,21 @@ internal fun InstallmentRootDestination(
         screenId,
         uiState.loadState,
         encodedArguments,
-        { action ->
-            when (action) {
-                InstallmentScreenAction.Retry -> viewModel.loadInstallment(screenId, planId, purchaseId)
-                is InstallmentScreenAction.Navigate -> {
-                    viewModel.navigateInstallment(action.screenId, action.id)
-                    onNavigationChanged()
-                }
-                is InstallmentScreenAction.FieldChanged -> viewModel.updateInstallmentField(action.field, action.value)
-                is InstallmentScreenAction.FeeModelChanged -> viewModel.updateInstallmentFeeModel(action.type)
-                is InstallmentScreenAction.RefundPolicyChanged -> viewModel.updateInstallmentRefundPolicy(action.policy)
-                is InstallmentScreenAction.SelectPurchase -> viewModel.selectInstallmentPurchase(action.transactionId)
-                InstallmentScreenAction.Preview -> viewModel.previewInstallment()
-                InstallmentScreenAction.CalculateSettlement -> viewModel.calculateInstallmentSettlement()
-                InstallmentScreenAction.ApplySettlement -> viewModel.applyInstallmentSettlement()
-            }
-        },
+        InstallmentActions(
+            onRetry = { viewModel.loadInstallment(screenId, planId, purchaseId) },
+            onNavigate = { target, stableId ->
+                viewModel.navigateInstallment(target, stableId)
+                onNavigationChanged()
+            },
+            onFieldChanged = viewModel::updateInstallmentField,
+            onFeeModelChanged = viewModel::updateInstallmentFeeModel,
+            onRefundPolicyChanged = viewModel::updateInstallmentRefundPolicy,
+            onRoundingModeChanged = viewModel::updateInstallmentRoundingMode,
+            onSelectPurchase = viewModel::selectInstallmentPurchase,
+            onPreview = viewModel::previewInstallment,
+            onCalculateSettlement = viewModel::calculateInstallmentSettlement,
+            onApplySettlement = viewModel::applyInstallmentSettlement,
+        ),
     )
 }
 

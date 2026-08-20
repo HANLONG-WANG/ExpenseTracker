@@ -115,6 +115,10 @@ internal class JournalActions(
     val onRestoreRevision: (StableId, StableId, StableId, List<DependencyResolution>) -> Unit,
     val onVerifyPurge: (StableId) -> Unit,
     val onPurgeRequested: (StableId) -> Unit,
+    val onEdit: (JournalTransactionView) -> Unit = {},
+    val onRefund: (StableId) -> Unit = {},
+    val onCopyTemplate: (StableId) -> Unit = {},
+    val onBack: () -> Unit = {},
 )
 
 internal fun journalActions(onAction: (JournalScreenAction) -> Unit): JournalActions = JournalActions(

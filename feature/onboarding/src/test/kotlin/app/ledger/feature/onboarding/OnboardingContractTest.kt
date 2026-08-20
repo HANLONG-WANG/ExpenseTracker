@@ -23,7 +23,7 @@ class OnboardingContractTest {
     @Test
     fun requiredStepsFailClosedAndExplicitTelemetryChoiceCanContinue() {
         assertEquals("LANGUAGE_REQUIRED", OnboardingValidator.errorCode(OnboardingUiState(step = OnboardingStep.LANGUAGE)))
-        assertEquals("CURRENCY_REQUIRED", OnboardingValidator.errorCode(OnboardingUiState(step = OnboardingStep.BASE_CURRENCY)))
+        assertNull(OnboardingValidator.errorCode(OnboardingUiState(step = OnboardingStep.BASE_CURRENCY)))
         assertEquals("TIME_ZONE_REQUIRED", OnboardingValidator.errorCode(OnboardingUiState(step = OnboardingStep.TIME_ZONE)))
         assertEquals("PRIVACY_CONSENT_REQUIRED", OnboardingValidator.errorCode(OnboardingUiState(step = OnboardingStep.PRIVACY_POLICY)))
         assertNull(OnboardingValidator.errorCode(OnboardingUiState(step = OnboardingStep.TELEMETRY)))

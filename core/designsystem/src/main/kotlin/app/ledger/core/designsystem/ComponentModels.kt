@@ -1,7 +1,13 @@
 package app.ledger.core.designsystem
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import app.ledger.core.money.MoneyUiModel
+
+public sealed interface UiText {
+    @Immutable
+    public data class Resource(@StringRes val resourceId: Int, val arguments: List<String> = emptyList()) : UiText
+}
 
 public object LedgerTestTags {
     public const val ROOT: String = "ledger_root"
@@ -43,6 +49,7 @@ public object LedgerTestTags {
     public const val RECORD_SETTLEMENT: String = "record_settlement"
     public const val RECORD_UNSAVED_DIALOG: String = "record_unsaved_dialog"
     public const val RECORD_REVISION_CONFLICT: String = "record_revision_conflict"
+    public const val RECORD_VIEW_DIFFERENCES: String = "record_view_differences"
     public const val BATCH_RECORD_ROOT: String = "batch_record_root"
     public const val BATCH_SUMMARY_TABLE: String = "batch_summary_table"
     public const val BATCH_ROW_EDITOR: String = "batch_row_editor"
@@ -202,6 +209,8 @@ public enum class LedgerIcon {
     BUDGET,
     ANALYSIS,
     ATTACHMENT,
+    IMAGE,
+    DOCUMENT,
     LOCATION,
     TRANSFER,
     REFUND,
@@ -228,6 +237,7 @@ public data class CategoryTileUiModel(
     val isTopLevel: Boolean,
     val childCount: Int = 0,
     val deleted: Boolean = false,
+    val supportingText: String? = null,
 )
 
 @Immutable
@@ -319,6 +329,7 @@ public data class AttachmentUiModel(
     val typeLabel: String,
     val progress: Float? = null,
     val state: AttachmentTransferState = AttachmentTransferState.READY,
+    val icon: LedgerIcon = LedgerIcon.ATTACHMENT,
 )
 
 public sealed interface LocationFieldState {
@@ -336,6 +347,10 @@ public data class LedgerChartSeries(
     val label: String,
     val values: List<Double>,
     val pointLabels: List<String>,
+    /** Fully formatted values (for example, localized money) used by the exact-value marker. */
+    val formattedValues: List<String> = emptyList(),
+    /** Indexes intentionally absent from the source data. Line renderers split around these gaps. */
+    val missingPointIndices: Set<Int> = emptySet(),
 )
 
 @Immutable
@@ -345,13 +360,23 @@ public data class LedgerChartUiModel(
     val summary: String,
     val type: LedgerChartType,
     val series: List<LedgerChartSeries>,
-)
+    /** Every chart includes zero by default; balance trends may opt out only with an explanation. */
+    val includeZeroInRange: Boolean = true,
+    val baselineExplanation: String? = null,
+) {
+    init {
+        require(includeZeroInRange || !baselineExplanation.isNullOrBlank()) {
+            "a non-zero chart baseline must be explained to the user"
+        }
+    }
+}
 
 @Immutable
 public data class AccessibleTableUiModel(
     val caption: String,
     val columnHeaders: List<String>,
     val rows: List<List<String>>,
+    val endAlignedColumnIndices: Set<Int> = columnHeaders.indices.drop(1).toSet(),
 )
 
 public enum class MapAvailability { AVAILABLE, LOADING, UNAVAILABLE }
@@ -374,4 +399,5 @@ public data class OperationProgressUiModel(
     val capability: OperationCapability,
     val statusExplanation: String,
     val failureCode: UiErrorCode? = null,
+    val temporaryFilesPresent: Boolean = false,
 )

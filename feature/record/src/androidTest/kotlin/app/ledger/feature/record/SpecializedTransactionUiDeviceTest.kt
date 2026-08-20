@@ -175,7 +175,7 @@ class SpecializedTransactionUiDeviceTest {
     private data class Case(val screen: String, val stateName: String, val editor: SpecializedTransactionEditorState, val width: Int, val fontScale: Float, val locale: String, val theme: ThemeMode)
 
     private companion object {
-        val ACTIONS: (SpecializedTransactionScreenAction) -> Unit = {}
+        val ACTIONS = SpecializedTransactionActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
         val NOW: Instant = Instant.parse("2026-08-03T04:05:06Z")
         val BOOK: StableId = StableId.fromUuid(UUID(0x1400, 1))
         val USD_ACCOUNT: StableId = StableId.fromUuid(UUID(0x1400, 2))

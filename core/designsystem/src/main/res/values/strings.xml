@@ -7,6 +7,7 @@
     <string name="ledger_search">搜索</string>
     <string name="ledger_clear">清除</string>
     <string name="ledger_retry">重试</string>
+    <string name="ledger_error_what_happened">发生了什么</string><string name="ledger_error_write_status">写入状态</string><string name="ledger_error_existing_data_unchanged">已有数据未被更改，当前输入仍保留在本页面。</string><string name="ledger_error_next_step">下一步</string><string name="ledger_error_retry_next_step">检查连接或输入后重试；重复失败时可使用下方错误代码进行脱敏诊断。</string>
     <string name="ledger_cancel">取消</string>
     <string name="ledger_apply">应用</string>
     <string name="ledger_reset">重置</string>
@@ -15,7 +16,7 @@
     <string name="ledger_loading">正在加载</string>
     <string name="ledger_view_data_table">查看数据表</string>
     <string name="ledger_expand_data_table">展开数据表</string>
-    <string name="ledger_data_table_horizontal_hint">左右滑动表格可查看全部列</string>
+    <string name="ledger_collapse_data_table">收起数据表</string>
     <string name="ledger_map_unavailable">地图不可用，仍可查看列表和汇总</string>
     <string name="ledger_record">记账</string>
     <string name="ledger_journal">流水</string>
@@ -42,8 +43,29 @@
     <string name="ledger_pause">暂停</string>
     <string name="ledger_copy">复制</string>
     <string name="ledger_attachment_import_progress">附件导入进度</string>
+    <string name="ledger_attachment_failed">导入失败，附件尚未保存</string>
+    <string name="ledger_view_error">查看错误</string>
+    <string name="ledger_clean_temporary_files">清理临时文件</string>
     <string name="ledger_previous_page">上一页</string>
     <string name="ledger_next_page">下一页</string>
+    <string name="ledger_page_count">第 %1$d / %2$d 页</string>
+    <string name="ledger_seconds_remaining">剩余 %1$d 秒</string>
+    <string name="ledger_on">已开启</string>
+    <string name="ledger_off">已关闭</string>
+    <string name="ledger_expanded">已展开</string>
+    <string name="ledger_collapsed">已折叠</string>
+    <string name="ledger_candidate">未入账</string>
+    <string name="ledger_deleted">已删除</string>
+    <string name="ledger_status_neutral">正常</string><string name="ledger_status_positive">良好</string><string name="ledger_status_info">信息</string><string name="ledger_status_warning">需注意</string><string name="ledger_status_danger">异常</string><string name="ledger_status_archived">已归档</string>
+    <string name="ledger_explore_chart">探索图表</string>
+    <string name="ledger_close_chart_explorer">关闭图表探索</string>
+    <string name="ledger_chart_previous_point">上一个数据点</string>
+    <string name="ledger_chart_next_point">下一个数据点</string>
+    <string name="ledger_chart_marker_detail">%1$s·%2$s·%3$s</string>
+    <string name="ledger_chart_point_position">第 %1$d / %2$d 个数据点</string>
+    <string name="ledger_chart_stack_total">堆叠总计：%1$s</string>
+    <string name="ledger_chart_pie_fallback">类别超过 6 个，已自动改用柱状图以保持可读性。</string>
+    <string name="ledger_chart_no_data">当前范围没有可绘制数据。</string>
     <string name="ledger_style_icon_record">记录</string><string name="ledger_style_icon_account">账户</string><string name="ledger_style_icon_budget">预算</string><string name="ledger_style_icon_analysis">分析</string><string name="ledger_style_icon_journal">流水</string><string name="ledger_style_icon_location">地点</string><string name="ledger_style_icon_transfer">转账</string><string name="ledger_style_icon_refund">退款</string>
     <string name="ledger_style_color_red">红色</string><string name="ledger_style_color_orange">橙色</string><string name="ledger_style_color_amber">琥珀色</string><string name="ledger_style_color_yellow">黄色</string><string name="ledger_style_color_lime">青柠色</string><string name="ledger_style_color_green">绿色</string><string name="ledger_style_color_emerald">翠绿色</string><string name="ledger_style_color_teal">蓝绿色</string><string name="ledger_style_color_cyan">青色</string><string name="ledger_style_color_sky">天蓝色</string><string name="ledger_style_color_blue">蓝色</string><string name="ledger_style_color_indigo">靛蓝色</string><string name="ledger_style_color_violet">紫罗兰色</string><string name="ledger_style_color_purple">紫色</string><string name="ledger_style_color_pink">粉色</string><string name="ledger_style_color_slate">石板灰</string>
 </resources>

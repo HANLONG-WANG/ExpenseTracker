@@ -244,19 +244,25 @@ class MainActivity : FragmentActivity() {
 
     private fun authenticateVaultAction(request: VaultAuthenticationPrompt) {
         val title = when (request.purpose) {
+            VaultAuthenticationPurpose.OPEN_LIST -> getString(app.ledger.feature.vault.R.string.vault_title)
             VaultAuthenticationPurpose.REVEAL_PAN -> getString(app.ledger.feature.vault.R.string.vault_primary_number)
             VaultAuthenticationPurpose.COPY_PAN -> getString(app.ledger.feature.vault.R.string.vault_primary_number)
             VaultAuthenticationPurpose.REVEAL_CVC -> getString(app.ledger.feature.vault.R.string.vault_security_code)
             VaultAuthenticationPurpose.EDIT_VAULT -> getString(app.ledger.feature.vault.R.string.vault_edit)
         }
-        vaultPrompt.authenticate(
-            cryptoPromptInfo(
-                title,
-                getString(app.ledger.feature.vault.R.string.vault_security_banner),
-                getString(android.R.string.cancel),
-            ),
-            request.cryptoObject,
-        )
+        val cryptoObject = request.cryptoObject
+        if (cryptoObject == null) {
+            vaultPrompt.authenticate(nonCryptoPromptInfo(title, getString(app.ledger.feature.vault.R.string.vault_security_banner)))
+        } else {
+            vaultPrompt.authenticate(
+                cryptoPromptInfo(
+                    title,
+                    getString(app.ledger.feature.vault.R.string.vault_security_banner),
+                    getString(android.R.string.cancel),
+                ),
+                cryptoObject,
+            )
+        }
     }
 
     private fun authenticateSensitiveSettingsAction(purpose: SensitiveSettingsAuthenticationPurpose) {

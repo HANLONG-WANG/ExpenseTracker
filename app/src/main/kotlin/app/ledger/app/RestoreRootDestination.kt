@@ -27,46 +27,49 @@ internal fun RestoreRootDestination(
     }
     RestoreFlowScreen(
         state.copy(screenId = screenId),
-        { action ->
-            when (action) {
-                RestoreFlowScreenAction.Back -> viewModel.requestRootBack()
-                is RestoreFlowScreenAction.PortableSource -> if (viewModel.selectRestorePortable(action.uri)) onNavigationChanged()
-                RestoreFlowScreenAction.RepositorySource -> {
-                    if (viewModel.selectLatestRestoreRepository()) onNavigationChanged()
-                }
-                RestoreFlowScreenAction.DriveSource -> {
-                    viewModel.requestRestoreDriveAuthorization(
-                        launchResolution = { pendingIntent ->
-                            driveAuthorization.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
-                        },
-                        onSelected = onNavigationChanged,
-                    )
-                }
-                is RestoreFlowScreenAction.PasswordChanged -> viewModel.changeRestorePassword(action.value)
-                RestoreFlowScreenAction.VerifyPassword -> {
-                    viewModel.verifyRestorePassword()
-                    onNavigationChanged()
-                }
-                is RestoreFlowScreenAction.ModeSelected -> viewModel.selectRestoreMode(action.mode)
-                is RestoreFlowScreenAction.HighRiskPhraseChanged -> viewModel.changeRestoreHighRiskPhrase(action.value)
-                RestoreFlowScreenAction.StartRestore -> {
-                    viewModel.startRestore()
-                    onNavigationChanged()
-                }
-                is RestoreFlowScreenAction.ResolveConflict -> viewModel.resolveRestoreConflict(action.conflictId, action.resolution)
-                RestoreFlowScreenAction.ApplyMerge -> {
-                    viewModel.applyRestoreMerge()
-                    onNavigationChanged()
-                }
-                RestoreFlowScreenAction.Cancel -> viewModel.cancelRestore()
-                RestoreFlowScreenAction.Retry -> viewModel.retryRestore()
-                RestoreFlowScreenAction.OpenApp -> viewModel.finishRestoreFlow()
-                RestoreFlowScreenAction.ConfirmSafetySnapshotCleanup -> viewModel.confirmRestoreSafetySnapshotCleanup()
-                is RestoreFlowScreenAction.CloudSnapshotSelected -> viewModel.selectCloudBackupForDeletion(action.snapshotId)
-                is RestoreFlowScreenAction.CloudConfirmationChanged -> viewModel.changeCloudBackupDeletePhrase(action.value)
-                RestoreFlowScreenAction.AuthenticateCloudDelete -> viewModel.loadCloudBackupsForDeletion()
-                RestoreFlowScreenAction.DeleteCloudBackups -> viewModel.deleteSelectedCloudBackups()
-            }
-        },
+        RestoreFlowActions(
+            onBack = viewModel::requestRootBack,
+            onPortableSource = { uri ->
+                if (viewModel.selectRestorePortable(uri)) onNavigationChanged()
+            },
+            onRepositorySource = {
+                viewModel.selectLatestRestoreRepository()
+            },
+            onDriveSource = {
+                viewModel.requestRestoreDriveAuthorization(
+                    launchResolution = { pendingIntent ->
+                        driveAuthorization.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+                    },
+                    onSelected = onNavigationChanged,
+                )
+            },
+            onSnapshotSourceSelected = { snapshotId ->
+                if (viewModel.selectRestoreRepositorySnapshot(snapshotId)) onNavigationChanged()
+            },
+            onPasswordChanged = viewModel::changeRestorePassword,
+            onVerifyPassword = {
+                viewModel.verifyRestorePassword()
+                onNavigationChanged()
+            },
+            onModeSelected = viewModel::selectRestoreMode,
+            onHighRiskPhraseChanged = viewModel::changeRestoreHighRiskPhrase,
+            onStartRestore = {
+                viewModel.startRestore()
+                onNavigationChanged()
+            },
+            onResolveConflict = viewModel::resolveRestoreConflict,
+            onApplyToSimilarChanged = viewModel::changeRestoreApplyToSimilar,
+            onApplyMerge = {
+                viewModel.applyRestoreMerge()
+                onNavigationChanged()
+            },
+            onCancel = viewModel::cancelRestore,
+            onRetry = viewModel::retryRestore,
+            onOpenApp = viewModel::finishRestoreFlow,
+            onCloudSnapshotSelected = viewModel::selectCloudBackupForDeletion,
+            onCloudConfirmationChanged = viewModel::changeCloudBackupDeletePhrase,
+            onAuthenticateCloudDelete = viewModel::loadCloudBackupsForDeletion,
+            onDeleteCloudBackups = viewModel::deleteSelectedCloudBackups,
+        ),
     )
 }

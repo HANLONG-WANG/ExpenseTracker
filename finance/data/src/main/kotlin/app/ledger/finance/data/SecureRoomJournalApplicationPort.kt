@@ -104,9 +104,19 @@ class SecureRoomJournalApplicationPort(
         when (val queried = RoomTransactionQueryService(database).page(request.filter, request.limit, request.cursor)) {
             is DomainResult.Failure -> queried
             is DomainResult.Success -> database.readLedger { db ->
+                var previousDate = request.cursor?.transactionId?.value?.let { cursorId ->
+                    db.queryOne(
+                        "SELECT tr.local_date FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id WHERE bt.uid=?",
+                        arrayOf(cursorId.bytes),
+                    ) { it.getInt(0).toStoredLocalDate() }
+                }
                 DomainResult.Success(
                     JournalPage(
-                        queried.value.items.map { projection -> row(db, projection.transactionId.value, request.runningBalanceAccountId) },
+                        queried.value.items.map { projection ->
+                            val startsDateGroup = projection.localDate != previousDate
+                            previousDate = projection.localDate
+                            row(db, projection.transactionId.value, request.runningBalanceAccountId, startsDateGroup)
+                        },
                         queried.value.nextCursor,
                     ),
                 )
@@ -495,11 +505,17 @@ class SecureRoomJournalApplicationPort(
         else -> error("journal command type")
     }
 
-    private fun row(db: SupportSQLiteDatabase, id: StableId, runningAccountId: StableId?): JournalTransactionView = db.queryOne(
+    private fun row(
+        db: SupportSQLiteDatabase,
+        id: StableId,
+        runningAccountId: StableId?,
+        startsDateGroup: Boolean = false,
+    ): JournalTransactionView = db.queryOne(
         "SELECT bt.uid,tr.uid revision_uid,bt.kind,bt.lifecycle_state,tr.occurred_at,tr.local_date," +
             "COALESCE(c.name,'') category_name,COALESCE(m.name,tr.note,'') summary,COALESCE(pa.name,sa.name,'') account_name," +
             "pc.display_name card_name,ctp.account_amount_minor,ctp.account_currency,ctp.input_amount_minor,ctp.input_currency," +
-            "ctp.has_attachment,ctp.has_location,ctp.is_refund,ctp.is_refunded,ctp.has_installment,ctp.source_type " +
+            "ctp.has_attachment,ctp.has_location,ctp.is_refund,ctp.is_refunded,ctp.has_installment,ctp.source_type," +
+            "bt.trashed_at,bt.purge_after,(SELECT COUNT(*) FROM transaction_dependency td WHERE td.parent_transaction_id=bt.id OR td.child_transaction_id=bt.id) dependency_count " +
             "FROM current_transaction_projection ctp JOIN business_transaction bt ON bt.id=ctp.transaction_id " +
             "JOIN transaction_revision tr ON tr.id=ctp.current_revision_id LEFT JOIN category c ON c.id=ctp.category_id " +
             "LEFT JOIN merchant m ON m.id=ctp.merchant_id LEFT JOIN user_account pa ON pa.id=ctp.primary_account_id " +
@@ -525,6 +541,10 @@ class SecureRoomJournalApplicationPort(
             cursor.jLong("input_amount_minor").takeIf { inputCurrency != accountCurrency }, inputCurrency.takeIf { it != accountCurrency },
             badges, runningAccountId?.let { runningBalance(db, it, cursor.jLong("occurred_at"), id) },
             TransactionSource.entries[cursor.jInt("source_type")],
+            cursor.nullableLong("trashed_at")?.let(Instant::ofEpochMilli),
+            cursor.nullableLong("purge_after")?.let(Instant::ofEpochMilli),
+            cursor.jInt("dependency_count"),
+            startsDateGroup,
         )
     } ?: abort(FinanceDataError.CorruptData)
 
@@ -577,7 +597,7 @@ class SecureRoomJournalApplicationPort(
     private fun history(db: SupportSQLiteDatabase, id: StableId): List<JournalRevisionView> {
         val raw = db.queryList(
             "SELECT tr.uid,tr.revision_no,tr.action,tr.resulting_state,tr.created_at,tr.occurred_at,c.name category_name," +
-                "COALESCE(ua.name,ua2.name,ua3.name) account_name,ra.amount_minor,ra.currency_code,tr.note,tr.merchant_id,tr.project_id,tr.location_record_id " +
+                "COALESCE(ua.name,ua2.name,ua3.name) account_name,ra.amount_minor,ra.currency_code,tr.note,tr.merchant_id,tr.project_id,tr.location_record_id,tr.source_type " +
                 "FROM transaction_revision tr JOIN business_transaction bt ON bt.id=tr.transaction_id LEFT JOIN category c ON c.id=tr.category_id " +
                 "LEFT JOIN expense_revision_detail erd ON erd.revision_id=tr.id LEFT JOIN income_revision_detail ird ON ird.revision_id=tr.id " +
                 "LEFT JOIN refund_revision_detail rrd ON rrd.revision_id=tr.id " +
@@ -609,11 +629,26 @@ class SecureRoomJournalApplicationPort(
     }
 
     private fun dependencies(db: SupportSQLiteDatabase, id: StableId): List<JournalDependencyView> = db.queryList(
-        "SELECT parent.uid parent_uid,child.uid child_uid,td.dependency_type,child.lifecycle_state FROM transaction_dependency td " +
+        "SELECT parent.uid parent_uid,child.uid child_uid,td.dependency_type,child.lifecycle_state," +
+            "COALESCE(NULLIF(parent_revision.note,''),parent_category.name) parent_label," +
+            "COALESCE(NULLIF(child_revision.note,''),child_category.name) child_label FROM transaction_dependency td " +
             "JOIN business_transaction parent ON parent.id=td.parent_transaction_id JOIN business_transaction child ON child.id=td.child_transaction_id " +
+            "JOIN transaction_revision parent_revision ON parent_revision.id=parent.current_revision_id " +
+            "JOIN transaction_revision child_revision ON child_revision.id=child.current_revision_id " +
+            "LEFT JOIN category parent_category ON parent_category.id=parent_revision.category_id " +
+            "LEFT JOIN category child_category ON child_category.id=child_revision.category_id " +
             "WHERE parent.uid=? OR child.uid=? ORDER BY td.dependency_type,parent.uid,child.uid",
         arrayOf(id.bytes, id.bytes),
-    ) { c -> JournalDependencyView(c.stableId("parent_uid"), c.stableId("child_uid"), TransactionDependencyType.entries[c.jInt("dependency_type")], TransactionLifecycleState.entries[c.jInt("lifecycle_state")]) }
+    ) { c ->
+        JournalDependencyView(
+            c.stableId("parent_uid"),
+            c.stableId("child_uid"),
+            TransactionDependencyType.entries[c.jInt("dependency_type")],
+            TransactionLifecycleState.entries[c.jInt("lifecycle_state")],
+            c.nullableString("parent_label"),
+            c.nullableString("child_label"),
+        )
+    }
 
     private fun purgeAssessment(db: SupportSQLiteDatabase, id: StableId, now: Instant): JournalPurgeAssessment {
         val lifecycle = db.queryOne("SELECT lifecycle_state,purge_after,id FROM business_transaction WHERE uid=?", arrayOf(id.bytes)) {
@@ -764,13 +799,14 @@ class SecureRoomJournalApplicationPort(
         val merchant: Long?,
         val project: Long?,
         val location: Long?,
+        val source: TransactionSource,
     ) {
-        fun toView(changes: List<String>) = JournalRevisionView(id, number, action, state, createdAt, occurredAt, category, account, amount, currency, changes)
+        fun toView(changes: List<String>) = JournalRevisionView(id, number, action, state, createdAt, occurredAt, category, account, amount, currency, changes, source)
         companion object {
             fun from(c: Cursor) = RevisionRaw(
                 c.stableId("uid"), c.jInt("revision_no"), RevisionAction.entries[c.jInt("action")], TransactionLifecycleState.entries[c.jInt("resulting_state")],
                 Instant.ofEpochMilli(c.jLong("created_at")), Instant.ofEpochMilli(c.jLong("occurred_at")), c.nullableString("category_name"), c.nullableString("account_name"),
-                c.nullableLong("amount_minor"), c.nullableString("currency_code")?.let(::currency), c.nullableString("note"), c.nullableLong("merchant_id"), c.nullableLong("project_id"), c.nullableLong("location_record_id"),
+                c.nullableLong("amount_minor"), c.nullableString("currency_code")?.let(::currency), c.nullableString("note"), c.nullableLong("merchant_id"), c.nullableLong("project_id"), c.nullableLong("location_record_id"), TransactionSource.entries[c.jInt("source_type")],
             )
         }
     }

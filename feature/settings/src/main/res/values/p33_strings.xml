@@ -7,4 +7,5 @@
     <string name="settings_language">应用语言</string><string name="settings_language_chinese">简体中文</string><string name="settings_language_japanese">日本語</string><string name="settings_language_english">English</string><string name="settings_date_format">日期格式</string><string name="settings_date_locale">跟随地区</string><string name="settings_date_ymd">年/月/日</string><string name="settings_date_dmy">日/月/年</string><string name="settings_date_mdy">月/日/年</string><string name="settings_number_format_summary">数字格式：%1$s</string><string name="settings_time_zone">账本时区</string>
     <string name="settings_week_start">一周起始日</string><string name="settings_week_locale">跟随地区</string><string name="settings_week_monday">星期一</string><string name="settings_week_sunday">星期日</string><string name="settings_preview">预览</string>
     <string name="settings_version">版本 %1$s</string><string name="settings_source_code">源代码</string><string name="settings_source_code_body">在浏览器中打开本项目的公开源代码仓库</string><string name="settings_open_source_licenses">开源许可</string>
+    <string name="settings_live_preview_progress">预览图表，64%</string><string name="settings_live_preview_action">预览操作</string>
 </resources>

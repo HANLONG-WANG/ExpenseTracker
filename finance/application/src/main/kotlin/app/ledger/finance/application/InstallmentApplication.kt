@@ -46,6 +46,7 @@ data class InstallmentPlanView(
     val progress: InstallmentProgress,
     val refundedPrincipalMinor: Long,
     val refundedFeeMinor: Long,
+    val previousSchedule: InstallmentScheduleRevision? = null,
 )
 
 data class InstallmentSnapshot(

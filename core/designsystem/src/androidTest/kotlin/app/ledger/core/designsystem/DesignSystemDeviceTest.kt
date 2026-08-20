@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.os.LocaleList
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
@@ -14,16 +16,21 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -93,10 +100,14 @@ class DesignSystemDeviceTest {
             }
         }
 
-        val amountDescriptions = composeRule.onNodeWithTag(LedgerTestTags.AMOUNT)
-            .fetchSemanticsNode().config[SemanticsProperties.ContentDescription]
-        assertTrue(amountDescriptions.isNotEmpty())
-        assertTrue(amountDescriptions.none { it.contains(forbiddenAmount) })
+        val amountText = composeRule.onNodeWithTag(LedgerTestTags.AMOUNT)
+            .fetchSemanticsNode().config[SemanticsProperties.Text]
+        assertTrue(amountText.isNotEmpty())
+        assertTrue(amountText.none { it.text.contains(forbiddenAmount) })
+        assertTrue(
+            !composeRule.onNodeWithTag(LedgerTestTags.AMOUNT)
+                .fetchSemanticsNode().config.contains(SemanticsProperties.ContentDescription),
+        )
         composeRule.onNodeWithText(forbiddenAmount, substring = true, useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNodeWithText(forbiddenCard, substring = true, useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNodeWithTag(LedgerTestTags.SENSITIVE_VALUE).assertExists()
@@ -358,7 +369,12 @@ class DesignSystemDeviceTest {
                 }
             }
         }
-        composeRule.onNodeWithContentDescription(accessible).assertExists()
+        composeRule.onNodeWithTag(LedgerTestTags.JOURNAL_ROW).assertTextContains("Expense", substring = true)
+        composeRule.onNodeWithTag(LedgerTestTags.JOURNAL_ROW).assertTextContains("negative 12 Japanese yen")
+        assertTrue(
+            !composeRule.onNodeWithTag(LedgerTestTags.JOURNAL_ROW)
+                .fetchSemanticsNode().config.contains(SemanticsProperties.ContentDescription),
+        )
         val bitmap = composeRule.onNodeWithTag(GRAYSCALE_TAG).captureToImage().asAndroidBitmap()
         val grayLevels = buildSet {
             for (y in 0 until bitmap.height step 4) {
@@ -369,6 +385,168 @@ class DesignSystemDeviceTest {
             }
         }
         assertTrue("grayscale rendering lost structural contrast", grayLevels.size >= 8)
+    }
+
+    @Test
+    fun allRenderedCoreActionsMeetTouchTargetAndSemanticDescriptionRules() {
+        composeRule.setContent {
+            CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides Density(1f, 1f)) {
+                LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                    Column(Modifier.size(360.dp, 900.dp)) {
+                        LedgerTopAppBar("Accessible component matrix", LedgerTopAppBarVariant.BACK, onNavigation = {})
+                        Row {
+                            LedgerIconButton(LedgerIcon.ADD, "Add item", {})
+                            LedgerIconButton(LedgerIcon.SAVE, "Save disabled", {}, enabled = false)
+                        }
+                        LedgerButton("Primary action", {})
+                        LedgerChoiceRow("Selected choice", true, {})
+                        LedgerToggleRow("Enabled setting", false, {})
+                        LedgerChip("Selected filter", {}, selected = true)
+                        SearchField("query", {})
+                        SelectorField("Account", "Fictional wallet", {})
+                        LedgerTextField("1,250", {}, "Amount")
+                        LedgerTabRow(0, listOf("One", "Two"), {})
+                        ReferenceDataRow(
+                            ReferenceDataRowUiModel("fictional_scan_row", "Fictional row", "Supporting text"),
+                            {},
+                        )
+                    }
+                }
+            }
+        }
+
+        val actions = composeRule.onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes()
+        assertTrue("no actionable semantics nodes were rendered", actions.isNotEmpty())
+        actions.forEach { node ->
+            assertTrue("action width was ${node.boundsInRoot.width}", node.boundsInRoot.width >= 48f)
+            assertTrue("action height was ${node.boundsInRoot.height}", node.boundsInRoot.height >= 48f)
+            if (node.config.contains(SemanticsProperties.ContentDescription)) {
+                assertTrue(node.config[SemanticsProperties.ContentDescription].all(String::isNotBlank))
+            }
+        }
+        val headings = composeRule.onAllNodes(isHeading()).fetchSemanticsNodes()
+        assertTrue(headings.isNotEmpty())
+        headings.forEach { node ->
+            val visibleHeading = if (node.config.contains(SemanticsProperties.Text)) {
+                node.config[SemanticsProperties.Text]
+            } else {
+                emptyList()
+            }
+            assertTrue("heading semantics were blank", visibleHeading.any { it.text.isNotBlank() })
+        }
+    }
+
+    @Test
+    fun lightAndDarkThemeTextPairsMeetWcagContrast() {
+        val dark = mutableStateOf(false)
+        var observed: List<ContrastPair> = emptyList()
+        composeRule.setContent {
+            LedgerTheme(if (dark.value) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                val colors = LedgerTheme.colors
+                SideEffect {
+                    observed = buildList {
+                        add(ContrastPair("surface", colors.material.onSurface, colors.material.surface))
+                        add(ContrastPair("surface variant", colors.material.onSurfaceVariant, colors.material.surfaceVariant))
+                        add(ContrastPair("primary", colors.material.onPrimary, colors.material.primary))
+                        add(ContrastPair("positive", colors.positive.onBase, colors.positive.base))
+                        add(ContrastPair("positive container", colors.positive.onContainer, colors.positive.container))
+                        add(ContrastPair("warning", colors.warning.onBase, colors.warning.base))
+                        add(ContrastPair("warning container", colors.warning.onContainer, colors.warning.container))
+                        add(ContrastPair("danger", colors.danger.onBase, colors.danger.base))
+                        add(ContrastPair("danger container", colors.danger.onContainer, colors.danger.container))
+                        add(ContrastPair("info", colors.info.onBase, colors.info.base))
+                        add(ContrastPair("info container", colors.info.onContainer, colors.info.container))
+                        colors.categoryPalette.forEach { add(ContrastPair("category ${it.id}", it.foreground, it.container)) }
+                    }
+                }
+                Text("contrast boundary")
+            }
+        }
+        listOf(false, true).forEach { darkMode ->
+            composeRule.runOnIdle { dark.value = darkMode }
+            composeRule.waitForIdle()
+            observed.forEach { pair ->
+                assertTrue(
+                    "${pair.name} contrast was ${pair.ratio}",
+                    pair.ratio >= WCAG_NORMAL_TEXT_CONTRAST,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun chartExplorerAnnouncesExactValuesAndWrapsAtBothEdges() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val exploreLabel = context.getString(R.string.ledger_explore_chart)
+        val nextLabel = context.getString(R.string.ledger_chart_next_point)
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                ChartCard(
+                    model = LedgerChartUiModel(
+                        title = "Fictional balance",
+                        scope = "Two sample months",
+                        summary = "The exact values remain available without relying on color.",
+                        type = LedgerChartType.LINE,
+                        series = listOf(
+                            LedgerChartSeries(
+                                stableSeriesKey = "actual",
+                                label = "Actual",
+                                values = listOf(1_234.0, 2_468.0),
+                                pointLabels = listOf("January", "February"),
+                                formattedValues = listOf("¥1,234", "¥2,468"),
+                            ),
+                            LedgerChartSeries(
+                                stableSeriesKey = "comparison",
+                                label = "Comparison",
+                                values = listOf(1_000.0, 2_000.0),
+                                pointLabels = listOf("January", "February"),
+                                formattedValues = listOf("¥1,000", "¥2,000"),
+                            ),
+                        ),
+                    ),
+                    chart = { Box(Modifier.fillMaxSize()) },
+                    dataTable = AccessibleTableUiModel("Exact values", listOf("Month", "Value"), listOf(listOf("January", "¥1,234"))),
+                    onToggleTable = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(exploreLabel).performClick()
+        composeRule.onNodeWithText("¥1,234", substring = true).assertExists()
+        repeat(4) { composeRule.onNodeWithText(nextLabel).performClick() }
+        composeRule.onNodeWithText("¥1,234", substring = true).assertExists()
+    }
+
+    @Test
+    fun chartAndBatchMatrixRemainInsideCompactTwoHundredPercentBounds() {
+        composeRule.setContent {
+            CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides Density(1f, 2f)) {
+                LedgerTheme(ThemeMode.DARK, dynamicColor = false, reduceMotion = true) {
+                    Column(Modifier.size(320.dp, 1800.dp).testTag(EXTENDED_MATRIX_TAG)) {
+                        ChartCard(
+                            LedgerChartUiModel(
+                                "Long localized chart title",
+                                "Long localized reporting scope",
+                                "A complete text summary precedes this chart.",
+                                LedgerChartType.COLUMN,
+                                listOf(LedgerChartSeries("series", "Series", listOf(1.0), listOf("Long category label"), listOf("1"))),
+                            ),
+                            chart = { Box(Modifier.fillMaxSize()) },
+                            dataTable = AccessibleTableUiModel("Exact values", listOf("Category", "Value"), listOf(listOf("Long category label", "1"))),
+                            onToggleTable = {},
+                        )
+                        BatchToolbar(listOf("Add row" to {}, "Paste values" to {}))
+                        BatchCommitBar("Validate all", "Commit all", "Discard", {}, {}, {}, committing = false)
+                    }
+                }
+            }
+        }
+
+        val root = composeRule.onNodeWithTag(EXTENDED_MATRIX_TAG).fetchSemanticsNode().boundsInRoot
+        composeRule.onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().forEach { node ->
+            assertTrue("action exceeded compact matrix", node.boundsInRoot.right <= root.right + .5f)
+            assertTrue("action was clipped below compact matrix", node.boundsInRoot.bottom <= root.bottom + .5f)
+        }
     }
 
     private fun traversalIndex(tag: String): Float = composeRule.onNodeWithTag(tag)
@@ -430,6 +608,19 @@ class DesignSystemDeviceTest {
         val chart: List<Int>,
     )
 
+    private data class ContrastPair(
+        val name: String,
+        val foreground: androidx.compose.ui.graphics.Color,
+        val background: androidx.compose.ui.graphics.Color,
+    ) {
+        val ratio: Float
+            get() {
+                val lighter = maxOf(foreground.luminance(), background.luminance())
+                val darker = minOf(foreground.luminance(), background.luminance())
+                return (lighter + .05f) / (darker + .05f)
+            }
+    }
+
     private companion object {
         const val GOLDEN_TAG = "token_palette_golden"
         const val GOLDEN_ASSET = "goldens/p04_token_palette.png"
@@ -439,5 +630,7 @@ class DesignSystemDeviceTest {
         const val TABLE_TAG = "data_table_matrix"
         const val SELECTION_TAG = "localized_selection_state"
         const val GRAYSCALE_TAG = "grayscale_transaction"
+        const val EXTENDED_MATRIX_TAG = "extended_component_matrix"
+        const val WCAG_NORMAL_TEXT_CONTRAST = 4.5f
     }
 }

@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -238,6 +242,102 @@ private fun SensitiveAndRiskPreview() = PreviewFrame {
         SensitiveValueField("4111 1111 1111 1111", false, {}, {})
         HighRiskConfirmation("Permanently clear", "Fictional test record", "Cannot be undone", "Other records are unchanged", "CLEAR", "", {}, {}, {})
     }
+}
+
+@LedgerComponentPreviews
+@Composable
+private fun BatchComponentsPreview() = PreviewFrame {
+    Column(Modifier.height(420.dp), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+        BatchToolbar(listOf("Add row" to {}, "Paste" to {}, "Sort by date" to {}))
+        BatchSummaryTable(
+            rows = listOf(
+                BatchSummaryRowUiModel(
+                    "fictional_batch_row",
+                    "1",
+                    "Meals",
+                    "−¥1,250",
+                    "Sample wallet",
+                    "Sample café",
+                    "Aug 20, 2026",
+                    "Trip",
+                    "Attachment",
+                    "Needs review",
+                    "Row 1, meals, negative 1,250 Japanese yen, needs review",
+                ),
+            ),
+            headers = listOf("Row", "Category", "Amount", "Account", "Merchant", "Date", "Project", "Details", "Status"),
+            onRowClick = {},
+            modifier = Modifier.weight(1f),
+        )
+        BatchCommitBar("Validate", "Commit all", "Discard", {}, {}, {}, committing = false)
+        BatchCommitBar("Validating…", "Commit all", "Discard", {}, {}, {}, committing = true)
+    }
+}
+
+@LedgerComponentPreviews
+@Composable
+private fun ReferenceAndInteractionPreview() = PreviewFrame {
+    Column(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+        ReferenceDataRow(
+            ReferenceDataRowUiModel("fictional_reference", "Fictional category", "Second level", 2, LedgerStatusVariant.ARCHIVED, LedgerIcon.RECORD, "teal"),
+            {},
+        )
+        LedgerChoiceRow("Selected choice", true, {})
+        LedgerChoiceRow("Disabled choice", false, {}, enabled = false)
+        LedgerToggleRow("Enabled setting", true, {})
+        LedgerToggleRow("Disabled setting", false, {}, enabled = false)
+        Row {
+            LedgerIconButton(LedgerIcon.ADD, "Add", {})
+            LedgerIconButton(LedgerIcon.SAVE, "Save disabled", {}, enabled = false)
+        }
+    }
+}
+
+@LedgerComponentPreviews
+@Composable
+private fun DialogPreview() = PreviewFrame {
+    LedgerDialog(
+        title = "Review irreversible action",
+        message = "The selected fictional record will be changed. Other records remain unchanged.",
+        confirmLabel = "Confirm",
+        onConfirm = {},
+        onDismiss = {},
+        danger = true,
+    )
+}
+
+@LedgerComponentPreviews
+@Composable
+private fun BottomSheetPreview() = PreviewFrame {
+    LedgerBottomSheet(onDismiss = {}) {
+        Column(Modifier.padding(LedgerTheme.spacing.md), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+            LedgerText("Choose a fictional account", LedgerTextRole.TITLE)
+            LedgerChoiceRow("Sample wallet", true, {})
+            LedgerChoiceRow("Sample bank", false, {})
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@LedgerComponentPreviews
+@Composable
+private fun DatePickerPreview() = PreviewFrame {
+    LedgerDatePickerDialog(
+        state = rememberDatePickerState(initialSelectedDateMillis = 1_786_972_800_000L),
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@LedgerComponentPreviews
+@Composable
+private fun TimePickerPreview() = PreviewFrame {
+    LedgerTimePickerDialog(
+        state = rememberTimePickerState(initialHour = 12, initialMinute = 30, is24Hour = true),
+        onConfirm = {},
+        onDismiss = {},
+    )
 }
 
 @Composable

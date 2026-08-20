@@ -137,7 +137,7 @@ def validate_sources(sources: Mapping[str, str]) -> list[str]:
             "RecoveryPassword.copyOf", "SecretBytes.copyOf", "recoveryWrappedVerifier", "onboardingComplete = true",
         ),
     )
-    if re.search(r"(?m)^import\s+[^\s]+(?:Dao|Entity)\s*$|@Entity\b", view_model):
+    if re.search(r"(?m)^import\s+.*(?:Dao|Entity)\b|\b(?:interface|class)\s+\w*(?:Dao|Entity)\b", view_model):
         errors.append("app root ViewModel obtained a DAO/Entity")
 
     onboarding = named(sources, "OnboardingContract.kt") + named(sources, "OnboardingScreen.kt")

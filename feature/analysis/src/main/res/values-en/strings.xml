@@ -38,7 +38,7 @@
     <string name="report_refunds">Refunds and contra-expense</string><string name="report_settlement">Shared-expense positions and settlements</string><string name="report_multi_currency">Multi-currency assets and FX costs</string><string name="report_multi_dimensional">Multidimensional cross-analysis</string><string name="report_data_integrity">Data integrity report</string>
     <string name="report_group_income_expense">Income, expense, and consumption</string><string name="report_group_assets_liabilities">Assets and liabilities</string><string name="report_group_planning">Budgets, projects, and goals</string><string name="report_group_relationships">Automation, refunds, and settlements</string><string name="report_group_data_quality">Multi-currency, cross-analysis, and data quality</string>
     <string name="analysis_title_dashboards">Custom dashboards</string><string name="analysis_title_dashboard_editor">Edit dashboard</string><string name="analysis_title_builder">Custom report</string><string name="analysis_title_visualization">Choose chart</string><string name="analysis_title_export">Export report</string><string name="analysis_title_anomaly">Anomaly rules</string><string name="analysis_title_forecast">Forecast details</string>
-    <string name="analysis_dashboards_empty">No custom dashboards</string><string name="analysis_dashboards_empty_body">Create a dashboard and add saved reports. Order and width have accessible controls.</string><string name="analysis_dashboard_create">Create dashboard</string><string name="analysis_dashboard_card_count">%1$d cards</string><string name="analysis_dashboard_name">Dashboard name</string><string name="analysis_name_required">Name is required</string><string name="analysis_dashboard_empty_canvas">The canvas is empty. Add cards from the saved reports below.</string><string name="analysis_dashboard_invalid">Enter a dashboard name and use only reports compatible with the selected card widths.</string><string name="analysis_custom_reports">Saved custom reports</string><string name="analysis_edit_custom_report">Edit</string><string name="analysis_copy_custom_report">Copy</string><string name="analysis_saved_report">Saved report</string><string name="analysis_card_full_width">Single-column full-width card</string><string name="analysis_card_half_width">Two-column metric card</string><string name="analysis_move_up">Move up</string><string name="analysis_move_down">Move down</string><string name="analysis_remove">Remove</string><string name="analysis_dashboard_palette">Available reports</string><string name="analysis_dashboard_palette_help">Select to add or remove; ledger data is never copied.</string><string name="analysis_save">Save</string>
+    <string name="analysis_dashboards_empty">No custom dashboards</string><string name="analysis_dashboards_empty_body">Create a dashboard and add saved reports. Order and width have accessible controls.</string><string name="analysis_dashboard_create">Create dashboard</string><string name="analysis_dashboard_card_count">%1$d cards</string><string name="analysis_dashboard_name">Dashboard name</string><string name="analysis_name_required">Name is required</string><string name="analysis_dashboard_empty_canvas">The canvas is empty. Add cards from the saved reports below.</string><string name="analysis_dashboard_invalid">Enter a dashboard name and use only reports compatible with the selected card widths.</string><string name="analysis_custom_reports">Saved custom reports</string><string name="analysis_edit_custom_report">Edit</string><string name="analysis_copy_custom_report">Copy</string><string name="analysis_copy_name">%1$s copy</string><string name="analysis_saved_report">Saved report</string><string name="analysis_card_full_width">Single-column full-width card</string><string name="analysis_card_half_width">Two-column metric card</string><string name="analysis_move_up">Move up</string><string name="analysis_move_down">Move down</string><string name="analysis_remove">Remove</string><string name="analysis_dashboard_palette">Available reports</string><string name="analysis_dashboard_palette_help">Select to add or remove; ledger data is never copied.</string><string name="analysis_save">Save</string>
     <string name="analysis_previewing">Previewing the allowlisted query</string><string name="analysis_builder_invalid">This step has missing or incompatible selections.</string><string name="analysis_builder_steps">Measure → dimension → filter → grain/comparison → sort → visualization → preview/save</string><string name="analysis_report_name">Report name</string><string name="analysis_sort_whitelist">Sorts may reference only selected measures or dimensions.</string><string name="analysis_preview">Preview</string><string name="analysis_result">Result</string><string name="analysis_visualization_compatible">Compatible with the current measures and dimensions</string>
     <string name="analysis_export_interface_only">Next, choose fields and a system document location, then follow cancellable streaming progress.</string><string name="analysis_export_scope">Export scope: %1$s to %2$s, including current filters and comparison data.</string><string name="analysis_export_sensitive_notice">The export may contain financial data. Confirm the target and sensitive fields before starting.</string><string name="analysis_prepare_export">Continue to fields and location</string>
     <string name="analysis_anomaly_empty">No anomaly rules enabled</string><string name="analysis_anomaly_empty_body">Rules run locally with fixed algorithms. No AI and no uploads.</string><string name="analysis_add_rule">Add rule</string><string name="analysis_anomaly_invalid">The threshold or observation window is invalid.</string><string name="analysis_anomaly_disclosure">Every result discloses algorithm version, window, threshold, baseline, and explanation. Equal input gives equal output.</string><string name="analysis_rule_details">Algorithm v%1$d · window %2$d · threshold %3$s</string><string name="analysis_edit_rule">Create updated rule version</string><string name="analysis_finding_window">Window %1$s—%2$s · observed %3$d · baseline %4$d</string><string name="analysis_rule_standard_deviation">Historical mean and standard deviation</string><string name="analysis_rule_growth">Recent growth</string><string name="analysis_rule_large">Large transaction</string><string name="analysis_rule_merchant_frequency">Merchant frequency</string><string name="analysis_rule_category_frequency">Category frequency</string>
@@ -55,13 +55,104 @@
     <string name="analysis_map_recorded_location">Unassigned recorded location</string><string name="analysis_map_point_summary">%1$s · %2$d transactions</string><string name="analysis_map_detail_missing">Location data changed</string><string name="analysis_map_detail_missing_body">Return to the map and refresh. A stale result is never shown as current.</string>
     <string name="analysis_map_detail_kind">Type: %1$s</string><string name="analysis_map_coordinates">Coordinates: %1$.5f, %2$.5f</string><string name="analysis_map_location_available">Location recorded; exact coordinates are not spoken for privacy</string><string name="analysis_map_category_composition">Category composition</string><string name="analysis_category">Category</string><string name="analysis_amount">Amount</string><string name="analysis_transaction_count">Transactions</string><string name="analysis_unassigned">Unassigned</string><string name="analysis_map_transaction_preview">Transaction preview</string><string name="analysis_map_open_transactions">Open these transactions</string><string name="analysis_map_single_transaction">Individual transaction</string>
     <string name="analysis_map_complete_filters">Full filters</string><string name="analysis_map_filter_account">Account</string><string name="analysis_map_filter_merchant">Merchant</string><string name="analysis_map_filter_place">Place</string><string name="analysis_map_filter_project">Project</string><string name="analysis_map_filter_all">All</string><string name="analysis_map_filter_selected">Selected condition</string><string name="analysis_map_filter_any_count">Any (%1$d)</string><string name="analysis_map_filter_minimum_amount">At least %1$s</string><string name="analysis_map_period_value">Period: %1$s — %2$s</string>
-    <string name="analysis_integrity_database">Database structure and encrypted readability</string>
-    <string name="analysis_integrity_foreign_keys">Entity references and foreign keys</string>
-    <string name="analysis_integrity_journals">Balanced accounting entries</string>
-    <string name="analysis_integrity_posting_currencies">Posting currency consistency</string>
-    <string name="analysis_integrity_revisions">Revision history chains</string>
-    <string name="analysis_integrity_projections">Balance and analysis projections</string>
-    <string name="analysis_integrity_fts">Journal full-text search index</string>
-    <string name="analysis_integrity_rtree">Place spatial index</string>
-    <string name="analysis_integrity_fact_rebuild">Results rebuilt from immutable facts</string>
+    <string name="analysis_metric_summary">Key metrics</string>
+    <string name="analysis_apply_filters">Apply filters</string>
+    <string name="analysis_reset_filters">Reset filters</string>
+    <string name="analysis_filter_all">All</string>
+    <string name="analysis_filter_selected">Selected filter</string>
+    <string name="analysis_filter_account">Account</string>
+    <string name="analysis_filter_category">Category</string>
+    <string name="analysis_filter_merchant">Merchant</string>
+    <string name="analysis_filter_place">Place</string>
+    <string name="analysis_filter_project">Project</string>
+    <string name="analysis_account_unavailable">Account information unavailable</string>
+    <string name="analysis_badge_report_drilldown">Report drilldown</string>
+    <string name="analysis_loading_more">Loading more transactions</string>
+    <string name="analysis_drag_handle">Drag to reorder card</string>
+    <string name="analysis_builder_step_indicator">Step %1$d of %2$d</string>
+    <string name="analysis_previous_step">Previous</string>
+    <string name="analysis_next_step">Next</string>
+    <string name="analysis_preview_required">Preview uses the current allow-listed configuration. Review it before saving.</string>
+    <string name="analysis_sort_editor">Sort</string>
+    <string name="analysis_sort_none">Not sorted; tap for ascending</string>
+    <string name="analysis_sort_ascending">Ascending; tap for descending</string>
+    <string name="analysis_sort_descending">Descending; tap to remove</string>
+    <string name="analysis_visualization_choose_help">Open the compatibility list and choose a chart</string>
+    <string name="analysis_visualization_incompatible_reason">Incompatible with these dimensions; try %1$s</string>
+    <string name="analysis_export_handoff">The complete export flow follows: choose fields and a system file location, then monitor or cancel streaming progress.</string>
+    <string name="analysis_export_scope_title">Data scope</string>
+    <string name="analysis_export_scope_current">Current results only</string>
+    <string name="analysis_export_scope_current_help">Exclude comparison-period rows</string>
+    <string name="analysis_export_scope_comparison">Current and comparison</string>
+    <string name="analysis_export_scope_comparison_help">Include both row sets when comparison is enabled</string>
+    <string name="analysis_export_format_title">File format</string>
+    <string name="analysis_start_export_flow">Choose fields and location, then export</string>
+    <string name="analysis_finding_algorithm">Algorithm v%1$d · threshold %2$s · score %3$s</string>
+    <string name="analysis_finding_window_formatted">Window %1$s–%2$s · observed %3$s · baseline %4$s</string>
+    <string name="analysis_finding_impact">Impact from baseline: %1$s</string>
+    <string name="analysis_forecast_current_model">Current trend and forecast</string>
+    <string name="analysis_forecast_historical_series">Historical same-month comparison</string>
+    <string name="analysis_forecast_scope">%1$s to %2$s</string>
+    <string name="analysis_forecast_model">Model</string>
+    <string name="analysis_forecast_observed">Observed to date</string>
+    <string name="analysis_forecast_assumptions_formatted">Observed %1$s · daily average %2$s · recurrence included %3$s</string>
+    <string name="analysis_export_format_image">Image</string>
+    <string name="analysis_export_format_pdf">PDF document</string>
+    <string name="analysis_export_format_csv">CSV table</string>
+    <string name="analysis_export_format_xlsx">Excel workbook</string>
+    <string name="analysis_visualization_metric">Metric card</string>
+    <string name="analysis_visualization_line">Line chart</string>
+    <string name="analysis_visualization_bar">Bar chart</string>
+    <string name="analysis_visualization_stacked">Stacked bar chart</string>
+    <string name="analysis_visualization_pie">Pie chart</string>
+    <string name="analysis_visualization_table">Data table</string>
+    <string name="analysis_visualization_map">Map</string>
+    <string name="analysis_visualization_budget">Budget progress</string>
+    <string name="analysis_visualization_goal">Goal progress</string>
+    <string name="analysis_dimension_date">Date</string>
+    <string name="analysis_dimension_category">Category</string>
+    <string name="analysis_dimension_merchant">Merchant</string>
+    <string name="analysis_dimension_account">Account</string>
+    <string name="analysis_dimension_card">Card</string>
+    <string name="analysis_dimension_project">Project</string>
+    <string name="analysis_dimension_goal">Goal</string>
+    <string name="analysis_dimension_currency">Currency</string>
+    <string name="analysis_dimension_place">Place</string>
+    <string name="analysis_dimension_settlement">Shared expense</string>
+    <string name="analysis_dimension_participant">Participant</string>
+    <string name="analysis_dimension_source">Transaction source</string>
+    <string name="analysis_measure_income">Income</string>
+    <string name="analysis_measure_expense">Expense</string>
+    <string name="analysis_measure_consumption">Consumption</string>
+    <string name="analysis_measure_non_consumption">Non-consumption expense</string>
+    <string name="analysis_measure_contra_expense">Contra expense</string>
+    <string name="analysis_measure_net_cash_flow">Net cash flow</string>
+    <string name="analysis_measure_savings_rate">Savings rate</string>
+    <string name="analysis_measure_budget_usage">Budget usage</string>
+    <string name="analysis_measure_project_usage">Project usage</string>
+    <string name="analysis_measure_goal_balance">Goal balance</string>
+    <string name="analysis_measure_account_balance">Account balance</string>
+    <string name="analysis_measure_core_assets">Core net financial assets</string>
+    <string name="analysis_measure_adjusted_position">Adjusted net financial position</string>
+    <string name="analysis_measure_fx_revaluation">FX revaluation</string>
+    <string name="analysis_measure_credit_debt">Credit debt</string>
+    <string name="analysis_measure_credit_limit">Available credit limit</string>
+    <string name="analysis_measure_installment_principal">Installment principal</string>
+    <string name="analysis_measure_installment_fees">Installment fees</string>
+    <string name="analysis_measure_loan_principal">Loan principal</string>
+    <string name="analysis_measure_loan_interest">Loan interest</string>
+    <string name="analysis_measure_settlement_position">Settlement position</string>
+    <string name="analysis_measure_transaction_count">Transaction count</string>
+    <string name="analysis_kind_expense">Expense</string>
+    <string name="analysis_kind_income">Income</string>
+    <string name="analysis_kind_transfer">Transfer</string>
+    <string name="analysis_kind_refund">Refund</string>
+    <string name="analysis_kind_credit_payment">Credit payment</string>
+    <string name="analysis_kind_loan_disbursement">Loan disbursement</string>
+    <string name="analysis_kind_loan_payment">Loan payment</string>
+    <string name="analysis_kind_balance_adjustment">Balance adjustment</string>
+    <string name="analysis_kind_fx_exchange">Currency exchange</string>
+    <string name="analysis_kind_settlement_payment">Settlement payment</string>
+    <string name="analysis_kind_opening_balance">Opening balance</string>
+    <string name="analysis_kind_other">Other transaction</string>
 </resources>

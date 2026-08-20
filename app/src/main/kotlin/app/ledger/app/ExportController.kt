@@ -166,7 +166,7 @@ internal class ExportController(
                     mutableState.value = mutableState.value.copy(destinationPresentation = ExportDestinationPresentation.NAME_CONFLICT)
                     false
                 } else {
-                    launch(activeBook, uri)
+                    mutableState.value = mutableState.value.copy(destinationPresentation = ExportDestinationPresentation.CONTENT)
                     true
                 }
             }
@@ -180,7 +180,24 @@ internal class ExportController(
         overwriteConfirmed = true
         val uri = destinationTreeUri ?: return false
         mutableState.value = mutableState.value.copy(destinationPresentation = ExportDestinationPresentation.CONTENT)
-        return selectDestination(uri)
+        return DocumentFile.fromTreeUri(applicationContext, uri)?.exists() == true
+    }
+
+    suspend fun start(): Boolean {
+        val activeBook = bookId ?: return false
+        val uri = destinationTreeUri ?: return false
+        if (mutableState.value.fileName.isBlank()) return false
+        val root = DocumentFile.fromTreeUri(applicationContext, uri)
+        if (root == null || !root.exists()) {
+            mutableState.value = mutableState.value.copy(destinationPresentation = ExportDestinationPresentation.PERMISSION_REVOKED)
+            return false
+        }
+        if (root.findFile(normalizedFileName()) != null && !overwriteConfirmed) {
+            mutableState.value = mutableState.value.copy(destinationPresentation = ExportDestinationPresentation.NAME_CONFLICT)
+            return false
+        }
+        launch(activeBook, uri)
+        return true
     }
 
     fun cancel() {

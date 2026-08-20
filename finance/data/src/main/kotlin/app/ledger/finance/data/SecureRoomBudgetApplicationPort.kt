@@ -300,12 +300,12 @@ class SecureRoomBudgetApplicationPort(
     }
 
     private fun categories(db: SupportSQLiteDatabase): List<BudgetCategoryReference> = db.queryList(
-        "SELECT c.uid,c.name,c.parent_id,c.status,parent.uid parent_uid FROM category c LEFT JOIN category parent ON parent.id=c.parent_id " +
+        "SELECT c.uid,c.name,c.parent_id,c.status,c.icon_key,parent.uid parent_uid FROM category c LEFT JOIN category parent ON parent.id=c.parent_id " +
             "WHERE c.direction=0 ORDER BY c.sort_order,c.id",
     ) { cursor ->
         val id = cursor.stableId("uid")
         val parent = cursor.nullableStableId("parent_uid")
-        BudgetCategoryReference(id, cursor.string("name"), parent ?: id, parent, if (parent == null) 1 else 2, EntityStatus.entries[cursor.int("status")])
+        BudgetCategoryReference(id, cursor.string("name"), parent ?: id, parent, if (parent == null) 1 else 2, EntityStatus.entries[cursor.int("status")], cursor.string("icon_key"))
     }
 
     private fun budgetLimits(db: SupportSQLiteDatabase, table: String, foreignKey: String, revisionId: Long): List<CategoryBudgetLimit> {

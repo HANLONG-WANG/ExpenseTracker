@@ -28,7 +28,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -281,6 +282,7 @@ private fun MapLibreContent(
             clusterTextColor = LedgerTheme.colors.material.onPrimary.toArgb(),
             userLocationColor = design.userLocationColor.toArgb(),
             cameraPaddingPixels = LedgerTheme.spacing.sm.toPx().toInt(),
+            reduceMotion = LedgerTheme.motion.reduceMotion,
         )
     }
     val controller = remember(context) {
@@ -290,7 +292,7 @@ private fun MapLibreContent(
             { latestFailure(LedgerMapFailure.STYLE_OR_NETWORK_UNAVAILABLE) },
             { latestViewport(it) },
             { latestPointSelected(it) },
-            { latitudeE7, longitudeE7 -> latestCoordinateSelected?.invoke(latitudeE7, longitudeE7) },
+            onCoordinateSelected?.let { { latitude, longitude -> latestCoordinateSelected?.invoke(latitude, longitude) } },
         )
     }
     controller.render(renderSpec)
@@ -302,7 +304,7 @@ private fun MapLibreContent(
         factory = { controller.view },
         modifier = Modifier
             .fillMaxWidth()
-            .clearAndSetSemantics { contentDescription = state.summary },
+            .clearAndSetSemantics { text = AnnotatedString(state.summary) },
         update = { controller.render(renderSpec) },
     )
 }
@@ -323,6 +325,7 @@ private data class MapRenderSpec(
     val clusterTextColor: Int,
     val userLocationColor: Int,
     val cameraPaddingPixels: Int,
+    val reduceMotion: Boolean,
 )
 
 private class LedgerMapController(
@@ -330,7 +333,7 @@ private class LedgerMapController(
     private val onFailure: () -> Unit,
     private val onViewportChanged: (LedgerMapViewport) -> Unit,
     private val onPointSelected: (StableId) -> Unit,
-    private val onCoordinateSelected: (latitudeE7: Int, longitudeE7: Int) -> Unit,
+    private val onCoordinateSelected: ((Int, Int) -> Unit)?,
 ) {
     val view: MapView = MapView(context)
     private var map: MapLibreMap? = null
@@ -360,6 +363,7 @@ private class LedgerMapController(
             ready.uiSettings.isLogoEnabled = true
             ready.addOnCameraIdleListener { dispatchViewport(ready) }
             ready.addOnMapClickListener { coordinate -> handleMapClick(ready, coordinate) }
+            ready.addOnMapLongClickListener { coordinate -> selectCoordinate(coordinate) }
             desired?.let(::apply)
         }
     }
@@ -428,10 +432,20 @@ private class LedgerMapController(
             return true
         }
         if (ready.queryRenderedFeatures(screen, CLUSTER_LAYER_ID).isNotEmpty()) {
-            ready.easeCamera(CameraUpdateFactory.newLatLngZoom(coordinate, (ready.cameraPosition.zoom + CLUSTER_ZOOM_STEP).coerceAtMost(MAX_ZOOM_BUCKET.toDouble())))
+            val update = CameraUpdateFactory.newLatLngZoom(
+                coordinate,
+                (ready.cameraPosition.zoom + CLUSTER_ZOOM_STEP).coerceAtMost(MAX_ZOOM_BUCKET.toDouble()),
+            )
+            if (desired?.reduceMotion == true) ready.moveCamera(update) else ready.easeCamera(update)
             return true
         }
-        onCoordinateSelected(
+        return selectCoordinate(coordinate)
+    }
+
+    private fun selectCoordinate(coordinate: LatLng): Boolean {
+        val listener = onCoordinateSelected ?: return false
+        if (desired == null) return false
+        listener(
             (coordinate.latitude * E7_DIVISOR).roundToInt().coerceIn(MIN_LATITUDE_E7, MAX_LATITUDE_E7),
             (coordinate.longitude * E7_DIVISOR).roundToInt().coerceIn(MIN_LONGITUDE_E7, MAX_LONGITUDE_E7),
         )

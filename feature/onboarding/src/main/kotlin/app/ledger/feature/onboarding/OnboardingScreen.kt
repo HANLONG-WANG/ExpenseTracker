@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -26,8 +27,12 @@ import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
+import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerIcon
+import app.ledger.core.designsystem.LedgerIconView
 import app.ledger.core.designsystem.LedgerProgressIndicator
+import app.ledger.core.designsystem.LedgerStatusVariant
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerSnackbarController
 import app.ledger.core.designsystem.LedgerTestTags
@@ -35,8 +40,18 @@ import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
+import app.ledger.core.designsystem.LedgerTopAppBar
+import app.ledger.core.designsystem.LedgerTopAppBarVariant
 import app.ledger.core.designsystem.LedgerToggleRow
+import app.ledger.core.designsystem.ReferenceDisplayStylePicker
+import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.rememberLedgerSnackbarController
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Currency
+import java.util.Locale
 
 public sealed interface OnboardingScreenAction {
     public data class LanguageChanged(val language: OnboardingLanguage) : OnboardingScreenAction
@@ -77,6 +92,8 @@ internal class OnboardingActions(
     val onAccountType: (InitialAccountType) -> Unit,
     val onCategoryName: (String) -> Unit,
     val onCategoryDirection: (InitialCategoryDirection) -> Unit,
+    val onCategoryIcon: (LedgerIcon) -> Unit,
+    val onCategoryPalette: (String, Int) -> Unit,
     val onBack: () -> Unit,
     val onNext: () -> Unit,
     val onSkip: () -> Unit,
@@ -111,11 +128,45 @@ public fun OnboardingScreen(
     modifier: Modifier = Modifier,
     snackbarController: LedgerSnackbarController = rememberLedgerSnackbarController(),
 ) {
-    val actions = onboardingActions(onAction)
+    val submitting = state.renderState == OnboardingRenderState.SUBMITTING
+    val progressLabel = stringResource(R.string.onboarding_progress, state.step.ordinal + 1, OnboardingStep.entries.size)
     LedgerScaffold(
         modifier.fillMaxSize().testTag(LedgerTestTags.ONBOARDING_ROOT),
         snackbarController = snackbarController,
         formContent = true,
+        topBar = {
+            LedgerTopAppBar(
+                title = progressLabel,
+                variant = if (state.step == OnboardingStep.LANGUAGE) LedgerTopAppBarVariant.TOP_LEVEL else LedgerTopAppBarVariant.BACK,
+                onNavigation = actions.onBack,
+            )
+        },
+        fixedAction = {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+            ) {
+                if (state.step.optional) {
+                    LedgerButton(
+                        stringResource(R.string.onboarding_later),
+                        actions.onSkip,
+                        Modifier.weight(1f),
+                        variant = LedgerButtonVariant.TEXT,
+                        enabled = !submitting,
+                    )
+                }
+                LedgerButton(
+                    if (state.step == OnboardingStep.COMPLETE) {
+                        stringResource(R.string.onboarding_start)
+                    } else {
+                        stringResource(R.string.onboarding_continue)
+                    },
+                    actions.onNext,
+                    Modifier.weight(1f).testTag(LedgerTestTags.ONBOARDING_PRIMARY),
+                    enabled = !submitting,
+                )
+            }
+        },
     ) { padding ->
         Column(
             Modifier
@@ -124,10 +175,6 @@ public fun OnboardingScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
         ) {
-            LedgerText(
-                stringResource(R.string.onboarding_progress, state.step.ordinal + 1, OnboardingStep.entries.size),
-                LedgerTextRole.LABEL,
-            )
             LedgerProgressIndicator(
                 progress = (state.step.ordinal + 1f) / OnboardingStep.entries.size,
                 accessibleText = stringResource(R.string.onboarding_progress_accessible, state.step.ordinal + 1),
@@ -140,40 +187,13 @@ public fun OnboardingScreen(
                     variant = LedgerBannerVariant.DANGER,
                 )
             }
-            StepContent(state, actions)
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
-            ) {
-                if (state.step != OnboardingStep.LANGUAGE) {
-                    LedgerButton(
-                        stringResource(R.string.onboarding_back),
-                        actions.onBack,
-                        Modifier.weight(1f).testTag(LedgerTestTags.ONBOARDING_SECONDARY),
-                        variant = LedgerButtonVariant.SECONDARY,
-                        enabled = state.renderState != OnboardingRenderState.SUBMITTING,
-                    )
-                }
-                if (state.step.optional) {
-                    LedgerButton(
-                        stringResource(R.string.onboarding_later),
-                        actions.onSkip,
-                        Modifier.weight(1f),
-                        variant = LedgerButtonVariant.TEXT,
-                        enabled = state.renderState != OnboardingRenderState.SUBMITTING,
-                    )
-                }
-                LedgerButton(
-                    if (state.step == OnboardingStep.COMPLETE) {
-                        stringResource(R.string.onboarding_start)
-                    } else {
-                        stringResource(R.string.onboarding_continue)
-                    },
-                    actions.onNext,
-                    Modifier.weight(1f).testTag(LedgerTestTags.ONBOARDING_PRIMARY),
-                    enabled = state.renderState != OnboardingRenderState.SUBMITTING,
+            if (submitting) {
+                LedgerBanner(
+                    message = stringResource(R.string.onboarding_submitting),
+                    variant = LedgerBannerVariant.INFO,
                 )
             }
+            StepContent(state, actions)
         }
     }
 }
@@ -190,18 +210,40 @@ private fun StepContent(state: OnboardingUiState, actions: OnboardingActions) {
                 actions.onCurrencySearch,
                 stringResource(R.string.onboarding_currency_search),
             )
-            listOf("JPY", "CNY", "USD", "EUR").filter {
-                state.currencySearch.isBlank() || it.contains(state.currencySearch.trim(), ignoreCase = true)
+            val locale = Locale.getDefault()
+            val currencies = remember(locale) {
+                Currency.getAvailableCurrencies().sortedBy { it.currencyCode }
+            }
+            val query = state.currencySearch.trim()
+            currencies.filter { currency ->
+                query.isBlank() || currency.currencyCode.contains(query, ignoreCase = true) ||
+                    currency.getDisplayName(locale).contains(query, ignoreCase = true)
             }.forEach { currency ->
-                LedgerChoiceRow(currency, state.baseCurrency == currency, { actions.onCurrency(currency) })
+                val code = currency.currencyCode
+                LedgerChoiceRow("$code · ${currency.getDisplayName(locale)}", state.baseCurrency == code, { actions.onCurrency(code) })
             }
         }
         OnboardingStep.TIME_ZONE -> {
             LedgerTextField(state.zoneSearch, actions.onZoneSearch, stringResource(R.string.onboarding_zone_search))
-            listOf("Asia/Tokyo", "Asia/Shanghai", "UTC").filter {
-                state.zoneSearch.isBlank() || it.contains(state.zoneSearch.trim(), ignoreCase = true)
-            }.forEach { zone -> LedgerChoiceRow(zone, state.zoneId == zone, { actions.onZone(zone) }) }
-            if (state.zoneId != null) LedgerText(state.zoneId, LedgerTextRole.BODY)
+            val systemZone = remember { ZoneId.systemDefault() }
+            val allZones = remember { ZoneId.getAvailableZoneIds().sorted() }
+            LedgerCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
+                    LedgerText(stringResource(R.string.onboarding_system_zone), LedgerTextRole.LABEL)
+                    LedgerText(systemZone.id, LedgerTextRole.BODY)
+                    LedgerText(zonePreview(systemZone), LedgerTextRole.SUPPORTING)
+                }
+            }
+            val query = state.zoneSearch.trim()
+            val visibleZones = if (query.isBlank()) {
+                listOfNotNull(state.zoneId, systemZone.id).distinct()
+            } else {
+                allZones.filter { it.contains(query, ignoreCase = true) }
+            }
+            visibleZones.forEach { zone -> LedgerChoiceRow(zone, state.zoneId == zone, { actions.onZone(zone) }) }
+            state.zoneId?.let { selected ->
+                LedgerText(stringResource(R.string.onboarding_zone_preview, zonePreview(ZoneId.of(selected))), LedgerTextRole.BODY)
+            }
         }
         OnboardingStep.PRIVACY_POLICY -> {
             LedgerText(stringResource(R.string.onboarding_privacy_document), LedgerTextRole.BODY)
@@ -218,11 +260,18 @@ private fun StepContent(state: OnboardingUiState, actions: OnboardingActions) {
             LedgerToggleRow(stringResource(R.string.onboarding_crash_toggle), state.crashReportingEnabled, actions.onCrashReporting)
         }
         OnboardingStep.APP_LOCK -> {
+            LedgerBanner(
+                message = stringResource(
+                    if (state.deviceSecurityAvailable) R.string.onboarding_device_security_available else R.string.onboarding_device_security_missing,
+                ),
+                variant = if (state.deviceSecurityAvailable) LedgerBannerVariant.INFO else LedgerBannerVariant.DANGER,
+            )
             LedgerToggleRow(
                 stringResource(R.string.onboarding_lock_toggle),
                 state.appLockEnabled,
                 actions.onAppLock,
                 supportingText = stringResource(R.string.onboarding_lock_scope),
+                enabled = state.deviceSecurityAvailable,
             )
             if (state.appLockEnabled) {
                 OnboardingUiState.ALLOWED_TIMEOUTS.sorted().forEach { timeout ->
@@ -251,6 +300,19 @@ private fun StepContent(state: OnboardingUiState, actions: OnboardingActions) {
                 sensitive = true,
             )
             LedgerText(stringResource(R.string.onboarding_backup_later_note), LedgerTextRole.SUPPORTING)
+            LedgerCard(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+                ) {
+                    LedgerIconView(LedgerIcon.ATTACHMENT)
+                    Column(Modifier.weight(1f)) {
+                        LedgerText(stringResource(R.string.onboarding_backup_destination), LedgerTextRole.SECTION)
+                        LedgerText(stringResource(R.string.onboarding_backup_not_configured), LedgerTextRole.SUPPORTING)
+                    }
+                    StatusBadge(stringResource(R.string.onboarding_later), LedgerStatusVariant.NEUTRAL)
+                }
+            }
         }
         OnboardingStep.ACCOUNT -> {
             LedgerTextField(state.accountName, actions.onAccountName, stringResource(R.string.onboarding_account_name))
@@ -263,6 +325,14 @@ private fun StepContent(state: OnboardingUiState, actions: OnboardingActions) {
             InitialCategoryDirection.entries.forEach { direction ->
                 LedgerChoiceRow(categoryDirectionLabel(direction), state.categoryDirection == direction, { actions.onCategoryDirection(direction) })
             }
+            ReferenceDisplayStylePicker(
+                selectedIcon = state.categoryIcon,
+                selectedPaletteId = state.categoryPaletteId,
+                iconSectionLabel = stringResource(R.string.onboarding_category_icon),
+                colorSectionLabel = stringResource(R.string.onboarding_category_color),
+                onIconSelected = actions.onCategoryIcon,
+                onPaletteSelected = actions.onCategoryPalette,
+            )
         }
         OnboardingStep.COMPLETE -> {
             LedgerText(stringResource(R.string.onboarding_complete_summary), LedgerTextRole.BODY)
@@ -278,6 +348,11 @@ private fun StepContent(state: OnboardingUiState, actions: OnboardingActions) {
         }
     }
 }
+
+private fun zonePreview(zoneId: ZoneId): String = DateTimeFormatter
+    .ofLocalizedDateTime(FormatStyle.MEDIUM)
+    .withLocale(Locale.getDefault())
+    .format(ZonedDateTime.now(zoneId))
 
 @Composable private fun stepTitle(step: OnboardingStep): String = stringResource(
     when (step) {

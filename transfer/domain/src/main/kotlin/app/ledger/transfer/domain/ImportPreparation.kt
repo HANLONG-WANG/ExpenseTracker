@@ -30,7 +30,7 @@ data class EntityMappingDecision(
     }
 }
 
-enum class MissingFxPolicy { REQUIRE_MANUAL_RATE, USE_PROVIDED_RATE }
+enum class MissingFxPolicy { REQUIRE_MANUAL_RATE, USE_PROVIDED_RATE, USE_IMPORTED_HISTORICAL_RATE }
 
 data class FxImportDecision(
     val sourceCurrency: String,

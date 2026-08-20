@@ -46,10 +46,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Instant
 
-internal enum class VaultAuthenticationPurpose { REVEAL_PAN, COPY_PAN, REVEAL_CVC, EDIT_VAULT }
+internal enum class VaultAuthenticationPurpose { OPEN_LIST, REVEAL_PAN, COPY_PAN, REVEAL_CVC, EDIT_VAULT }
 
 internal data class VaultAuthenticationPrompt(
-    val cryptoObject: BiometricPrompt.CryptoObject,
+    val cryptoObject: BiometricPrompt.CryptoObject?,
     val purpose: VaultAuthenticationPurpose,
 )
 
@@ -99,7 +99,7 @@ internal class VaultController(
             cards = cards.mapValues { (id, card) -> card.copy(hasSecret = id in ids) }
             mutableState.value = VaultPresentationState(
                 "VLT-001",
-                if (cards.isEmpty()) VaultRequiredState.VLT_001_EMPTY else VaultRequiredState.VLT_001_UNLOCKED_SESSION,
+                if (cards.isEmpty()) VaultRequiredState.VLT_001_EMPTY else VaultRequiredState.VLT_001_LOCKED,
                 cards.values.sortedBy(VaultCardSummary::displayName),
             )
         }
@@ -154,6 +154,19 @@ internal class VaultController(
     fun requestRevealPrimaryNumber(cardId: StableId) = requestReveal(cardId, VaultFieldType.PAN, VaultAction.REVEAL_PAN)
     fun requestCopyPrimaryNumber(cardId: StableId) = requestReveal(cardId, VaultFieldType.PAN, VaultAction.COPY_PAN)
     fun requestRevealSecurityCode(cardId: StableId) = requestReveal(cardId, VaultFieldType.SECURITY_CODE, VaultAction.REVEAL_SECURITY_CODE)
+
+    fun requestListAuthentication() {
+        if (!keystore.vaultAuthenticationAvailable() || cards.isEmpty()) return
+        cancelPending()
+        pending = PendingVaultAuthentication.OpenList
+        mutableState.value = VaultPresentationState(
+            "VLT-001",
+            VaultRequiredState.VLT_001_LOCKED,
+            cards.values.sortedBy(VaultCardSummary::displayName),
+            pending = true,
+        )
+        mutableAuthentication.tryEmit(VaultAuthenticationPrompt(null, VaultAuthenticationPurpose.OPEN_LIST))
+    }
 
     private fun requestReveal(cardId: StableId, field: VaultFieldType, action: VaultAction) {
         cancelPending()
@@ -228,12 +241,21 @@ internal class VaultController(
     fun authenticationSucceeded(cryptoObject: BiometricPrompt.CryptoObject?) {
         val active = pending ?: return
         pending = null
+        if (active === PendingVaultAuthentication.OpenList) {
+            mutableState.value = VaultPresentationState(
+                "VLT-001",
+                VaultRequiredState.VLT_001_UNLOCKED_SESSION,
+                cards.values.sortedBy(VaultCardSummary::displayName),
+            )
+            return
+        }
         if (cryptoObject == null) {
             active.close()
             return authenticationFailed()
         }
         try {
             when (active) {
+                PendingVaultAuthentication.OpenList -> error("handled before crypto validation")
                 is PendingVaultAuthentication.Reveal -> completeReveal(active, cryptoObject)
                 is PendingVaultAuthentication.Edit -> {
                     editAuthorization = active.request.complete(cryptoObject)
@@ -248,6 +270,7 @@ internal class VaultController(
         } catch (_: Exception) {
             active.close()
             when (active) {
+                PendingVaultAuthentication.OpenList -> Unit
                 is PendingVaultAuthentication.Reveal -> authenticationFailed()
                 is PendingVaultAuthentication.Edit -> editAuthenticationFailed(active.cardId)
                 is PendingVaultAuthentication.Provision -> editAuthenticationFailed(active.cardId)
@@ -260,11 +283,18 @@ internal class VaultController(
         val active = pending
         pending = null
         active?.close()
-        if (active is PendingVaultAuthentication.Edit || active is PendingVaultAuthentication.Provision) {
-            editAuthenticationFailed(active.cardId)
-        } else {
-            val cardId = (active as? PendingVaultAuthentication.Reveal)?.cardId ?: mutableState.value.selectedCard?.cardId
-            if (cardId != null) mutableState.value = detailState(cardId, VaultRequiredState.VLT_002_AUTH_FAILED)
+        when (active) {
+            is PendingVaultAuthentication.Edit -> editAuthenticationFailed(active.cardId)
+            is PendingVaultAuthentication.Provision -> editAuthenticationFailed(active.cardId)
+            PendingVaultAuthentication.OpenList -> mutableState.value = VaultPresentationState(
+                "VLT-001",
+                VaultRequiredState.VLT_001_LOCKED,
+                cards.values.sortedBy(VaultCardSummary::displayName),
+            )
+            else -> {
+                val cardId = (active as? PendingVaultAuthentication.Reveal)?.cardId ?: mutableState.value.selectedCard?.cardId
+                if (cardId != null) mutableState.value = detailState(cardId, VaultRequiredState.VLT_002_AUTH_FAILED)
+            }
         }
         code.name
     }
@@ -272,6 +302,7 @@ internal class VaultController(
     private fun completeReveal(active: PendingVaultAuthentication.Reveal, cryptoObject: BiometricPrompt.CryptoObject) {
         val plaintext = active.request.complete(cryptoObject)
         when (active.purpose) {
+            VaultAuthenticationPurpose.OPEN_LIST -> error("list authentication never reveals a field")
             VaultAuthenticationPurpose.COPY_PAN -> {
                 clipboard.copyPrimaryNumber(plaintext)
                 plaintext.close()
@@ -378,6 +409,13 @@ internal class VaultController(
         cancelPending()
         hideSensitive()
         clipboard.onApplicationBackgrounded()
+        if (mutableState.value.screenId == "VLT-001" && cards.isNotEmpty()) {
+            mutableState.value = VaultPresentationState(
+                "VLT-001",
+                VaultRequiredState.VLT_001_LOCKED,
+                cards.values.sortedBy(VaultCardSummary::displayName),
+            )
+        }
     }
 
     fun onApplicationLocked() {
@@ -437,8 +475,14 @@ internal class VaultController(
     }
 
     private sealed interface PendingVaultAuthentication : AutoCloseable {
-        val cryptoObject: BiometricPrompt.CryptoObject
-        val cardId: StableId
+        val cryptoObject: BiometricPrompt.CryptoObject?
+        val cardId: StableId?
+
+        data object OpenList : PendingVaultAuthentication {
+            override val cryptoObject: BiometricPrompt.CryptoObject? = null
+            override val cardId: StableId? = null
+            override fun close() = Unit
+        }
 
         data class Reveal(
             val request: VaultRevealRequest,

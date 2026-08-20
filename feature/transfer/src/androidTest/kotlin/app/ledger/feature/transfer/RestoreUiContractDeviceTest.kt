@@ -21,6 +21,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -105,6 +106,43 @@ class RestoreUiContractDeviceTest {
     }
 
     @Test
+    fun mergeRestorePurgeTombstoneWinsThroughTheApplyAction() {
+        val purge = purgeConflict()
+        var resolutionChanges = 0
+        var mergeApplications = 0
+        val actions = ACTIONS.copy(
+            onResolveConflict = { _, _ -> resolutionChanges += 1 },
+            onApplyMerge = {
+                assertEquals(MergeResolution.KeepPurgeTombstone, purge.resolution)
+                assertEquals(true, purge.purgeTombstoneWins)
+                mergeApplications += 1
+            },
+        )
+        composeRule.setContent {
+            val localized = LocalContext.current.createConfigurationContext(
+                Configuration(LocalConfiguration.current).apply { setLocales(LocaleList(Locale.US)) },
+            )
+            CompositionLocalProvider(
+                LocalContext provides localized,
+                LocalConfiguration provides localized.resources.configuration,
+                LocalActivityResultRegistryOwner provides composeRule.activity,
+            ) {
+                LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                    Box(Modifier.size(360.dp, 800.dp)) {
+                        RestoreFlowScreen(base("RST-005").copy(conflicts = listOf(purge)), actions)
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("Apply merge").performClick()
+        composeRule.runOnIdle {
+            assertEquals(0, resolutionChanges)
+            assertEquals(1, mergeApplications)
+        }
+    }
+
+    @Test
     fun contractDerivedRestoreScreenshotsMatchPixelBaselines() {
         val states = listOf(
             base("RST-004").copy(mode = RestoreMode.REPLACE, mergeAvailable = true),
@@ -165,7 +203,11 @@ class RestoreUiContractDeviceTest {
             CloudClearPresentation.entries.map {
                 base("CLR-002").copy(
                     cloudClearPresentation = it,
-                    cloudSnapshots = listOf("opaque-snapshot-1", "opaque-snapshot-2"),
+                    cloudAuthenticated = it != CloudClearPresentation.AUTH_REQUIRED,
+                    cloudSnapshots = listOf(
+                        RestoreSnapshotUi("opaque-snapshot-1", "2026-08-20 10:00", app.ledger.transfer.domain.BackupRepositoryKind.GOOGLE_DRIVE, true, true),
+                        RestoreSnapshotUi("opaque-snapshot-2", "2026-08-19 10:00", app.ledger.transfer.domain.BackupRepositoryKind.GOOGLE_DRIVE, true, false),
+                    ),
                     selectedCloudSnapshots = setOf("opaque-snapshot-1"),
                 )
             }
@@ -185,8 +227,12 @@ class RestoreUiContractDeviceTest {
         sourceLabel = "verified-backup",
         bookIdentity = "opaque-book-id",
         sourceVersion = "schema 1",
-        contentSummary = "42 objects · 8 MiB",
-        integritySummary = "AEAD, hashes, journal and projections verified",
+        baseCurrency = "JPY",
+        restoredObjectCount = 42,
+        restoredLogicalBytes = 8_388_608,
+        attachmentCount = 3,
+        includesVault = true,
+        integrityChecks = RestoreIntegrityCheck.entries.map { RestoreIntegrityCheckUi(it, true) },
         mergeAvailable = true,
         safetySnapshotLabel = "verified safety snapshot",
         verificationSummary = "live ledger verified",
@@ -227,6 +273,13 @@ class RestoreUiContractDeviceTest {
             "339869d466d26e53fb877e81270de09a6894e8d2eee1610784bf1881653d9fda",
             "ec6e99eac7c059e541b19ec577e264ca75351b5d0f0d28c8b69199454da421b8",
         )
-        val ACTIONS: (RestoreFlowScreenAction) -> Unit = {}
+        val ACTIONS = RestoreFlowActions(
+            onBack = {}, onPortableSource = {}, onRepositorySource = {}, onDriveSource = {},
+            onSnapshotSourceSelected = {},
+            onPasswordChanged = {}, onVerifyPassword = {}, onModeSelected = {}, onHighRiskPhraseChanged = {},
+            onStartRestore = {}, onResolveConflict = { _, _ -> }, onApplyToSimilarChanged = {}, onApplyMerge = {}, onCancel = {}, onRetry = {},
+            onOpenApp = {}, onCloudSnapshotSelected = {}, onCloudConfirmationChanged = {},
+            onAuthenticateCloudDelete = {}, onDeleteCloudBackups = {},
+        )
     }
 }

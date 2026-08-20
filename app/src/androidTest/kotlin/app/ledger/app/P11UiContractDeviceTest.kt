@@ -198,7 +198,9 @@ class P11UiContractDeviceTest {
 
     private data class RenderCase(val width: Int, val fontScale: Float, val theme: ThemeMode, val dynamic: Boolean)
 
-    private val noOpActions: (OnboardingScreenAction) -> Unit = {}
+    private val noOpActions = OnboardingActions(
+        {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, { _, _ -> }, {}, {}, {},
+    )
 
     private companion object {
         const val STATE_HOST_TAG = "p11_contract_state_host"

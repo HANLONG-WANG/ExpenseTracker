@@ -19,6 +19,16 @@
     <string name="record_location_apply_coordinates">使用输入的坐标</string>
     <string name="record_location_place_label">地点</string>
     <string name="record_location_place_offline_note">仅选择本地已保存地点，不进行在线搜索或反向地理编码。</string>
+    <string name="record_accuracy_meters">精度约 %1$.1f 米</string>
+    <string name="record_accuracy_unknown">精度未知</string>
+    <string name="record_location_new_pin">新位置点</string>
+    <string name="record_location_coordinates">%1$.5f, %2$.5f</string>
+    <string name="record_location_map_summary">地图中有 %1$d 个可选位置点</string>
+    <string name="record_location_map_caption">位置地图的无障碍列表</string>
+    <string name="record_location_map_place">地点</string>
+    <string name="record_location_map_coordinate">坐标</string>
+    <string name="record_location_show_list">显示位置列表</string>
+    <string name="record_location_hide_list">隐藏位置列表</string>
     <string name="record_attachments_title">附件</string>
     <string name="record_attachments_empty_title">暂无附件</string>
     <string name="record_attachments_empty_message">可从系统文件选择器添加任意格式文件。</string>
@@ -31,6 +41,7 @@
     <string name="record_tab_income">收入</string>
     <string name="record_tab_other">其他交易</string>
     <string name="record_all_templates">全部模板</string>
+    <string name="record_templates">模板</string>
     <string name="record_search_category">搜索分类</string>
     <string name="record_search_account">搜索账户</string>
     <string name="record_search_merchant">搜索商户或别名</string>
@@ -55,6 +66,16 @@
     <string name="record_other_loan">借贷</string>
     <string name="record_other_adjustment">余额调整</string>
     <string name="record_other_fx">外币兑换</string>
+    <string name="record_other_transfer_description">在两个账户之间移动资金，不计收入或费用。</string>
+    <string name="record_other_credit_payment_description">从银行账户偿还信用账户，不重复计入支出。</string>
+    <string name="record_other_refund_description">冲减原费用，并可恢复对应预算。</string>
+    <string name="record_other_loan_description">办理贷款放款、还款及本金利息拆分。</string>
+    <string name="record_other_adjustment_description">记录与余额检查点相关的明确调整。</string>
+    <string name="record_other_fx_description">在不同币种账户间兑换并冻结汇率证据。</string>
+    <string name="record_account_archived">已归档；仅因当前历史交易仍在显示</string>
+    <string name="record_cards_empty">没有可用实体卡</string>
+    <string name="record_cards_empty_body">可选择“无实体卡”继续，或前往账户的实体卡页面创建。</string>
+    <string name="record_manage_cards">管理实体卡</string>
     <string name="record_field_category">分类</string>
     <string name="record_field_account">账户</string>
     <string name="record_field_card">实体卡</string>
@@ -74,6 +95,7 @@
     <string name="record_fixed_save_hint">保存按钮固定在页面右下方；最后一项可滚动到按钮上方。</string>
     <string name="record_save_failed">保存失败（%1$s）。输入内容仍保留。</string>
     <string name="record_revision_conflict">此交易已在别处修改。不能静默覆盖，请重新载入或取消编辑。</string>
+    <string name="record_view_differences">查看差异</string>
     <string name="record_reload">重新载入</string>
     <string name="record_cancel_edit">取消编辑</string>
     <string name="record_unsaved_title">舍弃未保存更改？</string>
@@ -107,11 +129,11 @@
     <string name="record_settlement_empty_body">可关闭互请继续保存普通交易。</string>
     <string name="record_continue_without_settlement">关闭互请并继续</string>
     <string name="record_settlement_balanced">分配已平衡，可以保存。</string>
-    <string name="record_settlement_imbalanced">分配尚未平衡。</string>
+    <string name="record_settlement_imbalanced">分配尚未平衡。</string><string name="record_settlement_difference">代付合计 %1$s，承担合计 %2$s，应与交易总额 %3$s 一致。</string>
     <string name="record_settlement_currency_mismatch">活动结算币种与交易币种不同；请改选活动或先完成明确换算。</string>
-    <string name="record_settlement_share">%1$s承担 %2$d 个最小货币单位</string>
+    <string name="record_settlement_share">%1$s承担 %2$s</string>
     <string name="record_statistical_snapshot">统计性质快照：%1$s</string>
-    <string name="record_nature_consumption_expense">日常消费</string><string name="record_nature_non_consumption_expense">非消费支出</string><string name="record_nature_regular_income">经常性收入</string><string name="record_nature_non_recurring_income">非经常性收入</string>
+    <string name="record_statistical_consumption">消费支出</string><string name="record_statistical_non_consumption">非消费费用</string><string name="record_statistical_regular_income">经常性收入</string><string name="record_statistical_non_recurring_income">非经常性收入</string>
     <string name="record_budget_snapshot">预算归属快照：%1$s</string>
     <string name="record_budget_category_rule">按分类规则</string>
     <string name="record_snapshot_immutable">保存后这些快照属于不可变修订；以后修改分类名称或属性不会改写历史事实。</string>
@@ -126,10 +148,11 @@
     <string name="specialized_no_statistics">期初余额和余额调整不计收入、费用、消费或预算。</string><string name="specialized_currency_immutable">账户币种 %1$s 是权威币种，首条 Posting 后不可更改。</string>
     <string name="specialized_fx_required">缺少权威换算证据。请刷新报价，或手动输入账户币种到本位币的正汇率；绝不会填入 0。</string>
     <string name="specialized_fx_evidence">汇率与金额证据</string><string name="specialized_fx_evidence_explanation">账户金额是权威值；报价仅用于冻结本位币金额，之后的缓存更新不会改写历史。</string>
-    <string name="specialized_refresh_rate">刷新参考汇率</string><string name="specialized_rate_loading">正在获取参考汇率…</string><string name="specialized_rate_summary">1 %1$s = %2$s %3$s</string><string name="specialized_rate_unavailable">离线且无缓存；请手动输入汇率。</string><string name="specialized_rate_time">报价时间：%1$s</string><string name="specialized_rate_stale">当前为过期缓存报价，保存时会原样冻结并标记。</string>
+    <string name="specialized_refresh_rate">刷新参考汇率</string><string name="specialized_rate_loading">正在获取参考汇率…</string><string name="specialized_rate_summary">1 %1$s = %2$s %3$s</string><string name="specialized_rate_summary_with_source">1 %1$s = %2$s %3$s · %4$s</string><string name="specialized_rate_unavailable">离线且无缓存；请手动输入汇率。</string><string name="specialized_rate_time">报价时间：%1$s</string><string name="specialized_rate_received_time">获取时间：%1$s</string><string name="specialized_rate_provider">提供方：%1$s</string><string name="specialized_rate_stale">当前为过期缓存报价，保存时会原样冻结并标记。</string>
+    <string name="specialized_rate_source_online">在线最新报价</string><string name="specialized_rate_source_cache">缓存报价</string><string name="specialized_rate_source_manual">手动</string><string name="specialized_rate_source_implied">按实际金额推导</string><string name="specialized_rate_source_official">官方结算</string><string name="specialized_rate_source_historical">历史备用报价</string>
     <string name="specialized_manual_rate">手动汇率 %1$s → %2$s</string><string name="specialized_manual_override">填入后优先使用手动证据。</string><string name="specialized_invalid_field">请检查此字段。</string>
     <string name="specialized_effective_rate_title">有效汇率与参考报价</string><string name="specialized_effective_rate_value">有效汇率：1 %1$s = %2$s %3$s</string><string name="specialized_reference_rate_value">参考汇率：1 %1$s = %2$s %3$s</string><string name="specialized_pending_value">待输入</string>
-    <string name="specialized_fx_cost_title">汇兑成本、价差与舍入</string><string name="specialized_fx_cost_value">本位币价差：%1$s %2$s 最小单位</string><string name="specialized_rounding_evidence">原币与账户币金额是权威值；换算按币种小数位使用 HALF_EVEN 舍入，金额和汇率证据随修订冻结。</string>
+    <string name="specialized_fx_cost_title">汇兑成本、价差与舍入</string><string name="specialized_fx_cost_value">本位币价差：%1$s</string><string name="specialized_rounding_evidence">原币与账户币金额是权威值；换算按币种小数位使用 HALF_EVEN 舍入，金额和汇率证据随修订冻结。</string>
     <string name="refund_load_failed">无法加载退款资料。</string>
     <string name="refund_contra_expense_explanation">退款按费用冲减记录，不计为收入；现金日期、权责日期和预算恢复月份分别保存。</string>
     <string name="refund_link_mode">退款来源</string><string name="refund_linked">关联原交易</string><string name="refund_independent">独立退款</string><string name="refund_independent_explanation">没有可关联原交易时使用；仍需选择费用分类并保留审计证据。</string>
@@ -146,17 +169,17 @@
     <string name="record_settlement_payer">实际付款人</string><string name="record_settlement_split_method">分摊方式</string><string name="record_settlement_equal">平均</string><string name="record_settlement_fixed">指定金额</string><string name="record_settlement_percentage">百分比</string><string name="record_settlement_weight">权重</string>
     <string name="record_settlement_tax">税费</string><string name="record_settlement_service_fee">服务费</string><string name="record_settlement_charge_distribution">税费与服务费分配</string><string name="record_settlement_charge_same">随基础份额</string><string name="record_settlement_charge_equal">平均分配</string><string name="record_settlement_charge_payer">付款人承担</string><string name="record_settlement_charge_specified">分别指定</string>
     <string name="record_settlement_rounding">尾差归属</string><string name="record_settlement_rounding_order">参与人顺序</string><string name="record_settlement_rounding_payer">付款人</string><string name="record_settlement_rounding_self">本人</string><string name="record_settlement_rounding_largest">最大份额</string>
-    <string name="record_settlement_required_participant">本人和付款人必须参与</string><string name="record_settlement_exclusion_support">关闭以排除此参与人</string><string name="record_settlement_fixed_amount">承担金额</string><string name="record_settlement_percentage_value">承担百分比</string><string name="record_settlement_weight_value">承担权重</string><string name="record_settlement_specified_charge">指定税费与服务费</string><string name="record_settlement_self_summary">本人承担：%1$d 个最小货币单位</string><string name="record_settlement_others_summary">他人承担：%1$d 个最小货币单位</string>
+    <string name="record_settlement_required_participant">本人和付款人必须参与</string><string name="record_settlement_exclusion_support">关闭以排除此参与人</string><string name="record_settlement_fixed_amount">承担金额</string><string name="record_settlement_percentage_value">承担百分比</string><string name="record_settlement_weight_value">承担权重</string><string name="record_settlement_specified_charge">指定税费与服务费</string><string name="record_settlement_self_summary">本人承担：%1$s</string><string name="record_settlement_others_summary">他人承担：%1$s</string>
     <string name="record_template_search">搜索快捷模板</string>
     <string name="record_template_empty">没有匹配的快捷模板</string>
     <string name="record_template_empty_body">可以修改搜索词，或在自动化中创建模板。</string>
     <string name="record_template_create">创建模板</string>
     <string name="batch_unknown_route">批量录入页面不可用。</string><string name="batch_atomic_notice">默认整批全有或全无提交；摘要不替代完整行编辑。</string><string name="batch_validating">正在校验整批数据…</string><string name="batch_has_errors">存在错误，主账本尚未发生任何变化。</string><string name="batch_ready">校验通过，可以整批提交。</string><string name="batch_committing">正在原子提交，请勿重复操作。</string><string name="batch_committed">整批已提交并保留批次审计。</string><string name="batch_commit_failed">提交失败，全部输入已保留。错误代码：%1$s</string>
-    <string name="batch_add_row">添加行</string><string name="batch_paste">批量粘贴</string><string name="batch_sort_date">按日期排序</string><string name="batch_sort_amount">按金额排序</string><string name="batch_column_row">行</string><string name="batch_column_status">状态</string><string name="batch_field_kind">交易类型</string><string name="batch_field_category">分类</string><string name="batch_field_amount">金额 / 币种</string><string name="batch_field_account_card">账户 / 卡</string><string name="batch_field_merchant">商户</string><string name="batch_field_date">发生时间</string><string name="batch_date_hint">按本地时间输入：年-月-日 时:分</string><string name="batch_field_project">项目</string><string name="batch_field_complex">复杂字段</string><string name="batch_field_attachments">附件</string><string name="batch_field_settlement">互请</string><string name="batch_field_location">位置</string><string name="batch_field_installment">分期</string><string name="batch_field_refund">退款关系</string><string name="batch_field_note">备注</string>
-    <string name="batch_validate">校验整批</string><string name="batch_commit">提交整批</string><string name="batch_discard">放弃草稿</string><string name="batch_row_missing">找不到要编辑的批量行。</string><string name="batch_kind_expense">支出</string><string name="batch_kind_income">收入</string><string name="batch_kind_refund">退款</string><string name="batch_none">未选择</string><string name="batch_linked">已关联</string><string name="batch_amount_evidence">按所示币种输入日常金额；保存时会精确转换为账务单位。</string><string name="batch_amount_expression">金额</string><string name="batch_currency">原币种</string><string name="batch_account_amount">账户金额（%1$s）</string><string name="batch_base_amount">本位币金额（%1$s）</string><string name="batch_complex_fields">附件、互请、位置、汇率、分期和退款</string><string name="batch_complex_explanation">这些关联项在完整行编辑器中处理，摘要表只负责概览。</string><string name="batch_item_count">%1$d 项</string>
-    <string name="batch_copy_row">复制行</string><string name="batch_move_up">上移</string><string name="batch_delete_row">删除行</string><string name="batch_done">完成并校验</string><string name="batch_validation_errors">发现 %1$d 个错误；整批不会写入。</string><string name="batch_validation_warnings">发现 %1$d 个警告，需要明确确认。</string><string name="batch_validation_valid">全部行校验通过。</string><string name="batch_row_issue">行错误或警告</string><string name="batch_whole_issue">整批错误</string><string name="batch_jump_to_row">转到对应行和字段</string><string name="batch_confirm_warnings">确认警告并允许提交</string><string name="batch_status_errors">%1$d 个错误</string><string name="batch_status_warnings">%1$d 个警告</string><string name="batch_status_ready">就绪</string><string name="batch_accessibility_row">第 %1$s 行，%2$s，%3$s</string>
-    <string name="batch_error_category">请选择与方向一致的分类。</string><string name="batch_error_amount">请输入大于零且符合币种小数位的金额。</string><string name="batch_error_date">请输入有效的本地日期和时间。</string><string name="batch_error_account">请选择可用账户。</string><string name="batch_error_card">实体卡与账户不兼容。</string><string name="batch_error_settlement">互请活动和份额必须同时完整。</string><string name="batch_error_refund">独立退款需要费用分类。</string><string name="batch_error_installment">只有支出可以关联分期。</string><string name="batch_warning_attachments">此行附件较多，请确认后提交。</string><string name="batch_warning_refund_excess">超额退款将形成高风险审计证据。</string><string name="batch_error_generic">此行未通过领域或引用校验。</string>
-    <string name="batch_entry_title">批量录入</string><string name="batch_paste_input">粘贴 TSV 行</string><string name="batch_paste_format">顺序：类型、分类、日常金额、账户、商户、本地时间（年-月-日 时:分）、项目；类型可填写支出、收入或退款。</string>
-    <string name="batch_discard_title">放弃整批草稿？</string><string name="batch_discard_message">批量草稿只保存在内存中；离开后无法恢复，主账本不会变化。</string><string name="batch_keep_editing">继续编辑</string>
+    <string name="batch_add_row">添加行</string><string name="batch_paste">批量粘贴</string><string name="batch_sort_date">按日期排序</string><string name="batch_sort_amount">按金额排序</string><string name="batch_column_row">行</string><string name="batch_column_status">状态</string><string name="batch_field_kind">交易类型</string><string name="batch_field_category">分类</string><string name="batch_field_amount">金额 / 币种</string><string name="batch_field_account_card">账户 / 卡</string><string name="batch_field_merchant">商户</string><string name="batch_field_date">日期与时间</string><string name="batch_field_project">项目</string><string name="batch_field_complex">复杂字段</string><string name="batch_field_attachments">附件</string><string name="batch_field_settlement">互请</string><string name="batch_field_location">位置</string><string name="batch_field_installment">分期</string><string name="batch_field_refund">退款关系</string><string name="batch_field_note">备注</string>
+    <string name="batch_validate">校验整批</string><string name="batch_commit">提交整批</string><string name="batch_discard">放弃草稿</string><string name="batch_row_missing">找不到要编辑的批量行。</string><string name="batch_kind_expense">支出</string><string name="batch_kind_income">收入</string><string name="batch_kind_refund">退款</string><string name="batch_none">未选择</string><string name="batch_linked">已关联</string><string name="batch_amount_evidence">请按各币种主单位输入；保存时会转换为精确的权威金额证据。</string><string name="batch_amount_expression">原金额表达式</string><string name="batch_currency">原币种</string><string name="batch_account_amount">账户金额（%1$s）</string><string name="batch_base_amount">本位币金额（%1$s）</string><string name="batch_complex_fields">附件、互请、位置、FX、分期和退款</string><string name="batch_complex_explanation">复杂字段必须进入完整行编辑器，不在摘要表中截断编辑。</string><string name="batch_item_count">%1$d 项</string>
+    <string name="batch_copy_row">复制行</string><string name="batch_move_up">上移</string><string name="batch_delete_row">删除行</string><string name="batch_done">完成并校验</string><string name="batch_validation_errors">发现 %1$d 个错误；整批不会写入。</string><string name="batch_validation_warnings">发现 %1$d 个警告，需要明确确认。</string><string name="batch_validation_valid">全部行校验通过。</string><string name="batch_issue_group_count">%1$s（%2$d 项）</string><string name="batch_row_issue">行错误或警告</string><string name="batch_whole_issue">整批错误</string><string name="batch_jump_to_row">转到对应行和字段</string><string name="batch_confirm_warnings">确认警告并允许提交</string><string name="batch_status_errors">%1$d 个错误</string><string name="batch_status_warnings">%1$d 个警告</string><string name="batch_status_ready">就绪</string><string name="batch_accessibility_row">第 %1$s 行，%2$s，%3$s</string>
+    <string name="batch_error_category">请选择与方向一致的分类。</string><string name="batch_error_amount">请输入全部权威金额且金额必须大于零。</string><string name="batch_error_account">请选择可用账户。</string><string name="batch_error_card">实体卡与账户不兼容。</string><string name="batch_error_settlement">互请活动和份额必须同时完整。</string><string name="batch_error_refund">独立退款需要费用分类。</string><string name="batch_error_installment">只有支出可以关联分期。</string><string name="batch_warning_attachments">此行附件较多，请确认后提交。</string><string name="batch_warning_refund_excess">超额退款将形成高风险审计证据。</string><string name="batch_error_generic">此行未通过领域或引用校验。</string>
+    <string name="batch_entry_title">批量录入</string><string name="batch_paste_input">粘贴 TSV 行</string><string name="batch_paste_format">顺序：类型、分类、主单位金额、账户、商户、ISO 时间、项目；名称只在本地加密参考数据中解析。</string>
+    <string name="batch_discard_title">放弃整批草稿？</string><string name="batch_discard_message">批量草稿只保存在内存中；离开后无法恢复，主账本不会变化。</string>
     <string name="batch_undo">撤销整批（追加合法冲销）</string>
 </resources>

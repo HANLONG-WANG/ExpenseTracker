@@ -50,7 +50,13 @@ internal object LoanDeviceFixtures {
     private val revision = (LocalRevision.of(28) as DomainResult.Success).value
     private val rate = (InterestRate.of(BigDecimal("0.024")) as DomainResult.Success).value
 
-    val actions: (LoanScreenAction) -> Unit = {}
+    val actions = LoanActions(
+        onRetry = {}, onNavigate = { _, _, _ -> }, onFieldChanged = { _, _ -> }, onSelectContract = {},
+        onSelectTranche = {}, onSelectPaymentAccount = {}, onSelectScheduleInstallment = {}, onOperationOccurredAt = {},
+        onRepaymentMethod = {}, onStrategy = {}, onRateType = {}, onFrequency = {}, onPrepaymentPolicy = {}, onRoundingMode = {},
+        onWizardNext = {}, onWizardBack = {}, onAddTranche = {}, onSelectWizardTranche = {}, onAddRatePeriod = {}, onEditRatePeriod = {},
+        onPreview = {}, onSave = {}, onSimulate = {}, onApplySimulation = {},
+    )
 
     fun snapshot(contracts: List<LoanContractView> = listOf(contract())) = LoanSnapshot(
         bookId,

@@ -187,7 +187,7 @@ fun RecordAttachmentsScreen(
                             actionLabel = stringResource(R.string.record_attachments_retry),
                             onAction = onRetry,
                         )
-                        AttachmentList(state.attachments, onAdd, onOpen, onCancel)
+                        AttachmentList(state.attachments, onAdd, onOpen, onCancel, onRetry)
                     }
                     is RecordAttachmentsState.Content -> AttachmentList(state.attachments, onAdd, onOpen, onCancel)
                     is RecordAttachmentsState.Importing -> AttachmentList(state.attachments, onAdd, onOpen, onCancel)
@@ -203,6 +203,7 @@ private fun AttachmentList(
     onAdd: () -> Unit,
     onOpen: (AttachmentUiModel) -> Unit,
     onCancel: (AttachmentUiModel) -> Unit,
+    onRetry: () -> Unit = {},
 ) {
     AttachmentField(
         attachments = attachments,
@@ -210,5 +211,6 @@ private fun AttachmentList(
         onOpen = onOpen,
         onCancel = onCancel,
         addLabel = stringResource(R.string.record_attachments_add),
+        onRetry = { onRetry() },
     )
 }

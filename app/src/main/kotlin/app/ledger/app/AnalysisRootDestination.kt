@@ -65,78 +65,90 @@ internal fun AnalysisRootDestination(
     AnalysisDestination(
         screenId,
         state,
-        { action ->
-            when (action) {
-                is AnalysisScreenAction.Navigate -> {
-                    viewModel.navigateAnalysis(action.screenId, action.report, action.queryId)
+        AnalysisActions(
+            onNavigate = { target, report, drilldown ->
+                viewModel.navigateAnalysis(target, report, drilldown)
+                onNavigationChanged()
+            },
+            onRetry = viewModel::retryAnalysis,
+            onPreviousPeriod = viewModel::previousAnalysisPeriod,
+            onNextPeriod = viewModel::nextAnalysisPeriod,
+            onCycleMeasure = viewModel::cycleAnalysisMeasure,
+            onCycleDimension = viewModel::cycleAnalysisDimension,
+            onCycleGranularity = viewModel::cycleAnalysisGranularity,
+            onCycleComparison = viewModel::cycleAnalysisComparison,
+            onSelectMeasure = viewModel::selectAnalysisMeasure,
+            onSelectDimension = viewModel::selectAnalysisDimension,
+            onSelectGranularity = viewModel::selectAnalysisGranularity,
+            onSelectComparison = viewModel::selectAnalysisComparison,
+            onCycleSort = viewModel::cycleAnalysisSort,
+            onToggleReportFilter = viewModel::toggleAnalysisReportFilter,
+            onRemoveReportFilter = viewModel::removeAnalysisReportFilter,
+            onResetReportFilters = viewModel::resetAnalysisReportFilters,
+            onBuilderStep = viewModel::changeAnalysisBuilderStep,
+            onApplyFilter = {
+                if (viewModel.applyAnalysisFilter()) {
+                    viewModel.requestRootBack()
                     onNavigationChanged()
                 }
-                AnalysisScreenAction.Retry -> viewModel.retryAnalysis()
-                AnalysisScreenAction.PreviousPeriod -> viewModel.previousAnalysisPeriod()
-                AnalysisScreenAction.NextPeriod -> viewModel.nextAnalysisPeriod()
-                AnalysisScreenAction.CycleMeasure -> viewModel.cycleAnalysisMeasure()
-                AnalysisScreenAction.CycleDimension -> viewModel.cycleAnalysisDimension()
-                AnalysisScreenAction.CycleGranularity -> viewModel.cycleAnalysisGranularity()
-                AnalysisScreenAction.CycleComparison -> viewModel.cycleAnalysisComparison()
-                AnalysisScreenAction.ApplyFilter -> {
-                    if (viewModel.applyAnalysisFilter()) {
-                        viewModel.requestRootBack()
-                        onNavigationChanged()
-                    }
-                }
-                AnalysisScreenAction.Export -> {
-                    if (viewModel.prepareAnalysisExport()) onNavigationChanged()
-                }
-                AnalysisScreenAction.LoadMore -> viewModel.loadNextAnalysisDrilldown()
-                AnalysisScreenAction.RunIntegrity -> viewModel.runAnalysisIntegrity()
-                AnalysisScreenAction.RepairProjection -> viewModel.repairAnalysisProjection()
-                AnalysisScreenAction.ToggleTechnicalDetails -> viewModel.toggleAnalysisTechnicalDetails()
-                is AnalysisScreenAction.NavigateP26 -> {
-                    viewModel.navigateAnalysisP26(action.screenId, action.id, action.forecastKey)
-                    onNavigationChanged()
-                }
-                is AnalysisScreenAction.DraftNameChanged -> viewModel.updateAnalysisDraftName(action.value)
-                AnalysisScreenAction.SaveReport -> viewModel.saveCustomAnalysisReport()
-                AnalysisScreenAction.PreviewReport -> viewModel.previewCustomAnalysisReport()
-                is AnalysisScreenAction.CopyReport -> viewModel.copyCustomAnalysisReport(action.reportId)
-                is AnalysisScreenAction.SelectVisualization -> viewModel.selectAnalysisVisualization(action.visualization)
-                AnalysisScreenAction.SaveDashboard -> viewModel.saveAnalysisDashboard()
-                is AnalysisScreenAction.ToggleDashboardReport -> viewModel.toggleAnalysisDashboardReport(action.reportId)
-                is AnalysisScreenAction.MoveDashboardReport -> viewModel.moveAnalysisDashboardReport(action.reportId, action.offset)
-                is AnalysisScreenAction.ToggleDashboardWidth -> viewModel.toggleAnalysisDashboardWidth(action.reportId)
-                is AnalysisScreenAction.SaveAnomalyRule -> viewModel.saveAnalysisAnomalyRule(action.ruleId)
-                is AnalysisScreenAction.EditAnomalyRule -> viewModel.editAnalysisAnomalyRule(action.ruleId)
-                AnalysisScreenAction.CycleAnomalyType -> viewModel.cycleAnalysisAnomalyType()
-                is AnalysisScreenAction.AnomalyThresholdChanged -> viewModel.updateAnalysisAnomalyThreshold(action.value)
-                is AnalysisScreenAction.AnomalyLookbackChanged -> viewModel.updateAnalysisAnomalyLookback(action.value)
-                is AnalysisScreenAction.SelectExportFormat -> viewModel.selectAnalysisExportFormat(action.format)
-                AnalysisScreenAction.PrepareExport -> {
-                    if (viewModel.navigatePreparedReportExport()) onNavigationChanged()
-                }
-                AnalysisScreenAction.CycleMapMode -> viewModel.cycleConsumptionMapMode()
-                AnalysisScreenAction.CycleMapWeight -> viewModel.cycleConsumptionMapWeight()
-                AnalysisScreenAction.CycleMapAggregation -> viewModel.cycleConsumptionMapAggregation()
-                AnalysisScreenAction.CycleMapPresentation -> viewModel.cycleConsumptionMapPresentation()
-                AnalysisScreenAction.ToggleMapSpecialTransactions -> viewModel.toggleConsumptionMapSpecialTransactions()
-                AnalysisScreenAction.ResetMapFilters -> viewModel.resetConsumptionMapFilters()
-                AnalysisScreenAction.CycleMapAccountFilter -> viewModel.cycleConsumptionMapAccountFilter()
-                AnalysisScreenAction.CycleMapCategoryFilter -> viewModel.cycleConsumptionMapCategoryFilter()
-                AnalysisScreenAction.CycleMapMerchantFilter -> viewModel.cycleConsumptionMapMerchantFilter()
-                AnalysisScreenAction.CycleMapPlaceFilter -> viewModel.cycleConsumptionMapPlaceFilter()
-                AnalysisScreenAction.CycleMapProjectFilter -> viewModel.cycleConsumptionMapProjectFilter()
-                AnalysisScreenAction.CycleMapAmountFilter -> viewModel.cycleConsumptionMapAmountFilter()
-                is AnalysisScreenAction.RemoveMapFilter -> viewModel.removeConsumptionMapFilter(action.key)
-                is AnalysisScreenAction.MapViewportChanged -> viewModel.updateConsumptionMapViewport(action.viewport)
-                is AnalysisScreenAction.SelectMapPoint -> {
-                    viewModel.navigateConsumptionMapDetail(action.pointId)
-                    onNavigationChanged()
-                }
-                is AnalysisScreenAction.OpenMapTransactions -> {
-                    viewModel.navigateAnalysis("ANA-005", null, action.queryId)
-                    onNavigationChanged()
-                }
-            }
-        },
+            },
+            onExport = {
+                if (viewModel.prepareAnalysisExport()) onNavigationChanged()
+            },
+            onLoadMore = viewModel::loadNextAnalysisDrilldown,
+            onOpenTransaction = { transactionId ->
+                viewModel.openAnalysisTransaction(transactionId)
+                onNavigationChanged()
+            },
+            onRunIntegrity = viewModel::runAnalysisIntegrity,
+            onRepairProjection = viewModel::repairAnalysisProjection,
+            onToggleTechnicalDetails = viewModel::toggleAnalysisTechnicalDetails,
+            onNavigateP26 = { target, id, key ->
+                viewModel.navigateAnalysisP26(target, id, key)
+                onNavigationChanged()
+            },
+            onDraftNameChanged = viewModel::updateAnalysisDraftName,
+            onSaveReport = viewModel::saveCustomAnalysisReport,
+            onPreviewReport = viewModel::previewCustomAnalysisReport,
+            onCopyReport = viewModel::copyCustomAnalysisReport,
+            onSelectVisualization = viewModel::selectAnalysisVisualization,
+            onSaveDashboard = viewModel::saveAnalysisDashboard,
+            onToggleDashboardReport = viewModel::toggleAnalysisDashboardReport,
+            onMoveDashboardReport = viewModel::moveAnalysisDashboardReport,
+            onToggleDashboardWidth = viewModel::toggleAnalysisDashboardWidth,
+            onSaveAnomalyRule = viewModel::saveAnalysisAnomalyRule,
+            onEditAnomalyRule = viewModel::editAnalysisAnomalyRule,
+            onCycleAnomalyType = viewModel::cycleAnalysisAnomalyType,
+            onAnomalyThresholdChanged = viewModel::updateAnalysisAnomalyThreshold,
+            onAnomalyLookbackChanged = viewModel::updateAnalysisAnomalyLookback,
+            onSelectExportFormat = viewModel::selectAnalysisExportFormat,
+            onSelectExportScope = viewModel::selectAnalysisExportScope,
+            onPrepareExport = {
+                if (viewModel.navigatePreparedReportExport()) onNavigationChanged()
+            },
+            onCycleMapMode = viewModel::cycleConsumptionMapMode,
+            onCycleMapWeight = viewModel::cycleConsumptionMapWeight,
+            onCycleMapAggregation = viewModel::cycleConsumptionMapAggregation,
+            onCycleMapPresentation = viewModel::cycleConsumptionMapPresentation,
+            onToggleMapSpecialTransactions = viewModel::toggleConsumptionMapSpecialTransactions,
+            onResetMapFilters = viewModel::resetConsumptionMapFilters,
+            onCycleMapAccountFilter = { viewModel.cycleConsumptionMapAccountFilter() },
+            onCycleMapCategoryFilter = { viewModel.cycleConsumptionMapCategoryFilter() },
+            onCycleMapMerchantFilter = { viewModel.cycleConsumptionMapMerchantFilter() },
+            onCycleMapPlaceFilter = { viewModel.cycleConsumptionMapPlaceFilter() },
+            onCycleMapProjectFilter = { viewModel.cycleConsumptionMapProjectFilter() },
+            onCycleMapAmountFilter = { viewModel.cycleConsumptionMapAmountFilter() },
+            onRemoveMapFilter = viewModel::removeConsumptionMapFilter,
+            onMapViewportChanged = viewModel::updateConsumptionMapViewport,
+            onSelectMapPoint = { pointId ->
+                viewModel.navigateConsumptionMapDetail(pointId)
+                onNavigationChanged()
+            },
+            onOpenMapTransactions = { drilldown ->
+                viewModel.navigateAnalysis("ANA-005", null, drilldown)
+                onNavigationChanged()
+            },
+        ),
         mapContent = { result, unavailable -> ConsumptionMapHost(result, unavailable, viewModel, onNavigationChanged) },
     )
 }

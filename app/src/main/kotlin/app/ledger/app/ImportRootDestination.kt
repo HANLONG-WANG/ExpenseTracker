@@ -13,26 +13,31 @@ internal fun ImportRootDestination(viewModel: AppRootViewModel, onNavigationChan
     val state by viewModel.importWizard.collectAsStateWithLifecycle()
     ImportWizardScreen(
         state,
-        { action ->
-            when (action) {
-                ImportWizardScreenAction.Back -> viewModel.exitImport(onNavigationChanged)
-                is ImportWizardScreenAction.SourceSelected -> viewModel.selectImportSource(action.uri)
-                is ImportWizardScreenAction.ModeSelected -> viewModel.selectImportMode(action.mode)
-                is ImportWizardScreenAction.SheetSelected -> viewModel.selectImportSheet(action.sheet)
-                is ImportWizardScreenAction.EncodingChanged -> viewModel.changeImportEncoding(action.encoding)
-                is ImportWizardScreenAction.HeaderRowChanged -> viewModel.changeImportHeaderRow(action.value)
-                is ImportWizardScreenAction.CycleFieldMapping -> viewModel.cycleImportFieldMapping(action.sourceField)
-                is ImportWizardScreenAction.CreateMissingChanged -> viewModel.changeImportMissingCreation(action.entity, action.enabled)
-                is ImportWizardScreenAction.FxRateChanged -> viewModel.changeImportFxRate(action.currency, action.value)
-                is ImportWizardScreenAction.DuplicateResolved -> viewModel.resolveImportDuplicate(action.row, action.resolution)
-                ImportWizardScreenAction.Previous -> viewModel.previousImportStage()
-                ImportWizardScreenAction.Next -> viewModel.nextImportStage()
-                ImportWizardScreenAction.Pause -> viewModel.pauseImport()
-                ImportWizardScreenAction.Cancel -> viewModel.cancelImport()
-                ImportWizardScreenAction.Retry -> viewModel.retryImport()
-                ImportWizardScreenAction.Rollback -> viewModel.rollbackImport()
-                ImportWizardScreenAction.OpenJournal -> viewModel.selectRootTopLevel(app.ledger.core.navigation.TopLevelDestination.JOURNAL)
-            }
-        },
+        ImportWizardActions(
+            onBack = viewModel::requestRootBack,
+            onSourceSelected = viewModel::selectImportSource,
+            onModeSelected = viewModel::selectImportMode,
+            onSheetSelected = viewModel::selectImportSheet,
+            onEncodingChanged = viewModel::changeImportEncoding,
+            onHeaderRowChanged = viewModel::changeImportHeaderRow,
+            onCycleFieldMapping = viewModel::cycleImportFieldMapping,
+            onCreateMissingChanged = viewModel::changeImportMissingCreation,
+            onCycleEntityMapping = viewModel::cycleImportEntityMapping,
+            onFxPolicyChanged = viewModel::changeImportFxPolicy,
+            onFxRateChanged = viewModel::changeImportFxRate,
+            onDuplicateResolved = viewModel::resolveImportDuplicate,
+            onPrevious = viewModel::previousImportStage,
+            onNext = viewModel::nextImportStage,
+            onPause = viewModel::pauseImport,
+            onCancel = viewModel::cancelImport,
+            onRetry = viewModel::retryImport,
+            onRollback = viewModel::rollbackImport,
+            onOpenJournal = { viewModel.selectRootTopLevel(app.ledger.core.navigation.TopLevelDestination.JOURNAL) },
+            onShowHistory = viewModel::navigateImportHistory,
+            onViewValidationIssues = viewModel::viewImportValidationIssues,
+            onCleanupTemporary = viewModel::cleanupImportTemporary,
+            onViewHistoryResult = viewModel::viewImportHistoryResult,
+            onRollbackHistory = viewModel::rollbackImportHistory,
+        ),
     )
 }

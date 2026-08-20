@@ -89,8 +89,8 @@ class LedgerApplication : Application() {
             settingsRepository.data.collectLatest { settings ->
                 privacyDiagnostics.applyConsent(
                     settings.privacyAccepted,
-                    if (settings.diagnosticsChoiceRecorded) settings.telemetryEnabled else true,
-                    if (settings.diagnosticsChoiceRecorded) settings.crashReportingEnabled else true,
+                    if (settings.diagnosticsChoiceRecorded) settings.telemetryEnabled else false,
+                    if (settings.diagnosticsChoiceRecorded) settings.crashReportingEnabled else false,
                 )
             }
         }

@@ -37,7 +37,11 @@ internal object BudgetDeviceFixtures {
     val child = id(11)
     val revision = (LocalRevision.of(17) as DomainResult.Success).value
     val currency = (CurrencyCode.parse("JPY") as DomainResult.Success).value
-    val actions: (BudgetScreenAction) -> Unit = {}
+    val actions = BudgetActions(
+        navigation = BudgetNavigationActions({}, {}, { _, _, _ -> }, {}, {}),
+        editor = BudgetEditorActions({}, { _, _ -> }, {}, {}, {}),
+        adjustment = BudgetAdjustmentActions({}, { _ -> }, {}, {}),
+    )
 
     fun configured(configuration: Configuration = Configuration()): BudgetSnapshot {
         val month = configuration.month

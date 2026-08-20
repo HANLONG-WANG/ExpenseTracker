@@ -121,6 +121,7 @@ internal class AccountsActions(
     val onSaveCheckpoint: (CheckpointSubmission) -> Unit,
     val onSaveOpeningBalance: (OpeningBalanceSubmission) -> Unit,
     val onRetry: () -> Unit,
+    val onCreateReplacementCard: (StableId, StableId) -> Unit = { _, _ -> },
 )
 
 internal fun accountsActions(onAction: (AccountsScreenAction) -> Unit): AccountsActions = AccountsActions(

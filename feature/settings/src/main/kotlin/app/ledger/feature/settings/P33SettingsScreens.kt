@@ -11,15 +11,25 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
+import app.ledger.core.designsystem.AmountSize
+import app.ledger.core.designsystem.AmountText
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
+import app.ledger.core.designsystem.LedgerButton
+import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerProgressIndicator
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
+import app.ledger.core.money.AmountSemantic
+import app.ledger.core.money.AmountVisibility
+import app.ledger.core.money.MoneyUiModel
+import java.text.NumberFormat
 
 enum class SettingsThemeMode { FOLLOW_SYSTEM, LIGHT, DARK }
 
@@ -171,10 +181,34 @@ private fun AppearanceSettings(state: RemainingSettingsState, actions: Remaining
             )
         }
         item {
+            val locale = LocalConfiguration.current.locales[0]
+            val previewAmount = NumberFormat.getCurrencyInstance(locale).format(1_234.56)
             LedgerCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(LedgerTheme.spacing.sm)) {
+                Column(
+                    Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+                ) {
                     LedgerText(stringResource(R.string.settings_live_preview), LedgerTextRole.SECTION)
                     LedgerText(stringResource(R.string.settings_live_preview_body), LedgerTextRole.BODY)
+                    AmountText(
+                        MoneyUiModel(
+                            formatted = previewAmount,
+                            fullAccessibleText = previewAmount,
+                            semantic = AmountSemantic.OUTFLOW,
+                            visibility = if (state.defaultAmountsHidden) AmountVisibility.HIDDEN else AmountVisibility.VISIBLE,
+                        ),
+                        AmountSize.LARGE,
+                    )
+                    LedgerProgressIndicator(
+                        progress = 0.64f,
+                        accessibleText = stringResource(R.string.settings_live_preview_progress),
+                    )
+                    LedgerButton(
+                        stringResource(R.string.settings_live_preview_action),
+                        {},
+                        Modifier.fillMaxWidth(),
+                        LedgerButtonVariant.SECONDARY,
+                    )
                 }
             }
         }

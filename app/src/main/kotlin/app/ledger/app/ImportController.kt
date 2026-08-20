@@ -23,14 +23,20 @@ import app.ledger.core.security.SecureImportStagingAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.feature.transfer.ImportDuplicateRowUi
 import app.ledger.feature.transfer.ImportEntityMappingUi
+import app.ledger.feature.transfer.ImportEntityValueMappingUi
 import app.ledger.feature.transfer.ImportExecutionState
+import app.ledger.feature.transfer.ImportFxPolicyUi
 import app.ledger.feature.transfer.ImportFxRowUi
 import app.ledger.feature.transfer.ImportHistoryRowUi
 import app.ledger.feature.transfer.ImportMappingRowUi
 import app.ledger.feature.transfer.ImportModeUi
 import app.ledger.feature.transfer.ImportPreviewRowUi
+import app.ledger.feature.transfer.ImportResultCountsUi
+import app.ledger.feature.transfer.ImportResultOutcomeUi
 import app.ledger.feature.transfer.ImportStructureState
 import app.ledger.feature.transfer.ImportValidationState
+import app.ledger.feature.transfer.ImportValidationIssueUi
+import app.ledger.feature.transfer.ImportValidationSeverityUi
 import app.ledger.feature.transfer.ImportWizardUiState
 import app.ledger.finance.application.ImportCommitMetadata
 import app.ledger.finance.application.ImportFinancialApplicationPort
@@ -78,6 +84,7 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.math.BigDecimal
 import java.security.MessageDigest
+import java.time.Instant
 import java.time.ZoneId
 
 internal class ImportController(
@@ -87,6 +94,8 @@ internal class ImportController(
     private val financial: ImportFinancialApplicationPort,
     private val structured: StructuredImportApplicationPort,
     private val runtime: AppRuntimeSources,
+    private val formatImportedAt: (Instant) -> String,
+    private val formatPreviewValue: (StagingValue) -> String,
 ) {
     private val applicationContext = context.applicationContext
     private val mutableState = MutableStateFlow(ImportWizardUiState())
@@ -166,6 +175,35 @@ internal class ImportController(
         refreshDecisionUi()
     }
 
+    fun cycleEntityMapping(typeName: String, sourceValue: String) {
+        val field = runCatching { ImportTargetField.valueOf(typeName) }.getOrNull() ?: return
+        val options = entityOptions(field)
+        if (options.isEmpty()) return
+        val current = allEntityDecisions.singleOrNull { it.targetField == field && it.sourceValue == sourceValue }
+        val currentIndex = options.indexOfFirst { it.first == current?.existingEntityId }
+        val target = options[(currentIndex + 1).mod(options.size)].first
+        allEntityDecisions = allEntityDecisions.filterNot { it.targetField == field && it.sourceValue == sourceValue } +
+            EntityMappingDecision(field, sourceValue, target, false)
+        entityCreationEnabled = entityCreationEnabled + (field to false)
+        duplicateResolutions = emptyMap()
+        refreshDecisionUi()
+    }
+
+    fun setFxPolicy(sourceCurrency: String, policy: ImportFxPolicyUi) {
+        val base = baseCurrency ?: return
+        fxDecisions = fxDecisions.filterNot { it.sourceCurrency == sourceCurrency } + FxImportDecision(
+            sourceCurrency,
+            base.value,
+            when (policy) {
+                ImportFxPolicyUi.HISTORICAL_FROM_FILE -> MissingFxPolicy.USE_IMPORTED_HISTORICAL_RATE
+                ImportFxPolicyUi.MANUAL -> MissingFxPolicy.REQUIRE_MANUAL_RATE
+            },
+            null,
+        )
+        duplicateResolutions = emptyMap()
+        refreshFxUi()
+    }
+
     fun setFxRate(sourceCurrency: String, value: String) {
         val base = baseCurrency ?: return
         val normalized = value.filter { it.isDigit() || it == '.' }.take(MAX_RATE_LENGTH)
@@ -227,9 +265,18 @@ internal class ImportController(
                 if (requiresReingestion()) reingestWithStructureOptions()
                 mutableState.value = mutableState.value.copy(stage = ImportWizardStage.FIELD_MAPPING)
             }
-            ImportWizardStage.FIELD_MAPPING -> mutableState.value = mutableState.value.copy(stage = ImportWizardStage.ENTITY_MAPPING)
-            ImportWizardStage.ENTITY_MAPPING -> mutableState.value = mutableState.value.copy(stage = ImportWizardStage.FX)
-            ImportWizardStage.FX -> prepare()
+            ImportWizardStage.FIELD_MAPPING -> if (mutableState.value.mappings.isNotEmpty() && mutableState.value.mappings.all { it.valid }) {
+                mutableState.value = mutableState.value.copy(stage = ImportWizardStage.ENTITY_MAPPING)
+            }
+            ImportWizardStage.ENTITY_MAPPING -> if (mutableState.value.entityValueMappings.none { !it.createMissing && it.targetLabel == null }) {
+                mutableState.value = mutableState.value.copy(stage = ImportWizardStage.FX)
+            }
+            ImportWizardStage.FX -> if (mutableState.value.fxRows.all { row ->
+                when (row.policy) {
+                    ImportFxPolicyUi.HISTORICAL_FROM_FILE -> row.historicalAvailable
+                    ImportFxPolicyUi.MANUAL -> !row.manualRequired
+                }
+            }) prepare()
             ImportWizardStage.VALIDATION -> if (mutableState.value.errorCount == 0L) {
                 mutableState.value = mutableState.value.copy(stage = ImportWizardStage.CONFIRMATION)
             }
@@ -327,9 +374,9 @@ internal class ImportController(
         val request = ImportFinancialUndoRequest(activeBook, activeBatch, runtime.stableIds.nextStableId(), runtime.clock.now())
         val result = if (useStructuredUndo) structured.undo(request) else financial.undo(request)
         mutableState.value = if (result is DomainResult.Success) {
-            mutableState.value.copy(executionState = ImportExecutionState.SUCCEEDED)
+            mutableState.value.copy(executionState = ImportExecutionState.SUCCEEDED, resultOutcome = ImportResultOutcomeUi.ROLLED_BACK)
         } else {
-            mutableState.value.copy(executionState = ImportExecutionState.FAILED)
+            mutableState.value.copy(executionState = ImportExecutionState.FAILED, resultOutcome = ImportResultOutcomeUi.FAILED_PARTIAL_NOT_ALLOWED)
         }
     }
 
@@ -337,16 +384,49 @@ internal class ImportController(
         bookId = activeBookId
         val history = when (val loaded = financial.history(activeBookId)) {
             is DomainResult.Success -> loaded.value.map { item ->
+                val importedAt = formatImportedAt(item.importedAt)
                 ImportHistoryRowUi(
-                    "${item.importedAt}",
-                    item.importedAt.toString(),
+                    "",
+                    importedAt,
                     item.importedRows,
                     !item.reversed,
+                    item.batchId.toString(),
                 )
             }
             is DomainResult.Failure -> emptyList()
         }
         mutableState.value = mutableState.value.copy(showHistory = true, history = history)
+    }
+
+    fun viewValidationIssues() {
+        mutableState.value = mutableState.value.copy(stage = ImportWizardStage.VALIDATION, showHistory = false)
+    }
+
+    suspend fun cleanupTemporary() {
+        val activeBook = bookId ?: return
+        operationId?.let { staging(activeBook, it).destroy() }
+        sourceHandleId?.let { SecureImportSourceHandleStore(applicationContext, keyProvider).destroy(it) }
+        mutableState.value = mutableState.value.copy(temporaryCleanupComplete = true)
+    }
+
+    fun viewHistoryResult(batchIdText: String) {
+        val selected = mutableState.value.history.singleOrNull { it.batchId == batchIdText } ?: return
+        mutableState.value = mutableState.value.copy(
+            showHistory = false,
+            stage = ImportWizardStage.RESULT,
+            executionState = ImportExecutionState.SUCCEEDED,
+            resultOutcome = if (selected.reversible) ImportResultOutcomeUi.SUCCESS else ImportResultOutcomeUi.ROLLED_BACK,
+            resultCounts = ImportResultCountsUi(transactions = selected.rowCount),
+        )
+    }
+
+    suspend fun rollbackHistory(batchIdText: String) {
+        val activeBook = bookId ?: return
+        val selectedBatch = StableId.parse(batchIdText).getOrNull() ?: return
+        val result = financial.undo(
+            ImportFinancialUndoRequest(activeBook, selectedBatch, runtime.stableIds.nextStableId(), runtime.clock.now()),
+        )
+        if (result is DomainResult.Success) showHistory(activeBook)
     }
 
     private fun requiresReingestion(): Boolean {
@@ -419,6 +499,7 @@ internal class ImportController(
                         mutableState.value = mutableState.value.copy(
                             stage = ImportWizardStage.RESULT,
                             executionState = ImportExecutionState.CANCELLED,
+                            resultOutcome = ImportResultOutcomeUi.CANCELLED,
                             temporaryCleanupComplete = true,
                         )
                         return@withContext
@@ -463,13 +544,14 @@ internal class ImportController(
             if (page.isEmpty()) break
             page.forEach { row ->
                 val values = row.values()
+                val previewValues = row.fields.associate { field -> field.sourceColumn to formatPreviewValue(field.value) }
                 val sheet = values["_sheet"].orEmpty()
                 sheets += sheet
                 loadedCounts[sheet] = (loadedCounts[sheet] ?: 0L) + 1L
                 val samplesForSheet = loadedSamples.getOrPut(sheet, ::linkedMapOf)
                 val distinctForSheet = loadedDistinct.getOrPut(sheet, ::linkedMapOf)
                 values.filterKeys { !it.startsWith('_') }.forEach { (key, value) ->
-                    samplesForSheet.putIfAbsent(key, value)
+                    samplesForSheet.putIfAbsent(key, previewValues[key].orEmpty())
                     if (value.isNotBlank()) {
                         val valuesForColumn = distinctForSheet.getOrPut(key, ::linkedSetOf)
                         if (valuesForColumn.size < MAX_DISTINCT_ENTITY_VALUES) valuesForColumn += value
@@ -479,7 +561,7 @@ internal class ImportController(
                 if (previewsForSheet.size < PREVIEW_ROWS) {
                     val preview = ImportPreviewRowUi(
                         row.rowNumber,
-                        values.filterKeys { !it.startsWith('_') }.values.joinToString(" · "),
+                        previewValues.filterKeys { !it.startsWith('_') }.values.joinToString(" · "),
                         "READY",
                     )
                     previewsForSheet += preview
@@ -517,6 +599,7 @@ internal class ImportController(
             selectedSheet = name,
             mappings = mappingUi(),
             entityMappings = entityMappingUi(),
+            entityValueMappings = entityValueMappingUi(),
             fxRows = fxUi(),
             previewRowCount = previews.size,
             previewRow = { index -> previews[index] },
@@ -566,9 +649,28 @@ internal class ImportController(
                     duplicateCount = result.value.duplicateRows,
                     duplicates = duplicates,
                     missingEntityCount = result.value.missingEntitiesToCreate,
+                    validationIssues = result.value.report.issues.map { issue ->
+                        ImportValidationIssueUi(
+                            issue.rowNumber,
+                            issue.field?.name,
+                            if (issue.severity == app.ledger.transfer.domain.ImportValidationSeverity.ERROR) {
+                                ImportValidationSeverityUi.ERROR
+                            } else {
+                                ImportValidationSeverityUi.WARNING
+                            },
+                            issue.code,
+                        )
+                    },
+                    resultCounts = importResultCounts(),
                 )
             }
-            is DomainResult.Failure -> mutableState.value.copy(validationState = ImportValidationState.ERRORS, errorCount = 1L)
+            is DomainResult.Failure -> mutableState.value.copy(
+                validationState = ImportValidationState.ERRORS,
+                errorCount = 1L,
+                validationIssues = listOf(
+                    ImportValidationIssueUi(null, null, ImportValidationSeverityUi.ERROR, "IMPORT_VALIDATION_FAILED"),
+                ),
+            )
         }
     }
 
@@ -576,7 +678,11 @@ internal class ImportController(
         val activeBook = bookId ?: return
         val id = operationId ?: return
         if (preparedRows <= 0L) {
-            mutableState.value = mutableState.value.copy(stage = ImportWizardStage.RESULT, executionState = ImportExecutionState.FAILED)
+            mutableState.value = mutableState.value.copy(
+                stage = ImportWizardStage.RESULT,
+                executionState = ImportExecutionState.FAILED,
+                resultOutcome = ImportResultOutcomeUi.FAILED_PARTIAL_NOT_ALLOWED,
+            )
             return
         }
         mutableState.value = mutableState.value.copy(stage = ImportWizardStage.EXECUTION, executionState = ImportExecutionState.PREPARING)
@@ -642,9 +748,15 @@ internal class ImportController(
                                 ImportWorker.OUTPUT_CLEANUP_COMPLETE,
                                 false,
                             ),
+                            resultOutcome = ImportResultOutcomeUi.SUCCESS,
+                            resultCounts = importResultCounts().copy(transactions = preparedTransactionRows),
                         )
                     } else {
-                        mutableState.value.copy(stage = ImportWizardStage.RESULT, executionState = ImportExecutionState.FAILED)
+                        mutableState.value.copy(
+                            stage = ImportWizardStage.RESULT,
+                            executionState = ImportExecutionState.FAILED,
+                            resultOutcome = ImportResultOutcomeUi.FAILED_PARTIAL_NOT_ALLOWED,
+                        )
                     }
                     return@withContext
                 }
@@ -652,6 +764,7 @@ internal class ImportController(
                     mutableState.value = mutableState.value.copy(
                         stage = ImportWizardStage.RESULT,
                         executionState = ImportExecutionState.FAILED,
+                        resultOutcome = ImportResultOutcomeUi.FAILED_PARTIAL_NOT_ALLOWED,
                     )
                     return@withContext
                 }
@@ -775,7 +888,10 @@ internal class ImportController(
 
     private fun refreshDecisionUi() {
         entityDecisions = allEntityDecisions.filter { !it.createMissing || entityCreationEnabled[it.targetField] != false }
-        mutableState.value = mutableState.value.copy(entityMappings = entityMappingUi())
+        mutableState.value = mutableState.value.copy(
+            entityMappings = entityMappingUi(),
+            entityValueMappings = entityValueMappingUi(),
+        )
     }
 
     private fun entityMappingUi(): List<ImportEntityMappingUi> {
@@ -793,8 +909,60 @@ internal class ImportController(
         }
     }
 
+    private fun entityValueMappingUi(): List<ImportEntityValueMappingUi> = allEntityDecisions
+        .sortedWith(compareBy<EntityMappingDecision> { it.targetField.name }.thenBy(EntityMappingDecision::sourceValue))
+        .map { decision ->
+            val options = entityOptions(decision.targetField)
+            ImportEntityValueMappingUi(
+                decision.targetField.name,
+                decision.sourceValue,
+                options.singleOrNull { it.first == decision.existingEntityId }?.second,
+                options.map { it.second },
+                decision.createMissing && entityCreationEnabled[decision.targetField] != false,
+            )
+        }
+
+    private fun entityOptions(field: ImportTargetField): List<Pair<StableId, String>> {
+        val snapshot = referenceSnapshot ?: return emptyList()
+        return when (field) {
+            ImportTargetField.ACCOUNT -> snapshot.accounts.map { it.id to it.name }
+            ImportTargetField.CARD -> snapshot.cards.map { it.id to it.displayName }
+            ImportTargetField.CATEGORY -> snapshot.categories.map { it.id to it.name }
+            ImportTargetField.MERCHANT -> snapshot.merchants.map { it.id to it.name }
+            ImportTargetField.LOCATION -> snapshot.places.map { it.id to it.name }
+            else -> emptyList()
+        }.sortedBy { it.second }
+    }
+
+    private fun importResultCounts(): ImportResultCountsUi {
+        fun count(field: ImportTargetField): Long = allEntityDecisions.count {
+            it.targetField == field && it.createMissing && entityCreationEnabled[field] != false
+        }.toLong()
+        return ImportResultCountsUi(
+            transactions = preparedTransactionRows,
+            accounts = count(ImportTargetField.ACCOUNT),
+            categories = count(ImportTargetField.CATEGORY),
+            merchants = count(ImportTargetField.MERCHANT),
+        )
+    }
+
     private fun rebuildFxDecisions() {
-        fxDecisions = emptyList()
+        val base = baseCurrency?.value
+        val sourceColumn = mappings.singleOrNull { it.targetField == ImportTargetField.CURRENCY }?.sourceColumn
+        val hasHistoricalRate = mappings.any { it.targetField == ImportTargetField.FX_RATE }
+        fxDecisions = if (base == null || sourceColumn == null) {
+            emptyList()
+        } else {
+            distinctValues[sourceColumn].orEmpty().map(String::uppercase)
+                .filter { it != base && it.matches(CURRENCY_PATTERN) }.distinct().map { source ->
+                    FxImportDecision(
+                        source,
+                        base,
+                        if (hasHistoricalRate) MissingFxPolicy.USE_IMPORTED_HISTORICAL_RATE else MissingFxPolicy.REQUIRE_MANUAL_RATE,
+                        null,
+                    )
+                }
+        }
         refreshFxUi()
     }
 
@@ -808,8 +976,21 @@ internal class ImportController(
         return distinctValues[sourceColumn].orEmpty().map(String::uppercase)
             .filter { it != base && it.matches(CURRENCY_PATTERN) }.distinct().sorted().map { source ->
                 val decided = fxDecisions.singleOrNull { it.sourceCurrency == source }?.rate?.toPlainString()
+                val decision = fxDecisions.singleOrNull { it.sourceCurrency == source }
                 val displayed = pending[source] ?: decided
-                ImportFxRowUi(source, base, displayed, displayed?.toBigDecimalOrNull()?.let { it > BigDecimal.ZERO } != true)
+                val policy = if (decision?.policy == MissingFxPolicy.USE_IMPORTED_HISTORICAL_RATE) {
+                    ImportFxPolicyUi.HISTORICAL_FROM_FILE
+                } else {
+                    ImportFxPolicyUi.MANUAL
+                }
+                ImportFxRowUi(
+                    source,
+                    base,
+                    displayed,
+                    policy == ImportFxPolicyUi.MANUAL && displayed?.toBigDecimalOrNull()?.let { it > BigDecimal.ZERO } != true,
+                    policy,
+                    mappings.any { it.targetField == ImportTargetField.FX_RATE },
+                )
             }
     }
 

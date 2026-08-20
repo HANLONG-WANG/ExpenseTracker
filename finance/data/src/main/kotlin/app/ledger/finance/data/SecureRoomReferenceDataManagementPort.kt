@@ -311,7 +311,7 @@ public class SecureRoomReferenceDataManagementPort(
         val baseCurrency = CurrencyCode.parse(book.baseCurrency).valueOrAbort()
         val accounts = connection.queryList(
             """
-            SELECT ua.uid, ua.type, ua.name, ua.currency_code, ua.status, ua.institution_name, ua.branch_name,
+            SELECT ua.uid, ua.type, ua.name, ua.currency_code, ua.status, ua.institution_name, ua.branch_name, ua.account_number,
               ua.opened_date, ua.icon_key, ua.color_argb, ua.sort_order, ua.row_version,
               COALESCE(abc.normal_balance_minor, 0) balance_minor, avc.current_base_value_minor, avc.rate_quoted_at,
               avc.rate_decimal,
@@ -341,6 +341,7 @@ public class SecureRoomReferenceDataManagementPort(
                 hasFinancialPostings = cursor.getInt(cursor.getColumnIndexOrThrow("has_postings")) == 1,
                 cardCount = cursor.getLong(cursor.getColumnIndexOrThrow("card_count")),
                 currentValuationRate = cursor.nullableString("rate_decimal")?.toBigDecimal(),
+                accountNumber = cursor.nullableString("account_number"),
             )
         }
         val includeHistoryMetadata = content == ReferenceSnapshotContent.FULL

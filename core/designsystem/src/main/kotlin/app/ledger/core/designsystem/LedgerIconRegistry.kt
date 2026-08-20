@@ -20,13 +20,42 @@ public object LedgerIconRegistry {
 }
 
 /** The single icon registry. Feature modules select a semantic key and never import another icon family. */
+public enum class LedgerIconTone { DEFAULT, MUTED, PRIMARY, DANGER, ON_PRIMARY }
+
 @Composable
 public fun LedgerIconView(
     icon: LedgerIcon,
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
-    tint: Color = LedgerTheme.colors.material.onSurface,
+    tone: LedgerIconTone = LedgerIconTone.DEFAULT,
     size: Dp = LedgerTheme.dimensions.iconMd,
+) {
+    val tint = when (tone) {
+        LedgerIconTone.DEFAULT -> LedgerTheme.colors.material.onSurface
+        LedgerIconTone.MUTED -> LedgerTheme.colors.material.onSurfaceVariant
+        LedgerIconTone.PRIMARY -> LedgerTheme.colors.material.primary
+        LedgerIconTone.DANGER -> LedgerTheme.colors.danger.base
+        LedgerIconTone.ON_PRIMARY -> LedgerTheme.colors.material.onPrimary
+    }
+    LedgerIconCanvas(icon, modifier, contentDescription, tint, size)
+}
+
+@Composable
+internal fun LedgerIconView(
+    icon: LedgerIcon,
+    modifier: Modifier = Modifier,
+    contentDescription: String? = null,
+    tint: Color,
+    size: Dp = LedgerTheme.dimensions.iconMd,
+) = LedgerIconCanvas(icon, modifier, contentDescription, tint, size)
+
+@Composable
+private fun LedgerIconCanvas(
+    icon: LedgerIcon,
+    modifier: Modifier,
+    contentDescription: String?,
+    tint: Color,
+    size: Dp,
 ) {
     val semanticModifier = if (contentDescription == null) {
         modifier
@@ -104,6 +133,27 @@ public fun LedgerIconView(
                     lineTo(this@Canvas.size.width * .62f, this@Canvas.size.height * .42f)
                 }
                 drawPath(path, tint, style = Stroke(stroke, cap = StrokeCap.Round))
+            }
+            LedgerIcon.IMAGE -> {
+                drawRect(tint, Offset(this.size.width * .18f, this.size.height * .22f), androidx.compose.ui.geometry.Size(this.size.width * .64f, this.size.height * .56f), style = Stroke(stroke))
+                drawCircle(tint, this.size.width * .07f, Offset(this.size.width * .62f, this.size.height * .38f), style = Stroke(stroke))
+                line(.24f, .70f, .42f, .50f)
+                line(.42f, .50f, .54f, .62f)
+                line(.54f, .62f, .68f, .48f)
+                line(.68f, .48f, .78f, .60f)
+            }
+            LedgerIcon.DOCUMENT -> {
+                val path = Path().apply {
+                    moveTo(this@Canvas.size.width * .26f, this@Canvas.size.height * .16f)
+                    lineTo(this@Canvas.size.width * .62f, this@Canvas.size.height * .16f)
+                    lineTo(this@Canvas.size.width * .78f, this@Canvas.size.height * .32f)
+                    lineTo(this@Canvas.size.width * .78f, this@Canvas.size.height * .84f)
+                    lineTo(this@Canvas.size.width * .26f, this@Canvas.size.height * .84f)
+                    close()
+                }
+                drawPath(path, tint, style = Stroke(stroke, cap = StrokeCap.Round))
+                line(.36f, .48f, .68f, .48f)
+                line(.36f, .62f, .68f, .62f)
             }
             LedgerIcon.LOCATION -> {
                 drawCircle(tint, this.size.width * .28f, Offset(center.x, this.size.height * .40f), style = Stroke(stroke))

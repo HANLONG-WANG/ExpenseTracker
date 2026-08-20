@@ -77,7 +77,14 @@ internal object OrdinaryRecordDeviceFixtures {
     fun editor(locale: Locale = Locale.JAPAN): OrdinaryRecordEditorState = OrdinaryRecordPolicy.createEditor(snapshot(), RecordEditorMode.CREATE, OrdinaryDirection.EXPENSE, expenseChild, null, now, zone, locale)
     fun content(editor: OrdinaryRecordEditorState = editor()) = OrdinaryRecordLoadState.Content(snapshot(), editor = editor)
 
-    val actions: (OrdinaryRecordScreenAction) -> Unit = {}
+    val actions = OrdinaryRecordActions(
+        onRetry = {}, onTab = {}, onSearch = {}, onNavigate = { _, _, _ -> }, onOpenEditor = { _, _, _, _ -> },
+        onExpression = {}, onOperator = {}, onSelectCategory = {}, onSelectAccount = {}, onSelectCard = {}, onSelectReference = { _, _ -> },
+        onNote = {}, onSettlementEnabled = {}, onSettlementActivity = {}, onSettlementPayer = {}, onSettlementSplitMethod = {}, onSettlementChargeDistribution = {}, onSettlementRoundingRule = {},
+        onSettlementParticipantIncluded = {}, onSettlementAllocationInput = { _, _ -> }, onSettlementChargeInput = { _, _ -> }, onSettlementTax = {}, onSettlementServiceFee = {},
+        onOccurredAt = { _, _, _ -> }, onAddAttachment = {}, onOpenAttachment = {}, onCancelAttachment = {}, onSave = {}, onUnsavedDiscard = {},
+        onUnsavedKeepEditing = {}, onReloadConflict = {}, onCancelConflict = {},
+    )
 
     private fun currency(value: String): CurrencyCode = (CurrencyCode.parse(value) as DomainResult.Success).value
     private fun id(value: Long) = StableId.fromUuid(UUID(0x1300, value))

@@ -5,6 +5,7 @@ package app.ledger.feature.record
 import android.content.res.Configuration
 import android.os.LocaleList
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -15,11 +16,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.ledger.core.common.DomainResult
 import app.ledger.core.designsystem.LedgerTestTags
+import app.ledger.core.designsystem.LedgerSaveFab
+import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
 import app.ledger.core.money.CurrencyCode
@@ -119,6 +123,81 @@ class OrdinaryRecordUiContractDeviceTest {
         composeRule.onNodeWithTag(LedgerTestTags.RECORD_REVISION_CONFLICT).assertExists()
         composeRule.runOnIdle { state.value = OrdinaryRecordDeviceFixtures.content(validated.copy(showUnsavedDialog = true)) }
         composeRule.onNodeWithTag(LedgerTestTags.RECORD_UNSAVED_DIALOG).assertExists()
+    }
+
+    @Test
+    fun editingConflictOffersProductionHistoryNavigationAndNeverDispatchesOverwrite() {
+        var navigatedScreen: String? = null
+        var saveDispatches = 0
+        val conflict = OrdinaryRecordDeviceFixtures.editor().copy(
+            transactionId = OrdinaryRecordDeviceFixtures.template,
+            presentation = RecordEditorPresentation.REVISION_CONFLICT,
+        )
+        val actions = OrdinaryRecordDeviceFixtures.actions.copy(
+            onNavigate = { screen, _, _ -> navigatedScreen = screen },
+            onSave = { saveDispatches += 1 },
+        )
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 1_400.dp)) {
+                    OrdinaryRecordDestination("REC-003", OrdinaryRecordDeviceFixtures.content(conflict), actions)
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(LedgerTestTags.RECORD_REVISION_CONFLICT).assertExists()
+        composeRule.onNodeWithTag(LedgerTestTags.RECORD_VIEW_DIFFERENCES).assertHasClickAction().performClick()
+        composeRule.runOnIdle {
+            assertEquals("JRN-008", navigatedScreen)
+            assertEquals(0, saveDispatches)
+        }
+    }
+
+    @Test
+    fun settlementImbalanceBlocksTheProductionSaveIntentWithoutWriting() {
+        val amount = OrdinaryRecordPolicy.changeExpression(OrdinaryRecordDeviceFixtures.editor(), "1000", Locale.JAPAN)
+        val selected = OrdinaryRecordPolicy.selectSettlementActivity(
+            OrdinaryRecordPolicy.setSettlementEnabled(amount, true),
+            OrdinaryRecordDeviceFixtures.activity,
+        )
+        val imbalanced = selected.copy(
+            draft = selected.draft.copy(
+                settlementShares = selected.draft.settlementShares.mapIndexed { index, share ->
+                    if (index == 0) share.copy(owedMinor = share.owedMinor + 1L) else share
+                },
+            ),
+        )
+        val state = mutableStateOf(OrdinaryRecordDeviceFixtures.content(imbalanced))
+        var writes = 0
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 800.dp)) {
+                    LedgerScaffold(
+                        fixedAction = {
+                            LedgerSaveFab(
+                                onClick = {
+                                    val current = requireNotNull(state.value.editor)
+                                    val validated = OrdinaryRecordPolicy.validate(current)
+                                    state.value = OrdinaryRecordDeviceFixtures.content(validated)
+                                    if (validated.errors.isEmpty()) writes += 1
+                                },
+                            )
+                        },
+                    ) { padding ->
+                        OrdinaryRecordDestination("REC-011", state.value, OrdinaryRecordDeviceFixtures.actions, Modifier.padding(padding))
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(LedgerTestTags.SAVE).assertHasClickAction().performClick()
+        composeRule.runOnIdle {
+            assertEquals(0, writes)
+            assertEquals(
+                "SETTLEMENT_IMBALANCED",
+                state.value.editor?.errors?.singleOrNull { it.field == RecordField.SETTLEMENT }?.code,
+            )
+        }
     }
 
     @Test

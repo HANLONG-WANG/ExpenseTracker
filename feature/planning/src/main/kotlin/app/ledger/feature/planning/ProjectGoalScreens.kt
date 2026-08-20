@@ -3,6 +3,7 @@
 package app.ledger.feature.planning
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -33,19 +34,25 @@ import app.ledger.core.designsystem.AmountSize
 import app.ledger.core.designsystem.AmountText
 import app.ledger.core.designsystem.ChartCard
 import app.ledger.core.designsystem.FormSection
+import app.ledger.core.designsystem.JournalTransactionRow
+import app.ledger.core.designsystem.JournalTransactionUiModel
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
+import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerChartSeries
 import app.ledger.core.designsystem.LedgerChartType
 import app.ledger.core.designsystem.LedgerChartUiModel
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
+import app.ledger.core.designsystem.LedgerDatePickerFlow
+import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerLineChart
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerProgressIndicator
+import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerStatusVariant
 import app.ledger.core.designsystem.LedgerTabRow
 import app.ledger.core.designsystem.LedgerTestTags
@@ -57,6 +64,7 @@ import app.ledger.core.designsystem.LedgerToggleRow
 import app.ledger.core.designsystem.LedgerVicoLineRenderer
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
+import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.finance.application.GoalCompletionStrategy
@@ -68,6 +76,12 @@ import app.ledger.finance.domain.GoalMovementKind
 import app.ledger.finance.domain.GoalStatus
 import app.ledger.finance.domain.ProjectStatus
 import app.ledger.finance.domain.TransactionKind
+import app.ledger.core.money.AmountSemantic
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import kotlinx.coroutines.flow.Flow
 
 @Composable
@@ -157,12 +171,12 @@ private fun ProjectRow(project: ProjectView, state: ProjectGoalFeatureState, act
             }
             AmountText(ProjectGoalPolicy.money(project.remainingBaseMinor, state.snapshot.baseCurrency, locale), AmountSize.MEDIUM)
             LedgerText(stringResource(R.string.project_used_budget, money(state, project.usedBaseMinor), money(state, project.budgetBaseMinor)), LedgerTextRole.SUPPORTING)
-            LedgerText(stringResource(R.string.project_period, project.startDate.toString(), project.endDate?.toString() ?: stringResource(R.string.project_no_end)), LedgerTextRole.SUPPORTING)
+            LedgerText(stringResource(R.string.project_period, project.startDate.localizedDate(), project.endDate?.localizedDate() ?: stringResource(R.string.project_no_end)), LedgerTextRole.SUPPORTING)
             project.goalName?.let { LedgerText(stringResource(R.string.project_linked_goal, it), LedgerTextRole.SUPPORTING) }
             if (project.settlements.any(ProjectSettlementView::requiresAdditionalSettlement)) {
                 LedgerText(stringResource(R.string.project_settlement_required), LedgerTextRole.SUPPORTING)
             }
-            ProjectProgress(project)
+            ProjectProgress(project, state.snapshot.baseCurrency)
         }
     }
 }
@@ -171,51 +185,102 @@ private fun ProjectRow(project: ProjectView, state: ProjectGoalFeatureState, act
 private fun ProjectEditor(state: ProjectGoalFeatureState, actions: ProjectGoalActions) {
     val draft = state.projectDraft
     val selectedGoal = state.snapshot.goals.singleOrNull { it.id == draft.goalId }
-    LazyColumn(
-        Modifier.fillMaxSize().testTag(LedgerTestTags.PROJECT_EDITOR),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
-        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+    var showStartDatePicker by remember { mutableStateOf(false) }
+    var showEndDatePicker by remember { mutableStateOf(false) }
+    var showGoalChoices by remember { mutableStateOf(false) }
+    val saving = state.presentation == ProjectGoalPresentation.SAVING
+    val valid = ProjectGoalPolicy.validateProject(state).projectErrors.isEmpty()
+    LedgerScaffold(
+        modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.PROJECT_EDITOR),
+        formContent = true,
+        fixedAction = { PlanningStickySaveBar(actions.onSaveProject, valid && !saving, saving) },
     ) {
-        if (state.projectErrors.isNotEmpty()) item { LedgerBanner(stringResource(R.string.planning_validation_error), LedgerBannerVariant.DANGER) }
-        item {
-            FormSection(stringResource(R.string.project_basics)) {
-                LedgerTextField(draft.name, actions.onProjectNameChanged, stringResource(R.string.project_name), required = true, errorText = error(state, "name"))
-                LedgerTextField(draft.description, actions.onProjectDescriptionChanged, stringResource(R.string.project_description), singleLine = false)
-                LedgerTextField(draft.startDate.toString(), actions.onProjectStartDateChanged, stringResource(R.string.project_start_date), required = true, errorText = error(state, "startDate"))
-                LedgerTextField(draft.endDate?.toString().orEmpty(), actions.onProjectEndDateChanged, stringResource(R.string.project_end_date), errorText = error(state, "endDate"))
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            if (state.projectErrors.isNotEmpty()) item { LedgerBanner(stringResource(R.string.planning_validation_error), LedgerBannerVariant.DANGER) }
+            if (saving) item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.planning_saving)) }
+            item {
+                FormSection(stringResource(R.string.project_basics)) {
+                    LedgerTextField(draft.name, actions.onProjectNameChanged, stringResource(R.string.project_name), required = true, errorText = error(state, "name"))
+                    LedgerTextField(draft.description, actions.onProjectDescriptionChanged, stringResource(R.string.project_description), singleLine = false)
+                    SelectorField(stringResource(R.string.project_start_date), draft.startDate.localizedDate(), { showStartDatePicker = true })
+                    SelectorField(
+                        stringResource(R.string.project_end_date),
+                        draft.endDate?.localizedDate() ?: stringResource(R.string.project_no_end),
+                        { showEndDatePicker = true },
+                        supportingText = error(state, "endDate"),
+                    )
+                    if (draft.endDate != null) {
+                        LedgerButton(
+                            stringResource(R.string.project_clear_end_date),
+                            { actions.onProjectEndDateChanged("") },
+                            variant = LedgerButtonVariant.TEXT,
+                            compact = true,
+                        )
+                    }
+                }
+            }
+            item {
+                FormSection(stringResource(R.string.project_budget)) {
+                    LedgerTextField(
+                        draft.budgetText,
+                        actions.onProjectBudgetChanged,
+                        stringResource(R.string.project_budget_amount, state.snapshot.baseCurrency.value),
+                        required = true,
+                        keyboardType = KeyboardType.Decimal,
+                        errorText = error(state, "budget"),
+                    )
+                    LedgerToggleRow(
+                        stringResource(R.string.project_include_monthly),
+                        draft.includedInMonthlyBudget,
+                        { actions.onProjectMonthlyBudgetChanged() },
+                        Modifier.testTag(LedgerTestTags.PROJECT_MONTHLY_SNAPSHOT),
+                        stringResource(R.string.project_include_snapshot_explanation),
+                    )
+                    LedgerBanner(stringResource(R.string.project_include_snapshot_banner), LedgerBannerVariant.INFO)
+                }
+            }
+            item {
+                FormSection(stringResource(R.string.project_goal_relation), description = stringResource(R.string.project_one_goal)) {
+                    SelectorField(
+                        stringResource(R.string.project_goal_relation),
+                        selectedGoal?.name ?: stringResource(R.string.project_no_goal),
+                        { showGoalChoices = !showGoalChoices },
+                    )
+                    if (showGoalChoices) {
+                        LedgerChoiceRow(
+                            stringResource(R.string.project_no_goal),
+                            draft.goalId == null,
+                            { actions.onProjectGoalChanged(null); showGoalChoices = false },
+                        )
+                        state.snapshot.goals.filter { it.status != GoalStatus.ARCHIVED }.forEach { goal ->
+                            LedgerChoiceRow(
+                                goal.name,
+                                draft.goalId == goal.id,
+                                { actions.onProjectGoalChanged(goal.id); showGoalChoices = false },
+                            )
+                        }
+                    }
+                }
             }
         }
-        item {
-            FormSection(stringResource(R.string.project_budget)) {
-                LedgerTextField(
-                    draft.budgetText,
-                    actions.onProjectBudgetChanged,
-                    stringResource(R.string.project_budget_amount, state.snapshot.baseCurrency.value),
-                    required = true,
-                    keyboardType = KeyboardType.Decimal,
-                    errorText = error(state, "budget"),
-                )
-                LedgerToggleRow(
-                    stringResource(R.string.project_include_monthly),
-                    draft.includedInMonthlyBudget,
-                    { actions.onProjectMonthlyBudgetChanged() },
-                    Modifier.testTag(LedgerTestTags.PROJECT_MONTHLY_SNAPSHOT),
-                    stringResource(R.string.project_include_snapshot_explanation),
-                )
-                LedgerBanner(stringResource(R.string.project_include_snapshot_banner), LedgerBannerVariant.INFO)
-            }
-        }
-        item {
-            FormSection(stringResource(R.string.project_goal_relation), description = stringResource(R.string.project_one_goal)) {
-                LedgerButton(
-                    selectedGoal?.name ?: stringResource(R.string.project_no_goal),
-                    actions.onProjectGoalChanged,
-                    Modifier.fillMaxWidth(),
-                    LedgerButtonVariant.SECONDARY,
-                )
-            }
-        }
-        item { LedgerButton(stringResource(R.string.planning_save), actions.onSaveProject, Modifier.fillMaxWidth().testTag(LedgerTestTags.SAVE)) }
+    }
+    if (showStartDatePicker) {
+        LedgerDatePickerFlow(
+            draft.startDate.utcDateMillis(),
+            { millis -> actions.onProjectStartDateChanged(millis.utcLocalDate().toString()); showStartDatePicker = false },
+            { showStartDatePicker = false },
+        )
+    }
+    if (showEndDatePicker) {
+        LedgerDatePickerFlow(
+            (draft.endDate ?: draft.startDate).utcDateMillis(),
+            { millis -> actions.onProjectEndDateChanged(millis.utcLocalDate().toString()); showEndDatePicker = false },
+            { showEndDatePicker = false },
+        )
     }
 }
 
@@ -239,13 +304,13 @@ private fun ProjectDetail(state: ProjectGoalFeatureState, actions: ProjectGoalAc
                 Column(Modifier.padding(LedgerTheme.spacing.md), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                     LedgerText(project.name, LedgerTextRole.TITLE)
                     project.description?.let { LedgerText(it, LedgerTextRole.BODY) }
-                    LedgerText(stringResource(R.string.project_period, project.startDate.toString(), project.endDate?.toString() ?: stringResource(R.string.project_no_end)), LedgerTextRole.SUPPORTING)
+                    LedgerText(stringResource(R.string.project_period, project.startDate.localizedDate(), project.endDate?.localizedDate() ?: stringResource(R.string.project_no_end)), LedgerTextRole.SUPPORTING)
                     LedgerText(stringResource(R.string.project_used_budget, money(state, project.usedBaseMinor), money(state, project.budgetBaseMinor)), LedgerTextRole.BODY)
                     if (project.restoredBaseMinor != 0L) {
                         LedgerText(stringResource(R.string.project_refund_restored, money(state, project.restoredBaseMinor)), LedgerTextRole.BODY)
                     }
                     LedgerText(stringResource(R.string.project_remaining, money(state, project.remainingBaseMinor)), LedgerTextRole.BODY)
-                    ProjectProgress(project)
+                    ProjectProgress(project, state.snapshot.baseCurrency)
                     LedgerText(
                         if (project.includedInMonthlyBudget) stringResource(R.string.project_snapshot_included) else stringResource(R.string.project_snapshot_excluded),
                         LedgerTextRole.SUPPORTING,
@@ -275,7 +340,16 @@ private fun ProjectDetail(state: ProjectGoalFeatureState, actions: ProjectGoalAc
         if (project.transactions.isNotEmpty()) {
             item { LedgerText(stringResource(R.string.project_recent_transactions), LedgerTextRole.SECTION) }
             items(project.transactions.take(3), key = { "recent-${it.revisionId}" }) { transaction ->
-                ProjectTransactionRow(transaction, state)
+                ProjectTransactionRow(transaction, state, project, actions)
+            }
+        } else {
+            item {
+                LedgerEmptyState(
+                    stringResource(R.string.project_no_transactions),
+                    stringResource(R.string.project_no_transactions_body),
+                    stringResource(R.string.project_view_transaction_filter),
+                    { actions.onNavigate("PRJ-004", project.id, null) },
+                )
             }
         }
         item {
@@ -313,6 +387,7 @@ private fun ProjectTransactions(
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
         item { ProjectTabRow(1, project, actions) }
+        item { ProjectFilterRow(project) }
         item {
             LedgerTabRow(
                 selectedFilter,
@@ -324,7 +399,7 @@ private fun ProjectTransactions(
         if (paged == null && (transactions.isEmpty() || state.presentation == ProjectGoalPresentation.NO_TRANSACTIONS)) {
             item { LedgerEmptyState(stringResource(R.string.project_no_transactions), stringResource(R.string.project_no_transactions_body), stringResource(R.string.project_back), { actions.onNavigate("PRJ-003", project.id, null) }) }
         } else if (paged == null) {
-            items(transactions, key = { it.revisionId.toString() }) { transaction -> ProjectTransactionRow(transaction, state) }
+            items(transactions, key = { it.revisionId.toString() }) { transaction -> ProjectTransactionRow(transaction, state, project, actions) }
         } else {
             if (paged.loadState.refresh is LoadState.Loading) {
                 item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.planning_loading)) }
@@ -336,7 +411,7 @@ private fun ProjectTransactions(
                 paged[index]?.takeIf { transaction ->
                     selectedFilter == 0 || selectedFilter == 1 && transaction.kind == TransactionKind.EXPENSE ||
                         selectedFilter == 2 && transaction.kind == TransactionKind.INCOME
-                }?.let { ProjectTransactionRow(it, state) }
+                }?.let { ProjectTransactionRow(it, state, project, actions) }
             }
             if (paged.loadState.append is LoadState.Loading) {
                 item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.planning_loading)) }
@@ -344,6 +419,26 @@ private fun ProjectTransactions(
             if (paged.loadState.append is LoadState.Error) {
                 item { LedgerErrorState(UiErrorCode("PROJECT_PAGE_APPEND_FAILED"), stringResource(R.string.planning_load_failed), paged::retry) }
             }
+        }
+    }
+}
+
+@Composable
+private fun ProjectFilterRow(project: ProjectView) {
+    LedgerCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs),
+        ) {
+            LedgerText(stringResource(R.string.project_filter_scope, project.name), LedgerTextRole.SECTION)
+            LedgerText(
+                stringResource(
+                    R.string.project_period,
+                    project.startDate.localizedDate(),
+                    project.endDate?.localizedDate() ?: stringResource(R.string.project_no_end),
+                ),
+                LedgerTextRole.SUPPORTING,
+            )
         }
     }
 }
@@ -358,7 +453,14 @@ private fun ProjectCashflow(state: ProjectGoalFeatureState, actions: ProjectGoal
     ) {
         item { ProjectTabRow(2, project, actions) }
         if (project.cashflow.isEmpty()) {
-            item { LedgerEmptyState(stringResource(R.string.project_no_cashflow), stringResource(R.string.project_no_cashflow_body), stringResource(R.string.project_back), {}) }
+            item {
+                LedgerEmptyState(
+                    stringResource(R.string.project_no_cashflow),
+                    stringResource(R.string.project_no_cashflow_body),
+                    stringResource(R.string.project_back),
+                    { actions.onNavigate("PRJ-003", project.id, null) },
+                )
+            }
         } else {
             item { ProjectCashflowChart(state, project) }
             item {
@@ -366,6 +468,18 @@ private fun ProjectCashflow(state: ProjectGoalFeatureState, actions: ProjectGoal
                     MetricCard(stringResource(R.string.project_cash_in), ProjectGoalPolicy.money(project.cashInflowBaseMinor, state.snapshot.baseCurrency, LocalLocale.current.platformLocale), Modifier.weight(1f))
                     MetricCard(stringResource(R.string.project_cash_out), ProjectGoalPolicy.money(project.cashOutflowBaseMinor, state.snapshot.baseCurrency, LocalLocale.current.platformLocale), Modifier.weight(1f))
                 }
+            }
+            item {
+                MetricCard(
+                    stringResource(R.string.project_net),
+                    ProjectGoalPolicy.money(
+                        Math.subtractExact(project.cashInflowBaseMinor, project.cashOutflowBaseMinor),
+                        state.snapshot.baseCurrency,
+                        LocalLocale.current.platformLocale,
+                    ),
+                    Modifier.fillMaxWidth(),
+                    MetricCardVariant.EMPHASIZED,
+                )
             }
         }
     }
@@ -380,8 +494,20 @@ private fun ProjectCashflowChart(state: ProjectGoalFeatureState, project: Projec
         stringResource(R.string.project_cashflow_summary, money(state, project.cashInflowBaseMinor), money(state, project.cashOutflowBaseMinor)),
         LedgerChartType.LINE,
         listOf(
-            LedgerChartSeries("project_income", stringResource(R.string.project_cash_in), project.cashflow.map { it.incomeBaseMinor.toDouble() }, project.cashflow.map { it.date.toString() }),
-            LedgerChartSeries("project_expense", stringResource(R.string.project_cash_out), project.cashflow.map { it.expenseBaseMinor.toDouble() }, project.cashflow.map { it.date.toString() }),
+            LedgerChartSeries(
+                "project_income",
+                stringResource(R.string.project_cash_in),
+                project.cashflow.map { it.incomeBaseMinor.toDouble() },
+                project.cashflow.map { it.date.localizedDate() },
+                project.cashflow.map { money(state, it.incomeBaseMinor) },
+            ),
+            LedgerChartSeries(
+                "project_expense",
+                stringResource(R.string.project_cash_out),
+                project.cashflow.map { it.expenseBaseMinor.toDouble() },
+                project.cashflow.map { it.date.localizedDate() },
+                project.cashflow.map { money(state, it.expenseBaseMinor) },
+            ),
         ),
     )
     ChartCard(
@@ -390,7 +516,7 @@ private fun ProjectCashflowChart(state: ProjectGoalFeatureState, project: Projec
         AccessibleTableUiModel(
             stringResource(R.string.project_cashflow_table),
             listOf(stringResource(R.string.planning_date), stringResource(R.string.project_cash_in), stringResource(R.string.project_cash_out), stringResource(R.string.project_net)),
-            project.cashflow.map { listOf(it.date.toString(), money(state, it.incomeBaseMinor), money(state, it.expenseBaseMinor), money(state, it.netBaseMinor)) },
+            project.cashflow.map { listOf(it.date.localizedDate(), money(state, it.incomeBaseMinor), money(state, it.expenseBaseMinor), money(state, it.netBaseMinor)) },
         ),
         tableExpanded = expanded,
         onToggleTable = { expanded = !expanded },
@@ -453,12 +579,12 @@ private fun GoalRow(goal: GoalView, actions: ProjectGoalActions) {
         Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 LedgerText(goal.name, LedgerTextRole.SECTION)
-                StatusBadge(goal.status.label(), if (goal.status == GoalStatus.ACTIVE) LedgerStatusVariant.POSITIVE else LedgerStatusVariant.NEUTRAL)
+                StatusBadge(goal.status.goalStatusLabel(), goal.status.goalStatusVariant())
             }
             AmountText(ProjectGoalPolicy.money(goal.balanceMinor, goal.currency, LocalLocale.current.platformLocale), AmountSize.MEDIUM)
             GoalProgress(goal)
             LedgerText(stringResource(R.string.goal_target_text, money(goal.targetAmountMinor, goal.currency)), LedgerTextRole.SUPPORTING)
-            goal.dueDate?.let { LedgerText(stringResource(R.string.goal_due_text, it.toString()), LedgerTextRole.SUPPORTING) }
+            goal.dueDate?.let { LedgerText(stringResource(R.string.goal_due_text, it.localizedDate()), LedgerTextRole.SUPPORTING) }
             LedgerText(stringResource(R.string.goal_account_available_text, goal.accountName, money(goal.accountAvailableMinor, goal.currency)), LedgerTextRole.SUPPORTING)
         }
     }
@@ -477,21 +603,62 @@ private fun GoalStatus.label(): String = stringResource(
 private fun GoalEditor(state: ProjectGoalFeatureState, actions: ProjectGoalActions) {
     val draft = state.goalDraft
     val account = state.snapshot.accounts.singleOrNull { it.id == draft.accountId }
-    LazyColumn(
-        Modifier.fillMaxSize().testTag(LedgerTestTags.GOAL_EDITOR),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
-        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+    var showAccounts by remember { mutableStateOf(false) }
+    var showDueDatePicker by remember { mutableStateOf(false) }
+    val saving = state.presentation == ProjectGoalPresentation.SAVING
+    val valid = ProjectGoalPolicy.validateGoal(state).goalErrors.isEmpty()
+    LedgerScaffold(
+        modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.GOAL_EDITOR),
+        formContent = true,
+        fixedAction = { PlanningStickySaveBar(actions.onSaveGoal, valid && !saving, saving) },
     ) {
-        if (state.goalErrors.isNotEmpty()) item { LedgerBanner(stringResource(R.string.planning_validation_error), LedgerBannerVariant.DANGER) }
-        if (state.goal != null || state.presentation == ProjectGoalPresentation.CURRENCY_LOCKED) item { LedgerBanner(stringResource(R.string.goal_account_locked), LedgerBannerVariant.INFO) }
-        item {
-            LedgerTextField(draft.name, actions.onGoalNameChanged, stringResource(R.string.goal_name), required = true, errorText = goalError(state, "name"))
-            LedgerButton(account?.name ?: stringResource(R.string.goal_choose_account), actions.onGoalAccountChanged, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY, enabled = state.goal == null)
-            LedgerTextField(draft.targetText, actions.onGoalTargetChanged, stringResource(R.string.goal_target_amount, account?.currency?.value.orEmpty()), required = true, keyboardType = KeyboardType.Decimal, errorText = goalError(state, "target"))
-            LedgerTextField(draft.dueDate?.toString().orEmpty(), actions.onGoalDueDateChanged, stringResource(R.string.goal_due_date), errorText = goalError(state, "dueDate"))
-            LedgerTextField(draft.suggestedText, actions.onGoalSuggestedChanged, stringResource(R.string.goal_suggested_monthly), keyboardType = KeyboardType.Decimal, errorText = goalError(state, "suggested"), supportingText = stringResource(R.string.goal_suggested_explanation))
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            if (state.goalErrors.isNotEmpty()) item { LedgerBanner(stringResource(R.string.planning_validation_error), LedgerBannerVariant.DANGER) }
+            if (state.goal != null || state.presentation == ProjectGoalPresentation.CURRENCY_LOCKED) item { LedgerBanner(stringResource(R.string.goal_account_locked), LedgerBannerVariant.INFO) }
+            if (saving) item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.planning_saving)) }
+            item {
+                LedgerTextField(draft.name, actions.onGoalNameChanged, stringResource(R.string.goal_name), required = true, errorText = goalError(state, "name"))
+                SelectorField(
+                    stringResource(R.string.goal_choose_account),
+                    account?.name ?: stringResource(R.string.goal_choose_account),
+                    { if (state.goal == null) showAccounts = !showAccounts },
+                    enabled = state.goal == null,
+                    supportingText = goalError(state, "account"),
+                )
+                if (showAccounts && state.goal == null) {
+                    state.snapshot.accounts.forEach { option ->
+                        LedgerChoiceRow(
+                            option.name,
+                            draft.accountId == option.id,
+                            { actions.onGoalAccountChanged(option.id); showAccounts = false },
+                            supportingText = option.currency.value,
+                        )
+                    }
+                }
+                LedgerTextField(draft.targetText, actions.onGoalTargetChanged, stringResource(R.string.goal_target_amount, account?.currency?.value.orEmpty()), required = true, keyboardType = KeyboardType.Decimal, errorText = goalError(state, "target"))
+                SelectorField(
+                    stringResource(R.string.goal_due_date),
+                    draft.dueDate?.localizedDate() ?: stringResource(R.string.goal_no_due_date),
+                    { showDueDatePicker = true },
+                    supportingText = goalError(state, "dueDate"),
+                )
+                if (draft.dueDate != null) {
+                    LedgerButton(stringResource(R.string.goal_clear_due_date), { actions.onGoalDueDateChanged("") }, variant = LedgerButtonVariant.TEXT, compact = true)
+                }
+                LedgerTextField(draft.suggestedText, actions.onGoalSuggestedChanged, stringResource(R.string.goal_suggested_monthly), keyboardType = KeyboardType.Decimal, errorText = goalError(state, "suggested"), supportingText = stringResource(R.string.goal_suggested_explanation))
+            }
         }
-        item { LedgerButton(stringResource(R.string.planning_save), actions.onSaveGoal, Modifier.fillMaxWidth().testTag(LedgerTestTags.SAVE)) }
+    }
+    if (showDueDatePicker) {
+        LedgerDatePickerFlow(
+            (draft.dueDate ?: state.movementDate).utcDateMillis(),
+            { millis -> actions.onGoalDueDateChanged(millis.utcLocalDate().toString()); showDueDatePicker = false },
+            { showDueDatePicker = false },
+        )
     }
 }
 
@@ -512,7 +679,7 @@ private fun GoalDetail(state: ProjectGoalFeatureState, actions: ProjectGoalActio
                     AmountText(ProjectGoalPolicy.money(goal.balanceMinor, goal.currency, LocalLocale.current.platformLocale), AmountSize.HERO)
                     LedgerText(stringResource(R.string.goal_target_text, money(goal.targetAmountMinor, goal.currency)), LedgerTextRole.BODY)
                     GoalProgress(goal)
-                    goal.dueDate?.let { LedgerText(stringResource(R.string.goal_due_text, it.toString()), LedgerTextRole.SUPPORTING) }
+                    goal.dueDate?.let { LedgerText(stringResource(R.string.goal_due_text, it.localizedDate()), LedgerTextRole.SUPPORTING) }
                     goal.suggestedMonthlyAmountMinor?.let { LedgerText(stringResource(R.string.goal_suggested_text, money(it, goal.currency)), LedgerTextRole.SUPPORTING) }
                 }
             }
@@ -533,7 +700,7 @@ private fun GoalDetail(state: ProjectGoalFeatureState, actions: ProjectGoalActio
             item { LedgerText(stringResource(R.string.goal_bound_projects), LedgerTextRole.SECTION) }
             items(goal.boundProjects, key = { it.toString() }) { projectId ->
                 val project = state.snapshot.projects.singleOrNull { it.id == projectId }
-                LedgerButton(project?.name ?: projectId.toString(), { actions.onNavigate("PRJ-003", projectId, null) }, Modifier.fillMaxWidth(), LedgerButtonVariant.TEXT)
+                LedgerButton(project?.name ?: stringResource(R.string.project_unavailable), { actions.onNavigate("PRJ-003", projectId, null) }, Modifier.fillMaxWidth(), LedgerButtonVariant.TEXT)
             }
         }
         if (goal.movements.isNotEmpty()) {
@@ -542,7 +709,7 @@ private fun GoalDetail(state: ProjectGoalFeatureState, actions: ProjectGoalActio
                     AccessibleTableUiModel(
                         stringResource(R.string.goal_movement_history),
                         listOf(stringResource(R.string.planning_date), stringResource(R.string.goal_movement_type), stringResource(R.string.goal_movement_amount)),
-                        goal.movements.map { listOf(it.occurredAt.toString(), movementLabel(it.kind), money(it.amountMinor, goal.currency)) },
+                        goal.movements.map { listOf(it.occurredAt.localizedDateTime(), movementLabel(it.kind), money(it.amountMinor, goal.currency)) },
                     ),
                 )
             }
@@ -565,12 +732,20 @@ private fun GoalTrendChart(goal: GoalView) {
         goal.accountName,
         stringResource(R.string.goal_trend_summary, money(goal.trend.first().balanceMinor, goal.currency), money(goal.trend.last().balanceMinor, goal.currency)),
         LedgerChartType.LINE,
-        listOf(LedgerChartSeries("goal_balance", stringResource(R.string.goal_reserved), goal.trend.map { it.balanceMinor.toDouble() }, goal.trend.map { it.date.toString() })),
+        listOf(
+            LedgerChartSeries(
+                "goal_balance",
+                stringResource(R.string.goal_reserved),
+                goal.trend.map { it.balanceMinor.toDouble() },
+                goal.trend.map { it.date.localizedDate() },
+                goal.trend.map { money(it.balanceMinor, goal.currency) },
+            ),
+        ),
     )
     ChartCard(
         model,
         { LedgerLineChart(model, LedgerVicoLineRenderer, Modifier.fillMaxWidth()) },
-        AccessibleTableUiModel(stringResource(R.string.goal_trend_table), listOf(stringResource(R.string.planning_date), stringResource(R.string.goal_reserved)), goal.trend.map { listOf(it.date.toString(), money(it.balanceMinor, goal.currency)) }),
+        AccessibleTableUiModel(stringResource(R.string.goal_trend_table), listOf(stringResource(R.string.planning_date), stringResource(R.string.goal_reserved)), goal.trend.map { listOf(it.date.localizedDate(), money(it.balanceMinor, goal.currency)) }),
         tableExpanded = expanded,
         onToggleTable = { expanded = !expanded },
     )
@@ -579,32 +754,42 @@ private fun GoalTrendChart(goal: GoalView) {
 @Composable
 private fun GoalMovementEditor(state: ProjectGoalFeatureState, actions: ProjectGoalActions) {
     val goal = state.goal ?: return PlanningNotFound(actions)
-    Column(
-        Modifier.fillMaxSize().testTag(LedgerTestTags.GOAL_MOVEMENT).padding(LedgerTheme.spacing.md),
-        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+    var showDatePicker by remember { mutableStateOf(false) }
+    val saving = state.presentation == ProjectGoalPresentation.SAVING
+    val valid = ProjectGoalPolicy.movementMinor(state) != null && "movementDate" !in state.goalErrors
+    LedgerScaffold(
+        modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.GOAL_MOVEMENT),
+        formContent = true,
+        fixedAction = { PlanningStickySaveBar(actions.onSaveMovement, valid && !saving, saving) },
     ) {
-        LedgerText(movementLabel(state.movementKind), LedgerTextRole.TITLE)
-        LedgerTextField(state.movementAmountText, actions.onMovementAmountChanged, stringResource(R.string.goal_movement_amount), required = true, keyboardType = KeyboardType.Decimal)
-        if (state.movementKind == GoalMovementKind.ADJUST) {
-            LedgerBanner(stringResource(R.string.goal_adjust_delta_explanation), LedgerBannerVariant.INFO)
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            item { LedgerText(movementLabel(state.movementKind), LedgerTextRole.TITLE) }
+            item { LedgerTextField(state.movementAmountText, actions.onMovementAmountChanged, stringResource(R.string.goal_movement_amount), required = true, keyboardType = KeyboardType.Decimal) }
+            item {
+                SelectorField(
+                    stringResource(R.string.goal_movement_date),
+                    state.movementDate.localizedDate(),
+                    { showDatePicker = true },
+                    supportingText = goalError(state, "movementDate"),
+                )
+            }
+            if (state.presentation == ProjectGoalPresentation.INSUFFICIENT_ACTUAL_BALANCE_WARNING) {
+                item { LedgerBanner(stringResource(R.string.goal_movement_warning), LedgerBannerVariant.WARNING) }
+            }
+            if (saving) item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.planning_saving)) }
+            item { LedgerBanner(stringResource(R.string.goal_movement_no_balance_change), LedgerBannerVariant.INFO) }
+            item { LedgerText(stringResource(R.string.goal_account_formula, money(goal.actualAccountBalanceMinor, goal.currency), money(goal.totalAccountReservedMinor, goal.currency), money(goal.accountAvailableMinor, goal.currency)), LedgerTextRole.BODY) }
         }
-        LedgerTextField(
-            state.movementDate.toString(),
-            actions.onMovementDateChanged,
-            stringResource(R.string.goal_movement_date),
-            required = true,
-            errorText = goalError(state, "movementDate"),
-        )
-        if (state.presentation == ProjectGoalPresentation.INSUFFICIENT_ACTUAL_BALANCE_WARNING) {
-            LedgerBanner(stringResource(R.string.goal_movement_warning), LedgerBannerVariant.WARNING)
-        }
-        LedgerBanner(stringResource(R.string.goal_movement_no_balance_change), LedgerBannerVariant.INFO)
-        LedgerText(stringResource(R.string.goal_account_formula, money(goal.actualAccountBalanceMinor, goal.currency), money(goal.totalAccountReservedMinor, goal.currency), money(goal.accountAvailableMinor, goal.currency)), LedgerTextRole.BODY)
-        LedgerButton(
-            stringResource(R.string.planning_save),
-            actions.onSaveMovement,
-            Modifier.fillMaxWidth().testTag(LedgerTestTags.SAVE),
-            enabled = ProjectGoalPolicy.movementMinor(state) != null && "movementDate" !in state.goalErrors,
+    }
+    if (showDatePicker) {
+        LedgerDatePickerFlow(
+            state.movementDate.utcDateMillis(),
+            { millis -> actions.onMovementDateChanged(millis.utcLocalDate().toString()); showDatePicker = false },
+            { showDatePicker = false },
         )
     }
 }
@@ -622,16 +807,37 @@ private fun ProjectTabRow(selectedIndex: Int, project: ProjectView, actions: Pro
 }
 
 @Composable
-private fun ProjectTransactionRow(transaction: ProjectTransactionView, state: ProjectGoalFeatureState) {
-    LedgerCard(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column(Modifier.weight(1f)) {
-                LedgerText(transaction.localDate.toString(), LedgerTextRole.BODY)
-                LedgerText(transaction.kind.label(), LedgerTextRole.SUPPORTING)
-            }
-            AmountText(ProjectGoalPolicy.money(transaction.amountBaseMinor, state.snapshot.baseCurrency, LocalLocale.current.platformLocale), AmountSize.LIST)
-        }
-    }
+private fun ProjectTransactionRow(
+    transaction: ProjectTransactionView,
+    state: ProjectGoalFeatureState,
+    project: ProjectView,
+    actions: ProjectGoalActions,
+) {
+    val kind = transaction.kind.projectTransactionLabel()
+    val date = transaction.localDate.localizedDate()
+    val amount = ProjectGoalPolicy.money(
+        transaction.amountBaseMinor,
+        state.snapshot.baseCurrency,
+        LocalLocale.current.platformLocale,
+        transaction.kind.amountSemantic(),
+    )
+    val scope = stringResource(R.string.project_filter_scope, project.name)
+    val badges = listOfNotNull(stringResource(R.string.project_restored_badge).takeIf { transaction.restored })
+    JournalTransactionRow(
+        JournalTransactionUiModel(
+            stableKey = transaction.id.toString(),
+            categoryOrType = project.name,
+            summary = date,
+            accountAndCard = scope,
+            amount = amount,
+            typeLabel = kind,
+            icon = transaction.kind.projectTransactionIcon(),
+            badges = badges,
+            accessibleText = listOf(kind, project.name, date, amount.fullAccessibleText, badges.joinToString()).filter(String::isNotBlank).joinToString(". "),
+        ),
+        onClick = { actions.onOpenTransaction(transaction.id) },
+        onLongClick = { actions.onOpenTransaction(transaction.id) },
+    )
 }
 
 @Composable
@@ -678,15 +884,29 @@ private fun CompletionCard(title: String, body: String, strategy: GoalCompletion
 }
 
 @Composable
-private fun ProjectProgress(project: ProjectView) {
+private fun ProjectProgress(project: ProjectView, currency: app.ledger.core.money.CurrencyCode) {
     val progress = if (project.budgetBaseMinor == 0L) null else project.usedBaseMinor.toFloat() / project.budgetBaseMinor.toFloat()
-    LedgerProgressIndicator(progress, accessibleText = stringResource(R.string.project_progress_accessible, project.usedBaseMinor, project.budgetBaseMinor))
+    LedgerProgressIndicator(
+        progress,
+        accessibleText = stringResource(
+            R.string.project_progress_accessible,
+            ProjectGoalPolicy.money(project.usedBaseMinor, currency, LocalLocale.current.platformLocale).formatted,
+            ProjectGoalPolicy.money(project.budgetBaseMinor, currency, LocalLocale.current.platformLocale).formatted,
+        ),
+    )
 }
 
 @Composable
 private fun GoalProgress(goal: GoalView) {
     val progress = if (goal.targetAmountMinor == 0L) null else goal.balanceMinor.toFloat() / goal.targetAmountMinor.toFloat()
-    LedgerProgressIndicator(progress, accessibleText = stringResource(R.string.goal_progress_accessible, goal.balanceMinor, goal.targetAmountMinor))
+    LedgerProgressIndicator(
+        progress,
+        accessibleText = stringResource(
+            R.string.goal_progress_accessible,
+            ProjectGoalPolicy.money(goal.balanceMinor, goal.currency, LocalLocale.current.platformLocale).formatted,
+            ProjectGoalPolicy.money(goal.targetAmountMinor, goal.currency, LocalLocale.current.platformLocale).formatted,
+        ),
+    )
 }
 
 @Composable
@@ -702,6 +922,81 @@ private fun movementLabel(kind: GoalMovementKind): String = stringResource(
         GoalMovementKind.ADJUST -> R.string.goal_adjust_increase
     },
 )
+
+@Composable
+private fun PlanningStickySaveBar(onSave: () -> Unit, enabled: Boolean, saving: Boolean) {
+    LedgerCard(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm)) {
+            LedgerButton(
+                stringResource(if (saving) R.string.planning_saving else R.string.planning_save),
+                onSave,
+                Modifier.fillMaxWidth().testTag(LedgerTestTags.SAVE),
+                enabled = enabled,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LocalDate.localizedDate(): String =
+    format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(LocalLocale.current.platformLocale))
+
+private fun LocalDate.utcDateMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+private fun Long.utcLocalDate(): LocalDate = java.time.Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
+
+@Composable
+private fun java.time.Instant.localizedDateTime(): String =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+        .withLocale(LocalLocale.current.platformLocale)
+        .withZone(LedgerTheme.timeZone)
+        .format(this)
+
+@Composable
+private fun GoalStatus.goalStatusLabel(): String = stringResource(
+    when (this) {
+        GoalStatus.ACTIVE -> R.string.goal_status_active
+        GoalStatus.COMPLETED -> R.string.goal_status_completed
+        GoalStatus.ARCHIVED -> R.string.goal_status_archived
+    },
+)
+
+private fun GoalStatus.goalStatusVariant(): LedgerStatusVariant = when (this) {
+    GoalStatus.ACTIVE -> LedgerStatusVariant.POSITIVE
+    GoalStatus.COMPLETED -> LedgerStatusVariant.INFO
+    GoalStatus.ARCHIVED -> LedgerStatusVariant.ARCHIVED
+}
+
+@Composable
+private fun TransactionKind.projectTransactionLabel(): String = stringResource(
+    when (this) {
+        TransactionKind.EXPENSE -> R.string.project_kind_expense
+        TransactionKind.INCOME -> R.string.project_kind_income
+        TransactionKind.TRANSFER -> R.string.project_kind_transfer
+        TransactionKind.REFUND -> R.string.project_kind_refund
+        TransactionKind.CREDIT_PAYMENT -> R.string.project_kind_credit_payment
+        TransactionKind.LOAN_DISBURSEMENT -> R.string.project_kind_loan_disbursement
+        TransactionKind.LOAN_PAYMENT -> R.string.project_kind_loan_payment
+        TransactionKind.BALANCE_ADJUSTMENT -> R.string.project_kind_balance_adjustment
+        TransactionKind.FX_EXCHANGE -> R.string.project_kind_fx_exchange
+        TransactionKind.SETTLEMENT_PAYMENT -> R.string.project_kind_settlement_payment
+        TransactionKind.OPENING_BALANCE -> R.string.project_kind_opening_balance
+    },
+)
+
+private fun TransactionKind.amountSemantic(): AmountSemantic = when (this) {
+    TransactionKind.EXPENSE, TransactionKind.CREDIT_PAYMENT, TransactionKind.LOAN_PAYMENT, TransactionKind.SETTLEMENT_PAYMENT -> AmountSemantic.OUTFLOW
+    TransactionKind.INCOME, TransactionKind.LOAN_DISBURSEMENT -> AmountSemantic.INFLOW
+    TransactionKind.REFUND -> AmountSemantic.REFUND
+    TransactionKind.TRANSFER, TransactionKind.FX_EXCHANGE -> AmountSemantic.TRANSFER
+    TransactionKind.BALANCE_ADJUSTMENT, TransactionKind.OPENING_BALANCE -> AmountSemantic.NEUTRAL
+}
+
+private fun TransactionKind.projectTransactionIcon(): LedgerIcon = when (this) {
+    TransactionKind.TRANSFER, TransactionKind.FX_EXCHANGE -> LedgerIcon.TRANSFER
+    TransactionKind.REFUND -> LedgerIcon.REFUND
+    else -> LedgerIcon.JOURNAL
+}
 
 @Composable
 private fun money(state: ProjectGoalFeatureState, minor: Long): String = money(minor, state.snapshot.baseCurrency)

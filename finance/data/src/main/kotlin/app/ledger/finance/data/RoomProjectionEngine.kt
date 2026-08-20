@@ -213,6 +213,9 @@ internal class RoomProjectionEngine {
         ) {
             add(ProjectionFamily.GEOGRAPHY)
         }
+        if (AnalyticsProjectionEngine.staleTables(database, localRevision).isNotEmpty()) {
+            add(ProjectionFamily.ANALYTICS)
+        }
     }
 
     /**

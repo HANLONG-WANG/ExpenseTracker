@@ -15,6 +15,7 @@ import app.ledger.finance.application.CreditSnapshot
 import app.ledger.finance.application.CreditStatementView
 import app.ledger.finance.domain.AutoGenerationMode
 import app.ledger.finance.domain.CreditStatementStatus
+import app.ledger.finance.domain.DueDateRule
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
@@ -60,6 +61,8 @@ public data class CreditDraft(
     val selectedStatementId: StableId? = null,
     val allocationMode: CreditAllocationMode = CreditAllocationMode.EARLIEST_UNPAID,
     val autoPaymentMode: AutoGenerationMode = AutoGenerationMode.CONFIRMATION_CANDIDATE,
+    val dueRuleMode: CreditDueRuleMode = CreditDueRuleMode.FIXED_DAY,
+    val sealOfficial: Boolean = false,
 )
 
 public data class CreditFeatureState(
@@ -126,6 +129,8 @@ public object CreditPolicy {
                 selectedStatementId = statement?.id,
                 allocationMode = if (screenId in setOf("REC-014", "CRD-007")) CreditAllocationMode.EARLIEST_UNPAID else CreditAllocationMode.SPECIFIC,
                 autoPaymentMode = profile?.autoPaymentMode ?: AutoGenerationMode.CONFIRMATION_CANDIDATE,
+                dueRuleMode = if (profile?.dueRule is DueDateRule.DaysAfterStatement) CreditDueRuleMode.DAYS_AFTER_STATEMENT else CreditDueRuleMode.FIXED_DAY,
+                sealOfficial = statement?.sealed ?: false,
                 date = statement?.dueDate?.toString().orEmpty(),
             ),
         )
@@ -173,6 +178,40 @@ public object CreditPolicy {
         }
     }
 
+    public fun profileErrors(state: CreditFeatureState): Set<String> {
+        val account = state.account ?: return setOf("creditAccount")
+        val statementDay = state.draft.statementDay.toIntOrNull()
+        val dueValue = state.draft.dueDay.toIntOrNull()
+        val standard = state.draft.standardLimit.takeIf(String::isNotBlank)?.let { parseMinor(it, account.currency) }
+        val temporary = state.draft.temporaryLimit.takeIf(String::isNotBlank)?.let { parseMinor(it, account.currency) }
+        val expiry = state.draft.temporaryExpires.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        return buildSet {
+            if (statementDay !in 1..31) add("statementDay")
+            when (state.draft.dueRuleMode) {
+                CreditDueRuleMode.FIXED_DAY -> if (dueValue !in 1..31) add("dueDay")
+                CreditDueRuleMode.DAYS_AFTER_STATEMENT -> if (dueValue !in 1..120) add("dueDay")
+            }
+            if (runCatching { java.time.ZoneId.of(state.draft.zoneId) }.isFailure) add("zone")
+            if (state.draft.standardLimit.isNotBlank() && (standard == null || standard < 0L)) add("standardLimit")
+            if (state.draft.temporaryLimit.isNotBlank() && (temporary == null || temporary < 0L)) add("temporaryLimit")
+            if ((temporary == null) != (expiry == null)) add("temporaryLimit")
+        }
+    }
+
+    public fun officialErrors(state: CreditFeatureState): Set<String> {
+        val account = state.account ?: return setOf("creditAccount")
+        val official = parseMinor(state.draft.officialAmount, account.currency)
+        return if (official == null || official < 0L) setOf("officialAmount") else emptySet()
+    }
+
+    public fun formalAutoPaymentEligible(state: CreditFeatureState): Boolean {
+        val account = state.account ?: return false
+        val statement = state.statement ?: return false
+        val paymentAccount = state.snapshot.paymentAccounts.singleOrNull { it.id == account.profile?.defaultPaymentAccountId }
+        return !account.archived && statement.officialAmountMinor != null &&
+            minOf(statement.remainingAmountMinor, account.debtMinor) > 0L && paymentAccount?.active == true && !statement.hasAutomaticPayment
+    }
+
     public fun money(
         minor: Long,
         currency: CurrencyCode,
@@ -212,11 +251,11 @@ public object CreditPolicy {
     ): CreditPresentation = when {
         mode == AutoGenerationMode.CONFIRMATION_CANDIDATE -> CreditPresentation.CANDIDATE_MODE
         account == null || account.archived || account.profile?.defaultPaymentAccountId == null ||
-            statement?.officialAmountMinor == null || statement.remainingAmountMinor <= 0L || account.debtMinor <= 0L -> CreditPresentation.INELIGIBLE
+            statement?.officialAmountMinor == null || statement.remainingAmountMinor <= 0L || account.debtMinor <= 0L || statement.hasAutomaticPayment -> CreditPresentation.INELIGIBLE
         else -> CreditPresentation.ELIGIBLE
     }
 
-    private fun minorText(minor: Long, currency: CurrencyCode): String {
+    public fun minorText(minor: Long, currency: CurrencyCode): String {
         val scale = requireNotNull(catalog.find(currency)).fractionDigits
         return BigDecimal.valueOf(minor, scale).stripTrailingZeros().toPlainString()
     }
@@ -230,3 +269,5 @@ public object CreditPolicy {
 public enum class CreditField { STATEMENT_DAY, DUE_DAY, ZONE, STANDARD_LIMIT, TEMPORARY_LIMIT, TEMPORARY_EXPIRY, AMOUNT, OFFICIAL_AMOUNT, DATE }
 
 public enum class CreditAllocationMode { EARLIEST_UNPAID, SPECIFIC, UNALLOCATED_ADVANCE }
+
+public enum class CreditDueRuleMode { FIXED_DAY, DAYS_AFTER_STATEMENT }

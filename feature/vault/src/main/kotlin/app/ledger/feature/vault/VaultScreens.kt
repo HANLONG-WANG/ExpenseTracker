@@ -3,11 +3,13 @@
 package app.ledger.feature.vault
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -19,15 +21,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerEmptyState
+import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.SensitiveValueField
 
@@ -45,7 +52,7 @@ public fun VaultDestination(
         when (state.screenId) {
             "VLT-001" -> VaultList(state, actions)
             "VLT-002" -> VaultDetail(state, actions)
-            "VLT-003" -> VaultEditor(state, actions)
+            "VLT-003" -> VaultEditor(state, actions, Modifier.weight(1f))
             "VLT-004" -> VaultAuthenticationStatus(state)
         }
     }
@@ -63,15 +70,29 @@ private fun VaultList(state: VaultPresentationState, actions: VaultActions) {
         )
         return
     }
+    if (state.presentation == VaultRequiredState.VLT_001_LOCKED) {
+        LedgerBanner(
+            stringResource(R.string.vault_locked_body, state.cards.size),
+            LedgerBannerVariant.WARNING,
+        )
+        LedgerButton(
+            stringResource(if (state.pending) R.string.vault_authenticating else R.string.vault_unlock_list),
+            actions.onAuthenticateList,
+            Modifier.fillMaxWidth(),
+            enabled = !state.pending,
+        )
+        return
+    }
     if (state.cards.isEmpty() || state.presentation == VaultRequiredState.VLT_001_EMPTY) {
         LedgerEmptyState(
             stringResource(R.string.vault_empty),
             stringResource(R.string.vault_empty_body),
             stringResource(R.string.vault_open_cards),
-            actions.onOpenDeviceSecurity,
+            actions.onOpenCards,
         )
         return
     }
+    LedgerBanner(stringResource(R.string.vault_unlocked_session), LedgerBannerVariant.INFO)
     LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         items(state.cards, key = { it.cardId.toString() }) { card ->
             LedgerCard(Modifier.fillMaxWidth(), onClick = { actions.onCard(card.cardId) }) {
@@ -133,7 +154,7 @@ private fun VaultDetail(state: VaultPresentationState, actions: VaultActions) {
 }
 
 @Composable
-private fun VaultEditor(state: VaultPresentationState, actions: VaultActions) {
+private fun VaultEditor(state: VaultPresentationState, actions: VaultActions, modifier: Modifier = Modifier) {
     val card = requireNotNull(state.selectedCard)
     if (state.presentation == VaultRequiredState.VLT_003_AUTH_REQUIRED) {
         LedgerBanner(stringResource(R.string.vault_edit_auth_required), LedgerBannerVariant.WARNING)
@@ -144,49 +165,156 @@ private fun VaultEditor(state: VaultPresentationState, actions: VaultActions) {
     var number by remember(card.cardId) { mutableStateOf("") }
     var expiry by remember(card.cardId) { mutableStateOf("") }
     var code by remember(card.cardId) { mutableStateOf("") }
-    var custom by remember(card.cardId) { mutableStateOf("") }
-    if (state.presentation == VaultRequiredState.VLT_003_SAVING) LedgerBanner(stringResource(R.string.vault_saving), LedgerBannerVariant.INFO)
-    SensitiveInput(
-        holder,
-        { holder = it.take(VaultEditSubmission.MAXIMUM_HOLDER_NAME_CHARACTERS) },
-        stringResource(R.string.vault_holder),
-    )
-    SensitiveInput(
-        number,
-        { number = it.filter(Char::isDigit).take(VaultEditSubmission.MAXIMUM_PRIMARY_NUMBER_DIGITS) },
-        stringResource(R.string.vault_primary_number),
-    )
-    SensitiveInput(
-        expiry,
-        { expiry = it.take(VaultEditSubmission.MAXIMUM_EXPIRY_CHARACTERS) },
-        stringResource(R.string.vault_expiry),
-    )
-    SensitiveInput(
-        code,
-        { code = it.filter(Char::isDigit).take(VaultEditSubmission.MAXIMUM_SECURITY_CODE_DIGITS) },
-        stringResource(R.string.vault_security_code),
-    )
-    SensitiveInput(
-        custom,
-        { custom = it.take(VaultEditSubmission.MAXIMUM_CUSTOM_FIELDS_CHARACTERS) },
-        stringResource(R.string.vault_custom_fields),
-    )
-    LedgerButton(
-        stringResource(R.string.vault_save),
-        { actions.onSave(card.cardId, VaultEditSubmission(holder, number, expiry, code, custom)) },
-        Modifier.fillMaxWidth(),
-        enabled = !state.pending && listOf(holder, number, expiry, code, custom).any(String::isNotBlank),
-    )
+    var customFields by remember(card.cardId) { mutableStateOf(emptyList<VaultCustomField>()) }
+    var nextCustomFieldId by remember(card.cardId) { mutableStateOf(0L) }
+    val serializedCustomFields = customFields
+        .filter { it.label.isNotBlank() || it.value.isNotBlank() }
+        .joinToString("\n") { "${it.label.trim()}: ${it.value}" }
+    val customFieldsComplete = customFields.all { it.label.isBlank() == it.value.isBlank() }
+    val hasContent = listOf(holder, number, expiry, code, serializedCustomFields).any(String::isNotBlank)
+    val saving = state.presentation == VaultRequiredState.VLT_003_SAVING
+    val canSave = !state.pending && !saving && hasContent && customFieldsComplete &&
+        serializedCustomFields.length <= VaultEditSubmission.MAXIMUM_CUSTOM_FIELDS_CHARACTERS
+
+    LedgerScaffold(
+        modifier = modifier,
+        formContent = true,
+        fixedAction = {
+            VaultSaveBar(saving, canSave) {
+                actions.onSave(
+                    card.cardId,
+                    VaultEditSubmission(holder, number, expiry, code, serializedCustomFields),
+                )
+            }
+        },
+    ) { padding ->
+        LazyColumn(
+            Modifier.fillMaxSize().padding(padding),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+        ) {
+            if (saving) item { LedgerBanner(stringResource(R.string.vault_saving), LedgerBannerVariant.INFO) }
+            item {
+                SensitiveInput(
+                    holder,
+                    { holder = it.take(VaultEditSubmission.MAXIMUM_HOLDER_NAME_CHARACTERS) },
+                    stringResource(R.string.vault_holder),
+                    enabled = !saving,
+                )
+            }
+            item {
+                SensitiveInput(
+                    number,
+                    { number = it.filter(Char::isDigit).take(VaultEditSubmission.MAXIMUM_PRIMARY_NUMBER_DIGITS) },
+                    stringResource(R.string.vault_primary_number),
+                    enabled = !saving,
+                )
+            }
+            item {
+                SensitiveInput(
+                    expiry,
+                    { expiry = it.take(VaultEditSubmission.MAXIMUM_EXPIRY_CHARACTERS) },
+                    stringResource(R.string.vault_expiry),
+                    enabled = !saving,
+                )
+            }
+            item {
+                SensitiveInput(
+                    code,
+                    { code = it.filter(Char::isDigit).take(VaultEditSubmission.MAXIMUM_SECURITY_CODE_DIGITS) },
+                    stringResource(R.string.vault_security_code),
+                    enabled = !saving,
+                )
+            }
+            item { LedgerText(stringResource(R.string.vault_custom_fields), LedgerTextRole.SECTION) }
+            items(customFields, key = VaultCustomField::id) { field ->
+                LedgerCard(Modifier.fillMaxWidth()) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
+                    ) {
+                        LedgerTextField(
+                            field.label,
+                            { updated ->
+                                customFields = customFields.map {
+                                    if (it.id == field.id) it.copy(label = updated.take(VaultCustomField.MAXIMUM_LABEL_CHARACTERS)) else it
+                                }
+                            },
+                            stringResource(R.string.vault_custom_field_label),
+                            enabled = !saving,
+                        )
+                        SensitiveInput(
+                            field.value,
+                            { updated ->
+                                customFields = customFields.map {
+                                    if (it.id == field.id) it.copy(value = updated.take(VaultCustomField.MAXIMUM_VALUE_CHARACTERS)) else it
+                                }
+                            },
+                            stringResource(R.string.vault_custom_field_value),
+                            enabled = !saving,
+                        )
+                        LedgerButton(
+                            stringResource(R.string.vault_remove_custom_field),
+                            { customFields = customFields.filterNot { it.id == field.id } },
+                            Modifier.fillMaxWidth(),
+                            LedgerButtonVariant.SECONDARY,
+                            enabled = !saving,
+                        )
+                    }
+                }
+            }
+            item {
+                LedgerButton(
+                    stringResource(R.string.vault_add_custom_field),
+                    {
+                        customFields = customFields + VaultCustomField(nextCustomFieldId, "", "")
+                        nextCustomFieldId += 1L
+                    },
+                    Modifier.fillMaxWidth(),
+                    LedgerButtonVariant.SECONDARY,
+                    enabled = !saving,
+                )
+            }
+            if (!customFieldsComplete) {
+                item { LedgerBanner(stringResource(R.string.vault_custom_field_incomplete), LedgerBannerVariant.WARNING) }
+            }
+            if (serializedCustomFields.length > VaultEditSubmission.MAXIMUM_CUSTOM_FIELDS_CHARACTERS) {
+                item { LedgerBanner(stringResource(R.string.vault_custom_fields_too_long), LedgerBannerVariant.DANGER) }
+            }
+        }
+    }
 }
 
 @Composable
-private fun SensitiveInput(value: String, onValueChange: (String) -> Unit, label: String) {
+private fun SensitiveInput(value: String, onValueChange: (String) -> Unit, label: String, enabled: Boolean = true) {
     LedgerTextField(
         value,
         onValueChange,
         label,
-        modifier = Modifier.fillMaxWidth().clearAndSetSemantics { },
+        modifier = Modifier.fillMaxWidth().clearAndSetSemantics { text = AnnotatedString(label) },
+        enabled = enabled,
+        sensitive = true,
     )
+}
+
+@Composable
+private fun VaultSaveBar(saving: Boolean, enabled: Boolean, onSave: () -> Unit) {
+    LedgerCard(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm)) {
+            LedgerButton(
+                stringResource(if (saving) R.string.vault_saving else R.string.vault_save),
+                onSave,
+                Modifier.fillMaxWidth().testTag(LedgerTestTags.SAVE),
+                enabled = enabled,
+            )
+        }
+    }
+}
+
+private data class VaultCustomField(val id: Long, val label: String, val value: String) {
+    companion object {
+        const val MAXIMUM_LABEL_CHARACTERS: Int = 80
+        const val MAXIMUM_VALUE_CHARACTERS: Int = 500
+    }
 }
 
 @Composable

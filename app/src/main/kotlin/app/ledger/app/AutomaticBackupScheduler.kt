@@ -33,7 +33,9 @@ internal class AutomaticBackupScheduler(
 
     suspend fun scheduleIfDue() = mutex.withLock {
         runCatching {
-            val bookId = StableId.fromBytes(settings.current().bookId.toByteArray()).successOrNull() ?: return@runCatching
+            val saved = settings.current()
+            val bookId = StableId.fromBytes(saved.bookId.toByteArray()).successOrNull() ?: return@runCatching
+            val ledgerZone = runCatching { ZoneId.of(saved.zoneId.ifBlank { "UTC" }) }.getOrDefault(ZoneId.of("UTC"))
             val configuration = BackupConfigurationStore(application, keyProvider).read(bookId) ?: return@runCatching
             if (!BackupKeyEnvelopeStore(application, keyProvider).isConfigured(configuration.repositoryId.value)) return@runCatching
             val access = SecurePrimaryLedgerAccess(application, keyProvider)
@@ -43,7 +45,7 @@ internal class AutomaticBackupScheduler(
                 .forEach { operation -> enqueue(operation.id.value, configuration.repositoryKind, configuration.policy.networkPolicy) }
             if (!configuration.policy.automaticLocalBackup) return@runCatching
             val checkpointStore = AutomaticBackupCheckpointStore(application, keyProvider)
-            val today = runtime.clock.now().atZone(ZoneId.systemDefault()).toLocalDate()
+            val today = runtime.clock.now().atZone(ledgerZone).toLocalDate()
             val marker = checkpointStore.read(bookId)
             if (marker?.date == today) {
                 val existing = (operations.get(BackgroundOperationId(marker.operationId)) as? DomainResult.Success)?.value
@@ -62,7 +64,7 @@ internal class AutomaticBackupScheduler(
             val due = AutomaticBackupPolicy.shouldCreateDailyBackup(
                 today,
                 currentRevision,
-                latest?.createdAt?.atZone(ZoneId.systemDefault())?.toLocalDate(),
+                latest?.createdAt?.atZone(ledgerZone)?.toLocalDate(),
                 latest?.localRevision,
             )
             if (!due) return@runCatching

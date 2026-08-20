@@ -13,15 +13,19 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
@@ -79,6 +83,34 @@ class BudgetUiContractDeviceTest {
         composeRule.onNodeWithTag(LedgerTestTags.BUDGET_CONSTRAINT_METERS).assertExists()
         composeRule.onNodeWithTag(LedgerTestTags.BUDGET_EDITOR).performScrollToNode(hasText("保存", substring = true) or hasText("Save", substring = true) or hasText("保存する", substring = true))
         composeRule.onRoot().assertExists()
+    }
+
+    @Test
+    fun budgetHierarchyExcessDisablesSaveAndDispatchesNoMutation() {
+        val state = BudgetDeviceFixtures.constraintState()
+        var writes = 0
+        val actions = BudgetDeviceFixtures.actions.copy(
+            editor = BudgetDeviceFixtures.actions.editor.copy(onSaveMonth = { writes += 1 }),
+        )
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 800.dp)) {
+                    BudgetDestination(
+                        "BUD-003",
+                        BudgetLoadState.Content(state),
+                        mapOf("categoryId" to BudgetDeviceFixtures.root.toString()),
+                        actions,
+                    )
+                }
+            }
+        }
+
+        val save = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.budget_save)
+        composeRule.onNodeWithText(save).assertIsNotEnabled().performClick()
+        composeRule.runOnIdle {
+            assertEquals(false, state.validation.valid)
+            assertEquals(0, writes)
+        }
     }
 
     private fun cases(): List<Case> {

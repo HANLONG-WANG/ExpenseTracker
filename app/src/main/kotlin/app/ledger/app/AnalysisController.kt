@@ -15,6 +15,7 @@ import app.ledger.analytics.domain.DrilldownQueryId
 import app.ledger.analytics.domain.FixedReport
 import app.ledger.analytics.domain.FixedReportCatalog
 import app.ledger.analytics.domain.ForecastKey
+import app.ledger.analytics.domain.FilterExpression
 import app.ledger.analytics.domain.MapViewport
 import app.ledger.analytics.domain.ReportDefinitionId
 import app.ledger.analytics.domain.ReportExecution
@@ -31,6 +32,8 @@ import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.money.CurrencyCode
 import app.ledger.feature.analysis.AnalysisFeatureState
+import app.ledger.feature.analysis.AnalysisEntityFilter
+import app.ledger.feature.analysis.AnalysisExportScope
 import app.ledger.feature.analysis.AnalysisLoadState
 import app.ledger.feature.analysis.AnalysisPolicy
 import app.ledger.feature.analysis.AnalysisPresentation
@@ -40,9 +43,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.math.BigDecimal
 import java.time.LocalDate
 
-/** Owns non-sensitive analysis drafts in memory; only stable identifiers enter routes. */
-internal class AnalysisController(private val application: AnalyticsApplicationPort) {
-    private val mutableState = MutableStateFlow<AnalysisLoadState>(AnalysisLoadState.Loading)
+/** Owns analysis drafts in memory: names and filter values never enter SavedState or routes; only stable identifiers do. */
+internal class AnalysisController(
+    private val application: AnalyticsApplicationPort,
+    private val formatCopyName: (String) -> String,
+) {
+    private val mutableState = MutableStateFlow<AnalysisLoadState>(AnalysisLoadState.Loading())
     val state: StateFlow<AnalysisLoadState> = mutableState.asStateFlow()
 
     private var bookId: StableId? = null
@@ -59,10 +65,13 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
     private var preparedExport: ReportExportPayload? = null
     private var preparedExportId: StableId? = null
     private var exportFormat: ReportExportFormat = ReportExportFormat.CSV
+    private var exportScope: AnalysisExportScope = AnalysisExportScope.CURRENT_AND_COMPARISON
     private var reportDraftId: StableId? = null
     private var reportDraftName: String = ""
     private var customDraftSpec: ReportSpec? = null
     private var customVisualization: ReportVisualization = ReportVisualization.LINE
+    private var builderStep: Int = 0
+    private var draftFilterBaseline: FilterExpression? = null
     private var dashboardDraftId: StableId? = null
     private var dashboardDraftName: String = ""
     private var dashboardItems: List<DashboardItem> = emptyList()
@@ -90,6 +99,8 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
             preparedExport = null
             preparedExportId = null
             reportDraftId = null
+            builderStep = 0
+            draftFilterBaseline = null
             dashboardDraftId = null
             dashboardItems = emptyList()
             consumptionMap.reset()
@@ -121,9 +132,46 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
     fun cycleGranularity() = editDraft(AnalysisPolicy::cycleGranularity)
     fun cycleComparison() = editDraft(AnalysisPolicy::cycleComparison)
 
+    fun selectMeasure(value: app.ledger.analytics.domain.Measure) = editDraft { AnalysisPolicy.selectMeasure(it, value) }
+
+    fun selectDimension(value: Dimension) = editDraft { AnalysisPolicy.selectDimension(it, value) }
+
+    fun selectGranularity(value: app.ledger.analytics.domain.TimeGranularity) = editDraft { AnalysisPolicy.selectGranularity(it, value) }
+
+    fun selectComparison(value: app.ledger.analytics.domain.ComparisonMode?) = editDraft { AnalysisPolicy.selectComparison(it, value) }
+
+    fun cycleSort(stableKey: String) = editDraft { AnalysisPolicy.cycleSort(it, stableKey) }
+
+    fun toggleReportFilter(filter: AnalysisEntityFilter, id: StableId) = editDraft { spec ->
+        val selected = AnalysisPolicy.selectedFilterIds(spec, filter).toMutableSet().apply {
+            if (!add(id)) remove(id)
+        }
+        AnalysisPolicy.replaceEntityFilter(spec, filter, selected)
+    }
+
+    fun removeReportFilter(stableKey: String) = editDraft { AnalysisPolicy.removeFilter(it, stableKey) }
+
+    fun resetReportFilters() = editDraft { it.copy(filters = draftFilterBaseline ?: FilterExpression.All) }
+
+    fun changeBuilderStep(delta: Int) {
+        builderStep = (builderStep + delta).coerceIn(0, BUILDER_LAST_STEP)
+        updateCurrent { it.copy(builderStep = builderStep) }
+    }
+
     fun updateDraftName(value: String) {
         if (screenId == "ANA-007") dashboardDraftName = value.take(80) else reportDraftName = value.take(80)
-        updateCurrent { it.copy(draftName = value.take(80), presentation = if (value.isBlank()) AnalysisPresentation.INVALID else it.presentation) }
+        updateCurrent {
+            it.copy(
+                draftName = value.take(80),
+                presentation = if (value.isBlank()) {
+                    AnalysisPresentation.INVALID
+                } else if (screenId == "ANA-007") {
+                    if (dashboardItems.isEmpty()) AnalysisPresentation.EMPTY_CANVAS else if (dashboardDraftId == null) AnalysisPresentation.CREATE else AnalysisPresentation.EDIT
+                } else {
+                    AnalysisPresentation.EDITING
+                },
+            )
+        }
     }
 
     fun selectVisualization(value: ReportVisualization) {
@@ -144,6 +192,10 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
         val content = (mutableState.value as? AnalysisLoadState.Content)?.state ?: return false
         val fixed = content.fixedReport ?: return false
         val spec = content.draftSpec ?: return false
+        if (!AnalysisPolicy.reportSpecValid(spec)) {
+            updateCurrent { it.copy(presentation = AnalysisPresentation.INVALID) }
+            return false
+        }
         appliedSpec = spec
         appliedSpecReport = fixed
         return true
@@ -183,7 +235,7 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
     suspend fun copyCustomReport(reportId: ReportDefinitionId) {
         val reports = (application.savedReports(requireBookId()) as? DomainResult.Success)?.value.orEmpty()
         val source = reports.singleOrNull { it.definition.id == reportId } ?: return
-        application.copyReport(requireBookId(), reportId, "${source.definition.name} · copy")
+        application.copyReport(requireBookId(), reportId, formatCopyName(source.definition.name))
         loadCurrent()
     }
 
@@ -193,7 +245,12 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
         } else {
             dashboardItems + DashboardItem(reportId, dashboardItems.size, DashboardItemWidth.FULL)
         }
-        updateCurrent { it.copy(dashboardItems = dashboardItems, presentation = if (dashboardItems.isEmpty()) AnalysisPresentation.EMPTY_CANVAS else it.presentation) }
+        updateCurrent {
+            it.copy(
+                dashboardItems = dashboardItems,
+                presentation = if (dashboardItems.isEmpty()) AnalysisPresentation.EMPTY_CANVAS else if (dashboardDraftId == null) AnalysisPresentation.CREATE else AnalysisPresentation.EDIT,
+            )
+        }
     }
 
     fun moveDashboardReport(reportId: ReportDefinitionId, delta: Int) {
@@ -204,7 +261,7 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
         val item = ordered.removeAt(index)
         ordered.add(target, item)
         dashboardItems = ordered.mapIndexed { order, value -> value.copy(sortOrder = order) }
-        updateCurrent { it.copy(dashboardItems = dashboardItems) }
+        updateCurrent { it.copy(dashboardItems = dashboardItems, presentation = if (dashboardDraftId == null) AnalysisPresentation.CREATE else AnalysisPresentation.EDIT) }
     }
 
     fun toggleDashboardWidth(reportId: ReportDefinitionId) {
@@ -219,7 +276,7 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
         dashboardItems = dashboardItems.toMutableList().also { items ->
             items[index] = item.copy(width = if (item.width == DashboardItemWidth.FULL) DashboardItemWidth.HALF_METRIC else DashboardItemWidth.FULL)
         }
-        updateCurrent { it.copy(dashboardItems = dashboardItems) }
+        updateCurrent { it.copy(dashboardItems = dashboardItems, presentation = if (dashboardDraftId == null) AnalysisPresentation.CREATE else AnalysisPresentation.EDIT) }
     }
 
     suspend fun saveDashboard() {
@@ -286,6 +343,11 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
         updateCurrent { it.copy(exportFormat = format) }
     }
 
+    fun selectExportScope(scope: AnalysisExportScope) {
+        exportScope = scope
+        updateCurrent { it.copy(exportScope = scope) }
+    }
+
     fun prepareExport(format: ReportExportFormat = exportFormat): Boolean {
         val content = (mutableState.value as? AnalysisLoadState.Content)?.state ?: return false
         val execution = content.execution as? ReportExecution.Content ?: return false
@@ -295,8 +357,11 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
 
     fun prepareCurrentExport(): Boolean {
         val payload = preparedExport ?: return false
-        preparedExport = payload.copy(format = exportFormat)
-        updateCurrent { it.copy(exportFormat = exportFormat, exportPayload = preparedExport) }
+        val selected = payload.copy(
+            format = exportFormat,
+            comparison = payload.comparison.takeIf { exportScope == AnalysisExportScope.CURRENT_AND_COMPARISON },
+        )
+        updateCurrent { it.copy(exportFormat = exportFormat, exportScope = exportScope, exportPayload = selected) }
         return true
     }
 
@@ -304,7 +369,10 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
         preparedExportId = id
     }
 
-    internal fun preparedExportForTransfer(): ReportExportPayload? = preparedExport
+    internal fun preparedExportForTransfer(): ReportExportPayload? = preparedExport?.copy(
+        format = exportFormat,
+        comparison = preparedExport?.comparison.takeIf { exportScope == AnalysisExportScope.CURRENT_AND_COMPARISON },
+    )
 
     suspend fun loadNextDrilldown() {
         val id = queryId ?: return
@@ -382,28 +450,34 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
     }
 
     private suspend fun loadCurrent() {
-        mutableState.value = AnalysisLoadState.Loading
-        mutableState.value = try {
-            when (screenId) {
-                "ANA-001" -> loadOverview()
-                "ANA-002" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.CONTENT))
-                "ANA-003" -> loadReport()
-                "ANA-004" -> loadFilter()
-                "ANA-005" -> loadDrilldown()
-                "ANA-006" -> loadDashboards()
-                "ANA-007" -> loadDashboardEditor()
-                "ANA-008" -> loadBuilder()
-                "ANA-009" -> loadVisualizationPicker()
-                "ANA-010" -> loadExport()
-                "ANA-011" -> loadMap()
-                "ANA-012" -> loadMapDetail()
-                "ANA-013" -> loadAnomalies()
-                "ANA-014" -> loadForecast()
-                "ANA-015" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.NOT_RUN))
-                else -> AnalysisLoadState.Failure(screenId, "ANALYSIS_SCREEN_UNKNOWN")
-            }
-        } catch (_: Exception) {
-            AnalysisLoadState.Failure(screenId, "ANALYSIS_LOAD_FAILED")
+        val previous = (mutableState.value as? AnalysisLoadState.Content)?.state?.takeIf { it.screenId == screenId }
+        mutableState.value = if (previous == null) {
+            AnalysisLoadState.Loading()
+        } else {
+            AnalysisLoadState.Content(
+                previous.copy(
+                    period = requirePeriod(),
+                    presentation = if (screenId == "ANA-001") AnalysisPresentation.CALCULATING else AnalysisPresentation.LOADING,
+                ),
+            )
+        }
+        mutableState.value = when (screenId) {
+            "ANA-001" -> loadOverview()
+            "ANA-002" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.CONTENT))
+            "ANA-003" -> loadReport()
+            "ANA-004" -> loadFilter()
+            "ANA-005" -> loadDrilldown()
+            "ANA-006" -> loadDashboards()
+            "ANA-007" -> loadDashboardEditor()
+            "ANA-008" -> loadBuilder()
+            "ANA-009" -> loadVisualizationPicker()
+            "ANA-010" -> loadExport()
+            "ANA-011" -> loadMap()
+            "ANA-012" -> loadMapDetail()
+            "ANA-013" -> loadAnomalies()
+            "ANA-014" -> loadForecast()
+            "ANA-015" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.NOT_RUN))
+            else -> AnalysisLoadState.Failure(screenId, "ANALYSIS_SCREEN_UNKNOWN")
         }
     }
 
@@ -436,10 +510,18 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
         }
     }
 
-    private fun loadFilter(): AnalysisLoadState {
+    private suspend fun loadFilter(): AnalysisLoadState {
         val fixed = report ?: return AnalysisLoadState.Failure("ANA-004", "REPORT_KEY_INVALID")
         val spec = appliedSpec.takeIf { appliedSpecReport == fixed } ?: FixedReportCatalog.definition(fixed).spec
-        return AnalysisLoadState.Content(baseState("ANA-004", AnalysisPresentation.EDITING).copy(fixedReport = fixed, draftSpec = spec))
+        draftFilterBaseline = FixedReportCatalog.definition(fixed).spec.filters
+        val options = (application.consumptionMapFilterOptions(requireBookId()) as? DomainResult.Success)?.value
+        return AnalysisLoadState.Content(
+            baseState("ANA-004", AnalysisPresentation.EDITING).copy(
+                fixedReport = fixed,
+                draftSpec = spec,
+                consumptionMapFilterOptions = options,
+            ),
+        )
     }
 
     private suspend fun loadDrilldown(): AnalysisLoadState {
@@ -504,13 +586,18 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
             reportDraftName = selected?.definition?.name.orEmpty()
             customDraftSpec = selected?.revision?.spec ?: FixedReportCatalog.definition(FixedReport.INCOME_EXPENSE_NET).spec
             customVisualization = selected?.revision?.visualization ?: ReportVisualization.LINE
+            builderStep = 0
+            draftFilterBaseline = customDraftSpec?.filters
         }
+        val options = (application.consumptionMapFilterOptions(requireBookId()) as? DomainResult.Success)?.value
         return AnalysisLoadState.Content(
             baseState("ANA-008", AnalysisPresentation.EDITING).copy(
                 savedReports = reports,
                 draftSpec = customDraftSpec,
                 draftName = reportDraftName,
                 draftVisualization = customVisualization,
+                builderStep = builderStep,
+                consumptionMapFilterOptions = options,
             ),
         )
     }
@@ -523,7 +610,13 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
     private fun loadExport(): AnalysisLoadState = if (entityId == null || entityId != preparedExportId || preparedExport == null) {
         AnalysisLoadState.Failure("ANA-010", "REPORT_EXPORT_EXPIRED")
     } else {
-        AnalysisLoadState.Content(baseState("ANA-010", AnalysisPresentation.CONTENT).copy(exportFormat = exportFormat, exportPayload = preparedExport))
+        AnalysisLoadState.Content(
+            baseState("ANA-010", AnalysisPresentation.CONTENT).copy(
+                exportFormat = exportFormat,
+                exportScope = exportScope,
+                exportPayload = preparedExport,
+            ),
+        )
     }
 
     private suspend fun loadAnomalies(): AnalysisLoadState {
@@ -540,9 +633,20 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
 
     private suspend fun loadForecast(): AnalysisLoadState {
         val key = forecastKey ?: return AnalysisLoadState.Failure("ANA-014", "FORECAST_KEY_INVALID")
-        return when (val result = application.forecast(requireBookId(), key, requireNotNull(today))) {
-            is DomainResult.Success -> AnalysisLoadState.Content(baseState("ANA-014", AnalysisPresentation.CONTENT).copy(forecastKey = key, forecast = result.value))
-            is DomainResult.Failure -> AnalysisLoadState.Content(baseState("ANA-014", AnalysisPresentation.INSUFFICIENT_DATA).copy(forecastKey = key, failureCode = result.error.code))
+        val comparisons = buildMap {
+            ForecastKey.entries.forEach { candidate ->
+                (application.forecast(requireBookId(), candidate, requireNotNull(today)) as? DomainResult.Success)?.value?.let { put(candidate, it) }
+            }
+        }
+        return when (val result = comparisons[key]) {
+            is app.ledger.analytics.domain.ForecastResult -> AnalysisLoadState.Content(
+                baseState("ANA-014", AnalysisPresentation.CONTENT).copy(
+                    forecastKey = key,
+                    forecast = result,
+                    forecastComparisons = comparisons,
+                ),
+            )
+            null -> AnalysisLoadState.Content(baseState("ANA-014", AnalysisPresentation.INSUFFICIENT_DATA).copy(forecastKey = key, failureCode = "FORECAST_INSUFFICIENT_DATA"))
         }
     }
 
@@ -610,5 +714,6 @@ internal class AnalysisController(private val application: AnalyticsApplicationP
 
     private companion object {
         const val DRILLDOWN_PAGE_SIZE = 50
+        const val BUILDER_LAST_STEP = 6
     }
 }

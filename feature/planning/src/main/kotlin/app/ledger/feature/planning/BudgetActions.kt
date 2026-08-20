@@ -37,7 +37,7 @@ internal class BudgetActions(
     val onTemplateNameChanged: (String) -> Unit get() = editor.onTemplateNameChanged
     val onSaveTemplate: () -> Unit get() = editor.onSaveTemplate
     val onAdjustmentAmountChanged: (String) -> Unit get() = adjustment.onAmountChanged
-    val onAdjustmentSource: () -> Unit get() = adjustment.onSource
+    val onAdjustmentSource: (Boolean) -> Unit get() = adjustment.onSource
     val onAdjustmentTarget: () -> Unit get() = adjustment.onTarget
     val onSaveAdjustment: (BudgetAdjustmentKind) -> Unit get() = adjustment.onSave
 }
@@ -60,7 +60,7 @@ internal class BudgetEditorActions(
 
 internal class BudgetAdjustmentActions(
     val onAmountChanged: (String) -> Unit,
-    val onSource: () -> Unit,
+    val onSource: (Boolean) -> Unit,
     val onTarget: () -> Unit,
     val onSave: (BudgetAdjustmentKind) -> Unit,
 )

@@ -1,71 +1,75 @@
 package app.ledger.app
 
-import androidx.compose.foundation.layout.fillMaxSize
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.ledger.core.designsystem.LedgerErrorState
-import app.ledger.core.designsystem.LedgerLoadingState
+import app.ledger.core.common.DomainResult
+import app.ledger.core.common.StableId
 import app.ledger.core.files.AttachmentExternalOpenDialog
 import app.ledger.core.files.AttachmentPreviewScreen
-import app.ledger.core.files.AttachmentPreviewState
 import app.ledger.core.files.AttachmentRenameDialog
-import app.ledger.core.files.R as FilesR
 
 @Composable
 internal fun AttachmentRootDestination(
     screenId: String,
+    encodedArguments: Map<String, String>,
     viewModel: AppRootViewModel,
     onNavigationChanged: () -> Unit,
 ) {
-    val preview by viewModel.attachmentPreview.collectAsStateWithLifecycle()
-    val rename by viewModel.attachmentRename.collectAsStateWithLifecycle()
+    val attachmentId = encodedArguments["attachmentId"]
+        ?.let(StableId::parse)
+        ?.let { (it as? DomainResult.Success)?.value }
+    val state by viewModel.attachmentFlow.collectAsStateWithLifecycle()
+    LaunchedEffect(attachmentId) {
+        if (attachmentId != null) viewModel.ensureAttachmentLoaded(attachmentId)
+    }
     when (screenId) {
-        "ATT-001" -> {
-            val imageLoader = viewModel.attachmentImageLoader
-            when {
-                preview is AttachmentPreviewState.DecryptError -> LedgerErrorState(
-                    message = stringResource(FilesR.string.attachment_decrypt_error_message),
-                    code = (preview as AttachmentPreviewState.DecryptError).code,
-                    onRetry = viewModel::retryAttachment,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                imageLoader == null -> LedgerLoadingState(Modifier.fillMaxSize())
-                else -> AttachmentPreviewScreen(
-                    state = preview,
-                    secureImageLoader = imageLoader,
-                    onRename = {
-                        viewModel.beginAttachmentRename()
-                        onNavigationChanged()
-                    },
-                    onOpenExternally = {
-                        viewModel.beginAttachmentExternalOpen()
-                        onNavigationChanged()
-                    },
-                    onRetry = viewModel::retryAttachment,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-        "ATT-002" -> AttachmentExternalOpenDialog(
-            onConfirm = { viewModel.confirmAttachmentExternalOpen(onNavigationChanged) },
-            onDismiss = {
-                viewModel.requestRootBack()
+        "ATT-001" -> AttachmentPreviewScreen(
+            state.preview,
+            viewModel.attachmentImageLoader(),
+            {
+                viewModel.openAttachmentRename()
                 onNavigationChanged()
             },
+            {
+                viewModel.openAttachmentExternal()
+                onNavigationChanged()
+            },
+            viewModel::retryAttachment,
         )
-        "ATT-003" -> rename?.let { state ->
-            AttachmentRenameDialog(
-                state = state,
-                onNameChange = viewModel::updateAttachmentRename,
-                onConfirm = { viewModel.confirmAttachmentRename(onNavigationChanged) },
+        "ATT-002" -> {
+            val context = LocalContext.current
+            AttachmentExternalOpenDialog(
+                onConfirm = {
+                    val intent = viewModel.authorizeAttachmentExternalOpen()
+                    if (intent != null) {
+                        try {
+                            context.startActivity(Intent.createChooser(intent, null))
+                            viewModel.dismissAttachmentDialog()
+                            onNavigationChanged()
+                        } catch (_: ActivityNotFoundException) {
+                            viewModel.externalApplicationUnavailable()
+                        }
+                    }
+                },
                 onDismiss = {
-                    viewModel.requestRootBack()
+                    viewModel.dismissAttachmentDialog()
                     onNavigationChanged()
                 },
             )
-        } ?: LedgerLoadingState(Modifier.fillMaxSize())
+        }
+        "ATT-003" -> AttachmentRenameDialog(
+            state.rename,
+            viewModel::changeAttachmentName,
+            { viewModel.saveAttachmentName(onNavigationChanged) },
+            {
+                viewModel.dismissAttachmentDialog()
+                onNavigationChanged()
+            },
+        )
     }
 }

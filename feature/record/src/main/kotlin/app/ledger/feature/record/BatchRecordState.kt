@@ -3,9 +3,9 @@
 package app.ledger.feature.record
 
 import app.ledger.core.common.StableId
-import app.ledger.core.common.getOrNull
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
+import app.ledger.core.money.MoneyExpressionEvaluator
 import app.ledger.finance.application.BatchEntryField
 import app.ledger.finance.application.BatchValidationIssue
 import app.ledger.finance.application.BatchValidationReport
@@ -18,7 +18,6 @@ import java.math.RoundingMode
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 public enum class BatchRowKind { EXPENSE, INCOME, REFUND }
@@ -104,7 +103,30 @@ public data class BatchPasteResult(
 )
 
 public object BatchRecordPolicy {
-    private val currencies = JvmLegalTenderCurrencyCatalog.create()
+    private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
+    private val expressionEvaluator = MoneyExpressionEvaluator()
+
+    public fun changeAmount(
+        row: BatchRowDraft,
+        expression: String,
+        locale: Locale,
+        snapshot: OrdinaryTransactionEntrySnapshot,
+    ): BatchRowDraft {
+        val currency = CurrencyCode.parse(row.userCurrencyCode).getOrNull()
+        val metadata = currency?.let(currencyCatalog::find)
+        val result = metadata?.let { expressionEvaluator.evaluate(expression, locale, it).getOrNull() }
+        val minor = result?.roundedMoney?.minor
+        val accountCurrency = snapshot.references.accounts.singleOrNull { it.id == row.accountId }?.currency
+        return row.copy(
+            amountExpression = expression,
+            userMinor = minor,
+            accountMinor = if (accountCurrency == currency) minor else row.accountMinor,
+            baseMinor = if (snapshot.baseCurrency == currency) minor else row.baseMinor,
+        )
+    }
+
+    public fun parseMajorAmount(expression: String, currency: CurrencyCode, locale: Locale): Long? =
+        currencyCatalog.find(currency)?.let { expressionEvaluator.evaluate(expression, locale, it).getOrNull()?.roundedMoney?.minor }
 
     public fun changeKind(row: BatchRowDraft, kind: BatchRowKind): BatchRowDraft = row.copy(
         kind = kind,
@@ -211,8 +233,8 @@ public object BatchRecordPolicy {
     }
 
     /**
-     * Phone paste format is TSV: localized kind, category name, decimal amount, account name,
-     * local date/time, project name. Names are resolved only against the already encrypted snapshot.
+     * Phone paste format is TSV: kind, category name, major-unit amount, account name, merchant name,
+     * ISO instant, project name. Names are resolved only against the already encrypted snapshot.
      */
     public fun paste(
         text: String,
@@ -237,22 +259,16 @@ public object BatchRecordPolicy {
             }
             val category = snapshot.references.categories.singleOrNull { it.name == cells.getOrNull(1)?.trim() }
             val account = snapshot.references.accounts.singleOrNull { it.name == cells.getOrNull(3)?.trim() && it.status.name == "ACTIVE" }
-            val amountText = cells.getOrNull(2)?.trim().orEmpty()
-            val minor = account?.currency?.value?.let { majorToMinor(amountText, it) }
-            val dateTimeText = cells.getOrNull(5)?.trim().orEmpty()
-            val parsedOccurredAt = dateTimeText.takeIf(String::isNotEmpty)?.let { parseOccurredAt(it, zoneId) }
-            val occurredAt = parsedOccurredAt ?: defaultInstant
-            if (
-                kind == null || minor == null || minor <= 0L || category == null ||
-                dateTimeText.isNotEmpty() && parsedOccurredAt == null
-            ) {
+            val amountExpression = cells.getOrNull(2)?.trim().orEmpty()
+            val minor = account?.currency?.let { parseMajorAmount(amountExpression, it, Locale.ROOT) }
+            if (kind == null || minor == null || minor <= 0L || category == null || account == null) {
                 rejected += index + 1
             } else {
                 val merchant = snapshot.references.merchants.singleOrNull { it.name == cells.getOrNull(4)?.trim() }
                 val project = snapshot.projects.singleOrNull { it.name == cells.getOrNull(6)?.trim() && it.active }
                 rows += newRow(idAtLine(index), snapshot, occurredAt, zoneId, kind).copy(
                     categoryId = category.id,
-                    amountExpression = amountText,
+                    amountExpression = amountExpression,
                     userMinor = minor,
                     accountMinor = minor,
                     baseMinor = minor.takeIf { account.currency == snapshot.references.baseCurrency },

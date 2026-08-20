@@ -8,6 +8,7 @@ import app.ledger.finance.domain.InstallmentRefundPolicy
 import app.ledger.finance.domain.InstallmentScheduleRevision
 import app.ledger.finance.domain.InstallmentSettlementSimulation
 import app.ledger.finance.domain.InstallmentStatus
+import java.math.RoundingMode
 
 public enum class InstallmentPresentation {
     EDITING,
@@ -26,6 +27,7 @@ public enum class InstallmentPresentation {
 }
 
 public data class InstallmentDraft(
+    val principal: String = "",
     val termCount: String = "12",
     val firstStatementDate: String = "",
     val feeModel: InstallmentFeeRateType = InstallmentFeeRateType.NONE,
@@ -36,6 +38,7 @@ public data class InstallmentDraft(
     val settlementDate: String = "",
     val refundPolicy: InstallmentRefundPolicy = InstallmentRefundPolicy.REBUILD_SCHEDULE,
     val confirmPhrase: String = "",
+    val roundingMode: RoundingMode = RoundingMode.HALF_EVEN,
 )
 
 public data class InstallmentFeatureState(
@@ -87,29 +90,35 @@ public object InstallmentPolicy {
             else -> InstallmentPresentation.CONTENT
         }
         val revision = plan?.currentRevision
+        val currency = plan?.currency ?: purchase?.currency
         return InstallmentFeatureState(
             snapshot,
             plan?.id ?: planId,
             purchase?.transactionId ?: purchaseId,
             presentation,
             InstallmentDraft(
+                principal = (plan?.originalPrincipalMinor ?: purchase?.principalMinor)?.let { minor ->
+                    (plan?.currency ?: purchase?.currency)?.let { CreditPolicy.minorText(minor, it) }
+                }.orEmpty(),
                 termCount = plan?.termCount?.toString() ?: "12",
                 firstStatementDate = plan?.currentSchedule?.items?.firstOrNull()?.statementDate?.toString()
                     ?: purchase?.purchaseDate?.plusMonths(1)?.toString().orEmpty(),
                 feeModel = revision?.feeRateType ?: InstallmentFeeRateType.NONE,
-                feeValue = revision?.fixedFeePerTermMinor?.toString()
+                feeValue = revision?.fixedFeePerTermMinor?.let { minor -> currency?.let { CreditPolicy.minorText(minor, it) } }
                     ?: revision?.remainingPrincipalRate?.annualDecimal?.toPlainString().orEmpty(),
-                firstTermFee = revision?.firstTermFeeMinor?.toString().orEmpty(),
+                firstTermFee = revision?.firstTermFeeMinor?.let { minor -> currency?.let { CreditPolicy.minorText(minor, it) } }.orEmpty(),
                 annualRate = revision?.effectiveAnnualRate?.annualDecimal?.toPlainString().orEmpty(),
-                prepaymentFee = revision?.prepaymentFeeMinor?.toString().orEmpty(),
+                prepaymentFee = revision?.prepaymentFeeMinor?.let { minor -> currency?.let { CreditPolicy.minorText(minor, it) } }.orEmpty(),
                 settlementDate = plan?.progress?.nextStatementDate?.minusDays(1)?.toString().orEmpty(),
                 refundPolicy = revision?.refundPolicy ?: InstallmentRefundPolicy.REBUILD_SCHEDULE,
+                roundingMode = revision?.roundingMode ?: RoundingMode.HALF_EVEN,
             ),
         )
     }
 
     public fun update(state: InstallmentFeatureState, field: InstallmentField, value: String): InstallmentFeatureState {
         val draft = when (field) {
+            InstallmentField.PRINCIPAL -> state.draft.copy(principal = value.take(MAX_AMOUNT))
             InstallmentField.TERM_COUNT -> state.draft.copy(termCount = value.take(MAX_SHORT))
             InstallmentField.FIRST_STATEMENT_DATE -> state.draft.copy(firstStatementDate = value.take(MAX_DATE))
             InstallmentField.FEE_VALUE -> state.draft.copy(feeValue = value.take(MAX_AMOUNT))
@@ -135,6 +144,7 @@ public object InstallmentPolicy {
 }
 
 public enum class InstallmentField {
+    PRINCIPAL,
     TERM_COUNT,
     FIRST_STATEMENT_DATE,
     FEE_VALUE,

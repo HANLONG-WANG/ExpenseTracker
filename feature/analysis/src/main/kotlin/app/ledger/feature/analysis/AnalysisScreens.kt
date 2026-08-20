@@ -12,6 +12,7 @@
 package app.ledger.feature.analysis
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -22,6 +23,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
@@ -57,14 +63,17 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChartUiModel
-import app.ledger.core.designsystem.LedgerChip
 import app.ledger.core.designsystem.LedgerColumnChart
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
+import app.ledger.core.designsystem.JournalTransactionRow
+import app.ledger.core.designsystem.JournalTransactionUiModel
+import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerLineChart
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerPieChart
 import app.ledger.core.designsystem.LedgerProgressIndicator
+import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerStackedChart
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
@@ -79,6 +88,10 @@ import app.ledger.core.designsystem.MetricCardVariant
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.UiErrorCode
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 
 sealed interface AnalysisScreenAction {
     data class Navigate(val screenId: String, val report: FixedReport?, val queryId: DrilldownQueryId?) : AnalysisScreenAction
@@ -139,9 +152,19 @@ internal class AnalysisActions(
     val onCycleDimension: () -> Unit,
     val onCycleGranularity: () -> Unit,
     val onCycleComparison: () -> Unit,
+    val onSelectMeasure: (Measure) -> Unit = {},
+    val onSelectDimension: (Dimension) -> Unit = {},
+    val onSelectGranularity: (TimeGranularity) -> Unit = {},
+    val onSelectComparison: (ComparisonMode?) -> Unit = {},
+    val onCycleSort: (String) -> Unit = {},
+    val onToggleReportFilter: (AnalysisEntityFilter, StableId) -> Unit = { _, _ -> },
+    val onRemoveReportFilter: (String) -> Unit = {},
+    val onResetReportFilters: () -> Unit = {},
+    val onBuilderStep: (Int) -> Unit = {},
     val onApplyFilter: () -> Unit,
     val onExport: () -> Unit,
     val onLoadMore: () -> Unit,
+    val onOpenTransaction: (StableId) -> Unit = {},
     val onRunIntegrity: () -> Unit,
     val onRepairProjection: () -> Unit,
     val onToggleTechnicalDetails: () -> Unit,
@@ -161,6 +184,7 @@ internal class AnalysisActions(
     val onAnomalyThresholdChanged: (String) -> Unit = {},
     val onAnomalyLookbackChanged: (String) -> Unit = {},
     val onSelectExportFormat: (ReportExportFormat) -> Unit = {},
+    val onSelectExportScope: (AnalysisExportScope) -> Unit = {},
     val onPrepareExport: () -> Unit = {},
     val onCycleMapMode: () -> Unit = {},
     val onCycleMapWeight: () -> Unit = {},
@@ -237,8 +261,7 @@ fun AnalysisDestination(
     onAction: (AnalysisScreenAction) -> Unit,
     mapContent: @Composable (ConsumptionMapResult, Boolean) -> Unit = { _, _ -> },
 ) {
-    val actions = analysisActions(onAction)
-    if (state === AnalysisLoadState.Loading) {
+    if (state is AnalysisLoadState.Loading) {
         LedgerLoadingState(
             Modifier.fillMaxSize().analysisRootTag(screenId),
             stringResource(R.string.analysis_loading),
@@ -278,11 +301,15 @@ fun AnalysisDestination(
 @Composable
 private fun AnalysisHome(state: AnalysisFeatureState, actions: AnalysisActions) {
     val overview = state.overview
-    if (state.presentation == AnalysisPresentation.CALCULATING) {
-        LedgerLoadingState(
+    if (state.presentation == AnalysisPresentation.CALCULATING && overview == null) {
+        LazyColumn(
             Modifier.fillMaxSize().testTag(LedgerTestTags.ANALYSIS_HOME),
-            stringResource(R.string.analysis_calculating),
-        )
+            contentPadding = PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            item { PeriodControls(state, actions) }
+            item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.analysis_calculating)) }
+        }
         return
     }
     if (state.presentation == AnalysisPresentation.ERROR || overview == null) {
@@ -311,6 +338,9 @@ private fun AnalysisHome(state: AnalysisFeatureState, actions: AnalysisActions) 
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
     ) {
         item { PeriodControls(state, actions) }
+        if (state.presentation == AnalysisPresentation.CALCULATING) {
+            item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.analysis_calculating)) }
+        }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
                 MetricCard(stringResource(R.string.analysis_consumption), AnalysisPolicy.money(overview.consumptionMinor, overview.baseCurrency, locale), Modifier.fillMaxWidth(0.48f))
@@ -379,9 +409,10 @@ private fun DashboardReportCard(definition: app.ledger.analytics.domain.FixedRep
 
 @Composable
 private fun PeriodControls(state: AnalysisFeatureState, actions: AnalysisActions) {
+    val locale = LocalLocale.current.platformLocale
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         LedgerButton(stringResource(R.string.analysis_previous_period), actions.onPreviousPeriod, variant = LedgerButtonVariant.TEXT)
-        LedgerText("${state.period.start} — ${state.period.endInclusive}", LedgerTextRole.SECTION)
+        LedgerText("${state.period.start.localized(locale)} — ${state.period.endInclusive.localized(locale)}", LedgerTextRole.SECTION)
         LedgerButton(stringResource(R.string.analysis_next_period), actions.onNextPeriod, variant = LedgerButtonVariant.TEXT)
     }
 }
@@ -430,10 +461,21 @@ private fun ReportCatalog(state: AnalysisFeatureState, actions: AnalysisActions)
 @Composable
 private fun ReportDetail(state: AnalysisFeatureState, actions: AnalysisActions) {
     when (state.presentation) {
-        AnalysisPresentation.LOADING -> LedgerLoadingState(
-            Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_DETAIL),
-            stringResource(R.string.analysis_loading),
-        )
+        AnalysisPresentation.LOADING -> {
+            val execution = state.execution as? ReportExecution.Content
+            if (execution == null) {
+                LazyColumn(
+                    Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_DETAIL),
+                    contentPadding = PaddingValues(LedgerTheme.spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+                ) {
+                    item { PeriodControls(state, actions) }
+                    item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.analysis_loading)) }
+                }
+            } else {
+                ReportContent(state, execution, actions, loading = true)
+            }
+        }
         AnalysisPresentation.QUERY_ERROR -> LedgerErrorState(
             UiErrorCode(state.failureCode ?: "REPORT_QUERY_FAILED"),
             stringResource(R.string.analysis_query_failed),
@@ -468,21 +510,30 @@ private fun ReportDetail(state: AnalysisFeatureState, actions: AnalysisActions) 
 }
 
 @Composable
-private fun ReportContent(state: AnalysisFeatureState, execution: ReportExecution.Content, actions: AnalysisActions) {
+private fun ReportContent(
+    state: AnalysisFeatureState,
+    execution: ReportExecution.Content,
+    actions: AnalysisActions,
+    loading: Boolean = false,
+) {
+    val locale = LocalLocale.current.platformLocale
     val table = reportTable(state, execution)
     val chartModel = LedgerChartUiModel(
         title = state.fixedReport?.let { reportTitle(it) } ?: stringResource(R.string.analysis_custom_report),
-        scope = "${state.period.start} — ${state.period.endInclusive}",
+        scope = "${state.period.start.localized(locale)} — ${state.period.endInclusive.localized(locale)}",
         summary = stringResource(R.string.analysis_chart_summary, execution.rows.size),
         type = AnalysisPolicy.visualizationType(execution),
-        series = AnalysisPolicy.chartSeries(execution),
+        series = localizedChartSeries(execution, locale, state.baseCurrency),
     )
+    var tableExpanded by remember(chartModel.title) { mutableStateOf(true) }
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_DETAIL),
         contentPadding = PaddingValues(LedgerTheme.spacing.md),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
     ) {
         item { PeriodControls(state, actions) }
+        if (loading) item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.analysis_loading)) }
+        item { MetricSummary(state, execution) }
         item {
             LedgerText(stringResource(R.string.analysis_semantics_help), LedgerTextRole.SUPPORTING)
         }
@@ -491,8 +542,8 @@ private fun ReportContent(state: AnalysisFeatureState, execution: ReportExecutio
                 LedgerBanner(
                     stringResource(
                         R.string.analysis_comparison_summary,
-                        comparison.referencePeriod.start.toString(),
-                        comparison.referencePeriod.endInclusive.toString(),
+                        comparison.referencePeriod.start.localized(locale),
+                        comparison.referencePeriod.endInclusive.localized(locale),
                     ),
                     LedgerBannerVariant.NEUTRAL,
                 )
@@ -512,8 +563,8 @@ private fun ReportContent(state: AnalysisFeatureState, execution: ReportExecutio
                 chartModel,
                 chart = { ReportChart(chartModel) },
                 dataTable = table,
-                tableExpanded = true,
-                onToggleTable = {},
+                tableExpanded = tableExpanded,
+                onToggleTable = { tableExpanded = !tableExpanded },
             )
         }
         item {
@@ -525,6 +576,34 @@ private fun ReportContent(state: AnalysisFeatureState, execution: ReportExecutio
         execution.rows.firstOrNull()?.drilldownQueryId?.let { queryId ->
             item {
                 LedgerButton(stringResource(R.string.analysis_drilldown), { actions.onNavigate("ANA-005", state.fixedReport, queryId) }, Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricSummary(state: AnalysisFeatureState, execution: ReportExecution.Content) {
+    val locale = LocalLocale.current.platformLocale
+    val values = execution.rows.firstOrNull()?.measureValues.orEmpty()
+    if (values.isEmpty()) return
+    FormSection(stringResource(R.string.analysis_metric_summary)) {
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+        ) {
+            values.forEach { value ->
+                LedgerCard(Modifier.fillMaxWidth(if (values.size > 1) 0.48f else 1f)) {
+                    Column(Modifier.padding(LedgerTheme.spacing.sm)) {
+                        LedgerText(measureLabel(value.measure), LedgerTextRole.SUPPORTING)
+                        LedgerText(
+                            value.minorValue?.let { AnalysisPolicy.money(it, value.currency ?: state.baseCurrency, locale).formatted }
+                                ?: value.decimalValue?.let(AnalysisPolicy::decimalText)
+                                ?: stringResource(R.string.analysis_not_available),
+                            LedgerTextRole.TITLE,
+                        )
+                    }
+                }
             }
         }
     }
@@ -543,6 +622,25 @@ internal fun ReportChart(model: LedgerChartUiModel) {
 }
 
 @Composable
+internal fun localizedChartSeries(
+    execution: ReportExecution.Content,
+    locale: Locale,
+    baseCurrency: app.ledger.core.money.CurrencyCode,
+): List<app.ledger.core.designsystem.LedgerChartSeries> = AnalysisPolicy.chartSeries(execution, locale, baseCurrency).map { series ->
+    val measureKey = series.stableSeriesKey.removeSuffix("_comparison").uppercase(Locale.ROOT)
+    val measure = Measure.entries.singleOrNull { it.name == measureKey }
+    series.copy(
+        label = buildString {
+            append(measure?.let { measureLabel(it) } ?: series.label)
+            if (series.stableSeriesKey.endsWith("_comparison")) {
+                append(" · ")
+                append(comparisonLabel(execution.comparison?.mode))
+            }
+        },
+    )
+}
+
+@Composable
 private fun ReportFilter(state: AnalysisFeatureState, actions: AnalysisActions) {
     val spec = state.draftSpec
     if (spec == null) {
@@ -554,40 +652,113 @@ private fun ReportFilter(state: AnalysisFeatureState, actions: AnalysisActions) 
         )
         return
     }
-    val measureText = buildString {
-        spec.measures.forEachIndexed { index, measure ->
-            if (index > 0) append(", ")
-            append(measureLabel(measure))
+    val valid = AnalysisPolicy.reportSpecValid(spec) && state.presentation != AnalysisPresentation.INVALID
+    LedgerScaffold(
+        modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_FILTER),
+        formContent = true,
+        fixedAction = { AnalysisApplyBar(actions.onApplyFilter, valid) },
+    ) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            if (!valid) item { LedgerBanner(stringResource(R.string.analysis_filter_invalid), LedgerBannerVariant.DANGER) }
+            item { LedgerBanner(stringResource(R.string.analysis_no_sql_formula), LedgerBannerVariant.INFO) }
+            item { LedgerText(stringResource(R.string.analysis_measure), LedgerTextRole.SECTION) }
+            items(Measure.entries, key = { "measure-${it.name}" }) { measure ->
+                LedgerChoiceRow(measureLabel(measure), measure in spec.measures, { actions.onSelectMeasure(measure) })
+            }
+            item { LedgerText(stringResource(R.string.analysis_dimension), LedgerTextRole.SECTION) }
+            items(Dimension.entries, key = { "dimension-${it.name}" }) { dimension ->
+                LedgerChoiceRow(dimensionLabel(dimension), dimension in spec.dimensions, { actions.onSelectDimension(dimension) })
+            }
+            item { LedgerText(stringResource(R.string.analysis_granularity), LedgerTextRole.SECTION) }
+            items(TimeGranularity.entries, key = { "granularity-${it.name}" }) { granularity ->
+                LedgerChoiceRow(granularityLabel(granularity), spec.granularity == granularity, { actions.onSelectGranularity(granularity) })
+            }
+            item { LedgerText(stringResource(R.string.analysis_comparison), LedgerTextRole.SECTION) }
+            item { LedgerChoiceRow(stringResource(R.string.analysis_none), spec.comparison == null, { actions.onSelectComparison(null) }) }
+            items(ComparisonMode.entries, key = { "comparison-${it.name}" }) { comparison ->
+                LedgerChoiceRow(comparisonLabel(comparison), spec.comparison == comparison, { actions.onSelectComparison(comparison) })
+            }
+            item { ReportFilterEditor(state, spec, actions, includeApply = false) }
         }
     }
-    val dimensionText = buildString {
-        spec.dimensions.forEachIndexed { index, dimension ->
-            if (index > 0) append(", ")
-            append(dimensionLabel(dimension))
+}
+
+@Composable
+internal fun ReportFilterEditor(
+    state: AnalysisFeatureState,
+    spec: ReportSpec,
+    actions: AnalysisActions,
+    includeApply: Boolean,
+) {
+    val locale = LocalLocale.current.platformLocale
+    val options = state.consumptionMapFilterOptions
+    val dimensions = buildList {
+        add(
+            FilterDimensionUiModel(
+                stringResource(R.string.analysis_period),
+                listOf(FilterChipUiModel("period", "${state.period.start.localized(locale)} — ${state.period.endInclusive.localized(locale)}")),
+            ),
+        )
+        AnalysisEntityFilter.entries.forEach { filter ->
+            val selected = AnalysisPolicy.selectedFilterIds(spec, filter)
+            if (selected.isNotEmpty()) {
+                add(
+                    FilterDimensionUiModel(
+                        entityFilterLabel(filter),
+                        selected.map { id -> FilterChipUiModel(filter.name.lowercase(Locale.ROOT), filterOptions(options, filter).singleOrNull { it.id == id }?.label ?: stringResource(R.string.analysis_filter_selected)) },
+                    ),
+                )
+            }
         }
-    }.ifBlank { stringResource(R.string.analysis_none) }
-    LazyColumn(
-        Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_FILTER),
-        contentPadding = PaddingValues(LedgerTheme.spacing.md),
-        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
-    ) {
-        if (state.presentation == AnalysisPresentation.INVALID) {
-            item { LedgerBanner(stringResource(R.string.analysis_filter_invalid), LedgerBannerVariant.DANGER) }
-        }
-        item { LedgerBanner(stringResource(R.string.analysis_no_sql_formula), LedgerBannerVariant.INFO) }
-        item { SelectorField(stringResource(R.string.analysis_measure), measureText, actions.onCycleMeasure) }
-        item { SelectorField(stringResource(R.string.analysis_dimension), dimensionText, actions.onCycleDimension) }
-        item { SelectorField(stringResource(R.string.analysis_granularity), granularityLabel(spec.granularity), actions.onCycleGranularity) }
-        item { SelectorField(stringResource(R.string.analysis_comparison), comparisonLabel(spec.comparison), actions.onCycleComparison) }
-        item {
-            app.ledger.core.designsystem.FilterBuilder(
-                dimensions = listOf(
-                    FilterDimensionUiModel(stringResource(R.string.analysis_period), listOf(FilterChipUiModel("period", "${state.period.start} — ${state.period.endInclusive}"))),
-                ),
-                naturalLanguageSummary = stringResource(R.string.analysis_filter_summary),
-                onRemove = {},
-                onReset = {},
-                onApply = actions.onApplyFilter,
+    }
+    app.ledger.core.designsystem.FilterBuilder(
+        dimensions = dimensions,
+        naturalLanguageSummary = stringResource(R.string.analysis_filter_summary),
+        onRemove = { chip -> if (chip.stableKey != "period") actions.onRemoveReportFilter(chip.stableKey) },
+        onReset = actions.onResetReportFilters,
+        onApply = actions.onApplyFilter,
+        showActions = includeApply,
+    )
+    if (!includeApply) {
+        LedgerButton(
+            stringResource(R.string.analysis_reset_filters),
+            actions.onResetReportFilters,
+            Modifier.fillMaxWidth(),
+            LedgerButtonVariant.SECONDARY,
+        )
+    }
+    AnalysisEntityFilter.entries.forEach { filter ->
+        val available = filterOptions(options, filter)
+        val selected = AnalysisPolicy.selectedFilterIds(spec, filter)
+        val selectedFallback = stringResource(R.string.analysis_filter_selected)
+        val allLabel = stringResource(R.string.analysis_filter_all)
+        val selectedText = selected.joinToString { id -> available.singleOrNull { it.id == id }?.label ?: selectedFallback }.ifBlank { allLabel }
+        SelectorField(
+            entityFilterLabel(filter),
+            selectedText,
+            {
+                val current = selected.singleOrNull()
+                val next = available.getOrNull((available.indexOfFirst { it.id == current } + 1).coerceAtLeast(0))
+                if (current != null) actions.onToggleReportFilter(filter, current)
+                if (next != null) actions.onToggleReportFilter(filter, next.id)
+            },
+        )
+    }
+}
+
+@Composable
+private fun AnalysisApplyBar(onApply: () -> Unit, enabled: Boolean) {
+    LedgerCard(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm)) {
+            LedgerButton(
+                stringResource(R.string.analysis_apply_filters),
+                onApply,
+                Modifier.fillMaxWidth().testTag(LedgerTestTags.SAVE),
+                enabled = enabled,
             )
         }
     }
@@ -616,29 +787,54 @@ private fun ReportDrilldown(state: AnalysisFeatureState, actions: AnalysisAction
         return
     }
     val locale = LocalLocale.current.platformLocale
+    PagedTransactionList(state, page, actions, locale)
+}
+
+@Composable
+private fun PagedTransactionList(
+    state: AnalysisFeatureState,
+    page: app.ledger.analytics.domain.DrilldownPage,
+    actions: AnalysisActions,
+    locale: Locale,
+) {
+    LaunchedEffect(page.nextCursor) {
+        if (page.nextCursor != null) actions.onLoadMore()
+    }
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_DRILLDOWN),
         contentPadding = PaddingValues(LedgerTheme.spacing.md),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
-        item { LedgerText(stringResource(R.string.analysis_query_summary, state.period.start.toString(), state.period.endInclusive.toString()), LedgerTextRole.SUPPORTING) }
+        item {
+            LedgerText(
+                stringResource(R.string.analysis_query_summary, state.period.start.localized(locale), state.period.endInclusive.localized(locale)),
+                LedgerTextRole.SUPPORTING,
+            )
+        }
         items(page.rows, key = { it.transactionId.toString() }) { row ->
-            LedgerCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                    LedgerText("${row.localDate} · ${row.kindKey}", LedgerTextRole.BODY)
-                    LedgerText(AnalysisPolicy.money(row.amountMinor, row.currency, locale).formatted, LedgerTextRole.SECTION)
-                }
-            }
+            val type = transactionKindLabel(row.kindKey)
+            val category = row.categoryLabel ?: type
+            val account = listOfNotNull(row.accountLabel, row.cardLabel).joinToString(" · ").ifBlank { stringResource(R.string.analysis_account_unavailable) }
+            val summary = listOfNotNull(row.merchantLabel, row.localDate.localized(locale)).joinToString(" · ")
+            val amount = AnalysisPolicy.money(row.amountMinor, row.currency, locale)
+            JournalTransactionRow(
+                JournalTransactionUiModel(
+                    stableKey = row.transactionId.toString(),
+                    categoryOrType = category,
+                    summary = summary,
+                    accountAndCard = account,
+                    amount = amount,
+                    typeLabel = type,
+                    icon = transactionKindIcon(row.kindKey),
+                    badges = listOf(stringResource(R.string.analysis_badge_report_drilldown)),
+                    accessibleText = listOf(type, category, summary, account, amount.fullAccessibleText).joinToString(". "),
+                ),
+                onClick = { actions.onOpenTransaction(row.transactionId) },
+                onLongClick = null,
+            )
         }
         if (page.nextCursor != null) {
-            item {
-                LedgerButton(
-                    stringResource(R.string.analysis_load_more),
-                    actions.onLoadMore,
-                    Modifier.fillMaxWidth(),
-                    LedgerButtonVariant.SECONDARY,
-                )
-            }
+            item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.analysis_loading_more)) }
         }
     }
 }
@@ -722,7 +918,7 @@ private fun reportTable(state: AnalysisFeatureState, execution: ReportExecution.
     val referenceLabel = stringResource(R.string.analysis_reference_period)
     fun values(row: app.ledger.analytics.domain.ReportRow, periodLabel: String): List<String> = buildList {
         if (hasComparison) add(periodLabel)
-        row.dimensionValues.forEach { add(AnalysisPolicy.dimensionLabel(it)) }
+        row.dimensionValues.forEach { add(AnalysisPolicy.dimensionLabel(it, locale)) }
         row.measureValues.forEach { value ->
             add(
                 value.minorValue?.let { AnalysisPolicy.money(it, value.currency ?: state.baseCurrency, locale).formatted }
@@ -741,19 +937,68 @@ private fun app.ledger.analytics.domain.ReportComparison?.orEmptyRows(): List<ap
 
 @Composable private fun reportGroupTitle(group: FixedReportGroup): String = stringResource(GROUP_TITLES.getValue(group))
 
-@Composable private fun measureLabel(measure: Measure): String = stringResource(MEASURE_LABELS.getValue(measure))
+@Composable internal fun measureLabel(measure: Measure): String = stringResource(MEASURE_LABELS.getValue(measure))
 
-@Composable private fun dimensionLabel(dimension: Dimension): String = stringResource(DIMENSION_LABELS.getValue(dimension))
+@Composable internal fun dimensionLabel(dimension: Dimension): String = stringResource(DIMENSION_LABELS.getValue(dimension))
 
-@Composable private fun granularityLabel(value: TimeGranularity): String = stringResource(GRANULARITY_LABELS.getValue(value))
+@Composable internal fun granularityLabel(value: TimeGranularity): String = stringResource(GRANULARITY_LABELS.getValue(value))
 
-@Composable private fun comparisonLabel(value: ComparisonMode?): String = if (value == null) stringResource(R.string.analysis_none) else stringResource(COMPARISON_LABELS.getValue(value))
+@Composable internal fun comparisonLabel(value: ComparisonMode?): String = if (value == null) stringResource(R.string.analysis_none) else stringResource(COMPARISON_LABELS.getValue(value))
 
 @Composable private fun integrityCheckLabel(value: IntegrityCheckKey): String = stringResource(INTEGRITY_LABELS.getValue(value))
 
 @Composable private fun integritySeverityLabel(value: IntegritySeverity): String = stringResource(SEVERITY_LABELS.getValue(value))
 
-@Composable private fun visualizationLabel(value: ReportVisualization): String = stringResource(VISUALIZATION_LABELS.getValue(value))
+@Composable internal fun visualizationLabel(value: ReportVisualization): String = stringResource(VISUALIZATION_LABELS.getValue(value))
+
+@Composable
+internal fun exportFormatLabel(value: ReportExportFormat): String = stringResource(EXPORT_FORMAT_LABELS.getValue(value))
+
+@Composable
+internal fun entityFilterLabel(value: AnalysisEntityFilter): String = stringResource(
+    when (value) {
+        AnalysisEntityFilter.ACCOUNT -> R.string.analysis_filter_account
+        AnalysisEntityFilter.CATEGORY -> R.string.analysis_filter_category
+        AnalysisEntityFilter.MERCHANT -> R.string.analysis_filter_merchant
+        AnalysisEntityFilter.PLACE -> R.string.analysis_filter_place
+        AnalysisEntityFilter.PROJECT -> R.string.analysis_filter_project
+    },
+)
+
+internal fun filterOptions(
+    options: app.ledger.analytics.domain.ConsumptionMapFilterOptions?,
+    filter: AnalysisEntityFilter,
+): List<app.ledger.analytics.domain.ConsumptionMapFilterOption> = when (filter) {
+    AnalysisEntityFilter.ACCOUNT -> options?.accounts.orEmpty()
+    AnalysisEntityFilter.CATEGORY -> options?.categories.orEmpty()
+    AnalysisEntityFilter.MERCHANT -> options?.merchants.orEmpty()
+    AnalysisEntityFilter.PLACE -> options?.places.orEmpty()
+    AnalysisEntityFilter.PROJECT -> options?.projects.orEmpty()
+}
+
+@Composable
+internal fun transactionKindLabel(kindKey: String): String = stringResource(
+    when (kindKey) {
+        "EXPENSE" -> R.string.analysis_kind_expense
+        "INCOME" -> R.string.analysis_kind_income
+        "TRANSFER" -> R.string.analysis_kind_transfer
+        "REFUND" -> R.string.analysis_kind_refund
+        "CREDIT_PAYMENT" -> R.string.analysis_kind_credit_payment
+        "LOAN_DISBURSEMENT" -> R.string.analysis_kind_loan_disbursement
+        "LOAN_PAYMENT" -> R.string.analysis_kind_loan_payment
+        "BALANCE_ADJUSTMENT" -> R.string.analysis_kind_balance_adjustment
+        "FX_EXCHANGE" -> R.string.analysis_kind_fx_exchange
+        "SETTLEMENT_PAYMENT" -> R.string.analysis_kind_settlement_payment
+        "OPENING_BALANCE" -> R.string.analysis_kind_opening_balance
+        else -> R.string.analysis_kind_other
+    },
+)
+
+private fun transactionKindIcon(kindKey: String): LedgerIcon = when (kindKey) {
+    "TRANSFER", "CREDIT_PAYMENT", "LOAN_DISBURSEMENT", "LOAN_PAYMENT", "FX_EXCHANGE", "SETTLEMENT_PAYMENT" -> LedgerIcon.TRANSFER
+    "REFUND" -> LedgerIcon.REFUND
+    else -> LedgerIcon.RECORD
+}
 
 private val REPORT_TITLES = FixedReport.entries.associateWith { report ->
     when (report) {
@@ -788,8 +1033,44 @@ private val GROUP_TITLES = mapOf(
     FixedReportGroup.DATA_QUALITY to R.string.report_group_data_quality,
 )
 
-private val MEASURE_LABELS = Measure.entries.associateWith { R.string.analysis_measure_generic }
-private val DIMENSION_LABELS = Dimension.entries.associateWith { R.string.analysis_dimension_generic }
+private val MEASURE_LABELS = mapOf(
+    Measure.INCOME to R.string.analysis_measure_income,
+    Measure.EXPENSE to R.string.analysis_measure_expense,
+    Measure.CONSUMPTION to R.string.analysis_measure_consumption,
+    Measure.NON_CONSUMPTION_EXPENSE to R.string.analysis_measure_non_consumption,
+    Measure.CONTRA_EXPENSE to R.string.analysis_measure_contra_expense,
+    Measure.NET_CASH_FLOW to R.string.analysis_measure_net_cash_flow,
+    Measure.SAVINGS_RATE to R.string.analysis_measure_savings_rate,
+    Measure.BUDGET_USAGE to R.string.analysis_measure_budget_usage,
+    Measure.PROJECT_USAGE to R.string.analysis_measure_project_usage,
+    Measure.GOAL_BALANCE to R.string.analysis_measure_goal_balance,
+    Measure.ACCOUNT_BALANCE to R.string.analysis_measure_account_balance,
+    Measure.CORE_NET_FINANCIAL_ASSETS to R.string.analysis_measure_core_assets,
+    Measure.ADJUSTED_NET_FINANCIAL_POSITION to R.string.analysis_measure_adjusted_position,
+    Measure.FX_REVALUATION to R.string.analysis_measure_fx_revaluation,
+    Measure.CREDIT_DEBT to R.string.analysis_measure_credit_debt,
+    Measure.CREDIT_AVAILABLE_LIMIT to R.string.analysis_measure_credit_limit,
+    Measure.INSTALLMENT_PRINCIPAL to R.string.analysis_measure_installment_principal,
+    Measure.INSTALLMENT_FEES to R.string.analysis_measure_installment_fees,
+    Measure.LOAN_PRINCIPAL to R.string.analysis_measure_loan_principal,
+    Measure.LOAN_INTEREST to R.string.analysis_measure_loan_interest,
+    Measure.SETTLEMENT_POSITION to R.string.analysis_measure_settlement_position,
+    Measure.TRANSACTION_COUNT to R.string.analysis_measure_transaction_count,
+)
+private val DIMENSION_LABELS = mapOf(
+    Dimension.DATE to R.string.analysis_dimension_date,
+    Dimension.CATEGORY to R.string.analysis_dimension_category,
+    Dimension.MERCHANT to R.string.analysis_dimension_merchant,
+    Dimension.ACCOUNT to R.string.analysis_dimension_account,
+    Dimension.CARD to R.string.analysis_dimension_card,
+    Dimension.PROJECT to R.string.analysis_dimension_project,
+    Dimension.GOAL to R.string.analysis_dimension_goal,
+    Dimension.CURRENCY to R.string.analysis_dimension_currency,
+    Dimension.PLACE to R.string.analysis_dimension_place,
+    Dimension.SETTLEMENT_ACTIVITY to R.string.analysis_dimension_settlement,
+    Dimension.PARTICIPANT to R.string.analysis_dimension_participant,
+    Dimension.TRANSACTION_SOURCE to R.string.analysis_dimension_source,
+)
 private val GRANULARITY_LABELS = mapOf(
     TimeGranularity.DAY to R.string.analysis_day,
     TimeGranularity.WEEK to R.string.analysis_week,
@@ -820,7 +1101,26 @@ private val SEVERITY_LABELS = mapOf(
     IntegritySeverity.WARNING to R.string.analysis_integrity_warnings,
     IntegritySeverity.FAILURE to R.string.analysis_integrity_failed,
 )
-private val VISUALIZATION_LABELS = ReportVisualization.entries.associateWith { R.string.analysis_visualization }
+private val VISUALIZATION_LABELS = mapOf(
+    ReportVisualization.METRIC_CARD to R.string.analysis_visualization_metric,
+    ReportVisualization.LINE to R.string.analysis_visualization_line,
+    ReportVisualization.BAR to R.string.analysis_visualization_bar,
+    ReportVisualization.STACKED_BAR to R.string.analysis_visualization_stacked,
+    ReportVisualization.PIE to R.string.analysis_visualization_pie,
+    ReportVisualization.TABLE to R.string.analysis_visualization_table,
+    ReportVisualization.MAP to R.string.analysis_visualization_map,
+    ReportVisualization.BUDGET_PROGRESS to R.string.analysis_visualization_budget,
+    ReportVisualization.GOAL_PROGRESS to R.string.analysis_visualization_goal,
+)
+private val EXPORT_FORMAT_LABELS = mapOf(
+    ReportExportFormat.IMAGE to R.string.analysis_export_format_image,
+    ReportExportFormat.PDF to R.string.analysis_export_format_pdf,
+    ReportExportFormat.CSV to R.string.analysis_export_format_csv,
+    ReportExportFormat.XLSX to R.string.analysis_export_format_xlsx,
+)
+
+private fun LocalDate.localized(locale: Locale): String =
+    format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
 
 private fun Modifier.analysisRootTag(screenId: String): Modifier = when (screenId) {
     "ANA-001" -> testTag(LedgerTestTags.ANALYSIS_HOME)

@@ -39,7 +39,10 @@ internal object InstallmentDeviceFixtures {
     private val jpy = (CurrencyCode.parse("JPY") as DomainResult.Success).value
     private val localRevision = (LocalRevision.of(20) as DomainResult.Success).value
 
-    val actions: (InstallmentScreenAction) -> Unit = {}
+    val actions = InstallmentActions(
+        onRetry = {}, onNavigate = { _, _ -> }, onFieldChanged = { _, _ -> }, onFeeModelChanged = {},
+        onRefundPolicyChanged = {}, onRoundingModeChanged = {}, onSelectPurchase = {}, onPreview = {}, onCalculateSettlement = {}, onApplySettlement = {},
+    )
 
     fun snapshot(plans: List<InstallmentPlanView> = listOf(plan())) = InstallmentSnapshot(
         bookId,

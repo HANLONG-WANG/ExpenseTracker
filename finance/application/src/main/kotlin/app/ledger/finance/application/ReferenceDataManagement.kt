@@ -189,6 +189,7 @@ public data class AccountReferenceView(
     val hasFinancialPostings: Boolean,
     val cardCount: Long,
     val currentValuationRate: BigDecimal? = null,
+    val accountNumber: String? = null,
 )
 
 public data class CardReferenceView(

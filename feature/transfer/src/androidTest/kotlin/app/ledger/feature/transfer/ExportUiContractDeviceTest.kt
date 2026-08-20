@@ -202,6 +202,10 @@ class ExportUiContractDeviceTest {
         const val GOLDEN_TAG = "p29_export_golden_root"
         const val EXPECTED_CONTENT_SHA256 = "a487270b1501caa3751747c2db458be0e0ef85f8352209daf76a8059ec5cc3a2"
         const val EXPECTED_RESULT_SHA256 = "93d8c476896c3d7f087cbbd80e47a86db0b156ae75b1024239e89505349d225b"
-        val ACTIONS: (ExportFlowScreenAction) -> Unit = {}
+        val ACTIONS = ExportFlowActions(
+            onBack = {}, onContentSelected = {}, onFormatSelected = {}, onContinue = {}, onFieldToggled = {},
+            onLocationCoordinatesChanged = {}, onFileNameChanged = {}, onDestinationSelected = {}, onConfirmOverwrite = {}, onStart = {},
+            onCancel = {}, onRetry = {}, onOpen = {}, onShare = {}, onViewLocation = {}, onOperations = {},
+        )
     }
 }

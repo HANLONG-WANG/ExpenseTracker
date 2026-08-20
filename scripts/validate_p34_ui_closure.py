@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -19,6 +20,9 @@ SCREEN_SOURCE = UI_ROOT / "android_ledger_screen_contract_v1.yaml"
 MATRIX_SOURCE = UI_ROOT / "UI需求追踪矩阵_v1.csv"
 SCREEN_LEDGER = ROOT / "docs/implementation/SCREEN_COVERAGE.csv"
 REQUIREMENT_LEDGER = ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv"
+MANUAL_FINDINGS = ROOT / "docs/testing/ManualTestFindings/UI.md"
+MANUAL_PROGRESS = ROOT / "docs/testing/ManualTestFindings/UI_FIX_PROGRESS.md"
+MANUAL_FINDINGS_SHA256 = "bcdbc9573bff31add46cad6a298413898db5e04b3cd00d9ffeae5a2901924e13"
 SUPPORTED_RESOURCE_MODULES = (
     "app",
     "core/designsystem",
@@ -47,6 +51,9 @@ SCREEN_FIELDS = {
     "presentation": "presentation",
     "result": "result",
 }
+FINDING_SECTION_KEY = re.compile(
+    r"(共用|(?:G|ONB|REC|JRN|ACC|BUD|PRJ|GOL|LIA|CRD|INS|LOA|SET|AUT|ANA|MGT|CAT|MER|PLC|VLT|SETG|CLR|TRF|IMP|EXP|BKP|RST|ATT|SYS|WGT)-\d+|\d+(?:\.\d+)?(?:–\d+(?:\.\d+)?)?)",
+)
 
 
 def read(relative: str) -> str:
@@ -78,6 +85,48 @@ def android_test_sources() -> dict[str, str]:
 
 def normalize_list(values: list[str] | None) -> str:
     return " | ".join(values or [])
+
+
+def validate_manual_findings_progress(
+    findings_text: str | None = None,
+    progress_text: str | None = None,
+) -> list[str]:
+    findings_text = MANUAL_FINDINGS.read_text(encoding="utf-8") if findings_text is None else findings_text
+    progress_text = MANUAL_PROGRESS.read_text(encoding="utf-8") if progress_text is None else progress_text
+    errors: list[str] = []
+    digest = hashlib.sha256(findings_text.encode("utf-8")).hexdigest()
+    if digest != MANUAL_FINDINGS_SHA256:
+        errors.append("the immutable UI.md review report changed")
+    current_section = ""
+    finding_sections: list[str] = []
+    finding_count = 0
+    for line in findings_text.splitlines():
+        if line.startswith("## "):
+            current_section = line[3:].strip()
+        elif line.startswith("### "):
+            current_section = line[4:].strip()
+        elif line.startswith("- 差异"):
+            finding_count += 1
+            finding_sections.append(current_section)
+    unique_sections = list(dict.fromkeys(finding_sections))
+    if finding_count != 224 or len(unique_sections) != 206:
+        errors.append("UI.md must retain 224 discrepancy bullets across 206 sections")
+    code_spans = re.findall(r"`([^`]+)`", progress_text)
+    for section in unique_sections:
+        match = FINDING_SECTION_KEY.match(section)
+        key = (match.group(1) if match else section.split()[0]).rstrip(".")
+        if key == "共用":
+            mapped = any("OnboardingScaffold" in span for span in code_spans)
+        elif key[0].isdigit():
+            boundary = re.compile(rf"(?<![\w.-]){re.escape(key)}(?![\w.-])")
+            mapped = any(boundary.search(span) for span in code_spans)
+        else:
+            mapped = any(key in span for span in code_spans)
+        if not mapped:
+            errors.append(f"manual discrepancy section lacks an explicit progress cross-reference: {section}")
+    if "- [ ]" in progress_text:
+        errors.append("manual UI discrepancy progress still contains an unchecked item")
+    return errors
 
 
 def validate_screen_contract(
@@ -224,7 +273,7 @@ def validate_ui_governance(
         "BOTTOM_NAVIGATION_TRAVERSAL_INDEX",
         "stringResource(R.string.ledger_selected)",
         "stringResource(R.string.ledger_not_selected)",
-        ".semantics { contentDescription = save }",
+        "contentDescription = save",
     ):
         if marker not in design:
             errors.append(f"design-system accessibility marker missing: {marker}")
@@ -236,6 +285,13 @@ def validate_ui_governance(
     )
     if "if (hidden) stringResource(R.string.ledger_amount_hidden) else model.fullAccessibleText" not in business:
         errors.append("hidden amounts are not replaced by the localized non-sensitive semantic label")
+    theme = sources.get(
+        "core/designsystem/src/main/kotlin/app/ledger/core/designsystem/LedgerTheme.kt",
+        "",
+    )
+    for marker in ("LocalLedgerTimeZone", "ledgerTimeZoneId", "!ValueAnimator.areAnimatorsEnabled()"):
+        if marker not in theme:
+            errors.append(f"global presentation preference marker missing: {marker}")
     charts = sources.get(
         "core/designsystem/src/main/kotlin/app/ledger/core/designsystem/ChartsMapsAndRiskComponents.kt",
         "",
@@ -243,12 +299,218 @@ def validate_ui_governance(
     for marker in (
         "ledger_previous_page",
         "ledger_next_page",
-        "contentDescription = model.summary",
+        "text = AnnotatedString(model.summary)",
         "AccessibleDataTable(dataTable)",
         "fallbackContent()",
+        "LedgerTheme.colors.chart.axis",
+        "LedgerTheme.colors.chart.grid",
+        "LedgerTheme.colors.chart.selection",
+        "LineCartesianLayer.LineStroke.Dashed",
+        "missingPointIndices",
+        "VisualizationCompatibility.resolve",
+        "LedgerTheme.dimensions.chartPreferredHeight",
+        "customActions = listOf(",
+        "Math.floorMod(selectedPointIndex - 1, points.size)",
+        "LedgerHorizontalBarChart",
+        "ledger_collapse_data_table",
     ):
         if marker not in charts:
             errors.append(f"chart/map accessibility marker missing: {marker}")
+    models = sources.get(
+        "core/designsystem/src/main/kotlin/app/ledger/core/designsystem/ComponentModels.kt",
+        "",
+    )
+    for marker in (
+        "val formattedValues: List<String>",
+        "val missingPointIndices: Set<Int>",
+        "val includeZeroInRange: Boolean = true",
+        "a non-zero chart baseline must be explained",
+    ):
+        if marker not in models:
+            errors.append(f"typed chart contract marker missing: {marker}")
+    navigation = sources.get(
+        "core/navigation/src/main/kotlin/app/ledger/core/navigation/NavigationContract.kt",
+        "",
+    )
+    for marker in (
+        "data class LedgerScreenUiState",
+        "sealed interface LedgerScreenUiAction",
+        "sealed interface LedgerScreenEffect",
+        "RecordDestinationKey",
+        "TransferDestinationKey",
+    ):
+        if marker not in navigation:
+            errors.append(f"screen state/action boundary marker missing: {marker}")
+    route_sources = [text for path, text in sources.items() if path.endswith("Routes.kt")]
+    if sum("EntryProviderScope<LedgerDestinationKey>" in text for text in route_sources) < 10:
+        errors.append("feature-owned Navigation 3 entry providers are incomplete")
+    anomaly = sources.get(
+        "feature/analysis/src/main/kotlin/app/ledger/feature/analysis/P26AnalysisScreens.kt",
+        "",
+    )
+    anomaly_screen = anomaly.split("internal fun AnomalyRulesScreen", 1)[-1].split("private fun anomalyTitle", 1)[0]
+    if "fixedAction =" not in anomaly_screen or re.search(
+        r"item\s*\{\s*LedgerButton\(stringResource\(R\.string\.analysis_save_rule\)",
+        anomaly_screen,
+    ):
+        errors.append("ANA-013 save must stay fixed outside the scrolling rule/finding list")
+    if re.search(r"contentDescription\s*=\s*model\.(?:accessibleLabel|fullAccessibleText|summary)", combined):
+        errors.append("business data is routed through contentDescription instead of text semantics")
+    if re.search(r"onToggleTable\s*=\s*\{\s*\}", combined):
+        errors.append("a visible chart data-table action is wired to a no-op callback")
+    if re.search(r"onLongClick\s*=\s*\{\s*\}", combined):
+        errors.append("a transaction row advertises a no-op long-click action")
+    record_screen = sources.get(
+        "feature/record/src/main/kotlin/app/ledger/feature/record/OrdinaryRecordScreens.kt",
+        "",
+    )
+    for marker in (
+        "LedgerMapStyleConfiguration.OpenFreeMap",
+        "onCoordinateSelected = actions.onLocationCoordinate",
+        "RecordLocationEditorState.PermissionDenied",
+        "RecordLocationEditorState.MapUnavailable",
+        "metadata?.typeLabel.attachmentIcon()",
+        "record_settlement_difference",
+    ):
+        if marker not in record_screen:
+            errors.append(f"REC-009/010/011 production UI marker missing: {marker}")
+    app_view_model = sources.get("app/src/main/kotlin/app/ledger/app/AppRootViewModel.kt", "")
+    for marker in (
+        'target == "REC-009" && editor?.locationPresentation == RecordLocationEditorState.Locating',
+        "LocationSaveDisposition.LOCATED",
+        "OrdinaryLocationProvider.MANUAL",
+        "recordAttachmentPresentations(",
+        "state.selectedScheduleInstallmentNumber",
+        "loanTransactionContext(state)",
+    ):
+        if marker not in app_view_model:
+            errors.append(f"record production state/write marker missing: {marker}")
+    for marker in (
+        "::formatImportPreviewValue",
+        "formatPresentationString(JournalR.string.p15_journal_copy_name, source.name)",
+        "formatPresentationString(AnalysisR.string.analysis_copy_name, name)",
+    ):
+        if marker not in app_view_model:
+            errors.append(f"localized presentation boundary marker missing: {marker}")
+    import_controller = sources.get("app/src/main/kotlin/app/ledger/app/ImportController.kt", "")
+    for marker in ("formatPreviewValue: (StagingValue) -> String", "val previewValues", "formatPreviewValue(field.value)"):
+        if marker not in import_controller:
+            errors.append(f"typed import preview formatting marker missing: {marker}")
+    import_screen = sources.get(
+        "feature/transfer/src/main/kotlin/app/ledger/feature/transfer/ImportWizardScreen.kt",
+        "",
+    )
+    for marker in ("importTargetFieldLabel()", "importDuplicateMatchLabel()", "importValidationMessage()"):
+        if marker not in import_screen:
+            errors.append(f"localized import label marker missing: {marker}")
+    backup_controller = sources.get("app/src/main/kotlin/app/ledger/app/BackupController.kt", "")
+    restore_controller = sources.get("app/src/main/kotlin/app/ledger/app/RestoreController.kt", "")
+    if "createdAt = formatCreatedAt(snapshot.createdAt)" not in backup_controller:
+        errors.append("backup snapshots bypass the application date/time presentation boundary")
+    if "createdAt = formatCreatedAt(createdAt)" not in restore_controller:
+        errors.append("restore snapshots bypass the application date/time presentation boundary")
+    specialized_screen = sources.get(
+        "feature/record/src/main/kotlin/app/ledger/feature/record/SpecializedTransactionScreens.kt",
+        "",
+    )
+    for marker in ("LedgerDateTimePickerFlow(", "LedgerDatePickerFlow(", "actions.onOpenAttachment"):
+        if marker not in specialized_screen:
+            errors.append(f"REC-013/020/021/022 interaction marker missing: {marker}")
+    credit_screen = sources.get(
+        "feature/liabilities/src/main/kotlin/app/ledger/feature/liabilities/CreditScreens.kt",
+        "",
+    )
+    for marker in ("credit_payment_account", "credit_payment_date", "LedgerDatePickerFlow("):
+        if marker not in credit_screen:
+            errors.append(f"REC-014 interaction marker missing: {marker}")
+    loan_screen = sources.get(
+        "feature/liabilities/src/main/kotlin/app/ledger/feature/liabilities/LoanScreens.kt",
+        "",
+    )
+    for marker in ("onSelectPaymentAccount", "ScheduleInstallmentSelector", "LoanOperationDateTimePicker"):
+        if marker not in loan_screen:
+            errors.append(f"REC-018/019 interaction marker missing: {marker}")
+    installment_screen = sources.get(
+        "feature/liabilities/src/main/kotlin/app/ledger/feature/liabilities/InstallmentScreens.kt",
+        "",
+    )
+    for marker in ("installment_credit_account", "installment_search_credit_account", "LedgerDatePickerFlow("):
+        if marker not in installment_screen:
+            errors.append(f"REC-027 interaction marker missing: {marker}")
+    batch_screen = sources.get(
+        "feature/record/src/main/kotlin/app/ledger/feature/record/BatchRecordScreens.kt",
+        "",
+    )
+    for marker in ("errors.groupBy(BatchValidationIssue::code)", "ValidationSummary(", "batch_issue_group_count"):
+        if marker not in batch_screen:
+            errors.append(f"REC-025 validation grouping marker missing: {marker}")
+    ordinary_record_screen = sources.get(
+        "feature/record/src/main/kotlin/app/ledger/feature/record/OrdinaryRecordScreens.kt",
+        "",
+    )
+    shared_record_scaffold = sources.get(
+        "feature/record/src/main/kotlin/app/ledger/feature/record/TransactionEditorScaffold.kt",
+        "",
+    )
+    if "fun TransactionEditorScaffold(" not in shared_record_scaffold:
+        errors.append("REC-003/024 shared transaction editor scaffold is missing")
+    if "TransactionEditorScaffold(" not in ordinary_record_screen or "TransactionEditorScaffold(" not in batch_screen:
+        errors.append("REC-024 batch and ordinary editors do not share TransactionEditorScaffold")
+    for marker in ("BatchReferenceSelector(", "record_search_category", "record_search_account"):
+        if marker not in batch_screen:
+            errors.append(f"REC-024 explicit searchable reference selection marker missing: {marker}")
+    journal_screen = sources.get(
+        "feature/journal/src/main/kotlin/app/ledger/feature/journal/JournalDestination.kt",
+        "",
+    )
+    if "stickyHeader(" not in journal_screen or "pagingItems[pagingIndex]" not in journal_screen:
+        errors.append("JRN-001 date groups are not real sticky paging headers")
+    if "val kindLabel = transaction.kind.label()" not in journal_screen:
+        errors.append("10.5 journal rows bypass localized transaction-kind labels")
+    planning_screen = sources.get(
+        "feature/planning/src/main/kotlin/app/ledger/feature/planning/ProjectGoalScreens.kt",
+        "",
+    )
+    for marker in (
+        "transaction.kind.projectTransactionLabel()",
+        "goal.status.goalStatusLabel()",
+        "movementLabel(it.kind)",
+    ):
+        if marker not in planning_screen:
+            errors.append(f"10.5 planning presentation label marker missing: {marker}")
+    consumption_map_screen = sources.get(
+        "feature/analysis/src/main/kotlin/app/ledger/feature/analysis/P27AnalysisScreens.kt",
+        "",
+    )
+    if "mapGroupKindLabel(point.kind)" not in consumption_map_screen:
+        errors.append("10.5 consumption-map detail bypasses localized kind labels")
+    more_screen = sources.get(
+        "app/src/main/kotlin/app/ledger/app/MoreRootScreen.kt",
+        "",
+    )
+    help_entry = "FeatureEntry(stringResource(R.string.global_help), stringResource(R.string.global_help_explanation), onHelp)"
+    if help_entry not in more_screen:
+        errors.append("G-008 offline help is not reachable from More")
+    if "private val schemaVersionMarker = LedgerSchemaVersionMarker(context)" not in app_view_model:
+        errors.append("G-003 schema marker is not a ViewModel-level opening dependency")
+    open_saved_book = app_view_model.split("private fun openSavedBook", 1)[-1].split("\n    private fun", 1)[0]
+    if "schemaVersionMarker.migrationExpected()" not in open_saved_book:
+        errors.append("G-003 opening does not derive migration presentation before database open")
+    projection = sources.get(
+        "finance/data/src/main/kotlin/app/ledger/finance/data/RoomProjectionEngine.kt",
+        "",
+    )
+    if "AnalyticsProjectionEngine.staleTables(database, localRevision)" not in projection:
+        errors.append("ANA-015 full projection mismatch audit omits analytics tables")
+    if "add(ProjectionFamily.ANALYTICS)" not in projection:
+        errors.append("ANA-015 stale analytics tables do not mark the analytics projection family")
+    analysis_screen = sources.get(
+        "feature/analysis/src/main/kotlin/app/ledger/feature/analysis/P26AnalysisScreens.kt",
+        "",
+    )
+    for marker in ("AnalysisExportScope.entries", "actions.onPrepareExport"):
+        if marker not in analysis_screen:
+            errors.append(f"ANA-010 complete export flow marker missing: {marker}")
     preview = read("core/designsystem/src/debug/kotlin/app/ledger/core/designsystem/ComponentPreviews.kt")
     for marker in (
         "widthDp = 320",
@@ -261,6 +523,11 @@ def validate_ui_governance(
         'locale = "zh-rCN"',
         'locale = "ja"',
         'locale = "en"',
+        "BatchComponentsPreview",
+        "DialogPreview",
+        "BottomSheetPreview",
+        "DatePickerPreview",
+        "TimePickerPreview",
     ):
         if marker not in preview:
             errors.append(f"component preview matrix missing {marker}")
@@ -273,9 +540,33 @@ def validate_ui_governance(
         "RenderCase(480, 1.6f",
         "accountHomeGoldenMatchesTokenAndYamlDerivedPixels",
         "talkBackServiceCompletesTheCriticalRecordNavigationFlow",
+        "allRenderedCoreActionsMeetTouchTargetAndSemanticDescriptionRules",
+        "lightAndDarkThemeTextPairsMeetWcagContrast",
+        "chartExplorerAnnouncesExactValuesAndWrapsAtBothEdges",
+        "chartAndBatchMatrixRemainInsideCompactTwoHundredPercentBounds",
+        "createAndroidComposeRule<MainActivity>()",
+        "viewModel.saveOrdinaryRecord()",
     ):
         if marker not in test_text:
             errors.append(f"P34 device evidence marker missing: {marker}")
+    critical_flow_markers = (
+        "talkBackServiceCompletesTheCriticalRecordNavigationFlow",
+        "optional location\n            // prefetch is intentionally unresolved; its timeout/failure must never block the save",
+        "settlementImbalanceBlocksTheProductionSaveIntentWithoutWriting",
+        "editingConflictOffersProductionHistoryNavigationAndNeverDispatchesOverwrite",
+        "refundRemainingLimitAndCrossMonthPolicyCompleteThroughUserActions",
+        "creditOverpaymentDisablesProductionSaveAndCannotDispatchAWrite",
+        "batchCommitWithAnyValidationErrorDispatchesNoWrite",
+        "trashRestoreDispatchesOnceAndIneligiblePurgeExposesReasonWithoutPurging",
+        "budgetHierarchyExcessDisablesSaveAndDispatchesNoMutation",
+        "candidateConfirmationOpensFullEditorWithoutChangingFormalMetrics",
+        "mergeRestorePurgeTombstoneWinsThroughTheApplyAction",
+        "primaryNumberAndSecurityCodeEachRequireAnIndependentAuthenticationAction",
+        "assertWidgetQuickEntryOpensPrefilledFormWithoutSubmittingMutation",
+    )
+    for marker in critical_flow_markers:
+        if marker not in test_text:
+            errors.append(f"critical Compose interaction evidence missing: {marker}")
     golden_markers = (
         "categoryHomeEditorValidationAndSettlementGoldensMatchEveryPixel",
         "transferAdjustmentExchangeAndOpeningGoldensMatchEveryPixel",
@@ -295,10 +586,6 @@ def validate_ui_governance(
     for marker in golden_markers:
         if marker not in test_text:
             errors.append(f"critical golden evidence missing: {marker}")
-    projection = sources.get(
-        "finance/data/src/main/kotlin/app/ledger/finance/data/RoomProjectionEngine.kt",
-        "",
-    )
     hash_marker = "val HASH_QUERIES = listOf("
     if hash_marker not in projection:
         errors.append("canonical projection hash query inventory is missing")
@@ -367,7 +654,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip-ledgers", action="store_true")
     args = parser.parse_args()
-    errors = validate_screen_contract() + validate_localization() + validate_ui_governance() + validate_requirements()
+    errors = (
+        validate_screen_contract()
+        + validate_localization()
+        + validate_ui_governance()
+        + validate_requirements()
+        + validate_manual_findings_progress()
+    )
     if not args.skip_ledgers:
         errors += validate_ledgers()
     if errors:

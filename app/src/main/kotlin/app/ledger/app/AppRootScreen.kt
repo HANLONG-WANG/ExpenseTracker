@@ -207,7 +207,12 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
             app.ledger.app.settings.ThemeModeProto.THEME_MODE_DARK -> ThemeMode.DARK
             else -> ThemeMode.FOLLOW_SYSTEM
         }
-        LedgerTheme(themeMode, dynamicColor = settings.dynamicColorEnabled, reduceMotion = settings.reduceMotionEnabled) {
+        LedgerTheme(
+            themeMode,
+            dynamicColor = settings.dynamicColorEnabled,
+            reduceMotion = settings.reduceMotionEnabled,
+            ledgerTimeZoneId = settings.zoneId.ifBlank { "UTC" },
+        ) {
             val state = root
             if (recoveryRestoreActive) {
                 RestoreRootDestination(restoreState.screenId, viewModel, onNavigationChanged = {})
@@ -216,29 +221,29 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
             } else if (state is AppRootState.Onboarding) {
                 OnboardingScreen(
                     state.state,
-                    { action ->
-                        when (action) {
-                            is OnboardingScreenAction.LanguageChanged -> viewModel.selectLanguage(action.language)
-                            is OnboardingScreenAction.CurrencySearchChanged -> viewModel.updateCurrencySearch(action.query)
-                            is OnboardingScreenAction.CurrencySelected -> viewModel.selectCurrency(action.code)
-                            is OnboardingScreenAction.ZoneSearchChanged -> viewModel.updateZoneSearch(action.query)
-                            is OnboardingScreenAction.ZoneSelected -> viewModel.selectZone(action.zoneId)
-                            is OnboardingScreenAction.PrivacyAccepted -> viewModel.setPrivacyAccepted(action.accepted)
-                            is OnboardingScreenAction.TelemetryChanged -> viewModel.setTelemetry(action.enabled)
-                            is OnboardingScreenAction.CrashReportingChanged -> viewModel.setCrashReporting(action.enabled)
-                            is OnboardingScreenAction.AppLockChanged -> viewModel.setAppLock(action.enabled)
-                            is OnboardingScreenAction.AppLockTimeoutChanged -> viewModel.setAppLockTimeout(action.timeoutMillis)
-                            is OnboardingScreenAction.RecoveryPasswordChanged -> viewModel.updateRecoveryPassword(action.value)
-                            is OnboardingScreenAction.RecoveryPasswordConfirmationChanged -> viewModel.updateRecoveryConfirmation(action.value)
-                            is OnboardingScreenAction.AccountNameChanged -> viewModel.updateAccountName(action.value)
-                            is OnboardingScreenAction.AccountTypeChanged -> viewModel.setAccountType(action.type)
-                            is OnboardingScreenAction.CategoryNameChanged -> viewModel.updateCategoryName(action.value)
-                            is OnboardingScreenAction.CategoryDirectionChanged -> viewModel.setCategoryDirection(action.direction)
-                            OnboardingScreenAction.Back -> viewModel.onboardingBack()
-                            OnboardingScreenAction.Next -> viewModel.onboardingNext()
-                            OnboardingScreenAction.Skip -> viewModel.onboardingSkip()
-                        }
-                    },
+                    OnboardingActions(
+                        viewModel::selectLanguage,
+                        viewModel::updateCurrencySearch,
+                        viewModel::selectCurrency,
+                        viewModel::updateZoneSearch,
+                        viewModel::selectZone,
+                        viewModel::setPrivacyAccepted,
+                        viewModel::setTelemetry,
+                        viewModel::setCrashReporting,
+                        viewModel::setAppLock,
+                        viewModel::setAppLockTimeout,
+                        viewModel::updateRecoveryPassword,
+                        viewModel::updateRecoveryConfirmation,
+                        viewModel::updateAccountName,
+                        viewModel::setAccountType,
+                        viewModel::updateCategoryName,
+                        viewModel::setCategoryDirection,
+                        viewModel::setCategoryIcon,
+                        viewModel::setCategoryPalette,
+                        viewModel::onboardingBack,
+                        viewModel::onboardingNext,
+                        viewModel::onboardingSkip,
+                    ),
                     snackbarController = snackbarController,
                 )
             } else if (state is AppRootState.Session) {
@@ -254,6 +259,9 @@ private fun SessionGateScreen(
     viewModel: AppRootViewModel,
     snackbarController: LedgerSnackbarController,
 ) {
+    val maintenancePresentation by viewModel.maintenancePresentation.collectAsStateWithLifecycle()
+    val recoveryBackupAvailable by viewModel.recoveryBackupAvailable.collectAsStateWithLifecycle()
+    val openingPresentation by viewModel.openingPresentation.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().testTag(LedgerTestTags.SESSION_GATE)) {
         val session = state.state
         if (session === BookSessionState.Uninitialized) {
@@ -261,18 +269,38 @@ private fun SessionGateScreen(
         } else if (session === BookSessionState.Locked) {
             LockScreen(state.authentication, viewModel::beginAuthentication)
         } else if (session === BookSessionState.Opening) {
-            OpeningBookScreen(OpeningPresentation.OPENING, viewModel::retryOpen)
+            OpeningBookScreen(openingPresentation, viewModel::retryOpen)
+        } else if (session is BookSessionState.Maintenance && session.reason == MaintenanceReason.DATABASE_MIGRATION) {
+            OpeningBookScreen(OpeningPresentation.MIGRATION_DETECTED, viewModel::retryOpen)
         } else if (session is BookSessionState.Maintenance) {
-            MaintenanceScreen(session.reason, MaintenancePresentation.RUNNING)
-        } else if (session is BookSessionState.RecoveryRequired) {
-            val restoreAvailable = session.diagnosticCode != RecoveryDiagnosticCode.KEY_UNAVAILABLE
-            RecoveryRequiredScreen(
-                session.diagnosticCode,
-                if (restoreAvailable) RecoveryPresentation.RESTORE_AVAILABLE else RecoveryPresentation.NO_BACKUP,
-                viewModel::retryOpen,
-                onRestore = viewModel::openRestoreFromRecovery,
-                onClear = viewModel::clearLocalBookData,
+            MaintenanceScreen(
+                session.reason,
+                maintenancePresentation ?: MaintenancePresentation.PREPARING,
+                onCancel = if (session.reason == MaintenanceReason.CONTROLLED_MAINTENANCE) viewModel::cancelMaintenance else null,
+                onRetry = if (session.reason == MaintenanceReason.UNFINISHED_OPERATION) viewModel::retryMaintenance else null,
             )
+        } else if (session is BookSessionState.RecoveryRequired) {
+            if (session.diagnosticCode == RecoveryDiagnosticCode.DATABASE_UNAVAILABLE) {
+                OpeningBookScreen(OpeningPresentation.FAILED, viewModel::retryOpen)
+            } else {
+                val reasonPresentation = when (session.diagnosticCode) {
+                    RecoveryDiagnosticCode.KEY_UNAVAILABLE -> RecoveryPresentation.KEY_UNAVAILABLE
+                    RecoveryDiagnosticCode.PROJECTION_FAILURE -> RecoveryPresentation.PROJECTION_FAILURE
+                    RecoveryDiagnosticCode.SCHEMA_INVALID -> RecoveryPresentation.CORRUPT
+                    RecoveryDiagnosticCode.DATABASE_UNAVAILABLE -> error("handled as opening failure")
+                }
+                RecoveryRequiredScreen(
+                    session.diagnosticCode,
+                    when (recoveryBackupAvailable) {
+                        true -> RecoveryPresentation.RESTORE_AVAILABLE
+                        false -> RecoveryPresentation.NO_BACKUP
+                        null -> reasonPresentation
+                    },
+                    viewModel::retryOpen,
+                    onRestore = viewModel::openRestoreFromRecovery,
+                    onClear = viewModel::clearLocalBookData,
+                )
+            }
         } else if (session is BookSessionState.Ready) {
             ReadyRootScaffold(
                 viewModel = viewModel,
@@ -353,7 +381,12 @@ internal fun OpeningBookScreen(presentation: OpeningPresentation, onRetry: () ->
 internal enum class MaintenancePresentation { PREPARING, RUNNING, NON_CANCELABLE, CANCELABLE, FAILED, SUCCEEDED }
 
 @Composable
-internal fun MaintenanceScreen(reason: MaintenanceReason, presentation: MaintenancePresentation) {
+internal fun MaintenanceScreen(
+    reason: MaintenanceReason,
+    presentation: MaintenancePresentation,
+    onCancel: (() -> Unit)? = null,
+    onRetry: (() -> Unit)? = null,
+) {
     val phaseResource = if (presentation == MaintenancePresentation.PREPARING) {
         R.string.global_maintenance_preparing
     } else if (presentation == MaintenancePresentation.RUNNING) {
@@ -374,7 +407,7 @@ internal fun MaintenanceScreen(reason: MaintenanceReason, presentation: Maintena
             LedgerText(stringResource(R.string.global_maintenance_title), LedgerTextRole.TITLE)
             OperationProgressPanel(
                 OperationProgressUiModel(
-                    name = reason.name,
+                    name = maintenanceReasonLabel(reason),
                     phase = phase,
                     processedText = stringResource(R.string.global_maintenance_explanation),
                     progress = if (presentation == MaintenancePresentation.PREPARING) {
@@ -394,10 +427,22 @@ internal fun MaintenanceScreen(reason: MaintenanceReason, presentation: Maintena
                     statusExplanation = stringResource(R.string.global_maintenance_explanation),
                     failureCode = failure,
                 ),
+                onCancel = onCancel?.takeIf { presentation == MaintenancePresentation.CANCELABLE },
+                onRetry = onRetry?.takeIf { presentation == MaintenancePresentation.FAILED },
             )
         }
     }
 }
+
+@Composable
+private fun maintenanceReasonLabel(reason: MaintenanceReason): String = stringResource(
+    when (reason) {
+        MaintenanceReason.DATABASE_MIGRATION -> R.string.global_maintenance_reason_migration
+        MaintenanceReason.UNFINISHED_OPERATION -> R.string.global_maintenance_reason_interrupted
+        MaintenanceReason.PROJECTION_REBUILD -> R.string.global_maintenance_reason_projection
+        MaintenanceReason.CONTROLLED_MAINTENANCE -> R.string.global_maintenance_reason_controlled
+    },
+)
 
 internal enum class RecoveryPresentation { CORRUPT, KEY_UNAVAILABLE, PROJECTION_FAILURE, RESTORE_AVAILABLE, NO_BACKUP }
 
@@ -427,7 +472,7 @@ internal fun RecoveryRequiredScreen(
         Column(Modifier.fillMaxSize().padding(padding), verticalArrangement = Arrangement.Center) {
             LedgerText(stringResource(R.string.global_recovery_title), LedgerTextRole.TITLE)
             LedgerBanner(explanation, LedgerBannerVariant.DANGER)
-            LedgerText(stringResource(R.string.global_recovery_diagnostic, code.name), LedgerTextRole.SUPPORTING)
+            LedgerText(stringResource(R.string.global_recovery_diagnostic, recoveryDiagnosticLabel(code)), LedgerTextRole.SUPPORTING)
             LedgerButton(stringResource(R.string.global_recovery_retry), onRetry, Modifier.fillMaxWidth())
             LedgerButton(
                 stringResource(R.string.global_recovery_from_backup),
@@ -463,6 +508,16 @@ internal fun RecoveryRequiredScreen(
 }
 
 @Composable
+private fun recoveryDiagnosticLabel(code: RecoveryDiagnosticCode): String = stringResource(
+    when (code) {
+        RecoveryDiagnosticCode.SCHEMA_INVALID -> R.string.global_recovery_code_schema
+        RecoveryDiagnosticCode.KEY_UNAVAILABLE -> R.string.global_recovery_code_key
+        RecoveryDiagnosticCode.PROJECTION_FAILURE -> R.string.global_recovery_code_projection
+        RecoveryDiagnosticCode.DATABASE_UNAVAILABLE -> R.string.global_recovery_code_database
+    },
+)
+
+@Composable
 internal fun RootDestination(
     key: LedgerDestinationKey,
     viewModel: AppRootViewModel,
@@ -471,7 +526,8 @@ internal fun RootDestination(
     batchState: BatchRecordState?,
     specializedUiState: SpecializedTransactionScreenUiState,
     currencySettings: CurrencySettingsState?,
-    journalUiState: JournalScreenUiState,
+    journalState: JournalLoadState,
+    accountAmountsVisible: Boolean,
     onAddAttachment: () -> Unit,
     onBack: () -> Unit,
     onMore: () -> Unit,
@@ -482,84 +538,77 @@ internal fun RootDestination(
     val screenId = key.contract.screenId.value
     if (screenId.startsWith("ACC-")) {
         AccountsDestination(
-            uiState = AccountsScreenUiState(
-                screenId = screenId,
-                encodedArguments = key.encodedArguments,
-                dataState = referenceUiState.loadState.toAccountsState(),
-                selectedAccountType = viewModel.selectedAccountType,
-                preferredCardAccountId = viewModel.preferredCardAccountId,
-                pending = referenceUiState.submitting,
+            screenId = screenId,
+            encodedArguments = key.encodedArguments,
+            dataState = referenceState.toAccountsState(),
+            actions = AccountsActions(
+                onNavigate = { target, arguments ->
+                    viewModel.navigateP12(key, target, arguments)
+                    onNavigationChanged()
+                },
+                onSelectAccountType = { type ->
+                    viewModel.selectP12AccountType(type, key)
+                    onNavigationChanged()
+                },
+                onSaveAccount = viewModel::saveAccount,
+                onArchiveAccount = viewModel::archiveAccount,
+                onDeleteEmptyAccount = viewModel::deleteEmptyAccount,
+                onSaveCard = viewModel::saveCard,
+                onArchiveCard = viewModel::archiveCard,
+                onSaveCheckpoint = viewModel::saveCheckpoint,
+                onSaveOpeningBalance = viewModel::saveOpeningBalance,
+                onRetry = viewModel::loadReferenceData,
+                onCreateReplacementCard = { cardId, accountId ->
+                    viewModel.createReplacementCard(cardId, accountId, key)
+                    onNavigationChanged()
+                },
             ),
-            onAction = { action ->
-                when (action) {
-                    is AccountsScreenAction.Navigate -> {
-                        viewModel.navigateP12(key, action.screenId, action.arguments)
-                        onNavigationChanged()
-                    }
-                    is AccountsScreenAction.SelectAccountType -> {
-                        viewModel.selectP12AccountType(action.type, key)
-                        onNavigationChanged()
-                    }
-                    is AccountsScreenAction.SaveAccount -> viewModel.saveAccount(action.submission)
-                    is AccountsScreenAction.ArchiveAccount -> viewModel.archiveAccount(action.accountId, action.expectedRowVersion)
-                    is AccountsScreenAction.DeleteEmptyAccount -> viewModel.deleteEmptyAccount(action.accountId, action.expectedRowVersion)
-                    is AccountsScreenAction.SaveCard -> viewModel.saveCard(action.submission)
-                    is AccountsScreenAction.ArchiveCard -> viewModel.archiveCard(action.cardId, action.expectedRowVersion)
-                    is AccountsScreenAction.SaveCheckpoint -> viewModel.saveCheckpoint(action.submission)
-                    is AccountsScreenAction.SaveOpeningBalance -> viewModel.saveOpeningBalance(action.submission)
-                    AccountsScreenAction.Retry -> viewModel.loadReferenceData()
-                }
-            },
+            selectedAccountType = viewModel.selectedAccountType,
+            preferredCardAccountId = viewModel.preferredCardAccountId,
+            replacementCardId = viewModel.replacementCardId,
+            pending = referencePending,
+            amountsVisible = accountAmountsVisible,
         )
     } else if (screenId == "MGT-001" || screenId.startsWith("CAT-") || screenId.startsWith("MER-") || screenId.startsWith("PLC-")) {
         ReferenceManagementDestination(
             screenId = screenId,
             encodedArguments = key.encodedArguments,
-            dataState = referenceUiState.loadState.toManagementState(),
-            onAction = { action ->
-                when (action) {
-                    is ManagementScreenAction.Navigate -> {
-                        viewModel.navigateP12(key, action.screenId, action.stableArguments, action.enumArguments)
-                        onNavigationChanged()
-                    }
-                    is ManagementScreenAction.SaveCategory -> viewModel.saveCategory(action.submission)
-                    is ManagementScreenAction.ReorderCategories -> viewModel.reorderCategories(action.direction, action.ids)
-                    is ManagementScreenAction.RemoveCategory -> viewModel.removeCategory(
-                        action.categoryId,
-                        action.expectedRowVersion,
-                        action.strategy,
-                        action.replacementId,
-                    )
-                    is ManagementScreenAction.SaveMerchant -> viewModel.saveMerchant(action.submission)
-                    is ManagementScreenAction.MergeMerchant -> viewModel.mergeMerchant(action.sourceId, action.targetId)
-                    is ManagementScreenAction.SavePlace -> viewModel.savePlace(action.submission)
-                    is ManagementScreenAction.MergePlace -> viewModel.mergePlace(action.sourceId, action.targetId)
-                    is ManagementScreenAction.SplitPlace -> viewModel.splitPlace(action.placeId, action.submission, action.transactionIds)
-                    ManagementScreenAction.Retry -> viewModel.loadReferenceData()
-                }
-            },
-            placeMap = { places, unavailable, onCoordinateSelected ->
-                PlaceMapContent(places, unavailable, onCoordinateSelected)
-            },
-            pending = referenceUiState.submitting,
+            dataState = referenceState.toManagementState(),
+            actions = ManagementActions(
+                onNavigate = { target, stable, enums ->
+                    viewModel.navigateP12(key, target, stable, enums)
+                    onNavigationChanged()
+                },
+                onSaveCategory = viewModel::saveCategory,
+                onReorderCategories = viewModel::reorderCategories,
+                onRemoveCategory = viewModel::removeCategory,
+                onSaveMerchant = viewModel::saveMerchant,
+                onMergeMerchant = viewModel::mergeMerchant,
+                onSavePlace = viewModel::savePlace,
+                onMergePlace = viewModel::mergePlace,
+                onSplitPlace = viewModel::splitPlace,
+                onRetry = viewModel::loadReferenceData,
+            ),
+            placeMap = { points, unavailable, onCoordinateSelected -> PlaceMapContent(points, unavailable, onCoordinateSelected) },
+            pending = referencePending,
         )
     } else if (screenId.startsWith("VLT-")) {
         val vaultState by viewModel.vault.collectAsStateWithLifecycle()
         VaultDestination(
             vaultState,
-            { action ->
-                when (action) {
-                    is VaultScreenAction.CardSelected -> viewModel.openVaultCard(action.cardId)
-                    is VaultScreenAction.Edit -> viewModel.openVaultEditor(action.cardId)
-                    is VaultScreenAction.RevealPrimaryNumber -> viewModel.revealVaultPrimaryNumber(action.cardId)
-                    is VaultScreenAction.CopyPrimaryNumber -> viewModel.copyVaultPrimaryNumber(action.cardId)
-                    is VaultScreenAction.RevealSecurityCode -> viewModel.revealVaultSecurityCode(action.cardId)
-                    VaultScreenAction.Hide -> viewModel.hideVaultSensitive()
-                    is VaultScreenAction.AuthenticateEdit -> viewModel.authenticateVaultEdit(action.cardId)
-                    is VaultScreenAction.Save -> viewModel.saveVault(action.cardId, action.submission)
-                    VaultScreenAction.OpenDeviceSecurity -> viewModel.openSecurityPrivacySettings("SYS-004")
-                }
-            },
+            VaultActions(
+                onCard = viewModel::openVaultCard,
+                onEdit = viewModel::openVaultEditor,
+                onRevealPrimaryNumber = viewModel::revealVaultPrimaryNumber,
+                onCopyPrimaryNumber = viewModel::copyVaultPrimaryNumber,
+                onRevealSecurityCode = viewModel::revealVaultSecurityCode,
+                onHide = viewModel::hideVaultSensitive,
+                onAuthenticateEdit = viewModel::authenticateVaultEdit,
+                onSave = viewModel::saveVault,
+                onAuthenticateList = viewModel::authenticateVaultList,
+                onOpenCards = viewModel::openVaultCards,
+                onOpenDeviceSecurity = { viewModel.openSecurityPrivacySettings("SYS-004") },
+            ),
         )
     } else if (screenId in app.ledger.feature.settings.SUPPORTED_SECURITY_SETTINGS_SCREENS) {
         val securityState by viewModel.securityPrivacy.collectAsStateWithLifecycle()
@@ -620,6 +669,7 @@ internal fun RootDestination(
             state = specializedUiState.loadState,
             viewModel = viewModel,
             onAddAttachment = onAddAttachment,
+            onNavigationChanged = onNavigationChanged,
         )
     } else if (screenId in setOf("REC-023", "REC-024", "REC-025") && batchState != null) {
         BatchRecordRootDestination(
@@ -643,71 +693,40 @@ internal fun RootDestination(
             encodedArguments = key.encodedArguments,
             state = journalUiState.loadState,
             pages = viewModel.journalPages,
-            onAction = { action ->
-                when (action) {
-                    is JournalScreenAction.Navigate -> {
-                        action.arguments["transactionId"]?.let(viewModel::loadJournalDetail)
-                        if (action.screenId == "JRN-012") action.arguments["transactionId"]?.let(viewModel::verifyJournalPurge)
-                        viewModel.navigateP12(key, action.screenId, action.arguments)
-                        onNavigationChanged()
-                    }
-                    is JournalScreenAction.Search -> viewModel.updateJournalSearch(action.query)
-                    is JournalScreenAction.ApplyFilter -> {
-                        viewModel.applyJournalFilter(action.filter)
-                        if (screenId == "JRN-003") {
-                            viewModel.requestRootBack()
-                            onNavigationChanged()
-                        }
-                    }
-                    is JournalScreenAction.RemoveFilter -> viewModel.removeJournalFilter(action.key)
-                    JournalScreenAction.Retry -> viewModel.loadJournal()
-                    is JournalScreenAction.LoadDetail -> viewModel.loadJournalDetail(action.transactionId)
-                    is JournalScreenAction.Edit -> {
-                        viewModel.editJournalTransaction(action.transactionId, action.kind)
-                        onNavigationChanged()
-                    }
-                    is JournalScreenAction.OpenAttachment -> {
-                        viewModel.openAttachment(action.attachmentId)
-                        onNavigationChanged()
-                    }
-                    is JournalScreenAction.Select -> viewModel.selectJournalTransaction(action.transactionId)
-                    JournalScreenAction.SelectAllMatching -> viewModel.selectAllJournalResults()
-                    JournalScreenAction.ClearSelection -> viewModel.clearJournalSelection()
-                    is JournalScreenAction.BulkEdit -> viewModel.bulkEditJournal(action.patch)
-                    is JournalScreenAction.SaveFilter -> viewModel.saveJournalFilter(action.name)
-                    is JournalScreenAction.ApplyPreset -> {
-                        viewModel.applyJournalPreset(action.presetId)
-                        if (screenId == "JRN-004") {
-                            viewModel.requestRootBack()
-                            onNavigationChanged()
-                        }
-                    }
-                    is JournalScreenAction.CopyPreset -> viewModel.copyJournalPreset(action.presetId)
-                    is JournalScreenAction.SetDefaultPreset -> viewModel.setDefaultJournalPreset(action.presetId)
-                    is JournalScreenAction.DeletePreset -> viewModel.deleteJournalPreset(action.presetId)
-                    is JournalScreenAction.ReorderPresets -> viewModel.reorderJournalPresets(action.presetIds)
-                    is JournalScreenAction.ResolveDependency -> viewModel.resolveJournalDependency(action.dependency, action.policy)
-                    is JournalScreenAction.MoveToTrash -> viewModel.moveJournalToTrash(
-                        action.transactionId,
-                        action.expectedRevisionId,
-                        action.resolutions,
-                    )
-                    is JournalScreenAction.Restore -> viewModel.restoreJournalTransaction(action.transactionId, action.expectedRevisionId)
-                    is JournalScreenAction.CompareRevisions -> viewModel.compareJournalRevisions(
-                        action.transactionId,
-                        action.leftRevisionId,
-                        action.rightRevisionId,
-                    )
-                    is JournalScreenAction.RestoreRevision -> viewModel.restoreJournalRevision(
-                        action.transactionId,
-                        action.expectedCurrentRevisionId,
-                        action.sourceRevisionId,
-                        action.resolutions,
-                    )
-                    is JournalScreenAction.VerifyPurge -> viewModel.verifyJournalPurge(action.transactionId)
-                    is JournalScreenAction.PurgeRequested -> viewModel.purgeJournalTransaction(action.transactionId)
-                }
-            },
+            actions = JournalActions(
+                onNavigate = { target, stable ->
+                    stable["transactionId"]?.let(viewModel::loadJournalDetail)
+                    if (target == "JRN-012") stable["transactionId"]?.let(viewModel::verifyJournalPurge)
+                    viewModel.navigateP12(key, target, stable)
+                    onNavigationChanged()
+                },
+                onSearch = viewModel::updateJournalSearch,
+                onApplyFilter = viewModel::applyJournalFilter,
+                onRemoveFilter = viewModel::removeJournalFilter,
+                onRetry = viewModel::loadJournal,
+                onLoadDetail = viewModel::loadJournalDetail,
+                onSelect = viewModel::selectJournalTransaction,
+                onSelectAllMatching = viewModel::selectAllJournalResults,
+                onClearSelection = viewModel::clearJournalSelection,
+                onBulkEdit = viewModel::bulkEditJournal,
+                onSaveFilter = viewModel::saveJournalFilter,
+                onApplyPreset = viewModel::applyJournalPreset,
+                onCopyPreset = viewModel::copyJournalPreset,
+                onSetDefaultPreset = viewModel::setDefaultJournalPreset,
+                onDeletePreset = viewModel::deleteJournalPreset,
+                onReorderPresets = viewModel::reorderJournalPresets,
+                onResolveDependency = viewModel::resolveJournalDependency,
+                onMoveToTrash = viewModel::moveJournalToTrash,
+                onRestore = viewModel::restoreJournalTransaction,
+                onCompareRevisions = viewModel::compareJournalRevisions,
+                onRestoreRevision = viewModel::restoreJournalRevision,
+                onVerifyPurge = viewModel::verifyJournalPurge,
+                onPurgeRequested = viewModel::purgeJournalTransaction,
+                onEdit = viewModel::editJournalTransaction,
+                onRefund = viewModel::refundJournalTransaction,
+                onCopyTemplate = viewModel::copyJournalTransactionToTemplate,
+                onBack = onBack,
+            ),
         )
     } else if (screenId == "ACC-001") {
         EmptyTopLevel(R.string.global_accounts_empty_title, R.string.global_accounts_empty_message, onMore)
@@ -824,24 +843,24 @@ private fun EmptyTopLevel(emptyTitle: Int, explanation: Int, onMore: () -> Unit)
 
 @Composable
 private fun PlaceMapContent(
-    places: List<app.ledger.finance.application.PlaceReferenceView>,
+    points: List<app.ledger.feature.settings.ManagementMapPoint>,
     unavailable: Boolean,
-    onCoordinateSelected: ((latitudeE7: Int, longitudeE7: Int) -> Unit)?,
+    onCoordinateSelected: (Int, Int) -> Unit,
 ) {
-    val identity = places.joinToString(separator = "|") { "${it.id}:${it.rowVersion}" }
+    val identity = points.joinToString(separator = "|") { "${it.id}:${it.latitudeE7}:${it.longitudeE7}" }
     var rendererFailed by remember(identity) { mutableStateOf(false) }
-    val summary = stringResource(R.string.global_place_map_summary, places.count())
-    val rows = places.map { place ->
-        LedgerMapAccessibleRow(place.name, stringResource(R.string.global_location_record_count, place.locationRecordCount))
+    val summary = stringResource(R.string.global_place_map_summary, points.count())
+    val rows = points.map { point ->
+        LedgerMapAccessibleRow(point.label, stringResource(R.string.global_location_record_count, point.recordCount))
     }
-    val state = if (unavailable || rendererFailed || places.none() && onCoordinateSelected == null) {
+    val state = if (unavailable || rendererFailed || points.none()) {
         LedgerMapState.Unavailable(summary, rows)
     } else {
         LedgerMapState.Available(
             summary = summary,
             mode = LedgerMapMode.CLUSTERS,
-            points = places.map { place ->
-                LedgerMapPoint(place.id, place.latitudeE7, place.longitudeE7, place.locationRecordCount)
+            points = points.map { point ->
+                LedgerMapPoint(point.id, point.latitudeE7, point.longitudeE7, point.recordCount.coerceAtLeast(1L))
             },
             accessibleRows = rows,
         )
@@ -861,7 +880,7 @@ private fun PlaceMapContent(
     )
     if (unavailable || rendererFailed) {
         LedgerBanner(stringResource(R.string.global_map_renderer_unavailable), LedgerBannerVariant.INFO)
-    } else if (places.none() && onCoordinateSelected == null) {
+    } else if (points.none()) {
         LedgerText(stringResource(R.string.global_place_map_empty), LedgerTextRole.SUPPORTING)
     }
 }
@@ -1029,7 +1048,8 @@ private fun DurableOperationRow(
 ) {
     val type = stringResource(operationTypeResource(operation.type))
     val phase = stringResource(operationStateResource(operation.state))
-    val totalText = operation.progress.total?.toString() ?: stringResource(R.string.global_operations_total_unknown)
+    val numberFormat = java.text.NumberFormat.getIntegerInstance(app.ledger.core.designsystem.LocalLocale.current.platformLocale)
+    val totalText = operation.progress.total?.let(numberFormat::format) ?: stringResource(R.string.global_operations_total_unknown)
     val cancelable = operation.state in setOf(
         BackgroundOperationState.QUEUED,
         BackgroundOperationState.PREPARING,

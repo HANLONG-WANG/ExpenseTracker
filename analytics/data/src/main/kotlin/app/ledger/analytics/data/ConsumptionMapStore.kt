@@ -163,7 +163,8 @@ internal class ConsumptionMapStore {
         }
         args += Math.addExact(limit, 1)
         val rows = database.query(
-            "${compiled.withMetric} SELECT transaction_uid,local_date,transaction_kind,input_amount_minor,input_currency,occurred_at " +
+            "${compiled.withMetric} SELECT transaction_uid,local_date,transaction_kind,input_amount_minor,input_currency," +
+                "category_name,primary_account_name,card_name,merchant_name,occurred_at " +
                 "FROM map_events WHERE ${clauses.joinToString(" AND ")} ORDER BY occurred_at DESC,transaction_uid DESC LIMIT ?",
             args.toTypedArray(),
         ).use { result ->
@@ -177,8 +178,12 @@ internal class ConsumptionMapStore {
                                 TRANSACTION_KIND_KEYS.getOrElse(result.getInt(2)) { "UNKNOWN" },
                                 result.getLong(3),
                                 CurrencyCode.parse(result.getString(4)).getOrNull() ?: error("invalid transaction currency"),
+                                result.optionalString(5),
+                                result.optionalString(6),
+                                result.optionalString(7),
+                                result.optionalString(8),
                             ),
-                            result.getLong(5),
+                            result.getLong(9),
                         ),
                     )
                 }
@@ -255,11 +260,13 @@ internal class ConsumptionMapStore {
                 "SELECT ctp.transaction_id,ctp.transaction_uid,ctp.current_revision_id,ctp.local_date,ctp.kind transaction_kind," +
                 "ctp.occurred_at,ctp.input_amount_minor,ctp.input_currency,lr.uid location_uid,lr.lat_e7,lr.lon_e7," +
                 "c.uid category_uid,c.name category_name,m.uid merchant_uid,m.name merchant_name,pl.uid place_uid,pl.name place_name," +
+                "pa.name primary_account_name,pc.display_name card_name," +
                 "$metric map_amount_minor FROM location_rtree lrt JOIN location_record lr ON lr.id=lrt.location_id " +
                 "JOIN transaction_revision tr ON tr.location_record_id=lr.id JOIN current_transaction_projection ctp ON ctp.current_revision_id=tr.id " +
                 "LEFT JOIN category c ON c.id=ctp.category_id LEFT JOIN merchant m ON m.id=ctp.merchant_id " +
                 "LEFT JOIN place pl ON pl.id=lr.place_id LEFT JOIN project pr ON pr.id=ctp.project_id " +
                 "LEFT JOIN user_account pa ON pa.id=ctp.primary_account_id LEFT JOIN user_account sa ON sa.id=ctp.secondary_account_id " +
+                "LEFT JOIN payment_card pc ON pc.id=ctp.card_id " +
                 "WHERE ${clauses.joinToString(" AND ")}),map_events AS (SELECT * FROM map_candidates WHERE ${amountClauses.joinToString(" AND ")})",
             args,
         )
@@ -329,6 +336,8 @@ internal class ConsumptionMapStore {
     )
 
     private fun Cursor.stableId(index: Int): StableId = StableId.fromBytes(getBlob(index)).getOrNull() ?: error("invalid stable id")
+
+    private fun Cursor.optionalString(index: Int): String? = if (isNull(index)) null else getString(index)
 
     private fun SupportSQLiteDatabase.version(): LocalRevision? = query("SELECT local_revision FROM book WHERE id=1").use { cursor ->
         if (!cursor.moveToFirst()) null else LocalRevision.of(cursor.getLong(0)).getOrNull()

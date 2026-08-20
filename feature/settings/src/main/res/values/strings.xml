@@ -6,14 +6,31 @@
     <string name="management_parent_locked">二级分类创建后不能移动到其他一级分类。</string><string name="management_contrast_warning">当前前景与背景组合未达到对比度要求，请选择设计系统中的可访问组合。</string><string name="management_validation">请修正字段后保存。</string><string name="management_name">名称</string><string name="management_parent">上级分类</string><string name="management_no_parent">无上级（一级分类）</string>
     <string name="management_consumption">日常消费</string><string name="management_non_consumption">非消费费用</string><string name="management_regular_income">常规收入</string><string name="management_non_recurring_income">非经常性收入</string><string name="management_statistical_snapshot">统计性质修改只影响新交易；历史交易保留保存时快照。</string>
     <string name="management_reorder_explanation">使用上移、下移调整顺序；二级分类不会改变父级。</string><string name="management_move_up">上移</string><string name="management_move_down">下移</string><string name="management_save_order">保存排序</string><string name="management_has_children">该分类仍有子分类，请先处理子分类。</string><string name="management_processing">正在处理分类</string><string name="management_reassign">将历史交易重新分配</string><string name="management_archive_category">归档分类</string><string name="management_delete_tombstone">删除并保留墓碑</string>
-    <string name="management_merchants_empty">还没有商户</string><string name="management_merchants_empty_body">商户只由用户手动创建或从本地数据导入。</string><string name="management_add_merchant">添加商户</string><string name="management_merge_merchants">合并重复商户</string><string name="management_merchant_counts">当前交易 %1$d · 地点 %2$d</string><string name="management_duplicate_merchant">已有同名商户，可返回列表使用合并流程。</string><string name="management_merchant_name">商户名称</string><string name="management_aliases">别名</string><string name="management_aliases_body">使用逗号分隔；搜索会同时匹配名称和别名。</string><string name="management_places_count">关联地点 %1$d</string>
+    <string name="management_merchants_empty">还没有商户</string><string name="management_merchants_empty_body">商户只由用户手动创建或从本地数据导入。</string><string name="management_add_merchant">添加商户</string><string name="management_merge_merchants">合并重复商户</string><string name="management_merchant_counts">当前交易 %1$d · 地点 %2$d</string><string name="management_duplicate_merchant">已有同名商户，可返回列表使用合并流程。</string><string name="management_merchant_name">商户名称</string><string name="management_aliases">别名</string><string name="management_aliases_body">搜索会同时匹配名称和逐项保存的别名。</string><string name="management_places_count">关联地点 %1$d</string>
     <string name="management_merge_invalid">来源和目标必须是两个不同的可用商户。</string><string name="management_merging">正在合并</string><string name="management_source">来源商户</string><string name="management_target">目标商户</string><string name="management_merge_impact">将影响当前交易 %1$d 笔、地点 %2$d 个；历史修订仍可追溯。</string><string name="management_confirm_merge">确认合并</string>
-    <string name="management_places_empty">还没有地点</string><string name="management_places_empty_body">地点由用户离线创建，不执行在线地址搜索或反向解析。</string><string name="management_add_place">添加地点</string><string name="management_location_count">位置记录 %1$d 条</string><string name="management_map_unavailable">地图不可用；仍可通过坐标字段和可访问列表完成操作。</string><string name="management_place_name">地点名称</string><string name="management_latitude_e7">纬度 E7</string><string name="management_longitude_e7">经度 E7</string><string name="management_optional_merchant">关联商户（可选）</string><string name="management_none">无</string><string name="management_no_reverse_geocoding">不会执行在线地点搜索或地址反向解析。</string>
+    <string name="management_places_empty">还没有地点</string><string name="management_places_empty_body">地点由用户离线创建，不执行在线地址搜索或反向解析。</string><string name="management_add_place">添加地点</string><string name="management_location_count">位置记录 %1$d 条</string><string name="management_map_unavailable">地图不可用；仍可通过方向按钮和可访问坐标摘要完成操作。</string><string name="management_place_name">地点名称</string><string name="management_latitude_e7">纬度 E7</string><string name="management_longitude_e7">经度 E7</string><string name="management_optional_merchant">关联商户（可选）</string><string name="management_none">无</string><string name="management_no_reverse_geocoding">不会执行在线地点搜索或地址反向解析。</string>
     <string name="management_merge">合并</string><string name="management_split">拆分</string><string name="management_place_merge_history">合并只改变当前语义解析；不可变位置快照和历史修订仍保留原地点。</string><string name="management_location_record">位置记录 %1$s</string><string name="management_location_transactions">当前交易 %1$d 笔</string><string name="management_new_place_name">新地点名称</string><string name="management_split_revision_notice">已被交易引用的位置记录不可原地修改；拆分会创建新位置快照并通过统一财务修订入口更新当前交易。</string><string name="management_confirm_split">确认拆分</string>
     <string name="management_appearance_icon">分类图标</string><string name="management_appearance_color">分类颜色</string><string name="management_default_account">默认账户（可选）</string><string name="management_default_card">默认实体卡（可选）</string><string name="management_default_merchant">默认商户（可选）</string>
     <string name="currency_settings_search">搜索币种代码或名称</string><string name="currency_settings_explanation">显示顺序用于选择器和金额次要显示；隐藏币种不会删除历史事实或账户。账本本位币与已有账户币种始终可见。</string><string name="currency_settings_base_required">账本本位币，不能隐藏</string><string name="currency_settings_account_required">已有账户使用，不能隐藏</string><string name="currency_settings_move_up">上移</string><string name="currency_settings_move_down">下移</string>
-    <string name="management_latitude">纬度（十进制度）</string>
-    <string name="management_longitude">经度（十进制度）</string>
-    <string name="management_map_pick">点击地图可设置或移动地点中心点，也可在下方输入十进制度数。</string>
-    <string name="management_new_place_marker">新地点中心点</string>
+    <string name="management_searching_categories">正在搜索分类</string>
+    <string name="management_contrast_preview">对比度预览：分类名称 Aa</string>
+    <string name="management_contrast_ratio">最佳文字对比度 %1$.2f:1</string>
+    <string name="management_recalculation_risk">更改统计性质只影响新交易。批量改写历史快照属于独立高风险操作，必须逐项选择并确认。</string>
+    <string name="management_open_bulk_recalculation">打开批量重算流程</string>
+    <string name="management_drag_category">拖动调整分类顺序</string>
+    <string name="management_aliases_empty">还没有别名；可逐项添加。</string>
+    <string name="management_new_alias">新别名</string>
+    <string name="management_add_alias">添加别名</string>
+    <string name="management_remove_alias">移除</string>
+    <string name="management_save">保存</string>
+    <string name="management_new_place_pin">新地点图钉</string>
+    <string name="management_map_pin_editor">地图图钉</string>
+    <string name="management_map_pin_instructions">长按或点击地图空白处移动图钉；也可使用下方方向按钮精确调整。</string>
+    <string name="management_pin_coordinates">纬度 %1$s · 经度 %2$s</string>
+    <string name="management_pin_north">向北</string>
+    <string name="management_pin_south">向南</string>
+    <string name="management_pin_west">向西</string>
+    <string name="management_pin_east">向东</string>
+    <string name="management_location_record_details">纬度 %1$s · 经度 %2$s · 当前交易 %3$d</string>
+    <string name="currency_settings_visible">可见币种</string><string name="currency_settings_hidden">隐藏币种</string>
 </resources>

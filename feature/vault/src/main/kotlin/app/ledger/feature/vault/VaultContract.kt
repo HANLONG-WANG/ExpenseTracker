@@ -106,6 +106,8 @@ internal class VaultActions(
     val onHide: () -> Unit,
     val onAuthenticateEdit: (StableId) -> Unit,
     val onSave: (StableId, VaultEditSubmission) -> Unit,
+    val onAuthenticateList: () -> Unit,
+    val onOpenCards: () -> Unit,
     val onOpenDeviceSecurity: () -> Unit,
 )
 

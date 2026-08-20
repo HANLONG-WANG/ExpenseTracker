@@ -26,7 +26,10 @@ import app.ledger.finance.application.LoanComponentAllocationDraft
 import app.ledger.finance.application.LoanComponentAmountDraft
 import app.ledger.finance.application.LoanContractView
 import app.ledger.finance.application.LoanMutationIds
+import app.ledger.finance.application.LoanPaymentAllocationView
+import app.ledger.finance.application.LoanPaymentDetailView
 import app.ledger.finance.application.LoanScheduleItemView
+import app.ledger.finance.application.LoanScheduleRevisionView
 import app.ledger.finance.application.LoanSimulationRequest
 import app.ledger.finance.application.LoanSnapshot
 import app.ledger.finance.application.LoanTermsDraft
@@ -131,6 +134,41 @@ class SecureRoomLoanApplicationPort(
                     accountOptions(db, PAYMENT_ACCOUNT_TYPES),
                 ),
             )
+        }
+    }
+
+    override suspend fun paymentDetail(bookId: StableId, transactionId: StableId): DomainResult<LoanPaymentDetailView?> = withDatabase(bookId) { database ->
+        database.readLedger { db ->
+            val header = db.queryOne(
+                "SELECT tr.local_date,lc.name contract_name,lc.currency_code,MAX(pay.name) payment_name," +
+                    "COALESCE(SUM(CASE WHEN le.kind IN (1,5) THEN le.polarity*le.amount_minor ELSE 0 END),0) principal," +
+                    "COALESCE(SUM(CASE WHEN le.kind=2 THEN le.polarity*le.amount_minor ELSE 0 END),0) interest," +
+                    "COALESCE(SUM(CASE WHEN le.kind=3 THEN le.polarity*le.amount_minor ELSE 0 END),0) fee," +
+                    "COALESCE(SUM(CASE WHEN le.kind=4 THEN le.polarity*le.amount_minor ELSE 0 END),0) penalty " +
+                    "FROM business_transaction bt JOIN transaction_revision tr ON tr.id=bt.current_revision_id " +
+                    "JOIN loan_effect le ON le.source_revision_id=tr.id JOIN loan_contract lc ON lc.id=le.loan_contract_id " +
+                    "LEFT JOIN revision_amount ra ON ra.revision_id=tr.id AND ra.role=? AND ra.representation=1 " +
+                    "LEFT JOIN user_account pay ON pay.id=ra.related_account_id WHERE bt.uid=? AND bt.lifecycle_state=0 GROUP BY bt.id,lc.id,tr.id",
+                arrayOf(AmountRole.OUTGOING.ordinal, transactionId.bytes),
+            ) { cursor ->
+                LoanPaymentDetailView(
+                    transactionId, cursor.string("contract_name"), cursor.nullableString("payment_name"), currency(cursor.string("currency_code")),
+                    storageDate(cursor.int("local_date")), cursor.long("principal"), cursor.long("interest"), cursor.long("fee"), cursor.long("penalty"), emptyList(),
+                )
+            } ?: return@readLedger DomainResult.Success(null)
+            val allocations = db.queryList(
+                "SELECT lt.name tranche_name,lsi.installment_no,la.component,la.amount_minor FROM loan_actual_allocation la " +
+                    "JOIN business_transaction bt ON bt.id=la.payment_transaction_id JOIN loan_tranche lt ON lt.id=la.tranche_id " +
+                    "LEFT JOIN loan_schedule_item lsi ON lsi.id=la.schedule_item_id WHERE bt.uid=? AND la.reversal_of_id IS NULL " +
+                    "AND NOT EXISTS(SELECT 1 FROM loan_actual_allocation r WHERE r.reversal_of_id=la.id) ORDER BY lt.id,lsi.installment_no,la.component",
+                arrayOf(transactionId.bytes),
+            ) { cursor ->
+                LoanPaymentAllocationView(
+                    cursor.string("tranche_name"), cursor.nullableLong("installment_no")?.toInt(),
+                    LoanPaymentComponent.entries[cursor.int("component")], cursor.long("amount_minor"),
+                )
+            }
+            DomainResult.Success(header.copy(allocations = allocations))
         }
     }
 
@@ -553,8 +591,16 @@ class SecureRoomLoanApplicationPort(
             row.scheduleRevision,
             row.historyCount,
             schedule,
+            readScheduleRevisions(db, id),
         )
     }
+
+    private fun readScheduleRevisions(db: SupportSQLiteDatabase, trancheId: StableId): List<LoanScheduleRevisionView> = db.queryList(
+        "SELECT lsr.uid,lsr.revision_no FROM loan_schedule_revision lsr JOIN loan_tranche lt ON lt.id=lsr.tranche_id " +
+            "WHERE lt.uid=? ORDER BY lsr.revision_no DESC",
+        arrayOf(trancheId.bytes),
+    ) { cursor -> cursor.stableId("uid") to cursor.int("revision_no") }
+        .map { (scheduleId, revisionNumber) -> LoanScheduleRevisionView(scheduleId, revisionNumber, readScheduleItems(db, scheduleId)) }
 
     private fun readRates(db: SupportSQLiteDatabase, termsId: StableId): List<LoanRatePeriod> = db.queryList(
         "SELECT effective_from,effective_to,annual_rate_decimal,benchmark,margin_decimal FROM loan_rate_period " +

@@ -65,29 +65,16 @@ public data class CategorySubmission(
 public data class MerchantSubmission(val merchantId: StableId?, val name: String, val aliases: Set<String>)
 public data class PlaceSubmission(val placeId: StableId?, val name: String, val latitudeE7: Int, val longitudeE7: Int, val merchantId: StableId?)
 
-public sealed interface ManagementScreenAction {
-    public data class Navigate(
-        val screenId: String,
-        val stableArguments: Map<String, StableId>,
-        val enumArguments: Map<String, String>,
-    ) : ManagementScreenAction
-    public data class SaveCategory(val submission: CategorySubmission) : ManagementScreenAction
-    public data class ReorderCategories(val direction: CategoryDirection, val ids: List<StableId>) : ManagementScreenAction
-    public data class RemoveCategory(
-        val categoryId: StableId,
-        val expectedRowVersion: Long,
-        val strategy: CategoryRemovalStrategy,
-        val replacementId: StableId?,
-    ) : ManagementScreenAction
-    public data class SaveMerchant(val submission: MerchantSubmission) : ManagementScreenAction
-    public data class MergeMerchant(val sourceId: StableId, val targetId: StableId) : ManagementScreenAction
-    public data class SavePlace(val submission: PlaceSubmission) : ManagementScreenAction
-    public data class MergePlace(val sourceId: StableId, val targetId: StableId) : ManagementScreenAction
-    public data class SplitPlace(val placeId: StableId, val submission: PlaceSubmission, val transactionIds: List<StableId>) : ManagementScreenAction
-    public data object Retry : ManagementScreenAction
-}
+public data class ManagementMapPoint(
+    val id: StableId,
+    val label: String,
+    val latitudeE7: Int,
+    val longitudeE7: Int,
+    val recordCount: Long,
+    val draft: Boolean = false,
+)
 
-internal class ManagementActions(
+public data class ManagementActions(
     val onNavigate: (screenId: String, stableArguments: Map<String, StableId>, enumArguments: Map<String, String>) -> Unit,
     val onSaveCategory: (CategorySubmission) -> Unit,
     val onReorderCategories: (CategoryDirection, List<StableId>) -> Unit,
@@ -100,23 +87,8 @@ internal class ManagementActions(
     val onRetry: () -> Unit,
 )
 
-internal fun managementActions(onAction: (ManagementScreenAction) -> Unit): ManagementActions = ManagementActions(
-    onNavigate = { screenId, stable, enums -> onAction(ManagementScreenAction.Navigate(screenId, stable, enums)) },
-    onSaveCategory = { onAction(ManagementScreenAction.SaveCategory(it)) },
-    onReorderCategories = { direction, ids -> onAction(ManagementScreenAction.ReorderCategories(direction, ids)) },
-    onRemoveCategory = { id, version, strategy, replacement ->
-        onAction(ManagementScreenAction.RemoveCategory(id, version, strategy, replacement))
-    },
-    onSaveMerchant = { onAction(ManagementScreenAction.SaveMerchant(it)) },
-    onMergeMerchant = { source, target -> onAction(ManagementScreenAction.MergeMerchant(source, target)) },
-    onSavePlace = { onAction(ManagementScreenAction.SavePlace(it)) },
-    onMergePlace = { source, target -> onAction(ManagementScreenAction.MergePlace(source, target)) },
-    onSplitPlace = { id, submission, transactions -> onAction(ManagementScreenAction.SplitPlace(id, submission, transactions)) },
-    onRetry = { onAction(ManagementScreenAction.Retry) },
-)
-
 public typealias PlaceMapSlot = @androidx.compose.runtime.Composable (
-    places: List<PlaceReferenceView>,
+    points: List<ManagementMapPoint>,
     unavailable: Boolean,
-    onCoordinateSelected: ((latitudeE7: Int, longitudeE7: Int) -> Unit)?,
+    onCoordinateSelected: (latitudeE7: Int, longitudeE7: Int) -> Unit,
 ) -> Unit

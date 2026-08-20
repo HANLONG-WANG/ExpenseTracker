@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
@@ -27,6 +31,7 @@ import app.ledger.core.designsystem.LedgerChip
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
+import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
@@ -42,8 +47,11 @@ import app.ledger.finance.domain.RefundBudgetPolicy
 import app.ledger.finance.domain.RefundGoalPolicy
 import app.ledger.finance.domain.RefundProjectPolicy
 import java.time.LocalDate
+import java.time.Instant
 import java.time.YearMonth
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Locale
 
 public sealed interface RefundScreenAction {
@@ -176,7 +184,7 @@ private fun RefundEditor(state: RefundEditorState, actions: RefundActions) {
             item {
                 SelectorField(
                     label = stringResource(R.string.refund_original_transaction),
-                    selectedText = original?.let { "${it.categoryName} · ${it.localDate}" } ?: stringResource(R.string.refund_select_original),
+                    selectedText = original?.let { "${it.categoryName} · ${it.localDate.localized(locale)}" } ?: stringResource(R.string.refund_select_original),
                     onClick = actions.onPickOriginal,
                     modifier = Modifier.testTag(LedgerTestTags.REFUND_ORIGINAL),
                     supportingText = state.errors.fieldError(RefundField.ORIGINAL),
@@ -266,15 +274,17 @@ private fun InheritedFields(state: RefundEditorState, actions: RefundActions) {
 
 @Composable
 private fun RefundTimeAndPolicies(state: RefundEditorState, original: RefundableTransactionView?, actions: RefundActions) {
+    val locale = LocalLocale.current.platformLocale
+    var showDatePicker by remember { mutableStateOf(false) }
     FormSection(stringResource(R.string.refund_three_time_dimensions), modifier = Modifier.testTag(LedgerTestTags.REFUND_TIME_DIMENSIONS), description = stringResource(R.string.refund_three_time_explanation)) {
-        DateTimeZoneField(stringResource(R.string.refund_cash_date), state.draft.localDate.format(DateTimeFormatter.ISO_LOCAL_DATE), state.draft.zoneId.id, { actions.onDate(state.draft.localDate) })
-        LedgerText(stringResource(R.string.refund_accrual_date, if (state.draft.accrualPolicy == RefundAccrualPolicy.ORIGINAL_TRANSACTION_DATE) original?.localDate.toString() else state.draft.localDate.toString()), LedgerTextRole.SUPPORTING)
+        DateTimeZoneField(stringResource(R.string.refund_cash_date), state.draft.localDate.localized(locale), state.draft.zoneId.id, { showDatePicker = true })
+        LedgerText(stringResource(R.string.refund_accrual_date, if (state.draft.accrualPolicy == RefundAccrualPolicy.ORIGINAL_TRANSACTION_DATE) original?.localDate?.localized(locale).orEmpty() else state.draft.localDate.localized(locale)), LedgerTextRole.SUPPORTING)
         PolicyChoices(
             labels = RefundAccrualPolicy.entries.map { stringResource(it.label()) },
             selected = RefundAccrualPolicy.entries.indexOf(state.draft.accrualPolicy),
             onSelected = { actions.onAccrualPolicy(RefundAccrualPolicy.entries[it]) },
         )
-        LedgerText(stringResource(R.string.refund_budget_month, budgetMonthText(state, original)), LedgerTextRole.SUPPORTING)
+        LedgerText(stringResource(R.string.refund_budget_month, budgetMonthText(state, original, locale)), LedgerTextRole.SUPPORTING)
         PolicyChoices(
             labels = RefundBudgetPolicy.entries.map { stringResource(it.label()) },
             selected = RefundBudgetPolicy.entries.indexOf(state.draft.budgetPolicy),
@@ -289,6 +299,16 @@ private fun RefundTimeAndPolicies(state: RefundEditorState, original: Refundable
             labels = RefundGoalPolicy.entries.map { stringResource(it.label()) },
             selected = RefundGoalPolicy.entries.indexOf(state.draft.goalPolicy),
             onSelected = { actions.onGoalPolicy(RefundGoalPolicy.entries[it]) },
+        )
+    }
+    if (showDatePicker) {
+        LedgerDatePickerFlow(
+            state.draft.localDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            { millis ->
+                actions.onDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
+                showDatePicker = false
+            },
+            { showDatePicker = false },
         )
     }
 }
@@ -351,7 +371,7 @@ private fun RefundOriginalRow(original: RefundableTransactionView, onChoose: (St
     LedgerCard(Modifier.fillMaxWidth(), onClick = { onChoose(original.transactionId) }) {
         Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
             LedgerText(original.categoryName, LedgerTextRole.TITLE)
-            LedgerText(original.localDate.toString(), LedgerTextRole.SUPPORTING)
+            LedgerText(original.localDate.localized(locale), LedgerTextRole.SUPPORTING)
             LedgerText(stringResource(R.string.refund_original_amount, RefundPolicy.format(original.originalMinor, original.originalCurrency, locale).formatted), LedgerTextRole.BODY)
             LedgerText(stringResource(R.string.refund_remaining_amount, RefundPolicy.format(original.remainingMinor, original.originalCurrency, locale).formatted), LedgerTextRole.BODY)
         }
@@ -361,11 +381,17 @@ private fun RefundOriginalRow(original: RefundableTransactionView, onChoose: (St
 @Composable
 private fun List<RefundValidationError>.fieldError(field: RefundField): String? = firstOrNull { it.field == field }?.let { stringResource(R.string.refund_invalid_field) }
 
-private fun budgetMonthText(state: RefundEditorState, original: RefundableTransactionView?): String = when (state.draft.budgetPolicy) {
-    RefundBudgetPolicy.RESTORE_ORIGINAL_MONTH -> original?.localDate?.let(YearMonth::from)?.toString().orEmpty()
-    RefundBudgetPolicy.RESTORE_REFUND_MONTH -> YearMonth.from(state.draft.localDate).toString()
+private fun budgetMonthText(state: RefundEditorState, original: RefundableTransactionView?, locale: Locale): String = when (state.draft.budgetPolicy) {
+    RefundBudgetPolicy.RESTORE_ORIGINAL_MONTH -> original?.localDate?.let(YearMonth::from)?.localized(locale).orEmpty()
+    RefundBudgetPolicy.RESTORE_REFUND_MONTH -> YearMonth.from(state.draft.localDate).localized(locale)
     RefundBudgetPolicy.DO_NOT_RESTORE -> "—"
 }
+
+private fun LocalDate.localized(locale: Locale): String =
+    format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+
+private fun YearMonth.localized(locale: Locale): String =
+    format(DateTimeFormatter.ofPattern("LLLL yyyy", locale))
 
 private fun RefundAccrualPolicy.label(): Int = when (this) {
     RefundAccrualPolicy.ORIGINAL_TRANSACTION_DATE -> R.string.refund_accrual_original

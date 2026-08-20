@@ -7,6 +7,7 @@
     <string name="ledger_search">Search</string>
     <string name="ledger_clear">Clear</string>
     <string name="ledger_retry">Retry</string>
+    <string name="ledger_error_what_happened">What happened</string><string name="ledger_error_write_status">Write status</string><string name="ledger_error_existing_data_unchanged">Existing data was not changed, and current input remains on this screen.</string><string name="ledger_error_next_step">Next step</string><string name="ledger_error_retry_next_step">Check the connection or input, then retry. If it repeats, use the sanitized error code below for diagnosis.</string>
     <string name="ledger_cancel">Cancel</string>
     <string name="ledger_apply">Apply</string>
     <string name="ledger_reset">Reset</string>
@@ -15,7 +16,7 @@
     <string name="ledger_loading">Loading</string>
     <string name="ledger_view_data_table">View data table</string>
     <string name="ledger_expand_data_table">Expand data table</string>
-    <string name="ledger_data_table_horizontal_hint">Scroll the table horizontally to view every column</string>
+    <string name="ledger_collapse_data_table">Collapse data table</string>
     <string name="ledger_map_unavailable">Map unavailable; the list and summary remain available</string>
     <string name="ledger_record">Record</string>
     <string name="ledger_journal">Journal</string>
@@ -42,8 +43,29 @@
     <string name="ledger_pause">Pause</string>
     <string name="ledger_copy">Copy</string>
     <string name="ledger_attachment_import_progress">Attachment import progress</string>
+    <string name="ledger_attachment_failed">Import failed; the attachment was not saved</string>
+    <string name="ledger_view_error">View error</string>
+    <string name="ledger_clean_temporary_files">Clean temporary files</string>
     <string name="ledger_previous_page">Previous page</string>
     <string name="ledger_next_page">Next page</string>
+    <string name="ledger_page_count">Page %1$d of %2$d</string>
+    <string name="ledger_seconds_remaining">%1$d seconds remaining</string>
+    <string name="ledger_on">On</string>
+    <string name="ledger_off">Off</string>
+    <string name="ledger_expanded">Expanded</string>
+    <string name="ledger_collapsed">Collapsed</string>
+    <string name="ledger_candidate">Not posted</string>
+    <string name="ledger_deleted">Deleted</string>
+    <string name="ledger_status_neutral">Normal</string><string name="ledger_status_positive">Good</string><string name="ledger_status_info">Info</string><string name="ledger_status_warning">Needs attention</string><string name="ledger_status_danger">Problem</string><string name="ledger_status_archived">Archived</string>
+    <string name="ledger_explore_chart">Explore chart</string>
+    <string name="ledger_close_chart_explorer">Close chart explorer</string>
+    <string name="ledger_chart_previous_point">Previous data point</string>
+    <string name="ledger_chart_next_point">Next data point</string>
+    <string name="ledger_chart_marker_detail">%1$s · %2$s · %3$s</string>
+    <string name="ledger_chart_point_position">Data point %1$d of %2$d</string>
+    <string name="ledger_chart_stack_total">Stack total: %1$s</string>
+    <string name="ledger_chart_pie_fallback">There are more than 6 categories, so this is shown as a column chart for readability.</string>
+    <string name="ledger_chart_no_data">There is no chart data in the current scope.</string>
     <string name="ledger_style_icon_record">Record</string><string name="ledger_style_icon_account">Account</string><string name="ledger_style_icon_budget">Budget</string><string name="ledger_style_icon_analysis">Analysis</string><string name="ledger_style_icon_journal">Journal</string><string name="ledger_style_icon_location">Location</string><string name="ledger_style_icon_transfer">Transfer</string><string name="ledger_style_icon_refund">Refund</string>
     <string name="ledger_style_color_red">Red</string><string name="ledger_style_color_orange">Orange</string><string name="ledger_style_color_amber">Amber</string><string name="ledger_style_color_yellow">Yellow</string><string name="ledger_style_color_lime">Lime</string><string name="ledger_style_color_green">Green</string><string name="ledger_style_color_emerald">Emerald</string><string name="ledger_style_color_teal">Teal</string><string name="ledger_style_color_cyan">Cyan</string><string name="ledger_style_color_sky">Sky</string><string name="ledger_style_color_blue">Blue</string><string name="ledger_style_color_indigo">Indigo</string><string name="ledger_style_color_violet">Violet</string><string name="ledger_style_color_purple">Purple</string><string name="ledger_style_color_pink">Pink</string><string name="ledger_style_color_slate">Slate</string>
 </resources>

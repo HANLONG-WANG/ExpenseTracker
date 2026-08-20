@@ -47,7 +47,7 @@ sealed interface AttachmentPreviewState {
 @Composable
 fun AttachmentPreviewScreen(
     state: AttachmentPreviewState,
-    secureImageLoader: SecureAttachmentImageLoader,
+    secureImageLoader: SecureAttachmentImageLoader?,
     onRename: () -> Unit,
     onOpenExternally: () -> Unit,
     onRetry: () -> Unit,
@@ -60,7 +60,7 @@ fun AttachmentPreviewScreen(
         when (state) {
             AttachmentPreviewState.Loading -> LedgerLoadingState()
             is AttachmentPreviewState.Image -> {
-                SecureAttachmentImagePreview(state.metadata.attachmentId, secureImageLoader)
+                SecureAttachmentImagePreview(state.metadata.attachmentId, checkNotNull(secureImageLoader))
                 AttachmentMetadataPanel(state.metadata)
                 AttachmentActions(onRename, onOpenExternally)
             }

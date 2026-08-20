@@ -24,8 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.semantics.semantics
 
 public data class BatchSummaryRowUiModel(
@@ -81,7 +82,7 @@ public fun BatchSummaryTable(
                 LedgerCard(
                     modifier = Modifier.fillMaxWidth().padding(vertical = LedgerTheme.spacing.xxs).clearAndSetSemantics {
                         role = Role.Button
-                        contentDescription = row.accessibilitySummary
+                        text = AnnotatedString(row.accessibilitySummary)
                     },
                     onClick = { onRowClick(index) },
                 ) {
@@ -129,6 +130,7 @@ public fun BatchCommitBar(
     onCommit: () -> Unit,
     onDiscard: () -> Unit,
     committing: Boolean,
+    commitEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     FlowRow(
@@ -137,7 +139,7 @@ public fun BatchCommitBar(
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
     ) {
         LedgerButton(validationLabel, onValidate, variant = LedgerButtonVariant.SECONDARY, enabled = !committing)
-        LedgerButton(commitLabel, onCommit, enabled = !committing)
+        LedgerButton(commitLabel, onCommit, enabled = !committing && commitEnabled)
         LedgerButton(discardLabel, onDiscard, variant = LedgerButtonVariant.TEXT, enabled = !committing)
     }
 }

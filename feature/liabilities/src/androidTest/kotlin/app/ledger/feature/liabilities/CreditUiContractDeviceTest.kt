@@ -5,6 +5,7 @@ package app.ledger.feature.liabilities
 import android.content.res.Configuration
 import android.os.LocaleList
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -13,12 +14,16 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.ledger.core.designsystem.LedgerTestTags
+import app.ledger.core.designsystem.LedgerSaveFab
+import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
 import app.ledger.finance.domain.AutoGenerationMode
@@ -95,6 +100,37 @@ class CreditUiContractDeviceTest {
             }
         }
         composeRule.onNodeWithTag(LedgerTestTags.CREDIT_ACCOUNT_DETAIL).assertExists()
+    }
+
+    @Test
+    fun creditOverpaymentDisablesProductionSaveAndCannotDispatchAWrite() {
+        val overpayment = CreditDeviceFixtures.state("REC-014", CreditPresentation.EDITING).let { state ->
+            CreditPolicy.validatePayment(state.copy(draft = state.draft.copy(amount = "901")))
+        }
+        var writes = 0
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 800.dp)) {
+                    LedgerScaffold(
+                        fixedAction = {
+                            val saveAllowed = CreditPolicy.validatePayment(overpayment).presentation !in setOf(
+                                CreditPresentation.VALIDATION_ERROR,
+                                CreditPresentation.OVERPAYMENT_BLOCKED,
+                            )
+                            LedgerSaveFab({ writes += 1 }, enabled = saveAllowed)
+                        },
+                    ) { padding ->
+                        Box(Modifier.padding(padding)) {
+                            CreditDestination("REC-014", CreditLoadState.Content(overpayment), emptyMap(), CreditDeviceFixtures.actions)
+                        }
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(LedgerTestTags.CREDIT_PAYMENT).assertExists()
+        composeRule.onNodeWithTag(LedgerTestTags.SAVE).assertIsNotEnabled().performClick()
+        composeRule.runOnIdle { assertEquals(0, writes) }
     }
 
     private fun cases(): List<Case> {

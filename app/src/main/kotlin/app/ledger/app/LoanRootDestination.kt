@@ -14,8 +14,7 @@ import app.ledger.core.designsystem.LedgerSaveFab
 import app.ledger.feature.liabilities.LoanDestination
 import app.ledger.feature.liabilities.LoanLoadState
 import app.ledger.feature.liabilities.LoanPresentation
-import app.ledger.feature.liabilities.LoanScreenAction
-import app.ledger.finance.domain.UserAccountType
+import app.ledger.feature.liabilities.LoanPolicy
 import app.ledger.feature.liabilities.R as LiabilitiesR
 
 @Composable
@@ -57,32 +56,39 @@ internal fun LoanRootDestination(
         screenId,
         uiState.loadState,
         encodedArguments,
-        { action ->
-            when (action) {
-                LoanScreenAction.Retry -> viewModel.loadLoan(screenId, contractId, trancheId, transactionId, simulationId)
-                is LoanScreenAction.Navigate -> {
-                    viewModel.navigateLoan(action.screenId, action.primaryId, action.secondaryId)
-                    onNavigationChanged()
-                }
-                is LoanScreenAction.FieldChanged -> viewModel.updateLoanField(action.field, action.value)
-                is LoanScreenAction.SelectContract -> viewModel.selectLoanContract(action.contractId)
-                is LoanScreenAction.SelectTranche -> viewModel.selectLoanTranche(action.trancheId)
-                is LoanScreenAction.RepaymentMethodChanged -> viewModel.selectLoanRepaymentMethod(action.method)
-                is LoanScreenAction.StrategyChanged -> viewModel.selectLoanStrategy(action.strategy)
-                LoanScreenAction.Preview -> viewModel.previewLoan()
-                LoanScreenAction.Save -> viewModel.saveLoan()
-                LoanScreenAction.Simulate -> viewModel.simulateLoan()
-                LoanScreenAction.ApplySimulation -> viewModel.applyLoanSimulation()
-                LoanScreenAction.CreateLoanAccount -> {
-                    viewModel.selectP12AccountType(UserAccountType.LOAN, viewModel.navigator.currentKey)
-                    onNavigationChanged()
-                }
-                is LoanScreenAction.OpenCreditAccount -> {
-                    viewModel.navigateCredit("CRD-001", action.accountId)
-                    onNavigationChanged()
-                }
-            }
-        },
+        LoanActions(
+            onRetry = { viewModel.loadLoan(screenId, contractId, trancheId, transactionId, simulationId) },
+            onNavigate = { target, primary, secondary ->
+                viewModel.navigateLoan(target, primary, secondary)
+                onNavigationChanged()
+            },
+            onFieldChanged = viewModel::updateLoanField,
+            onSelectContract = viewModel::selectLoanContract,
+            onSelectTranche = viewModel::selectLoanTranche,
+            onSelectPaymentAccount = viewModel::selectLoanPaymentAccount,
+            onSelectScheduleInstallment = viewModel::selectLoanScheduleInstallment,
+            onOperationOccurredAt = viewModel::selectLoanOperationOccurredAt,
+            onRepaymentMethod = viewModel::selectLoanRepaymentMethod,
+            onStrategy = viewModel::selectLoanStrategy,
+            onRateType = viewModel::selectLoanRateType,
+            onFrequency = viewModel::selectLoanFrequency,
+            onPrepaymentPolicy = viewModel::selectLoanPrepaymentPolicy,
+            onRoundingMode = viewModel::selectLoanRoundingMode,
+            onWizardNext = viewModel::nextLoanWizardStep,
+            onWizardBack = viewModel::previousLoanWizardStep,
+            onAddTranche = viewModel::addLoanWizardTranche,
+            onSelectWizardTranche = viewModel::selectLoanWizardTranche,
+            onAddRatePeriod = viewModel::addLoanRatePeriod,
+            onEditRatePeriod = viewModel::editLoanRatePeriod,
+            onPreview = viewModel::previewLoan,
+            onSave = viewModel::saveLoan,
+            onSimulate = viewModel::simulateLoan,
+            onApplySimulation = viewModel::applyLoanSimulation,
+            onOpenCreditAccount = { accountId ->
+                viewModel.navigateCredit("CRD-001", accountId)
+                onNavigationChanged()
+            },
+        ),
     )
 }
 
@@ -92,19 +98,14 @@ internal fun loanFixedAction(
     pending: Boolean,
     onSave: () -> Unit,
 ): (@Composable BoxScope.() -> Unit)? {
-    if (screenId !in setOf("REC-018", "REC-019", "LOA-002", "LOA-003", "LOA-004")) return null
-    val missingLoanAccount = (state as? LoanLoadState.Content)
-        ?.state
-        ?.snapshot
-        ?.loanAccounts
-        ?.none { it.active } == true
-    if (screenId == "LOA-002" && missingLoanAccount) return null
+    if (screenId !in setOf("REC-018", "REC-019", "LOA-002", "LOA-003", "LOA-004", "LOA-005")) return null
     return {
-        val presentation = (state as? LoanLoadState.Content)?.state?.presentation
+        val content = (state as? LoanLoadState.Content)?.state
+        val presentation = content?.presentation
         LedgerSaveFab(
             onSave,
             submitting = pending || presentation in setOf(LoanPresentation.SAVING, LoanPresentation.GENERATING_SCHEDULE),
-            enabled = !pending,
+            enabled = !pending && content?.let { LoanPolicy.canSave(it, screenId) } == true,
         )
     }
 }

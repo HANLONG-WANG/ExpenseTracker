@@ -4,6 +4,7 @@ package app.ledger.feature.record
 
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
+import app.ledger.core.common.getOrNull
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.AmountVisibility
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
@@ -20,6 +21,7 @@ import app.ledger.finance.application.OrdinarySettlementShareDraft
 import app.ledger.finance.application.OrdinaryTemplateView
 import app.ledger.finance.application.OrdinaryTransactionEditView
 import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
+import app.ledger.finance.application.OrdinaryLocationProvider
 import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.ParticipantId
 import app.ledger.finance.domain.SettlementAllocationPolicy
@@ -86,6 +88,21 @@ public enum class RecordEditorPresentation { LOADING, EDITING, VALIDATING, SAVIN
 
 public data class RecordValidationError(val field: RecordField, val code: String)
 
+public data class RecordAttachmentPresentation(
+    val attachmentId: StableId,
+    val displayName: String,
+    val sizeText: String,
+    val typeLabel: String,
+)
+
+public data class RecordPendingLocation(
+    val latitudeE7: Int,
+    val longitudeE7: Int,
+    val accuracyMillimeters: Int?,
+    val capturedAt: Instant,
+    val provider: OrdinaryLocationProvider,
+)
+
 /** Sensitive values live only in this in-memory model and are never encoded into a route or SavedState. */
 public data class OrdinaryRecordDraft(
     val direction: OrdinaryDirection,
@@ -137,14 +154,9 @@ public data class OrdinaryRecordEditorState(
     val attachmentImporting: Boolean = false,
     val attachmentFailureCode: String? = null,
     val uncommittedAttachmentIds: Set<StableId> = emptySet(),
-    val availableAttachments: List<RecordAvailableAttachment> = emptyList(),
-)
-
-public data class RecordAvailableAttachment(
-    val id: StableId,
-    val displayName: String,
-    val mimeType: String,
-    val sizeBytes: Long,
+    val attachmentPresentations: List<RecordAttachmentPresentation> = emptyList(),
+    val locationPresentation: RecordLocationEditorState = RecordLocationEditorState.Locating,
+    val pendingLocation: RecordPendingLocation? = null,
 )
 
 public sealed interface OrdinaryRecordLoadState {
@@ -165,6 +177,21 @@ public object OrdinaryRecordPolicy {
     private val catalog = JvmLegalTenderCurrencyCatalog.create()
     private val evaluator = MoneyExpressionEvaluator()
     private val formatter = LocaleCurrencyFormatter(catalog)
+
+    public fun formattedTemplateAmount(template: OrdinaryTemplateView, locale: Locale): MoneyUiModel? {
+        val expression = template.amountExpression?.takeIf(String::isNotBlank) ?: return null
+        val currencyCode = template.currency ?: return null
+        val metadata = catalog.find(currencyCode) ?: return null
+        val evaluated = evaluator.evaluate(expression, locale, metadata).getOrNull() ?: return null
+        return formatter.format(
+            MoneyFormatRequest(
+                evaluated.roundedMoney,
+                locale,
+                if (template.direction == OrdinaryDirection.EXPENSE) AmountSemantic.OUTFLOW else AmountSemantic.INFLOW,
+                AmountVisibility.VISIBLE,
+            ),
+        ).getOrNull()
+    }
 
     @Suppress("CyclomaticComplexMethod")
     public fun createEditor(

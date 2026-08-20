@@ -102,6 +102,16 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         "LedgerTestTags.BATCH_ROW_EDITOR", "rowCount = state.rows.size",
         "BatchRecordPolicy.minorToMajor", "batch_date_hint",
     ))
+    editor_scaffold = next((value for path, value in sources.items() if path.endswith("TransactionEditorScaffold.kt")), "")
+    batch_screens = next((value for path, value in sources.items() if path.endswith("BatchRecordScreens.kt")), "")
+    ordinary_screens = next((value for path, value in sources.items() if path.endswith("OrdinaryRecordScreens.kt")), "")
+    require_tokens(errors, editor_scaffold, "shared complete transaction editor", ("TransactionEditorScaffold", "LazyColumn("))
+    require_tokens(errors, batch_screens, "REC-024 explicit reference selection", (
+        "TransactionEditorScaffold(", "BatchReferenceSelector(", "record_search_category",
+        "record_search_account", "record_search_merchant", "record_search_project",
+    ))
+    if "TransactionEditorScaffold(" not in ordinary_screens:
+        errors.append("ordinary transaction editor does not share TransactionEditorScaffold with REC-024")
 
     root = next((value for path, value in sources.items() if path.endswith("BatchRecordRootDestination.kt")), "")
     require_tokens(errors, root, "safe batch route", ("onOpenRow", "openBatchRow", "onJumpToIssue"))

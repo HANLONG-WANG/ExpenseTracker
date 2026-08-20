@@ -156,7 +156,7 @@ def validate_repository_state() -> dict[str, int]:
 
     navigation = source_text("core/navigation/src/main/kotlin/app/ledger/core/navigation/NavigationContract.kt")
     stacks = source_text("core/navigation/src/main/kotlin/app/ledger/core/navigation/FiveStackNavigator.kt")
-    if "public class LedgerDestinationKey internal constructor" not in navigation:
+    if not re.search(r"public (?:open )?class LedgerDestinationKey internal constructor", navigation):
         raise P04ValidationError("Navigation 3 destination construction is not closed")
     if "public fun fromAllowlistedKey" in navigation or "public fun fromName" in navigation:
         raise P04ValidationError("arbitrary string route argument construction is public")

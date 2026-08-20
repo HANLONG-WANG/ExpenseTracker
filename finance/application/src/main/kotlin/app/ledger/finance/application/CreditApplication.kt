@@ -91,6 +91,22 @@ data class CreditStatementView(
     val remainingAmountMinor: Long,
     val status: CreditStatementStatus,
     val sealed: Boolean,
+    val transactions: List<CreditStatementTransactionView> = emptyList(),
+    val paymentAllocations: List<CreditPaymentAllocationView> = emptyList(),
+    val hasAutomaticPayment: Boolean = false,
+)
+
+data class CreditStatementTransactionView(
+    val transactionId: StableId,
+    val localDate: LocalDate,
+    val amountMinor: Long,
+    val note: String?,
+)
+
+data class CreditPaymentAllocationView(
+    val transactionId: StableId,
+    val localDate: LocalDate,
+    val amountMinor: Long,
 )
 
 data class CreditAccountView(
@@ -106,6 +122,8 @@ data class CreditAccountView(
     val unbilledMinor: Long,
     val overdueMinor: Long,
     val statements: List<CreditStatementView>,
+    val futureInstallmentMinor: Long = 0L,
+    val nextInstallmentDate: LocalDate? = null,
 )
 
 data class CreditSnapshot(
