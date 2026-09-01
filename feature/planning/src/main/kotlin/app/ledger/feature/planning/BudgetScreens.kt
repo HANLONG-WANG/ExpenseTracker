@@ -307,13 +307,8 @@ private fun BudgetHero(state: BudgetFeatureState, total: BudgetCompositionView) 
             CompositionLine(R.string.budget_rollover_row, total.rolloverMinor, state)
             CompositionLine(R.string.budget_adjustment_row, total.adjustmentMinor, state)
             CompositionLine(R.string.budget_used_row, total.usedMinor, state)
-            val progress = if (total.availableMinor <= 0L) {
-                null
-            } else {
-                total.usedMinor.toFloat() / total.availableMinor.toFloat()
-            }
             LedgerProgressIndicator(
-                progress,
+                BudgetPolicy.progressFraction(total.usedMinor, total.availableMinor),
                 accessibleText = stringResource(
                     R.string.budget_progress_accessible,
                     BudgetPolicy.money(state, total.usedMinor, locale).formatted,
@@ -388,7 +383,7 @@ private fun BudgetCategoryRow(
                 LedgerTextRole.BODY,
             )
             LedgerProgressIndicator(
-                if (row.availableMinor <= 0L) null else row.usedMinor.toFloat() / row.availableMinor.toFloat(),
+                BudgetPolicy.progressFraction(row.usedMinor, row.availableMinor),
                 accessibleText = stringResource(
                     R.string.budget_progress_accessible,
                     BudgetPolicy.money(state, row.usedMinor, locale).formatted,
@@ -587,6 +582,12 @@ private fun BudgetCategoryEditor(state: BudgetFeatureState, encodedCategoryId: S
                             errorText = budgetCategoryFieldError(state, child.id),
                         )
                     }
+                    LedgerButton(
+                        stringResource(R.string.budget_clear_category),
+                        { actions.onClearCategory(category.id) },
+                        Modifier.fillMaxWidth(),
+                        LedgerButtonVariant.SECONDARY,
+                    )
                 }
             }
             item { ConstraintMeters(state) }

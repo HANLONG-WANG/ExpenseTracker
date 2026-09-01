@@ -301,6 +301,7 @@ private fun CategoryEditor(snapshot: ReferenceDataSnapshot?, direction: Category
                 stringResource(R.string.management_default_account),
                 accounts.singleOrNull { it.id == defaultAccountId }?.name ?: stringResource(R.string.management_none),
                 { chooser = CategoryEditorChooser.ACCOUNT },
+                Modifier.testTag(MANAGEMENT_DEFAULT_ACCOUNT_TAG),
             )
             SelectorField(stringResource(R.string.management_default_card), cards.singleOrNull { it.id == defaultCardId }?.displayName ?: stringResource(R.string.management_none), { chooser = CategoryEditorChooser.CARD }, enabled = cards.isNotEmpty())
             SelectorField(stringResource(R.string.management_default_merchant), merchants.singleOrNull { it.id == defaultMerchantId }?.name ?: stringResource(R.string.management_none), { chooser = CategoryEditorChooser.MERCHANT }, enabled = merchants.isNotEmpty())
@@ -685,11 +686,30 @@ private fun SearchableReferenceChooser(
     var query by remember(title) { mutableStateOf("") }
     val filtered = remember(choices, query) { choices.filter { query.isBlank() || it.second.contains(query, ignoreCase = true) } }
     LedgerModalDialog(title, onDismiss = onDismiss) {
-        SearchField(query, { query = it.take(MAX_NAME) }, onClear = { query = "" })
-        LazyColumn(Modifier.fillMaxWidth()) {
-            item { LedgerChoiceRow(noneLabel, selectedId == null, { onSelected(null) }) }
-            items(filtered, key = { it.first.toString() }) { (id, label) ->
-                LedgerChoiceRow(label, selectedId == id, { onSelected(id) })
+        Column(
+            Modifier.fillMaxWidth().testTag(MANAGEMENT_REFERENCE_CHOOSER_TAG),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+        ) {
+            SearchField(
+                query,
+                { query = it.take(MAX_NAME) },
+                Modifier.testTag(MANAGEMENT_REFERENCE_CHOOSER_SEARCH_TAG),
+                onClear = { query = "" },
+            )
+            LazyColumn(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = REFERENCE_CHOOSER_LIST_MAX_HEIGHT)
+                    .testTag(MANAGEMENT_REFERENCE_CHOOSER_LIST_TAG),
+                verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs),
+            ) {
+                item { LedgerChoiceRow(noneLabel, selectedId == null, { onSelected(null) }) }
+                if (filtered.isEmpty() && query.isNotBlank()) {
+                    item { LedgerText(stringResource(R.string.management_no_search_results), LedgerTextRole.SUPPORTING) }
+                }
+                items(filtered, key = { it.first.toString() }) { (id, label) ->
+                    LedgerChoiceRow(label, selectedId == id, { onSelected(id) })
+                }
             }
         }
     }
@@ -869,6 +889,11 @@ private const val E7_DIVISOR = 10_000_000.0
 private const val MAX_COORDINATE_TEXT = 18
 private const val MIN_TEXT_CONTRAST = 4.5
 private const val CONTRAST_OFFSET = 0.05
+private val REFERENCE_CHOOSER_LIST_MAX_HEIGHT = 520.dp
+private const val MANAGEMENT_DEFAULT_ACCOUNT_TAG = "management_default_account"
+private const val MANAGEMENT_REFERENCE_CHOOSER_TAG = "management_reference_chooser"
+private const val MANAGEMENT_REFERENCE_CHOOSER_SEARCH_TAG = "management_reference_chooser_search"
+private const val MANAGEMENT_REFERENCE_CHOOSER_LIST_TAG = "management_reference_chooser_list"
 private val DRAFT_MAP_ID = StableId.fromBytes(ByteArray(StableId.BYTE_COUNT) { 0x55.toByte() }).getOrNull() ?: error("draft map id")
 private val LATITUDE_RANGE = -900_000_000..900_000_000
 private val LONGITUDE_RANGE = -1_800_000_000..1_800_000_000

@@ -32,6 +32,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.math.BigDecimal
@@ -119,7 +120,7 @@ class ProductionForegroundLocationClient(
     private fun hasPermission(permission: String): Boolean = ContextCompat.checkSelfPermission(applicationContext, permission) == PackageManager.PERMISSION_GRANTED
 
     companion object {
-        const val MAXIMUM_SAVE_WAIT_MILLIS: Long = 3_000L
+        const val MAXIMUM_SAVE_WAIT_MILLIS: Long = 15_000L
         val FOREGROUND_PERMISSIONS: Set<String> = setOf(
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -262,6 +263,33 @@ enum class LocationSaveDisposition {
     PERMISSION_DENIED,
     TIMED_OUT,
     UNAVAILABLE,
+}
+
+/** Runs one foreground request at a time and retries only recoverable per-attempt timeouts. */
+class ForegroundLocationRetryRunner(
+    private val captureAttempt: suspend () -> LocationSaveResult,
+    private val retryDelayMillis: Long = DEFAULT_RETRY_DELAY_MILLIS,
+) {
+    init {
+        require(retryDelayMillis >= 0L)
+    }
+
+    suspend fun captureUntilTerminal(
+        onAttemptStarted: () -> Unit = {},
+        onAttemptTimedOut: () -> Unit = {},
+    ): LocationSaveResult {
+        while (true) {
+            onAttemptStarted()
+            val result = captureAttempt()
+            if (result.disposition != LocationSaveDisposition.TIMED_OUT) return result
+            onAttemptTimedOut()
+            delay(retryDelayMillis)
+        }
+    }
+
+    companion object {
+        const val DEFAULT_RETRY_DELAY_MILLIS: Long = 1_000L
+    }
 }
 
 private fun Location.toCaptured(providerType: CapturedLocationProvider): CapturedLocation = CapturedLocation(

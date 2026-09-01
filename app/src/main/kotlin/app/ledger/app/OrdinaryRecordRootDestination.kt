@@ -33,6 +33,7 @@ internal fun OrdinaryRecordRootDestination(
                 onNavigationChanged()
             },
             onExpression = viewModel::recordExpression,
+            onAmountAutoFocusConsumed = viewModel::consumeRecordAmountAutoFocus,
             onOperator = viewModel::recordOperator,
             onSelectCategory = viewModel::selectRecordCategory,
             onSelectAccount = viewModel::selectRecordAccount,
@@ -71,6 +72,11 @@ internal fun OrdinaryRecordRootDestination(
             onLocationPoint = viewModel::selectRecordLocationPoint,
             onLocationCoordinate = viewModel::moveRecordLocationPin,
             onLocationMapUnavailable = viewModel::recordLocationMapUnavailable,
+            onRetryLocation = {
+                viewModel.retryRecordLocation()
+                onNavigationChanged()
+            },
+            onOpenLocationSettings = viewModel::openRecordLocationSettings,
             onUseLocation = {
                 viewModel.useRecordLocation()
                 onNavigationChanged()

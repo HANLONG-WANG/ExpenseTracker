@@ -147,6 +147,7 @@ public data class OrdinaryRecordEditorState(
     val sourceReferenceId: StableId?,
     val snapshot: OrdinaryTransactionEntrySnapshot,
     val draft: OrdinaryRecordDraft,
+    val amountAutoFocusConsumed: Boolean = false,
     val presentation: RecordEditorPresentation = RecordEditorPresentation.EDITING,
     val errors: List<RecordValidationError> = emptyList(),
     val sanitizedFailureCode: String? = null,
@@ -155,8 +156,9 @@ public data class OrdinaryRecordEditorState(
     val attachmentFailureCode: String? = null,
     val uncommittedAttachmentIds: Set<StableId> = emptySet(),
     val attachmentPresentations: List<RecordAttachmentPresentation> = emptyList(),
-    val locationPresentation: RecordLocationEditorState = RecordLocationEditorState.Locating,
+    val locationPresentation: RecordLocationEditorState = RecordLocationEditorState.NotRequested,
     val pendingLocation: RecordPendingLocation? = null,
+    val locationMapUnavailable: Boolean = false,
 )
 
 public sealed interface OrdinaryRecordLoadState {
@@ -274,6 +276,9 @@ public object OrdinaryRecordPolicy {
             errors = state.errors.filterNot { it.field == RecordField.AMOUNT },
         )
     }
+
+    public fun consumeAmountAutoFocus(state: OrdinaryRecordEditorState): OrdinaryRecordEditorState =
+        if (state.amountAutoFocusConsumed) state else state.copy(amountAutoFocusConsumed = true)
 
     public fun appendOperator(state: OrdinaryRecordEditorState, operator: String, locale: Locale): OrdinaryRecordEditorState {
         val expression = if (operator == "DELETE") state.draft.expression.dropLast(1) else state.draft.expression + normalizeOperator(operator)

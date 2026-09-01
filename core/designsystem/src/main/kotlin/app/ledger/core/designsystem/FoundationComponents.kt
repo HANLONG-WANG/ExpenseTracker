@@ -148,6 +148,7 @@ public fun LedgerScaffold(
     snackbarController: LedgerSnackbarController = rememberLedgerSnackbarController(),
     banner: (@Composable () -> Unit)? = null,
     fixedAction: (@Composable BoxScope.() -> Unit)? = null,
+    fixedActionOverlaysContent: Boolean = false,
     formContent: Boolean = false,
     contentHorizontalPadding: Boolean = true,
     content: @Composable BoxScope.(PaddingValues) -> Unit,
@@ -172,6 +173,7 @@ public fun LedgerScaffold(
                     applyHorizontalPadding = applyHorizontalPadding,
                     banner = banner,
                     fixedAction = fixedAction,
+                    fixedActionOverlaysContent = fixedActionOverlaysContent,
                     content = content,
                 )
             }
@@ -184,6 +186,7 @@ public fun LedgerScaffold(
                     applyHorizontalPadding = applyHorizontalPadding,
                     banner = banner,
                     fixedAction = fixedAction,
+                    fixedActionOverlaysContent = fixedActionOverlaysContent,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     content = content,
                 )
@@ -200,6 +203,7 @@ private fun LedgerScaffoldBody(
     applyHorizontalPadding: Boolean,
     banner: (@Composable () -> Unit)?,
     fixedAction: (@Composable BoxScope.() -> Unit)?,
+    fixedActionOverlaysContent: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.(PaddingValues) -> Unit,
 ) {
@@ -214,7 +218,13 @@ private fun LedgerScaffoldBody(
                 .testTag(LedgerTestTags.CONTENT)
                 .semantics { traversalIndex = CONTENT_TRAVERSAL_INDEX }
                 .padding(horizontal = horizontal)
-                .padding(bottom = if (fixedAction == null) LedgerTheme.spacing.none else LedgerTheme.dimensions.bottomActionInset),
+                .padding(
+                    bottom = if (fixedAction == null || fixedActionOverlaysContent) {
+                        LedgerTheme.spacing.none
+                    } else {
+                        LedgerTheme.dimensions.bottomActionInset
+                    },
+                ),
         ) {
             content(PaddingValues())
         }

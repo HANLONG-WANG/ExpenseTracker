@@ -36,7 +36,8 @@ class AppLockControllerTest {
             elapsedRealtimeMillis = { 0L },
             onLocked = { callbacks += 1 },
         )
-        controller.authenticationSucceeded()
+        controller.authenticationSucceeded() shouldBe true
+        controller.authenticationSucceeded() shouldBe false
         controller.onApplicationBackgrounded()
         controller.currentState() shouldBe AppLockState.Locked
         controller.forceLock()

@@ -145,7 +145,11 @@ sealed interface AnalysisLoadState {
 
     data class Content(val state: AnalysisFeatureState) : AnalysisLoadState
 
-    data class Failure(val screenId: String, val code: String) : AnalysisLoadState
+    data class Failure(
+        val screenId: String,
+        val code: String,
+        val previous: AnalysisFeatureState? = null,
+    ) : AnalysisLoadState
 }
 
 object AnalysisPolicy {

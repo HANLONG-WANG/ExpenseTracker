@@ -9,6 +9,7 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import android.provider.Settings
 import androidx.biometric.BiometricPrompt
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -43,16 +44,19 @@ import app.ledger.core.designsystem.LedgerReferenceDisplayDefaults
 import app.ledger.core.designsystem.LedgerRetainedStateStore
 import app.ledger.core.files.SecureBookAttachmentObjectPort
 import app.ledger.core.geo.ForegroundLocationSaveSession
+import app.ledger.core.geo.ForegroundLocationRetryRunner
 import app.ledger.core.geo.LocationSaveDisposition
 import app.ledger.core.geo.ProductionForegroundLocationClient
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.LocaleNumberFormatter
 import app.ledger.core.navigation.DestinationSnapshot
 import app.ledger.core.navigation.EncodedRouteArgument
+import app.ledger.core.navigation.EnumMaskArgument
 import app.ledger.core.navigation.FiveStackNavigator
 import app.ledger.core.navigation.FiveStackSnapshot
 import app.ledger.core.navigation.LedgerDestinationKey
 import app.ledger.core.navigation.LedgerRouteContract
+import app.ledger.core.navigation.RouteArgumentKind
 import app.ledger.core.navigation.SafeRouteArgument
 import app.ledger.core.navigation.ScreenId
 import app.ledger.core.navigation.SessionGateState
@@ -376,6 +380,7 @@ import com.google.protobuf.ByteString
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -708,12 +713,18 @@ internal class AppRootViewModel @Inject constructor(
     private var sessionManager: BookSessionManager? = null
     private var restoreRecoveryRunning = false
     private var appLockController: AppLockController? = null
+    private var applicationUnlockJob: Job? = null
+    private var applicationUnlockGeneration: Long = 0L
+    private var applicationLockJob: Job? = null
     private var unsavedContentLossNotice: Boolean = false
     val navigator: FiveStackNavigator = FiveStackNavigator()
     private var pendingDeepLink: LedgerDestinationKey? = null
     private var pendingWidgetQuickDeepLink: WidgetQuickDeepLink? = null
     private val scrollStates = mutableMapOf<TopLevelDestination, Pair<String, Int>>()
-    private var recordLocationSession: ForegroundLocationSaveSession? = null
+    private var recordLocationJob: Job? = null
+    private var recordLocationGeneration: Long = 0L
+    @Volatile private var recordLocationShouldRun: Boolean = false
+    @Volatile private var recordLocationHostForeground: Boolean = true
     private var recordAttachmentImportJob: Job? = null
     private var pendingBatchAttachmentRowId: StableId? = null
     private var specializedAttachmentImportJob: Job? = null
@@ -1008,7 +1019,7 @@ internal class AppRootViewModel @Inject constructor(
         appLockController = AppLockController(lockSettings, SystemClock::elapsedRealtime) {
             vaultController.onApplicationLocked()
             attachmentController.close()
-            viewModelScope.launch { manager.lockUi() }
+            lockApplicationSession(manager)
         }
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             manager.state.collectLatest { state ->
@@ -1081,11 +1092,43 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun authenticationSucceeded() {
-        appLockController?.authenticationSucceeded()
-        viewModelScope.launch { sessionManager?.unlockUi() }
+        val current = mutableRootState.value as? AppRootState.Session ?: return
+        if (!AppUnlockTransitionPolicy.mayConsumeSuccess(current.state, current.authentication)) return
+        if (applicationUnlockJob?.isActive == true) return
+        if (appLockController?.authenticationSucceeded() != true) return
+
+        // Leave the lock screen synchronously; database opening is blocking work and must not
+        // starve the main-thread state collector that renders the Opening/Ready transition.
+        publishSession(BookSessionState.Opening)
+        val manager = sessionManager ?: run {
+            publishSession(BookSessionState.Locked, AppAuthenticationState.AUTH_FAILED)
+            return
+        }
+        val generation = ++applicationUnlockGeneration
+        val pendingLock = applicationLockJob
+        applicationUnlockJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                pendingLock?.join()
+                if (generation != applicationUnlockGeneration) return@launch
+                when (manager.state.value) {
+                    BookSessionState.Locked -> manager.unlockUi()
+                    BookSessionState.Opening -> Unit
+                    is BookSessionState.Ready -> publishSession(manager.state.value)
+                    else -> publishSession(manager.state.value)
+                }
+            } catch (_: Exception) {
+                if (generation == applicationUnlockGeneration && manager.state.value == BookSessionState.Locked) {
+                    publishSession(BookSessionState.Locked, AppAuthenticationState.AUTH_FAILED)
+                }
+            } finally {
+                if (generation == applicationUnlockGeneration) applicationUnlockJob = null
+            }
+        }
     }
 
     fun authenticationFailed(error: AppAuthenticationError) {
+        val current = mutableRootState.value as? AppRootState.Session ?: return
+        if (!AppUnlockTransitionPolicy.mayConsumeFailure(current.state, current.authentication)) return
         val state = when (error) {
             AppAuthenticationError.LOCKED_OUT -> AppAuthenticationState.LOCKED_OUT
             AppAuthenticationError.FAILED,
@@ -1093,19 +1136,36 @@ internal class AppRootViewModel @Inject constructor(
             AppAuthenticationError.DEVICE_SECURITY_CHANGED,
             -> AppAuthenticationState.AUTH_FAILED
         }
-        val session = (mutableRootState.value as? AppRootState.Session)?.state ?: BookSessionState.Locked
-        publishSession(session, state)
+        publishSession(current.state, state)
     }
 
-    fun onApplicationBackgrounded() {
-        vaultController.onApplicationBackgrounded()
-        appLockController?.onApplicationBackgrounded()
+    private fun lockApplicationSession(manager: BookSessionManager? = sessionManager) {
+        applicationUnlockGeneration++
+        applicationUnlockJob?.cancel()
+        applicationUnlockJob = null
+        publishSession(BookSessionState.Locked)
+        if (manager == null || applicationLockJob?.isActive == true) return
+        applicationLockJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                manager.lockUi()
+            } finally {
+                applicationLockJob = null
+            }
+        }
+    }
+
+    fun onApplicationBackgrounded(vaultAuthenticationPromptActive: Boolean = false) {
+        vaultController.onApplicationBackgrounded(vaultAuthenticationPromptActive)
+        // Android's device-credential screen may stop this Activity even though the user has not
+        // left the app. Starting the app-lock timeout here would immediately cancel the Vault
+        // request through onApplicationLocked(), before BiometricPrompt can deliver success.
+        if (!vaultAuthenticationPromptActive) appLockController?.onApplicationBackgrounded()
         viewModelScope.launch { persistNavigationIfAllowed() }
     }
 
     fun onApplicationForegrounded() {
         if (appLockController?.onApplicationForegrounded() == AppLockState.Locked) {
-            viewModelScope.launch { sessionManager?.lockUi() }
+            lockApplicationSession()
         }
         val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready
         if (ready != null) refreshWidgetSnapshot(ready.bookId)
@@ -1124,7 +1184,7 @@ internal class AppRootViewModel @Inject constructor(
     fun retryOpen() {
         val state = (mutableRootState.value as? AppRootState.Session)?.state
         if (state == BookSessionState.Locked) {
-            viewModelScope.launch { sessionManager?.unlockUi() }
+            viewModelScope.launch(Dispatchers.IO) { sessionManager?.unlockUi() }
         } else if (state is BookSessionState.RecoveryRequired && state.diagnosticCode == app.ledger.core.security.RecoveryDiagnosticCode.DATABASE_UNAVAILABLE) {
             viewModelScope.launch(Dispatchers.IO) {
                 sessionManager?.close()
@@ -1287,7 +1347,6 @@ internal class AppRootViewModel @Inject constructor(
         vaultController.onApplicationLocked()
         attachmentController.close()
         appLockController?.forceLock()
-        viewModelScope.launch { sessionManager?.lockUi() }
     }
 
     fun updateGlobalScreenshotBlocked(enabled: Boolean) = updateSecuritySetting("SETG-007") { it.globalFlagSecure = enabled }
@@ -1770,6 +1829,9 @@ internal class AppRootViewModel @Inject constructor(
             mutableReferenceData.value = when (val result = referenceDataPort.snapshot(bookId)) {
                 is DomainResult.Success -> {
                     updateCurrencySettings(result.value)
+                    withContext(Dispatchers.Main.immediate) {
+                        vaultController.synchronizeCards(bookId, result.value.cards)
+                    }
                     AppReferenceDataState.Content(result.value)
                 }
                 is DomainResult.Failure -> AppReferenceDataState.Error(result.error.code)
@@ -2670,12 +2732,7 @@ internal class AppRootViewModel @Inject constructor(
             val createdEditor = OrdinaryRecordPolicy.createEditor(snapshot, mode, direction, categoryId, sourceId, runtimeSources.clock.now(), zone, locale)
             val editor = hydrateRecordEditor(createdEditor)
             mutableOrdinaryRecord.value = current.copy(snapshot = snapshot, selectedCategoryId = editor.draft.categoryId, editor = editor)
-            val platformClock = InjectedJavaClock(runtimeSources.clock)
-            recordLocationSession = ForegroundLocationSaveSession(
-                ProductionForegroundLocationClient(context, platformClock),
-                platformClock,
-                SystemClock::elapsedRealtime,
-            ).also { it.prefetch(viewModelScope) }
+            startRecordLocationAcquisition(restart = true)
             val screenId = ScreenId("REC-003")
             val arguments = buildMap<String, SafeRouteArgument> {
                 put("mode", LedgerRouteContract.enumArgument(screenId, "mode", mode.name))
@@ -2697,120 +2754,243 @@ internal class AppRootViewModel @Inject constructor(
         val screenId = ScreenId(target)
         val arguments = buildMap<String, SafeRouteArgument> {
             stable.forEach { (name, value) -> put(name, StableIdArgument(value)) }
-            enums.forEach { (name, value) -> put(name, LedgerRouteContract.enumArgument(screenId, name, value)) }
+            enums.forEach { (name, value) ->
+                val kind = LedgerRouteContract.screen(screenId).parameters.single { it.name == name }.kind
+                put(
+                    name,
+                    if (kind == RouteArgumentKind.ENUM_MASK) {
+                        EnumMaskArgument.fromBits(value.toInt())
+                    } else {
+                        LedgerRouteContract.enumArgument(screenId, name, value)
+                    },
+                )
+            }
         }
         navigator.navigate(LedgerRouteContract.destination(screenId, arguments), SessionGateState.READY)
         val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor
-        if (target == "REC-009" && editor?.locationPresentation == RecordLocationEditorState.Locating) {
-            captureRecordLocationForEditor()
+        if (target == "REC-009" && editor?.locationPresentation in setOf(
+                RecordLocationEditorState.NotRequested,
+                RecordLocationEditorState.Locating,
+                RecordLocationEditorState.Timeout,
+            )
+        ) {
+            startRecordLocationAcquisition()
         }
     }
 
     fun recordExpression(value: String) = updateEditor { OrdinaryRecordPolicy.changeExpression(it, value, recordLocale()) }
+    fun consumeRecordAmountAutoFocus() = updateEditor(OrdinaryRecordPolicy::consumeAmountAutoFocus)
 
     fun completeLocationPermission() {
-        if (navigator.currentKey.contract.screenId.value == "SYS-001") navigator.pop()
+        if (!LocationPermissionCompletionPolicy.shouldHandle(navigator.currentKey.contract.screenId.value)) return
+        navigator.pop()
         navigator.navigate(LedgerRouteContract.destination(ScreenId("REC-009")), SessionGateState.READY)
-        val platformClock = InjectedJavaClock(runtimeSources.clock)
-        recordLocationSession = ForegroundLocationSaveSession(
-            ProductionForegroundLocationClient(context, platformClock),
-            platformClock,
-            SystemClock::elapsedRealtime,
-        ).also { it.prefetch(viewModelScope) }
-        updateEditor { it.copy(locationPresentation = RecordLocationEditorState.Locating) }
-        captureRecordLocationForEditor()
+        startRecordLocationAcquisition(restart = true)
     }
 
     fun dismissLocationPermission() {
-        if (navigator.currentKey.contract.screenId.value == "SYS-001") navigator.pop()
+        if (!LocationPermissionCompletionPolicy.shouldHandle(navigator.currentKey.contract.screenId.value)) return
+        navigator.pop()
+        stopRecordLocationAcquisition()
         updateEditor { it.copy(locationPresentation = RecordLocationEditorState.PermissionDenied) }
         navigator.navigate(LedgerRouteContract.destination(ScreenId("REC-009")), SessionGateState.READY)
     }
 
-    private fun captureRecordLocationForEditor() {
-        val session = recordLocationSession ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = runCatching { session.locationForSave() }.getOrNull()
-            when (result?.disposition) {
-                LocationSaveDisposition.LOCATED -> {
-                    val location = result.location ?: return@launch
-                    val provider = when (location.provider) {
-                        app.ledger.finance.application.CapturedLocationProvider.FUSED -> OrdinaryLocationProvider.FUSED
-                        app.ledger.finance.application.CapturedLocationProvider.GPS -> OrdinaryLocationProvider.GPS
-                        app.ledger.finance.application.CapturedLocationProvider.NETWORK -> OrdinaryLocationProvider.NETWORK
-                    }
-                    val pending = RecordPendingLocation(
-                        location.latitudeE7,
-                        location.longitudeE7,
-                        location.accuracyMillimeters,
-                        location.capturedAt,
-                        provider,
-                    )
-                    val meters = location.accuracyMillimeters?.let { value ->
-                        context.getString(app.ledger.feature.record.R.string.record_accuracy_meters, value / 1000.0)
-                    } ?: context.getString(app.ledger.feature.record.R.string.record_accuracy_unknown)
-                    updateEditor { current ->
-                        if (current.locationPresentation != RecordLocationEditorState.Locating || current.draft.locationRecordId != null || current.pendingLocation != null) {
-                            return@updateEditor current
+    private fun startRecordLocationAcquisition(restart: Boolean = false) {
+        val editor = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)?.editor ?: return
+        if (editor.draft.locationRecordId != null || editor.pendingLocation != null || editor.locationPresentation == RecordLocationEditorState.Cleared) {
+            stopRecordLocationAcquisition()
+            return
+        }
+        recordLocationShouldRun = true
+        if (!context.hasLedgerLocationPermission()) {
+            recordLocationShouldRun = false
+            recordLocationJob?.cancel()
+            recordLocationJob = null
+            updateEditor { it.copy(locationPresentation = RecordLocationEditorState.PermissionDenied) }
+            return
+        }
+        if (!recordLocationHostForeground) return
+        if (recordLocationJob?.isActive == true && !restart) return
+
+        if (restart) recordLocationJob?.cancel()
+        val generation = ++recordLocationGeneration
+        updateEditor { it.copy(locationPresentation = RecordLocationEditorState.Locating) }
+        recordLocationJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val runner = ForegroundLocationRetryRunner(
+                    captureAttempt = {
+                        val platformClock = InjectedJavaClock(runtimeSources.clock)
+                        ForegroundLocationSaveSession(
+                            ProductionForegroundLocationClient(context, platformClock),
+                            platformClock,
+                            SystemClock::elapsedRealtime,
+                        ).locationForSave()
+                    },
+                )
+                val result = runner.captureUntilTerminal(
+                    onAttemptStarted = {
+                        if (generation == recordLocationGeneration) {
+                            updateEditor { current ->
+                                if (current.pendingLocation == null && current.draft.locationRecordId == null) {
+                                    current.copy(locationPresentation = RecordLocationEditorState.Locating)
+                                } else {
+                                    current
+                                }
+                            }
                         }
-                        current.copy(
-                            pendingLocation = pending,
-                            locationPresentation = RecordLocationEditorState.Located(
-                                meters,
-                                context.getString(app.ledger.feature.record.R.string.record_location_new_pin),
-                            ),
-                        )
+                    },
+                    onAttemptTimedOut = {
+                        if (generation == recordLocationGeneration) {
+                            updateEditor { current ->
+                                if (current.pendingLocation == null && current.draft.locationRecordId == null) {
+                                    current.copy(locationPresentation = RecordLocationEditorState.Timeout)
+                                } else {
+                                    current
+                                }
+                            }
+                        }
+                    },
+                )
+                if (generation != recordLocationGeneration) return@launch
+                when (result.disposition) {
+                    LocationSaveDisposition.LOCATED -> applyCapturedRecordLocation(result.location ?: return@launch)
+                    LocationSaveDisposition.PERMISSION_DENIED -> {
+                        recordLocationShouldRun = false
+                        updateEditor { it.copy(locationPresentation = RecordLocationEditorState.PermissionDenied) }
                     }
+                    LocationSaveDisposition.UNAVAILABLE -> {
+                        recordLocationShouldRun = false
+                        updateEditor { it.copy(locationPresentation = RecordLocationEditorState.ServiceUnavailable) }
+                    }
+                    LocationSaveDisposition.TIMED_OUT -> Unit
                 }
-                LocationSaveDisposition.PERMISSION_DENIED -> updateEditor { current ->
-                    if (current.locationPresentation == RecordLocationEditorState.Locating) current.copy(locationPresentation = RecordLocationEditorState.PermissionDenied) else current
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (generation == recordLocationGeneration) {
+                    recordLocationShouldRun = false
+                    updateEditor { it.copy(locationPresentation = RecordLocationEditorState.ServiceUnavailable) }
                 }
-                LocationSaveDisposition.TIMED_OUT -> updateEditor { current ->
-                    if (current.locationPresentation == RecordLocationEditorState.Locating) current.copy(locationPresentation = RecordLocationEditorState.Timeout) else current
-                }
-                LocationSaveDisposition.UNAVAILABLE, null -> updateEditor { current ->
-                    if (current.locationPresentation == RecordLocationEditorState.Locating) current.copy(locationPresentation = RecordLocationEditorState.Timeout) else current
-                }
+            } finally {
+                if (generation == recordLocationGeneration) recordLocationJob = null
             }
         }
     }
 
-    fun selectRecordLocationPoint(locationId: StableId) = updateEditor { editor ->
-        val location = editor.snapshot.references.locations.singleOrNull { it.id == locationId } ?: return@updateEditor editor
-        val place = editor.snapshot.references.places.singleOrNull { it.id == location.placeId }
-        editor.copy(
-            draft = editor.draft.copy(
-                locationRecordId = location.id,
-                touched = editor.draft.touched + RecordField.LOCATION,
-            ),
-            pendingLocation = null,
-            locationPresentation = RecordLocationEditorState.Manual(
-                place?.name ?: context.getString(app.ledger.feature.record.R.string.record_saved_location),
-            ),
+    private fun applyCapturedRecordLocation(location: app.ledger.finance.application.CapturedLocation) {
+        val pending = RecordPendingLocation(
+            location.latitudeE7,
+            location.longitudeE7,
+            location.accuracyMillimeters,
+            location.capturedAt,
+            when (location.provider) {
+                app.ledger.finance.application.CapturedLocationProvider.FUSED -> OrdinaryLocationProvider.FUSED
+                app.ledger.finance.application.CapturedLocationProvider.GPS -> OrdinaryLocationProvider.GPS
+                app.ledger.finance.application.CapturedLocationProvider.NETWORK -> OrdinaryLocationProvider.NETWORK
+            },
         )
+        val meters = location.accuracyMillimeters?.let { value ->
+            context.getString(app.ledger.feature.record.R.string.record_accuracy_meters, value / 1000.0)
+        } ?: context.getString(app.ledger.feature.record.R.string.record_accuracy_unknown)
+        recordLocationShouldRun = false
+        updateEditor { current ->
+            if (current.draft.locationRecordId != null || current.pendingLocation != null) return@updateEditor current
+            current.copy(
+                pendingLocation = pending,
+                locationPresentation = RecordLocationEditorState.Located(
+                    meters,
+                    context.getString(app.ledger.feature.record.R.string.record_location_new_pin),
+                ),
+            )
+        }
     }
 
-    fun moveRecordLocationPin(latitudeE7: Int, longitudeE7: Int) = updateEditor { editor ->
-        editor.copy(
-            draft = editor.draft.copy(
-                locationRecordId = null,
-                touched = editor.draft.touched + RecordField.LOCATION,
-            ),
-            pendingLocation = RecordPendingLocation(
-                latitudeE7,
-                longitudeE7,
-                null,
-                runtimeSources.clock.now(),
-                OrdinaryLocationProvider.MANUAL,
-            ),
-            locationPresentation = RecordLocationEditorState.Manual(
-                context.getString(app.ledger.feature.record.R.string.record_location_new_pin),
-            ),
-        )
+    private fun stopRecordLocationAcquisition() {
+        recordLocationShouldRun = false
+        recordLocationGeneration++
+        recordLocationJob?.cancel()
+        recordLocationJob = null
+    }
+
+    fun setRecordLocationHostForeground(foreground: Boolean) {
+        if (recordLocationHostForeground == foreground) return
+        recordLocationHostForeground = foreground
+        if (foreground) {
+            if (recordLocationShouldRun) startRecordLocationAcquisition()
+        } else {
+            recordLocationGeneration++
+            recordLocationJob?.cancel()
+            recordLocationJob = null
+        }
+    }
+
+    fun selectRecordLocationPoint(locationId: StableId) {
+        stopRecordLocationAcquisition()
+        updateEditor { editor ->
+            val location = editor.snapshot.references.locations.singleOrNull { it.id == locationId } ?: return@updateEditor editor
+            val place = editor.snapshot.references.places.singleOrNull { it.id == location.placeId }
+            editor.copy(
+                draft = editor.draft.copy(
+                    locationRecordId = location.id,
+                    touched = editor.draft.touched + RecordField.LOCATION,
+                ),
+                pendingLocation = null,
+                locationPresentation = RecordLocationEditorState.Manual(
+                    place?.name ?: context.getString(app.ledger.feature.record.R.string.record_saved_location),
+                ),
+            )
+        }
+    }
+
+    fun moveRecordLocationPin(latitudeE7: Int, longitudeE7: Int) {
+        stopRecordLocationAcquisition()
+        updateEditor { editor ->
+            editor.copy(
+                draft = editor.draft.copy(
+                    locationRecordId = null,
+                    touched = editor.draft.touched + RecordField.LOCATION,
+                ),
+                pendingLocation = RecordPendingLocation(
+                    latitudeE7,
+                    longitudeE7,
+                    null,
+                    runtimeSources.clock.now(),
+                    OrdinaryLocationProvider.MANUAL,
+                ),
+                locationPresentation = RecordLocationEditorState.Manual(
+                    context.getString(app.ledger.feature.record.R.string.record_location_new_pin),
+                ),
+            )
+        }
     }
 
     fun recordLocationMapUnavailable() = updateEditor {
-        it.copy(locationPresentation = RecordLocationEditorState.MapUnavailable)
+        it.copy(locationMapUnavailable = true)
+    }
+
+    fun retryRecordLocation() {
+        if (!context.hasLedgerLocationPermission()) {
+            if (navigator.currentKey.contract.screenId.value != "SYS-001") {
+                navigator.navigate(LedgerRouteContract.destination(ScreenId("SYS-001")), SessionGateState.READY)
+            }
+            return
+        }
+        updateEditor { editor ->
+            editor.copy(
+                draft = editor.draft.copy(touched = editor.draft.touched - RecordField.LOCATION),
+                pendingLocation = null,
+                locationPresentation = RecordLocationEditorState.NotRequested,
+            )
+        }
+        startRecordLocationAcquisition(restart = true)
+    }
+
+    fun openRecordLocationSettings() {
+        recordLocationShouldRun = true
+        context.startActivity(
+            Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     fun useRecordLocation() {
@@ -2818,6 +2998,7 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun clearRecordLocation() {
+        stopRecordLocationAcquisition()
         updateEditor { editor ->
             editor.copy(
                 draft = editor.draft.copy(
@@ -2825,7 +3006,7 @@ internal class AppRootViewModel @Inject constructor(
                     touched = editor.draft.touched + RecordField.LOCATION,
                 ),
                 pendingLocation = null,
-                locationPresentation = RecordLocationEditorState.Timeout,
+                locationPresentation = RecordLocationEditorState.Cleared,
             )
         }
         useRecordLocation()
@@ -3373,6 +3554,14 @@ internal class AppRootViewModel @Inject constructor(
 
     fun saveOrdinaryRecord() {
         if (mutableOrdinaryRecordPending.value) return
+        stopRecordLocationAcquisition()
+        updateEditor { editor ->
+            if (editor.locationPresentation in setOf(RecordLocationEditorState.Locating, RecordLocationEditorState.Timeout)) {
+                editor.copy(locationPresentation = RecordLocationEditorState.NotRequested)
+            } else {
+                editor
+            }
+        }
         val content = mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content ?: return
         val editor = content.editor ?: return
         val validated = OrdinaryRecordPolicy.validate(editor)
@@ -3403,28 +3592,7 @@ internal class AppRootViewModel @Inject constructor(
         mutableOrdinaryRecord.value = content.copy(editor = validated.copy(presentation = RecordEditorPresentation.SAVING, errors = emptyList()))
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val locationResult = if (
-                    validated.pendingLocation == null &&
-                    validated.draft.locationRecordId == null &&
-                    RecordField.LOCATION !in validated.draft.touched
-                ) {
-                    runCatching { recordLocationSession?.locationForSave() }.getOrNull()?.location
-                } else {
-                    null
-                }
-                val pendingLocation = validated.pendingLocation ?: locationResult?.let { captured ->
-                    RecordPendingLocation(
-                        captured.latitudeE7,
-                        captured.longitudeE7,
-                        captured.accuracyMillimeters,
-                        captured.capturedAt,
-                        when (captured.provider) {
-                            app.ledger.finance.application.CapturedLocationProvider.FUSED -> OrdinaryLocationProvider.FUSED
-                            app.ledger.finance.application.CapturedLocationProvider.GPS -> OrdinaryLocationProvider.GPS
-                            app.ledger.finance.application.CapturedLocationProvider.NETWORK -> OrdinaryLocationProvider.NETWORK
-                        },
-                    )
-                }
+                val pendingLocation = validated.pendingLocation
                 val locationId = pendingLocation?.let { nextId() }
                 val ids = OrdinaryTransactionWriteIds(
                     bookId = validated.snapshot.references.bookId,
@@ -3540,6 +3708,7 @@ internal class AppRootViewModel @Inject constructor(
     }
     fun updateBudgetTotal(value: String) = updateBudget { BudgetPolicy.updateTotal(it, value) }
     fun updateBudgetCategory(id: StableId, value: String) = updateBudget { BudgetPolicy.updateCategory(it, id, value) }
+    fun clearBudgetCategory(id: StableId) = updateBudget { BudgetPolicy.clearCategory(it, id) }
 
     fun applyBudgetTemplate(id: StableId) = updateBudget { state ->
         val template = state.snapshot.templates.singleOrNull { it.id == id } ?: return@updateBudget state
@@ -5711,6 +5880,7 @@ internal class AppRootViewModel @Inject constructor(
             if (screen == "JRN-011") {
                 applyJournalFilter(TransactionFilter(lifecycleStates = setOf(TransactionLifecycleState.ACTIVE)))
             }
+            if (screen == "REC-003") stopRecordLocationAcquisition()
             navigator.pop()
         }
     }
@@ -5732,12 +5902,17 @@ internal class AppRootViewModel @Inject constructor(
             pendingRecordExit = PendingRecordExit.TopLevel(target)
             updateEditor { it.copy(showUnsavedDialog = true) }
         } else {
+            if (editor != null) stopRecordLocationAcquisition()
             navigator.select(target)
         }
     }
 
     override fun onCleared() {
         attachmentController.close()
+        applicationUnlockGeneration++
+        applicationUnlockJob?.cancel()
+        applicationLockJob?.cancel()
+        stopRecordLocationAcquisition()
         super.onCleared()
     }
 
@@ -5758,7 +5933,7 @@ internal class AppRootViewModel @Inject constructor(
             null -> Unit
         }
         pendingRecordExit = null
-        recordLocationSession = null
+        stopRecordLocationAcquisition()
     }
 
     fun keepEditingRecord() {
@@ -6161,6 +6336,9 @@ internal class AppRootViewModel @Inject constructor(
             is DomainResult.Success -> {
                 updateCurrencySettings(result.value)
                 mutableReferenceData.value = AppReferenceDataState.Content(result.value)
+                withContext(Dispatchers.Main.immediate) {
+                    vaultController.synchronizeCards(bookId, result.value.cards)
+                }
                 updateRecordContent {
                     val refreshed = snapshot.copy(references = result.value)
                     val currentEditor = editor
@@ -6329,12 +6507,7 @@ internal class AppRootViewModel @Inject constructor(
                 selectedCategoryId = editor.draft.categoryId,
                 editor = editor,
             )
-            val platformClock = InjectedJavaClock(runtimeSources.clock)
-            recordLocationSession = ForegroundLocationSaveSession(
-                ProductionForegroundLocationClient(context, platformClock),
-                platformClock,
-                SystemClock::elapsedRealtime,
-            ).also { it.prefetch(viewModelScope) }
+            startRecordLocationAcquisition(restart = true)
             val editorScreen = ScreenId("REC-003")
             val arguments = buildMap<String, SafeRouteArgument> {
                 put("mode", LedgerRouteContract.enumArgument(editorScreen, "mode", seed.mode.name))
@@ -6965,7 +7138,7 @@ internal class AppRootViewModel @Inject constructor(
             is DomainResult.Success -> OrdinaryRecordLoadState.Content(loaded.value, if (editor.draft.direction == OrdinaryDirection.EXPENSE) RecordTab.EXPENSE else RecordTab.INCOME, selectedCategoryId = editor.draft.categoryId)
             is DomainResult.Failure -> OrdinaryRecordLoadState.Failure(sanitizeCode(loaded.error.code))
         }
-        recordLocationSession = null
+        stopRecordLocationAcquisition()
     }
 
     private fun recordLocale(): Locale {

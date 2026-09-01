@@ -30,6 +30,8 @@ import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
 
 sealed interface RecordLocationEditorState {
+    data object NotRequested : RecordLocationEditorState
+
     data object Locating : RecordLocationEditorState
 
     data class Located(val accuracyText: String, val selectedPlaceText: String) : RecordLocationEditorState
@@ -37,6 +39,10 @@ sealed interface RecordLocationEditorState {
     data object PermissionDenied : RecordLocationEditorState
 
     data object Timeout : RecordLocationEditorState
+
+    data object ServiceUnavailable : RecordLocationEditorState
+
+    data object Cleared : RecordLocationEditorState
 
     data class Manual(val selectedPlaceText: String) : RecordLocationEditorState
 
@@ -90,14 +96,7 @@ private fun LocationStatus(
     onRequestPermission: () -> Unit,
     onOpenMap: () -> Unit,
 ) {
-    val fieldState = when (state) {
-        RecordLocationEditorState.Locating -> LocationFieldState.Locating
-        is RecordLocationEditorState.Located -> LocationFieldState.Located(state.accuracyText)
-        RecordLocationEditorState.PermissionDenied -> LocationFieldState.PermissionDenied
-        RecordLocationEditorState.Timeout -> LocationFieldState.Unavailable
-        is RecordLocationEditorState.Manual -> LocationFieldState.ManuallyAdjusted
-        RecordLocationEditorState.MapUnavailable -> LocationFieldState.Unavailable
-    }
+    val fieldState = state.toLocationFieldState()
     LocationField(fieldState, onOpenMap, mapLabel = stringResource(R.string.record_location_adjust))
     when (state) {
         RecordLocationEditorState.PermissionDenied -> LedgerBanner(
@@ -108,6 +107,10 @@ private fun LocationStatus(
         )
         RecordLocationEditorState.Timeout -> LedgerBanner(
             message = stringResource(R.string.record_location_timeout),
+            variant = LedgerBannerVariant.WARNING,
+        )
+        RecordLocationEditorState.ServiceUnavailable -> LedgerBanner(
+            message = stringResource(R.string.record_location_service_unavailable),
             variant = LedgerBannerVariant.WARNING,
         )
         RecordLocationEditorState.MapUnavailable -> LedgerBanner(

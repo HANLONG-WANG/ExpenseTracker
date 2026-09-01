@@ -293,7 +293,7 @@ class SecureRoomBudgetApplicationPort(
 
     private fun mapLimits(db: SupportSQLiteDatabase, drafts: List<BudgetCategoryLimitDraft>): List<CategoryBudgetLimit> {
         val refs = categories(db).associateBy(BudgetCategoryReference::id)
-        return drafts.map { draft ->
+        return drafts.filter { it.amountBaseMinor > 0L }.map { draft ->
             val ref = refs[draft.categoryId] ?: abort(FinanceDataError.CorruptData)
             CategoryBudgetLimit(CategoryId(ref.id), CategoryId(ref.rootCategoryId), ref.parentCategoryId?.let(::CategoryId), ref.depth, draft.amountBaseMinor)
         }

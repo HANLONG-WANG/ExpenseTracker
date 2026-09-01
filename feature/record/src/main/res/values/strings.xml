@@ -5,7 +5,10 @@
     <string name="record_location_adjust">调整</string>
     <string name="record_location_permission_denied">未授予位置权限，仍可手动选择或不保存位置。</string>
     <string name="record_location_permission_action">权限设置</string>
-    <string name="record_location_timeout">定位等待已到 3 秒上限。本次将不保存位置，也不会稍后补写。</string>
+    <string name="record_location_timeout">本次定位已达到 15 秒上限，表单仍打开时会自动重试。</string>
+    <string name="record_location_service_unavailable">系统定位服务当前不可用。请开启定位服务后重试，或选择已有地点。</string>
+    <string name="record_location_retry">重试定位</string>
+    <string name="record_location_open_settings">定位设置</string>
     <string name="record_location_map_unavailable">地图暂不可用，不影响保存记账内容。</string>
     <string name="record_location_map_name">名称</string>
     <string name="record_location_map_coordinates">坐标</string>
@@ -113,7 +116,8 @@
     <string name="record_default_first">首个可用账户</string>
     <string name="record_default_none">未设置</string>
     <string name="record_card_last_four">尾号 %1$s</string>
-    <string name="record_location_three_seconds">仅在前台等待定位，保存时总等待不超过 3 秒；超时将无位置保存且不会后台补写。</string>
+    <string name="record_location_three_seconds">每次定位最多等待 15 秒；表单在前台且未获得位置时会继续重试。</string>
+    <string name="record_location_retry_policy">每次定位最多等待 15 秒；超时会串行重试。保存或离开表单会立即停止定位。</string>
     <string name="record_saved_location">已保存位置</string>
     <string name="record_without_location">本次不保存位置</string>
     <string name="record_attachment_attached">已加密附件</string>

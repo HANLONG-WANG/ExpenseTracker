@@ -79,11 +79,11 @@ class AppLockController(
     }
 
     @Synchronized
-    fun authenticationSucceeded() {
-        if (settings.enabled) {
-            state = AppLockState.Unlocked
-            backgroundedAtMillis = null
-        }
+    fun authenticationSucceeded(): Boolean {
+        if (!settings.enabled || state != AppLockState.Locked) return false
+        state = AppLockState.Unlocked
+        backgroundedAtMillis = null
+        return true
     }
 
     @Synchronized

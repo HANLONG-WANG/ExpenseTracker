@@ -4,6 +4,9 @@ package app.ledger.feature.record
 
 import app.ledger.core.common.StableId
 import app.ledger.core.money.CurrencyCode
+import app.ledger.core.navigation.EnumMaskArgument
+import app.ledger.core.navigation.LedgerRouteContract
+import app.ledger.core.navigation.ScreenId
 import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.application.CardReferenceView
 import app.ledger.finance.application.CategoryReferenceView
@@ -32,6 +35,16 @@ import java.util.Locale
 import java.util.UUID
 
 class OrdinaryRecordPolicyTest {
+    @Test
+    fun `ordinary account picker route mask includes every selectable account type`() {
+        assertEquals((1 shl UserAccountType.entries.size) - 1, ORDINARY_ACCOUNT_TYPE_MASK)
+        val destination = LedgerRouteContract.destination(
+            ScreenId("REC-005"),
+            mapOf("allowedTypes" to EnumMaskArgument.fromBits(ORDINARY_ACCOUNT_TYPE_MASK)),
+        )
+        assertEquals("record/account-picker/$ORDINARY_ACCOUNT_TYPE_MASK", destination.path)
+    }
+
     @Test
     fun categoryDefaultBeatsRecentAndAccountChangeClearsIncompatibleCard() {
         val snapshot = snapshot()
@@ -119,6 +132,16 @@ class OrdinaryRecordPolicyTest {
 
         editor = OrdinaryRecordPolicy.changeExpression(editor, "1000", Locale.JAPAN).copy(attachmentImporting = true)
         assertTrue(OrdinaryRecordPolicy.validate(editor).errors.any { it.code == "ATTACHMENT_IMPORTING" })
+    }
+
+    @Test
+    fun initialAmountAutoFocusCanOnlyBeConsumedOncePerEditor() {
+        val editor = OrdinaryRecordPolicy.createEditor(snapshot(), RecordEditorMode.CREATE, OrdinaryDirection.EXPENSE, CATEGORY_DEFAULT, null, NOW, ZONE, Locale.JAPAN)
+
+        val consumed = OrdinaryRecordPolicy.consumeAmountAutoFocus(editor)
+
+        assertTrue(consumed.amountAutoFocusConsumed)
+        assertTrue(OrdinaryRecordPolicy.consumeAmountAutoFocus(consumed) === consumed)
     }
 
     @Test

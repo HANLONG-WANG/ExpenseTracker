@@ -5,7 +5,10 @@
     <string name="record_location_adjust">調整</string>
     <string name="record_location_permission_denied">位置情報の権限がありません。手動選択、または場所なしで保存できます。</string>
     <string name="record_location_permission_action">権限設定</string>
-    <string name="record_location_timeout">位置情報の待機が3秒で終了しました。今回は場所を保存せず、後から追記もしません。</string>
+    <string name="record_location_timeout">今回の位置情報取得は15秒でタイムアウトしました。フォームが開いている間は再試行します。</string>
+    <string name="record_location_service_unavailable">システムの位置情報サービスを利用できません。有効にして再試行するか、保存済みの場所を選択してください。</string>
+    <string name="record_location_retry">位置情報を再試行</string>
+    <string name="record_location_open_settings">位置情報設定</string>
     <string name="record_location_map_unavailable">地図を利用できません。記帳内容は保存できます。</string>
     <string name="record_location_map_name">名前</string>
     <string name="record_location_map_coordinates">座標</string>
@@ -61,7 +64,8 @@
     <string name="record_error_category">支出または収入カテゴリを1つ選んでください。</string><string name="record_error_amount">0より大きい有効な金額式を入力してください。</string><string name="record_error_account">有効な口座を選んでください。</string><string name="record_error_settlement">支払合計と負担合計を取引金額に一致させ、支払者を1人にしてください。</string><string name="record_error_generic">この項目を確認してください。</string>
     <string name="record_default_explanation">出典：%1$s</string><string name="record_default_manual">手動選択</string><string name="record_default_edit">現在の完全な改訂</string><string name="record_default_template">テンプレート</string><string name="record_default_category">カテゴリ既定値</string><string name="record_default_recent">最近の互換選択</string><string name="record_default_cash">現金口座の代替</string><string name="record_default_first">最初の有効口座</string><string name="record_default_none">未設定</string>
     <string name="record_card_last_four">末尾 %1$s</string>
-    <string name="record_location_three_seconds">位置情報は前面で合計3秒まで待機します。タイムアウト時は位置なしで保存し、後から補完しません。</string><string name="record_saved_location">保存済みの位置</string><string name="record_without_location">位置なしで保存</string>
+    <string name="record_location_three_seconds">位置情報は1回につき最大15秒待機し、フォームが前面にあり未取得の間は再試行します。</string><string name="record_saved_location">保存済みの位置</string><string name="record_without_location">位置なしで保存</string>
+    <string name="record_location_retry_policy">1回につき最大15秒待機し、タイムアウト後は直列に再試行します。保存またはフォームから離れると直ちに停止します。</string>
     <string name="record_attachment_attached">暗号化された添付</string><string name="record_attachment_type">非公開の添付</string><string name="record_attachment_importing">暗号化して読み込み中…</string>
     <string name="record_settlement_empty">利用可能な活動がありません</string><string name="record_settlement_empty_body">割り勘をオフにすると通常取引として保存できます。</string><string name="record_continue_without_settlement">割り勘なしで続行</string><string name="record_settlement_balanced">配分は一致しており保存できます。</string><string name="record_settlement_imbalanced">配分がまだ一致していません。</string><string name="record_settlement_difference">支払合計 %1$s と負担合計 %2$s は、どちらも取引合計 %3$s と一致する必要があります。</string><string name="record_settlement_currency_mismatch">活動の精算通貨が取引通貨と異なります。別の活動を選ぶか、明示的な換算を先に指定してください。</string><string name="record_settlement_share">%1$s の負担は %2$s</string>
     <string name="record_statistical_snapshot">統計属性のスナップショット：%1$s</string><string name="record_statistical_consumption">消費支出</string><string name="record_statistical_non_consumption">非消費費用</string><string name="record_statistical_regular_income">経常収入</string><string name="record_statistical_non_recurring_income">非経常収入</string><string name="record_budget_snapshot">予算帰属のスナップショット：%1$s</string><string name="record_budget_category_rule">カテゴリ規則</string><string name="record_snapshot_immutable">保存後は不変の改訂に属し、後のカテゴリ変更は過去の事実を書き換えません。</string>

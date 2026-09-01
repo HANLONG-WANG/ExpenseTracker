@@ -477,17 +477,20 @@ internal class AnalysisController(
 
     private suspend fun loadCurrent() {
         val previous = (mutableState.value as? AnalysisLoadState.Content)?.state?.takeIf { it.screenId == screenId }
-        mutableState.value = if (previous == null) {
-            AnalysisLoadState.Loading()
-        } else {
-            AnalysisLoadState.Content(
-                previous.copy(
-                    period = requirePeriod(),
-                    presentation = if (screenId == "ANA-001") AnalysisPresentation.CALCULATING else AnalysisPresentation.LOADING,
-                ),
-            )
+        val periodAwareLoading = previous?.copy(
+            period = requirePeriod(),
+            presentation = if (screenId == "ANA-001") AnalysisPresentation.CALCULATING else AnalysisPresentation.LOADING,
+        ) ?: when (screenId) {
+            "ANA-001" -> baseState(screenId, AnalysisPresentation.CALCULATING)
+            "ANA-003" -> baseState(screenId, AnalysisPresentation.LOADING)
+            else -> null
         }
-        mutableState.value = when (screenId) {
+        mutableState.value = if (previous == null) {
+            AnalysisLoadState.Loading(periodAwareLoading)
+        } else {
+            AnalysisLoadState.Content(requireNotNull(periodAwareLoading))
+        }
+        val loaded = when (screenId) {
             "ANA-001" -> loadOverview()
             "ANA-002" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.CONTENT))
             "ANA-003" -> loadReport()
@@ -504,6 +507,11 @@ internal class AnalysisController(
             "ANA-014" -> loadForecast()
             "ANA-015" -> AnalysisLoadState.Content(baseState(screenId, AnalysisPresentation.NOT_RUN))
             else -> AnalysisLoadState.Failure(screenId, "ANALYSIS_SCREEN_UNKNOWN")
+        }
+        mutableState.value = if (loaded is AnalysisLoadState.Failure && periodAwareLoading != null) {
+            loaded.copy(previous = periodAwareLoading)
+        } else {
+            loaded
         }
     }
 

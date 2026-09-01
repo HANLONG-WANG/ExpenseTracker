@@ -80,7 +80,9 @@ public object BudgetPolicy {
 
     public fun create(snapshot: BudgetSnapshot, presentation: BudgetPresentation = homePresentation(snapshot)): BudgetFeatureState {
         val total = snapshot.currentRevision?.totalBaseMinor
-        val limits = snapshot.currentRevision?.limits.orEmpty().associate { it.categoryId to minorText(it.amountBaseMinor, snapshot) }
+        val limits = snapshot.currentRevision?.limits.orEmpty()
+            .filter { it.amountBaseMinor > 0L }
+            .associate { it.categoryId to minorText(it.amountBaseMinor, snapshot) }
         val editor = BudgetEditorDraft(total?.let { minorText(it, snapshot) }.orEmpty(), limits)
         val initial = BudgetFeatureState(snapshot, presentation, editor, BudgetEditorValidation(null, emptyList(), null, emptySet()))
         return validate(initial)
@@ -94,13 +96,43 @@ public object BudgetPolicy {
         state.copy(editor = state.editor.copy(totalText = value.take(MAX_AMOUNT_TEXT), dirty = true), presentation = BudgetPresentation.EDITING),
     )
 
-    public fun updateCategory(state: BudgetFeatureState, categoryId: StableId, value: String): BudgetFeatureState = validate(
-        state.copy(
-            editor = state.editor.copy(categoryTexts = state.editor.categoryTexts + (categoryId to value.take(MAX_AMOUNT_TEXT)), dirty = true),
-            selectedCategoryId = categoryId,
-            presentation = BudgetPresentation.EDITING,
-        ),
-    )
+    public fun updateCategory(state: BudgetFeatureState, categoryId: StableId, value: String): BudgetFeatureState {
+        val sanitized = value.take(MAX_AMOUNT_TEXT)
+        return if (sanitized.isBlank() || parseMinor(sanitized, state.snapshot) == 0L) {
+            clearCategory(state, categoryId)
+        } else {
+            validate(
+                state.copy(
+                    editor = state.editor.copy(categoryTexts = state.editor.categoryTexts + (categoryId to sanitized), dirty = true),
+                    selectedCategoryId = categoryId,
+                    presentation = BudgetPresentation.EDITING,
+                ),
+            )
+        }
+    }
+
+    public fun clearCategory(state: BudgetFeatureState, categoryId: StableId): BudgetFeatureState {
+        val clearedIds = state.snapshot.categories
+            .filter { it.id == categoryId || it.parentCategoryId == categoryId }
+            .mapTo(mutableSetOf()) { it.id }
+            .ifEmpty { mutableSetOf(categoryId) }
+        return validate(
+            state.copy(
+                editor = state.editor.copy(
+                    categoryTexts = state.editor.categoryTexts - clearedIds,
+                    dirty = true,
+                ),
+                selectedCategoryId = categoryId,
+                presentation = BudgetPresentation.EDITING,
+            ),
+        )
+    }
+
+    public fun progressFraction(usedMinor: Long, availableMinor: Long): Float = when {
+        availableMinor > 0L -> usedMinor.toFloat() / availableMinor.toFloat()
+        usedMinor > 0L -> 1f
+        else -> 0f
+    }
 
     public fun updateTemplateName(state: BudgetFeatureState, value: String): BudgetFeatureState = state.copy(
         editor = state.editor.copy(templateName = value.take(MAX_NAME), dirty = true),
@@ -144,9 +176,12 @@ public object BudgetPolicy {
         val total = parseMinor(state.editor.totalText, state.snapshot)
         val invalid = mutableSetOf<StableId>()
         val drafts = state.editor.categoryTexts.mapNotNull { (id, text) ->
+            if (text.isBlank()) return@mapNotNull null
             val amount = parseMinor(text, state.snapshot)
             if (amount == null) {
                 invalid += id
+                null
+            } else if (amount == 0L) {
                 null
             } else {
                 BudgetCategoryLimitDraft(id, amount)

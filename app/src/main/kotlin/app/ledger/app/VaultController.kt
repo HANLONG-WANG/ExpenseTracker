@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 
 internal enum class VaultAuthenticationPurpose { OPEN_LIST, REVEAL_PAN, COPY_PAN, REVEAL_CVC, EDIT_VAULT }
@@ -81,30 +82,91 @@ internal class VaultController(
     private var exposedPan: SensitivePlaintext? = null
     private var exposedSecurityCode: SensitivePlaintext? = null
     private var timer: Job? = null
+    private var cardSnapshotGeneration = 0L
 
     fun openList(activeBookId: StableId, sourceCards: List<CardReferenceView>) {
+        cancelPending()
         hideSensitive(autoHidden = false)
+        val continuingSameBook = bookId == activeBookId
+        val knownSecretCardIds = if (continuingSameBook) knownSecretCardIds() else emptySet()
         bookId = activeBookId
-        cards = sourceCards.associate { card ->
-            card.id to VaultCardSummary(card.id, card.displayName, card.lastFour, hasSecret = false)
-        }
+        cards = VaultCardSnapshotPolicy.synchronize(sourceCards, knownSecretCardIds)
+        val generation = ++cardSnapshotGeneration
+        publishCardSnapshot(forceLocked = true)
         if (!keystore.vaultAuthenticationAvailable()) {
-            mutableState.value = VaultPresentationState(
-                "VLT-001",
-                VaultRequiredState.VLT_001_DEVICE_SECURITY_MISSING,
-                cards.values.toList(),
-            )
             return
         }
-        scope.launch(Dispatchers.IO) {
-            val ids = (port.listCardIds(activeBookId) as? DomainResult.Success)?.value.orEmpty()
-            cards = cards.mapValues { (id, card) -> card.copy(hasSecret = id in ids) }
-            mutableState.value = VaultPresentationState(
-                "VLT-001",
-                if (cards.isEmpty()) VaultRequiredState.VLT_001_EMPTY else VaultRequiredState.VLT_001_LOCKED,
-                cards.values.sortedBy(VaultCardSummary::displayName),
-            )
+        refreshConfiguredCardIds(activeBookId, sourceCards, generation)
+    }
+
+    /** Applies a new reference snapshot without requiring the Vault route or process to be recreated. */
+    fun synchronizeCards(activeBookId: StableId, sourceCards: List<CardReferenceView>) {
+        if (bookId != activeBookId) return
+        val selectedCardId = mutableState.value.selectedCard?.cardId
+        if (selectedCardId != null && sourceCards.none { it.id == selectedCardId }) {
+            cancelPending()
+            hideSensitive(autoHidden = false)
         }
+        cards = VaultCardSnapshotPolicy.synchronize(sourceCards, knownSecretCardIds())
+        records = records.filterKeys(cards::containsKey)
+        val generation = ++cardSnapshotGeneration
+        publishCardSnapshot(forceLocked = selectedCardId != null && selectedCardId !in cards)
+        if (keystore.vaultAuthenticationAvailable()) {
+            refreshConfiguredCardIds(activeBookId, sourceCards, generation)
+        }
+    }
+
+    private fun refreshConfiguredCardIds(
+        activeBookId: StableId,
+        sourceCards: List<CardReferenceView>,
+        generation: Long,
+    ) {
+        scope.launch(Dispatchers.IO) {
+            val configuredIds = (port.listCardIds(activeBookId) as? DomainResult.Success)?.value ?: return@launch
+            withContext(Dispatchers.Main.immediate) {
+                if (!VaultCardSnapshotPolicy.mayApplySecretLookup(
+                        requestedBookId = activeBookId,
+                        activeBookId = bookId,
+                        requestedGeneration = generation,
+                        activeGeneration = cardSnapshotGeneration,
+                    )
+                ) {
+                    return@withContext
+                }
+                cards = VaultCardSnapshotPolicy.synchronize(sourceCards, configuredIds)
+                publishCardSnapshot()
+            }
+        }
+    }
+
+    private fun knownSecretCardIds(): Set<StableId> =
+        cards.values.asSequence().filter(VaultCardSummary::hasSecret).map(VaultCardSummary::cardId).toCollection(linkedSetOf())
+
+    private fun publishCardSnapshot(forceLocked: Boolean = false) {
+        val current = mutableState.value
+        val sortedCards = cards.values.sortedBy(VaultCardSummary::displayName)
+        val selectedCardId = current.selectedCard?.cardId
+        val selectedCard = selectedCardId?.let(cards::get)
+        if (current.screenId != "VLT-001" && selectedCard != null && !forceLocked) {
+            mutableState.value = current.copy(cards = sortedCards, selectedCard = selectedCard)
+            return
+        }
+        val presentation = when {
+            !keystore.vaultAuthenticationAvailable() -> VaultRequiredState.VLT_001_DEVICE_SECURITY_MISSING
+            cards.isEmpty() -> VaultRequiredState.VLT_001_EMPTY
+            !forceLocked && current.screenId == "VLT-001" &&
+                current.presentation == VaultRequiredState.VLT_001_UNLOCKED_SESSION ->
+                VaultRequiredState.VLT_001_UNLOCKED_SESSION
+            else -> VaultRequiredState.VLT_001_LOCKED
+        }
+        val authenticationPending = presentation == VaultRequiredState.VLT_001_LOCKED &&
+            current.pending && pending != null
+        mutableState.value = VaultPresentationState(
+            "VLT-001",
+            presentation,
+            sortedCards,
+            pending = authenticationPending,
+        )
     }
 
     fun openCard(cardId: StableId) {
@@ -433,8 +495,12 @@ internal class VaultController(
         }
     }
 
-    fun onApplicationBackgrounded() {
-        cancelPending()
+    fun onApplicationBackgrounded(systemAuthenticationPromptActive: Boolean = false) {
+        val preservePending = VaultAuthenticationLifecyclePolicy.preservePendingOnActivityStop(
+            systemPromptActive = systemAuthenticationPromptActive,
+            hasPendingAuthentication = pending != null,
+        )
+        if (!preservePending) cancelPending()
         hideSensitive()
         clipboard.onApplicationBackgrounded()
         if (mutableState.value.screenId == "VLT-001" && cards.isNotEmpty()) {
@@ -442,12 +508,13 @@ internal class VaultController(
                 "VLT-001",
                 VaultRequiredState.VLT_001_LOCKED,
                 cards.values.sortedBy(VaultCardSummary::displayName),
+                pending = preservePending,
             )
         }
     }
 
     fun onApplicationLocked() {
-        onApplicationBackgrounded()
+        onApplicationBackgrounded(systemAuthenticationPromptActive = false)
         exposureRegistry.onApplicationLocked()
     }
 

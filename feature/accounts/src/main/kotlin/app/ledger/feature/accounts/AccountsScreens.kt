@@ -676,7 +676,6 @@ private fun CheckpointEditor(snapshot: ReferenceDataSnapshot?, accountId: Stable
         },
         currencyCode = account?.currency?.value.orEmpty(),
         errorText = stringResource(R.string.accounts_amount_invalid).takeIf { observed.text.isNotBlank() && observedResult == null },
-        onOperator = { operator -> observed = checkpointExpressionAfterOperator(observed, operator) },
     )
     MetricCard(stringResource(R.string.accounts_book_balance), calculated.money(account?.currency?.value.orEmpty(), amountsVisible))
     if (state == "match" || difference == 0L) LedgerBanner(stringResource(R.string.accounts_checkpoint_match), LedgerBannerVariant.INFO)

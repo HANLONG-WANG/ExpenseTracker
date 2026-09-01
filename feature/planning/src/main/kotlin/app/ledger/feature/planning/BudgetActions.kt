@@ -12,6 +12,7 @@ public sealed interface BudgetScreenAction {
     public data object Operations : BudgetScreenAction
     public data class TotalChanged(val value: String) : BudgetScreenAction
     public data class CategoryChanged(val categoryId: StableId, val value: String) : BudgetScreenAction
+    public data class ClearCategory(val categoryId: StableId) : BudgetScreenAction
     public data object SaveMonth : BudgetScreenAction
     public data class ApplyTemplate(val templateId: StableId) : BudgetScreenAction
     public data class TemplateNameChanged(val value: String) : BudgetScreenAction
@@ -34,6 +35,7 @@ internal class BudgetActions(
     val onOperations: () -> Unit get() = navigation.onOperations
     val onTotalChanged: (String) -> Unit get() = editor.onTotalChanged
     val onCategoryChanged: (StableId, String) -> Unit get() = editor.onCategoryChanged
+    val onClearCategory: (StableId) -> Unit get() = editor.onClearCategory
     val onSaveMonth: () -> Unit get() = editor.onSaveMonth
     val onApplyTemplate: (StableId) -> Unit get() = editor.onApplyTemplate
     val onTemplateNameChanged: (String) -> Unit get() = editor.onTemplateNameChanged
@@ -55,6 +57,7 @@ internal class BudgetNavigationActions(
 internal class BudgetEditorActions(
     val onTotalChanged: (String) -> Unit,
     val onCategoryChanged: (StableId, String) -> Unit,
+    val onClearCategory: (StableId) -> Unit,
     val onSaveMonth: () -> Unit,
     val onApplyTemplate: (StableId) -> Unit,
     val onTemplateNameChanged: (String) -> Unit,
@@ -79,6 +82,7 @@ internal fun budgetActions(onAction: (BudgetScreenAction) -> Unit): BudgetAction
     editor = BudgetEditorActions(
         onTotalChanged = { onAction(BudgetScreenAction.TotalChanged(it)) },
         onCategoryChanged = { id, value -> onAction(BudgetScreenAction.CategoryChanged(id, value)) },
+        onClearCategory = { id -> onAction(BudgetScreenAction.ClearCategory(id)) },
         onSaveMonth = { onAction(BudgetScreenAction.SaveMonth) },
         onApplyTemplate = { onAction(BudgetScreenAction.ApplyTemplate(it)) },
         onTemplateNameChanged = { onAction(BudgetScreenAction.TemplateNameChanged(it)) },

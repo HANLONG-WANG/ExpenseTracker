@@ -183,6 +183,15 @@ fun AnalysisDestination(
     mapContent: @Composable (ConsumptionMapResult, Boolean) -> Unit = { _, _ -> },
 ) {
     if (state is AnalysisLoadState.Loading) {
+        val previous = state.previous?.takeIf { it.screenId == screenId }
+        if (previous != null && screenId == "ANA-001") {
+            AnalysisHome(previous.copy(presentation = AnalysisPresentation.CALCULATING), actions)
+            return
+        }
+        if (previous != null && screenId == "ANA-003") {
+            ReportDetail(previous.copy(presentation = AnalysisPresentation.LOADING), actions)
+            return
+        }
         LedgerLoadingState(
             Modifier.fillMaxSize().analysisRootTag(screenId),
             stringResource(R.string.analysis_loading),
@@ -190,6 +199,11 @@ fun AnalysisDestination(
         return
     }
     if (state is AnalysisLoadState.Failure) {
+        val previous = state.previous?.takeIf { it.screenId == screenId }
+        if (previous != null && screenId in setOf("ANA-001", "ANA-003")) {
+            AnalysisPeriodFailure(previous, state.code, actions)
+            return
+        }
         LedgerErrorState(
             UiErrorCode(state.code),
             stringResource(R.string.analysis_query_failed),
@@ -244,22 +258,26 @@ private fun AnalysisHome(state: AnalysisFeatureState, actions: AnalysisActions) 
         return
     }
     if (state.presentation == AnalysisPresentation.ERROR || overview == null) {
-        LedgerErrorState(
-            UiErrorCode(state.failureCode ?: "ANALYSIS_HOME_FAILED"),
-            stringResource(R.string.analysis_query_failed),
-            actions.onRetry,
-            Modifier.fillMaxSize().testTag(LedgerTestTags.ANALYSIS_HOME),
-        )
+        AnalysisPeriodFailure(state, state.failureCode ?: "ANALYSIS_HOME_FAILED", actions)
         return
     }
     if (state.presentation == AnalysisPresentation.NO_DATA) {
-        LedgerEmptyState(
-            stringResource(R.string.analysis_no_data_title),
-            stringResource(R.string.analysis_no_data_body),
-            stringResource(R.string.analysis_all_reports),
-            { actions.onNavigate("ANA-002", null, null) },
+        LazyColumn(
             Modifier.fillMaxSize().testTag(LedgerTestTags.ANALYSIS_HOME),
-        )
+            contentPadding = PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            item { PeriodControls(state, actions) }
+            item {
+                LedgerEmptyState(
+                    stringResource(R.string.analysis_no_data_title),
+                    stringResource(R.string.analysis_no_data_body),
+                    stringResource(R.string.analysis_all_reports),
+                    { actions.onNavigate("ANA-002", null, null) },
+                    Modifier.fillMaxWidth(),
+                )
+            }
+        }
         return
     }
     val locale = LocalLocale.current.platformLocale
@@ -353,10 +371,32 @@ private fun DashboardReportCard(definition: app.ledger.analytics.domain.FixedRep
 @Composable
 private fun PeriodControls(state: AnalysisFeatureState, actions: AnalysisActions) {
     val locale = LocalConfiguration.current.locales[0]
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
+    Row(
+        Modifier.fillMaxWidth().testTag(ANALYSIS_PERIOD_CONTROLS_TAG),
+        horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs),
+    ) {
         LedgerButton(stringResource(R.string.analysis_previous_period), actions.onPreviousPeriod, Modifier.weight(1f), variant = LedgerButtonVariant.TEXT, compact = true)
         LedgerText("${state.period.start.localized(locale)} — ${state.period.endInclusive.localized(locale)}", LedgerTextRole.SECTION, Modifier.weight(2f))
         LedgerButton(stringResource(R.string.analysis_next_period), actions.onNextPeriod, Modifier.weight(1f), variant = LedgerButtonVariant.TEXT, compact = true)
+    }
+}
+
+@Composable
+private fun AnalysisPeriodFailure(state: AnalysisFeatureState, code: String, actions: AnalysisActions) {
+    LazyColumn(
+        Modifier.fillMaxSize().analysisRootTag(state.screenId),
+        contentPadding = PaddingValues(LedgerTheme.spacing.md),
+        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+    ) {
+        item { PeriodControls(state, actions) }
+        item {
+            LedgerErrorState(
+                UiErrorCode(code),
+                stringResource(R.string.analysis_query_failed),
+                actions.onRetry,
+                Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -1115,6 +1155,8 @@ private val EXPORT_FORMAT_LABELS = mapOf(
     ReportExportFormat.CSV to R.string.analysis_export_format_csv,
     ReportExportFormat.XLSX to R.string.analysis_export_format_xlsx,
 )
+
+internal const val ANALYSIS_PERIOD_CONTROLS_TAG: String = "analysis_period_controls"
 
 private fun LocalDate.localized(locale: Locale): String =
     format(LedgerDateFormatterRuntime.formatter(locale))

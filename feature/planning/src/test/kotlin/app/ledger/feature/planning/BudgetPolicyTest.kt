@@ -53,6 +53,30 @@ class BudgetPolicyTest {
         assertTrue(state.adjustmentSourceCategoryId != target)
     }
 
+    @Test
+    fun `zero blank and explicit clear remove category limits`() {
+        val original = BudgetPolicy.create(snapshot(), BudgetPresentation.EDITING)
+
+        val zero = BudgetPolicy.updateCategory(original, CHILD, "0")
+        assertEquals(listOf(ROOT), zero.validation.limits.map { it.categoryId })
+        assertTrue(zero.validation.valid)
+
+        val blank = BudgetPolicy.updateCategory(original, CHILD, "")
+        assertEquals(listOf(ROOT), blank.validation.limits.map { it.categoryId })
+        assertTrue(blank.validation.valid)
+
+        val clearedRoot = BudgetPolicy.clearCategory(original, ROOT)
+        assertTrue(clearedRoot.validation.limits.isEmpty())
+        assertTrue(clearedRoot.validation.valid)
+    }
+
+    @Test
+    fun `zero available budget has determinate progress`() {
+        assertEquals(0f, BudgetPolicy.progressFraction(0L, 0L))
+        assertEquals(1f, BudgetPolicy.progressFraction(1L, 0L))
+        assertEquals(0.5f, BudgetPolicy.progressFraction(50L, 100L))
+    }
+
     private fun snapshot(): BudgetSnapshot {
         val revision = BudgetRevisionView(
             id(20),

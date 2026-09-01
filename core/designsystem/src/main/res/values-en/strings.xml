@@ -33,11 +33,14 @@
     <string name="ledger_hide">Hide</string>
     <string name="ledger_confirm_phrase">Enter the confirmation phrase</string>
     <string name="ledger_locating">Getting location…</string>
-    <string name="ledger_location_ready_at_save">Location will be attempted on save for up to 3 seconds</string>
+    <string name="ledger_location_ready_at_save">Location has not started</string>
     <string name="ledger_location_acquired">Acquired · %1$s</string>
+    <string name="ledger_location_timed_out">Attempt timed out; waiting to retry</string>
+    <string name="ledger_location_service_unavailable">System location services unavailable</string>
+    <string name="ledger_location_not_recorded">Location recording turned off</string>
     <string name="ledger_location_unavailable">No location; saving remains available</string>
     <string name="ledger_location_denied">Location permission not granted</string>
-    <string name="ledger_location_manual">Adjusted manually</string>
+    <string name="ledger_location_manual">Selected · %1$s</string>
     <string name="ledger_delete_operator">Delete character</string>
     <string name="ledger_top_level_category">Top level</string>
     <string name="ledger_pause">Pause</string>

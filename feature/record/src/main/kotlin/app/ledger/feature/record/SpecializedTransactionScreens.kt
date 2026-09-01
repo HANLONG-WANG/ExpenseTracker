@@ -157,7 +157,6 @@ private fun SpecializedEditor(state: SpecializedTransactionEditorState, actions:
                 onExpressionChange = actions.onOutgoingExpression,
                 currencyCode = from?.currency?.value ?: state.snapshot.baseCurrency.value,
                 errorText = state.errors.fieldError(SpecializedField.OUTGOING_AMOUNT),
-                onOperator = actions.onOutgoingOperator,
             )
         }
         if (state.kind == SpecializedTransactionKind.FX_EXCHANGE || state.kind == SpecializedTransactionKind.TRANSFER && from?.currency != to?.currency) {
@@ -169,7 +168,6 @@ private fun SpecializedEditor(state: SpecializedTransactionEditorState, actions:
                     onExpressionChange = actions.onIncomingExpression,
                     currencyCode = to?.currency?.value ?: state.snapshot.baseCurrency.value,
                     errorText = state.errors.fieldError(SpecializedField.INCOMING_AMOUNT),
-                    onOperator = actions.onIncomingOperator,
                 )
             }
         }

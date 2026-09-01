@@ -336,10 +336,13 @@ public data class AttachmentUiModel(
 public sealed interface LocationFieldState {
     public data object Locating : LocationFieldState
     public data object ReadyAtSave : LocationFieldState
-    public data class Located(val accuracyText: String) : LocationFieldState
+    public data class Located(val summaryText: String) : LocationFieldState
+    public data object TimedOut : LocationFieldState
+    public data object ServiceUnavailable : LocationFieldState
+    public data object NotRecorded : LocationFieldState
     public data object Unavailable : LocationFieldState
     public data object PermissionDenied : LocationFieldState
-    public data object ManuallyAdjusted : LocationFieldState
+    public data class ManuallyAdjusted(val summaryText: String) : LocationFieldState
 }
 
 @Immutable

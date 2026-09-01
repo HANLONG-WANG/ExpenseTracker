@@ -25,9 +25,7 @@ import kotlinx.coroutines.launch
 class MainActivity : FragmentActivity() {
     private val viewModel: AppRootViewModel by viewModels()
     private lateinit var prompt: BiometricPrompt
-    private lateinit var backupVaultPrompt: BiometricPrompt
-    private lateinit var vaultPrompt: BiometricPrompt
-    private lateinit var sensitiveSettingsPrompt: BiometricPrompt
+    private lateinit var authenticationCoordinator: SystemAuthenticationCoordinator
     private lateinit var privacy: app.ledger.core.security.AndroidScreenPrivacyController
     private lateinit var jankMonitor: app.ledger.core.designsystem.LedgerJankMonitor
     private var composeView: ComposeView? = null
@@ -39,80 +37,40 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         privacy = app.ledger.core.security.AndroidScreenPrivacyController(this)
+        authenticationCoordinator = SystemAuthenticationCoordinator(
+            savedInstanceState?.getString(ACTIVE_AUTHENTICATION_CHANNEL_KEY)
+                ?.let { saved -> SystemAuthenticationChannel.entries.singleOrNull { it.name == saved } },
+        )
         prompt = BiometricPrompt(
             this,
             ContextCompat.getMainExecutor(this),
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    viewModel.authenticationSucceeded()
-                }
-
-                override fun onAuthenticationFailed() {
-                    // A non-terminal failed attempt keeps the application-unlock prompt active.
-                }
-
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    val error = when (errorCode) {
-                        BiometricPrompt.ERROR_LOCKOUT,
-                        BiometricPrompt.ERROR_LOCKOUT_PERMANENT,
-                        -> AppAuthenticationError.LOCKED_OUT
-                        BiometricPrompt.ERROR_CANCELED,
-                        BiometricPrompt.ERROR_USER_CANCELED,
-                        BiometricPrompt.ERROR_NEGATIVE_BUTTON,
-                        -> AppAuthenticationError.CANCELED
-                        BiometricPrompt.ERROR_NO_BIOMETRICS,
-                        BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL,
-                        -> AppAuthenticationError.DEVICE_SECURITY_CHANGED
-                        else -> AppAuthenticationError.FAILED
+                    when (authenticationCoordinator.finish()) {
+                        SystemAuthenticationChannel.APPLICATION -> viewModel.authenticationSucceeded()
+                        SystemAuthenticationChannel.BACKUP_VAULT ->
+                            viewModel.backupVaultAuthenticationSucceeded(result.cryptoObject)
+                        SystemAuthenticationChannel.VAULT -> viewModel.vaultAuthenticationSucceeded(result.cryptoObject)
+                        SystemAuthenticationChannel.SENSITIVE_SETTINGS ->
+                            viewModel.sensitiveSettingsAuthenticationSucceeded()
+                        null -> Unit
                     }
-                    viewModel.authenticationFailed(error)
-                }
-            },
-        )
-        backupVaultPrompt = BiometricPrompt(
-            this,
-            ContextCompat.getMainExecutor(this),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    viewModel.backupVaultAuthenticationSucceeded(result.cryptoObject)
-                }
-
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    viewModel.backupVaultAuthenticationCancelled()
-                }
-            },
-        )
-        vaultPrompt = BiometricPrompt(
-            this,
-            ContextCompat.getMainExecutor(this),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    viewModel.vaultAuthenticationSucceeded(result.cryptoObject)
-                }
-
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    viewModel.vaultAuthenticationFailed(vaultError(errorCode))
                 }
 
                 override fun onAuthenticationFailed() {
-                    // A non-terminal failed attempt keeps this exact CryptoObject prompt active.
-                }
-            },
-        )
-        sensitiveSettingsPrompt = BiometricPrompt(
-            this,
-            ContextCompat.getMainExecutor(this),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    viewModel.sensitiveSettingsAuthenticationSucceeded()
+                    // A non-terminal failed attempt keeps the currently routed prompt active.
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    viewModel.sensitiveSettingsAuthenticationFailed()
-                }
-
-                override fun onAuthenticationFailed() {
-                    // The system prompt remains active until success or a terminal error.
+                    when (authenticationCoordinator.finish()) {
+                        SystemAuthenticationChannel.APPLICATION ->
+                            viewModel.authenticationFailed(applicationAuthenticationError(errorCode))
+                        SystemAuthenticationChannel.BACKUP_VAULT -> viewModel.backupVaultAuthenticationCancelled()
+                        SystemAuthenticationChannel.VAULT -> viewModel.vaultAuthenticationFailed(vaultError(errorCode))
+                        SystemAuthenticationChannel.SENSITIVE_SETTINGS ->
+                            viewModel.sensitiveSettingsAuthenticationFailed()
+                        null -> Unit
+                    }
                 }
             },
         )
@@ -209,8 +167,13 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         privacy.apply(viewModel.screenPrivacyPolicy.value.copy(applicationInBackground = true))
-        viewModel.onApplicationBackgrounded()
+        viewModel.onApplicationBackgrounded(authenticationCoordinator.isActive(SystemAuthenticationChannel.VAULT))
         super.onStop()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        authenticationCoordinator.activeChannel()?.let { outState.putString(ACTIVE_AUTHENTICATION_CHANNEL_KEY, it.name) }
+        super.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {
@@ -224,24 +187,28 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun authenticateApplicationUi() {
-        prompt.authenticate(
-            nonCryptoPromptInfo(
-                getString(R.string.global_locked_title),
-                getString(R.string.global_locked_message),
-            ),
-        )
+        startSystemAuthentication(SystemAuthenticationChannel.APPLICATION) {
+            prompt.authenticate(
+                nonCryptoPromptInfo(
+                    getString(R.string.global_locked_title),
+                    getString(R.string.global_locked_message),
+                ),
+            )
+        }
     }
 
     private fun authenticateVaultBackupEnrollment(cryptoObject: BiometricPrompt.CryptoObject) {
-        backupVaultPrompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle(getString(app.ledger.feature.transfer.R.string.backup_include_vault))
-                .setSubtitle(getString(app.ledger.feature.transfer.R.string.backup_include_vault_supporting))
-                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-                .setNegativeButtonText(getString(android.R.string.cancel))
-                .build(),
-            cryptoObject,
-        )
+        startSystemAuthentication(SystemAuthenticationChannel.BACKUP_VAULT) {
+            prompt.authenticate(
+                BiometricPrompt.PromptInfo.Builder()
+                    .setTitle(getString(app.ledger.feature.transfer.R.string.backup_include_vault))
+                    .setSubtitle(getString(app.ledger.feature.transfer.R.string.backup_include_vault_supporting))
+                    .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                    .setNegativeButtonText(getString(android.R.string.cancel))
+                    .build(),
+                cryptoObject,
+            )
+        }
     }
 
     private fun authenticateVaultAction(request: VaultAuthenticationPrompt) {
@@ -253,17 +220,19 @@ class MainActivity : FragmentActivity() {
             VaultAuthenticationPurpose.EDIT_VAULT -> getString(app.ledger.feature.vault.R.string.vault_edit)
         }
         val cryptoObject = request.cryptoObject
-        if (cryptoObject == null) {
-            vaultPrompt.authenticate(nonCryptoPromptInfo(title, getString(app.ledger.feature.vault.R.string.vault_security_banner)))
-        } else {
-            vaultPrompt.authenticate(
-                cryptoPromptInfo(
-                    title,
-                    getString(app.ledger.feature.vault.R.string.vault_security_banner),
-                    getString(android.R.string.cancel),
-                ),
-                cryptoObject,
-            )
+        startSystemAuthentication(SystemAuthenticationChannel.VAULT) {
+            if (cryptoObject == null) {
+                prompt.authenticate(nonCryptoPromptInfo(title, getString(app.ledger.feature.vault.R.string.vault_security_banner)))
+            } else {
+                prompt.authenticate(
+                    cryptoPromptInfo(
+                        title,
+                        getString(app.ledger.feature.vault.R.string.vault_security_banner),
+                        getString(android.R.string.cancel),
+                    ),
+                    cryptoObject,
+                )
+            }
         }
     }
 
@@ -273,9 +242,39 @@ class MainActivity : FragmentActivity() {
             SensitiveSettingsAuthenticationPurpose.CLEAR_LOCAL -> getString(app.ledger.feature.settings.R.string.clear_local)
             SensitiveSettingsAuthenticationPurpose.DELETE_CLOUD -> getString(app.ledger.feature.transfer.R.string.clear_cloud_title)
         }
-        sensitiveSettingsPrompt.authenticate(
-            nonCryptoPromptInfo(title, null),
-        )
+        startSystemAuthentication(SystemAuthenticationChannel.SENSITIVE_SETTINGS) {
+            prompt.authenticate(nonCryptoPromptInfo(title, null))
+        }
+    }
+
+    private inline fun startSystemAuthentication(
+        channel: SystemAuthenticationChannel,
+        authenticate: () -> Unit,
+    ) {
+        when (authenticationCoordinator.start(channel)) {
+            SystemAuthenticationStartResult.ALREADY_ACTIVE -> return
+            SystemAuthenticationStartResult.BUSY -> return rejectSystemAuthentication(channel)
+            SystemAuthenticationStartResult.STARTED -> Unit
+        }
+        try {
+            authenticate()
+        } catch (_: RuntimeException) {
+            if (authenticationCoordinator.finish() == channel) rejectSystemAuthentication(channel)
+        }
+    }
+
+    private fun rejectSystemAuthentication(channel: SystemAuthenticationChannel) {
+        when (channel) {
+            SystemAuthenticationChannel.APPLICATION -> viewModel.authenticationFailed(AppAuthenticationError.FAILED)
+            SystemAuthenticationChannel.BACKUP_VAULT -> viewModel.backupVaultAuthenticationCancelled()
+            SystemAuthenticationChannel.VAULT ->
+                viewModel.vaultAuthenticationFailed(app.ledger.core.security.BiometricErrorCode.UNAVAILABLE)
+            SystemAuthenticationChannel.SENSITIVE_SETTINGS -> viewModel.sensitiveSettingsAuthenticationFailed()
+        }
+    }
+
+    private companion object {
+        const val ACTIVE_AUTHENTICATION_CHANNEL_KEY = "active_system_authentication_channel"
     }
 }
 
@@ -322,4 +321,18 @@ private fun vaultError(errorCode: Int): app.ledger.core.security.BiometricErrorC
     BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL,
     -> app.ledger.core.security.BiometricErrorCode.UNAVAILABLE
     else -> app.ledger.core.security.BiometricErrorCode.UNKNOWN
+}
+
+private fun applicationAuthenticationError(errorCode: Int): AppAuthenticationError = when (errorCode) {
+    BiometricPrompt.ERROR_LOCKOUT,
+    BiometricPrompt.ERROR_LOCKOUT_PERMANENT,
+    -> AppAuthenticationError.LOCKED_OUT
+    BiometricPrompt.ERROR_CANCELED,
+    BiometricPrompt.ERROR_USER_CANCELED,
+    BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+    -> AppAuthenticationError.CANCELED
+    BiometricPrompt.ERROR_NO_BIOMETRICS,
+    BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL,
+    -> AppAuthenticationError.DEVICE_SECURITY_CHANGED
+    else -> AppAuthenticationError.FAILED
 }

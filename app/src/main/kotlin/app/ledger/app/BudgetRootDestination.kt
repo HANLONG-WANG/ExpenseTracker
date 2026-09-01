@@ -60,6 +60,7 @@ internal fun BudgetRootDestination(
                 BudgetScreenAction.Operations -> onOperations()
                 is BudgetScreenAction.TotalChanged -> viewModel.updateBudgetTotal(action.value)
                 is BudgetScreenAction.CategoryChanged -> viewModel.updateBudgetCategory(action.categoryId, action.value)
+                is BudgetScreenAction.ClearCategory -> viewModel.clearBudgetCategory(action.categoryId)
                 BudgetScreenAction.SaveMonth -> viewModel.saveBudgetMonth()
                 is BudgetScreenAction.ApplyTemplate -> viewModel.applyBudgetTemplate(action.templateId)
                 is BudgetScreenAction.TemplateNameChanged -> viewModel.updateBudgetTemplateName(action.value)

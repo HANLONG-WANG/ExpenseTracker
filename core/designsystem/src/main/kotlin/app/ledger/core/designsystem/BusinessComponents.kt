@@ -42,7 +42,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -66,6 +69,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
@@ -721,27 +725,32 @@ public fun MoneyExpressionField(
     errorText: String? = null,
     roundingExplanation: String? = null,
     showOperatorToolbar: Boolean = true,
-    onOperator: (String) -> Unit = { operator ->
-        onExpressionChange(
-            when (operator) {
-                "DELETE" -> expression.dropLast(1)
-                "−" -> expression + "-"
-                "×" -> expression + "*"
-                "÷" -> expression + "/"
-                else -> expression + operator
-            },
-        )
-    },
     autoFocus: Boolean = false,
+    onAutoFocusConsumed: () -> Unit = {},
     focusRequester: FocusRequester = remember { FocusRequester() },
 ) {
+    var fieldValue by remember {
+        mutableStateOf(TextFieldValue(expression, selection = TextRange(expression.length)))
+    }
+    LaunchedEffect(expression) {
+        if (fieldValue.text != expression) {
+            val cursor = fieldValue.selection.end.coerceIn(0, expression.length)
+            fieldValue = TextFieldValue(expression, selection = TextRange(cursor))
+        }
+    }
     LaunchedEffect(autoFocus) {
-        if (autoFocus) focusRequester.requestFocus()
+        if (autoFocus) {
+            focusRequester.requestFocus()
+            onAutoFocusConsumed()
+        }
     }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
         LedgerTextField(
-            value = expression,
-            onValueChange = onExpressionChange,
+            value = fieldValue,
+            onValueChange = { changed ->
+                fieldValue = changed
+                onExpressionChange(changed.text)
+            },
             label = currencyCode,
             errorText = errorText,
             keyboardType = KeyboardType.Decimal,
@@ -753,9 +762,24 @@ public fun MoneyExpressionField(
         if (showOperatorToolbar) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
                 listOf("+", "−", "×", "÷", "(", ")").forEach { operator ->
-                    LedgerButton(operator, { onOperator(operator) }, compact = true, variant = LedgerButtonVariant.SECONDARY)
+                    LedgerButton(
+                        operator,
+                        {
+                            fieldValue = MoneyExpressionEditing.apply(fieldValue, operator)
+                            onExpressionChange(fieldValue.text)
+                        },
+                        compact = true,
+                        variant = LedgerButtonVariant.SECONDARY,
+                    )
                 }
-                LedgerIconButton(LedgerIcon.CLEAR, stringResource(R.string.ledger_delete_operator), { onOperator("DELETE") })
+                LedgerIconButton(
+                    LedgerIcon.CLEAR,
+                    stringResource(R.string.ledger_delete_operator),
+                    {
+                        fieldValue = MoneyExpressionEditing.apply(fieldValue, "DELETE")
+                        onExpressionChange(fieldValue.text)
+                    },
+                )
             }
         }
         if (roundingExplanation != null) Text(roundingExplanation, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
@@ -773,12 +797,15 @@ public fun MoneyExpressionField(
     errorText: String? = null,
     roundingExplanation: String? = null,
     showOperatorToolbar: Boolean = true,
-    onOperator: (String) -> Unit,
     autoFocus: Boolean = false,
+    onAutoFocusConsumed: () -> Unit = {},
     focusRequester: FocusRequester = remember { FocusRequester() },
 ) {
     LaunchedEffect(autoFocus) {
-        if (autoFocus) focusRequester.requestFocus()
+        if (autoFocus) {
+            focusRequester.requestFocus()
+            onAutoFocusConsumed()
+        }
     }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
         LedgerTextField(
@@ -795,12 +822,36 @@ public fun MoneyExpressionField(
         if (showOperatorToolbar) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
                 listOf("+", "−", "×", "÷", "(", ")").forEach { operator ->
-                    LedgerButton(operator, { onOperator(operator) }, compact = true, variant = LedgerButtonVariant.SECONDARY)
+                    LedgerButton(
+                        operator,
+                        { onExpressionChange(MoneyExpressionEditing.apply(expression, operator)) },
+                        compact = true,
+                        variant = LedgerButtonVariant.SECONDARY,
+                    )
                 }
-                LedgerIconButton(LedgerIcon.CLEAR, stringResource(R.string.ledger_delete_operator), { onOperator("DELETE") })
+                LedgerIconButton(
+                    LedgerIcon.CLEAR,
+                    stringResource(R.string.ledger_delete_operator),
+                    { onExpressionChange(MoneyExpressionEditing.apply(expression, "DELETE")) },
+                )
             }
         }
         if (roundingExplanation != null) Text(roundingExplanation, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
+    }
+}
+
+public object MoneyExpressionEditing {
+    public fun apply(value: TextFieldValue, operator: String): TextFieldValue {
+        val start = minOf(value.selection.start, value.selection.end).coerceIn(0, value.text.length)
+        val end = maxOf(value.selection.start, value.selection.end).coerceIn(start, value.text.length)
+        if (operator == "DELETE") {
+            val deleteStart = if (start != end) start else (start - 1).coerceAtLeast(0)
+            val next = value.text.removeRange(deleteStart, end)
+            return TextFieldValue(next, selection = TextRange(deleteStart))
+        }
+        val normalized = operator.replace('−', '-').replace('×', '*').replace('÷', '/')
+        val next = value.text.replaceRange(start, end, normalized)
+        return TextFieldValue(next, selection = TextRange(start + normalized.length))
     }
 }
 
@@ -923,10 +974,13 @@ public fun LocationField(
     val text = when (state) {
         LocationFieldState.Locating -> stringResource(R.string.ledger_locating)
         LocationFieldState.ReadyAtSave -> stringResource(R.string.ledger_location_ready_at_save)
-        is LocationFieldState.Located -> stringResource(R.string.ledger_location_acquired, state.accuracyText)
+        is LocationFieldState.Located -> stringResource(R.string.ledger_location_acquired, state.summaryText)
+        LocationFieldState.TimedOut -> stringResource(R.string.ledger_location_timed_out)
+        LocationFieldState.ServiceUnavailable -> stringResource(R.string.ledger_location_service_unavailable)
+        LocationFieldState.NotRecorded -> stringResource(R.string.ledger_location_not_recorded)
         LocationFieldState.Unavailable -> stringResource(R.string.ledger_location_unavailable)
         LocationFieldState.PermissionDenied -> stringResource(R.string.ledger_location_denied)
-        LocationFieldState.ManuallyAdjusted -> stringResource(R.string.ledger_location_manual)
+        is LocationFieldState.ManuallyAdjusted -> stringResource(R.string.ledger_location_manual, state.summaryText)
     }
     LedgerCard(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), verticalAlignment = Alignment.CenterVertically) {

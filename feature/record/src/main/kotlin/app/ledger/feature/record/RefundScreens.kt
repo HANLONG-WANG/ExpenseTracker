@@ -215,7 +215,6 @@ private fun RefundEditor(state: RefundEditorState, actions: RefundActions) {
                     onExpressionChange = actions.onExpression,
                     currencyCode = RefundPolicy.currency(state).value,
                     errorText = state.errors.fieldError(RefundField.AMOUNT),
-                    onOperator = actions.onOperator,
                 )
             }
         }

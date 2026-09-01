@@ -110,6 +110,7 @@ import app.ledger.finance.domain.SettlementChargeDistribution
 import app.ledger.finance.domain.SettlementRoundingRule
 import app.ledger.finance.domain.SettlementSplitMethod
 import app.ledger.finance.domain.StatisticalNature
+import app.ledger.finance.domain.UserAccountType
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.ZoneOffset
@@ -160,6 +161,9 @@ public data class OrdinaryRecordActions(
     val onLocationPoint: (StableId) -> Unit = {},
     val onLocationCoordinate: (Int, Int) -> Unit = { _, _ -> },
     val onLocationMapUnavailable: () -> Unit = {},
+    val onAmountAutoFocusConsumed: () -> Unit = {},
+    val onRetryLocation: () -> Unit = {},
+    val onOpenLocationSettings: () -> Unit = {},
     val onUseLocation: () -> Unit = {},
     val onClearLocation: () -> Unit = {},
 )
@@ -500,8 +504,35 @@ private fun OrdinaryEditor(state: OrdinaryRecordEditorState, actions: OrdinaryRe
             }
         }
         item { SelectorField(stringResource(R.string.record_field_category), category?.name ?: stringResource(R.string.record_not_selected), { actions.onNavigate("REC-004", d.categoryId?.let { mapOf("selectedId" to it) }.orEmpty(), mapOf("direction" to d.direction.name)) }, Modifier.testTag(LedgerTestTags.RECORD_CATEGORY).focusRequester(fieldFocusRequesters.getValue(RecordField.CATEGORY))) }
-        item { MoneyExpressionField(d.expression, d.normalizedExpression, d.result, actions.onExpression, currencyCode = d.currencyCode, errorText = state.errors.firstOrNull { it.field == RecordField.AMOUNT }?.let { validationMessage(it.code) }, roundingExplanation = stringResource(R.string.record_amount_rounding), onOperator = actions.onOperator, autoFocus = d.expression.isBlank() && state.mode in setOf(RecordEditorMode.CREATE, RecordEditorMode.TEMPLATE), focusRequester = fieldFocusRequesters.getValue(RecordField.AMOUNT)) }
-        item { SelectorField(stringResource(R.string.record_field_account), account?.name ?: stringResource(R.string.record_not_selected), { actions.onNavigate("REC-005", emptyMap(), emptyMap()) }, Modifier.testTag(LedgerTestTags.RECORD_ACCOUNT).focusRequester(fieldFocusRequesters.getValue(RecordField.ACCOUNT)), supportingText = originText(d.origins[RecordField.ACCOUNT])) }
+        item {
+            MoneyExpressionField(
+                d.expression,
+                d.normalizedExpression,
+                d.result,
+                actions.onExpression,
+                currencyCode = d.currencyCode,
+                errorText = state.errors.firstOrNull { it.field == RecordField.AMOUNT }?.let { validationMessage(it.code) },
+                roundingExplanation = stringResource(R.string.record_amount_rounding),
+                autoFocus = !state.amountAutoFocusConsumed && d.expression.isBlank() && state.mode in setOf(RecordEditorMode.CREATE, RecordEditorMode.TEMPLATE),
+                onAutoFocusConsumed = actions.onAmountAutoFocusConsumed,
+                focusRequester = fieldFocusRequesters.getValue(RecordField.AMOUNT),
+            )
+        }
+        item {
+            SelectorField(
+                stringResource(R.string.record_field_account),
+                account?.name ?: stringResource(R.string.record_not_selected),
+                {
+                    actions.onNavigate(
+                        "REC-005",
+                        emptyMap(),
+                        mapOf("allowedTypes" to ORDINARY_ACCOUNT_TYPE_MASK.toString()),
+                    )
+                },
+                Modifier.testTag(LedgerTestTags.RECORD_ACCOUNT).focusRequester(fieldFocusRequesters.getValue(RecordField.ACCOUNT)),
+                supportingText = originText(d.origins[RecordField.ACCOUNT]),
+            )
+        }
         item { SelectorField(stringResource(R.string.record_field_card), card?.displayName ?: stringResource(R.string.record_no_card), { actions.onNavigate("REC-006", d.accountId?.let { mapOf("accountId" to it) }.orEmpty(), emptyMap()) }, Modifier.focusRequester(fieldFocusRequesters.getValue(RecordField.CARD)), supportingText = originText(d.origins[RecordField.CARD]), enabled = d.accountId != null) }
         item { SelectorField(stringResource(R.string.record_field_merchant), merchant?.name ?: stringResource(R.string.record_not_selected), { actions.onNavigate("REC-007", emptyMap(), emptyMap()) }, Modifier.focusRequester(fieldFocusRequesters.getValue(RecordField.MERCHANT))) }
         item {
@@ -529,7 +560,7 @@ private fun OrdinaryEditor(state: OrdinaryRecordEditorState, actions: OrdinaryRe
                 SelectorField(stringResource(R.string.record_settlement_activity), activity?.name ?: stringResource(R.string.record_not_selected), { actions.onNavigate("REC-011", d.settlementActivityId?.let { mapOf("activityId" to it) }.orEmpty(), emptyMap()) })
             }
         }
-        item { LocationField(if (d.locationRecordId == null) LocationFieldState.Locating else LocationFieldState.ManuallyAdjusted, { actions.onNavigate("REC-009", emptyMap(), emptyMap()) }, Modifier.focusRequester(fieldFocusRequesters.getValue(RecordField.LOCATION)).focusable(), mapLabel = stringResource(R.string.record_location_adjust)) }
+        item { LocationField(state.locationPresentation.toLocationFieldState(), { actions.onNavigate("REC-009", emptyMap(), emptyMap()) }, Modifier.focusRequester(fieldFocusRequesters.getValue(RecordField.LOCATION)).focusable(), mapLabel = stringResource(R.string.record_location_adjust)) }
         item { LedgerTextField(d.note, actions.onNote, stringResource(R.string.record_field_note), Modifier.focusRequester(fieldFocusRequesters.getValue(RecordField.NOTE)), singleLine = false, hideValueFromSemantics = true) }
         item {
             val attachments = d.attachmentIds.mapIndexed { index, id ->
@@ -784,7 +815,8 @@ private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRe
         },
     )
     val mapSummary = stringResource(R.string.record_location_map_summary, accessibleRows.size)
-    val mapState = if (state.locationPresentation == RecordLocationEditorState.MapUnavailable) {
+    val mapUnavailable = state.locationMapUnavailable || state.locationPresentation == RecordLocationEditorState.MapUnavailable
+    val mapState = if (mapUnavailable) {
         LedgerMapState.Unavailable(mapSummary, accessibleRows)
     } else {
         LedgerMapState.Available(
@@ -795,17 +827,11 @@ private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRe
             userLocation = pendingPoint,
         )
     }
-    val locationFieldState = when (val presentation = state.locationPresentation) {
-        RecordLocationEditorState.Locating -> LocationFieldState.Locating
-        is RecordLocationEditorState.Located -> LocationFieldState.Located(presentation.accuracyText)
-        RecordLocationEditorState.PermissionDenied -> LocationFieldState.PermissionDenied
-        RecordLocationEditorState.Timeout -> LocationFieldState.Unavailable
-        is RecordLocationEditorState.Manual -> LocationFieldState.ManuallyAdjusted
-        RecordLocationEditorState.MapUnavailable -> LocationFieldState.Unavailable
-    }
-    val hasStatusBanner = state.locationPresentation in setOf(
+    val locationFieldState = state.locationPresentation.toLocationFieldState()
+    val hasStatusBanner = mapUnavailable || state.locationPresentation in setOf(
         RecordLocationEditorState.PermissionDenied,
         RecordLocationEditorState.Timeout,
+        RecordLocationEditorState.ServiceUnavailable,
         RecordLocationEditorState.MapUnavailable,
     )
     val mapItemIndex = if (hasStatusBanner) 3 else 2
@@ -829,17 +855,38 @@ private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRe
         }
         when (state.locationPresentation) {
             RecordLocationEditorState.PermissionDenied -> item {
-                LedgerBanner(stringResource(R.string.record_location_permission_denied), LedgerBannerVariant.INFO)
+                LedgerBanner(
+                    stringResource(R.string.record_location_permission_denied),
+                    LedgerBannerVariant.INFO,
+                    actionLabel = stringResource(R.string.record_location_permission_action),
+                    onAction = actions.onRetryLocation,
+                )
             }
             RecordLocationEditorState.Timeout -> item {
-                LedgerBanner(stringResource(R.string.record_location_timeout), LedgerBannerVariant.WARNING)
+                LedgerBanner(
+                    stringResource(R.string.record_location_timeout),
+                    LedgerBannerVariant.WARNING,
+                    actionLabel = stringResource(R.string.record_location_retry),
+                    onAction = actions.onRetryLocation,
+                )
+            }
+            RecordLocationEditorState.ServiceUnavailable -> item {
+                LedgerBanner(
+                    stringResource(R.string.record_location_service_unavailable),
+                    LedgerBannerVariant.WARNING,
+                    actionLabel = stringResource(R.string.record_location_open_settings),
+                    onAction = actions.onOpenLocationSettings,
+                )
             }
             RecordLocationEditorState.MapUnavailable -> item {
                 LedgerBanner(stringResource(R.string.record_location_map_unavailable), LedgerBannerVariant.INFO)
             }
             else -> Unit
         }
-        item { LedgerBanner(stringResource(R.string.record_location_three_seconds), LedgerBannerVariant.INFO) }
+        if (state.locationMapUnavailable && state.locationPresentation != RecordLocationEditorState.MapUnavailable) {
+            item { LedgerBanner(stringResource(R.string.record_location_map_unavailable), LedgerBannerVariant.INFO) }
+        }
+        item { LedgerBanner(stringResource(R.string.record_location_retry_policy), LedgerBannerVariant.INFO) }
         item {
             LedgerMap(
                 state = mapState,
@@ -1142,6 +1189,10 @@ private fun String.coordinateE7OrNull(range: IntRange): Int? = runCatching {
     BigDecimal(trim()).movePointRight(COORDINATE_SCALE).setScale(0, RoundingMode.UNNECESSARY).intValueExact()
 }.getOrNull()?.takeIf { it in range }
 private fun String.filterCoordinateInput(): String = filter { it.isDigit() || it == '-' || it == '.' }.take(COORDINATE_INPUT_LENGTH)
+
+internal val ORDINARY_ACCOUNT_TYPE_MASK: Int = UserAccountType.entries.fold(0) { mask, type ->
+    mask or (1 shl type.ordinal)
+}
 
 @Composable
 private fun validationMessage(code: String): String = when (code) {

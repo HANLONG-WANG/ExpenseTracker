@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -25,6 +26,9 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
@@ -79,6 +83,24 @@ internal fun ReadyRootScaffold(
     snackbarController: LedgerSnackbarController,
 ) {
     val haptic = LocalHapticFeedback.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> viewModel.setRecordLocationHostForeground(true)
+                Lifecycle.Event.ON_STOP -> viewModel.setRecordLocationHostForeground(false)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        viewModel.setRecordLocationHostForeground(
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
+        )
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.setRecordLocationHostForeground(false)
+        }
+    }
     LaunchedEffect(viewModel) {
         viewModel.successHapticEvents.collect {
             haptic.performLedgerHaptic(LedgerHaptic.SUCCESS)
@@ -287,6 +309,7 @@ internal fun ReadyRootScaffold(
             recordPending,
             viewModel::saveOrdinaryRecord,
         ),
+        fixedActionOverlaysContent = currentScreenId == "REC-003",
         bottomBar = {
             if (navigator.isBottomNavigationVisible) {
                 LedgerNavigationBar(selected = selected, onSelected = { target ->

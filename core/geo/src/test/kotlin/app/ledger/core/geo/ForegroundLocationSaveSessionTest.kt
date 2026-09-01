@@ -22,7 +22,7 @@ import java.time.ZoneOffset
 @OptIn(ExperimentalCoroutinesApi::class)
 class ForegroundLocationSaveSessionTest {
     @Test
-    fun prefetchUsesOnlyTheRemainingThreeSecondBudgetAndNeverSupplementsAfterTimeout() = runTest {
+    fun prefetchUsesOnlyTheRemainingFifteenSecondBudgetAndNeverSupplementsAfterTimeout() = runTest {
         val response = CompletableDeferred<DomainResult<CapturedLocation?>>()
         val port = CountingLocationPort(response)
         var elapsed = 0L
@@ -32,7 +32,7 @@ class ForegroundLocationSaveSessionTest {
 
         session.prefetch(scope)
         scope.runCurrent()
-        elapsed = 2_750L
+        elapsed = 14_750L
         val result = async { session.locationForSave() }
         advanceTimeBy(251L)
         runCurrent()
@@ -66,6 +66,11 @@ class ForegroundLocationSaveSessionTest {
 
         assertEquals(LocationSaveDisposition.LOCATED, result.disposition)
         assertEquals(expected, result.location)
+    }
+
+    @Test
+    fun maximumAttemptWaitIsFifteenSeconds() {
+        assertEquals(15_000L, ForegroundLocationSaveSession.MAXIMUM_WAIT_MILLIS)
     }
 
     private class CountingLocationPort(

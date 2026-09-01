@@ -33,11 +33,14 @@
     <string name="ledger_hide">非表示</string>
     <string name="ledger_confirm_phrase">確認フレーズを入力してください</string>
     <string name="ledger_locating">位置情報を取得中…</string>
-    <string name="ledger_location_ready_at_save">保存時に最大3秒間、位置情報を取得します</string>
+    <string name="ledger_location_ready_at_save">位置情報の取得はまだ開始されていません</string>
     <string name="ledger_location_acquired">取得済み · %1$s</string>
+    <string name="ledger_location_timed_out">タイムアウトしました。再試行を待機中です</string>
+    <string name="ledger_location_service_unavailable">システムの位置情報サービスを利用できません</string>
+    <string name="ledger_location_not_recorded">位置情報を記録しない設定です</string>
     <string name="ledger_location_unavailable">位置情報なしで保存できます</string>
     <string name="ledger_location_denied">位置情報の権限がありません</string>
-    <string name="ledger_location_manual">手動で調整済み</string>
+    <string name="ledger_location_manual">選択済み · %1$s</string>
     <string name="ledger_delete_operator">文字を削除</string>
     <string name="ledger_top_level_category">第1階層</string>
     <string name="ledger_pause">一時停止</string>
