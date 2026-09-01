@@ -90,7 +90,22 @@ internal class BatchEntryController(
         installmentSnapshot = (installments.snapshot(bookId, runtime.clock.now().atZone(zoneId).toLocalDate()) as? DomainResult.Success)?.value
         val first = BatchRecordPolicy.newRow(nextId(), ordinarySnapshot, runtime.clock.now(), zoneId)
         preparedRequest = null
-        mutableState.value = BatchRecordState(ordinarySnapshot, listOf(first))
+        mutableState.value = BatchRecordState(
+            snapshot = ordinarySnapshot,
+            rows = listOf(first),
+            installmentReferenceOptions = installmentSnapshot?.plans.orEmpty().map {
+                app.ledger.feature.record.BatchInstallmentReferenceOption(it.id, it.creditAccountName, it.termCount, it.currency)
+            },
+            refundReferenceOptions = refundSnapshot?.originals.orEmpty().map {
+                app.ledger.feature.record.BatchRefundReferenceOption(
+                    it.transactionId,
+                    it.categoryName,
+                    it.localDate,
+                    it.remainingMinor,
+                    it.originalCurrency,
+                )
+            },
+        )
         return true
     }
 
@@ -141,6 +156,10 @@ internal class BatchEntryController(
 
     fun cycle(rowId: StableId, field: BatchEntryField) = edit { current ->
         current.copy(rows = current.rows.map { row -> if (row.rowId == rowId) cycleRow(row, current, field) else row })
+    }
+
+    fun selectReference(rowId: StableId, field: BatchEntryField, selectedId: StableId?) = edit { current ->
+        current.copy(rows = current.rows.map { row -> if (row.rowId == rowId) selectRowReference(row, current, field, selectedId) else row })
     }
 
     suspend fun validate(): Boolean {
@@ -466,6 +485,46 @@ internal class BatchEntryController(
             val original = refundSnapshot?.originals?.singleOrNull { it.transactionId == originalId }
             row.copy(
                 refundOriginalTransactionId = originalId,
+                categoryId = original?.categoryId ?: row.categoryId,
+                merchantId = original?.merchantId ?: row.merchantId,
+                projectId = original?.projectId ?: row.projectId,
+                installmentPlanId = original?.installmentPlanId ?: row.installmentPlanId,
+            )
+        }
+        else -> row
+    }
+
+    private fun selectRowReference(
+        row: BatchRowDraft,
+        state: BatchRecordState,
+        field: BatchEntryField,
+        selectedId: StableId?,
+    ): BatchRowDraft = when (field) {
+        BatchEntryField.SETTLEMENT -> {
+            val activity = state.snapshot.settlementActivities.singleOrNull { it.id == selectedId && it.active }
+            val total = row.userMinor
+            val shares = if (row.kind == BatchRowKind.EXPENSE && activity != null && total != null && total > 0L && activity.participants.isNotEmpty()) {
+                val base = total / activity.participants.size
+                var remainder = total % activity.participants.size
+                activity.participants.map { participant ->
+                    val owed = base + if (remainder-- > 0L) 1L else 0L
+                    OrdinarySettlementShareDraft(participant.id, if (participant.isSelf) total else 0L, owed, null, 0L)
+                }
+            } else {
+                emptyList()
+            }
+            row.copy(settlementActivityId = activity?.id, settlementShares = shares)
+        }
+        BatchEntryField.LOCATION -> row.copy(
+            locationRecordId = selectedId.takeIf { id -> state.snapshot.references.locations.any { it.id == id } },
+        )
+        BatchEntryField.INSTALLMENT -> row.copy(
+            installmentPlanId = selectedId.takeIf { id -> installmentSnapshot?.plans.orEmpty().any { it.id == id } },
+        )
+        BatchEntryField.REFUND_RELATION -> {
+            val original = refundSnapshot?.originals?.singleOrNull { it.transactionId == selectedId }
+            row.copy(
+                refundOriginalTransactionId = original?.transactionId,
                 categoryId = original?.categoryId ?: row.categoryId,
                 merchantId = original?.merchantId ?: row.merchantId,
                 projectId = original?.projectId ?: row.projectId,

@@ -45,6 +45,7 @@
     <string name="ledger_attachment_import_progress">Attachment import progress</string>
     <string name="ledger_attachment_failed">Import failed; the attachment was not saved</string>
     <string name="ledger_view_error">View error</string>
+    <string name="ledger_operation_failed">The operation did not finish. Existing data was not changed; review the guidance or retry.</string>
     <string name="ledger_clean_temporary_files">Clean temporary files</string>
     <string name="ledger_previous_page">Previous page</string>
     <string name="ledger_next_page">Next page</string>
@@ -68,4 +69,9 @@
     <string name="ledger_chart_no_data">There is no chart data in the current scope.</string>
     <string name="ledger_style_icon_record">Record</string><string name="ledger_style_icon_account">Account</string><string name="ledger_style_icon_budget">Budget</string><string name="ledger_style_icon_analysis">Analysis</string><string name="ledger_style_icon_journal">Journal</string><string name="ledger_style_icon_location">Location</string><string name="ledger_style_icon_transfer">Transfer</string><string name="ledger_style_icon_refund">Refund</string>
     <string name="ledger_style_color_red">Red</string><string name="ledger_style_color_orange">Orange</string><string name="ledger_style_color_amber">Amber</string><string name="ledger_style_color_yellow">Yellow</string><string name="ledger_style_color_lime">Lime</string><string name="ledger_style_color_green">Green</string><string name="ledger_style_color_emerald">Emerald</string><string name="ledger_style_color_teal">Teal</string><string name="ledger_style_color_cyan">Cyan</string><string name="ledger_style_color_sky">Sky</string><string name="ledger_style_color_blue">Blue</string><string name="ledger_style_color_indigo">Indigo</string><string name="ledger_style_color_violet">Violet</string><string name="ledger_style_color_purple">Purple</string><string name="ledger_style_color_pink">Pink</string><string name="ledger_style_color_slate">Slate</string>
+    <string name="ledger_more_badges">%1$d more</string>
+    <string name="ledger_open_transaction">View transaction details</string>
+    <string name="ledger_select_transaction">Select transaction</string>
+    <string name="ledger_sensitive_value_empty">No sensitive value entered</string>
+    <string name="ledger_sensitive_value_entered">Sensitive value entered</string>
 </resources>

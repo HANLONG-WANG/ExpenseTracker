@@ -209,6 +209,7 @@ public enum class LedgerIcon {
     BUDGET,
     ANALYSIS,
     ATTACHMENT,
+    COPY,
     IMAGE,
     DOCUMENT,
     LOCATION,
@@ -363,6 +364,8 @@ public data class LedgerChartUiModel(
     /** Every chart includes zero by default; balance trends may opt out only with an explanation. */
     val includeZeroInRange: Boolean = true,
     val baselineExplanation: String? = null,
+    /** A resolved 0..1 ratio for progress visualizations; null means the report cannot provide a denominator. */
+    val progress: Float? = null,
 ) {
     init {
         require(includeZeroInRange || !baselineExplanation.isNullOrBlank()) {
@@ -376,7 +379,7 @@ public data class AccessibleTableUiModel(
     val caption: String,
     val columnHeaders: List<String>,
     val rows: List<List<String>>,
-    val endAlignedColumnIndices: Set<Int> = columnHeaders.indices.drop(1).toSet(),
+    val endAlignedColumnIndices: Set<Int> = if (columnHeaders.size == 1) setOf(0) else columnHeaders.indices.drop(1).toSet(),
 )
 
 public enum class MapAvailability { AVAILABLE, LOADING, UNAVAILABLE }

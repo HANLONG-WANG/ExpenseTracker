@@ -161,7 +161,7 @@ def validate_tests_resources() -> list[str]:
         "historical same month model is deterministic and never fills missing years with zero",
         "derived moving average trend and forecast are exact versioned series",
         "customReportDashboardAnomalyAndForecastRoundTripThroughNormalizedEncryptedSchema",
-        "encryptedVersionOneDatabaseMigratesToVersionFourWithoutLosingLedgerData",
+        "everyEncryptedPredecessorMigratesToVersionFiveWithFinancialAndQueryContractsIntact",
         "builderAndForecastGoldensMatchEveryPixel",
         "assertEquals(45, cases.size)", '"ANA-014" to setOf("content", "insufficientData")',
     ))
@@ -179,7 +179,7 @@ def validate_ledgers() -> list[str]:
     state = read("docs/implementation/PROJECT_STATE.md")
     evidence = read("docs/implementation/TEST_EVIDENCE.md")
     mapping = read("docs/implementation/P26_CUSTOM_ANALYTICS_MAPPING.md") if (ROOT / "docs/implementation/P26_CUSTOM_ANALYTICS_MAPPING.md").is_file() else ""
-    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P26", "Stage status: VERIFIED"))
+    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "| P26 | VERIFIED |"))
     for index in range(1, 8):
         if f"P26-E{index:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P26-E{index:03d}")

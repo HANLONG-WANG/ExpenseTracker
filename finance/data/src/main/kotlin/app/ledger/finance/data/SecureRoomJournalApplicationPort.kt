@@ -234,18 +234,24 @@ class SecureRoomJournalApplicationPort(
                 )
             }
         }
-        val children = sources.mapIndexed { index, source ->
+        val edits = sources.mapIndexedNotNull { index, source ->
+            val replacement = applyPatch(source, request.patch)
+            if (replacement == NewTransactionInput(source.revision.toContextInput(), source.revision.payload)) {
+                return@mapIndexedNotNull null
+            }
             val draft = EditTransactionCommand(
                 commandId = CommandId(derivedId(request.commandId, "child:$index")),
                 expectedRevisionId = source.revision.id,
                 payloadHash = zeroHash(),
                 transactionId = source.revision.transactionId,
-                replacement = applyPatch(source, request.patch),
+                replacement = replacement,
                 dependencyResolutions = emptyList(),
                 revisionAction = RevisionAction.BULK_EDIT,
             )
-            draft.copy(payloadHash = CanonicalFinancialHash.command(draft))
+            source to draft.copy(payloadHash = CanonicalFinancialHash.command(draft))
         }
+        if (edits.isEmpty()) return DomainResult.Failure(DomainViolation.InvalidField("bulk.noChanges"))
+        val children = edits.map { it.second }
         val draft = BatchFinancialCommand(CommandId(request.commandId), zeroHash(), children)
         val batch = draft.copy(payloadHash = CanonicalFinancialHash.command(draft))
         val first = sources.first().snapshot
@@ -258,7 +264,7 @@ class SecureRoomJournalApplicationPort(
             refundStatuses = emptyList(),
             budgetRevision = null,
             participants = emptyList(),
-            batchSnapshots = sources.map(ReferenceEditSource::snapshot),
+            batchSnapshots = edits.map { it.first.snapshot },
         )
         return coordinate(database, batch, root)
     }
@@ -484,7 +490,10 @@ class SecureRoomJournalApplicationPort(
     }
 
     private suspend fun coordinate(database: LedgerDatabase, command: FinancialCommand, snapshot: PlanningSnapshot): DomainResult<CommandReceipt> {
-        val repository = RoomFinancialCommitRepository(database)
+        // Lifecycle mutations touch every derived financial view. Rebuilding them in the same
+        // SQLite transaction prevents a trashed transaction from surviving in balances, budgets,
+        // analytics, goals, widgets, or the active journal after an incremental edge case.
+        val repository = RoomFinancialCommitRepository(database, forceFullProjectionRebuild = true)
         return DefaultFinancialMutationCoordinator(
             writeGate,
             repository,
@@ -552,7 +561,7 @@ class SecureRoomJournalApplicationPort(
         "SELECT COALESCE(SUM(CASE WHEN p.side=la.normal_side THEN p.account_amount_minor ELSE -p.account_amount_minor END),0) balance " +
             "FROM posting p JOIN ledger_account la ON la.id=p.ledger_account_id JOIN user_account ua ON ua.ledger_account_id=la.id " +
             "JOIN journal_entry je ON je.id=p.journal_entry_id JOIN transaction_revision sr ON sr.id=je.source_revision_id JOIN business_transaction bt ON bt.id=sr.transaction_id " +
-            "WHERE ua.uid=? AND (je.effective_at<? OR (je.effective_at=? AND bt.uid<=?))",
+            "WHERE ua.uid=? AND bt.lifecycle_state=0 AND (je.effective_at<? OR (je.effective_at=? AND bt.uid<=?))",
         arrayOf(accountId.bytes, occurredAt, occurredAt, transactionId.bytes),
     ) { it.jLong("balance") } ?: 0L
 
@@ -584,7 +593,10 @@ class SecureRoomJournalApplicationPort(
             arrayOf(base.revisionId.bytes),
         ) { c -> "account-change|${c.getString(0)}|${c.getLong(1)}|${c.getString(2)}" }
         val dependencyRelations = dependencies(db, id).map { "${it.type}:${it.childTransactionId}" }
-        val relations = dependencyRelations + RoomJournalRefundRelations.summaries(db, id)
+        // A malformed legacy relationship projection must not make an otherwise valid
+        // transaction detail permanently unreachable. The typed dependency list remains
+        // available and relationship repair can be handled by integrity maintenance.
+        val relations = dependencyRelations + runCatching { RoomJournalRefundRelations.summaries(db, id) }.getOrDefault(emptyList())
         val budget = db.queryOne("SELECT COUNT(*) n FROM budget_effect be JOIN transaction_revision tr ON tr.id=be.source_revision_id WHERE tr.uid=? AND be.polarity=1", arrayOf(base.revisionId.bytes)) { it.jLong("n") }
         return JournalDetailView(
             item, base.createdAt, base.modifiedAt, base.zoneId, base.expression, base.note, base.merchant, base.project, base.place,

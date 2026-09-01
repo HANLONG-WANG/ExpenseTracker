@@ -1,4 +1,9 @@
 <resources>
+    <string name="restore_drive_not_configured">Google Drive がバックアップリポジトリとして接続されていません。最小権限の認可とリポジトリ設定を先に完了してください。</string>
+    <string name="restore_configure_drive">Google Drive を設定</string>
+    <string name="clear_cloud_loading">クラウドバックアップを読み込んでいます…</string>
+    <string name="clear_cloud_auth_required">削除できるバックアップを読み込む前に、本人確認と Google Drive の認可を行ってください。</string>
+    <string name="clear_cloud_empty">この Google Drive リポジトリには削除できる完全なバックアップがありません。</string>
     <string name="import_title">インポート</string><string name="import_resume">再開</string><string name="import_cancel">キャンセル</string>
     <string name="import_previous">戻る</string><string name="import_next">次へ</string>
     <string name="import_source_heading">インポート元を選択</string><string name="import_source_supporting">汎用 CSV/XLSX または構造化ワークブックを選択します。</string>
@@ -81,4 +86,27 @@
     <string name="backup_failure_network">ネットワークを利用できないため、バックアップを完了できませんでした。</string>
     <string name="backup_failure_space">空き容量が不足しているため、バックアップを完了できませんでした。</string>
     <string name="backup_failure_cancelled">バックアップはキャンセルされ、スナップショットは公開されませんでした。</string>
+    <string name="import_rollback_confirm_title">インポートのロールバックを確認</string>
+    <string name="import_rollback_confirm_result_scope">再検証後、このバッチの取引 %1$d 件と参照エンティティ %2$d 件をロールバックします。</string>
+    <string name="import_rollback_confirm_history_scope">対象バッチ：%1$s、インポート行数：%2$d。</string>
+    <string name="import_rollback_confirm_consequence">このバッチが作成した取引を削除し、新しい依存関係がない場合に限り作成済みエンティティを戻します。依存関係がある、またはロールバック済みのバッチは拒否されます。</string>
+    <string name="import_rollback_confirm_unaffected">他のインポートバッチ、手入力の取引、バックアップファイル、およびこのバッチ以外で作成したエンティティには影響しません。</string>
+    <string name="backup_delete_confirm_title">バックアップの削除を確認</string>
+    <string name="backup_delete_confirm_scope">対象スナップショット：%1$s\n保存先：%2$s</string>
+    <string name="backup_delete_last_verified_warning">これは現在唯一の検証済み復旧ポイントです。削除すると、新しいバックアップを作成して検証するまで検証済みスナップショットから復旧できません。</string>
+    <string name="backup_delete_vault_included">このスナップショットには保管庫の復旧データが含まれます。削除すると復旧入口も失われます。</string>
+    <string name="backup_delete_vault_excluded">このスナップショットに保管庫データは含まれていません。</string>
+    <string name="backup_delete_unaffected">影響するのはこのスナップショットだけです。現在の台帳、他のスナップショット、エクスポート済みファイルは変更されません。削除は取り消せません。</string>
+    <string name="backup_delete_confirmation_label">確認フレーズを入力</string>
+    <string name="backup_delete_confirmation_phrase">バックアップを削除</string>
+    <string name="import_exclude_row">元データの行を除外</string>
+    <string name="import_restore_row">行を復元</string>
+    <string name="import_excluded_rows">除外した元データ行</string>
+    <string name="import_prepared_excluded_summary">%1$d 行を取り込み、%2$d 行をスキップします。除外行は台帳に書き込まれず、確定前に復元できます。</string>
+    <string name="import_change_mapping_accessibility">ソース列 %1$s、サンプル %2$s、現在 %3$s に割り当て済み。対象フィールドを変更</string>
+    <string name="import_entity_mapping_accessibility">%1$s、未登録 %2$d 件、現在は%3$s。%4$sに変更</string>
+    <string name="import_entity_value_mapping_accessibility">%1$s のソース値 %2$s、現在 %3$s に割り当て済み。次の既存項目を選択</string>
+    <string name="backup_settings_validation">強調表示されたバックアップ保持ルールを修正してください。</string>
+    <string name="backup_retention_count_error">保持数は 1〜3650 にしてください</string>
+    <string name="backup_retention_days_error">保持日数は空欄または 1〜36500 にしてください</string>
 </resources>

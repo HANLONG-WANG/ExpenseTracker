@@ -58,6 +58,10 @@ internal fun InstallmentRootDestination(
             onPreview = viewModel::previewInstallment,
             onCalculateSettlement = viewModel::calculateInstallmentSettlement,
             onApplySettlement = viewModel::applyInstallmentSettlement,
+            onCancelConfirmation = {
+                viewModel.requestRootBack()
+                onNavigationChanged()
+            },
         ),
     )
 }
@@ -76,7 +80,7 @@ internal fun installmentFixedAction(
         LedgerSaveFab(
             onSave,
             submitting = pending || presentation == InstallmentPresentation.SAVING,
-            enabled = !pending && presentation == InstallmentPresentation.PREVIEW,
+            enabled = !pending && content != null,
         )
     }
 }

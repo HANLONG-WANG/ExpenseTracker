@@ -88,9 +88,6 @@ class ImportIngestionService(
     ): DomainResult<ImportIngestionResult> {
         val parameters = operation.parameters as? OperationParameters.Import
             ?: return DomainResult.Failure(ImportIngestionError.NotAnImport)
-        if (parameters.format == ImportFormat.FULL_BACKUP) {
-            return DomainResult.Failure(ImportFailure.UnsupportedSource)
-        }
         staging.create(operation.id).successOrReturn()?.let { return it }
         var current = operation
         if (current.state == BackgroundOperationState.FAILED_RETRYABLE) {
@@ -116,6 +113,9 @@ class ImportIngestionService(
         }
         if (current.state != BackgroundOperationState.RUNNING) {
             return DomainResult.Failure(ImportIngestionError.NotRecoverable)
+        }
+        if (parameters.format == ImportFormat.FULL_BACKUP) {
+            return fail(current, ImportFailure.UnsupportedSource, staging, operations)
         }
 
         val rawBuffer = ArrayList<StagingRawRow>(CHUNK_ROWS)
@@ -210,8 +210,18 @@ class ImportIngestionService(
         }
         flush().successOrReturn()?.let { return it }
         val summary = (result as DomainResult.Success).value
-        if (parameters.format == ImportFormat.STRUCTURED_WORKBOOK && summary.sheets.any { it.structuredKind == null }) {
-            return fail(activeOperation, ImportFailure.UnsupportedSource, staging, operations)
+        if (parameters.format == ImportFormat.STRUCTURED_WORKBOOK) {
+            // Full-workbook exports contain a metadata sheet in addition to the governed entity
+            // sheets. It is intentionally not staged, and therefore must not make the app's own
+            // export fail structured re-import. Unknown sheets selected for ingestion are still
+            // rejected rather than silently accepted.
+            val selected = request.selectedSheetNames
+            val ingestedSheets = summary.sheets.filter { sheet ->
+                selected == null || selected.any { it.equals(sheet.name, ignoreCase = true) }
+            }
+            if (ingestedSheets.isEmpty() || ingestedSheets.any { it.structuredKind == null }) {
+                return fail(activeOperation, ImportFailure.UnsupportedSource, staging, operations)
+            }
         }
         observer.onProgress(
             ImportProgressSnapshot(
@@ -242,7 +252,12 @@ class ImportIngestionService(
             cancelled = cancelled.transition(BackgroundOperationState.FAILED_FINAL, now(), errorCode = error.code).requireValue()
             operations.save(cancelled)
         } else {
-            val failed = operation.transition(BackgroundOperationState.FAILED_RETRYABLE, now(), errorCode = error.code).requireValue()
+            val failureState = if (error in NON_RETRYABLE_SOURCE_FAILURES) {
+                BackgroundOperationState.FAILED_FINAL
+            } else {
+                BackgroundOperationState.FAILED_RETRYABLE
+            }
+            val failed = operation.transition(failureState, now(), errorCode = error.code).requireValue()
             operations.save(failed)
         }
         return DomainResult.Failure(error)
@@ -251,6 +266,10 @@ class ImportIngestionService(
     private companion object {
         const val CHUNK_ROWS: Int = 256
         const val PAUSE_POLL_MILLIS: Long = 50L
+        val NON_RETRYABLE_SOURCE_FAILURES: Set<DomainError> = setOf(
+            ImportFailure.UnsupportedSource,
+            ImportFailure.InvalidEncoding,
+        )
     }
 
     private fun checkpoint(lastStagedRow: Long): EncryptedCheckpoint = EncryptedCheckpoint.of(

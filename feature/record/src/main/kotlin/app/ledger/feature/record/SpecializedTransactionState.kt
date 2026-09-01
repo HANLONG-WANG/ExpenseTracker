@@ -27,6 +27,7 @@ import app.ledger.finance.application.SpecializedFxQuote
 import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.FxValuationPolicy
+import app.ledger.finance.domain.UserAccountType
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.math.MathContext
@@ -130,7 +131,7 @@ public object SpecializedTransactionPolicy {
         editing: SpecializedTransactionEditView? = null,
     ): SpecializedTransactionEditorState {
         val edit = editing?.takeIf { it.kind.toSpecializedKind() == kind }
-        val accounts = activeAccounts(snapshot)
+        val accounts = activeAccounts(snapshot, kind)
         // Historical revisions may still reference an archived account. Keep that exact account
         // visible while editing; only account changes cycle through the currently active set.
         val from = snapshot.accounts.singleOrNull { it.id == edit?.fromAccountId }
@@ -193,13 +194,18 @@ public object SpecializedTransactionPolicy {
         return updateExpression(state, incoming, value, locale)
     }
 
-    public fun selectAccount(state: SpecializedTransactionEditorState, incoming: Boolean): SpecializedTransactionEditorState {
-        val accounts = activeAccounts(state.snapshot)
-        if (accounts.isEmpty()) return state
-        val current = if (incoming) state.draft.toAccountId else state.draft.fromAccountId
-        val currentIndex = accounts.indexOfFirst { it.id == current }
-        val next = accounts[if (currentIndex < 0) 0 else (currentIndex + 1) % accounts.size]
-        val draft = if (incoming) state.draft.copy(toAccountId = next.id, incomingExpression = "", dirty = true) else state.draft.copy(fromAccountId = next.id, outgoingExpression = "", dirty = true)
+    public fun selectAccount(
+        state: SpecializedTransactionEditorState,
+        incoming: Boolean,
+        accountId: StableId,
+    ): SpecializedTransactionEditorState {
+        val accounts = activeAccounts(state.snapshot, state.kind)
+        if (accounts.none { it.id == accountId }) return state
+        val draft = if (incoming) {
+            state.draft.copy(toAccountId = accountId, incomingExpression = "", dirty = true)
+        } else {
+            state.draft.copy(fromAccountId = accountId, outgoingExpression = "", dirty = true)
+        }
         return state.copy(draft = draft, errors = emptyList(), presentation = SpecializedPresentation.EDITING)
     }
 
@@ -244,6 +250,8 @@ public object SpecializedTransactionPolicy {
                 if (draft.fromAccountId == draft.toAccountId) add(SpecializedValidationError(SpecializedField.TO_ACCOUNT, "SAME_ACCOUNT"))
                 val from = account(state, draft.fromAccountId)
                 val to = account(state, draft.toAccountId)
+                if (from != null && !from.isAssetAccount()) add(SpecializedValidationError(SpecializedField.FROM_ACCOUNT, "ASSET_ACCOUNT_REQUIRED"))
+                if (to != null && !to.isAssetAccount()) add(SpecializedValidationError(SpecializedField.TO_ACCOUNT, "ASSET_ACCOUNT_REQUIRED"))
                 if (state.kind == SpecializedTransactionKind.FX_EXCHANGE && from?.currency == to?.currency) add(SpecializedValidationError(SpecializedField.TO_ACCOUNT, "SAME_CURRENCY"))
                 if (state.kind == SpecializedTransactionKind.FX_EXCHANGE || from?.currency != to?.currency) {
                     if (draft.incomingMinor == null) add(SpecializedValidationError(SpecializedField.INCOMING_AMOUNT, "AMOUNT_INVALID"))
@@ -321,6 +329,10 @@ public object SpecializedTransactionPolicy {
 
     public fun account(state: SpecializedTransactionEditorState, id: StableId?): AccountReferenceView? = state.snapshot.accounts.singleOrNull { it.id == id }
 
+    /** New transfer/exchange endpoints must be asset accounts; liabilities use their dedicated flows. */
+    public fun selectableAccounts(state: SpecializedTransactionEditorState): List<AccountReferenceView> =
+        activeAccounts(state.snapshot, state.kind)
+
     private fun evaluate(state: SpecializedTransactionEditorState, locale: Locale): SpecializedTransactionEditorState {
         val from = account(state, state.draft.fromAccountId)
         val to = account(state, state.draft.toAccountId)
@@ -380,13 +392,22 @@ public object SpecializedTransactionPolicy {
 
     private fun evidence(source: CurrencyCode, target: CurrencyCode, rate: BigDecimal, provider: String, rateSource: FxRateSource, manual: Boolean): FxEvidence = (FxEvidence.create(FxEvidenceInput(source, target, rate, (FxProvider.of(provider) as DomainResult.Success).value, null, null, rateSource, manual)) as DomainResult.Success).value
 
-    private fun activeAccounts(snapshot: ReferenceDataSnapshot): List<AccountReferenceView> = snapshot.accounts.filter { it.status == EntityStatus.ACTIVE }.sortedBy(AccountReferenceView::sortOrder)
+    private fun activeAccounts(
+        snapshot: ReferenceDataSnapshot,
+        kind: SpecializedTransactionKind,
+    ): List<AccountReferenceView> = snapshot.accounts
+        .filter { it.status == EntityStatus.ACTIVE }
+        .filter { kind !in ASSET_ENDPOINT_KINDS || it.isAssetAccount() }
+        .sortedBy(AccountReferenceView::sortOrder)
 
     private const val MAX_EXPRESSION = 256
     private const val MAX_RATE = 48
     private const val MAX_NOTE = 2_000
     private val MATH_CONTEXT = MathContext(34, RoundingMode.HALF_EVEN)
+    private val ASSET_ENDPOINT_KINDS = setOf(SpecializedTransactionKind.TRANSFER, SpecializedTransactionKind.FX_EXCHANGE)
 }
+
+private fun AccountReferenceView.isAssetAccount(): Boolean = type in setOf(UserAccountType.CASH, UserAccountType.BANK)
 
 private fun app.ledger.finance.domain.TransactionKind.toSpecializedKind(): SpecializedTransactionKind? = when (this) {
     app.ledger.finance.domain.TransactionKind.TRANSFER -> SpecializedTransactionKind.TRANSFER

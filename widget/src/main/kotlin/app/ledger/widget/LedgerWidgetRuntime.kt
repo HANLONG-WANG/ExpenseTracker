@@ -6,6 +6,7 @@ import app.ledger.core.common.DomainResult
 import app.ledger.finance.application.WidgetQuickTarget
 import app.ledger.finance.application.WidgetSnapshotApplicationPort
 import app.ledger.finance.application.WidgetSnapshotBundle
+import app.ledger.finance.application.WidgetSnapshotRefreshApplicationPort
 import java.time.LocalDate
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -16,6 +17,7 @@ object LedgerWidgetRuntime {
         val snapshots: WidgetSnapshotApplicationPort,
         val configurations: LedgerWidgetConfigurationRepository,
         val languageTag: suspend () -> String,
+        val dateFormat: suspend () -> String,
         val localDate: suspend (app.ledger.core.common.StableId) -> LocalDate,
     )
 
@@ -26,10 +28,11 @@ object LedgerWidgetRuntime {
         snapshots: WidgetSnapshotApplicationPort,
         configurations: LedgerWidgetConfigurationRepository,
         languageTag: suspend () -> String = { Locale.getDefault().toLanguageTag() },
+        dateFormat: suspend () -> String = { "DATE_FORMAT_LOCALE_DEFAULT" },
         localDate: suspend (app.ledger.core.common.StableId) -> LocalDate,
     ) {
         savedConfigurations.clear()
-        dependencies.set(Dependencies(snapshots, configurations, languageTag, localDate))
+        dependencies.set(Dependencies(snapshots, configurations, languageTag, dateFormat, localDate))
     }
 
     suspend fun activeBookId() = dependencies.get()?.configurations?.activeBookId()
@@ -54,6 +57,10 @@ object LedgerWidgetRuntime {
         ?.takeIf(String::isNotBlank)
         ?: Locale.getDefault().toLanguageTag()
 
+    suspend fun dateFormat(): String = dependencies.get()?.dateFormat?.invoke()
+        ?.takeIf(String::isNotBlank)
+        ?: "DATE_FORMAT_LOCALE_DEFAULT"
+
     suspend fun quickTargets(bookId: app.ledger.core.common.StableId): List<WidgetQuickTarget> = when (
         val result = dependencies.get()?.snapshots?.quickTargets(bookId)
     ) {
@@ -61,15 +68,21 @@ object LedgerWidgetRuntime {
         else -> emptyList()
     }
 
-    suspend fun bundle(bookId: app.ledger.core.common.StableId): WidgetSnapshotBundle? = when (
-        val result = dependencies.get()?.snapshots?.read(bookId)
-    ) {
+    suspend fun bundle(bookId: app.ledger.core.common.StableId): WidgetSnapshotBundle? {
+        val installed = dependencies.get() ?: return null
+        (installed.snapshots as? WidgetSnapshotRefreshApplicationPort)?.refreshIfStale(bookId, installed.localDate(bookId))
+        return when (val result = installed.snapshots.read(bookId)) {
         is DomainResult.Success -> result.value
         else -> null
+        }
     }
 
     suspend fun resolve(configuration: LedgerWidgetConfiguration): LedgerWidgetContent {
         val installed = dependencies.get() ?: return LedgerWidgetContent.Locked
+        (installed.snapshots as? WidgetSnapshotRefreshApplicationPort)?.refreshIfStale(
+            configuration.bookId,
+            installed.localDate(configuration.bookId),
+        )
         return when (val result = installed.snapshots.read(configuration.bookId)) {
             is DomainResult.Failure -> LedgerWidgetContent.Locked
             is DomainResult.Success -> LedgerWidgetPolicy.resolve(

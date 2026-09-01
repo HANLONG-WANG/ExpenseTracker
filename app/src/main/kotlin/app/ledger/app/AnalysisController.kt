@@ -313,6 +313,11 @@ internal class AnalysisController(
         updateCurrent { it.withAnomalyDraft(it.presentation) }
     }
 
+    fun selectAnomalyType(value: AnomalyRuleType) {
+        anomalyDraftType = value
+        updateCurrent { it.withAnomalyDraft(it.presentation) }
+    }
+
     fun updateAnomalyThreshold(value: String) {
         anomalyThresholdText = value.take(32)
         updateCurrent { it.withAnomalyDraft(it.presentation) }
@@ -392,7 +397,12 @@ internal class AnalysisController(
         mutableState.value = AnalysisLoadState.Content(baseState("ANA-015", AnalysisPresentation.RUNNING).copy(integrity = current?.integrity))
         val result = if (repair) application.repairAnalyticsProjections(requireBookId()) else application.integrity(requireBookId())
         mutableState.value = when (result) {
-            is DomainResult.Success -> AnalysisLoadState.Content(baseState("ANA-015", AnalysisPolicy.integrityPresentation(result.value)).copy(integrity = result.value))
+            is DomainResult.Success -> AnalysisLoadState.Content(
+                baseState("ANA-015", AnalysisPolicy.integrityPresentation(result.value)).copy(
+                    integrity = result.value,
+                    failureCode = "PROJECTION_REPAIRED".takeIf { repair },
+                ),
+            )
             is DomainResult.Failure -> AnalysisLoadState.Failure("ANA-015", result.error.code)
         }
     }
@@ -406,6 +416,14 @@ internal class AnalysisController(
     suspend fun cycleMapAggregation() = updateMap { consumptionMap.cycleAggregation(requirePeriod()) }
 
     suspend fun cycleMapPresentation() = updateMap { consumptionMap.cyclePresentation(requirePeriod()) }
+
+    suspend fun selectMapMode(value: app.ledger.analytics.domain.ConsumptionMapMode) = updateMap { consumptionMap.selectMode(requirePeriod(), value) }
+
+    suspend fun selectMapWeight(value: app.ledger.analytics.domain.ConsumptionMapWeight) = updateMap { consumptionMap.selectWeight(requirePeriod(), value) }
+
+    suspend fun selectMapAggregation(value: app.ledger.analytics.domain.ConsumptionMapAggregation) = updateMap { consumptionMap.selectAggregation(requirePeriod(), value) }
+
+    suspend fun selectMapPresentation(value: app.ledger.analytics.domain.ConsumptionMapPresentation) = updateMap { consumptionMap.selectPresentation(requirePeriod(), value) }
 
     suspend fun toggleMapSpecialTransactions() = updateMap { consumptionMap.toggleSpecialTransactions(requirePeriod()) }
 
@@ -425,6 +443,14 @@ internal class AnalysisController(
     suspend fun cycleMapProjectFilter() = cycleMapFilter(ConsumptionMapFilterDimension.PROJECT)
 
     suspend fun cycleMapAmountFilter() = updateMap { consumptionMap.cycleAmount(requirePeriod()) }
+
+    suspend fun selectMapFilter(dimension: ConsumptionMapFilterDimension, selectedId: StableId?) = updateMap {
+        consumptionMap.selectFilter(requirePeriod(), dimension, selectedId)
+    }
+
+    suspend fun selectMapAmountFilter(minimumBaseAmountMinor: Long?) = updateMap {
+        consumptionMap.selectAmount(requirePeriod(), minimumBaseAmountMinor)
+    }
 
     suspend fun removeMapFilter(stableKey: String) = updateMap {
         consumptionMap.removeFilter(requirePeriod(), stableKey)

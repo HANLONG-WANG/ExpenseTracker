@@ -15,7 +15,6 @@ import app.ledger.feature.liabilities.CreditActions
 import app.ledger.feature.liabilities.CreditDestination
 import app.ledger.feature.liabilities.CreditLoadState
 import app.ledger.feature.liabilities.CreditPresentation
-import app.ledger.feature.liabilities.CreditPolicy
 import app.ledger.feature.liabilities.R as CreditR
 
 @Composable
@@ -44,8 +43,16 @@ internal fun CreditRootDestination(
     val transactionId = encodedArguments.stableId("transactionId")
     val state by viewModel.credit.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, accountId, statementId, transactionId) {
-        viewModel.loadCredit(screenId, accountId, statementId, transactionId)
+        viewModel.ensureCreditLoaded(screenId, accountId, statementId, transactionId)
     }
+    GovernedDestinationModal(
+        screenId,
+        creditDestinationTitleOrNull(screenId).orEmpty(),
+        onDismiss = {
+            viewModel.requestRootBack()
+            onNavigationChanged()
+        },
+    ) {
     CreditDestination(
         screenId,
         state,
@@ -66,8 +73,11 @@ internal fun CreditRootDestination(
             onAssignment = viewModel::assignCreditStatement,
             onToggleAutoPayment = viewModel::toggleCreditAutoPayment,
             onToggleSeal = viewModel::toggleCreditStatementSeal,
+            onPaymentAccountSelected = viewModel::selectCreditPaymentAccount,
+            onZoneSelected = viewModel::selectCreditZone,
         ),
     )
+    }
 }
 
 private fun Map<String, String>.stableId(name: String): StableId? = get(name)?.let { StableId.parse(it).getOrNull() }
@@ -81,13 +91,6 @@ internal fun creditFixedAction(
     if (screenId !in setOf("REC-014", "CRD-002", "CRD-005", "CRD-007", "CRD-008")) return null
     return {
         val content = (state as? CreditLoadState.Content)?.state
-        val valid = when (screenId) {
-            "REC-014" -> content?.let { CreditPolicy.validatePayment(it).presentation !in setOf(CreditPresentation.VALIDATION_ERROR, CreditPresentation.OVERPAYMENT_BLOCKED) } == true
-            "CRD-002" -> content?.let { CreditPolicy.profileErrors(it).isEmpty() } == true
-            "CRD-005" -> content?.let { CreditPolicy.officialErrors(it).isEmpty() } == true
-            "CRD-008" -> content != null
-            else -> content != null
-        }
-        LedgerSaveFab(onSave, submitting = pending || content?.presentation == CreditPresentation.SAVING, enabled = !pending && valid)
+        LedgerSaveFab(onSave, submitting = pending || content?.presentation == CreditPresentation.SAVING, enabled = !pending && content != null)
     }
 }

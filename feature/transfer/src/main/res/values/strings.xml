@@ -1,4 +1,9 @@
 <resources>
+    <string name="restore_drive_not_configured">Google Drive 尚未连接为备份仓库。请先完成最小权限授权和仓库配置。</string>
+    <string name="restore_configure_drive">配置 Google Drive</string>
+    <string name="clear_cloud_loading">正在读取云端备份…</string>
+    <string name="clear_cloud_auth_required">请先验证身份并授权 Google Drive，随后才会读取可删除的备份。</string>
+    <string name="clear_cloud_empty">当前 Google Drive 仓库没有可删除的完整备份。</string>
     <string name="import_title">导入</string><string name="import_resume">继续</string><string name="import_cancel">取消</string>
     <string name="import_previous">上一步</string><string name="import_next">下一步</string>
     <string name="import_source_heading">选择导入来源</string><string name="import_source_supporting">选择通用 CSV/XLSX 或结构化工作簿。</string>
@@ -93,4 +98,27 @@
     <string name="backup_failure_network">网络不可用，备份未完成。</string>
     <string name="backup_failure_space">可用空间不足，备份未完成。</string>
     <string name="backup_failure_cancelled">备份已取消，未发布快照。</string>
+    <string name="import_rollback_confirm_title">确认回滚导入批次</string>
+    <string name="import_rollback_confirm_result_scope">将重新校验并回滚此批次导入的 %1$d 笔交易和 %2$d 个引用实体。</string>
+    <string name="import_rollback_confirm_history_scope">目标批次：%1$s；已导入 %2$d 行。</string>
+    <string name="import_rollback_confirm_consequence">回滚会删除本批次创建的交易，并仅在没有新依赖时还原本批次创建的实体；存在依赖或已回滚时操作会被拒绝。</string>
+    <string name="import_rollback_confirm_unaffected">其他导入批次、手工交易、备份文件和未由本批次创建的实体不受影响。</string>
+    <string name="backup_delete_confirm_title">确认删除备份</string>
+    <string name="backup_delete_confirm_scope">目标快照：%1$s\n存储位置：%2$s</string>
+    <string name="backup_delete_last_verified_warning">这是当前唯一已验证的恢复点。删除后，在创建并验证新备份前将无法从已验证快照恢复。</string>
+    <string name="backup_delete_vault_included">此快照包含保险库恢复数据；删除快照会一并删除其恢复入口。</string>
+    <string name="backup_delete_vault_excluded">此快照不包含保险库数据。</string>
+    <string name="backup_delete_unaffected">删除只影响这个快照；当前账本、其他快照和导出文件不受影响。删除后无法撤销。</string>
+    <string name="backup_delete_confirmation_label">输入确认短语</string>
+    <string name="backup_delete_confirmation_phrase">删除备份</string>
+    <string name="import_exclude_row">排除此来源行</string>
+    <string name="import_restore_row">恢复此行</string>
+    <string name="import_excluded_rows">已排除的来源行</string>
+    <string name="import_prepared_excluded_summary">将导入 %1$d 行，跳过 %2$d 行。排除行不会写入账本，可在提交前恢复。</string>
+    <string name="import_change_mapping_accessibility">源列 %1$s，样例 %2$s，当前映射到 %3$s；更改目标字段</string>
+    <string name="import_entity_mapping_accessibility">%1$s，缺失 %2$d 项，当前%3$s；改为%4$s</string>
+    <string name="import_entity_value_mapping_accessibility">%1$s 来源值 %2$s，当前映射到 %3$s；选择下一个现有实体</string>
+    <string name="backup_settings_validation">请修正标出的备份保留规则。</string>
+    <string name="backup_retention_count_error">保留数量必须为 1 至 3650</string>
+    <string name="backup_retention_days_error">保留天数必须留空或为 1 至 36500</string>
 </resources>

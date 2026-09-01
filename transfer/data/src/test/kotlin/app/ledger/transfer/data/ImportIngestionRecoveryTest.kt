@@ -118,13 +118,30 @@ class ImportIngestionRecoveryTest {
         assertEquals(ImportFailure.Cancelled.code, operations.current.errorCode)
     }
 
+    @Test
+    fun unsupportedSourceIsFinalAndDoesNotAdvertiseAWorkerRetry() = runBlocking {
+        val staging = RecoveryMemoryStaging()
+        val operations = MemoryOperations(operation(ImportFormat.FULL_BACKUP))
+
+        val result = ImportIngestionService().ingest(
+            operations.current,
+            request(),
+            staging,
+            operations,
+            ImportRunControl(),
+        )
+
+        assertEquals(ImportFailure.UnsupportedSource, (result as DomainResult.Failure).error)
+        assertEquals(BackgroundOperationState.FAILED_FINAL, operations.current.state)
+    }
+
     private fun request() = ImportReadRequest(ImportInput { ByteArrayInputStream(byteArrayOf(1)) })
 
-    private fun operation() = BackgroundOperation.queued(
+    private fun operation(format: ImportFormat = ImportFormat.CSV) = BackgroundOperation.queued(
         BackgroundOperationId(StableId.fromUuid(UUID(0x28L, 1L))),
         BackgroundOperationType.IMPORT,
         Instant.EPOCH,
-        OperationParameters.Import(StableId.fromUuid(UUID(0x28L, 2L)), ImportFormat.CSV, null),
+        OperationParameters.Import(StableId.fromUuid(UUID(0x28L, 2L)), format, null),
     )
 }
 
@@ -173,6 +190,7 @@ private class RecoveryMemoryStaging : EncryptedStagingRepository {
     var destroyed = false
 
     override suspend fun create(operationId: BackgroundOperationId) = DomainResult.Success(Unit)
+    override suspend fun clearPreparation() = DomainResult.Success(Unit)
     override suspend fun appendRaw(rows: List<StagingRawRow>): DomainResult<Unit> {
         rows.forEach { row ->
             raw.removeAll { it.rowNumber == row.rowNumber }

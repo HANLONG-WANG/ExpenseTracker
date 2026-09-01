@@ -102,11 +102,13 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
             "stickyHeader",
             "JournalSelectionMode.ALL_MATCHING",
             "p15_journal_bulk_forbidden",
-            "p15_journal_edit_transaction",
-            "p15_journal_create_refund",
+            "p15_journal_edit",
+            "p15_journal_refund_action",
+            "actions.onEdit(detail.transaction)",
+            "actions.onRefund(detail.transaction.transactionId)",
             "p15_journal_manage_attachments",
             "onOpenAttachment",
-            "toOptionalMinor(rangeCurrency)",
+            "toOptionalMinor(amountCurrency, currencyCatalog)",
             "JOURNAL_LOCAL_TIME",
             "state.operation.label()",
             "onResolveDependency",
@@ -175,9 +177,10 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     root = next((s for p, s in sources.items() if p.endswith("AppRootViewModel.kt")), "")
     journal_mutation = root[root.find("private fun executeJournalMutation"):root.find("private fun refreshJournalPaging")]
     require_tokens(errors, journal_mutation, "journal mutation refreshes financial surfaces", ("loadReferenceDataAfterMutation(bookId)",))
-    require_tokens(errors, root, "attachment lifecycle integration", (
-        "fun openAttachment", "SecureBookAttachmentSession", "attachmentExternalOpenRequests",
-        'ScreenId("ATT-001")', 'ScreenId("ATT-002")', 'ScreenId("ATT-003")',
+    attachment_ui = root + next((s for p, s in sources.items() if p.endswith("AttachmentRootDestination.kt")), "")
+    require_tokens(errors, attachment_ui, "attachment lifecycle integration", (
+        "fun openAttachment", "attachmentController", 'ScreenId("ATT-001")',
+        '"ATT-002"', '"ATT-003"', "authorizeAttachmentExternalOpen", "commitRename",
     ))
     require_tokens(errors, root, "single transfer revision editor", (
         "kind == TransactionKind.TRANSFER",

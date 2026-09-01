@@ -79,9 +79,9 @@ public object BudgetPolicy {
     private val formatter = LocaleCurrencyFormatter(catalog)
 
     public fun create(snapshot: BudgetSnapshot, presentation: BudgetPresentation = homePresentation(snapshot)): BudgetFeatureState {
-        val total = snapshot.currentRevision?.totalBaseMinor ?: 0L
+        val total = snapshot.currentRevision?.totalBaseMinor
         val limits = snapshot.currentRevision?.limits.orEmpty().associate { it.categoryId to minorText(it.amountBaseMinor, snapshot) }
-        val editor = BudgetEditorDraft(minorText(total, snapshot), limits)
+        val editor = BudgetEditorDraft(total?.let { minorText(it, snapshot) }.orEmpty(), limits)
         val initial = BudgetFeatureState(snapshot, presentation, editor, BudgetEditorValidation(null, emptyList(), null, emptySet()))
         return validate(initial)
     }
@@ -117,6 +117,15 @@ public object BudgetPolicy {
 
     public fun selectNextAdjustmentTarget(state: BudgetFeatureState): BudgetFeatureState = state.copy(
         adjustmentTargetCategoryId = nextCategory(state, state.adjustmentTargetCategoryId, state.adjustmentSourceCategoryId),
+    )
+
+    public fun selectAdjustmentSource(state: BudgetFeatureState, categoryId: StableId): BudgetFeatureState = state.copy(
+        adjustmentSourceCategoryId = categoryId,
+        adjustmentTargetCategoryId = state.adjustmentTargetCategoryId.takeUnless { it == categoryId },
+    )
+
+    public fun selectAdjustmentTarget(state: BudgetFeatureState, categoryId: StableId): BudgetFeatureState = state.copy(
+        adjustmentTargetCategoryId = categoryId,
     )
 
     public fun adjustmentMinor(state: BudgetFeatureState): Long? = parseMinor(state.adjustmentAmountText, state.snapshot)?.takeIf { it > 0L }

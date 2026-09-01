@@ -26,6 +26,7 @@ internal fun ImportRootDestination(viewModel: AppRootViewModel, onNavigationChan
             onFxPolicyChanged = viewModel::changeImportFxPolicy,
             onFxRateChanged = viewModel::changeImportFxRate,
             onDuplicateResolved = viewModel::resolveImportDuplicate,
+            onRowExcludedChanged = viewModel::setImportRowExcluded,
             onPrevious = viewModel::previousImportStage,
             onNext = viewModel::nextImportStage,
             onPause = viewModel::pauseImport,
@@ -38,6 +39,8 @@ internal fun ImportRootDestination(viewModel: AppRootViewModel, onNavigationChan
             onCleanupTemporary = viewModel::cleanupImportTemporary,
             onViewHistoryResult = viewModel::viewImportHistoryResult,
             onRollbackHistory = viewModel::rollbackImportHistory,
+            onFieldMappingSelected = viewModel::selectImportFieldMapping,
+            onEntityMappingSelected = viewModel::selectImportEntityMapping,
         ),
     )
 }

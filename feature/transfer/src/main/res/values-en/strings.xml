@@ -1,4 +1,9 @@
 <resources>
+    <string name="restore_drive_not_configured">Google Drive is not connected as a backup repository. Complete least-privilege authorization and repository setup first.</string>
+    <string name="restore_configure_drive">Configure Google Drive</string>
+    <string name="clear_cloud_loading">Loading cloud backups…</string>
+    <string name="clear_cloud_auth_required">Authenticate and authorize Google Drive before loading backups that can be deleted.</string>
+    <string name="clear_cloud_empty">This Google Drive repository has no complete backup that can be deleted.</string>
     <string name="import_title">Import</string><string name="import_resume">Resume</string><string name="import_cancel">Cancel</string>
     <string name="import_previous">Previous</string><string name="import_next">Next</string>
     <string name="import_source_heading">Choose import source</string><string name="import_source_supporting">Choose a general CSV/XLSX file or a structured workbook.</string>
@@ -84,4 +89,27 @@
     <string name="backup_failure_network">The network is unavailable. The backup was not completed.</string>
     <string name="backup_failure_space">There is not enough available space to complete the backup.</string>
     <string name="backup_failure_cancelled">The backup was cancelled. No snapshot was published.</string>
+    <string name="import_rollback_confirm_title">Confirm import rollback</string>
+    <string name="import_rollback_confirm_result_scope">The batch will be revalidated before rolling back %1$d imported transactions and %2$d reference entities.</string>
+    <string name="import_rollback_confirm_history_scope">Target batch: %1$s; %2$d rows were imported.</string>
+    <string name="import_rollback_confirm_consequence">Rollback removes transactions created by this batch and restores batch-created entities only when they have no new dependencies. A dependent or already rolled-back batch is rejected.</string>
+    <string name="import_rollback_confirm_unaffected">Other import batches, manual transactions, backup files, and entities not created by this batch are unaffected.</string>
+    <string name="backup_delete_confirm_title">Confirm backup deletion</string>
+    <string name="backup_delete_confirm_scope">Target snapshot: %1$s\nStorage location: %2$s</string>
+    <string name="backup_delete_last_verified_warning">This is the only verified recovery point. After deletion, recovery from a verified snapshot is unavailable until a new backup is created and verified.</string>
+    <string name="backup_delete_vault_included">This snapshot includes vault recovery data. Deleting it also removes that recovery entry.</string>
+    <string name="backup_delete_vault_excluded">This snapshot does not include vault data.</string>
+    <string name="backup_delete_unaffected">Only this snapshot is affected. The current ledger, other snapshots, and exported files remain unchanged. Deletion cannot be undone.</string>
+    <string name="backup_delete_confirmation_label">Enter the confirmation phrase</string>
+    <string name="backup_delete_confirmation_phrase">DELETE BACKUP</string>
+    <string name="import_exclude_row">Exclude source row</string>
+    <string name="import_restore_row">Restore row</string>
+    <string name="import_excluded_rows">Excluded source rows</string>
+    <string name="import_prepared_excluded_summary">%1$d rows will be imported and %2$d skipped. Excluded rows are not written and can be restored before commit.</string>
+    <string name="import_change_mapping_accessibility">Source column %1$s, sample %2$s, currently mapped to %3$s; change target field</string>
+    <string name="import_entity_mapping_accessibility">%1$s, %2$d missing, currently %3$s; change to %4$s</string>
+    <string name="import_entity_value_mapping_accessibility">%1$s source value %2$s, currently mapped to %3$s; select the next existing entity</string>
+    <string name="backup_settings_validation">Correct the highlighted backup retention rules.</string>
+    <string name="backup_retention_count_error">Snapshot count must be from 1 to 3650</string>
+    <string name="backup_retention_days_error">Retention days must be blank or from 1 to 36500</string>
 </resources>

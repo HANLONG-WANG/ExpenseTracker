@@ -232,7 +232,7 @@ def validate_ledgers() -> list[str]:
     evidence = read("docs/implementation/TEST_EVIDENCE.md")
     mapping_path = ROOT / "docs/implementation/P14_MULTICURRENCY_MAPPING.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
-    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P14", "Stage status: VERIFIED"))
+    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "| P14 | VERIFIED |"))
     for index in range(1, 9):
         if f"P14-E{index:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P14-E{index:03d}")

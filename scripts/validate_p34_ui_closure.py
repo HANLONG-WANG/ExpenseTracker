@@ -434,7 +434,7 @@ def validate_ui_governance(
         "feature/liabilities/src/main/kotlin/app/ledger/feature/liabilities/InstallmentScreens.kt",
         "",
     )
-    for marker in ("installment_credit_account", "installment_search_credit_account", "LedgerDatePickerFlow("):
+    for marker in ("installment_credit_account", "LedgerChoiceSelector(", "LedgerDatePickerFlow("):
         if marker not in installment_screen:
             errors.append(f"REC-027 interaction marker missing: {marker}")
     batch_screen = sources.get(
@@ -474,7 +474,7 @@ def validate_ui_governance(
     for marker in (
         "transaction.kind.projectTransactionLabel()",
         "goal.status.goalStatusLabel()",
-        "movementLabel(it.kind)",
+        "movementLabel(movement.kind)",
     ):
         if marker not in planning_screen:
             errors.append(f"10.5 planning presentation label marker missing: {marker}")

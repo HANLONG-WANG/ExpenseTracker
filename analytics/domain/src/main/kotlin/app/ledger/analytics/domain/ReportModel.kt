@@ -93,6 +93,11 @@ enum class Measure {
     LOAN_INTEREST,
     SETTLEMENT_POSITION,
     TRANSACTION_COUNT,
+    BUDGET_BASE,
+    BUDGET_ROLLOVER,
+    BUDGET_ADJUSTMENT,
+    BUDGET_USED,
+    BUDGET_AVAILABLE,
 }
 
 enum class Dimension {

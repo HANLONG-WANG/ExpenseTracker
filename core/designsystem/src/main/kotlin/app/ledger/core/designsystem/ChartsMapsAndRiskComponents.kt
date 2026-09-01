@@ -60,6 +60,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -457,6 +458,15 @@ public fun ChartCard(
     tableExpanded: Boolean = false,
     onToggleTable: () -> Unit,
 ) {
+    if (!LocalLedgerAmountsVisible.current) {
+        LedgerCard(modifier.fillMaxWidth()) {
+            Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+                Text(model.title, Modifier.semantics { heading() }, style = LedgerTheme.typography.titleSmall)
+                LedgerBanner(stringResource(R.string.ledger_amount_hidden), LedgerBannerVariant.NEUTRAL)
+            }
+        }
+        return
+    }
     val locale = LocalLocale.current.platformLocale
     val points = remember(model, locale) { model.chartPoints(NumberFormat.getNumberInstance(locale)) }
     var exploring by remember(model.title) { mutableStateOf(false) }
@@ -474,8 +484,12 @@ public fun ChartCard(
             Text(model.scope, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
             Text(model.summary, style = LedgerTheme.typography.bodyMedium)
             model.baselineExplanation?.let { LedgerText(it, LedgerTextRole.SUPPORTING) }
-            Box(Modifier.fillMaxWidth().height(LedgerTheme.dimensions.chartPreferredHeight)) {
+            if (model.type == LedgerChartType.TABLE) {
                 chart()
+            } else {
+                Box(Modifier.fillMaxWidth().height(LedgerTheme.dimensions.chartPreferredHeight)) {
+                    chart()
+                }
             }
             ChartLegend(model)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
@@ -650,21 +664,30 @@ public fun AccessibleDataTable(
     require(model.columnHeaders.isNotEmpty())
     require(model.rows.all { it.size == model.columnHeaders.size })
     val horizontalScrollState = rememberScrollState()
+    val privacyHidden = !LocalLedgerAmountsVisible.current
+    val hiddenAmountText = stringResource(R.string.ledger_amount_hidden)
     Column(
         modifier
             .testTag(LedgerTestTags.DATA_TABLE)
             .semantics { paneTitle = model.caption },
     ) {
         Text(model.caption, style = LedgerTheme.typography.titleSmall)
-        Row(Modifier.background(LedgerTheme.colors.material.surfaceContainerHigh)) {
-            model.columnHeaders.forEachIndexed { index, header ->
-                TableCell(header, header = true, endAligned = index in model.endAlignedColumnIndices)
+        Column(Modifier.horizontalScroll(horizontalScrollState)) {
+            Row(Modifier.background(LedgerTheme.colors.material.surfaceContainerHigh)) {
+                model.columnHeaders.forEachIndexed { index, header ->
+                    TableCell(header, header = true, endAligned = index in model.endAlignedColumnIndices)
+                }
             }
-        }
-        model.rows.forEach { row ->
-            Row {
-                row.forEachIndexed { index, value ->
-                    TableCell(value, header = false, endAligned = index in model.endAlignedColumnIndices)
+            model.rows.forEach { row ->
+                Row {
+                    row.forEachIndexed { index, value ->
+                        TableCell(
+                            if (privacyHidden && index in model.endAlignedColumnIndices) "••••" else value,
+                            header = false,
+                            endAligned = index in model.endAlignedColumnIndices,
+                            hiddenSemantics = hiddenAmountText.takeIf { privacyHidden && index in model.endAlignedColumnIndices },
+                        )
+                    }
                 }
             }
         }
@@ -693,12 +716,16 @@ public fun AccessibleDataTable(
 }
 
 @Composable
-private fun TableCell(value: String, header: Boolean, endAligned: Boolean) {
+private fun TableCell(value: String, header: Boolean, endAligned: Boolean, hiddenSemantics: String? = null) {
     Text(
         value,
-        Modifier.width(LedgerTheme.spacing.giant * 3).padding(LedgerTheme.spacing.xs).semantics {
-            if (header) heading()
-        },
+        Modifier.width(LedgerTheme.spacing.giant * 3).padding(LedgerTheme.spacing.xs).then(
+            if (hiddenSemantics != null) {
+                Modifier.clearAndSetSemantics { text = AnnotatedString(hiddenSemantics) }
+            } else {
+                Modifier.semantics { if (header) heading() }
+            },
+        ),
         style = LedgerTheme.typography.bodyMedium.copy(fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal, fontFeatureSettings = "tnum"),
         textAlign = if (endAligned) TextAlign.End else TextAlign.Start,
     )
@@ -768,6 +795,7 @@ public fun OperationProgressPanel(
     onCancel: (() -> Unit)? = null,
     onPause: (() -> Unit)? = null,
     onRetry: (() -> Unit)? = null,
+    retryLabel: String? = null,
     onViewError: (() -> Unit)? = null,
     onCleanTemporaryFiles: (() -> Unit)? = null,
 ) {
@@ -802,7 +830,12 @@ public fun OperationProgressPanel(
             Text(model.processedText, style = LedgerTheme.typography.bodySmall)
             Text(model.statusExplanation, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
             model.failureCode?.let { code ->
-                LedgerBanner(code.value, LedgerBannerVariant.DANGER, actionLabel = onRetry?.let { stringResource(R.string.ledger_retry) }, onAction = onRetry)
+                LedgerBanner(
+                    stringResource(R.string.ledger_operation_failed),
+                    LedgerBannerVariant.DANGER,
+                    actionLabel = onRetry?.let { retryLabel ?: stringResource(R.string.ledger_retry) },
+                    onAction = onRetry,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                     LedgerButton(
                         stringResource(R.string.ledger_view_error),
@@ -848,7 +881,7 @@ public fun SensitiveValueField(
         modifier
             .fillMaxWidth()
             .testTag(LedgerTestTags.SENSITIVE_VALUE)
-            .clearAndSetSemantics { contentDescription = semantic },
+            .semantics { stateDescription = semantic },
     ) {
         Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -864,7 +897,7 @@ public fun SensitiveValueField(
                 if (revealed) onHide else onReveal,
                 variant = LedgerButtonVariant.TEXT,
             )
-            if (revealed && copyAllowed && onCopy != null) LedgerIconButton(LedgerIcon.ATTACHMENT, stringResource(R.string.ledger_copy), onCopy)
+            if (revealed && copyAllowed && onCopy != null) LedgerIconButton(LedgerIcon.COPY, stringResource(R.string.ledger_copy), onCopy)
         }
     }
 }
@@ -884,6 +917,8 @@ public fun HighRiskConfirmation(
     authenticating: Boolean = false,
 ) {
     val matches = enteredPhrase == requiredPhrase
+    val cancelFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { cancelFocusRequester.requestFocus() }
     LedgerCard(
         modifier.fillMaxWidth().semantics { paneTitle = title },
         containerColor = LedgerTheme.colors.danger.container,
@@ -901,7 +936,12 @@ public fun HighRiskConfirmation(
                 supportingText = requiredPhrase,
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                LedgerButton(stringResource(R.string.ledger_cancel), onCancel, variant = LedgerButtonVariant.SECONDARY)
+                LedgerButton(
+                    stringResource(R.string.ledger_cancel),
+                    onCancel,
+                    Modifier.focusRequester(cancelFocusRequester),
+                    variant = LedgerButtonVariant.SECONDARY,
+                )
                 LedgerButton(
                     title,
                     onConfirm,

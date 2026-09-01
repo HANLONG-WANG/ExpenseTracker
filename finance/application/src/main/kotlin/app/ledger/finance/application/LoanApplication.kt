@@ -223,7 +223,7 @@ data class SaveLoanContractRequest(
 
 data class LoanComponentAllocationDraft(
     val trancheId: StableId,
-    val scheduleItemId: StableId?,
+    val installmentNumber: Int?,
     val component: LoanPaymentComponent,
     val accountMinor: Long,
     val baseMinor: Long,

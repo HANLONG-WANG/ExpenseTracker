@@ -101,6 +101,33 @@ class ReportSqlCompilerTest {
         fxQuery.sql.shouldNotContain("av.current_base_value_minor-av.balance_minor")
     }
 
+    @Test
+    fun `budget execution reads configured projection and derives a bounded progress ratio`() {
+        val budget = FixedReportCatalog.definitions.single {
+            it.report == app.ledger.analytics.domain.FixedReport.BUDGET_EXECUTION
+        }
+        val query = ReportSqlCompiler.compile(ReportQueryPlanner.select(budget.spec), budget.spec, START, END)
+
+        query.sql.shouldContain("FROM budget_usage_projection bup")
+        query.sql.shouldContain("bup.base_budget_minor+bup.rollover_minor+bup.adjustment_minor")
+        query.sql.shouldContain("measure=${Measure.BUDGET_USED.ordinal}")
+        query.sql.shouldContain("measure=${Measure.BUDGET_AVAILABLE.ordinal}")
+        query.measures.single { it.measure == Measure.BUDGET_USAGE }.secondaryColumn shouldBe
+            "measure_5_denominator"
+    }
+
+    @Test
+    fun `net financial position is calculated from current projections instead of widget cache`() {
+        val assets = FixedReportCatalog.definitions.single {
+            it.report == app.ledger.analytics.domain.FixedReport.ACCOUNT_BALANCE_NET_FINANCIAL_ASSETS
+        }
+        val query = ReportSqlCompiler.compile(ReportQueryPlanner.select(assets.spec), assets.spec, START, END)
+
+        query.sql.shouldContain("financial_position AS")
+        query.sql.shouldContain("LEFT JOIN account_balance_current")
+        query.sql.shouldNotContain("FROM widget_book_snapshot")
+    }
+
     private fun spec(
         measure: Measure = Measure.EXPENSE,
         dimensions: List<Dimension> = emptyList(),

@@ -134,6 +134,20 @@ private fun LedgerIconCanvas(
                 }
                 drawPath(path, tint, style = Stroke(stroke, cap = StrokeCap.Round))
             }
+            LedgerIcon.COPY -> {
+                drawRect(
+                    tint,
+                    Offset(this.size.width * .30f, this.size.height * .18f),
+                    androidx.compose.ui.geometry.Size(this.size.width * .50f, this.size.height * .50f),
+                    style = Stroke(stroke),
+                )
+                drawRect(
+                    tint,
+                    Offset(this.size.width * .18f, this.size.height * .30f),
+                    androidx.compose.ui.geometry.Size(this.size.width * .50f, this.size.height * .50f),
+                    style = Stroke(stroke),
+                )
+            }
             LedgerIcon.IMAGE -> {
                 drawRect(tint, Offset(this.size.width * .18f, this.size.height * .22f), androidx.compose.ui.geometry.Size(this.size.width * .64f, this.size.height * .56f), style = Stroke(stroke))
                 drawCircle(tint, this.size.width * .07f, Offset(this.size.width * .62f, this.size.height * .38f), style = Stroke(stroke))

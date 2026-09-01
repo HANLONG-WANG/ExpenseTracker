@@ -57,6 +57,7 @@
     <string name="analysis_integrity_running">読み取り専用の整合性チェックを実行中</string>
     <string name="analysis_integrity_failed">整合性チェックを完了できませんでした</string>
     <string name="analysis_integrity_plain_language">通常表示は影響件数のみです。技術詳細は折りたたまれ、機密情報を含みません。</string>
+    <string name="analysis_integrity_scope">帳簿リビジョン %1$d · 読み取り専用チェック %2$d 件</string>
     <string name="analysis_affected_count">影響件数：%1$d</string>
     <string name="analysis_hide_technical">技術詳細を閉じる</string>
     <string name="analysis_show_technical">匿名化した技術詳細を表示</string>
@@ -163,6 +164,11 @@
     <string name="analysis_measure_net_cash_flow">純キャッシュフロー</string>
     <string name="analysis_measure_savings_rate">貯蓄率</string>
     <string name="analysis_measure_budget_usage">予算使用</string>
+    <string name="analysis_measure_budget_base">基本予算</string>
+    <string name="analysis_measure_budget_rollover">繰越</string>
+    <string name="analysis_measure_budget_adjustment">調整</string>
+    <string name="analysis_measure_budget_used">使用済み</string>
+    <string name="analysis_measure_budget_available">利用可能合計</string>
     <string name="analysis_measure_project_usage">プロジェクト使用</string>
     <string name="analysis_measure_goal_balance">目標残高</string>
     <string name="analysis_measure_account_balance">口座残高</string>
@@ -189,4 +195,10 @@
     <string name="analysis_kind_settlement_payment">共同支出の精算</string>
     <string name="analysis_kind_opening_balance">開始残高</string>
     <string name="analysis_kind_other">その他の取引</string>
+    <string name="analysis_progress_unavailable">進捗率に必要な検証可能な目標または合計がありません。データ表を確認してください。</string>
+    <string name="analysis_integrity_database">データベース構造と読み取り</string><string name="analysis_integrity_foreign_keys">エンティティ参照と外部キー</string><string name="analysis_integrity_journals">仕訳の貸借一致</string><string name="analysis_integrity_posting_currencies">仕訳通貨の整合性</string><string name="analysis_integrity_revisions">取引改訂チェーン</string><string name="analysis_integrity_projections">現在の投影</string><string name="analysis_integrity_fts">全文検索インデックス</string><string name="analysis_integrity_rtree">位置空間インデックス</string><string name="analysis_integrity_fact_rebuild">事実再構築の整合性</string>
+    <string name="analysis_integrity_check_id">チェック ID：%1$s</string>
+    <string name="analysis_integrity_check_scope">範囲：現在の台帳 · リビジョン %1$d</string>
+    <string name="analysis_integrity_check_trace">追跡コード：%1$s</string>
+    <string name="analysis_projection_repaired">分析プロジェクションを再構築し、再チェックしました。</string>
 </resources>

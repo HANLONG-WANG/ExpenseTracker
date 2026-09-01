@@ -53,7 +53,7 @@ class FastExcelImportReader : ImportStreamReader {
                             StructuredEntityKind.fromSheetName(sheet.name),
                         )
                         val selectedSheets = request.selectedSheetNames
-                        if (selectedSheets != null && sheet.name !in selectedSheets) continue
+                        if (selectedSheets != null && selectedSheets.none { it.equals(sheet.name, ignoreCase = true) }) continue
                         var headers: List<String>? = null
                         sheet.openStream().use { rows ->
                             val rowIterator = rows.iterator()

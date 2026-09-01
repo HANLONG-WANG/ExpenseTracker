@@ -47,7 +47,7 @@ sealed interface JournalLoadState {
     data class Failure(val code: String) : JournalLoadState
 }
 
-enum class JournalOperationState { IDLE, VALIDATING, COMMITTING, FAILED, SUCCEEDED }
+enum class JournalOperationState { IDLE, VALIDATING, COMMITTING, NO_CHANGES, FAILED, SUCCEEDED }
 
 typealias JournalFilterPreset = JournalSavedFilter
 

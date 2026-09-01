@@ -17,10 +17,11 @@ import app.ledger.feature.liabilities.LoanLoadState
 import app.ledger.feature.liabilities.LoanPresentation
 import app.ledger.feature.liabilities.LoanPolicy
 import app.ledger.feature.liabilities.R as LiabilitiesR
+import app.ledger.finance.domain.UserAccountType
 
 @Composable
-internal fun loanDestinationTitleOrNull(screenId: String): String? = when (screenId) {
-    "LIA-001" -> stringResource(LiabilitiesR.string.loan_title_liabilities)
+internal fun loanDestinationTitleOrNull(screenId: String, creditAccountsOnly: Boolean = false): String? = when (screenId) {
+    "LIA-001" -> stringResource(if (creditAccountsOnly) LiabilitiesR.string.liability_credit_section else LiabilitiesR.string.loan_title_liabilities)
     "REC-017" -> stringResource(LiabilitiesR.string.loan_title_operation)
     "REC-018" -> stringResource(LiabilitiesR.string.loan_title_disbursement)
     "REC-019" -> stringResource(LiabilitiesR.string.loan_title_payment)
@@ -51,8 +52,16 @@ internal fun LoanRootDestination(
     val simulationId = encodedArguments.loanStableId("simulationId")
     val state by viewModel.loan.collectAsStateWithLifecycle()
     LaunchedEffect(screenId, contractId, trancheId, transactionId, simulationId) {
-        viewModel.loadLoan(screenId, contractId, trancheId, transactionId, simulationId)
+        viewModel.ensureLoanLoaded(screenId, contractId, trancheId, transactionId, simulationId)
     }
+    GovernedDestinationModal(
+        screenId,
+        loanDestinationTitleOrNull(screenId, viewModel.liabilityCreditOnly).orEmpty(),
+        onDismiss = {
+            viewModel.requestRootBack()
+            onNavigationChanged()
+        },
+    ) {
     LoanDestination(
         screenId,
         state,
@@ -85,12 +94,30 @@ internal fun LoanRootDestination(
             onSave = viewModel::saveLoan,
             onSimulate = viewModel::simulateLoan,
             onApplySimulation = viewModel::applyLoanSimulation,
+            onCancelConfirmation = {
+                viewModel.requestRootBack()
+                onNavigationChanged()
+            },
             onOpenCreditAccount = { accountId ->
                 viewModel.navigateCredit("CRD-001", accountId)
                 onNavigationChanged()
             },
+            onCreateLoanAccount = {
+                viewModel.openNewAccountEditor(UserAccountType.LOAN)
+                onNavigationChanged()
+            },
+            onCreateCreditAccount = {
+                viewModel.openNewAccountEditor(UserAccountType.CREDIT)
+                onNavigationChanged()
+            },
+            onOpenTransactions = { accountId ->
+                viewModel.openJournalForAccount(accountId)
+                onNavigationChanged()
+            },
         ),
+        creditAccountsOnly = viewModel.liabilityCreditOnly,
     )
+    }
 }
 
 internal fun loanFixedAction(
@@ -106,7 +133,7 @@ internal fun loanFixedAction(
         LedgerSaveFab(
             onSave,
             submitting = pending || presentation in setOf(LoanPresentation.SAVING, LoanPresentation.GENERATING_SCHEDULE),
-            enabled = !pending && content?.let { LoanPolicy.canSave(it, screenId) } == true,
+            enabled = !pending && content != null,
         )
     }
 }

@@ -37,6 +37,7 @@ internal fun BudgetRootDestination(
     val month = encodedArguments["yearMonth"]?.toBudgetYearMonthOrNull() ?: viewModel.currentBudgetMonth()
     val templateId = encodedArguments["templateId"]?.let { StableId.parse(it).getOrNull() }
     val state by viewModel.budget.collectAsStateWithLifecycle()
+    val loadedMonth = (state as? app.ledger.feature.planning.BudgetLoadState.Content)?.state?.snapshot?.month ?: month
     LaunchedEffect(screenId, month, templateId) { viewModel.loadBudget(month, templateId, screenId) }
     BudgetDestination(
         screenId,
@@ -44,28 +45,28 @@ internal fun BudgetRootDestination(
         encodedArguments,
         { action ->
             when (action) {
-                BudgetScreenAction.Retry -> viewModel.loadBudget(month, templateId, screenId)
+                BudgetScreenAction.Retry -> viewModel.loadBudget(loadedMonth, templateId, screenId)
                 is BudgetScreenAction.MonthSelected -> {
-                    viewModel.navigateBudget("BUD-001", action.month, null, null)
-                    onNavigationChanged()
+                    viewModel.loadBudget(action.month)
                 }
                 is BudgetScreenAction.Navigate -> {
-                    viewModel.navigateBudget(action.screenId, month, action.id, action.adjustmentKind)
+                    viewModel.navigateBudget(action.screenId, loadedMonth, action.id, action.adjustmentKind)
                     onNavigationChanged()
                 }
                 BudgetScreenAction.Edit -> {
-                    viewModel.navigateBudget("BUD-002", month, null, null)
+                    viewModel.navigateBudget("BUD-002", loadedMonth, null, null)
                     onNavigationChanged()
                 }
                 BudgetScreenAction.Operations -> onOperations()
                 is BudgetScreenAction.TotalChanged -> viewModel.updateBudgetTotal(action.value)
                 is BudgetScreenAction.CategoryChanged -> viewModel.updateBudgetCategory(action.categoryId, action.value)
                 BudgetScreenAction.SaveMonth -> viewModel.saveBudgetMonth()
+                is BudgetScreenAction.ApplyTemplate -> viewModel.applyBudgetTemplate(action.templateId)
                 is BudgetScreenAction.TemplateNameChanged -> viewModel.updateBudgetTemplateName(action.value)
                 BudgetScreenAction.SaveTemplate -> viewModel.saveBudgetTemplate()
                 is BudgetScreenAction.AdjustmentAmountChanged -> viewModel.updateBudgetAdjustmentAmount(action.value)
-                BudgetScreenAction.AdjustmentSource -> viewModel.selectBudgetAdjustmentSource(archivedOnly = false)
-                BudgetScreenAction.AdjustmentTarget -> viewModel.selectBudgetAdjustmentTarget()
+                is BudgetScreenAction.AdjustmentSource -> viewModel.selectBudgetAdjustmentSource(action.categoryId)
+                is BudgetScreenAction.AdjustmentTarget -> viewModel.selectBudgetAdjustmentTarget(action.categoryId)
                 is BudgetScreenAction.SaveAdjustment -> viewModel.saveBudgetAdjustment(action.kind)
             }
         },

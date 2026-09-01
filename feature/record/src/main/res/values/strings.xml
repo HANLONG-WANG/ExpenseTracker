@@ -62,6 +62,7 @@
     <string name="record_other_loan">借贷</string>
     <string name="record_other_adjustment">余额调整</string>
     <string name="record_other_fx">外币兑换</string>
+    <string name="record_other_transactions">其他交易类型</string>
     <string name="record_other_transfer_description">在两个账户之间移动资金，不计收入或费用。</string>
     <string name="record_other_credit_payment_description">从银行账户偿还信用账户，不重复计入支出。</string>
     <string name="record_other_refund_description">冲减原费用，并可恢复对应预算。</string>
@@ -134,7 +135,8 @@
     <string name="record_budget_category_rule">按分类规则</string>
     <string name="record_snapshot_immutable">保存后这些快照属于不可变修订；以后修改分类名称或属性不会改写历史事实。</string>
     <string name="specialized_load_failed">无法载入交易所需账户与估值数据。</string>
-    <string name="specialized_from_account">转出账户</string><string name="specialized_adjustment_account">调整账户</string><string name="specialized_to_account">转入账户</string>
+    <string name="specialized_from_account">转出账户</string><string name="specialized_adjustment_account">调整账户</string><string name="specialized_to_account">转入账户</string><string name="specialized_transfer_asset_account_hint">普通转账仅支持现金或银行账户；向信用账户还款请使用“信用卡还款”。</string><string name="specialized_fx_asset_account_hint">货币兑换仅支持现金或银行账户。</string><string name="specialized_asset_account_required">请选择现金或银行账户；负债账户必须使用对应的还款流程。</string>
+    <string name="specialized_search_accounts">搜索账户名称或币种</string><string name="specialized_apply_account">应用账户</string>
     <string name="specialized_increase">增加余额</string><string name="specialized_decrease">减少余额</string>
     <string name="specialized_checkpoint">关联余额检查点</string><string name="specialized_checkpoint_explanation">检查点本身不改变余额；本次调整会作为独立事实写入。</string><string name="specialized_none">不关联</string>
     <string name="specialized_opening_date">期初日期</string><string name="specialized_effective_time">发生日期与时区</string>
@@ -155,7 +157,7 @@
     <string name="refund_original_transaction">原交易</string><string name="refund_select_original">选择可退款交易</string><string name="refund_this_amount">本次退款</string>
     <string name="refund_original_amount">原额：%1$s</string><string name="refund_refunded_amount">已退：%1$s</string><string name="refund_remaining_amount">剩余：%1$s</string><string name="refund_current_amount">本次：%1$s</string><string name="refund_existing_excess">已超额：%1$s</string>
     <string name="refund_receiving_section">收款</string><string name="refund_receiving_account">收款账户</string><string name="refund_select_account">选择账户</string><string name="refund_receiving_card">收款实体卡</string><string name="refund_no_card">不使用实体卡</string>
-    <string name="refund_inherited_fields">继承与调整</string><string name="refund_inherited_adjustable">分类、商户、项目和目标默认继承原交易，可按实际情况调整。</string><string name="refund_category">分类</string><string name="refund_select_category">选择支出分类</string><string name="refund_merchant">商户</string><string name="refund_project">项目</string><string name="refund_goal">目标</string><string name="refund_none">无</string>
+    <string name="refund_inherited_fields">继承与调整</string><string name="refund_inherited_adjustable">分类、商户、项目和目标默认继承原交易，可按实际情况调整。</string><string name="refund_independent_fields">独立退款归属</string><string name="refund_independent_fields_explanation">独立退款必须选择支出分类；商户、项目和目标可按实际情况补充。</string><string name="refund_category">分类</string><string name="refund_select_category">选择支出分类</string><string name="refund_merchant">商户</string><string name="refund_project">项目</string><string name="refund_goal">目标</string><string name="refund_none">无</string>
     <string name="refund_three_time_dimensions">日期与恢复口径</string><string name="refund_three_time_explanation">实际现金流日期、费用权责归属日期和预算恢复月份互不替代。</string><string name="refund_cash_date">实际退款日期</string><string name="refund_accrual_date">费用权责日期：%1$s</string><string name="refund_budget_month">预算恢复月份：%1$s</string>
     <string name="refund_accrual_original">归属原交易日期</string><string name="refund_accrual_refund">归属退款日期</string><string name="refund_budget_original">恢复原交易月份预算</string><string name="refund_budget_refund">恢复退款月份预算</string><string name="refund_budget_none">不恢复预算</string>
     <string name="refund_project_original">恢复原项目</string><string name="refund_project_selected">使用所选项目</string><string name="refund_project_none">不恢复项目</string><string name="refund_goal_original">恢复原目标</string><string name="refund_goal_selected">使用所选目标</string><string name="refund_goal_none">不恢复目标</string>
@@ -180,4 +182,12 @@
     <string name="batch_undo">撤销整批（追加合法冲销）</string>
     <string name="batch_keep_editing">继续编辑</string>
     <string name="batch_error_date">日期和时间无效。</string>
+    <string name="record_fx_accounts_required">外币兑换需要至少两个使用不同币种的活动账户。</string>
+    <string name="record_manage_accounts">管理账户</string>
+    <string name="refund_category_required">独立退款必须先创建并选择一个费用分类。</string>
+    <string name="refund_search_references">搜索可选项</string><string name="refund_apply_selection">应用选择</string>
+    <string name="batch_installment_option">%1$s · %2$d 期</string>
+    <string name="batch_location_coordinates">坐标 %1$.5f, %2$.5f</string>
+    <string name="batch_refund_option_details">%1$s · 可退 %2$s</string>
+    <string name="record_amount_unavailable">金额不可用</string>
 </resources>

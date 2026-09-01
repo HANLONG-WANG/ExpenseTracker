@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,7 +50,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -67,6 +67,7 @@ import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import app.ledger.core.money.AmountSemantic
@@ -79,7 +80,7 @@ public fun AmountText(
     size: AmountSize,
     modifier: Modifier = Modifier,
 ) {
-    val hidden = model.visibility == AmountVisibility.HIDDEN
+    val hidden = model.visibility == AmountVisibility.HIDDEN || !LocalLedgerAmountsVisible.current
     val display = if (hidden) "••••" else model.formatted
     val accessible = if (hidden) stringResource(R.string.ledger_amount_hidden) else model.fullAccessibleText
     Text(
@@ -116,17 +117,40 @@ public fun MoneyStack(
     historicalValuation: MoneyUiModel? = null,
     explanation: String? = null,
 ) {
+    val globallyHidden = !LocalLedgerAmountsVisible.current
     Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
         AmountText(primary, AmountSize.MEDIUM)
         primary.secondaryFormatted?.let { secondary ->
+            val accessibleSecondary = if (primary.visibility == AmountVisibility.HIDDEN || globallyHidden) {
+                stringResource(R.string.ledger_amount_hidden)
+            } else {
+                secondary
+            }
             Text(
-                if (primary.visibility == AmountVisibility.HIDDEN) "••••" else secondary,
+                if (primary.visibility == AmountVisibility.HIDDEN || globallyHidden) "••••" else secondary,
+                modifier = Modifier.clearAndSetSemantics {
+                    text = AnnotatedString(accessibleSecondary)
+                },
                 style = LedgerTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                 color = LedgerTheme.colors.material.onSurfaceVariant,
             )
         }
-        if (historicalValuation != null) AmountText(historicalValuation, AmountSize.LIST)
-        if (explanation != null) Text(explanation, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
+        if (historicalValuation != null) {
+            AmountText(
+                if (primary.visibility == AmountVisibility.HIDDEN || globallyHidden) historicalValuation.copy(visibility = AmountVisibility.HIDDEN) else historicalValuation,
+                AmountSize.LIST,
+            )
+        }
+        if (explanation != null) {
+            val explanationHidden = primary.visibility == AmountVisibility.HIDDEN || globallyHidden
+            val accessibleExplanation = if (explanationHidden) stringResource(R.string.ledger_amount_hidden) else explanation
+            Text(
+                if (explanationHidden) "••••" else explanation,
+                modifier = Modifier.clearAndSetSemantics { text = AnnotatedString(accessibleExplanation) },
+                style = LedgerTheme.typography.bodySmall,
+                color = LedgerTheme.colors.material.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -140,8 +164,18 @@ public fun MetricCard(
     explanation: String? = null,
     onClick: (() -> Unit)? = null,
 ) {
+    val hidden = value.visibility == AmountVisibility.HIDDEN || !LocalLedgerAmountsVisible.current
+    val accessibleValue = if (hidden) stringResource(R.string.ledger_amount_hidden) else value.fullAccessibleText
+    val accessibleSummary = listOfNotNull(
+        title,
+        accessibleValue,
+        comparison?.let { if (hidden) stringResource(R.string.ledger_amount_hidden) else it },
+        explanation?.let { if (hidden) stringResource(R.string.ledger_amount_hidden) else it },
+    ).joinToString(", ")
     LedgerCard(
-        modifier = modifier.heightIn(min = LedgerTheme.dimensions.cardMinHeight),
+        modifier = modifier
+            .heightIn(min = LedgerTheme.dimensions.cardMinHeight)
+            .semantics(mergeDescendants = true) { contentDescription = accessibleSummary },
         onClick = onClick,
         variant = if (variant == MetricCardVariant.EMPHASIZED) LedgerCardVariant.EMPHASIZED else LedgerCardVariant.STANDARD,
     ) {
@@ -151,8 +185,8 @@ public fun MetricCard(
                 if (onClick != null) LedgerIconView(LedgerIcon.CHEVRON, size = LedgerTheme.dimensions.iconXs)
             }
             AmountText(value, if (variant == MetricCardVariant.EMPHASIZED) AmountSize.LARGE else AmountSize.MEDIUM)
-            if (comparison != null) Text(comparison, style = LedgerTheme.typography.bodyMedium)
-            if (explanation != null) Text(explanation, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
+            if (comparison != null) Text(if (hidden) "••••" else comparison, style = LedgerTheme.typography.bodyMedium)
+            if (explanation != null) Text(if (hidden) "••••" else explanation, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
         }
     }
 }
@@ -248,7 +282,7 @@ public fun CategoryTile(
         ?: LedgerTheme.colors.categoryPalette.first { it.id == "slate" }
     Card(
         onClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            haptic.performLedgerHaptic(LedgerHaptic.SELECTION)
             onClick()
         },
         modifier = modifier
@@ -459,23 +493,59 @@ public fun JournalTransactionRow(
     modifier: Modifier = Modifier,
     showRunningBalance: Boolean = model.runningBalance != null,
     enabled: Boolean = true,
+    selected: Boolean? = null,
 ) {
+    val amountsVisible = LocalLedgerAmountsVisible.current
+    val openLabel = stringResource(R.string.ledger_open_transaction)
+    val selectLabel = stringResource(R.string.ledger_select_transaction)
+    val selectedLabel = stringResource(R.string.ledger_selected)
+    val notSelectedLabel = stringResource(R.string.ledger_not_selected)
+    val hiddenAmountLabel = stringResource(R.string.ledger_amount_hidden)
+    val accessibleDescription = if (amountsVisible) {
+        model.accessibleText
+    } else {
+        listOf(
+            model.typeLabel,
+            model.categoryOrType,
+            model.summary,
+            model.accountAndCard,
+            hiddenAmountLabel,
+            model.badges.joinToString(),
+        ).filter(String::isNotBlank).joinToString(". ")
+    }
     val rowModifier = modifier
         .fillMaxWidth()
         .heightIn(min = LedgerTheme.dimensions.listRowStandard)
         .testTag(LedgerTestTags.JOURNAL_ROW)
     val interactionModifier = if (enabled) {
         rowModifier
-            .semantics(mergeDescendants = true) { role = Role.Button }
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .semantics(mergeDescendants = true) {
+            role = if (selected == null) Role.Button else Role.Checkbox
+            contentDescription = accessibleDescription
+            if (selected != null) {
+                this.selected = selected
+                stateDescription = if (selected) selectedLabel else notSelectedLabel
+            }
+            }
+            .combinedClickable(
+                onClick = onClick,
+                onClickLabel = openLabel,
+                onLongClick = onLongClick,
+                onLongClickLabel = selectLabel.takeIf { onLongClick != null },
+            )
     } else {
-        rowModifier
+        rowModifier.semantics(mergeDescendants = true) {
+            contentDescription = accessibleDescription
+        }
     }
     Row(
-        interactionModifier.padding(vertical = LedgerTheme.spacing.xs),
+        interactionModifier
+            .then(if (selected == true) Modifier.background(LedgerTheme.colors.material.primaryContainer, LedgerTheme.shapes.md) else Modifier)
+            .padding(vertical = LedgerTheme.spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
     ) {
+        if (selected != null) Checkbox(selected, onCheckedChange = null, Modifier.clearAndSetSemantics { })
         Box(
             Modifier.size(LedgerTheme.dimensions.accountIconContainer).clip(LedgerTheme.shapes.full),
             contentAlignment = Alignment.Center,
@@ -491,13 +561,20 @@ public fun JournalTransactionRow(
                 Text(model.summary, style = LedgerTheme.typography.bodyMedium, maxLines = 1, color = LedgerTheme.colors.material.onSurfaceVariant)
             }
             if (model.accountAndCard.isNotBlank()) Text(model.accountAndCard, style = LedgerTheme.typography.bodySmall, maxLines = 1)
-            if (model.badges.isNotEmpty()) Text(model.badges.take(4).joinToString(" · "), style = LedgerTheme.typography.labelSmall)
+            if (model.badges.isNotEmpty()) Text(formatBadgeSummary(model.badges), style = LedgerTheme.typography.labelSmall)
         }
         Column(horizontalAlignment = Alignment.End) {
             AmountText(model.amount, AmountSize.LIST)
             if (showRunningBalance && model.runningBalance != null) AmountText(model.runningBalance, AmountSize.LIST)
         }
     }
+}
+
+@Composable
+private fun formatBadgeSummary(badges: List<String>): String = if (badges.size <= 4) {
+    badges.joinToString(" · ")
+} else {
+    badges.take(3).joinToString(" · ") + " · " + stringResource(R.string.ledger_more_badges, badges.size - 3)
 }
 
 @Composable
@@ -533,7 +610,7 @@ public fun AccountSummaryCard(
 @Composable
 public fun ReferenceDataRow(
     model: ReferenceDataRowUiModel,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val deleted = model.status == LedgerStatusVariant.DELETED
@@ -574,7 +651,7 @@ public fun ReferenceDataRow(
                 }
             }
             if (model.status != LedgerStatusVariant.NEUTRAL) StatusBadge(ledgerStatusLabel(model.status), model.status)
-            LedgerIconView(LedgerIcon.CHEVRON)
+            if (onClick != null) LedgerIconView(LedgerIcon.CHEVRON)
         }
     }
 }
@@ -598,6 +675,20 @@ public fun ProgressSummary(
     model: ProgressSummaryUiModel,
     modifier: Modifier = Modifier,
 ) {
+    val privacyHidden = !LocalLedgerAmountsVisible.current && listOf(
+        model.valueText,
+        model.statusText,
+        model.accessibleText,
+        model.excessText.orEmpty(),
+    ).any(String::containsLedgerFinancialValue)
+    if (privacyHidden) {
+        val hiddenAmountText = stringResource(R.string.ledger_amount_hidden)
+        Column(modifier.fillMaxWidth().clearAndSetSemantics { text = AnnotatedString(hiddenAmountText) }) {
+            Text(model.title, style = LedgerTheme.typography.titleSmall)
+            Text("••••", style = LedgerTheme.typography.labelLarge)
+        }
+        return
+    }
     val semantic = when (model.state) {
         LedgerProgressState.NORMAL -> LedgerTheme.colors.positive
         LedgerProgressState.WARNING -> LedgerTheme.colors.warning
@@ -630,7 +721,59 @@ public fun MoneyExpressionField(
     errorText: String? = null,
     roundingExplanation: String? = null,
     showOperatorToolbar: Boolean = true,
-    onOperator: (String) -> Unit = {},
+    onOperator: (String) -> Unit = { operator ->
+        onExpressionChange(
+            when (operator) {
+                "DELETE" -> expression.dropLast(1)
+                "−" -> expression + "-"
+                "×" -> expression + "*"
+                "÷" -> expression + "/"
+                else -> expression + operator
+            },
+        )
+    },
+    autoFocus: Boolean = false,
+    focusRequester: FocusRequester = remember { FocusRequester() },
+) {
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) focusRequester.requestFocus()
+    }
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
+        LedgerTextField(
+            value = expression,
+            onValueChange = onExpressionChange,
+            label = currencyCode,
+            errorText = errorText,
+            keyboardType = KeyboardType.Decimal,
+            required = true,
+            modifier = Modifier.focusRequester(focusRequester),
+        )
+        if (normalizedExpression.isNotBlank()) Text(normalizedExpression, style = LedgerTheme.typography.bodySmall)
+        if (result != null) AmountText(result, AmountSize.MEDIUM)
+        if (showOperatorToolbar) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
+                listOf("+", "−", "×", "÷", "(", ")").forEach { operator ->
+                    LedgerButton(operator, { onOperator(operator) }, compact = true, variant = LedgerButtonVariant.SECONDARY)
+                }
+                LedgerIconButton(LedgerIcon.CLEAR, stringResource(R.string.ledger_delete_operator), { onOperator("DELETE") })
+            }
+        }
+        if (roundingExplanation != null) Text(roundingExplanation, style = LedgerTheme.typography.bodySmall, color = LedgerTheme.colors.material.onSurfaceVariant)
+    }
+}
+
+@Composable
+public fun MoneyExpressionField(
+    expression: TextFieldValue,
+    normalizedExpression: String,
+    result: MoneyUiModel?,
+    onExpressionChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    currencyCode: String,
+    errorText: String? = null,
+    roundingExplanation: String? = null,
+    showOperatorToolbar: Boolean = true,
+    onOperator: (String) -> Unit,
     autoFocus: Boolean = false,
     focusRequester: FocusRequester = remember { FocusRequester() },
 ) {
@@ -732,7 +875,7 @@ public fun AttachmentField(
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         attachments.forEach { attachment ->
-            LedgerCard(onClick = { onOpen(attachment) }) {
+            LedgerCard(onClick = if (attachment.state == AttachmentTransferState.READY) ({ onOpen(attachment) }) else null) {
                 Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                     LedgerIconView(attachment.icon)
                     Column(Modifier.weight(1f).padding(horizontal = LedgerTheme.spacing.xs)) {

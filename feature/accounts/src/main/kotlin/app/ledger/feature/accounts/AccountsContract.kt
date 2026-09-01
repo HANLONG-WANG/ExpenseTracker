@@ -122,6 +122,7 @@ public data class AccountsActions(
     val onSaveOpeningBalance: (OpeningBalanceSubmission) -> Unit,
     val onRetry: () -> Unit,
     val onCreateReplacementCard: (StableId, StableId) -> Unit = { _, _ -> },
+    val onDismissLifecycle: () -> Unit = {},
 )
 
 internal fun accountsActions(onAction: (AccountsScreenAction) -> Unit): AccountsActions = AccountsActions(

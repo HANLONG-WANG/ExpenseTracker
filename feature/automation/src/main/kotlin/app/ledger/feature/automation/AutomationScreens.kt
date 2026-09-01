@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -30,6 +31,8 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerChoiceSelector
+import app.ledger.core.designsystem.LedgerCycleChoiceSelector
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
@@ -40,6 +43,7 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
 import app.ledger.core.designsystem.LedgerTabRow
@@ -142,7 +146,14 @@ private fun TemplateList(state: AutomationFeatureState, actions: AutomationActio
                 { actions.onTemplateFilter(AutomationTemplateFilter.entries[it]) },
             )
         }
-        item { SelectorField(stringResource(R.string.automation_sort), stringResource(if (state.templateSort == AutomationTemplateSort.NAME) R.string.automation_sort_name else R.string.automation_sort_recent), { actions.onTemplateSort(if (state.templateSort == AutomationTemplateSort.NAME) AutomationTemplateSort.RECENTLY_REVISED else AutomationTemplateSort.NAME) }) }
+        item {
+            LedgerCycleChoiceSelector(
+                stringResource(R.string.automation_sort),
+                if (state.templateSort == AutomationTemplateSort.NAME) 0 else 1,
+                listOf(stringResource(R.string.automation_sort_name), stringResource(R.string.automation_sort_recent)),
+                { actions.onTemplateSort(if (state.templateSort == AutomationTemplateSort.NAME) AutomationTemplateSort.RECENTLY_REVISED else AutomationTemplateSort.NAME) },
+            )
+        }
         if (filtered.isEmpty()) item { LedgerText(stringResource(R.string.automation_filter_empty), LedgerTextRole.SUPPORTING) }
         items(filtered, key = { it.id.toString() }) { template -> TemplateCard(template, actions) { actions.onNavigate("AUT-003", template.id) } }
         item { LedgerButton(stringResource(R.string.automation_add_template), { actions.onNavigate("AUT-003", null) }, Modifier.fillMaxWidth()) }
@@ -189,6 +200,7 @@ private fun TemplateEditor(state: AutomationFeatureState, actions: AutomationAct
                     selectedCategoryId = draft.categoryId,
                     selectedAccountId = draft.primaryAccountId,
                     onReference = actions.onBlueprintReference,
+                    onCreateCategory = actions.onCreateCategory,
                 )
                 LedgerTextField(draft.amountExpression, { actions.onBlueprintField(BlueprintField.AMOUNT, it) }, stringResource(R.string.automation_amount_expression), supportingText = stringResource(R.string.automation_amount_optional), keyboardType = KeyboardType.Decimal)
                 LedgerTextField(draft.currency, { actions.onBlueprintField(BlueprintField.CURRENCY, it) }, stringResource(R.string.automation_currency), supportingText = stringResource(R.string.automation_currency_optional), errorText = errorIf(state, "currency"))
@@ -205,50 +217,47 @@ private fun ReferenceChoices(
     selectedCategoryId: StableId?,
     selectedAccountId: StableId?,
     onReference: (String, StableId?) -> Unit,
+    onCreateCategory: () -> Unit,
 ) {
-    LedgerText(stringResource(R.string.automation_category), LedgerTextRole.LABEL)
-    state.entrySnapshot.references.categories.filter { it.status.name == "ACTIVE" }.forEach { category ->
-        LedgerChoiceRow(category.name, selectedCategoryId == category.id, { onReference("category", category.id) })
+    val categories = state.entrySnapshot.references.categories.filter { it.status.name == "ACTIVE" }
+    if (categories.isEmpty()) {
+        LedgerBanner(stringResource(R.string.automation_category_empty), LedgerBannerVariant.INFO)
+        LedgerButton(stringResource(R.string.automation_create_category), onCreateCategory, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY)
+    } else {
+        LedgerChoiceSelector(
+            stringResource(R.string.automation_category),
+            categories.indexOfFirst { it.id == selectedCategoryId }.coerceAtLeast(0),
+            categories.map { it.name },
+            { onReference("category", categories[it].id) },
+        )
     }
-    LedgerText(stringResource(R.string.automation_account), LedgerTextRole.LABEL)
-    state.entrySnapshot.references.accounts.filter { it.status == EntityStatus.ACTIVE }.forEach { account ->
-        LedgerChoiceRow(account.name, selectedAccountId == account.id, { onReference("primaryAccount", account.id) }, supportingText = account.currency.value)
+    val accounts = state.entrySnapshot.references.accounts.filter { it.status == EntityStatus.ACTIVE }
+    if (accounts.isNotEmpty()) {
+        LedgerChoiceSelector(stringResource(R.string.automation_account), accounts.indexOfFirst { it.id == selectedAccountId }.coerceAtLeast(0), accounts.map { "${it.name} · ${it.currency.value}" }, { onReference("primaryAccount", accounts[it].id) })
     }
-    LedgerText(stringResource(R.string.automation_secondary_account), LedgerTextRole.LABEL)
-    LedgerChoiceRow(stringResource(R.string.automation_none), state.blueprintDraft?.secondaryAccountId == null, { onReference("secondaryAccount", null) })
-    state.entrySnapshot.references.accounts.filter { it.status == EntityStatus.ACTIVE }.forEach { account ->
-        LedgerChoiceRow(account.name, state.blueprintDraft?.secondaryAccountId == account.id, { onReference("secondaryAccount", account.id) }, supportingText = account.currency.value)
-    }
-    LedgerText(stringResource(R.string.automation_card), LedgerTextRole.LABEL)
-    LedgerChoiceRow(stringResource(R.string.automation_none), state.blueprintDraft?.cardId == null, { onReference("card", null) })
-    state.entrySnapshot.references.cards.filter { it.status == EntityStatus.ACTIVE }.forEach { card ->
-        LedgerChoiceRow(card.displayName, state.blueprintDraft?.cardId == card.id, { onReference("card", card.id) })
-    }
-    LedgerText(stringResource(R.string.automation_merchant), LedgerTextRole.LABEL)
-    LedgerChoiceRow(stringResource(R.string.automation_none), state.blueprintDraft?.merchantId == null, { onReference("merchant", null) })
-    state.entrySnapshot.references.merchants.filter { it.status == EntityStatus.ACTIVE }.forEach { merchant ->
-        LedgerChoiceRow(merchant.name, state.blueprintDraft?.merchantId == merchant.id, { onReference("merchant", merchant.id) })
-    }
-    LedgerText(stringResource(R.string.automation_project), LedgerTextRole.LABEL)
-    LedgerChoiceRow(stringResource(R.string.automation_none), state.blueprintDraft?.projectId == null, { onReference("project", null) })
-    state.entrySnapshot.projects.filter { it.active }.forEach { project ->
-        LedgerChoiceRow(project.name, state.blueprintDraft?.projectId == project.id, { onReference("project", project.id) })
-    }
-    LedgerText(stringResource(R.string.automation_goal), LedgerTextRole.LABEL)
-    LedgerChoiceRow(stringResource(R.string.automation_none), state.blueprintDraft?.goalId == null, { onReference("goal", null) })
-    state.entrySnapshot.references.accountGoals.forEach { goal ->
-        LedgerChoiceRow(goal.name, state.blueprintDraft?.goalId == goal.id, { onReference("goal", goal.id) })
-    }
-    LedgerText(stringResource(R.string.automation_settlement), LedgerTextRole.LABEL)
-    LedgerChoiceRow(stringResource(R.string.automation_none), state.blueprintDraft?.settlementActivityId == null, { onReference("settlement", null) })
-    state.entrySnapshot.settlementActivities.filter { it.active }.forEach { activity ->
-        LedgerChoiceRow(activity.name, state.blueprintDraft?.settlementActivityId == activity.id, { onReference("settlement", activity.id) })
-    }
-    LedgerText(stringResource(R.string.automation_fixed_place), LedgerTextRole.LABEL)
-    LedgerChoiceRow(stringResource(R.string.automation_no_fixed_place), state.blueprintDraft?.fixedPlaceId == null, { onReference("fixedPlace", null) })
-    state.entrySnapshot.references.places.filter { it.status == EntityStatus.ACTIVE }.forEach { place ->
-        LedgerChoiceRow(place.name, state.blueprintDraft?.fixedPlaceId == place.id, { onReference("fixedPlace", place.id) })
-    }
+    OptionalReferenceSelector(stringResource(R.string.automation_secondary_account), accounts.map { it.id to "${it.name} · ${it.currency.value}" }, state.blueprintDraft?.secondaryAccountId) { onReference("secondaryAccount", it) }
+    OptionalReferenceSelector(stringResource(R.string.automation_card), state.entrySnapshot.references.cards.filter { it.status == EntityStatus.ACTIVE }.map { it.id to it.displayName }, state.blueprintDraft?.cardId) { onReference("card", it) }
+    OptionalReferenceSelector(stringResource(R.string.automation_merchant), state.entrySnapshot.references.merchants.filter { it.status == EntityStatus.ACTIVE }.map { it.id to it.name }, state.blueprintDraft?.merchantId) { onReference("merchant", it) }
+    OptionalReferenceSelector(stringResource(R.string.automation_project), state.entrySnapshot.projects.filter { it.active }.map { it.id to it.name }, state.blueprintDraft?.projectId) { onReference("project", it) }
+    OptionalReferenceSelector(stringResource(R.string.automation_goal), state.entrySnapshot.references.accountGoals.map { it.id to it.name }, state.blueprintDraft?.goalId) { onReference("goal", it) }
+    OptionalReferenceSelector(stringResource(R.string.automation_settlement), state.entrySnapshot.settlementActivities.filter { it.active }.map { it.id to it.name }, state.blueprintDraft?.settlementActivityId) { onReference("settlement", it) }
+    OptionalReferenceSelector(stringResource(R.string.automation_fixed_place), state.entrySnapshot.references.places.filter { it.status == EntityStatus.ACTIVE }.map { it.id to it.name }, state.blueprintDraft?.fixedPlaceId) { onReference("fixedPlace", it) }
+}
+
+@Composable
+private fun OptionalReferenceSelector(
+    label: String,
+    candidates: List<Pair<StableId, String>>,
+    selectedId: StableId?,
+    onSelected: (StableId?) -> Unit,
+) {
+    val ids = listOf<StableId?>(null) + candidates.map { it.first }
+    LedgerChoiceSelector(
+        label,
+        ids.indexOf(selectedId).coerceAtLeast(0),
+        listOf(stringResource(R.string.automation_none)) + candidates.map { it.second },
+        { onSelected(ids[it]) },
+    )
 }
 
 @Composable
@@ -299,8 +308,18 @@ private fun SeriesEditor(state: AutomationFeatureState, actions: AutomationActio
         if (state.presentation == AutomationPresentation.INVALID) item { LedgerBanner(stringResource(R.string.automation_validation_error), LedgerBannerVariant.DANGER) }
         item {
             FormSection(stringResource(R.string.automation_blueprint_selector)) {
-                state.snapshot.blueprints.filter { it.status == EntityStatus.ACTIVE }.forEach { blueprint ->
-                    LedgerChoiceRow(blueprint.name, draft.blueprintId == blueprint.id, { actions.onRecurrenceBlueprint(blueprint.id) })
+                val blueprints = state.snapshot.blueprints.filter { it.status == EntityStatus.ACTIVE }
+                if (blueprints.isEmpty()) {
+                    LedgerBanner(stringResource(R.string.automation_blueprint_empty_inline), LedgerBannerVariant.INFO)
+                    LedgerButton(stringResource(R.string.automation_create_template), { actions.onNavigate("AUT-003", null) }, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY)
+                } else {
+                    LedgerChoiceSelector(
+                        stringResource(R.string.automation_blueprint_selector),
+                        blueprints.indexOfFirst { it.id == draft.blueprintId },
+                        blueprints.map { it.name },
+                        { actions.onRecurrenceBlueprint(blueprints[it].id) },
+                        placeholder = stringResource(R.string.automation_blueprint_selector),
+                    )
                 }
                 if ("blueprint" in state.validationFields) {
                     LedgerText(stringResource(R.string.automation_required_error), LedgerTextRole.SUPPORTING)
@@ -324,8 +343,12 @@ private fun SeriesEditor(state: AutomationFeatureState, actions: AutomationActio
         item { LedgerToggleRow(stringResource(R.string.automation_notify_candidate), draft.notifyCandidate, actions.onNotifyCandidate, supportingText = stringResource(R.string.automation_notify_candidate_body), enabled = draft.generationMode == RecurrenceGenerationMode.CANDIDATE) }
         item {
             FormSection(stringResource(R.string.automation_fixed_place), description = stringResource(R.string.automation_fixed_place_notice)) {
-                val place = draft.fixedPlaceId?.let { id -> state.entrySnapshot.references.places.singleOrNull { it.id == id } }
-                LedgerChoiceRow(place?.name ?: stringResource(R.string.automation_no_fixed_place), true, { actions.onFixedPlace(draft.fixedPlaceId) })
+                OptionalReferenceSelector(
+                    stringResource(R.string.automation_fixed_place),
+                    state.entrySnapshot.references.places.filter { it.status == EntityStatus.ACTIVE }.map { it.id to it.name },
+                    draft.fixedPlaceId,
+                    actions.onFixedPlace,
+                )
                 draft.blueprintId?.let { blueprintId ->
                     LedgerButton(stringResource(R.string.automation_edit_template_place), { actions.onNavigate("AUT-003", blueprintId) }, Modifier.fillMaxWidth(), LedgerButtonVariant.TEXT)
                 }
@@ -354,15 +377,17 @@ private fun RuleEditor(state: AutomationFeatureState, actions: AutomationActions
             item {
                 FormSection(stringResource(R.string.automation_weekdays)) {
                     DayOfWeek.entries.forEach { day -> LedgerToggleRow(dayLabel(day), day in draft.rule.weekdays, { actions.onWeekday(day) }) }
+                    errorIf(state, "weekdays")?.let { LedgerText(it, LedgerTextRole.SUPPORTING) }
                 }
             }
         }
-        if (draft.rule.frequency == RecurrenceFrequency.MONTHLY_DAY) item { LedgerTextField(draft.rule.monthDay?.toString().orEmpty(), { actions.onRecurrenceField(RecurrenceField.MONTH_DAY, it) }, stringResource(R.string.automation_month_day), keyboardType = KeyboardType.Number) }
+        if (draft.rule.frequency == RecurrenceFrequency.MONTHLY_DAY) item { LedgerTextField(draft.rule.monthDay?.toString().orEmpty(), { actions.onRecurrenceField(RecurrenceField.MONTH_DAY, it) }, stringResource(R.string.automation_month_day), keyboardType = KeyboardType.Number, errorText = errorIf(state, "monthDay")) }
         if (draft.rule.frequency == RecurrenceFrequency.MONTHLY_NTH_WEEKDAY) {
             item { LedgerTextField(draft.rule.nthWeek?.toString().orEmpty(), { actions.onRecurrenceField(RecurrenceField.NTH_WEEK, it) }, stringResource(R.string.automation_nth_week), keyboardType = KeyboardType.Number) }
             item {
                 FormSection(stringResource(R.string.automation_nth_weekday)) {
                     DayOfWeek.entries.forEach { day -> LedgerChoiceRow(dayLabel(day), draft.rule.weekday == day, { actions.onNthWeekday(day) }) }
+                    errorIf(state, "nthWeekday")?.let { LedgerText(it, LedgerTextRole.SUPPORTING) }
                 }
             }
         }
@@ -379,7 +404,7 @@ private fun RuleEditor(state: AutomationFeatureState, actions: AutomationActions
         item { SelectorField(stringResource(R.string.automation_start_date), draft.startDate.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.automation_choose_date), { startPicker = true }, supportingText = errorIf(state, "startDate")) }
         item { SelectorField(stringResource(R.string.automation_end_date), draft.endDate.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.automation_no_end_date), { endPicker = true }, supportingText = errorIf(state, "endDate")) }
         item { LedgerTextField(draft.maxOccurrences, { actions.onRecurrenceField(RecurrenceField.MAX_OCCURRENCES, it) }, stringResource(R.string.automation_max_occurrences), keyboardType = KeyboardType.Number, errorText = errorIf(state, "maxOccurrences")) }
-        item { LedgerButton(stringResource(R.string.automation_apply_rule), actions.onApplyRule, Modifier.fillMaxWidth(), enabled = AutomationPolicy.canSaveRecurrence(state)) }
+        item { LedgerButton(stringResource(R.string.automation_apply_rule), actions.onApplyRule, Modifier.fillMaxWidth()) }
     }
     if (startPicker) AutomationDatePicker(draft.startDate, { actions.onRecurrenceField(RecurrenceField.START_DATE, it); startPicker = false }, { startPicker = false })
     if (endPicker) AutomationDatePicker(draft.endDate, { actions.onRecurrenceField(RecurrenceField.END_DATE, it); endPicker = false }, { endPicker = false })
@@ -388,18 +413,22 @@ private fun RuleEditor(state: AutomationFeatureState, actions: AutomationActions
 @Composable
 private fun OccurrencePreview(state: AutomationFeatureState, actions: AutomationActions) {
     val series = state.selectedSeries
-    if (series == null || series.preview.isEmpty()) {
+    val draft = state.recurrenceDraft
+    val occurrences = series?.preview ?: AutomationPolicy.previewRecurrence(state)
+    if ((series == null && draft == null) || occurrences.isEmpty()) {
         EmptyScreen(Modifier.testTag(LedgerTestTags.AUTOMATION_PREVIEW), R.string.automation_preview_empty, R.string.automation_preview_empty_body) { actions.onNavigate("AUT-005", state.selectedSeriesId) }
         return
     }
     val locale = LocalLocale.current.platformLocale
+    val zoneId = series?.zoneId ?: requireNotNull(draft).zoneId
+    val occurrenceTime = series?.occurrenceTime ?: requireNotNull(draft).occurrenceTime
     ScreenList(Modifier.testTag(LedgerTestTags.AUTOMATION_PREVIEW)) {
-        item { LedgerBanner(stringResource(R.string.automation_timezone_disclosure, series.zoneId.id, series.occurrenceTime.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale))), LedgerBannerVariant.INFO) }
-        items(series.preview.take(10), key = { it.occurrenceInstant.toString() }) { occurrence ->
+        item { LedgerBanner(stringResource(R.string.automation_timezone_disclosure, zoneId.id, occurrenceTime.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale))), LedgerBannerVariant.INFO) }
+        items(occurrences.take(10), key = { it.occurrenceInstant.toString() }) { occurrence ->
             LedgerCard(Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), horizontalArrangement = Arrangement.SpaceBetween) {
                     LedgerText(occurrence.localDate.localized(locale), LedgerTextRole.BODY)
-                    LedgerText(occurrence.occurrenceInstant.localized(locale, series.zoneId), LedgerTextRole.SUPPORTING)
+                    LedgerText(occurrence.occurrenceInstant.localized(locale, zoneId), LedgerTextRole.SUPPORTING)
                 }
             }
         }
@@ -461,7 +490,7 @@ private fun CandidateEditor(state: AutomationFeatureState, actions: AutomationAc
                 LedgerText(stringResource(R.string.automation_candidate_full_form), LedgerTextRole.SUPPORTING)
             }
         }
-        item { LedgerButton(stringResource(R.string.automation_confirm_and_post), actions.onConfirmCandidate, Modifier.fillMaxWidth()) }
+        item { LedgerButton(stringResource(R.string.automation_review_and_edit), actions.onConfirmCandidate, Modifier.fillMaxWidth()) }
         item { LedgerButton(stringResource(R.string.automation_skip_candidate), actions.onSkipCandidate, Modifier.fillMaxWidth(), LedgerButtonVariant.DANGER) }
         item { LedgerButton(stringResource(R.string.automation_cancel_candidate), actions.onCancelCandidate, Modifier.fillMaxWidth(), LedgerButtonVariant.TEXT) }
     }
@@ -497,7 +526,15 @@ private fun EmptyScreen(modifier: Modifier, title: Int, body: Int, action: () ->
 
 @Composable
 private fun ScreenList(modifier: Modifier, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
-    LazyColumn(modifier.fillMaxSize().padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm), content = content)
+    LazyColumn(
+        modifier.fillMaxSize().padding(horizontal = LedgerTheme.spacing.sm),
+        contentPadding = PaddingValues(
+            top = LedgerTheme.spacing.sm,
+            bottom = LedgerTheme.dimensions.bottomActionInset + LedgerTheme.spacing.xxl,
+        ),
+        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+        content = content,
+    )
 }
 
 @Composable private fun errorIf(state: AutomationFeatureState, key: String): String? = if (key in state.validationFields) stringResource(R.string.automation_required_error) else null
@@ -585,7 +622,7 @@ private fun candidateErrorLabel(code: String): String = stringResource(
 
 @Composable
 private fun AutomationDatePicker(value: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    val initial = value.toLocalDateOrNull() ?: LocalDate.now()
+    val initial = value.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
     LedgerDatePickerFlow(
         initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         { millis -> onConfirm(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()) },
@@ -593,9 +630,11 @@ private fun AutomationDatePicker(value: String, onConfirm: (String) -> Unit, onD
     )
 }
 
-private fun LocalDate.localized(locale: java.util.Locale): String = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(this)
-private fun Instant.localized(locale: java.util.Locale, zoneId: java.time.ZoneId): String = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM).withLocale(locale).withZone(zoneId).format(this)
+private fun LocalDate.localized(locale: java.util.Locale): String = LedgerDateFormatterRuntime.formatter(locale).format(this)
+private fun Instant.localized(locale: java.util.Locale, zoneId: java.time.ZoneId): String = LedgerDateFormatterRuntime.dateTimeFormatter(locale, FormatStyle.MEDIUM).withZone(zoneId).format(this)
 private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()
+
+private const val AUTOMATION_PLACE_QUERY_LIMIT = 80
 
 private val supportedBlueprintKinds = setOf(TransactionKind.EXPENSE, TransactionKind.INCOME, TransactionKind.CREDIT_PAYMENT, TransactionKind.LOAN_PAYMENT)
 private val templateIcons = listOf(LedgerIcon.RECORD, LedgerIcon.ACCOUNT, LedgerIcon.TRANSFER, LedgerIcon.ANALYSIS)

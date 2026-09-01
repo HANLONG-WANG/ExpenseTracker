@@ -1,6 +1,9 @@
 package app.ledger.core.navigation
 
 import androidx.navigation3.runtime.NavBackStack
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import java.time.YearMonth
@@ -69,6 +72,16 @@ public data class FiveStackSnapshot(
 public class FiveStackNavigator(
     initialTopLevel: TopLevelDestination = TopLevelDestination.RECORD,
 ) {
+    /** Snapshot-observable mutation token so every navigation source invalidates the UI shell. */
+    public var version: Int by mutableIntStateOf(0)
+        private set
+
+    private val scrollRootRequestVersions: MutableMap<TopLevelDestination, Int> =
+        TopLevelDestination.entries.associateWith { 0 }.toMutableMap()
+
+    public fun scrollRootRequestVersion(destination: TopLevelDestination): Int =
+        scrollRootRequestVersions.getValue(destination)
+
     private val roots: Map<TopLevelDestination, LedgerDestinationKey> = mapOf(
         TopLevelDestination.RECORD to LedgerRouteContract.destination(
             screenId = ScreenId("REC-001"),
@@ -101,11 +114,17 @@ public class FiveStackNavigator(
     public fun select(destination: TopLevelDestination): NavigationOutcome = when {
         destination != currentTopLevel -> {
             currentTopLevel = destination
+            version += 1
             NavigationOutcome.Navigated
         }
-        currentBackStack.size == 1 -> NavigationOutcome.ScrollRootToTop
+        currentBackStack.size == 1 -> {
+            scrollRootRequestVersions[destination] = scrollRootRequestVersions.getValue(destination) + 1
+            version += 1
+            NavigationOutcome.ScrollRootToTop
+        }
         else -> {
             while (currentBackStack.size > 1) currentBackStack.removeAt(currentBackStack.lastIndex)
+            version += 1
             NavigationOutcome.Popped
         }
     }
@@ -118,12 +137,14 @@ public class FiveStackNavigator(
             return NavigationOutcome.BlockedBySessionGate
         }
         currentBackStack.add(destination)
+        version += 1
         return NavigationOutcome.Navigated
     }
 
     public fun pop(): NavigationOutcome {
         if (currentBackStack.size == 1) return NavigationOutcome.AtRoot
         currentBackStack.removeAt(currentBackStack.lastIndex)
+        version += 1
         return NavigationOutcome.Popped
     }
 
@@ -163,6 +184,7 @@ public class FiveStackNavigator(
             stack.addAll(decoded.getValue(topLevel))
         }
         currentTopLevel = snapshot.selectedTopLevel
+        version += 1
     }.isSuccess
 
     private fun decodeDestination(snapshot: DestinationSnapshot): LedgerDestinationKey {

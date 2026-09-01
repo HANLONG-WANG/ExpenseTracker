@@ -26,6 +26,7 @@ import app.ledger.core.security.VaultProvisioningRequest
 import app.ledger.core.security.VaultRevealRequest
 import app.ledger.feature.vault.VaultCardSummary
 import app.ledger.feature.vault.VaultEditSubmission
+import app.ledger.feature.vault.VaultEditValues
 import app.ledger.feature.vault.VaultPresentationState
 import app.ledger.feature.vault.VaultRequiredState
 import app.ledger.feature.vault.VaultSensitiveValue
@@ -76,6 +77,7 @@ internal class VaultController(
     private var cards = emptyMap<StableId, VaultCardSummary>()
     private var pending: PendingVaultAuthentication? = null
     private var editAuthorization: OneShotVaultEditor? = null
+    private var editPlaintext: VaultEditPlaintext? = null
     private var exposedPan: SensitivePlaintext? = null
     private var exposedSecurityCode: SensitivePlaintext? = null
     private var timer: Job? = null
@@ -323,11 +325,21 @@ internal class VaultController(
     }
 
     private fun beginEditWindow(cardId: StableId) {
+        editPlaintext?.close()
+        editPlaintext = records[cardId]?.let { record ->
+            requireNotNull(editAuthorization).decryptFields(
+                requireNotNull(bookId),
+                cardId,
+                record.keyVersion,
+                record.toCoreFields(),
+            ).use { fields -> fields.toEditPlaintext(exposureRegistry) }
+        }
         mutableState.value = VaultPresentationState(
             "VLT-003",
             VaultRequiredState.VLT_003_EDITING,
             cards.values.toList(),
             requireNotNull(cards[cardId]),
+            editValues = editPlaintext?.asView(),
         )
         timer?.cancel()
         timer = scope.launch {
@@ -342,7 +354,22 @@ internal class VaultController(
         val editor = editAuthorization ?: return openEditor(cardId)
         editAuthorization = null
         timer?.cancel()
+        editPlaintext?.close()
+        editPlaintext = null
         mutableState.value = mutableState.value.copy(presentation = VaultRequiredState.VLT_003_SAVING, pending = true)
+        if (!submission.hasContent()) {
+            editor.close()
+            scope.launch(Dispatchers.IO) {
+                if (port.delete(requireNotNull(bookId), cardId) is DomainResult.Success) {
+                    records = records - cardId
+                    cards = cards + (cardId to requireNotNull(cards[cardId]).copy(hasSecret = false))
+                    mutableState.value = detailState(cardId, VaultRequiredState.VLT_002_MASKED)
+                } else {
+                    editAuthenticationFailed(cardId)
+                }
+            }
+            return
+        }
         val fields = VaultPlaintextFields(
             submission.holderName.secretOrNull(),
             submission.primaryNumber.secretOrNull(),
@@ -353,14 +380,13 @@ internal class VaultController(
         scope.launch(Dispatchers.IO) {
             try {
                 val encrypted = editor.use { it.encryptFields(requireNotNull(bookId), cardId, KEY_VERSION, fields) }
-                val previous = records[cardId]
                 val saved = VaultSecretRecord(
                     cardId,
-                    encrypted.holderName.toPort() ?: previous?.holderName,
-                    encrypted.primaryNumber.toPort() ?: previous?.primaryNumber,
-                    encrypted.expiry.toPort() ?: previous?.expiry,
-                    encrypted.securityCode.toPort() ?: previous?.securityCode,
-                    encrypted.customFields.toPort() ?: previous?.customFields,
+                    encrypted.holderName.toPort(),
+                    encrypted.primaryNumber.toPort(),
+                    encrypted.expiry.toPort(),
+                    encrypted.securityCode.toPort(),
+                    encrypted.customFields.toPort(),
                     KEY_VERSION,
                     now(),
                 )
@@ -388,6 +414,8 @@ internal class VaultController(
         exposedSecurityCode = null
         editAuthorization?.close()
         editAuthorization = null
+        editPlaintext?.close()
+        editPlaintext = null
         exposureRegistry.clearAll()
         val cardId = mutableState.value.selectedCard?.cardId
         if (cardId != null && mutableState.value.screenId == "VLT-002") {
@@ -454,6 +482,11 @@ internal class VaultController(
     }
 
     private fun editAuthenticationFailed(cardId: StableId) {
+        timer?.cancel()
+        editAuthorization?.close()
+        editAuthorization = null
+        editPlaintext?.close()
+        editPlaintext = null
         mutableState.value = VaultPresentationState(
             "VLT-003",
             VaultRequiredState.VLT_003_AUTH_REQUIRED,
@@ -534,6 +567,59 @@ private fun VaultFieldCiphertext?.toPort(): VaultCiphertext? = this?.bytes?.let 
         bytes.fill(0)
     }
 }
+
+private fun VaultSecretRecord.toCoreFields(): VaultEncryptedFields = VaultEncryptedFields(
+    holderName?.toCore(),
+    primaryNumber?.toCore(),
+    expiry?.toCore(),
+    securityCode?.toCore(),
+    customFields?.toCore(),
+)
+
+private fun VaultCiphertext.toCore(): VaultFieldCiphertext {
+    val bytes = copyBytes()
+    return try {
+        VaultFieldCiphertext(bytes)
+    } finally {
+        bytes.fill(0)
+    }
+}
+
+private fun VaultPlaintextFields.toEditPlaintext(registry: VaultExposureRegistry): VaultEditPlaintext = VaultEditPlaintext(
+    holderName?.toExposure(registry),
+    primaryNumber?.toExposure(registry),
+    expiry?.toExposure(registry),
+    securityCode?.toExposure(registry),
+    customFields?.toExposure(registry),
+)
+
+private fun SecretBytes.toExposure(registry: VaultExposureRegistry): SensitivePlaintext = useBytes(registry::register)
+
+private data class VaultEditPlaintext(
+    val holderName: SensitivePlaintext?,
+    val primaryNumber: SensitivePlaintext?,
+    val expiry: SensitivePlaintext?,
+    val securityCode: SensitivePlaintext?,
+    val customFields: SensitivePlaintext?,
+) : AutoCloseable {
+    fun asView(): VaultEditValues = VaultEditValues(
+        holderName?.asView(),
+        primaryNumber?.asView(),
+        expiry?.asView(),
+        securityCode?.asView(),
+        customFields?.asView(),
+    )
+
+    override fun close() {
+        holderName?.close()
+        primaryNumber?.close()
+        expiry?.close()
+        securityCode?.close()
+        customFields?.close()
+    }
+}
+
+private fun VaultEditSubmission.hasContent(): Boolean = listOf(holderName, primaryNumber, expiry, securityCode, customFields).any(String::isNotBlank)
 
 private fun SensitivePlaintext.asView(): VaultSensitiveValue = VaultSensitiveValue { consumer ->
     useBytes { bytes -> consumer(bytes.toString(Charsets.UTF_8)) }

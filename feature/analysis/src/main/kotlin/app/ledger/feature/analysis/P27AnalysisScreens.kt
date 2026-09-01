@@ -37,12 +37,14 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
+import app.ledger.core.designsystem.LedgerChoiceSelector
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.money.LocaleNumberFormatter
@@ -176,7 +178,11 @@ private fun MapControls(
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
         LedgerText(
-            stringResource(R.string.analysis_map_period_value, query.period.start, query.period.endInclusive),
+            stringResource(
+                R.string.analysis_map_period_value,
+                query.period.start.format(LedgerDateFormatterRuntime.formatter(locale)),
+                query.period.endInclusive.format(LedgerDateFormatterRuntime.formatter(locale)),
+            ),
             LedgerTextRole.BODY,
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
@@ -195,34 +201,42 @@ private fun MapControls(
                 variant = LedgerButtonVariant.SECONDARY,
             )
         }
-        SelectorField(stringResource(R.string.analysis_map_mode), mapModeLabel(query.mode), actions.onCycleMapMode)
+        LedgerChoiceSelector(
+            stringResource(R.string.analysis_map_mode),
+            query.mode.ordinal,
+            ConsumptionMapMode.entries.map { mapModeLabel(it) },
+            { actions.onSelectMapMode(ConsumptionMapMode.entries[it]) },
+        )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-            SelectorField(
+            LedgerChoiceSelector(
                 stringResource(R.string.analysis_map_weight),
-                mapWeightLabel(query.weight),
-                actions.onCycleMapWeight,
+                query.weight.ordinal,
+                ConsumptionMapWeight.entries.map { mapWeightLabel(it) },
+                { actions.onSelectMapWeight(ConsumptionMapWeight.entries[it]) },
                 Modifier.weight(1f),
             )
-            SelectorField(
+            LedgerChoiceSelector(
                 stringResource(R.string.analysis_map_grouping),
-                mapAggregationLabel(query.aggregation),
-                actions.onCycleMapAggregation,
+                query.aggregation.ordinal,
+                ConsumptionMapAggregation.entries.map { mapAggregationLabel(it) },
+                { actions.onSelectMapAggregation(ConsumptionMapAggregation.entries[it]) },
                 Modifier.weight(1f),
             )
         }
-        SelectorField(
+        LedgerChoiceSelector(
             stringResource(R.string.analysis_map_presentation),
-            mapPresentationLabel(query.presentation),
-            actions.onCycleMapPresentation,
+            query.presentation.ordinal,
+            ConsumptionMapPresentation.entries.map { mapPresentationLabel(it) },
+            { actions.onSelectMapPresentation(ConsumptionMapPresentation.entries[it]) },
         )
-        SelectorField(
+        LedgerChoiceSelector(
             stringResource(R.string.analysis_map_special_transactions),
-            if (query.filters.hidesTransfersRepaymentsAndLoans) {
-                stringResource(R.string.analysis_map_special_hidden)
-            } else {
-                stringResource(R.string.analysis_map_special_included)
+            if (query.filters.hidesTransfersRepaymentsAndLoans) 0 else 1,
+            listOf(stringResource(R.string.analysis_map_special_hidden), stringResource(R.string.analysis_map_special_included)),
+            { index ->
+                val include = index == 1
+                if (include == query.filters.hidesTransfersRepaymentsAndLoans) actions.onToggleMapSpecialTransactions()
             },
-            actions.onToggleMapSpecialTransactions,
         )
         LedgerText(stringResource(R.string.analysis_map_complete_filters), LedgerTextRole.SECTION)
         app.ledger.core.designsystem.FilterBuilder(
@@ -234,53 +248,85 @@ private fun MapControls(
             showActions = false,
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-            SelectorField(
+            MapEntityChoiceSelector(
                 stringResource(R.string.analysis_map_filter_account),
-                selectedFilterLabel(filterOptions?.accounts.orEmpty(), accountSelection),
-                actions.onCycleMapAccountFilter,
+                "ACCOUNT",
+                filterOptions?.accounts.orEmpty(),
+                accountSelection,
+                actions,
                 Modifier.weight(1f),
             )
-            SelectorField(
+            MapEntityChoiceSelector(
                 stringResource(R.string.analysis_category),
-                selectedFilterLabel(filterOptions?.categories.orEmpty(), categorySelection),
-                actions.onCycleMapCategoryFilter,
+                "CATEGORY",
+                filterOptions?.categories.orEmpty(),
+                categorySelection,
+                actions,
                 Modifier.weight(1f),
             )
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-            SelectorField(
+            MapEntityChoiceSelector(
                 stringResource(R.string.analysis_map_filter_merchant),
-                selectedFilterLabel(filterOptions?.merchants.orEmpty(), merchantSelection),
-                actions.onCycleMapMerchantFilter,
+                "MERCHANT",
+                filterOptions?.merchants.orEmpty(),
+                merchantSelection,
+                actions,
                 Modifier.weight(1f),
             )
-            SelectorField(
+            MapEntityChoiceSelector(
                 stringResource(R.string.analysis_map_filter_place),
-                selectedFilterLabel(filterOptions?.places.orEmpty(), placeSelection),
-                actions.onCycleMapPlaceFilter,
+                "PLACE",
+                filterOptions?.places.orEmpty(),
+                placeSelection,
+                actions,
                 Modifier.weight(1f),
             )
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-            SelectorField(
+            MapEntityChoiceSelector(
                 stringResource(R.string.analysis_map_filter_project),
-                selectedFilterLabel(filterOptions?.projects.orEmpty(), projectSelection),
-                actions.onCycleMapProjectFilter,
+                "PROJECT",
+                filterOptions?.projects.orEmpty(),
+                projectSelection,
+                actions,
                 Modifier.weight(1f),
             )
-            SelectorField(
+            val amountChoices = listOf<Long?>(null, 1_000L, 10_000L, 100_000L)
+            LedgerChoiceSelector(
                 stringResource(R.string.analysis_amount),
-                query.filters.minimumBaseAmountMinor?.let { minimum ->
-                    stringResource(
-                        R.string.analysis_map_filter_minimum_amount,
-                        AnalysisPolicy.money(minimum, result.baseCurrency, locale).formatted,
-                    )
-                } ?: stringResource(R.string.analysis_map_filter_all),
-                actions.onCycleMapAmountFilter,
+                amountChoices.indexOf(query.filters.minimumBaseAmountMinor).coerceAtLeast(0),
+                amountChoices.map { minimum ->
+                    minimum?.let {
+                        stringResource(R.string.analysis_map_filter_minimum_amount, AnalysisPolicy.money(it, result.baseCurrency, locale).formatted)
+                    } ?: stringResource(R.string.analysis_map_filter_all)
+                },
+                { actions.onSelectMapAmountFilter(amountChoices[it]) },
                 Modifier.weight(1f),
             )
         }
     }
+}
+
+@Composable
+private fun MapEntityChoiceSelector(
+    label: String,
+    dimension: String,
+    options: List<ConsumptionMapFilterOption>,
+    selected: Set<app.ledger.core.common.StableId>,
+    actions: AnalysisActions,
+    modifier: Modifier = Modifier,
+) {
+    val selectedId = selected.singleOrNull()
+    val choices = listOf(stringResource(R.string.analysis_map_filter_all)) + options.map { it.label }
+    val selectedIndex = selectedId?.let { id -> options.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.plus(1) } ?: 0
+    LedgerChoiceSelector(
+        label,
+        selectedIndex,
+        choices,
+        { index -> actions.onSelectMapFilter(dimension, options.getOrNull(index - 1)?.id) },
+        modifier,
+    )
 }
 
 @Composable
@@ -414,7 +460,7 @@ private fun MapDetailContent(detail: ConsumptionMapDetail, actions: AnalysisActi
             LedgerCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(LedgerTheme.spacing.sm)) {
                     LedgerText(
-                        "${DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(row.localDate)} · ${transactionKindLabel(row.kindKey)}",
+                        "${LedgerDateFormatterRuntime.formatter(locale).format(row.localDate)} · ${transactionKindLabel(row.kindKey)}",
                         LedgerTextRole.BODY,
                     )
                     LedgerText(AnalysisPolicy.money(row.amountMinor, row.currency, locale).formatted, LedgerTextRole.SUPPORTING)

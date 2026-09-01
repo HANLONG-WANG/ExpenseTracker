@@ -19,16 +19,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -43,11 +47,13 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChip
+import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerIconView
 import app.ledger.core.designsystem.LedgerLoadingState
+import app.ledger.core.designsystem.LedgerModalDialog
 import app.ledger.core.designsystem.LedgerProgressIndicator
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerTestTags
@@ -55,7 +61,13 @@ import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
+import app.ledger.core.designsystem.LocalLedgerAmountsVisible
+import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
+import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
+import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
 import app.ledger.core.designsystem.UiErrorCode
+import app.ledger.core.designsystem.rememberLedgerRetainedState
 import app.ledger.finance.application.BudgetCompositionView
 import app.ledger.finance.application.BudgetRevisionView
 import app.ledger.finance.domain.BudgetAdjustmentKind
@@ -116,13 +128,25 @@ public fun BudgetDestination(
 
 @Composable
 private fun BudgetHome(state: BudgetFeatureState, actions: BudgetActions) {
-    val locale = LocalLocale.current.platformLocale
+    val locale = LocalConfiguration.current.locales[0]
     var expandedRootIds by remember(state.snapshot.month) { mutableStateOf(emptySet<StableId>()) }
     val categoryRows = state.snapshot.composition.filter { row ->
         row.categoryId != null && (row.depth == 1 || row.parentCategoryId in expandedRootIds)
     }
+    val restoredScroll = LocalLedgerRestoredScrollState.current
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = restoredScroll?.first?.removePrefix("index_")?.toIntOrNull() ?: 0,
+        initialFirstVisibleItemScrollOffset = restoredScroll?.second ?: 0,
+    )
+    val scrollToTopRequest = LocalLedgerScrollToTopRequest.current
+    val scrollReporter = LocalLedgerScrollStateReporter.current
+    LaunchedEffect(scrollToTopRequest) { if (scrollToTopRequest > 0) listState.scrollToItem(0) }
+    LaunchedEffect(listState, scrollReporter) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.collect { (index, offset) -> scrollReporter("index_$index", offset) }
+    }
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.BUDGET_HOME),
+        state = listState,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(LedgerTheme.spacing.md),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
     ) {
@@ -134,7 +158,12 @@ private fun BudgetHome(state: BudgetFeatureState, actions: BudgetActions) {
                     variant = LedgerButtonVariant.TEXT,
                 )
                 LedgerText(
-                    state.snapshot.month.format(DateTimeFormatter.ofPattern("LLLL y", locale)),
+                    state.snapshot.month.format(
+                        DateTimeFormatter.ofPattern(
+                            if (locale.language in setOf("zh", "ja")) "y年M月" else "LLLL y",
+                            locale,
+                        ),
+                    ),
                     LedgerTextRole.TITLE,
                 )
                 LedgerButton(
@@ -199,11 +228,7 @@ private fun BudgetHome(state: BudgetFeatureState, actions: BudgetActions) {
                                 LedgerText(
                                     stringResource(
                                         R.string.budget_reserved_formula,
-                                        BudgetPolicy.money(
-                                            state,
-                                            daily.reservedRecurrenceBaseMinor,
-                                            locale,
-                                        ).formatted,
+                                        if (LocalLedgerAmountsVisible.current) BudgetPolicy.money(state, daily.reservedRecurrenceBaseMinor, locale).formatted else "••••",
                                         daily.remainingDayCount,
                                     ),
                                     LedgerTextRole.SUPPORTING,
@@ -311,7 +336,7 @@ private fun BudgetHero(state: BudgetFeatureState, total: BudgetCompositionView) 
 @Composable
 private fun CompositionLine(resourceId: Int, amount: Long, state: BudgetFeatureState) {
     val formatted = BudgetPolicy.money(state, amount, LocalLocale.current.platformLocale).formatted
-    LedgerText(stringResource(resourceId, formatted), LedgerTextRole.BODY)
+    LedgerText(stringResource(resourceId, if (LocalLedgerAmountsVisible.current) formatted else "••••"), LedgerTextRole.BODY)
 }
 
 @Composable
@@ -357,8 +382,8 @@ private fun BudgetCategoryRow(
             LedgerText(
                 stringResource(
                     R.string.budget_used_available,
-                    BudgetPolicy.money(state, row.usedMinor, locale).formatted,
-                    BudgetPolicy.money(state, row.availableMinor, locale).formatted,
+                    if (LocalLedgerAmountsVisible.current) BudgetPolicy.money(state, row.usedMinor, locale).formatted else "••••",
+                    if (LocalLedgerAmountsVisible.current) BudgetPolicy.money(state, row.availableMinor, locale).formatted else "••••",
                 ),
                 LedgerTextRole.BODY,
             )
@@ -395,14 +420,13 @@ private fun BudgetEditor(state: BudgetFeatureState, actions: BudgetActions, temp
         Modifier.fillMaxSize().testTag(LedgerTestTags.BUDGET_EDITOR)
     }
     val saving = state.presentation == BudgetPresentation.SAVING
-    val valid = state.validation.valid && (!template || state.editor.templateName.isNotBlank())
     LedgerScaffold(
         modifier = taggedModifier,
         formContent = true,
         fixedAction = {
             BudgetStickySaveBar(
                 if (template) actions.onSaveTemplate else actions.onSaveMonth,
-                enabled = valid && !saving,
+                enabled = !saving,
                 saving = saving,
             )
         },
@@ -420,6 +444,17 @@ private fun BudgetEditor(state: BudgetFeatureState, actions: BudgetActions, temp
                         stringResource(R.string.budget_template_name),
                         required = true,
                         errorText = stringResource(R.string.budget_required).takeIf { state.editor.templateName.isBlank() },
+                    )
+                }
+            }
+            if (!template && state.snapshot.templates.isNotEmpty()) {
+                item { LedgerText(stringResource(R.string.budget_apply_template), LedgerTextRole.SECTION) }
+                items(state.snapshot.templates, key = { "apply-${it.id}" }) { availableTemplate ->
+                    LedgerButton(
+                        stringResource(R.string.budget_apply_named_template, availableTemplate.name),
+                        { actions.onApplyTemplate(availableTemplate.id) },
+                        Modifier.fillMaxWidth(),
+                        LedgerButtonVariant.SECONDARY,
                     )
                 }
             }
@@ -524,7 +559,7 @@ private fun BudgetCategoryEditor(state: BudgetFeatureState, encodedCategoryId: S
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.BUDGET_CATEGORY_EDITOR),
         formContent = true,
-        fixedAction = { BudgetStickySaveBar(actions.onSaveMonth, state.validation.valid && !saving, saving) },
+        fixedAction = { BudgetStickySaveBar(actions.onSaveMonth, !saving, saving) },
     ) {
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -564,7 +599,7 @@ private fun BudgetCategoryEditor(state: BudgetFeatureState, encodedCategoryId: S
 
 @Composable
 private fun BudgetAdjustments(state: BudgetFeatureState, actions: BudgetActions) {
-    val locale = LocalLocale.current.platformLocale
+    val locale = LocalConfiguration.current.locales[0]
     LazyColumn(
         Modifier
             .fillMaxSize()
@@ -629,6 +664,8 @@ private fun BudgetAdjustmentChoices(actions: BudgetActions) {
 
 @Composable
 private fun BudgetAdjustmentEditor(state: BudgetFeatureState, encodedKind: String?, actions: BudgetActions) {
+    var categoryPicker by remember { mutableStateOf<BudgetAdjustmentCategoryPicker?>(null) }
+    var amountTouched by rememberLedgerRetainedState("adjustment-amount-touched") { false }
     val kind = when (encodedKind) {
         "CLEAR_ROLLOVER" -> BudgetAdjustmentKind.CLEAR_ROLLOVER
         "SUBTRACT" -> BudgetAdjustmentKind.DECREASE_AVAILABLE
@@ -654,14 +691,13 @@ private fun BudgetAdjustmentEditor(state: BudgetFeatureState, encodedKind: Strin
     }
     val targetValid = !kind.requiresTargetCategory() || target?.status == app.ledger.finance.domain.EntityStatus.ACTIVE
     val saving = state.presentation == BudgetPresentation.SAVING
-    val valid = amountValid && sourceValid && targetValid
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.BUDGET_ADJUSTMENT_EDITOR),
         formContent = true,
         fixedAction = {
             BudgetStickySaveBar(
                 { actions.onSaveAdjustment(kind) },
-                enabled = valid && !saving,
+                enabled = !saving,
                 saving = saving,
             )
         },
@@ -683,10 +719,15 @@ private fun BudgetAdjustmentEditor(state: BudgetFeatureState, encodedKind: Strin
                 item {
                     LedgerTextField(
                         state.adjustmentAmountText,
-                        actions.onAdjustmentAmountChanged,
+                        {
+                            amountTouched = true
+                            actions.onAdjustmentAmountChanged(it)
+                        },
                         stringResource(R.string.budget_adjustment_amount),
                         keyboardType = KeyboardType.Decimal,
-                        errorText = stringResource(R.string.budget_invalid_amount).takeIf { !amountValid },
+                        errorText = stringResource(R.string.budget_invalid_amount).takeIf {
+                            !amountValid && (amountTouched || state.presentation == BudgetPresentation.INVALID)
+                        },
                     )
                 }
             }
@@ -694,7 +735,7 @@ private fun BudgetAdjustmentEditor(state: BudgetFeatureState, encodedKind: Strin
                 item {
                     LedgerButton(
                         stringResource(R.string.budget_source_category, categoryName(state, state.adjustmentSourceCategoryId)),
-                        { actions.onAdjustmentSource(kind == BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER) },
+                        { categoryPicker = BudgetAdjustmentCategoryPicker.SOURCE },
                         Modifier.fillMaxWidth(),
                         LedgerButtonVariant.SECONDARY,
                     )
@@ -705,7 +746,7 @@ private fun BudgetAdjustmentEditor(state: BudgetFeatureState, encodedKind: Strin
                 item {
                     LedgerButton(
                         stringResource(R.string.budget_target_category, categoryName(state, state.adjustmentTargetCategoryId)),
-                        actions.onAdjustmentTarget,
+                        { categoryPicker = BudgetAdjustmentCategoryPicker.TARGET },
                         Modifier.fillMaxWidth(),
                         LedgerButtonVariant.SECONDARY,
                     )
@@ -715,11 +756,40 @@ private fun BudgetAdjustmentEditor(state: BudgetFeatureState, encodedKind: Strin
             item { LedgerText(stringResource(R.string.budget_adjustment_category_hint), LedgerTextRole.SUPPORTING) }
         }
     }
+    categoryPicker?.let { picker ->
+        val archivedSource = kind == BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER
+        val candidates = state.snapshot.categories.filter { category ->
+            when (picker) {
+                BudgetAdjustmentCategoryPicker.SOURCE -> category.id != state.adjustmentTargetCategoryId &&
+                    category.status == if (archivedSource) app.ledger.finance.domain.EntityStatus.ARCHIVED else app.ledger.finance.domain.EntityStatus.ACTIVE
+                BudgetAdjustmentCategoryPicker.TARGET -> category.id != state.adjustmentSourceCategoryId &&
+                    category.status == app.ledger.finance.domain.EntityStatus.ACTIVE
+            }
+        }
+        LedgerModalDialog(
+            title = stringResource(if (picker == BudgetAdjustmentCategoryPicker.SOURCE) R.string.budget_source_category_title else R.string.budget_target_category_title),
+            onDismiss = { categoryPicker = null },
+        ) {
+            LazyColumn(Modifier.fillMaxWidth()) {
+                items(candidates, key = { it.id.toString() }) { category ->
+                    LedgerChoiceRow(
+                        category.name,
+                        selected = category.id == if (picker == BudgetAdjustmentCategoryPicker.SOURCE) state.adjustmentSourceCategoryId else state.adjustmentTargetCategoryId,
+                        onClick = {
+                            if (picker == BudgetAdjustmentCategoryPicker.SOURCE) actions.onAdjustmentSource(category.id) else actions.onAdjustmentTarget(category.id)
+                            categoryPicker = null
+                        },
+                    )
+                }
+            }
+        }
+    }
 }
 
+private enum class BudgetAdjustmentCategoryPicker { SOURCE, TARGET }
+
 private fun BudgetAdjustmentKind.requiresTargetCategory(): Boolean = this == BudgetAdjustmentKind.TRANSFER_IN ||
-    this == BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER ||
-    this == BudgetAdjustmentKind.INCREASE_AVAILABLE
+    this == BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER
 
 @Composable
 private fun categoryName(state: BudgetFeatureState, id: StableId?): String =
@@ -727,7 +797,7 @@ private fun categoryName(state: BudgetFeatureState, id: StableId?): String =
 
 @Composable
 private fun BudgetHistory(state: BudgetFeatureState) {
-    val locale = LocalLocale.current.platformLocale
+    val locale = LocalConfiguration.current.locales[0]
     val history = state.snapshot.revisionHistory.sortedByDescending { it.revisionNumber }
     var comparisonVisible by remember(state.snapshot.month) { mutableStateOf(false) }
     LazyColumn(
@@ -895,7 +965,6 @@ private fun budgetCategoryFieldError(state: BudgetFeatureState, categoryId: Stab
 
 @Composable
 private fun java.time.Instant.localizedDateTime(locale: java.util.Locale): String =
-    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-        .withLocale(locale)
+    LedgerDateFormatterRuntime.dateTimeFormatter(locale)
         .withZone(LedgerTheme.timeZone)
         .format(this)

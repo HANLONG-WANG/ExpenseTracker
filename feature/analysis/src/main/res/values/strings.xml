@@ -60,6 +60,7 @@
     <string name="analysis_integrity_running">正在运行只读完整性检查</string>
     <string name="analysis_integrity_failed">完整性检查未能完成</string>
     <string name="analysis_integrity_plain_language">普通视图只显示影响数量；技术详情折叠且不包含敏感账务内容。</string>
+    <string name="analysis_integrity_scope">账本修订 %1$d · %2$d 项只读检查</string>
     <string name="analysis_affected_count">受影响项：%1$d</string>
     <string name="analysis_hide_technical">收起脱敏技术详情</string>
     <string name="analysis_show_technical">展开脱敏技术详情</string>
@@ -257,6 +258,11 @@
     <string name="analysis_measure_net_cash_flow">净现金流</string>
     <string name="analysis_measure_savings_rate">储蓄率</string>
     <string name="analysis_measure_budget_usage">预算使用</string>
+    <string name="analysis_measure_budget_base">基础预算</string>
+    <string name="analysis_measure_budget_rollover">结转</string>
+    <string name="analysis_measure_budget_adjustment">调整</string>
+    <string name="analysis_measure_budget_used">已用</string>
+    <string name="analysis_measure_budget_available">可用总额</string>
     <string name="analysis_measure_project_usage">项目使用</string>
     <string name="analysis_measure_goal_balance">目标余额</string>
     <string name="analysis_measure_account_balance">账户余额</string>
@@ -283,4 +289,10 @@
     <string name="analysis_kind_settlement_payment">互请结算</string>
     <string name="analysis_kind_opening_balance">期初余额</string>
     <string name="analysis_kind_other">其他交易</string>
+    <string name="analysis_progress_unavailable">当前报告缺少可验证的目标或总额，无法计算进度；请查看数据表。</string>
+    <string name="analysis_integrity_database">数据库结构与读取</string><string name="analysis_integrity_foreign_keys">实体引用与外键</string><string name="analysis_integrity_journals">会计分录平衡</string><string name="analysis_integrity_posting_currencies">分录币种一致性</string><string name="analysis_integrity_revisions">交易修订链</string><string name="analysis_integrity_projections">当前投影</string><string name="analysis_integrity_fts">全文搜索索引</string><string name="analysis_integrity_rtree">位置空间索引</string><string name="analysis_integrity_fact_rebuild">事实重建一致性</string>
+    <string name="analysis_integrity_check_id">检查 ID：%1$s</string>
+    <string name="analysis_integrity_check_scope">范围：当前账簿 · 修订 %1$d</string>
+    <string name="analysis_integrity_check_trace">追踪码：%1$s</string>
+    <string name="analysis_projection_repaired">分析投影已重建并重新检查。</string>
 </resources>

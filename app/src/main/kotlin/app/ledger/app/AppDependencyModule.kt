@@ -22,6 +22,7 @@ import app.ledger.finance.application.AutomationApplicationPort
 import app.ledger.finance.application.BatchEntryApplicationPort
 import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.CreditApplicationPort
+import app.ledger.finance.application.ControlledPurgeApplicationPort
 import app.ledger.finance.application.FormalOccurrenceGenerator
 import app.ledger.finance.application.ImportFinancialApplicationPort
 import app.ledger.finance.application.InstallmentApplicationPort
@@ -44,6 +45,7 @@ import app.ledger.finance.data.SecureRoomAutomationApplicationPort
 import app.ledger.finance.data.SecureRoomBatchEntryApplicationPort
 import app.ledger.finance.data.SecureRoomBudgetApplicationPort
 import app.ledger.finance.data.SecureRoomCreditApplicationPort
+import app.ledger.finance.data.SecureRoomControlledPurgeApplicationPort
 import app.ledger.finance.data.SecureRoomImportFinancialApplicationPort
 import app.ledger.finance.data.SecureRoomInstallmentApplicationPort
 import app.ledger.finance.data.SecureRoomJournalApplicationPort
@@ -136,6 +138,13 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
     ): JournalApplicationPort = SecureRoomJournalApplicationPort(context, keyProvider)
+
+    @Provides
+    @Singleton
+    fun controlledPurgeApplicationPort(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+    ): ControlledPurgeApplicationPort = SecureRoomControlledPurgeApplicationPort(context, keyProvider)
 
     @Provides
     @Singleton

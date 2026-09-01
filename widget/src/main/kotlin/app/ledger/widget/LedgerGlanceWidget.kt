@@ -33,6 +33,9 @@ import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Currency
 import java.util.Locale
 import androidx.glance.color.ColorProvider as dayNightColorProvider
@@ -44,7 +47,8 @@ class LedgerGlanceWidget : GlanceAppWidget() {
         val content = configuration?.let { LedgerWidgetRuntime.resolve(it) }
             ?: LedgerWidgetContent.NotConfigured
         val languageTag = LedgerWidgetRuntime.languageTag()
-        provideContent { LedgerWidgetContent(configuration, content, languageTag) }
+        val dateFormat = LedgerWidgetRuntime.dateFormat()
+        provideContent { LedgerWidgetContent(configuration, content, languageTag, dateFormat) }
     }
 }
 
@@ -69,6 +73,7 @@ private fun LedgerWidgetContent(
     configuration: LedgerWidgetConfiguration?,
     content: LedgerWidgetContent,
     languageTag: String,
+    dateFormat: String,
 ) {
     val context = LocalContext.current.withLanguageTag(languageTag)
     val locale = context.resources.configuration.locales[0]
@@ -79,7 +84,7 @@ private fun LedgerWidgetContent(
     val modifier = GlanceModifier
         .fillMaxSize()
         .background(colors)
-        .padding(12.dp)
+        .padding(tokens.contentPaddingDp.dp)
         .let { base -> if (action == null) base else base.clickable(action) }
     Column(modifier, verticalAlignment = Alignment.Vertical.CenterVertically) {
         when (content) {
@@ -87,7 +92,7 @@ private fun LedgerWidgetContent(
             LedgerWidgetContent.NoEligibleData -> StateText(context, R.string.widget_no_data, onSurface)
             LedgerWidgetContent.Locked -> StateText(context, R.string.widget_locked, onSurface)
             LedgerWidgetContent.Stale -> StateText(context, R.string.widget_stale, onSurface)
-            is LedgerWidgetContent.Ready -> ReadyContent(context, locale, requireNotNull(configuration), content, onSurface)
+            is LedgerWidgetContent.Ready -> ReadyContent(context, locale, dateFormat, requireNotNull(configuration), content, onSurface)
         }
     }
 }
@@ -101,6 +106,7 @@ private fun StateText(context: Context, resource: Int, color: ColorProvider) {
 private fun ReadyContent(
     context: Context,
     locale: Locale,
+    dateFormat: String,
     configuration: LedgerWidgetConfiguration,
     content: LedgerWidgetContent.Ready,
     color: ColorProvider,
@@ -121,7 +127,7 @@ private fun ReadyContent(
             Text(
                 context.getString(
                     R.string.widget_available_value,
-                    formattedAmount(account.availableMinor, account.currency, configuration.revealAmounts, locale),
+                    formattedAmount(account.availableMinor, account.currency, configuration.revealAmounts, locale, context.getString(R.string.widget_amount_unavailable)),
                 ),
                 style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
             )
@@ -137,7 +143,7 @@ private fun ReadyContent(
             )
             credit.statementDueDate?.let { due ->
                 Text(
-                    context.getString(R.string.widget_due_date_value, due.toDisplayDate()),
+                    context.getString(R.string.widget_due_date_value, due.toDisplayDate(locale, dateFormat)),
                     style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
                 )
             }
@@ -146,7 +152,7 @@ private fun ReadyContent(
             Text(goal.displayName, style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp))
             AmountText(goal.balanceMinor, goal.currency, configuration.revealAmounts, locale, color)
             Text(
-                context.getString(R.string.widget_progress_value, goalProgress(goal.balanceMinor, goal.targetMinor)),
+                context.getString(R.string.widget_progress_value, goalProgress(goal.balanceMinor, goal.targetMinor, locale)),
                 style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
             )
         }
@@ -175,11 +181,12 @@ private fun BookAmount(
         Text(
             context.getString(
                 R.string.widget_used_value,
-                formattedAmount(
-                    requireNotNull(book.monthBudgetUsedBaseMinor),
-                    book.baseCurrency,
-                    configuration.revealAmounts,
-                    locale,
+                    formattedAmount(
+                        requireNotNull(book.monthBudgetUsedBaseMinor),
+                        book.baseCurrency,
+                        configuration.revealAmounts,
+                        locale,
+                        context.getString(R.string.widget_amount_unavailable),
                 ),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
@@ -192,7 +199,7 @@ private fun BookAmount(
         Text(
             context.getString(
                 R.string.widget_previous_month_comparison,
-                comparison?.let { formattedAmount(it, book.baseCurrency, configuration.revealAmounts, locale) }
+                comparison?.let { formattedAmount(it, book.baseCurrency, configuration.revealAmounts, locale, context.getString(R.string.widget_amount_unavailable)) }
                     ?: context.getString(R.string.widget_no_data),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
@@ -205,7 +212,7 @@ private fun BookAmount(
         Text(
             context.getString(
                 R.string.widget_snapshot_change,
-                change?.let { formattedAmount(it, book.baseCurrency, configuration.revealAmounts, locale) }
+                change?.let { formattedAmount(it, book.baseCurrency, configuration.revealAmounts, locale, context.getString(R.string.widget_amount_unavailable)) }
                     ?: context.getString(R.string.widget_no_data),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
@@ -232,7 +239,7 @@ private fun Overview(
             context.getString(
                 R.string.widget_overview_line,
                 context.getString(label),
-                amount?.let { formattedAmount(it, snapshot.baseCurrency, reveal, locale) }
+                amount?.let { formattedAmount(it, snapshot.baseCurrency, reveal, locale, context.getString(R.string.widget_amount_unavailable)) }
                     ?: context.getString(R.string.widget_no_data),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
@@ -243,7 +250,7 @@ private fun Overview(
             context.getString(
                 R.string.widget_overview_line,
                 context.getString(R.string.widget_credit_card),
-                formattedAmount(credit.statementRemainingMinor ?: credit.debtMinor, credit.currency, reveal, locale),
+                formattedAmount(credit.statementRemainingMinor ?: credit.debtMinor, credit.currency, reveal, locale, context.getString(R.string.widget_amount_unavailable)),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
         )
@@ -252,29 +259,41 @@ private fun Overview(
 
 @Composable
 private fun AmountText(minor: Long, currency: String, reveal: Boolean, locale: Locale, color: ColorProvider) {
+    val unavailable = LocalContext.current.getString(R.string.widget_amount_unavailable)
     Text(
-        formattedAmount(minor, currency, reveal, locale),
+        formattedAmount(minor, currency, reveal, locale, unavailable),
         style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.bodySizeSp.sp, fontWeight = FontWeight.Bold),
     )
 }
 
-private fun formattedAmount(minor: Long, code: String, reveal: Boolean, locale: Locale): String {
+private fun formattedAmount(minor: Long, code: String, reveal: Boolean, locale: Locale, unavailable: String): String {
     if (!reveal) return "••••"
-    val currency = Currency.getInstance(code)
-    val formatter = NumberFormat.getCurrencyInstance(locale).apply { this.currency = currency }
-    val amount = BigDecimal.valueOf(minor).movePointLeft(currency.defaultFractionDigits.coerceAtLeast(0))
-    return formatter.format(amount.setScale(currency.defaultFractionDigits.coerceAtLeast(0), RoundingMode.UNNECESSARY))
+    return runCatching {
+        val currency = Currency.getInstance(code)
+        val formatter = NumberFormat.getCurrencyInstance(locale).apply { this.currency = currency }
+        val amount = BigDecimal.valueOf(minor).movePointLeft(currency.defaultFractionDigits.coerceAtLeast(0))
+        formatter.format(amount.setScale(currency.defaultFractionDigits.coerceAtLeast(0), RoundingMode.UNNECESSARY))
+    }.getOrElse { unavailable }
 }
 
-private fun goalProgress(balance: Long, target: Long): String = if (target <= 0L) {
-    "0%"
-} else {
-    BigDecimal.valueOf(balance).multiply(BigDecimal.valueOf(100L))
-        .divide(BigDecimal.valueOf(target), 0, RoundingMode.DOWN)
-        .coerceIn(BigDecimal.ZERO, BigDecimal.valueOf(999L)).toPlainString() + "%"
+private fun goalProgress(balance: Long, target: Long, locale: Locale): String {
+    val ratio = if (target <= 0L) BigDecimal.ZERO else BigDecimal.valueOf(balance)
+        .divide(BigDecimal.valueOf(target), 4, RoundingMode.DOWN)
+        .coerceIn(BigDecimal.ZERO, BigDecimal.valueOf(9.99))
+    return NumberFormat.getPercentInstance(locale).apply { maximumFractionDigits = 0 }.format(ratio)
 }
 
-private fun Int.toDisplayDate(): String = "%04d-%02d-%02d".format(this / 10_000, this / 100 % 100, this % 100)
+private fun Int.toDisplayDate(locale: Locale, setting: String): String {
+    val date = LocalDate.of(this / 10_000, this / 100 % 100, this % 100)
+    val pattern = when (setting) {
+        "DATE_FORMAT_YEAR_MONTH_DAY" -> "yyyy-MM-dd"
+        "DATE_FORMAT_DAY_MONTH_YEAR" -> "dd/MM/yyyy"
+        "DATE_FORMAT_MONTH_DAY_YEAR" -> "MM/dd/yyyy"
+        else -> null
+    }
+    return (pattern?.let { DateTimeFormatter.ofPattern(it, locale) }
+        ?: DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)).format(date)
+}
 
 private fun deepLinkIntent(context: Context, configuration: LedgerWidgetConfiguration): Intent {
     val uri = Uri.Builder().scheme("ledger").authority("widget")

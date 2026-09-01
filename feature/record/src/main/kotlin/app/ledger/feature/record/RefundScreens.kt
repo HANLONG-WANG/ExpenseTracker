@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import app.ledger.core.common.StableId
 import app.ledger.core.designsystem.DateTimeZoneField
 import app.ledger.core.designsystem.FormSection
@@ -28,17 +30,21 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChip
+import app.ledger.core.designsystem.LedgerCheckboxRow
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerDatePickerFlow
+import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MoneyExpressionField
+import app.ledger.core.designsystem.SearchField
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.finance.application.RefundableTransactionView
@@ -46,6 +52,8 @@ import app.ledger.finance.domain.RefundAccrualPolicy
 import app.ledger.finance.domain.RefundBudgetPolicy
 import app.ledger.finance.domain.RefundGoalPolicy
 import app.ledger.finance.domain.RefundProjectPolicy
+import app.ledger.finance.domain.CategoryStatus
+import app.ledger.finance.domain.EntityStatus
 import java.time.LocalDate
 import java.time.Instant
 import java.time.YearMonth
@@ -60,12 +68,13 @@ public sealed interface RefundScreenAction {
     public data class IndependentChanged(val independent: Boolean) : RefundScreenAction
     public data class ExpressionChanged(val value: String) : RefundScreenAction
     public data class Operator(val value: String) : RefundScreenAction
-    public data object Account : RefundScreenAction
-    public data object Card : RefundScreenAction
-    public data object Category : RefundScreenAction
-    public data object Merchant : RefundScreenAction
-    public data object Project : RefundScreenAction
-    public data object Goal : RefundScreenAction
+    public data class Account(val id: StableId) : RefundScreenAction
+    public data class Card(val id: StableId?) : RefundScreenAction
+    public data class Category(val id: StableId) : RefundScreenAction
+    public data object CreateCategory : RefundScreenAction
+    public data class Merchant(val id: StableId?) : RefundScreenAction
+    public data class Project(val id: StableId?) : RefundScreenAction
+    public data class Goal(val id: StableId?) : RefundScreenAction
     public data class DateChanged(val date: LocalDate) : RefundScreenAction
     public data class AccrualPolicyChanged(val policy: RefundAccrualPolicy) : RefundScreenAction
     public data class BudgetPolicyChanged(val policy: RefundBudgetPolicy) : RefundScreenAction
@@ -90,12 +99,13 @@ internal class RefundActions(
     val onIndependent: (Boolean) -> Unit,
     val onExpression: (String) -> Unit,
     val onOperator: (String) -> Unit,
-    val onAccount: () -> Unit,
-    val onCard: () -> Unit,
-    val onCategory: () -> Unit,
-    val onMerchant: () -> Unit,
-    val onProject: () -> Unit,
-    val onGoal: () -> Unit,
+    val onAccount: (StableId) -> Unit,
+    val onCard: (StableId?) -> Unit,
+    val onCategory: (StableId) -> Unit,
+    val onCreateCategory: () -> Unit,
+    val onMerchant: (StableId?) -> Unit,
+    val onProject: (StableId?) -> Unit,
+    val onGoal: (StableId?) -> Unit,
     val onDate: (LocalDate) -> Unit,
     val onAccrualPolicy: (RefundAccrualPolicy) -> Unit,
     val onBudgetPolicy: (RefundBudgetPolicy) -> Unit,
@@ -120,12 +130,13 @@ internal fun refundActions(onAction: (RefundScreenAction) -> Unit): RefundAction
     onIndependent = { onAction(RefundScreenAction.IndependentChanged(it)) },
     onExpression = { onAction(RefundScreenAction.ExpressionChanged(it)) },
     onOperator = { onAction(RefundScreenAction.Operator(it)) },
-    onAccount = { onAction(RefundScreenAction.Account) },
-    onCard = { onAction(RefundScreenAction.Card) },
-    onCategory = { onAction(RefundScreenAction.Category) },
-    onMerchant = { onAction(RefundScreenAction.Merchant) },
-    onProject = { onAction(RefundScreenAction.Project) },
-    onGoal = { onAction(RefundScreenAction.Goal) },
+    onAccount = { onAction(RefundScreenAction.Account(it)) },
+    onCard = { onAction(RefundScreenAction.Card(it)) },
+    onCategory = { onAction(RefundScreenAction.Category(it)) },
+    onCreateCategory = { onAction(RefundScreenAction.CreateCategory) },
+    onMerchant = { onAction(RefundScreenAction.Merchant(it)) },
+    onProject = { onAction(RefundScreenAction.Project(it)) },
+    onGoal = { onAction(RefundScreenAction.Goal(it)) },
     onDate = { onAction(RefundScreenAction.DateChanged(it)) },
     onAccrualPolicy = { onAction(RefundScreenAction.AccrualPolicyChanged(it)) },
     onBudgetPolicy = { onAction(RefundScreenAction.BudgetPolicyChanged(it)) },
@@ -164,6 +175,7 @@ public fun RefundDestination(
 private fun RefundEditor(state: RefundEditorState, actions: RefundActions) {
     val original = RefundPolicy.original(state)
     val locale = LocalLocale.current.platformLocale
+    var picker by remember { mutableStateOf<RefundReferencePicker?>(null) }
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.REFUND_FORM).padding(horizontal = LedgerTheme.spacing.sm),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
@@ -207,8 +219,23 @@ private fun RefundEditor(state: RefundEditorState, actions: RefundActions) {
                 )
             }
         }
-        item { ReceivingFields(state, actions) }
-        item { InheritedFields(state, actions) }
+        item {
+            ReceivingFields(
+                state = state,
+                onAccount = { picker = RefundReferencePicker.ACCOUNT },
+                onCard = { picker = RefundReferencePicker.CARD },
+            )
+        }
+        item {
+            InheritedFields(
+                state = state,
+                onCategory = { picker = RefundReferencePicker.CATEGORY },
+                onCreateCategory = actions.onCreateCategory,
+                onMerchant = { picker = RefundReferencePicker.MERCHANT },
+                onProject = { picker = RefundReferencePicker.PROJECT },
+                onGoal = { picker = RefundReferencePicker.GOAL },
+            )
+        }
         item { RefundTimeAndPolicies(state, original, actions) }
         if (RefundPolicy.exceedsRemaining(state)) {
             item { ExcessConfirmation(state, actions) }
@@ -232,6 +259,24 @@ private fun RefundEditor(state: RefundEditorState, actions: RefundActions) {
             item { LedgerBanner(stringResource(R.string.refund_save_failed, state.failureCode.orEmpty()), LedgerBannerVariant.DANGER) }
         }
     }
+    picker?.let { activePicker ->
+        RefundReferencePickerDialog(
+            picker = activePicker,
+            state = state,
+            onDismiss = { picker = null },
+            onSelected = { id ->
+                when (activePicker) {
+                    RefundReferencePicker.ACCOUNT -> id?.let(actions.onAccount)
+                    RefundReferencePicker.CARD -> actions.onCard(id)
+                    RefundReferencePicker.CATEGORY -> id?.let(actions.onCategory)
+                    RefundReferencePicker.MERCHANT -> actions.onMerchant(id)
+                    RefundReferencePicker.PROJECT -> actions.onProject(id)
+                    RefundReferencePicker.GOAL -> actions.onGoal(id)
+                }
+                picker = null
+            },
+        )
+    }
 }
 
 @Composable
@@ -249,26 +294,138 @@ private fun RefundAmountSummary(original: RefundableTransactionView, state: Refu
 }
 
 @Composable
-private fun ReceivingFields(state: RefundEditorState, actions: RefundActions) {
+private fun ReceivingFields(state: RefundEditorState, onAccount: () -> Unit, onCard: () -> Unit) {
     val account = RefundPolicy.account(state, state.draft.receivingAccountId)
     val card = state.snapshot.references.cards.singleOrNull { it.id == state.draft.receivingCardId }
     FormSection(stringResource(R.string.refund_receiving_section)) {
-        SelectorField(stringResource(R.string.refund_receiving_account), account?.let { "${it.name} · ${it.currency.value}" } ?: stringResource(R.string.refund_select_account), actions.onAccount, supportingText = state.errors.fieldError(RefundField.ACCOUNT))
-        SelectorField(stringResource(R.string.refund_receiving_card), card?.displayName ?: stringResource(R.string.refund_no_card), actions.onCard)
+        SelectorField(stringResource(R.string.refund_receiving_account), account?.let { "${it.name} · ${it.currency.value}" } ?: stringResource(R.string.refund_select_account), onAccount, supportingText = state.errors.fieldError(RefundField.ACCOUNT))
+        SelectorField(stringResource(R.string.refund_receiving_card), card?.displayName ?: stringResource(R.string.refund_no_card), onCard)
     }
 }
 
 @Composable
-private fun InheritedFields(state: RefundEditorState, actions: RefundActions) {
+private fun InheritedFields(
+    state: RefundEditorState,
+    onCategory: () -> Unit,
+    onCreateCategory: () -> Unit,
+    onMerchant: () -> Unit,
+    onProject: () -> Unit,
+    onGoal: () -> Unit,
+) {
     val category = state.snapshot.references.categories.singleOrNull { it.id == state.draft.categoryId }
+    val expenseCategories = state.snapshot.references.categories.filter {
+        it.status.name == "ACTIVE" && it.direction.name == "EXPENSE"
+    }
     val merchant = state.snapshot.references.merchants.singleOrNull { it.id == state.draft.merchantId }
     val project = state.snapshot.projects.singleOrNull { it.id == state.draft.projectId }
     val goal = state.snapshot.goals.singleOrNull { it.id == state.draft.goalId }
-    FormSection(stringResource(R.string.refund_inherited_fields), description = stringResource(R.string.refund_inherited_adjustable)) {
-        SelectorField(stringResource(R.string.refund_category), category?.name ?: stringResource(R.string.refund_select_category), actions.onCategory, supportingText = state.errors.fieldError(RefundField.CATEGORY))
-        SelectorField(stringResource(R.string.refund_merchant), merchant?.name ?: stringResource(R.string.refund_none), actions.onMerchant)
-        SelectorField(stringResource(R.string.refund_project), project?.name ?: stringResource(R.string.refund_none), actions.onProject)
-        SelectorField(stringResource(R.string.refund_goal), goal?.name ?: stringResource(R.string.refund_none), actions.onGoal)
+    FormSection(
+        stringResource(if (state.draft.independent) R.string.refund_independent_fields else R.string.refund_inherited_fields),
+        description = stringResource(if (state.draft.independent) R.string.refund_independent_fields_explanation else R.string.refund_inherited_adjustable),
+    ) {
+        if (expenseCategories.isEmpty()) {
+            LedgerEmptyState(
+                stringResource(R.string.record_no_categories),
+                stringResource(R.string.record_no_categories_body),
+                stringResource(R.string.record_create_expense_category),
+                onCreateCategory,
+            )
+            if (state.errors.any { it.field == RefundField.CATEGORY }) {
+                LedgerBanner(stringResource(R.string.refund_category_required), LedgerBannerVariant.DANGER)
+            }
+        } else {
+            SelectorField(
+                stringResource(R.string.refund_category),
+                category?.name ?: stringResource(R.string.refund_select_category),
+                onCategory,
+                supportingText = state.errors.fieldError(RefundField.CATEGORY),
+            )
+        }
+        SelectorField(stringResource(R.string.refund_merchant), merchant?.name ?: stringResource(R.string.refund_none), onMerchant)
+        SelectorField(stringResource(R.string.refund_project), project?.name ?: stringResource(R.string.refund_none), onProject)
+        SelectorField(stringResource(R.string.refund_goal), goal?.name ?: stringResource(R.string.refund_none), onGoal)
+    }
+}
+
+private enum class RefundReferencePicker { ACCOUNT, CARD, CATEGORY, MERCHANT, PROJECT, GOAL }
+
+private data class RefundPickerOption(val id: StableId?, val label: String)
+
+@Composable
+private fun RefundReferencePickerDialog(
+    picker: RefundReferencePicker,
+    state: RefundEditorState,
+    onDismiss: () -> Unit,
+    onSelected: (StableId?) -> Unit,
+) {
+    var query by remember(picker) { mutableStateOf("") }
+    var selectedId by remember(picker) {
+        mutableStateOf(
+            when (picker) {
+                RefundReferencePicker.ACCOUNT -> state.draft.receivingAccountId
+                RefundReferencePicker.CARD -> state.draft.receivingCardId
+                RefundReferencePicker.CATEGORY -> state.draft.categoryId
+                RefundReferencePicker.MERCHANT -> state.draft.merchantId
+                RefundReferencePicker.PROJECT -> state.draft.projectId
+                RefundReferencePicker.GOAL -> state.draft.goalId
+            },
+        )
+    }
+    val noneLabel = stringResource(R.string.refund_none)
+    val options = when (picker) {
+        RefundReferencePicker.ACCOUNT -> state.snapshot.references.accounts
+            .filter { it.status == EntityStatus.ACTIVE }
+            .sortedBy { it.sortOrder }
+            .map { RefundPickerOption(it.id, "${it.name} · ${it.currency.value}") }
+        RefundReferencePicker.CARD -> listOf(RefundPickerOption(null, noneLabel)) + state.snapshot.references.cards
+            .filter { it.status == EntityStatus.ACTIVE && it.accountId == state.draft.receivingAccountId }
+            .sortedBy { it.sortOrder }
+            .map { RefundPickerOption(it.id, it.displayName) }
+        RefundReferencePicker.CATEGORY -> state.snapshot.references.categories
+            .filter { it.status == CategoryStatus.ACTIVE && it.direction.name == "EXPENSE" }
+            .sortedWith(compareBy({ it.sortOrder }, { it.name }))
+            .map { RefundPickerOption(it.id, it.name) }
+        RefundReferencePicker.MERCHANT -> listOf(RefundPickerOption(null, noneLabel)) + state.snapshot.references.merchants
+            .filter { it.status == EntityStatus.ACTIVE }
+            .sortedBy { it.name }
+            .map { RefundPickerOption(it.id, it.name) }
+        RefundReferencePicker.PROJECT -> listOf(RefundPickerOption(null, noneLabel)) + state.snapshot.projects
+            .sortedBy { it.name }
+            .map { RefundPickerOption(it.id, it.name) }
+        RefundReferencePicker.GOAL -> listOf(RefundPickerOption(null, noneLabel)) + state.snapshot.goals
+            .sortedBy { it.name }
+            .map { RefundPickerOption(it.id, it.name) }
+    }.filter { query.isBlank() || it.label.contains(query, ignoreCase = true) }
+    val title = stringResource(
+        when (picker) {
+            RefundReferencePicker.ACCOUNT -> R.string.refund_receiving_account
+            RefundReferencePicker.CARD -> R.string.refund_receiving_card
+            RefundReferencePicker.CATEGORY -> R.string.refund_category
+            RefundReferencePicker.MERCHANT -> R.string.refund_merchant
+            RefundReferencePicker.PROJECT -> R.string.refund_project
+            RefundReferencePicker.GOAL -> R.string.refund_goal
+        },
+    )
+    LedgerDialog(
+        title = title,
+        message = null,
+        confirmLabel = stringResource(R.string.refund_apply_selection),
+        onConfirm = { onSelected(selectedId) },
+        onDismiss = onDismiss,
+        confirmEnabled = selectedId != null || picker in setOf(RefundReferencePicker.CARD, RefundReferencePicker.MERCHANT, RefundReferencePicker.PROJECT, RefundReferencePicker.GOAL),
+    ) {
+        SearchField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = stringResource(R.string.refund_search_references),
+            onClear = { query = "" },
+            autoFocus = false,
+        )
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+            items(options, key = { it.id?.toString() ?: "none" }) { option ->
+                LedgerChoiceRow(option.label, selectedId == option.id, { selectedId = option.id })
+            }
+        }
     }
 }
 
@@ -324,7 +481,7 @@ private fun PolicyChoices(labels: List<String>, selected: Int, onSelected: (Int)
 private fun ExcessConfirmation(state: RefundEditorState, actions: RefundActions) {
     Column(Modifier.fillMaxWidth().testTag(LedgerTestTags.REFUND_EXCESS_CONFIRMATION), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         LedgerBanner(stringResource(R.string.refund_excess_warning), LedgerBannerVariant.DANGER)
-        LedgerChoiceRow(stringResource(R.string.refund_excess_override), state.draft.excessOverrideRequested, { actions.onRequestExcess(!state.draft.excessOverrideRequested) }, supportingText = stringResource(R.string.refund_excess_audit))
+        LedgerCheckboxRow(stringResource(R.string.refund_excess_override), state.draft.excessOverrideRequested, actions.onRequestExcess, supportingText = stringResource(R.string.refund_excess_audit))
         if (state.draft.excessOverrideRequested && !state.draft.excessRiskConfirmed) {
             LedgerButton(stringResource(R.string.refund_confirm_excess), actions.onConfirmExcess, variant = LedgerButtonVariant.DANGER)
         } else if (state.draft.excessRiskConfirmed) {
@@ -355,7 +512,7 @@ public fun RefundOriginalPickerDestination(
                     if (state.snapshot.originals.isEmpty()) {
                         LedgerEmptyState(stringResource(R.string.refund_no_originals), stringResource(R.string.refund_no_originals_explanation), stringResource(R.string.refund_independent), actions.onIndependent)
                     } else {
-                        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                             items(state.snapshot.originals, key = { it.transactionId.toString() }) { original -> RefundOriginalRow(original, actions.onChoose) }
                         }
                     }
@@ -388,7 +545,7 @@ private fun budgetMonthText(state: RefundEditorState, original: RefundableTransa
 }
 
 private fun LocalDate.localized(locale: Locale): String =
-    format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+    format(LedgerDateFormatterRuntime.formatter(locale))
 
 private fun YearMonth.localized(locale: Locale): String =
     format(DateTimeFormatter.ofPattern("LLLL yyyy", locale))

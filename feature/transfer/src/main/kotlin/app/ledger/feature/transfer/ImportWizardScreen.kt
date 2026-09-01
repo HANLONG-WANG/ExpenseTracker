@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
@@ -44,6 +45,8 @@ import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerEmptyState
+import app.ledger.core.designsystem.LedgerDialog
+import app.ledger.core.designsystem.LedgerModalDialog
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
@@ -72,7 +75,13 @@ enum class ImportValidationSeverityUi { ERROR, WARNING }
 enum class ImportResultOutcomeUi { SUCCESS, CANCELLED, FAILED_PARTIAL_NOT_ALLOWED, ROLLED_BACK }
 
 data class ImportPreviewRowUi(val rowNumber: Long, val summary: String, val status: String)
-data class ImportMappingRowUi(val source: String, val target: String?, val sample: String, val valid: Boolean)
+data class ImportMappingRowUi(
+    val source: String,
+    val target: String?,
+    val sample: String,
+    val valid: Boolean,
+    val targetOptions: List<String?> = emptyList(),
+)
 data class ImportEntityMappingUi(val type: String, val missingCount: Long, val createMissing: Boolean, val canCreate: Boolean)
 data class ImportEntityValueMappingUi(
     val type: String,
@@ -135,6 +144,8 @@ data class ImportWizardUiState(
     val duplicates: List<ImportDuplicateRowUi> = emptyList(),
     val missingEntityCount: Long = 0,
     val validationIssues: List<ImportValidationIssueUi> = emptyList(),
+    val preparedRowCount: Long = 0,
+    val excludedRows: Set<Long> = emptySet(),
     val processedRows: Long = 0,
     val totalRows: Long? = null,
     val history: List<ImportHistoryRowUi> = emptyList(),
@@ -157,6 +168,7 @@ data class ImportWizardActions(
     val onFxPolicyChanged: (String, ImportFxPolicyUi) -> Unit,
     val onFxRateChanged: (String, String) -> Unit,
     val onDuplicateResolved: (Long, DuplicateResolution) -> Unit,
+    val onRowExcludedChanged: (Long, Boolean) -> Unit,
     val onPrevious: () -> Unit,
     val onNext: () -> Unit,
     val onPause: () -> Unit,
@@ -169,13 +181,21 @@ data class ImportWizardActions(
     val onCleanupTemporary: () -> Unit = {},
     val onViewHistoryResult: (String) -> Unit = {},
     val onRollbackHistory: (String) -> Unit = {},
+    val onFieldMappingSelected: (String, String?) -> Unit = { _, _ -> },
+    val onEntityMappingSelected: (String, String, String) -> Unit = { _, _, _ -> },
 )
 
 @Composable
 fun ImportWizardScreen(state: ImportWizardUiState, actions: ImportWizardActions) {
     LedgerScaffold(
         Modifier.fillMaxSize().importRootTag(state),
-        topBar = { LedgerTopAppBar(stringResource(R.string.import_title), LedgerTopAppBarVariant.BACK, onNavigation = actions.onBack) },
+        topBar = {
+            LedgerTopAppBar(
+                stringResource(if (state.showHistory) R.string.import_history_heading else R.string.import_title),
+                LedgerTopAppBarVariant.BACK,
+                onNavigation = actions.onBack,
+            )
+        },
         fixedAction = {
             if (!state.showHistory && state.stage !in setOf(ImportWizardStage.EXECUTION, ImportWizardStage.RESULT)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
@@ -254,66 +274,67 @@ private fun ImportSourceContent(state: ImportWizardUiState, actions: ImportWizar
 
 @Composable
 private fun ImportStructureContent(state: ImportWizardUiState, actions: ImportWizardActions, modifier: Modifier) {
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-        StageHeading(R.string.import_structure_heading, R.string.import_structure_supporting)
+    LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+        item { StageHeading(R.string.import_structure_heading, R.string.import_structure_supporting) }
         when (state.structureState) {
             ImportStructureState.PARSING -> {
-                LedgerBanner(stringResource(R.string.import_parsing), LedgerBannerVariant.INFO)
-                OperationProgressPanel(
-                    OperationProgressUiModel(
-                        stringResource(R.string.import_operation_name),
-                        stringResource(R.string.import_parsing),
-                        stringResource(R.string.import_processed_unknown, state.processedRows),
-                        null,
-                        OperationCapability.PAUSABLE,
-                        stringResource(R.string.import_safe_cancel),
-                    ),
-                    onCancel = actions.onCancel,
-                    onPause = actions.onPause,
-                )
-            }
-            ImportStructureState.PAUSED -> {
-                LedgerBanner(stringResource(R.string.import_paused), LedgerBannerVariant.INFO)
-                LedgerButton(stringResource(R.string.import_resume), actions.onPause)
-                LedgerButton(stringResource(R.string.import_cancel), actions.onCancel, variant = LedgerButtonVariant.SECONDARY)
-            }
-            ImportStructureState.CORRUPT_FILE -> LedgerBanner(stringResource(R.string.import_corrupt), LedgerBannerVariant.DANGER)
-            ImportStructureState.UNSUPPORTED -> LedgerBanner(stringResource(R.string.import_unsupported), LedgerBannerVariant.DANGER)
-            ImportStructureState.CONTENT -> Unit
-        }
-        LedgerCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                LedgerText(stringResource(R.string.import_sheets), LedgerTextRole.SECTION)
-                state.sheetNames.forEach { name ->
-                    LedgerButton(
-                        if (name == state.selectedSheet) "✓ $name" else name,
-                        { actions.onSheetSelected(name) },
-                        variant = if (name == state.selectedSheet) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT,
+                item { LedgerBanner(stringResource(R.string.import_parsing), LedgerBannerVariant.INFO) }
+                item {
+                    OperationProgressPanel(
+                        OperationProgressUiModel(
+                            stringResource(R.string.import_operation_name),
+                            stringResource(R.string.import_parsing),
+                            stringResource(R.string.import_processed_unknown, state.processedRows),
+                            null,
+                            OperationCapability.PAUSABLE,
+                            stringResource(R.string.import_safe_cancel),
+                        ),
+                        onCancel = actions.onCancel,
+                        onPause = actions.onPause,
                     )
                 }
-                LedgerTextField(
-                    state.encoding,
-                    actions.onEncodingChanged,
-                    stringResource(R.string.import_encoding),
-                    Modifier.fillMaxWidth(),
-                    supportingText = stringResource(R.string.import_encoding_value, state.encoding),
-                )
-                LedgerTextField(
-                    state.headerRowNumber,
-                    actions.onHeaderRowChanged,
-                    stringResource(R.string.import_header_row),
-                    Modifier.fillMaxWidth(),
-                    required = true,
-                    keyboardType = KeyboardType.Number,
-                )
+            }
+            ImportStructureState.PAUSED -> {
+                item { LedgerBanner(stringResource(R.string.import_paused), LedgerBannerVariant.INFO) }
+                item { LedgerButton(stringResource(R.string.import_resume), actions.onPause) }
+                item { LedgerButton(stringResource(R.string.import_cancel), actions.onCancel, variant = LedgerButtonVariant.SECONDARY) }
+            }
+            ImportStructureState.CORRUPT_FILE -> item { LedgerBanner(stringResource(R.string.import_corrupt), LedgerBannerVariant.DANGER) }
+            ImportStructureState.UNSUPPORTED -> item { LedgerBanner(stringResource(R.string.import_unsupported), LedgerBannerVariant.DANGER) }
+            ImportStructureState.CONTENT -> Unit
+        }
+        item {
+            LedgerCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(LedgerTheme.spacing.sm)) {
+                    LedgerText(stringResource(R.string.import_sheets), LedgerTextRole.SECTION)
+                    state.sheetNames.forEach { name ->
+                        LedgerChoiceRow(name, name == state.selectedSheet, { actions.onSheetSelected(name) })
+                    }
+                    LedgerTextField(
+                        state.encoding,
+                        actions.onEncodingChanged,
+                        stringResource(R.string.import_encoding),
+                        Modifier.fillMaxWidth(),
+                        supportingText = stringResource(R.string.import_encoding_value, state.encoding),
+                    )
+                    LedgerTextField(
+                        state.headerRowNumber,
+                        actions.onHeaderRowChanged,
+                        stringResource(R.string.import_header_row),
+                        Modifier.fillMaxWidth(),
+                        required = true,
+                        keyboardType = KeyboardType.Number,
+                    )
+                }
             }
         }
-        VirtualPreview(state)
+        virtualPreviewItems(state)
     }
 }
 
 @Composable
 private fun ImportFieldMappingContent(state: ImportWizardUiState, actions: ImportWizardActions, modifier: Modifier) {
+    var mappingPickerSource by remember { mutableStateOf<String?>(null) }
     Column(modifier.fillMaxSize()) {
         StageHeading(R.string.import_mapping_heading, R.string.import_mapping_supporting)
         val missing = state.mappings.count { !it.valid }
@@ -330,9 +351,18 @@ private fun ImportFieldMappingContent(state: ImportWizardUiState, actions: Impor
                             LedgerTextRole.BODY,
                         )
                         LedgerText(mapping.sample, LedgerTextRole.SUPPORTING)
+                        val mappingAccessibility = stringResource(
+                            R.string.import_change_mapping_accessibility,
+                            mapping.source,
+                            mapping.sample,
+                            mapping.target?.importTargetFieldLabel() ?: stringResource(R.string.import_not_mapped),
+                        )
                         LedgerButton(
                             stringResource(R.string.import_change_mapping),
-                            { actions.onCycleFieldMapping(mapping.source) },
+                            { mappingPickerSource = mapping.source },
+                            Modifier.clearAndSetSemantics {
+                                contentDescription = mappingAccessibility
+                            },
                             variant = LedgerButtonVariant.TEXT,
                         )
                         if (!mapping.valid) LedgerBanner(stringResource(R.string.import_required_missing), LedgerBannerVariant.DANGER)
@@ -341,10 +371,28 @@ private fun ImportFieldMappingContent(state: ImportWizardUiState, actions: Impor
             }
         }
     }
+    mappingPickerSource?.let { source ->
+        val mapping = state.mappings.singleOrNull { it.source == source }
+        LedgerModalDialog(stringResource(R.string.import_change_mapping), onDismiss = { mappingPickerSource = null }) {
+            LazyColumn(Modifier.fillMaxWidth()) {
+                items(mapping?.targetOptions.orEmpty(), key = { it ?: "unmapped" }) { target ->
+                    LedgerChoiceRow(
+                        target?.importTargetFieldLabel() ?: stringResource(R.string.import_not_mapped),
+                        selected = mapping?.target == target,
+                        onClick = {
+                            actions.onFieldMappingSelected(source, target)
+                            mappingPickerSource = null
+                        },
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun ImportEntityMappingContent(state: ImportWizardUiState, actions: ImportWizardActions, modifier: Modifier) {
+    var entityPicker by remember { mutableStateOf<Pair<String, String>?>(null) }
     Column(modifier.fillMaxSize()) {
         StageHeading(R.string.import_entity_heading, R.string.import_entity_supporting)
         LedgerBanner(
@@ -365,9 +413,19 @@ private fun ImportEntityMappingContent(state: ImportWizardUiState, actions: Impo
                             if (mapping.createMissing) stringResource(R.string.import_create_missing) else stringResource(R.string.import_map_existing),
                             LedgerTextRole.SUPPORTING,
                         )
+                        val entityMappingAccessibility = stringResource(
+                            R.string.import_entity_mapping_accessibility,
+                            mapping.type.importTargetFieldLabel(),
+                            mapping.missingCount,
+                            if (mapping.createMissing) stringResource(R.string.import_create_missing) else stringResource(R.string.import_map_existing),
+                            if (mapping.createMissing) stringResource(R.string.import_map_existing) else stringResource(R.string.import_create_missing),
+                        )
                         LedgerButton(
                             if (mapping.createMissing) stringResource(R.string.import_map_existing) else stringResource(R.string.import_create_missing),
                             { actions.onCreateMissingChanged(mapping.type, !mapping.createMissing) },
+                            Modifier.clearAndSetSemantics {
+                                contentDescription = entityMappingAccessibility
+                            },
                             variant = LedgerButtonVariant.TEXT,
                             enabled = mapping.canCreate,
                         )
@@ -386,13 +444,39 @@ private fun ImportEntityMappingContent(state: ImportWizardUiState, actions: Impo
                             LedgerTextRole.BODY,
                         )
                         if (mapping.targetOptions.isNotEmpty()) {
+                            val valueMappingAccessibility = stringResource(
+                                R.string.import_entity_value_mapping_accessibility,
+                                mapping.type.importTargetFieldLabel(),
+                                mapping.sourceValue,
+                                mapping.targetLabel ?: stringResource(R.string.import_create_new_value),
+                            )
                             LedgerButton(
                                 stringResource(R.string.import_cycle_existing_mapping),
-                                { actions.onCycleEntityMapping(mapping.type, mapping.sourceValue) },
+                                { entityPicker = mapping.type to mapping.sourceValue },
+                                Modifier.clearAndSetSemantics {
+                                    contentDescription = valueMappingAccessibility
+                                },
                                 variant = LedgerButtonVariant.TEXT,
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+    entityPicker?.let { (type, source) ->
+        val mapping = state.entityValueMappings.singleOrNull { it.type == type && it.sourceValue == source }
+        LedgerModalDialog(stringResource(R.string.import_map_existing), onDismiss = { entityPicker = null }) {
+            LazyColumn(Modifier.fillMaxWidth()) {
+                items(mapping?.targetOptions.orEmpty(), key = { it }) { target ->
+                    LedgerChoiceRow(
+                        target,
+                        selected = target == mapping?.targetLabel,
+                        onClick = {
+                            actions.onEntityMappingSelected(type, source, target)
+                            entityPicker = null
+                        },
+                    )
                 }
             }
         }
@@ -449,112 +533,137 @@ private fun ImportFxContent(state: ImportWizardUiState, actions: ImportWizardAct
 @Composable
 private fun ImportValidationContent(state: ImportWizardUiState, actions: ImportWizardActions, modifier: Modifier) {
     var selectedIssueTab by remember { mutableStateOf(ImportValidationSeverityUi.ERROR) }
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-        StageHeading(R.string.import_validation_heading, R.string.import_validation_supporting)
-        val banner = when (state.validationState) {
-            ImportValidationState.VALIDATING -> R.string.import_validating to LedgerBannerVariant.INFO
-            ImportValidationState.ERRORS -> R.string.import_validation_errors to LedgerBannerVariant.DANGER
-            ImportValidationState.WARNINGS -> R.string.import_validation_warnings to LedgerBannerVariant.WARNING
-            ImportValidationState.VALID -> R.string.import_validation_valid to LedgerBannerVariant.INFO
+    val banner = when (state.validationState) {
+        ImportValidationState.VALIDATING -> R.string.import_validating to LedgerBannerVariant.INFO
+        ImportValidationState.ERRORS -> R.string.import_validation_errors to LedgerBannerVariant.DANGER
+        ImportValidationState.WARNINGS -> R.string.import_validation_warnings to LedgerBannerVariant.WARNING
+        ImportValidationState.VALID -> R.string.import_validation_valid to LedgerBannerVariant.INFO
+    }
+    val visibleIssues = state.validationIssues.filter { it.severity == selectedIssueTab }
+    LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+        item { StageHeading(R.string.import_validation_heading, R.string.import_validation_supporting) }
+        item { LedgerBanner(stringResource(banner.first), banner.second) }
+        item { LedgerText(stringResource(R.string.import_validation_summary), LedgerTextRole.SECTION) }
+        item { SummaryCards(state) }
+        item {
+            LedgerTabRow(
+                selectedIndex = if (selectedIssueTab == ImportValidationSeverityUi.ERROR) 0 else 1,
+                labels = listOf(
+                    stringResource(R.string.import_error_tab, state.errorCount),
+                    stringResource(R.string.import_warning_tab, state.warningCount),
+                ),
+                onSelected = { selectedIssueTab = if (it == 0) ImportValidationSeverityUi.ERROR else ImportValidationSeverityUi.WARNING },
+            )
         }
-        LedgerBanner(stringResource(banner.first), banner.second)
-        LedgerText(stringResource(R.string.import_validation_summary), LedgerTextRole.SECTION)
-        SummaryCards(state)
-        LedgerTabRow(
-            selectedIndex = if (selectedIssueTab == ImportValidationSeverityUi.ERROR) 0 else 1,
-            labels = listOf(
-                stringResource(R.string.import_error_tab, state.errorCount),
-                stringResource(R.string.import_warning_tab, state.warningCount),
-            ),
-            onSelected = { selectedIssueTab = if (it == 0) ImportValidationSeverityUi.ERROR else ImportValidationSeverityUi.WARNING },
-        )
-        val visibleIssues = state.validationIssues.filter { it.severity == selectedIssueTab }
         if (visibleIssues.isEmpty()) {
-            LedgerText(stringResource(R.string.import_no_issues_in_tab), LedgerTextRole.SUPPORTING)
+            item { LedgerText(stringResource(R.string.import_no_issues_in_tab), LedgerTextRole.SUPPORTING) }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                itemsIndexed(visibleIssues, key = { index, issue -> "${issue.rowNumber}:${issue.field}:$index" }) { _, issue ->
-                    LedgerCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm)) {
-                            LedgerText(
-                                issue.rowNumber?.let { stringResource(R.string.import_issue_row, it) }
-                                    ?: stringResource(R.string.import_issue_general),
-                                LedgerTextRole.SECTION,
+            itemsIndexed(visibleIssues, key = { index, issue -> "${issue.rowNumber}:${issue.field}:$index" }) { _, issue ->
+                LedgerCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm)) {
+                        LedgerText(
+                            issue.rowNumber?.let { stringResource(R.string.import_issue_row, it) }
+                                ?: stringResource(R.string.import_issue_general),
+                            LedgerTextRole.SECTION,
+                        )
+                        issue.field?.let {
+                            LedgerText(stringResource(R.string.import_issue_field, it.importTargetFieldLabel()), LedgerTextRole.LABEL)
+                        }
+                        LedgerText(issue.message.importValidationMessage(), LedgerTextRole.BODY)
+                        issue.rowNumber?.let { rowNumber ->
+                            LedgerButton(
+                                stringResource(R.string.import_exclude_row),
+                                { actions.onRowExcludedChanged(rowNumber, true) },
+                                Modifier.fillMaxWidth(),
+                                LedgerButtonVariant.SECONDARY,
                             )
-                            issue.field?.let {
-                                LedgerText(stringResource(R.string.import_issue_field, it.importTargetFieldLabel()), LedgerTextRole.LABEL)
-                            }
-                            LedgerText(issue.message.importValidationMessage(), LedgerTextRole.BODY)
                         }
                     }
                 }
             }
         }
+        if (state.excludedRows.isNotEmpty()) {
+            item { LedgerText(stringResource(R.string.import_excluded_rows), LedgerTextRole.SECTION) }
+            items(state.excludedRows.sorted(), key = { "excluded:$it" }) { rowNumber ->
+                LedgerCard(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        LedgerText(stringResource(R.string.import_issue_row, rowNumber), LedgerTextRole.BODY)
+                        LedgerButton(
+                            stringResource(R.string.import_restore_row),
+                            { actions.onRowExcludedChanged(rowNumber, false) },
+                            variant = LedgerButtonVariant.TEXT,
+                        )
+                    }
+                }
+            }
+            item {
+                LedgerText(
+                    stringResource(R.string.import_prepared_excluded_summary, state.preparedRowCount, state.excludedRows.size),
+                    LedgerTextRole.SUPPORTING,
+                )
+            }
+        }
         if (state.duplicates.isNotEmpty()) {
-            LedgerText(stringResource(R.string.import_duplicate_candidates), LedgerTextRole.SECTION)
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                items(state.duplicates, key = ImportDuplicateRowUi::rowNumber) { duplicate ->
-                    LedgerCard(Modifier.fillMaxWidth().testTag("import_duplicate_row")) {
-                        Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                            LedgerText(stringResource(R.string.import_duplicate_row, duplicate.rowNumber), LedgerTextRole.BODY)
-                            LedgerText(duplicate.matchKind.importDuplicateMatchLabel(), LedgerTextRole.SUPPORTING)
-                            Row(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                                LedgerButton(
-                                    stringResource(R.string.import_duplicate_skip),
-                                    { actions.onDuplicateResolved(duplicate.rowNumber, DuplicateResolution.SKIP) },
-                                    Modifier.testTag("import_duplicate_skip"),
-                                    variant = if (duplicate.resolution == DuplicateResolution.SKIP) {
-                                        LedgerButtonVariant.TONAL
-                                    } else {
-                                        LedgerButtonVariant.TEXT
-                                    },
-                                )
-                                LedgerButton(
-                                    stringResource(R.string.import_duplicate_anyway),
-                                    { actions.onDuplicateResolved(duplicate.rowNumber, DuplicateResolution.IMPORT_ANYWAY) },
-                                    Modifier.testTag("import_duplicate_anyway"),
-                                    variant = if (duplicate.resolution == DuplicateResolution.IMPORT_ANYWAY) {
-                                        LedgerButtonVariant.TONAL
-                                    } else {
-                                        LedgerButtonVariant.TEXT
-                                    },
-                                )
-                            }
+            item { LedgerText(stringResource(R.string.import_duplicate_candidates), LedgerTextRole.SECTION) }
+            items(state.duplicates, key = ImportDuplicateRowUi::rowNumber) { duplicate ->
+                LedgerCard(Modifier.fillMaxWidth().testTag("import_duplicate_row")) {
+                    Column(Modifier.padding(LedgerTheme.spacing.sm)) {
+                        LedgerText(stringResource(R.string.import_duplicate_row, duplicate.rowNumber), LedgerTextRole.BODY)
+                        LedgerText(duplicate.matchKind.importDuplicateMatchLabel(), LedgerTextRole.SUPPORTING)
+                        Row(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                            LedgerButton(
+                                stringResource(R.string.import_duplicate_skip),
+                                { actions.onDuplicateResolved(duplicate.rowNumber, DuplicateResolution.SKIP) },
+                                Modifier.testTag("import_duplicate_skip"),
+                                variant = if (duplicate.resolution == DuplicateResolution.SKIP) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT,
+                            )
+                            LedgerButton(
+                                stringResource(R.string.import_duplicate_anyway),
+                                { actions.onDuplicateResolved(duplicate.rowNumber, DuplicateResolution.IMPORT_ANYWAY) },
+                                Modifier.testTag("import_duplicate_anyway"),
+                                variant = if (duplicate.resolution == DuplicateResolution.IMPORT_ANYWAY) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT,
+                            )
                         }
                     }
                 }
             }
         }
         if (state.temporaryCleanupComplete) {
-            LedgerText(stringResource(R.string.import_cleanup_complete), LedgerTextRole.SUPPORTING)
+            item { LedgerText(stringResource(R.string.import_cleanup_complete), LedgerTextRole.SUPPORTING) }
         }
-        VirtualPreview(state)
+        virtualPreviewItems(state)
     }
 }
 
 @Composable
 private fun ImportConfirmationContent(state: ImportWizardUiState, modifier: Modifier) {
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-        StageHeading(R.string.import_confirm_heading, R.string.import_confirm_supporting)
-        SummaryCards(state)
-        LedgerText(stringResource(R.string.import_entity_creation_summary), LedgerTextRole.SECTION)
-        state.entityMappings.filter { it.createMissing && it.missingCount > 0L }.forEach { mapping ->
+    val creations = state.entityMappings.filter { it.createMissing && it.missingCount > 0L }
+    LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+        item { StageHeading(R.string.import_confirm_heading, R.string.import_confirm_supporting) }
+        item { SummaryCards(state) }
+        item { LedgerText(stringResource(R.string.import_entity_creation_summary), LedgerTextRole.SECTION) }
+        items(creations, key = ImportEntityMappingUi::type) { mapping ->
             LedgerText(
                 stringResource(R.string.import_entity_creation_item, mapping.type.importTargetFieldLabel(), mapping.missingCount),
                 LedgerTextRole.BODY,
             )
         }
-        if (state.entityMappings.none { it.createMissing && it.missingCount > 0L }) {
-            LedgerText(stringResource(R.string.import_entity_creation_none), LedgerTextRole.SUPPORTING)
+        if (creations.isEmpty()) {
+            item { LedgerText(stringResource(R.string.import_entity_creation_none), LedgerTextRole.SUPPORTING) }
         }
-        LedgerCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                LedgerText(stringResource(R.string.import_atomic_title), LedgerTextRole.SECTION)
-                LedgerText(stringResource(R.string.import_atomic_explanation), LedgerTextRole.BODY)
-                LedgerText(stringResource(R.string.import_no_split), LedgerTextRole.SUPPORTING)
+        item {
+            LedgerCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(LedgerTheme.spacing.sm)) {
+                    LedgerText(stringResource(R.string.import_atomic_title), LedgerTextRole.SECTION)
+                    LedgerText(stringResource(R.string.import_atomic_explanation), LedgerTextRole.BODY)
+                    LedgerText(stringResource(R.string.import_no_split), LedgerTextRole.SUPPORTING)
+                }
             }
         }
-        VirtualPreview(state)
+        virtualPreviewItems(state)
     }
 }
 
@@ -615,6 +724,7 @@ private fun ImportExecutionContent(state: ImportWizardUiState, actions: ImportWi
 
 @Composable
 private fun ImportResultContent(state: ImportWizardUiState, actions: ImportWizardActions, modifier: Modifier) {
+    var confirmingRollback by remember { mutableStateOf(false) }
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         StageHeading(R.string.import_result_heading, R.string.import_result_supporting)
         LedgerBanner(
@@ -636,14 +746,35 @@ private fun ImportResultContent(state: ImportWizardUiState, actions: ImportWizar
         if (state.resultOutcome == ImportResultOutcomeUi.SUCCESS) {
             Row(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                 LedgerButton(stringResource(R.string.import_open_journal), actions.onOpenJournal)
-                LedgerButton(stringResource(R.string.import_rollback_batch), actions.onRollback, variant = LedgerButtonVariant.SECONDARY)
+                LedgerButton(stringResource(R.string.import_rollback_batch), { confirmingRollback = true }, variant = LedgerButtonVariant.SECONDARY)
             }
+        }
+    }
+    if (confirmingRollback) {
+        LedgerDialog(
+            title = stringResource(R.string.import_rollback_confirm_title),
+            message = stringResource(
+                R.string.import_rollback_confirm_result_scope,
+                state.resultCounts.transactions,
+                state.resultCounts.accounts + state.resultCounts.categories + state.resultCounts.merchants,
+            ),
+            confirmLabel = stringResource(R.string.import_rollback_batch),
+            onConfirm = {
+                confirmingRollback = false
+                actions.onRollback()
+            },
+            onDismiss = { confirmingRollback = false },
+            danger = true,
+        ) {
+            LedgerText(stringResource(R.string.import_rollback_confirm_consequence), LedgerTextRole.BODY)
+            LedgerText(stringResource(R.string.import_rollback_confirm_unaffected), LedgerTextRole.SUPPORTING)
         }
     }
 }
 
 @Composable
 private fun ImportHistoryContent(state: ImportWizardUiState, actions: ImportWizardActions, modifier: Modifier) {
+    var pendingRollback by remember { mutableStateOf<ImportHistoryRowUi?>(null) }
     Column(modifier.fillMaxSize()) {
         StageHeading(R.string.import_history_heading, R.string.import_history_supporting)
         if (state.history.isEmpty()) {
@@ -669,7 +800,7 @@ private fun ImportHistoryContent(state: ImportWizardUiState, actions: ImportWiza
                                 )
                                 LedgerButton(
                                     stringResource(R.string.import_rollback_batch),
-                                    { actions.onRollbackHistory(item.batchId) },
+                                    { pendingRollback = item },
                                     variant = LedgerButtonVariant.SECONDARY,
                                     enabled = item.reversible && item.batchId.isNotBlank(),
                                 )
@@ -680,37 +811,50 @@ private fun ImportHistoryContent(state: ImportWizardUiState, actions: ImportWiza
             }
         }
     }
+    pendingRollback?.let { item ->
+        LedgerDialog(
+            title = stringResource(R.string.import_rollback_confirm_title),
+            message = stringResource(R.string.import_rollback_confirm_history_scope, item.importedAt, item.rowCount),
+            confirmLabel = stringResource(R.string.import_rollback_batch),
+            onConfirm = {
+                pendingRollback = null
+                actions.onRollbackHistory(item.batchId)
+            },
+            onDismiss = { pendingRollback = null },
+            danger = true,
+        ) {
+            LedgerText(stringResource(R.string.import_rollback_confirm_consequence), LedgerTextRole.BODY)
+            LedgerText(stringResource(R.string.import_rollback_confirm_unaffected), LedgerTextRole.SUPPORTING)
+        }
+    }
 }
 
-@Composable
-private fun VirtualPreview(state: ImportWizardUiState) {
-    val locale = androidx.compose.ui.platform.LocalLocale.current.platformLocale
-    LedgerText(stringResource(R.string.import_preview), LedgerTextRole.SECTION)
-    LazyColumn(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-        items(state.previewRowCount, key = { index -> state.previewRow(index).rowNumber }) { index ->
-            val row = state.previewRow(index)
-            val status = row.status.importPreviewStatusLabel()
-            val issues = state.validationIssues.filter { it.rowNumber == row.rowNumber }
-                .map { issue ->
-                    listOfNotNull(
-                        issue.field?.importTargetFieldLabel(),
-                        issue.message.importValidationMessage(),
-                    ).joinToString(": ")
-                }.joinToString("; ")
-            LedgerCard(
-                Modifier.fillMaxWidth().clearAndSetSemantics {
-                    text = AnnotatedString(
-                        listOf(LocaleNumberFormatter.integer(row.rowNumber, locale), row.summary, status, issues)
-                            .filter(String::isNotBlank)
-                            .joinToString(", "),
-                    )
-                },
-            ) {
-                Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                    LedgerText(stringResource(R.string.import_row_number, row.rowNumber), LedgerTextRole.LABEL)
-                    LedgerText(row.summary, LedgerTextRole.BODY, Modifier.clearAndSetSemantics { })
-                    LedgerText(status, LedgerTextRole.SUPPORTING)
-                }
+private fun LazyListScope.virtualPreviewItems(state: ImportWizardUiState) {
+    item { LedgerText(stringResource(R.string.import_preview), LedgerTextRole.SECTION) }
+    items(state.previewRowCount, key = { index -> state.previewRow(index).rowNumber }) { index ->
+        val locale = LocalLocale.current.platformLocale
+        val row = state.previewRow(index)
+        val status = row.status.importPreviewStatusLabel()
+        val issues = state.validationIssues.filter { it.rowNumber == row.rowNumber }
+            .map { issue ->
+                listOfNotNull(
+                    issue.field?.importTargetFieldLabel(),
+                    issue.message.importValidationMessage(),
+                ).joinToString(": ")
+            }.joinToString("; ")
+        LedgerCard(
+            Modifier.fillMaxWidth().clearAndSetSemantics {
+                text = AnnotatedString(
+                    listOf(LocaleNumberFormatter.integer(row.rowNumber, locale), row.summary, status, issues)
+                        .filter(String::isNotBlank)
+                        .joinToString(", "),
+                )
+            },
+        ) {
+            Column(Modifier.padding(LedgerTheme.spacing.sm)) {
+                LedgerText(stringResource(R.string.import_row_number, row.rowNumber), LedgerTextRole.LABEL)
+                LedgerText(row.summary, LedgerTextRole.BODY, Modifier.clearAndSetSemantics { })
+                LedgerText(status, LedgerTextRole.SUPPORTING)
             }
         }
     }

@@ -23,6 +23,7 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChip
+import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
@@ -115,12 +116,13 @@ private fun ExportTypeContent(state: ExportFlowUiState, actions: ExportFlowActio
     LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         item { StageHeading(R.string.export_content_heading, R.string.export_content_supporting) }
         items(ExportContent.entries.filter(state.availableContents::contains), key = ExportContent::name) { content ->
-            LedgerCard(Modifier.fillMaxWidth(), onClick = { actions.onContentSelected(content) }) {
-                Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                    LedgerText(content.label(), LedgerTextRole.SECTION)
-                    LedgerText(content.supporting(), LedgerTextRole.SUPPORTING)
-                }
-            }
+            LedgerChoiceRow(
+                title = content.label(),
+                selected = state.content == content,
+                onClick = { actions.onContentSelected(content) },
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = content.supporting(),
+            )
         }
         if (state.content == ExportContent.CURRENT_FILTER) {
             item { LedgerBanner(stringResource(R.string.export_filter_summary, state.filterSummary), LedgerBannerVariant.INFO) }
@@ -219,6 +221,9 @@ private fun ExportProgressContent(state: ExportFlowUiState, actions: ExportFlowA
             }
             ExportExecutionPresentation.SUCCEEDED -> {
                 LedgerBanner(stringResource(R.string.export_succeeded, state.processedRows), LedgerBannerVariant.INFO)
+                state.destinationLabel?.let {
+                    LedgerText(stringResource(R.string.export_selected_location, it), LedgerTextRole.SUPPORTING)
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                     LedgerButton(stringResource(R.string.export_open), actions.onOpen, Modifier.weight(1f), enabled = state.canOpen)
                     LedgerButton(stringResource(R.string.export_share), actions.onShare, Modifier.weight(1f), LedgerButtonVariant.SECONDARY, state.canShare)

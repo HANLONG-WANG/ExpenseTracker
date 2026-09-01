@@ -33,6 +33,7 @@ import app.ledger.analytics.domain.ReportSpec
 import app.ledger.analytics.domain.ReportSort
 import app.ledger.analytics.domain.ReportVisualization
 import app.ledger.analytics.domain.SortDirection
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.analytics.domain.SavedAnomalyRule
 import app.ledger.analytics.domain.SavedDashboard
 import app.ledger.analytics.domain.SavedReportDefinition
@@ -191,10 +192,22 @@ object AnalysisPolicy {
         LocaleNumberFormatter.percentage(value, locale)
 
     fun dimensionLabel(value: DimensionValue, locale: Locale = Locale.getDefault()): String = when (value) {
-        is DimensionValue.Date -> value.value.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+        is DimensionValue.Date -> value.value.format(LedgerDateFormatterRuntime.formatter(locale))
         is DimensionValue.Entity -> value.label
         is DimensionValue.Currency -> value.value.value
-        is DimensionValue.ClosedKey -> value.value
+        is DimensionValue.ClosedKey -> when (value.value) {
+            "total" -> when (locale.language) {
+                "zh" -> "总计"
+                "ja" -> "合計"
+                else -> "Total"
+            }
+            "unassigned" -> when (locale.language) {
+                "zh" -> "未分类"
+                "ja" -> "未分類"
+                else -> "Unassigned"
+            }
+            else -> value.value
+        }
     }
 
     fun visualizationType(execution: ReportExecution.Content): app.ledger.core.designsystem.LedgerChartType = when (execution.visualization.resolved) {
@@ -217,27 +230,35 @@ object AnalysisPolicy {
         baseCurrency: CurrencyCode,
     ): List<app.ledger.core.designsystem.LedgerChartSeries> = buildList {
         execution.plan.spec.measures.forEach { measure ->
-            val currentValues = execution.rows.map { row -> row.measureValues.single { it.measure == measure } }
-            add(
-                app.ledger.core.designsystem.LedgerChartSeries(
-                    stableSeriesKey = measure.name.lowercase(Locale.ROOT),
-                    label = measure.name,
-                    values = currentValues.map { it.chartValue() },
-                    pointLabels = execution.rows.map { row -> rowLabel(row, locale) },
-                    formattedValues = currentValues.map { it.formattedChartValue(baseCurrency, locale) },
-                ),
-            )
-            execution.comparison?.let { comparison ->
-                val comparisonValues = comparison.rows.map { row -> row.measureValues.single { it.measure == measure } }
+            val currentValues = execution.rows.mapNotNull { row ->
+                row.measureValues.singleOrNull { it.measure == measure }?.let { row to it }
+            }
+            if (currentValues.isNotEmpty()) {
                 add(
                     app.ledger.core.designsystem.LedgerChartSeries(
-                        stableSeriesKey = "${measure.name.lowercase(Locale.ROOT)}_comparison",
-                        label = "${measure.name} · ${comparison.mode.name}",
-                        values = comparisonValues.map { it.chartValue() },
-                        pointLabels = comparison.rows.map { row -> rowLabel(row, locale) },
-                        formattedValues = comparisonValues.map { it.formattedChartValue(baseCurrency, locale) },
+                        stableSeriesKey = measure.name.lowercase(Locale.ROOT),
+                        label = measure.name,
+                        values = currentValues.map { it.second.chartValue() },
+                        pointLabels = currentValues.map { rowLabel(it.first, locale) },
+                        formattedValues = currentValues.map { it.second.formattedChartValue(baseCurrency, locale) },
                     ),
                 )
+            }
+            execution.comparison?.let { comparison ->
+                val comparisonValues = comparison.rows.mapNotNull { row ->
+                    row.measureValues.singleOrNull { it.measure == measure }?.let { row to it }
+                }
+                if (comparisonValues.isNotEmpty()) {
+                    add(
+                        app.ledger.core.designsystem.LedgerChartSeries(
+                            stableSeriesKey = "${measure.name.lowercase(Locale.ROOT)}_comparison",
+                            label = "${measure.name} · ${comparison.mode.name}",
+                            values = comparisonValues.map { it.second.chartValue() },
+                            pointLabels = comparisonValues.map { rowLabel(it.first, locale) },
+                            formattedValues = comparisonValues.map { it.second.formattedChartValue(baseCurrency, locale) },
+                        ),
+                    )
+                }
             }
         }
     }

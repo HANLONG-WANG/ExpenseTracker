@@ -111,6 +111,7 @@ internal class ImportController(
     private var allEntityDecisions: List<EntityMappingDecision> = emptyList()
     private var fxDecisions: List<FxImportDecision> = emptyList()
     private var duplicateResolutions: Map<Long, DuplicateResolution> = emptyMap()
+    private var excludedRows: Set<Long> = emptySet()
     private var entityCreationEnabled: Map<ImportTargetField, Boolean> = emptyMap()
     private var preparedRows: Long = 0L
     private var preparedTransactionRows: Long = 0L
@@ -167,6 +168,17 @@ internal class ImportController(
         refreshMappingUi()
     }
 
+    fun selectFieldMapping(source: String, targetName: String?) {
+        if (source !in samples) return
+        val target = targetName?.let { runCatching { ImportTargetField.valueOf(it) }.getOrNull() }
+        if (target !in MAPPABLE_FIELDS) return
+        mappings = mappings.filterNot { it.sourceColumn == source || target != null && it.targetField == target } +
+            listOfNotNull(target?.let { StagingMapping(source, it, ImportTransformation.Identity) })
+        duplicateResolutions = emptyMap()
+        referenceSnapshot?.let { rebuildEntityDecisions(it, resetCreation = false) }
+        refreshMappingUi()
+    }
+
     fun setCreateMissing(typeName: String, enabled: Boolean) {
         val type = runCatching { ImportTargetField.valueOf(typeName) }.getOrNull() ?: return
         if (type !in CREATABLE_ENTITY_FIELDS) return
@@ -182,6 +194,16 @@ internal class ImportController(
         val current = allEntityDecisions.singleOrNull { it.targetField == field && it.sourceValue == sourceValue }
         val currentIndex = options.indexOfFirst { it.first == current?.existingEntityId }
         val target = options[(currentIndex + 1).mod(options.size)].first
+        allEntityDecisions = allEntityDecisions.filterNot { it.targetField == field && it.sourceValue == sourceValue } +
+            EntityMappingDecision(field, sourceValue, target, false)
+        entityCreationEnabled = entityCreationEnabled + (field to false)
+        duplicateResolutions = emptyMap()
+        refreshDecisionUi()
+    }
+
+    fun selectEntityMapping(typeName: String, sourceValue: String, targetLabel: String) {
+        val field = runCatching { ImportTargetField.valueOf(typeName) }.getOrNull() ?: return
+        val target = entityOptions(field).singleOrNull { it.second == targetLabel }?.first ?: return
         allEntityDecisions = allEntityDecisions.filterNot { it.targetField == field && it.sourceValue == sourceValue } +
             EntityMappingDecision(field, sourceValue, target, false)
         entityCreationEnabled = entityCreationEnabled + (field to false)
@@ -221,6 +243,12 @@ internal class ImportController(
         prepare()
     }
 
+    suspend fun setRowExcluded(rowNumber: Long, excluded: Boolean) {
+        if (rowNumber <= 0L || mutableState.value.stage != ImportWizardStage.VALIDATION) return
+        excludedRows = if (excluded) excludedRows + rowNumber else excludedRows - rowNumber
+        prepare()
+    }
+
     suspend fun selectSource(activeBookId: StableId, activeZoneId: ZoneId, uri: Uri) {
         bookId = activeBookId
         zoneId = activeZoneId
@@ -230,6 +258,7 @@ internal class ImportController(
         sourceHandleId = handle
         format = detectFormat(uri, mutableState.value.mode)
         duplicateResolutions = emptyMap()
+        excludedRows = emptySet()
         try {
             SecureImportSourceHandleStore(applicationContext, keyProvider).save(activeBookId, handle, uri.toString())
             val repository = operations(activeBookId)
@@ -304,8 +333,58 @@ internal class ImportController(
         }
     }
 
-    fun cancel() {
-        operationId?.value?.let { ImportRunControlRegistry.get(it).cancel() }
+    suspend fun cancel() = withContext(Dispatchers.IO) {
+        if (!canAbandon()) return@withContext
+        val activeBook = bookId ?: return@withContext
+        val activeOperation = operationId ?: return@withContext
+        ImportRunControlRegistry.get(activeOperation.value).cancel()
+        val repository = operations(activeBook)
+        var current = repository.get(activeOperation).success()
+        current?.let { operation ->
+            if (operation.state in setOf(
+                    BackgroundOperationState.QUEUED,
+                    BackgroundOperationState.PREPARING,
+                    BackgroundOperationState.RUNNING,
+                    BackgroundOperationState.PAUSED,
+                )
+            ) {
+                val cancelled = operation.transition(BackgroundOperationState.CANCEL_REQUESTED, runtime.clock.now()).success()
+                repository.save(cancelled).success()
+                current = cancelled
+            }
+        }
+        WorkManager.getInstance(applicationContext)
+            .cancelUniqueWork(ImportWorkScheduler.uniqueName(activeOperation.value))
+            .result
+            .get()
+        current = repository.get(activeOperation).success() ?: current
+        current?.let { operation ->
+            if (operation.state in setOf(BackgroundOperationState.CANCEL_REQUESTED, BackgroundOperationState.FAILED_RETRYABLE)) {
+                val rollingBack = operation.transition(BackgroundOperationState.ROLLING_BACK, runtime.clock.now()).success()
+                repository.save(rollingBack).success()
+                current = rollingBack
+            }
+        }
+        if (current?.state == BackgroundOperationState.ROLLING_BACK) {
+            val failed = current.transition(
+                BackgroundOperationState.FAILED_FINAL,
+                runtime.clock.now(),
+                errorCode = ImportFailure.Cancelled.code,
+            ).success()
+            repository.save(failed).success()
+        }
+        val stagingRemoved = staging(activeBook, activeOperation).destroy() is DomainResult.Success
+        val handleRemoved = sourceHandleId?.let {
+            SecureImportSourceHandleStore(applicationContext, keyProvider).destroy(it)
+            true
+        } ?: true
+        ImportRunControlRegistry.remove(activeOperation.value)
+        mutableState.value = mutableState.value.copy(
+            stage = ImportWizardStage.RESULT,
+            executionState = ImportExecutionState.CANCELLED,
+            resultOutcome = ImportResultOutcomeUi.CANCELLED,
+            temporaryCleanupComplete = stagingRemoved && handleRemoved,
+        )
     }
 
     suspend fun abandon(): Boolean = withContext(Dispatchers.IO) {
@@ -366,6 +445,44 @@ internal class ImportController(
         mutableState.value = mutableState.value.copy(structureState = ImportStructureState.PARSING)
         ImportWorkScheduler.enqueue(applicationContext, id.value)
         awaitIngestion(activeBook, id)
+    }
+
+    fun restoreAndRetry(activeBookId: StableId, activeZoneId: ZoneId, operation: BackgroundOperation): Boolean {
+        val parameters = operation.parameters as? OperationParameters.Import ?: return false
+        if (operation.state != BackgroundOperationState.FAILED_RETRYABLE) return false
+        bookId = activeBookId
+        zoneId = activeZoneId
+        operationId = operation.id
+        sourceHandleId = parameters.sourceHandleId
+        format = parameters.format
+        mappings = emptyList()
+        samples = emptyMap()
+        distinctValues = emptyMap()
+        entityDecisions = emptyList()
+        allEntityDecisions = emptyList()
+        fxDecisions = emptyList()
+        duplicateResolutions = emptyMap()
+        excludedRows = emptySet()
+        mutableState.value = ImportWizardUiState(
+            stage = ImportWizardStage.STRUCTURE,
+            mode = if (parameters.format == ImportFormat.STRUCTURED_WORKBOOK) ImportModeUi.STRUCTURED else ImportModeUi.GENERAL,
+            structureState = ImportStructureState.PARSING,
+            encoding = parameters.userCharset ?: "UTF-8",
+            headerRowNumber = parameters.headerRowNumber.toString(),
+            processedRows = operation.progress.current,
+        )
+        ImportWorkScheduler.enqueueRetry(applicationContext, operation.id.value)
+        return true
+    }
+
+    suspend fun awaitRestoredRetry() {
+        val activeBook = bookId ?: return
+        val activeOperation = operationId ?: return
+        awaitIngestion(activeBook, activeOperation)
+    }
+
+    fun startOver() {
+        resetWizard()
     }
 
     suspend fun rollback() {
@@ -512,7 +629,22 @@ internal class ImportController(
                     loadStaging(activeBookId, id)
                     return@withContext
                 }
-                WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
+                WorkInfo.State.CANCELLED -> {
+                    val cancelled = operations(activeBookId).get(id).success()?.let {
+                        it.cancelRequested || it.errorCode == ImportFailure.Cancelled.code
+                    } == true || mutableState.value.executionState == ImportExecutionState.CANCELLED
+                    if (cancelled) {
+                        mutableState.value = mutableState.value.copy(
+                            stage = ImportWizardStage.RESULT,
+                            executionState = ImportExecutionState.CANCELLED,
+                            resultOutcome = ImportResultOutcomeUi.CANCELLED,
+                        )
+                    } else {
+                        mutableState.value = mutableState.value.copy(structureState = ImportStructureState.CORRUPT_FILE)
+                    }
+                    return@withContext
+                }
+                WorkInfo.State.FAILED -> {
                     val errorCode = work.outputData.getString(ImportWorker.OUTPUT_ERROR_CODE)
                     val unsupported = errorCode == ImportFailure.InvalidEncoding.code ||
                         errorCode == ImportFailure.UnsupportedSource.code
@@ -627,6 +759,7 @@ internal class ImportController(
                 fxDecisions,
                 duplicateResolutions,
                 if (format == ImportFormat.STRUCTURED_WORKBOOK) emptySet() else setOfNotNull(mutableState.value.selectedSheet),
+                excludedRows,
             ),
             repository,
         )
@@ -649,6 +782,8 @@ internal class ImportController(
                     duplicateCount = result.value.duplicateRows,
                     duplicates = duplicates,
                     missingEntityCount = result.value.missingEntitiesToCreate,
+                    preparedRowCount = result.value.preparedRows,
+                    excludedRows = excludedRows,
                     validationIssues = result.value.report.issues.map { issue ->
                         ImportValidationIssueUi(
                             issue.rowNumber,
@@ -828,6 +963,7 @@ internal class ImportController(
             mapping?.targetField?.name,
             samples[source].orEmpty(),
             mapping != null || expected !in REQUIRED_TRANSACTION_TARGETS,
+            MAPPABLE_FIELDS.map { it?.name },
         )
     }
 
@@ -844,6 +980,7 @@ internal class ImportController(
         allEntityDecisions = emptyList()
         fxDecisions = emptyList()
         duplicateResolutions = emptyMap()
+        excludedRows = emptySet()
         entityCreationEnabled = emptyMap()
         preparedRows = 0L
         preparedTransactionRows = 0L

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +24,7 @@ import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 import app.ledger.core.common.StableId
 import app.ledger.core.designsystem.AmountSize
 import app.ledger.core.designsystem.AmountText
@@ -32,9 +34,12 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
+import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerDatePickerFlow
+import app.ledger.core.designsystem.LedgerDialog
+import app.ledger.core.designsystem.LedgerModalDialog
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerProgressIndicator
 import app.ledger.core.designsystem.LedgerStatusVariant
@@ -43,12 +48,14 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
 import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.SelectorField
+import app.ledger.core.designsystem.SearchField
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.money.AmountSemantic
 import app.ledger.finance.application.CreditAccountView
@@ -97,6 +104,7 @@ private fun CreditPaymentEditor(state: CreditFeatureState, actions: CreditAction
     val account = state.account ?: return CreditNotFound(actions)
     val locale = LocalLocale.current.platformLocale
     var showDatePicker by remember { mutableStateOf(false) }
+    var showPaymentAccountPicker by remember { mutableStateOf(false) }
     ScreenList(Modifier.testTag(LedgerTestTags.CREDIT_PAYMENT)) {
         item { ValidationBanner(state) }
         item {
@@ -104,7 +112,7 @@ private fun CreditPaymentEditor(state: CreditFeatureState, actions: CreditAction
                 SelectorField(
                     stringResource(R.string.credit_payment_account),
                     paymentAccountName(state),
-                    actions.onNextPaymentAccount,
+                    { showPaymentAccountPicker = true },
                     supportingText = if ("paymentAccount" in state.validationFields) stringResource(R.string.credit_payment_account_required) else null,
                 )
                 SelectorField(
@@ -121,7 +129,9 @@ private fun CreditPaymentEditor(state: CreditFeatureState, actions: CreditAction
                 { actions.onFieldChanged(CreditField.AMOUNT, it) },
                 stringResource(R.string.credit_payment_amount),
                 Modifier.fillMaxWidth().testTag(LedgerTestTags.AMOUNT),
-                errorText = if ("amount" in state.validationFields) stringResource(R.string.credit_invalid_amount) else null,
+                errorText = if ("amount" in state.validationFields) {
+                    stringResource(if (state.presentation == CreditPresentation.OVERPAYMENT_BLOCKED) R.string.credit_overpayment_field else R.string.credit_invalid_amount)
+                } else null,
                 required = true,
                 keyboardType = KeyboardType.Decimal,
             )
@@ -138,7 +148,7 @@ private fun CreditPaymentEditor(state: CreditFeatureState, actions: CreditAction
         item { LedgerBanner(stringResource(R.string.credit_bookkeeping_disclaimer), LedgerBannerVariant.INFO) }
     }
     if (showDatePicker) {
-        val initial = state.draft.date.toLocalDateOrNull() ?: LocalDate.now()
+        val initial = state.draft.date.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
         LedgerDatePickerFlow(
             initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
             { millis ->
@@ -146,6 +156,13 @@ private fun CreditPaymentEditor(state: CreditFeatureState, actions: CreditAction
                 showDatePicker = false
             },
             { showDatePicker = false },
+        )
+    }
+    if (showPaymentAccountPicker) {
+        CreditPaymentAccountChooser(
+            state,
+            { actions.onPaymentAccountSelected(it); showPaymentAccountPicker = false },
+            { showPaymentAccountPicker = false },
         )
     }
 }
@@ -237,24 +254,25 @@ private fun CreditProfileEditor(state: CreditFeatureState, actions: CreditAction
     val account = state.account ?: return CreditNotFound(actions)
     val locale = LocalLocale.current.platformLocale
     var showExpiryPicker by remember { mutableStateOf(false) }
+    var showPaymentAccountPicker by remember { mutableStateOf(false) }
+    var showZonePicker by remember { mutableStateOf(false) }
     ScreenList(Modifier.testTag(LedgerTestTags.CREDIT_PROFILE)) {
         item { ValidationBanner(state) }
         item { LedgerText(stringResource(R.string.credit_profile_calendar), LedgerTextRole.SECTION) }
         item { LedgerTextField(state.draft.statementDay, { actions.onFieldChanged(CreditField.STATEMENT_DAY, it) }, stringResource(R.string.credit_statement_day), Modifier.fillMaxWidth(), keyboardType = KeyboardType.Number) }
         item {
-            SelectorField(
-                stringResource(R.string.credit_due_rule),
-                stringResource(if (state.draft.dueRuleMode == CreditDueRuleMode.FIXED_DAY) R.string.credit_due_rule_fixed else R.string.credit_due_rule_after),
-                actions.onCycleDueRule,
-            )
+            FormSection(stringResource(R.string.credit_due_rule)) {
+                LedgerChoiceRow(stringResource(R.string.credit_due_rule_fixed), state.draft.dueRuleMode == CreditDueRuleMode.FIXED_DAY, { if (state.draft.dueRuleMode != CreditDueRuleMode.FIXED_DAY) actions.onCycleDueRule() })
+                LedgerChoiceRow(stringResource(R.string.credit_due_rule_after), state.draft.dueRuleMode == CreditDueRuleMode.DAYS_AFTER_STATEMENT, { if (state.draft.dueRuleMode != CreditDueRuleMode.DAYS_AFTER_STATEMENT) actions.onCycleDueRule() })
+            }
         }
         item { LedgerTextField(state.draft.dueDay, { actions.onFieldChanged(CreditField.DUE_DAY, it) }, stringResource(if (state.draft.dueRuleMode == CreditDueRuleMode.FIXED_DAY) R.string.credit_due_day else R.string.credit_days_after), Modifier.fillMaxWidth(), errorText = if ("dueDay" in state.validationFields) stringResource(R.string.credit_invalid_day) else null, keyboardType = KeyboardType.Number) }
-        item { SelectorField(stringResource(R.string.credit_statement_zone), state.draft.zoneId, actions.onNextZone, supportingText = stringResource(R.string.credit_zone_selector_help)) }
+        item { SelectorField(stringResource(R.string.credit_statement_zone), state.draft.zoneId, { showZonePicker = true }, supportingText = stringResource(R.string.credit_zone_selector_help)) }
         item { LedgerText(stringResource(R.string.credit_profile_limits), LedgerTextRole.SECTION) }
         item { LedgerTextField(state.draft.standardLimit, { actions.onFieldChanged(CreditField.STANDARD_LIMIT, it) }, stringResource(R.string.credit_standard_limit), Modifier.fillMaxWidth(), keyboardType = KeyboardType.Decimal) }
         item { LedgerTextField(state.draft.temporaryLimit, { actions.onFieldChanged(CreditField.TEMPORARY_LIMIT, it) }, stringResource(R.string.credit_temporary_limit), Modifier.fillMaxWidth(), keyboardType = KeyboardType.Decimal) }
         item { SelectorField(stringResource(R.string.credit_temporary_expiry), state.draft.temporaryExpires.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.credit_no_expiry), { showExpiryPicker = true }) }
-        item { SelectionRow(paymentAccountName(state), actions.onNextPaymentAccount) }
+        item { SelectionRow(paymentAccountName(state)) { showPaymentAccountPicker = true } }
         item {
             LedgerToggleRow(
                 stringResource(R.string.credit_auto_payment),
@@ -266,13 +284,98 @@ private fun CreditProfileEditor(state: CreditFeatureState, actions: CreditAction
         item { LedgerText(stringResource(R.string.credit_no_minimum_payment), LedgerTextRole.SUPPORTING) }
     }
     if (showExpiryPicker) {
-        val initial = state.draft.temporaryExpires.toLocalDateOrNull() ?: LocalDate.now()
+        val initial = state.draft.temporaryExpires.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
         LedgerDatePickerFlow(
             initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
             { millis -> actions.onFieldChanged(CreditField.TEMPORARY_EXPIRY, Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()); showExpiryPicker = false },
             { showExpiryPicker = false },
         )
     }
+    if (showPaymentAccountPicker) {
+        CreditPaymentAccountChooser(
+            state,
+            { actions.onPaymentAccountSelected(it); showPaymentAccountPicker = false },
+            { showPaymentAccountPicker = false },
+        )
+    }
+    if (showZonePicker) {
+        CreditZoneChooser(
+            state.draft.zoneId,
+            { actions.onZoneSelected(it); showZonePicker = false },
+            { showZonePicker = false },
+        )
+    }
+}
+
+@Composable
+private fun CreditPaymentAccountChooser(
+    state: CreditFeatureState,
+    onSelect: (StableId?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    val accounts = state.snapshot.paymentAccounts.filter { account ->
+        account.active && (query.isBlank() || account.name.contains(query, true) || account.currency.value.contains(query, true))
+    }
+    LedgerModalDialog(stringResource(R.string.credit_payment_account), onDismiss = onDismiss) {
+        SearchField(
+            query,
+            { query = it.take(CREDIT_SELECTOR_SEARCH_LIMIT) },
+            placeholder = stringResource(R.string.credit_search_payment_accounts),
+            onClear = { query = "" },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        LazyColumn(Modifier.fillMaxWidth()) {
+            item {
+                LedgerChoiceRow(
+                    stringResource(R.string.credit_none),
+                    state.draft.selectedPaymentAccountId == null,
+                    { onSelect(null) },
+                )
+            }
+            items(accounts, key = { it.id.toString() }) { account ->
+                LedgerChoiceRow(
+                    "${account.name} · ${account.currency.value}",
+                    state.draft.selectedPaymentAccountId == account.id,
+                    { onSelect(account.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreditZoneChooser(current: String, onSelect: (String) -> Unit, onDismiss: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    val locale = LocalLocale.current.platformLocale
+    val allZones = remember { java.time.ZoneId.getAvailableZoneIds().sorted() }
+    val zones = allZones.filter { zone ->
+        val displayName = java.util.TimeZone.getTimeZone(zone).getDisplayName(false, java.util.TimeZone.LONG, locale)
+        query.isBlank() || zone.contains(query, true) || displayName.contains(query, true)
+    }
+    LedgerDialog(
+        title = stringResource(R.string.credit_statement_zone),
+        message = null,
+        confirmLabel = stringResource(R.string.credit_close_zone_picker),
+        onConfirm = onDismiss,
+        onDismiss = onDismiss,
+        content = {
+            SearchField(
+                query,
+                { query = it.take(CREDIT_SELECTOR_SEARCH_LIMIT) },
+                placeholder = stringResource(R.string.credit_search_zones),
+                onClear = { query = "" },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (zones.isEmpty()) LedgerText(stringResource(R.string.credit_zone_no_results, query), LedgerTextRole.SUPPORTING)
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+                items(zones, key = { it }) { zone ->
+                    val displayName = java.util.TimeZone.getTimeZone(zone).getDisplayName(false, java.util.TimeZone.LONG, locale)
+                    LedgerChoiceRow(zone, current == zone, { onSelect(zone) }, supportingText = displayName.takeUnless { it == zone })
+                }
+            }
+        },
+    )
 }
 
 @Composable
@@ -507,6 +610,10 @@ private fun AutoPaymentEditor(state: CreditFeatureState, actions: CreditActions)
 private fun AllocationChoices(state: CreditFeatureState, actions: CreditActions) {
     val account = state.account ?: return
     val locale = LocalLocale.current.platformLocale
+    val statements = account.statements.filter { it.remainingAmountMinor > 0L }.sortedBy { it.dueDate }
+    val selectedStatement = statements.singleOrNull { it.id == state.draft.selectedStatementId }
+    var showStatementPicker by remember { mutableStateOf(false) }
+    var statementQuery by remember { mutableStateOf("") }
     LedgerCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
             LedgerText(stringResource(R.string.credit_payment_allocation), LedgerTextRole.SECTION)
@@ -516,23 +623,61 @@ private fun AllocationChoices(state: CreditFeatureState, actions: CreditActions)
                 Modifier.fillMaxWidth(),
                 if (state.draft.allocationMode == CreditAllocationMode.EARLIEST_UNPAID) LedgerButtonVariant.PRIMARY else LedgerButtonVariant.SECONDARY,
             )
-            account.statements.filter { it.remainingAmountMinor > 0L }.take(3).forEach { statement ->
-                LedgerButton(
-                    stringResource(R.string.credit_specific_statement, statement.dueDate.localized(locale)),
-                    { actions.onSelectStatement(statement.id) },
-                    Modifier.fillMaxWidth(),
-                    if (state.draft.allocationMode == CreditAllocationMode.SPECIFIC && state.draft.selectedStatementId == statement.id) LedgerButtonVariant.PRIMARY else LedgerButtonVariant.TEXT,
-                )
-            }
-            LedgerButton(
-                stringResource(R.string.credit_unallocated_advance),
-                actions.onSelectUnallocated,
-                Modifier.fillMaxWidth(),
-                if (state.draft.allocationMode == CreditAllocationMode.UNALLOCATED_ADVANCE) LedgerButtonVariant.PRIMARY else LedgerButtonVariant.TEXT,
+            SelectorField(
+                stringResource(R.string.credit_choose_statement),
+                selectedStatement?.let {
+                    stringResource(
+                        R.string.credit_specific_statement_amount,
+                        it.dueDate.localized(locale),
+                        CreditPolicy.money(it.remainingAmountMinor, account.currency, locale).formatted,
+                    )
+                } ?: stringResource(R.string.credit_specific_statement_none),
+                {
+                    statementQuery = ""
+                    showStatementPicker = true
+                },
+                enabled = statements.isNotEmpty(),
             )
+            if (account.debtMinor > 0L) {
+                LedgerButton(
+                    stringResource(R.string.credit_unallocated_advance),
+                    actions.onSelectUnallocated,
+                    Modifier.fillMaxWidth(),
+                    if (state.draft.allocationMode == CreditAllocationMode.UNALLOCATED_ADVANCE) LedgerButtonVariant.PRIMARY else LedgerButtonVariant.TEXT,
+                )
+            } else {
+                LedgerText(stringResource(R.string.credit_advance_unavailable), LedgerTextRole.SUPPORTING)
+            }
+        }
+    }
+    if (showStatementPicker) {
+        val filtered = statements.filter { statementQuery.isBlank() || it.dueDate.toString().contains(statementQuery, true) }
+        LedgerModalDialog(stringResource(R.string.credit_choose_statement), onDismiss = { showStatementPicker = false }) {
+            SearchField(
+                statementQuery,
+                { statementQuery = it.take(CREDIT_STATEMENT_SEARCH_LIMIT) },
+                placeholder = stringResource(R.string.credit_search_statement),
+                onClear = { statementQuery = "" },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            LazyColumn(Modifier.fillMaxWidth()) {
+                items(filtered, key = { it.id.toString() }) { statement ->
+                    LedgerChoiceRow(
+                        stringResource(R.string.credit_specific_statement_amount, statement.dueDate.localized(locale), CreditPolicy.money(statement.remainingAmountMinor, account.currency, locale).formatted),
+                        state.draft.allocationMode == CreditAllocationMode.SPECIFIC && state.draft.selectedStatementId == statement.id,
+                        {
+                            actions.onSelectStatement(statement.id)
+                            showStatementPicker = false
+                        },
+                    )
+                }
+            }
         }
     }
 }
+
+private const val CREDIT_STATEMENT_SEARCH_LIMIT = 80
+private const val CREDIT_SELECTOR_SEARCH_LIMIT = 80
 
 @Composable
 private fun ValidationBanner(state: CreditFeatureState) {
@@ -604,7 +749,7 @@ private fun assignmentModeLabel(mode: StatementAssignmentMode): String = when (m
     StatementAssignmentMode.AUTOMATIC -> stringResource(R.string.credit_automatic_assignment)
 }
 
-private fun LocalDate.localized(locale: java.util.Locale): String = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(this)
+private fun LocalDate.localized(locale: java.util.Locale): String = LedgerDateFormatterRuntime.formatter(locale).format(this)
 
 private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()
 

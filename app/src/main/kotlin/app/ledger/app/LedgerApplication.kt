@@ -70,6 +70,7 @@ class LedgerApplication : Application() {
             languageTag = {
                 settingsRepository.current().languageTag.ifBlank { java.util.Locale.getDefault().toLanguageTag() }
             },
+            dateFormat = { settingsRepository.current().dateFormat.name },
             localDate = {
                 val configured = settingsRepository.current().zoneId.takeIf(String::isNotBlank)
                 val zone = runCatching { ZoneId.of(configured ?: "UTC") }.getOrDefault(ZoneId.of("UTC"))
@@ -107,6 +108,7 @@ class LedgerApplication : Application() {
             scheduler.scheduleIfDue()
             LedgerWidgetRuntime.updateAll(this@LedgerApplication)
         }
+        TrashAutoPurgeScheduler.ensureScheduled(this)
     }
 
     override fun onTerminate() {

@@ -3,6 +3,7 @@ package app.ledger.feature.planning
 import app.ledger.core.common.StableId
 import app.ledger.finance.application.GoalCompletionStrategy
 import app.ledger.finance.domain.GoalMovementKind
+import app.ledger.finance.domain.TransactionKind
 
 public data class ProjectGoalActions(
     val onRetry: () -> Unit,
@@ -28,4 +29,5 @@ public data class ProjectGoalActions(
     val onMovementDateChanged: (String) -> Unit,
     val onSaveMovement: () -> Unit,
     val onCompleteGoal: (GoalCompletionStrategy) -> Unit,
+    val onProjectTransactionKindChanged: (TransactionKind?) -> Unit = {},
 )

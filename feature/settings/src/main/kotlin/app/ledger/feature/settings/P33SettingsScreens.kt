@@ -6,12 +6,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import app.ledger.core.designsystem.AmountSize
 import app.ledger.core.designsystem.AmountText
@@ -19,17 +25,27 @@ import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
+import app.ledger.core.designsystem.LedgerBottomSheet
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerModalDialog
 import app.ledger.core.designsystem.LedgerProgressIndicator
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
+import app.ledger.core.designsystem.SearchField
+import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.AmountVisibility
 import app.ledger.core.money.MoneyUiModel
 import java.text.NumberFormat
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.WeekFields
+import java.util.TimeZone
+import androidx.compose.ui.unit.dp
 
 enum class SettingsThemeMode { FOLLOW_SYSTEM, LIGHT, DARK }
 
@@ -65,6 +81,7 @@ sealed interface RemainingSettingsScreenAction {
     data class ZoneIdChanged(val zoneId: String) : RemainingSettingsScreenAction
     data class WeekStartChanged(val weekStart: SettingsWeekStart) : RemainingSettingsScreenAction
     data object OpenSourceCode : RemainingSettingsScreenAction
+    data object OpenPrivacyPolicy : RemainingSettingsScreenAction
 }
 
 internal class RemainingSettingsActions(
@@ -78,6 +95,7 @@ internal class RemainingSettingsActions(
     val setZoneId: (String) -> Unit,
     val setWeekStart: (SettingsWeekStart) -> Unit,
     val openSourceCode: () -> Unit,
+    val openPrivacyPolicy: () -> Unit,
 )
 
 internal fun remainingSettingsActions(onAction: (RemainingSettingsScreenAction) -> Unit): RemainingSettingsActions = RemainingSettingsActions(
@@ -91,6 +109,7 @@ internal fun remainingSettingsActions(onAction: (RemainingSettingsScreenAction) 
     setZoneId = { onAction(RemainingSettingsScreenAction.ZoneIdChanged(it)) },
     setWeekStart = { onAction(RemainingSettingsScreenAction.WeekStartChanged(it)) },
     openSourceCode = { onAction(RemainingSettingsScreenAction.OpenSourceCode) },
+    openPrivacyPolicy = { onAction(RemainingSettingsScreenAction.OpenPrivacyPolicy) },
 )
 
 @Composable
@@ -203,12 +222,7 @@ private fun AppearanceSettings(state: RemainingSettingsState, actions: Remaining
                         progress = 0.64f,
                         accessibleText = stringResource(R.string.settings_live_preview_progress),
                     )
-                    LedgerButton(
-                        stringResource(R.string.settings_live_preview_action),
-                        {},
-                        Modifier.fillMaxWidth(),
-                        LedgerButtonVariant.SECONDARY,
-                    )
+                    LedgerBanner(stringResource(R.string.settings_live_preview_action), LedgerBannerVariant.NEUTRAL)
                 }
             }
         }
@@ -217,6 +231,9 @@ private fun AppearanceSettings(state: RemainingSettingsState, actions: Remaining
 
 @Composable
 private fun LanguageRegionSettings(state: RemainingSettingsState, actions: RemainingSettingsActions, modifier: Modifier) {
+    var showZoneChooser by remember { mutableStateOf(false) }
+    var zoneQuery by remember { mutableStateOf("") }
+    val locale = LocalLocale.current.platformLocale
     LazyColumn(
         modifier.fillMaxSize().padding(horizontal = LedgerTheme.spacing.sm),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
@@ -235,15 +252,54 @@ private fun LanguageRegionSettings(state: RemainingSettingsState, actions: Remai
                 LedgerBannerVariant.INFO,
             )
         }
-        item { LedgerText(stringResource(R.string.settings_time_zone), LedgerTextRole.SECTION) }
-        items(state.availableZoneIds, key = { it }) { zone ->
-            LedgerChoiceRow(zone, state.zoneId == zone, { actions.setZoneId(zone) })
+        item {
+            SelectorField(
+                label = stringResource(R.string.settings_time_zone),
+                selectedText = state.zoneId,
+                onClick = { zoneQuery = ""; showZoneChooser = true },
+                supportingText = zoneDisplayName(state.zoneId, locale),
+            )
+        }
+        item { LedgerText(stringResource(R.string.settings_week_start), LedgerTextRole.SECTION) }
+        items(SettingsWeekStart.entries) { value ->
+            LedgerChoiceRow(stringResource(value.label()), state.weekStart == value, { actions.setWeekStart(value) })
+        }
+    }
+    if (showZoneChooser) {
+        val zones = remember(state.availableZoneIds, zoneQuery, locale) {
+            state.availableZoneIds.filter { it == "UTC" || '/' in it }.filter { zone ->
+                val name = zoneDisplayName(zone, locale)
+                zoneQuery.isBlank() || zone.contains(zoneQuery, ignoreCase = true) || name.contains(zoneQuery, ignoreCase = true)
+            }
+        }
+        LedgerModalDialog(stringResource(R.string.settings_time_zone), onDismiss = { showZoneChooser = false }) {
+            SearchField(
+                value = zoneQuery,
+                onValueChange = { zoneQuery = it.take(MAX_ZONE_QUERY) },
+                onClear = { zoneQuery = "" },
+                placeholder = stringResource(R.string.settings_time_zone_search),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            LazyColumn(Modifier.fillMaxWidth().fillMaxSize()) {
+                items(zones, key = { it }) { zone ->
+                    LedgerChoiceRow(
+                        zone,
+                        state.zoneId == zone,
+                        {
+                            actions.setZoneId(zone)
+                            showZoneChooser = false
+                        },
+                        supportingText = zoneDisplayName(zone, locale),
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun CalendarSettings(state: RemainingSettingsState, actions: RemainingSettingsActions, modifier: Modifier) {
+    val locale = LocalLocale.current.platformLocale
     LazyColumn(
         modifier.fillMaxSize().padding(horizontal = LedgerTheme.spacing.sm),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
@@ -261,6 +317,7 @@ private fun CalendarSettings(state: RemainingSettingsState, actions: RemainingSe
                 Column(Modifier.padding(LedgerTheme.spacing.sm)) {
                     LedgerText(stringResource(R.string.settings_preview), LedgerTextRole.SECTION)
                     LedgerText(state.datePreview, LedgerTextRole.BODY)
+                    LedgerText(weekPreview(state.weekStart, locale), LedgerTextRole.SUPPORTING)
                 }
             }
         }
@@ -274,7 +331,9 @@ private fun AboutSettings(state: RemainingSettingsState, actions: RemainingSetti
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
         item { LedgerText(stringResource(R.string.settings_version, state.appVersion), LedgerTextRole.SECTION) }
+        item { SettingsCard(stringResource(R.string.settings_privacy_policy), stringResource(R.string.settings_privacy_policy_body), actions.openPrivacyPolicy) }
         item { SettingsCard(stringResource(R.string.settings_source_code), stringResource(R.string.settings_source_code_body), actions.openSourceCode) }
+        item { LedgerText(SOURCE_CODE_URL, LedgerTextRole.SUPPORTING) }
         item { LedgerText(stringResource(R.string.settings_open_source_licenses), LedgerTextRole.SECTION) }
         items(state.licenses, key = { it }) { license ->
             LedgerCard(Modifier.fillMaxWidth()) { LedgerText(license, LedgerTextRole.BODY, Modifier.padding(LedgerTheme.spacing.sm)) }
@@ -301,6 +360,29 @@ private val SUPPORTED_LANGUAGES = listOf(
     SupportedLanguage("ja", R.string.settings_language_japanese),
     SupportedLanguage("en", R.string.settings_language_english),
 )
+
+private fun zoneDisplayName(zoneId: String, locale: java.util.Locale): String = runCatching {
+    val now = ZonedDateTime.now(ZoneId.of(zoneId))
+    val name = DateTimeFormatter.ofPattern("zzzz", locale).format(now)
+    val offset = now.offset.id.let { if (it == "Z") "+00:00" else it }
+    "$name · GMT$offset"
+}.getOrElse { zoneId }
+
+@Composable
+private fun weekPreview(value: SettingsWeekStart, locale: java.util.Locale): String {
+    val firstDay = when (value) {
+        SettingsWeekStart.LOCALE_DEFAULT -> WeekFields.of(locale).firstDayOfWeek
+        SettingsWeekStart.MONDAY -> java.time.DayOfWeek.MONDAY
+        SettingsWeekStart.SUNDAY -> java.time.DayOfWeek.SUNDAY
+    }
+    return stringResource(
+        if (firstDay == java.time.DayOfWeek.SUNDAY) R.string.settings_week_preview_sunday
+        else R.string.settings_week_preview_monday,
+    )
+}
+
+private const val MAX_ZONE_QUERY = 80
+private const val SOURCE_CODE_URL = "https://github.com/HANLONG-WANG/ExpenseTracker"
 
 private fun SettingsThemeMode.label(): Int = when (this) {
     SettingsThemeMode.FOLLOW_SYSTEM -> R.string.settings_theme_system

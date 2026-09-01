@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="automation_category_empty">テンプレートに使用できるカテゴリがありません。カテゴリを作成して戻っても、この下書きは保持されます。</string>
+    <string name="automation_create_category">カテゴリを作成</string>
+    <string name="automation_blueprint_empty_inline">この定期ルールに使用できるクイックテンプレートがありません。</string>
+    <string name="automation_create_template">クイックテンプレートを作成</string>
     <string name="automation_title_template_picker">テンプレートを選択</string><string name="automation_title_hub">テンプレートと定期取引</string><string name="automation_title_templates">クイックテンプレート</string><string name="automation_title_template_editor">テンプレート設定</string><string name="automation_title_recurrences">定期取引</string><string name="automation_title_recurrence_editor">定期取引設定</string><string name="automation_title_rule">定期ルール</string><string name="automation_title_preview">発生日プレビュー</string><string name="automation_title_candidates">確認待ち候補</string><string name="automation_title_candidate">候補を確認</string><string name="automation_title_scope">変更範囲</string>
     <string name="automation_loading">自動化を読み込んでいます…</string><string name="automation_load_failed">自動化データを読み込めません</string>
     <string name="automation_templates">クイックテンプレート</string><string name="automation_templates_body">固定項目を再利用して完全な記録フォームへ進みます</string><string name="automation_recurrences">定期取引</string><string name="automation_recurrences_body">決定的なルールから正式記録または確認候補を生成します</string><string name="automation_candidates">確認待ち候補</string><string name="automation_candidates_body">候補は未記帳で、残高・予算・分析・ウィジェットに影響しません</string>
@@ -22,4 +26,5 @@
     <string name="automation_edit_template_place">テンプレートで固定場所を選択</string><string name="automation_nth_weekday">曜日</string><string name="automation_choose_date">日付を選択</string><string name="automation_no_end_date">終了日なし</string><string name="automation_rule_summary">%1$s · %2$d 周期ごと · %3$s 開始</string>
     <string name="automation_review_selected">1件ずつ確認</string><string name="automation_skip_selected">選択項目をスキップ</string><string name="automation_confirm_and_post">確認して完全フォームを開く</string><string name="automation_cancel_candidate">キャンセル</string>
     <string name="automation_candidate_error_amount">テンプレート金額の入力または修正が必要です。</string><string name="automation_candidate_error_account">テンプレート口座は利用できません。選び直してください。</string><string name="automation_candidate_error_category">テンプレート分類は利用できません。選び直してください。</string><string name="automation_candidate_error_source">候補の出所は利用できません。</string><string name="automation_candidate_error_fields">テンプレート項目が不足しています。完全フォームで修正してください。</string>
+    <string name="automation_review_and_edit">取引全体を確認・編集</string>
 </resources>

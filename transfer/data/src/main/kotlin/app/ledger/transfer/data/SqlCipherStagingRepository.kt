@@ -52,6 +52,15 @@ class SqlCipherStagingRepository(
         access.create(bookId, databaseName)
     }
 
+    override suspend fun clearPreparation(): DomainResult<Unit> = protect {
+        access.write(bookId, databaseName) { database ->
+            database.execSQL("DELETE FROM staging_validation_error")
+            database.execSQL("DELETE FROM staging_duplicate_candidate")
+            database.execSQL("DELETE FROM staging_prepared_command")
+            database.execSQL("DELETE FROM staging_mapping")
+        }
+    }
+
     override suspend fun appendRaw(rows: List<StagingRawRow>): DomainResult<Unit> = protect {
         if (rows.isEmpty()) return@protect
         access.write(bookId, databaseName) { database ->

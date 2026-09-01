@@ -41,7 +41,7 @@ internal fun SettlementRootDestination(
     val activityId = encodedArguments["activityId"]?.let { StableId.parse(it).getOrNull() }
     val participantId = encodedArguments["participantId"]?.let { StableId.parse(it).getOrNull() }
     val state by viewModel.settlement.collectAsStateWithLifecycle()
-    LaunchedEffect(screenId, activityId, participantId) { viewModel.loadSettlement(screenId, activityId, participantId) }
+    LaunchedEffect(screenId, activityId, participantId) { viewModel.ensureSettlementLoaded(screenId, activityId, participantId) }
     SettlementDestination(
         screenId,
         state,
@@ -62,6 +62,7 @@ internal fun SettlementRootDestination(
             onChargeDistribution = viewModel::selectSettlementChargeDistribution,
             onRoundingRule = viewModel::selectSettlementRoundingRule,
             onToggleParticipant = viewModel::toggleSettlementParticipant,
+            onSetSelfParticipant = viewModel::setSettlementSelfParticipant,
             onMoveParticipant = viewModel::moveSettlementParticipant,
             onAddParticipant = viewModel::addSettlementParticipant,
             onSave = viewModel::saveSettlement,
@@ -83,7 +84,7 @@ internal fun settlementFixedAction(
         LedgerSaveFab(
             onSave,
             submitting = pending || presentation == SettlementPresentation.SAVING,
-            enabled = !pending && content?.let { SettlementPolicy.canSave(it, screenId) } == true,
+            enabled = !pending && content != null,
         )
     }
 }

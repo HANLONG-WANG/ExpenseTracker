@@ -14,6 +14,8 @@ package app.ledger.feature.journal
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,9 +29,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -37,12 +41,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.PagingData
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.getOrNull
+import app.ledger.core.designsystem.AccessibleDataTable
+import app.ledger.core.designsystem.AccessibleTableUiModel
 import app.ledger.core.designsystem.DateTimeZoneField
 import app.ledger.core.designsystem.FilterChipUiModel
 import app.ledger.core.designsystem.FormSection
@@ -55,23 +62,33 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChip
+import app.ledger.core.designsystem.LedgerCheckboxRow
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerChoiceSelector
+import app.ledger.core.designsystem.LedgerCycleChoiceSelector
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerDateTimePickerFlow
 import app.ledger.core.designsystem.LedgerIconView
 import app.ledger.core.designsystem.LedgerLoadingState
+import app.ledger.core.designsystem.LocalLedgerAmountsVisible
+import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerProgressIndicator
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
+import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
+import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
+import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
 import app.ledger.core.designsystem.SearchField
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
+import app.ledger.core.designsystem.rememberLedgerRetainedState
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.AmountVisibility
 import app.ledger.core.money.CurrencyCode
@@ -83,6 +100,7 @@ import app.ledger.core.money.MoneyFormatRequest
 import app.ledger.core.money.MoneyUiModel
 import app.ledger.finance.application.JournalAccountCardUpdate
 import app.ledger.finance.application.JournalBulkEditPatch
+import app.ledger.finance.application.JournalBulkOption
 import app.ledger.finance.application.JournalDetailView
 import app.ledger.finance.application.JournalFieldUpdate
 import app.ledger.finance.application.JournalRevisionView
@@ -240,34 +258,42 @@ private fun JournalSearchScreen(state: JournalLoadState.Content, pages: Flow<Pag
         if (state.searchText.isBlank()) {
             LedgerText(stringResource(R.string.p15_journal_search), LedgerTextRole.BODY)
         } else {
-            PagedJournalList(pages, actions, showRunningBalance = false)
+            PagedJournalList(
+                pages,
+                actions,
+                showRunningBalance = false,
+                emptyTitle = stringResource(R.string.p15_journal_no_search_matches),
+                emptyBody = stringResource(R.string.p15_journal_no_search_matches_body, state.searchText),
+                emptyActionLabel = stringResource(R.string.p15_journal_clear_search),
+                onEmptyAction = { actions.onSearch("") },
+            )
         }
     }
 }
 
 @Composable
 private fun JournalFilterScreen(state: JournalLoadState.Content, actions: JournalActions) {
-    var presetName by remember { mutableStateOf("") }
-    var draft by remember(state.filter) { mutableStateOf(state.filter) }
-    var occurredFrom by remember(state.filter) { mutableStateOf(state.filter.occurredFrom) }
-    var occurredThrough by remember(state.filter) { mutableStateOf(state.filter.occurredThrough) }
-    var createdFrom by remember(state.filter) { mutableStateOf(state.filter.createdFrom) }
-    var createdThrough by remember(state.filter) { mutableStateOf(state.filter.createdThrough) }
-    var modifiedFrom by remember(state.filter) { mutableStateOf(state.filter.modifiedFrom) }
-    var modifiedThrough by remember(state.filter) { mutableStateOf(state.filter.modifiedThrough) }
+    var presetName by rememberLedgerRetainedState("journalFilter.presetName") { "" }
+    var draft by rememberLedgerRetainedState("journalFilter.draft") { state.filter }
+    var occurredFrom by rememberLedgerRetainedState("journalFilter.occurredFrom") { state.filter.occurredFrom }
+    var occurredThrough by rememberLedgerRetainedState("journalFilter.occurredThrough") { state.filter.occurredThrough }
+    var createdFrom by rememberLedgerRetainedState("journalFilter.createdFrom") { state.filter.createdFrom }
+    var createdThrough by rememberLedgerRetainedState("journalFilter.createdThrough") { state.filter.createdThrough }
+    var modifiedFrom by rememberLedgerRetainedState("journalFilter.modifiedFrom") { state.filter.modifiedFrom }
+    var modifiedThrough by rememberLedgerRetainedState("journalFilter.modifiedThrough") { state.filter.modifiedThrough }
     var activeTimeField by remember { mutableStateOf<JournalFilterTimeField?>(null) }
     val locale = LocalLocale.current.platformLocale
     val zoneId = LedgerTheme.timeZone
-    val dateTimeFormatter = remember(locale, zoneId) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale).withZone(zoneId) }
+    val dateTimeFormatter = LedgerDateFormatterRuntime.dateTimeFormatter(locale).withZone(zoneId)
     val currencyCatalog = remember { JvmLegalTenderCurrencyCatalog.create() }
     val initialAmountCurrency = state.filter.amountRange?.currency ?: state.filter.currencies.singleOrNull() ?: state.bulkOptions.currencies.firstOrNull()
-    var amountCurrency by remember(state.filter) { mutableStateOf(initialAmountCurrency) }
-    var minimumMajor by remember(state.filter, initialAmountCurrency) { mutableStateOf(state.filter.amountRange?.minimumAccountMinor.toMajorInput(initialAmountCurrency, currencyCatalog)) }
-    var maximumMajor by remember(state.filter, initialAmountCurrency) { mutableStateOf(state.filter.amountRange?.maximumAccountMinor.toMajorInput(initialAmountCurrency, currencyCatalog)) }
-    var geoEnabled by remember(state.filter) { mutableStateOf(state.filter.geoRadius != null) }
-    var latitude by remember(state.filter) { mutableStateOf(state.filter.geoRadius?.center?.latitudeE7?.toCoordinateInput().orEmpty()) }
-    var longitude by remember(state.filter) { mutableStateOf(state.filter.geoRadius?.center?.longitudeE7?.toCoordinateInput().orEmpty()) }
-    var radiusMeters by remember(state.filter) { mutableStateOf(state.filter.geoRadius?.radiusMeters?.toString().orEmpty()) }
+    var amountCurrency by rememberLedgerRetainedState("journalFilter.currency") { initialAmountCurrency }
+    var minimumMajor by rememberLedgerRetainedState("journalFilter.minimum") { state.filter.amountRange?.minimumAccountMinor.toMajorInput(initialAmountCurrency, currencyCatalog) }
+    var maximumMajor by rememberLedgerRetainedState("journalFilter.maximum") { state.filter.amountRange?.maximumAccountMinor.toMajorInput(initialAmountCurrency, currencyCatalog) }
+    var geoEnabled by rememberLedgerRetainedState("journalFilter.geoEnabled") { state.filter.geoRadius != null }
+    var latitude by rememberLedgerRetainedState("journalFilter.latitude") { state.filter.geoRadius?.center?.latitudeE7?.toCoordinateInput().orEmpty() }
+    var longitude by rememberLedgerRetainedState("journalFilter.longitude") { state.filter.geoRadius?.center?.longitudeE7?.toCoordinateInput().orEmpty() }
+    var radiusMeters by rememberLedgerRetainedState("journalFilter.radius") { state.filter.geoRadius?.radiusMeters?.toString().orEmpty() }
     val parsedMinimum = minimumMajor.toOptionalMinor(amountCurrency, currencyCatalog)
     val parsedMaximum = maximumMajor.toOptionalMinor(amountCurrency, currencyCatalog)
     val parsedGeo = parseGeoRadius(latitude, longitude, radiusMeters)
@@ -303,6 +329,8 @@ private fun JournalFilterScreen(state: JournalLoadState.Content, actions: Journa
         latitude = ""
         longitude = ""
         radiusMeters = ""
+        actions.onApplyFilter(TransactionFilter())
+        actions.onBack()
     }
     val applyFilter = {
         if (rangesValid) {
@@ -319,6 +347,7 @@ private fun JournalFilterScreen(state: JournalLoadState.Content, actions: Journa
                     geoRadius = parsedGeo.value.takeIf { geoEnabled },
                 ),
             )
+            actions.onBack()
         }
     }
     Column(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN)) {
@@ -326,28 +355,28 @@ private fun JournalFilterScreen(state: JournalLoadState.Content, actions: Journa
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         item {
             FilterChoiceSection(stringResource(R.string.p15_journal_filter_type)) {
-                TransactionKind.entries.forEach { value -> LedgerChoiceRow(value.label(), value in draft.kinds, { draft = draft.copy(kinds = draft.kinds.toggled(value)) }) }
+                TransactionKind.entries.forEach { value -> LedgerCheckboxRow(value.label(), value in draft.kinds, { draft = draft.copy(kinds = draft.kinds.toggled(value)) }) }
             }
         }
         item {
             FilterChoiceSection(stringResource(R.string.p15_journal_filter_state)) {
-                TransactionLifecycleState.entries.forEach { value -> LedgerChoiceRow(value.label(), value in draft.lifecycleStates, { draft = draft.copy(lifecycleStates = draft.lifecycleStates.toggled(value)) }) }
+                TransactionLifecycleState.entries.forEach { value -> LedgerCheckboxRow(value.label(), value in draft.lifecycleStates, { draft = draft.copy(lifecycleStates = draft.lifecycleStates.toggled(value)) }) }
             }
         }
         item {
             FilterChoiceSection(stringResource(R.string.p15_journal_filter_source)) {
-                TransactionSource.entries.forEach { value -> LedgerChoiceRow(value.label(), value in draft.sources, { draft = draft.copy(sources = draft.sources.toggled(value)) }) }
+                TransactionSource.entries.forEach { value -> LedgerCheckboxRow(value.label(), value in draft.sources, { draft = draft.copy(sources = draft.sources.toggled(value)) }) }
             }
         }
         item {
             FilterChoiceSection(stringResource(R.string.p15_journal_filter_context)) {
-                state.bulkOptions.accounts.forEach { option -> LedgerChoiceRow(option.label, UserAccountId(option.id) in draft.accountIds, { draft = draft.copy(accountIds = draft.accountIds.toggled(UserAccountId(option.id))) }) }
-                state.bulkOptions.cards.forEach { option -> LedgerChoiceRow(option.label, PaymentCardId(option.id) in draft.cardIds, { draft = draft.copy(cardIds = draft.cardIds.toggled(PaymentCardId(option.id))) }) }
-                state.bulkOptions.categories.forEach { option -> LedgerChoiceRow(option.label, CategoryId(option.id) in draft.categoryIds, { draft = draft.copy(categoryIds = draft.categoryIds.toggled(CategoryId(option.id))) }) }
-                state.bulkOptions.merchants.forEach { option -> LedgerChoiceRow(option.label, MerchantId(option.id) in draft.merchantIds, { draft = draft.copy(merchantIds = draft.merchantIds.toggled(MerchantId(option.id))) }) }
-                state.bulkOptions.projects.forEach { option -> LedgerChoiceRow(option.label, ProjectId(option.id) in draft.projectIds, { draft = draft.copy(projectIds = draft.projectIds.toggled(ProjectId(option.id))) }) }
-                state.bulkOptions.settlementActivities.forEach { option -> LedgerChoiceRow(option.label, SettlementActivityId(option.id) in draft.settlementActivityIds, { draft = draft.copy(settlementActivityIds = draft.settlementActivityIds.toggled(SettlementActivityId(option.id))) }) }
-                state.bulkOptions.participants.forEach { option -> LedgerChoiceRow(option.label, ParticipantId(option.id) in draft.participantIds, { draft = draft.copy(participantIds = draft.participantIds.toggled(ParticipantId(option.id))) }) }
+                state.bulkOptions.accounts.forEach { option -> LedgerCheckboxRow(option.label, UserAccountId(option.id) in draft.accountIds, { draft = draft.copy(accountIds = draft.accountIds.toggled(UserAccountId(option.id))) }) }
+                state.bulkOptions.cards.forEach { option -> LedgerCheckboxRow(option.label, PaymentCardId(option.id) in draft.cardIds, { draft = draft.copy(cardIds = draft.cardIds.toggled(PaymentCardId(option.id))) }) }
+                state.bulkOptions.categories.forEach { option -> LedgerCheckboxRow(option.label, CategoryId(option.id) in draft.categoryIds, { draft = draft.copy(categoryIds = draft.categoryIds.toggled(CategoryId(option.id))) }) }
+                state.bulkOptions.merchants.forEach { option -> LedgerCheckboxRow(option.label, MerchantId(option.id) in draft.merchantIds, { draft = draft.copy(merchantIds = draft.merchantIds.toggled(MerchantId(option.id))) }) }
+                state.bulkOptions.projects.forEach { option -> LedgerCheckboxRow(option.label, ProjectId(option.id) in draft.projectIds, { draft = draft.copy(projectIds = draft.projectIds.toggled(ProjectId(option.id))) }) }
+                state.bulkOptions.settlementActivities.forEach { option -> LedgerCheckboxRow(option.label, SettlementActivityId(option.id) in draft.settlementActivityIds, { draft = draft.copy(settlementActivityIds = draft.settlementActivityIds.toggled(SettlementActivityId(option.id))) }) }
+                state.bulkOptions.participants.forEach { option -> LedgerCheckboxRow(option.label, ParticipantId(option.id) in draft.participantIds, { draft = draft.copy(participantIds = draft.participantIds.toggled(ParticipantId(option.id))) }) }
             }
         }
         item {
@@ -365,12 +394,12 @@ private fun JournalFilterScreen(state: JournalLoadState.Content, actions: Journa
                 LedgerTextField(minimumMajor, { minimumMajor = it.take(24) }, stringResource(R.string.p15_journal_minimum_amount), errorText = stringResource(R.string.p15_journal_invalid_amount).takeIf { !parsedMinimum.valid })
                 LedgerTextField(maximumMajor, { maximumMajor = it.take(24) }, stringResource(R.string.p15_journal_maximum_amount), errorText = stringResource(R.string.p15_journal_invalid_amount).takeIf { !parsedMaximum.valid })
                 state.bulkOptions.currencies.forEach { currency ->
-                    LedgerChoiceRow(currency.value, currency in draft.currencies, {
+                    LedgerCheckboxRow(currency.value, currency in draft.currencies, {
                         draft = draft.copy(currencies = draft.currencies.toggled(currency))
                         amountCurrency = currency
                     })
                 }
-                StatisticalNature.entries.forEach { nature -> LedgerChoiceRow(nature.label(), nature in draft.statisticalNatures, { draft = draft.copy(statisticalNatures = draft.statisticalNatures.toggled(nature)) }) }
+                StatisticalNature.entries.forEach { nature -> LedgerCheckboxRow(nature.label(), nature in draft.statisticalNatures, { draft = draft.copy(statisticalNatures = draft.statisticalNatures.toggled(nature)) }) }
             }
         }
         item {
@@ -495,7 +524,7 @@ private fun SelectionScreen(state: JournalLoadState.Content, pages: Flow<PagingD
             LedgerButton(stringResource(R.string.p15_journal_clear_selection), actions.onClearSelection, Modifier.weight(1f), LedgerButtonVariant.TEXT, enabled = selection != null)
         }
         Box(Modifier.weight(1f)) {
-            PagedJournalList(pages, actions, false, selectionMode = true)
+            PagedJournalList(pages, actions, false, selectionMode = true, selection = selection)
         }
         LedgerCard(Modifier.fillMaxWidth()) {
             LedgerButton(
@@ -511,30 +540,30 @@ private fun SelectionScreen(state: JournalLoadState.Content, pages: Flow<PagingD
 @Composable
 private fun BulkEditScreen(state: JournalLoadState.Content, actions: JournalActions) {
     val options = state.bulkOptions
-    var categoryEnabled by remember { mutableStateOf(false) }
-    var categoryIndex by remember { mutableStateOf(0) }
-    var accountEnabled by remember { mutableStateOf(false) }
-    var accountIndex by remember { mutableStateOf(0) }
-    var cardIndex by remember { mutableStateOf(-1) }
-    var merchantEnabled by remember { mutableStateOf(false) }
-    var merchantIndex by remember { mutableStateOf(-1) }
-    var projectEnabled by remember { mutableStateOf(false) }
-    var projectIndex by remember { mutableStateOf(-1) }
-    var timeEnabled by remember { mutableStateOf(false) }
-    var occurredAt by remember { mutableStateOf<Instant?>(null) }
+    var categoryEnabled by rememberLedgerRetainedState("bulk.categoryEnabled") { false }
+    var categoryIndex by rememberLedgerRetainedState("bulk.categoryIndex") { 0 }
+    var accountEnabled by rememberLedgerRetainedState("bulk.accountEnabled") { false }
+    var accountIndex by rememberLedgerRetainedState("bulk.accountIndex") { 0 }
+    var cardIndex by rememberLedgerRetainedState("bulk.cardIndex") { -1 }
+    var merchantEnabled by rememberLedgerRetainedState("bulk.merchantEnabled") { false }
+    var merchantIndex by rememberLedgerRetainedState("bulk.merchantIndex") { -1 }
+    var projectEnabled by rememberLedgerRetainedState("bulk.projectEnabled") { false }
+    var projectIndex by rememberLedgerRetainedState("bulk.projectIndex") { -1 }
+    var timeEnabled by rememberLedgerRetainedState("bulk.timeEnabled") { false }
+    var occurredAt by rememberLedgerRetainedState<Instant?>("bulk.occurredAt") { null }
     var showTimePicker by remember { mutableStateOf(false) }
-    var noteEnabled by remember { mutableStateOf(false) }
-    var note by remember { mutableStateOf("") }
-    var budgetEnabled by remember { mutableStateOf(false) }
-    var includedInBudget by remember { mutableStateOf(true) }
-    var natureEnabled by remember { mutableStateOf(false) }
-    var natureIndex by remember { mutableStateOf(0) }
+    var noteEnabled by rememberLedgerRetainedState("bulk.noteEnabled") { false }
+    var note by rememberLedgerRetainedState("bulk.note") { "" }
+    var budgetEnabled by rememberLedgerRetainedState("bulk.budgetEnabled") { false }
+    var includedInBudget by rememberLedgerRetainedState("bulk.inBudget") { true }
+    var natureEnabled by rememberLedgerRetainedState("bulk.natureEnabled") { false }
+    var natureIndex by rememberLedgerRetainedState("bulk.natureIndex") { 0 }
     val selectedAccount = options.accounts.getOrNull(accountIndex)
     val compatibleCards = options.cards.filter { it.parentId == selectedAccount?.id }
     val selectedCard = compatibleCards.getOrNull(cardIndex)
     val locale = LocalLocale.current.platformLocale
     val zoneId = LedgerTheme.timeZone
-    val timeFormatter = remember(locale, zoneId) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale).withZone(zoneId) }
+    val timeFormatter = LedgerDateFormatterRuntime.dateTimeFormatter(locale).withZone(zoneId)
     val anyChange = categoryEnabled || accountEnabled || merchantEnabled || projectEnabled || timeEnabled || noteEnabled || budgetEnabled || natureEnabled
     val inputValid = state.selection != null && anyChange && (!categoryEnabled || options.categories.isNotEmpty()) &&
         (!accountEnabled || selectedAccount != null) && (!timeEnabled || occurredAt != null)
@@ -571,25 +600,27 @@ private fun BulkEditScreen(state: JournalLoadState.Content, actions: JournalActi
                 else changeSummary.forEach { LedgerText(it, LedgerTextRole.BODY) }
             }
         }
-        item { BulkSelector(stringResource(R.string.p15_journal_bulk_category), categoryEnabled, { categoryEnabled = it }, options.categories.getOrNull(categoryIndex)?.label.orEmpty(), { categoryIndex = options.categories.nextIndex(categoryIndex) }, options.categories.isNotEmpty()) }
+        item { BulkSelector(stringResource(R.string.p15_journal_bulk_category), categoryEnabled, { categoryEnabled = it }, options.categories, categoryIndex, { categoryIndex = it }, options.categories.isNotEmpty()) }
         item {
-            BulkSelector(stringResource(R.string.p15_journal_bulk_account), accountEnabled, { accountEnabled = it }, selectedAccount?.label.orEmpty(), {
-                accountIndex = options.accounts.nextIndex(accountIndex)
+            BulkSelector(stringResource(R.string.p15_journal_bulk_account), accountEnabled, { accountEnabled = it }, options.accounts, accountIndex, {
+                accountIndex = it
                 cardIndex = -1
             }, options.accounts.isNotEmpty())
         }
         item {
-            SelectorField(
+            SearchableBulkChoice(
                 stringResource(R.string.p15_journal_bulk_card),
-                selectedCard?.label ?: stringResource(R.string.p15_journal_clear_value),
-                { cardIndex = compatibleCards.nextNullableIndex(cardIndex) },
+                compatibleCards,
+                cardIndex,
+                { cardIndex = it },
                 enabled = accountEnabled && compatibleCards.isNotEmpty(),
+                allowClear = true,
             )
         }
-        item { BulkSelector(stringResource(R.string.p15_journal_bulk_merchant), merchantEnabled, { merchantEnabled = it }, options.merchants.getOrNull(merchantIndex)?.label ?: stringResource(R.string.p15_journal_clear_value), { merchantIndex = options.merchants.nextNullableIndex(merchantIndex) }, true) }
-        item { BulkSelector(stringResource(R.string.p15_journal_bulk_project), projectEnabled, { projectEnabled = it }, options.projects.getOrNull(projectIndex)?.label ?: stringResource(R.string.p15_journal_clear_value), { projectIndex = options.projects.nextNullableIndex(projectIndex) }, true) }
+        item { BulkSelector(stringResource(R.string.p15_journal_bulk_merchant), merchantEnabled, { merchantEnabled = it }, options.merchants, merchantIndex, { merchantIndex = it }, true, allowClear = true) }
+        item { BulkSelector(stringResource(R.string.p15_journal_bulk_project), projectEnabled, { projectEnabled = it }, options.projects, projectIndex, { projectIndex = it }, true, allowClear = true) }
         item {
-            LedgerChoiceRow(stringResource(R.string.p15_journal_bulk_time), timeEnabled, { timeEnabled = !timeEnabled })
+            LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_time), timeEnabled, { timeEnabled = it })
             if (timeEnabled) {
                 DateTimeZoneField(
                     stringResource(R.string.p15_journal_bulk_time),
@@ -608,22 +639,35 @@ private fun BulkEditScreen(state: JournalLoadState.Content, actions: JournalActi
             }
         }
         item {
-            LedgerChoiceRow(stringResource(R.string.p15_journal_bulk_note), noteEnabled, { noteEnabled = !noteEnabled })
+            LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_note), noteEnabled, { noteEnabled = it })
             LedgerTextField(note, { note = it.take(2_000) }, stringResource(R.string.p15_journal_bulk_note), enabled = noteEnabled, singleLine = false, hideValueFromSemantics = true)
         }
         item {
-            LedgerChoiceRow(stringResource(R.string.p15_journal_bulk_budget), budgetEnabled, { budgetEnabled = !budgetEnabled })
-            SelectorField(stringResource(R.string.p15_journal_bulk_budget), if (includedInBudget) stringResource(R.string.p15_journal_yes) else stringResource(R.string.p15_journal_no), { includedInBudget = !includedInBudget }, enabled = budgetEnabled)
+            LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_budget), budgetEnabled, { budgetEnabled = it })
+            LedgerCycleChoiceSelector(
+                stringResource(R.string.p15_journal_bulk_budget),
+                if (includedInBudget) 1 else 0,
+                listOf(stringResource(R.string.p15_journal_no), stringResource(R.string.p15_journal_yes)),
+                { includedInBudget = !includedInBudget },
+                enabled = budgetEnabled,
+            )
         }
         item {
-            LedgerChoiceRow(stringResource(R.string.p15_journal_bulk_nature), natureEnabled, { natureEnabled = !natureEnabled })
-            SelectorField(stringResource(R.string.p15_journal_bulk_nature), StatisticalNature.entries[natureIndex].label(), { natureIndex = (natureIndex + 1) % StatisticalNature.entries.size }, enabled = natureEnabled)
+            LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_nature), natureEnabled, { natureEnabled = it })
+            LedgerCycleChoiceSelector(
+                stringResource(R.string.p15_journal_bulk_nature),
+                natureIndex,
+                StatisticalNature.entries.map { it.label() },
+                { natureIndex = (natureIndex + 1) % StatisticalNature.entries.size },
+                enabled = natureEnabled,
+            )
         }
         if (state.operation != JournalOperationState.IDLE) item {
             LedgerBanner(
                 state.operation.label(),
                 when (state.operation) {
                     JournalOperationState.FAILED -> LedgerBannerVariant.DANGER
+                    JournalOperationState.NO_CHANGES -> LedgerBannerVariant.NEUTRAL
                     JournalOperationState.SUCCEEDED -> LedgerBannerVariant.INFO
                     else -> LedgerBannerVariant.WARNING
                 },
@@ -682,13 +726,22 @@ private fun DetailScreen(state: JournalLoadState.Content, actions: JournalAction
     val unavailableAmount = stringResource(R.string.p15_journal_amount_unavailable)
     val kindLabel = detail.transaction.kind.label()
     val dateTimeFormatter = remember(locale, detail.zoneId) {
-        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-            .withLocale(locale)
+        LedgerDateFormatterRuntime.dateTimeFormatter(locale)
             .withZone(java.time.ZoneId.of(detail.zoneId))
     }
-    val transactionRow = remember(detail.transaction, locale, kindLabel, unavailableAmount) {
-        detail.transaction.toUi(locale, formatter, kindLabel, unavailableAmount)
-    }
+    val transactionRow = detail.transaction.toUi(locale, formatter, kindLabel, unavailableAmount, dateTimeFormatter.format(detail.transaction.occurredAt))
+    val amountsVisible = LocalLedgerAmountsVisible.current
+    val hiddenAmount = stringResource(app.ledger.core.designsystem.R.string.ledger_amount_hidden)
+    val userInput = listOfNotNull(
+        detail.amountExpression?.let { if (amountsVisible) it else hiddenAmount },
+        detail.fullNote,
+        detail.merchantName,
+        detail.projectName,
+    )
+    val accountEffects = detail.accountEffects.map { accountEffectLabel(it, locale) }
+    val budgetValues = listOfNotNull(detail.budgetSummary?.localizedBudgetSummary(), detail.statisticalNature?.localizedNature())
+    val fxValues = detail.fxEvidence.flatMap { it.localizedEvidence(locale, dateTimeFormatter) }
+    val relationshipValues = detail.relationshipSummaries.mapNotNull { it.localizedRelationship(locale) }
     LazyColumn(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         item { JournalTransactionRow(transactionRow, {}, null, enabled = false) }
         item {
@@ -697,30 +750,31 @@ private fun DetailScreen(state: JournalLoadState.Content, actions: JournalAction
                 LedgerText(detail.transaction.source.label(), LedgerTextRole.SUPPORTING)
             }
         }
-        item { DetailSection(stringResource(R.string.p15_journal_user_input), listOfNotNull(detail.amountExpression, detail.fullNote, detail.merchantName, detail.projectName)) }
-        item { DetailSection(stringResource(R.string.p15_journal_location), listOfNotNull(detail.locationName)) }
-        item {
-            DetailSection(
-                stringResource(R.string.p15_journal_account_effects),
-                detail.accountEffects.map { accountEffectLabel(it, locale) },
-            )
+        if (detail.transaction.state == TransactionLifecycleState.TRASHED) {
+            item { LedgerBanner(stringResource(R.string.p15_journal_trashed_no_effect), LedgerBannerVariant.WARNING) }
         }
-        item { DetailSection(stringResource(R.string.p15_journal_budget_semantics), listOfNotNull(detail.budgetSummary, detail.statisticalNature?.localizedNature())) }
-        item { DetailSection(stringResource(R.string.p15_journal_fx), detail.fxEvidence.flatMap { it.localizedEvidence(locale, dateTimeFormatter) }) }
-        item { DetailSection(stringResource(R.string.p15_journal_relationships), detail.relationshipSummaries) }
-        item {
+        if (userInput.isNotEmpty()) item { DetailSection(stringResource(R.string.p15_journal_user_input), userInput) }
+        detail.locationName?.let { location -> item { DetailSection(stringResource(R.string.p15_journal_location), listOf(location)) } }
+        if (detail.transaction.state != TransactionLifecycleState.TRASHED && accountEffects.isNotEmpty()) {
+            item {
+                DetailSection(
+                    stringResource(R.string.p15_journal_account_effects),
+                    accountEffects,
+                )
+            }
+        }
+        if (budgetValues.isNotEmpty()) item { DetailSection(stringResource(R.string.p15_journal_budget_semantics), budgetValues) }
+        if (fxValues.isNotEmpty()) item { DetailSection(stringResource(R.string.p15_journal_fx), fxValues) }
+        if (relationshipValues.isNotEmpty()) item { DetailSection(stringResource(R.string.p15_journal_relationships), relationshipValues) }
+        if (detail.attachmentNames.isNotEmpty() || (detail.transaction.state == TransactionLifecycleState.ACTIVE && detail.transaction.kind in ORDINARY_KINDS)) item {
             FormSection(stringResource(R.string.p15_journal_attachments)) {
-                if (detail.attachmentNames.isEmpty()) {
-                    LedgerText("—", LedgerTextRole.SUPPORTING)
-                } else {
-                    detail.attachmentIds.zip(detail.attachmentNames).forEach { (attachmentId, displayName) ->
-                        LedgerButton(
-                            displayName,
-                            { actions.onOpenAttachment(attachmentId) },
-                            Modifier.fillMaxWidth(),
-                            LedgerButtonVariant.TEXT,
-                        )
-                    }
+                detail.attachmentIds.zip(detail.attachmentNames).forEach { (attachmentId, displayName) ->
+                    LedgerButton(
+                        displayName,
+                        { actions.onOpenAttachment(attachmentId) },
+                        Modifier.fillMaxWidth(),
+                        LedgerButtonVariant.TEXT,
+                    )
                 }
                 if (detail.transaction.state == TransactionLifecycleState.ACTIVE && detail.transaction.kind in ORDINARY_KINDS) {
                     LedgerButton(
@@ -748,25 +802,6 @@ private fun DetailScreen(state: JournalLoadState.Content, actions: JournalAction
                 LedgerButton(stringResource(R.string.p15_journal_dependencies), { actions.onNavigate("JRN-010", mapOf("transactionId" to detail.transaction.transactionId)) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
             }
         }
-        if (detail.transaction.state == TransactionLifecycleState.ACTIVE) {
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                    LedgerButton(
-                        stringResource(R.string.p15_journal_edit_transaction),
-                        { actions.onEditById(detail.transaction.transactionId, detail.transaction.kind) },
-                        Modifier.weight(1f),
-                    )
-                    if (detail.transaction.kind == TransactionKind.EXPENSE) {
-                        LedgerButton(
-                            stringResource(R.string.p15_journal_create_refund),
-                            { actions.onNavigate("REC-015", mapOf("transactionId" to detail.transaction.transactionId)) },
-                            Modifier.weight(1f),
-                            LedgerButtonVariant.SECONDARY,
-                        )
-                    }
-                }
-            }
-        }
         item {
             FormSection(stringResource(R.string.p15_journal_history_preview)) {
                 state.history.take(HISTORY_PREVIEW_LIMIT).forEach { revision ->
@@ -781,9 +816,13 @@ private fun DetailScreen(state: JournalLoadState.Content, actions: JournalAction
                 FormSection(stringResource(R.string.p15_journal_actions)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                         LedgerButton(stringResource(R.string.p15_journal_edit), { actions.onEdit(detail.transaction) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
-                        LedgerButton(stringResource(R.string.p15_journal_refund_action), { actions.onRefund(detail.transaction.transactionId) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
+                        if (detail.transaction.kind == TransactionKind.EXPENSE) {
+                            LedgerButton(stringResource(R.string.p15_journal_refund_action), { actions.onRefund(detail.transaction.transactionId) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
+                        }
                     }
-                    LedgerButton(stringResource(R.string.p15_journal_copy_as_template), { actions.onCopyTemplate(detail.transaction.transactionId) }, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY)
+                    if (detail.transaction.kind in ORDINARY_KINDS) {
+                        LedgerButton(stringResource(R.string.p15_journal_copy_as_template), { actions.onCopyTemplate(detail.transaction.transactionId) }, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY)
+                    }
                 }
             }
         }
@@ -800,13 +839,28 @@ private fun DetailScreen(state: JournalLoadState.Content, actions: JournalAction
                 }
             } else {
                 val resolved = state.dependencies.size == state.dependencyResolutions.size
-                if (!resolved) LedgerBanner(stringResource(R.string.p15_journal_dependency_blocked), LedgerBannerVariant.WARNING)
+                if (!resolved) {
+                    LedgerBanner(
+                        stringResource(R.string.p15_journal_dependency_blocked),
+                        LedgerBannerVariant.WARNING,
+                        actionLabel = stringResource(R.string.p15_journal_resolve_dependencies),
+                        onAction = { actions.onNavigate("JRN-010", mapOf("transactionId" to detail.transaction.transactionId)) },
+                    )
+                }
+                if (state.operation == JournalOperationState.FAILED) {
+                    LedgerBanner(stringResource(R.string.p15_journal_move_trash_failed), LedgerBannerVariant.DANGER)
+                }
                 LedgerButton(
-                    stringResource(R.string.p15_journal_move_trash),
-                    { actions.onMoveToTrash(detail.transaction.transactionId, detail.transaction.revisionId, state.dependencyResolutions) },
+                    stringResource(if (resolved) R.string.p15_journal_move_trash else R.string.p15_journal_resolve_dependencies),
+                    {
+                        if (resolved) {
+                            actions.onMoveToTrash(detail.transaction.transactionId, detail.transaction.revisionId, state.dependencyResolutions)
+                        } else {
+                            actions.onNavigate("JRN-010", mapOf("transactionId" to detail.transaction.transactionId))
+                        }
+                    },
                     Modifier.fillMaxWidth(),
-                    LedgerButtonVariant.DANGER,
-                    enabled = resolved,
+                    if (resolved) LedgerButtonVariant.DANGER else LedgerButtonVariant.SECONDARY,
                 )
             }
         }
@@ -816,7 +870,7 @@ private fun DetailScreen(state: JournalLoadState.Content, actions: JournalAction
 @Composable
 private fun DetailSection(title: String, values: List<String>) {
     FormSection(title) {
-        if (values.isEmpty()) LedgerText("—", LedgerTextRole.SUPPORTING) else values.forEach { LedgerText(it, LedgerTextRole.BODY) }
+        values.forEach { LedgerText(it, LedgerTextRole.BODY) }
     }
 }
 
@@ -827,7 +881,7 @@ private fun accountEffectLabel(value: String, locale: Locale): String {
         val minor = encoded[2].toLongOrNull()
         val currency = currencyFromCode(encoded[3])
         if (minor != null && currency != null) {
-            val amount = formattedMoney(kotlin.math.abs(minor), currency, locale)
+            val amount = formattedMoney(kotlin.math.abs(minor), currency, locale) ?: return stringResource(R.string.p15_journal_account_change_unavailable)
             return stringResource(
                 if (minor >= 0) R.string.p15_journal_account_increase else R.string.p15_journal_account_decrease,
                 encoded[1],
@@ -843,7 +897,7 @@ private fun accountEffectLabel(value: String, locale: Locale): String {
             return stringResource(
                 R.string.p15_journal_account_change,
                 legacy.groupValues[1],
-                formattedMoney(kotlin.math.abs(minor), currency, locale),
+                formattedMoney(kotlin.math.abs(minor), currency, locale) ?: return stringResource(R.string.p15_journal_account_change_unavailable),
             )
         }
     }
@@ -855,7 +909,7 @@ private fun currencyFromCode(value: String): CurrencyCode? = when (val result = 
     is DomainResult.Failure -> null
 }
 
-private fun formattedMoney(minor: Long, currency: CurrencyCode, locale: Locale): String {
+private fun formattedMoney(minor: Long, currency: CurrencyCode, locale: Locale): String? {
     val formatter = LocaleCurrencyFormatter(JvmLegalTenderCurrencyCatalog.create())
     return when (
         val result = formatter.format(
@@ -863,7 +917,7 @@ private fun formattedMoney(minor: Long, currency: CurrencyCode, locale: Locale):
         )
     ) {
         is DomainResult.Success -> result.value.formatted
-        is DomainResult.Failure -> "${currency.value} $minor"
+        is DomainResult.Failure -> null
     }
 }
 
@@ -893,12 +947,38 @@ private fun BulkSelector(
     label: String,
     selected: Boolean,
     onSelected: (Boolean) -> Unit,
-    selectedText: String,
-    onNext: () -> Unit,
+    options: List<JournalBulkOption>,
+    selectedIndex: Int,
+    onIndexSelected: (Int) -> Unit,
     available: Boolean,
+    allowClear: Boolean = false,
 ) {
-    LedgerChoiceRow(label, selected, { onSelected(!selected) }, supportingText = stringResource(R.string.p15_journal_enable_field))
-    SelectorField(label, selectedText.ifBlank { stringResource(R.string.p15_journal_no_options) }, onNext, enabled = selected && available)
+    LedgerCheckboxRow(label, selected, onSelected, supportingText = stringResource(R.string.p15_journal_enable_field))
+    SearchableBulkChoice(label, options, selectedIndex, onIndexSelected, selected && available, allowClear)
+}
+
+@Composable
+private fun SearchableBulkChoice(
+    label: String,
+    options: List<JournalBulkOption>,
+    selectedIndex: Int,
+    onSelected: (Int) -> Unit,
+    enabled: Boolean,
+    allowClear: Boolean = false,
+) {
+    if (options.isEmpty()) {
+        SelectorField(label, stringResource(R.string.p15_journal_no_options), {}, enabled = false)
+    } else if (allowClear) {
+        LedgerChoiceSelector(
+            label,
+            selectedIndex + 1,
+            listOf(stringResource(R.string.p15_journal_clear_value)) + options.map { it.label },
+            { onSelected(it - 1) },
+            enabled = enabled,
+        )
+    } else {
+        LedgerChoiceSelector(label, selectedIndex, options.map { it.label }, onSelected, enabled = enabled, placeholder = stringResource(R.string.p15_journal_no_options))
+    }
 }
 
 @Composable
@@ -910,7 +990,7 @@ private fun HistoryScreen(state: JournalLoadState.Content, actions: JournalActio
         val locale = LocalLocale.current.platformLocale
         val zoneId = state.detail?.zoneId?.let(java.time.ZoneId::of) ?: LedgerTheme.timeZone
         val formatter = remember(locale, zoneId) {
-            DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale).withZone(zoneId)
+            LedgerDateFormatterRuntime.dateTimeFormatter(locale).withZone(zoneId)
         }
         LazyColumn(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
             items(history, key = { it.revisionId.toString() }) { version ->
@@ -957,25 +1037,64 @@ private fun ComparisonScreen(state: JournalLoadState.Content, actions: JournalAc
         LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.p15_journal_loading))
     } else {
         var unchangedExpanded by remember(comparison) { mutableStateOf(false) }
-        Column(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-            LedgerText(stringResource(R.string.p15_journal_compare), LedgerTextRole.TITLE)
-            DetailSection(stringResource(R.string.p15_journal_changed), comparison.changedFields.map { it.revisionFieldLabel() })
-            FormSection(
-                stringResource(R.string.p15_journal_unchanged),
-                expanded = unchangedExpanded,
-                onToggle = { unchangedExpanded = !unchangedExpanded },
-            ) {
-                comparison.unchangedFields.map { it.revisionFieldLabel() }.forEach { LedgerText(it, LedgerTextRole.BODY) }
+        val locale = LocalLocale.current.platformLocale
+        val zone = LedgerTheme.timeZone
+        val formatter = LedgerDateFormatterRuntime.dateTimeFormatter(locale).withZone(zone)
+        LazyColumn(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+            item { LedgerText(stringResource(R.string.p15_journal_compare), LedgerTextRole.TITLE) }
+            item { LedgerText(stringResource(R.string.p15_journal_changed), LedgerTextRole.SECTION) }
+            items(comparison.changedFields, key = { "changed-$it" }) { field ->
+                LedgerCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                        LedgerText(field.revisionFieldLabel(), LedgerTextRole.SECTION)
+                        LedgerText(stringResource(R.string.p15_compare_left), LedgerTextRole.LABEL)
+                        LedgerText(revisionValue(field, comparison.left, locale, formatter), LedgerTextRole.BODY)
+                        LedgerText(stringResource(R.string.p15_compare_right), LedgerTextRole.LABEL)
+                        LedgerText(revisionValue(field, comparison.right, locale, formatter), LedgerTextRole.BODY)
+                    }
+                }
+            }
+            item {
+                FormSection(
+                    stringResource(R.string.p15_journal_unchanged),
+                    expanded = unchangedExpanded,
+                    onToggle = { unchangedExpanded = !unchangedExpanded },
+                ) {
+                    if (unchangedExpanded) {
+                        AccessibleDataTable(
+                            AccessibleTableUiModel(
+                                stringResource(R.string.p15_journal_unchanged),
+                                listOf(stringResource(R.string.p15_compare_field), stringResource(R.string.p15_compare_left), stringResource(R.string.p15_compare_right)),
+                                comparison.unchangedFields.map { field ->
+                                    listOf(field.revisionFieldLabel(), revisionValue(field, comparison.left, locale, formatter), revisionValue(field, comparison.right, locale, formatter))
+                                },
+                            ),
+                        )
+                    }
+                }
             }
             val transaction = state.detail?.transaction
-            LedgerButton(
-                stringResource(R.string.p15_journal_restore_version),
-                { transaction?.let { actions.onRestoreRevision(it.transactionId, it.revisionId, comparison.left.revisionId, state.dependencyResolutions) } },
-                Modifier.fillMaxWidth(),
-                enabled = transaction != null && state.dependencies.size == state.dependencyResolutions.size,
-            )
+            item {
+                LedgerButton(
+                    stringResource(R.string.p15_journal_restore_version),
+                    { transaction?.let { actions.onRestoreRevision(it.transactionId, it.revisionId, comparison.left.revisionId, state.dependencyResolutions) } },
+                    Modifier.fillMaxWidth(),
+                    enabled = transaction != null && state.dependencies.size == state.dependencyResolutions.size,
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun revisionValue(field: String, revision: JournalRevisionView, locale: Locale, formatter: DateTimeFormatter): String = when (field) {
+    "created" -> formatter.format(revision.createdAt)
+    "occurredAt" -> formatter.format(revision.occurredAt)
+    "category" -> revision.category ?: "—"
+    "account" -> revision.account ?: "—"
+    "amount" -> revision.amountMinor?.let { amount -> revision.currency?.let { currency -> formattedMoney(amount, currency, locale) } } ?: stringResource(R.string.p15_journal_amount_unavailable)
+    "state" -> revision.resultingState.label()
+    else -> "—"
 }
 
 @Composable
@@ -999,10 +1118,12 @@ private fun DependenciesScreen(state: JournalLoadState.Content, actions: Journal
                                 stringResource(R.string.p15_journal_dependency_child_state, dependency.childState.label()),
                             ),
                         )
-                        SelectorField(
+                        LedgerChoiceSelector(
                             stringResource(R.string.p15_journal_dependency_strategy),
-                            selected?.policyLabel() ?: stringResource(R.string.p15_journal_dependency_choose),
-                            { actions.onResolveDependency(dependency, policies[(index + 1).mod(policies.size)]) },
+                            index,
+                            policies.map { it.policyLabel() },
+                            { actions.onResolveDependency(dependency, policies[it]) },
+                            placeholder = stringResource(R.string.p15_journal_dependency_choose),
                         )
                     }
                 }
@@ -1022,7 +1143,17 @@ private fun DependenciesScreen(state: JournalLoadState.Content, actions: Journal
 private fun TrashScreen(state: JournalLoadState.Content, pages: Flow<PagingData<JournalTransactionView>>, actions: JournalActions) {
     Column(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN)) {
         LedgerBanner(stringResource(R.string.p15_journal_retention), LedgerBannerVariant.INFO)
-        PagedJournalList(pages, actions, false, selection = state.selection, trashMode = true)
+        PagedJournalList(
+            pages,
+            actions,
+            false,
+            selection = state.selection,
+            trashMode = true,
+            emptyTitle = stringResource(R.string.p15_trash_empty_title),
+            emptyBody = stringResource(R.string.p15_trash_empty_body),
+            emptyActionLabel = stringResource(R.string.p15_journal_back_to_journal),
+            onEmptyAction = actions.onBack,
+        )
     }
 }
 
@@ -1030,38 +1161,61 @@ private fun TrashScreen(state: JournalLoadState.Content, pages: Flow<PagingData<
 private fun PurgeScreen(state: JournalLoadState.Content, actions: JournalActions) {
     val assessment = state.purgeAssessment
     var phrase by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-        if (assessment == null) {
-            when (state.operation) {
-                JournalOperationState.VALIDATING -> {
-                    LedgerText(stringResource(R.string.p15_journal_purge_verifying), LedgerTextRole.SECTION)
-                    LedgerProgressIndicator(null, accessibleText = stringResource(R.string.p15_journal_purge_verifying))
+    val dismiss = { phrase = ""; actions.onBack() }
+    if (assessment == null) {
+        LedgerDialog(
+            title = stringResource(R.string.p15_journal_purge),
+            message = stringResource(R.string.p15_journal_purge_verifying),
+            confirmLabel = stringResource(R.string.p15_journal_back_to_journal),
+            onConfirm = dismiss,
+            onDismiss = dismiss,
+            content = {
+                when (state.operation) {
+                    JournalOperationState.VALIDATING -> LedgerProgressIndicator(null, accessibleText = stringResource(R.string.p15_journal_purge_verifying))
+                    JournalOperationState.FAILED -> LedgerBanner(
+                        stringResource(R.string.p15_journal_purge_verify_failed),
+                        LedgerBannerVariant.DANGER,
+                        actionLabel = stringResource(R.string.p15_journal_retry),
+                        onAction = { state.detail?.transaction?.transactionId?.let(actions.onVerifyPurge) },
+                    )
+                    else -> LedgerLoadingState(label = stringResource(R.string.p15_journal_loading))
                 }
-                JournalOperationState.FAILED -> LedgerBanner(
-                    stringResource(R.string.p15_journal_purge_verify_failed),
-                    LedgerBannerVariant.DANGER,
-                    actionLabel = stringResource(R.string.p15_journal_retry),
-                    onAction = { state.detail?.transaction?.transactionId?.let(actions.onVerifyPurge) },
-                )
-                else -> LedgerLoadingState(label = stringResource(R.string.p15_journal_loading))
-            }
-        } else if (!assessment.canPurgeNow) {
-            LedgerBanner(stringResource(R.string.p15_journal_purge_blocked), LedgerBannerVariant.DANGER)
-            assessment.reasons.forEach { LedgerText(it.label(), LedgerTextRole.BODY) }
-            LedgerBanner(stringResource(R.string.p15_journal_purge_p31), LedgerBannerVariant.INFO)
-        } else {
-            LedgerBanner(stringResource(R.string.p15_journal_purge_dependency_summary, state.dependencies.size), LedgerBannerVariant.INFO)
-            if (state.operation == JournalOperationState.COMMITTING) {
-                LedgerText(stringResource(R.string.p15_journal_purge_running), LedgerTextRole.SECTION)
-                LedgerProgressIndicator(null, accessibleText = stringResource(R.string.p15_journal_purge_running))
-            }
-            HighRiskConfirmation(
-                stringResource(R.string.p15_journal_purge), stringResource(R.string.p15_journal_purge_scope),
-                stringResource(R.string.p15_journal_purge_consequence), stringResource(R.string.p15_journal_purge_unaffected),
-                stringResource(R.string.p15_journal_purge_phrase), phrase, { phrase = it },
-                { assessment.transactionId.let(actions.onPurgeRequested) }, { phrase = "" },
-            )
-        }
+            },
+        )
+    } else if (!assessment.canPurgeNow) {
+        LedgerDialog(
+            title = stringResource(R.string.p15_journal_purge_blocked),
+            message = assessment.purgeAfter?.let { stringResource(R.string.p15_journal_cleanup_at, it) },
+            confirmLabel = stringResource(R.string.p15_journal_back_to_journal),
+            onConfirm = dismiss,
+            onDismiss = dismiss,
+            danger = true,
+            content = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    assessment.reasons.forEach { LedgerText(it.label(), LedgerTextRole.BODY) }
+                }
+            },
+        )
+    } else {
+        val required = stringResource(R.string.p15_journal_purge_phrase)
+        LedgerDialog(
+            title = stringResource(R.string.p15_journal_purge),
+            message = stringResource(R.string.p15_journal_purge_scope),
+            confirmLabel = stringResource(R.string.p15_journal_purge),
+            onConfirm = { assessment.transactionId.let(actions.onPurgeRequested) },
+            onDismiss = dismiss,
+            danger = true,
+            confirmEnabled = phrase == required && state.operation != JournalOperationState.COMMITTING,
+            content = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    LedgerText(stringResource(R.string.p15_journal_purge_consequence), LedgerTextRole.BODY)
+                    LedgerText(stringResource(R.string.p15_journal_purge_unaffected), LedgerTextRole.SUPPORTING)
+                    LedgerBanner(stringResource(R.string.p15_journal_purge_dependency_summary, state.dependencies.size), LedgerBannerVariant.INFO)
+                    LedgerTextField(phrase, { phrase = it }, stringResource(R.string.p15_journal_purge), supportingText = required)
+                    if (state.operation == JournalOperationState.COMMITTING) LedgerProgressIndicator(null, accessibleText = stringResource(R.string.p15_journal_purge_running))
+                }
+            },
+        )
     }
 }
 
@@ -1075,12 +1229,22 @@ private fun PagedJournalList(
     selection: app.ledger.finance.application.JournalSelectionSpec? = null,
     trashMode: Boolean = false,
     modifier: Modifier = Modifier,
+    emptyTitle: String? = null,
+    emptyBody: String? = null,
+    emptyActionLabel: String? = null,
+    onEmptyAction: (() -> Unit)? = null,
 ) {
     val items = pages.collectAsLazyPagingItems()
     when {
         items.itemCount == 0 && items.loadState.refresh is LoadState.Loading -> LedgerLoadingState(modifier.fillMaxSize(), stringResource(R.string.p15_journal_loading))
         items.itemCount == 0 && items.loadState.refresh is LoadState.Error -> LedgerErrorState(UiErrorCode("JOURNAL_PAGE_FAILED"), stringResource(R.string.p15_journal_error), items::retry, modifier.fillMaxSize())
-        items.itemCount == 0 -> LedgerEmptyState(stringResource(R.string.p15_journal_empty_title), stringResource(R.string.p15_journal_empty_body), stringResource(R.string.p15_journal_retry), items::retry, modifier)
+        items.itemCount == 0 -> LedgerEmptyState(
+            emptyTitle ?: stringResource(R.string.p15_journal_empty_title),
+            emptyBody ?: stringResource(R.string.p15_journal_empty_body),
+            emptyActionLabel ?: stringResource(R.string.p15_journal_retry),
+            onEmptyAction ?: items::retry,
+            modifier,
+        )
         else -> JournalLazyColumn(
             items,
             actions,
@@ -1109,8 +1273,24 @@ private fun JournalLazyColumn(
     modifier: Modifier,
 ) {
     val locale = LocalLocale.current.platformLocale
-    val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    val restoredScroll = LocalLedgerRestoredScrollState.current
+    val restoredIndex = restoredScroll?.first?.removePrefix("index_")?.toIntOrNull() ?: 0
+    val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState(restoredIndex, restoredScroll?.second ?: 0) }
+    val scrollToTopRequest = LocalLedgerScrollToTopRequest.current
+    val scrollReporter = LocalLedgerScrollStateReporter.current
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequest > 0) listState.scrollToItem(0)
+    }
+    LaunchedEffect(listState, scrollReporter) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.collect { (index, offset) ->
+            scrollReporter("index_$index", offset)
+        }
+    }
     val formatter = remember(locale) { LocaleCurrencyFormatter(JvmLegalTenderCurrencyCatalog.create()) }
+    val zone = LedgerTheme.timeZone
+    val dateTimeFormatter = remember(locale, zone) {
+        LedgerDateFormatterRuntime.dateTimeFormatter(locale).withZone(zone)
+    }
     val unavailableAmount = stringResource(R.string.p15_journal_amount_unavailable)
     val snapshot = pagingItems.itemSnapshotList
     val dateGroups = remember(snapshot) {
@@ -1134,7 +1314,7 @@ private fun JournalLazyColumn(
             stickyHeader(key = "date-$date", contentType = "date_header") {
                 LedgerCard(Modifier.fillMaxWidth()) {
                     LedgerText(
-                        date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)),
+                        date.format(LedgerDateFormatterRuntime.formatter(locale)),
                         LedgerTextRole.SECTION,
                         Modifier.padding(LedgerTheme.spacing.xs),
                     )
@@ -1147,9 +1327,7 @@ private fun JournalLazyColumn(
             ) { (pagingIndex, snapshotTransaction) ->
                 val transaction = pagingItems[pagingIndex] ?: snapshotTransaction
                 val kindLabel = transaction.kind.label()
-                val row = remember(transaction, locale, kindLabel, unavailableAmount) {
-                    transaction.toUi(locale, formatter, kindLabel, unavailableAmount)
-                }
+                val row = transaction.toUi(locale, formatter, kindLabel, unavailableAmount, dateTimeFormatter.format(transaction.occurredAt))
                 val openDetail = {
                     actions.onLoadDetail(transaction.transactionId)
                     actions.onNavigate("JRN-007", mapOf("transactionId" to transaction.transactionId))
@@ -1166,6 +1344,7 @@ private fun JournalLazyColumn(
                             actions.onNavigate("JRN-005", emptyMap())
                         },
                         showRunningBalance = showRunningBalance,
+                        selected = if (selectionMode) selection?.contains(transaction.transactionId) == true else null,
                     )
                 }
             }
@@ -1186,21 +1365,28 @@ private fun TrashTransactionRow(
 ) {
     val locale = LocalLocale.current.platformLocale
     val zone = LedgerTheme.timeZone
-    val formatter = remember(locale, zone) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale).withZone(zone) }
+    val formatter = LedgerDateFormatterRuntime.dateTimeFormatter(locale).withZone(zone)
     LedgerCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = LedgerTheme.spacing.xs)) {
             JournalTransactionRow(row, onOpen, onSelect)
             transaction.trashedAt?.let { LedgerText(stringResource(R.string.p15_journal_deleted_at, formatter.format(it)), LedgerTextRole.SUPPORTING) }
             transaction.purgeAfter?.let { LedgerText(stringResource(R.string.p15_journal_cleanup_at, formatter.format(it)), LedgerTextRole.SUPPORTING) }
             LedgerText(stringResource(R.string.p15_journal_dependency_count, transaction.dependencyCount), LedgerTextRole.SUPPORTING)
-            LedgerChoiceRow(stringResource(R.string.p15_journal_selected_for_bulk), selected, { onSelect() })
+            LedgerCheckboxRow(stringResource(R.string.p15_journal_selected_for_bulk), selected, { onSelect() })
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                LedgerButton(stringResource(R.string.p15_journal_restore), { actions.onRestore(transaction.transactionId, transaction.revisionId) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
+                LedgerButton(
+                    stringResource(R.string.p15_journal_restore),
+                    { actions.onRestore(transaction.transactionId, transaction.revisionId) },
+                    Modifier.weight(1f),
+                    if (selected) LedgerButtonVariant.PRIMARY else LedgerButtonVariant.SECONDARY,
+                    enabled = selected,
+                )
                 LedgerButton(
                     stringResource(R.string.p15_journal_purge),
                     { actions.onNavigate("JRN-012", mapOf("transactionId" to transaction.transactionId)) },
                     Modifier.weight(1f),
                     LedgerButtonVariant.DANGER,
+                    enabled = selected,
                 )
             }
         }
@@ -1218,11 +1404,13 @@ private fun JournalLoadingRow() {
     }
 }
 
+@Composable
 private fun JournalTransactionView.toUi(
     locale: Locale,
     formatter: LocaleCurrencyFormatter,
     kindLabel: String,
     unavailableAmount: String,
+    occurredAtText: String,
 ): JournalTransactionUiModel {
     val secondaryMinor = secondaryAmountMinor
     val secondaryCode = secondaryCurrency
@@ -1244,9 +1432,24 @@ private fun JournalTransactionView.toUi(
             is DomainResult.Failure -> null
         }
     }
-    val accessible = listOf(kindLabel, categoryOrType, summary, accountAndCard, amount.fullAccessibleText, badges.joinToString()).filter(String::isNotBlank).joinToString(". ")
-    return JournalTransactionUiModel(transactionId.toString(), categoryOrType, summary, accountAndCard, amount, kindLabel, iconFor(kind), badges, running, accessible)
+    val localizedBadges = badges.map { it.localizedJournalBadge() }
+    val accessible = listOf(kindLabel, categoryOrType, summary, accountAndCard, amount.fullAccessibleText, localizedBadges.joinToString(), occurredAtText)
+        .filter(String::isNotBlank)
+        .joinToString(". ")
+    return JournalTransactionUiModel(transactionId.toString(), categoryOrType, summary, accountAndCard, amount, kindLabel, iconFor(kind), localizedBadges, running, accessible)
 }
+
+@Composable
+private fun String.localizedJournalBadge(): String = stringResource(
+    when (this) {
+        "attachment" -> R.string.p15_badge_attachment
+        "location" -> R.string.p15_badge_location
+        "refund" -> R.string.p15_badge_refund
+        "refunded" -> R.string.p15_badge_refunded
+        "installment" -> R.string.p15_badge_installment
+        else -> R.string.p15_badge_other
+    },
+)
 
 private fun iconFor(kind: TransactionKind): LedgerIcon = when (kind) {
     TransactionKind.TRANSFER, TransactionKind.FX_EXCHANGE -> LedgerIcon.TRANSFER
@@ -1311,6 +1514,7 @@ private fun JournalOperationState.label(): String = stringResource(
         JournalOperationState.IDLE -> R.string.p15_operation_idle
         JournalOperationState.VALIDATING -> R.string.p15_operation_validating
         JournalOperationState.COMMITTING -> R.string.p15_operation_committing
+        JournalOperationState.NO_CHANGES -> R.string.p15_operation_no_changes
         JournalOperationState.FAILED -> R.string.p15_operation_failed
         JournalOperationState.SUCCEEDED -> R.string.p15_operation_succeeded
     },
@@ -1330,6 +1534,40 @@ private fun RevisionAction.label(): String = stringResource(
 
 @Composable
 private fun String.localizedNature(): String = StatisticalNature.entries.firstOrNull { it.name == this }?.label() ?: this
+
+@Composable
+private fun String.localizedBudgetSummary(): String = if (startsWith("included:")) {
+    stringResource(R.string.p15_journal_budget_included)
+} else {
+    stringResource(R.string.p15_journal_budget_recorded)
+}
+
+@Composable
+private fun String.localizedRelationship(locale: Locale): String? {
+    REFUND_STATUS_RELATION.matchEntire(this)?.let { match ->
+        val currency = currencyFromCode(match.groupValues[4]) ?: return stringResource(R.string.p15_journal_relationship_unavailable)
+        val gross = formattedMoney(match.groupValues[1].toLongOrNull() ?: return stringResource(R.string.p15_journal_relationship_unavailable), currency, locale)
+        val refunded = formattedMoney(match.groupValues[2].toLongOrNull() ?: return stringResource(R.string.p15_journal_relationship_unavailable), currency, locale)
+        val remaining = formattedMoney(match.groupValues[3].toLongOrNull() ?: return stringResource(R.string.p15_journal_relationship_unavailable), currency, locale)
+        if (gross == null || refunded == null || remaining == null) return stringResource(R.string.p15_journal_relationship_unavailable)
+        return stringResource(R.string.p15_journal_refund_status_summary, gross, refunded, remaining)
+    }
+    REFUND_ORIGINAL_RELATION.matchEntire(this)?.let { match ->
+        val currency = currencyFromCode(match.groupValues[5]) ?: return stringResource(R.string.p15_journal_relationship_unavailable)
+        val gross = formattedMoney(match.groupValues[2].toLongOrNull() ?: return stringResource(R.string.p15_journal_relationship_unavailable), currency, locale)
+        val refunded = formattedMoney(match.groupValues[3].toLongOrNull() ?: return stringResource(R.string.p15_journal_relationship_unavailable), currency, locale)
+        val remaining = formattedMoney(match.groupValues[4].toLongOrNull() ?: return stringResource(R.string.p15_journal_relationship_unavailable), currency, locale)
+        if (gross == null || refunded == null || remaining == null) return stringResource(R.string.p15_journal_relationship_unavailable)
+        return stringResource(R.string.p15_journal_refund_original_summary, gross, refunded, remaining)
+    }
+    if (startsWith("refund.dates:")) return stringResource(R.string.p15_journal_refund_dates_recorded)
+    val dependencyName = substringBefore(':')
+    val dependency = TransactionDependencyType.entries.firstOrNull { it.name == dependencyName }
+    return dependency?.label() ?: stringResource(R.string.p15_journal_relationship_unavailable)
+}
+
+private val REFUND_STATUS_RELATION = Regex("^refund\\.status:gross=(-?\\d+):refunded=(-?\\d+):remaining=(-?\\d+):([A-Z]{3})$")
+private val REFUND_ORIGINAL_RELATION = Regex("^refund\\.original:([^:]+):gross=(-?\\d+):refunded=(-?\\d+):remaining=(-?\\d+):([A-Z]{3})$")
 
 @Composable
 private fun String.revisionFieldLabel(): String = stringResource(
@@ -1484,24 +1722,12 @@ private fun FilterInstantField(
 
 @Composable
 private fun TriStateFilter(label: String, value: Boolean?, onValueChange: (Boolean?) -> Unit) {
-    val displayed = when (value) {
-        null -> stringResource(R.string.p15_journal_any)
-        true -> stringResource(R.string.p15_journal_yes)
-        false -> stringResource(R.string.p15_journal_no)
+    Column(Modifier.fillMaxWidth()) {
+        LedgerText(label, LedgerTextRole.LABEL)
+        LedgerChoiceRow(stringResource(R.string.p15_journal_any), value == null, { onValueChange(null) })
+        LedgerChoiceRow(stringResource(R.string.p15_journal_yes), value == true, { onValueChange(true) })
+        LedgerChoiceRow(stringResource(R.string.p15_journal_no), value == false, { onValueChange(false) })
     }
-    SelectorField(
-        label,
-        displayed,
-        {
-            onValueChange(
-                when (value) {
-                    null -> true
-                    true -> false
-                    false -> null
-                },
-            )
-        },
-    )
 }
 
 @Composable

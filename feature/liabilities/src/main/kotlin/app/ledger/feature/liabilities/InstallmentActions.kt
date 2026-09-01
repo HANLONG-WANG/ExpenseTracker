@@ -16,4 +16,5 @@ public data class InstallmentActions(
     val onPreview: () -> Unit,
     val onCalculateSettlement: () -> Unit,
     val onApplySettlement: () -> Unit,
+    val onCancelConfirmation: () -> Unit = {},
 )

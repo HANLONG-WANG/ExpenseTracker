@@ -20,6 +20,7 @@ public data class SettlementActions(
     val onChargeDistribution: (SettlementChargeDistribution) -> Unit,
     val onRoundingRule: (SettlementRoundingRule) -> Unit,
     val onToggleParticipant: (StableId) -> Unit,
+    val onSetSelfParticipant: (StableId) -> Unit,
     val onMoveParticipant: (StableId, Int) -> Unit,
     val onAddParticipant: () -> Unit,
     val onSave: () -> Unit,

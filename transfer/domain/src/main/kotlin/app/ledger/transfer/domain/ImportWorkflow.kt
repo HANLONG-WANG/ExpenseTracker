@@ -28,7 +28,7 @@ enum class StructuredEntityKind(val canonicalSheetName: String, val dependencyOr
     PLACE("places", 4),
     GOAL("goals", 5),
     PROJECT("projects", 6),
-    SETTLEMENT_ACTIVITY("settlement_activities", 7),
+    SETTLEMENT_ACTIVITY("settlements", 7),
     LOCATION("locations", 8),
     RECURRENCE("recurrences", 9),
     TRANSACTION("transactions", 10),
@@ -41,7 +41,12 @@ enum class StructuredEntityKind(val canonicalSheetName: String, val dependencyOr
     companion object {
         fun fromSheetName(value: String): StructuredEntityKind? = entries.singleOrNull {
             it.canonicalSheetName.equals(value.trim(), ignoreCase = true)
-        }
+        } ?: SETTLEMENT_ACTIVITY.takeIf { value.trim().equals(LEGACY_SETTLEMENT_SHEET, ignoreCase = true) }
+
+        val supportedSheetNames: Set<String> = entries.mapTo(linkedSetOf()) { it.canonicalSheetName } +
+            LEGACY_SETTLEMENT_SHEET
+
+        private const val LEGACY_SETTLEMENT_SHEET = "settlement_activities"
     }
 }
 

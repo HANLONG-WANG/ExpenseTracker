@@ -13,22 +13,34 @@ package app.ledger.feature.accounts
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
@@ -45,6 +57,8 @@ import app.ledger.core.designsystem.AccountSummaryUiModel
 import app.ledger.core.designsystem.ChartCard
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
+import app.ledger.core.designsystem.LedgerBottomSheet
+import app.ledger.core.designsystem.LedgerModalDialog
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
@@ -58,20 +72,27 @@ import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerLineChart
 import app.ledger.core.designsystem.LedgerDatePickerFlow
+import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerReferenceDisplayDefaults
 import app.ledger.core.designsystem.LedgerSaveFab
+import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerVicoLineRenderer
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
 import app.ledger.core.designsystem.MoneyExpressionField
+import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
+import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
+import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
 import app.ledger.core.designsystem.ReferenceDisplayStyleIcons
 import app.ledger.core.designsystem.ReferenceDisplayStylePicker
+import app.ledger.core.designsystem.rememberLedgerRetainedState
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.money.AmountSemantic
@@ -110,6 +131,7 @@ public fun AccountsDestination(
     replacementCardId: StableId? = null,
     pending: Boolean,
     amountsVisible: Boolean = true,
+    visibleCurrencyCodes: List<String> = emptyList(),
     stateOverride: AccountsRequiredState? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -117,9 +139,11 @@ public fun AccountsDestination(
     require(stateOverride == null || stateOverride.screenId == screenId)
     val snapshot = (dataState as? AccountsDataState.Content)?.snapshot
     val stateName = stateOverride?.contractName ?: actualState(screenId, dataState, snapshot, encodedArguments, pending)
+    val scrollable = screenId !in setOf("ACC-001", "ACC-003", "ACC-006", "ACC-009", "ACC-010")
     Column(
         modifier.fillMaxSize().testTag(LedgerTestTags.P12_ACCOUNTS_ROOT)
-            .padding(vertical = LedgerTheme.spacing.xs),
+            .padding(vertical = LedgerTheme.spacing.xs)
+            .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
         when {
@@ -132,12 +156,12 @@ public fun AccountsDestination(
             )
             screenId == "ACC-001" -> AccountHome(snapshot, stateName, actions, amountsVisible)
             screenId == "ACC-002" -> AccountTypePicker(actions)
-            screenId == "ACC-003" -> AccountEditor(snapshot, encodedArguments.stableId("accountId"), selectedAccountType, stateName, actions)
+            screenId == "ACC-003" -> AccountEditor(snapshot, encodedArguments.stableId("accountId"), selectedAccountType, stateName, actions, visibleCurrencyCodes)
             screenId == "ACC-004" -> OpeningBalance(snapshot, encodedArguments.requireStableId("accountId"), stateName, actions)
             screenId == "ACC-005" -> AccountDetail(snapshot, encodedArguments.requireStableId("accountId"), stateName, actions, amountsVisible)
             screenId == "ACC-006" -> AccountTransactions(snapshot, encodedArguments.requireStableId("accountId"), stateName, actions, amountsVisible)
-            screenId == "ACC-007" -> CheckpointEditor(snapshot, encodedArguments.requireStableId("accountId"), stateName, actions)
-            screenId == "ACC-008" -> CheckpointResolution(snapshot, encodedArguments.requireStableId("checkpointId"), actions)
+            screenId == "ACC-007" -> CheckpointEditor(snapshot, encodedArguments.requireStableId("accountId"), stateName, actions, amountsVisible)
+            screenId == "ACC-008" -> CheckpointResolution(snapshot, encodedArguments.requireStableId("checkpointId"), actions, amountsVisible)
             screenId == "ACC-009" -> CardList(snapshot, encodedArguments.requireStableId("accountId"), stateName, actions)
             screenId == "ACC-010" -> CardEditor(snapshot, encodedArguments.stableId("cardId"), preferredCardAccountId, replacementCardId, stateName, actions)
             screenId == "ACC-011" -> CardDetail(snapshot, encodedArguments.requireStableId("cardId"), stateName, actions)
@@ -147,7 +171,7 @@ public fun AccountsDestination(
 }
 
 @Composable
-private fun AccountHome(snapshot: ReferenceDataSnapshot?, state: String, actions: AccountsActions, amountsVisible: Boolean) {
+private fun ColumnScope.AccountHome(snapshot: ReferenceDataSnapshot?, state: String, actions: AccountsActions, amountsVisible: Boolean) {
     if (state == "error") {
         LedgerErrorState(UiErrorCode("ACCOUNT_LIST_FAILED"), stringResource(R.string.accounts_load_failed), actions.onRetry)
         return
@@ -176,7 +200,18 @@ private fun AccountHome(snapshot: ReferenceDataSnapshot?, state: String, actions
             snapshot?.adjustedNetFinancialPositionMinor.displayMoney(snapshot?.baseCurrency?.value.orEmpty(), amountsVisible),
         ),
     )
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+    val restoredScroll = LocalLedgerRestoredScrollState.current
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = restoredScroll?.first?.removePrefix("index_")?.toIntOrNull() ?: 0,
+        initialFirstVisibleItemScrollOffset = restoredScroll?.second ?: 0,
+    )
+    val scrollToTopRequest = LocalLedgerScrollToTopRequest.current
+    val scrollReporter = LocalLedgerScrollStateReporter.current
+    LaunchedEffect(scrollToTopRequest) { if (scrollToTopRequest > 0) listState.scrollToItem(0) }
+    LaunchedEffect(listState, scrollReporter) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.collect { (index, offset) -> scrollReporter("index_$index", offset) }
+    }
+    LazyColumn(Modifier.weight(1f), state = listState, verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         UserAccountType.entries.forEach { type ->
             val grouped = accounts.filter { it.type == type }
             if (grouped.isNotEmpty()) {
@@ -209,111 +244,177 @@ private fun AccountEditor(
     selectedType: UserAccountType,
     state: String,
     actions: AccountsActions,
+    visibleCurrencyCodes: List<String>,
 ) {
     val existing = snapshot?.accounts?.singleOrNull { it.id == accountId }
-    var name by remember(accountId) { mutableStateOf(existing?.name.orEmpty()) }
-    var currency by remember(accountId, snapshot) { mutableStateOf(existing?.currency?.value ?: snapshot?.baseCurrency?.value.orEmpty()) }
-    var institution by remember(accountId) { mutableStateOf(existing?.institutionName.orEmpty()) }
-    var branch by remember(accountId) { mutableStateOf(existing?.branchName.orEmpty()) }
-    var accountNumber by remember(accountId) { mutableStateOf(existing?.accountNumber.orEmpty()) }
+    var name by rememberLedgerRetainedState("account.name") { existing?.name.orEmpty() }
+    var currency by rememberLedgerRetainedState("account.currency") { existing?.currency?.value ?: snapshot?.baseCurrency?.value.orEmpty() }
+    var institution by rememberLedgerRetainedState("account.institution") { existing?.institutionName.orEmpty() }
+    var branch by rememberLedgerRetainedState("account.branch") { existing?.branchName.orEmpty() }
+    var accountNumber by rememberLedgerRetainedState("account.number") { existing?.accountNumber.orEmpty() }
     val supportedCurrencies = remember { JvmLegalTenderCurrencyCatalog.create().activeLegalTenderCurrencies().map { it.code }.sortedBy { it.value } }
-    var selectedIcon by remember(accountId) {
-        mutableStateOf(
+    val preferredCurrencies = remember(supportedCurrencies, visibleCurrencyCodes, snapshot, existing) {
+        val byCode = supportedCurrencies.associateBy { it.value }
+        val required = buildList {
+            add(snapshot?.baseCurrency?.value)
+            add(existing?.currency?.value)
+            addAll(snapshot?.accounts.orEmpty().map { it.currency.value })
+        }.filterNotNull()
+        (visibleCurrencyCodes + required).distinct().mapNotNull(byCode::get)
+            .ifEmpty { listOfNotNull(byCode[snapshot?.baseCurrency?.value]) }
+    }
+    var showCurrencyPicker by remember { mutableStateOf(false) }
+    var currencyQuery by remember { mutableStateOf("") }
+    var selectedIcon by rememberLedgerRetainedState("account.icon") {
             ReferenceDisplayStyleIcons.firstOrNull { it.name.equals(existing?.iconKey, ignoreCase = true) }
-                ?: LedgerIcon.ACCOUNT,
-        )
+                ?: LedgerIcon.ACCOUNT
     }
-    var selectedColor by remember(accountId) {
-        mutableStateOf(existing?.colorArgb ?: LedgerReferenceDisplayDefaults.COLOR_ARGB)
+    var selectedColor by rememberLedgerRetainedState("account.color") {
+        existing?.colorArgb ?: LedgerReferenceDisplayDefaults.COLOR_ARGB
     }
-    var selectedPalette by remember(accountId) {
-        mutableStateOf(LedgerReferenceDisplayDefaults.paletteId(selectedColor))
+    var selectedPalette by rememberLedgerRetainedState("account.palette") {
+        LedgerReferenceDisplayDefaults.paletteId(selectedColor)
     }
+    var attempted by rememberLedgerRetainedState("account.attempted") { false }
     val currencyValid = supportedCurrencies.any { it.value == currency }
     val validation = state == "validationError" || name.isBlank() || !currencyValid
-    if (state == "currencyLocked" || existing?.hasFinancialPostings == true) {
-        LedgerBanner(stringResource(R.string.accounts_currency_locked), LedgerBannerVariant.INFO)
+    val submit = {
+        actions.onSaveAccount(
+            AccountEditorSubmission(
+                accountId,
+                existing?.type ?: selectedType,
+                name.trim(),
+                currency,
+                institution.clean(),
+                branch.clean(),
+                accountNumber.clean(),
+                existing?.openedOn,
+                selectedIcon.name.lowercase(),
+                selectedColor,
+            ),
+        )
     }
-    if (validation && state == "validationError") LedgerBanner(stringResource(R.string.accounts_validation), LedgerBannerVariant.DANGER)
-    LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.accounts_name), required = true, errorText = stringResource(R.string.accounts_required).takeIf { validation && name.isBlank() })
-    SelectorField(
-        stringResource(R.string.accounts_currency),
-        currency.ifBlank { stringResource(R.string.accounts_currency_choose) },
-        {
-            val index = supportedCurrencies.indexOfFirst { it.value == currency }
-            currency = supportedCurrencies[(index + 1).mod(supportedCurrencies.size)].value
-        },
-        supportingText = stringResource(R.string.accounts_currency_supported),
-        enabled = existing?.hasFinancialPostings != true && supportedCurrencies.isNotEmpty(),
-    )
-    if (!currencyValid) LedgerText(stringResource(R.string.accounts_currency_invalid), LedgerTextRole.SUPPORTING)
-    if ((existing?.type ?: selectedType) != UserAccountType.CASH) {
-        LedgerTextField(institution, { institution = it.take(MAX_NAME) }, stringResource(R.string.accounts_institution))
-        LedgerTextField(branch, { branch = it.take(MAX_NAME) }, stringResource(R.string.accounts_branch))
-    }
-    if ((existing?.type ?: selectedType) in setOf(UserAccountType.CASH, UserAccountType.BANK)) {
-        LedgerTextField(accountNumber, { accountNumber = it.take(MAX_ACCOUNT_NUMBER) }, stringResource(R.string.accounts_account_number), sensitive = true)
-    }
-    LedgerBanner(stringResource(R.string.accounts_type_value, (existing?.type ?: selectedType).label()), LedgerBannerVariant.NEUTRAL)
-    ReferenceDisplayStylePicker(
-        selectedIcon = selectedIcon,
-        selectedPaletteId = selectedPalette,
-        iconSectionLabel = stringResource(R.string.accounts_appearance_icon),
-        colorSectionLabel = stringResource(R.string.accounts_appearance_color),
-        onIconSelected = { selectedIcon = it },
-        onPaletteSelected = { palette, color ->
-            selectedPalette = palette
-            selectedColor = color
-        },
-    )
-    LedgerSaveFab(
-        onClick = {
-            actions.onSaveAccount(
-                AccountEditorSubmission(
-                    accountId,
-                    existing?.type ?: selectedType,
-                    name.trim(),
-                    currency,
-                    institution.clean(),
-                    branch.clean(),
-                    accountNumber.clean(),
-                    existing?.openedOn,
-                    selectedIcon.name.lowercase(),
-                    selectedColor,
-                ),
+    LedgerScaffold(
+        Modifier.fillMaxSize(),
+        fixedAction = {
+            LedgerSaveFab(
+                onClick = {
+                    attempted = true
+                    if (!validation) submit()
+                },
+                enabled = state != "saving",
+                submitting = state == "saving",
             )
         },
-        enabled = !validation && state != "saving",
-        submitting = state == "saving",
-    )
+        formContent = true,
+        contentHorizontalPadding = false,
+    ) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+        ) {
+            if (state == "currencyLocked" || existing?.hasFinancialPostings == true) {
+                LedgerBanner(stringResource(R.string.accounts_currency_locked), LedgerBannerVariant.INFO)
+            }
+            if (validation && (attempted || state == "validationError")) LedgerBanner(stringResource(R.string.accounts_validation), LedgerBannerVariant.DANGER)
+            LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.accounts_name), required = true, errorText = stringResource(R.string.accounts_required).takeIf { (attempted || state == "validationError") && name.isBlank() })
+            SelectorField(
+                stringResource(R.string.accounts_currency),
+                currency.ifBlank { stringResource(R.string.accounts_currency_choose) },
+                {
+                    currencyQuery = ""
+                    showCurrencyPicker = true
+                },
+                supportingText = stringResource(R.string.accounts_currency_supported),
+                enabled = existing?.hasFinancialPostings != true && supportedCurrencies.isNotEmpty(),
+            )
+            if (!currencyValid) LedgerText(stringResource(R.string.accounts_currency_invalid), LedgerTextRole.SUPPORTING)
+    if (showCurrencyPicker) {
+        val locale = LocalLocale.current.platformLocale
+        val currencyOptions = remember(supportedCurrencies, preferredCurrencies, currencyQuery, locale) {
+            val candidates = if (currencyQuery.isBlank()) preferredCurrencies else supportedCurrencies
+            candidates.filter { code ->
+                val name = runCatching { java.util.Currency.getInstance(code.value).getDisplayName(locale) }.getOrDefault(code.value)
+                currencyQuery.isBlank() || code.value.contains(currencyQuery, ignoreCase = true) || name.contains(currencyQuery, ignoreCase = true)
+            }
+        }
+        LedgerModalDialog(stringResource(R.string.accounts_currency_choose), onDismiss = { showCurrencyPicker = false }) {
+            LedgerTextField(
+                value = currencyQuery,
+                onValueChange = { currencyQuery = it.take(MAX_CURRENCY_QUERY) },
+                label = stringResource(R.string.accounts_currency_search),
+                modifier = Modifier.padding(horizontal = LedgerTheme.spacing.md),
+            )
+            LazyColumn(Modifier.fillMaxWidth().fillMaxSize()) {
+                items(currencyOptions, key = { it.value }) { code ->
+                    val displayName = runCatching { java.util.Currency.getInstance(code.value).getDisplayName(locale) }.getOrDefault(code.value)
+                    LedgerChoiceRow(
+                        title = code.value,
+                        selected = code.value == currency,
+                        onClick = {
+                            currency = code.value
+                            showCurrencyPicker = false
+                        },
+                        supportingText = displayName,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+            if ((existing?.type ?: selectedType) != UserAccountType.CASH) {
+                LedgerTextField(institution, { institution = it.take(MAX_NAME) }, stringResource(R.string.accounts_institution))
+                LedgerTextField(branch, { branch = it.take(MAX_NAME) }, stringResource(R.string.accounts_branch))
+            }
+            if ((existing?.type ?: selectedType) in setOf(UserAccountType.CASH, UserAccountType.BANK)) {
+                LedgerTextField(accountNumber, { accountNumber = it.take(MAX_ACCOUNT_NUMBER) }, stringResource(R.string.accounts_account_number), sensitive = true)
+            }
+            LedgerBanner(stringResource(R.string.accounts_type_value, (existing?.type ?: selectedType).label()), LedgerBannerVariant.NEUTRAL)
+            ReferenceDisplayStylePicker(
+                selectedIcon = selectedIcon,
+                selectedPaletteId = selectedPalette,
+                iconSectionLabel = stringResource(R.string.accounts_appearance_icon),
+                colorSectionLabel = stringResource(R.string.accounts_appearance_color),
+                onIconSelected = { selectedIcon = it },
+                onPaletteSelected = { palette, color ->
+                    selectedPalette = palette
+                    selectedColor = color
+                },
+            )
+        }
+    }
 }
 
 @Composable
 private fun OpeningBalance(snapshot: ReferenceDataSnapshot?, accountId: StableId, state: String, actions: AccountsActions) {
     val account = snapshot?.accounts?.singleOrNull { it.id == accountId }
     val baseCurrency = snapshot?.baseCurrency
-    var amount by remember(accountId) { mutableStateOf("") }
-    var baseAmount by remember(accountId) { mutableStateOf("") }
-    var date by remember(accountId) { mutableStateOf<LocalDate?>(null) }
+    var amount by rememberLedgerRetainedState("opening.amount") { "" }
+    var baseAmount by rememberLedgerRetainedState("opening.baseAmount") { "" }
+    var date by rememberLedgerRetainedState<LocalDate?>("opening.date") { null }
+    var attempted by rememberLedgerRetainedState("opening.attempted") { false }
     var showDatePicker by remember { mutableStateOf(false) }
     val amountResult = evaluateExpression(amount, account?.currency)
     val baseResult = evaluateExpression(baseAmount, baseCurrency)
+    val valid = amountResult != null && date != null && (account == null || account.currency == snapshot.baseCurrency || baseResult != null)
     LedgerBanner(stringResource(R.string.accounts_opening_not_statistics), LedgerBannerVariant.INFO)
-    MoneyExpressionField(amount, amountResult?.expression?.normalized.orEmpty(), amountResult?.let { it.roundedMoney.minor.money(account?.currency?.value.orEmpty()) }, { amount = it.take(MAX_EXPRESSION_LENGTH) }, currencyCode = account?.currency?.value.orEmpty(), errorText = stringResource(R.string.accounts_amount_invalid).takeIf { amount.isNotBlank() && amountResult == null })
+    if (attempted && !valid) LedgerBanner(stringResource(R.string.accounts_validation), LedgerBannerVariant.DANGER)
+    MoneyExpressionField(amount, amountResult?.expression?.normalized.orEmpty(), amountResult?.let { it.roundedMoney.minor.money(account?.currency?.value.orEmpty()) }, { amount = it.take(MAX_EXPRESSION_LENGTH) }, currencyCode = account?.currency?.value.orEmpty(), errorText = stringResource(R.string.accounts_amount_invalid).takeIf { (attempted || amount.isNotBlank()) && amountResult == null })
     if (account != null && baseCurrency != null && account.currency != baseCurrency) {
         MoneyExpressionField(baseAmount, baseResult?.expression?.normalized.orEmpty(), baseResult?.let { it.roundedMoney.minor.money(baseCurrency.value) }, { baseAmount = it.take(MAX_EXPRESSION_LENGTH) }, currencyCode = baseCurrency.value, errorText = stringResource(R.string.accounts_amount_invalid).takeIf { baseAmount.isNotBlank() && baseResult == null })
     }
-    SelectorField(stringResource(R.string.accounts_date), date?.localizedDate() ?: stringResource(R.string.accounts_choose_date), { showDatePicker = true })
+    SelectorField(stringResource(R.string.accounts_date), date?.localizedDate() ?: stringResource(R.string.accounts_choose_date), { showDatePicker = true }, supportingText = stringResource(R.string.accounts_required).takeIf { attempted && date == null })
     LedgerSaveFab(
         onClick = {
-            actions.onSaveOpeningBalance(OpeningBalanceSubmission(accountId, date ?: return@LedgerSaveFab, amountResult?.roundedMoney?.minor ?: return@LedgerSaveFab, baseResult?.roundedMoney?.minor))
+            attempted = true
+            if (valid) actions.onSaveOpeningBalance(OpeningBalanceSubmission(accountId, requireNotNull(date), requireNotNull(amountResult).roundedMoney.minor, baseResult?.roundedMoney?.minor))
         },
-        enabled = amountResult != null && date != null && (account == null || account.currency == snapshot.baseCurrency || baseResult != null) && state != "saving",
+        enabled = state != "saving",
         submitting = state == "saving",
     )
     if (showDatePicker) {
         LedgerDatePickerFlow(
-            (date ?: LocalDate.now()).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            (date ?: LocalDate.now(LedgerTheme.timeZone)).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
             { dateMillis -> date = java.time.Instant.ofEpochMilli(dateMillis).atZone(ZoneOffset.UTC).toLocalDate(); showDatePicker = false },
             { showDatePicker = false },
         )
@@ -329,6 +430,8 @@ private fun AccountDetail(snapshot: ReferenceDataSnapshot?, accountId: StableId,
     }
     if (state == "archived" || account.status == EntityStatus.ARCHIVED) LedgerBanner(stringResource(R.string.accounts_archived), LedgerBannerVariant.NEUTRAL)
     if (state == "valuationUnavailable" || (account.currency != snapshot.baseCurrency && account.currentBaseValueMinor == null)) LedgerBanner(stringResource(R.string.accounts_valuation_unavailable), LedgerBannerVariant.WARNING)
+    LedgerText(account.name, LedgerTextRole.TITLE)
+    LedgerText(account.type.label(), LedgerTextRole.SUPPORTING)
     MetricCard(stringResource(R.string.accounts_balance), account.balanceMinor.money(account.currency.value, amountsVisible), variant = MetricCardVariant.EMPHASIZED)
     val reserved = snapshot.accountGoals.filter { it.accountId == accountId }.sumOf { it.balanceMinor }
     val available = CheckedArithmetic.subtract(account.balanceMinor, reserved).getOrNull()
@@ -337,7 +440,7 @@ private fun AccountDetail(snapshot: ReferenceDataSnapshot?, accountId: StableId,
     account.currentBaseValueMinor?.let { valuation ->
         val locale = LocalLocale.current.platformLocale
         val valuationTime = account.valuationQuotedAt?.let {
-            DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale).withZone(LedgerTheme.timeZone).format(it)
+            LedgerDateFormatterRuntime.dateTimeFormatter(locale).withZone(LedgerTheme.timeZone).format(it)
         }
         MetricCard(
             stringResource(R.string.accounts_current_valuation),
@@ -362,7 +465,7 @@ private fun AccountDetail(snapshot: ReferenceDataSnapshot?, accountId: StableId,
                 LedgerChartSeries(
                     stableSeriesKey = account.id.toString(),
                     label = stringResource(R.string.accounts_balance),
-                    values = trendRows.map { it.runningBalanceMinor.toDouble() },
+                    values = trendRows.map { it.runningBalanceMinor.toMajorChartValue(it.currency) },
                     pointLabels = trendRows.map { it.localDate.localizedDate() },
                     formattedValues = trendRows.map { it.runningBalanceMinor.displayMoney(it.currency.value, true) },
                 ),
@@ -392,12 +495,12 @@ private fun AccountDetail(snapshot: ReferenceDataSnapshot?, accountId: StableId,
         .maxByOrNull(CheckpointReferenceView::asOf)
         ?.let { checkpoint ->
             LedgerText(stringResource(R.string.accounts_latest_checkpoint), LedgerTextRole.SECTION)
-            LedgerText(stringResource(R.string.accounts_checkpoint_date, checkpoint.asOfLocalDate.toString()), LedgerTextRole.SUPPORTING)
+            LedgerText(stringResource(R.string.accounts_checkpoint_date, checkpoint.asOfLocalDate.localizedDate()), LedgerTextRole.SUPPORTING)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                MetricCard(stringResource(R.string.accounts_observed_value), checkpoint.observedMinor.money(account.currency.value), Modifier.weight(1f))
-                MetricCard(stringResource(R.string.accounts_book_balance), checkpoint.calculatedMinor.money(account.currency.value), Modifier.weight(1f))
+                MetricCard(stringResource(R.string.accounts_observed_value), checkpoint.observedMinor.money(account.currency.value, amountsVisible), Modifier.weight(1f))
+                MetricCard(stringResource(R.string.accounts_book_balance), checkpoint.calculatedMinor.money(account.currency.value, amountsVisible), Modifier.weight(1f))
             }
-            MetricCard(stringResource(R.string.accounts_difference), checkpoint.differenceMinor.money(account.currency.value))
+            MetricCard(stringResource(R.string.accounts_difference), checkpoint.differenceMinor.money(account.currency.value, amountsVisible))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                 LedgerButton(
                     stringResource(R.string.accounts_find_missing),
@@ -421,11 +524,13 @@ private fun AccountDetail(snapshot: ReferenceDataSnapshot?, accountId: StableId,
             variant = LedgerButtonVariant.SECONDARY,
         )
     }
-    LedgerButton(stringResource(R.string.accounts_cards), { actions.onNavigate("ACC-009", mapOf("accountId" to account.id)) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.SECONDARY)
-    val cards = snapshot.cards.filter { it.accountId == accountId }
-    LedgerText(stringResource(R.string.accounts_cards_section, cards.size), LedgerTextRole.SECTION)
-    cards.take(RECENT_CARD_LIMIT).forEach { card ->
-        LedgerText(card.displayName, LedgerTextRole.BODY)
+    if (account.type in setOf(UserAccountType.BANK, UserAccountType.CREDIT)) {
+        LedgerButton(stringResource(R.string.accounts_cards), { actions.onNavigate("ACC-009", mapOf("accountId" to account.id)) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.SECONDARY)
+        val cards = snapshot.cards.filter { it.accountId == accountId }
+        LedgerText(stringResource(R.string.accounts_cards_section, cards.size), LedgerTextRole.SECTION)
+        cards.take(RECENT_CARD_LIMIT).forEach { card ->
+            LedgerText(card.displayName, LedgerTextRole.BODY)
+        }
     }
     val goals = snapshot.accountGoals.filter { it.accountId == accountId }
     LedgerText(stringResource(R.string.accounts_goals_section), LedgerTextRole.SECTION)
@@ -452,19 +557,22 @@ private fun AccountDetail(snapshot: ReferenceDataSnapshot?, accountId: StableId,
             ),
         )
     } else {
-        LedgerEmptyState(
-            stringResource(R.string.accounts_no_transactions),
-            stringResource(R.string.accounts_no_transactions_body),
-            stringResource(R.string.accounts_record),
-            { actions.onNavigate("REC-001", emptyMap()) },
-        )
+        LedgerText(stringResource(R.string.accounts_recent_transactions), LedgerTextRole.SECTION)
+        LedgerCard(Modifier.fillMaxWidth()) {
+            LedgerEmptyState(
+                stringResource(R.string.accounts_no_transactions),
+                stringResource(R.string.accounts_no_transactions_body),
+                stringResource(R.string.accounts_record),
+                { actions.onNavigate("REC-001", emptyMap()) },
+            )
+        }
     }
     LedgerButton(stringResource(R.string.accounts_edit), { actions.onNavigate("ACC-003", mapOf("accountId" to account.id)) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.TEXT)
     LedgerButton(stringResource(R.string.accounts_archive_delete), { actions.onNavigate("ACC-012", mapOf("accountId" to account.id)) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.TEXT)
 }
 
 @Composable
-private fun AccountTransactions(snapshot: ReferenceDataSnapshot?, accountId: StableId, state: String, actions: AccountsActions, amountsVisible: Boolean) {
+private fun ColumnScope.AccountTransactions(snapshot: ReferenceDataSnapshot?, accountId: StableId, state: String, actions: AccountsActions, amountsVisible: Boolean) {
     val allTransactions = snapshot?.accountTransactions.orEmpty()
     val transactions = remember(allTransactions, accountId) {
         allTransactions.filter { it.accountId == accountId }.sortedByDescending { it.occurredAt }
@@ -494,7 +602,7 @@ private fun AccountTransactions(snapshot: ReferenceDataSnapshot?, accountId: Sta
             LedgerChip(stringResource(R.string.accounts_filter_income), { kind = app.ledger.finance.domain.TransactionKind.INCOME }, selected = kind == app.ledger.finance.domain.TransactionKind.INCOME)
         }
         val compact = LocalConfiguration.current.screenWidthDp < ACCOUNT_COMPACT_WIDTH_DP
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
             if (paged.loadState.refresh is LoadState.Loading) {
                 item { LedgerLoadingState(Modifier.fillMaxWidth()) }
             }
@@ -503,7 +611,16 @@ private fun AccountTransactions(snapshot: ReferenceDataSnapshot?, accountId: Sta
             }
             items(paged.itemCount, key = { index -> paged.peek(index)?.transactionId?.toString() ?: "account-transaction-placeholder-$index" }) { index ->
                 paged[index]?.let { transaction ->
-                    LedgerCard(Modifier.fillMaxWidth()) {
+                    val transactionDescription = listOf(
+                        transaction.kind.accountTransactionLabel(),
+                        transaction.localDate.localizedDate(),
+                        transaction.impactMinor.displayMoney(transaction.currency.value, amountsVisible),
+                        stringResource(
+                            R.string.accounts_running_value,
+                            transaction.runningBalanceMinor.displayMoney(transaction.currency.value, amountsVisible),
+                        ),
+                    ).joinToString(". ")
+                    LedgerCard(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = transactionDescription }) {
                         Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(Modifier.weight(1f)) {
                                 LedgerText(transaction.kind.accountTransactionLabel(), LedgerTextRole.BODY)
@@ -529,12 +646,13 @@ private fun AccountTransactions(snapshot: ReferenceDataSnapshot?, accountId: Sta
 }
 
 @Composable
-private fun CheckpointEditor(snapshot: ReferenceDataSnapshot?, accountId: StableId, state: String, actions: AccountsActions) {
+private fun CheckpointEditor(snapshot: ReferenceDataSnapshot?, accountId: StableId, state: String, actions: AccountsActions, amountsVisible: Boolean) {
     val account = snapshot?.accounts?.singleOrNull { it.id == accountId }
-    var observed by remember(accountId) { mutableStateOf("") }
-    var selectedDate by remember(accountId) { mutableStateOf<LocalDate?>(null) }
+    var observed by rememberLedgerRetainedState("checkpoint.observed") { TextFieldValue() }
+    var selectedDate by rememberLedgerRetainedState<LocalDate?>("checkpoint.date") { null }
+    var attempted by rememberLedgerRetainedState("checkpoint.attempted") { false }
     var showDatePicker by remember { mutableStateOf(false) }
-    val observedResult = evaluateExpression(observed, account?.currency)
+    val observedResult = evaluateExpression(observed.text, account?.currency)
     val observedMinor = observedResult?.roundedMoney?.minor
     val calculated = if (selectedDate == null) {
         account?.balanceMinor ?: 0L
@@ -546,11 +664,23 @@ private fun CheckpointEditor(snapshot: ReferenceDataSnapshot?, accountId: Stable
             ?.runningBalanceMinor ?: 0L
     }
     val difference = observedMinor?.let { CheckedArithmetic.subtract(it, calculated).getOrNull() }
-    SelectorField(stringResource(R.string.accounts_date), selectedDate?.localizedDate() ?: stringResource(R.string.accounts_choose_date), { showDatePicker = true })
-    MoneyExpressionField(observed, observedResult?.expression?.normalized.orEmpty(), observedResult?.let { it.roundedMoney.minor.money(account?.currency?.value.orEmpty()) }, { observed = it.take(MAX_EXPRESSION_LENGTH) }, currencyCode = account?.currency?.value.orEmpty(), errorText = stringResource(R.string.accounts_amount_invalid).takeIf { observed.isNotBlank() && observedResult == null })
-    MetricCard(stringResource(R.string.accounts_book_balance), calculated.money(account?.currency?.value.orEmpty()))
+    if (attempted && (observedMinor == null || selectedDate == null)) LedgerBanner(stringResource(R.string.accounts_validation), LedgerBannerVariant.DANGER)
+    SelectorField(stringResource(R.string.accounts_date), selectedDate?.localizedDate() ?: stringResource(R.string.accounts_choose_date), { showDatePicker = true }, supportingText = stringResource(R.string.accounts_required).takeIf { attempted && selectedDate == null })
+    MoneyExpressionField(
+        observed,
+        observedResult?.expression?.normalized.orEmpty(),
+        observedResult?.let { it.roundedMoney.minor.money(account?.currency?.value.orEmpty()) },
+        { changed ->
+            val text = changed.text.take(MAX_EXPRESSION_LENGTH)
+            observed = changed.copy(text = text, selection = TextRange(changed.selection.start.coerceAtMost(text.length), changed.selection.end.coerceAtMost(text.length)))
+        },
+        currencyCode = account?.currency?.value.orEmpty(),
+        errorText = stringResource(R.string.accounts_amount_invalid).takeIf { observed.text.isNotBlank() && observedResult == null },
+        onOperator = { operator -> observed = checkpointExpressionAfterOperator(observed, operator) },
+    )
+    MetricCard(stringResource(R.string.accounts_book_balance), calculated.money(account?.currency?.value.orEmpty(), amountsVisible))
     if (state == "match" || difference == 0L) LedgerBanner(stringResource(R.string.accounts_checkpoint_match), LedgerBannerVariant.INFO)
-    if (state == "difference" || difference?.let { it != 0L } == true) MetricCard(stringResource(R.string.accounts_difference), (difference ?: 1L).money(account?.currency?.value.orEmpty()))
+    if (state == "difference" || difference?.let { it != 0L } == true) MetricCard(stringResource(R.string.accounts_difference), (difference ?: 1L).money(account?.currency?.value.orEmpty(), amountsVisible))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         LedgerButton(stringResource(R.string.accounts_find_missing), { actions.onNavigate("ACC-006", mapOf("accountId" to accountId)) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
         LedgerButton(stringResource(R.string.accounts_create_adjustment), { actions.onNavigate("REC-020", mapOf("accountId" to accountId)) }, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
@@ -558,23 +688,44 @@ private fun CheckpointEditor(snapshot: ReferenceDataSnapshot?, accountId: Stable
     LedgerButton(
         stringResource(R.string.accounts_save_checkpoint_only),
         onClick = {
-            actions.onSaveCheckpoint(CheckpointSubmission(accountId, selectedDate ?: return@LedgerButton, observedMinor ?: return@LedgerButton, null))
+            attempted = true
+            if (selectedDate != null && observedMinor != null) actions.onSaveCheckpoint(CheckpointSubmission(accountId, requireNotNull(selectedDate), observedMinor, null))
         },
         Modifier.fillMaxWidth(),
-        enabled = observedMinor != null && selectedDate != null && state != "saving",
+        enabled = state != "saving",
     )
     if (state == "saving") LedgerLoadingState(label = stringResource(R.string.accounts_saving_checkpoint))
     if (showDatePicker) {
         LedgerDatePickerFlow(
-            (selectedDate ?: LocalDate.now()).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            (selectedDate ?: LocalDate.now(LedgerTheme.timeZone)).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
             { dateMillis -> selectedDate = java.time.Instant.ofEpochMilli(dateMillis).atZone(ZoneOffset.UTC).toLocalDate(); showDatePicker = false },
             { showDatePicker = false },
         )
     }
 }
 
+internal fun checkpointExpressionAfterOperator(value: TextFieldValue, operator: String): TextFieldValue {
+    val selectionStart = minOf(value.selection.start, value.selection.end).coerceIn(0, value.text.length)
+    val selectionEnd = maxOf(value.selection.start, value.selection.end).coerceIn(selectionStart, value.text.length)
+    val inserted = when (operator) {
+        "−" -> "-"
+        "×" -> "*"
+        "÷" -> "/"
+        "DELETE" -> ""
+        else -> operator
+    }
+    val replacementStart = if (operator == "DELETE" && selectionStart == selectionEnd) {
+        (selectionStart - 1).coerceAtLeast(0)
+    } else {
+        selectionStart
+    }
+    val candidate = value.text.replaceRange(replacementStart, selectionEnd, inserted).take(MAX_EXPRESSION_LENGTH)
+    val cursor = (replacementStart + inserted.length).coerceAtMost(candidate.length)
+    return value.copy(text = candidate, selection = TextRange(cursor))
+}
+
 @Composable
-private fun CheckpointResolution(snapshot: ReferenceDataSnapshot?, checkpointId: StableId, actions: AccountsActions) {
+private fun CheckpointResolution(snapshot: ReferenceDataSnapshot?, checkpointId: StableId, actions: AccountsActions, amountsVisible: Boolean) {
     val checkpoint = snapshot?.checkpoints?.singleOrNull { it.id == checkpointId }
     if (checkpoint == null) {
         LedgerErrorState(UiErrorCode("CHECKPOINT_NOT_FOUND"), stringResource(R.string.accounts_checkpoint_not_found), actions.onRetry)
@@ -584,10 +735,10 @@ private fun CheckpointResolution(snapshot: ReferenceDataSnapshot?, checkpointId:
     val currency = account?.currency?.value ?: snapshot.baseCurrency.value
     LedgerBanner(stringResource(R.string.accounts_checkpoint_saved), LedgerBannerVariant.INFO)
     LedgerBanner(stringResource(R.string.accounts_checkpoint_does_not_change), LedgerBannerVariant.INFO)
-    LedgerText(stringResource(R.string.accounts_checkpoint_date, checkpoint.asOfLocalDate.toString()), LedgerTextRole.SUPPORTING)
-    MetricCard(stringResource(R.string.accounts_observed_value), checkpoint.observedMinor.money(currency))
-    MetricCard(stringResource(R.string.accounts_book_balance), checkpoint.calculatedMinor.money(currency))
-    MetricCard(stringResource(R.string.accounts_difference), checkpoint.differenceMinor.money(currency))
+    LedgerText(stringResource(R.string.accounts_checkpoint_date, checkpoint.asOfLocalDate.localizedDate()), LedgerTextRole.SUPPORTING)
+    MetricCard(stringResource(R.string.accounts_observed_value), checkpoint.observedMinor.money(currency, amountsVisible))
+    MetricCard(stringResource(R.string.accounts_book_balance), checkpoint.calculatedMinor.money(currency, amountsVisible))
+    MetricCard(stringResource(R.string.accounts_difference), checkpoint.differenceMinor.money(currency, amountsVisible))
     LedgerButton(stringResource(R.string.accounts_find_missing), { actions.onNavigate("ACC-006", mapOf("accountId" to checkpoint.accountId)) }, Modifier.fillMaxWidth())
     LedgerButton(
         if (checkpoint.adjustmentTransactionId == null) stringResource(R.string.accounts_create_adjustment) else stringResource(R.string.accounts_adjustment_created),
@@ -599,7 +750,7 @@ private fun CheckpointResolution(snapshot: ReferenceDataSnapshot?, checkpointId:
 }
 
 @Composable
-private fun CardList(snapshot: ReferenceDataSnapshot?, accountId: StableId, state: String, actions: AccountsActions) {
+private fun ColumnScope.CardList(snapshot: ReferenceDataSnapshot?, accountId: StableId, state: String, actions: AccountsActions) {
     val cards = snapshot?.cards.orEmpty().filter { it.accountId == accountId }
     if (state == "empty" || cards.isEmpty()) {
         LedgerEmptyState(stringResource(R.string.accounts_cards_empty), stringResource(R.string.accounts_cards_empty_body), stringResource(R.string.accounts_card_add), { actions.onNavigate("ACC-010", emptyMap()) })
@@ -607,7 +758,7 @@ private fun CardList(snapshot: ReferenceDataSnapshot?, accountId: StableId, stat
     }
     val active = cards.filter { it.status == EntityStatus.ACTIVE }
     val archived = cards.filter { it.status == EntityStatus.ARCHIVED }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         if (active.isNotEmpty()) item { LedgerText(stringResource(R.string.accounts_active_cards), LedgerTextRole.SECTION) }
         items(active, key = { it.id.toString() }) { card -> CardRow(card) { actions.onNavigate("ACC-011", mapOf("cardId" to card.id)) } }
         if (archived.isNotEmpty()) item { LedgerText(stringResource(R.string.accounts_archived_cards), LedgerTextRole.SECTION) }
@@ -617,7 +768,7 @@ private fun CardList(snapshot: ReferenceDataSnapshot?, accountId: StableId, stat
 }
 
 @Composable
-private fun CardRow(card: CardReferenceView, onClick: () -> Unit) {
+private fun CardRow(card: CardReferenceView, onClick: (() -> Unit)? = null) {
     LedgerCard(Modifier.fillMaxWidth(), onClick = onClick) {
         Column(Modifier.padding(LedgerTheme.spacing.sm)) {
             LedgerText(card.displayName, LedgerTextRole.SECTION)
@@ -631,28 +782,53 @@ private fun CardRow(card: CardReferenceView, onClick: () -> Unit) {
 private fun CardEditor(snapshot: ReferenceDataSnapshot?, cardId: StableId?, preferredAccountId: StableId?, replacementCardId: StableId?, state: String, actions: AccountsActions) {
     val existing = snapshot?.cards?.singleOrNull { it.id == cardId }
     val compatible = snapshot?.accounts.orEmpty().filter { it.status == EntityStatus.ACTIVE && it.type in setOf(UserAccountType.BANK, UserAccountType.CREDIT) }
-    var selectedAccount by remember(cardId, preferredAccountId) {
-        mutableStateOf(existing?.accountId ?: preferredAccountId?.takeIf { candidate -> compatible.any { it.id == candidate } } ?: compatible.firstOrNull()?.id)
+    var selectedAccount by rememberLedgerRetainedState<StableId?>("card.account") {
+        existing?.accountId ?: preferredAccountId?.takeIf { candidate -> compatible.any { it.id == candidate } } ?: compatible.firstOrNull()?.id
     }
-    var name by remember(cardId) { mutableStateOf(existing?.displayName.orEmpty()) }
-    var lastFour by remember(cardId) { mutableStateOf(existing?.lastFour.orEmpty()) }
-    var type by remember(cardId) { mutableStateOf(existing?.type ?: compatible.firstOrNull()?.let { if (it.type == UserAccountType.BANK) CardType.DEBIT else CardType.CREDIT_PRIMARY } ?: CardType.DEBIT) }
-    if (compatible.isEmpty()) LedgerBanner(stringResource(R.string.accounts_card_no_compatible), LedgerBannerVariant.WARNING)
-    compatible.forEach { account ->
-        LedgerChoiceRow(account.name, selectedAccount == account.id, {
-            selectedAccount = account.id
-            type = if (account.type == UserAccountType.BANK) CardType.DEBIT else CardType.CREDIT_PRIMARY
-        }, supportingText = account.type.label())
+    var name by rememberLedgerRetainedState("card.name") { existing?.displayName.orEmpty() }
+    var lastFour by rememberLedgerRetainedState("card.lastFour") { existing?.lastFour.orEmpty() }
+    var type by rememberLedgerRetainedState("card.type") { existing?.type ?: compatible.firstOrNull()?.let { if (it.type == UserAccountType.BANK) CardType.DEBIT else CardType.CREDIT_PRIMARY } ?: CardType.DEBIT }
+    var attempted by rememberLedgerRetainedState("card.attempted") { false }
+    val valid = selectedAccount != null && name.isNotBlank() && (lastFour.isBlank() || lastFour.length == CARD_TAIL_LENGTH)
+    LedgerScaffold(
+        Modifier.fillMaxSize(),
+        fixedAction = {
+            LedgerSaveFab(
+                onClick = {
+                    attempted = true
+                    if (valid) actions.onSaveCard(CardEditorSubmission(cardId, requireNotNull(selectedAccount), type, name.trim(), lastFour.clean(), existing?.replacementOfId ?: replacementCardId))
+                },
+                enabled = state != "saving",
+                submitting = state == "saving",
+            )
+        },
+        formContent = true,
+        contentHorizontalPadding = false,
+    ) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+        ) {
+            if (attempted && !valid) LedgerBanner(stringResource(R.string.accounts_validation), LedgerBannerVariant.DANGER)
+            if (compatible.isEmpty()) {
+                LedgerBanner(
+                    stringResource(R.string.accounts_card_no_compatible),
+                    LedgerBannerVariant.WARNING,
+                    actionLabel = stringResource(R.string.accounts_add),
+                    onAction = { actions.onNavigate("ACC-002", emptyMap()) },
+                )
+            }
+            compatible.forEach { account ->
+                LedgerChoiceRow(account.name, selectedAccount == account.id, {
+                    selectedAccount = account.id
+                    type = if (account.type == UserAccountType.BANK) CardType.DEBIT else CardType.CREDIT_PRIMARY
+                }, supportingText = account.type.label())
+            }
+            LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.accounts_card_name), required = true, errorText = stringResource(R.string.accounts_required).takeIf { attempted && name.isBlank() })
+            LedgerTextField(lastFour, { lastFour = it.filter(Char::isDigit).take(CARD_TAIL_LENGTH) }, stringResource(R.string.accounts_card_last_four), errorText = stringResource(R.string.accounts_card_tail_invalid).takeIf { state == "validationError" || attempted && lastFour.isNotEmpty() && lastFour.length != CARD_TAIL_LENGTH })
+            LedgerBanner(stringResource(R.string.accounts_vault_later), LedgerBannerVariant.INFO)
+        }
     }
-    LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.accounts_card_name), required = true)
-    LedgerTextField(lastFour, { lastFour = it.filter(Char::isDigit).take(CARD_TAIL_LENGTH) }, stringResource(R.string.accounts_card_last_four), errorText = stringResource(R.string.accounts_card_tail_invalid).takeIf { state == "validationError" || lastFour.isNotEmpty() && lastFour.length != CARD_TAIL_LENGTH })
-    LedgerBanner(stringResource(R.string.accounts_vault_later), LedgerBannerVariant.INFO)
-    LedgerButton(stringResource(R.string.accounts_vault_setup), { actions.onNavigate("VLT-001", emptyMap()) }, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY)
-    LedgerSaveFab(
-        onClick = { selectedAccount?.let { actions.onSaveCard(CardEditorSubmission(cardId, it, type, name.trim(), lastFour.clean(), existing?.replacementOfId ?: replacementCardId)) } },
-        enabled = selectedAccount != null && name.isNotBlank() && (lastFour.isBlank() || lastFour.length == CARD_TAIL_LENGTH) && state != "saving",
-        submitting = state == "saving",
-    )
 }
 
 @Composable
@@ -662,7 +838,7 @@ private fun CardDetail(snapshot: ReferenceDataSnapshot?, cardId: StableId, state
         LedgerErrorState(UiErrorCode("CARD_NOT_FOUND"), stringResource(R.string.accounts_card_not_found), actions.onRetry)
         return
     }
-    CardRow(card) { }
+    CardRow(card)
     val account = snapshot.accounts.singleOrNull { it.id == card.accountId }
     SelectorField(stringResource(R.string.accounts_linked_account), account?.name.orEmpty(), { account?.let { actions.onNavigate("ACC-005", mapOf("accountId" to it.id)) } })
     if (state == "replacement" || card.replacementOfId != null) LedgerBanner(stringResource(R.string.accounts_replacement_relation), LedgerBannerVariant.INFO)
@@ -684,11 +860,50 @@ private fun ArchiveDelete(snapshot: ReferenceDataSnapshot?, accountId: StableId,
     val activeCount = snapshot.accounts.count { it.status == EntityStatus.ACTIVE }
     val last = state == "lastAccountWarning" || activeCount == 1
     val used = state == "usedArchiveOnly" || account.hasFinancialPostings || account.cardCount > 0
-    if (last) LedgerBanner(stringResource(R.string.accounts_last_warning), LedgerBannerVariant.WARNING)
-    LedgerText(stringResource(R.string.accounts_usage, account.cardCount, if (account.hasFinancialPostings) 1 else 0), LedgerTextRole.BODY)
-    LedgerButton(stringResource(R.string.accounts_archive), { actions.onArchiveAccount(account.id, account.rowVersion) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.DANGER)
-    LedgerButton(stringResource(R.string.accounts_delete_permanently), { actions.onDeleteEmptyAccount(account.id, account.rowVersion) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.DANGER, enabled = !used)
-    if (used) LedgerText(stringResource(R.string.accounts_used_archive_only), LedgerTextRole.SUPPORTING)
+    var confirmDelete by remember(accountId) { mutableStateOf(false) }
+    var deletePhrase by remember(accountId) { mutableStateOf("") }
+    if (confirmDelete) {
+        LedgerDialog(
+            title = stringResource(R.string.accounts_delete_permanently),
+            message = stringResource(R.string.accounts_delete_confirmation, account.name),
+            confirmLabel = stringResource(R.string.accounts_delete_permanently),
+            onConfirm = { confirmDelete = false; actions.onDeleteEmptyAccount(account.id, account.rowVersion) },
+            onDismiss = { confirmDelete = false; deletePhrase = "" },
+            danger = true,
+            confirmEnabled = deletePhrase == stringResource(R.string.accounts_delete_phrase),
+            content = {
+                LedgerTextField(
+                    value = deletePhrase,
+                    onValueChange = { deletePhrase = it.take(MAX_DELETE_PHRASE) },
+                    label = stringResource(R.string.accounts_enter_delete_phrase),
+                    supportingText = stringResource(R.string.accounts_delete_phrase),
+                )
+            },
+        )
+    } else {
+        LedgerDialog(
+            title = stringResource(R.string.accounts_archive_delete),
+            message = stringResource(R.string.accounts_archive_confirmation, account.name),
+            confirmLabel = stringResource(R.string.accounts_archive),
+            onConfirm = { actions.onArchiveAccount(account.id, account.rowVersion) },
+            onDismiss = actions.onDismissLifecycle,
+            danger = true,
+            content = {
+                if (last) LedgerBanner(stringResource(R.string.accounts_last_warning), LedgerBannerVariant.WARNING)
+                LedgerText(stringResource(R.string.accounts_usage, account.cardCount, if (account.hasFinancialPostings) 1 else 0), LedgerTextRole.BODY)
+                if (used) {
+                    LedgerText(stringResource(R.string.accounts_used_archive_only), LedgerTextRole.SUPPORTING)
+                } else {
+                    LedgerButton(
+                        stringResource(R.string.accounts_delete_permanently),
+                        { confirmDelete = true },
+                        Modifier.fillMaxWidth(),
+                        variant = LedgerButtonVariant.DANGER,
+                    )
+                }
+            },
+        )
+    }
 }
 
 private fun actualState(
@@ -777,8 +992,13 @@ private fun Long?.money(currency: String, visible: Boolean = true): MoneyUiModel
 @Composable
 private fun Long?.displayMoney(currency: String, visible: Boolean = true): String = money(currency, visible).formatted
 
+private fun Long.toMajorChartValue(currency: CurrencyCode): Double {
+    val metadata = ACCOUNT_CURRENCY_CATALOG.find(currency) ?: return toDouble()
+    return BigDecimal.valueOf(this, metadata.fractionDigits).toDouble()
+}
+
 @Composable
-private fun LocalDate.localizedDate(): String = format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(LocalLocale.current.platformLocale))
+private fun LocalDate.localizedDate(): String = format(LedgerDateFormatterRuntime.formatter(LocalLocale.current.platformLocale))
 
 @Composable
 private fun app.ledger.finance.domain.TransactionKind.accountTransactionLabel(): String = stringResource(
@@ -835,11 +1055,12 @@ private fun UserAccountType.explanation(): String = stringResource(
 private val SUPPORTED_SCREENS = (1..12).map { "ACC-%03d".format(it) }.toSet()
 private const val MAX_NAME = 80
 private const val MAX_ACCOUNT_NUMBER = 80
+private const val MAX_CURRENCY_QUERY = 64
+private const val MAX_DELETE_PHRASE = 24
 private const val MAX_EXPRESSION_LENGTH = 128
 private const val TREND_POINT_LIMIT = 30
 private const val RECENT_TRANSACTION_LIMIT = 5
 private const val RECENT_CARD_LIMIT = 3
-private val CURRENCY_CATALOG = JvmLegalTenderCurrencyCatalog.create()
 private const val CARD_TAIL_LENGTH = 4
 private const val ACCOUNT_TRANSACTION_PAGE_SIZE = 40
 private const val ACCOUNT_COMPACT_WIDTH_DP = 600

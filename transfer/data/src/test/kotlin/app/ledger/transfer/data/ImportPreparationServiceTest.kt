@@ -115,6 +115,31 @@ class ImportPreparationServiceTest {
     }
 
     @Test
+    fun excludingInvalidRowRepreparesOnlyRemainingRows() = runBlocking {
+        val unsupported = structuredRow(1L, StructuredEntityKind.TRANSACTION).copy(
+            fields = structuredRow(1L, StructuredEntityKind.TRANSACTION).fields.map {
+                if (it.sourceColumn == "kind") it.copy(value = StagingValue.Text("TRANSFER")) else it
+            },
+        )
+        val valid = structuredRow(2L, StructuredEntityKind.TRANSACTION)
+        val staging = MemoryStaging(listOf(unsupported, valid))
+        val service = ImportPreparationService()
+
+        val blocked = service.prepare(OPERATION_ID, ImportFormat.STRUCTURED_WORKBOOK, request(), staging).success()
+        assertFalse(blocked.report.canCommit)
+
+        val repaired = service.prepare(
+            OPERATION_ID,
+            ImportFormat.STRUCTURED_WORKBOOK,
+            request().copy(excludedRowNumbers = setOf(1L)),
+            staging,
+        ).success()
+        assertTrue(repaired.report.canCommit)
+        assertEquals(1L, repaired.preparedRows)
+        assertEquals(listOf(2L), staging.prepared.map { it.rowNumber })
+    }
+
+    @Test
     fun missingEntitySummaryCountsUniqueEntitiesAndAllowsBlankOptionalMerchant() = runBlocking {
         val account = "现金"
         val category = "餐饮"
@@ -257,6 +282,10 @@ class ImportPreparationServiceTest {
 private class MemoryStaging(private val rows: List<StagingParsedRow>) : EncryptedStagingRepository {
     val prepared = mutableListOf<StagingPreparedCommand>()
     override suspend fun create(operationId: BackgroundOperationId) = DomainResult.Success(Unit)
+    override suspend fun clearPreparation(): DomainResult<Unit> {
+        prepared.clear()
+        return DomainResult.Success(Unit)
+    }
     override suspend fun appendRaw(rows: List<StagingRawRow>) = DomainResult.Success(Unit)
     override suspend fun appendParsed(rows: List<StagingParsedRow>) = DomainResult.Success(Unit)
     override suspend fun saveMappings(mappings: List<StagingMapping>) = DomainResult.Success(Unit)

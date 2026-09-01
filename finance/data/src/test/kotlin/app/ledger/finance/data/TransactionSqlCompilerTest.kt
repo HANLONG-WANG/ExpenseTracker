@@ -66,5 +66,16 @@ class TransactionSqlCompilerTest {
         compiled.sql.contains(" OFFSET ", ignoreCase = true) shouldBe false
     }
 
+    @Test
+    fun `numeric search matches exact major amounts across supported currency scales`() {
+        val compiled = TransactionSqlCompiler.compile(emptyFilter().copy(searchText = "100.00"), null, 20)
+
+        compiled.sql.shouldContain("ABS(ctp.input_amount_minor) IN")
+        compiled.sql.shouldContain("ABS(ctp.account_amount_minor) IN")
+        compiled.sql.shouldContain("ABS(ctp.economic_base_minor) IN")
+        compiled.arguments.contains(10_000L) shouldBe true
+        compiled.arguments.contains(100L) shouldBe true
+    }
+
     private fun emptyFilter(): TransactionFilter = TransactionFilter()
 }

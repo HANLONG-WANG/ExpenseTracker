@@ -77,7 +77,8 @@ internal fun MoreRootDestination(
     val durable = (durableOperations as? OperationCenterLoadState.Content)?.operations.orEmpty()
     val hasDurableActive = durable.any { it.state in ACTIVE_OPERATION_STATES }
     val durableFailure = durable.any {
-        it.state == BackgroundOperationState.FAILED_RETRYABLE || it.state == BackgroundOperationState.FAILED_FINAL
+        (it.state == BackgroundOperationState.FAILED_RETRYABLE || it.state == BackgroundOperationState.FAILED_FINAL) &&
+            !(it.cancelRequested && it.errorCode?.endsWith("_CANCELLED") == true)
     }
     val backupFailure = backup.execution == BackupExecutionPresentation.FAILED
     val automationUpdates = (automation as? AutomationLoadState.Content)?.state?.snapshot?.candidates?.isNotEmpty() == true
@@ -113,7 +114,7 @@ internal fun MoreRootDestination(
             onNavigationChanged()
         },
         onCategories = {
-            viewModel.navigateP12(key, "CAT-001", emptyMap())
+            viewModel.navigateP12(key, "MGT-001", emptyMap())
             onNavigationChanged()
         },
         onMerchants = {
@@ -158,7 +159,7 @@ internal fun MoreRootDestination(
             onNavigationChanged()
         },
         onCredit = {
-            viewModel.navigateLoan(MORE_CREDIT_DESTINATION, null, null)
+            viewModel.openCreditAccounts()
             onNavigationChanged()
         },
         onInstallments = {
@@ -166,7 +167,7 @@ internal fun MoreRootDestination(
             onNavigationChanged()
         },
         onLoans = {
-            viewModel.navigateLoan("LIA-001", null, null)
+            viewModel.navigateLoan("LOA-001", null, null)
             onNavigationChanged()
         },
         onSettlements = {
@@ -430,6 +431,7 @@ internal fun MoreContent(
         FeatureGroup(
             R.string.global_group_reference,
             listOf(
+                FeatureEntry(stringResource(R.string.global_management), stringResource(R.string.global_management_explanation), onManagement),
                 FeatureEntry(stringResource(R.string.global_categories), stringResource(R.string.global_categories_explanation), onCategories),
                 FeatureEntry(stringResource(R.string.global_merchants), stringResource(R.string.global_merchants_explanation), onMerchants),
                 FeatureEntry(stringResource(R.string.global_places), stringResource(R.string.global_places_explanation), onPlaces),
@@ -440,6 +442,7 @@ internal fun MoreContent(
         FeatureGroup(
             R.string.global_group_settings,
             listOf(
+                FeatureEntry(stringResource(R.string.global_settings), stringResource(R.string.global_settings_explanation), onSettings),
                 FeatureEntry(stringResource(R.string.global_appearance), stringResource(R.string.global_appearance_explanation), onAppearance),
                 FeatureEntry(stringResource(R.string.global_language_region), stringResource(R.string.global_language_region_explanation), onLanguageRegion),
                 FeatureEntry(stringResource(R.string.global_currencies), stringResource(R.string.global_currencies_explanation), onCurrencies),
@@ -503,5 +506,3 @@ internal val ACTIVE_OPERATION_STATES = setOf(
     BackgroundOperationState.COMMITTING,
     BackgroundOperationState.ROLLING_BACK,
 )
-
-internal const val MORE_CREDIT_DESTINATION = "LIA-001"

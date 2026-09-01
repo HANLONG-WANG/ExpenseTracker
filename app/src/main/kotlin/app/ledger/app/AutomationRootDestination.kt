@@ -48,6 +48,14 @@ internal fun AutomationRootDestination(
     LaunchedEffect(screenId, blueprintId, seriesId, candidateId) {
         viewModel.loadAutomation(screenId, blueprintId, seriesId, candidateId)
     }
+    GovernedDestinationModal(
+        screenId,
+        automationDestinationTitleOrNull(screenId).orEmpty(),
+        onDismiss = {
+            viewModel.requestRootBack()
+            onNavigationChanged()
+        },
+    ) {
     AutomationDestination(
         screenId,
         state,
@@ -88,8 +96,13 @@ internal fun AutomationRootDestination(
             onCancelCandidate = viewModel::cancelAutomationCandidate,
             onScope = viewModel::updateAutomationScope,
             onApplyScope = viewModel::applyAutomationScope,
+            onCreateCategory = {
+                viewModel.openAutomationCategoryCreator()
+                onNavigationChanged()
+            },
         ),
     )
+    }
 }
 
 internal fun automationFixedAction(
@@ -106,7 +119,7 @@ internal fun automationFixedAction(
         LedgerSaveFab(
             onClick = if (screenId == "AUT-003") onSaveBlueprint else onSaveRecurrence,
             submitting = pending || presentation == AutomationPresentation.SAVING,
-            enabled = !pending && content?.let { if (screenId == "AUT-003") AutomationPolicy.canSaveBlueprint(it) else AutomationPolicy.canSaveRecurrence(it) } == true,
+            enabled = !pending && content != null,
         )
     }
 }

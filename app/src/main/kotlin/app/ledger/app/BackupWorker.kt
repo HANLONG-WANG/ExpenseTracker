@@ -571,6 +571,7 @@ internal object BackupWorkScheduler {
         drive: Boolean,
         userInitiated: Boolean,
         unmetered: Boolean = false,
+        replaceExisting: Boolean = false,
     ) {
         if (Build.VERSION.SDK_INT >= 34 && drive && userInitiated) {
             val extras = PersistableBundle().apply { putString(BackupWorker.INPUT_OPERATION_ID, operationId.toString()) }
@@ -592,7 +593,11 @@ internal object BackupWorkScheduler {
                 .setInputData(Data.Builder().putString(BackupWorker.INPUT_OPERATION_ID, operationId.toString()).build())
                 .setConstraints(constraints)
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork("ledger-backup-$operationId", ExistingWorkPolicy.KEEP, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "ledger-backup-$operationId",
+                if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+                request,
+            )
         }
     }
 }

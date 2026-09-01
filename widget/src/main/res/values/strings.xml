@@ -48,4 +48,5 @@
     <string name="widget_no_eligible_title">没有可选内容</string>
     <string name="widget_close">关闭</string>
     <string name="widget_back">返回</string>
+    <string name="widget_amount_unavailable">金额不可用</string>
 </resources>

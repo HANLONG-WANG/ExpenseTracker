@@ -97,7 +97,7 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         "downloadRange", '.header("Range"', ".partial", "partial.length()", "checkpoint(remote.name",
     ))
 
-    restore = named(sources, "SecureRoomRestoreLedgerApplicationPort.kt")
+    restore = named(sources, "SecureRoomRestoreLedgerApplicationPort.kt") + named(sources, "RoomLedgerIntegrityAudit.kt")
     require_tokens(errors, restore, "shadow migration, audit and crash-safe exchange", (
         "LedgerMigrations.CURRENT_VERSION", "DatabaseIntegrityAudit", "RoomProjectionEngine().rebuildAll",
         "StandardCopyOption.ATOMIC_MOVE", "EXCHANGE_PHASE_PREPARED", "EXCHANGE_PHASE_FINALIZED",

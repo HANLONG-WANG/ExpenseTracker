@@ -23,6 +23,7 @@ import app.ledger.finance.application.ProjectView
 import app.ledger.finance.domain.GoalMovementKind
 import app.ledger.finance.domain.GoalStatus
 import app.ledger.finance.domain.ProjectStatus
+import app.ledger.finance.domain.TransactionKind
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
@@ -279,12 +280,21 @@ public object ProjectGoalPolicy {
     public fun movementAmount(state: ProjectGoalFeatureState, value: String): ProjectGoalFeatureState {
         val updated = state.copy(movementAmountText = value.take(MAX_AMOUNT_TEXT))
         val amount = movementMinor(updated)
+        val exceedsReserved = updated.movementKind == GoalMovementKind.RELEASE && amount != null &&
+            updated.goal?.let { amount > it.balanceMinor } == true
         val warning = updated.movementKind == GoalMovementKind.ALLOCATE && amount != null &&
             updated.goal?.let { goal ->
                 runCatching { Math.addExact(goal.totalAccountReservedMinor, amount) > goal.actualAccountBalanceMinor }
                     .getOrDefault(true)
             } == true
-        return updated.copy(presentation = if (warning) ProjectGoalPresentation.INSUFFICIENT_ACTUAL_BALANCE_WARNING else ProjectGoalPresentation.EDITING)
+        return updated.copy(
+            goalErrors = if (exceedsReserved) updated.goalErrors + "movementAmount" else updated.goalErrors - "movementAmount",
+            presentation = when {
+                exceedsReserved -> ProjectGoalPresentation.VALIDATION_ERROR
+                warning -> ProjectGoalPresentation.INSUFFICIENT_ACTUAL_BALANCE_WARNING
+                else -> ProjectGoalPresentation.EDITING
+            },
+        )
     }
 
     public fun movementDate(state: ProjectGoalFeatureState, value: String): ProjectGoalFeatureState = runCatching { LocalDate.parse(value) }
@@ -354,12 +364,19 @@ public class ProjectTransactionPagingSource(
     private val port: ProjectGoalApplicationPort,
     private val bookId: StableId,
     private val projectId: StableId,
+    private val kind: TransactionKind? = null,
 ) : PagingSource<ProjectTransactionCursor, ProjectTransactionView>() {
     override suspend fun load(
         params: LoadParams<ProjectTransactionCursor>,
     ): LoadResult<ProjectTransactionCursor, ProjectTransactionView> = when (
         val result = port.projectTransactionPage(
-            ProjectTransactionPageRequest(bookId, projectId, params.loadSize.coerceIn(1, MAX_PROJECT_PAGE_SIZE), params.key),
+            ProjectTransactionPageRequest(
+                bookId = bookId,
+                projectId = projectId,
+                limit = params.loadSize.coerceIn(1, MAX_PROJECT_PAGE_SIZE),
+                cursor = params.key,
+                kind = kind,
+            ),
         )
     ) {
         is DomainResult.Success -> LoadResult.Page(result.value.items, prevKey = null, nextKey = result.value.nextCursor)

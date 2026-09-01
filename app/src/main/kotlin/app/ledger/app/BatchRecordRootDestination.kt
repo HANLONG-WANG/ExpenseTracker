@@ -34,7 +34,7 @@ internal fun BatchRecordRootDestination(
                 is BatchRecordScreenAction.Sort -> viewModel.sortBatchRows(action.sort)
                 is BatchRecordScreenAction.Paste -> viewModel.pasteBatchRows(action.text)
                 is BatchRecordScreenAction.RowChange -> viewModel.updateBatchRow(action.row)
-                is BatchRecordScreenAction.CycleReference -> viewModel.cycleBatchReference(action.rowId, action.field)
+                is BatchRecordScreenAction.SelectReference -> viewModel.selectBatchReference(action.rowId, action.field, action.selectedId)
                 is BatchRecordScreenAction.AddAttachment -> {
                     viewModel.requestBatchAttachment(action.rowId)
                     onLaunchAttachmentPicker()

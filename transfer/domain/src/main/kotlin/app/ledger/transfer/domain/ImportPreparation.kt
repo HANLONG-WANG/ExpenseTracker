@@ -55,6 +55,7 @@ data class ImportPreparationRequest(
     val fxDecisions: List<FxImportDecision>,
     val duplicateResolutions: Map<Long, DuplicateResolution>,
     val includedSheets: Set<String> = emptySet(),
+    val excludedRowNumbers: Set<Long> = emptySet(),
 ) {
     init {
         require(baseCurrency.matches(Regex("[A-Z]{3}")))
@@ -62,6 +63,7 @@ data class ImportPreparationRequest(
         require(entityDecisions.map { it.targetField to it.sourceValue }.toSet().size == entityDecisions.size)
         require(duplicateResolutions.keys.all { it > 0L })
         require(includedSheets.none(String::isBlank))
+        require(excludedRowNumbers.all { it > 0L })
     }
 }
 

@@ -16,4 +16,6 @@ public data class CreditActions(
     val onAssignment: (StatementAssignmentMode) -> Unit,
     val onToggleAutoPayment: (Boolean) -> Unit,
     val onToggleSeal: (Boolean) -> Unit,
+    val onPaymentAccountSelected: (StableId?) -> Unit = {},
+    val onZoneSelected: (String) -> Unit = {},
 )

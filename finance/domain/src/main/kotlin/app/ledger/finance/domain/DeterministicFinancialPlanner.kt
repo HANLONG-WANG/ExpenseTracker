@@ -163,7 +163,12 @@ object DeterministicFinancialPlanner {
             purgeTombstones = emptyList(), blobGcCandidates = emptyList(), dependencyResolutions = emptyList(),
             projectionChanges = ProjectionChangeSet(
                 target,
-                affectedMonth?.let { listOf(ProjectionChange.BudgetFromMonth(it, target)) }.orEmpty(),
+                affectedMonth?.let {
+                    listOf(
+                        ProjectionChange.BudgetFromMonth(it, target),
+                        ProjectionChange.Widget(snapshot.book.id, target),
+                    )
+                }.orEmpty(),
             ),
             entityChanges = monthMutations.map { mutation ->
                 EntityChange(

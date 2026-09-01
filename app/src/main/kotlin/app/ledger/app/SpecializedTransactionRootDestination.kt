@@ -27,8 +27,8 @@ internal fun SpecializedTransactionRootDestination(
         state,
         SpecializedTransactionActions(
             onRetry = { viewModel.loadSpecializedTransaction(screenId, presetAccount) },
-            onSelectFromAccount = { viewModel.selectSpecializedAccount(false) },
-            onSelectToAccount = { viewModel.selectSpecializedAccount(true) },
+            onSelectFromAccount = { viewModel.selectSpecializedAccount(false, it) },
+            onSelectToAccount = { viewModel.selectSpecializedAccount(true, it) },
             onOutgoingExpression = { viewModel.specializedExpression(false, it) },
             onIncomingExpression = { viewModel.specializedExpression(true, it) },
             onOutgoingOperator = { viewModel.specializedOperator(false, it) },

@@ -535,7 +535,9 @@ class SecureRoomAnalyticsApplicationPort(
             )
             Dimension.TRANSACTION_SOURCE -> DimensionValue.ClosedKey(dimension, getString(index))
             else -> {
-                val id = StableId.fromBytes(getBlob(index)).getOrNull() ?: error("invalid report id")
+                val bytes = getBlob(index)
+                if (bytes.all { it == 0.toByte() }) return DimensionValue.ClosedKey(dimension, "total")
+                val id = StableId.fromBytes(bytes).getOrNull() ?: error("invalid report id")
                 DimensionValue.Entity(dimension, id, resolveEntityLabel(connection, dimension, id))
             }
         }
@@ -549,10 +551,19 @@ class SecureRoomAnalyticsApplicationPort(
     }
 
     private fun Cursor.measureValue(compiled: CompiledMeasure): MeasureValue {
-        if (compiled.measure == Measure.SAVINGS_RATE) {
-            val income = getLong(getColumnIndexOrThrow(compiled.valueColumn))
-            val expense = getLong(getColumnIndexOrThrow(requireNotNull(compiled.secondaryColumn)))
-            return MeasureValue(compiled.measure, null, SavingsRatePolicy.calculate(income, expense) ?: BigDecimal.ZERO)
+        if (compiled.secondaryColumn != null) {
+            val numerator = getLong(getColumnIndexOrThrow(compiled.valueColumn))
+            val denominator = getLong(getColumnIndexOrThrow(compiled.secondaryColumn))
+            val ratio = when (compiled.measure) {
+                Measure.SAVINGS_RATE -> SavingsRatePolicy.calculate(numerator, denominator) ?: BigDecimal.ZERO
+                Measure.BUDGET_USAGE -> if (denominator > 0L) {
+                    BigDecimal.valueOf(numerator).divide(BigDecimal.valueOf(denominator), 8, java.math.RoundingMode.HALF_EVEN)
+                } else {
+                    BigDecimal.ZERO
+                }
+                else -> error("unsupported report ratio")
+            }
+            return MeasureValue(compiled.measure, null, ratio)
         }
         val currency = compiled.currencyColumn?.let { column ->
             val index = getColumnIndexOrThrow(column)

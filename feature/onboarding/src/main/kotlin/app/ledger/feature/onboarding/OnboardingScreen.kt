@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -156,6 +157,7 @@ public fun OnboardingScreen(
 
 @Composable
 private fun StepContent(state: OnboardingUiState, actions: OnboardingActions) {
+    val locale = LocalLocale.current.platformLocale
     when (state.step) {
         OnboardingStep.LANGUAGE -> OnboardingLanguage.entries.forEach { language ->
             LedgerChoiceRow(languageLabel(language), state.language == language, { actions.onLanguage(language) })
@@ -166,7 +168,6 @@ private fun StepContent(state: OnboardingUiState, actions: OnboardingActions) {
                 actions.onCurrencySearch,
                 stringResource(R.string.onboarding_currency_search),
             )
-            val locale = Locale.getDefault()
             val currencies = remember(locale) {
                 Currency.getAvailableCurrencies().sortedBy { it.currencyCode }
             }
@@ -187,7 +188,7 @@ private fun StepContent(state: OnboardingUiState, actions: OnboardingActions) {
                 Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
                     LedgerText(stringResource(R.string.onboarding_system_zone), LedgerTextRole.LABEL)
                     LedgerText(systemZone.id, LedgerTextRole.BODY)
-                    LedgerText(zonePreview(systemZone), LedgerTextRole.SUPPORTING)
+                    LedgerText(zonePreview(systemZone, locale), LedgerTextRole.SUPPORTING)
                 }
             }
             val query = state.zoneSearch.trim()
@@ -198,7 +199,7 @@ private fun StepContent(state: OnboardingUiState, actions: OnboardingActions) {
             }
             visibleZones.forEach { zone -> LedgerChoiceRow(zone, state.zoneId == zone, { actions.onZone(zone) }) }
             state.zoneId?.let { selected ->
-                LedgerText(stringResource(R.string.onboarding_zone_preview, zonePreview(ZoneId.of(selected))), LedgerTextRole.BODY)
+                LedgerText(stringResource(R.string.onboarding_zone_preview, zonePreview(ZoneId.of(selected), locale)), LedgerTextRole.BODY)
             }
         }
         OnboardingStep.PRIVACY_POLICY -> {
@@ -305,9 +306,9 @@ private fun StepContent(state: OnboardingUiState, actions: OnboardingActions) {
     }
 }
 
-private fun zonePreview(zoneId: ZoneId): String = DateTimeFormatter
+private fun zonePreview(zoneId: ZoneId, locale: Locale): String = DateTimeFormatter
     .ofLocalizedDateTime(FormatStyle.MEDIUM)
-    .withLocale(Locale.getDefault())
+    .withLocale(locale)
     .format(ZonedDateTime.now(zoneId))
 
 @Composable private fun stepTitle(step: OnboardingStep): String = stringResource(

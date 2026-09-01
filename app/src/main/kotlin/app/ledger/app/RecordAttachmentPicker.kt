@@ -51,14 +51,10 @@ internal fun ordinaryRecordFixedAction(
     if (screenId != "REC-003") return null
     return {
         val editor = (state as? OrdinaryRecordLoadState.Content)?.editor
-        val settlementValid = editor?.let { current ->
-            !current.draft.settlementEnabled ||
-                OrdinaryRecordPolicy.validate(current).errors.none { it.field == RecordField.SETTLEMENT }
-        } == true
         LedgerSaveFab(
             onSave,
             submitting = pending || editor?.presentation == RecordEditorPresentation.SAVING,
-            enabled = !pending && settlementValid,
+            enabled = !pending,
         )
     }
 }

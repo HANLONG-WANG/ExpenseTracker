@@ -45,6 +45,7 @@
     <string name="ledger_attachment_import_progress">添付ファイルの読み込み進行状況</string>
     <string name="ledger_attachment_failed">読み込みに失敗し、添付ファイルは保存されていません</string>
     <string name="ledger_view_error">エラーを表示</string>
+    <string name="ledger_operation_failed">操作は完了しませんでした。既存データは変更されていません。案内を確認するか再試行してください。</string>
     <string name="ledger_clean_temporary_files">一時ファイルを削除</string>
     <string name="ledger_previous_page">前のページ</string>
     <string name="ledger_next_page">次のページ</string>
@@ -68,4 +69,9 @@
     <string name="ledger_chart_no_data">現在の範囲にグラフデータがありません。</string>
     <string name="ledger_style_icon_record">記録</string><string name="ledger_style_icon_account">口座</string><string name="ledger_style_icon_budget">予算</string><string name="ledger_style_icon_analysis">分析</string><string name="ledger_style_icon_journal">取引</string><string name="ledger_style_icon_location">場所</string><string name="ledger_style_icon_transfer">振替</string><string name="ledger_style_icon_refund">返金</string>
     <string name="ledger_style_color_red">赤</string><string name="ledger_style_color_orange">オレンジ</string><string name="ledger_style_color_amber">琥珀</string><string name="ledger_style_color_yellow">黄</string><string name="ledger_style_color_lime">ライム</string><string name="ledger_style_color_green">緑</string><string name="ledger_style_color_emerald">エメラルド</string><string name="ledger_style_color_teal">ティール</string><string name="ledger_style_color_cyan">シアン</string><string name="ledger_style_color_sky">スカイ</string><string name="ledger_style_color_blue">青</string><string name="ledger_style_color_indigo">インディゴ</string><string name="ledger_style_color_violet">バイオレット</string><string name="ledger_style_color_purple">紫</string><string name="ledger_style_color_pink">ピンク</string><string name="ledger_style_color_slate">スレート</string>
+    <string name="ledger_more_badges">ほか %1$d 件</string>
+    <string name="ledger_open_transaction">取引の詳細を表示</string>
+    <string name="ledger_select_transaction">取引を選択</string>
+    <string name="ledger_sensitive_value_empty">機密値は未入力です</string>
+    <string name="ledger_sensitive_value_entered">機密値を入力済みです</string>
 </resources>

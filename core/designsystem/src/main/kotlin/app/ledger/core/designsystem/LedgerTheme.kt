@@ -30,6 +30,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.ledger.core.designsystem.tokens.GeneratedLedgerTokenContract
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
+import java.time.format.FormatStyle
+import java.util.Locale
+
+/** Session-wide privacy override consumed by governed money and chart components. */
+public val LocalLedgerAmountsVisible = staticCompositionLocalOf { true }
+
+/** Increments when the already-selected top-level destination is tapped again. */
+public val LocalLedgerScrollToTopRequest = staticCompositionLocalOf { 0 }
+
+/** Stable root-list key/offset restored from the optional navigation snapshot. */
+public val LocalLedgerRestoredScrollState = staticCompositionLocalOf<Pair<String, Int>?> { null }
+
+/** Reports root-list position without coupling feature modules to the app navigator. */
+public val LocalLedgerScrollStateReporter = staticCompositionLocalOf<(String, Int) -> Unit> { { _, _ -> } }
 
 @Immutable
 public data class SemanticColor(
@@ -167,6 +183,7 @@ public data class LedgerDimensions(
     val formMaxWidth: Dp,
     val phoneContentHorizontalPadding: Dp,
     val phoneCompactHorizontalPadding: Dp,
+    val widePhoneContentHorizontalPadding: Dp,
     val bottomActionInset: Dp,
     val strokeHairline: Dp,
     val strokeStandard: Dp,
@@ -182,7 +199,11 @@ public data class LedgerDimensions(
     val wideMinWidth: Dp,
     val largePhoneMinWidth: Dp,
 ) {
-    public fun horizontalPadding(width: Dp): Dp = if (width.value < standardMinWidth.value) phoneCompactHorizontalPadding else phoneContentHorizontalPadding
+    public fun horizontalPadding(width: Dp): Dp = when {
+        width.value < standardMinWidth.value -> phoneCompactHorizontalPadding
+        width.value < wideMinWidth.value -> phoneContentHorizontalPadding
+        else -> widePhoneContentHorizontalPadding
+    }
 
     public fun categoryColumns(width: Dp): Int = when {
         width.value < standardMinWidth.value -> categoryCompactColumns
@@ -197,6 +218,47 @@ public enum class ThemeMode {
     DARK,
 }
 
+public enum class LedgerDateFormat {
+    LOCALE_DEFAULT,
+    YEAR_MONTH_DAY,
+    DAY_MONTH_YEAR,
+    MONTH_DAY_YEAR,
+}
+
+public enum class LedgerWeekStart {
+    LOCALE_DEFAULT,
+    MONDAY,
+    SUNDAY,
+}
+
+/** Non-composable formatter bridge for presentation helpers that run inside ordinary collection lambdas. */
+public object LedgerDateFormatterRuntime {
+    @Volatile
+    private var configuredFormat: LedgerDateFormat = LedgerDateFormat.LOCALE_DEFAULT
+
+    public fun configure(format: LedgerDateFormat) {
+        configuredFormat = format
+    }
+
+    public fun formatter(locale: Locale): DateTimeFormatter = when (configuredFormat) {
+        LedgerDateFormat.LOCALE_DEFAULT -> DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
+        LedgerDateFormat.YEAR_MONTH_DAY -> DateTimeFormatter.ofPattern("yyyy-MM-dd", locale)
+        LedgerDateFormat.DAY_MONTH_YEAR -> DateTimeFormatter.ofPattern("dd/MM/yyyy", locale)
+        LedgerDateFormat.MONTH_DAY_YEAR -> DateTimeFormatter.ofPattern("MM/dd/yyyy", locale)
+    }
+
+    public fun dateTimeFormatter(locale: Locale, timeStyle: FormatStyle = FormatStyle.SHORT): DateTimeFormatter =
+        if (configuredFormat == LedgerDateFormat.LOCALE_DEFAULT) {
+            DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, timeStyle).withLocale(locale)
+        } else {
+            DateTimeFormatterBuilder()
+                .append(formatter(locale))
+                .appendLiteral(' ')
+                .appendLocalized(null, timeStyle)
+                .toFormatter(locale)
+        }
+}
+
 private val LocalLedgerColors = staticCompositionLocalOf { LedgerTokenMapping.lightColors() }
 private val LocalLedgerTypography = staticCompositionLocalOf { LedgerTokenMapping.typography }
 private val LocalLedgerSpacing = staticCompositionLocalOf { LedgerTokenMapping.spacing }
@@ -204,6 +266,8 @@ private val LocalLedgerShapes = staticCompositionLocalOf { LedgerTokenMapping.sh
 private val LocalLedgerMotion = compositionLocalOf { LedgerTokenMapping.motion(reduceMotion = false) }
 private val LocalLedgerDimensions = staticCompositionLocalOf { LedgerTokenMapping.dimensions }
 private val LocalLedgerTimeZone = staticCompositionLocalOf { ZoneId.of("UTC") }
+private val LocalLedgerDateFormat = staticCompositionLocalOf { LedgerDateFormat.LOCALE_DEFAULT }
+private val LocalLedgerWeekStart = staticCompositionLocalOf { LedgerWeekStart.LOCALE_DEFAULT }
 
 public object LedgerTheme {
     public val colors: LedgerColors
@@ -227,6 +291,16 @@ public object LedgerTheme {
     public val timeZone: ZoneId
         @Composable @ReadOnlyComposable
         get() = LocalLedgerTimeZone.current
+    public val dateFormat: LedgerDateFormat
+        @Composable @ReadOnlyComposable
+        get() = LocalLedgerDateFormat.current
+    public val weekStart: LedgerWeekStart
+        @Composable @ReadOnlyComposable
+        get() = LocalLedgerWeekStart.current
+
+    @Composable
+    @ReadOnlyComposable
+    public fun dateFormatter(locale: Locale): DateTimeFormatter = LedgerDateFormatterRuntime.formatter(locale)
 }
 
 @Composable
@@ -235,6 +309,8 @@ public fun LedgerTheme(
     dynamicColor: Boolean,
     reduceMotion: Boolean,
     ledgerTimeZoneId: String = "UTC",
+    ledgerDateFormat: LedgerDateFormat = LedgerDateFormat.LOCALE_DEFAULT,
+    ledgerWeekStart: LedgerWeekStart = LedgerWeekStart.LOCALE_DEFAULT,
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {
@@ -252,6 +328,7 @@ public fun LedgerTheme(
     val colors = base.copy(material = shellScheme)
     val effectiveReduceMotion = reduceMotion || !ValueAnimator.areAnimatorsEnabled()
     val ledgerTimeZone = runCatching { ZoneId.of(ledgerTimeZoneId) }.getOrDefault(ZoneId.of("UTC"))
+    LedgerDateFormatterRuntime.configure(ledgerDateFormat)
     androidx.compose.runtime.CompositionLocalProvider(
         LocalLedgerColors provides colors,
         LocalLedgerTypography provides LedgerTokenMapping.typography,
@@ -260,6 +337,8 @@ public fun LedgerTheme(
         LocalLedgerMotion provides LedgerTokenMapping.motion(effectiveReduceMotion),
         LocalLedgerDimensions provides LedgerTokenMapping.dimensions,
         LocalLedgerTimeZone provides ledgerTimeZone,
+        LocalLedgerDateFormat provides ledgerDateFormat,
+        LocalLedgerWeekStart provides ledgerWeekStart,
     ) {
         MaterialTheme(
             colorScheme = shellScheme,
@@ -391,6 +470,7 @@ public object LedgerTokenMapping {
             formMaxWidth = dimension("formMaxWidth"),
             phoneContentHorizontalPadding = dimension("phoneContentHorizontalPadding"),
             phoneCompactHorizontalPadding = dimension("phoneCompactHorizontalPadding"),
+            widePhoneContentHorizontalPadding = number("spacingDp.6").dp,
             bottomActionInset = dimension("bottomActionInset"),
             strokeHairline = number("strokeDp.hairline").dp,
             strokeStandard = number("strokeDp.standard").dp,
@@ -544,6 +624,7 @@ public data class LedgerGlanceTokenSubset(
     val info: Color,
     val bodySizeSp: Float,
     val labelSizeSp: Float,
+    val contentPaddingDp: Float,
 )
 
 public object LedgerGlanceTokens {
@@ -561,5 +642,6 @@ public object LedgerGlanceTokens {
         info = info.base,
         bodySizeSp = LedgerTokenMapping.typography.bodyMedium.fontSize.value,
         labelSizeSp = LedgerTokenMapping.typography.labelMedium.fontSize.value,
+        contentPaddingDp = LedgerTokenMapping.spacing.sm.value,
     )
 }

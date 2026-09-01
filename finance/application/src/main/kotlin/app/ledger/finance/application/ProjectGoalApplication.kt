@@ -71,6 +71,7 @@ data class ProjectTransactionPageRequest(
     val projectId: StableId,
     val limit: Int = DEFAULT_PROJECT_TRANSACTION_PAGE_SIZE,
     val cursor: ProjectTransactionCursor? = null,
+    val kind: app.ledger.finance.domain.TransactionKind? = null,
 ) {
     init {
         require(limit in 1..MAX_PROJECT_TRANSACTION_PAGE_SIZE)

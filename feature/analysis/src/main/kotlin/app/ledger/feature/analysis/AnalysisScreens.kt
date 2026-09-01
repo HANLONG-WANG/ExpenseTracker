@@ -21,18 +21,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import app.ledger.analytics.domain.AnomalyRuleId
+import app.ledger.analytics.domain.AnomalyRuleType
 import app.ledger.analytics.domain.ComparisonMode
 import app.ledger.analytics.domain.ConsumptionMapResult
 import app.ledger.analytics.domain.DashboardId
@@ -62,7 +69,9 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
+import app.ledger.core.designsystem.LedgerCheckboxRow
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerChoiceSelector
 import app.ledger.core.designsystem.LedgerChartUiModel
 import app.ledger.core.designsystem.LedgerColumnChart
 import app.ledger.core.designsystem.LedgerEmptyState
@@ -71,6 +80,9 @@ import app.ledger.core.designsystem.JournalTransactionRow
 import app.ledger.core.designsystem.JournalTransactionUiModel
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerLineChart
+import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
+import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
+import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerPieChart
 import app.ledger.core.designsystem.LedgerProgressIndicator
@@ -79,6 +91,7 @@ import app.ledger.core.designsystem.LedgerStackedChart
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerVicoColumnRenderer
 import app.ledger.core.designsystem.LedgerVicoLineRenderer
@@ -132,6 +145,7 @@ data class AnalysisActions(
     val onSaveAnomalyRule: (AnomalyRuleId?) -> Unit = {},
     val onEditAnomalyRule: (AnomalyRuleId?) -> Unit = {},
     val onCycleAnomalyType: () -> Unit = {},
+    val onSelectAnomalyType: (AnomalyRuleType) -> Unit = {},
     val onAnomalyThresholdChanged: (String) -> Unit = {},
     val onAnomalyLookbackChanged: (String) -> Unit = {},
     val onSelectExportFormat: (ReportExportFormat) -> Unit = {},
@@ -149,6 +163,12 @@ data class AnalysisActions(
     val onCycleMapPlaceFilter: () -> Unit = {},
     val onCycleMapProjectFilter: () -> Unit = {},
     val onCycleMapAmountFilter: () -> Unit = {},
+    val onSelectMapMode: (app.ledger.analytics.domain.ConsumptionMapMode) -> Unit = {},
+    val onSelectMapWeight: (app.ledger.analytics.domain.ConsumptionMapWeight) -> Unit = {},
+    val onSelectMapAggregation: (app.ledger.analytics.domain.ConsumptionMapAggregation) -> Unit = {},
+    val onSelectMapPresentation: (app.ledger.analytics.domain.ConsumptionMapPresentation) -> Unit = {},
+    val onSelectMapFilter: (String, StableId?) -> Unit = { _, _ -> },
+    val onSelectMapAmountFilter: (Long?) -> Unit = {},
     val onRemoveMapFilter: (String) -> Unit = {},
     val onMapViewportChanged: (MapViewport) -> Unit = {},
     val onSelectMapPoint: (app.ledger.core.common.StableId) -> Unit = {},
@@ -179,6 +199,16 @@ fun AnalysisDestination(
         return
     }
     val content = (state as AnalysisLoadState.Content).state
+    if (content.screenId != screenId) {
+        // Navigation is committed before the destination LaunchedEffect starts loading. Never
+        // render the previous screen's state through a new screen composable (several editors
+        // require screen-specific draft data).
+        LedgerLoadingState(
+            Modifier.fillMaxSize().analysisRootTag(screenId),
+            stringResource(R.string.analysis_loading),
+        )
+        return
+    }
     when (screenId) {
         "ANA-001" -> AnalysisHome(content, actions)
         "ANA-002" -> ReportCatalog(content, actions)
@@ -233,8 +263,20 @@ private fun AnalysisHome(state: AnalysisFeatureState, actions: AnalysisActions) 
         return
     }
     val locale = LocalLocale.current.platformLocale
+    val restoredScroll = LocalLedgerRestoredScrollState.current
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = restoredScroll?.first?.removePrefix("index_")?.toIntOrNull() ?: 0,
+        initialFirstVisibleItemScrollOffset = restoredScroll?.second ?: 0,
+    )
+    val scrollToTopRequest = LocalLedgerScrollToTopRequest.current
+    val scrollReporter = LocalLedgerScrollStateReporter.current
+    LaunchedEffect(scrollToTopRequest) { if (scrollToTopRequest > 0) listState.scrollToItem(0) }
+    LaunchedEffect(listState, scrollReporter) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.collect { (index, offset) -> scrollReporter("index_$index", offset) }
+    }
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.ANALYSIS_HOME),
+        state = listState,
         contentPadding = PaddingValues(LedgerTheme.spacing.md),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
     ) {
@@ -310,11 +352,11 @@ private fun DashboardReportCard(definition: app.ledger.analytics.domain.FixedRep
 
 @Composable
 private fun PeriodControls(state: AnalysisFeatureState, actions: AnalysisActions) {
-    val locale = LocalLocale.current.platformLocale
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        LedgerButton(stringResource(R.string.analysis_previous_period), actions.onPreviousPeriod, variant = LedgerButtonVariant.TEXT)
-        LedgerText("${state.period.start.localized(locale)} — ${state.period.endInclusive.localized(locale)}", LedgerTextRole.SECTION)
-        LedgerButton(stringResource(R.string.analysis_next_period), actions.onNextPeriod, variant = LedgerButtonVariant.TEXT)
+    val locale = LocalConfiguration.current.locales[0]
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
+        LedgerButton(stringResource(R.string.analysis_previous_period), actions.onPreviousPeriod, Modifier.weight(1f), variant = LedgerButtonVariant.TEXT, compact = true)
+        LedgerText("${state.period.start.localized(locale)} — ${state.period.endInclusive.localized(locale)}", LedgerTextRole.SECTION, Modifier.weight(2f))
+        LedgerButton(stringResource(R.string.analysis_next_period), actions.onNextPeriod, Modifier.weight(1f), variant = LedgerButtonVariant.TEXT, compact = true)
     }
 }
 
@@ -322,7 +364,12 @@ private fun PeriodControls(state: AnalysisFeatureState, actions: AnalysisActions
 private fun ReportCatalog(state: AnalysisFeatureState, actions: AnalysisActions) {
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_CATALOG),
-        contentPadding = PaddingValues(LedgerTheme.spacing.md),
+        contentPadding = PaddingValues(
+            start = LedgerTheme.spacing.md,
+            top = LedgerTheme.spacing.md,
+            end = LedgerTheme.spacing.md,
+            bottom = LedgerTheme.dimensions.bottomActionInset + LedgerTheme.spacing.xxl,
+        ),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
         item {
@@ -389,13 +436,22 @@ private fun ReportDetail(state: AnalysisFeatureState, actions: AnalysisActions) 
             actions.onRepairProjection,
             Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_DETAIL),
         )
-        AnalysisPresentation.EMPTY -> LedgerEmptyState(
-            stringResource(R.string.analysis_report_empty),
-            stringResource(R.string.analysis_report_empty_body),
-            stringResource(R.string.analysis_retry),
-            actions.onRetry,
+        AnalysisPresentation.EMPTY -> LazyColumn(
             Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_DETAIL),
-        )
+            contentPadding = PaddingValues(LedgerTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
+        ) {
+            item { PeriodControls(state, actions) }
+            item {
+                LedgerEmptyState(
+                    stringResource(R.string.analysis_report_empty),
+                    stringResource(R.string.analysis_report_empty_body),
+                    stringResource(R.string.analysis_filter),
+                    { actions.onNavigate("ANA-004", state.fixedReport, null) },
+                    Modifier.fillMaxWidth(),
+                )
+            }
+        }
         else -> {
             val execution = state.execution as? ReportExecution.Content
             if (execution == null) {
@@ -425,6 +481,8 @@ private fun ReportContent(
         summary = stringResource(R.string.analysis_chart_summary, execution.rows.size),
         type = AnalysisPolicy.visualizationType(execution),
         series = localizedChartSeries(execution, locale, state.baseCurrency),
+        progress = execution.rows.asSequence().flatMap { it.measureValues.asSequence() }
+            .mapNotNull { it.decimalValue?.toFloat() }.firstOrNull(),
     )
     var tableExpanded by remember(chartModel.title) { mutableStateOf(true) }
     LazyColumn(
@@ -512,12 +570,22 @@ private fun MetricSummary(state: AnalysisFeatureState, execution: ReportExecutio
 
 @Composable
 internal fun ReportChart(model: LedgerChartUiModel) {
+    if (model.series.none { it.values.isNotEmpty() } && model.type !in setOf(
+            app.ledger.core.designsystem.LedgerChartType.PROGRESS,
+            app.ledger.core.designsystem.LedgerChartType.TABLE,
+        )
+    ) {
+        LedgerText(stringResource(R.string.analysis_report_empty_body), LedgerTextRole.SUPPORTING)
+        return
+    }
     when (model.type) {
         app.ledger.core.designsystem.LedgerChartType.LINE -> LedgerLineChart(model, LedgerVicoLineRenderer, Modifier.fillMaxWidth())
         app.ledger.core.designsystem.LedgerChartType.COLUMN -> LedgerColumnChart(model, LedgerVicoColumnRenderer, Modifier.fillMaxWidth())
         app.ledger.core.designsystem.LedgerChartType.STACKED -> LedgerStackedChart(model, LedgerVicoStackedRenderer, Modifier.fillMaxWidth())
         app.ledger.core.designsystem.LedgerChartType.PIE -> LedgerPieChart(model, LedgerVicoPieRenderer, Modifier.fillMaxWidth())
-        app.ledger.core.designsystem.LedgerChartType.PROGRESS -> LedgerProgressIndicator(0f, Modifier.fillMaxWidth(), model.summary)
+        app.ledger.core.designsystem.LedgerChartType.PROGRESS -> model.progress?.let {
+            LedgerProgressIndicator(it.coerceIn(0f, 1f), Modifier.fillMaxWidth(), model.summary)
+        } ?: LedgerText(stringResource(R.string.analysis_progress_unavailable), LedgerTextRole.SUPPORTING)
         app.ledger.core.designsystem.LedgerChartType.TABLE -> LedgerText(stringResource(R.string.analysis_table_primary), LedgerTextRole.BODY)
     }
 }
@@ -557,7 +625,7 @@ private fun ReportFilter(state: AnalysisFeatureState, actions: AnalysisActions) 
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_FILTER),
         formContent = true,
-        fixedAction = { AnalysisApplyBar(actions.onApplyFilter, valid) },
+        fixedAction = { AnalysisApplyBar(actions.onApplyFilter, true) },
     ) {
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -568,11 +636,11 @@ private fun ReportFilter(state: AnalysisFeatureState, actions: AnalysisActions) 
             item { LedgerBanner(stringResource(R.string.analysis_no_sql_formula), LedgerBannerVariant.INFO) }
             item { LedgerText(stringResource(R.string.analysis_measure), LedgerTextRole.SECTION) }
             items(Measure.entries, key = { "measure-${it.name}" }) { measure ->
-                LedgerChoiceRow(measureLabel(measure), measure in spec.measures, { actions.onSelectMeasure(measure) })
+                LedgerCheckboxRow(measureLabel(measure), measure in spec.measures, { actions.onSelectMeasure(measure) })
             }
             item { LedgerText(stringResource(R.string.analysis_dimension), LedgerTextRole.SECTION) }
             items(Dimension.entries, key = { "dimension-${it.name}" }) { dimension ->
-                LedgerChoiceRow(dimensionLabel(dimension), dimension in spec.dimensions, { actions.onSelectDimension(dimension) })
+                LedgerCheckboxRow(dimensionLabel(dimension), dimension in spec.dimensions, { actions.onSelectDimension(dimension) })
             }
             item { LedgerText(stringResource(R.string.analysis_granularity), LedgerTextRole.SECTION) }
             items(TimeGranularity.entries, key = { "granularity-${it.name}" }) { granularity ->
@@ -635,17 +703,16 @@ internal fun ReportFilterEditor(
     AnalysisEntityFilter.entries.forEach { filter ->
         val available = filterOptions(options, filter)
         val selected = AnalysisPolicy.selectedFilterIds(spec, filter)
-        val selectedFallback = stringResource(R.string.analysis_filter_selected)
         val allLabel = stringResource(R.string.analysis_filter_all)
-        val selectedText = selected.joinToString { id -> available.singleOrNull { it.id == id }?.label ?: selectedFallback }.ifBlank { allLabel }
-        SelectorField(
+        val selectedId = selected.singleOrNull()
+        val selectedIndex = selectedId?.let { id -> available.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.plus(1) } ?: 0
+        LedgerChoiceSelector(
             entityFilterLabel(filter),
-            selectedText,
-            {
-                val current = selected.singleOrNull()
-                val next = available.getOrNull((available.indexOfFirst { it.id == current } + 1).coerceAtLeast(0))
-                if (current != null) actions.onToggleReportFilter(filter, current)
-                if (next != null) actions.onToggleReportFilter(filter, next.id)
+            selectedIndex,
+            listOf(allLabel) + available.map { it.label },
+            { index ->
+                selected.forEach { actions.onToggleReportFilter(filter, it) }
+                available.getOrNull(index - 1)?.let { actions.onToggleReportFilter(filter, it.id) }
             },
         )
     }
@@ -698,9 +765,6 @@ private fun PagedTransactionList(
     actions: AnalysisActions,
     locale: Locale,
 ) {
-    LaunchedEffect(page.nextCursor) {
-        if (page.nextCursor != null) actions.onLoadMore()
-    }
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_DRILLDOWN),
         contentPadding = PaddingValues(LedgerTheme.spacing.md),
@@ -735,7 +799,7 @@ private fun PagedTransactionList(
             )
         }
         if (page.nextCursor != null) {
-            item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.analysis_loading_more)) }
+            item { LedgerButton(stringResource(R.string.analysis_load_more), actions.onLoadMore, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
         }
     }
 }
@@ -771,6 +835,9 @@ private fun IntegrityReport(state: AnalysisFeatureState, actions: AnalysisAction
         contentPadding = PaddingValues(LedgerTheme.spacing.md),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
     ) {
+        if (state.failureCode == "PROJECTION_REPAIRED") {
+            item { LedgerBanner(stringResource(R.string.analysis_projection_repaired), LedgerBannerVariant.INFO) }
+        }
         item {
             val variant = when (report.severity) {
                 IntegritySeverity.PASS -> app.ledger.core.designsystem.LedgerStatusVariant.POSITIVE
@@ -780,22 +847,46 @@ private fun IntegrityReport(state: AnalysisFeatureState, actions: AnalysisAction
             StatusBadge(integritySeverityLabel(report.severity), variant)
         }
         item { LedgerText(stringResource(R.string.analysis_integrity_plain_language), LedgerTextRole.BODY) }
+        item {
+            LedgerText(
+                stringResource(R.string.analysis_integrity_scope, report.localRevision.value, report.checks.size),
+                LedgerTextRole.SUPPORTING,
+            )
+        }
         items(report.checks, key = { it.key.name }) { check ->
+            var technicalDetailsExpanded by rememberSaveable(check.key.name) { mutableStateOf(false) }
+            val technicalStateDescription = if (technicalDetailsExpanded) {
+                stringResource(R.string.analysis_hide_technical)
+            } else {
+                stringResource(R.string.analysis_show_technical)
+            }
             LedgerCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                    LedgerText(integrityCheckLabel(check.key), LedgerTextRole.SECTION)
+                Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        LedgerText(integrityCheckLabel(check.key), LedgerTextRole.SECTION)
+                        StatusBadge(
+                            integritySeverityLabel(check.severity),
+                            when (check.severity) {
+                                IntegritySeverity.PASS -> app.ledger.core.designsystem.LedgerStatusVariant.POSITIVE
+                                IntegritySeverity.WARNING -> app.ledger.core.designsystem.LedgerStatusVariant.WARNING
+                                IntegritySeverity.FAILURE -> app.ledger.core.designsystem.LedgerStatusVariant.DANGER
+                            },
+                        )
+                    }
                     LedgerText(stringResource(R.string.analysis_affected_count, check.affectedCount), LedgerTextRole.SUPPORTING)
-                    if (state.technicalDetailsExpanded) LedgerText(check.diagnosticCode, LedgerTextRole.SUPPORTING)
+                    LedgerButton(
+                        technicalStateDescription,
+                        { technicalDetailsExpanded = !technicalDetailsExpanded },
+                        Modifier.fillMaxWidth().semantics { stateDescription = technicalStateDescription },
+                        LedgerButtonVariant.TEXT,
+                    )
+                    if (technicalDetailsExpanded) {
+                        LedgerText(stringResource(R.string.analysis_integrity_check_id, check.key.name), LedgerTextRole.SUPPORTING)
+                        LedgerText(stringResource(R.string.analysis_integrity_check_scope, report.localRevision.value), LedgerTextRole.SUPPORTING)
+                        LedgerText(stringResource(R.string.analysis_integrity_check_trace, check.diagnosticCode), LedgerTextRole.SUPPORTING)
+                    }
                 }
             }
-        }
-        item {
-            LedgerButton(
-                if (state.technicalDetailsExpanded) stringResource(R.string.analysis_hide_technical) else stringResource(R.string.analysis_show_technical),
-                actions.onToggleTechnicalDetails,
-                Modifier.fillMaxWidth(),
-                LedgerButtonVariant.TEXT,
-            )
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
@@ -957,6 +1048,11 @@ private val MEASURE_LABELS = mapOf(
     Measure.LOAN_INTEREST to R.string.analysis_measure_loan_interest,
     Measure.SETTLEMENT_POSITION to R.string.analysis_measure_settlement_position,
     Measure.TRANSACTION_COUNT to R.string.analysis_measure_transaction_count,
+    Measure.BUDGET_BASE to R.string.analysis_measure_budget_base,
+    Measure.BUDGET_ROLLOVER to R.string.analysis_measure_budget_rollover,
+    Measure.BUDGET_ADJUSTMENT to R.string.analysis_measure_budget_adjustment,
+    Measure.BUDGET_USED to R.string.analysis_measure_budget_used,
+    Measure.BUDGET_AVAILABLE to R.string.analysis_measure_budget_available,
 )
 private val DIMENSION_LABELS = mapOf(
     Dimension.DATE to R.string.analysis_dimension_date,
@@ -986,7 +1082,17 @@ private val COMPARISON_LABELS = mapOf(
     ComparisonMode.TREND to R.string.analysis_trend,
     ComparisonMode.FORECAST to R.string.analysis_forecast,
 )
-private val INTEGRITY_LABELS = IntegrityCheckKey.entries.associateWith { R.string.analysis_integrity_check }
+private val INTEGRITY_LABELS = mapOf(
+    IntegrityCheckKey.DATABASE to R.string.analysis_integrity_database,
+    IntegrityCheckKey.FOREIGN_KEYS to R.string.analysis_integrity_foreign_keys,
+    IntegrityCheckKey.JOURNALS to R.string.analysis_integrity_journals,
+    IntegrityCheckKey.POSTING_CURRENCIES to R.string.analysis_integrity_posting_currencies,
+    IntegrityCheckKey.REVISIONS to R.string.analysis_integrity_revisions,
+    IntegrityCheckKey.PROJECTIONS to R.string.analysis_integrity_projections,
+    IntegrityCheckKey.FTS to R.string.analysis_integrity_fts,
+    IntegrityCheckKey.RTREE to R.string.analysis_integrity_rtree,
+    IntegrityCheckKey.FACT_REBUILD to R.string.analysis_integrity_fact_rebuild,
+)
 private val SEVERITY_LABELS = mapOf(
     IntegritySeverity.PASS to R.string.analysis_integrity_passed,
     IntegritySeverity.WARNING to R.string.analysis_integrity_warnings,
@@ -1011,7 +1117,7 @@ private val EXPORT_FORMAT_LABELS = mapOf(
 )
 
 private fun LocalDate.localized(locale: Locale): String =
-    format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+    format(LedgerDateFormatterRuntime.formatter(locale))
 
 private fun Modifier.analysisRootTag(screenId: String): Modifier = when (screenId) {
     "ANA-001" -> testTag(LedgerTestTags.ANALYSIS_HOME)

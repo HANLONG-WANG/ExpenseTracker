@@ -41,6 +41,7 @@ import app.ledger.transfer.domain.ImportFailure
 import app.ledger.transfer.domain.ImportInput
 import app.ledger.transfer.domain.ImportReadRequest
 import app.ledger.transfer.domain.OperationParameters
+import app.ledger.transfer.domain.StructuredEntityKind
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -129,6 +130,8 @@ internal class ImportWorker(
                 input = ImportInput {
                     applicationContext.contentResolver.openInputStream(uri) ?: error("persisted source cannot be opened")
                 },
+                selectedSheetNames = StructuredEntityKind.supportedSheetNames
+                    .takeIf { parameters.format == app.ledger.transfer.domain.ImportFormat.STRUCTURED_WORKBOOK },
                 headerRowNumber = parameters.headerRowNumber,
                 userCharset = parameters.userCharset,
                 cancellation = { isStopped || !workerContext.isActive },
@@ -157,7 +160,11 @@ internal class ImportWorker(
                         .putBoolean(OUTPUT_CLEANUP_COMPLETE, handleRemoved)
                         .build(),
                 )
-            } else if (runAttemptCount < MAX_RETRIES) {
+            } else if (
+                runAttemptCount < MAX_RETRIES &&
+                (operations.get(operationId) as? DomainResult.Success)?.value?.state ==
+                BackgroundOperationState.FAILED_RETRYABLE
+            ) {
                 Result.retry()
             } else {
                 failIngestion(bookId, operationId, operation, parameters, operations, dependencies, result.error.code)
@@ -447,11 +454,19 @@ internal object ImportRunControlRegistry {
 
 internal object ImportWorkScheduler {
     fun enqueue(context: Context, operationId: StableId) {
+        enqueue(context, operationId, ExistingWorkPolicy.KEEP)
+    }
+
+    fun enqueueRetry(context: Context, operationId: StableId) {
+        enqueue(context, operationId, ExistingWorkPolicy.REPLACE)
+    }
+
+    private fun enqueue(context: Context, operationId: StableId, policy: ExistingWorkPolicy) {
         val request = OneTimeWorkRequestBuilder<ImportWorker>()
             .setInputData(operationData(operationId))
             .setConstraints(Constraints.Builder().setRequiresStorageNotLow(true).build())
             .build()
-        WorkManager.getInstance(context).enqueueUniqueWork(uniqueName(operationId), ExistingWorkPolicy.KEEP, request)
+        WorkManager.getInstance(context).enqueueUniqueWork(uniqueName(operationId), policy, request)
     }
 
     fun enqueueCommit(context: Context, operationId: StableId) {

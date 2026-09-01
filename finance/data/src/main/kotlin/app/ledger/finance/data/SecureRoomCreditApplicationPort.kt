@@ -16,6 +16,8 @@ import app.ledger.core.time.EffectiveTime
 import app.ledger.finance.application.AssignCreditStatementRequest
 import app.ledger.finance.application.CreditAccountView
 import app.ledger.finance.application.CreditApplicationPort
+import app.ledger.finance.application.CreateCreditAccountProfileRequest
+import app.ledger.finance.application.AccountDraft
 import app.ledger.finance.application.CreditAutoPaymentProposal
 import app.ledger.finance.application.CreditPaymentAccountView
 import app.ledger.finance.application.CreditPaymentAllocationView
@@ -66,6 +68,8 @@ import app.ledger.finance.domain.FrozenAmountEvidence
 import app.ledger.finance.domain.FrozenFxConversion
 import app.ledger.finance.domain.FxRateSnapshotId
 import app.ledger.finance.domain.Hash256
+import app.ledger.finance.domain.LedgerAccountClass
+import app.ledger.finance.domain.LedgerOwnerType
 import app.ledger.finance.domain.NewTransactionInput
 import app.ledger.finance.domain.PayableCreditStatement
 import app.ledger.finance.domain.PlanningIdentitySet
@@ -87,6 +91,7 @@ import app.ledger.finance.domain.TransactionRevision
 import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountId
+import app.ledger.finance.domain.UserAccountType
 import app.ledger.finance.domain.WeekendAdjustment
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -113,6 +118,19 @@ class SecureRoomCreditApplicationPort(
     }
 
     override suspend fun saveProfile(request: SaveCreditProfileRequest): DomainResult<app.ledger.finance.domain.CommandReceipt> = withDatabase(request.ids.bookId) { database ->
+        saveProfile(database, request, null)
+    }
+
+    override suspend fun createAccountWithProfile(request: CreateCreditAccountProfileRequest): DomainResult<app.ledger.finance.domain.CommandReceipt> =
+        withDatabase(request.profile.ids.bookId) { database ->
+            saveProfile(database, request.profile, request.account)
+        }
+
+    private suspend fun saveProfile(
+        database: LedgerDatabase,
+        request: SaveCreditProfileRequest,
+        newAccount: AccountDraft?,
+    ): DomainResult<app.ledger.finance.domain.CommandReceipt> {
         val book = database.readLedger(RoomBookRepository::mapCurrent)
         val profile = CreditAccountProfile(
             UserAccountId(request.accountId),
@@ -128,14 +146,14 @@ class SecureRoomCreditApplicationPort(
             BookCommitId(request.ids.commitId),
         )
         val limitPeriod = request.limitEffectiveFrom?.let { effective ->
-            val alreadyRecorded = database.readLedger { db ->
+            val alreadyRecorded = if (newAccount != null) false else database.readLedger { db ->
                 db.queryOne(
                     "SELECT COUNT(*) FROM credit_limit_period clp JOIN user_account ua ON ua.id=clp.credit_account_id " +
                         "WHERE ua.uid=? AND clp.effective_from=?",
                     arrayOf<Any>(request.accountId.bytes, effective.toStorageInt()),
                 ) { it.getLong(0) } != 0L
             }
-            val recordedByThisCommand = database.readLedger { db ->
+            val recordedByThisCommand = if (newAccount != null) false else database.readLedger { db ->
                 db.queryOne(
                     "SELECT COUNT(*) FROM credit_limit_period clp JOIN user_account ua ON ua.id=clp.credit_account_id " +
                         "JOIN book_commit bc ON bc.id=clp.created_commit_id WHERE ua.uid=? AND clp.effective_from=? AND bc.command_uid=?",
@@ -152,7 +170,12 @@ class SecureRoomCreditApplicationPort(
             CreditProfileMutation(profile, request.expectedLastCommitId?.let(::BookCommitId), limitPeriod),
         )
         val command = draft.copy(payloadHash = CanonicalFinancialHash.command(draft))
-        coordinate(database, command, operationSnapshot(book, request.ids.commitId, request.ids.deviceInstanceId, request.changedAt))
+        return coordinate(
+            database,
+            command,
+            operationSnapshot(book, request.ids.commitId, request.ids.deviceInstanceId, request.changedAt),
+            newAccount,
+        )
     }
 
     override suspend fun saveStatement(request: SaveCreditStatementRequest): DomainResult<app.ledger.finance.domain.CommandReceipt> = withDatabase(request.ids.mutation.bookId) { database ->
@@ -590,8 +613,21 @@ class SecureRoomCreditApplicationPort(
         operationContext = PlanningOperationContext(BookCommitId(commitId), changedAt, DeviceInstanceId(deviceId)),
     )
 
-    private suspend fun coordinate(database: LedgerDatabase, command: FinancialCommand, snapshot: PlanningSnapshot): DomainResult<app.ledger.finance.domain.CommandReceipt> {
-        val repository = RoomFinancialCommitRepository(database)
+    private suspend fun coordinate(
+        database: LedgerDatabase,
+        command: FinancialCommand,
+        snapshot: PlanningSnapshot,
+        newAccount: AccountDraft? = null,
+    ): DomainResult<app.ledger.finance.domain.CommandReceipt> {
+        val accountSideEffect = newAccount?.let { account ->
+            FinancialCommitSideEffect { db, plan -> insertCreditAccount(db, plan, account) }
+        } ?: FinancialCommitSideEffect.NONE
+        val repository = RoomFinancialCommitRepository(
+            database,
+            sideEffect = accountSideEffect,
+            forceFullProjectionRebuild = newAccount != null,
+            creditAccountCreatedInCommit = newAccount?.accountId,
+        )
         return DefaultFinancialMutationCoordinator(
             writeGate,
             repository,
@@ -601,6 +637,67 @@ class SecureRoomCreditApplicationPort(
             FinancialPlanningPort(DeterministicFinancialPlanner::plan),
             repository,
         ).execute(command)
+    }
+
+    private fun insertCreditAccount(
+        database: SupportSQLiteDatabase,
+        plan: app.ledger.finance.domain.FinancialMutationPlan,
+        account: AccountDraft,
+    ) {
+        require(account.type == UserAccountType.CREDIT)
+        require(account.name.isNotBlank())
+        require(database.queryOne("SELECT COUNT(*) FROM user_account WHERE uid=?", arrayOf(account.accountId.bytes)) { it.getLong(0) } == 0L)
+        val commitId = database.commitId(plan.commit.id)
+        val ledgerId = database.allocateInternalId("ledger_account", account.ledgerAccountId)
+        database.execSQL(
+            "INSERT INTO ledger_account(id,uid,owner_type,account_class,normal_side,currency_code,parent_ledger_account_id,system_code,status,created_commit_id) " +
+                "VALUES(?,?,?,?,?,?,NULL,NULL,?,?)",
+            arrayOf<Any>(
+                ledgerId,
+                account.ledgerAccountId.bytes,
+                LedgerOwnerType.USER_ACCOUNT.ordinal,
+                LedgerAccountClass.LIABILITY.ordinal,
+                app.ledger.finance.domain.DebitCredit.CREDIT.ordinal,
+                account.currency.value,
+                EntityStatus.ACTIVE.ordinal,
+                commitId,
+            ),
+        )
+        val canonical = listOf(
+            "credit-account-v1",
+            account.accountId.toString(),
+            account.name.trim(),
+            account.currency.value,
+            account.institutionName.orEmpty(),
+            account.branchName.orEmpty(),
+            account.accountNumber.orEmpty(),
+            account.openedOn?.toString().orEmpty(),
+            account.iconKey,
+            account.colorArgb.toString(),
+            account.sortOrder.toString(),
+        ).joinToString("\u001f").encodeToByteArray()
+        database.execSQL(
+            "INSERT INTO user_account(id,uid,ledger_account_id,type,name,currency_code,institution_name,branch_name,account_number,opened_date,status,icon_key,color_argb,sort_order,last_commit_id,row_version,content_hash) " +
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)",
+            arrayOf<Any?>(
+                database.allocateInternalId("user_account", account.accountId),
+                account.accountId.bytes,
+                ledgerId,
+                account.type.ordinal,
+                account.name.trim(),
+                account.currency.value,
+                account.institutionName?.trim()?.takeIf(String::isNotEmpty),
+                account.branchName?.trim()?.takeIf(String::isNotEmpty),
+                account.accountNumber?.trim()?.takeIf(String::isNotEmpty),
+                account.openedOn?.toStorageInt(),
+                EntityStatus.ACTIVE.ordinal,
+                account.iconKey,
+                account.colorArgb,
+                account.sortOrder,
+                commitId,
+                Hash256.sha256(canonical).bytes,
+            ),
+        )
     }
 
     private fun accountAmount(draft: SpecializedAccountAmountDraft, references: PlanningReferenceData): AccountAmount {

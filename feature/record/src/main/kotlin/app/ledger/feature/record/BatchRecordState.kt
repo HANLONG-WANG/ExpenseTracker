@@ -17,6 +17,7 @@ import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -80,6 +81,21 @@ public data class BatchRowSummary(
     val warningCount: Int,
 )
 
+public data class BatchInstallmentReferenceOption(
+    val id: StableId,
+    val accountName: String,
+    val termCount: Int,
+    val currency: CurrencyCode,
+)
+
+public data class BatchRefundReferenceOption(
+    val id: StableId,
+    val categoryName: String,
+    val localDate: LocalDate,
+    val remainingMinor: Long,
+    val currency: CurrencyCode,
+)
+
 public data class BatchRecordState(
     val snapshot: OrdinaryTransactionEntrySnapshot,
     val rows: List<BatchRowDraft>,
@@ -90,6 +106,8 @@ public data class BatchRecordState(
     val committedBatchCommandId: StableId? = null,
     val sanitizedFailureCode: String? = null,
     val showDiscardConfirmation: Boolean = false,
+    val installmentReferenceOptions: List<BatchInstallmentReferenceOption> = emptyList(),
+    val refundReferenceOptions: List<BatchRefundReferenceOption> = emptyList(),
 ) {
     init {
         require(rows.map(BatchRowDraft::rowId).toSet().size == rows.size)

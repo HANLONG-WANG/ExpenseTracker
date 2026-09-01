@@ -11,32 +11,46 @@
 
 package app.ledger.app
 
+import android.app.LocaleManager
 import android.content.res.Configuration
+import android.graphics.Color
+import android.os.Build
 import android.os.LocaleList
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalProvidableLocaleList
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.ledger.core.designsystem.HighRiskConfirmation
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
@@ -46,11 +60,15 @@ import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerLoadingState
+import app.ledger.core.designsystem.LedgerDialog
+import app.ledger.core.designsystem.LedgerDateFormat
+import app.ledger.core.designsystem.LedgerWeekStart
 import app.ledger.core.designsystem.LedgerProgressState
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerSnackbarController
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
+import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerTopAppBar
@@ -142,9 +160,33 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
             )
         }
     }
+    val localizedLocaleList = remember(languageTag, localizedContext) {
+        androidx.compose.ui.text.intl.LocaleList(
+            languageTag ?: localizedContext.resources.configuration.locales[0].toLanguageTag(),
+        )
+    }
+    val selectedJavaLocale = remember(languageTag, localizedContext) {
+        Locale.forLanguageTag(
+            languageTag ?: localizedContext.resources.configuration.locales[0].toLanguageTag(),
+        )
+    }
+    SideEffect {
+        // Some Compose/Material accessibility actions still resolve their strings from the
+        // platform application locale instead of the composition-local Resources instance.
+        Locale.setDefault(selectedJavaLocale)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && languageTag != null) {
+            val localeManager = baseContext.getSystemService(LocaleManager::class.java)
+            val applicationLocales = LocaleList.forLanguageTags(languageTag)
+            if (localeManager.applicationLocales.toLanguageTags() != applicationLocales.toLanguageTags()) {
+                localeManager.applicationLocales = applicationLocales
+            }
+        }
+    }
     CompositionLocalProvider(
         LocalContext provides localizedContext,
         LocalConfiguration provides localizedContext.resources.configuration,
+        LocalResources provides localizedContext.resources,
+        LocalProvidableLocaleList provides localizedLocaleList,
         LocalActivityResultRegistryOwner provides activityResultRegistryOwner,
     ) {
         val snackbarController = rememberLedgerSnackbarController()
@@ -159,6 +201,7 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
         val journalRestored = stringResource(R.string.global_journal_restored)
         val journalMutationFailed = stringResource(R.string.global_journal_mutation_failed)
         val journalPermanentlyDeleted = stringResource(R.string.global_journal_permanently_deleted)
+        val journalBulkUpdated = stringResource(R.string.global_journal_bulk_updated)
         val planningUpdated = stringResource(R.string.global_planning_updated)
         val loanUpdated = stringResource(R.string.global_loan_updated)
         val settlementUpdated = stringResource(R.string.global_settlement_updated)
@@ -177,6 +220,7 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
             journalRestored,
             journalMutationFailed,
             journalPermanentlyDeleted,
+            journalBulkUpdated,
             planningUpdated,
             loanUpdated,
             settlementUpdated,
@@ -196,6 +240,7 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
                         GlobalSnackbarMessage.JOURNAL_RESTORED -> journalRestored
                         GlobalSnackbarMessage.JOURNAL_MUTATION_FAILED -> journalMutationFailed
                         GlobalSnackbarMessage.JOURNAL_PERMANENTLY_DELETED -> journalPermanentlyDeleted
+                        GlobalSnackbarMessage.JOURNAL_BULK_UPDATED -> journalBulkUpdated
                         GlobalSnackbarMessage.PLANNING_UPDATED -> planningUpdated
                         GlobalSnackbarMessage.LOAN_UPDATED -> loanUpdated
                         GlobalSnackbarMessage.SETTLEMENT_UPDATED -> settlementUpdated
@@ -209,11 +254,33 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
             app.ledger.app.settings.ThemeModeProto.THEME_MODE_DARK -> ThemeMode.DARK
             else -> ThemeMode.FOLLOW_SYSTEM
         }
+        val darkTheme = when (themeMode) {
+            ThemeMode.FOLLOW_SYSTEM -> isSystemInDarkTheme()
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
+        }
+        SideEffect {
+            (baseContext as? androidx.activity.ComponentActivity)?.enableEdgeToEdge(
+                statusBarStyle = if (darkTheme) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+                navigationBarStyle = if (darkTheme) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            )
+        }
         LedgerTheme(
             themeMode,
             dynamicColor = settings.dynamicColorEnabled,
             reduceMotion = settings.reduceMotionEnabled,
             ledgerTimeZoneId = settings.zoneId.ifBlank { "UTC" },
+            ledgerDateFormat = when (settings.dateFormat) {
+                app.ledger.app.settings.DateFormatProto.DATE_FORMAT_YEAR_MONTH_DAY -> LedgerDateFormat.YEAR_MONTH_DAY
+                app.ledger.app.settings.DateFormatProto.DATE_FORMAT_DAY_MONTH_YEAR -> LedgerDateFormat.DAY_MONTH_YEAR
+                app.ledger.app.settings.DateFormatProto.DATE_FORMAT_MONTH_DAY_YEAR -> LedgerDateFormat.MONTH_DAY_YEAR
+                else -> LedgerDateFormat.LOCALE_DEFAULT
+            },
+            ledgerWeekStart = when (settings.weekStart) {
+                app.ledger.app.settings.WeekStartProto.WEEK_START_MONDAY -> LedgerWeekStart.MONDAY
+                app.ledger.app.settings.WeekStartProto.WEEK_START_SUNDAY -> LedgerWeekStart.SUNDAY
+                else -> LedgerWeekStart.LOCALE_DEFAULT
+            },
         ) {
             val state = root
             if (recoveryRestoreActive) {
@@ -221,6 +288,9 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
             } else if (state === AppRootState.Starting) {
                 LedgerLoadingState(Modifier.fillMaxSize())
             } else if (state is AppRootState.Onboarding) {
+                BackHandler(enabled = state.state.step != app.ledger.feature.onboarding.OnboardingStep.LANGUAGE) {
+                    viewModel.onboardingBack()
+                }
                 OnboardingScreen(
                     state.state,
                     OnboardingActions(
@@ -317,7 +387,7 @@ private fun SessionGateScreen(
 internal fun LockScreen(state: AppAuthenticationState, onAuthenticate: () -> Unit) {
     LedgerScaffold(Modifier.fillMaxSize(), formContent = true) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding),
             verticalArrangement = Arrangement.Center,
         ) {
             LedgerText(stringResource(R.string.global_locked_title), LedgerTextRole.TITLE, centered = true, modifier = Modifier.fillMaxWidth())
@@ -405,7 +475,7 @@ internal fun MaintenanceScreen(
     val phase = stringResource(phaseResource)
     val failure = UiErrorCode("MAINTENANCE_FAILED").takeIf { presentation == MaintenancePresentation.FAILED }
     LedgerScaffold(Modifier.fillMaxSize(), formContent = true) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding), verticalArrangement = Arrangement.Center) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding), verticalArrangement = Arrangement.Center) {
             LedgerText(stringResource(R.string.global_maintenance_title), LedgerTextRole.TITLE)
             OperationProgressPanel(
                 OperationProgressUiModel(
@@ -471,7 +541,7 @@ internal fun RecoveryRequiredScreen(
     }
     val explanation = stringResource(explanationResource)
     LedgerScaffold(Modifier.fillMaxSize(), formContent = true) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding), verticalArrangement = Arrangement.Center) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(padding), verticalArrangement = Arrangement.Center) {
             LedgerText(stringResource(R.string.global_recovery_title), LedgerTextRole.TITLE)
             LedgerBanner(explanation, LedgerBannerVariant.DANGER)
             LedgerText(stringResource(R.string.global_recovery_diagnostic, recoveryDiagnosticLabel(code)), LedgerTextRole.SUPPORTING)
@@ -489,23 +559,24 @@ internal fun RecoveryRequiredScreen(
                 modifier = Modifier.fillMaxWidth(),
                 variant = LedgerButtonVariant.DANGER,
             )
-            if (confirmingClear) {
-                HighRiskConfirmation(
-                    title = stringResource(R.string.global_recovery_clear),
-                    scope = stringResource(R.string.global_recovery_clear_scope),
-                    consequence = stringResource(R.string.global_recovery_clear_consequence),
-                    unaffected = stringResource(R.string.global_recovery_clear_unaffected),
-                    requiredPhrase = stringResource(R.string.global_recovery_clear_phrase),
-                    enteredPhrase = phrase,
-                    onPhraseChange = { phrase = it },
-                    onConfirm = onClear,
-                    onCancel = {
-                        confirmingClear = false
-                        phrase = ""
-                    },
-                )
-            }
         }
+    }
+    if (confirmingClear) {
+        val requiredPhrase = stringResource(R.string.global_recovery_clear_phrase)
+        LedgerDialog(
+            title = stringResource(R.string.global_recovery_clear),
+            message = stringResource(R.string.global_recovery_clear_scope),
+            confirmLabel = stringResource(R.string.global_recovery_clear),
+            onConfirm = onClear,
+            onDismiss = { confirmingClear = false; phrase = "" },
+            danger = true,
+            confirmEnabled = phrase == requiredPhrase,
+            content = {
+                LedgerText(stringResource(R.string.global_recovery_clear_consequence), LedgerTextRole.BODY)
+                LedgerText(stringResource(R.string.global_recovery_clear_unaffected), LedgerTextRole.SUPPORTING)
+                LedgerTextField(phrase, { phrase = it }, stringResource(R.string.global_recovery_clear), supportingText = requiredPhrase)
+            },
+        )
     }
 }
 
@@ -531,11 +602,13 @@ internal fun RootDestination(
     currencySettings: CurrencySettingsState?,
     journalState: JournalLoadState,
     accountAmountsVisible: Boolean,
+    visibleCurrencyCodes: List<String>,
     onAddAttachment: () -> Unit,
     onBack: () -> Unit,
     onMore: () -> Unit,
     onOperations: () -> Unit,
     onHelp: () -> Unit,
+    onPrivacyPolicy: () -> Unit,
     onNavigationChanged: () -> Unit,
 ) {
     val screenId = key.contract.screenId.value
@@ -565,12 +638,14 @@ internal fun RootDestination(
                     viewModel.createReplacementCard(cardId, accountId, key)
                     onNavigationChanged()
                 },
+                onDismissLifecycle = onBack,
             ),
             selectedAccountType = viewModel.selectedAccountType,
             preferredCardAccountId = viewModel.preferredCardAccountId,
             replacementCardId = viewModel.replacementCardId,
             pending = referencePending,
             amountsVisible = accountAmountsVisible,
+            visibleCurrencyCodes = visibleCurrencyCodes,
         )
     } else if (screenId == "MGT-001" || screenId.startsWith("CAT-") || screenId.startsWith("MER-") || screenId.startsWith("PLC-")) {
         ReferenceManagementDestination(
@@ -654,7 +729,7 @@ internal fun RootDestination(
                         viewModel.openSecurityPrivacySettings("SETG-011")
                         onNavigationChanged()
                     }
-                    SecurityPrivacyScreenAction.OpenPrivacyPolicy -> onHelp()
+                    SecurityPrivacyScreenAction.OpenPrivacyPolicy -> onPrivacyPolicy()
                     SecurityPrivacyScreenAction.DeleteFeatureQueue -> viewModel.deleteFeatureDiagnosticQueue()
                     SecurityPrivacyScreenAction.DeleteCrashQueue -> viewModel.deleteCrashDiagnosticQueue()
                     SecurityPrivacyScreenAction.BeginLocalClear -> viewModel.beginLocalClear()
@@ -799,6 +874,7 @@ internal fun RootDestination(
                     is RemainingSettingsScreenAction.ZoneIdChanged -> viewModel.updateSettingsZone(action.zoneId)
                     is RemainingSettingsScreenAction.WeekStartChanged -> viewModel.updateSettingsWeekStart(action.weekStart)
                     RemainingSettingsScreenAction.OpenSourceCode -> viewModel.openSourceCode()
+                    RemainingSettingsScreenAction.OpenPrivacyPolicy -> onPrivacyPolicy()
                 }
             },
         )
@@ -817,16 +893,25 @@ internal fun RootDestination(
     } else if (screenId == "G-007") {
         val operations by viewModel.operationCenter.collectAsStateWithLifecycle()
         LaunchedEffect(screenId) { viewModel.loadOperationCenter() }
-        DurableOperationCenterContent(operations, onBack, viewModel::loadOperationCenter, viewModel::cancelOperation)
+        DurableOperationCenterContent(
+            operations,
+            onBack,
+            viewModel::loadOperationCenter,
+            viewModel::cancelOperation,
+            onRetryOperation = viewModel::retryOperation,
+            onReplaceImportSource = viewModel::openImportSourceFromOperationCenter,
+        )
     } else if (screenId == "G-008") {
         HelpContent(key.encodedArguments["topicKey"], onBack)
     } else if (screenId == "SYS-002") {
+        GovernedDestinationModal(screenId, stringResource(R.string.global_notification_title), onBack) {
         NotificationPermissionContent(
             viewModel.notificationPermissionPresentation(),
             viewModel::requestNotificationPermission,
             viewModel::dismissNotificationPermission,
             viewModel::openNotificationSettings,
         )
+        }
     } else {
         LedgerErrorState(
             code = UiErrorCode("DESTINATION_NOT_REGISTERED"),
@@ -854,6 +939,7 @@ private fun PlaceMapContent(
 ) {
     val identity = points.joinToString(separator = "|") { "${it.id}:${it.latitudeE7}:${it.longitudeE7}" }
     var rendererFailed by remember(identity) { mutableStateOf(false) }
+    var retryGeneration by remember(identity) { mutableStateOf(0) }
     val summary = stringResource(R.string.global_place_map_summary, points.count())
     val rows = points.map { point ->
         LedgerMapAccessibleRow(point.label, stringResource(R.string.global_location_record_count, point.recordCount))
@@ -870,21 +956,31 @@ private fun PlaceMapContent(
             accessibleRows = rows,
         )
     }
-    LedgerMap(
-        state = state,
-        styleConfiguration = LedgerMapStyleConfiguration.OpenFreeMap,
-        accessibleCaption = stringResource(R.string.global_place_map_table),
-        accessibleColumnHeaders = listOf(
-            stringResource(R.string.global_place),
-            stringResource(R.string.global_location_records),
-        ),
-        showAccessibleListLabel = stringResource(R.string.global_show_place_list),
-        hideAccessibleListLabel = stringResource(R.string.global_hide_place_list),
-        onFailure = { rendererFailed = true },
-        onCoordinateSelected = onCoordinateSelected,
-    )
+    key(retryGeneration) {
+        LedgerMap(
+            state = state,
+            styleConfiguration = LedgerMapStyleConfiguration.OpenFreeMap,
+            accessibleCaption = stringResource(R.string.global_place_map_table),
+            accessibleColumnHeaders = listOf(
+                stringResource(R.string.global_place),
+                stringResource(R.string.global_location_records),
+            ),
+            showAccessibleListLabel = stringResource(R.string.global_show_place_list),
+            hideAccessibleListLabel = stringResource(R.string.global_hide_place_list),
+            onFailure = { rendererFailed = true },
+            onCoordinateSelected = onCoordinateSelected,
+        )
+    }
     if (unavailable || rendererFailed) {
-        LedgerBanner(stringResource(R.string.global_map_renderer_unavailable), LedgerBannerVariant.INFO)
+        LedgerBanner(
+            stringResource(R.string.global_map_renderer_unavailable),
+            LedgerBannerVariant.INFO,
+            actionLabel = stringResource(R.string.global_retry),
+            onAction = {
+                rendererFailed = false
+                retryGeneration += 1
+            },
+        )
     } else if (points.none()) {
         LedgerText(stringResource(R.string.global_place_map_empty), LedgerTextRole.SUPPORTING)
     }
@@ -1006,6 +1102,8 @@ internal fun DurableOperationCenterContent(
     onRetry: () -> Unit,
     onCancel: (app.ledger.transfer.domain.BackgroundOperationId) -> Unit,
     modifier: Modifier = Modifier,
+    onRetryOperation: (app.ledger.transfer.domain.BackgroundOperationId) -> Unit = {},
+    onReplaceImportSource: () -> Unit = {},
 ) {
     when (state) {
         OperationCenterLoadState.Loading -> LedgerLoadingState(modifier.fillMaxSize())
@@ -1039,7 +1137,7 @@ internal fun DurableOperationCenterContent(
                     )
                 }
                 items(state.operations, key = { it.id.value.toString() }) { operation ->
-                    DurableOperationRow(operation, onCancel)
+                    DurableOperationRow(operation, onCancel, onRetryOperation, onReplaceImportSource)
                 }
             }
         }
@@ -1050,9 +1148,14 @@ internal fun DurableOperationCenterContent(
 private fun DurableOperationRow(
     operation: BackgroundOperation,
     onCancel: (app.ledger.transfer.domain.BackgroundOperationId) -> Unit,
+    onRetry: (app.ledger.transfer.domain.BackgroundOperationId) -> Unit,
+    onReplaceImportSource: () -> Unit,
 ) {
     val type = stringResource(operationTypeResource(operation.type))
-    val phase = stringResource(operationStateResource(operation.state))
+    val userCancelled = operation.cancelRequested && operation.errorCode?.endsWith("_CANCELLED") == true
+    val replaceImportSource = operation.requiresReplacementImportSource()
+    val displayState = if (replaceImportSource) BackgroundOperationState.FAILED_FINAL else operation.state
+    val phase = stringResource(if (userCancelled) R.string.global_operation_cancelled else operationStateResource(displayState))
     val numberFormat = java.text.NumberFormat.getIntegerInstance(LocalLocale.current.platformLocale)
     val totalText = operation.progress.total?.let(numberFormat::format) ?: stringResource(R.string.global_operations_total_unknown)
     val cancelable = operation.state in setOf(
@@ -1072,17 +1175,46 @@ private fun DurableOperationRow(
             progress = progress,
             capability = if (cancelable) OperationCapability.CANCELABLE else OperationCapability.NON_CANCELABLE_COMMIT,
             statusExplanation = stringResource(
-                if (operation.state == BackgroundOperationState.COMMITTING) {
+                if (replaceImportSource) {
+                    R.string.global_operations_import_reselect_explanation
+                } else if (userCancelled) {
+                    R.string.global_operations_cancelled_explanation
+                } else if (operation.state == BackgroundOperationState.COMMITTING) {
                     R.string.global_operations_committing_explanation
                 } else {
                     R.string.global_operations_durable_explanation
                 },
             ),
-            failureCode = operation.errorCode?.let(::UiErrorCode),
+            failureCode = operation.errorCode?.takeUnless { userCancelled }?.let(::UiErrorCode),
         ),
         onCancel = { onCancel(operation.id) }.takeIf { cancelable },
+        onRetry = when {
+            operation.canRetryFromOperationCenter() -> ({ onRetry(operation.id) })
+            replaceImportSource -> onReplaceImportSource
+            else -> null
+        },
+        retryLabel = stringResource(R.string.global_operations_choose_new_source).takeIf { replaceImportSource },
     )
 }
+
+internal fun BackgroundOperation.requiresReplacementImportSource(): Boolean =
+    type == BackgroundOperationType.IMPORT &&
+        state == BackgroundOperationState.FAILED_RETRYABLE &&
+        errorCode != null && errorCode in NON_RETRYABLE_IMPORT_SOURCE_ERRORS
+
+internal fun BackgroundOperation.canRetryFromOperationCenter(): Boolean =
+    state == BackgroundOperationState.FAILED_RETRYABLE &&
+        !requiresReplacementImportSource() &&
+        type in OPERATION_CENTER_RETRY_TYPES
+
+private val NON_RETRYABLE_IMPORT_SOURCE_ERRORS = setOf("IMPORT_UNSUPPORTED_SOURCE", "IMPORT_INVALID_ENCODING")
+private val OPERATION_CENTER_RETRY_TYPES = setOf(
+    BackgroundOperationType.IMPORT,
+    BackgroundOperationType.EXPORT,
+    BackgroundOperationType.FULL_BACKUP,
+    BackgroundOperationType.DRIVE_UPLOAD,
+    BackgroundOperationType.BACKUP_KEY_ROTATION,
+)
 
 private fun operationTypeResource(type: BackgroundOperationType): Int = when (type) {
     BackgroundOperationType.IMPORT -> R.string.global_operation_import
@@ -1123,9 +1255,16 @@ internal fun HelpScreen(topicKey: String?, onBack: () -> Unit) {
 private fun HelpContent(topicKey: String?, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val topic = HelpTopic.entries.singleOrNull { it.key == topicKey }
     if (topic != null) {
-        Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-            LedgerText(stringResource(topic.title), LedgerTextRole.TITLE)
-            LedgerText(stringResource(topic.body), LedgerTextRole.BODY)
+        val topics = if (topic == HelpTopic.GETTING_STARTED) HelpTopic.entries.toList() else listOf(topic)
+        LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+            items(topics, key = HelpTopic::key) { helpTopic ->
+                LedgerCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.md), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                        LedgerText(stringResource(helpTopic.title), LedgerTextRole.SECTION, Modifier.focusable())
+                        LedgerText(stringResource(helpTopic.body), LedgerTextRole.BODY, Modifier.focusable())
+                    }
+                }
+            }
         }
     } else {
         LedgerEmptyState(
@@ -1265,11 +1404,11 @@ private fun rootDestinationTitleResource(screenId: String): Int? = if (screenId 
 } else if (screenId == "SETG-006") {
     SettingsR.string.security_app_lock
 } else if (screenId == "SETG-007") {
-    SettingsR.string.security_block_screenshots
+    R.string.global_screen_privacy
 } else if (screenId == "SETG-008") {
-    SettingsR.string.security_open_trash
+    R.string.global_trash_settings
 } else if (screenId == "SETG-009") {
-    SettingsR.string.diagnostics_privacy_policy
+    R.string.global_diagnostics
 } else if (screenId == "SETG-010") {
     SettingsR.string.diagnostics_feature
 } else if (screenId == "SETG-011") {

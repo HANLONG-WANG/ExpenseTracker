@@ -84,6 +84,51 @@ class SpecializedTransactionPolicyTest {
     }
 
     @Test
+    fun `new transfer defaults and selectors exclude credit and loan liabilities`() {
+        val cash = account(id(20), "Cash", usd, 2)
+        val bank = account(id(21), "Bank", eur, 3, UserAccountType.BANK)
+        val credit = account(id(22), "Credit", usd, 0, UserAccountType.CREDIT)
+        val loan = account(id(23), "Loan", usd, 1, UserAccountType.LOAN)
+        val state = SpecializedTransactionPolicy.create(
+            SpecializedTransactionKind.TRANSFER,
+            snapshot().copy(accounts = listOf(credit, loan, cash, bank)),
+            credit.id,
+            NOW,
+            ZONE,
+            Locale.ENGLISH,
+        )
+
+        assertEquals(cash.id, state.draft.fromAccountId)
+        assertEquals(bank.id, state.draft.toAccountId)
+        assertEquals(listOf(cash.id, bank.id), SpecializedTransactionPolicy.selectableAccounts(state).map { it.id })
+        assertEquals(state, SpecializedTransactionPolicy.selectAccount(state, incoming = true, accountId = credit.id))
+    }
+
+    @Test
+    fun `legacy liability endpoint is rejected with a field-level account error`() {
+        val cash = account(id(24), "Cash", usd, 0)
+        val credit = account(id(25), "Credit", usd, 1, UserAccountType.CREDIT)
+        var state = SpecializedTransactionPolicy.create(
+            SpecializedTransactionKind.TRANSFER,
+            snapshot().copy(accounts = listOf(cash, credit)),
+            null,
+            NOW,
+            ZONE,
+            Locale.ENGLISH,
+        )
+        state = SpecializedTransactionPolicy.updateExpression(
+            state.copy(draft = state.draft.copy(toAccountId = credit.id)),
+            incoming = false,
+            value = "12.34",
+            locale = Locale.ENGLISH,
+        )
+
+        val validated = SpecializedTransactionPolicy.validate(state)
+
+        assertTrue(validated.errors.any { it.field == SpecializedField.TO_ACCOUNT && it.code == "ASSET_ACCOUNT_REQUIRED" })
+    }
+
+    @Test
     fun `transfer edit restores the immutable revision into a single transaction editor`() {
         val transactionId = id(40)
         val revisionId = id(41)
@@ -189,8 +234,14 @@ class SpecializedTransactionPolicyTest {
         valuationMissing = true,
     )
 
-    private fun account(id: StableId, name: String, currency: CurrencyCode, sort: Int): AccountReferenceView = AccountReferenceView(
-        id, UserAccountType.CASH, name, currency, EntityStatus.ACTIVE, null, null, null, "account", 0, sort, 1L,
+    private fun account(
+        id: StableId,
+        name: String,
+        currency: CurrencyCode,
+        sort: Int,
+        type: UserAccountType = UserAccountType.CASH,
+    ): AccountReferenceView = AccountReferenceView(
+        id, type, name, currency, EntityStatus.ACTIVE, null, null, null, "account", 0, sort, 1L,
         0L, null, null, false, 0L,
     )
 

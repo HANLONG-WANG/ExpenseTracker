@@ -12,7 +12,6 @@ import java.io.FilterOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
@@ -60,10 +59,11 @@ class FileBackupRepositoryStorage(root: File) : BackupRepositoryStorage {
             }
             try {
                 Files.move(partial.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            } catch (error: AtomicMoveNotSupportedException) {
-                // Some Android filesystems reject the NIO atomic flag even though a same-directory
-                // rename is available. The fallback keeps the completed partial beside its target
-                // and replaces only at publication, so an interrupted write never exposes it.
+            } catch (_: IOException) {
+                // Android's libcore may report an unsupported atomic rename as a generic
+                // FileSystemException instead of AtomicMoveNotSupportedException. The completed
+                // partial remains beside its target, so a same-directory replacement is still a
+                // safe publication fallback.
                 Files.move(partial.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
             return target.length()

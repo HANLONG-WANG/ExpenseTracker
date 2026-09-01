@@ -200,6 +200,9 @@ interface BackgroundOperationRepository {
 interface EncryptedStagingRepository {
     suspend fun create(operationId: BackgroundOperationId): DomainResult<Unit>
 
+    /** Clears derived validation, duplicate, mapping, and prepared artifacts before re-prepare. */
+    suspend fun clearPreparation(): DomainResult<Unit>
+
     suspend fun appendRaw(rows: List<StagingRawRow>): DomainResult<Unit>
 
     suspend fun appendParsed(rows: List<StagingParsedRow>): DomainResult<Unit>

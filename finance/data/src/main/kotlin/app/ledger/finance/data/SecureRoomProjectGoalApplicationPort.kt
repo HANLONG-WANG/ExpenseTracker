@@ -91,7 +91,7 @@ class SecureRoomProjectGoalApplicationPort(
         database.readLedger { db ->
             val book = RoomBookRepository.mapCurrent(db)
             if (book.id.value != request.bookId) abort(FinanceDataError.CorruptData)
-            DomainResult.Success(projectTransactions(db, request.projectId, request.cursor, request.limit))
+            DomainResult.Success(projectTransactions(db, request.projectId, request.cursor, request.limit, request.kind))
         }
     }
 
@@ -328,10 +328,13 @@ class SecureRoomProjectGoalApplicationPort(
         projectId: StableId,
         cursor: ProjectTransactionCursor?,
         limit: Int,
+        kind: TransactionKind? = null,
     ): ProjectTransactionPage {
         val cursorClause = if (cursor == null) "" else "AND (ctp.occurred_at<? OR (ctp.occurred_at=? AND ctp.transaction_uid<?))"
+        val kindClause = if (kind == null) "" else "AND ctp.kind=?"
         val arguments = buildList<Any> {
             add(projectId.bytes)
+            if (kind != null) add(kind.ordinal)
             if (cursor != null) {
                 add(cursor.occurredAtEpochMilli)
                 add(cursor.occurredAtEpochMilli)
@@ -346,7 +349,7 @@ class SecureRoomProjectGoalApplicationPort(
               MAX(CASE WHEN pe.kind=1 AND pe.polarity=1 THEN 1 ELSE 0 END) restored
             FROM current_transaction_projection ctp JOIN transaction_revision tr ON tr.id=ctp.current_revision_id
               JOIN project p ON p.id=ctp.project_id LEFT JOIN project_effect pe ON pe.source_revision_id=tr.id
-            WHERE p.uid=? AND ctp.state=0 $cursorClause
+            WHERE p.uid=? AND ctp.state=0 $kindClause $cursorClause
             GROUP BY ctp.transaction_id,tr.id ORDER BY ctp.occurred_at DESC,ctp.transaction_uid DESC LIMIT ?
             """.trimIndent(),
             arguments,
@@ -414,16 +417,26 @@ class SecureRoomProjectGoalApplicationPort(
     private fun goalTrend(db: SupportSQLiteDatabase, goalId: StableId): List<GoalTrendPoint> {
         val rows = db.queryList(
             """
-            SELECT COALESCE(tr.local_date,CAST(strftime('%Y%m%d',gm.occurred_at/1000,'unixepoch') AS INTEGER)) local_date,
-              ge.kind,ge.polarity,ge.amount_minor
+            SELECT tr.local_date,gm.occurred_at,b.default_zone_id,ge.kind,ge.polarity,ge.amount_minor
             FROM goal_effect ge JOIN goal g ON g.id=ge.goal_id
               LEFT JOIN transaction_revision tr ON tr.id=ge.source_revision_id LEFT JOIN goal_movement gm ON gm.id=ge.goal_movement_id
-            WHERE g.uid=? ORDER BY local_date,ge.id
+              JOIN book b ON b.id=1
+            WHERE g.uid=? ORDER BY COALESCE(tr.occurred_at,gm.occurred_at),ge.id
             """.trimIndent(),
             arrayOf(goalId.bytes),
-        ) { cursor -> GoalDelta(cursor.int("local_date").toStoredLocalDate(), GoalEffectKind.entries[cursor.int("kind")], if (cursor.int("polarity") == 1) EffectPolarity.APPLY else EffectPolarity.REVERSE, cursor.long("amount_minor")) }
+        ) { cursor ->
+            val date = cursor.nullableLong("local_date")?.toInt()?.toStoredLocalDate()
+                ?: cursor.long("occurred_at").toStoredInstant().atZone(ZoneId.of(cursor.string("default_zone_id"))).toLocalDate()
+            GoalDelta(
+                date,
+                GoalEffectKind.entries[cursor.int("kind")],
+                if (cursor.int("polarity") == 1) EffectPolarity.APPLY else EffectPolarity.REVERSE,
+                cursor.long("amount_minor"),
+            )
+        }
         var balance = 0L
-        return rows.map { delta ->
+        if (rows.isEmpty()) return emptyList()
+        return listOf(GoalTrendPoint(rows.first().date, 0L)) + rows.map { delta ->
             val positive = delta.kind in setOf(GoalEffectKind.ALLOCATE, GoalEffectKind.RESTORE, GoalEffectKind.ADJUST)
             val signed = if (positive) delta.amount else Math.negateExact(delta.amount)
             balance = Math.addExact(balance, if (delta.polarity == EffectPolarity.APPLY) signed else Math.negateExact(signed))

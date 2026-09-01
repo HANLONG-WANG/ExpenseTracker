@@ -43,4 +43,5 @@ public data class AutomationActions(
     val onCancelCandidate: () -> Unit,
     val onScope: (RecurrenceModificationScope) -> Unit,
     val onApplyScope: () -> Unit,
+    val onCreateCategory: () -> Unit = {},
 )

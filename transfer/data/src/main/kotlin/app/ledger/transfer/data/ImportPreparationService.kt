@@ -54,6 +54,7 @@ class ImportPreparationService(
         request: ImportPreparationRequest,
         staging: EncryptedStagingRepository,
     ): DomainResult<ImportPreparationResult> {
+        staging.clearPreparation().failureOrNull()?.let { return it }
         val mappings = persistedMappings(request)
         staging.saveMappings(mappings).failureOrNull()?.let { return it }
         val returnedIssues = mutableListOf<ImportValidationIssue>()
@@ -73,6 +74,7 @@ class ImportPreparationService(
             val pageDuplicates = mutableListOf<StagingDuplicateCandidate>()
             val pagePrepared = mutableListOf<StagingPreparedCommand>()
             for (row in page) {
+                if (row.rowNumber in request.excludedRowNumbers) continue
                 val outcome = prepareRow(operationId, format, row, request)
                 outcome.issues.forEach { issue ->
                     if (issue.severity == ImportValidationSeverity.ERROR) totalErrors++ else totalWarnings++

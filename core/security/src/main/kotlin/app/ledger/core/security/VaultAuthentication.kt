@@ -385,6 +385,26 @@ data class VaultEncryptedFields(
 class OneShotVaultEditor internal constructor(private val serializedVaultKey: SecretBytes) : AutoCloseable {
     private val consumed = AtomicBoolean(false)
 
+    /** Decrypts the current record inside the same short authenticated edit window. */
+    fun decryptFields(
+        bookId: StableId,
+        cardId: StableId,
+        schemaVersion: Int,
+        encrypted: VaultEncryptedFields,
+    ): VaultPlaintextFields {
+        check(!consumed.get()) { "vault editor authorization was already consumed" }
+        return serializedVaultKey.useBytes { key ->
+            val aead = LedgerTink.aead(key)
+            VaultPlaintextFields(
+                holderName = decryptField(aead, encrypted.holderName, bookId, cardId, VaultFieldType.HOLDER_NAME, schemaVersion),
+                primaryNumber = decryptField(aead, encrypted.primaryNumber, bookId, cardId, VaultFieldType.PAN, schemaVersion),
+                expiry = decryptField(aead, encrypted.expiry, bookId, cardId, VaultFieldType.EXPIRY, schemaVersion),
+                securityCode = decryptField(aead, encrypted.securityCode, bookId, cardId, VaultFieldType.SECURITY_CODE, schemaVersion),
+                customFields = decryptField(aead, encrypted.customFields, bookId, cardId, VaultFieldType.CUSTOM_FIELDS, schemaVersion),
+            )
+        }
+    }
+
     fun encrypt(plaintext: SecretBytes, associatedData: ByteArray): VaultFieldCiphertext {
         check(consumed.compareAndSet(false, true)) { "vault editor authorization was already consumed" }
         return try {
@@ -440,6 +460,29 @@ class OneShotVaultEditor internal constructor(private val serializedVaultKey: Se
             VaultFieldCiphertext(aead.encrypt(bytes, associatedData))
         } finally {
             associatedData.fill(0)
+        }
+    }
+
+    @Suppress("LongParameterList")
+    private fun decryptField(
+        aead: Aead,
+        value: VaultFieldCiphertext?,
+        bookId: StableId,
+        cardId: StableId,
+        fieldType: VaultFieldType,
+        schemaVersion: Int,
+    ): SecretBytes? = value?.bytes?.let { ciphertext ->
+        val associatedData = SecurityAssociatedData.vaultField(bookId, cardId, fieldType, schemaVersion)
+        val plaintext = try {
+            aead.decrypt(ciphertext, associatedData)
+        } finally {
+            ciphertext.fill(0)
+            associatedData.fill(0)
+        }
+        try {
+            SecretBytes.copyOf(plaintext)
+        } finally {
+            plaintext.fill(0)
         }
     }
 }

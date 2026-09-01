@@ -42,6 +42,7 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerChoiceSelector
 import app.ledger.core.designsystem.LedgerChartSeries
 import app.ledger.core.designsystem.LedgerChartType
 import app.ledger.core.designsystem.LedgerChartUiModel
@@ -59,6 +60,7 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
 import app.ledger.core.designsystem.LedgerVicoLineRenderer
@@ -77,6 +79,9 @@ import app.ledger.finance.domain.GoalStatus
 import app.ledger.finance.domain.ProjectStatus
 import app.ledger.finance.domain.TransactionKind
 import app.ledger.core.money.AmountSemantic
+import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
+import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -186,13 +191,11 @@ private fun ProjectEditor(state: ProjectGoalFeatureState, actions: ProjectGoalAc
     val selectedGoal = state.snapshot.goals.singleOrNull { it.id == draft.goalId }
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
-    var showGoalChoices by remember { mutableStateOf(false) }
     val saving = state.presentation == ProjectGoalPresentation.SAVING
-    val valid = ProjectGoalPolicy.validateProject(state).projectErrors.isEmpty()
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.PROJECT_EDITOR),
         formContent = true,
-        fixedAction = { PlanningStickySaveBar(actions.onSaveProject, valid && !saving, saving) },
+        fixedAction = { PlanningStickySaveBar(actions.onSaveProject, !saving, saving) },
     ) {
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -244,25 +247,14 @@ private fun ProjectEditor(state: ProjectGoalFeatureState, actions: ProjectGoalAc
             }
             item {
                 FormSection(stringResource(R.string.project_goal_relation), description = stringResource(R.string.project_one_goal)) {
-                    SelectorField(
+                    val goals = state.snapshot.goals.filter { it.status != GoalStatus.ARCHIVED }
+                    val goalIds = listOf<StableId?>(null) + goals.map { it.id }
+                    LedgerChoiceSelector(
                         stringResource(R.string.project_goal_relation),
-                        selectedGoal?.name ?: stringResource(R.string.project_no_goal),
-                        { showGoalChoices = !showGoalChoices },
+                        goalIds.indexOf(draft.goalId).coerceAtLeast(0),
+                        listOf(stringResource(R.string.project_no_goal)) + goals.map { it.name },
+                        { actions.onProjectGoalChanged(goalIds[it]) },
                     )
-                    if (showGoalChoices) {
-                        LedgerChoiceRow(
-                            stringResource(R.string.project_no_goal),
-                            draft.goalId == null,
-                            { actions.onProjectGoalChanged(null); showGoalChoices = false },
-                        )
-                        state.snapshot.goals.filter { it.status != GoalStatus.ARCHIVED }.forEach { goal ->
-                            LedgerChoiceRow(
-                                goal.name,
-                                draft.goalId == goal.id,
-                                { actions.onProjectGoalChanged(goal.id); showGoalChoices = false },
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -391,7 +383,16 @@ private fun ProjectTransactions(
             LedgerTabRow(
                 selectedFilter,
                 listOf(stringResource(R.string.project_filter_all), stringResource(R.string.project_filter_expense), stringResource(R.string.project_filter_income)),
-                { selectedFilter = it },
+                { index ->
+                    selectedFilter = index
+                    actions.onProjectTransactionKindChanged(
+                        when (index) {
+                            1 -> TransactionKind.EXPENSE
+                            2 -> TransactionKind.INCOME
+                            else -> null
+                        },
+                    )
+                },
             )
         }
         item { LedgerBanner(stringResource(R.string.project_transactions_rule), LedgerBannerVariant.INFO) }
@@ -406,11 +407,11 @@ private fun ProjectTransactions(
             if (paged.loadState.refresh is LoadState.Error) {
                 item { LedgerErrorState(UiErrorCode("PROJECT_PAGE_LOAD_FAILED"), stringResource(R.string.planning_load_failed), paged::retry) }
             }
+            if (paged.loadState.refresh is LoadState.NotLoading && paged.itemCount == 0) {
+                item { LedgerEmptyState(stringResource(R.string.project_no_transactions), stringResource(R.string.project_no_transactions_body), stringResource(R.string.project_back), { actions.onNavigate("PRJ-003", project.id, null) }) }
+            }
             items(paged.itemCount, key = { index -> paged.peek(index)?.revisionId?.toString() ?: "project-placeholder-$index" }) { index ->
-                paged[index]?.takeIf { transaction ->
-                    selectedFilter == 0 || selectedFilter == 1 && transaction.kind == TransactionKind.EXPENSE ||
-                        selectedFilter == 2 && transaction.kind == TransactionKind.INCOME
-                }?.let { ProjectTransactionRow(it, state, project, actions) }
+                paged[index]?.let { ProjectTransactionRow(it, state, project, actions) }
             }
             if (paged.loadState.append is LoadState.Loading) {
                 item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.planning_loading)) }
@@ -496,14 +497,14 @@ private fun ProjectCashflowChart(state: ProjectGoalFeatureState, project: Projec
             LedgerChartSeries(
                 "project_income",
                 stringResource(R.string.project_cash_in),
-                project.cashflow.map { it.incomeBaseMinor.toDouble() },
+                project.cashflow.map { chartMajor(it.incomeBaseMinor, state.snapshot.baseCurrency) },
                 project.cashflow.map { it.date.localizedDate() },
                 project.cashflow.map { money(state, it.incomeBaseMinor) },
             ),
             LedgerChartSeries(
                 "project_expense",
                 stringResource(R.string.project_cash_out),
-                project.cashflow.map { it.expenseBaseMinor.toDouble() },
+                project.cashflow.map { chartMajor(it.expenseBaseMinor, state.snapshot.baseCurrency) },
                 project.cashflow.map { it.date.localizedDate() },
                 project.cashflow.map { money(state, it.expenseBaseMinor) },
             ),
@@ -602,14 +603,12 @@ private fun GoalStatus.label(): String = stringResource(
 private fun GoalEditor(state: ProjectGoalFeatureState, actions: ProjectGoalActions) {
     val draft = state.goalDraft
     val account = state.snapshot.accounts.singleOrNull { it.id == draft.accountId }
-    var showAccounts by remember { mutableStateOf(false) }
     var showDueDatePicker by remember { mutableStateOf(false) }
     val saving = state.presentation == ProjectGoalPresentation.SAVING
-    val valid = ProjectGoalPolicy.validateGoal(state).goalErrors.isEmpty()
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.GOAL_EDITOR),
         formContent = true,
-        fixedAction = { PlanningStickySaveBar(actions.onSaveGoal, valid && !saving, saving) },
+        fixedAction = { PlanningStickySaveBar(actions.onSaveGoal, !saving, saving) },
     ) {
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -621,22 +620,24 @@ private fun GoalEditor(state: ProjectGoalFeatureState, actions: ProjectGoalActio
             if (saving) item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.planning_saving)) }
             item {
                 LedgerTextField(draft.name, actions.onGoalNameChanged, stringResource(R.string.goal_name), required = true, errorText = goalError(state, "name"))
-                SelectorField(
-                    stringResource(R.string.goal_choose_account),
-                    account?.name ?: stringResource(R.string.goal_choose_account),
-                    { if (state.goal == null) showAccounts = !showAccounts },
-                    enabled = state.goal == null,
-                    supportingText = goalError(state, "account"),
-                )
-                if (showAccounts && state.goal == null) {
-                    state.snapshot.accounts.forEach { option ->
-                        LedgerChoiceRow(
-                            option.name,
-                            draft.accountId == option.id,
-                            { actions.onGoalAccountChanged(option.id); showAccounts = false },
-                            supportingText = option.currency.value,
-                        )
-                    }
+                if (state.snapshot.accounts.isNotEmpty()) {
+                    val accountIds = listOf<StableId?>(null) + state.snapshot.accounts.map { it.id }
+                    LedgerChoiceSelector(
+                        stringResource(R.string.goal_choose_account),
+                        accountIds.indexOf(draft.accountId).coerceAtLeast(0),
+                        listOf(stringResource(R.string.goal_choose_account)) + state.snapshot.accounts.map { "${it.name} · ${it.currency.value}" },
+                        { index -> accountIds[index]?.let(actions.onGoalAccountChanged) },
+                        enabled = state.goal == null,
+                        supportingText = goalError(state, "account"),
+                    )
+                } else {
+                    SelectorField(
+                        stringResource(R.string.goal_choose_account),
+                        account?.name ?: stringResource(R.string.goal_choose_account),
+                        {},
+                        enabled = false,
+                        supportingText = goalError(state, "account"),
+                    )
                 }
                 LedgerTextField(draft.targetText, actions.onGoalTargetChanged, stringResource(R.string.goal_target_amount, account?.currency?.value.orEmpty()), required = true, keyboardType = KeyboardType.Decimal, errorText = goalError(state, "target"))
                 SelectorField(
@@ -703,14 +704,17 @@ private fun GoalDetail(state: ProjectGoalFeatureState, actions: ProjectGoalActio
             }
         }
         if (goal.movements.isNotEmpty()) {
-            item {
-                AccessibleDataTable(
-                    AccessibleTableUiModel(
-                        stringResource(R.string.goal_movement_history),
-                        listOf(stringResource(R.string.planning_date), stringResource(R.string.goal_movement_type), stringResource(R.string.goal_movement_amount)),
-                        goal.movements.map { listOf(it.occurredAt.localizedDateTime(), movementLabel(it.kind), money(it.amountMinor, goal.currency)) },
-                    ),
-                )
+            item { LedgerText(stringResource(R.string.goal_movement_history), LedgerTextRole.SECTION) }
+            items(goal.movements, key = { "goal-movement-${it.id}" }) { movement ->
+                LedgerCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            LedgerText(movementLabel(movement.kind), LedgerTextRole.BODY)
+                            LedgerText(money(movement.amountMinor, goal.currency), LedgerTextRole.BODY)
+                        }
+                        LedgerText(movement.occurredAt.localizedDateTime(), LedgerTextRole.SUPPORTING)
+                    }
+                }
             }
         }
         item {
@@ -735,7 +739,7 @@ private fun GoalTrendChart(goal: GoalView) {
             LedgerChartSeries(
                 "goal_balance",
                 stringResource(R.string.goal_reserved),
-                goal.trend.map { it.balanceMinor.toDouble() },
+                goal.trend.map { chartMajor(it.balanceMinor, goal.currency) },
                 goal.trend.map { it.date.localizedDate() },
                 goal.trend.map { money(it.balanceMinor, goal.currency) },
             ),
@@ -755,11 +759,10 @@ private fun GoalMovementEditor(state: ProjectGoalFeatureState, actions: ProjectG
     val goal = state.goal ?: return PlanningNotFound(actions)
     var showDatePicker by remember { mutableStateOf(false) }
     val saving = state.presentation == ProjectGoalPresentation.SAVING
-    val valid = ProjectGoalPolicy.movementMinor(state) != null && "movementDate" !in state.goalErrors
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.GOAL_MOVEMENT),
         formContent = true,
-        fixedAction = { PlanningStickySaveBar(actions.onSaveMovement, valid && !saving, saving) },
+        fixedAction = { PlanningStickySaveBar(actions.onSaveMovement, !saving, saving) },
     ) {
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -767,7 +770,20 @@ private fun GoalMovementEditor(state: ProjectGoalFeatureState, actions: ProjectG
             verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
         ) {
             item { LedgerText(movementLabel(state.movementKind), LedgerTextRole.TITLE) }
-            item { LedgerTextField(state.movementAmountText, actions.onMovementAmountChanged, stringResource(R.string.goal_movement_amount), required = true, keyboardType = KeyboardType.Decimal) }
+            item {
+                LedgerTextField(
+                    state.movementAmountText,
+                    actions.onMovementAmountChanged,
+                    stringResource(R.string.goal_movement_amount),
+                    required = true,
+                    keyboardType = KeyboardType.Decimal,
+                    errorText = if ("movementAmount" in state.goalErrors) {
+                        stringResource(R.string.goal_release_limit, money(goal.balanceMinor, goal.currency))
+                    } else {
+                        null
+                    },
+                )
+            }
             item {
                 SelectorField(
                     stringResource(R.string.goal_movement_date),
@@ -938,7 +954,7 @@ private fun PlanningStickySaveBar(onSave: () -> Unit, enabled: Boolean, saving: 
 
 @Composable
 private fun LocalDate.localizedDate(): String =
-    format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(LocalLocale.current.platformLocale))
+    format(LedgerDateFormatterRuntime.formatter(LocalLocale.current.platformLocale))
 
 private fun LocalDate.utcDateMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 
@@ -946,8 +962,7 @@ private fun Long.utcLocalDate(): LocalDate = java.time.Instant.ofEpochMilli(this
 
 @Composable
 private fun java.time.Instant.localizedDateTime(): String =
-    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-        .withLocale(LocalLocale.current.platformLocale)
+    LedgerDateFormatterRuntime.dateTimeFormatter(LocalLocale.current.platformLocale)
         .withZone(LedgerTheme.timeZone)
         .format(this)
 
@@ -1014,3 +1029,8 @@ private fun error(state: ProjectGoalFeatureState, field: String): String? = when
 private fun goalError(state: ProjectGoalFeatureState, field: String): String? = stringResource(R.string.planning_invalid_field).takeIf { field in state.goalErrors }
 
 private fun Map<String, String>.stableId(name: String): StableId? = get(name)?.let { StableId.parse(it).getOrNull() }
+
+private val chartCurrencyCatalog = JvmLegalTenderCurrencyCatalog.create()
+
+private fun chartMajor(minor: Long, currency: CurrencyCode): Double =
+    BigDecimal.valueOf(minor, requireNotNull(chartCurrencyCatalog.find(currency)).fractionDigits).toDouble()

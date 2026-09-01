@@ -27,6 +27,7 @@
     <string name="analysis_integrity_not_run">Integrity checks have not run</string><string name="analysis_integrity_not_run_body">Checks the database, foreign keys, journals, revisions, projections, and indexes without modifying financial facts.</string>
     <string name="analysis_run_integrity">Run checks</string><string name="analysis_integrity_running">Running read-only integrity checks</string><string name="analysis_integrity_failed">Integrity checks could not complete</string>
     <string name="analysis_integrity_plain_language">The standard view shows affected counts only. Technical details are collapsed and contain no sensitive ledger content.</string>
+    <string name="analysis_integrity_scope">Ledger revision %1$d · %2$d read-only checks</string>
     <string name="analysis_affected_count">Affected: %1$d</string><string name="analysis_hide_technical">Hide sanitized technical details</string><string name="analysis_show_technical">Show sanitized technical details</string><string name="analysis_repair_projection">Rebuild analysis projections</string>
     <string name="analysis_data_table_caption">Exact report data</string>
     <string name="analysis_day">Day</string><string name="analysis_week">Week</string><string name="analysis_month">Month</string><string name="analysis_quarter">Quarter</string><string name="analysis_year">Year</string>
@@ -129,6 +130,11 @@
     <string name="analysis_measure_net_cash_flow">Net cash flow</string>
     <string name="analysis_measure_savings_rate">Savings rate</string>
     <string name="analysis_measure_budget_usage">Budget usage</string>
+    <string name="analysis_measure_budget_base">Base budget</string>
+    <string name="analysis_measure_budget_rollover">Rollover</string>
+    <string name="analysis_measure_budget_adjustment">Adjustment</string>
+    <string name="analysis_measure_budget_used">Used</string>
+    <string name="analysis_measure_budget_available">Available total</string>
     <string name="analysis_measure_project_usage">Project usage</string>
     <string name="analysis_measure_goal_balance">Goal balance</string>
     <string name="analysis_measure_account_balance">Account balance</string>
@@ -155,4 +161,10 @@
     <string name="analysis_kind_settlement_payment">Settlement payment</string>
     <string name="analysis_kind_opening_balance">Opening balance</string>
     <string name="analysis_kind_other">Other transaction</string>
+    <string name="analysis_progress_unavailable">This report has no verifiable target or total for a progress ratio. Review the data table instead.</string>
+    <string name="analysis_integrity_database">Database structure and access</string><string name="analysis_integrity_foreign_keys">Entity references and foreign keys</string><string name="analysis_integrity_journals">Journal balance</string><string name="analysis_integrity_posting_currencies">Posting currency consistency</string><string name="analysis_integrity_revisions">Transaction revision chain</string><string name="analysis_integrity_projections">Current projections</string><string name="analysis_integrity_fts">Full-text search index</string><string name="analysis_integrity_rtree">Location spatial index</string><string name="analysis_integrity_fact_rebuild">Fact rebuild consistency</string>
+    <string name="analysis_integrity_check_id">Check ID: %1$s</string>
+    <string name="analysis_integrity_check_scope">Scope: current ledger · revision %1$d</string>
+    <string name="analysis_integrity_check_trace">Trace code: %1$s</string>
+    <string name="analysis_projection_repaired">Analytics projections were rebuilt and checked again.</string>
 </resources>

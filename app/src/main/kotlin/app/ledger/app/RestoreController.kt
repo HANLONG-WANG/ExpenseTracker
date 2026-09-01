@@ -219,8 +219,14 @@ internal class RestoreController(
     /** Returns a consent intent only when Google Identity requires fresh drive.file authorization. */
     suspend fun selectLatestDriveRepository(authorizationResult: Intent? = null): PendingIntent? {
         val activeBook = bookId ?: return null
-        val configuration = BackupConfigurationStore(applicationContext, keyProvider).read(activeBook) ?: return null
-        if (configuration.repositoryKind != BackupRepositoryKind.GOOGLE_DRIVE) return null
+        val configuration = BackupConfigurationStore(applicationContext, keyProvider).read(activeBook)
+        if (configuration == null || configuration.repositoryKind != BackupRepositoryKind.GOOGLE_DRIVE) {
+            mutableState.value = mutableState.value.copy(
+                screenId = "RST-001",
+                sourcePresentation = app.ledger.feature.transfer.RestoreSourcePresentation.DRIVE_NOT_CONFIGURED,
+            )
+            return null
+        }
         mutableState.value = mutableState.value.copy(
             screenId = "RST-001",
             sourcePresentation = app.ledger.feature.transfer.RestoreSourcePresentation.LOADING_REMOTE,
@@ -481,9 +487,12 @@ internal class RestoreController(
 
     suspend fun loadCloudBackups(): Boolean {
         val activeBook = bookId ?: return false
-        mutableState.value = mutableState.value.copy(screenId = "CLR-002")
-        val configuration = BackupConfigurationStore(applicationContext, keyProvider).read(activeBook) ?: return false
-        if (configuration.repositoryKind != BackupRepositoryKind.GOOGLE_DRIVE) return false
+        mutableState.value = mutableState.value.copy(screenId = "CLR-002", cloudClearPresentation = CloudClearPresentation.LOADING)
+        val configuration = BackupConfigurationStore(applicationContext, keyProvider).read(activeBook)
+        if (configuration == null || configuration.repositoryKind != BackupRepositoryKind.GOOGLE_DRIVE) {
+            mutableState.value = mutableState.value.copy(cloudClearPresentation = CloudClearPresentation.FAILED, cloudAuthenticated = false)
+            return false
+        }
         val authorization = GoogleDriveAuthorizationGateway(applicationContext).authorize()
         val token = (authorization as? DomainResult.Success)?.value as? GoogleDriveAuthorization.Authorized
         if (token == null) {
@@ -495,9 +504,15 @@ internal class RestoreController(
         }
         val client = app.ledger.transfer.data.DriveResumableBackupClient(OkHttpClient())
         val folder = client.ensureRepositoryFolder(token.accessToken, configuration.repositoryId.driveFolderName())
-        val folderId = (folder as? DomainResult.Success)?.value ?: return false
+        val folderId = (folder as? DomainResult.Success)?.value ?: run {
+            mutableState.value = mutableState.value.copy(cloudClearPresentation = CloudClearPresentation.FAILED)
+            return false
+        }
         val files = client.listRepositoryFiles(token.accessToken, folderId)
-        val listed = (files as? DomainResult.Success)?.value ?: return false
+        val listed = (files as? DomainResult.Success)?.value ?: run {
+            mutableState.value = mutableState.value.copy(cloudClearPresentation = CloudClearPresentation.FAILED)
+            return false
+        }
         val catalogSnapshots = createBackupCatalog(
             activeBook,
             SecurePrimaryLedgerAccess(applicationContext, keyProvider),
@@ -508,7 +523,7 @@ internal class RestoreController(
             cloudSnapshots = cloudSnapshots.entries
                 .sortedByDescending { it.value.createdAt }
                 .map { (name, snapshot) -> snapshot.toPickerUi(name, configuration.repositoryKind, activeBook, configuration) },
-            cloudClearPresentation = CloudClearPresentation.CONTENT,
+            cloudClearPresentation = if (cloudSnapshots.isEmpty()) CloudClearPresentation.EMPTY else CloudClearPresentation.CONTENT,
             cloudAuthenticated = true,
         )
         return true

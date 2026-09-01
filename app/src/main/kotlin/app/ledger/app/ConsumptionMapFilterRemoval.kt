@@ -57,6 +57,18 @@ internal object ConsumptionMapFilterSelection {
         }
     }
 
+    fun select(
+        filters: ConsumptionMapFilters,
+        dimension: ConsumptionMapFilterDimension,
+        selectedId: StableId?,
+    ): ConsumptionMapFilters = when (dimension) {
+        ConsumptionMapFilterDimension.ACCOUNT -> filters.copy(accountIds = selectedId?.let(::UserAccountId)?.let(::setOf).orEmpty())
+        ConsumptionMapFilterDimension.CATEGORY -> filters.copy(categoryIds = selectedId?.let(::CategoryId)?.let(::setOf).orEmpty())
+        ConsumptionMapFilterDimension.MERCHANT -> filters.copy(merchantIds = selectedId?.let(::MerchantId)?.let(::setOf).orEmpty())
+        ConsumptionMapFilterDimension.PLACE -> filters.copy(placeIds = selectedId?.let(::PlaceId)?.let(::setOf).orEmpty())
+        ConsumptionMapFilterDimension.PROJECT -> filters.copy(projectIds = selectedId?.let(::ProjectId)?.let(::setOf).orEmpty())
+    }
+
     private const val MAX_FILTER_VALUES: Int = 64
 }
 

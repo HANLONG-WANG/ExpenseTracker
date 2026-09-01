@@ -94,16 +94,18 @@ class SecureRoomWidgetSnapshotApplicationPort(
     override suspend fun refreshIfStale(bookId: StableId, localDate: LocalDate): DomainResult<Boolean> = withDatabase(bookId) { database ->
         database.inLedgerTransaction { connection ->
             val date = localDate.year * 10_000 + localDate.monthValue * 100 + localDate.dayOfMonth
-            val currentDate = connection.query("SELECT snapshot_local_date FROM widget_book_snapshot WHERE id=1").use { cursor ->
-                if (cursor.moveToFirst()) cursor.getInt(0) else null
+            val snapshotVersion = connection.query(
+                "SELECT snapshot_local_date,as_of_local_revision,as_of_valuation_revision FROM widget_book_snapshot WHERE id=1",
+            ).use { cursor ->
+                if (cursor.moveToFirst()) Triple(cursor.getInt(0), cursor.getLong(1), cursor.getLong(2)) else null
             }
-            if (currentDate == date) {
+            val revisions = connection.query("SELECT local_revision,valuation_revision FROM book WHERE id=1").use { cursor ->
+                check(cursor.moveToFirst()) { "active book row missing" }
+                cursor.getLong(0) to cursor.getLong(1)
+            }
+            if (snapshotVersion == Triple(date, revisions.first, revisions.second)) {
                 false
             } else {
-                val revisions = connection.query("SELECT local_revision,valuation_revision FROM book WHERE id=1").use { cursor ->
-                    check(cursor.moveToFirst()) { "active book row missing" }
-                    cursor.getLong(0) to cursor.getLong(1)
-                }
                 RoomProjectionEngine().rebuildWidgetSnapshot(connection, revisions.first, revisions.second, date)
                 true
             }

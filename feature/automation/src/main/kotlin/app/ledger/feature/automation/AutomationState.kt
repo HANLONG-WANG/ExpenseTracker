@@ -9,8 +9,15 @@ import app.ledger.finance.application.CandidateView
 import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
 import app.ledger.finance.application.RecurrenceSeriesView
 import app.ledger.finance.domain.MissingDayPolicy
+import app.ledger.finance.domain.BookCommitId
+import app.ledger.finance.domain.PlaceId
+import app.ledger.finance.domain.PlannedRecurrenceOccurrence
+import app.ledger.finance.domain.RecurrenceEngine
 import app.ledger.finance.domain.RecurrenceFrequency
 import app.ledger.finance.domain.RecurrenceGenerationMode
+import app.ledger.finance.domain.RecurrenceSeriesId
+import app.ledger.finance.domain.RecurrenceSeriesRevision
+import app.ledger.finance.domain.RecurrenceSeriesRevisionId
 import app.ledger.finance.domain.RecurrenceModificationScope
 import app.ledger.finance.domain.RecurrenceRule
 import app.ledger.finance.domain.RecurrenceStatus
@@ -211,6 +218,12 @@ public object AutomationPolicy {
         val end = draft.endDate.takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val invalid = buildSet {
             if (draft.blueprintId == null) add("blueprint")
+            when (draft.rule.frequency) {
+                RecurrenceFrequency.WEEKLY, RecurrenceFrequency.BUSINESS_DAYS -> if (draft.rule.weekdays.isEmpty()) add("weekdays")
+                RecurrenceFrequency.MONTHLY_DAY -> if (draft.rule.monthDay == null) add("monthDay")
+                RecurrenceFrequency.MONTHLY_NTH_WEEKDAY -> if (draft.rule.nthWeek == null || draft.rule.weekday == null) add("nthWeekday")
+                else -> Unit
+            }
             if (start == null) add("startDate")
             if (draft.endDate.isNotBlank() && end == null) add("endDate")
             if (start != null && end != null && end < start) add("endDate")
@@ -220,6 +233,29 @@ public object AutomationPolicy {
             validationFields = invalid,
             presentation = if (invalid.isEmpty()) AutomationPresentation.SAVING else AutomationPresentation.INVALID,
         )
+    }
+
+    public fun previewRecurrence(state: AutomationFeatureState): List<PlannedRecurrenceOccurrence> {
+        val draft = state.recurrenceDraft ?: return emptyList()
+        val validated = validateRecurrence(state)
+        if (validated.validationFields.isNotEmpty()) return emptyList()
+        val stableId = state.snapshot.bookId
+        val revision = RecurrenceSeriesRevision(
+            id = RecurrenceSeriesRevisionId(stableId),
+            seriesId = RecurrenceSeriesId(stableId),
+            revisionNumber = 1,
+            rule = draft.rule,
+            startDate = LocalDate.parse(draft.startDate),
+            endDate = draft.endDate.takeIf(String::isNotBlank)?.let(LocalDate::parse),
+            maxOccurrences = draft.maxOccurrences.takeIf(String::isNotBlank)?.toInt(),
+            occurrenceTime = draft.occurrenceTime,
+            zoneId = draft.zoneId,
+            generationMode = draft.generationMode,
+            fixedPlaceId = draft.fixedPlaceId?.let(::PlaceId),
+            notifyCandidate = draft.notifyCandidate,
+            createdCommitId = BookCommitId(stableId),
+        )
+        return RecurrenceEngine.preview(revision)
     }
 
     public fun canSaveBlueprint(state: AutomationFeatureState): Boolean = state.blueprintDraft?.let { draft ->

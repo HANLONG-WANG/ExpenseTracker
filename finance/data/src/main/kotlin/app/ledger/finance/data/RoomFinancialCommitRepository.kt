@@ -75,6 +75,7 @@ class RoomFinancialCommitRepository(
     private val sideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
     private val afterFinancialWriteSideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
     private val forceFullProjectionRebuild: Boolean = false,
+    private val creditAccountCreatedInCommit: StableId? = null,
 ) : AtomicFinancialCommitRepository,
     CommandReceiptRepository {
     private val writer = RoomFinancialPlanWriter()
@@ -353,7 +354,13 @@ class RoomFinancialCommitRepository(
             "SELECT type FROM user_account WHERE uid=?",
             arrayOf(command.mutation.profile.accountId.value.bytes),
         ) { it.getInt(0) }
-        if (accountType != CREDIT_ACCOUNT_TYPE) {
+        val createsAccountInThisCommit =
+            accountType == null && command.mutation.profile.accountId.value == creditAccountCreatedInCommit
+        if (createsAccountInThisCommit) {
+            if (command.mutation.expectedLastCommitId != null) {
+                abort(app.ledger.finance.domain.DomainViolation.StaleExpectedRevision)
+            }
+        } else if (accountType != CREDIT_ACCOUNT_TYPE) {
             abort(app.ledger.finance.domain.DomainViolation.InvalidField("creditProfile.accountType"))
         }
         val actual = connection.queryOne(

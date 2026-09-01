@@ -13,6 +13,7 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
@@ -161,7 +162,11 @@ internal class ExportController(
                 false
             } else {
                 destinationTreeUri = uri
-                mutableState.value = mutableState.value.copy(destinationLabel = uri.authority ?: "Document provider")
+                mutableState.value = mutableState.value.copy(
+                    destinationLabel = root.name?.trim()?.takeIf(String::isNotEmpty)
+                        ?: uri.lastPathSegment?.substringAfterLast(':')?.takeIf(String::isNotBlank)
+                        ?: applicationContext.getString(R.string.backup_system_folder),
+                )
                 if (root.findFile(normalizedFileName()) != null && !overwriteConfirmed) {
                     mutableState.value = mutableState.value.copy(destinationPresentation = ExportDestinationPresentation.NAME_CONFLICT)
                     false
@@ -220,14 +225,15 @@ internal class ExportController(
         await(operation, activeBook, handle)
     }
 
-    fun open(): Boolean = launchExternal(
-        Intent(Intent.ACTION_VIEW).apply {
-            val uri = publishedUri ?: return false
+    fun open(): Boolean {
+        val uri = publishedUri ?: return false
+        val request = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mutableState.value.format.mimeType())
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             clipData = ClipData.newUri(applicationContext.contentResolver, "export", uri)
-        },
-    )
+        }
+        return launchExternal(Intent.createChooser(request, mutableState.value.fileName), resolutionTarget = request)
+    }
 
     fun share(): Boolean = launchExternal(
         Intent(Intent.ACTION_SEND).apply {
@@ -239,12 +245,25 @@ internal class ExportController(
         },
     )
 
-    fun viewLocation(): Boolean = launchExternal(
-        Intent(Intent.ACTION_VIEW).apply {
-            data = destinationTreeUri ?: return false
+    fun viewLocation(): Boolean {
+        val tree = destinationTreeUri ?: return false
+        val rootDocument = runCatching {
+            DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        }.getOrNull()
+        val view = rootDocument?.let { document ->
+            Intent(Intent.ACTION_VIEW, document).addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        }
+        if (view != null && applicationContext.packageManager.resolveActivity(view, 0) != null) {
+            return launchExternal(view)
+        }
+        val browse = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            putExtra(DocumentsContract.EXTRA_INITIAL_URI, tree)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-        },
-    )
+        }
+        return launchExternal(browse)
+    }
 
     private suspend fun launch(activeBook: StableId, treeUri: Uri) {
         val operation = BackgroundOperationId(runtime.stableIds.nextStableId())
@@ -349,11 +368,13 @@ internal class ExportController(
         workbookSheets = WORKBOOK_SHEETS,
     )
 
-    private fun launchExternal(intent: Intent): Boolean {
-        val resolved = applicationContext.packageManager.resolveActivity(intent, 0) != null
-        if (resolved) applicationContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        mutableState.value = mutableState.value.copy(externalApplicationUnavailable = !resolved)
-        return resolved
+    private fun launchExternal(intent: Intent, resolutionTarget: Intent = intent): Boolean {
+        val resolved = applicationContext.packageManager.resolveActivity(resolutionTarget, 0) != null
+        val launched = resolved && runCatching {
+            applicationContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        mutableState.value = mutableState.value.copy(externalApplicationUnavailable = !launched)
+        return launched
     }
 
     private fun operations(activeBook: StableId) = SqlCipherBackgroundOperationRepository(

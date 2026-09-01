@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="automation_category_empty">当前账本没有可用于模板的分类。先创建分类，返回后会保留本页草稿。</string>
+    <string name="automation_create_category">创建分类</string>
+    <string name="automation_blueprint_empty_inline">尚无可用于周期规则的快捷模板。</string>
+    <string name="automation_create_template">创建快捷模板</string>
     <string name="automation_title_template_picker">选择快捷模板</string>
     <string name="automation_title_hub">模板与周期</string>
     <string name="automation_title_templates">快捷模板</string>
@@ -132,4 +136,5 @@
     <string name="automation_edit_template_place">在模板中选择固定地点</string><string name="automation_nth_weekday">星期几</string><string name="automation_choose_date">选择日期</string><string name="automation_no_end_date">不设置结束日期</string><string name="automation_rule_summary">%1$s · 每 %2$d 个周期 · 从 %3$s</string>
     <string name="automation_review_selected">逐项检查</string><string name="automation_skip_selected">跳过所选</string><string name="automation_confirm_and_post">确认并进入完整表单</string><string name="automation_cancel_candidate">取消</string>
     <string name="automation_candidate_error_amount">模板金额需要补充或修正。</string><string name="automation_candidate_error_account">模板账户已不可用，请重新选择。</string><string name="automation_candidate_error_category">模板分类已不可用，请重新选择。</string><string name="automation_candidate_error_source">候选来源已不可用。</string><string name="automation_candidate_error_fields">模板字段不完整，请在完整表单中修正。</string>
+    <string name="automation_review_and_edit">检查并编辑完整交易</string>
 </resources>

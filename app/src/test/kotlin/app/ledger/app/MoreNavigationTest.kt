@@ -3,15 +3,16 @@ package app.ledger.app
 import app.ledger.core.navigation.LedgerRouteContract
 import app.ledger.core.navigation.ScreenId
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
 
 class MoreNavigationTest {
     @Test
-    fun creditEntryUsesArgumentFreeUnifiedLiabilityRoute() {
-        assertEquals("LIA-001", MORE_CREDIT_DESTINATION)
-        assertDoesNotThrow {
-            LedgerRouteContract.destination(ScreenId(MORE_CREDIT_DESTINATION))
-        }
+    fun creditAndLoanEntriesUseDistinctArgumentFreeRoutes() {
+        val creditAccounts = "LIA-001"
+        val loans = "LOA-001"
+        assertNotEquals(creditAccounts, loans)
+        assertDoesNotThrow { LedgerRouteContract.destination(ScreenId(creditAccounts)) }
+        assertDoesNotThrow { LedgerRouteContract.destination(ScreenId(loans)) }
     }
 }

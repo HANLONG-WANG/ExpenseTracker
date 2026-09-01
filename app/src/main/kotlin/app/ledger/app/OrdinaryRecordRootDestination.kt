@@ -16,7 +16,8 @@ internal fun OrdinaryRecordRootDestination(
     onAddAttachment: () -> Unit,
     onNavigationChanged: () -> Unit,
 ) {
-    OrdinaryRecordDestination(
+    val content: @Composable () -> Unit = {
+        OrdinaryRecordDestination(
         screenId,
         state,
         OrdinaryRecordActions(
@@ -78,6 +79,20 @@ internal fun OrdinaryRecordRootDestination(
                 viewModel.clearRecordLocation()
                 onNavigationChanged()
             },
-        ),
-    )
+            ),
+        )
+    }
+    if (screenId == "REC-006") {
+        GovernedDestinationModal(
+            screenId = screenId,
+            title = "",
+            onDismiss = {
+                viewModel.requestRootBack()
+                onNavigationChanged()
+            },
+            content = content,
+        )
+    } else {
+        content()
+    }
 }

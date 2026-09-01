@@ -124,10 +124,11 @@ internal object ReportSqlCompiler {
         }
         val measures = mutableListOf<CompiledMeasure>()
         spec.measures.forEachIndexed { index, measure ->
-            if (measure == Measure.SAVINGS_RATE) {
-                select += "SUM(CASE WHEN measure=${Measure.INCOME.ordinal} THEN minor_value ELSE 0 END) AS measure_${index}_income"
-                select += "SUM(CASE WHEN measure=${Measure.EXPENSE.ordinal} THEN minor_value ELSE 0 END) AS measure_${index}_expense"
-                measures += CompiledMeasure(measure, "measure_${index}_income", "measure_${index}_expense")
+            val ratioComponents = ratioComponents(measure)
+            if (ratioComponents != null) {
+                select += "SUM(CASE WHEN measure=${ratioComponents.first.ordinal} THEN minor_value ELSE 0 END) AS measure_${index}_numerator"
+                select += "SUM(CASE WHEN measure=${ratioComponents.second.ordinal} THEN minor_value ELSE 0 END) AS measure_${index}_denominator"
+                measures += CompiledMeasure(measure, "measure_${index}_numerator", "measure_${index}_denominator")
             } else {
                 select += "SUM(CASE WHEN measure=${measure.ordinal} THEN minor_value ELSE 0 END) AS measure_$index"
                 val currencyColumn = if (measure in NATIVE_CURRENCY_MEASURES) "measure_${index}_currency" else null
@@ -139,7 +140,7 @@ internal object ReportSqlCompiler {
         }
         val filter = compileFilter(spec.filters, args)
         val selectedMeasures = spec.measures.flatMap { measure ->
-            if (measure == Measure.SAVINGS_RATE) listOf(Measure.INCOME, Measure.EXPENSE) else listOf(measure)
+            ratioComponents(measure)?.toList() ?: listOf(measure)
         }.distinct()
         val where = "local_date BETWEEN ? AND ? AND measure IN (${selectedMeasures.joinToString { it.ordinal.toString() }})" +
             if (filter.isBlank()) "" else " AND ($filter)"
@@ -269,6 +270,12 @@ internal object ReportSqlCompiler {
         else -> throw IllegalArgumentException("measure has no total rollup")
     }
 
+    private fun ratioComponents(measure: Measure): Pair<Measure, Measure>? = when (measure) {
+        Measure.SAVINGS_RATE -> Measure.INCOME to Measure.EXPENSE
+        Measure.BUDGET_USAGE -> Measure.BUDGET_USED to Measure.BUDGET_AVAILABLE
+        else -> null
+    }
+
     private fun LocalDate.storageKey(): Int = year * 10_000 + monthValue * 100 + dayOfMonth
 
     private val FILTER_COLUMNS = mapOf(
@@ -314,6 +321,21 @@ internal object ReportSqlCompiler {
 
     private val EVENT_CTE = """
         WITH params(report_end_date) AS (SELECT ?),
+        financial_position AS (
+          SELECT
+            COALESCE(SUM(CASE WHEN ua.type IN (0,1) THEN
+              CASE WHEN abc.currency_code=b.base_currency THEN COALESCE(abc.normal_balance_minor,0)
+                   ELSE COALESCE(avc.current_base_value_minor,0) END
+            ELSE -CASE WHEN abc.currency_code=b.base_currency THEN ABS(COALESCE(abc.normal_balance_minor,0))
+                       ELSE ABS(COALESCE(avc.current_base_value_minor,0)) END END),0) AS core_value,
+            COALESCE((SELECT SUM(spp.net_position_minor) FROM settlement_position_projection spp
+              JOIN participant p ON p.id=spp.participant_id WHERE p.is_self=1),0) AS settlement_value,
+            b.base_currency
+          FROM book b JOIN user_account ua ON 1=1
+            LEFT JOIN account_balance_current abc ON abc.account_id=ua.id
+            LEFT JOIN account_valuation_current avc ON avc.account_id=ua.id
+          WHERE b.id=1
+        ),
         economic_events AS (
           SELECT ee.accrual_local_date AS local_date,m.measure,
             c.uid AS category_uid,mer.uid AS merchant_uid,ua.uid AS account_uid,pc.uid AS card_uid,
@@ -362,6 +384,23 @@ internal object ReportSqlCompiler {
           FROM budget_effect be JOIN transaction_revision tr ON tr.id=be.source_revision_id JOIN business_transaction bt ON bt.id=tr.transaction_id
             JOIN book b ON b.id=1 LEFT JOIN current_transaction_projection ctp ON ctp.transaction_id=bt.id
           UNION ALL
+          SELECT bup.year_month*100+1,m.measure,
+            CASE WHEN bup.category_id IS NULL THEN zeroblob(16) ELSE c.uid END,NULL,NULL,NULL,NULL,NULL,b.base_currency,NULL,NULL,NULL,
+            'CURRENT',NULL,0,NULL,0,0,0,0,NULL,
+            CASE m.measure
+              WHEN ${Measure.BUDGET_BASE.ordinal} THEN bup.base_budget_minor
+              WHEN ${Measure.BUDGET_ROLLOVER.ordinal} THEN bup.rollover_minor
+              WHEN ${Measure.BUDGET_ADJUSTMENT.ordinal} THEN bup.adjustment_minor
+              WHEN ${Measure.BUDGET_USED.ordinal} THEN bup.used_minor
+              ELSE bup.base_budget_minor+bup.rollover_minor+bup.adjustment_minor
+            END
+          FROM budget_usage_projection bup LEFT JOIN category c ON c.id=bup.category_id JOIN book b ON b.id=1
+            JOIN (SELECT ${Measure.BUDGET_BASE.ordinal} AS measure
+              UNION ALL SELECT ${Measure.BUDGET_ROLLOVER.ordinal}
+              UNION ALL SELECT ${Measure.BUDGET_ADJUSTMENT.ordinal}
+              UNION ALL SELECT ${Measure.BUDGET_USED.ordinal}
+              UNION ALL SELECT ${Measure.BUDGET_AVAILABLE.ordinal}) m
+          UNION ALL
           SELECT tr.local_date,8,NULL,NULL,NULL,NULL,pr.uid,NULL,b.base_currency,NULL,NULL,NULL,CAST(tr.source_type AS TEXT),
             bt.uid,tr.occurred_at,bt.kind,bt.lifecycle_state,ctp.has_attachment,ctp.is_refund,ctp.has_installment,NULL,
             CASE pe.kind WHEN 0 THEN pe.polarity*pe.base_amount_minor ELSE -pe.polarity*pe.base_amount_minor END
@@ -374,9 +413,9 @@ internal object ReportSqlCompiler {
           SELECT params.report_end_date,10,NULL,NULL,ua.uid,NULL,NULL,NULL,abc.currency_code,NULL,NULL,NULL,'CURRENT',NULL,0,NULL,0,0,0,0,NULL,abc.normal_balance_minor
           FROM account_balance_current abc JOIN user_account ua ON ua.id=abc.account_id,params
           UNION ALL
-          SELECT params.report_end_date,m.measure,NULL,NULL,NULL,NULL,NULL,NULL,wbs.base_currency,NULL,NULL,NULL,'CURRENT',NULL,0,NULL,0,0,0,0,NULL,
-            CASE m.measure WHEN 11 THEN wbs.core_net_financial_assets_base_minor ELSE wbs.adjusted_net_financial_position_base_minor END
-          FROM widget_book_snapshot wbs JOIN (SELECT 11 AS measure UNION ALL SELECT 12) m,params
+          SELECT params.report_end_date,m.measure,NULL,NULL,NULL,NULL,NULL,NULL,fp.base_currency,NULL,NULL,NULL,'CURRENT',NULL,0,NULL,0,0,0,0,NULL,
+            CASE m.measure WHEN 11 THEN fp.core_value ELSE fp.core_value+fp.settlement_value END
+          FROM financial_position fp JOIN (SELECT 11 AS measure UNION ALL SELECT 12) m,params
           UNION ALL
           SELECT params.report_end_date,13,NULL,NULL,ua.uid,NULL,NULL,NULL,ua.currency_code,NULL,NULL,NULL,'CURRENT',NULL,0,NULL,0,0,0,0,NULL,
             av.current_base_value_minor-COALESCE((

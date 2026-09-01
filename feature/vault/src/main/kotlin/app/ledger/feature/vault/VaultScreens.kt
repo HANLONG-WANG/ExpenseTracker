@@ -29,6 +29,7 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerEmptyState
+import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
@@ -36,6 +37,7 @@ import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.SensitiveValueField
+import app.ledger.core.designsystem.rememberLedgerRetainedState
 
 @Composable
 public fun VaultDestination(
@@ -159,30 +161,38 @@ private fun VaultEditor(state: VaultPresentationState, actions: VaultActions, mo
         LedgerButton(stringResource(R.string.vault_authenticate_edit), { actions.onAuthenticateEdit(card.cardId) }, Modifier.fillMaxWidth())
         return
     }
-    var holder by remember(card.cardId) { mutableStateOf("") }
-    var number by remember(card.cardId) { mutableStateOf("") }
-    var expiry by remember(card.cardId) { mutableStateOf("") }
-    var code by remember(card.cardId) { mutableStateOf("") }
-    var customFields by remember(card.cardId) { mutableStateOf(emptyList<VaultCustomField>()) }
-    var nextCustomFieldId by remember(card.cardId) { mutableStateOf(0L) }
+    if (state.presentation == VaultRequiredState.VLT_003_SAVING) {
+        LedgerLoadingState(modifier, stringResource(R.string.vault_saving))
+        return
+    }
+    val initial = remember(card.cardId, state.editValues) { state.editValues.toEditorDraft() }
+    var holder by rememberLedgerRetainedState("vault.holder") { initial.holder }
+    var number by rememberLedgerRetainedState("vault.number") { initial.number }
+    var expiry by rememberLedgerRetainedState("vault.expiry") { initial.expiry }
+    var code by rememberLedgerRetainedState("vault.code") { initial.code }
+    var customFields by rememberLedgerRetainedState("vault.customFields") { initial.customFields }
+    var nextCustomFieldId by rememberLedgerRetainedState("vault.nextCustomFieldId") { initial.customFields.size.toLong() }
+    var saveAttempted by rememberLedgerRetainedState("vault.saveAttempted") { false }
     val serializedCustomFields = customFields
         .filter { it.label.isNotBlank() || it.value.isNotBlank() }
         .joinToString("\n") { "${it.label.trim()}: ${it.value}" }
     val customFieldsComplete = customFields.all { it.label.isBlank() == it.value.isBlank() }
-    val hasContent = listOf(holder, number, expiry, code, serializedCustomFields).any(String::isNotBlank)
-    val saving = state.presentation == VaultRequiredState.VLT_003_SAVING
-    val canSave = !state.pending && !saving && hasContent && customFieldsComplete &&
-        serializedCustomFields.length <= VaultEditSubmission.MAXIMUM_CUSTOM_FIELDS_CHARACTERS
+    val changed = holder != initial.holder || number != initial.number || expiry != initial.expiry || code != initial.code || customFields != initial.customFields
+    val saving = false
+    val valid = changed && customFieldsComplete && serializedCustomFields.length <= VaultEditSubmission.MAXIMUM_CUSTOM_FIELDS_CHARACTERS
 
     LedgerScaffold(
         modifier = modifier,
         formContent = true,
         fixedAction = {
-            VaultSaveBar(saving, canSave) {
-                actions.onSave(
-                    card.cardId,
-                    VaultEditSubmission(holder, number, expiry, code, serializedCustomFields),
-                )
+            VaultSaveBar(saving, !state.pending) {
+                saveAttempted = true
+                if (valid) {
+                    actions.onSave(
+                        card.cardId,
+                        VaultEditSubmission(holder, number, expiry, code, serializedCustomFields),
+                    )
+                }
             }
         },
     ) { padding ->
@@ -190,7 +200,10 @@ private fun VaultEditor(state: VaultPresentationState, actions: VaultActions, mo
             Modifier.fillMaxSize().padding(padding),
             verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
         ) {
-            if (saving) item { LedgerBanner(stringResource(R.string.vault_saving), LedgerBannerVariant.INFO) }
+            item { LedgerBanner(stringResource(R.string.vault_authenticated_values_hint), LedgerBannerVariant.INFO) }
+            if (saveAttempted && !changed) {
+                item { LedgerBanner(stringResource(R.string.vault_no_changes), LedgerBannerVariant.INFO) }
+            }
             item {
                 SensitiveInput(
                     holder,
@@ -288,7 +301,7 @@ private fun SensitiveInput(value: String, onValueChange: (String) -> Unit, label
         value,
         onValueChange,
         label,
-        modifier = Modifier.fillMaxWidth().clearAndSetSemantics { text = AnnotatedString(label) },
+        modifier = Modifier.fillMaxWidth(),
         enabled = enabled,
         sensitive = true,
     )
@@ -313,6 +326,34 @@ private data class VaultCustomField(val id: Long, val label: String, val value: 
         const val MAXIMUM_LABEL_CHARACTERS: Int = 80
         const val MAXIMUM_VALUE_CHARACTERS: Int = 500
     }
+}
+
+private data class VaultEditorDraft(
+    val holder: String,
+    val number: String,
+    val expiry: String,
+    val code: String,
+    val customFields: List<VaultCustomField>,
+)
+
+private fun VaultEditValues?.toEditorDraft(): VaultEditorDraft {
+    val serialized = this?.customFields.readOrEmpty()
+    return VaultEditorDraft(
+        this?.holderName.readOrEmpty(),
+        this?.primaryNumber.readOrEmpty(),
+        this?.expiry.readOrEmpty(),
+        this?.securityCode.readOrEmpty(),
+        serialized.lineSequence().filter(String::isNotBlank).mapIndexed { index, line ->
+            val parts = line.split(": ", limit = 2)
+            VaultCustomField(index.toLong(), parts.first(), parts.getOrElse(1) { "" })
+        }.toList(),
+    )
+}
+
+private fun VaultSensitiveValue?.readOrEmpty(): String {
+    var value = ""
+    runCatching { this?.readUtf8 { value = it } }
+    return value
 }
 
 @Composable

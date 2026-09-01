@@ -31,6 +31,7 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
@@ -49,12 +50,12 @@ import app.ledger.transfer.domain.RestoreMode
 import app.ledger.transfer.domain.RestoreState
 import java.text.NumberFormat
 
-enum class RestoreSourcePresentation { CONTENT, LOADING_REMOTE, PERMISSION_ERROR }
+enum class RestoreSourcePresentation { CONTENT, LOADING_REMOTE, PERMISSION_ERROR, DRIVE_NOT_CONFIGURED }
 enum class RestorePasswordPresentation { EDITING, VERIFYING, WRONG_PASSWORD, LOCKED_DELAY }
 enum class RestoreInspectPresentation { CHECKING, COMPATIBLE, INCOMPATIBLE_BOOK, INCOMPATIBLE_CURRENCY, CORRUPT }
 enum class RestoreProgressPresentation { RUNNING, FAILED_ROLLBACK, SUCCEEDED }
 enum class RestoreResultPresentation { SUCCESS, ROLLED_BACK, FAILED }
-enum class CloudClearPresentation { CONTENT, AUTH_REQUIRED, DELETING, FAILED }
+enum class CloudClearPresentation { LOADING, CONTENT, EMPTY, AUTH_REQUIRED, DELETING, FAILED }
 enum class RestoreSourcePicker { NONE, REPOSITORY, DRIVE }
 enum class RestoreIntegrityCheck {
     SCHEMA,
@@ -145,7 +146,7 @@ data class RestoreFlowUiState(
     val safetySnapshotRetained: Boolean = false,
     val verificationSummary: String = "",
     val failureCode: String? = null,
-    val cloudClearPresentation: CloudClearPresentation = CloudClearPresentation.CONTENT,
+    val cloudClearPresentation: CloudClearPresentation = CloudClearPresentation.AUTH_REQUIRED,
     val cloudAuthenticated: Boolean = false,
     val cloudSnapshots: List<RestoreSnapshotUi> = emptyList(),
     val selectedCloudSnapshots: Set<String> = emptySet(),
@@ -174,6 +175,7 @@ data class RestoreFlowActions(
     val onCloudConfirmationChanged: (String) -> Unit,
     val onAuthenticateCloudDelete: () -> Unit,
     val onDeleteCloudBackups: () -> Unit,
+    val onConfigureDrive: () -> Unit = {},
 )
 
 @Composable
@@ -209,6 +211,10 @@ private fun RestoreSource(state: RestoreFlowUiState, actions: RestoreFlowActions
         }
         if (state.sourcePresentation == RestoreSourcePresentation.PERMISSION_ERROR) {
             item { LedgerBanner(stringResource(R.string.restore_permission_error), LedgerBannerVariant.DANGER) }
+        }
+        if (state.sourcePresentation == RestoreSourcePresentation.DRIVE_NOT_CONFIGURED) {
+            item { LedgerBanner(stringResource(R.string.restore_drive_not_configured), LedgerBannerVariant.WARNING) }
+            item { LedgerButton(stringResource(R.string.restore_configure_drive), actions.onConfigureDrive, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
         }
         item { LedgerButton(stringResource(R.string.restore_choose_file), { picker.launch(arrayOf("application/octet-stream", "application/zip")) }, Modifier.fillMaxWidth()) }
         item { LedgerButton(stringResource(R.string.restore_choose_repository), actions.onRepositorySource, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
@@ -482,8 +488,15 @@ private fun CloudBackupClear(state: RestoreFlowUiState, actions: RestoreFlowActi
         items(state.cloudSnapshots) { snapshot ->
             RestoreSnapshotCard(snapshot, snapshot.id in state.selectedCloudSnapshots) { actions.onCloudSnapshotSelected(snapshot.id) }
         }
+        if (state.cloudClearPresentation == CloudClearPresentation.LOADING) {
+            item { LedgerLoadingState(Modifier.fillMaxWidth(), stringResource(R.string.clear_cloud_loading)) }
+        }
         if (state.cloudClearPresentation == CloudClearPresentation.AUTH_REQUIRED) {
+            item { LedgerBanner(stringResource(R.string.clear_cloud_auth_required), LedgerBannerVariant.INFO) }
             item { LedgerButton(stringResource(R.string.clear_cloud_auth), actions.onAuthenticateCloudDelete, Modifier.fillMaxWidth()) }
+        }
+        if (state.cloudClearPresentation == CloudClearPresentation.EMPTY) {
+            item { LedgerBanner(stringResource(R.string.clear_cloud_empty), LedgerBannerVariant.INFO) }
         }
         if (state.cloudClearPresentation == CloudClearPresentation.DELETING) {
             item {
@@ -501,6 +514,7 @@ private fun CloudBackupClear(state: RestoreFlowUiState, actions: RestoreFlowActi
         }
         if (state.cloudClearPresentation == CloudClearPresentation.FAILED) {
             item { LedgerBanner(stringResource(R.string.clear_cloud_failed), LedgerBannerVariant.DANGER) }
+            item { LedgerButton(stringResource(R.string.restore_configure_drive), actions.onConfigureDrive, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
         }
         if (
             state.cloudAuthenticated &&

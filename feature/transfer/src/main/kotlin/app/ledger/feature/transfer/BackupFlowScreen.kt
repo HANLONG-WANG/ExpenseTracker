@@ -38,6 +38,7 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
@@ -92,6 +93,7 @@ data class BackupFlowUiState(
     val automaticBackup: Boolean = true,
     val retentionCount: String = "30",
     val retentionDays: String = "",
+    val settingsValidationError: Boolean = false,
     val includeVault: Boolean = false,
     val networkPolicy: BackupNetworkPolicy = BackupNetworkPolicy.ANY,
     val snapshots: List<BackupSnapshotUi> = emptyList(),
@@ -147,8 +149,6 @@ fun BackupFlowScreen(state: BackupFlowUiState, actions: BackupFlowActions) {
                 LedgerButton(
                     stringResource(R.string.backup_save_settings),
                     actions.onSaveSettings,
-                    enabled = state.retentionCount.toIntOrNull()?.let { it in 1..3650 } == true &&
-                        (state.retentionDays.isBlank() || state.retentionDays.toIntOrNull()?.let { it in 1..36500 } == true),
                 )
             }
         } else {
@@ -301,9 +301,33 @@ private fun RecoveryPassword(state: BackupFlowUiState, actions: BackupFlowAction
 @Composable
 private fun BackupSettings(state: BackupFlowUiState, actions: BackupFlowActions, modifier: Modifier) {
     LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+        if (state.settingsValidationError) {
+            item { LedgerBanner(stringResource(R.string.backup_settings_validation), LedgerBannerVariant.DANGER) }
+        }
         item { LedgerToggleRow(stringResource(R.string.backup_automatic), state.automaticBackup, actions.onAutomaticBackupChanged, supportingText = stringResource(R.string.backup_automatic_supporting)) }
-        item { LedgerTextField(state.retentionCount, actions.onRetentionCountChanged, stringResource(R.string.backup_retention_count), keyboardType = KeyboardType.Number, required = true) }
-        item { LedgerTextField(state.retentionDays, actions.onRetentionDaysChanged, stringResource(R.string.backup_retention_days), keyboardType = KeyboardType.Number) }
+        item {
+            LedgerTextField(
+                state.retentionCount,
+                actions.onRetentionCountChanged,
+                stringResource(R.string.backup_retention_count),
+                keyboardType = KeyboardType.Number,
+                required = true,
+                errorText = stringResource(R.string.backup_retention_count_error).takeIf {
+                    state.settingsValidationError && state.retentionCount.toIntOrNull()?.let { it in 1..3650 } != true
+                },
+            )
+        }
+        item {
+            LedgerTextField(
+                state.retentionDays,
+                actions.onRetentionDaysChanged,
+                stringResource(R.string.backup_retention_days),
+                keyboardType = KeyboardType.Number,
+                errorText = stringResource(R.string.backup_retention_days_error).takeIf {
+                    state.settingsValidationError && state.retentionDays.isNotBlank() && state.retentionDays.toIntOrNull()?.let { it in 1..36500 } != true
+                },
+            )
+        }
         item {
             LedgerToggleRow(
                 stringResource(R.string.backup_include_vault),
@@ -368,6 +392,8 @@ private fun BackupHistory(state: BackupFlowUiState, actions: BackupFlowActions, 
 @Composable
 private fun BackupDetails(state: BackupFlowUiState, actions: BackupFlowActions, modifier: Modifier) {
     val snapshot = state.selectedSnapshot
+    var confirmingDelete by remember(snapshot?.snapshotId) { mutableStateOf(false) }
+    var deletePhrase by remember(snapshot?.snapshotId) { mutableStateOf("") }
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         if (snapshot == null) {
             LedgerBanner(stringResource(R.string.backup_snapshot_unavailable), LedgerBannerVariant.DANGER)
@@ -387,10 +413,53 @@ private fun BackupDetails(state: BackupFlowUiState, actions: BackupFlowActions, 
         )
         LedgerButton(
             stringResource(R.string.backup_delete_snapshot),
-            { actions.onDeleteSnapshot(snapshot.snapshotId) },
+            {
+                deletePhrase = ""
+                confirmingDelete = true
+            },
             Modifier.fillMaxWidth(),
             LedgerButtonVariant.DANGER,
         )
+    }
+    if (snapshot != null && confirmingDelete) {
+        val requiredPhrase = stringResource(R.string.backup_delete_confirmation_phrase)
+        val lastVerifiedRecoveryPoint = snapshot.integrity == BackupIntegrityPresentation.VERIFIED &&
+            state.snapshots.count { it.integrity == BackupIntegrityPresentation.VERIFIED } <= 1
+        LedgerDialog(
+            title = stringResource(R.string.backup_delete_confirm_title),
+            message = stringResource(
+                R.string.backup_delete_confirm_scope,
+                snapshot.createdAt,
+                repositoryDisplayLabel(snapshot.repositoryKind, snapshot.locationDetail),
+            ),
+            confirmLabel = stringResource(R.string.backup_delete_snapshot),
+            onConfirm = {
+                confirmingDelete = false
+                deletePhrase = ""
+                actions.onDeleteSnapshot(snapshot.snapshotId)
+            },
+            onDismiss = {
+                confirmingDelete = false
+                deletePhrase = ""
+            },
+            danger = true,
+            confirmEnabled = deletePhrase == requiredPhrase,
+        ) {
+            if (lastVerifiedRecoveryPoint) {
+                LedgerBanner(stringResource(R.string.backup_delete_last_verified_warning), LedgerBannerVariant.DANGER)
+            }
+            LedgerText(
+                stringResource(if (snapshot.includesVault) R.string.backup_delete_vault_included else R.string.backup_delete_vault_excluded),
+                LedgerTextRole.BODY,
+            )
+            LedgerText(stringResource(R.string.backup_delete_unaffected), LedgerTextRole.SUPPORTING)
+            LedgerTextField(
+                deletePhrase,
+                { deletePhrase = it },
+                stringResource(R.string.backup_delete_confirmation_label),
+                supportingText = requiredPhrase,
+            )
+        }
     }
 }
 
@@ -443,7 +512,11 @@ private fun ManualBackup(state: BackupFlowUiState, actions: BackupFlowActions, m
                 BackupExecutionPresentation.FAILED -> Column(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
                     LedgerBanner(backupFailureMessage(state.failureCode), LedgerBannerVariant.DANGER)
                     if (state.temporaryCleanupComplete) LedgerText(stringResource(R.string.backup_temporary_cleaned), LedgerTextRole.SUPPORTING)
-                    LedgerButton(stringResource(R.string.backup_retry), actions.onRetry, Modifier.fillMaxWidth())
+                    LedgerButton(
+                        stringResource(R.string.backup_retry),
+                        { if (state.portable) picker.launch(null) else actions.onRetry() },
+                        Modifier.fillMaxWidth(),
+                    )
                 }
                 BackupExecutionPresentation.SUCCEEDED -> Column(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
                     LedgerBanner(stringResource(R.string.backup_succeeded), LedgerBannerVariant.INFO)

@@ -48,7 +48,9 @@ import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChartSeries
 import app.ledger.core.designsystem.LedgerChartType
 import app.ledger.core.designsystem.LedgerChartUiModel
+import app.ledger.core.designsystem.LedgerCheckboxRow
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerCycleChoiceSelector
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerLineChart
@@ -57,10 +59,14 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
 import app.ledger.core.designsystem.LedgerVicoLineRenderer
 import app.ledger.core.money.LocaleNumberFormatter
+import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
+import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -122,15 +128,19 @@ internal fun DashboardListScreen(state: AnalysisFeatureState, actions: AnalysisA
 @Composable
 internal fun DashboardEditorScreen(state: AnalysisFeatureState, actions: AnalysisActions) {
     val selectedIds = state.dashboardItems.associateBy { it.reportId }
-    val valid = state.draftName.isNotBlank()
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.DASHBOARD_EDITOR),
         formContent = true,
-        fixedAction = { AnalysisSaveBar(actions.onSaveDashboard, valid) },
+        fixedAction = { AnalysisSaveBar(actions.onSaveDashboard, true) },
     ) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(LedgerTheme.spacing.md),
+            contentPadding = PaddingValues(
+                start = LedgerTheme.spacing.md,
+                top = LedgerTheme.spacing.md,
+                end = LedgerTheme.spacing.md,
+                bottom = LedgerTheme.dimensions.bottomActionInset + LedgerTheme.spacing.xxl,
+            ),
             verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
         ) {
         if (state.presentation == AnalysisPresentation.INVALID) {
@@ -199,7 +209,7 @@ internal fun DashboardEditorScreen(state: AnalysisFeatureState, actions: Analysi
         }
         item { LedgerText(stringResource(R.string.analysis_dashboard_palette), LedgerTextRole.SECTION) }
         items(state.savedReports, key = { "dashboard-palette-${it.definition.id.value}" }) { report ->
-            LedgerChoiceRow(
+            LedgerCheckboxRow(
                 report.definition.name,
                 report.definition.id in selectedIds,
                 { actions.onToggleDashboardReport(report.definition.id) },
@@ -219,11 +229,16 @@ internal fun ReportBuilderScreen(state: AnalysisFeatureState, actions: AnalysisA
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.REPORT_BUILDER),
         formContent = true,
-        fixedAction = { BuilderActionBar(state.builderStep, canContinue, state.draftName.isNotBlank() && validation.valid && ready, actions) },
+        fixedAction = { BuilderActionBar(state.builderStep, canContinue, ready, actions) },
     ) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(LedgerTheme.spacing.md),
+            contentPadding = PaddingValues(
+                start = LedgerTheme.spacing.md,
+                top = LedgerTheme.spacing.md,
+                end = LedgerTheme.spacing.md,
+                bottom = LedgerTheme.dimensions.bottomActionInset + LedgerTheme.spacing.xxl,
+            ),
             verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
         ) {
             if (state.presentation == AnalysisPresentation.INVALID || !validation.valid) {
@@ -253,13 +268,13 @@ internal fun ReportBuilderScreen(state: AnalysisFeatureState, actions: AnalysisA
                 0 -> {
                     item { LedgerText(stringResource(R.string.analysis_measure), LedgerTextRole.SECTION) }
                     items(app.ledger.analytics.domain.Measure.entries, key = { "builder-measure-${it.name}" }) { measure ->
-                        LedgerChoiceRow(measureLabel(measure), measure in spec.measures, { actions.onSelectMeasure(measure) })
+                        LedgerCheckboxRow(measureLabel(measure), measure in spec.measures, { actions.onSelectMeasure(measure) })
                     }
                 }
                 1 -> {
                     item { LedgerText(stringResource(R.string.analysis_dimension), LedgerTextRole.SECTION) }
                     items(app.ledger.analytics.domain.Dimension.entries, key = { "builder-dimension-${it.name}" }) { dimension ->
-                        LedgerChoiceRow(dimensionLabel(dimension), dimension in spec.dimensions, { actions.onSelectDimension(dimension) })
+                        LedgerCheckboxRow(dimensionLabel(dimension), dimension in spec.dimensions, { actions.onSelectDimension(dimension) })
                     }
                 }
                 2 -> item { ReportFilterEditor(state, spec, actions, includeApply = false) }
@@ -300,15 +315,19 @@ private fun ReportSortEditor(spec: app.ledger.analytics.domain.ReportSpec, actio
     (spec.measures.map { "measure:${it.name}" to measureLabel(it) } + spec.dimensions.map { "dimension:${it.name}" to dimensionLabel(it) })
         .forEach { (key, label) ->
             val current = spec.sorting.singleOrNull { AnalysisPolicy.run { it.sortKey() == key } }
-            LedgerChoiceRow(
+            LedgerCycleChoiceSelector(
                 label,
-                current != null,
-                { actions.onCycleSort(key) },
-                supportingText = when (current?.direction) {
-                    SortDirection.ASCENDING -> stringResource(R.string.analysis_sort_ascending)
-                    SortDirection.DESCENDING -> stringResource(R.string.analysis_sort_descending)
-                    null -> stringResource(R.string.analysis_sort_none)
+                when (current?.direction) {
+                    null -> 0
+                    SortDirection.ASCENDING -> 1
+                    SortDirection.DESCENDING -> 2
                 },
+                listOf(
+                    stringResource(R.string.analysis_sort_none),
+                    stringResource(R.string.analysis_sort_ascending),
+                    stringResource(R.string.analysis_sort_descending),
+                ),
+                { actions.onCycleSort(key) },
             )
         }
 }
@@ -326,8 +345,8 @@ private fun BuilderActionBar(step: Int, canContinue: Boolean, canSave: Boolean, 
             if (step < BUILDER_LAST_STEP) {
                 LedgerButton(stringResource(R.string.analysis_next_step), { actions.onBuilderStep(1) }, Modifier.weight(1f), enabled = canContinue)
             } else {
-                LedgerButton(stringResource(R.string.analysis_preview), actions.onPreviewReport, Modifier.weight(1f), LedgerButtonVariant.SECONDARY, enabled = canSave)
-                LedgerButton(stringResource(R.string.analysis_save), actions.onSaveReport, Modifier.weight(1f), enabled = canSave)
+                LedgerButton(stringResource(R.string.analysis_preview), actions.onPreviewReport, Modifier.weight(1f), LedgerButtonVariant.SECONDARY)
+                LedgerButton(stringResource(R.string.analysis_save), actions.onSaveReport, Modifier.weight(1f))
             }
         }
     }
@@ -449,9 +468,6 @@ internal fun AnomalyRulesScreen(state: AnalysisFeatureState, actions: AnalysisAc
         )
         return
     }
-    val threshold = state.anomalyThresholdText.toBigDecimalOrNull()
-    val lookback = state.anomalyLookbackText.toIntOrNull()
-    val valid = threshold != null && threshold.signum() >= 0 && lookback != null && lookback in 1..120
     val locale = LocalLocale.current.platformLocale
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.ANOMALY_RULES),
@@ -462,7 +478,7 @@ internal fun AnomalyRulesScreen(state: AnalysisFeatureState, actions: AnalysisAc
                     stringResource(R.string.analysis_save_rule),
                     { actions.onSaveAnomalyRule(state.editingAnomalyRuleId) },
                     Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
-                    enabled = valid,
+                    enabled = state.presentation != AnalysisPresentation.RUNNING,
                 )
             }
         },
@@ -474,7 +490,14 @@ internal fun AnomalyRulesScreen(state: AnalysisFeatureState, actions: AnalysisAc
         ) {
             if (state.presentation == AnalysisPresentation.INVALID) item { LedgerBanner(stringResource(R.string.analysis_anomaly_invalid), LedgerBannerVariant.DANGER) }
             item { LedgerBanner(stringResource(R.string.analysis_anomaly_disclosure), LedgerBannerVariant.INFO) }
-            item { app.ledger.core.designsystem.SelectorField(stringResource(R.string.analysis_anomaly_type), anomalyTitle(state.anomalyDraftType), actions.onCycleAnomalyType) }
+            item {
+                app.ledger.core.designsystem.LedgerChoiceSelector(
+                    stringResource(R.string.analysis_anomaly_type),
+                    state.anomalyDraftType.ordinal,
+                    AnomalyRuleType.entries.map { anomalyTitle(it) },
+                    { actions.onSelectAnomalyType(AnomalyRuleType.entries[it]) },
+                )
+            }
             item { LedgerTextField(state.anomalyThresholdText, { actions.onAnomalyThresholdChanged(it.filter { char -> char.isDigit() || char == '.' }.take(32)) }, stringResource(R.string.analysis_anomaly_threshold), required = true) }
             item { LedgerTextField(state.anomalyLookbackText, { actions.onAnomalyLookbackChanged(it.filter(Char::isDigit).take(3)) }, stringResource(R.string.analysis_anomaly_lookback), required = true) }
             items(state.anomalyRules, key = { it.id.value.toString() }) { saved ->
@@ -553,7 +576,7 @@ internal fun ForecastDetailScreen(state: AnalysisFeatureState, actions: Analysis
             LedgerChartSeries(
                 "forecast-v${forecast.version.value}",
                 stringResource(R.string.analysis_forecast_current_model),
-                listOf(trend.observedMinor.toDouble(), trend.projectedMinor.toDouble()),
+                listOf(chartMajor(trend.observedMinor, state.baseCurrency), chartMajor(trend.projectedMinor, state.baseCurrency)),
                 currentLabels,
                 listOf(
                     AnalysisPolicy.money(trend.observedMinor, state.baseCurrency, locale).formatted,
@@ -566,7 +589,7 @@ internal fun ForecastDetailScreen(state: AnalysisFeatureState, actions: Analysis
                 LedgerChartSeries(
                     "forecast-historical-v${it.version.value}",
                     stringResource(R.string.analysis_forecast_historical_series),
-                    listOf(it.projectedMinor.toDouble(), it.projectedMinor.toDouble()),
+                    listOf(chartMajor(it.projectedMinor, state.baseCurrency), chartMajor(it.projectedMinor, state.baseCurrency)),
                     currentLabels,
                     List(2) { _ -> AnalysisPolicy.money(it.projectedMinor, state.baseCurrency, locale).formatted },
                 ),
@@ -661,7 +684,12 @@ private fun AnalysisSaveBar(onSave: () -> Unit, enabled: Boolean) {
 }
 
 private fun LocalDate.localized(locale: Locale): String =
-    format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+    format(LedgerDateFormatterRuntime.formatter(locale))
 
 private const val DRAG_REORDER_THRESHOLD = 72f
 private const val BUILDER_LAST_STEP = 6
+
+private val chartCurrencyCatalog = JvmLegalTenderCurrencyCatalog.create()
+
+private fun chartMajor(minor: Long, currency: CurrencyCode): Double =
+    BigDecimal.valueOf(minor, requireNotNull(chartCurrencyCatalog.find(currency)).fractionDigits).toDouble()

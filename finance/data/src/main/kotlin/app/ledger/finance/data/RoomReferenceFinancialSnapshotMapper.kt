@@ -203,7 +203,14 @@ internal class RoomReferenceFinancialSnapshotMapper {
         val currentRevision = readRevision(db, transaction, references, transaction.currentRevisionId)
         val amounts = readRevisionAmounts(db, currentRevision.id)
         val evidence = readAmountEvidence(db, amounts, fxIds)
-        val facts = readCurrentFacts(db, currentRevision.id)
+        // A trashed transaction's current revision contains only reversal material. Restoring it
+        // must rebuild a fresh APPLY set from the immutable payload, not treat the empty reversal
+        // revision as an active fact set (CurrentFinancialFacts intentionally forbids empties).
+        val facts = if (transaction.lifecycleState == TransactionLifecycleState.TRASHED) {
+            null
+        } else {
+            readCurrentFacts(db, currentRevision.id)
+        }
         val snapshot = PlanningSnapshot(
             book = book,
             currentTransaction = transaction,

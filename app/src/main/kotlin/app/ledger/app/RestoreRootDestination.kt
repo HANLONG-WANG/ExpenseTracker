@@ -71,6 +71,10 @@ internal fun RestoreRootDestination(
             onCloudConfirmationChanged = viewModel::changeCloudBackupDeletePhrase,
             onAuthenticateCloudDelete = viewModel::loadCloudBackupsForDeletion,
             onDeleteCloudBackups = viewModel::deleteSelectedCloudBackups,
+            onConfigureDrive = {
+                viewModel.openBackupDriveSettings()
+                onNavigationChanged()
+            },
         ),
     )
 }

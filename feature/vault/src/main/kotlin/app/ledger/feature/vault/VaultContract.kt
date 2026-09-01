@@ -38,6 +38,15 @@ public fun interface VaultSensitiveValue {
     public fun readUtf8(consumer: (String) -> Unit)
 }
 
+/** Short-lived authenticated values. The controller invalidates every handle on timeout/background. */
+public data class VaultEditValues(
+    val holderName: VaultSensitiveValue? = null,
+    val primaryNumber: VaultSensitiveValue? = null,
+    val expiry: VaultSensitiveValue? = null,
+    val securityCode: VaultSensitiveValue? = null,
+    val customFields: VaultSensitiveValue? = null,
+)
+
 public data class VaultPresentationState(
     val screenId: String,
     val presentation: VaultRequiredState,
@@ -47,6 +56,7 @@ public data class VaultPresentationState(
     val securityCode: VaultSensitiveValue? = null,
     val secondsRemaining: Int = 0,
     val pending: Boolean = false,
+    val editValues: VaultEditValues? = null,
 ) {
     init {
         require(screenId in setOf("VLT-001", "VLT-002", "VLT-003", "VLT-004"))

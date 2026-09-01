@@ -1,6 +1,7 @@
 package app.ledger.feature.record
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -19,6 +20,7 @@ internal fun TransactionEditorScaffold(
     LazyColumn(
         modifier = modifier,
         state = listState,
+        contentPadding = PaddingValues(bottom = LedgerTheme.dimensions.bottomActionInset),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
         content = content,
     )

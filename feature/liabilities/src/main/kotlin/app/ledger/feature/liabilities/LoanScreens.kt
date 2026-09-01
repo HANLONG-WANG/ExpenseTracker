@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
@@ -37,6 +38,8 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerChoiceSelector
+import app.ledger.core.designsystem.LedgerCycleChoiceSelector
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
@@ -48,6 +51,7 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
@@ -82,6 +86,7 @@ public fun LoanDestination(
     state: LoanLoadState,
     encodedArguments: Map<String, String>,
     actions: LoanActions,
+    creditAccountsOnly: Boolean = false,
 ) {
     when (state) {
         LoanLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.loan_loading))
@@ -96,7 +101,7 @@ public fun LoanDestination(
                 selectedSimulationId = encodedArguments.loanId("simulationId") ?: state.state.selectedSimulationId,
             )
             when (screenId) {
-                "LIA-001" -> LiabilityHome(content, actions)
+                "LIA-001" -> if (creditAccountsOnly) CreditAccountList(content, actions) else LiabilityHome(content, actions)
                 "REC-017" -> LoanOperation(content, actions)
                 "REC-018" -> LoanDisbursement(content, actions)
                 "REC-019" -> LoanPayment(content, actions)
@@ -115,6 +120,17 @@ public fun LoanDestination(
             }
         }
     }
+}
+
+@Composable
+private fun CreditAccountList(state: LoanFeatureState, actions: LoanActions) = LoanListLayout(Modifier.testTag(LedgerTestTags.LIABILITY_HOME)) {
+    item { LedgerText(stringResource(R.string.liability_credit_section), LedgerTextRole.TITLE) }
+    when {
+        state.creditLoadFailureCode != null -> item { LedgerBanner(stringResource(R.string.credit_load_failed), LedgerBannerVariant.DANGER) }
+        state.creditAccounts.isEmpty() -> item { LedgerText(stringResource(R.string.liability_credit_empty), LedgerTextRole.SUPPORTING) }
+        else -> items(state.creditAccounts, key = { "credit:${it.id}" }) { account -> CreditAccountRow(account, actions) }
+    }
+    item { LedgerButton(stringResource(R.string.liability_credit_create), actions.onCreateCreditAccount, Modifier.fillMaxWidth()) }
 }
 
 @Composable
@@ -146,7 +162,14 @@ private fun LiabilityHome(state: LoanFeatureState, actions: LoanActions) {
                 LedgerBanner(stringResource(R.string.credit_load_failed), LedgerBannerVariant.DANGER)
             }
             state.creditAccounts.isEmpty() -> item {
-                LedgerText(stringResource(R.string.liability_credit_empty), LedgerTextRole.SUPPORTING)
+                Column(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                    LedgerText(stringResource(R.string.liability_credit_empty), LedgerTextRole.SUPPORTING)
+                    LedgerButton(
+                        stringResource(R.string.liability_credit_create),
+                        actions.onCreateCreditAccount,
+                        Modifier.fillMaxWidth(),
+                    )
+                }
             }
             else -> items(state.creditAccounts, key = { "credit:${it.id}" }) { account ->
                 CreditAccountRow(account, actions)
@@ -233,17 +256,19 @@ private fun LoanWizard(state: LoanFeatureState, actions: LoanActions) = LoanList
     item { StateBanner(state) }
     item { LedgerText(stringResource(R.string.loan_wizard_step, state.wizardStep + 1, 6), LedgerTextRole.SECTION) }
     item { LedgerProgressIndicator((state.wizardStep + 1) / 6f, accessibleText = stringResource(R.string.loan_wizard_progress)) }
+    if (state.presentation == LoanPresentation.INVALID) item { LedgerBanner(stringResource(R.string.loan_wizard_step_invalid), LedgerBannerVariant.DANGER) }
+    if (state.wizardStep < 5) item { LedgerButton(stringResource(R.string.loan_wizard_next), actions.onWizardNext, Modifier.fillMaxWidth(), enabled = state.presentation != LoanPresentation.GENERATING_SCHEDULE) }
     when (state.wizardStep) {
         0 -> item { BasicFields(state, actions) }
         1 -> {
             item {
                 FormSection(stringResource(R.string.loan_tranches_step)) {
-                    state.wizardTranches.forEachIndexed { index, tranche ->
-                        LedgerButton(
-                            tranche.name.ifBlank { stringResource(R.string.loan_unnamed_tranche, index + 1) },
-                            { actions.onSelectWizardTranche(index) },
-                            Modifier.fillMaxWidth(),
-                            if (index == state.selectedWizardTrancheIndex) LedgerButtonVariant.PRIMARY else LedgerButtonVariant.SECONDARY,
+                    if (state.wizardTranches.isNotEmpty()) {
+                        LedgerChoiceSelector(
+                            stringResource(R.string.loan_tranches_step),
+                            state.selectedWizardTrancheIndex,
+                            state.wizardTranches.mapIndexed { index, tranche -> tranche.name.ifBlank { stringResource(R.string.loan_unnamed_tranche, index + 1) } },
+                            actions.onSelectWizardTranche,
                         )
                     }
                     LedgerButton(stringResource(R.string.loan_add_tranche), actions.onAddTranche, Modifier.fillMaxWidth(), LedgerButtonVariant.TEXT)
@@ -269,7 +294,6 @@ private fun LoanWizard(state: LoanFeatureState, actions: LoanActions) = LoanList
         }
     }
     if (state.wizardStep > 0) item { LedgerButton(stringResource(R.string.loan_wizard_back), actions.onWizardBack, Modifier.fillMaxWidth(), LedgerButtonVariant.TEXT) }
-    if (state.wizardStep < 5) item { LedgerButton(stringResource(R.string.loan_wizard_next), actions.onWizardNext, Modifier.fillMaxWidth(), enabled = state.presentation !in setOf(LoanPresentation.INVALID, LoanPresentation.GENERATING_SCHEDULE)) }
 }
 
 @Composable
@@ -367,7 +391,7 @@ private fun LoanDetail(state: LoanFeatureState, actions: LoanActions) {
                 listOf(stringResource(R.string.loan_tab_overview), stringResource(R.string.loan_tab_schedule), stringResource(R.string.loan_tab_transactions), stringResource(R.string.loan_tab_rates), stringResource(R.string.loan_tab_simulation)),
                 { index -> when (index) {
                     1 -> actions.onNavigate("LOA-008", contract.id, null)
-                    2 -> actions.onNavigate("JRN-001", null, null)
+                    2 -> actions.onOpenTransactions(contract.displayAccountId)
                     3 -> contract.tranches.firstOrNull()?.let { actions.onNavigate("LOA-005", contract.id, it.id) }
                     4 -> actions.onNavigate("LOA-010", contract.id, null)
                 } },
@@ -410,7 +434,17 @@ private fun LoanSchedule(state: LoanFeatureState) {
     val selected = revisions.getOrNull(revisionIndex)
     val rows = selected?.second?.items ?: contract.tranches.flatMap { it.schedule }
     LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_SCHEDULE)) {
-        item { SelectorField(stringResource(R.string.loan_schedule_revision_selector), selected?.let { stringResource(R.string.loan_revision_with_tranche, it.first, it.second.revisionNumber) } ?: stringResource(R.string.loan_schedule_revision, contract.tranches.maxOf { it.scheduleRevisionNumber }), { if (revisions.isNotEmpty()) revisionIndex = (revisionIndex + 1).mod(revisions.size) }) }
+        item {
+            val labels = revisions.map { stringResource(R.string.loan_revision_with_tranche, it.first, it.second.revisionNumber) }
+            if (labels.isNotEmpty()) {
+                LedgerCycleChoiceSelector(
+                    stringResource(R.string.loan_schedule_revision_selector),
+                    revisionIndex,
+                    labels,
+                    { revisionIndex = (revisionIndex + 1).mod(revisions.size) },
+                )
+            }
+        }
         item { LedgerTabRow(if (actualMode) 1 else 0, listOf(stringResource(R.string.loan_planned), stringResource(R.string.loan_actual)), { actualMode = it == 1 }) }
         item { ScheduleTable(rows, contract.currency, actualOnly = actualMode) }
         item { LedgerBanner(stringResource(R.string.loan_plan_actual_explanation), LedgerBannerVariant.INFO) }
@@ -505,7 +539,7 @@ private fun ApplySimulation(state: LoanFeatureState, actions: LoanActions) {
             state.draft.confirmPhrase,
             { actions.onFieldChanged(LoanField.CONFIRM_PHRASE, it) },
             actions.onApplySimulation,
-            {},
+            actions.onCancelConfirmation,
         )
     }
     }
@@ -543,18 +577,22 @@ private fun TermsFields(state: LoanFeatureState, actions: LoanActions) {
                 LedgerButton(methodLabel(method), { actions.onRepaymentMethod(method) }, variant = if (method == state.draft.repaymentMethod) LedgerButtonVariant.PRIMARY else LedgerButtonVariant.SECONDARY)
             }
         }
-        SelectorField(stringResource(R.string.loan_rate_type), rateTypeLabel(state.draft.rateType), { actions.onRateType(if (state.draft.rateType == LoanRateType.FIXED) LoanRateType.FLOATING else LoanRateType.FIXED) })
-        SelectorField(stringResource(R.string.loan_payment_frequency), frequencyLabel(state.draft.paymentFrequency), { actions.onFrequency(nextFrequency(state.draft.paymentFrequency)) })
+        LedgerText(stringResource(R.string.loan_rate_type), LedgerTextRole.LABEL)
+        LoanRateType.entries.forEach { value -> LedgerChoiceRow(rateTypeLabel(value), state.draft.rateType == value, { actions.onRateType(value) }) }
+        LedgerText(stringResource(R.string.loan_payment_frequency), LedgerTextRole.LABEL)
+        PaymentFrequency.entries.forEach { value -> LedgerChoiceRow(frequencyLabel(value), state.draft.paymentFrequency == value, { actions.onFrequency(value) }) }
         LedgerTextField(state.draft.paymentCount, { actions.onFieldChanged(LoanField.PAYMENT_COUNT, it) }, stringResource(R.string.loan_payment_count), Modifier.fillMaxWidth(), required = true, keyboardType = KeyboardType.Number)
         SelectorField(stringResource(R.string.loan_first_payment), state.draft.firstPaymentDate.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.loan_choose_date), { showFirstDate = true })
         LedgerTextField(state.draft.annualRate, { actions.onFieldChanged(LoanField.ANNUAL_RATE, it) }, stringResource(R.string.loan_annual_rate), Modifier.fillMaxWidth(), required = true, keyboardType = KeyboardType.Decimal)
         LedgerTextField(state.draft.feePerPayment, { actions.onFieldChanged(LoanField.FEE_PER_PAYMENT, it) }, stringResource(R.string.loan_fee_per_payment), Modifier.fillMaxWidth(), keyboardType = KeyboardType.Decimal)
-        SelectorField(stringResource(R.string.loan_prepayment_policy), prepaymentPolicyLabel(state.draft.prepaymentPolicy), { actions.onPrepaymentPolicy(nextPrepaymentPolicy(state.draft.prepaymentPolicy)) })
+        LedgerText(stringResource(R.string.loan_prepayment_policy), LedgerTextRole.LABEL)
+        LoanPrepaymentPolicy.entries.forEach { value -> LedgerChoiceRow(prepaymentPolicyLabel(value), state.draft.prepaymentPolicy == value, { actions.onPrepaymentPolicy(value) }) }
         StrategySelector(state, actions)
         if (state.draft.prepaymentPolicy == LoanPrepaymentPolicy.ALLOWED_WITH_PENALTY) {
             LedgerTextField(state.draft.penaltyRate, { actions.onFieldChanged(LoanField.PENALTY_RATE, it) }, stringResource(R.string.loan_penalty_rate), Modifier.fillMaxWidth(), required = true, keyboardType = KeyboardType.Decimal)
         }
-        SelectorField(stringResource(R.string.loan_rounding_rule), loanRoundingLabel(state.draft.roundingMode), { actions.onRoundingMode(nextLoanRounding(state.draft.roundingMode)) })
+        LedgerText(stringResource(R.string.loan_rounding_rule), LedgerTextRole.LABEL)
+        RoundingMode.entries.forEach { value -> LedgerChoiceRow(loanRoundingLabel(value), state.draft.roundingMode == value, { actions.onRoundingMode(value) }) }
     }
     if (showFirstDate) {
         LoanDatePicker(state.draft.firstPaymentDate, { actions.onFieldChanged(LoanField.FIRST_PAYMENT_DATE, it); showFirstDate = false }, { showFirstDate = false })
@@ -580,8 +618,16 @@ private fun RatePeriodEditor(state: LoanFeatureState, actions: LoanActions) {
 @Composable
 private fun ContractSelector(state: LoanFeatureState, actions: LoanActions) {
     FormSection(stringResource(R.string.loan_contract)) {
-        state.snapshot.contracts.forEach { contract ->
-            LedgerButton(contract.name, { actions.onSelectContract(contract.id) }, Modifier.fillMaxWidth(), if (contract.id == state.selectedContractId) LedgerButtonVariant.PRIMARY else LedgerButtonVariant.SECONDARY)
+        if (state.snapshot.contracts.isEmpty()) {
+            LedgerText(stringResource(R.string.loan_contract_required), LedgerTextRole.SUPPORTING)
+            LedgerButton(stringResource(R.string.loan_add), { actions.onNavigate("LOA-002", null, null) }, Modifier.fillMaxWidth())
+        } else {
+            LedgerChoiceSelector(
+                stringResource(R.string.loan_contract),
+                state.snapshot.contracts.indexOfFirst { it.id == state.selectedContractId }.coerceAtLeast(0),
+                state.snapshot.contracts.map { it.name },
+                { actions.onSelectContract(state.snapshot.contracts[it].id) },
+            )
         }
     }
 }
@@ -595,13 +641,12 @@ private fun AccountSelector(state: LoanFeatureState, receiving: Boolean, actions
         if (accounts.isEmpty()) {
             LedgerText(stringResource(R.string.loan_no_compatible_account), LedgerTextRole.SUPPORTING)
         } else {
-            accounts.forEach { account ->
-                LedgerChoiceRow(
-                    "${account.name} · ${account.currency.value}",
-                    state.selectedPaymentAccountId == account.id,
-                    { actions.onSelectPaymentAccount(account.id) },
-                )
-            }
+            LedgerChoiceSelector(
+                stringResource(if (receiving) R.string.loan_receiving_account else R.string.loan_payment_account),
+                accounts.indexOfFirst { it.id == state.selectedPaymentAccountId }.coerceAtLeast(0),
+                accounts.map { "${it.name} · ${it.currency.value}" },
+                { actions.onSelectPaymentAccount(accounts[it].id) },
+            )
         }
     }
 }
@@ -610,8 +655,7 @@ private fun AccountSelector(state: LoanFeatureState, receiving: Boolean, actions
 private fun OperationDateTimeField(state: LoanFeatureState, onClick: () -> Unit) {
     val zone = state.operationZoneId ?: LedgerTheme.timeZone
     val occurredAt = state.operationOccurredAt ?: Instant.EPOCH
-    val formatted = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-        .withLocale(LocalLocale.current.platformLocale)
+    val formatted = LedgerDateFormatterRuntime.dateTimeFormatter(LocalLocale.current.platformLocale)
         .withZone(zone)
         .format(occurredAt)
     SelectorField(stringResource(R.string.loan_operation_time), formatted, onClick, supportingText = zone.id)
@@ -647,12 +691,13 @@ private fun PaymentComponents(state: LoanFeatureState, actions: LoanActions) {
 @Composable
 private fun TrancheAllocation(state: LoanFeatureState, title: String, actions: LoanActions) {
     FormSection(title) {
-        state.contract?.tranches?.forEach { tranche ->
-            LedgerButton(
-                "${tranche.name} · ${CreditPolicy.money(tranche.remainingPrincipalMinor, requireNotNull(state.contract).currency, LocalLocale.current.platformLocale).formatted}",
-                { actions.onSelectTranche(tranche.id) },
-                Modifier.fillMaxWidth(),
-                if (tranche.id == state.selectedTrancheId) LedgerButtonVariant.PRIMARY else LedgerButtonVariant.SECONDARY,
+        val tranches = state.contract?.tranches.orEmpty()
+        if (tranches.isNotEmpty()) {
+            LedgerChoiceSelector(
+                title,
+                tranches.indexOfFirst { it.id == state.selectedTrancheId }.coerceAtLeast(0),
+                tranches.map { "${it.name} · ${CreditPolicy.money(it.remainingPrincipalMinor, requireNotNull(state.contract).currency, LocalLocale.current.platformLocale).formatted}" },
+                { actions.onSelectTranche(tranches[it].id) },
             )
         }
     }
@@ -670,19 +715,20 @@ private fun ScheduleInstallmentSelector(state: LoanFeatureState, actions: LoanAc
         if (openItems.isEmpty()) {
             LedgerText(stringResource(R.string.loan_no_open_installment), LedgerTextRole.SUPPORTING)
         } else {
-            openItems.forEach { item ->
-                val amount = item.principalMinor + item.interestMinor + item.feeMinor
-                LedgerChoiceRow(
+            LedgerChoiceSelector(
+                stringResource(R.string.loan_schedule_installment),
+                openItems.indexOfFirst { it.installmentNumber == state.selectedScheduleInstallmentNumber }.coerceAtLeast(0),
+                openItems.map { item ->
+                    val amount = item.principalMinor + item.interestMinor + item.feeMinor
                     stringResource(
                         R.string.loan_schedule_installment_option,
                         item.installmentNumber,
                         item.plannedDate.localized(locale),
                         CreditPolicy.money(amount, requireNotNull(state.contract).currency, locale).formatted,
-                    ),
-                    state.selectedScheduleInstallmentNumber == item.installmentNumber,
-                    { actions.onSelectScheduleInstallment(item.installmentNumber) },
-                )
-            }
+                    )
+                },
+                { actions.onSelectScheduleInstallment(openItems[it].installmentNumber) },
+            )
         }
     }
 }
@@ -698,9 +744,16 @@ private fun StrategySelector(state: LoanFeatureState, actions: LoanActions) {
 
 @Composable
 private fun LoanSummary(contracts: List<LoanContractView>) {
-    val first = contracts.first()
-    val total = contracts.fold(0L) { sum, contract -> Math.addExact(sum, contract.remainingPrincipalMinor) }
-    MetricCard(stringResource(R.string.loan_total_remaining), CreditPolicy.money(total, first.currency, LocalLocale.current.platformLocale), Modifier.fillMaxWidth(), MetricCardVariant.EMPHASIZED)
+    val locale = LocalLocale.current.platformLocale
+    contracts.groupBy(LoanContractView::currency).toSortedMap(compareBy { it.value }).forEach { (currency, sameCurrency) ->
+        val total = sameCurrency.fold(0L) { sum, contract -> Math.addExact(sum, contract.remainingPrincipalMinor) }
+        MetricCard(
+            stringResource(R.string.loan_total_remaining_currency, currency.value),
+            CreditPolicy.money(total, currency, locale),
+            Modifier.fillMaxWidth(),
+            MetricCardVariant.EMPHASIZED,
+        )
+    }
 }
 
 @Composable
@@ -742,7 +795,10 @@ private fun TrancheCard(tranche: LoanTrancheView, contract: LoanContractView, ac
 
 @Composable
 private fun NextPayment(contract: LoanContractView) {
-    val next = contract.tranches.flatMap { it.schedule }.minByOrNull { it.plannedDate }
+    val next = contract.tranches.flatMap { it.schedule }.filter { row ->
+        Math.addExact(Math.addExact(row.actualPrincipalMinor, row.actualInterestMinor), Math.addExact(row.actualFeeMinor, row.actualPenaltyMinor)) <
+            Math.addExact(Math.addExact(row.principalMinor, row.interestMinor), row.feeMinor)
+    }.minByOrNull { it.plannedDate }
     if (next == null) {
         LedgerText(stringResource(R.string.loan_no_future_payment), LedgerTextRole.SUPPORTING)
     } else {
@@ -790,11 +846,15 @@ private fun ScheduleTable(
     actualOnly: Boolean = false,
 ) {
     val locale = LocalLocale.current.platformLocale
+    var pageIndex by rememberSaveable(rows) { mutableIntStateOf(0) }
+    val pageCount = maxOf(1, (rows.size + LOAN_SCHEDULE_PAGE_SIZE - 1) / LOAN_SCHEDULE_PAGE_SIZE)
+    if (pageIndex >= pageCount) pageIndex = pageCount - 1
+    val pageRows = rows.drop(pageIndex * LOAN_SCHEDULE_PAGE_SIZE).take(LOAN_SCHEDULE_PAGE_SIZE)
     AccessibleDataTable(
         AccessibleTableUiModel(
             caption = stringResource(R.string.loan_schedule_table),
             columnHeaders = listOf(stringResource(R.string.loan_term), stringResource(R.string.loan_date), stringResource(R.string.loan_principal), stringResource(R.string.loan_interest), stringResource(R.string.loan_fee_component), stringResource(R.string.loan_penalty_component), stringResource(R.string.loan_remaining_principal)),
-            rows = rows.take(60).map {
+            rows = pageRows.map {
                 val principal = if (actualOnly) it.actualPrincipalMinor else it.principalMinor
                 val interest = if (actualOnly) it.actualInterestMinor else it.interestMinor
                 val fee = if (actualOnly) it.actualFeeMinor else it.feeMinor
@@ -806,6 +866,10 @@ private fun ScheduleTable(
                 )
             },
         ),
+        pageIndex = pageIndex,
+        pageCount = pageCount,
+        onPreviousPage = { pageIndex = (pageIndex - 1).coerceAtLeast(0) },
+        onNextPage = { pageIndex = (pageIndex + 1).coerceAtMost(pageCount - 1) },
     )
 }
 
@@ -953,7 +1017,7 @@ private fun loanComponentLabel(component: LoanPaymentComponent): String = string
 
 @Composable
 private fun LoanDatePicker(value: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    val initial = value.toLocalDateOrNull() ?: LocalDate.now()
+    val initial = value.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
     LedgerDatePickerFlow(
         initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         { millis -> onConfirm(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()) },
@@ -961,7 +1025,9 @@ private fun LoanDatePicker(value: String, onConfirm: (String) -> Unit, onDismiss
     )
 }
 
-private fun LocalDate.localized(locale: java.util.Locale): String = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(this)
+private fun LocalDate.localized(locale: java.util.Locale): String = LedgerDateFormatterRuntime.formatter(locale).format(this)
 private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()
 
 private fun Map<String, String>.loanId(name: String): StableId? = get(name)?.let { StableId.parse(it).getOrNull() }
+
+private const val LOAN_SCHEDULE_PAGE_SIZE = 50

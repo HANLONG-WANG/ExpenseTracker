@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -31,6 +32,9 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
+import app.ledger.core.designsystem.LedgerCheckboxRow
+import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerChoiceSelector
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
@@ -40,6 +44,7 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
@@ -127,15 +132,20 @@ private fun SettlementEditor(state: SettlementFeatureState, actions: SettlementA
         }
         item {
             FormSection(stringResource(R.string.settlement_project), description = stringResource(R.string.settlement_project_support)) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                    LedgerButton(stringResource(R.string.settlement_no_project), { actions.onSelectProject(null) }, variant = if (state.draft.projectId == null) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
-                    state.snapshot.projects.filter { it.active }.forEach { project ->
-                        LedgerButton(project.name, { actions.onSelectProject(project.id) }, variant = if (state.draft.projectId == project.id) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
-                    }
-                }
+                val projects = state.snapshot.projects.filter { it.active }
+                val projectIds = listOf<app.ledger.core.common.StableId?>(null) + projects.map { it.id }
+                LedgerChoiceSelector(
+                    stringResource(R.string.settlement_project),
+                    projectIds.indexOf(state.draft.projectId).coerceAtLeast(0),
+                    listOf(stringResource(R.string.settlement_no_project)) + projects.map { it.name },
+                    { actions.onSelectProject(projectIds[it]) },
+                )
             }
         }
         item { ParticipantChips(state, actions) }
+        if (state.draft.participants.count { it.included } < 2) {
+            item { LedgerBanner(stringResource(R.string.settlement_minimum_participants), LedgerBannerVariant.WARNING) }
+        }
         item { LedgerTextField(state.draft.participantName, { actions.onFieldChanged(SettlementField.PARTICIPANT_NAME, it) }, stringResource(R.string.settlement_participant_name), Modifier.fillMaxWidth()) }
         item { LedgerButton(stringResource(R.string.settlement_add_participant), actions.onAddParticipant, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
     }
@@ -152,7 +162,7 @@ private fun ParticipantManager(state: SettlementFeatureState, actions: Settlemen
     } else {
         item { LedgerBanner(stringResource(R.string.settlement_unique_self), LedgerBannerVariant.INFO) }
         items(state.draft.participants, key = { it.id.toString() }) { participant ->
-            LedgerCard(Modifier.fillMaxWidth(), onClick = { actions.onToggleParticipant(participant.id) }) {
+            LedgerCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         LedgerText(participant.name, LedgerTextRole.BODY)
@@ -167,6 +177,17 @@ private fun ParticipantManager(state: SettlementFeatureState, actions: Settlemen
                             if (participant.included) LedgerStatusVariant.POSITIVE else LedgerStatusVariant.NEUTRAL,
                         )
                     }
+                    LedgerCheckboxRow(
+                        stringResource(R.string.settlement_included),
+                        participant.included,
+                        { actions.onToggleParticipant(participant.id) },
+                        enabled = !participant.isSelf,
+                    )
+                    LedgerChoiceRow(
+                        stringResource(R.string.settlement_mark_self, participant.name),
+                        participant.isSelf,
+                        { actions.onSetSelfParticipant(participant.id) },
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                         LedgerButton(stringResource(R.string.settlement_move_up), { actions.onMoveParticipant(participant.id, -1) }, variant = LedgerButtonVariant.TEXT)
                         LedgerButton(stringResource(R.string.settlement_move_down), { actions.onMoveParticipant(participant.id, 1) }, variant = LedgerButtonVariant.TEXT)
@@ -411,12 +432,29 @@ private fun PositionSummary(activity: SettlementActivityView) {
 @Composable
 private fun ParticipantChips(state: SettlementFeatureState, actions: SettlementActions) {
     FormSection(stringResource(R.string.settlement_participants), description = stringResource(R.string.settlement_participants_support)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+        Column(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
             state.draft.participants.forEach { participant ->
-                LedgerButton(
-                    if (participant.isSelf) stringResource(R.string.settlement_self_name, participant.name) else participant.name,
-                    { actions.onToggleParticipant(participant.id) },
-                    variant = if (participant.included) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT,
+                LedgerCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.xs)) {
+                        LedgerText(participant.name, LedgerTextRole.SECTION)
+                        LedgerCheckboxRow(
+                            stringResource(R.string.settlement_included),
+                            participant.included,
+                            { actions.onToggleParticipant(participant.id) },
+                            enabled = !participant.isSelf,
+                        )
+                        LedgerChoiceRow(
+                            stringResource(R.string.settlement_mark_self, participant.name),
+                            participant.isSelf,
+                            { actions.onSetSelfParticipant(participant.id) },
+                        )
+                    }
+                }
+            }
+            if (state.draft.participants.none { it.isSelf }) {
+                LedgerBanner(
+                    stringResource(R.string.settlement_choose_self),
+                    LedgerBannerVariant.WARNING,
                 )
             }
         }
@@ -426,18 +464,17 @@ private fun ParticipantChips(state: SettlementFeatureState, actions: SettlementA
 @Composable
 private fun ParticipantSelector(label: String, activity: SettlementActivityView, selected: app.ledger.core.common.StableId?, onSelect: (app.ledger.core.common.StableId) -> Unit) {
     FormSection(label) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-            activity.participants.forEach { participant -> LedgerButton(participant.name, { onSelect(participant.id) }, variant = if (participant.id == selected) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT) }
+        if (activity.participants.isNotEmpty()) {
+            LedgerChoiceSelector(label, activity.participants.indexOfFirst { it.id == selected }.coerceAtLeast(0), activity.participants.map { it.name }, { onSelect(activity.participants[it].id) })
         }
     }
 }
 
 @Composable
 private fun AccountSelector(state: SettlementFeatureState, actions: SettlementActions) = FormSection(stringResource(R.string.settlement_account)) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-        state.snapshot.accounts.filter { it.active && it.currency == state.activity?.currency }.forEach { account ->
-            LedgerButton(account.name, { actions.onSelectAccount(account.id) }, variant = if (state.draft.accountId == account.id) LedgerButtonVariant.TONAL else LedgerButtonVariant.TEXT)
-        }
+    val accounts = state.snapshot.accounts.filter { it.active && it.currency == state.activity?.currency }
+    if (accounts.isNotEmpty()) {
+        LedgerChoiceSelector(stringResource(R.string.settlement_account), accounts.indexOfFirst { it.id == state.draft.accountId }.coerceAtLeast(0), accounts.map { it.name }, { actions.onSelectAccount(accounts[it].id) })
     }
 }
 
@@ -460,6 +497,7 @@ private fun StateBanner(state: SettlementFeatureState) {
 private fun SettlementList(modifier: Modifier, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) = LazyColumn(
     modifier.fillMaxSize().padding(horizontal = LedgerTheme.spacing.md),
     verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+    contentPadding = PaddingValues(bottom = LedgerTheme.dimensions.bottomActionInset + LedgerTheme.spacing.xxl),
     content = content,
 )
 
@@ -482,7 +520,7 @@ private fun money(minor: Long, activity: SettlementActivityView, locale: java.ut
 
 @Composable
 private fun SettlementDatePicker(value: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    val initial = value.toLocalDateOrNull() ?: LocalDate.now()
+    val initial = value.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
     LedgerDatePickerFlow(
         initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         { millis -> onConfirm(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()) },
@@ -490,7 +528,7 @@ private fun SettlementDatePicker(value: String, onConfirm: (String) -> Unit, onD
     )
 }
 
-private fun LocalDate.localized(locale: java.util.Locale): String = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(this)
+private fun LocalDate.localized(locale: java.util.Locale): String = LedgerDateFormatterRuntime.formatter(locale).format(this)
 @Composable
-private fun Instant.localized(locale: java.util.Locale): String = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM).withLocale(locale).withZone(LedgerTheme.timeZone).format(this)
+private fun Instant.localized(locale: java.util.Locale): String = LedgerDateFormatterRuntime.dateTimeFormatter(locale, FormatStyle.MEDIUM).withZone(LedgerTheme.timeZone).format(this)
 private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()

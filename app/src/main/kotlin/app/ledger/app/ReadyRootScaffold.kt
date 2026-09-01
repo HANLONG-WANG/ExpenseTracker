@@ -11,6 +11,7 @@ package app.ledger.app
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -20,7 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -34,6 +34,15 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerIconButton
+import app.ledger.core.designsystem.LedgerDialog
+import app.ledger.core.designsystem.LocalLedgerFormChangeReporter
+import app.ledger.core.designsystem.LocalLedgerAmountsVisible
+import app.ledger.core.designsystem.LocalLedgerRetainedStateScopeKey
+import app.ledger.core.designsystem.LocalLedgerRetainedStateStore
+import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
+import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
+import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
+import app.ledger.core.designsystem.LedgerHaptic
 import app.ledger.core.designsystem.LedgerNavigationBar
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerSnackbarController
@@ -41,6 +50,7 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerTopAppBar
 import app.ledger.core.designsystem.LedgerTopAppBarVariant
 import app.ledger.core.designsystem.LedgerTopLevel
+import app.ledger.core.designsystem.performLedgerHaptic
 import app.ledger.core.navigation.LedgerRouteContract
 import app.ledger.core.navigation.LedgerDestinationKey
 import app.ledger.core.navigation.LedgerScreenUiAction
@@ -71,16 +81,22 @@ internal fun ReadyRootScaffold(
     val haptic = LocalHapticFeedback.current
     LaunchedEffect(viewModel) {
         viewModel.successHapticEvents.collect {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            haptic.performLedgerHaptic(LedgerHaptic.SUCCESS)
         }
     }
     val navigator = viewModel.navigator
     var navigationEpoch by remember { mutableIntStateOf(0) }
-    var accountAmountsVisible by rememberSaveable { mutableStateOf(true) }
+    val persistedSettings by viewModel.settings.collectAsStateWithLifecycle()
+    var accountAmountsVisible by rememberSaveable { mutableStateOf(!persistedSettings.defaultAmountsHidden) }
+    LaunchedEffect(persistedSettings.defaultAmountsHidden) {
+        accountAmountsVisible = !persistedSettings.defaultAmountsHidden
+    }
     // FiveStackNavigator is deliberately platform-independent rather than SnapshotState-backed.
     // Reading the epoch while deriving navigation values makes every stack mutation invalidate
     // the whole shell (top bar, destination and selected bottom item), not only NavDisplay.
-    val selected = navigationEpoch.let { navigator.currentTopLevel.toDesignTopLevel() }
+    val navigatorVersion = navigator.version
+    val currentTopLevel = (navigationEpoch + navigatorVersion).let { navigator.currentTopLevel }
+    val selected = currentTopLevel.toDesignTopLevel()
     val dispatchScreenAction: (LedgerScreenUiAction) -> Unit = { action ->
         when (action) {
             LedgerScreenUiAction.Back -> viewModel.requestRootBack()
@@ -130,11 +146,30 @@ internal fun ReadyRootScaffold(
         }
     }
     SideEffect { viewModel.screenVisibilityChanged(navigator.currentKey.contract.screenId.value) }
-    LedgerScaffold(
+    val currentScreenId = navigator.currentKey.contract.screenId.value
+    val currentRouteScope = viewModel.currentRouteScopeKey()
+    val generalUnsavedPrompt by viewModel.generalUnsavedPrompt.collectAsStateWithLifecycle()
+    SideEffect { viewModel.syncRetainedFormScopes(viewModel.activeRouteScopeKeys()) }
+    CompositionLocalProvider(
+        LocalLedgerAmountsVisible provides accountAmountsVisible,
+        LocalLedgerRetainedStateStore provides viewModel.retainedFormStateStore,
+        LocalLedgerRetainedStateScopeKey provides currentRouteScope,
+        LocalLedgerScrollToTopRequest provides navigator.scrollRootRequestVersion(currentTopLevel),
+        LocalLedgerRestoredScrollState provides viewModel.scrollState(currentTopLevel),
+        LocalLedgerScrollStateReporter provides { key, offset ->
+            viewModel.updateScrollState(currentTopLevel, key, offset)
+        },
+    ) {
+        LedgerScaffold(
         modifier = Modifier.fillMaxSize(),
         snackbarController = snackbarController,
+        contentHorizontalPadding = currentScreenId !in SELF_SCAFFOLDED_SCREEN_IDS &&
+            SELF_SCAFFOLDED_SCREEN_PREFIXES.none(currentScreenId::startsWith),
         topBar = {
             val key = navigator.currentKey
+            if (key.contract.screenId.value in GOVERNED_DIALOG_DESTINATIONS || key.contract.screenId.value in GOVERNED_SHEET_DESTINATIONS) {
+                return@LedgerScaffold
+            }
             if (
                 key.contract.screenId.value.startsWith("IMP-") ||
                 key.contract.screenId.value.startsWith("EXP-") ||
@@ -155,7 +190,7 @@ internal fun ReadyRootScaffold(
                     ?: refundDestinationTitleOrNull(key.contract.screenId.value)
                     ?: creditDestinationTitleOrNull(key.contract.screenId.value)
                     ?: installmentDestinationTitleOrNull(key.contract.screenId.value)
-                    ?: loanDestinationTitleOrNull(key.contract.screenId.value)
+                    ?: loanDestinationTitleOrNull(key.contract.screenId.value, viewModel.liabilityCreditOnly)
                     ?: destinationTitle(key),
                 variant = if (topLevel) LedgerTopAppBarVariant.TOP_LEVEL else LedgerTopAppBarVariant.BACK,
                 onNavigation = {
@@ -274,6 +309,17 @@ internal fun ReadyRootScaffold(
             null
         },
     ) { padding ->
+        val navigateToHelpTopic: (String) -> Unit = { topic ->
+            val helpScreenId = ScreenId("G-008")
+            navigator.navigate(
+                LedgerRouteContract.destination(
+                    helpScreenId,
+                    mapOf("topicKey" to LedgerRouteContract.opaqueKeyArgument(helpScreenId, "topicKey", topic)),
+                ),
+                SessionGateState.READY,
+            )
+            navigationEpoch += 1
+        }
         val commonDestination: @Composable (LedgerDestinationKey) -> Unit = { key ->
             RootDestination(
                 key,
@@ -286,6 +332,7 @@ internal fun ReadyRootScaffold(
                 currencySettings = currencySettings,
                 journalState = journalState,
                 accountAmountsVisible = accountAmountsVisible,
+                visibleCurrencyCodes = persistedSettings.visibleCurrencyCodesList,
                 onAddAttachment = launchAttachmentPicker,
                 onBack = {
                     navigator.pop()
@@ -300,25 +347,19 @@ internal fun ReadyRootScaffold(
                     navigationEpoch += 1
                 },
                 onHelp = {
-                    val helpScreenId = ScreenId("G-008")
-                    navigator.navigate(
-                        LedgerRouteContract.destination(
-                            helpScreenId,
-                            mapOf(
-                                "topicKey" to LedgerRouteContract.opaqueKeyArgument(
-                                    helpScreenId,
-                                    "topicKey",
-                                    "getting-started",
-                                ),
-                            ),
-                        ),
-                        SessionGateState.READY,
-                    )
-                    navigationEpoch += 1
+                    navigateToHelpTopic("getting-started")
                 },
+                onPrivacyPolicy = { navigateToHelpTopic("privacy") },
                 onNavigationChanged = { navigationEpoch += 1 },
             )
         }
+        CompositionLocalProvider(
+            LocalLedgerFormChangeReporter provides if (currentScreenId in DIRTY_TRACKED_SCREEN_IDS) {
+                viewModel::markCurrentFormDirty
+            } else {
+                {}
+            },
+        ) {
         NavDisplay(
             backStack = navigator.currentBackStack,
             onBack = {
@@ -469,8 +510,55 @@ internal fun ReadyRootScaffold(
                 vaultDestinations(dispatchScreenAction) { state, _ -> commonDestination(state.destination) }
             },
         )
+        }
+        }
+        if (generalUnsavedPrompt) {
+            LedgerDialog(
+                title = stringResource(R.string.global_unsaved_title),
+                message = stringResource(R.string.global_unsaved_message),
+                confirmLabel = stringResource(R.string.global_discard_changes),
+                onConfirm = viewModel::discardGeneralFormChanges,
+                onDismiss = viewModel::keepEditingGeneralForm,
+                danger = true,
+                dismissLabel = stringResource(R.string.global_keep_editing),
+            )
+        }
     }
 }
+
+private val SELF_SCAFFOLDED_SCREEN_PREFIXES = setOf("IMP-", "EXP-", "BKP-", "RST-")
+
+private val SELF_SCAFFOLDED_SCREEN_IDS = setOf(
+    "CLR-002",
+    "SYS-003",
+    "CAT-002",
+    "MER-002",
+    "PLC-002",
+    "PRJ-002",
+    "GOL-002",
+    "GOL-004",
+    "BUD-002",
+    "BUD-003",
+    "BUD-005",
+    "BUD-008",
+    "ANA-004",
+    "ANA-007",
+    "ANA-008",
+    "ANA-011",
+    "ANA-013",
+    "VLT-003",
+)
+
+private val DIRTY_TRACKED_SCREEN_IDS = setOf(
+    "REC-013", "REC-015", "REC-016", "REC-020", "REC-021", "REC-022", "REC-023", "REC-024", "REC-025",
+    "ACC-003", "ACC-004", "ACC-007", "ACC-010", "CAT-002", "CAT-003", "CAT-004", "MER-002", "MER-003", "PLC-002", "PLC-003",
+    "BUD-002", "BUD-004", "BUD-007", "BUD-008", "PRJ-002", "GOL-002", "GOL-004",
+    "CRD-002", "CRD-005", "CRD-006", "CRD-007", "CRD-008", "REC-014", "INS-002", "INS-004", "INS-006", "REC-027",
+    "LOA-002", "LOA-003", "LOA-004", "LOA-005", "REC-018", "REC-019",
+    "SET-002", "SET-003", "SET-006", "AUT-003", "AUT-005", "AUT-006", "AUT-010",
+    "ANA-004", "ANA-007", "ANA-008", "ANA-009", "ANA-010", "ANA-011", "ANA-013", "VLT-003",
+    "JRN-003", "JRN-005", "JRN-006", "JRN-012", "EXP-001", "BKP-002", "BKP-003", "BKP-004", "RST-002", "RST-004", "RST-005",
+)
 
 private fun TopLevelDestination.toDesignTopLevel(): LedgerTopLevel = if (this == TopLevelDestination.RECORD) {
     LedgerTopLevel.RECORD

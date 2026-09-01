@@ -53,6 +53,11 @@ internal class ConsumptionMapController(private val application: AnalyticsApplic
         it.copy(presentation = ConsumptionMapPresentation.entries[(it.presentation.ordinal + 1) % ConsumptionMapPresentation.entries.size])
     }
 
+    fun selectMode(period: ReportPeriod, value: ConsumptionMapMode) = mutate(period) { it.copy(mode = value) }
+    fun selectWeight(period: ReportPeriod, value: ConsumptionMapWeight) = mutate(period) { it.copy(weight = value) }
+    fun selectAggregation(period: ReportPeriod, value: ConsumptionMapAggregation) = mutate(period) { it.copy(aggregation = value) }
+    fun selectPresentation(period: ReportPeriod, value: ConsumptionMapPresentation) = mutate(period) { it.copy(presentation = value) }
+
     fun toggleSpecialTransactions(period: ReportPeriod) = mutate(period) {
         it.copy(filters = it.filters.withSpecialTransactions(it.filters.hidesTransfersRepaymentsAndLoans))
     }
@@ -79,6 +84,14 @@ internal class ConsumptionMapController(private val application: AnalyticsApplic
             else -> null
         }
         it.copy(filters = it.filters.copy(minimumBaseAmountMinor = minimum, maximumBaseAmountMinor = null))
+    }
+
+    fun selectFilter(period: ReportPeriod, dimension: ConsumptionMapFilterDimension, selectedId: StableId?) = mutate(period) {
+        it.copy(filters = ConsumptionMapFilterSelection.select(it.filters, dimension, selectedId))
+    }
+
+    fun selectAmount(period: ReportPeriod, minimumBaseAmountMinor: Long?) = mutate(period) {
+        it.copy(filters = it.filters.copy(minimumBaseAmountMinor = minimumBaseAmountMinor, maximumBaseAmountMinor = null))
     }
 
     fun removeFilter(period: ReportPeriod, stableKey: String) = mutate(period) {
@@ -121,7 +134,9 @@ internal class ConsumptionMapController(private val application: AnalyticsApplic
                     ),
                 )
             }
-            is DomainResult.Failure -> AnalysisLoadState.Failure("ANA-011", result.error.code)
+            is DomainResult.Failure -> AnalysisLoadState.Content(
+                baseState(AnalysisPresentation.NO_LOCATION_DATA).copy(failureCode = result.error.code),
+            )
         }
     }
 

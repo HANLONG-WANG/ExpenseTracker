@@ -6,8 +6,11 @@ import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +26,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -38,6 +43,8 @@ import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerEmptyState
+import app.ledger.core.designsystem.LedgerDateFormat
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerText
@@ -56,8 +63,6 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import java.util.Currency
 import java.util.Locale
 
@@ -66,6 +71,7 @@ class WidgetConfigurationActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         appWidgetId = intent?.getIntExtra(
             AppWidgetManager.EXTRA_APPWIDGET_ID,
             AppWidgetManager.INVALID_APPWIDGET_ID,
@@ -77,12 +83,25 @@ class WidgetConfigurationActivity : ComponentActivity() {
         }
         lifecycleScope.launch {
             val localizedContext = this@WidgetConfigurationActivity.withLanguageTag(LedgerWidgetRuntime.languageTag())
+            val ledgerDateFormat = LedgerWidgetRuntime.dateFormat().toLedgerDateFormat()
             setContent {
                 CompositionLocalProvider(
                     LocalContext provides localizedContext,
                     LocalConfiguration provides localizedContext.resources.configuration,
                 ) {
-                    LedgerTheme(ThemeMode.FOLLOW_SYSTEM, dynamicColor = false, reduceMotion = false) {
+                    val darkTheme = isSystemInDarkTheme()
+                    SideEffect {
+                        enableEdgeToEdge(
+                            statusBarStyle = if (darkTheme) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+                            navigationBarStyle = if (darkTheme) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+                        )
+                    }
+                    LedgerTheme(
+                        ThemeMode.FOLLOW_SYSTEM,
+                        dynamicColor = false,
+                        reduceMotion = false,
+                        ledgerDateFormat = ledgerDateFormat,
+                    ) {
                         WidgetConfigurationFlow(
                             appWidgetId = appWidgetId,
                             onCancel = ::finish,
@@ -97,12 +116,14 @@ class WidgetConfigurationActivity : ComponentActivity() {
     private fun save(configuration: LedgerWidgetConfiguration) {
         lifecycleScope.launch {
             LedgerWidgetRuntime.saveConfiguration(configuration)
-            val glanceId = GlanceAppWidgetManager(this@WidgetConfigurationActivity).getGlanceIdBy(appWidgetId)
-            LedgerGlanceWidget().update(this@WidgetConfigurationActivity, glanceId)
             setResult(
                 RESULT_OK,
                 Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId),
             )
+            runCatching {
+                val glanceId = GlanceAppWidgetManager(this@WidgetConfigurationActivity).getGlanceIdBy(appWidgetId)
+                LedgerGlanceWidget().update(this@WidgetConfigurationActivity, glanceId)
+            }
             finish()
         }
     }
@@ -129,12 +150,14 @@ internal fun WidgetConfigurationFlow(
     onCancel: () -> Unit,
     onSave: (LedgerWidgetConfiguration) -> Unit,
 ) {
-    var step by remember { mutableStateOf(WidgetConfigurationStep.TYPE) }
-    var selectedType by remember { mutableStateOf<LedgerWidgetType?>(null) }
-    var selection by remember { mutableStateOf<WidgetSelection?>(null) }
-    var revealAmounts by remember { mutableStateOf(false) }
+    var step by rememberSaveable { mutableStateOf(WidgetConfigurationStep.TYPE) }
+    var selectedType by rememberSaveable { mutableStateOf<LedgerWidgetType?>(null) }
+    var selectionId by rememberSaveable { mutableStateOf<String?>(null) }
+    var revealAmounts by rememberSaveable { mutableStateOf(false) }
     var data by remember { mutableStateOf<WidgetConfigurationData?>(null) }
     var loadFinished by remember { mutableStateOf(false) }
+    val selection = selectedType?.let { type -> data?.let(type::selections) }
+        ?.singleOrNull { it.id.toString() == selectionId }
     LaunchedEffect(Unit) {
         val bookId = LedgerWidgetRuntime.activeBookId()
         if (bookId != null) {
@@ -176,7 +199,7 @@ internal fun WidgetConfigurationFlow(
                 WidgetConfigurationStep.TYPE -> WidgetTypeGrid(
                     onSelected = {
                         selectedType = it
-                        selection = null
+                        selectionId = null
                         step = WidgetConfigurationStep.DATA
                     },
                     Modifier.padding(padding),
@@ -185,7 +208,7 @@ internal fun WidgetConfigurationFlow(
                     requireNotNull(selectedType),
                     requireNotNull(data),
                     selection,
-                    onSelection = { selection = it },
+                    onSelection = { selectionId = it.id.toString() },
                     onNext = { step = WidgetConfigurationStep.PRIVACY },
                     onBack = { step = WidgetConfigurationStep.TYPE },
                     modifier = Modifier.padding(padding),
@@ -326,6 +349,8 @@ private fun WidgetContentPreview(
     revealAmounts: Boolean,
 ) {
     val book = data.bundle.book
+    val locale = LocalConfiguration.current.locales[0]
+    val amountText: (Long, String) -> String = { minor, currency -> previewAmount(minor, currency, revealAmounts, locale) }
     LedgerCard(Modifier.fillMaxWidth()) {
         Column(
             Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm),
@@ -340,60 +365,60 @@ private fun WidgetContentPreview(
                 }
                 LedgerWidgetType.ACCOUNT -> data.bundle.accounts.singleOrNull { it.accountId == selection?.id }?.let { account ->
                     LedgerText(account.displayName, LedgerTextRole.BODY)
-                    LedgerText(previewAmount(account.balanceMinor, account.currency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(amountText(account.balanceMinor, account.currency), LedgerTextRole.DISPLAY)
                     LedgerText(
-                        stringResource(R.string.widget_available_value, previewAmount(account.availableMinor, account.currency, revealAmounts)),
+                        stringResource(R.string.widget_available_value, amountText(account.availableMinor, account.currency)),
                         LedgerTextRole.SUPPORTING,
                     )
                 } ?: LedgerText(stringResource(R.string.widget_no_data), LedgerTextRole.BODY)
                 LedgerWidgetType.CREDIT_CARD -> data.bundle.creditAccounts.singleOrNull { it.accountId == selection?.id }?.let { credit ->
                     LedgerText(credit.displayName, LedgerTextRole.BODY)
-                    LedgerText(previewAmount(credit.statementRemainingMinor ?: credit.debtMinor, credit.currency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(amountText(credit.statementRemainingMinor ?: credit.debtMinor, credit.currency), LedgerTextRole.DISPLAY)
                     credit.statementDueDate?.let { due ->
-                        LedgerText(stringResource(R.string.widget_due_date_value, due.widgetDate()), LedgerTextRole.SUPPORTING)
+                        LedgerText(stringResource(R.string.widget_due_date_value, due.widgetDate(locale)), LedgerTextRole.SUPPORTING)
                     }
                 } ?: LedgerText(stringResource(R.string.widget_no_data), LedgerTextRole.BODY)
                 LedgerWidgetType.GOAL -> data.bundle.goals.singleOrNull { it.goalId == selection?.id }?.let { goal ->
                     LedgerText(goal.displayName, LedgerTextRole.BODY)
-                    LedgerText(previewAmount(goal.balanceMinor, goal.currency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(amountText(goal.balanceMinor, goal.currency), LedgerTextRole.DISPLAY)
                     val progress = if (goal.targetMinor > 0L) {
-                        NumberFormat.getPercentInstance().format(goal.balanceMinor.toDouble() / goal.targetMinor.toDouble())
+                        NumberFormat.getPercentInstance(locale).format(goal.balanceMinor.toDouble() / goal.targetMinor.toDouble())
                     } else {
                         stringResource(R.string.widget_no_data)
                     }
                     LedgerText(stringResource(R.string.widget_progress_value, progress), LedgerTextRole.SUPPORTING)
                 } ?: LedgerText(stringResource(R.string.widget_no_data), LedgerTextRole.BODY)
                 LedgerWidgetType.MONTH_CONSUMPTION -> book?.let {
-                    LedgerText(previewAmount(it.monthConsumptionBaseMinor, it.baseCurrency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(amountText(it.monthConsumptionBaseMinor, it.baseCurrency), LedgerTextRole.DISPLAY)
                     LedgerText(
                         stringResource(
                             R.string.widget_previous_month_comparison,
-                            previewAmount(it.monthConsumptionBaseMinor - it.previousMonthConsumptionBaseMinor, it.baseCurrency, revealAmounts),
+                            amountText(it.monthConsumptionBaseMinor - it.previousMonthConsumptionBaseMinor, it.baseCurrency),
                         ),
                         LedgerTextRole.SUPPORTING,
                     )
                 }
                 LedgerWidgetType.MONTH_BUDGET -> book?.let {
-                    LedgerText(previewAmount(it.monthBudgetAvailableBaseMinor ?: 0L, it.baseCurrency, revealAmounts), LedgerTextRole.DISPLAY)
-                    LedgerText(stringResource(R.string.widget_used_value, previewAmount(it.monthBudgetUsedBaseMinor ?: 0L, it.baseCurrency, revealAmounts)), LedgerTextRole.SUPPORTING)
+                    LedgerText(amountText(it.monthBudgetAvailableBaseMinor ?: 0L, it.baseCurrency), LedgerTextRole.DISPLAY)
+                    LedgerText(stringResource(R.string.widget_used_value, amountText(it.monthBudgetUsedBaseMinor ?: 0L, it.baseCurrency)), LedgerTextRole.SUPPORTING)
                 }
                 LedgerWidgetType.TODAY_AVAILABLE -> book?.let {
-                    LedgerText(previewAmount(it.todayAvailableBaseMinor ?: 0L, it.baseCurrency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(amountText(it.todayAvailableBaseMinor ?: 0L, it.baseCurrency), LedgerTextRole.DISPLAY)
                 }
                 LedgerWidgetType.CORE_NET_ASSETS -> book?.let {
-                    LedgerText(previewAmount(it.coreNetFinancialAssetsBaseMinor, it.baseCurrency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(amountText(it.coreNetFinancialAssetsBaseMinor, it.baseCurrency), LedgerTextRole.DISPLAY)
                     LedgerText(
-                        stringResource(R.string.widget_snapshot_change, previewAmount(it.coreNetFinancialAssetsBaseMinor - it.previousCoreNetFinancialAssetsBaseMinor, it.baseCurrency, revealAmounts)),
+                        stringResource(R.string.widget_snapshot_change, amountText(it.coreNetFinancialAssetsBaseMinor - it.previousCoreNetFinancialAssetsBaseMinor, it.baseCurrency)),
                         LedgerTextRole.SUPPORTING,
                     )
                 }
                 LedgerWidgetType.FINANCIAL_OVERVIEW -> book?.let {
-                    LedgerText(previewAmount(it.coreNetFinancialAssetsBaseMinor, it.baseCurrency, revealAmounts), LedgerTextRole.DISPLAY)
+                    LedgerText(amountText(it.coreNetFinancialAssetsBaseMinor, it.baseCurrency), LedgerTextRole.DISPLAY)
                     LedgerText(
                         stringResource(
                             R.string.widget_overview_line,
-                            previewAmount(it.monthConsumptionBaseMinor, it.baseCurrency, revealAmounts),
-                            previewAmount(it.todayAvailableBaseMinor ?: 0L, it.baseCurrency, revealAmounts),
+                            amountText(it.monthConsumptionBaseMinor, it.baseCurrency),
+                            amountText(it.todayAvailableBaseMinor ?: 0L, it.baseCurrency),
                         ),
                         LedgerTextRole.SUPPORTING,
                     )
@@ -403,20 +428,27 @@ private fun WidgetContentPreview(
     }
 }
 
-private fun previewAmount(minor: Long, currencyCode: String, reveal: Boolean): String {
+private fun previewAmount(minor: Long, currencyCode: String, reveal: Boolean, locale: Locale): String {
     if (!reveal) return "••••"
     return runCatching {
         val currency = Currency.getInstance(currencyCode)
         val digits = currency.defaultFractionDigits.coerceAtLeast(0)
-        NumberFormat.getCurrencyInstance(Locale.getDefault()).apply { this.currency = currency }.format(
+        NumberFormat.getCurrencyInstance(locale).apply { this.currency = currency }.format(
             BigDecimal.valueOf(minor).movePointLeft(digits).setScale(digits, RoundingMode.UNNECESSARY),
         )
-    }.getOrElse { NumberFormat.getIntegerInstance().format(minor) }
+    }.getOrElse { "—" }
 }
 
-private fun Int.widgetDate(): String {
+private fun Int.widgetDate(locale: Locale): String {
     val date = LocalDate.of(this / 10_000, this / 100 % 100, this % 100)
-    return DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault()).format(date)
+    return LedgerDateFormatterRuntime.formatter(locale).format(date)
+}
+
+private fun String.toLedgerDateFormat(): LedgerDateFormat = when (this) {
+    "DATE_FORMAT_YEAR_MONTH_DAY" -> LedgerDateFormat.YEAR_MONTH_DAY
+    "DATE_FORMAT_DAY_MONTH_YEAR" -> LedgerDateFormat.DAY_MONTH_YEAR
+    "DATE_FORMAT_MONTH_DAY_YEAR" -> LedgerDateFormat.MONTH_DAY_YEAR
+    else -> LedgerDateFormat.LOCALE_DEFAULT
 }
 
 private fun LedgerWidgetType.requiresSelection(): Boolean = this in setOf(

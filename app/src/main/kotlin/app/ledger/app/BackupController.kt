@@ -130,7 +130,7 @@ internal class BackupController(
             val tree = DocumentFile.fromTreeUri(applicationContext, uri)?.takeIf(DocumentFile::exists) ?: return false
             val handle = requireNotNull(candidateHandleId)
             SecureTransferHandleStore(applicationContext, keyProvider).save(activeBook, handle, tree.uri.toString())
-            mutableState.value = mutableState.value.copy(directoryPermissionGranted = true, repositoryLabel = uri.authority.orEmpty())
+            mutableState.value = mutableState.value.copy(directoryPermissionGranted = true, repositoryLabel = repositoryDirectoryLabel(uri))
             persistConfiguration()
             true
         } catch (_: SecurityException) {
@@ -264,10 +264,10 @@ internal class BackupController(
         mutableState.value = mutableState.value.copy(automaticBackup = enabled)
     }
     fun changeRetentionCount(value: String) {
-        mutableState.value = mutableState.value.copy(retentionCount = value.filter(Char::isDigit).take(4))
+        mutableState.value = mutableState.value.copy(retentionCount = value.filter(Char::isDigit).take(4), settingsValidationError = false)
     }
     fun changeRetentionDays(value: String) {
-        mutableState.value = mutableState.value.copy(retentionDays = value.filter(Char::isDigit).take(5))
+        mutableState.value = mutableState.value.copy(retentionDays = value.filter(Char::isDigit).take(5), settingsValidationError = false)
     }
     fun setIncludeVault(enabled: Boolean) {
         if (!enabled || mutableState.value.recoveryPasswordConfigured && mutableState.value.vaultBackupReady) {
@@ -307,7 +307,11 @@ internal class BackupController(
         mutableState.value = mutableState.value.copy(portableFileName = value.filterNot { it == '/' || it == '\\' || it.code < 0x20 }.take(180))
     }
 
-    fun saveSettings(): Boolean = persistConfiguration()
+    fun saveSettings(): Boolean {
+        val saved = persistConfiguration()
+        mutableState.value = mutableState.value.copy(settingsValidationError = !saved)
+        return saved
+    }
 
     fun selectSnapshot(snapshotId: String): Boolean {
         val snapshot = mutableState.value.snapshots.firstOrNull { it.snapshotId == snapshotId } ?: return false
@@ -574,10 +578,17 @@ internal class BackupController(
 
     private fun repositoryCustomLabel(activeBook: StableId, config: BackupConfiguration): String = if (config.repositoryKind == BackupRepositoryKind.USER_SELECTED_DIRECTORY) {
         SecureTransferHandleStore(applicationContext, keyProvider).read(activeBook, config.repositoryHandleId)
-            ?.substringBefore('\n')?.let(Uri::parse)?.authority.orEmpty()
+            ?.substringBefore('\n')?.let(Uri::parse)?.let(::repositoryDirectoryLabel).orEmpty()
     } else {
         ""
     }
+
+    private fun repositoryDirectoryLabel(uri: Uri): String = DocumentFile.fromTreeUri(applicationContext, uri)
+        ?.name
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?: uri.lastPathSegment?.substringAfterLast(':')?.takeIf(String::isNotBlank)
+        ?: applicationContext.getString(R.string.backup_system_folder)
 
     private fun estimateBackupBytes(activeBook: StableId): Long {
         val database = applicationContext.getDatabasePath(app.ledger.core.database.EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)

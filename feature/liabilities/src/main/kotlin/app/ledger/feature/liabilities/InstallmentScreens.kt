@@ -35,6 +35,7 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerChoiceSelector
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
@@ -45,6 +46,7 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
@@ -98,32 +100,22 @@ private fun InstallmentEditor(state: InstallmentFeatureState, actions: Installme
     val plan = state.plan
     val locale = LocalLocale.current.platformLocale
     var showFirstDatePicker by remember { mutableStateOf(false) }
-    var accountQuery by remember { mutableStateOf("") }
     val selectedCreditAccountId = purchase?.creditAccountId ?: plan?.creditAccountId
     val accountOptions = state.snapshot.purchases
         .filter { !it.alreadyLinked || it.transactionId == state.selectedPurchaseId }
         .distinctBy { it.creditAccountId }
-        .filter { accountQuery.isBlank() || it.creditAccountName.contains(accountQuery, ignoreCase = true) }
     ScreenList(modifier) {
         item {
             FormSection(stringResource(R.string.installment_credit_account)) {
-                SearchField(
-                    accountQuery,
-                    { accountQuery = it },
-                    placeholder = stringResource(R.string.installment_search_credit_account),
-                    onClear = { accountQuery = "" },
-                )
                 if (accountOptions.isEmpty()) {
                     LedgerText(stringResource(R.string.installment_no_credit_account), LedgerTextRole.SUPPORTING)
                 } else {
-                    accountOptions.forEach { option ->
-                        LedgerChoiceRow(
-                            option.creditAccountName,
-                            selectedCreditAccountId == option.creditAccountId,
-                            { actions.onSelectPurchase(option.transactionId) },
-                            supportingText = option.currency.value,
-                        )
-                    }
+                    LedgerChoiceSelector(
+                        stringResource(R.string.installment_credit_account),
+                        accountOptions.indexOfFirst { it.creditAccountId == selectedCreditAccountId }.coerceAtLeast(0),
+                        accountOptions.map { "${it.creditAccountName} · ${it.currency.value}" },
+                        { actions.onSelectPurchase(accountOptions[it].transactionId) },
+                    )
                 }
             }
         }
@@ -144,15 +136,16 @@ private fun InstallmentEditor(state: InstallmentFeatureState, actions: Installme
                         AmountSize.MEDIUM,
                     )
                 }
-                state.snapshot.purchases.filter {
+                val purchases = state.snapshot.purchases.filter {
                     (!it.alreadyLinked || it.transactionId == state.selectedPurchaseId) &&
                         (selectedCreditAccountId == null || it.creditAccountId == selectedCreditAccountId)
-                }.forEach { option ->
-                    LedgerButton(
-                        stringResource(R.string.installment_purchase_option, option.creditAccountName, CreditPolicy.money(option.principalMinor, option.currency, locale).formatted, option.purchaseDate.localized(locale)),
-                        { actions.onSelectPurchase(option.transactionId) },
-                        Modifier.fillMaxWidth(),
-                        if (option.transactionId == state.selectedPurchaseId) LedgerButtonVariant.PRIMARY else LedgerButtonVariant.SECONDARY,
+                }
+                if (purchases.isNotEmpty()) {
+                    LedgerChoiceSelector(
+                        stringResource(R.string.installment_linked_purchase),
+                        purchases.indexOfFirst { it.transactionId == state.selectedPurchaseId }.coerceAtLeast(0),
+                        purchases.map { option -> stringResource(R.string.installment_purchase_option, option.creditAccountName, CreditPolicy.money(option.principalMinor, option.currency, locale).formatted, option.purchaseDate.localized(locale)) },
+                        { actions.onSelectPurchase(purchases[it].transactionId) },
                     )
                 }
             }
@@ -161,12 +154,11 @@ private fun InstallmentEditor(state: InstallmentFeatureState, actions: Installme
         item { LedgerTextField(state.draft.termCount, { actions.onFieldChanged(InstallmentField.TERM_COUNT, it) }, stringResource(R.string.installment_term_count), Modifier.fillMaxWidth(), required = true, keyboardType = KeyboardType.Number) }
         item { SelectorField(stringResource(R.string.installment_first_statement), state.draft.firstStatementDate.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.installment_choose_date), { showFirstDatePicker = true }) }
         item {
-            SelectorField(
-                stringResource(R.string.installment_rounding_rule),
-                roundingLabel(state.draft.roundingMode),
-                { actions.onRoundingModeChanged(nextRoundingMode(state.draft.roundingMode)) },
-                supportingText = stringResource(R.string.installment_rounding_help),
-            )
+            FormSection(stringResource(R.string.installment_rounding_rule), description = stringResource(R.string.installment_rounding_help)) {
+                listOf(RoundingMode.HALF_EVEN, RoundingMode.HALF_UP, RoundingMode.DOWN).forEach { mode ->
+                    LedgerChoiceRow(roundingLabel(mode), state.draft.roundingMode == mode, { actions.onRoundingModeChanged(mode) })
+                }
+            }
         }
         item { FeeModelEditor(state, actions) }
         item { SettlementRuleEditor(state, actions) }
@@ -178,7 +170,7 @@ private fun InstallmentEditor(state: InstallmentFeatureState, actions: Installme
         item { LedgerText(stringResource(R.string.installment_purchase_not_split), LedgerTextRole.SUPPORTING) }
     }
     if (showFirstDatePicker) {
-        val initial = state.draft.firstStatementDate.toLocalDateOrNull() ?: LocalDate.now()
+        val initial = state.draft.firstStatementDate.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
         LedgerDatePickerFlow(
             initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
             { millis -> actions.onFieldChanged(InstallmentField.FIRST_STATEMENT_DATE, Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()); showFirstDatePicker = false },
@@ -361,13 +353,13 @@ private fun EarlySettlement(state: InstallmentFeatureState, actions: Installment
                     state.draft.confirmPhrase,
                     { actions.onFieldChanged(InstallmentField.CONFIRM_PHRASE, it) },
                     actions.onApplySettlement,
-                    {},
+                    actions.onCancelConfirmation,
                 )
             }
         }
     }
     if (showDatePicker) {
-        val initial = state.draft.settlementDate.toLocalDateOrNull() ?: LocalDate.now()
+        val initial = state.draft.settlementDate.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
         LedgerDatePickerFlow(
             initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
             { millis -> actions.onFieldChanged(InstallmentField.SETTLEMENT_DATE, Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()); showDatePicker = false },
@@ -497,12 +489,7 @@ private fun roundingLabel(mode: RoundingMode): String = when (mode) {
     else -> stringResource(R.string.installment_rounding_other)
 }
 
-private fun nextRoundingMode(current: RoundingMode): RoundingMode {
-    val modes = listOf(RoundingMode.HALF_EVEN, RoundingMode.HALF_UP, RoundingMode.DOWN)
-    return modes[(modes.indexOf(current).takeIf { it >= 0 } ?: 0).plus(1).mod(modes.size)]
-}
-
-private fun LocalDate.localized(locale: java.util.Locale): String = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(this)
+private fun LocalDate.localized(locale: java.util.Locale): String = LedgerDateFormatterRuntime.formatter(locale).format(this)
 
 private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()
 

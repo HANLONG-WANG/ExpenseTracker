@@ -2,10 +2,13 @@
 
 package app.ledger.app
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
@@ -44,14 +47,14 @@ internal fun ProjectGoalRootDestination(
     LaunchedEffect(screenId, projectId, goalId, movementKind) {
         viewModel.loadProjectGoal(screenId, projectId, goalId, movementKind)
     }
-    ProjectGoalDestination(
-        screenId,
-        state,
-        encodedArguments,
-        ProjectGoalActions(
+    val actions = ProjectGoalActions(
             onRetry = { viewModel.loadProjectGoal(screenId, projectId, goalId, movementKind) },
             onNavigate = { target, stable, kind ->
-                viewModel.navigateProjectGoal(target, stable, kind)
+                if (target in setOf("PRJ-003", "PRJ-004", "PRJ-005") && stable != null && screenId in setOf("PRJ-003", "PRJ-004", "PRJ-005")) {
+                    viewModel.switchProjectView(target, stable)
+                } else {
+                    viewModel.navigateProjectGoal(target, stable, kind)
+                }
                 onNavigationChanged()
             },
             onProjectStatusTabSelected = viewModel::selectProjectStatusTab,
@@ -78,9 +81,23 @@ internal fun ProjectGoalRootDestination(
             onMovementDateChanged = viewModel::updateGoalMovementDate,
             onSaveMovement = viewModel::saveGoalMovement,
             onCompleteGoal = viewModel::completeGoal,
-        ),
-        projectPages = viewModel.projectTransactionPages,
+            onProjectTransactionKindChanged = viewModel::setProjectTransactionKind,
     )
+    Box(Modifier.fillMaxSize()) {
+        if (screenId == "GOL-005") {
+            ProjectGoalDestination("GOL-003", state, encodedArguments, actions, projectPages = viewModel.projectTransactionPages)
+        }
+        GovernedDestinationModal(
+            screenId,
+            projectGoalDestinationTitleOrNull(screenId).orEmpty(),
+            onDismiss = {
+                viewModel.requestRootBack()
+                onNavigationChanged()
+            },
+        ) {
+            ProjectGoalDestination(screenId, state, encodedArguments, actions, projectPages = viewModel.projectTransactionPages)
+        }
+    }
 }
 
 private fun Map<String, String>.stableId(name: String): StableId? = get(name)?.let { StableId.parse(it).getOrNull() }

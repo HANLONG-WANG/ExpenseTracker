@@ -62,6 +62,14 @@ internal fun AnalysisRootDestination(
     LaunchedEffect(screenId, reportKey, queryId, entityId, forecastKey) {
         viewModel.loadAnalysis(screenId, reportKey, queryId, entityId, forecastKey)
     }
+    GovernedDestinationModal(
+        screenId,
+        analysisDestinationTitleOrNull(screenId).orEmpty(),
+        onDismiss = {
+            viewModel.requestRootBack()
+            onNavigationChanged()
+        },
+    ) {
     AnalysisDestination(
         screenId,
         state,
@@ -88,6 +96,7 @@ internal fun AnalysisRootDestination(
             onBuilderStep = viewModel::changeAnalysisBuilderStep,
             onApplyFilter = {
                 if (viewModel.applyAnalysisFilter()) {
+                    viewModel.commitCurrentFormChanges()
                     viewModel.requestRootBack()
                     onNavigationChanged()
                 }
@@ -111,7 +120,10 @@ internal fun AnalysisRootDestination(
             onSaveReport = viewModel::saveCustomAnalysisReport,
             onPreviewReport = viewModel::previewCustomAnalysisReport,
             onCopyReport = viewModel::copyCustomAnalysisReport,
-            onSelectVisualization = viewModel::selectAnalysisVisualization,
+            onSelectVisualization = { visualization ->
+                viewModel.completeAnalysisVisualizationSelection(visualization)
+                onNavigationChanged()
+            },
             onSaveDashboard = viewModel::saveAnalysisDashboard,
             onToggleDashboardReport = viewModel::toggleAnalysisDashboardReport,
             onMoveDashboardReport = viewModel::moveAnalysisDashboardReport,
@@ -119,6 +131,7 @@ internal fun AnalysisRootDestination(
             onSaveAnomalyRule = viewModel::saveAnalysisAnomalyRule,
             onEditAnomalyRule = viewModel::editAnalysisAnomalyRule,
             onCycleAnomalyType = viewModel::cycleAnalysisAnomalyType,
+            onSelectAnomalyType = viewModel::selectAnalysisAnomalyType,
             onAnomalyThresholdChanged = viewModel::updateAnalysisAnomalyThreshold,
             onAnomalyLookbackChanged = viewModel::updateAnalysisAnomalyLookback,
             onSelectExportFormat = viewModel::selectAnalysisExportFormat,
@@ -138,6 +151,12 @@ internal fun AnalysisRootDestination(
             onCycleMapPlaceFilter = { viewModel.cycleConsumptionMapPlaceFilter() },
             onCycleMapProjectFilter = { viewModel.cycleConsumptionMapProjectFilter() },
             onCycleMapAmountFilter = { viewModel.cycleConsumptionMapAmountFilter() },
+            onSelectMapMode = viewModel::selectConsumptionMapMode,
+            onSelectMapWeight = viewModel::selectConsumptionMapWeight,
+            onSelectMapAggregation = viewModel::selectConsumptionMapAggregation,
+            onSelectMapPresentation = viewModel::selectConsumptionMapPresentation,
+            onSelectMapFilter = viewModel::selectConsumptionMapFilter,
+            onSelectMapAmountFilter = viewModel::selectConsumptionMapAmountFilter,
             onRemoveMapFilter = viewModel::removeConsumptionMapFilter,
             onMapViewportChanged = viewModel::updateConsumptionMapViewport,
             onSelectMapPoint = { pointId ->
@@ -151,6 +170,7 @@ internal fun AnalysisRootDestination(
         ),
         mapContent = { result, unavailable -> ConsumptionMapHost(result, unavailable, viewModel, onNavigationChanged) },
     )
+    }
 }
 
 @Composable

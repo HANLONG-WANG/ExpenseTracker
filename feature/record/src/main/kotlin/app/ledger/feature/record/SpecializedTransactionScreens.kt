@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import app.ledger.core.common.StableId
 import app.ledger.core.designsystem.AttachmentField
 import app.ledger.core.designsystem.AttachmentTransferState
@@ -30,6 +33,7 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerDatePickerFlow
+import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerDateTimePickerFlow
 import app.ledger.core.designsystem.LedgerLoadingState
@@ -37,8 +41,10 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MoneyExpressionField
+import app.ledger.core.designsystem.SearchField
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.designsystem.UiText
@@ -56,8 +62,8 @@ import java.util.Locale
 
 public data class SpecializedTransactionActions(
     val onRetry: () -> Unit,
-    val onSelectFromAccount: () -> Unit,
-    val onSelectToAccount: () -> Unit,
+    val onSelectFromAccount: (StableId) -> Unit,
+    val onSelectToAccount: (StableId) -> Unit,
     val onOutgoingExpression: (String) -> Unit,
     val onIncomingExpression: (String) -> Unit,
     val onOutgoingOperator: (String) -> Unit,
@@ -107,6 +113,9 @@ private fun SpecializedEditor(state: SpecializedTransactionEditorState, actions:
     val from = SpecializedTransactionPolicy.account(state, state.draft.fromAccountId)
     val to = SpecializedTransactionPolicy.account(state, state.draft.toAccountId)
     var showDateTimePicker by remember { mutableStateOf(false) }
+    var accountPickerIncoming by remember { mutableStateOf<Boolean?>(null) }
+    var accountSearch by remember { mutableStateOf("") }
+    var pendingAccountId by remember { mutableStateOf<StableId?>(null) }
     LazyColumn(
         Modifier.fillMaxSize().testTag(LedgerTestTags.SPECIALIZED_TRANSACTION_FORM).padding(horizontal = LedgerTheme.spacing.sm),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
@@ -116,11 +125,29 @@ private fun SpecializedEditor(state: SpecializedTransactionEditorState, actions:
             SelectorField(
                 stringResource(if (state.kind == SpecializedTransactionKind.BALANCE_ADJUSTMENT) R.string.specialized_adjustment_account else R.string.specialized_from_account),
                 from?.accountLabel().orEmpty(),
-                actions.onSelectFromAccount,
+                {
+                    accountPickerIncoming = false
+                    accountSearch = ""
+                    pendingAccountId = state.draft.fromAccountId
+                },
+                supportingText = state.errors.fieldError(SpecializedField.FROM_ACCOUNT)
+                    ?: state.assetEndpointHint(),
             )
         }
         if (state.kind == SpecializedTransactionKind.TRANSFER || state.kind == SpecializedTransactionKind.FX_EXCHANGE) {
-            item { SelectorField(stringResource(R.string.specialized_to_account), to?.accountLabel().orEmpty(), actions.onSelectToAccount) }
+            item {
+                SelectorField(
+                    stringResource(R.string.specialized_to_account),
+                    to?.accountLabel().orEmpty(),
+                    {
+                        accountPickerIncoming = true
+                        accountSearch = ""
+                        pendingAccountId = state.draft.toAccountId
+                    },
+                    supportingText = state.errors.fieldError(SpecializedField.TO_ACCOUNT)
+                        ?: state.assetEndpointHint(),
+                )
+            }
         }
         item {
             MoneyExpressionField(
@@ -227,6 +254,40 @@ private fun SpecializedEditor(state: SpecializedTransactionEditorState, actions:
                 },
                 onDismiss = { showDateTimePicker = false },
             )
+        }
+    }
+    accountPickerIncoming?.let { incoming ->
+        val accounts = SpecializedTransactionPolicy.selectableAccounts(state)
+            .filter { accountSearch.isBlank() || it.accountLabel().contains(accountSearch, ignoreCase = true) }
+        LedgerDialog(
+            title = stringResource(if (incoming) R.string.specialized_to_account else R.string.specialized_from_account),
+            message = null,
+            confirmLabel = stringResource(R.string.specialized_apply_account),
+            onConfirm = {
+                pendingAccountId?.let { id ->
+                    if (incoming) actions.onSelectToAccount(id) else actions.onSelectFromAccount(id)
+                }
+                accountPickerIncoming = null
+            },
+            onDismiss = { accountPickerIncoming = null },
+            confirmEnabled = pendingAccountId != null,
+        ) {
+            SearchField(
+                value = accountSearch,
+                onValueChange = { accountSearch = it },
+                placeholder = stringResource(R.string.specialized_search_accounts),
+                onClear = { accountSearch = "" },
+                autoFocus = false,
+            )
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                items(accounts, key = { it.id.toString() }) { account ->
+                    LedgerChoiceRow(
+                        title = account.accountLabel(),
+                        selected = pendingAccountId == account.id,
+                        onClick = { pendingAccountId = account.id },
+                    )
+                }
+            }
         }
     }
 }
@@ -395,11 +456,10 @@ private fun BigDecimal.localizedRate(locale: Locale): String = NumberFormat.getN
 }.format(this)
 
 private fun LocalDate.localized(locale: Locale): String =
-    DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(this)
+    LedgerDateFormatterRuntime.formatter(locale).format(this)
 
 private fun Instant.localized(zoneId: java.time.ZoneId, locale: Locale): String =
-    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-        .withLocale(locale)
+    LedgerDateFormatterRuntime.dateTimeFormatter(locale)
         .withZone(zoneId)
         .format(this)
 
@@ -414,4 +474,15 @@ private fun String.matches(kind: SpecializedTransactionKind): Boolean = when (th
 }
 
 @Composable
-private fun List<SpecializedValidationError>.fieldError(field: SpecializedField): String? = firstOrNull { it.field == field }?.let { stringResource(R.string.specialized_invalid_field) }
+private fun SpecializedTransactionEditorState.assetEndpointHint(): String? = when (kind) {
+    SpecializedTransactionKind.TRANSFER -> stringResource(R.string.specialized_transfer_asset_account_hint)
+    SpecializedTransactionKind.FX_EXCHANGE -> stringResource(R.string.specialized_fx_asset_account_hint)
+    else -> null
+}
+
+@Composable
+private fun List<SpecializedValidationError>.fieldError(field: SpecializedField): String? = firstOrNull { it.field == field }?.let { error ->
+    stringResource(
+        if (error.code == "ASSET_ACCOUNT_REQUIRED") R.string.specialized_asset_account_required else R.string.specialized_invalid_field,
+    )
+}

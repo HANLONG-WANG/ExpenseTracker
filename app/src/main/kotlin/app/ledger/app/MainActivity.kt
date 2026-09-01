@@ -5,13 +5,16 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import androidx.activity.compose.setContent
+import android.view.ViewGroup
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -27,12 +30,14 @@ class MainActivity : FragmentActivity() {
     private lateinit var sensitiveSettingsPrompt: BiometricPrompt
     private lateinit var privacy: app.ledger.core.security.AndroidScreenPrivacyController
     private lateinit var jankMonitor: app.ledger.core.designsystem.LedgerJankMonitor
+    private var composeView: ComposeView? = null
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.notificationPermissionResult(it)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         privacy = app.ledger.core.security.AndroidScreenPrivacyController(this)
         prompt = BiometricPrompt(
             this,
@@ -181,7 +186,11 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
-        setContent { LedgerAppRoot(viewModel) }
+        composeView = ComposeView(this).also { root ->
+            root.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            root.setContent { LedgerAppRoot(viewModel) }
+            setContentView(root)
+        }
         jankMonitor = app.ledger.core.designsystem.LedgerJankMonitor.attach(window)
         viewModel.handleDeepLink(intent?.data)
     }
@@ -205,6 +214,11 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        composeView?.let { root ->
+            root.disposeComposition()
+            (root.parent as? ViewGroup)?.removeView(root)
+        }
+        composeView = null
         jankMonitor.close()
         super.onDestroy()
     }

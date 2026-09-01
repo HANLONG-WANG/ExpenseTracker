@@ -20,9 +20,11 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -39,13 +41,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.LedgerBanner
@@ -54,8 +57,12 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerChoiceSelector
+import app.ledger.core.designsystem.LedgerDialog
+import app.ledger.core.designsystem.LedgerModalDialog
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
+import app.ledger.core.designsystem.LedgerHaptic
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerReferenceDisplayDefaults
@@ -67,12 +74,15 @@ import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerToggleRow
 import app.ledger.core.designsystem.ReferenceDataRow
 import app.ledger.core.designsystem.ReferenceDataRowUiModel
 import app.ledger.core.designsystem.ReferenceDisplayStyleIcons
 import app.ledger.core.designsystem.ReferenceDisplayStylePicker
+import app.ledger.core.designsystem.rememberLedgerRetainedState
 import app.ledger.core.designsystem.SearchField
+import app.ledger.core.designsystem.performLedgerHaptic
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.finance.application.CategoryReferenceView
@@ -159,7 +169,7 @@ private fun HubRow(title: String, body: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CategoryList(snapshot: ReferenceDataSnapshot?, direction: CategoryDirection, state: String, actions: ManagementActions) {
+private fun ColumnScope.CategoryList(snapshot: ReferenceDataSnapshot?, direction: CategoryDirection, state: String, actions: ManagementActions) {
     var query by remember(direction) { mutableStateOf("") }
     var searchPending by remember(direction) { mutableStateOf(false) }
     LaunchedEffect(query) {
@@ -181,7 +191,7 @@ private fun CategoryList(snapshot: ReferenceDataSnapshot?, direction: CategoryDi
         LedgerEmptyState(stringResource(R.string.management_categories_empty), stringResource(R.string.management_categories_empty_body), stringResource(R.string.management_add_category), { actions.onNavigate("CAT-002", emptyMap(), mapOf("direction" to direction.name)) })
         return
     }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+    LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         items(categories, key = { it.id.toString() }) { category -> CategoryRow(category) { actions.onNavigate("CAT-002", mapOf("categoryId" to category.id), mapOf("direction" to direction.name)) } }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
@@ -193,7 +203,7 @@ private fun CategoryList(snapshot: ReferenceDataSnapshot?, direction: CategoryDi
 }
 
 @Composable
-private fun CategoryRow(category: CategoryReferenceView, onClick: () -> Unit) {
+private fun CategoryRow(category: CategoryReferenceView, onClick: (() -> Unit)?) {
     ReferenceDataRow(
         ReferenceDataRowUiModel(
             stableKey = "category_item",
@@ -215,24 +225,24 @@ private fun CategoryRow(category: CategoryReferenceView, onClick: () -> Unit) {
 @Composable
 private fun CategoryEditor(snapshot: ReferenceDataSnapshot?, direction: CategoryDirection, categoryId: StableId?, state: String, actions: ManagementActions) {
     val existing = snapshot?.categories?.singleOrNull { it.id == categoryId }
-    var name by remember(categoryId) { mutableStateOf(existing?.name.orEmpty()) }
-    var parentId by remember(categoryId) { mutableStateOf(existing?.parentId) }
-    var nature by remember(categoryId) { mutableStateOf(existing?.statisticalNature ?: direction.defaultNature()) }
-    var selectedIcon by remember(categoryId) {
-        mutableStateOf(
+    var name by rememberLedgerRetainedState("category.name") { existing?.name.orEmpty() }
+    var parentId by rememberLedgerRetainedState<StableId?>("category.parent") { existing?.parentId }
+    var nature by rememberLedgerRetainedState("category.nature") { existing?.statisticalNature ?: direction.defaultNature() }
+    var selectedIcon by rememberLedgerRetainedState("category.icon") {
             ReferenceDisplayStyleIcons.firstOrNull { it.name.equals(existing?.iconKey, ignoreCase = true) }
-                ?: LedgerIcon.RECORD,
-        )
+                ?: LedgerIcon.RECORD
     }
-    var selectedColor by remember(categoryId) {
-        mutableStateOf(existing?.colorArgb ?: LedgerReferenceDisplayDefaults.COLOR_ARGB)
+    var selectedColor by rememberLedgerRetainedState("category.color") {
+        existing?.colorArgb ?: LedgerReferenceDisplayDefaults.COLOR_ARGB
     }
-    var selectedPalette by remember(categoryId) {
-        mutableStateOf(LedgerReferenceDisplayDefaults.paletteId(selectedColor))
+    var selectedPalette by rememberLedgerRetainedState("category.palette") {
+        LedgerReferenceDisplayDefaults.paletteId(selectedColor)
     }
-    var defaultAccountId by remember(categoryId) { mutableStateOf(existing?.defaultAccountId) }
-    var defaultCardId by remember(categoryId) { mutableStateOf(existing?.defaultCardId) }
-    var defaultMerchantId by remember(categoryId) { mutableStateOf(existing?.defaultMerchantId) }
+    var defaultAccountId by rememberLedgerRetainedState<StableId?>("category.account") { existing?.defaultAccountId }
+    var defaultCardId by rememberLedgerRetainedState<StableId?>("category.card") { existing?.defaultCardId }
+    var defaultMerchantId by rememberLedgerRetainedState<StableId?>("category.merchant") { existing?.defaultMerchantId }
+    var attempted by rememberLedgerRetainedState("category.attempted") { false }
+    var chooser by remember(categoryId) { mutableStateOf<CategoryEditorChooser?>(null) }
     val parents = snapshot?.categories.orEmpty().filter { it.direction == direction && it.depth == 1 && it.status == CategoryStatus.ACTIVE && it.id != categoryId }
     val accounts = snapshot?.accounts.orEmpty().filter { it.status == EntityStatus.ACTIVE }
     val cards = snapshot?.cards.orEmpty().filter { card ->
@@ -247,8 +257,9 @@ private fun CategoryEditor(snapshot: ReferenceDataSnapshot?, direction: Category
         modifier = Modifier.fillMaxSize(),
         formContent = true,
         fixedAction = {
-            ManagementSaveBar(valid) {
-                actions.onSaveCategory(
+            ManagementSaveBar(true) {
+                attempted = true
+                if (valid) actions.onSaveCategory(
                     CategorySubmission(
                         categoryId,
                         direction,
@@ -271,9 +282,9 @@ private fun CategoryEditor(snapshot: ReferenceDataSnapshot?, direction: Category
         ) {
             if (state == "parentLocked" || existing?.depth == 2) LedgerBanner(stringResource(R.string.management_parent_locked), LedgerBannerVariant.INFO)
             if (state == "contrastWarning" || contrastWarning) LedgerBanner(stringResource(R.string.management_contrast_warning), LedgerBannerVariant.WARNING)
-            if (state == "validationError") LedgerBanner(stringResource(R.string.management_validation), LedgerBannerVariant.DANGER)
-            LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.management_name), required = true)
-            SelectorField(stringResource(R.string.management_parent), parents.singleOrNull { it.id == parentId }?.name ?: stringResource(R.string.management_no_parent), { parentId = if (parentId == null) parents.firstOrNull()?.id else null }, enabled = existing?.depth != 2)
+            if (state == "validationError" || attempted && !valid) LedgerBanner(stringResource(R.string.management_validation), LedgerBannerVariant.DANGER)
+            LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.management_name), errorText = stringResource(R.string.management_validation).takeIf { attempted && name.isBlank() }, required = true)
+            SelectorField(stringResource(R.string.management_parent), parents.singleOrNull { it.id == parentId }?.name ?: stringResource(R.string.management_no_parent), { chooser = CategoryEditorChooser.PARENT }, enabled = existing?.depth != 2)
             LedgerChoiceRow(direction.firstNatureLabel(), nature == direction.defaultNature(), { nature = direction.defaultNature() })
             LedgerChoiceRow(direction.secondNatureLabel(), nature != direction.defaultNature(), { nature = direction.alternateNature() })
             LedgerBanner(stringResource(R.string.management_statistical_snapshot), LedgerBannerVariant.INFO)
@@ -289,13 +300,10 @@ private fun CategoryEditor(snapshot: ReferenceDataSnapshot?, direction: Category
             SelectorField(
                 stringResource(R.string.management_default_account),
                 accounts.singleOrNull { it.id == defaultAccountId }?.name ?: stringResource(R.string.management_none),
-                {
-                    defaultAccountId = nextSelectableId(defaultAccountId, accounts.map { it.id })
-                    if (defaultCardId != null && snapshot?.cards?.singleOrNull { it.id == defaultCardId }?.accountId != defaultAccountId) defaultCardId = null
-                },
+                { chooser = CategoryEditorChooser.ACCOUNT },
             )
-            SelectorField(stringResource(R.string.management_default_card), cards.singleOrNull { it.id == defaultCardId }?.displayName ?: stringResource(R.string.management_none), { defaultCardId = nextSelectableId(defaultCardId, cards.map { it.id }) }, enabled = cards.isNotEmpty())
-            SelectorField(stringResource(R.string.management_default_merchant), merchants.singleOrNull { it.id == defaultMerchantId }?.name ?: stringResource(R.string.management_none), { defaultMerchantId = nextSelectableId(defaultMerchantId, merchants.map { it.id }) }, enabled = merchants.isNotEmpty())
+            SelectorField(stringResource(R.string.management_default_card), cards.singleOrNull { it.id == defaultCardId }?.displayName ?: stringResource(R.string.management_none), { chooser = CategoryEditorChooser.CARD }, enabled = cards.isNotEmpty())
+            SelectorField(stringResource(R.string.management_default_merchant), merchants.singleOrNull { it.id == defaultMerchantId }?.name ?: stringResource(R.string.management_none), { chooser = CategoryEditorChooser.MERCHANT }, enabled = merchants.isNotEmpty())
             ReferenceDisplayStylePicker(
                 selectedIcon = selectedIcon,
                 selectedPaletteId = selectedPalette,
@@ -307,19 +315,54 @@ private fun CategoryEditor(snapshot: ReferenceDataSnapshot?, direction: Category
             ContrastPreview(selectedPalette, contrast)
         }
     }
+    chooser?.let { target ->
+        val choices = when (target) {
+            CategoryEditorChooser.PARENT -> parents.map { it.id to it.name }
+            CategoryEditorChooser.ACCOUNT -> accounts.map { it.id to it.name }
+            CategoryEditorChooser.CARD -> cards.map { it.id to it.displayName }
+            CategoryEditorChooser.MERCHANT -> merchants.map { it.id to it.name }
+        }
+        SearchableReferenceChooser(
+            title = stringResource(
+                when (target) {
+                    CategoryEditorChooser.PARENT -> R.string.management_parent
+                    CategoryEditorChooser.ACCOUNT -> R.string.management_default_account
+                    CategoryEditorChooser.CARD -> R.string.management_default_card
+                    CategoryEditorChooser.MERCHANT -> R.string.management_default_merchant
+                },
+            ),
+            choices = choices,
+            selectedId = when (target) {
+                CategoryEditorChooser.PARENT -> parentId
+                CategoryEditorChooser.ACCOUNT -> defaultAccountId
+                CategoryEditorChooser.CARD -> defaultCardId
+                CategoryEditorChooser.MERCHANT -> defaultMerchantId
+            },
+            noneLabel = stringResource(if (target == CategoryEditorChooser.PARENT) R.string.management_no_parent else R.string.management_none),
+            onSelected = { selected ->
+                when (target) {
+                    CategoryEditorChooser.PARENT -> parentId = selected
+                    CategoryEditorChooser.ACCOUNT -> {
+                        defaultAccountId = selected
+                        if (defaultCardId != null && snapshot?.cards?.singleOrNull { it.id == defaultCardId }?.accountId != selected) defaultCardId = null
+                    }
+                    CategoryEditorChooser.CARD -> defaultCardId = selected
+                    CategoryEditorChooser.MERCHANT -> defaultMerchantId = selected
+                }
+                chooser = null
+            },
+            onDismiss = { chooser = null },
+        )
+    }
 }
 
-private fun nextSelectableId(current: StableId?, choices: List<StableId>): StableId? = when {
-    choices.isEmpty() -> null
-    current == null -> choices.first()
-    else -> choices.getOrNull(choices.indexOf(current) + 1)
-}
+private enum class CategoryEditorChooser { PARENT, ACCOUNT, CARD, MERCHANT }
 
 @Composable
-private fun CategoryReorder(snapshot: ReferenceDataSnapshot?, direction: CategoryDirection, actions: ManagementActions) {
+private fun ColumnScope.CategoryReorder(snapshot: ReferenceDataSnapshot?, direction: CategoryDirection, actions: ManagementActions) {
     var ordered by remember(snapshot, direction) { mutableStateOf(snapshot?.categories.orEmpty().filter { it.direction == direction && it.status == CategoryStatus.ACTIVE }.sortedBy { it.sortOrder }) }
     LedgerBanner(stringResource(R.string.management_reorder_explanation), LedgerBannerVariant.INFO)
-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+    LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         itemsIndexed(ordered, key = { _, category -> category.id.toString() }) { index, category ->
             val haptic = LocalHapticFeedback.current
             val dragLabel = stringResource(R.string.management_drag_category)
@@ -334,11 +377,11 @@ private fun CategoryReorder(snapshot: ReferenceDataSnapshot?, direction: Categor
                             state = rememberDraggableState { delta ->
                                 dragDistance += delta
                                 if (dragDistance > REORDER_DRAG_THRESHOLD && index < ordered.lastIndex) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performLedgerHaptic(LedgerHaptic.SELECTION)
                                     ordered = ordered.moved(index, index + 1)
                                     dragDistance = 0f
                                 } else if (dragDistance < -REORDER_DRAG_THRESHOLD && index > 0) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performLedgerHaptic(LedgerHaptic.SELECTION)
                                     ordered = ordered.moved(index, index - 1)
                                     dragDistance = 0f
                                 }
@@ -346,7 +389,7 @@ private fun CategoryReorder(snapshot: ReferenceDataSnapshot?, direction: Categor
                         )
                         .semantics { contentDescription = dragLabel },
                 )
-                CategoryRow(category) { }
+                CategoryRow(category, null)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
                     LedgerButton(
                         stringResource(R.string.management_move_up),
@@ -379,18 +422,72 @@ private fun <T> List<T>.moved(from: Int, to: Int): List<T> = if (from !in indice
 private fun CategoryRemoval(snapshot: ReferenceDataSnapshot?, categoryId: StableId, state: String, actions: ManagementActions) {
     val category = snapshot?.categories?.singleOrNull { it.id == categoryId } ?: return
     var target by remember(categoryId) { mutableStateOf<StableId?>(null) }
+    var confirmingTombstone by remember(categoryId) { mutableStateOf(false) }
+    var tombstonePhrase by remember(categoryId) { mutableStateOf("") }
     val processing = state == "processing"
     if (state == "hasChildren" || category.childCount > 0) LedgerBanner(stringResource(R.string.management_has_children), LedgerBannerVariant.WARNING)
     if (state == "processing") LedgerLoadingState(label = stringResource(R.string.management_processing))
     LedgerText(stringResource(R.string.management_category_usage, category.historicalTransactionCount), LedgerTextRole.BODY)
-    snapshot.categories.filter { it.direction == category.direction && it.status == CategoryStatus.ACTIVE && it.id != category.id }.forEach { candidate -> LedgerChoiceRow(candidate.name, target == candidate.id, { target = candidate.id }) }
+    val candidates = snapshot.categories.filter { it.direction == category.direction && it.status == CategoryStatus.ACTIVE && it.id != category.id }
+    if (candidates.isNotEmpty()) {
+        LedgerChoiceSelector(
+            stringResource(R.string.management_target),
+            candidates.indexOfFirst { it.id == target },
+            candidates.map { it.name },
+            { target = candidates[it].id },
+            placeholder = stringResource(R.string.management_target),
+        )
+    }
     LedgerButton(stringResource(R.string.management_reassign), { actions.onRemoveCategory(category.id, category.rowVersion, CategoryRemovalStrategy.REASSIGN, target) }, Modifier.fillMaxWidth(), enabled = target != null && category.childCount == 0L && !processing)
     LedgerButton(stringResource(R.string.management_archive_category), { actions.onRemoveCategory(category.id, category.rowVersion, CategoryRemovalStrategy.ARCHIVE, null) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.SECONDARY, enabled = category.childCount == 0L && !processing)
-    LedgerButton(stringResource(R.string.management_delete_tombstone), { actions.onRemoveCategory(category.id, category.rowVersion, CategoryRemovalStrategy.TOMBSTONE, null) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.DANGER, enabled = category.childCount == 0L && !processing)
+    LedgerButton(
+        stringResource(R.string.management_delete_tombstone),
+        {
+            tombstonePhrase = ""
+            confirmingTombstone = true
+        },
+        Modifier.fillMaxWidth(),
+        variant = LedgerButtonVariant.DANGER,
+        enabled = category.childCount == 0L && !processing,
+    )
+    if (confirmingTombstone) {
+        val requiredPhrase = stringResource(R.string.management_delete_tombstone_phrase, category.name)
+        LedgerDialog(
+            title = stringResource(R.string.management_delete_tombstone_title),
+            message = stringResource(R.string.management_delete_tombstone_scope, category.name, category.historicalTransactionCount),
+            confirmLabel = stringResource(R.string.management_delete_tombstone),
+            onConfirm = {
+                confirmingTombstone = false
+                tombstonePhrase = ""
+                actions.onRemoveCategory(category.id, category.rowVersion, CategoryRemovalStrategy.TOMBSTONE, null)
+            },
+            onDismiss = {
+                confirmingTombstone = false
+                tombstonePhrase = ""
+            },
+            danger = true,
+            confirmEnabled = tombstonePhrase == requiredPhrase && category.childCount == 0L && !processing,
+        ) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
+            ) {
+                LedgerText(stringResource(R.string.management_delete_tombstone_consequence), LedgerTextRole.BODY)
+                LedgerText(stringResource(R.string.management_delete_tombstone_unaffected), LedgerTextRole.SUPPORTING)
+                if (category.childCount > 0L) LedgerBanner(stringResource(R.string.management_has_children), LedgerBannerVariant.DANGER)
+                LedgerTextField(
+                    tombstonePhrase,
+                    { tombstonePhrase = it },
+                    stringResource(R.string.management_delete_tombstone_confirm_label),
+                    supportingText = requiredPhrase,
+                )
+            }
+        }
+    }
 }
 
 @Composable
-private fun MerchantList(snapshot: ReferenceDataSnapshot?, state: String, actions: ManagementActions) {
+private fun ColumnScope.MerchantList(snapshot: ReferenceDataSnapshot?, state: String, actions: ManagementActions) {
     var query by remember { mutableStateOf("") }
     val merchants = snapshot?.merchants.orEmpty().filter { query.isBlank() || it.name.contains(query, true) || it.aliases.any { alias -> alias.contains(query, true) } }
     SearchField(query, { query = it.take(MAX_NAME) }, onClear = { query = "" })
@@ -398,7 +495,7 @@ private fun MerchantList(snapshot: ReferenceDataSnapshot?, state: String, action
         LedgerEmptyState(stringResource(R.string.management_merchants_empty), stringResource(R.string.management_merchants_empty_body), stringResource(R.string.management_add_merchant), { actions.onNavigate("MER-002", emptyMap(), emptyMap()) })
         return
     }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+    LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
         items(merchants, key = { it.id.toString() }) { merchant -> MerchantRow(merchant) { actions.onNavigate("MER-002", mapOf("merchantId" to merchant.id), emptyMap()) } }
         item { LedgerButton(stringResource(R.string.management_merge_merchants), { actions.onNavigate("MER-003", emptyMap(), emptyMap()) }, Modifier.fillMaxWidth(), variant = LedgerButtonVariant.SECONDARY) }
         item { LedgerButton(stringResource(R.string.management_add_merchant), { actions.onNavigate("MER-002", emptyMap(), emptyMap()) }, Modifier.fillMaxWidth()) }
@@ -413,31 +510,38 @@ private fun MerchantRow(merchant: MerchantReferenceView, onClick: () -> Unit) {
 @Composable
 private fun MerchantEditor(snapshot: ReferenceDataSnapshot?, merchantId: StableId?, state: String, actions: ManagementActions) {
     val existing = snapshot?.merchants?.singleOrNull { it.id == merchantId }
-    var name by remember(merchantId) { mutableStateOf(existing?.name.orEmpty()) }
-    var aliases by remember(merchantId) { mutableStateOf(existing?.aliases.orEmpty()) }
-    var newAlias by remember(merchantId) { mutableStateOf("") }
+    var name by rememberLedgerRetainedState("merchant.name") { existing?.name.orEmpty() }
+    var aliases by rememberLedgerRetainedState("merchant.aliases") { existing?.aliases.orEmpty() }
+    var newAlias by rememberLedgerRetainedState("merchant.newAlias") { "" }
+    var attempted by rememberLedgerRetainedState("merchant.attempted") { false }
     val duplicate = snapshot?.merchants.orEmpty().any { it.id != merchantId && it.name.equals(name.trim(), true) }
     val places = snapshot?.places.orEmpty().filter { it.merchantId == merchantId }
     val valid = name.isNotBlank() && !duplicate && state != "duplicateWarning"
     LedgerScaffold(
         modifier = Modifier.fillMaxSize(),
         formContent = true,
-        fixedAction = { ManagementSaveBar(valid) { actions.onSaveMerchant(MerchantSubmission(merchantId, name.trim(), aliases.map(String::trim).filter(String::isNotBlank).toSet())) } },
+        fixedAction = { ManagementSaveBar(true) { attempted = true; if (valid) actions.onSaveMerchant(MerchantSubmission(merchantId, name.trim(), aliases.map(String::trim).filter(String::isNotBlank).toSet())) } },
     ) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(LedgerTheme.spacing.sm),
             verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
         ) {
             if (state == "duplicateWarning" || duplicate) LedgerBanner(stringResource(R.string.management_duplicate_merchant), LedgerBannerVariant.WARNING)
-            LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.management_merchant_name), required = true)
+            if (attempted && !valid) LedgerBanner(stringResource(R.string.management_validation), LedgerBannerVariant.DANGER)
+            LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.management_merchant_name), errorText = stringResource(R.string.management_validation).takeIf { attempted && name.isBlank() }, required = true)
             LedgerText(stringResource(R.string.management_aliases), LedgerTextRole.SECTION)
             if (aliases.isEmpty()) LedgerText(stringResource(R.string.management_aliases_empty), LedgerTextRole.SUPPORTING)
             aliases.forEachIndexed { index, alias ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                val removeDescription = stringResource(R.string.management_remove_alias_target, alias)
+                Row(
+                    Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = alias },
+                    horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs),
+                ) {
                     LedgerText(alias, LedgerTextRole.BODY, Modifier.weight(1f))
                     LedgerButton(
                         stringResource(R.string.management_remove_alias),
                         { aliases = aliases.filterIndexed { candidateIndex, _ -> candidateIndex != index } },
+                        modifier = Modifier.semantics { contentDescription = removeDescription },
                         variant = LedgerButtonVariant.TEXT,
                         compact = true,
                     )
@@ -464,21 +568,21 @@ private fun MerchantEditor(snapshot: ReferenceDataSnapshot?, merchantId: StableI
 @Composable
 private fun MerchantMerge(snapshot: ReferenceDataSnapshot?, state: String, actions: ManagementActions) {
     val active = snapshot?.merchants.orEmpty().filter { it.status == EntityStatus.ACTIVE }
-    var source by remember { mutableStateOf<StableId?>(null) }
-    var target by remember { mutableStateOf<StableId?>(null) }
+    var source by rememberLedgerRetainedState<StableId?>("merchantMerge.source") { null }
+    var target by rememberLedgerRetainedState<StableId?>("merchantMerge.target") { null }
     if (state == "invalid" || source == target && source != null) LedgerBanner(stringResource(R.string.management_merge_invalid), LedgerBannerVariant.DANGER)
     if (state == "merging") LedgerLoadingState(label = stringResource(R.string.management_merging))
-    LedgerText(stringResource(R.string.management_source), LedgerTextRole.SECTION)
-    active.forEach { LedgerChoiceRow(it.name, source == it.id, { source = it.id }) }
-    LedgerText(stringResource(R.string.management_target), LedgerTextRole.SECTION)
-    active.forEach { LedgerChoiceRow(it.name, target == it.id, { target = it.id }) }
+    if (active.isNotEmpty()) {
+        LedgerChoiceSelector(stringResource(R.string.management_source), active.indexOfFirst { it.id == source }, active.map { it.name }, { source = active[it].id }, placeholder = stringResource(R.string.management_source))
+        LedgerChoiceSelector(stringResource(R.string.management_target), active.indexOfFirst { it.id == target }, active.map { it.name }, { target = active[it].id }, placeholder = stringResource(R.string.management_target))
+    }
     val impact = active.singleOrNull { it.id == source }
     LedgerBanner(stringResource(R.string.management_merge_impact, impact?.currentTransactionCount ?: 0, impact?.placeCount ?: 0), LedgerBannerVariant.INFO)
     LedgerButton(stringResource(R.string.management_confirm_merge), { if (source != null && target != null) actions.onMergeMerchant(requireNotNull(source), requireNotNull(target)) }, Modifier.fillMaxWidth(), enabled = source != null && target != null && source != target)
 }
 
 @Composable
-private fun PlaceList(snapshot: ReferenceDataSnapshot?, state: String, actions: ManagementActions, map: PlaceMapSlot) {
+private fun ColumnScope.PlaceList(snapshot: ReferenceDataSnapshot?, state: String, actions: ManagementActions, map: PlaceMapSlot) {
     var query by remember { mutableStateOf("") }
     val places = snapshot?.places.orEmpty().filter { query.isBlank() || it.name.contains(query, true) }
     SearchField(query, { query = it.take(MAX_NAME) }, onClear = { query = "" })
@@ -486,7 +590,7 @@ private fun PlaceList(snapshot: ReferenceDataSnapshot?, state: String, actions: 
     if (state == "empty" || places.isEmpty()) {
         LedgerEmptyState(stringResource(R.string.management_places_empty), stringResource(R.string.management_places_empty_body), stringResource(R.string.management_add_place), { actions.onNavigate("PLC-002", emptyMap(), emptyMap()) })
     } else {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+        LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
             items(places, key = { it.id.toString() }) { place -> PlaceRow(place) { actions.onNavigate("PLC-002", mapOf("placeId" to place.id), emptyMap()) } }
             item { LedgerButton(stringResource(R.string.management_add_place), { actions.onNavigate("PLC-002", emptyMap(), emptyMap()) }, Modifier.fillMaxWidth()) }
         }
@@ -501,26 +605,92 @@ private fun PlaceRow(place: PlaceReferenceView, onClick: () -> Unit) {
 @Composable
 private fun PlaceEditor(snapshot: ReferenceDataSnapshot?, placeId: StableId?, state: String, actions: ManagementActions, map: PlaceMapSlot) {
     val existing = snapshot?.places?.singleOrNull { it.id == placeId }
-    var name by remember(placeId) { mutableStateOf(existing?.name.orEmpty()) }
-    var latitude by remember(placeId) { mutableStateOf(existing?.latitudeE7 ?: DEFAULT_PIN_LATITUDE_E7) }
-    var longitude by remember(placeId) { mutableStateOf(existing?.longitudeE7 ?: DEFAULT_PIN_LONGITUDE_E7) }
-    var merchant by remember(placeId) { mutableStateOf(existing?.merchantId) }
-    val valid = name.isNotBlank() && latitude in LATITUDE_RANGE && longitude in LONGITUDE_RANGE
+    var name by rememberLedgerRetainedState("place.name") { existing?.name.orEmpty() }
+    var latitudeText by rememberLedgerRetainedState("place.latitude") {
+        (existing?.latitudeE7 ?: DEFAULT_PIN_LATITUDE_E7).toCoordinateText(Locale.ROOT)
+    }
+    var longitudeText by rememberLedgerRetainedState("place.longitude") {
+        (existing?.longitudeE7 ?: DEFAULT_PIN_LONGITUDE_E7).toCoordinateText(Locale.ROOT)
+    }
+    var merchant by rememberLedgerRetainedState<StableId?>("place.merchant") { existing?.merchantId }
+    var attempted by rememberLedgerRetainedState("place.attempted") { false }
+    var chooseMerchant by remember(placeId) { mutableStateOf(false) }
+    val parsedLatitude = latitudeText.coordinateE7OrNull(LATITUDE_RANGE)
+    val parsedLongitude = longitudeText.coordinateE7OrNull(LONGITUDE_RANGE)
+    val latitude = parsedLatitude ?: existing?.latitudeE7 ?: DEFAULT_PIN_LATITUDE_E7
+    val longitude = parsedLongitude ?: existing?.longitudeE7 ?: DEFAULT_PIN_LONGITUDE_E7
+    val valid = name.isNotBlank() && parsedLatitude != null && parsedLongitude != null
     val pin = ManagementMapPoint(existing?.id ?: DRAFT_MAP_ID, name.ifBlank { stringResource(R.string.management_new_place_pin) }, latitude, longitude, existing?.locationRecordCount ?: 0L, draft = existing == null)
     LedgerScaffold(
         modifier = Modifier.fillMaxSize(),
         formContent = true,
-        fixedAction = { ManagementSaveBar(valid) { actions.onSavePlace(PlaceSubmission(placeId, name.trim(), latitude, longitude, merchant)) } },
+        fixedAction = { ManagementSaveBar(true) { attempted = true; if (valid) actions.onSavePlace(PlaceSubmission(placeId, name.trim(), requireNotNull(parsedLatitude), requireNotNull(parsedLongitude), merchant)) } },
     ) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(LedgerTheme.spacing.sm),
             verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
         ) {
             if (state == "mapUnavailable") LedgerBanner(stringResource(R.string.management_map_unavailable), LedgerBannerVariant.INFO)
-            LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.management_place_name), required = true)
-            MapPinEditor(pin, state == "mapUnavailable", map) { lat, lon -> latitude = lat; longitude = lon }
-            SelectorField(stringResource(R.string.management_optional_merchant), snapshot?.merchants?.singleOrNull { it.id == merchant }?.name ?: stringResource(R.string.management_none), { merchant = if (merchant == null) snapshot?.merchants?.firstOrNull { it.status == EntityStatus.ACTIVE }?.id else null })
+            if (attempted && !valid) LedgerBanner(stringResource(R.string.management_validation), LedgerBannerVariant.DANGER)
+            LedgerTextField(name, { name = it.take(MAX_NAME) }, stringResource(R.string.management_place_name), errorText = stringResource(R.string.management_validation).takeIf { attempted && name.isBlank() }, required = true)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                LedgerTextField(
+                    latitudeText,
+                    { latitudeText = it.take(MAX_COORDINATE_TEXT) },
+                    stringResource(R.string.management_latitude_e7),
+                    Modifier.weight(1f),
+                    errorText = stringResource(R.string.management_coordinate_invalid).takeIf { attempted && parsedLatitude == null },
+                    required = true,
+                    keyboardType = KeyboardType.Decimal,
+                )
+                LedgerTextField(
+                    longitudeText,
+                    { longitudeText = it.take(MAX_COORDINATE_TEXT) },
+                    stringResource(R.string.management_longitude_e7),
+                    Modifier.weight(1f),
+                    errorText = stringResource(R.string.management_coordinate_invalid).takeIf { attempted && parsedLongitude == null },
+                    required = true,
+                    keyboardType = KeyboardType.Decimal,
+                )
+            }
+            MapPinEditor(pin, state == "mapUnavailable", map) { lat, lon ->
+                latitudeText = lat.toCoordinateText(Locale.ROOT)
+                longitudeText = lon.toCoordinateText(Locale.ROOT)
+            }
+            SelectorField(stringResource(R.string.management_optional_merchant), snapshot?.merchants?.singleOrNull { it.id == merchant }?.name ?: stringResource(R.string.management_none), { chooseMerchant = true })
             LedgerBanner(stringResource(R.string.management_no_reverse_geocoding), LedgerBannerVariant.INFO)
+        }
+    }
+    if (chooseMerchant) {
+        SearchableReferenceChooser(
+            title = stringResource(R.string.management_optional_merchant),
+            choices = snapshot?.merchants.orEmpty().filter { it.status == EntityStatus.ACTIVE }.map { it.id to it.name },
+            selectedId = merchant,
+            noneLabel = stringResource(R.string.management_none),
+            onSelected = { merchant = it; chooseMerchant = false },
+            onDismiss = { chooseMerchant = false },
+        )
+    }
+}
+
+@Composable
+private fun SearchableReferenceChooser(
+    title: String,
+    choices: List<Pair<StableId, String>>,
+    selectedId: StableId?,
+    noneLabel: String,
+    onSelected: (StableId?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var query by remember(title) { mutableStateOf("") }
+    val filtered = remember(choices, query) { choices.filter { query.isBlank() || it.second.contains(query, ignoreCase = true) } }
+    LedgerModalDialog(title, onDismiss = onDismiss) {
+        SearchField(query, { query = it.take(MAX_NAME) }, onClear = { query = "" })
+        LazyColumn(Modifier.fillMaxWidth()) {
+            item { LedgerChoiceRow(noneLabel, selectedId == null, { onSelected(null) }) }
+            items(filtered, key = { it.first.toString() }) { (id, label) ->
+                LedgerChoiceRow(label, selectedId == id, { onSelected(id) })
+            }
         }
     }
 }
@@ -550,13 +720,16 @@ private fun PlaceMergeSplit(snapshot: ReferenceDataSnapshot?, sourceId: StableId
         false,
     ) { _, _ -> }
     if (selectedTab == 0) {
-        var target by remember { mutableStateOf<StableId?>(null) }
-        snapshot.places.filter { it.id != sourceId && it.status == EntityStatus.ACTIVE }.forEach { LedgerChoiceRow(it.name, target == it.id, { target = it.id }) }
+        var target by rememberLedgerRetainedState<StableId?>("placeMerge.target") { null }
+        val targets = snapshot.places.filter { it.id != sourceId && it.status == EntityStatus.ACTIVE }
+        if (targets.isNotEmpty()) {
+            LedgerChoiceSelector(stringResource(R.string.management_target), targets.indexOfFirst { it.id == target }, targets.map { it.name }, { target = targets[it].id }, placeholder = stringResource(R.string.management_target))
+        }
         LedgerBanner(stringResource(R.string.management_place_merge_history), LedgerBannerVariant.INFO)
         LedgerButton(stringResource(R.string.management_confirm_merge), { target?.let { actions.onMergePlace(sourceId, it) } }, Modifier.fillMaxWidth(), enabled = target != null && state != "invalid")
     } else {
-        var selection by remember(sourceId) { mutableStateOf(emptySet<StableId>()) }
-        var name by remember(sourceId) { mutableStateOf("") }
+        var selection by rememberLedgerRetainedState("placeSplit.selection") { emptySet<StableId>() }
+        var name by rememberLedgerRetainedState("placeSplit.name") { "" }
         relevantLocations.forEach { location ->
             LedgerToggleRow(
                 stringResource(R.string.management_location_record, location.capturedAt.localized(locale)),
@@ -631,9 +804,12 @@ private fun PlaceReferenceView.toMapPoint(): ManagementMapPoint =
 
 private fun Int.toCoordinateText(locale: Locale): String = String.format(locale, "%.5f", this / E7_DIVISOR)
 
+private fun String.coordinateE7OrNull(range: IntRange): Int? = runCatching {
+    BigDecimal(trim()).multiply(BigDecimal.valueOf(E7_DIVISOR.toLong())).setScale(0, RoundingMode.HALF_UP).intValueExact()
+}.getOrNull()?.takeIf { it in range }
+
 @Composable
-private fun java.time.Instant.localized(locale: Locale): String = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-    .withLocale(locale)
+private fun java.time.Instant.localized(locale: Locale): String = LedgerDateFormatterRuntime.dateTimeFormatter(locale)
     .withZone(LedgerTheme.timeZone)
     .format(this)
 
@@ -682,14 +858,15 @@ private fun CategoryDirection.alternateNature(): StatisticalNature = if (this ==
 @Composable private fun CategoryDirection.secondNatureLabel(): String = stringResource(if (this == CategoryDirection.EXPENSE) R.string.management_non_consumption else R.string.management_non_recurring_income)
 
 private val SUPPORTED_SCREENS = setOf("MGT-001", "CAT-001", "CAT-002", "CAT-003", "CAT-004", "MER-001", "MER-002", "MER-003", "PLC-001", "PLC-002", "PLC-003")
-private val VERTICALLY_SCROLLABLE_SCREENS = setOf("MGT-001", "CAT-002", "CAT-004", "MER-002", "MER-003", "PLC-002", "PLC-003")
+private val VERTICALLY_SCROLLABLE_SCREENS = setOf("MGT-001", "CAT-004", "MER-003", "PLC-003")
 private const val MAX_NAME = 80
 private const val SEARCH_FEEDBACK_MILLIS = 150L
 private const val REORDER_DRAG_THRESHOLD = 72f
-private const val DEFAULT_PIN_LATITUDE_E7 = 0
-private const val DEFAULT_PIN_LONGITUDE_E7 = 0
+private const val DEFAULT_PIN_LATITUDE_E7 = 356_812_360
+private const val DEFAULT_PIN_LONGITUDE_E7 = 1_397_671_250
 private const val PIN_NUDGE_E7 = 1_000
 private const val E7_DIVISOR = 10_000_000.0
+private const val MAX_COORDINATE_TEXT = 18
 private const val MIN_TEXT_CONTRAST = 4.5
 private const val CONTRAST_OFFSET = 0.05
 private val DRAFT_MAP_ID = StableId.fromBytes(ByteArray(StableId.BYTE_COUNT) { 0x55.toByte() }).getOrNull() ?: error("draft map id")

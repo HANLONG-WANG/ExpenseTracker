@@ -269,11 +269,23 @@ class SecureRoomLoanApplicationPort(
         val transactionId = TransactionId(request.transactionIds.transactionId)
         val revisionId = TransactionRevisionId(request.transactionIds.revisionId)
         val allocations = request.allocations.map { draft ->
+            val scheduleItemId = draft.installmentNumber?.let { installmentNumber ->
+                database.readLedger { db ->
+                    db.queryOne(
+                        "SELECT item.uid FROM loan_schedule_item item " +
+                            "JOIN loan_schedule_revision revision ON revision.id=item.schedule_revision_id " +
+                            "JOIN loan_tranche tranche ON tranche.current_schedule_revision_id=revision.id " +
+                            "WHERE tranche.uid=? AND item.installment_no=?",
+                        arrayOf(draft.trancheId.bytes, installmentNumber),
+                    ) { cursor -> cursor.stableId("uid") }
+                        ?: abort(DomainViolation.InvalidField("loan.payment.installmentNumber"))
+                }
+            }
             LoanActualAllocation(
                 transactionId,
                 revisionId,
                 LoanTrancheId(draft.trancheId),
-                draft.scheduleItemId?.let(::LoanScheduleItemId),
+                scheduleItemId?.let(::LoanScheduleItemId),
                 draft.component,
                 positive(draft.accountMinor, current.currency),
                 positive(draft.baseMinor, book.baseCurrency),

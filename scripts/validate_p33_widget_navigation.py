@@ -249,7 +249,7 @@ def validate_schema_resources_tests() -> list[str]:
         "allP33GlobalTransferSettingsAndNotificationStatesRender",
         "moreTransferSettingsHelpAndPermissionUseAllThreeLocales",
         "durableOperationCenterListsNewestEncryptedOperationsWithoutParameters",
-        "encryptedVersionOneDatabaseMigratesToVersionFourWithoutLosingLedgerData",
+        "everyEncryptedPredecessorMigratesToVersionFiveWithFinancialAndQueryContractsIntact",
     ))
     for module in ("app", "widget", "feature/settings", "feature/transfer"):
         localized: list[set[str]] = []
@@ -270,7 +270,7 @@ def validate_ledgers() -> list[str]:
     decision = read("docs/implementation/DECISION_LOG.md")
     mapping_path = ROOT / "docs/implementation/P33_WIDGET_MORE_SETTINGS_MAPPING.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
-    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P33", "Stage status: VERIFIED"))
+    require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "| P33 | VERIFIED |"))
     for index in range(1, 9):
         if f"P33-E{index:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P33-E{index:03d}")

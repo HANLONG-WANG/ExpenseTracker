@@ -151,6 +151,18 @@ data class SaveCreditProfileRequest(
     val changedAt: Instant,
 )
 
+data class CreateCreditAccountProfileRequest(
+    val account: AccountDraft,
+    val profile: SaveCreditProfileRequest,
+) {
+    init {
+        require(account.type == app.ledger.finance.domain.UserAccountType.CREDIT)
+        require(account.accountId == profile.accountId)
+        require(account.expectedRowVersion == null)
+        require(profile.expectedLastCommitId == null)
+    }
+}
+
 data class SaveCreditStatementRequest(
     val ids: CreditStatementMutationIds,
     val accountId: StableId,
@@ -232,6 +244,8 @@ interface CreditApplicationPort {
     suspend fun snapshot(bookId: StableId): DomainResult<CreditSnapshot>
 
     suspend fun saveProfile(request: SaveCreditProfileRequest): DomainResult<CommandReceipt>
+
+    suspend fun createAccountWithProfile(request: CreateCreditAccountProfileRequest): DomainResult<CommandReceipt>
 
     suspend fun saveStatement(request: SaveCreditStatementRequest): DomainResult<CommandReceipt>
 

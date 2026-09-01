@@ -49,7 +49,8 @@ class P15JournalMutationTest(unittest.TestCase):
         )
 
     def test_detail_must_keep_edit_and_refund_actions(self) -> None:
-        self.assertTrue(self.mutate("JournalDestination.kt", "p15_journal_create_refund", "p15_journal_history"))
+        self.assertTrue(self.mutate("JournalDestination.kt", "actions.onEdit(detail.transaction)", "actions.onHistory(detail.transaction.transactionId)"))
+        self.assertTrue(self.mutate("JournalDestination.kt", "actions.onRefund(detail.transaction.transactionId)", "actions.onHistory(detail.transaction.transactionId)"))
 
     def test_attachment_preview_entry_cannot_be_disconnected(self) -> None:
         self.assertTrue(self.mutate("JournalDestination.kt", "actions.onOpenAttachment(attachmentId)", "Unit"))

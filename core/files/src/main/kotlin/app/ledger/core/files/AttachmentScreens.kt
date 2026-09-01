@@ -4,13 +4,17 @@ package app.ledger.core.files
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import app.ledger.core.designsystem.FormSection
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
@@ -54,23 +58,30 @@ fun AttachmentPreviewScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier.padding(LedgerTheme.spacing.sm),
+        modifier.fillMaxSize().padding(LedgerTheme.spacing.sm),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
         when (state) {
             AttachmentPreviewState.Loading -> LedgerLoadingState()
             is AttachmentPreviewState.Image -> {
-                SecureAttachmentImagePreview(state.metadata.attachmentId, checkNotNull(secureImageLoader))
-                AttachmentMetadataPanel(state.metadata)
-                AttachmentActions(onRename, onOpenExternally)
+                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+                    item {
+                        SecureAttachmentImagePreview(
+                            state.metadata.attachmentId,
+                            checkNotNull(secureImageLoader),
+                            Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 480.dp).clipToBounds(),
+                        )
+                    }
+                    item { AttachmentMetadataPanel(state.metadata) }
+                    item { AttachmentActions(onRename, onOpenExternally) }
+                }
             }
             is AttachmentPreviewState.UnsupportedPreview -> {
-                LedgerBanner(
-                    stringResource(R.string.attachment_preview_unsupported),
-                    LedgerBannerVariant.INFO,
-                )
-                AttachmentMetadataPanel(state.metadata)
-                AttachmentActions(onRename, onOpenExternally)
+                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+                    item { LedgerBanner(stringResource(R.string.attachment_preview_unsupported), LedgerBannerVariant.INFO) }
+                    item { AttachmentMetadataPanel(state.metadata) }
+                    item { AttachmentActions(onRename, onOpenExternally) }
+                }
             }
             is AttachmentPreviewState.DecryptError -> LedgerErrorState(
                 message = stringResource(R.string.attachment_decrypt_error_message),
@@ -95,17 +106,17 @@ private fun AttachmentMetadataPanel(model: AttachmentMetadataUiModel) {
 
 @Composable
 private fun AttachmentActions(onRename: () -> Unit, onOpenExternally: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         LedgerButton(
             stringResource(R.string.attachment_rename_action),
             onRename,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxWidth(),
             variant = LedgerButtonVariant.SECONDARY,
         )
         LedgerButton(
             stringResource(R.string.attachment_external_open_action),
             onOpenExternally,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

@@ -230,18 +230,32 @@ internal object TransactionSqlCompiler {
         enumSet("ctp.source_type", filter.sources.map(TransactionSource::ordinal), clauses, args)
         enumSet("ctp.state", filter.lifecycleStates.map(TransactionLifecycleState::ordinal), clauses, args)
         filter.searchText?.trim()?.takeIf(String::isNotEmpty)?.let { search ->
-            if (search.codePointCount(0, search.length) < FTS_TRIGRAM_LENGTH) {
+            val textClause = if (search.codePointCount(0, search.length) < FTS_TRIGRAM_LENGTH) {
                 val pattern = "%${search.escapeLikePattern()}%"
-                clauses += "ctp.transaction_id IN (SELECT transaction_id FROM transaction_fts WHERE " +
+                val clause = "ctp.transaction_id IN (SELECT transaction_id FROM transaction_fts WHERE " +
                     listOf(
                         "category_name", "merchant_name", "merchant_aliases", "note", "project_name",
                         "settlement_activity_name", "participant_names", "attachment_names",
                     ).joinToString(" OR ") { "$it LIKE ? ESCAPE '\\'" } + ")"
                 repeat(FTS_TEXT_COLUMN_COUNT) { args += pattern }
+                clause
             } else {
                 val literal = "\"${search.replace("\"", "\"\"")}\""
-                clauses += "ctp.transaction_id IN (SELECT transaction_id FROM transaction_fts WHERE transaction_fts MATCH ?)"
                 args += literal
+                "ctp.transaction_id IN (SELECT transaction_id FROM transaction_fts WHERE transaction_fts MATCH ?)"
+            }
+            val amountCandidates = search.toBigDecimalOrNull()?.takeIf { it.signum() >= 0 }?.let { amount ->
+                (0..3).mapNotNull { scale -> runCatching { amount.movePointRight(scale).longValueExact() }.getOrNull() }.distinct()
+            }.orEmpty()
+            clauses += if (amountCandidates.isEmpty()) {
+                textClause
+            } else {
+                val placeholders = amountCandidates.joinToString(",") { "?" }
+                args.addAll(amountCandidates)
+                args.addAll(amountCandidates)
+                args.addAll(amountCandidates)
+                "($textClause OR ABS(ctp.input_amount_minor) IN ($placeholders) " +
+                    "OR ABS(ctp.account_amount_minor) IN ($placeholders) OR ABS(ctp.economic_base_minor) IN ($placeholders))"
             }
         }
         cursor?.let {

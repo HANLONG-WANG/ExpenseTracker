@@ -34,6 +34,9 @@ public data class LoanActions(
     val onSave: () -> Unit,
     val onSimulate: () -> Unit,
     val onApplySimulation: () -> Unit,
+    val onCancelConfirmation: () -> Unit = {},
     val onCreateLoanAccount: () -> Unit = {},
+    val onCreateCreditAccount: () -> Unit = {},
     val onOpenCreditAccount: (StableId) -> Unit = {},
+    val onOpenTransactions: (StableId) -> Unit = {},
 )

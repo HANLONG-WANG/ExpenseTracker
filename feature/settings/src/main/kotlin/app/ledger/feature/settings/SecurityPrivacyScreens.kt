@@ -13,9 +13,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +40,7 @@ import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerToggleRow
 import java.time.Instant
 import java.time.ZoneId
@@ -50,8 +54,10 @@ public fun SecurityPrivacySettingsDestination(
     modifier: Modifier = Modifier,
 ) {
     val actions = securityPrivacyActions(onAction)
+    val scrollable = state.screenId in setOf("SETG-006", "SETG-007", "SETG-008", "SETG-009", "SYS-004")
     Column(
-        modifier.fillMaxSize().testTag("security_settings_root").padding(vertical = LedgerTheme.spacing.xs),
+        modifier.fillMaxSize().testTag("security_settings_root").padding(vertical = LedgerTheme.spacing.xs)
+            .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier),
         verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
     ) {
         when (state.screenId) {
@@ -259,6 +265,9 @@ private fun QueueCard(title: String, fixedFields: String, time: String) {
 @Composable
 private fun LocalClear(state: SecurityPrivacySettingsState, actions: SecurityPrivacySettingsActions) {
     var phrase by remember { mutableStateOf("") }
+    LaunchedEffect(state.presentation) {
+        if (state.presentation != SecuritySettingsRequiredState.CLR_001_CONFIRMING) phrase = ""
+    }
     val scopeItems = listOf(
         R.string.clear_scope_ledger,
         R.string.clear_scope_attachments,
@@ -297,7 +306,10 @@ private fun LocalClear(state: SecurityPrivacySettingsState, actions: SecurityPri
                         phrase,
                         { phrase = it },
                         actions.onConfirmLocalClear,
-                        actions.onCancelLocalClear,
+                        {
+                            phrase = ""
+                            actions.onCancelLocalClear()
+                        },
                     )
                 }
             }
@@ -336,7 +348,7 @@ private fun Long.localizedDateTime(zoneId: String): String {
     val locale = LocalLocale.current.platformLocale
     val zone = runCatching { ZoneId.of(zoneId) }.getOrDefault(LedgerTheme.timeZone)
     return Instant.ofEpochMilli(this).atZone(zone).format(
-        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale),
+        LedgerDateFormatterRuntime.dateTimeFormatter(locale),
     )
 }
 

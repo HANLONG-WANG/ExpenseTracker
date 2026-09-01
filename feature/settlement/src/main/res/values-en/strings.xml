@@ -1,4 +1,5 @@
 <resources>
+    <string name="settlement_minimum_participants">An activity needs at least 2 included participants, with exactly 1 marked as you.</string>
     <string name="settlement_loading">Loading shared expenses</string>
     <string name="settlement_title_home">Shared activities</string>
     <string name="settlement_title_editor">Shared activity settings</string>
@@ -23,6 +24,8 @@
     <string name="settlement_participant_empty">No participants yet</string>
     <string name="settlement_participant_name">Participant name</string>
     <string name="settlement_add_participant">Add participant</string>
+    <string name="settlement_mark_self">Mark %1$s as me</string>
+    <string name="settlement_choose_self">Choose one participant as you. You are always included in the activity.</string>
     <string name="settlement_unique_self">“Me” is the ledger’s unique self participant and cannot be removed or replaced.</string>
     <string name="settlement_self">Me</string>
     <string name="settlement_included">Included</string>

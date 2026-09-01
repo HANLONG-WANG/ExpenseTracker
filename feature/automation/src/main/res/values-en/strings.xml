@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="automation_category_empty">This book has no category available for the template. Create one; this draft will be kept when you return.</string>
+    <string name="automation_create_category">Create category</string>
+    <string name="automation_blueprint_empty_inline">There is no quick template available for this recurring rule.</string>
+    <string name="automation_create_template">Create quick template</string>
     <string name="automation_title_template_picker">Select quick template</string><string name="automation_title_hub">Templates and recurrence</string><string name="automation_title_templates">Quick templates</string><string name="automation_title_template_editor">Quick template settings</string><string name="automation_title_recurrences">Recurring transactions</string><string name="automation_title_recurrence_editor">Recurrence settings</string><string name="automation_title_rule">Recurrence rule</string><string name="automation_title_preview">Occurrence preview</string><string name="automation_title_candidates">Candidates to confirm</string><string name="automation_title_candidate">Confirm candidate</string><string name="automation_title_scope">Apply change scope</string>
     <string name="automation_loading">Loading automation…</string>
     <string name="automation_load_failed">Automation data could not be loaded</string>
@@ -36,4 +40,5 @@
     <string name="automation_edit_template_place">Choose the fixed place in the template</string><string name="automation_nth_weekday">Weekday</string><string name="automation_choose_date">Choose date</string><string name="automation_no_end_date">No end date</string><string name="automation_rule_summary">%1$s · every %2$d cycle(s) · starts %3$s</string>
     <string name="automation_review_selected">Review one by one</string><string name="automation_skip_selected">Skip selected</string><string name="automation_confirm_and_post">Confirm and open full form</string><string name="automation_cancel_candidate">Cancel</string>
     <string name="automation_candidate_error_amount">The template amount needs to be added or corrected.</string><string name="automation_candidate_error_account">The template account is unavailable. Choose another.</string><string name="automation_candidate_error_category">The template category is unavailable. Choose another.</string><string name="automation_candidate_error_source">The candidate source is no longer available.</string><string name="automation_candidate_error_fields">Template fields are incomplete. Correct them in the full form.</string>
+    <string name="automation_review_and_edit">Review and edit full transaction</string>
 </resources>
