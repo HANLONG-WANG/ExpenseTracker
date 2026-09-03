@@ -24,6 +24,7 @@ dependencies {
 
     testImplementation(libs.fastexcel)
     testImplementation(libs.mockwebserver)
+    androidTestImplementation(project(":core:database"))
     androidTestImplementation(libs.fastexcel)
 }
 

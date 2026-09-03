@@ -19,20 +19,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -48,6 +48,7 @@ import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChip
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerIcon
@@ -61,11 +62,10 @@ import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LocalLedgerAmountsVisible
-import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
 import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
 import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
+import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.designsystem.rememberLedgerRetainedState
 import app.ledger.finance.application.BudgetCompositionView
@@ -421,7 +421,7 @@ private fun BudgetEditor(state: BudgetFeatureState, actions: BudgetActions, temp
         fixedAction = {
             BudgetStickySaveBar(
                 if (template) actions.onSaveTemplate else actions.onSaveMonth,
-                enabled = !saving,
+                enabled = !saving && state.validation.valid && (!template || state.editor.templateName.isNotBlank()),
                 saving = saving,
             )
         },
@@ -554,7 +554,7 @@ private fun BudgetCategoryEditor(state: BudgetFeatureState, encodedCategoryId: S
     LedgerScaffold(
         modifier = Modifier.fillMaxSize().testTag(LedgerTestTags.BUDGET_CATEGORY_EDITOR),
         formContent = true,
-        fixedAction = { BudgetStickySaveBar(actions.onSaveMonth, !saving, saving) },
+        fixedAction = { BudgetStickySaveBar(actions.onSaveMonth, !saving && state.validation.valid, saving) },
     ) {
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -761,10 +761,12 @@ private fun BudgetAdjustmentEditor(state: BudgetFeatureState, encodedKind: Strin
         val archivedSource = kind == BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER
         val candidates = state.snapshot.categories.filter { category ->
             when (picker) {
-                BudgetAdjustmentCategoryPicker.SOURCE -> category.id != state.adjustmentTargetCategoryId &&
-                    category.status == if (archivedSource) app.ledger.finance.domain.EntityStatus.ARCHIVED else app.ledger.finance.domain.EntityStatus.ACTIVE
-                BudgetAdjustmentCategoryPicker.TARGET -> category.id != state.adjustmentSourceCategoryId &&
-                    category.status == app.ledger.finance.domain.EntityStatus.ACTIVE
+                BudgetAdjustmentCategoryPicker.SOURCE ->
+                    category.id != state.adjustmentTargetCategoryId &&
+                        category.status == if (archivedSource) app.ledger.finance.domain.EntityStatus.ARCHIVED else app.ledger.finance.domain.EntityStatus.ACTIVE
+                BudgetAdjustmentCategoryPicker.TARGET ->
+                    category.id != state.adjustmentSourceCategoryId &&
+                        category.status == app.ledger.finance.domain.EntityStatus.ACTIVE
             }
         }
         LedgerModalDialog(
@@ -793,8 +795,8 @@ private fun BudgetAdjustmentKind.requiresTargetCategory(): Boolean = this == Bud
     this == BudgetAdjustmentKind.ARCHIVED_CATEGORY_TRANSFER
 
 @Composable
-private fun categoryName(state: BudgetFeatureState, id: StableId?): String =
-    state.snapshot.categories.singleOrNull { it.id == id }?.name ?: stringResource(R.string.budget_choose_category)
+private fun categoryName(state: BudgetFeatureState, id: StableId?): String = state.snapshot.categories.singleOrNull { it.id == id }?.name
+    ?: stringResource(R.string.budget_choose_category)
 
 @Composable
 private fun BudgetHistory(state: BudgetFeatureState) {
@@ -965,7 +967,6 @@ private fun budgetCategoryFieldError(state: BudgetFeatureState, categoryId: Stab
 }
 
 @Composable
-private fun java.time.Instant.localizedDateTime(locale: java.util.Locale): String =
-    LedgerDateFormatterRuntime.dateTimeFormatter(locale)
-        .withZone(LedgerTheme.timeZone)
-        .format(this)
+private fun java.time.Instant.localizedDateTime(locale: java.util.Locale): String = LedgerDateFormatterRuntime.dateTimeFormatter(locale)
+    .withZone(LedgerTheme.timeZone)
+    .format(this)

@@ -35,12 +35,13 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
-import app.ledger.core.designsystem.LedgerEmptyState
-import app.ledger.core.designsystem.LedgerErrorState
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerDialog
-import app.ledger.core.designsystem.LedgerModalDialog
+import app.ledger.core.designsystem.LedgerEmptyState
+import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
+import app.ledger.core.designsystem.LedgerModalDialog
 import app.ledger.core.designsystem.LedgerProgressIndicator
 import app.ledger.core.designsystem.LedgerStatusVariant
 import app.ledger.core.designsystem.LedgerTabRow
@@ -48,14 +49,13 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
-import app.ledger.core.designsystem.StatusBadge
-import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.SearchField
+import app.ledger.core.designsystem.SelectorField
+import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.money.AmountSemantic
 import app.ledger.finance.application.CreditAccountView
@@ -131,7 +131,9 @@ private fun CreditPaymentEditor(state: CreditFeatureState, actions: CreditAction
                 Modifier.fillMaxWidth().testTag(LedgerTestTags.AMOUNT),
                 errorText = if ("amount" in state.validationFields) {
                     stringResource(if (state.presentation == CreditPresentation.OVERPAYMENT_BLOCKED) R.string.credit_overpayment_field else R.string.credit_invalid_amount)
-                } else null,
+                } else {
+                    null
+                },
                 required = true,
                 keyboardType = KeyboardType.Decimal,
             )
@@ -148,7 +150,7 @@ private fun CreditPaymentEditor(state: CreditFeatureState, actions: CreditAction
         item { LedgerBanner(stringResource(R.string.credit_bookkeeping_disclaimer), LedgerBannerVariant.INFO) }
     }
     if (showDatePicker) {
-        val initial = state.draft.date.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
+        val initial = state.draft.date.toLocalDateOrNull() ?: LedgerTheme.now.atZone(LedgerTheme.timeZone).toLocalDate()
         LedgerDatePickerFlow(
             initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
             { millis ->
@@ -161,7 +163,10 @@ private fun CreditPaymentEditor(state: CreditFeatureState, actions: CreditAction
     if (showPaymentAccountPicker) {
         CreditPaymentAccountChooser(
             state,
-            { actions.onPaymentAccountSelected(it); showPaymentAccountPicker = false },
+            {
+                actions.onPaymentAccountSelected(it)
+                showPaymentAccountPicker = false
+            },
             { showPaymentAccountPicker = false },
         )
     }
@@ -201,12 +206,14 @@ private fun CreditAccountDetail(state: CreditFeatureState, actions: CreditAction
                 }
             }
         }
-        if (limit != null && limit > 0L) item {
-            LedgerProgressIndicator(
-                account.debtMinor.toFloat() / limit.toFloat(),
-                Modifier.fillMaxWidth(),
-                stringResource(R.string.credit_limit_usage),
-            )
+        if (limit != null && limit > 0L) {
+            item {
+                LedgerProgressIndicator(
+                    account.debtMinor.toFloat() / limit.toFloat(),
+                    Modifier.fillMaxWidth(),
+                    stringResource(R.string.credit_limit_usage),
+                )
+            }
         }
         current?.let { statement ->
             item {
@@ -284,24 +291,34 @@ private fun CreditProfileEditor(state: CreditFeatureState, actions: CreditAction
         item { LedgerText(stringResource(R.string.credit_no_minimum_payment), LedgerTextRole.SUPPORTING) }
     }
     if (showExpiryPicker) {
-        val initial = state.draft.temporaryExpires.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
+        val initial = state.draft.temporaryExpires.toLocalDateOrNull()
+            ?: LedgerTheme.now.atZone(LedgerTheme.timeZone).toLocalDate()
         LedgerDatePickerFlow(
             initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-            { millis -> actions.onFieldChanged(CreditField.TEMPORARY_EXPIRY, Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()); showExpiryPicker = false },
+            { millis ->
+                actions.onFieldChanged(CreditField.TEMPORARY_EXPIRY, Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
+                showExpiryPicker = false
+            },
             { showExpiryPicker = false },
         )
     }
     if (showPaymentAccountPicker) {
         CreditPaymentAccountChooser(
             state,
-            { actions.onPaymentAccountSelected(it); showPaymentAccountPicker = false },
+            {
+                actions.onPaymentAccountSelected(it)
+                showPaymentAccountPicker = false
+            },
             { showPaymentAccountPicker = false },
         )
     }
     if (showZonePicker) {
         CreditZoneChooser(
             state.draft.zoneId,
-            { actions.onZoneSelected(it); showZonePicker = false },
+            {
+                actions.onZoneSelected(it)
+                showZonePicker = false
+            },
             { showZonePicker = false },
         )
     }
@@ -368,7 +385,7 @@ private fun CreditZoneChooser(current: String, onSelect: (String) -> Unit, onDis
                 modifier = Modifier.fillMaxWidth(),
             )
             if (zones.isEmpty()) LedgerText(stringResource(R.string.credit_zone_no_results, query), LedgerTextRole.SUPPORTING)
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = LedgerTheme.dimensions.dialogMaxWidth)) {
                 items(zones, key = { it }) { zone ->
                     val displayName = java.util.TimeZone.getTimeZone(zone).getDisplayName(false, java.util.TimeZone.LONG, locale)
                     LedgerChoiceRow(zone, current == zone, { onSelect(zone) }, supportingText = displayName.takeUnless { it == zone })
@@ -485,9 +502,13 @@ private fun CreditStatementDetail(state: CreditFeatureState, actions: CreditActi
                 }
             }
         }
-        if (statement.sealed) statement.transactions.firstOrNull()?.let { transaction -> item {
-            LedgerButton(stringResource(R.string.credit_review_sealed_impact), { actions.onNavigate("CRD-006", transaction.transactionId) }, Modifier.fillMaxWidth(), LedgerButtonVariant.TEXT)
-        } }
+        if (statement.sealed) {
+            statement.transactions.firstOrNull()?.let { transaction ->
+                item {
+                    LedgerButton(stringResource(R.string.credit_review_sealed_impact), { actions.onNavigate("CRD-006", transaction.transactionId) }, Modifier.fillMaxWidth(), LedgerButtonVariant.TEXT)
+                }
+            }
+        }
         item { LedgerButton(stringResource(R.string.credit_record_official), { actions.onNavigate("CRD-005", statement.id) }, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
         item { LedgerButton(stringResource(R.string.credit_record_payment), { actions.onNavigate("REC-014", null) }, Modifier.fillMaxWidth()) }
     }

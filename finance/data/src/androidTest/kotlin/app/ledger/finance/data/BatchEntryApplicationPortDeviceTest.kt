@@ -50,6 +50,7 @@ import java.util.UUID
 class BatchEntryApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var referenceData: SecureRoomReferenceDataManagementPort
 
     @Before
@@ -58,7 +59,8 @@ class BatchEntryApplicationPortDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
-        referenceData = SecureRoomReferenceDataManagementPort(context, keys)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
+        referenceData = SecureRoomReferenceDataManagementPort(databaseAccess)
         val initialization = SecureRoomLedgerInitializationPort(context, keys)
         initialization.initialize(
             InitializeLedgerCommand(
@@ -86,7 +88,7 @@ class BatchEntryApplicationPortDeviceTest {
 
     @Test
     fun invalidFailureRetryAuditAndProjectionAreOneAtomicBatch() = runBlocking {
-        val production = SecureRoomBatchEntryApplicationPort(context, keys, referenceData)
+        val production = SecureRoomBatchEntryApplicationPort(databaseAccess, referenceData)
         val invalid = request(parentSeed = 9_000L, amounts = listOf(1_000L), categoryId = id(99_999L))
         val invalidReport = production.validate(invalid).success()
         assertFalse(invalidReport.canCommit)
@@ -94,8 +96,7 @@ class BatchEntryApplicationPortDeviceTest {
 
         val valid = request(parentSeed = 10_000L, amounts = listOf(1_200L, 3_400L), categoryId = CATEGORY_ID)
         val injected = SecureRoomBatchEntryApplicationPort(
-            context,
-            keys,
+            databaseAccess,
             referenceData,
             FinancialCommitFailureInjector { phase -> if (phase == FinancialCommitPhase.AFTER_IMMUTABLE_FACTS) error("injected") },
         )

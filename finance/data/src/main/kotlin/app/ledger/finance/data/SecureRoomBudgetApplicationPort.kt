@@ -9,6 +9,8 @@ import app.ledger.core.common.StableId
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.finance.application.BudgetAdjustmentView
 import app.ledger.finance.application.BudgetApplicationPort
 import app.ledger.finance.application.BudgetCategoryLimitDraft
@@ -19,11 +21,11 @@ import app.ledger.finance.application.BudgetProjectionReadiness
 import app.ledger.finance.application.BudgetRevisionView
 import app.ledger.finance.application.BudgetSnapshot
 import app.ledger.finance.application.BudgetTemplateView
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.RecordBudgetAdjustmentRequest
 import app.ledger.finance.application.SaveBudgetMonthRequest
 import app.ledger.finance.application.SaveBudgetTemplateRequest
@@ -56,20 +58,14 @@ import app.ledger.finance.domain.PlanningOperationContext
 import app.ledger.finance.domain.PlanningSnapshot
 import app.ledger.finance.domain.RecordBudgetAdjustmentsCommand
 import app.ledger.finance.domain.SaveBudgetTemplateCommand
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.YearMonth
 
 class SecureRoomBudgetApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
-    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
 ) : BudgetApplicationPort {
-    private val applicationContext = context.applicationContext
-    private val writeGate: LedgerWriteGate = BudgetWriteGate()
 
-    override suspend fun snapshot(bookId: StableId, month: YearMonth, today: LocalDate): DomainResult<BudgetSnapshot> = withDatabase(bookId) { database -> database.readLedger { DomainResult.Success(readSnapshot(it, bookId, month, today)) } }
+    override suspend fun snapshot(bookId: StableId, month: YearMonth, today: LocalDate): DomainResult<BudgetSnapshot> = withDatabase(bookId, LedgerAccessMode.READ) { database -> database.readLedger { DomainResult.Success(readSnapshot(it, bookId, month, today)) } }
 
     override suspend fun saveMonth(request: SaveBudgetMonthRequest) = withDatabase(request.ids.bookId) { database ->
         val book = database.readLedger(RoomBookRepository::mapCurrent)
@@ -129,7 +125,7 @@ class SecureRoomBudgetApplicationPort(
 
     private suspend fun execute(database: LedgerDatabase, command: FinancialCommand, snapshot: PlanningSnapshot) = RoomFinancialCommitRepository(database).let { repository ->
         DefaultFinancialMutationCoordinator(
-            writeGate,
+            CallerOwnedLedgerWriteGate,
             repository,
             object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
@@ -364,15 +360,12 @@ class SecureRoomBudgetApplicationPort(
         else -> month.lengthOfMonth() - today.dayOfMonth + 1
     }
 
-    private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> DomainResult<T>): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { openSelectedLedger(applicationContext, it, databaseName) }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+    private suspend fun <T> withDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
+        block: suspend (LedgerDatabase) -> DomainResult<T>,
+    ): DomainResult<T> = try {
+        databaseAccess.withCurrentDatabase(bookId, mode, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -386,11 +379,6 @@ class SecureRoomBudgetApplicationPort(
     private companion object {
         const val HASH_BYTE_COUNT = 32
     }
-}
-
-private class BudgetWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
 }
 
 private fun android.database.Cursor.int(name: String): Int = getInt(getColumnIndexOrThrow(name))

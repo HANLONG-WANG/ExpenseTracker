@@ -6,8 +6,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-NEEDS = ROOT / "docs/testing/ManualTestFindings/Needs.md"
-PROGRESS = ROOT / "docs/testing/ManualTestFindings/RepairProgress.md"
+NEEDS = ROOT / "docs/ManualTest/Phase1/Needs.md"
+PROGRESS = ROOT / "docs/ManualTest/Phase1/RepairProgress.md"
 MATRIX_ROW = re.compile(
     r"^\| N(?P<id>\d{2}) \| (?P<line>\d+) \| (?P<status>[^|]+) \| (?P<production>[^|]+) \| (?P<tests>[^|]+) \|$"
 )

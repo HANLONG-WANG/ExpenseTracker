@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "environment": "Gradle Managed Devices: API 28 x86 and API 36 x86_64; deterministic P35 target-scale seed",
+  "samplePolicy": {
+    "warmSamplesMin": 30,
+    "coldSamplesMin": 5,
+    "requiredStatistics": ["p50", "p90", "p95", "max"],
+    "timeoutIsFailure": true
+  },
+  "latencyMillis": {
+    "warmCachedTopLevelNavigationP95Max": 250,
+    "warmUncachedBoundedDestinationP95Max": 750,
+    "ordinarySaveP95Max": 750,
+    "searchAfterDebounceP95Max": 500,
+    "searchIncludingDebounceP95Max": 800,
+    "unlockToCurrentRouteContentP95Max": 1500,
+    "blockingProgressVisibleMax": 100,
+    "frameOverrunP95Max": 32
+  },
+  "deterministicCounters": {
+    "uiUnlockPrimaryOpen": 1,
+    "uiUnlockDatabaseKeyUnwrap": 1,
+    "warmInteractionPrimaryOpenDelta": 0,
+    "warmInteractionDatabaseKeyUnwrapDelta": 0,
+    "ordinarySaveFinancialTransactions": 1,
+    "journalPageSqlStatementsMax": 3,
+    "journalPageWithRunningBalanceSqlStatementsMax": 4
+  },
+  "evidence": {
+    "api28": "quality/performance/p37_results_api28.json",
+    "api36": "quality/performance/p37_results_api36.json",
+    "fixtureMarker": "P35_TARGET_SCALE_V1"
+  }
+}

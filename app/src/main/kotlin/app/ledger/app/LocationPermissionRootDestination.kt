@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:function-naming")
+
 package app.ledger.app
 
 import android.Manifest
@@ -65,6 +67,11 @@ internal fun LocationPermissionRootDestination(
     )
 }
 
-internal fun android.content.Context.hasLedgerLocationPermission(): Boolean =
-    ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
-        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+internal fun android.content.Context.hasLedgerLocationPermission(): Boolean = ContextCompat.checkSelfPermission(
+    this,
+    Manifest.permission.ACCESS_FINE_LOCATION,
+) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+    ContextCompat.checkSelfPermission(
+        this,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED

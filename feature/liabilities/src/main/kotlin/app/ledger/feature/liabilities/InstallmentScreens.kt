@@ -36,23 +36,23 @@ import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerChoiceSelector
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
+import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
-import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerProgressIndicator
 import app.ledger.core.designsystem.LedgerStatusVariant
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
-import app.ledger.core.designsystem.StatusBadge
-import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.SearchField
+import app.ledger.core.designsystem.SelectorField
+import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.LocaleNumberFormatter
@@ -170,10 +170,14 @@ private fun InstallmentEditor(state: InstallmentFeatureState, actions: Installme
         item { LedgerText(stringResource(R.string.installment_purchase_not_split), LedgerTextRole.SUPPORTING) }
     }
     if (showFirstDatePicker) {
-        val initial = state.draft.firstStatementDate.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
+        val initial = state.draft.firstStatementDate.toLocalDateOrNull()
+            ?: LedgerTheme.now.atZone(LedgerTheme.timeZone).toLocalDate()
         LedgerDatePickerFlow(
             initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-            { millis -> actions.onFieldChanged(InstallmentField.FIRST_STATEMENT_DATE, Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()); showFirstDatePicker = false },
+            { millis ->
+                actions.onFieldChanged(InstallmentField.FIRST_STATEMENT_DATE, Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
+                showFirstDatePicker = false
+            },
             { showFirstDatePicker = false },
         )
     }
@@ -359,10 +363,14 @@ private fun EarlySettlement(state: InstallmentFeatureState, actions: Installment
         }
     }
     if (showDatePicker) {
-        val initial = state.draft.settlementDate.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
+        val initial = state.draft.settlementDate.toLocalDateOrNull()
+            ?: LedgerTheme.now.atZone(LedgerTheme.timeZone).toLocalDate()
         LedgerDatePickerFlow(
             initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-            { millis -> actions.onFieldChanged(InstallmentField.SETTLEMENT_DATE, Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()); showDatePicker = false },
+            { millis ->
+                actions.onFieldChanged(InstallmentField.SETTLEMENT_DATE, Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
+                showDatePicker = false
+            },
             { showDatePicker = false },
         )
     }

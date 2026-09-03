@@ -18,6 +18,7 @@ import androidx.documentfile.provider.DocumentFile
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.core.security.SecureTransferHandleStore
 import app.ledger.feature.transfer.ExportDestinationPresentation
@@ -44,6 +45,7 @@ internal class ExportController(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
     private val runtime: AppRuntimeSources,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
 ) {
     private val applicationContext = context.applicationContext
     private val mutableState = MutableStateFlow(ExportFlowUiState())
@@ -379,7 +381,7 @@ internal class ExportController(
 
     private fun operations(activeBook: StableId) = SqlCipherBackgroundOperationRepository(
         activeBook,
-        SecurePrimaryLedgerAccess(applicationContext, keyProvider),
+        SecurePrimaryLedgerAccess(applicationContext, keyProvider, databaseAccess),
     )
 
     private fun <T> DomainResult<T>.requireSuccess(): T = when (this) {

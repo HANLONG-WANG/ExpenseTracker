@@ -16,10 +16,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -132,9 +134,8 @@ class AnalysisUiContractDeviceTest {
             }
         }
         composeRule.onNodeWithTag(LedgerTestTags.CONSUMPTION_MAP).assertExists()
-        composeRule.onNodeWithTag(LedgerTestTags.CONSUMPTION_MAP).performScrollToNode(
-            androidx.compose.ui.test.hasText("新宿"),
-        )
+        composeRule.onNode(hasScrollAction()).performScrollToIndex(MAP_FIRST_POINT_INDEX)
+        composeRule.onNodeWithText("新宿", useUnmergedTree = true).assertExists()
         composeRule.runOnIdle { activeDetail.value = true }
         composeRule.waitForIdle()
         val detail = composeRule.onNodeWithTag(LedgerTestTags.CONSUMPTION_MAP_DETAIL)
@@ -158,9 +159,9 @@ class AnalysisUiContractDeviceTest {
                     AnalysisDestination(
                         "ANA-011",
                         AnalysisLoadState.Content(state),
-                        { action ->
-                            if (action is AnalysisScreenAction.RemoveMapFilter) removedStableKey = action.key
-                        },
+                        AnalysisDeviceFixtures.actions.copy(
+                            onRemoveMapFilter = { key -> removedStableKey = key },
+                        ),
                         mapContent = { _, _ -> Box(Modifier.size(320.dp, 220.dp)) },
                     )
                 }
@@ -251,6 +252,7 @@ class AnalysisUiContractDeviceTest {
     )
 
     private companion object {
+        const val MAP_FIRST_POINT_INDEX = 4
         val EXPECTED = linkedMapOf(
             "ANA-001" to setOf("content", "noData", "calculating", "error"),
             "ANA-002" to setOf("content"),

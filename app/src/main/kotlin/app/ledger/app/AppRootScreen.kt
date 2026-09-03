@@ -16,30 +16,30 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
 import android.os.LocaleList
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivityResultRegistryOwner
-import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -56,13 +56,12 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
+import app.ledger.core.designsystem.LedgerDateFormat
+import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerLoadingState
-import app.ledger.core.designsystem.LedgerDialog
-import app.ledger.core.designsystem.LedgerDateFormat
-import app.ledger.core.designsystem.LedgerWeekStart
 import app.ledger.core.designsystem.LedgerProgressState
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerSnackbarController
@@ -73,6 +72,7 @@ import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerTopAppBar
 import app.ledger.core.designsystem.LedgerTopAppBarVariant
+import app.ledger.core.designsystem.LedgerWeekStart
 import app.ledger.core.designsystem.OperationCapability
 import app.ledger.core.designsystem.OperationProgressPanel
 import app.ledger.core.designsystem.OperationProgressUiModel
@@ -92,21 +92,21 @@ import app.ledger.core.navigation.ScreenId
 import app.ledger.core.security.BookSessionState
 import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.RecoveryDiagnosticCode
-import app.ledger.feature.accounts.AccountsDataState
 import app.ledger.feature.accounts.AccountsActions
+import app.ledger.feature.accounts.AccountsDataState
 import app.ledger.feature.accounts.AccountsDestination
 import app.ledger.feature.journal.JournalActions
 import app.ledger.feature.journal.JournalDestination
 import app.ledger.feature.journal.JournalLoadState
-import app.ledger.feature.onboarding.OnboardingScreen
 import app.ledger.feature.onboarding.OnboardingActions
+import app.ledger.feature.onboarding.OnboardingScreen
 import app.ledger.feature.record.BatchRecordState
 import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.record.SpecializedTransactionLoadState
 import app.ledger.feature.settings.CurrencySettingsDestination
 import app.ledger.feature.settings.CurrencySettingsState
-import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ManagementActions
+import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ReferenceManagementDestination
 import app.ledger.feature.settings.RemainingSettingsDestination
 import app.ledger.feature.settings.RemainingSettingsScreenAction
@@ -119,8 +119,8 @@ import app.ledger.feature.transfer.RestoreResultPresentation
 import app.ledger.feature.transfer.TransferHubScreen
 import app.ledger.feature.transfer.TransferHubScreenAction
 import app.ledger.feature.transfer.TransferHubState
-import app.ledger.feature.vault.VaultDestination
 import app.ledger.feature.vault.VaultActions
+import app.ledger.feature.vault.VaultDestination
 import app.ledger.transfer.domain.BackgroundOperation
 import app.ledger.transfer.domain.BackgroundOperationState
 import app.ledger.transfer.domain.BackgroundOperationType
@@ -265,11 +265,13 @@ internal fun LedgerAppRoot(viewModel: AppRootViewModel) {
                 navigationBarStyle = if (darkTheme) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
             )
         }
+        val ledgerNow = remember(viewModel) { viewModel::currentUiInstant }
         LedgerTheme(
             themeMode,
             dynamicColor = settings.dynamicColorEnabled,
             reduceMotion = settings.reduceMotionEnabled,
             ledgerTimeZoneId = settings.zoneId.ifBlank { "UTC" },
+            ledgerNow = ledgerNow,
             ledgerDateFormat = when (settings.dateFormat) {
                 app.ledger.app.settings.DateFormatProto.DATE_FORMAT_YEAR_MONTH_DAY -> LedgerDateFormat.YEAR_MONTH_DAY
                 app.ledger.app.settings.DateFormatProto.DATE_FORMAT_DAY_MONTH_YEAR -> LedgerDateFormat.DAY_MONTH_YEAR
@@ -568,7 +570,10 @@ internal fun RecoveryRequiredScreen(
             message = stringResource(R.string.global_recovery_clear_scope),
             confirmLabel = stringResource(R.string.global_recovery_clear),
             onConfirm = onClear,
-            onDismiss = { confirmingClear = false; phrase = "" },
+            onDismiss = {
+                confirmingClear = false
+                phrase = ""
+            },
             danger = true,
             confirmEnabled = phrase == requiredPhrase,
             content = {
@@ -594,13 +599,6 @@ private fun recoveryDiagnosticLabel(code: RecoveryDiagnosticCode): String = stri
 internal fun RootDestination(
     key: LedgerDestinationKey,
     viewModel: AppRootViewModel,
-    referenceState: AppReferenceDataState,
-    referencePending: Boolean,
-    recordState: OrdinaryRecordLoadState,
-    batchState: BatchRecordState?,
-    specializedState: SpecializedTransactionLoadState,
-    currencySettings: CurrencySettingsState?,
-    journalState: JournalLoadState,
     accountAmountsVisible: Boolean,
     visibleCurrencyCodes: List<String>,
     onAddAttachment: () -> Unit,
@@ -612,7 +610,12 @@ internal fun RootDestination(
     onNavigationChanged: () -> Unit,
 ) {
     val screenId = key.contract.screenId.value
+    SideEffect {
+        P37ComposeRecompositionProbe.record(P37ComposeRecompositionProbe.Scope.ROUTE, screenId)
+    }
     if (screenId.startsWith("ACC-")) {
+        val referenceState by viewModel.referenceData.collectAsStateWithLifecycle()
+        val referencePending by viewModel.referenceMutationPending.collectAsStateWithLifecycle()
         AccountsDestination(
             screenId = screenId,
             encodedArguments = key.encodedArguments,
@@ -648,6 +651,8 @@ internal fun RootDestination(
             visibleCurrencyCodes = visibleCurrencyCodes,
         )
     } else if (screenId == "MGT-001" || screenId.startsWith("CAT-") || screenId.startsWith("MER-") || screenId.startsWith("PLC-")) {
+        val referenceState by viewModel.referenceData.collectAsStateWithLifecycle()
+        val referencePending by viewModel.referenceMutationPending.collectAsStateWithLifecycle()
         ReferenceManagementDestination(
             screenId = screenId,
             encodedArguments = key.encodedArguments,
@@ -741,6 +746,7 @@ internal fun RootDestination(
             },
         )
     } else if (screenId in setOf("REC-013", "REC-020", "REC-021", "REC-022")) {
+        val specializedState by viewModel.specializedTransaction.collectAsStateWithLifecycle()
         SpecializedTransactionRootDestination(
             screenId = screenId,
             encodedArguments = key.encodedArguments,
@@ -749,15 +755,19 @@ internal fun RootDestination(
             onAddAttachment = onAddAttachment,
             onNavigationChanged = onNavigationChanged,
         )
-    } else if (screenId in setOf("REC-023", "REC-024", "REC-025") && batchState != null) {
-        BatchRecordRootDestination(
-            screenId,
-            batchState,
-            viewModel,
-            onAddAttachment,
-            onNavigationChanged,
-        )
+    } else if (screenId in setOf("REC-023", "REC-024", "REC-025")) {
+        val batchState by viewModel.batchRecord.collectAsStateWithLifecycle()
+        if (batchState != null) {
+            BatchRecordRootDestination(
+                screenId,
+                requireNotNull(batchState),
+                viewModel,
+                onAddAttachment,
+                onNavigationChanged,
+            )
+        }
     } else if (screenId.startsWith("REC-")) {
+        val recordState by viewModel.ordinaryRecord.collectAsStateWithLifecycle()
         OrdinaryRecordRootDestination(
             screenId = screenId,
             state = recordState,
@@ -766,11 +776,13 @@ internal fun RootDestination(
             onNavigationChanged = onNavigationChanged,
         )
     } else if (screenId.startsWith("JRN-")) {
+        val journalState by viewModel.journal.collectAsStateWithLifecycle()
         JournalDestination(
             screenId = screenId,
             encodedArguments = key.encodedArguments,
             state = journalState,
             pages = viewModel.journalPages,
+            onFirstResponsePresented = { viewModel.onJournalFirstResponsePresented(screenId) },
             actions = JournalActions(
                 onNavigate = { target, stable ->
                     stable["transactionId"]?.let(viewModel::loadJournalDetail)
@@ -805,6 +817,7 @@ internal fun RootDestination(
                 onEdit = { transaction -> viewModel.editJournalTransaction(transaction) },
                 onRefund = viewModel::refundJournalTransaction,
                 onCopyTemplate = viewModel::copyJournalTransactionToTemplate,
+                onPagePresented = viewModel::onJournalPagePresented,
                 onBack = onBack,
             ),
         )
@@ -879,6 +892,7 @@ internal fun RootDestination(
             },
         )
     } else if (screenId == "SETG-004") {
+        val currencySettings by viewModel.currencySettings.collectAsStateWithLifecycle()
         val state = currencySettings
         if (state == null) {
             LedgerLoadingState(Modifier.fillMaxSize())
@@ -905,12 +919,12 @@ internal fun RootDestination(
         HelpContent(key.encodedArguments["topicKey"], onBack)
     } else if (screenId == "SYS-002") {
         GovernedDestinationModal(screenId, stringResource(R.string.global_notification_title), onBack) {
-        NotificationPermissionContent(
-            viewModel.notificationPermissionPresentation(),
-            viewModel::requestNotificationPermission,
-            viewModel::dismissNotificationPermission,
-            viewModel::openNotificationSettings,
-        )
+            NotificationPermissionContent(
+                viewModel.notificationPermissionPresentation(),
+                viewModel::requestNotificationPermission,
+                viewModel::dismissNotificationPermission,
+                viewModel::openNotificationSettings,
+            )
         }
     } else {
         LedgerErrorState(
@@ -1197,15 +1211,13 @@ private fun DurableOperationRow(
     )
 }
 
-internal fun BackgroundOperation.requiresReplacementImportSource(): Boolean =
-    type == BackgroundOperationType.IMPORT &&
-        state == BackgroundOperationState.FAILED_RETRYABLE &&
-        errorCode != null && errorCode in NON_RETRYABLE_IMPORT_SOURCE_ERRORS
-
-internal fun BackgroundOperation.canRetryFromOperationCenter(): Boolean =
+internal fun BackgroundOperation.requiresReplacementImportSource(): Boolean = type == BackgroundOperationType.IMPORT &&
     state == BackgroundOperationState.FAILED_RETRYABLE &&
-        !requiresReplacementImportSource() &&
-        type in OPERATION_CENTER_RETRY_TYPES
+    errorCode != null && errorCode in NON_RETRYABLE_IMPORT_SOURCE_ERRORS
+
+internal fun BackgroundOperation.canRetryFromOperationCenter(): Boolean = state == BackgroundOperationState.FAILED_RETRYABLE &&
+    !requiresReplacementImportSource() &&
+    type in OPERATION_CENTER_RETRY_TYPES
 
 private val NON_RETRYABLE_IMPORT_SOURCE_ERRORS = setOf("IMPORT_UNSUPPORTED_SOURCE", "IMPORT_INVALID_ENCODING")
 private val OPERATION_CENTER_RETRY_TYPES = setOf(

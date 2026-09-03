@@ -41,7 +41,7 @@ def require_tokens(errors: list[str], text: str, label: str, tokens: tuple[str, 
 
 
 def validate_contract() -> list[str]:
-    screens = {item["id"]: item for item in yaml.safe_load(read("docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))["screens"]}
+    screens = {item["id"]: item for item in yaml.safe_load(read("docs/初始开发文件存档/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))["screens"]}
     errors: list[str] = []
     for screen_id, (route, params, states) in EXPECTED.items():
         actual = screens.get(screen_id, {})
@@ -164,22 +164,22 @@ def validate_tests_resources(resources: dict[str, str] | None = None) -> list[st
 
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
-    state = read("docs/implementation/PROJECT_STATE.md")
-    evidence = read("docs/implementation/TEST_EVIDENCE.md")
-    mapping_path = ROOT / "docs/implementation/P24_BATCH_MAPPING.md"
+    state = read("docs/初始开发文件存档/implementation/PROJECT_STATE.md")
+    evidence = read("docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
+    mapping_path = ROOT / "docs/初始开发文件存档/implementation/P24_BATCH_MAPPING.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
     require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "| P24 | VERIFIED |"))
     for index in range(1, 8):
         if f"P24-E{index:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P24-E{index:03d}")
     require_tokens(errors, mapping, "P24 mapping", ("all-or-nothing", "FinancialMutationCoordinator", "100,000", "P24 is `VERIFIED`"))
-    with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = {row["screen_id"]: row for row in csv.DictReader(handle)}
     for screen_id in EXPECTED:
         row = screens.get(screen_id, {})
         if row.get("status") != "VERIFIED" or "P24" not in row.get("implementation_evidence", "") or "P24-E" not in row.get("verification_evidence", ""):
             errors.append(f"{screen_id} lacks VERIFIED P24 evidence")
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         requirements = {row["requirement_id"]: row for row in csv.DictReader(handle)}
     for requirement_id in ("REQ-060", "REQ-061"):
         row = requirements.get(requirement_id, {})

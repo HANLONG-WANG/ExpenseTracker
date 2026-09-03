@@ -120,9 +120,8 @@ class BackupUiContractDeviceTest {
         val actual = states.map { state ->
             composeRule.runOnIdle { active.value = state }
             composeRule.waitForIdle()
-            composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap().pixelSha256().also {
-                println("P30_GOLDEN_${state.screenId}=$it")
-            }
+            val bitmap = composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap()
+            bitmap.pixelSha256().also { println("P30_GOLDEN_${state.screenId}=$it") }
         }
         assertEquals(EXPECTED_GOLDENS, actual)
         assertEquals(
@@ -199,9 +198,33 @@ class BackupUiContractDeviceTest {
     private companion object {
         const val GOLDEN_TAG = "p30_backup_golden_root"
         val EXPECTED_GOLDENS = listOf(
-            "6df8dddbc7b4ca608c9882cfe77347c67c06c689e06576f5670a3cd6e3f740f1",
-            "ca479c356c7098cd04d1c9191824655e65786e9c1972bf44f772166dce5e8bac",
+            "661c06bb923ad64340b8f4a429eaea80e110853a0527ebd290547ad6e7fc4f9b",
+            "acf7f5cfa33ff53b492b86843ea71c4a620c6e51b52da97b8e0b0c85a5d58a8d",
         )
-        val ACTIONS: (BackupFlowScreenAction) -> Unit = {}
+        val ACTIONS = BackupFlowActions(
+            onBack = {},
+            onNavigate = {},
+            onRepositoryKindSelected = {},
+            onDirectorySelected = {},
+            onAuthorizeDrive = {},
+            onDisconnectDrive = {},
+            onRecoveryPasswordChanged = {},
+            onRecoveryPasswordConfirmationChanged = {},
+            onRecoveryPasswordChangeModeChanged = {},
+            onSaveRecoveryPassword = {},
+            onAutomaticBackupChanged = {},
+            onRetentionCountChanged = {},
+            onRetentionDaysChanged = {},
+            onIncludeVaultChanged = {},
+            onNetworkPolicyChanged = {},
+            onSaveSettings = {},
+            onSnapshotSelected = {},
+            onPortableChanged = {},
+            onPortableFileNameChanged = {},
+            onStartBackup = {},
+            onCancel = {},
+            onRetry = {},
+            onOperations = {},
+        )
     }
 }

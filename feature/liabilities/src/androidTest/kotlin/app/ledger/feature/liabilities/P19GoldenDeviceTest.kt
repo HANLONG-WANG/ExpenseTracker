@@ -79,14 +79,14 @@ class P19GoldenDeviceTest {
                 ThemeMode.LIGHT,
                 CreditDeviceFixtures.state("CRD-001", CreditPresentation.NORMAL),
                 mapOf("accountId" to CreditDeviceFixtures.accountId.toString()),
-                "bac79ca0bddcf3761affcd6923cc3d2b100afcd794d58a6d233073b8c91d6299",
+                "ae3f6ceb0b3cb0cc135ee9460cf2f16fb3b79473b8f0fe8780fafc7ba18af0c0",
             ),
             Golden(
                 "CRD-005",
                 ThemeMode.DARK,
                 CreditDeviceFixtures.state("CRD-005", CreditPresentation.DIFFERENCE),
                 mapOf("statementId" to CreditDeviceFixtures.statementId.toString()),
-                "cda0bb620482bd9fa90b0ba189b0ed577abab3674960ce79f43aa816f87ef433",
+                "baa856433ba87666fb42c1005afbd2d5256829726d81f9c918350537e175159c",
             ),
         )
     }

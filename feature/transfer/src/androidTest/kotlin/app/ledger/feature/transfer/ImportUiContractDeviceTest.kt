@@ -100,9 +100,7 @@ class ImportUiContractDeviceTest {
     @Test
     fun duplicateCandidateRequiresAndExposesExplicitResolutionControls() {
         var resolution: DuplicateResolution? = null
-        val actions: (ImportWizardScreenAction) -> Unit = { action ->
-            if (action is ImportWizardScreenAction.DuplicateResolved) resolution = action.resolution
-        }
+        val actions = ACTIONS.copy(onDuplicateResolved = { _, candidate -> resolution = candidate })
         composeRule.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides composeRule.activity) {
                 LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
@@ -154,13 +152,13 @@ class ImportUiContractDeviceTest {
                 }
             }
         }
-        goldens.forEach { golden ->
+        val actuals = goldens.map { golden ->
             composeRule.runOnIdle { active.value = golden }
             composeRule.waitForIdle()
-            val actual = composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap().pixelSha256()
-            println("P28_GOLDEN_${golden.state.stage}=$actual")
-            assertEquals(golden.expected, actual)
+            val bitmap = composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap()
+            bitmap.pixelSha256().also { println("P28_GOLDEN_${golden.state.stage}=$it") }
         }
+        assertEquals(goldens.map(Golden::expected), actuals)
     }
 
     private fun cases(): List<Case> {
@@ -240,13 +238,14 @@ class ImportUiContractDeviceTest {
 
     private companion object {
         const val GOLDEN_TAG = "p28_import_golden_root"
-        const val EXPECTED_SOURCE_SHA256 = "12f8bfa6a52add008a6950783b219dafb642fa6fb366790532f2e7423ad09d96"
-        const val EXPECTED_VALIDATION_SHA256 = "175eb93bb5588cda9e9eef31bdefc84af52cbce53014942b5aa48d520c7cce53"
+        const val EXPECTED_SOURCE_SHA256 = "14286bfa56f8a378ffb44208a2735ec8bf1e4503c0caff8f1b13932ffaf79968"
+        const val EXPECTED_VALIDATION_SHA256 = "744dd863227885ff8ed31438c992a64bcfd5d14dba0a3b386f6a9ea82afef6cb"
         val ACTIONS = ImportWizardActions(
             onBack = {}, onSourceSelected = {}, onModeSelected = {}, onSheetSelected = {}, onEncodingChanged = {},
             onHeaderRowChanged = {}, onCycleFieldMapping = {}, onCreateMissingChanged = { _, _ -> },
             onCycleEntityMapping = { _, _ -> }, onFxPolicyChanged = { _, _ -> }, onFxRateChanged = { _, _ -> },
             onDuplicateResolved = { _, _ -> }, onPrevious = {}, onNext = {}, onPause = {}, onCancel = {}, onRetry = {},
+            onRowExcludedChanged = { _, _ -> },
             onRollback = {}, onOpenJournal = {},
         )
     }

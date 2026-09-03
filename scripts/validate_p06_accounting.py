@@ -229,17 +229,17 @@ def validate_project_state(project_state: str) -> list[str]:
 def main() -> int:
     sources = load_sources()
     errors = validate_sources(sources)
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         errors.extend(validate_requirement_rows(list(csv.DictReader(handle))))
-    mapping = (ROOT / "docs/implementation/P06_ACCOUNTING_INVARIANT_MAPPING.md").read_text(encoding="utf-8")
+    mapping = (ROOT / "docs/初始开发文件存档/implementation/P06_ACCOUNTING_INVARIANT_MAPPING.md").read_text(encoding="utf-8")
     errors.extend(validate_mapping(mapping))
-    project_state = (ROOT / "docs/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
+    project_state = (ROOT / "docs/初始开发文件存档/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
     errors.extend(validate_project_state(project_state))
-    evidence = (ROOT / "docs/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
+    evidence = (ROOT / "docs/初始开发文件存档/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
     if any(f"P06-E{value:03d}" not in evidence for value in range(1, 7)):
         errors.append("TEST_EVIDENCE does not contain P06-E001..P06-E006")
     screens = list(
-        csv.DictReader((ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline=""))
+        csv.DictReader((ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline=""))
     )
     p11_promotions = {
         "REC-009": "IN_PROGRESS",

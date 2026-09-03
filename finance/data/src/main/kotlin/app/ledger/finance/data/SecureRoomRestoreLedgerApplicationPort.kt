@@ -19,6 +19,8 @@ import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.database.LedgerMigrations
 import app.ledger.core.security.DeviceKeyHierarchy
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.security.PreparedDeviceLedgerKeyReplacement
 import app.ledger.core.security.SecretBytes
 import app.ledger.finance.application.FinanceDataError
@@ -64,6 +66,7 @@ class SecureRoomRestoreLedgerApplicationPort(
     context: Context,
     private val keyHierarchy: DeviceKeyHierarchy,
     private val artifacts: RestoreArtifactSwapPort,
+    private val liveDatabaseAccess: () -> LedgerDatabaseOperationAccess,
     private val failureInjector: RestoreExchangeFailureInjector = RestoreExchangeFailureInjector.NONE,
 ) : RestoreLedgerApplicationPort {
     private val applicationContext = context.applicationContext
@@ -88,6 +91,7 @@ class SecureRoomRestoreLedgerApplicationPort(
         val shadowName = shadowName(value.operationId)
         applicationContext.deleteDatabase(shadowName)
         try {
+            val live = runCatching { liveIdentity(value.bookId) }.getOrNull()
             copyDurably(databaseSource, applicationContext.getDatabasePath(shadowName))
             val restored = replacement.restoredDatabaseDek.useBytes { key ->
                 EncryptedDatabaseFactory.openLedgerCopy(applicationContext, shadowName, key)
@@ -96,7 +100,6 @@ class SecureRoomRestoreLedgerApplicationPort(
                 val identity = restored.inLedgerTransaction { database ->
                     val identity = database.bookIdentity()
                     if (identity.bookId != value.bookId) abort(FinanceRestoreError.BookMismatch)
-                    val live = runCatching { liveIdentity(value.bookId) }.getOrNull()
                     if (live != null && identity.baseCurrency != live.baseCurrency) {
                         abort(FinanceRestoreError.BaseCurrencyMismatch)
                     }
@@ -116,7 +119,6 @@ class SecureRoomRestoreLedgerApplicationPort(
                 restored.close()
             }
             artifacts.stage(value)
-            val live = runCatching { liveIdentity(value.bookId) }.getOrNull()
             sessions.remove(value.operationId)?.close()
             sessions[value.operationId] = PreparedSession(
                 value.bookId,
@@ -267,22 +269,17 @@ class SecureRoomRestoreLedgerApplicationPort(
         sessions[operationId] = PreparedSession(bookId, null, sourceHead, expectedLiveHead, true, false)
     }
 
-    private fun checkpointAndLockLive(bookId: StableId) {
-        keyHierarchy.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-            try {
-                database.inLedgerTransaction { connection ->
-                    val changed = connection.compileStatement("UPDATE book SET state=1 WHERE id=1 AND state=0").executeUpdateDelete()
-                    require(changed == 1) { "live ledger is not ready for restore" }
-                }
-                database.readLedger { connection -> connection.query("PRAGMA wal_checkpoint(TRUNCATE)").close() }
-            } finally {
-                database.close()
+    private suspend fun checkpointAndLockLive(bookId: StableId) {
+        liveDatabaseAccess().withCurrentDatabase(bookId, LedgerAccessMode.WRITE) { database ->
+            database.inLedgerTransaction { connection ->
+                val changed = connection.compileStatement("UPDATE book SET state=1 WHERE id=1 AND state=0").executeUpdateDelete()
+                require(changed == 1) { "live ledger is not ready for restore" }
             }
+            database.readLedger { connection -> connection.query("PRAGMA wal_checkpoint(TRUNCATE)").close() }
         }
     }
 
-    private fun rollbackBlocking(bookId: StableId, operationId: StableId) {
+    private suspend fun rollbackBlocking(bookId: StableId, operationId: StableId) {
         val marker = exchangeMarker(operationId)
         val keyRecovery = keyRecoveryFile(operationId)
         val safety = applicationContext.getDatabasePath(safetyName(operationId))
@@ -299,27 +296,20 @@ class SecureRoomRestoreLedgerApplicationPort(
                 ?.also { require(it.bookId == bookId) }?.liveReadable
             ?: true
         if (oldLiveReadable) {
-            keyHierarchy.open(bookId).use { keys ->
-                val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-                try {
-                    database.inLedgerTransaction { connection -> connection.execSQL("UPDATE book SET state=0 WHERE id=1") }
-                    val identity = database.readLedger { connection -> connection.bookIdentity() }
-                    require(identity.bookId == bookId)
-                } finally {
-                    database.close()
-                }
+            liveDatabaseAccess().withCurrentDatabase(bookId, LedgerAccessMode.WRITE) { database ->
+                database.inLedgerTransaction { connection -> connection.execSQL("UPDATE book SET state=0 WHERE id=1") }
+                val identity = database.readLedger { connection -> connection.bookIdentity() }
+                require(identity.bookId == bookId)
             }
         }
         AtomicFile(marker).delete()
     }
 
-    private fun validateLiveBlocking(bookId: StableId, expectedHead: BookCommitId): RestoreIntegrityReport = keyHierarchy.open(bookId).use { keys ->
-        val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-        try {
-            database.readLedger { validate(it, bookId, expectedHead) }
-        } finally {
-            database.close()
-        }
+    private suspend fun validateLiveBlocking(
+        bookId: StableId,
+        expectedHead: BookCommitId,
+    ): RestoreIntegrityReport = liveDatabaseAccess().withCurrentDatabase(bookId, LedgerAccessMode.READ) { database ->
+        database.readLedger { validate(it, bookId, expectedHead) }
     }
 
     private fun validate(
@@ -348,13 +338,8 @@ class SecureRoomRestoreLedgerApplicationPort(
         )
     }
 
-    private fun liveIdentity(bookId: StableId): LedgerIdentity = keyHierarchy.open(bookId).use { keys ->
-        val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-        try {
-            database.readLedger { connection -> connection.bookIdentity() }
-        } finally {
-            database.close()
-        }
+    private suspend fun liveIdentity(bookId: StableId): LedgerIdentity = liveDatabaseAccess().withCurrentDatabase(bookId, LedgerAccessMode.READ) { database ->
+        database.readLedger { connection -> connection.bookIdentity() }
     }
 
     private fun SupportSQLiteDatabase.bookIdentity(): LedgerIdentity = query(

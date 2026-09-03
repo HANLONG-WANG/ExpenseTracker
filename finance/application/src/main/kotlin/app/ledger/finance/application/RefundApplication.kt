@@ -79,6 +79,22 @@ public data class RefundSnapshot(
     val goals: List<RefundNamedReference>,
 )
 
+public data class RefundReferenceSnapshot(
+    val references: ReferenceDataSnapshot,
+    val projects: List<RefundNamedReference>,
+    val goals: List<RefundNamedReference>,
+)
+
+public data class RefundCandidateCursor(
+    val occurredAtEpochMillis: Long,
+    val transactionId: StableId,
+)
+
+public data class RefundCandidatePage(
+    val items: List<RefundableTransactionView>,
+    val nextCursor: RefundCandidateCursor?,
+)
+
 public data class RefundWriteIds(
     val bookId: StableId,
     val commandId: CommandId,
@@ -166,5 +182,20 @@ public data class RefundWriteRequest(
 /** Sole P16 application boundary; every submit is delegated to FinancialMutationCoordinator. */
 public interface RefundApplicationPort {
     public suspend fun snapshot(bookId: StableId, query: RefundSearchQuery = RefundSearchQuery()): DomainResult<RefundSnapshot>
+    public suspend fun references(bookId: StableId): DomainResult<RefundReferenceSnapshot> = when (val result = snapshot(bookId)) {
+        is DomainResult.Success -> DomainResult.Success(
+            RefundReferenceSnapshot(result.value.references, result.value.projects, result.value.goals),
+        )
+        is DomainResult.Failure -> result
+    }
+    public suspend fun candidates(
+        bookId: StableId,
+        query: RefundSearchQuery = RefundSearchQuery(),
+        limit: Int = 50,
+        cursor: RefundCandidateCursor? = null,
+    ): DomainResult<RefundCandidatePage> = when (val result = snapshot(bookId, query)) {
+        is DomainResult.Success -> DomainResult.Success(RefundCandidatePage(result.value.originals.take(limit), null))
+        is DomainResult.Failure -> result
+    }
     public suspend fun submit(request: RefundWriteRequest): DomainResult<CommandReceipt>
 }

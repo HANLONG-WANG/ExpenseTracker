@@ -13,9 +13,11 @@ import app.ledger.core.common.StableId
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.Money
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.StartupInspection
-import app.ledger.core.money.Money
 import app.ledger.core.time.EffectiveTime
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.ProjectionMaintenancePort
@@ -69,6 +71,7 @@ import app.ledger.finance.domain.SystemLedgerCode
 import app.ledger.finance.domain.TransactionContextInput
 import app.ledger.finance.domain.TransactionFilter
 import app.ledger.finance.domain.TransactionId
+import app.ledger.finance.domain.TransactionLifecycleState
 import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountId
@@ -166,6 +169,7 @@ class RoomFinancialDataDeviceTest {
         assertEquals(StartupInspection.Ready, RoomLedgerStartupInspector().inspect(database))
         database.inLedgerTransaction { connection ->
             connection.execSQL("UPDATE budget_usage_projection SET used_minor = used_minor + 1")
+            connection.execSQL("UPDATE projection_family_state SET as_of_local_revision = 0 WHERE family = 7")
         }
         assertEquals(
             StartupInspection.Maintenance(MaintenanceReason.PROJECTION_REBUILD),
@@ -299,6 +303,27 @@ class RoomFinancialDataDeviceTest {
     fun halfMillionRowsUseBoundedKeysetPagingAndFtsWithoutDeepOffset() = runBlocking {
         seedHalfMillionQueryRows()
         val query = RoomTransactionQueryService(database)
+        val activeFilter = emptyFilter().copy(lifecycleStates = setOf(TransactionLifecycleState.ACTIVE))
+        val activeStarted = SystemClock.elapsedRealtime()
+        val activeFirst = query.page(activeFilter, 40, null).success()
+        val activeElapsed = SystemClock.elapsedRealtime() - activeStarted
+        assertEquals(40, activeFirst.items.size)
+        assertNotNull(activeFirst.nextCursor)
+        assertTrue("active Journal first page took ${activeElapsed}ms", activeElapsed < 750L)
+        val activeCompiled = TransactionSqlCompiler.compile(activeFilter, null, 41)
+        val activePlan = database.readLedger { db ->
+            db.query("EXPLAIN QUERY PLAN ${activeCompiled.sql}", activeCompiled.arguments.toTypedArray()).use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.getString(3)) }
+            }
+        }
+        assertTrue(
+            "active Journal query plan must use the state-aware keyset index: $activePlan",
+            activePlan.any { it.contains("ix_current_transaction_state_keyset") },
+        )
+        assertFalse(
+            "active Journal query plan must not sort through a temporary B-tree: $activePlan",
+            activePlan.any { it.contains("TEMP B-TREE", ignoreCase = true) },
+        )
         val started = SystemClock.elapsedRealtime()
         val first = query.page(emptyFilter(), 40, null).success()
         val firstElapsed = SystemClock.elapsedRealtime() - started
@@ -318,7 +343,74 @@ class RoomFinancialDataDeviceTest {
             }
         }
         assertTrue(plan.any { it.contains("ix_current_transaction_keyset") || it.contains("INDEX") })
+        val operationAccess = object : LedgerDatabaseOperationAccess {
+            override suspend fun <T> withCurrentDatabase(
+                bookId: StableId,
+                mode: LedgerAccessMode,
+                block: suspend (LedgerDatabase) -> T,
+            ): T = block(database)
+        }
+        val references = SecureRoomReferenceDataManagementPort(operationAccess)
+        val referenceStarted = SystemClock.elapsedRealtime()
+        val merchants = references.merchantPage(BOOK_ID.value, limit = 50).success().items
+        val places = references.placePage(BOOK_ID.value, limit = 50).success().items
+        val locations = references.locationPage(BOOK_ID.value, limit = 50).success().items
+        val referenceElapsed = SystemClock.elapsedRealtime() - referenceStarted
+        assertEquals(HALF_MILLION.toLong(), merchants.single().currentTransactionCount)
+        assertEquals(1L, places.single().locationRecordCount)
+        assertEquals(HALF_MILLION.toLong(), locations.single().currentTransactionCount)
+        assertTrue("bounded reference pages took ${referenceElapsed}ms", referenceElapsed < 750L)
         assertEquals(HALF_MILLION.toLong(), scalar("SELECT COUNT(*) FROM current_transaction_projection"))
+
+        val saveFixture = fixture(
+            seed = Instant.parse("2026-08-03T00:00:00Z").epochSecond,
+            commandSeed = 3_000_000_000L,
+            book = initialBook(),
+            note = "p37-bounded-save",
+        )
+        val saveStarted = SystemClock.elapsedRealtime()
+        val phaseElapsed = linkedMapOf<FinancialCommitPhase, Long>()
+        RoomFinancialCommitRepository(
+            database,
+            FinancialCommitFailureInjector { phase ->
+                phaseElapsed[phase] = SystemClock.elapsedRealtime() - saveStarted
+            },
+        ).commit(saveFixture.command, saveFixture.plan).success()
+        val targetScaleSaveElapsed = SystemClock.elapsedRealtime() - saveStarted
+        assertTrue(
+            "target-scale ordinary save took ${targetScaleSaveElapsed}ms; phases=$phaseElapsed",
+            targetScaleSaveElapsed < 750L,
+        )
+        assertEquals(
+            HALF_MILLION + 1L,
+            scalar(
+                "SELECT amount_base_minor FROM analytics_daily_total WHERE local_date=20260803 " +
+                    "AND metric=${app.ledger.core.database.AnalyticsProjectionEngine.TRANSACTION_COUNT_METRIC}",
+            ),
+        )
+        assertEquals(
+            HALF_MILLION + 1L,
+            scalar(
+                "SELECT amount_base_minor FROM analytics_monthly_total WHERE year_month=202608 " +
+                    "AND metric=${app.ledger.core.database.AnalyticsProjectionEngine.TRANSACTION_COUNT_METRIC}",
+            ),
+        )
+        assertEquals(HALF_MILLION + 1L, scalar("SELECT COUNT(*) FROM journal_entry"))
+        assertEquals(
+            -(HALF_MILLION + 1_000L),
+            scalar("SELECT normal_balance_minor FROM account_balance_current WHERE account_id=${ACCOUNT_ID.value.internalId()}"),
+        )
+        assertEquals(
+            HALF_MILLION + 1_000L,
+            scalar("SELECT used_minor FROM budget_usage_projection WHERE year_month=202608 AND category_id IS NULL"),
+        )
+        assertEquals(
+            HALF_MILLION + 1_000L,
+            scalar(
+                "SELECT used_minor FROM budget_usage_projection WHERE year_month=202608 " +
+                    "AND category_id=${CATEGORY_ID.value.internalId()}",
+            ),
+        )
     }
 
     private fun seedHalfMillionQueryRows() {
@@ -328,11 +420,13 @@ class RoomFinancialDataDeviceTest {
                 "INSERT INTO business_transaction(id,uid,kind,current_revision_id,lifecycle_state,created_commit_id,last_commit_id,row_version,trashed_at,purge_after,content_hash) VALUES(?,?,0,NULL,0,1,1,1,NULL,NULL,?)",
             )
             val insertRevision = connection.compileStatement(
-                "INSERT INTO transaction_revision(id,uid,transaction_id,revision_no,action,resulting_state,previous_revision_id,created_commit_id,created_at,occurred_at,zone_id,local_date,category_id,statistical_nature_snapshot,merchant_id,project_id,goal_id,location_record_id,note,amount_expression,source_type,source_reference_uid,content_hash) VALUES(?,?,?,1,0,0,NULL,1,?,?,?, ?,?,?,NULL,NULL,NULL,NULL,?,NULL,0,NULL,?)",
+                "INSERT INTO transaction_revision(id,uid,transaction_id,revision_no,action,resulting_state,previous_revision_id,created_commit_id,created_at,occurred_at,zone_id,local_date,category_id,statistical_nature_snapshot,merchant_id,project_id,goal_id,location_record_id,note,amount_expression,source_type,source_reference_uid,content_hash) " +
+                    "VALUES(?,?,?,1,0,0,NULL,1,?,?,?,?,?,?,?,NULL,NULL,?,?,NULL,0,NULL,?)",
             )
             val updateTransaction = connection.compileStatement("UPDATE business_transaction SET current_revision_id=? WHERE id=?")
             val insertProjection = connection.compileStatement(
-                "INSERT INTO current_transaction_projection(transaction_id,transaction_uid,kind,state,current_revision_id,occurred_at,local_date,primary_account_id,secondary_account_id,card_id,category_id,merchant_id,project_id,goal_id,settlement_activity_id,payer_participant_id,input_amount_minor,input_currency,account_amount_minor,account_currency,economic_base_minor,note_preview,has_attachment,has_location,is_refund,is_refunded,has_installment,source_type,as_of_local_revision) VALUES(?,?,0,0,?,?,?, ?,NULL,NULL,?,NULL,NULL,NULL,NULL,NULL,1,'JPY',1,'JPY',1,?,0,0,0,0,0,0,1)",
+                "INSERT INTO current_transaction_projection(transaction_id,transaction_uid,kind,state,current_revision_id,occurred_at,local_date,primary_account_id,secondary_account_id,card_id,category_id,merchant_id,project_id,goal_id,settlement_activity_id,payer_participant_id,input_amount_minor,input_currency,account_amount_minor,account_currency,economic_base_minor,note_preview,has_attachment,has_location,is_refund,is_refunded,has_installment,source_type,as_of_local_revision) " +
+                    "VALUES(?,?,0,0,?,?,?,?,NULL,NULL,?,?,NULL,NULL,NULL,NULL,1,'JPY',1,'JPY',1,?,0,1,0,0,0,0,1)",
             )
             val insertFts = connection.compileStatement(
                 "INSERT INTO transaction_fts(transaction_id,category_name,merchant_name,merchant_aliases,note,project_name,settlement_activity_name,participant_names,attachment_names,lifecycle_state) VALUES(?, 'Food','','',?,'','','','',0)",
@@ -359,8 +453,10 @@ class RoomFinancialDataDeviceTest {
                 insertRevision.bindLong(7, 20260803)
                 insertRevision.bindLong(8, CATEGORY_ID.value.internalId())
                 insertRevision.bindLong(9, StatisticalNature.CONSUMPTION_EXPENSE.ordinal.toLong())
-                insertRevision.bindString(10, note)
-                insertRevision.bindBlob(11, ByteArray(32) { 9 })
+                insertRevision.bindLong(10, MERCHANT_ID.internalId())
+                insertRevision.bindLong(11, LOCATION_ID.value.internalId())
+                insertRevision.bindString(12, note)
+                insertRevision.bindBlob(13, ByteArray(32) { 9 })
                 insertRevision.executeInsert()
                 updateTransaction.clearBindings()
                 updateTransaction.bindLong(1, revisionInternal)
@@ -374,13 +470,108 @@ class RoomFinancialDataDeviceTest {
                 insertProjection.bindLong(5, 20260803)
                 insertProjection.bindLong(6, ACCOUNT_ID.value.internalId())
                 insertProjection.bindLong(7, CATEGORY_ID.value.internalId())
-                insertProjection.bindString(8, note)
+                insertProjection.bindLong(8, MERCHANT_ID.internalId())
+                insertProjection.bindString(9, note)
                 insertProjection.executeInsert()
                 insertFts.clearBindings()
                 insertFts.bindLong(1, transactionInternal)
                 insertFts.bindString(2, note)
                 insertFts.executeInsert()
             }
+            val accountLedgerId = references().accounts.single().ledger.id.value.internalId()
+            val expenseLedgerId = references().systemLedgers.single {
+                it.code == SystemLedgerCode.SYSTEM_EXPENSE_CONSUMPTION
+            }.ledger.id.value.internalId()
+            var batchStart = 0
+            while (batchStart < HALF_MILLION) {
+                val count = minOf(TARGET_SCALE_BATCH_SIZE, HALF_MILLION - batchStart)
+                connection.execSQL(
+                    "$TARGET_SCALE_SEQUENCE INSERT INTO journal_entry(" +
+                        "id,uid,source_revision_id,applies_revision_id,entry_role,reverses_entry_id,effective_at,zone_id," +
+                        "local_date,base_currency,base_debit_total_minor,base_credit_total_minor,posting_count,rule_set_version," +
+                        "created_commit_id,content_hash) " +
+                        "SELECT ?+x,randomblob(16),?+x,?+x,0,NULL,?+x,'Asia/Tokyo',20260803,'JPY',1,1,2,1,1," +
+                        "randomblob(32) FROM seq WHERE x<?",
+                    arrayOf<Any?>(
+                        TARGET_JOURNAL_BASE + batchStart,
+                        TARGET_REVISION_BASE + batchStart,
+                        TARGET_REVISION_BASE + batchStart,
+                        1_800_000_000_000L + batchStart,
+                        count,
+                    ),
+                )
+                connection.execSQL(
+                    "$TARGET_SCALE_SEQUENCE INSERT INTO posting(" +
+                        "id,uid,journal_entry_id,line_no,ledger_account_id,side,account_amount_minor,account_currency," +
+                        "base_amount_minor,base_currency,valuation_rate_decimal,posting_role,reversal_of_posting_id) " +
+                        "SELECT ?+x*2,randomblob(16),?+x,1,?,1,1,'JPY',1,'JPY',NULL,0,NULL FROM seq WHERE x<? " +
+                        "UNION ALL SELECT ?+x*2,randomblob(16),?+x,2,?,0,1,'JPY',1,'JPY',NULL,0,NULL " +
+                        "FROM seq WHERE x<?",
+                    arrayOf<Any?>(
+                        TARGET_POSTING_BASE + batchStart * 2L,
+                        TARGET_JOURNAL_BASE + batchStart,
+                        accountLedgerId,
+                        count,
+                        TARGET_POSTING_BASE + batchStart * 2L + 1L,
+                        TARGET_JOURNAL_BASE + batchStart,
+                        expenseLedgerId,
+                        count,
+                    ),
+                )
+                connection.execSQL(
+                    "$TARGET_SCALE_SEQUENCE INSERT INTO economic_effect(" +
+                        "id,uid,source_entry_id,source_revision_id,reversal_of_id,polarity,nature,component,is_consumption," +
+                        "base_amount_minor,accrual_local_date,category_id,merchant_id,project_id,rule_set_version) " +
+                        "SELECT ?+x,randomblob(16),?+x,?+x,NULL,1,?,0,1,1,20260803,?,?,NULL,1 " +
+                        "FROM seq WHERE x<?",
+                    arrayOf<Any?>(
+                        TARGET_ECONOMIC_EFFECT_BASE + batchStart,
+                        TARGET_JOURNAL_BASE + batchStart,
+                        TARGET_REVISION_BASE + batchStart,
+                        app.ledger.finance.domain.EconomicNature.EXPENSE.ordinal,
+                        CATEGORY_ID.value.internalId(),
+                        MERCHANT_ID.internalId(),
+                        count,
+                    ),
+                )
+                connection.execSQL(
+                    "$TARGET_SCALE_SEQUENCE INSERT INTO budget_effect(" +
+                        "id,source_revision_id,reversal_of_id,polarity,kind,target_year_month,category_id,root_category_id," +
+                        "base_amount_minor,rule_set_version) " +
+                        "SELECT ?+x,?+x,NULL,1,0,202608,?,?,1,1 FROM seq WHERE x<?",
+                    arrayOf<Any?>(
+                        TARGET_BUDGET_EFFECT_BASE + batchStart,
+                        TARGET_REVISION_BASE + batchStart,
+                        CATEGORY_ID.value.internalId(),
+                        CATEGORY_ID.value.internalId(),
+                        count,
+                    ),
+                )
+                batchStart += count
+            }
+            connection.execSQL(
+                "INSERT INTO account_balance_current(account_id,normal_balance_minor,currency_code,total_debit_minor," +
+                    "total_credit_minor,as_of_local_revision) VALUES(?,-?,'JPY',0,?,1)",
+                arrayOf<Any>(ACCOUNT_ID.value.internalId(), HALF_MILLION, HALF_MILLION),
+            )
+            connection.execSQL(
+                "INSERT INTO account_balance_daily(account_id,local_date,opening_minor,inflow_minor,outflow_minor," +
+                    "closing_minor,currency_code,as_of_local_revision) VALUES(?,20260803,0,0,?,-?,'JPY',1)",
+                arrayOf<Any>(ACCOUNT_ID.value.internalId(), HALF_MILLION, HALF_MILLION),
+            )
+            connection.execSQL(
+                "INSERT INTO budget_usage_projection(year_month,category_id,base_budget_minor,rollover_minor," +
+                    "adjustment_minor,used_minor,remaining_minor,as_of_local_revision) " +
+                    "VALUES(202608,NULL,0,0,0,?,-?,1),(202608,?,0,0,0,?,-?,1)",
+                arrayOf<Any>(
+                    HALF_MILLION,
+                    HALF_MILLION,
+                    CATEGORY_ID.value.internalId(),
+                    HALF_MILLION,
+                    HALF_MILLION,
+                ),
+            )
+            app.ledger.core.database.AnalyticsProjectionEngine.rebuild(connection, 1L)
         }
         db.query("PRAGMA optimize").close()
     }
@@ -570,9 +761,19 @@ class RoomFinancialDataDeviceTest {
             ),
         )
         connection.execSQL(
+            "INSERT INTO merchant(id,uid,name,normalized_name,status,merged_into_id,last_commit_id,row_version) " +
+                "VALUES(?,?,'P08 merchant','p08 merchant',0,NULL,1,1)",
+            arrayOf<Any>(MERCHANT_ID.internalId(), MERCHANT_ID.bytes),
+        )
+        connection.execSQL(
+            "INSERT INTO place(id,uid,name,center_lat_e7,center_lon_e7,merchant_id,status,merged_into_id,last_commit_id,row_version) " +
+                "VALUES(?,?,'P08 place',?,?,?,0,NULL,1,1)",
+            arrayOf<Any>(PLACE_ID.internalId(), PLACE_ID.bytes, LATITUDE_E7, LONGITUDE_E7, MERCHANT_ID.internalId()),
+        )
+        connection.execSQL(
             "INSERT INTO location_record(id, uid, lat_e7, lon_e7, accuracy_mm, captured_at, source, provider, place_id, created_commit_id) " +
-                "VALUES (?, ?, ?, ?, 1000, 0, 0, NULL, NULL, 1)",
-            arrayOf<Any>(LOCATION_ID.value.internalId(), LOCATION_ID.value.bytes, LATITUDE_E7, LONGITUDE_E7),
+                "VALUES (?, ?, ?, ?, 1000, 0, 0, NULL, ?, 1)",
+            arrayOf<Any>(LOCATION_ID.value.internalId(), LOCATION_ID.value.bytes, LATITUDE_E7, LONGITUDE_E7, PLACE_ID.internalId()),
         )
     }
 
@@ -659,10 +860,20 @@ class RoomFinancialDataDeviceTest {
         val GENESIS_COMMIT = BookCommitId(StableId.fromUuid(UUID(0L, 2L)))
         val ACCOUNT_ID = UserAccountId(StableId.fromUuid(UUID(0L, 710L)))
         val CATEGORY_ID = CategoryId(StableId.fromUuid(UUID(0L, 701L)))
+        val MERCHANT_ID = StableId.fromUuid(UUID(0L, 740L))
+        val PLACE_ID = StableId.fromUuid(UUID(0L, 745L))
         val LOCATION_ID = LocationRecordId(StableId.fromUuid(UUID(0L, 750L)))
         const val LATITUDE_E7 = 356_817_000
         const val LONGITUDE_E7 = 1397_672_000
         const val HALF_MILLION = 500_000
+        const val TARGET_SCALE_BATCH_SIZE = 1_000
+        const val TARGET_REVISION_BASE = 600_000L
+        const val TARGET_JOURNAL_BASE = 1_200_000L
+        const val TARGET_POSTING_BASE = 1_800_000L
+        const val TARGET_ECONOMIC_EFFECT_BASE = 3_000_000L
+        const val TARGET_BUDGET_EFFECT_BASE = 3_600_000L
+        const val TARGET_SCALE_SEQUENCE = "WITH d(n) AS (VALUES(0),(1),(2),(3),(4),(5),(6),(7),(8),(9)), " +
+            "seq(x) AS (SELECT a.n+10*b.n+100*c.n FROM d a,d b,d c) "
         val VERSIONED_PROJECTIONS = listOf(
             "current_transaction_projection", "account_balance_current", "account_balance_daily",
             "refund_status_projection", "budget_usage_projection", "project_usage_projection", "goal_balance_projection",

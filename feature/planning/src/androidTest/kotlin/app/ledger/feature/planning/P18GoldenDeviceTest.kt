@@ -78,14 +78,14 @@ class P18GoldenDeviceTest {
                 ThemeMode.LIGHT,
                 ProjectGoalDeviceFixtures.state(ProjectGoalPresentation.CONTENT),
                 mapOf("projectId" to ProjectGoalDeviceFixtures.projectId.toString()),
-                "ceeee3a877d527f1209a74ebef2d9465e9af3b138ba6f1e4724b444c841aee6b",
+                "644e2a435d09207e171cc54ab2b7d7aac4d865cc544a1442167f6fb3b28363bd",
             ),
             Golden(
                 "GOL-003",
                 ThemeMode.DARK,
                 ProjectGoalDeviceFixtures.state(ProjectGoalPresentation.UNDERFUNDED),
                 mapOf("goalId" to ProjectGoalDeviceFixtures.goalId.toString()),
-                "21e60c776ed75a549424b1e41c6e3a3ca016cb09cd39514bde433a671c10f9fd",
+                "1a062dc4c4a9b281494c41d0d58a053c739b8fd99b9eb408bd331cc4afa68db7",
             ),
         )
     }

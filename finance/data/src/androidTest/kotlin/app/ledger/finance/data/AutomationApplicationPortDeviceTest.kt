@@ -62,6 +62,7 @@ import java.util.UUID
 class AutomationApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var automation: SecureRoomAutomationApplicationPort
     private lateinit var ordinary: SecureRoomOrdinaryTransactionEntryPort
 
@@ -71,6 +72,7 @@ class AutomationApplicationPortDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         val initialization = SecureRoomLedgerInitializationPort(context, keys)
         initialization.initialize(
             InitializeLedgerCommand(
@@ -89,8 +91,11 @@ class AutomationApplicationPortDeviceTest {
             InitialCategoryCommand(CATEGORY_ID, id(211), id(212), id(213), Instant.ofEpochMilli(3_000), CategoryDirection.EXPENSE, "Food", "food", StatisticalNature.CONSUMPTION_EXPENSE, "record", 0xff006c4c.toInt()),
         ).success()
         val generator = FormalOccurrenceGenerator { DomainResult.Failure(app.ledger.finance.domain.DomainViolation.InvalidField("test.formal")) }
-        automation = SecureRoomAutomationApplicationPort(context, keys, generator)
-        ordinary = SecureRoomOrdinaryTransactionEntryPort(context, keys)
+        automation = SecureRoomAutomationApplicationPort(databaseAccess, generator)
+        ordinary = SecureRoomOrdinaryTransactionEntryPort(
+            databaseAccess,
+            SecureRoomReferenceDataManagementPort(databaseAccess),
+        )
     }
 
     @After
@@ -108,8 +113,7 @@ class AutomationApplicationPortDeviceTest {
         assertEquals(0, second.createdCandidates)
 
         val restarted = SecureRoomAutomationApplicationPort(
-            context,
-            keys,
+            databaseAccess,
             FormalOccurrenceGenerator { DomainResult.Failure(app.ledger.finance.domain.DomainViolation.InvalidField("test.formal")) },
         )
         val afterRestart = restarted.catchUp(BOOK_ID, Instant.parse("2026-08-06T23:59:59Z")).success()

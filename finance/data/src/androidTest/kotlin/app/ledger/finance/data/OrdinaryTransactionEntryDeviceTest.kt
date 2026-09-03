@@ -8,11 +8,18 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
+import app.ledger.core.database.AnalyticsProjectionEngine
 import app.ledger.core.database.EncryptedDatabaseFactory
+import app.ledger.core.database.LedgerDatabasePerformance
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.security.AndroidKeystoreKeys
+import app.ledger.core.security.BookSessionManager
+import app.ledger.core.security.DefaultLedgerStartupInspector
 import app.ledger.core.security.DeviceKeyHierarchy
+import app.ledger.core.security.LedgerSessionPerformance
 import app.ledger.core.security.SecurityEnvelopeStore
+import app.ledger.core.security.SqlCipherBookDatabaseResourceFactory
+import app.ledger.core.security.VaultExposureRegistry
 import app.ledger.finance.application.InitialAccountCommand
 import app.ledger.finance.application.InitialCategoryCommand
 import app.ledger.finance.application.InitializeLedgerCommand
@@ -47,6 +54,7 @@ class OrdinaryTransactionEntryDeviceTest {
     private lateinit var keys: DeviceKeyHierarchy
     private lateinit var initialization: SecureRoomLedgerInitializationPort
     private lateinit var entry: SecureRoomOrdinaryTransactionEntryPort
+    private lateinit var manager: BookSessionManager
 
     @Before
     fun prepare() = runBlocking {
@@ -55,7 +63,6 @@ class OrdinaryTransactionEntryDeviceTest {
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
         initialization = SecureRoomLedgerInitializationPort(context, keys)
-        entry = SecureRoomOrdinaryTransactionEntryPort(context, keys)
         initialization.initialize(
             InitializeLedgerCommand(
                 LedgerGenesisIds(BOOK_ID, id(2), id(3), id(4), SystemLedgerCode.entries.mapIndexed { index, code -> code to id(100L + index) }.toMap()),
@@ -72,10 +79,26 @@ class OrdinaryTransactionEntryDeviceTest {
             BOOK_ID,
             InitialCategoryCommand(CATEGORY_ID, id(211), id(212), id(213), Instant.ofEpochMilli(3_000), CategoryDirection.EXPENSE, "Food", "food", StatisticalNature.CONSUMPTION_EXPENSE, "record", 0xff006c4c.toInt()),
         ).success()
+        manager = BookSessionManager(
+            BOOK_ID,
+            keys,
+            SqlCipherBookDatabaseResourceFactory(
+                context,
+                listOf(DefaultLedgerStartupInspector, RoomLedgerStartupInspector()),
+            ),
+            VaultExposureRegistry { 0L },
+        )
+        manager.initialize()
+        manager.unlockUi()
+        val references = SecureRoomReferenceDataManagementPort(manager)
+        entry = SecureRoomOrdinaryTransactionEntryPort(manager, references)
+        LedgerDatabasePerformance.resetForTest()
+        LedgerSessionPerformance.resetForTest()
     }
 
     @After
-    fun cleanUp() {
+    fun cleanUp() = runBlocking {
+        manager.close()
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys.destroyLocal(BOOK_ID)
     }
@@ -98,10 +121,13 @@ class OrdinaryTransactionEntryDeviceTest {
         val conflict = entry.submit(stale)
         assertTrue(conflict is DomainResult.Failure && conflict.error == DomainViolation.StaleExpectedRevision)
 
+        assertEquals(0L, LedgerDatabasePerformance.snapshot().primaryOpenCount)
+        assertEquals(0L, LedgerSessionPerformance.snapshot().databaseKeyUnwrapCount)
+
         keys.open(BOOK_ID).use { opened ->
             val database = opened.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(context, it) }
             try {
-                database.readLedger { db ->
+                database.inLedgerTransaction { db ->
                     assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM business_transaction"))
                     assertEquals(2L, scalar(db, "SELECT COUNT(*) FROM transaction_revision"))
                     assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM location_record"))
@@ -116,6 +142,7 @@ class OrdinaryTransactionEntryDeviceTest {
                             it.getString(0)
                         },
                     )
+                    assertTrue(AnalyticsProjectionEngine.audit(db, 5L).consistent)
                 }
             } finally {
                 database.close()

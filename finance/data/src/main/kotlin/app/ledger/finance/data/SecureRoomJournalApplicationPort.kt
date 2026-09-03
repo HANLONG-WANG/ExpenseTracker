@@ -8,12 +8,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
-import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.Money
-import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerSecureSettings
+import app.ledger.core.security.LedgerSessionOperationAccess
 import app.ledger.core.time.EffectiveTime
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
@@ -23,6 +25,7 @@ import app.ledger.finance.application.JournalBulkEditOptions
 import app.ledger.finance.application.JournalBulkEditRequest
 import app.ledger.finance.application.JournalBulkOption
 import app.ledger.finance.application.JournalDependencyView
+import app.ledger.finance.application.JournalDetailBundle
 import app.ledger.finance.application.JournalDetailView
 import app.ledger.finance.application.JournalFieldUpdate
 import app.ledger.finance.application.JournalFxEvidenceView
@@ -36,7 +39,6 @@ import app.ledger.finance.application.JournalSavedFilter
 import app.ledger.finance.application.JournalSavedFilterCommand
 import app.ledger.finance.application.JournalSelectionMode
 import app.ledger.finance.application.JournalTransactionView
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.PurgeIneligibilityReason
 import app.ledger.finance.domain.AccountAmount
 import app.ledger.finance.domain.AmountRole
@@ -84,8 +86,6 @@ import app.ledger.finance.domain.TransactionPayload
 import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountId
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.YearMonth
@@ -93,14 +93,13 @@ import java.time.YearMonth
 /** SQLCipher implementation for P15. All mutations still terminate at FinancialMutationCoordinator. */
 class SecureRoomJournalApplicationPort(
     context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
+    private val sessionAccess: LedgerSessionOperationAccess,
 ) : JournalApplicationPort {
     private val applicationContext = context.applicationContext
     private val mapper = RoomReferenceFinancialSnapshotMapper()
-    private val writeGate = JournalWriteGate()
     private val filterStore = EncryptedJournalFilterStore(applicationContext)
 
-    override suspend fun page(request: JournalPageRequest): DomainResult<JournalPage> = withDatabase(request.bookId) { database ->
+    override suspend fun page(request: JournalPageRequest): DomainResult<JournalPage> = withDatabase(request.bookId, LedgerAccessMode.READ) { database ->
         when (val queried = RoomTransactionQueryService(database).page(request.filter, request.limit, request.cursor)) {
             is DomainResult.Failure -> queried
             is DomainResult.Success -> database.readLedger { db ->
@@ -110,12 +109,14 @@ class SecureRoomJournalApplicationPort(
                         arrayOf(cursorId.bytes),
                     ) { it.getInt(0).toStoredLocalDate() }
                 }
+                val rows = pageRows(db, queried.value.items.map { it.transactionId.value }, request.runningBalanceAccountId)
                 DomainResult.Success(
                     JournalPage(
                         queried.value.items.map { projection ->
                             val startsDateGroup = projection.localDate != previousDate
                             previousDate = projection.localDate
-                            row(db, projection.transactionId.value, request.runningBalanceAccountId, startsDateGroup)
+                            rows[projection.transactionId.value]?.copy(startsDateGroup = startsDateGroup)
+                                ?: abort(FinanceDataError.CorruptData)
                         },
                         queried.value.nextCursor,
                     ),
@@ -124,16 +125,16 @@ class SecureRoomJournalApplicationPort(
         }
     }.flatten()
 
-    override suspend fun detail(bookId: StableId, transactionId: StableId): DomainResult<JournalDetailView?> = withDatabase(bookId) { database -> database.readLedger { db -> detail(db, transactionId) } }
+    override suspend fun detail(bookId: StableId, transactionId: StableId): DomainResult<JournalDetailView?> = withDatabase(bookId, LedgerAccessMode.READ) { database -> database.readLedger { db -> detail(db, transactionId) } }
 
-    override suspend fun history(bookId: StableId, transactionId: StableId): DomainResult<List<JournalRevisionView>> = withDatabase(bookId) { database -> database.readLedger { db -> history(db, transactionId) } }
+    override suspend fun history(bookId: StableId, transactionId: StableId): DomainResult<List<JournalRevisionView>> = withDatabase(bookId, LedgerAccessMode.READ) { database -> database.readLedger { db -> history(db, transactionId) } }
 
     override suspend fun compare(
         bookId: StableId,
         transactionId: StableId,
         leftRevisionId: StableId,
         rightRevisionId: StableId,
-    ): DomainResult<JournalRevisionComparison> = withDatabase(bookId) { database ->
+    ): DomainResult<JournalRevisionComparison> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val versions = history(db, transactionId)
             val left = versions.singleOrNull { it.revisionId == leftRevisionId } ?: abort(FinanceDataError.CorruptData)
@@ -149,19 +150,36 @@ class SecureRoomJournalApplicationPort(
         }
     }
 
-    override suspend fun dependencies(bookId: StableId, transactionId: StableId): DomainResult<List<JournalDependencyView>> = withDatabase(bookId) { database -> database.readLedger { db -> dependencies(db, transactionId) } }
+    override suspend fun dependencies(bookId: StableId, transactionId: StableId): DomainResult<List<JournalDependencyView>> = withDatabase(bookId, LedgerAccessMode.READ) { database -> database.readLedger { db -> dependencies(db, transactionId) } }
 
-    override suspend fun assessPurge(bookId: StableId, transactionId: StableId, now: Instant): DomainResult<JournalPurgeAssessment> = withDatabase(bookId) { database -> database.readLedger { db -> purgeAssessment(db, transactionId, now) } }
+    override suspend fun detailBundle(bookId: StableId, transactionId: StableId): DomainResult<JournalDetailBundle> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
+        database.readLedger { db ->
+            val dependencyResult = runCatching { dependencies(db, transactionId) }
+            val historyResult = runCatching { history(db, transactionId) }
+            val dependencyRows = dependencyResult.getOrDefault(emptyList())
+            JournalDetailBundle(
+                detail = detail(db, transactionId, dependencyRows),
+                history = historyResult.getOrDefault(emptyList()),
+                dependencies = dependencyRows,
+                optionalFailureCodes = buildSet {
+                    if (historyResult.isFailure) add("JOURNAL_HISTORY_FAILED")
+                    if (dependencyResult.isFailure) add("JOURNAL_DEPENDENCIES_FAILED")
+                },
+            )
+        }
+    }
 
-    override suspend fun mutate(request: JournalMutationRequest): DomainResult<CommandReceipt> = withDatabase(request.ids.bookId) { database ->
+    override suspend fun assessPurge(bookId: StableId, transactionId: StableId, now: Instant): DomainResult<JournalPurgeAssessment> = withDatabase(bookId, LedgerAccessMode.READ) { database -> database.readLedger { db -> purgeAssessment(db, transactionId, now) } }
+
+    override suspend fun mutate(request: JournalMutationRequest): DomainResult<CommandReceipt> = withDatabase(request.ids.bookId, LedgerAccessMode.WRITE) { database ->
         executeMutation(database, request)
     }.flatten()
 
-    override suspend fun bulkEdit(request: JournalBulkEditRequest): DomainResult<CommandReceipt> = withDatabase(request.bookId) { database ->
+    override suspend fun bulkEdit(request: JournalBulkEditRequest): DomainResult<CommandReceipt> = withDatabase(request.bookId, LedgerAccessMode.WRITE) { database ->
         executeBulkEdit(database, request)
     }.flatten()
 
-    override suspend fun bulkEditOptions(bookId: StableId): DomainResult<JournalBulkEditOptions> = withDatabase(bookId) { database ->
+    override suspend fun bulkEditOptions(bookId: StableId): DomainResult<JournalBulkEditOptions> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             JournalBulkEditOptions(
                 accounts = db.queryList("SELECT uid,name FROM user_account WHERE status=0 ORDER BY sort_order,name", emptyArray()) { JournalBulkOption(it.stableId("uid"), it.jString("name")) },
@@ -182,15 +200,18 @@ class SecureRoomJournalApplicationPort(
         }
     }
 
-    override suspend fun savedFilters(bookId: StableId): DomainResult<List<JournalSavedFilter>> = withKeys(bookId) { keys ->
-        filterStore.read(bookId, keys)
+    override suspend fun savedFilters(bookId: StableId): DomainResult<List<JournalSavedFilter>> = withSecureSettings(
+        bookId,
+        LedgerAccessMode.READ,
+    ) { secureSettings ->
+        filterStore.read(bookId, secureSettings)
     }
 
     override suspend fun mutateSavedFilter(
         bookId: StableId,
         command: JournalSavedFilterCommand,
-    ): DomainResult<List<JournalSavedFilter>> = withKeys(bookId) { keys ->
-        val current = filterStore.read(bookId, keys)
+    ): DomainResult<List<JournalSavedFilter>> = withSecureSettings(bookId, LedgerAccessMode.WRITE) { secureSettings ->
+        val current = filterStore.read(bookId, secureSettings)
         val next = when (command) {
             is JournalSavedFilterCommand.Save -> {
                 require(command.name.isNotBlank() && command.name.trim().length <= 80)
@@ -210,7 +231,7 @@ class SecureRoomJournalApplicationPort(
                 command.orderedIds.mapIndexed { index, id -> current.single { it.id == id }.copy(sortOrder = index) }
             }
         }
-        filterStore.write(bookId, keys, next)
+        filterStore.write(bookId, secureSettings, next)
         next.sortedBy(JournalSavedFilter::sortOrder)
     }
 
@@ -495,7 +516,7 @@ class SecureRoomJournalApplicationPort(
         // analytics, goals, widgets, or the active journal after an incremental edge case.
         val repository = RoomFinancialCommitRepository(database, forceFullProjectionRebuild = true)
         return DefaultFinancialMutationCoordinator(
-            writeGate,
+            CallerOwnedLedgerWriteGate,
             repository,
             object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
@@ -531,6 +552,57 @@ class SecureRoomJournalApplicationPort(
             "LEFT JOIN user_account sa ON sa.id=ctp.secondary_account_id LEFT JOIN payment_card pc ON pc.id=ctp.card_id WHERE bt.uid=?",
         arrayOf(id.bytes),
     ) { cursor ->
+        mapJournalRow(
+            cursor,
+            runningAccountId?.let { runningBalance(db, it, cursor.jLong("occurred_at"), id) },
+            startsDateGroup,
+        )
+    } ?: abort(FinanceDataError.CorruptData)
+
+    private fun pageRows(
+        db: SupportSQLiteDatabase,
+        ids: List<StableId>,
+        runningAccountId: StableId?,
+    ): Map<StableId, JournalTransactionView> {
+        if (ids.isEmpty()) return emptyMap()
+        val placeholders = ids.joinToString(",") { "?" }
+        val runningBalanceSql = if (runningAccountId == null) {
+            "NULL running_balance "
+        } else {
+            "(SELECT COALESCE(SUM(CASE WHEN p2.side=la2.normal_side THEN p2.account_amount_minor ELSE -p2.account_amount_minor END),0) " +
+                "FROM posting p2 JOIN ledger_account la2 ON la2.id=p2.ledger_account_id JOIN user_account ua2 ON ua2.ledger_account_id=la2.id " +
+                "JOIN journal_entry je2 ON je2.id=p2.journal_entry_id JOIN transaction_revision sr2 ON sr2.id=je2.source_revision_id " +
+                "JOIN business_transaction bt2 ON bt2.id=sr2.transaction_id WHERE ua2.uid=? AND bt2.lifecycle_state=0 " +
+                "AND (je2.effective_at<tr.occurred_at OR (je2.effective_at=tr.occurred_at AND bt2.uid<=bt.uid))) running_balance "
+        }
+        val arguments = buildList<Any?> {
+            runningAccountId?.let { add(it.bytes) }
+            ids.forEach { add(it.bytes) }
+        }.toTypedArray()
+        return db.queryList(
+            "SELECT bt.uid,tr.uid revision_uid,bt.kind,bt.lifecycle_state,tr.occurred_at,tr.local_date," +
+                "COALESCE(c.name,'') category_name,COALESCE(m.name,tr.note,'') summary,COALESCE(pa.name,sa.name,'') account_name," +
+                "pc.display_name card_name,ctp.account_amount_minor,ctp.account_currency,ctp.input_amount_minor,ctp.input_currency," +
+                "ctp.has_attachment,ctp.has_location,ctp.is_refund,ctp.is_refunded,ctp.has_installment,ctp.source_type," +
+                "bt.trashed_at,bt.purge_after,(SELECT COUNT(*) FROM transaction_dependency td WHERE td.parent_transaction_id=bt.id OR td.child_transaction_id=bt.id) dependency_count," +
+                runningBalanceSql +
+                "FROM current_transaction_projection ctp JOIN business_transaction bt ON bt.id=ctp.transaction_id " +
+                "JOIN transaction_revision tr ON tr.id=ctp.current_revision_id LEFT JOIN category c ON c.id=ctp.category_id " +
+                "LEFT JOIN merchant m ON m.id=ctp.merchant_id LEFT JOIN user_account pa ON pa.id=ctp.primary_account_id " +
+                "LEFT JOIN user_account sa ON sa.id=ctp.secondary_account_id LEFT JOIN payment_card pc ON pc.id=ctp.card_id " +
+                // Anchor the 40-row enrichment lookup on the projection's UNIQUE UID index.
+                // Filtering the joined business table permits a 500,000-row projection scan.
+                "WHERE ctp.transaction_uid IN ($placeholders)",
+            arguments,
+        ) { cursor -> mapJournalRow(cursor, cursor.nullableLong("running_balance"), startsDateGroup = false) }
+            .associateBy(JournalTransactionView::transactionId)
+    }
+
+    private fun mapJournalRow(
+        cursor: Cursor,
+        runningBalanceMinor: Long?,
+        startsDateGroup: Boolean,
+    ): JournalTransactionView {
         val accountCurrency = currency(cursor.jString("account_currency"))
         val inputCurrency = currency(cursor.jString("input_currency"))
         val badges = buildList {
@@ -540,7 +612,7 @@ class SecureRoomJournalApplicationPort(
             if (cursor.jInt("is_refunded") == 1) add("refunded")
             if (cursor.jInt("has_installment") == 1) add("installment")
         }
-        JournalTransactionView(
+        return JournalTransactionView(
             cursor.stableId("uid"), cursor.stableId("revision_uid"), TransactionKind.entries[cursor.jInt("kind")],
             TransactionLifecycleState.entries[cursor.jInt("lifecycle_state")], Instant.ofEpochMilli(cursor.jLong("occurred_at")),
             cursor.jInt("local_date").toStoredLocalDate(), cursor.jString("category_name"),
@@ -548,14 +620,14 @@ class SecureRoomJournalApplicationPort(
             listOfNotNull(cursor.jString("account_name").takeIf(String::isNotBlank), cursor.nullableString("card_name")).joinToString(" · "),
             cursor.jLong("account_amount_minor"), accountCurrency,
             cursor.jLong("input_amount_minor").takeIf { inputCurrency != accountCurrency }, inputCurrency.takeIf { it != accountCurrency },
-            badges, runningAccountId?.let { runningBalance(db, it, cursor.jLong("occurred_at"), id) },
+            badges, runningBalanceMinor,
             TransactionSource.entries[cursor.jInt("source_type")],
             cursor.nullableLong("trashed_at")?.let(Instant::ofEpochMilli),
             cursor.nullableLong("purge_after")?.let(Instant::ofEpochMilli),
             cursor.jInt("dependency_count"),
             startsDateGroup,
         )
-    } ?: abort(FinanceDataError.CorruptData)
+    }
 
     private fun runningBalance(db: SupportSQLiteDatabase, accountId: StableId, occurredAt: Long, transactionId: StableId): Long = db.queryOne(
         "SELECT COALESCE(SUM(CASE WHEN p.side=la.normal_side THEN p.account_amount_minor ELSE -p.account_amount_minor END),0) balance " +
@@ -565,7 +637,11 @@ class SecureRoomJournalApplicationPort(
         arrayOf(accountId.bytes, occurredAt, occurredAt, transactionId.bytes),
     ) { it.jLong("balance") } ?: 0L
 
-    private fun detail(db: SupportSQLiteDatabase, id: StableId): JournalDetailView? {
+    private fun detail(
+        db: SupportSQLiteDatabase,
+        id: StableId,
+        bundledDependencies: List<JournalDependencyView>? = null,
+    ): JournalDetailView? {
         val base = db.queryOne(
             "SELECT bt.uid,tr.uid revision_uid,created.created_at created_at,modified.created_at modified_at,tr.zone_id,tr.amount_expression,tr.note," +
                 "m.name merchant_name,p.name project_name,pl.name place_name,tr.statistical_nature_snapshot,tr.source_type,bt.purge_after " +
@@ -592,7 +668,7 @@ class SecureRoomJournalApplicationPort(
                 "JOIN user_account ua ON ua.ledger_account_id=la.id WHERE tr.uid=? ORDER BY je.entry_role,p.line_no",
             arrayOf(base.revisionId.bytes),
         ) { c -> "account-change|${c.getString(0)}|${c.getLong(1)}|${c.getString(2)}" }
-        val dependencyRelations = dependencies(db, id).map { "${it.type}:${it.childTransactionId}" }
+        val dependencyRelations = (bundledDependencies ?: dependencies(db, id)).map { "${it.type}:${it.childTransactionId}" }
         // A malformed legacy relationship projection must not make an otherwise valid
         // transaction detail permanently unreachable. The typed dependency list remains
         // available and relationship repair can be handled by integrity maintenance.
@@ -718,15 +794,12 @@ class SecureRoomJournalApplicationPort(
         return JournalPurgeAssessment(id, now, lifecycle.second, reasons)
     }
 
-    private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> T): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-            try {
-                DomainResult.Success(block(database))
-            } finally {
-                database.close()
-            }
-        }
+    private suspend fun <T> withDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode,
+        block: suspend (LedgerDatabase) -> T,
+    ): DomainResult<T> = try {
+        DomainResult.Success(sessionAccess.withCurrentDatabase(bookId, mode, block))
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -735,8 +808,12 @@ class SecureRoomJournalApplicationPort(
         DomainResult.Failure(failure.toFinanceDatabaseError())
     }
 
-    private fun <T> withKeys(bookId: StableId, block: (app.ledger.core.security.DeviceLedgerKeys) -> T): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys -> DomainResult.Success(block(keys)) }
+    private suspend fun <T> withSecureSettings(
+        bookId: StableId,
+        mode: LedgerAccessMode,
+        block: suspend (LedgerSecureSettings) -> T,
+    ): DomainResult<T> = try {
+        DomainResult.Success(sessionAccess.withCurrentSecureSettings(bookId, mode, block))
     } catch (_: Exception) {
         DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
     }
@@ -828,11 +905,6 @@ class SecureRoomJournalApplicationPort(
         const val BULK_FACT_ID_RESERVE = 1_024
         const val BULK_FX_ID_RESERVE = 64
     }
-}
-
-private class JournalWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
 }
 
 private fun currency(value: String): CurrencyCode = CurrencyCode.parse(value).valueOrAbort()

@@ -25,7 +25,13 @@ class P26CustomAnalyticsMutationTest(unittest.TestCase):
         self.assertTrue(self.mutate("CustomAnalytics.kt", "Math.multiplyExact", "unsafeMultiply"))
 
     def test_encrypted_primary_database_cannot_be_bypassed(self) -> None:
-        self.assertTrue(self.mutate("SecureRoomAnalyticsApplicationPort.kt", "EncryptedDatabaseFactory.openPrimary", "Room.databaseBuilder"))
+        self.assertTrue(
+            self.mutate(
+                "SecureRoomAnalyticsApplicationPort.kt",
+                "LedgerDatabaseOperationAccess",
+                "PlaintextDatabaseAccess",
+            )
+        )
 
     def test_revision_conflict_cannot_be_removed(self) -> None:
         self.assertTrue(self.mutate("CustomAnalyticsStore.kt", "AnalyticsError.RevisionConflict", "AnalyticsError.DatabaseUnavailable"))

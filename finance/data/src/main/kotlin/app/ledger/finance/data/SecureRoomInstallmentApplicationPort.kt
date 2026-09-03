@@ -12,9 +12,12 @@ import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.Money
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.time.EffectiveTime
 import app.ledger.finance.application.ApplyInstallmentRefundRequest
 import app.ledger.finance.application.ApplyInstallmentSettlementRequest
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.CreditPaymentAccountView
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
@@ -24,7 +27,6 @@ import app.ledger.finance.application.InstallmentApplicationPort
 import app.ledger.finance.application.InstallmentPlanView
 import app.ledger.finance.application.InstallmentPurchaseView
 import app.ledger.finance.application.InstallmentSnapshot
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.SaveInstallmentPlanRequest
 import app.ledger.finance.application.SpecializedAccountAmountDraft
 import app.ledger.finance.domain.AccountAmount
@@ -73,24 +75,18 @@ import app.ledger.finance.domain.TransactionId
 import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountId
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
 import java.time.LocalDate
 
 class SecureRoomInstallmentApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
-    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
 ) : InstallmentApplicationPort {
-    private val applicationContext = context.applicationContext
     private val mapper = RoomReferenceFinancialSnapshotMapper()
     private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
-    private val writeGate: LedgerWriteGate = InstallmentWriteGate()
 
-    override suspend fun snapshot(bookId: StableId, asOfDate: LocalDate): DomainResult<InstallmentSnapshot> = withDatabase(bookId) { database ->
+    override suspend fun snapshot(bookId: StableId, asOfDate: LocalDate): DomainResult<InstallmentSnapshot> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val book = RoomBookRepository.mapCurrent(db)
             if (book.id.value != bookId) abort(FinanceDataError.CorruptData)
@@ -541,7 +537,11 @@ class SecureRoomInstallmentApplicationPort(
             arrayOf(planUid.bytes),
         ) { cursor ->
             ScheduleHeader(
-                cursor.stableId("uid"), cursor.installmentInt("revision_no"), cursor.installmentInt("reason"), cursor.installmentLong("generated_at"), cursor.stableId("commit_uid"),
+                cursor.stableId("uid"),
+                cursor.installmentInt("revision_no"),
+                cursor.installmentInt("reason"),
+                cursor.installmentLong("generated_at"),
+                cursor.stableId("commit_uid"),
             )
         } ?: return null
         val items = db.queryList(
@@ -550,14 +550,23 @@ class SecureRoomInstallmentApplicationPort(
             arrayOf(header.id.bytes),
         ) { cursor ->
             InstallmentScheduleItem(
-                InstallmentScheduleItemId(stableIdFromInternal(cursor.installmentLong("id"))), cursor.installmentInt("installment_no"),
-                storageDate(cursor.installmentInt("statement_date")), cursor.installmentLong("principal_minor"), cursor.installmentLong("interest_minor"),
-                cursor.installmentLong("fee_minor"), cursor.installmentLong("remaining_principal_minor"),
+                InstallmentScheduleItemId(stableIdFromInternal(cursor.installmentLong("id"))),
+                cursor.installmentInt("installment_no"),
+                storageDate(cursor.installmentInt("statement_date")),
+                cursor.installmentLong("principal_minor"),
+                cursor.installmentLong("interest_minor"),
+                cursor.installmentLong("fee_minor"),
+                cursor.installmentLong("remaining_principal_minor"),
             )
         }
         return InstallmentScheduleRevision(
-            InstallmentScheduleRevisionId(header.id), planId, header.revisionNumber, ScheduleRevisionReason.entries[header.reason],
-            Instant.ofEpochMilli(header.generatedAt), BookCommitId(header.createdCommitId), items,
+            InstallmentScheduleRevisionId(header.id),
+            planId,
+            header.revisionNumber,
+            ScheduleRevisionReason.entries[header.reason],
+            Instant.ofEpochMilli(header.generatedAt),
+            BookCommitId(header.createdCommitId),
+            items,
         )
     }
 
@@ -606,7 +615,7 @@ class SecureRoomInstallmentApplicationPort(
     ): DomainResult<CommandReceipt> {
         val repository = RoomFinancialCommitRepository(database)
         return DefaultFinancialMutationCoordinator(
-            writeGate,
+            CallerOwnedLedgerWriteGate,
             repository,
             object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
@@ -618,16 +627,10 @@ class SecureRoomInstallmentApplicationPort(
 
     private suspend fun <T> withDatabase(
         bookId: StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
         block: suspend (LedgerDatabase) -> DomainResult<T>,
     ): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { openSelectedLedger(applicationContext, it, databaseName) }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+        databaseAccess.withCurrentDatabase(bookId, mode, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -679,11 +682,6 @@ class SecureRoomInstallmentApplicationPort(
         val generatedAt: Long,
         val createdCommitId: StableId,
     )
-
-    private class InstallmentWriteGate : LedgerWriteGate {
-        private val mutex = Mutex()
-        override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
-    }
 }
 
 private fun settlementConfirmationMatches(

@@ -16,6 +16,7 @@ import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.StableIdSource
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.finance.application.BatchUndoRequest
 import app.ledger.finance.application.BatchUndoRowIds
@@ -41,10 +42,11 @@ class SecureRoomImportFinancialApplicationPort(
     private val referenceDataPort: ReferenceDataManagementPort,
     private val stableIds: StableIdSource,
     private val failureInjector: FinancialCommitFailureInjector = FinancialCommitFailureInjector.NONE,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
 ) : ImportFinancialApplicationPort {
     private val applicationContext = context.applicationContext
-    private val primaryAccess = SecurePrimaryLedgerAccess(applicationContext, keyProvider)
-    private val shadowAccess = SecureShadowLedgerAccess(applicationContext, keyProvider)
+    private val primaryAccess = SecurePrimaryLedgerAccess(applicationContext, keyProvider, databaseAccess)
+    private val shadowAccess = SecureShadowLedgerAccess(applicationContext, keyProvider, databaseAccess)
 
     override suspend fun commit(request: ImportFinancialCommitRequest): DomainResult<ImportFinancialCommitResult> = try {
         existing(request.bookId, request.metadata.sourceFingerprint)?.let { audit ->
@@ -77,13 +79,16 @@ class SecureRoomImportFinancialApplicationPort(
             if (batchIds.isEmpty() || batchIds.first() != request.batchId) {
                 return DomainResult.Failure(ImportFinancialError.NotFound)
             }
+            val offlineAccess = OfflineSelectedLedgerDatabaseAccess(
+                applicationContext,
+                keyProvider,
+                snapshot.shadowDatabaseName,
+            )
             var reversedRows = 0L
             batchIds.forEach { originalId ->
                 val port = SecureRoomBatchEntryApplicationPort(
-                    applicationContext,
-                    keyProvider,
+                    offlineAccess,
                     referenceDataPort,
-                    databaseName = snapshot.shadowDatabaseName,
                 )
                 val batchAudit = when (val result = port.audit(request.bookId, CommandId(originalId))) {
                     is DomainResult.Success -> result.value ?: return DomainResult.Failure(ImportFinancialError.NotFound)
@@ -197,8 +202,7 @@ class SecureRoomImportFinancialApplicationPort(
             finalizeImport(database, request, plan)
         }
         val port = SecureRoomBatchEntryApplicationPort(
-            applicationContext,
-            keyProvider,
+            databaseAccess,
             referenceDataPort,
             failureInjector,
             additionalAfterFinancialSideEffect = metadata,
@@ -232,12 +236,15 @@ class SecureRoomImportFinancialApplicationPort(
                     recordBatchCommit(database, request.metadata.importRecordId, page, plan)
                     if (page.lastPage) finalizeImport(database, request, plan)
                 }
-                val port = SecureRoomBatchEntryApplicationPort(
+                val offlineAccess = OfflineSelectedLedgerDatabaseAccess(
                     applicationContext,
                     keyProvider,
+                    snapshot.shadowDatabaseName,
+                )
+                val port = SecureRoomBatchEntryApplicationPort(
+                    offlineAccess,
                     referenceDataPort,
                     failureInjector,
-                    databaseName = snapshot.shadowDatabaseName,
                     additionalAfterFinancialSideEffect = sideEffect,
                 )
                 when (val committed = port.submit(page.submitRequest)) {

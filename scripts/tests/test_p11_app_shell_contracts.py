@@ -30,6 +30,23 @@ class P11AppShellMutationTest(unittest.TestCase):
     def test_unsaved_loss_notice_removal_is_rejected(self) -> None:
         self.assertTrue(self.mutate("ReadyRootScaffold.kt", "global_unsaved_lost", "global_notice_removed"))
 
+    def test_process_session_runtime_composition_removal_is_rejected(self) -> None:
+        self.assertTrue(
+            self.mutate(
+                "AppDependencyModule.kt",
+                "return ActiveBookSessionRuntime(",
+                "return DetachedBookSessionRuntime(",
+            )
+        )
+
+        self.assertTrue(
+            self.mutate(
+                "AppRootViewModel.kt",
+                "activeBookSessionRuntime.activate(bookId)",
+                "detachedSessionManager(bookId)",
+            )
+        )
+
     def test_ready_only_navigation_weakening_is_rejected(self) -> None:
         self.assertTrue(
             self.mutate(

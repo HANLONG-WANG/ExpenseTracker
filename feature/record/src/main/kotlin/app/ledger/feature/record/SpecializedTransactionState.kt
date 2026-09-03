@@ -22,8 +22,8 @@ import app.ledger.core.money.MoneyUiModel
 import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.application.ReferenceDataSnapshot
 import app.ledger.finance.application.SpecializedAccountAmountDraft
-import app.ledger.finance.application.SpecializedTransactionEditView
 import app.ledger.finance.application.SpecializedFxQuote
+import app.ledger.finance.application.SpecializedTransactionEditView
 import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.FxValuationPolicy
@@ -111,15 +111,16 @@ public object SpecializedTransactionPolicy {
     private val formatter = LocaleCurrencyFormatter(catalog)
     private val converter = FxConverter()
 
-    public fun formatMoney(minor: Long, currency: CurrencyCode, locale: Locale): MoneyUiModel =
-        (formatter.format(
+    public fun formatMoney(minor: Long, currency: CurrencyCode, locale: Locale): MoneyUiModel = (
+        formatter.format(
             MoneyFormatRequest(
                 money = Money(minor, currency),
                 locale = locale,
                 semantic = AmountSemantic.NEUTRAL,
                 visibility = AmountVisibility.VISIBLE,
             ),
-        ) as DomainResult.Success).value
+        ) as DomainResult.Success
+        ).value
 
     public fun create(
         kind: SpecializedTransactionKind,
@@ -226,14 +227,13 @@ public object SpecializedTransactionPolicy {
         return state.copy(draft = state.draft.copy(localDate = date, occurredAt = date.atTime(localTime).atZone(state.draft.zoneId).toInstant(), dirty = true))
     }
 
-    public fun changeOccurredAt(state: SpecializedTransactionEditorState, occurredAt: Instant): SpecializedTransactionEditorState =
-        state.copy(
-            draft = state.draft.copy(
-                occurredAt = occurredAt,
-                localDate = occurredAt.atZone(state.draft.zoneId).toLocalDate(),
-                dirty = true,
-            ),
-        )
+    public fun changeOccurredAt(state: SpecializedTransactionEditorState, occurredAt: Instant): SpecializedTransactionEditorState = state.copy(
+        draft = state.draft.copy(
+            occurredAt = occurredAt,
+            localDate = occurredAt.atZone(state.draft.zoneId).toLocalDate(),
+            dirty = true,
+        ),
+    )
 
     public fun withQuote(state: SpecializedTransactionEditorState, currency: CurrencyCode, quote: SpecializedFxQuote?): SpecializedTransactionEditorState = state.copy(
         quotesToBase = if (quote == null) state.quotesToBase - currency else state.quotesToBase + (currency to quote),
@@ -330,8 +330,7 @@ public object SpecializedTransactionPolicy {
     public fun account(state: SpecializedTransactionEditorState, id: StableId?): AccountReferenceView? = state.snapshot.accounts.singleOrNull { it.id == id }
 
     /** New transfer/exchange endpoints must be asset accounts; liabilities use their dedicated flows. */
-    public fun selectableAccounts(state: SpecializedTransactionEditorState): List<AccountReferenceView> =
-        activeAccounts(state.snapshot, state.kind)
+    public fun selectableAccounts(state: SpecializedTransactionEditorState): List<AccountReferenceView> = activeAccounts(state.snapshot, state.kind)
 
     private fun evaluate(state: SpecializedTransactionEditorState, locale: Locale): SpecializedTransactionEditorState {
         val from = account(state, state.draft.fromAccountId)

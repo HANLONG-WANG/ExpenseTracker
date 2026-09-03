@@ -21,19 +21,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -64,25 +64,23 @@ import app.ledger.core.designsystem.ChartCard
 import app.ledger.core.designsystem.FilterChipUiModel
 import app.ledger.core.designsystem.FilterDimensionUiModel
 import app.ledger.core.designsystem.FormSection
+import app.ledger.core.designsystem.JournalTransactionRow
+import app.ledger.core.designsystem.JournalTransactionUiModel
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
+import app.ledger.core.designsystem.LedgerChartUiModel
 import app.ledger.core.designsystem.LedgerCheckboxRow
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerChoiceSelector
-import app.ledger.core.designsystem.LedgerChartUiModel
 import app.ledger.core.designsystem.LedgerColumnChart
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
-import app.ledger.core.designsystem.JournalTransactionRow
-import app.ledger.core.designsystem.JournalTransactionUiModel
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerLineChart
-import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
-import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
-import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerPieChart
 import app.ledger.core.designsystem.LedgerProgressIndicator
@@ -91,12 +89,14 @@ import app.ledger.core.designsystem.LedgerStackedChart
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerVicoColumnRenderer
 import app.ledger.core.designsystem.LedgerVicoLineRenderer
 import app.ledger.core.designsystem.LedgerVicoPieRenderer
 import app.ledger.core.designsystem.LedgerVicoStackedRenderer
+import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
+import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
+import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
 import app.ledger.core.designsystem.SelectorField
@@ -372,7 +372,7 @@ private fun DashboardReportCard(definition: app.ledger.analytics.domain.FixedRep
 private fun PeriodControls(state: AnalysisFeatureState, actions: AnalysisActions) {
     val locale = LocalConfiguration.current.locales[0]
     Row(
-        Modifier.fillMaxWidth().testTag(ANALYSIS_PERIOD_CONTROLS_TAG),
+        Modifier.fillMaxWidth().testTag(LedgerTestTags.ANALYSIS_PERIOD_CONTROLS),
         horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xxs),
     ) {
         LedgerButton(stringResource(R.string.analysis_previous_period), actions.onPreviousPeriod, Modifier.weight(1f), variant = LedgerButtonVariant.TEXT, compact = true)
@@ -1156,10 +1156,7 @@ private val EXPORT_FORMAT_LABELS = mapOf(
     ReportExportFormat.XLSX to R.string.analysis_export_format_xlsx,
 )
 
-internal const val ANALYSIS_PERIOD_CONTROLS_TAG: String = "analysis_period_controls"
-
-private fun LocalDate.localized(locale: Locale): String =
-    format(LedgerDateFormatterRuntime.formatter(locale))
+private fun LocalDate.localized(locale: Locale): String = format(LedgerDateFormatterRuntime.formatter(locale))
 
 private fun Modifier.analysisRootTag(screenId: String): Modifier = when (screenId) {
     "ANA-001" -> testTag(LedgerTestTags.ANALYSIS_HOME)

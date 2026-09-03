@@ -3,16 +3,23 @@
 package app.ledger.finance.data
 
 import android.content.Context
+import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.database.EncryptedDatabaseFactory
+import app.ledger.core.database.LedgerDatabasePerformance
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.security.AndroidKeystoreKeys
+import app.ledger.core.security.BookSessionManager
+import app.ledger.core.security.DefaultLedgerStartupInspector
 import app.ledger.core.security.DeviceKeyHierarchy
+import app.ledger.core.security.LedgerSessionPerformance
 import app.ledger.core.security.SecurityEnvelopeStore
+import app.ledger.core.security.SqlCipherBookDatabaseResourceFactory
+import app.ledger.core.security.VaultExposureRegistry
 import app.ledger.finance.application.ControlledPurgeRequest
 import app.ledger.finance.application.InitialAccountCommand
 import app.ledger.finance.application.InitialCategoryCommand
@@ -58,6 +65,7 @@ class JournalApplicationPortDeviceTest {
     private lateinit var initialization: SecureRoomLedgerInitializationPort
     private lateinit var entry: SecureRoomOrdinaryTransactionEntryPort
     private lateinit var journal: SecureRoomJournalApplicationPort
+    private lateinit var manager: BookSessionManager
 
     @Before
     fun prepare() {
@@ -67,8 +75,6 @@ class JournalApplicationPortDeviceTest {
             keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
             keys.destroyLocal(BOOK_ID)
             initialization = SecureRoomLedgerInitializationPort(context, keys)
-            entry = SecureRoomOrdinaryTransactionEntryPort(context, keys)
-            journal = SecureRoomJournalApplicationPort(context, keys)
             initialization.initialize(
                 InitializeLedgerCommand(
                     LedgerGenesisIds(BOOK_ID, id(2), id(3), id(4), SystemLedgerCode.entries.mapIndexed { index, code -> code to id(100L + index) }.toMap()),
@@ -85,6 +91,20 @@ class JournalApplicationPortDeviceTest {
                 BOOK_ID,
                 InitialCategoryCommand(CATEGORY_ID, id(211), id(212), id(213), Instant.ofEpochMilli(3_000), CategoryDirection.EXPENSE, "Food", "food", StatisticalNature.CONSUMPTION_EXPENSE, "record", 0xff006c4c.toInt()),
             ).success()
+            manager = BookSessionManager(
+                BOOK_ID,
+                keys,
+                SqlCipherBookDatabaseResourceFactory(
+                    context,
+                    listOf(DefaultLedgerStartupInspector, RoomLedgerStartupInspector()),
+                ),
+                VaultExposureRegistry { 0L },
+            )
+            manager.initialize()
+            manager.unlockUi()
+            val references = SecureRoomReferenceDataManagementPort(manager)
+            entry = SecureRoomOrdinaryTransactionEntryPort(manager, references)
+            journal = SecureRoomJournalApplicationPort(context, manager)
             entry.submit(createRequest(1_000, TRANSACTION_A, "alpha private note")).success()
             entry.submit(createRequest(2_000, TRANSACTION_B, "beta private note")).success()
         }
@@ -92,6 +112,7 @@ class JournalApplicationPortDeviceTest {
 
     @After
     fun cleanUp() {
+        runBlocking { manager.close() }
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys.destroyLocal(BOOK_ID)
         context.noBackupFilesDir.resolve("journal_filters").deleteRecursively()
@@ -100,14 +121,33 @@ class JournalApplicationPortDeviceTest {
     @Test
     fun bulkHistoryRestoreTrashAndPurgeAssessmentUseImmutableAtomicPaths() = runBlocking {
         val activeFilter = TransactionFilter(lifecycleStates = setOf(TransactionLifecycleState.ACTIVE))
+        // API 36 WAL initializes its pooled read connection on first readableDatabase access.
+        // P37's query budget is for warm interaction after Ready, so exclude that one-time setup.
+        journal.page(JournalPageRequest(BOOK_ID, activeFilter, limit = 1)).success()
+        LedgerDatabasePerformance.resetForTest()
         val globalRows = journal.page(JournalPageRequest(BOOK_ID, activeFilter)).success()
+        val fullPageStatements = LedgerDatabasePerformance.snapshot().primarySqlStatementCount
         assertEquals(2, globalRows.items.size)
         assertTrue(globalRows.items.all { it.runningBalanceMinor == null })
+        LedgerDatabasePerformance.resetForTest()
+        assertEquals(1, journal.page(JournalPageRequest(BOOK_ID, activeFilter, limit = 1)).success().items.size)
+        val oneRowStatements = LedgerDatabasePerformance.snapshot().primarySqlStatementCount
+        assertEquals(fullPageStatements, oneRowStatements)
+        assertTrue(fullPageStatements <= 3L)
+        LedgerDatabasePerformance.resetForTest()
         val accountRows = journal.page(
             JournalPageRequest(BOOK_ID, activeFilter, runningBalanceAccountId = ACCOUNT_ID),
         ).success()
+        val runningBalanceStatements = LedgerDatabasePerformance.snapshot().primarySqlStatementCount
         assertEquals(2, accountRows.items.size)
         assertTrue(accountRows.items.all { it.runningBalanceMinor != null })
+        assertTrue(runningBalanceStatements <= 4L)
+        assertEquals(0L, LedgerDatabasePerformance.snapshot().primaryOpenCount)
+        Log.i(
+            "P37Evidence",
+            "scenario=journalQueryCounts pageSqlStatements=$fullPageStatements " +
+                "oneRowSqlStatements=$oneRowStatements runningBalanceSqlStatements=$runningBalanceStatements",
+        )
         val selection = JournalSelectionSpec(
             JournalSelectionSpec.fingerprint(activeFilter),
             JournalSelectionMode.EXPLICIT,
@@ -175,6 +215,7 @@ class JournalApplicationPortDeviceTest {
 
     @Test
     fun savedFiltersRoundTripUnderAeadWithoutPlaintextAndSupportEveryMutation() = runBlocking {
+        LedgerSessionPerformance.resetForTest()
         val secret = "private-search-47f918"
         val filter = TransactionFilter(searchText = secret, lifecycleStates = setOf(TransactionLifecycleState.ACTIVE))
         journal.mutateSavedFilter(BOOK_ID, JournalSavedFilterCommand.Save(id(7_000), "Monthly", filter, "search · active")).success()
@@ -184,12 +225,13 @@ class JournalApplicationPortDeviceTest {
         assertEquals(id(7_001), reordered.first().id)
         assertTrue(reordered.first().isDefault)
         journal.mutateSavedFilter(BOOK_ID, JournalSavedFilterCommand.Delete(id(7_000))).success()
-        val reopened = SecureRoomJournalApplicationPort(context, keys).savedFilters(BOOK_ID).success()
+        val reopened = SecureRoomJournalApplicationPort(context, manager).savedFilters(BOOK_ID).success()
         assertEquals(listOf(id(7_001)), reopened.map { it.id })
         assertEquals(secret, reopened.single().filter.searchText)
         val encryptedFiles = context.noBackupFilesDir.resolve("journal_filters").listFiles().orEmpty()
         assertEquals(1, encryptedFiles.size)
         assertTrue(encryptedFiles.single().readBytes().indexOf(secret.toByteArray()) < 0)
+        assertEquals(0L, LedgerSessionPerformance.snapshot().databaseKeyUnwrapCount)
     }
 
     @Test
@@ -206,7 +248,7 @@ class JournalApplicationPortDeviceTest {
             ),
         ).success()
         val trashedA = requireNotNull(journal.detail(BOOK_ID, TRANSACTION_A).success()).transaction
-        val purge = SecureRoomControlledPurgeApplicationPort(context, keys)
+        val purge = SecureRoomControlledPurgeApplicationPort(manager, journal)
         val requestA = ControlledPurgeRequest(
             BOOK_ID,
             id(50_000),
@@ -251,8 +293,8 @@ class JournalApplicationPortDeviceTest {
             }
         }
         val injected = SecureRoomControlledPurgeApplicationPort(
-            context,
-            keys,
+            manager,
+            journal,
             failureInjector = FinancialCommitFailureInjector { phase ->
                 if (phase == FinancialCommitPhase.AFTER_IMMUTABLE_FACTS) error("injected purge failure")
             },

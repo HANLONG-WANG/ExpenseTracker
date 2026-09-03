@@ -16,12 +16,14 @@ import app.ledger.core.money.FxRateSource
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.Money
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.time.EffectiveTime
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.OpeningBalanceWritePort
 import app.ledger.finance.application.OpeningBalanceWriteRequest
 import app.ledger.finance.domain.AccountAmount
@@ -59,8 +61,6 @@ import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountId
 import app.ledger.finance.domain.UserAccountType
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
@@ -68,21 +68,13 @@ import java.time.YearMonth
 
 /** Opens the encrypted book, plans deterministically, and commits only through FinancialMutationCoordinator. */
 public class SecureRoomOpeningBalanceWritePort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
 ) : OpeningBalanceWritePort {
-    private val applicationContext = context.applicationContext
-    private val gate = MutexLedgerWriteGate()
     private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
 
     override suspend fun record(request: OpeningBalanceWriteRequest): DomainResult<app.ledger.finance.domain.CommandReceipt> = try {
-        keyProvider.open(request.ids.bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { passphrase -> EncryptedDatabaseFactory.openPrimary(applicationContext, passphrase) }
-            try {
-                execute(database, request)
-            } finally {
-                database.close()
-            }
+        databaseAccess.withCurrentDatabase(request.ids.bookId, LedgerAccessMode.WRITE) { database ->
+            execute(database, request)
         }
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
@@ -120,7 +112,7 @@ public class SecureRoomOpeningBalanceWritePort(
         val command = draft.copy(payloadHash = CanonicalFinancialHash.command(draft))
         val repository = RoomFinancialCommitRepository(database)
         return DefaultFinancialMutationCoordinator(
-            writeGate = gate,
+            writeGate = CallerOwnedLedgerWriteGate,
             receiptRepository = repository,
             snapshotRepository = object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: app.ledger.finance.domain.FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
@@ -256,9 +248,4 @@ public class SecureRoomOpeningBalanceWritePort(
             false,
         ).valueOrAbort()
     }
-}
-
-private class MutexLedgerWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
 }

@@ -18,8 +18,11 @@ import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.database.LedgerMigrations
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.finance.application.CurrentTransactionCursor
 import app.ledger.finance.application.FinanceDataError
+import app.ledger.finance.application.JournalApplicationPort
 import app.ledger.finance.application.JournalPageRequest
 import app.ledger.finance.application.JournalTransactionView
 import app.ledger.finance.application.LedgerExportBookMetadata
@@ -32,11 +35,9 @@ import app.ledger.finance.domain.TransactionId
 
 /** Read-only, field-allowlisted SQLCipher export adapter. It has no vault table or generic table/column entry point. */
 class SecureRoomLedgerExportQueryPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
+    private val journal: JournalApplicationPort,
 ) : LedgerExportQueryPort {
-    private val applicationContext = context.applicationContext
-    private val journal = SecureRoomJournalApplicationPort(applicationContext, keyProvider)
 
     override suspend fun metadata(bookId: StableId): DomainResult<LedgerExportBookMetadata> = withDatabase(bookId) { database ->
         database.readLedger { db ->
@@ -117,14 +118,7 @@ class SecureRoomLedgerExportQueryPort(
     }
 
     private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> T): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-            try {
-                DomainResult.Success(block(database))
-            } finally {
-                database.close()
-            }
-        }
+        DomainResult.Success(databaseAccess.withCurrentDatabase(bookId, LedgerAccessMode.READ, block))
     } catch (_: Exception) {
         DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
     }

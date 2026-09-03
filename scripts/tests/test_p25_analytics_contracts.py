@@ -37,7 +37,13 @@ class P25AnalyticsMutationTest(unittest.TestCase):
         self.assertTrue(self.mutate("SecureRoomAnalyticsApplicationPort.kt", "IntegrityCheckKey.FACT_REBUILD", "IntegrityCheckKey.DATABASE"))
 
     def test_encrypted_database_cannot_be_replaced_by_plaintext(self) -> None:
-        self.assertTrue(self.mutate("SecureRoomAnalyticsApplicationPort.kt", "EncryptedDatabaseFactory.openPrimary", "Room.databaseBuilder"))
+        self.assertTrue(
+            self.mutate(
+                "SecureRoomAnalyticsApplicationPort.kt",
+                "LedgerDatabaseOperationAccess",
+                "PlaintextDatabaseAccess",
+            )
+        )
 
     def test_accessible_data_table_cannot_be_removed(self) -> None:
         self.assertTrue(self.mutate("AnalysisScreens.kt", "AccessibleTableUiModel", "PlainTextTable"))

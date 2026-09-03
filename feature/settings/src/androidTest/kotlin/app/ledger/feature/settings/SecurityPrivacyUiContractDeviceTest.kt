@@ -162,13 +162,13 @@ class SecurityPrivacyUiContractDeviceTest {
         val CRASH_ROWS = listOf(CrashQueueRow(1_700_000_100_000L, "APPLICATION_NOT_RESPONDING", "APPLICATION_NOT_RESPONDING", 4))
         val ACTIONS: (SecurityPrivacyScreenAction) -> Unit = {}
         val EXPECTED_GOLDENS = listOf(
-            "ebb3f04446dc337f1b77293df7ba03e70f10f59b88a21e501d5a54c34fa14ec3",
+            "22fdde744527c1da40afa00be73172588d44cf1f93ed886ace73b385ffc88a92",
             "456b29e952cdb0b499368ecf880fdde0bd17a959a3f1bed2326c4aa9e52fd864",
-            "6569f5b4e1f12ed8d7d058b70ed0036064b0c4ec656c13a0a89447031a48921d",
+            "6bc75319f9afea20c94871cdf2e8b477ca9357710f22319eb3f0b53687f5eb2d",
             "1ae6007de71a733f95f5ffef46763b5c59be2ccf32bf640dd00b1b2d00bde3a3",
-            "d55a5d27b87a788eb4d84ced45158985a12938f82ea4779f6d2812c74c02c478",
-            "610219c4892cea38f4c364ec5a66743fc16d83569a086ea443b0cff2dfd84cee",
-            "6aa152db947d1239c115ea7c64cb32efff294c173fd8827739b2a172266a18bc",
+            "9a24c38bff54929f982aaedc2b181c63dae33d915f8249781b6c11d1dd1f7999",
+            "1f8c2b2faa5d44f2cbbd7f5d1519977f0908f8039d9ff859f1f381fe7d587447",
+            "1b378a5e633c0b6738dfcd6850842f72fac583c48a3116b729f9fb67d53076fa",
             "3aa5c453643d01a6be33fadc5d3d756d5adc203aa46627db1bfc00a46cb5306c",
         )
     }

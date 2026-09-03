@@ -279,7 +279,7 @@ def validate_manifests_and_dependencies() -> list[str]:
 
 def validate_contract_and_tests() -> list[str]:
     errors: list[str] = []
-    screen_doc = yaml.safe_load(read(ROOT / "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))
+    screen_doc = yaml.safe_load(read(ROOT / "docs/初始开发文件存档/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))
     screens = {screen["id"]: screen for screen in screen_doc["screens"]}
     for screen_id, required_states in REQUIRED_STATES.items():
         actual = set(screens.get(screen_id, {}).get("requiredStates", []))
@@ -318,9 +318,9 @@ def validate_contract_and_tests() -> list[str]:
 
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
-    state = read(ROOT / "docs/implementation/PROJECT_STATE.md")
-    evidence = read(ROOT / "docs/implementation/TEST_EVIDENCE.md")
-    mapping = read(ROOT / "docs/implementation/P10_FILES_GEO_MAPPING.md")
+    state = read(ROOT / "docs/初始开发文件存档/implementation/PROJECT_STATE.md")
+    evidence = read(ROOT / "docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
+    mapping = read(ROOT / "docs/初始开发文件存档/implementation/P10_FILES_GEO_MAPPING.md")
     if "| P10 | VERIFIED |" not in state or "### P10 result" not in state:
         errors.append("PROJECT_STATE does not record P10 VERIFIED and its result")
     for number in range(1, 8):
@@ -330,7 +330,7 @@ def validate_ledgers() -> list[str]:
         if token not in mapping:
             errors.append(f"P10 mapping missing {token}")
 
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         requirements = {row["requirement_id"]: row for row in csv.DictReader(handle)}
     for requirement_id in VERIFIED_REQUIREMENTS:
         row = requirements.get(requirement_id)
@@ -345,7 +345,7 @@ def validate_ledgers() -> list[str]:
         elif "P10" not in row["implementation_evidence"] or "P10-E" not in row["verification_evidence"]:
             errors.append(f"{requirement_id} lacks P10 foundation evidence")
 
-    with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = {row["screen_id"]: row for row in csv.DictReader(handle)}
     for screen_id in VERIFIED_SCREENS:
         row = screens.get(screen_id)

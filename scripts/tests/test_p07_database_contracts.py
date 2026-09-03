@@ -93,7 +93,9 @@ class P07DatabaseContractMutationTest(unittest.TestCase):
                 validator.validate_kotlin_and_build()
 
     def test_p06_validator_retains_verified_stage_during_p07(self) -> None:
-        project_state = validator.read(validator.ROOT / "docs" / "implementation" / "PROJECT_STATE.md")
+        project_state = validator.read(
+            validator.ROOT / "docs" / "初始开发文件存档" / "implementation" / "PROJECT_STATE.md"
+        )
         self.assertEqual([], validate_project_state(project_state))
         self.assertTrue(validate_project_state(project_state.replace("| P06 | VERIFIED |", "| P06 | IN_PROGRESS |")))
 

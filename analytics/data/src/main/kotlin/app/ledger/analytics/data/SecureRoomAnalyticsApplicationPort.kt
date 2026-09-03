@@ -9,7 +9,6 @@
 
 package app.ledger.analytics.data
 
-import android.content.Context
 import android.database.Cursor
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.analytics.domain.AnalysisOverview
@@ -66,9 +65,10 @@ import app.ledger.core.common.StableIdSource
 import app.ledger.core.common.getOrNull
 import app.ledger.core.database.AnalyticsProjectionEngine
 import app.ledger.core.database.DatabaseIntegrityAudit
-import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.time.LedgerClock
 import app.ledger.finance.domain.LocalRevision
 import java.math.BigDecimal
@@ -76,18 +76,11 @@ import java.security.MessageDigest
 import java.time.LocalDate
 import java.util.LinkedHashMap
 
-/** Supplies a fresh passphrase copy for one database open. The caller immediately wipes the returned array. */
-fun interface TransientAnalyticsDatabasePassphraseProvider {
-    fun acquire(bookId: StableId): ByteArray
-}
-
 class SecureRoomAnalyticsApplicationPort(
-    context: Context,
-    private val passphrases: TransientAnalyticsDatabasePassphraseProvider,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
     ids: StableIdSource,
     clock: LedgerClock,
 ) : AnalyticsApplicationPort {
-    private val applicationContext = context.applicationContext
     private val drilldowns = DrilldownRegistry()
     private val customAnalytics = CustomAnalyticsStore(ids, clock)
     private val consumptionMaps = ConsumptionMapStore()
@@ -236,7 +229,7 @@ class SecureRoomAnalyticsApplicationPort(
         database.inLedgerTransaction { connection -> DomainResult.Success(runIntegrity(connection)) }
     }
 
-    override suspend fun repairAnalyticsProjections(bookId: StableId): DomainResult<AnalyticsIntegrityReport> = withDatabase(bookId) { database ->
+    override suspend fun repairAnalyticsProjections(bookId: StableId): DomainResult<AnalyticsIntegrityReport> = withDatabase(bookId, LedgerAccessMode.WRITE) { database ->
         database.inLedgerTransaction { connection ->
             val revision = connection.singleLong("SELECT local_revision FROM book WHERE id=1")
                 ?: return@inLedgerTransaction DomainResult.Failure(AnalyticsError.DatabaseUnavailable)
@@ -269,7 +262,7 @@ class SecureRoomAnalyticsApplicationPort(
     override suspend fun saveReport(
         bookId: StableId,
         request: SaveReportDefinitionRequest,
-    ): DomainResult<SavedReportDefinition> = withDatabase(bookId) { database ->
+    ): DomainResult<SavedReportDefinition> = withDatabase(bookId, LedgerAccessMode.WRITE) { database ->
         database.inLedgerTransaction { connection -> customAnalytics.saveReport(connection, request) }
     }
 
@@ -277,7 +270,7 @@ class SecureRoomAnalyticsApplicationPort(
         bookId: StableId,
         reportId: ReportDefinitionId,
         copyName: String,
-    ): DomainResult<SavedReportDefinition> = withDatabase(bookId) { database ->
+    ): DomainResult<SavedReportDefinition> = withDatabase(bookId, LedgerAccessMode.WRITE) { database ->
         database.inLedgerTransaction { connection -> customAnalytics.copyReport(connection, reportId, copyName) }
     }
 
@@ -288,7 +281,7 @@ class SecureRoomAnalyticsApplicationPort(
     override suspend fun saveDashboard(
         bookId: StableId,
         request: SaveDashboardRequest,
-    ): DomainResult<SavedDashboard> = withDatabase(bookId) { database ->
+    ): DomainResult<SavedDashboard> = withDatabase(bookId, LedgerAccessMode.WRITE) { database ->
         database.inLedgerTransaction { connection -> customAnalytics.saveDashboard(connection, request) }
     }
 
@@ -299,7 +292,7 @@ class SecureRoomAnalyticsApplicationPort(
     override suspend fun saveAnomalyRule(
         bookId: StableId,
         request: SaveAnomalyRuleRequest,
-    ): DomainResult<SavedAnomalyRule> = withDatabase(bookId) { database ->
+    ): DomainResult<SavedAnomalyRule> = withDatabase(bookId, LedgerAccessMode.WRITE) { database ->
         database.inLedgerTransaction { connection -> customAnalytics.saveAnomalyRule(connection, request) }
     }
 
@@ -597,28 +590,18 @@ class SecureRoomAnalyticsApplicationPort(
         local to valuation
     }
 
-    private inline fun <T> withDatabase(bookId: StableId, block: (LedgerDatabase) -> DomainResult<T>): DomainResult<T> {
-        val passphrase = try {
-            passphrases.acquire(bookId)
-        } catch (_: Exception) {
-            return DomainResult.Failure(AnalyticsError.DatabaseUnavailable)
-        }
-        return try {
-            val database = EncryptedDatabaseFactory.openPrimary(applicationContext, passphrase)
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        } catch (_: ArithmeticException) {
-            DomainResult.Failure(AnalyticsError.NumericRangeExceeded)
-        } catch (failure: Exception) {
-            DomainResult.Failure(
-                if (failure.isSqliteNumericRangeFailure()) AnalyticsError.NumericRangeExceeded else AnalyticsError.DatabaseUnavailable,
-            )
-        } finally {
-            passphrase.fill(0)
-        }
+    private suspend fun <T> withDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.READ,
+        block: (LedgerDatabase) -> DomainResult<T>,
+    ): DomainResult<T> = try {
+        databaseAccess.withCurrentDatabase(bookId, mode) { database -> block(database) }
+    } catch (_: ArithmeticException) {
+        DomainResult.Failure(AnalyticsError.NumericRangeExceeded)
+    } catch (failure: Exception) {
+        DomainResult.Failure(
+            if (failure.isSqliteNumericRangeFailure()) AnalyticsError.NumericRangeExceeded else AnalyticsError.DatabaseUnavailable,
+        )
     }
 
     private fun SupportSQLiteDatabase.singleLong(sql: String, args: Array<out Any?> = emptyArray()): Long? = query(sql, args).use {

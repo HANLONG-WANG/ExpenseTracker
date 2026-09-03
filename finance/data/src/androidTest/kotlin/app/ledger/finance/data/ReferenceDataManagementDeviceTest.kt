@@ -91,6 +91,7 @@ import java.util.UUID
 class ReferenceDataManagementDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var initialization: SecureRoomLedgerInitializationPort
     private lateinit var references: SecureRoomReferenceDataManagementPort
     private lateinit var openingBalances: SecureRoomOpeningBalanceWritePort
@@ -103,9 +104,10 @@ class ReferenceDataManagementDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         initialization = SecureRoomLedgerInitializationPort(context, keys)
-        references = SecureRoomReferenceDataManagementPort(context, keys)
-        openingBalances = SecureRoomOpeningBalanceWritePort(context, keys)
+        references = SecureRoomReferenceDataManagementPort(databaseAccess)
+        openingBalances = SecureRoomOpeningBalanceWritePort(databaseAccess)
         runBlocking {
             initialization.initialize(
                 InitializeLedgerCommand(

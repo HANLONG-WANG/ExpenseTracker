@@ -34,6 +34,10 @@ import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.database.AnalyticsProjectionEngine
 import app.ledger.core.database.EncryptedDatabaseFactory
+import app.ledger.core.database.LedgerDatabase
+import app.ledger.core.database.LedgerMigrations
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -61,8 +65,26 @@ class AnalyticsSqlCipherDeviceTest {
         database.inLedgerTransaction { connection -> seed(connection) }
         database.close()
         application = SecureRoomAnalyticsApplicationPort(
-            context,
-            { PASSPHRASE.copyOf().also { lastPassphraseCopy = it } },
+            object : LedgerDatabaseOperationAccess {
+                override suspend fun <T> withCurrentDatabase(
+                    bookId: StableId,
+                    mode: LedgerAccessMode,
+                    block: suspend (LedgerDatabase) -> T,
+                ): T {
+                    check(bookId == BOOK_ID)
+                    val passphrase = PASSPHRASE.copyOf().also { lastPassphraseCopy = it }
+                    return try {
+                        val opened = EncryptedDatabaseFactory.openPrimary(context, passphrase)
+                        try {
+                            block(opened)
+                        } finally {
+                            opened.close()
+                        }
+                    } finally {
+                        passphrase.fill(0)
+                    }
+                }
+            },
             app.ledger.core.common.StableIdSource { id(++nextStableSeed) },
             app.ledger.core.time.LedgerClock { java.time.Instant.parse("2026-08-06T00:00:00Z") },
         )
@@ -123,7 +145,10 @@ class AnalyticsSqlCipherDeviceTest {
 
         val reopened = EncryptedDatabaseFactory.openPrimary(context, PASSPHRASE.copyOf())
         reopened.readLedger { connection ->
-            assertEquals(5L, singleLong(connection, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
+            assertEquals(
+                LedgerMigrations.CURRENT_VERSION.toLong(),
+                singleLong(connection, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"),
+            )
             assertEquals(2L, singleLong(connection, "SELECT COUNT(*) FROM analytics_report_definition"))
             assertEquals(2L, singleLong(connection, "SELECT COUNT(*) FROM analytics_report_revision"))
             assertEquals(1L, singleLong(connection, "SELECT COUNT(*) FROM analytics_dashboard_revision"))

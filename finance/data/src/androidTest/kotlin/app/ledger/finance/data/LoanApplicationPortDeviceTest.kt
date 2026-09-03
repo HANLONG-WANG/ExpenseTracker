@@ -71,6 +71,7 @@ import java.util.UUID
 class LoanApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var references: SecureRoomReferenceDataManagementPort
     private lateinit var loans: SecureRoomLoanApplicationPort
 
@@ -80,6 +81,7 @@ class LoanApplicationPortDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         SecureRoomLedgerInitializationPort(context, keys).apply {
             initialize(
                 InitializeLedgerCommand(
@@ -98,10 +100,10 @@ class LoanApplicationPortDeviceTest {
                 InitialCategoryCommand(CATEGORY_ID, id(211), id(212), id(213), Instant.parse("2026-08-01T00:00:02Z"), CategoryDirection.EXPENSE, "Finance", "finance", StatisticalNature.NON_CONSUMPTION_EXPENSE, "record", 0xff006c4c.toInt()),
             ).success()
         }
-        references = SecureRoomReferenceDataManagementPort(context, keys)
+        references = SecureRoomReferenceDataManagementPort(databaseAccess)
         createLoanAccount(LOAN_ACCOUNT_ID, LOAN_LEDGER_ID, 3L, 250L, "Combined loan", 0)
         createLoanAccount(SECOND_LOAN_ACCOUNT_ID, SECOND_LOAN_LEDGER_ID, 4L, 350L, "Tranche B", 1)
-        loans = SecureRoomLoanApplicationPort(context, keys)
+        loans = SecureRoomLoanApplicationPort(databaseAccess)
     }
 
     @After

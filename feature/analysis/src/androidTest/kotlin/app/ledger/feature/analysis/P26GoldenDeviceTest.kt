@@ -81,13 +81,13 @@ class P26GoldenDeviceTest {
                 "ANA-008",
                 ThemeMode.LIGHT,
                 AnalysisDeviceFixtures.base("ANA-008", AnalysisPresentation.EDITING),
-                "8fdc298365d26cddbfa1f6f92604f83b2fe1ebdf3d36daff2fbb05a8953aeee5",
+                "bf2e0be65461c7b8d2e7692fc53b11706951ea2b420b9499fb9a9b0fcb06a630",
             ),
             Golden(
                 "ANA-014",
                 ThemeMode.DARK,
                 AnalysisDeviceFixtures.base("ANA-014", AnalysisPresentation.CONTENT),
-                "62f5065b1c0cc5d6013bc609a738bbd6f9745413131ab0c63d9adf8d372cf25d",
+                "cb90f340661723a8c0678ba2ca39bfca7e4a502462239b7101d0f119dc88112d",
             ),
         )
     }

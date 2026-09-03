@@ -19,18 +19,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLocale
@@ -58,22 +58,23 @@ import app.ledger.core.designsystem.ChartCard
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerBottomSheet
-import app.ledger.core.designsystem.LedgerModalDialog
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChartSeries
 import app.ledger.core.designsystem.LedgerChartType
 import app.ledger.core.designsystem.LedgerChartUiModel
-import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerChip
+import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
+import app.ledger.core.designsystem.LedgerDatePickerFlow
+import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerLineChart
-import app.ledger.core.designsystem.LedgerDatePickerFlow
-import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerLoadingState
+import app.ledger.core.designsystem.LedgerModalDialog
 import app.ledger.core.designsystem.LedgerReferenceDisplayDefaults
 import app.ledger.core.designsystem.LedgerSaveFab
 import app.ledger.core.designsystem.LedgerScaffold
@@ -81,20 +82,19 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerVicoLineRenderer
+import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
+import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
+import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
 import app.ledger.core.designsystem.MoneyExpressionField
-import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
-import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
-import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
 import app.ledger.core.designsystem.ReferenceDisplayStyleIcons
 import app.ledger.core.designsystem.ReferenceDisplayStylePicker
-import app.ledger.core.designsystem.rememberLedgerRetainedState
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
+import app.ledger.core.designsystem.rememberLedgerRetainedState
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.AmountVisibility
 import app.ledger.core.money.CurrencyCode
@@ -102,8 +102,8 @@ import app.ledger.core.money.EvaluatedMoneyExpression
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.LocaleCurrencyFormatter
 import app.ledger.core.money.Money
-import app.ledger.core.money.MoneyFormatRequest
 import app.ledger.core.money.MoneyExpressionEvaluator
+import app.ledger.core.money.MoneyFormatRequest
 import app.ledger.core.money.MoneyUiModel
 import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.application.AccountTransactionReferenceView
@@ -266,8 +266,8 @@ private fun AccountEditor(
     var showCurrencyPicker by remember { mutableStateOf(false) }
     var currencyQuery by remember { mutableStateOf("") }
     var selectedIcon by rememberLedgerRetainedState("account.icon") {
-            ReferenceDisplayStyleIcons.firstOrNull { it.name.equals(existing?.iconKey, ignoreCase = true) }
-                ?: LedgerIcon.ACCOUNT
+        ReferenceDisplayStyleIcons.firstOrNull { it.name.equals(existing?.iconKey, ignoreCase = true) }
+            ?: LedgerIcon.ACCOUNT
     }
     var selectedColor by rememberLedgerRetainedState("account.color") {
         existing?.colorArgb ?: LedgerReferenceDisplayDefaults.COLOR_ARGB
@@ -329,39 +329,39 @@ private fun AccountEditor(
                 enabled = existing?.hasFinancialPostings != true && supportedCurrencies.isNotEmpty(),
             )
             if (!currencyValid) LedgerText(stringResource(R.string.accounts_currency_invalid), LedgerTextRole.SUPPORTING)
-    if (showCurrencyPicker) {
-        val locale = LocalLocale.current.platformLocale
-        val currencyOptions = remember(supportedCurrencies, preferredCurrencies, currencyQuery, locale) {
-            val candidates = if (currencyQuery.isBlank()) preferredCurrencies else supportedCurrencies
-            candidates.filter { code ->
-                val name = runCatching { java.util.Currency.getInstance(code.value).getDisplayName(locale) }.getOrDefault(code.value)
-                currencyQuery.isBlank() || code.value.contains(currencyQuery, ignoreCase = true) || name.contains(currencyQuery, ignoreCase = true)
-            }
-        }
-        LedgerModalDialog(stringResource(R.string.accounts_currency_choose), onDismiss = { showCurrencyPicker = false }) {
-            LedgerTextField(
-                value = currencyQuery,
-                onValueChange = { currencyQuery = it.take(MAX_CURRENCY_QUERY) },
-                label = stringResource(R.string.accounts_currency_search),
-                modifier = Modifier.padding(horizontal = LedgerTheme.spacing.md),
-            )
-            LazyColumn(Modifier.fillMaxWidth().fillMaxSize()) {
-                items(currencyOptions, key = { it.value }) { code ->
-                    val displayName = runCatching { java.util.Currency.getInstance(code.value).getDisplayName(locale) }.getOrDefault(code.value)
-                    LedgerChoiceRow(
-                        title = code.value,
-                        selected = code.value == currency,
-                        onClick = {
-                            currency = code.value
-                            showCurrencyPicker = false
-                        },
-                        supportingText = displayName,
-                        modifier = Modifier.fillMaxWidth(),
+            if (showCurrencyPicker) {
+                val locale = LocalLocale.current.platformLocale
+                val currencyOptions = remember(supportedCurrencies, preferredCurrencies, currencyQuery, locale) {
+                    val candidates = if (currencyQuery.isBlank()) preferredCurrencies else supportedCurrencies
+                    candidates.filter { code ->
+                        val name = runCatching { java.util.Currency.getInstance(code.value).getDisplayName(locale) }.getOrDefault(code.value)
+                        currencyQuery.isBlank() || code.value.contains(currencyQuery, ignoreCase = true) || name.contains(currencyQuery, ignoreCase = true)
+                    }
+                }
+                LedgerModalDialog(stringResource(R.string.accounts_currency_choose), onDismiss = { showCurrencyPicker = false }) {
+                    LedgerTextField(
+                        value = currencyQuery,
+                        onValueChange = { currencyQuery = it.take(MAX_CURRENCY_QUERY) },
+                        label = stringResource(R.string.accounts_currency_search),
+                        modifier = Modifier.padding(horizontal = LedgerTheme.spacing.md),
                     )
+                    LazyColumn(Modifier.fillMaxWidth().fillMaxSize()) {
+                        items(currencyOptions, key = { it.value }) { code ->
+                            val displayName = runCatching { java.util.Currency.getInstance(code.value).getDisplayName(locale) }.getOrDefault(code.value)
+                            LedgerChoiceRow(
+                                title = code.value,
+                                selected = code.value == currency,
+                                onClick = {
+                                    currency = code.value
+                                    showCurrencyPicker = false
+                                },
+                                supportingText = displayName,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                 }
             }
-        }
-    }
             if ((existing?.type ?: selectedType) != UserAccountType.CASH) {
                 LedgerTextField(institution, { institution = it.take(MAX_NAME) }, stringResource(R.string.accounts_institution))
                 LedgerTextField(branch, { branch = it.take(MAX_NAME) }, stringResource(R.string.accounts_branch))
@@ -414,8 +414,12 @@ private fun OpeningBalance(snapshot: ReferenceDataSnapshot?, accountId: StableId
     )
     if (showDatePicker) {
         LedgerDatePickerFlow(
-            (date ?: LocalDate.now(LedgerTheme.timeZone)).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-            { dateMillis -> date = java.time.Instant.ofEpochMilli(dateMillis).atZone(ZoneOffset.UTC).toLocalDate(); showDatePicker = false },
+            (date ?: LedgerTheme.now.atZone(LedgerTheme.timeZone).toLocalDate())
+                .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            { dateMillis ->
+                date = java.time.Instant.ofEpochMilli(dateMillis).atZone(ZoneOffset.UTC).toLocalDate()
+                showDatePicker = false
+            },
             { showDatePicker = false },
         )
     }
@@ -696,8 +700,12 @@ private fun CheckpointEditor(snapshot: ReferenceDataSnapshot?, accountId: Stable
     if (state == "saving") LedgerLoadingState(label = stringResource(R.string.accounts_saving_checkpoint))
     if (showDatePicker) {
         LedgerDatePickerFlow(
-            (selectedDate ?: LocalDate.now(LedgerTheme.timeZone)).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-            { dateMillis -> selectedDate = java.time.Instant.ofEpochMilli(dateMillis).atZone(ZoneOffset.UTC).toLocalDate(); showDatePicker = false },
+            (selectedDate ?: LedgerTheme.now.atZone(LedgerTheme.timeZone).toLocalDate())
+                .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            { dateMillis ->
+                selectedDate = java.time.Instant.ofEpochMilli(dateMillis).atZone(ZoneOffset.UTC).toLocalDate()
+                showDatePicker = false
+            },
             { showDatePicker = false },
         )
     }
@@ -866,8 +874,14 @@ private fun ArchiveDelete(snapshot: ReferenceDataSnapshot?, accountId: StableId,
             title = stringResource(R.string.accounts_delete_permanently),
             message = stringResource(R.string.accounts_delete_confirmation, account.name),
             confirmLabel = stringResource(R.string.accounts_delete_permanently),
-            onConfirm = { confirmDelete = false; actions.onDeleteEmptyAccount(account.id, account.rowVersion) },
-            onDismiss = { confirmDelete = false; deletePhrase = "" },
+            onConfirm = {
+                confirmDelete = false
+                actions.onDeleteEmptyAccount(account.id, account.rowVersion)
+            },
+            onDismiss = {
+                confirmDelete = false
+                deletePhrase = ""
+            },
             danger = true,
             confirmEnabled = deletePhrase == stringResource(R.string.accounts_delete_phrase),
             content = {
@@ -1077,8 +1091,7 @@ private class AccountTransactionPagingSource(
         )
     }
 
-    override fun getRefreshKey(state: PagingState<Int, AccountTransactionReferenceView>): Int? =
-        state.anchorPosition?.let { anchor -> (anchor - state.config.initialLoadSize / 2).coerceAtLeast(0) }
+    override fun getRefreshKey(state: PagingState<Int, AccountTransactionReferenceView>): Int? = state.anchorPosition?.let { anchor -> (anchor - state.config.initialLoadSize / 2).coerceAtLeast(0) }
 }
 private val ACCOUNT_MONEY_FORMATTER = LocaleCurrencyFormatter(JvmLegalTenderCurrencyCatalog.create())
 private val ACCOUNT_CURRENCY_CATALOG = JvmLegalTenderCurrencyCatalog.create()

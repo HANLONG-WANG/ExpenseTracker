@@ -33,11 +33,11 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Install contract parser
         run: python3 -m pip install PyYAML==6.0.3
-      - name: Verify frozen baseline and P36 release gates
+      - name: Verify frozen baseline, P36 release gates, and P37 host contracts
         run: |
           python3 scripts/validate_spec_baseline.py
           python3 scripts/validate_p01_baseline.py
-          ./gradlew p36Check p36Artifacts koverXmlReport koverHtmlReport --configuration-cache --console=plain
+          ./gradlew p36Check p37HostCheck p36Artifacts koverXmlReport koverHtmlReport --no-daemon --configuration-cache --console=plain
       - name: Prove source policies reject real violations
         run: |
           python3 scripts/prove_p01_architecture_rejection.py
@@ -45,7 +45,7 @@ jobs:
           python3 scripts/prove_source_policy_rejection.py
           python3 scripts/prove_p03_policy_rejection.py
       - name: Generate OSS license inventory
-        run: ./gradlew generateLicenseReport --no-configuration-cache --no-parallel --console=plain
+        run: ./gradlew generateLicenseReport --no-daemon --no-configuration-cache --no-parallel --console=plain
       - name: Upload auditable quality artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -66,6 +66,8 @@ jobs:
   managed-device-regression:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      ADB_INSTALL_TIMEOUT: "10"
     strategy:
       fail-fast: false
       matrix:
@@ -87,8 +89,8 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run complete API-specific P36 emulator release matrix
-        run: ./gradlew p36${{ matrix.device == 'pixel2Api28' && 'Api28' || 'Api36' }}ManagedDeviceCheck --configuration-cache --console=plain
+      - name: Run complete API-specific P37 emulator and interaction-performance matrix
+        run: ./gradlew p37${{ matrix.device == 'pixel2Api28' && 'Api28' || 'Api36' }}DeviceCheck --no-daemon --configuration-cache --console=plain
       - name: Upload device results
         if: always()
         uses: actions/upload-artifact@v4
@@ -107,3 +109,5 @@ jobs:
             core/designsystem/build/outputs/androidTest-results/managedDevice/
             core/security/build/reports/androidTests/managedDevice/
             core/security/build/outputs/androidTest-results/managedDevice/
+            finance/data/build/reports/androidTests/managedDevice/
+            finance/data/build/outputs/androidTest-results/managedDevice/

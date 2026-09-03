@@ -29,33 +29,33 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
-import app.ledger.core.designsystem.LedgerChip
 import app.ledger.core.designsystem.LedgerCheckboxRow
+import app.ledger.core.designsystem.LedgerChip
 import app.ledger.core.designsystem.LedgerChoiceRow
-import app.ledger.core.designsystem.LedgerEmptyState
-import app.ledger.core.designsystem.LedgerErrorState
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerDialog
+import app.ledger.core.designsystem.LedgerEmptyState
+import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MoneyExpressionField
 import app.ledger.core.designsystem.SearchField
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.finance.application.RefundableTransactionView
+import app.ledger.finance.domain.CategoryStatus
+import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.RefundAccrualPolicy
 import app.ledger.finance.domain.RefundBudgetPolicy
 import app.ledger.finance.domain.RefundGoalPolicy
 import app.ledger.finance.domain.RefundProjectPolicy
-import app.ledger.finance.domain.CategoryStatus
-import app.ledger.finance.domain.EntityStatus
-import java.time.LocalDate
 import java.time.Instant
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -372,18 +372,20 @@ private fun RefundReferencePickerDialog(
     }
     val noneLabel = stringResource(R.string.refund_none)
     val options = when (picker) {
-        RefundReferencePicker.ACCOUNT -> state.snapshot.references.accounts
-            .filter { it.status == EntityStatus.ACTIVE }
-            .sortedBy { it.sortOrder }
-            .map { RefundPickerOption(it.id, "${it.name} · ${it.currency.value}") }
+        RefundReferencePicker.ACCOUNT ->
+            state.snapshot.references.accounts
+                .filter { it.status == EntityStatus.ACTIVE }
+                .sortedBy { it.sortOrder }
+                .map { RefundPickerOption(it.id, "${it.name} · ${it.currency.value}") }
         RefundReferencePicker.CARD -> listOf(RefundPickerOption(null, noneLabel)) + state.snapshot.references.cards
             .filter { it.status == EntityStatus.ACTIVE && it.accountId == state.draft.receivingAccountId }
             .sortedBy { it.sortOrder }
             .map { RefundPickerOption(it.id, it.displayName) }
-        RefundReferencePicker.CATEGORY -> state.snapshot.references.categories
-            .filter { it.status == CategoryStatus.ACTIVE && it.direction.name == "EXPENSE" }
-            .sortedWith(compareBy({ it.sortOrder }, { it.name }))
-            .map { RefundPickerOption(it.id, it.name) }
+        RefundReferencePicker.CATEGORY ->
+            state.snapshot.references.categories
+                .filter { it.status == CategoryStatus.ACTIVE && it.direction.name == "EXPENSE" }
+                .sortedWith(compareBy({ it.sortOrder }, { it.name }))
+                .map { RefundPickerOption(it.id, it.name) }
         RefundReferencePicker.MERCHANT -> listOf(RefundPickerOption(null, noneLabel)) + state.snapshot.references.merchants
             .filter { it.status == EntityStatus.ACTIVE }
             .sortedBy { it.name }
@@ -420,7 +422,7 @@ private fun RefundReferencePickerDialog(
             onClear = { query = "" },
             autoFocus = false,
         )
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = LedgerTheme.dimensions.dialogMaxWidth)) {
             items(options, key = { it.id?.toString() ?: "none" }) { option ->
                 LedgerChoiceRow(option.label, selectedId == option.id, { selectedId = option.id })
             }
@@ -543,11 +545,9 @@ private fun budgetMonthText(state: RefundEditorState, original: RefundableTransa
     RefundBudgetPolicy.DO_NOT_RESTORE -> "—"
 }
 
-private fun LocalDate.localized(locale: Locale): String =
-    format(LedgerDateFormatterRuntime.formatter(locale))
+private fun LocalDate.localized(locale: Locale): String = format(LedgerDateFormatterRuntime.formatter(locale))
 
-private fun YearMonth.localized(locale: Locale): String =
-    format(DateTimeFormatter.ofPattern("LLLL yyyy", locale))
+private fun YearMonth.localized(locale: Locale): String = format(DateTimeFormatter.ofPattern("LLLL yyyy", locale))
 
 private fun RefundAccrualPolicy.label(): Int = when (this) {
     RefundAccrualPolicy.ORIGINAL_TRANSACTION_DATE -> R.string.refund_accrual_original

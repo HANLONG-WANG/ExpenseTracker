@@ -30,9 +30,15 @@ import app.ledger.core.background.OperationNotificationCoordinator
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
+import app.ledger.core.security.ActiveBookSessionRuntime
+import app.ledger.core.security.BookSessionState
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.HeadlessBookLease
+import app.ledger.core.security.HeadlessLeaseCapability
+import app.ledger.core.security.HeadlessLedgerDatabaseAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.core.security.SecureTransferHandleStore
+import app.ledger.core.security.withHeadlessLedgerAccess
 import app.ledger.core.time.LedgerClock
 import app.ledger.finance.application.LedgerExportQueryPort
 import app.ledger.transfer.data.LedgerExportTabularSource
@@ -134,6 +140,7 @@ internal class ExportUserInitiatedJobService : JobService() {
 }
 
 private class ExportOperationRunner(private val context: Context) {
+    @Suppress("NestedBlockDepth")
     suspend fun run(
         operationStableId: StableId,
         retryAllowed: Boolean,
@@ -141,131 +148,153 @@ private class ExportOperationRunner(private val context: Context) {
     ): ExportRunOutcome {
         val dependencies = EntryPointAccessors.fromApplication(context, ExportWorkerEntryPoint::class.java)
         val bookId = StableId.fromBytes(dependencies.settings().current().bookId.toByteArray()).getOrNull() ?: return ExportRunOutcome.FAILED
-        val operationId = BackgroundOperationId(operationStableId)
-        val operations = SqlCipherBackgroundOperationRepository(bookId, SecurePrimaryLedgerAccess(context, dependencies.keyProvider()))
-        var operation = when (val loaded = operations.get(operationId)) {
-            is DomainResult.Success -> loaded.value
-            is DomainResult.Failure -> null
-        } ?: return ExportRunOutcome.FAILED
-        val parameters = operation.parameters as? OperationParameters.Export ?: return ExportRunOutcome.FAILED
-        val handles = SecureTransferHandleStore(context, dependencies.keyProvider())
-        val persisted = runCatching { handles.read(bookId, parameters.destinationHandleId) }.getOrNull()
-            ?: return fail(operation, operations, ExportFailure.PermissionRevoked, dependencies.clock().now(), retryAllowed)
-        val treeUri = Uri.parse(persisted.substringBefore('\n'))
-        val alreadyPublished = persisted.substringAfter('\n', "").takeIf(String::isNotBlank)?.let(Uri::parse)
-        val destination = SafExportDestination(context, operationStableId, treeUri, parameters.descriptor)
-        if (operation.state == BackgroundOperationState.CANCEL_REQUESTED) {
-            destination.cleanup()
-            return cancel(operation, operations, dependencies.clock().now())
-        }
-        val control = ExportRunControlRegistry.control(operationStableId)
-        if (operation.state == BackgroundOperationState.SUCCEEDED) return ExportRunOutcome.SUCCEEDED
-        if (operation.state == BackgroundOperationState.COMMITTING && alreadyPublished != null) {
-            val readable = runCatching {
-                context.contentResolver.openFileDescriptor(alreadyPublished, "r")?.use { true } ?: false
-            }.getOrDefault(false)
-            if (readable) {
-                val succeeded = operation.transition(BackgroundOperationState.SUCCEEDED, dependencies.clock().now()).successOrNull()
-                    ?: return ExportRunOutcome.FAILED
-                operations.save(succeeded)
-                operations.recordCheckpoint(succeeded, dependencies.clock().now())
-                destination.cleanup()
-                return ExportRunOutcome.SUCCEEDED
-            }
-        }
-        if (operation.state == BackgroundOperationState.FAILED_RETRYABLE) {
-            operation = operation.transition(BackgroundOperationState.QUEUED, dependencies.clock().now(), errorCode = null).successOrNull()
-                ?: return ExportRunOutcome.FAILED
-            operations.save(operation)
-            operations.recordCheckpoint(operation, dependencies.clock().now())
-        }
-        if (operation.state == BackgroundOperationState.QUEUED) {
-            operation = operation.transition(BackgroundOperationState.PREPARING, dependencies.clock().now()).successOrNull()
-                ?: return ExportRunOutcome.FAILED
-            operations.save(operation)
-            operations.recordCheckpoint(operation, dependencies.clock().now())
-        }
-        if (operation.state == BackgroundOperationState.PREPARING) {
-            operation = operation.transition(BackgroundOperationState.RUNNING, dependencies.clock().now()).successOrNull()
-                ?: return ExportRunOutcome.FAILED
-            operations.save(operation)
-        }
-        var exportResult: ExportResult? = null
-        if (operation.state == BackgroundOperationState.RUNNING) {
-            val source = LedgerExportTabularSource(
+        val sessionRuntime = dependencies.sessionRuntime()
+        val manager = sessionRuntime.activate(bookId)
+        var lease: HeadlessBookLease? = null
+        try {
+            if (manager.state.value == BookSessionState.Uninitialized) manager.initialize()
+            lease = manager.acquireHeadlessLease(operationStableId, HeadlessLeaseCapability.EXPORT_WRITE)
+            val operationId = BackgroundOperationId(operationStableId)
+            val operations = SqlCipherBackgroundOperationRepository(
                 bookId,
-                parameters.descriptor,
-                dependencies.ledgerExport(),
-                operation.createdAt,
-                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "unknown",
+                SecurePrimaryLedgerAccess(
+                    context,
+                    dependencies.keyProvider(),
+                    HeadlessLedgerDatabaseAccess(sessionRuntime, lease),
+                ),
             )
-            val result = destination.openTemporary().use { output ->
-                StreamingExportEngine().export(
-                    parameters.descriptor,
-                    source,
-                    output,
-                    cancelled = { control.get() },
-                    progress = ExportProgressObserver { rows ->
-                        onProgress(rows)
-                        val latest = operations.get(operationId).successOrNull() ?: operation
-                        latest.advance(OperationProgress(rows, null), dependencies.clock().now()).successOrNull()?.let { advanced ->
-                            operation = advanced
-                            operations.save(advanced)
-                            operations.recordCheckpoint(advanced, dependencies.clock().now())
-                        }
-                    },
-                )
+            var operation = when (val loaded = operations.get(operationId)) {
+                is DomainResult.Success -> loaded.value
+                is DomainResult.Failure -> null
+            } ?: return ExportRunOutcome.FAILED
+            val parameters = operation.parameters as? OperationParameters.Export ?: return ExportRunOutcome.FAILED
+            val handles = SecureTransferHandleStore(context, dependencies.keyProvider())
+            val persisted = runCatching { handles.read(bookId, parameters.destinationHandleId) }.getOrNull()
+                ?: return fail(operation, operations, ExportFailure.PermissionRevoked, dependencies.clock().now(), retryAllowed)
+            val treeUri = Uri.parse(persisted.substringBefore('\n'))
+            val alreadyPublished = persisted.substringAfter('\n', "").takeIf(String::isNotBlank)?.let(Uri::parse)
+            val destination = SafExportDestination(context, operationStableId, treeUri, parameters.descriptor)
+            if (operation.state == BackgroundOperationState.CANCEL_REQUESTED) {
+                destination.cleanup()
+                return cancel(operation, operations, dependencies.clock().now())
             }
-            when (result) {
-                is DomainResult.Success -> exportResult = result.value
-                is DomainResult.Failure -> {
+            val control = ExportRunControlRegistry.control(operationStableId)
+            if (operation.state == BackgroundOperationState.SUCCEEDED) return ExportRunOutcome.SUCCEEDED
+            if (operation.state == BackgroundOperationState.COMMITTING && alreadyPublished != null) {
+                val readable = runCatching {
+                    context.contentResolver.openFileDescriptor(alreadyPublished, "r")?.use { true } ?: false
+                }.getOrDefault(false)
+                if (readable) {
+                    val succeeded = operation.transition(BackgroundOperationState.SUCCEEDED, dependencies.clock().now()).successOrNull()
+                        ?: return ExportRunOutcome.FAILED
+                    operations.save(succeeded)
+                    operations.recordCheckpoint(succeeded, dependencies.clock().now())
                     destination.cleanup()
-                    return if (result.error == ExportFailure.Cancelled) {
-                        cancel(operation, operations, dependencies.clock().now())
-                    } else {
-                        fail(
-                            operation,
-                            operations,
-                            result.error as? ExportFailure ?: ExportFailure.DestinationUnavailable,
-                            dependencies.clock().now(),
-                            retryAllowed,
+                    return ExportRunOutcome.SUCCEEDED
+                }
+            }
+            if (operation.state == BackgroundOperationState.FAILED_RETRYABLE) {
+                operation = operation.transition(BackgroundOperationState.QUEUED, dependencies.clock().now(), errorCode = null).successOrNull()
+                    ?: return ExportRunOutcome.FAILED
+                operations.save(operation)
+                operations.recordCheckpoint(operation, dependencies.clock().now())
+            }
+            if (operation.state == BackgroundOperationState.QUEUED) {
+                operation = operation.transition(BackgroundOperationState.PREPARING, dependencies.clock().now()).successOrNull()
+                    ?: return ExportRunOutcome.FAILED
+                operations.save(operation)
+                operations.recordCheckpoint(operation, dependencies.clock().now())
+            }
+            if (operation.state == BackgroundOperationState.PREPARING) {
+                operation = operation.transition(BackgroundOperationState.RUNNING, dependencies.clock().now()).successOrNull()
+                    ?: return ExportRunOutcome.FAILED
+                operations.save(operation)
+            }
+            var exportResult: ExportResult? = null
+            if (operation.state == BackgroundOperationState.RUNNING) {
+                val source = LedgerExportTabularSource(
+                    bookId,
+                    parameters.descriptor,
+                    dependencies.ledgerExport(),
+                    operation.createdAt,
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "unknown",
+                )
+                val result = withHeadlessLedgerAccess(requireNotNull(lease)) {
+                    destination.openTemporary().use { output ->
+                        StreamingExportEngine().export(
+                            parameters.descriptor,
+                            source,
+                            output,
+                            cancelled = { control.get() },
+                            progress = ExportProgressObserver { rows ->
+                                onProgress(rows)
+                                val latest = operations.get(operationId).successOrNull() ?: operation
+                                latest.advance(OperationProgress(rows, null), dependencies.clock().now()).successOrNull()?.let { advanced ->
+                                    operation = advanced
+                                    operations.save(advanced)
+                                    operations.recordCheckpoint(advanced, dependencies.clock().now())
+                                }
+                            },
                         )
                     }
                 }
+                when (result) {
+                    is DomainResult.Success -> exportResult = result.value
+                    is DomainResult.Failure -> {
+                        destination.cleanup()
+                        return if (result.error == ExportFailure.Cancelled) {
+                            cancel(operation, operations, dependencies.clock().now())
+                        } else {
+                            fail(
+                                operation,
+                                operations,
+                                result.error as? ExportFailure ?: ExportFailure.DestinationUnavailable,
+                                dependencies.clock().now(),
+                                retryAllowed,
+                            )
+                        }
+                    }
+                }
+                operation = operation.transition(
+                    BackgroundOperationState.COMMITTING,
+                    dependencies.clock().now(),
+                    OperationProgress(exportResult.rows, exportResult.rows),
+                ).successOrNull() ?: return ExportRunOutcome.FAILED
+                operations.save(operation)
+                operations.recordCheckpoint(operation, dependencies.clock().now())
             }
-            operation = operation.transition(
-                BackgroundOperationState.COMMITTING,
-                dependencies.clock().now(),
-                OperationProgress(exportResult.rows, exportResult.rows),
-            ).successOrNull() ?: return ExportRunOutcome.FAILED
-            operations.save(operation)
-            operations.recordCheckpoint(operation, dependencies.clock().now())
-        }
-        if (operation.state != BackgroundOperationState.COMMITTING) return ExportRunOutcome.FAILED
-        val recovered = exportResult ?: ExportResult(
-            operation.progress.current,
-            when {
-                parameters.descriptor.format != ExportFormat.XLSX -> 1
-                parameters.descriptor.content == ExportContent.FULL_WORKBOOK -> 16
-                else -> 2
-            },
-            destination.temporaryBytes(),
-            parameters.descriptor.format.mimeType(),
-        )
-        return when (val published = destination.publish(recovered)) {
-            is DomainResult.Success -> {
-                handles.save(bookId, parameters.destinationHandleId, "$treeUri\n${published.value.documentUri}")
-                val succeeded = operation.transition(BackgroundOperationState.SUCCEEDED, dependencies.clock().now()).successOrNull()
-                    ?: return ExportRunOutcome.FAILED
-                operations.save(succeeded)
-                operations.recordCheckpoint(succeeded, dependencies.clock().now())
-                ExportRunControlRegistry.remove(operationStableId)
-                ExportRunOutcome.SUCCEEDED
+            if (operation.state != BackgroundOperationState.COMMITTING) return ExportRunOutcome.FAILED
+            val recovered = exportResult ?: ExportResult(
+                operation.progress.current,
+                when {
+                    parameters.descriptor.format != ExportFormat.XLSX -> 1
+                    parameters.descriptor.content == ExportContent.FULL_WORKBOOK -> 16
+                    else -> 2
+                },
+                destination.temporaryBytes(),
+                parameters.descriptor.format.mimeType(),
+            )
+            return when (val published = destination.publish(recovered)) {
+                is DomainResult.Success -> {
+                    handles.save(bookId, parameters.destinationHandleId, "$treeUri\n${published.value.documentUri}")
+                    val succeeded = operation.transition(BackgroundOperationState.SUCCEEDED, dependencies.clock().now()).successOrNull()
+                        ?: return ExportRunOutcome.FAILED
+                    operations.save(succeeded)
+                    operations.recordCheckpoint(succeeded, dependencies.clock().now())
+                    ExportRunControlRegistry.remove(operationStableId)
+                    ExportRunOutcome.SUCCEEDED
+                }
+                is DomainResult.Failure -> {
+                    val failure = published.error as? ExportFailure ?: ExportFailure.DestinationUnavailable
+                    destination.cleanup()
+                    fail(operation, operations, failure, dependencies.clock().now(), retryAllowed)
+                }
             }
-            is DomainResult.Failure -> {
-                val failure = published.error as? ExportFailure ?: ExportFailure.DestinationUnavailable
-                destination.cleanup()
-                fail(operation, operations, failure, dependencies.clock().now(), retryAllowed)
+        } finally {
+            try {
+                lease?.release()
+            } finally {
+                if (manager.state.value !is BookSessionState.Ready) manager.close()
             }
         }
     }
@@ -336,6 +365,7 @@ internal interface ExportWorkerEntryPoint {
     fun keyProvider(): DeviceLedgerKeyProvider
     fun clock(): LedgerClock
     fun ledgerExport(): LedgerExportQueryPort
+    fun sessionRuntime(): ActiveBookSessionRuntime
 }
 
 internal object ExportRunControlRegistry {

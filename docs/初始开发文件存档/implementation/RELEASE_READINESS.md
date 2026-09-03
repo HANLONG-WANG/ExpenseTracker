@@ -1,9 +1,9 @@
 # Release Readiness
 
-Last updated: 2026-08-12 (Asia/Tokyo)
+Last updated: 2026-09-04 (Asia/Tokyo)
 
 Overall release status: `VERIFIED`
-Repository code and delivery are release-candidate complete. Play upload remains intentionally gated only by publisher-owned inputs.
+The P36 repository/release baseline and P37 interactive-performance remediation are verified with same-candidate API 28/API 36 device evidence, final host/evidence aggregates and delivery hygiene. Play upload remains intentionally gated only by publisher-owned inputs.
 
 ## Final quality gates
 
@@ -19,6 +19,24 @@ Repository code and delivery are release-candidate complete. Play upload remains
 | Supply chain and legal delivery | VERIFIED | exact locks/verification metadata, 886-component CycloneDX SBOM, 846 third-party licenses with zero unknown, NOTICE and artifact hashes; final OSV audit covers 248 release-runtime components with zero vulnerable components |
 | Privacy/about/release delivery | VERIFIED | three long-form privacy policies and in-app locales, About/open-source, 1.0.0 release notes, reproducible-build guide and Play input checklist |
 | Release artifact | VERIFIED | unsigned external-signing AAB candidate, 49,693,754 bytes, SHA-256 `0f70b2581ee3b147a210d985d124e65705ba422a7bc3f42aff8637cddbc2d415`; 14-artifact manifest with declared generated-artifact inputs |
+| P37 interactive performance remediation | VERIFIED | One process-owned live primary, zero warm reopen/unwrap, one save transaction, bounded Journal queries, retained route loading, same-candidate API 28/API 36 latency evidence, final `p37HostCheck`/`p37Check` aggregates and ledger hygiene pass |
+
+## P37 corrective-candidate evidence
+
+Both accepted evidence files use fixture `P35_TARGET_SCALE_V1`, contain all raw samples with P50/P90/P95/max and zero timeouts/failed samples, and bind to identical release/R8 artifacts: target APK SHA-256 `fa808559a0a4ab324a19445786601af465c0baf5cebdbf99d917cf54298db17b`; benchmark APK SHA-256 `e82e091ba138752042c61bb85e3b2d2d2a4657e9cd62168ae28506127899b11e`. The result files are API 28 SHA-256 `ec98fd786d2d1cc6083a762538700ec9c4de3dd5be7f7752ef3619f217a41e3b` and API 36 SHA-256 `8e8ea76cc36fff6acbf047f3f3ca4d2c5756aa3bf3d3d0812c7e421d25ef6b78`.
+
+| Frozen interaction gate | API 28 result | API 36 result | Status |
+|---|---:|---:|---|
+| Unlock to current-route content P95 <= 1,500 ms | 1,286.429852 ms | 962.274786 ms | PASS |
+| Warm cached navigation P95 <= 250 ms | 0.101399 ms | 0.172393 ms | PASS |
+| Warm uncached bounded destination P95 <= 750 ms | 0.137157 ms | 0.146510 ms | PASS |
+| Blocking progress maximum <= 100 ms | 48.344222 ms | 48.266427 ms | PASS |
+| Ordinary save P95 <= 750 ms | 275.812275 ms | 241.666452 ms | PASS |
+| Search including debounce P95 <= 800 ms | 304.551199 ms | 305.754858 ms | PASS |
+| Search after debounce P95 <= 500 ms | 3.886088 ms | 5.869988 ms | PASS |
+| Frame P95 <= 32 ms | 3.268501 ms CPU duration | -11.795175 ms native overrun | PASS |
+
+Deterministic counters match on both environments: unlock primary-open/key-unwrap `1/1`; every measured warm interaction delta `0/0`; ordinary save financial transaction count `1`; Journal page and page-with-running-balance SQL statements `2/2` against limits `3/4`. API 28 and API 36 are KVM-backed emulator evidence only. P37 does not claim a physical-device run, remote GitHub Actions execution, publisher signing or Play publication.
 
 ## Provenance and claims
 

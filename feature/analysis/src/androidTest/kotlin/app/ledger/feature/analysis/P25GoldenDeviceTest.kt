@@ -82,7 +82,7 @@ class P25GoldenDeviceTest {
                 "ANA-001",
                 ThemeMode.LIGHT,
                 AnalysisDeviceFixtures.base("ANA-001", AnalysisPresentation.CONTENT),
-                "3d4c0905ebeb7ae110835a2505f76a6017f549d2b440a64ecc63e373956e53c0",
+                "abcfcd192b083316e50259313e667844d4b0bb11084f1693b78f13a495928838",
             ),
             Golden(
                 "ANA-015",
@@ -92,7 +92,7 @@ class P25GoldenDeviceTest {
                     AnalysisPresentation.FAILED,
                     integrity = AnalysisDeviceFixtures.integrity(IntegritySeverity.FAILURE),
                 ),
-                "05837adc39a458f3561155595422b88d95a4d76baa509454627740ae4031103b",
+                "52df6941400dc43b9a8d132a8b5c2cc787508f37efc3263e33dd3a6d047ebafc",
             ),
         )
     }

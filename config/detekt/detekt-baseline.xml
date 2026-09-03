@@ -1,0 +1,147 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:AppRootViewModel.kt$AppRootViewModel$from == null || rate == null || (to != null &amp;&amp; to &lt; from)</ID>
+    <ID>CyclomaticComplexMethod:CreditState.kt$CreditPolicy$public fun create(snapshot: CreditSnapshot, screenId: String, accountId: StableId?, statementId: StableId?): CreditFeatureState</ID>
+    <ID>CyclomaticComplexMethod:InstallmentState.kt$InstallmentPolicy$public fun create( snapshot: InstallmentSnapshot, screenId: String, planId: StableId?, purchaseId: StableId?, ): InstallmentFeatureState</ID>
+    <ID>CyclomaticComplexMethod:LoanState.kt$LoanPolicy$@Suppress("LongParameterList") public fun create( snapshot: LoanSnapshot, screenId: String, contractId: StableId?, trancheId: StableId?, transactionId: StableId?, simulationId: StableId?, ): LoanFeatureState</ID>
+    <ID>CyclomaticComplexMethod:RefundRootDestination.kt$@Composable internal fun RefundRootDestination( screenId: String, encodedArguments: Map&lt;String, String&gt;, viewModel: AppRootViewModel, onNavigationChanged: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:AttachmentRootDestination.kt$@Composable internal fun AttachmentRootDestination( screenId: String, encodedArguments: Map&lt;String, String&gt;, viewModel: AppRootViewModel, onNavigationChanged: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:LocationPermissionRootDestination.kt$@Composable internal fun LocationPermissionRootDestination( viewModel: AppRootViewModel, onNavigationChanged: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:TransactionEditorScaffold.kt$@Composable internal fun TransactionEditorScaffold( modifier: Modifier = Modifier, listState: LazyListState = rememberLazyListState(), content: LazyListScope.() -&gt; Unit, )</ID>
+    <ID>LargeClass:AnalysisController.kt$AnalysisController</ID>
+    <ID>LargeClass:SecureRoomCreditApplicationPort.kt$SecureRoomCreditApplicationPort : CreditApplicationPort</ID>
+    <ID>LargeClass:SecureRoomJournalApplicationPort.kt$SecureRoomJournalApplicationPort : JournalApplicationPort</ID>
+    <ID>LongMethod:AnalysisRootDestination.kt$@Composable internal fun AnalysisRootDestination( screenId: String, encodedArguments: Map&lt;String, String&gt;, viewModel: AppRootViewModel, onNavigationChanged: () -&gt; Unit, )</ID>
+    <ID>LongMethod:LedgerIconRegistry.kt$@Composable private fun LedgerIconCanvas( icon: LedgerIcon, modifier: Modifier, contentDescription: String?, tint: Color, size: Dp, )</ID>
+    <ID>LongMethod:P11RuntimeDeviceTest.kt$P11RuntimeDeviceTest$@Test fun realColdStartCompletesTenStepsAndOpensEmptyExpenseRoot()</ID>
+    <ID>LongParameterList:BudgetActions.kt$BudgetEditorActions$( val onTotalChanged: (String) -&gt; Unit, val onCategoryChanged: (StableId, String) -&gt; Unit, val onClearCategory: (StableId) -&gt; Unit, val onSaveMonth: () -&gt; Unit, val onApplyTemplate: (StableId) -&gt; Unit, val onTemplateNameChanged: (String) -&gt; Unit, val onSaveTemplate: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:ImportController.kt$ImportController$( context: Context, private val keyProvider: DeviceLedgerKeyProvider, private val references: ReferenceDataManagementPort, private val financial: ImportFinancialApplicationPort, private val structured: StructuredImportApplicationPort, private val runtime: AppRuntimeSources, private val formatImportedAt: (Instant) -&gt; String, private val formatPreviewValue: (StagingValue) -&gt; String, )</ID>
+    <ID>LongParameterList:LedgerGlanceWidget.kt$( context: Context, locale: Locale, dateFormat: String, configuration: LedgerWidgetConfiguration, content: LedgerWidgetContent.Ready, color: ColorProvider, )</ID>
+    <ID>LongParameterList:LedgerTheme.kt$( themeMode: ThemeMode, dynamicColor: Boolean, reduceMotion: Boolean, ledgerTimeZoneId: String = "UTC", ledgerDateFormat: LedgerDateFormat = LedgerDateFormat.LOCALE_DEFAULT, ledgerWeekStart: LedgerWeekStart = LedgerWeekStart.LOCALE_DEFAULT, content: @Composable () -&gt; Unit, )</ID>
+    <ID>LongParameterList:P27AnalysisScreens.kt$( label: String, dimension: String, options: List&lt;ConsumptionMapFilterOption&gt;, selected: Set&lt;app.ledger.core.common.StableId&gt;, actions: AnalysisActions, modifier: Modifier = Modifier, )</ID>
+    <ID>LongParameterList:P33SettingsScreens.kt$RemainingSettingsActions$( val navigate: (String) -&gt; Unit, val setThemeMode: (SettingsThemeMode) -&gt; Unit, val setDynamicColor: (Boolean) -&gt; Unit, val setDefaultAmountsHidden: (Boolean) -&gt; Unit, val setReduceMotion: (Boolean) -&gt; Unit, val setLanguageTag: (String) -&gt; Unit, val setDateFormat: (SettingsDateFormat) -&gt; Unit, val setZoneId: (String) -&gt; Unit, val setWeekStart: (SettingsWeekStart) -&gt; Unit, val openSourceCode: () -&gt; Unit, val openPrivacyPolicy: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:RoomFinancialCommitRepository.kt$RoomFinancialCommitRepository$( private val database: LedgerDatabase, private val failureInjector: FinancialCommitFailureInjector = FinancialCommitFailureInjector.NONE, private val beforeCommitSideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE, private val sideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE, private val afterFinancialWriteSideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE, private val forceFullProjectionRebuild: Boolean = false, private val creditAccountCreatedInCommit: StableId? = null, )</ID>
+    <ID>LongParameterList:SecurityPrivacyContract.kt$SecurityPrivacySettingsActions$( val onAppLockEnabled: (Boolean) -&gt; Unit, val onAppLockTimeout: (AppLockTimeout, Int) -&gt; Unit, val onTestLock: () -&gt; Unit, val onGlobalScreenshotBlocked: (Boolean) -&gt; Unit, val onObscureRecentTasks: (Boolean) -&gt; Unit, val onTrashRetention: (TrashRetention) -&gt; Unit, val onOpenTrash: () -&gt; Unit, val onTelemetryEnabled: (Boolean) -&gt; Unit, val onCrashEnabled: (Boolean) -&gt; Unit, val onOpenFeatureQueue: () -&gt; Unit, val onOpenCrashQueue: () -&gt; Unit, val onOpenPrivacyPolicy: () -&gt; Unit, val onDeleteFeatureQueue: () -&gt; Unit, val onDeleteCrashQueue: () -&gt; Unit, val onBeginLocalClear: () -&gt; Unit, val onCancelLocalClear: () -&gt; Unit, val onConfirmLocalClear: () -&gt; Unit, val onOpenSystemSecurity: () -&gt; Unit, val onSecurityConfigured: () -&gt; Unit, val onCustomTrashRetention: (Int) -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:SpecializedTransactionRootDestination.kt$( screenId: String, encodedArguments: Map&lt;String, String&gt;, state: SpecializedTransactionLoadState, viewModel: AppRootViewModel, onAddAttachment: () -&gt; Unit, onNavigationChanged: () -&gt; Unit, )</ID>
+    <ID>LoopWithTooManyJumpStatements:ImportPreparationService.kt$ImportPreparationService$for</ID>
+    <ID>MagicNumber:CreditState.kt$CreditPolicy$120</ID>
+    <ID>MagicNumber:CreditState.kt$CreditPolicy$31</ID>
+    <ID>MagicNumber:FoundationComponents.kt$4</ID>
+    <ID>MagicNumber:FoundationComponents.kt$8</ID>
+    <ID>MagicNumber:LoanState.kt$LoanPolicy$5</ID>
+    <ID>MagicNumber:MigrationPostValidation.kt$MigrationPostValidation$3</ID>
+    <ID>MagicNumber:P27AnalysisScreens.kt$100_000L</ID>
+    <ID>MagicNumber:P27AnalysisScreens.kt$10_000L</ID>
+    <ID>MagicNumber:P27AnalysisScreens.kt$1_000L</ID>
+    <ID>MagicNumber:P33SettingsScreens.kt$1_234.56</ID>
+    <ID>MagicNumber:RoomFinancialPlanWriter.kt$RoomFinancialPlanWriter$3</ID>
+    <ID>MagicNumber:RoomFinancialPlanWriter.kt$RoomFinancialPlanWriter$4</ID>
+    <ID>MagicNumber:RoomFinancialPlanWriter.kt$RoomFinancialPlanWriter$5</ID>
+    <ID>MagicNumber:RoomTransactionQueryService.kt$TransactionSqlCompiler$3</ID>
+    <ID>MagicNumber:TrashAutoPurgeWorker.kt$TrashAutoPurgeScheduler$24</ID>
+    <ID>MagicNumber:WidgetConfigurationActivity.kt$100</ID>
+    <ID>MagicNumber:WidgetConfigurationActivity.kt$10_000</ID>
+    <ID>MatchingDeclarationName:LedgerHaptics.kt$LedgerHaptic</ID>
+    <ID>MatchingDeclarationName:PermanentInvariants.kt$PermanentInvariant</ID>
+    <ID>MatchingDeclarationName:RetainedFormState.kt$LedgerRetainedStateStore</ID>
+    <ID>MaxLineLength:AccountsRoutes.kt$public</ID>
+    <ID>MaxLineLength:AnalysisRoutes.kt$public</ID>
+    <ID>MaxLineLength:AnalysisState.kt$AnalysisPolicy$is ReportSort.ByDimension -&gt; if (current.direction == SortDirection.ASCENDING) current.copy(direction = SortDirection.DESCENDING) else return spec.copy(sorting = updated - current)</ID>
+    <ID>MaxLineLength:AnalysisState.kt$AnalysisPolicy$is ReportSort.ByMeasure -&gt; if (current.direction == SortDirection.ASCENDING) current.copy(direction = SortDirection.DESCENDING) else return spec.copy(sorting = updated - current)</ID>
+    <ID>MaxLineLength:AutomationRoutes.kt$public</ID>
+    <ID>MaxLineLength:ChartsMapsAndRiskComponents.kt$drawLine(color, start = androidx.compose.ui.geometry.Offset(0f, size.height / 2f), end = androidx.compose.ui.geometry.Offset(size.width * 0.35f, size.height / 2f), strokeWidth = strokeWidth)</ID>
+    <ID>MaxLineLength:ChartsMapsAndRiskComponents.kt$drawLine(color, start = androidx.compose.ui.geometry.Offset(size.width * 0.65f, size.height / 2f), end = androidx.compose.ui.geometry.Offset(size.width, size.height / 2f), strokeWidth = strokeWidth)</ID>
+    <ID>MaxLineLength:CreditState.kt$CreditPolicy$statement?.officialAmountMinor == null</ID>
+    <ID>MaxLineLength:EncryptedSchemaV1DeviceTest.kt$EncryptedSchemaV1DeviceTest$"INSERT INTO business_transaction(id,uid,kind,current_revision_id,lifecycle_state,created_commit_id,last_commit_id,row_version,content_hash) VALUES(1,?,0,NULL,0,1,1,1,?)"</ID>
+    <ID>MaxLineLength:EncryptedSchemaV1DeviceTest.kt$EncryptedSchemaV1DeviceTest$"INSERT INTO economic_effect(id,uid,source_revision_id,polarity,nature,component,is_consumption,base_amount_minor,accrual_local_date,rule_set_version) VALUES(1,?,1,1,1,0,1,100,20260820,1)"</ID>
+    <ID>MaxLineLength:EncryptedSchemaV1DeviceTest.kt$EncryptedSchemaV1DeviceTest$"INSERT INTO journal_entry(id,uid,source_revision_id,applies_revision_id,entry_role,effective_at,zone_id,local_date,base_currency,base_debit_total_minor,base_credit_total_minor,posting_count,rule_set_version,created_commit_id,content_hash) "</ID>
+    <ID>MaxLineLength:EncryptedSchemaV1DeviceTest.kt$EncryptedSchemaV1DeviceTest$"INSERT INTO ledger_account(id,uid,owner_type,account_class,normal_side,currency_code,system_code,status,created_commit_id) VALUES(2,?,1,3,1,'JPY','SYSTEM_EXPENSE',0,1)"</ID>
+    <ID>MaxLineLength:EncryptedSchemaV1DeviceTest.kt$EncryptedSchemaV1DeviceTest$"INSERT INTO posting(id,uid,journal_entry_id,line_no,ledger_account_id,side,account_amount_minor,account_currency,base_amount_minor,base_currency,valuation_source,posting_role) "</ID>
+    <ID>MaxLineLength:EncryptedSchemaV1DeviceTest.kt$EncryptedSchemaV1DeviceTest$"INSERT INTO transaction_fts(transaction_id,category_name,merchant_name,merchant_aliases,note,project_name,settlement_activity_name,participant_names,attachment_names,lifecycle_state) "</ID>
+    <ID>MaxLineLength:EncryptedSchemaV1DeviceTest.kt$EncryptedSchemaV1DeviceTest$"INSERT INTO transaction_revision(id,uid,transaction_id,revision_no,action,resulting_state,created_commit_id,created_at,occurred_at,zone_id,local_date,location_record_id,source_type,content_hash) "</ID>
+    <ID>MaxLineLength:JournalRoutes.kt$public</ID>
+    <ID>MaxLineLength:LiabilityRoutes.kt$public</ID>
+    <ID>MaxLineLength:PlanningRoutes.kt$public</ID>
+    <ID>MaxLineLength:SettingsRoutes.kt$public</ID>
+    <ID>MaxLineLength:SettlementRoutes.kt$public</ID>
+    <ID>MaxLineLength:SqlSupport.kt$internal fun Throwable.toFinanceDatabaseError(): FinanceDataError</ID>
+    <ID>MaxLineLength:TransferRoutes.kt$public</ID>
+    <ID>MaxLineLength:VaultRoutes.kt$public</ID>
+    <ID>MaxLineLength:WidgetConfigurationActivity.kt$WidgetConfigurationActivity$navigationBarStyle = if (darkTheme) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)</ID>
+    <ID>MaxLineLength:WidgetConfigurationActivity.kt$WidgetConfigurationActivity$statusBarStyle = if (darkTheme) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)</ID>
+    <ID>MaxLineLength:WidgetConfigurationActivity.kt$stringResource(R.string.widget_snapshot_change, amountText(it.coreNetFinancialAssetsBaseMinor - it.previousCoreNetFinancialAssetsBaseMinor, it.baseCurrency))</ID>
+    <ID>NestedBlockDepth:TrashAutoPurgeWorker.kt$TrashAutoPurgeWorker$override suspend fun doWork(): Result</ID>
+    <ID>ReturnCount:AccountsScreens.kt$@Composable private fun evaluateExpression(expression: String, currency: CurrencyCode?): EvaluatedMoneyExpression?</ID>
+    <ID>ReturnCount:AnalysisState.kt$AnalysisPolicy$fun cycleSort(spec: ReportSpec, stableKey: String): ReportSpec</ID>
+    <ID>ReturnCount:AttachmentController.kt$AttachmentController$suspend fun commitRename(): Boolean</ID>
+    <ID>ReturnCount:AutomationState.kt$AutomationPolicy$public fun previewRecurrence(state: AutomationFeatureState): List&lt;PlannedRecurrenceOccurrence&gt;</ID>
+    <ID>ReturnCount:BudgetScreens.kt$@Composable private fun budgetCategoryFieldError(state: BudgetFeatureState, categoryId: StableId): String?</ID>
+    <ID>ReturnCount:BudgetScreens.kt$@Composable public fun BudgetDestination( screenId: String, state: BudgetLoadState, encodedArguments: Map&lt;String, String&gt;, onAction: (BudgetScreenAction) -&gt; Unit, )</ID>
+    <ID>ReturnCount:CreditState.kt$CreditPolicy$public fun formalAutoPaymentEligible(state: CreditFeatureState): Boolean</ID>
+    <ID>ReturnCount:InstallmentRootDestination.kt$internal fun installmentFixedAction( screenId: String, state: InstallmentLoadState, pending: Boolean, onSave: () -&gt; Unit, ): (@Composable BoxScope.() -&gt; Unit)?</ID>
+    <ID>ReturnCount:JournalDestination.kt$@Composable private fun String.localizedRelationship(locale: Locale): String?</ID>
+    <ID>ReturnCount:JournalDestination.kt$@Composable private fun accountEffectLabel(value: String, locale: Locale): String</ID>
+    <ID>ReturnCount:SecureRoomJournalApplicationPort.kt$SecureRoomJournalApplicationPort$private suspend fun executeBulkEdit( database: LedgerDatabase, request: JournalBulkEditRequest, ): DomainResult&lt;CommandReceipt&gt;</ID>
+    <ID>ReturnCount:SettlementState.kt$SettlementPolicy$private fun canSavePayment(state: SettlementFeatureState): Boolean</ID>
+    <ID>ReturnCount:TrashAutoPurgeWorker.kt$TrashAutoPurgeWorker$override suspend fun doWork(): Result</ID>
+    <ID>ReturnCount:VaultController.kt$VaultController$fun authenticationSucceeded(cryptoObject: BiometricPrompt.CryptoObject?)</ID>
+    <ID>ReturnCount:VaultScreens.kt$@Composable private fun VaultList(state: VaultPresentationState, actions: VaultActions)</ID>
+    <ID>SpreadOperator:FoundationComponents.kt$(resourceId, *arguments.toTypedArray())</ID>
+    <ID>SpreadOperator:SecureRoomAutomationApplicationPort.kt$SecureRoomAutomationApplicationPort$( *( listOf( "recurrenceModification", request.seriesId.toString(), request.occurrenceLocalDate.toString(), request.scope.name, ) + seriesCanonicalValues(request.replacement, emptyList()) ).toTypedArray(), )</ID>
+    <ID>SpreadOperator:SecureRoomAutomationApplicationPort.kt$SecureRoomAutomationApplicationPort$(*seriesCanonicalValues(d, exceptions).toTypedArray())</ID>
+    <ID>TooGenericExceptionCaught:LedgerSchemaVersionMarker.kt$LedgerSchemaVersionMarker$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:RoomFinancialCommitRepository.kt$RoomFinancialCommitRepository$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:RoomProjectionMaintenanceService.kt$RoomProjectionMaintenanceService$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureBookAttachmentObjectPort.kt$SecureBookAttachmentObjectPort$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomAnalyticsApplicationPort.kt$SecureRoomAnalyticsApplicationPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomBudgetApplicationPort.kt$SecureRoomBudgetApplicationPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomCreditApplicationPort.kt$SecureRoomCreditApplicationPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomInstallmentApplicationPort.kt$SecureRoomInstallmentApplicationPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomJournalApplicationPort.kt$SecureRoomJournalApplicationPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomLoanApplicationPort.kt$SecureRoomLoanApplicationPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomProjectGoalApplicationPort.kt$SecureRoomProjectGoalApplicationPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomReferenceDataManagementPort.kt$SecureRoomReferenceDataManagementPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomRefundApplicationPort.kt$SecureRoomRefundApplicationPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomSettlementApplicationPort.kt$SecureRoomSettlementApplicationPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecureRoomSpecializedTransactionEntryPort.kt$SecureRoomSpecializedTransactionEntryPort$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:VerifiedBackupAvailabilityStore.kt$VerifiedBackupAvailabilityStore$error: Exception</ID>
+    <ID>TooManyFunctions:AttachmentDatabaseCatalog.kt$AttachmentDatabaseCatalog</ID>
+    <ID>TooManyFunctions:BatchRecordScreens.kt$app.ledger.feature.record.BatchRecordScreens.kt</ID>
+    <ID>TooManyFunctions:BatchRecordState.kt$BatchRecordPolicy</ID>
+    <ID>TooManyFunctions:CreditState.kt$CreditPolicy</ID>
+    <ID>TooManyFunctions:LedgerWidgetRuntime.kt$LedgerWidgetRuntime</ID>
+    <ID>TooManyFunctions:MainActivity.kt$MainActivity : FragmentActivity</ID>
+    <ID>TooManyFunctions:P33SettingsScreens.kt$app.ledger.feature.settings.P33SettingsScreens.kt</ID>
+    <ID>TooManyFunctions:WidgetConfigurationActivity.kt$app.ledger.widget.WidgetConfigurationActivity.kt</ID>
+    <ID>UnusedParameter:ImportRootDestination.kt$onNavigationChanged: () -&gt; Unit</ID>
+    <ID>UnusedParameter:P26AnalysisScreens.kt$canSave: Boolean</ID>
+    <ID>UnusedPrivateMember:BackupFlowScreen.kt$@Composable private fun BackupFlowUiState.failureMessage(): String</ID>
+    <ID>UnusedPrivateMember:BatchRecordScreens.kt$@Composable private fun linkedLabel(value: StableId?): String</ID>
+    <ID>UnusedPrivateMember:JournalDestination.kt$private fun &lt;T&gt; List&lt;T&gt;.nextIndex(current: Int): Int</ID>
+    <ID>UnusedPrivateMember:JournalDestination.kt$private fun &lt;T&gt; List&lt;T&gt;.nextNullableIndex(current: Int): Int</ID>
+    <ID>UnusedPrivateMember:LoanScreens.kt$@Composable private fun ComponentMetric(label: Int, raw: String, state: LoanFeatureState)</ID>
+    <ID>UnusedPrivateMember:LoanScreens.kt$@Composable private fun LoanAccountRequired(modifier: Modifier, actions: LoanActions)</ID>
+    <ID>UnusedPrivateMember:LoanScreens.kt$@Composable private fun TrancheFields(state: LoanFeatureState, actions: LoanActions)</ID>
+    <ID>UnusedPrivateMember:LoanScreens.kt$private fun nextFrequency(current: PaymentFrequency): PaymentFrequency</ID>
+    <ID>UnusedPrivateMember:LoanScreens.kt$private fun nextLoanRounding(current: RoundingMode): RoundingMode</ID>
+    <ID>UnusedPrivateMember:LoanScreens.kt$private fun nextPrepaymentPolicy(current: LoanPrepaymentPolicy): LoanPrepaymentPolicy</ID>
+    <ID>UnusedPrivateMember:OrdinaryRecordScreens.kt$private fun CategoryReferenceView.toRow()</ID>
+    <ID>UnusedPrivateMember:OrdinaryRecordScreens.kt$private fun Int.coordinateText(): String</ID>
+    <ID>UnusedPrivateMember:OrdinaryRecordScreens.kt$private fun String.coordinateE7OrNull(range: IntRange): Int?</ID>
+    <ID>UnusedPrivateMember:OrdinaryRecordScreens.kt$private fun String.filterCoordinateInput(): String</ID>
+    <ID>UnusedPrivateMember:P27AnalysisScreens.kt$@Composable private fun selectedFilterLabel( options: List&lt;ConsumptionMapFilterOption&gt;, selected: Set&lt;app.ledger.core.common.StableId&gt;, ): String</ID>
+    <ID>UnusedPrivateMember:ProjectGoalScreens.kt$@Composable private fun GoalStatus.label(): String</ID>
+    <ID>UnusedPrivateMember:ProjectGoalScreens.kt$@Composable private fun TransactionKind.label(): String</ID>
+    <ID>UnusedPrivateMember:ReferenceManagementScreens.kt$private fun Int.coordinateText(): String</ID>
+    <ID>UnusedPrivateMember:ReferenceManagementScreens.kt$private fun String.filterCoordinate(): String</ID>
+    <ID>UnusedPrivateMember:SecureShadowLedgerAccess.kt$private fun SupportSQLiteDatabase.singleLong(sql: String): Long</ID>
+    <ID>UnusedPrivateProperty:AutomationScreens.kt$private const val AUTOMATION_PLACE_QUERY_LIMIT = 80</ID>
+    <ID>UnusedPrivateProperty:JournalDestination.kt$private val JOURNAL_LOCAL_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")</ID>
+    <ID>UnusedPrivateProperty:OrdinaryRecordScreens.kt$private val LATITUDE_RANGE = -900_000_000..900_000_000</ID>
+    <ID>UnusedPrivateProperty:OrdinaryRecordScreens.kt$private val LONGITUDE_RANGE = -1_800_000_000..1_800_000_000</ID>
+    <ID>UnusedPrivateProperty:ProjectGoalScreens.kt$val selectedGoal = state.snapshot.goals.singleOrNull { it.id == draft.goalId }</ID>
+    <ID>UnusedPrivateProperty:RestoreController.kt$RestoreController$val restore = result.value as? app.ledger.transfer.data.ReplaceRestoreResult</ID>
+  </CurrentIssues>
+</SmellBaseline>

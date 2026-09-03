@@ -128,13 +128,16 @@ class FinancialMutationCoordinatorTest {
         coEvery { snapshotRepository.load(command) } returns DomainResult.Success(snapshot)
         every { planner.plan(command, snapshot) } returns DomainResult.Success(plan)
         coEvery { commitRepository.commit(command, plan) } returns DomainResult.Success(receipt)
-        val observed = mutableListOf<CommandReceipt>()
+        val observed = mutableListOf<CommittedLedgerChange>()
         FinancialCommitObserverRegistry.register(FinancialCommitObserver(observed::add)).use {
             val coordinator = coordinator(receiptRepository, snapshotRepository, planner, commitRepository)
             coordinator.execute(command) shouldBe DomainResult.Success(receipt)
             coordinator.execute(command) shouldBe DomainResult.Success(receipt)
         }
-        observed shouldBe listOf(receipt)
+        observed.map { it.receipt } shouldBe listOf(receipt)
+        observed.single().bookId shouldBe book.id.value
+        observed.single().localRevision shouldBe plan.targetLocalRevision
+        observed.single().scopes shouldBe setOf(LedgerDataScope.BUDGET)
     }
 
     private fun coordinator(

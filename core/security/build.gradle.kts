@@ -11,6 +11,7 @@ dependencies {
     implementation(libs.tink)
     implementation(libs.bouncycastle.provider)
     implementation(libs.androidx.biometric)
+    implementation(libs.androidx.tracing)
 
     androidTestImplementation(libs.coroutines.test)
 }

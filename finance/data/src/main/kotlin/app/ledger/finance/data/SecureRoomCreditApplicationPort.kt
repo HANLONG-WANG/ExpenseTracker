@@ -12,24 +12,26 @@ import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.Money
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.time.EffectiveTime
+import app.ledger.finance.application.AccountDraft
 import app.ledger.finance.application.AssignCreditStatementRequest
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
+import app.ledger.finance.application.CreateCreditAccountProfileRequest
 import app.ledger.finance.application.CreditAccountView
 import app.ledger.finance.application.CreditApplicationPort
-import app.ledger.finance.application.CreateCreditAccountProfileRequest
-import app.ledger.finance.application.AccountDraft
 import app.ledger.finance.application.CreditAutoPaymentProposal
 import app.ledger.finance.application.CreditPaymentAccountView
 import app.ledger.finance.application.CreditPaymentAllocationView
 import app.ledger.finance.application.CreditProfileView
 import app.ledger.finance.application.CreditSnapshot
-import app.ledger.finance.application.CreditStatementView
 import app.ledger.finance.application.CreditStatementTransactionView
+import app.ledger.finance.application.CreditStatementView
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.ReallocateCreditPaymentRequest
 import app.ledger.finance.application.RecordCreditPaymentRequest
 import app.ledger.finance.application.SaveCreditProfileRequest
@@ -93,23 +95,17 @@ import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountId
 import app.ledger.finance.domain.UserAccountType
 import app.ledger.finance.domain.WeekendAdjustment
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
 class SecureRoomCreditApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
-    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
 ) : CreditApplicationPort {
-    private val applicationContext = context.applicationContext
-    private val writeGate: LedgerWriteGate = CreditWriteGate()
     private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
     private val mapper = RoomReferenceFinancialSnapshotMapper()
 
-    override suspend fun snapshot(bookId: StableId): DomainResult<CreditSnapshot> = withDatabase(bookId) { database ->
+    override suspend fun snapshot(bookId: StableId): DomainResult<CreditSnapshot> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val book = RoomBookRepository.mapCurrent(db)
             if (book.id.value != bookId) abort(FinanceDataError.CorruptData)
@@ -121,10 +117,9 @@ class SecureRoomCreditApplicationPort(
         saveProfile(database, request, null)
     }
 
-    override suspend fun createAccountWithProfile(request: CreateCreditAccountProfileRequest): DomainResult<app.ledger.finance.domain.CommandReceipt> =
-        withDatabase(request.profile.ids.bookId) { database ->
-            saveProfile(database, request.profile, request.account)
-        }
+    override suspend fun createAccountWithProfile(request: CreateCreditAccountProfileRequest): DomainResult<app.ledger.finance.domain.CommandReceipt> = withDatabase(request.profile.ids.bookId) { database ->
+        saveProfile(database, request.profile, request.account)
+    }
 
     private suspend fun saveProfile(
         database: LedgerDatabase,
@@ -146,19 +141,27 @@ class SecureRoomCreditApplicationPort(
             BookCommitId(request.ids.commitId),
         )
         val limitPeriod = request.limitEffectiveFrom?.let { effective ->
-            val alreadyRecorded = if (newAccount != null) false else database.readLedger { db ->
-                db.queryOne(
-                    "SELECT COUNT(*) FROM credit_limit_period clp JOIN user_account ua ON ua.id=clp.credit_account_id " +
-                        "WHERE ua.uid=? AND clp.effective_from=?",
-                    arrayOf<Any>(request.accountId.bytes, effective.toStorageInt()),
-                ) { it.getLong(0) } != 0L
+            val alreadyRecorded = if (newAccount != null) {
+                false
+            } else {
+                database.readLedger { db ->
+                    db.queryOne(
+                        "SELECT COUNT(*) FROM credit_limit_period clp JOIN user_account ua ON ua.id=clp.credit_account_id " +
+                            "WHERE ua.uid=? AND clp.effective_from=?",
+                        arrayOf<Any>(request.accountId.bytes, effective.toStorageInt()),
+                    ) { it.getLong(0) } != 0L
+                }
             }
-            val recordedByThisCommand = if (newAccount != null) false else database.readLedger { db ->
-                db.queryOne(
-                    "SELECT COUNT(*) FROM credit_limit_period clp JOIN user_account ua ON ua.id=clp.credit_account_id " +
-                        "JOIN book_commit bc ON bc.id=clp.created_commit_id WHERE ua.uid=? AND clp.effective_from=? AND bc.command_uid=?",
-                    arrayOf<Any>(request.accountId.bytes, effective.toStorageInt(), request.ids.commandId.stableId.bytes),
-                ) { it.getLong(0) } != 0L
+            val recordedByThisCommand = if (newAccount != null) {
+                false
+            } else {
+                database.readLedger { db ->
+                    db.queryOne(
+                        "SELECT COUNT(*) FROM credit_limit_period clp JOIN user_account ua ON ua.id=clp.credit_account_id " +
+                            "JOIN book_commit bc ON bc.id=clp.created_commit_id WHERE ua.uid=? AND clp.effective_from=? AND bc.command_uid=?",
+                        arrayOf<Any>(request.accountId.bytes, effective.toStorageInt(), request.ids.commandId.stableId.bytes),
+                    ) { it.getLong(0) } != 0L
+                }
             }
             request.standardLimitMinor?.takeIf { !alreadyRecorded || recordedByThisCommand }?.let {
                 CreditLimitPeriod(profile.accountId, effective, null, it, profile.lastCommitId)
@@ -322,7 +325,7 @@ class SecureRoomCreditApplicationPort(
         coordinate(database, draft.copy(payloadHash = CanonicalFinancialHash.command(draft)), source.snapshot)
     }
 
-    override suspend fun proposeAutoPayment(bookId: StableId, statementId: StableId, occurrenceId: StableId): DomainResult<CreditAutoPaymentProposal> = withDatabase(bookId) { database ->
+    override suspend fun proposeAutoPayment(bookId: StableId, statementId: StableId, occurrenceId: StableId): DomainResult<CreditAutoPaymentProposal> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val row = db.queryOne(
                 "SELECT cs.uid statement_uid,ua.uid account_uid,ua.currency_code,ua.status,csp.official_amount_minor,csp.remaining_amount_minor,cp.debt_minor," +
@@ -629,7 +632,7 @@ class SecureRoomCreditApplicationPort(
             creditAccountCreatedInCommit = newAccount?.accountId,
         )
         return DefaultFinancialMutationCoordinator(
-            writeGate,
+            CallerOwnedLedgerWriteGate,
             repository,
             object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
@@ -755,15 +758,12 @@ class SecureRoomCreditApplicationPort(
         else -> abort(FinanceDataError.CorruptData)
     }
 
-    private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> DomainResult<T>): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { openSelectedLedger(applicationContext, it, databaseName) }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+    private suspend fun <T> withDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
+        block: suspend (LedgerDatabase) -> DomainResult<T>,
+    ): DomainResult<T> = try {
+        databaseAccess.withCurrentDatabase(bookId, mode, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -784,11 +784,6 @@ class SecureRoomCreditApplicationPort(
         val paymentId: StableId?,
         val paymentActive: Boolean,
     )
-}
-
-private class CreditWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
 }
 
 private fun android.database.Cursor.string(name: String): String = getString(getColumnIndexOrThrow(name))

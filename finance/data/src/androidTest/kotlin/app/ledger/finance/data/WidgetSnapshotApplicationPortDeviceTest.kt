@@ -36,6 +36,7 @@ import java.util.UUID
 class WidgetSnapshotApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
 
     @Before
     fun prepare() {
@@ -43,6 +44,7 @@ class WidgetSnapshotApplicationPortDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
     }
 
     @After
@@ -84,7 +86,7 @@ class WidgetSnapshotApplicationPortDeviceTest {
                 ),
             ).success()
 
-            val port = SecureRoomWidgetSnapshotApplicationPort(context, keys)
+            val port = SecureRoomWidgetSnapshotApplicationPort(databaseAccess)
             val bundle = port.read(BOOK_ID).success()
             assertNotNull(bundle.book)
             assertEquals("JPY", bundle.book?.baseCurrency)

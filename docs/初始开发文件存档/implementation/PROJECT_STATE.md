@@ -1,8 +1,8 @@
 # Project State
 
-Last updated: 2026-08-12 (Asia/Tokyo)
-Current stage: P36 — final full acceptance, release hardening and delivery
-Stage status: VERIFIED (`P36-E001`—`P36-E008`); P00—P35 remain VERIFIED and repository implementation is closed
+Last updated: 2026-09-04 (Asia/Tokyo)
+Current stage: P36 — final release baseline; P37 interactive-performance remediation is verified
+Stage status: P36 remains VERIFIED (`P36-E001`—`P36-E008`); P37 is VERIFIED (`P37-E001`—`P37-E008`)
 P01 starting Git commit: `cb4d66e581c1c5e55c02c64089a5461ac9bae249`
 
 ## Recovery protocol after context compression
@@ -494,6 +494,7 @@ P35 is `VERIFIED`. `P35_PERFORMANCE_FAULT_SECURITY_AUDIT.md` records exact scale
 | P34 | VERIFIED | Three-language, adaptation, real TalkBack, privacy semantics, critical golden and exact 215-screen/646-state closure pass; see `P34-E001`—`P34-E008` |
 | P35 | VERIFIED | Fixed target-scale SQLCipher, Macrobenchmark/Baseline Profile/JankStats, bounded streaming, complete fault matrix, API 28/API 36 emulator regression and security/supply-chain audit pass; see `P35-E001`—`P35-E008` |
 | P36 | VERIFIED | 90/90 requirements, 215/215 screens, 35/35 invariants, full host/API 28/API 36 replay, hardened 1.0.0 AAB candidate, SBOM/licenses/NOTICE/privacy/release delivery and external publisher-input boundary; `P36-E001`—`P36-E008` |
+| P37 | VERIFIED | One process-scoped live-primary resource, globally ordered writes, revision-aware bounded caches, route-contained retained loading, bounded Journal queries, same-candidate API 28/API 36 latency/counter evidence, final aggregates and delivery hygiene pass; `P37-E001`—`P37-E008` |
 
 ## P17 verified handoff
 
@@ -828,3 +829,23 @@ All P35 evidence is recorded in `P35-E001`—`P35-E008` and `P35_PERFORMANCE_FAU
 P36 leaves the repository at version 1.0.0/code 1 with a minified, resource-shrunk unsigned external-signing AAB candidate; deterministic artifact hashes; the checked-in Baseline Profile; locked and strictly verified dependencies; a complete CycloneDX SBOM; zero-unknown third-party license inventory; NOTICE; three-language privacy policies; About/open-source, release-note and reproducible-build delivery; and explicit fail-closed Play inputs. The release-equivalent device replay found and fixed a WorkManager/R8 reflection failure and permanently guards it in both static mutation and target-APK tests.
 
 The final local evidence is `P36-E001`—`P36-E008` and `P36_FINAL_ACCEPTANCE_AND_RELEASE_DELIVERY.md`. All 90 requirements, 215 screen contracts and 35 permanent invariants are `VERIFIED`; P00—P36 are closed. Android provenance is the user's explicitly authorized API 28/API 36 emulator substitution and is not represented as physical-device evidence. No remote CI run or Play publication is claimed. Only publisher-owned application identity, signing/Play App Signing, Drive OAuth binding, diagnostic service policy, public URLs and store material remain external inputs; no repository code gap or unexplained blocker remains.
+
+## P37 verified handoff
+
+P37 replaces per-Port key unwrap/open/query/close cycles with one process-owned, block-scoped live-primary session resource shared by compatible UI and headless work. A single global financial write boundary preserves commit ordering; revision- and generation-keyed bounded caches, one-owner single-flight loads, retained refresh content and route-contained Compose observation prevent stale publication and broad spinner/recomposition cascades. Journal pages use bounded SQL independent of page length, and ordinary saves acknowledge only the committed transaction without reopening the database or synchronously reloading global references.
+
+The accepted API 28/API 36 evidence uses the identical release/R8 target APK SHA-256 `fa808559a0a4ab324a19445786601af465c0baf5cebdbf99d917cf54298db17b` and benchmark APK SHA-256 `e82e091ba138752042c61bb85e3b2d2d2a4657e9cd62168ae28506127899b11e`. Result SHA-256 values are `ec98fd786d2d1cc6083a762538700ec9c4de3dd5be7f7752ef3619f217a41e3b` (API 28) and `8e8ea76cc36fff6acbf047f3f3ca4d2c5756aa3bf3d3d0812c7e421d25ef6b78` (API 36). All frozen latency gates, exact open/unwrap/write/query counters, inherited frame/heap/file-descriptor checks and ordinary device matrices pass. This is KVM-backed emulator evidence, not physical-device evidence; remote CI and Play publication remain unclaimed.
+
+The reproducible final P37 commands are:
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_p37_interactive_performance.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_p37_interactive_performance_contracts -v
+ADB_INSTALL_TIMEOUT=10 ./gradlew --no-daemon generateP37Api28PerformanceEvidence --max-workers=1 --no-configuration-cache --console plain
+ADB_INSTALL_TIMEOUT=10 ./gradlew --no-daemon generateP37Api36PerformanceEvidence --max-workers=1 --no-configuration-cache --console plain
+./gradlew --no-daemon p37HostCheck --max-workers=4 --no-configuration-cache --console plain
+./gradlew --no-daemon p37Check --max-workers=4 --no-configuration-cache --console plain
+git diff --check
+```
+
+`P37-E001`—`P37-E008` are complete. P37 is `VERIFIED`; no local implementation, device-evidence, aggregate or delivery-hygiene action remains.

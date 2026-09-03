@@ -234,8 +234,14 @@ internal object TransactionSqlCompiler {
                 val pattern = "%${search.escapeLikePattern()}%"
                 val clause = "ctp.transaction_id IN (SELECT transaction_id FROM transaction_fts WHERE " +
                     listOf(
-                        "category_name", "merchant_name", "merchant_aliases", "note", "project_name",
-                        "settlement_activity_name", "participant_names", "attachment_names",
+                        "category_name",
+                        "merchant_name",
+                        "merchant_aliases",
+                        "note",
+                        "project_name",
+                        "settlement_activity_name",
+                        "participant_names",
+                        "attachment_names",
                     ).joinToString(" OR ") { "$it LIKE ? ESCAPE '\\'" } + ")"
                 repeat(FTS_TEXT_COLUMN_COUNT) { args += pattern }
                 clause

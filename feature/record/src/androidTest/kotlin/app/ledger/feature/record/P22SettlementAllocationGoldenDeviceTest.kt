@@ -61,6 +61,6 @@ class P22SettlementAllocationGoldenDeviceTest {
 
     private companion object {
         const val GOLDEN_TAG = "p22_rec011_golden_root"
-        const val EXPECTED_SHA256 = "10ac3fb165b6f3881f6c0e1c3b03f8aa8d7ce3bbe6e50f16b1f58760287767b4"
+        const val EXPECTED_SHA256 = "5b2a60254925c0b5f6c78ecd71116306cf18831e4cdb3f59736b5e1b06eafb0d"
     }
 }

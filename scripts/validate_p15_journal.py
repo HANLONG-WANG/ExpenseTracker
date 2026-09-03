@@ -59,7 +59,7 @@ def load_sources() -> dict[str, str]:
 
 
 def validate_contract() -> list[str]:
-    contract = yaml.safe_load(read("docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))
+    contract = yaml.safe_load(read("docs/初始开发文件存档/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))
     actual = {screen["id"]: set(screen.get("requiredStates", [])) for screen in contract["screens"]}
     errors: list[str] = []
     if len(EXPECTED_STATES) != 12 or sum(map(len, EXPECTED_STATES.values())) != 42:
@@ -241,9 +241,9 @@ def validate_tests_and_resources() -> list[str]:
 
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
-    state = read("docs/implementation/PROJECT_STATE.md")
-    evidence = read("docs/implementation/TEST_EVIDENCE.md")
-    mapping_path = ROOT / "docs/implementation/P15_JOURNAL_MAPPING.md"
+    state = read("docs/初始开发文件存档/implementation/PROJECT_STATE.md")
+    evidence = read("docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
+    mapping_path = ROOT / "docs/初始开发文件存档/implementation/P15_JOURNAL_MAPPING.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
     require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "P00—P35 remain VERIFIED"))
     for index in range(1, 9):
@@ -251,14 +251,14 @@ def validate_ledgers() -> list[str]:
             errors.append(f"TEST_EVIDENCE missing P15-E{index:03d}")
     require_tokens(errors, mapping, "P15 mapping", ("42 required states", "500,000", "FinancialMutationCoordinator", "P15 is `VERIFIED`"))
 
-    with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = {row["screen_id"]: row for row in csv.DictReader(handle)}
     for screen_id in EXPECTED_STATES:
         row = screens.get(screen_id, {})
         if row.get("status") != "VERIFIED" or "P15" not in row.get("implementation_evidence", "") or "P15-E" not in row.get("verification_evidence", ""):
             errors.append(f"{screen_id} must carry VERIFIED P15 implementation and test evidence")
 
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         requirements = {row["requirement_id"]: row for row in csv.DictReader(handle)}
     for requirement_id in TARGET_REQUIREMENTS:
         row = requirements.get(requirement_id, {})

@@ -43,7 +43,7 @@ def require_tokens(errors: list[str], text: str, label: str, tokens: tuple[str, 
 
 
 def validate_contract() -> list[str]:
-    screens = {item["id"]: item for item in yaml.safe_load(read("docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))["screens"]}
+    screens = {item["id"]: item for item in yaml.safe_load(read("docs/初始开发文件存档/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))["screens"]}
     errors: list[str] = []
     for screen_id, (route, params, states) in EXPECTED.items():
         actual = screens.get(screen_id, {})
@@ -84,12 +84,14 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         errors.append("blueprint API carries forbidden runtime fields")
 
     data = next((value for path, value in sources.items() if path.endswith("SecureRoomAutomationApplicationPort.kt")), "")
-    require_tokens(errors, data, "encrypted occurrence adapter", ("EncryptedDatabaseFactory.openPrimary", "RecurrenceEngine.next", "deriveStableId", "recurrence_occurrence", "recurrence_candidate", "RecurrenceGenerationMode.CANDIDATE", "createCandidate"))
+    require_tokens(errors, data, "session-scoped encrypted occurrence adapter", ("LedgerDatabaseOperationAccess", "databaseAccess.withCurrentDatabase", "RecurrenceEngine.next", "deriveStableId", "recurrence_occurrence", "recurrence_candidate", "RecurrenceGenerationMode.CANDIDATE", "createCandidate"))
+    if "EncryptedDatabaseFactory.openPrimary" in data or "DeviceLedgerKeyProvider" in data:
+        errors.append("automation adapter bypasses the process-scoped encrypted session")
     if re.search(r"INSERT\s+INTO\s+(?:journal_entry|posting|economic_effect|budget_effect)", data, re.IGNORECASE):
         errors.append("candidate/occurrence adapter directly writes financial facts")
 
     worker = next((value for path, value in sources.items() if path.endswith("RecurrenceCatchUpWorker.kt")), "")
-    require_tokens(errors, worker, "WorkManager catch-up", ("enqueueUniqueWork", "enqueueUniquePeriodicWork", "ExistingWorkPolicy.KEEP", "ExistingPeriodicWorkPolicy.KEEP", 'setOf(INPUT_OPERATION_ID)', 'const val INPUT_OPERATION_ID = "operationId"'))
+    require_tokens(errors, worker, "WorkManager catch-up", ("enqueueUniqueWork", "enqueueUniquePeriodicWork", "ExistingWorkPolicy.KEEP", "ExistingPeriodicWorkPolicy.KEEP", "setInitialDelay(PERIODIC_HOURS", "scheduleStartupCatchUpAndAwait", 'setOf(INPUT_OPERATION_ID)', 'const val INPUT_OPERATION_ID = "operationId"'))
     if re.search(r"put(?:String|Long|Int)\(\s*\"(?!operationId)", worker):
         errors.append("Worker input contains more than opaque operationId")
     if "AlarmManager" in worker or "setExact" in worker:
@@ -99,7 +101,7 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
         errors.append("Worker can obtain the automation port without a headless lease")
 
     headless = next((value for path, value in sources.items() if path.endswith("AppHeadlessRecurrenceExecutor.kt")), "")
-    require_tokens(errors, headless, "headless recurrence lease", ("BookSessionManager", "HeadlessBookLease", "acquireHeadlessLease", "HeadlessLeaseCapability.RECURRENCE_WRITE", "lease?.release()", "manager.close()"))
+    require_tokens(errors, headless, "headless recurrence lease", ("ActiveBookSessionRuntime", "sessionRuntime.activate", "HeadlessBookLease", "acquireHeadlessLease", "HeadlessLeaseCapability.RECURRENCE_WRITE", "lease?.release()", "manager.close()"))
 
     formal = next((value for path, value in sources.items() if path.endswith("AppFormalOccurrenceGenerator.kt")), "")
     require_tokens(errors, formal, "formal integration", ("OrdinaryTransactionEntryPort", "CreditApplicationPort", "LoanApplicationPort", "TransactionSource.RECURRENCE_AUTO", "sourceOccurrenceId"))
@@ -137,21 +139,21 @@ def validate_tests_resources() -> list[str]:
 
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
-    state, evidence = read("docs/implementation/PROJECT_STATE.md"), read("docs/implementation/TEST_EVIDENCE.md")
-    mapping_path = ROOT / "docs/implementation/P23_AUTOMATION_MAPPING.md"
+    state, evidence = read("docs/初始开发文件存档/implementation/PROJECT_STATE.md"), read("docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
+    mapping_path = ROOT / "docs/初始开发文件存档/implementation/P23_AUTOMATION_MAPPING.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
     require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "| P23 | VERIFIED |"))
     for index in range(1, 8):
         if f"P23-E{index:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P23-E{index:03d}")
     require_tokens(errors, mapping, "P23 mapping", ("25 required states", "occurrence unique key", "candidate", "WorkManager", "P23 is `VERIFIED`"))
-    with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = {row["screen_id"]: row for row in csv.DictReader(handle)}
     for screen_id in EXPECTED:
         row = screens.get(screen_id, {})
         if row.get("status") != "VERIFIED" or "P23" not in row.get("implementation_evidence", "") or "P23-E" not in row.get("verification_evidence", ""):
             errors.append(f"{screen_id} lacks VERIFIED P23 evidence")
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         requirements = {row["requirement_id"]: row for row in csv.DictReader(handle)}
     for requirement_id in ("REQ-004", "REQ-039", "REQ-058", "REQ-059"):
         row = requirements.get(requirement_id, {})

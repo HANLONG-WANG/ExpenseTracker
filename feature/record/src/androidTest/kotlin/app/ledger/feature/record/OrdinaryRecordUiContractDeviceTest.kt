@@ -14,16 +14,18 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.ledger.core.common.DomainResult
-import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerSaveFab
 import app.ledger.core.designsystem.LedgerScaffold
+import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
 import app.ledger.core.money.CurrencyCode
@@ -115,8 +117,11 @@ class OrdinaryRecordUiContractDeviceTest {
             }
         }
         composeRule.onNodeWithTag(LedgerTestTags.RECORD_EDITOR).assertExists()
+        composeRule.onNodeWithTag(LedgerTestTags.RECORD_EDITOR).performScrollToNode(hasTestTag(LedgerTestTags.RECORD_CATEGORY))
         composeRule.onNodeWithTag(LedgerTestTags.RECORD_CATEGORY).assertExists().assertHasClickAction()
+        composeRule.onNodeWithTag(LedgerTestTags.RECORD_EDITOR).performScrollToNode(hasTestTag(LedgerTestTags.RECORD_ACCOUNT))
         composeRule.onNodeWithTag(LedgerTestTags.RECORD_ACCOUNT).assertExists().assertHasClickAction()
+        composeRule.onNodeWithTag(LedgerTestTags.RECORD_EDITOR).performScrollToNode(hasTestTag(LedgerTestTags.RECORD_VALIDATION))
         composeRule.onNodeWithTag(LedgerTestTags.RECORD_VALIDATION).assertExists()
 
         composeRule.runOnIdle { state.value = OrdinaryRecordDeviceFixtures.content(validated.copy(presentation = RecordEditorPresentation.REVISION_CONFLICT)) }

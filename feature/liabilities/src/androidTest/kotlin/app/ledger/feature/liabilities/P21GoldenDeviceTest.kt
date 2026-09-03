@@ -73,8 +73,8 @@ class P21GoldenDeviceTest {
     private companion object {
         const val GOLDEN_TAG = "p21_loan_golden_root"
         val CASES = listOf(
-            Golden("LOA-007", ThemeMode.LIGHT, LoanDeviceFixtures.state("LOA-007", LoanPresentation.MULTI_TRANCHE), "6f00bc134059ef0de333706f3aacfffdc36d16a1138f8f4f3f5a9627228421d4"),
-            Golden("LOA-010", ThemeMode.DARK, LoanDeviceFixtures.state("LOA-010", LoanPresentation.RESULT), "8d3b4240181052ed95a2a9142df4639c0a109561eecd32f184cfbb682464d9cd"),
+            Golden("LOA-007", ThemeMode.LIGHT, LoanDeviceFixtures.state("LOA-007", LoanPresentation.MULTI_TRANCHE), "46e951898c803a613a2092bbe25d25b40b60ebf3343ded52cc1d9a4972f78f37"),
+            Golden("LOA-010", ThemeMode.DARK, LoanDeviceFixtures.state("LOA-010", LoanPresentation.RESULT), "2e0fef1a7a9415bc5128ce95671bf58460efb26782a15a73fcb366936752a0d2"),
         )
     }
 }

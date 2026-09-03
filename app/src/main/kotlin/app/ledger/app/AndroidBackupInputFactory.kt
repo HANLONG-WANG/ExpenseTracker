@@ -6,6 +6,7 @@ import android.content.Context
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.security.SecurityEnvelopeStore
 import app.ledger.core.security.VaultBackupEnvelopeStore
 import app.ledger.finance.data.SecureShadowLedgerAccess
@@ -28,11 +29,12 @@ import java.time.Instant
 internal class AndroidBackupInputFactory(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
+    databaseAccess: LedgerDatabaseOperationAccess,
 ) {
     private val applicationContext = context.applicationContext
-    private val shadowAccess = SecureShadowLedgerAccess(applicationContext, keyProvider)
+    private val shadowAccess = SecureShadowLedgerAccess(applicationContext, keyProvider, databaseAccess)
 
-    fun prepare(
+    suspend fun prepare(
         bookId: StableId,
         operationId: StableId,
         repositoryId: BackupRepositoryId,

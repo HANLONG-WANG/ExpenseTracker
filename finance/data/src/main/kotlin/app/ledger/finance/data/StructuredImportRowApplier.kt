@@ -96,17 +96,16 @@ internal class StructuredImportRowApplier(
     keyProvider: app.ledger.core.security.DeviceLedgerKeyProvider,
     databaseName: String,
 ) {
-    private val references = SecureRoomReferenceDataManagementPort(context, keyProvider, databaseName)
-    private val credit = SecureRoomCreditApplicationPort(context, keyProvider, databaseName)
-    private val installment = SecureRoomInstallmentApplicationPort(context, keyProvider, databaseName)
-    private val loan = SecureRoomLoanApplicationPort(context, keyProvider, databaseName)
-    private val budget = SecureRoomBudgetApplicationPort(context, keyProvider, databaseName)
-    private val settlement = SecureRoomSettlementApplicationPort(context, keyProvider, databaseName)
+    private val databaseAccess = OfflineSelectedLedgerDatabaseAccess(context, keyProvider, databaseName)
+    private val references = SecureRoomReferenceDataManagementPort(databaseAccess)
+    private val credit = SecureRoomCreditApplicationPort(databaseAccess)
+    private val installment = SecureRoomInstallmentApplicationPort(databaseAccess)
+    private val loan = SecureRoomLoanApplicationPort(databaseAccess)
+    private val budget = SecureRoomBudgetApplicationPort(databaseAccess)
+    private val settlement = SecureRoomSettlementApplicationPort(databaseAccess)
     private val automation = SecureRoomAutomationApplicationPort(
-        context,
-        keyProvider,
+        databaseAccess,
         FormalOccurrenceGenerator { DomainResult.Failure(ImportFinancialError.PageSequenceInvalid) },
-        databaseName,
     )
 
     suspend fun apply(row: StructuredImportRow): DomainResult<List<StructuredAppliedCommit>> = try {

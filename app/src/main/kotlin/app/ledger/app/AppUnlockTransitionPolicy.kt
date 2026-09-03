@@ -4,9 +4,11 @@ import app.ledger.core.security.BookSessionState
 
 /** Rejects duplicate or stale system-authentication callbacks at the session boundary. */
 internal object AppUnlockTransitionPolicy {
-    fun mayConsumeSuccess(session: BookSessionState, authentication: AppAuthenticationState): Boolean =
-        session == BookSessionState.Locked && authentication == AppAuthenticationState.AUTHENTICATING
+    fun mayOpenWithoutAuthentication(session: BookSessionState, appLockEnabled: Boolean): Boolean = !appLockEnabled && session == BookSessionState.Locked
 
-    fun mayConsumeFailure(session: BookSessionState, authentication: AppAuthenticationState): Boolean =
-        session == BookSessionState.Locked && authentication == AppAuthenticationState.AUTHENTICATING
+    fun mayConsumeSuccess(session: BookSessionState, authentication: AppAuthenticationState): Boolean = session == BookSessionState.Locked &&
+        authentication == AppAuthenticationState.AUTHENTICATING
+
+    fun mayConsumeFailure(session: BookSessionState, authentication: AppAuthenticationState): Boolean = session == BookSessionState.Locked &&
+        authentication == AppAuthenticationState.AUTHENTICATING
 }

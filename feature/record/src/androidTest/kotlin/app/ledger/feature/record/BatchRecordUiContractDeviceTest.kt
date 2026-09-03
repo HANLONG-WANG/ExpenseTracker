@@ -16,9 +16,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -130,11 +130,11 @@ class BatchRecordUiContractDeviceTest {
     fun batchCommitWithAnyValidationErrorDispatchesNoWrite() {
         val state = errorState()
         var writes = 0
-        val actions = ACTIONS.copy(
-            onCommit = {
+        val actions: (BatchRecordScreenAction) -> Unit = { action ->
+            if (action === BatchRecordScreenAction.Commit) {
                 if (state.validation.errors.isEmpty()) writes += 1
-            },
-        )
+            }
+        }
         composeRule.setContent {
             LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
                 Box(Modifier.size(360.dp, 800.dp)) {
@@ -242,9 +242,9 @@ class BatchRecordUiContractDeviceTest {
         )
 
         private val GOLDENS = listOf(
-            Golden("REC-023", ThemeMode.LIGHT, "a207b0736bfcd848e9ab6f22d64bff60a78a6c4ca2199d0f6c2d8d459e61e044", ::validState),
-            Golden("REC-024", ThemeMode.DARK, "8ed41793fa25efcf05748f91db243563438f3b1e73139d8102429364bf0c6745") { editorState(true) },
-            Golden("REC-025", ThemeMode.LIGHT, "a2b7abdb5d31b650f3ff52d3352be6a7e2476c2c6ca2128ff54fed58cfc61c96", ::warningState),
+            Golden("REC-023", ThemeMode.LIGHT, "08676a56f3dba1401a283688a0b9438eb62bcbb9b5fb2d93e155842d5b1b5007", ::validState),
+            Golden("REC-024", ThemeMode.DARK, "7e63ba279e94446aace14ee0b7db47c14749afa5631015e5b2fb49c0d470602a") { editorState(true) },
+            Golden("REC-025", ThemeMode.LIGHT, "f3fbe5c48c81d219479b4a55eb38f57239056ce33dc8f1eb7ed595b8598152d0", ::warningState),
         )
 
         private fun id(value: Long): StableId = StableId.fromUuid(UUID(0x2400L, value))

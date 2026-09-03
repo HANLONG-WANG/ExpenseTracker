@@ -139,8 +139,7 @@ internal class VaultController(
         }
     }
 
-    private fun knownSecretCardIds(): Set<StableId> =
-        cards.values.asSequence().filter(VaultCardSummary::hasSecret).map(VaultCardSummary::cardId).toCollection(linkedSetOf())
+    private fun knownSecretCardIds(): Set<StableId> = cards.values.asSequence().filter(VaultCardSummary::hasSecret).map(VaultCardSummary::cardId).toCollection(linkedSetOf())
 
     private fun publishCardSnapshot(forceLocked: Boolean = false) {
         val current = mutableState.value

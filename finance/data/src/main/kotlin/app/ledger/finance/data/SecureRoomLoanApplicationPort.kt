@@ -12,14 +12,16 @@ import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.Money
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.time.EffectiveTime
 import app.ledger.finance.application.ApplyLoanSimulationRequest
 import app.ledger.finance.application.AtomicFinancialCommitRepository
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.LoanAccountOption
 import app.ledger.finance.application.LoanApplicationPort
 import app.ledger.finance.application.LoanComponentAllocationDraft
@@ -98,24 +100,18 @@ import app.ledger.finance.domain.TransactionId
 import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountId
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.math.BigDecimal
 import java.nio.ByteBuffer
 import java.time.Instant
 import java.time.LocalDate
 
 class SecureRoomLoanApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
-    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
 ) : LoanApplicationPort {
-    private val applicationContext = context.applicationContext
     private val mapper = RoomReferenceFinancialSnapshotMapper()
     private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
-    private val writeGate: LedgerWriteGate = LoanWriteGate()
 
-    override suspend fun snapshot(bookId: StableId): DomainResult<LoanSnapshot> = withDatabase(bookId) { database ->
+    override suspend fun snapshot(bookId: StableId): DomainResult<LoanSnapshot> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val book = RoomBookRepository.mapCurrent(db)
             if (book.id.value != bookId) abort(FinanceDataError.CorruptData)
@@ -137,7 +133,7 @@ class SecureRoomLoanApplicationPort(
         }
     }
 
-    override suspend fun paymentDetail(bookId: StableId, transactionId: StableId): DomainResult<LoanPaymentDetailView?> = withDatabase(bookId) { database ->
+    override suspend fun paymentDetail(bookId: StableId, transactionId: StableId): DomainResult<LoanPaymentDetailView?> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val header = db.queryOne(
                 "SELECT tr.local_date,lc.name contract_name,lc.currency_code,MAX(pay.name) payment_name," +
@@ -164,8 +160,10 @@ class SecureRoomLoanApplicationPort(
                 arrayOf(transactionId.bytes),
             ) { cursor ->
                 LoanPaymentAllocationView(
-                    cursor.string("tranche_name"), cursor.nullableLong("installment_no")?.toInt(),
-                    LoanPaymentComponent.entries[cursor.int("component")], cursor.long("amount_minor"),
+                    cursor.string("tranche_name"),
+                    cursor.nullableLong("installment_no")?.toInt(),
+                    LoanPaymentComponent.entries[cursor.int("component")],
+                    cursor.long("amount_minor"),
                 )
             }
             DomainResult.Success(header.copy(allocations = allocations))
@@ -339,7 +337,7 @@ class SecureRoomLoanApplicationPort(
         coordinate(database, command, snapshot)
     }
 
-    override suspend fun simulate(request: LoanSimulationRequest): DomainResult<LoanPrepaymentSimulation> = withDatabase(request.bookId) { database ->
+    override suspend fun simulate(request: LoanSimulationRequest): DomainResult<LoanPrepaymentSimulation> = withDatabase(request.bookId, LedgerAccessMode.READ) { database ->
         val loaded = database.readLedger { db -> loadContractDomain(db, request.contractId, request.trancheId) }
         val replacementTerms = termsRevision(
             request.replacementTerms,
@@ -914,7 +912,7 @@ class SecureRoomLoanApplicationPort(
     ): DomainResult<CommandReceipt> {
         val repository: AtomicFinancialCommitRepository = RoomFinancialCommitRepository(database)
         return DefaultFinancialMutationCoordinator(
-            writeGate,
+            CallerOwnedLedgerWriteGate,
             repository as app.ledger.finance.application.CommandReceiptRepository,
             object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
@@ -926,16 +924,10 @@ class SecureRoomLoanApplicationPort(
 
     private suspend fun <T> withDatabase(
         bookId: StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
         block: suspend (LedgerDatabase) -> DomainResult<T>,
     ): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { openSelectedLedger(applicationContext, it, databaseName) }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+        databaseAccess.withCurrentDatabase(bookId, mode, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -1000,11 +992,6 @@ class SecureRoomLoanApplicationPort(
                 cursor.long("fee_paid"), cursor.long("penalty_paid"),
             )
         }
-    }
-
-    private class LoanWriteGate : LedgerWriteGate {
-        private val mutex = Mutex()
-        override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
     }
 
     private companion object {

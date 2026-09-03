@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "core" / "database" / "src" / "main" / "assets"
 CATALOG = ROOT / "core" / "database" / "schema-contract"
-MAPPING = ROOT / "docs" / "implementation" / "P07_SCHEMA_MAPPING.md"
+MAPPING = ROOT / "docs" / "初始开发文件存档" / "implementation" / "P07_SCHEMA_MAPPING.md"
 
 PRIMARY_ASSETS = (
     "ledger_schema_v1_core.sql",

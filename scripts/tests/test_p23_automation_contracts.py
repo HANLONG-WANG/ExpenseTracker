@@ -27,6 +27,19 @@ class P23AutomationMutationTest(unittest.TestCase):
         sources[path] += '\ndb.execSQL("INSERT INTO posting")\n'
         self.assertTrue(validator.validate_sources(sources))
 
+    def test_automation_adapter_cannot_bypass_process_session(self) -> None:
+        self.assertTrue(
+            self.mutate(
+                "SecureRoomAutomationApplicationPort.kt",
+                "LedgerDatabaseOperationAccess",
+                "DirectDatabaseAccess",
+            )
+        )
+        sources = copy.deepcopy(self.sources)
+        path = next(path for path in sources if path.endswith("SecureRoomAutomationApplicationPort.kt"))
+        sources[path] += "\nEncryptedDatabaseFactory.openPrimary(context, passphrase)\n"
+        self.assertTrue(validator.validate_sources(sources))
+
     def test_worker_payload_cannot_add_business_fields(self) -> None:
         sources = copy.deepcopy(self.sources)
         path = next(path for path in sources if path.endswith("RecurrenceCatchUpWorker.kt"))
@@ -36,12 +49,28 @@ class P23AutomationMutationTest(unittest.TestCase):
     def test_unique_work_policy_cannot_be_weakened(self) -> None:
         self.assertTrue(self.mutate("RecurrenceCatchUpWorker.kt", "ExistingWorkPolicy.KEEP", "ExistingWorkPolicy.REPLACE"))
 
+    def test_periodic_worker_cannot_compete_with_startup_catch_up(self) -> None:
+        self.assertTrue(
+            self.mutate(
+                "RecurrenceCatchUpWorker.kt",
+                ".setInitialDelay(PERIODIC_HOURS, TimeUnit.HOURS)",
+                ".setInitialDelay(0, TimeUnit.HOURS)",
+            )
+        )
+
     def test_headless_recurrence_lease_cannot_be_removed(self) -> None:
         self.assertTrue(
             self.mutate(
                 "AppHeadlessRecurrenceExecutor.kt",
                 "HeadlessLeaseCapability.RECURRENCE_WRITE",
                 "HeadlessLeaseCapability.BACKUP_READ",
+            )
+        )
+        self.assertTrue(
+            self.mutate(
+                "AppHeadlessRecurrenceExecutor.kt",
+                "ActiveBookSessionRuntime",
+                "CompetingSessionRuntime",
             )
         )
 

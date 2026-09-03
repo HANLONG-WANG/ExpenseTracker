@@ -260,7 +260,7 @@ def main() -> int:
     if unverified_locks:
         fail(f"locked components lack verification metadata: {sorted(unverified_locks)}")
 
-    ui_root = ROOT / "docs/UI设计稿与实现契约_v1.0"
+    ui_root = ROOT / "docs/初始开发文件存档/UI设计稿与实现契约_v1.0"
     tokens = json.loads((ui_root / "android_ledger_ui_tokens_v1.json").read_text(encoding="utf-8"))
     contract = yaml.safe_load((ui_root / "android_ledger_screen_contract_v1.yaml").read_text(encoding="utf-8"))
     with (ui_root / "UI需求追踪矩阵_v1.csv").open(encoding="utf-8", newline="") as stream:
@@ -275,7 +275,7 @@ def main() -> int:
     if len(screens) != 215 or len({screen["id"] for screen in screens}) != 215 or len({screen["route"] for screen in screens}) != 215:
         fail("screen YAML IDs/routes are not complete and unique")
 
-    with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as stream:
+    with (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as stream:
         screen_coverage = list(csv.DictReader(stream))
     cumulative_promotions = {
         "REC-009": "IN_PROGRESS",

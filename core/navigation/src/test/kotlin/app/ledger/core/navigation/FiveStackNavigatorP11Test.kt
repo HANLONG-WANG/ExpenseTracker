@@ -7,6 +7,31 @@ import org.junit.jupiter.api.Test
 
 class FiveStackNavigatorP11Test {
     @Test
+    fun observableVersionChangesForEverySuccessfulStackMutationOnly() {
+        val navigator = FiveStackNavigator()
+        var expectedVersion = navigator.version
+
+        assertEquals(NavigationOutcome.AtRoot, navigator.pop())
+        assertEquals(expectedVersion, navigator.version)
+
+        val more = LedgerRouteContract.destination(ScreenId("G-006"))
+        assertEquals(NavigationOutcome.BlockedBySessionGate, navigator.navigate(more, SessionGateState.LOCKED))
+        assertEquals(expectedVersion, navigator.version)
+
+        assertEquals(NavigationOutcome.Navigated, navigator.navigate(more, SessionGateState.READY))
+        assertEquals(++expectedVersion, navigator.version)
+        assertEquals(NavigationOutcome.Popped, navigator.pop())
+        assertEquals(++expectedVersion, navigator.version)
+        assertEquals(NavigationOutcome.Navigated, navigator.select(TopLevelDestination.JOURNAL))
+        assertEquals(++expectedVersion, navigator.version)
+        assertEquals(NavigationOutcome.ScrollRootToTop, navigator.select(TopLevelDestination.JOURNAL))
+        assertEquals(++expectedVersion, navigator.version)
+
+        assertTrue(navigator.restore(navigator.snapshot()))
+        assertEquals(++expectedVersion, navigator.version)
+    }
+
+    @Test
     fun fiveHistoriesRemainIndependentAndReselectionPopsOnlyCurrentStack() {
         val navigator = FiveStackNavigator()
         TopLevelDestination.entries.forEach { topLevel ->

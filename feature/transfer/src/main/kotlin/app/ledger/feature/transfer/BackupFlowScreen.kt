@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -632,17 +633,18 @@ private fun formatEstimatedBytes(bytes: Long): String = Formatter.formatFileSize
 @Composable
 private fun BackupSnapshotUi.logicalContentLabel(): String {
     val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
     val count = objectCount
     val bytes = logicalBytes
     return when {
         bytes != null && count != null -> stringResource(
             R.string.backup_snapshot_content_summary,
             Formatter.formatFileSize(context, bytes),
-            NumberFormat.getIntegerInstance(context.resources.configuration.locales[0]).format(count),
+            NumberFormat.getIntegerInstance(locale).format(count),
         )
         localRevision != null -> stringResource(
             R.string.backup_snapshot_revision,
-            NumberFormat.getIntegerInstance(context.resources.configuration.locales[0]).format(localRevision),
+            NumberFormat.getIntegerInstance(locale).format(localRevision),
         )
         else -> logicalContent
     }

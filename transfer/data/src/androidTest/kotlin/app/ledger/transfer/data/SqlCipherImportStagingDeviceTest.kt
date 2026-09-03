@@ -8,8 +8,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
+import app.ledger.core.database.EncryptedDatabaseFactory
+import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.security.AndroidKeystoreKeys
 import app.ledger.core.security.DeviceKeyHierarchy
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.security.SecureImportSourceHandleStore
 import app.ledger.core.security.SecureImportStagingAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
@@ -55,6 +59,7 @@ class SqlCipherImportStagingDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
     private lateinit var access: SecureImportStagingAccess
+    private lateinit var primaryAccess: SecurePrimaryLedgerAccess
 
     @Before
     fun prepare() {
@@ -67,6 +72,7 @@ class SqlCipherImportStagingDeviceTest {
         keys.initialize(BOOK_ID)
         keys.initialize(OTHER_BOOK_ID)
         access = SecureImportStagingAccess(context, keys)
+        primaryAccess = SecurePrimaryLedgerAccess(context, keys, DeviceTestLedgerDatabaseAccess(context, keys))
     }
 
     @After
@@ -126,8 +132,7 @@ class SqlCipherImportStagingDeviceTest {
 
     @Test
     fun committingOperationParametersSurviveEncryptedRepositoryRecreation() = runBlocking {
-        val access = SecurePrimaryLedgerAccess(context, keys)
-        var repository = SqlCipherBackgroundOperationRepository(BOOK_ID, access)
+        var repository = SqlCipherBackgroundOperationRepository(BOOK_ID, primaryAccess)
         val source = StableId.fromUuid(UUID(0x28L, 10L))
         val importRecord = StableId.fromUuid(UUID(0x28L, 11L))
         val batch = StableId.fromUuid(UUID(0x28L, 12L))
@@ -157,7 +162,7 @@ class SqlCipherImportStagingDeviceTest {
         ).success().transition(BackgroundOperationState.COMMITTING, created.plusMillis(4)).success()
         repository.save(configured).success()
 
-        repository = SqlCipherBackgroundOperationRepository(BOOK_ID, SecurePrimaryLedgerAccess(context, keys))
+        repository = SqlCipherBackgroundOperationRepository(BOOK_ID, primaryAccess)
         val restored = requireNotNull(repository.get(OPERATION_ID).success())
         assertEquals(BackgroundOperationState.COMMITTING, restored.state)
         assertEquals(commit, (restored.parameters as OperationParameters.Import).commit)
@@ -186,11 +191,11 @@ class SqlCipherImportStagingDeviceTest {
             filter = ExportFilter(searchText = "食費"),
             report = report,
         )
-        var repository = SqlCipherBackgroundOperationRepository(BOOK_ID, SecurePrimaryLedgerAccess(context, keys))
+        var repository = SqlCipherBackgroundOperationRepository(BOOK_ID, primaryAccess)
         repository.save(
             BackgroundOperation.queued(id, BackgroundOperationType.EXPORT, Instant.ofEpochMilli(29_000L), OperationParameters.Export(handle, descriptor)),
         ).success()
-        repository = SqlCipherBackgroundOperationRepository(BOOK_ID, SecurePrimaryLedgerAccess(context, keys))
+        repository = SqlCipherBackgroundOperationRepository(BOOK_ID, primaryAccess)
         val restored = requireNotNull(repository.get(id).success())
         assertEquals(descriptor, (restored.parameters as OperationParameters.Export).descriptor)
         assertFalse(context.getDatabasePath("ledger.db").readBytes().containsSubsequence("Current report · 東京".toByteArray()))
@@ -198,7 +203,7 @@ class SqlCipherImportStagingDeviceTest {
 
     @Test
     fun durableOperationCenterListsNewestEncryptedOperationsWithoutParameters() = runBlocking {
-        val repository = SqlCipherBackgroundOperationRepository(BOOK_ID, SecurePrimaryLedgerAccess(context, keys))
+        val repository = SqlCipherBackgroundOperationRepository(BOOK_ID, primaryAccess)
         val older = BackgroundOperation.queued(
             BackgroundOperationId(StableId.fromUuid(UUID(0x33L, 31L))),
             BackgroundOperationType.IMPORT,
@@ -219,7 +224,7 @@ class SqlCipherImportStagingDeviceTest {
 
         val listed = SqlCipherBackgroundOperationRepository(
             BOOK_ID,
-            SecurePrimaryLedgerAccess(context, keys),
+            primaryAccess,
         ).list(100).success()
         assertEquals(listOf(newer.id, older.id), listed.map { it.id })
         assertEquals(listOf(BackgroundOperationState.PREPARING, BackgroundOperationState.QUEUED), listed.map { it.state })
@@ -278,5 +283,27 @@ class SqlCipherImportStagingDeviceTest {
         val BOOK_ID: StableId = StableId.fromUuid(UUID(0x28L, 1L))
         val OTHER_BOOK_ID: StableId = StableId.fromUuid(UUID(0x28L, 2L))
         val OPERATION_ID: BackgroundOperationId = BackgroundOperationId(StableId.fromUuid(UUID(0x28L, 3L)))
+    }
+}
+
+private class DeviceTestLedgerDatabaseAccess(
+    context: Context,
+    private val keyProvider: DeviceKeyHierarchy,
+) : LedgerDatabaseOperationAccess {
+    private val applicationContext = context.applicationContext
+
+    override suspend fun <T> withCurrentDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode,
+        block: suspend (LedgerDatabase) -> T,
+    ): T = keyProvider.open(bookId).use { keys ->
+        val database = keys.databaseDek.useBytes { passphrase ->
+            EncryptedDatabaseFactory.openPrimary(applicationContext, passphrase)
+        }
+        try {
+            block(database)
+        } finally {
+            database.close()
+        }
     }
 }

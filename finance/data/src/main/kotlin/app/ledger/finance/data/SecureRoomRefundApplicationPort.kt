@@ -11,19 +11,25 @@ import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.Money
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.time.EffectiveTime
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.RefundApplicationPort
+import app.ledger.finance.application.RefundCandidateCursor
+import app.ledger.finance.application.RefundCandidatePage
 import app.ledger.finance.application.RefundNamedReference
+import app.ledger.finance.application.RefundReferenceSnapshot
 import app.ledger.finance.application.RefundSearchQuery
 import app.ledger.finance.application.RefundSnapshot
 import app.ledger.finance.application.RefundWriteRequest
 import app.ledger.finance.application.RefundableTransactionView
+import app.ledger.finance.application.toBoundedReferenceSnapshot
 import app.ledger.finance.domain.AccountAmount
 import app.ledger.finance.domain.AccountingPlanningContext
 import app.ledger.finance.domain.AmountEvidenceKey
@@ -62,36 +68,64 @@ import app.ledger.finance.domain.TransactionLifecycleState
 import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountId
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 
 public class SecureRoomRefundApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
     private val referenceDataPort: ReferenceDataManagementPort,
 ) : RefundApplicationPort {
-    private val applicationContext = context.applicationContext
     private val mapper = RoomReferenceFinancialSnapshotMapper()
     private val catalog = JvmLegalTenderCurrencyCatalog.create()
-    private val writeGate: LedgerWriteGate = RefundWriteGate()
 
     override suspend fun snapshot(bookId: app.ledger.core.common.StableId, query: RefundSearchQuery): DomainResult<RefundSnapshot> {
-        val references = when (val result = referenceDataPort.snapshot(bookId)) {
+        return withDatabase(bookId, LedgerAccessMode.READ) {
+            val references = when (val result = references(bookId)) {
+                is DomainResult.Success -> result.value
+                is DomainResult.Failure -> return@withDatabase result
+            }
+            val candidates = when (val result = candidates(bookId, query, REFUND_CANDIDATE_PAGE_SIZE)) {
+                is DomainResult.Success -> result.value
+                is DomainResult.Failure -> return@withDatabase result
+            }
+            DomainResult.Success(
+                RefundSnapshot(references.references, candidates.items, references.projects, references.goals),
+            )
+        }
+    }
+
+    @Suppress("ReturnCount")
+    override suspend fun references(bookId: app.ledger.core.common.StableId): DomainResult<RefundReferenceSnapshot> {
+        val core = when (val result = referenceDataPort.entryCoreReferences(bookId)) {
             is DomainResult.Success -> result.value
             is DomainResult.Failure -> return result
         }
-        return withDatabase(bookId) { database ->
+        val merchants = when (val result = referenceDataPort.merchantPage(bookId, limit = ENTRY_OPTION_PAGE_SIZE)) {
+            is DomainResult.Success -> result.value.items
+            is DomainResult.Failure -> return result
+        }
+        val references = core.toBoundedReferenceSnapshot(merchants = merchants)
+        return withDatabase(bookId, LedgerAccessMode.READ) { database ->
             database.readLedger { db ->
-                val originals = refundableTransactions(db, query)
                 val projects = db.queryList("SELECT uid,name FROM project WHERE status=0 ORDER BY name,id") {
                     RefundNamedReference(it.stableId("uid"), it.string("name"))
                 }
                 val goals = db.queryList("SELECT uid,name FROM goal WHERE status=0 ORDER BY name,id") {
                     RefundNamedReference(it.stableId("uid"), it.string("name"))
                 }
-                DomainResult.Success(RefundSnapshot(references, originals, projects, goals))
+                DomainResult.Success(RefundReferenceSnapshot(references, projects, goals))
             }
+        }
+    }
+
+    override suspend fun candidates(
+        bookId: app.ledger.core.common.StableId,
+        query: RefundSearchQuery,
+        limit: Int,
+        cursor: RefundCandidateCursor?,
+    ): DomainResult<RefundCandidatePage> {
+        if (limit !in 1..MAX_REFUND_CANDIDATE_PAGE_SIZE) return DomainResult.Failure(FinanceDataError.CorruptData)
+        return withDatabase(bookId, LedgerAccessMode.READ) { database ->
+            database.readLedger { db -> DomainResult.Success(refundableTransactions(db, query, limit, cursor)) }
         }
     }
 
@@ -99,7 +133,7 @@ public class SecureRoomRefundApplicationPort(
         val prepared = prepare(database, request)
         val repository = RoomFinancialCommitRepository(database, sideEffect = prepared.sideEffect)
         DefaultFinancialMutationCoordinator(
-            writeGate,
+            CallerOwnedLedgerWriteGate,
             repository,
             object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(prepared.snapshot)
@@ -268,14 +302,18 @@ public class SecureRoomRefundApplicationPort(
         RefundStatusProjection(TransactionId(cursor.stableId("uid")), gross, refunded, maxOf(gross.minor.value - refunded, 0L), revision, TransactionLifecycleState.entries[cursor.int("lifecycle_state")])
     } ?: abort(FinanceDataError.CorruptData)
 
-    private fun refundableTransactions(db: SupportSQLiteDatabase, query: RefundSearchQuery): List<RefundableTransactionView> {
+    private fun refundableTransactions(
+        db: SupportSQLiteDatabase,
+        query: RefundSearchQuery,
+        limit: Int,
+        cursor: RefundCandidateCursor?,
+    ): RefundCandidatePage {
         val pattern = "%${query.text.trim().lowercase().replace("%", "\\%").replace("_", "\\_")}%"
         val rows = db.queryList(
             """
             SELECT bt.id,bt.uid,tr.id revision_internal,tr.uid revision_uid,bt.lifecycle_state,input.amount_minor,input.currency_code,
               base.amount_minor base_minor,base.currency_code base_currency,
-              COALESCE((SELECT SUM(CASE WHEN ra.reversal_of_id IS NULL THEN ra.original_currency_amount_minor ELSE -ra.original_currency_amount_minor END)
-                FROM refund_allocation ra WHERE ra.original_transaction_id=bt.id),0) refunded,
+              COALESCE(refunds.refunded,0) refunded,
               tr.occurred_at,tr.local_date,ua.uid account_uid,card.uid card_uid,category.uid category_uid,category.name category_name,
               tr.statistical_nature_snapshot,merchant.uid merchant_uid,merchant.name merchant_name,project.uid project_uid,project.name project_name,
               goal.uid goal_uid,goal.name goal_name,activity.uid activity_uid,installment.uid installment_uid
@@ -288,41 +326,80 @@ public class SecureRoomRefundApplicationPort(
             LEFT JOIN project ON project.id=tr.project_id LEFT JOIN goal ON goal.id=tr.goal_id
             LEFT JOIN settlement_activity activity ON activity.id=expense.settlement_activity_id
             LEFT JOIN installment_plan installment ON installment.purchase_transaction_id=bt.id
+            LEFT JOIN (
+              SELECT original_transaction_id,
+                SUM(CASE WHEN reversal_of_id IS NULL THEN original_currency_amount_minor ELSE -original_currency_amount_minor END) refunded
+              FROM refund_allocation GROUP BY original_transaction_id
+            ) refunds ON refunds.original_transaction_id=bt.id
             WHERE bt.kind=0 AND bt.lifecycle_state=0
               AND (?='' OR lower(category.name) LIKE ? ESCAPE '\\' OR lower(COALESCE(merchant.name,'')) LIKE ? ESCAPE '\\')
               AND (? IS NULL OR expense.payer_account_id=(SELECT id FROM user_account WHERE uid=?))
-            ORDER BY tr.occurred_at DESC,bt.id DESC LIMIT 100
+              AND (?=0 OR (COALESCE(refunds.refunded,0)>0 AND COALESCE(refunds.refunded,0)<input.amount_minor))
+              AND (? IS NULL OR tr.occurred_at<? OR (tr.occurred_at=? AND bt.uid<?))
+            ORDER BY tr.occurred_at DESC,bt.uid DESC LIMIT ?
             """.trimIndent(),
-            arrayOf<Any?>(query.text.trim(), pattern, pattern, query.accountId?.bytes, query.accountId?.bytes),
+            arrayOf<Any?>(
+                query.text.trim(),
+                pattern,
+                pattern,
+                query.accountId?.bytes,
+                query.accountId?.bytes,
+                if (query.partiallyRefundedOnly) 1 else 0,
+                cursor?.occurredAtEpochMillis,
+                cursor?.occurredAtEpochMillis,
+                cursor?.occurredAtEpochMillis,
+                cursor?.transactionId?.bytes,
+                limit + 1,
+            ),
         ) { cursor -> OriginalRow.from(cursor) }
-        return rows.mapNotNull { row ->
-            if (query.partiallyRefundedOnly && (row.refunded <= 0L || row.refunded >= row.originalMinor)) return@mapNotNull null
-            val shares = db.queryList(
-                "SELECT p.uid,trs.paid_minor,trs.owed_minor,trs.weight_decimal,trs.rounding_adjustment_minor FROM transaction_revision_settlement_share trs " +
-                    "JOIN participant p ON p.id=trs.participant_id WHERE trs.revision_id=? ORDER BY p.uid",
-                arrayOf(row.revisionInternal),
-            ) { cursor -> SettlementShare(ParticipantId(cursor.stableId("uid")), cursor.long("paid_minor"), cursor.long("owed_minor"), cursor.nullableString("weight_decimal")?.toBigDecimal(), cursor.long("rounding_adjustment_minor")) }
+        val pageRows = rows.take(limit)
+        val sharesByRevision = if (pageRows.isEmpty()) {
+            emptyMap()
+        } else {
+            val placeholders = pageRows.joinToString(",") { "?" }
+            db.queryList(
+                "SELECT tr.uid revision_uid,p.uid,trs.paid_minor,trs.owed_minor,trs.weight_decimal,trs.rounding_adjustment_minor FROM transaction_revision_settlement_share trs " +
+                    "JOIN participant p ON p.id=trs.participant_id JOIN transaction_revision tr ON tr.id=trs.revision_id " +
+                    "WHERE tr.uid IN ($placeholders) ORDER BY tr.uid,p.uid",
+                pageRows.map { it.revisionId.bytes }.toTypedArray(),
+            ) { shareCursor ->
+                shareCursor.stableId("revision_uid") to SettlementShare(
+                    ParticipantId(shareCursor.stableId("uid")),
+                    shareCursor.long("paid_minor"),
+                    shareCursor.long("owed_minor"),
+                    shareCursor.nullableString("weight_decimal")?.toBigDecimal(),
+                    shareCursor.long("rounding_adjustment_minor"),
+                )
+            }.groupBy({ it.first }, { it.second })
+        }
+        val items = pageRows.map { row ->
             RefundableTransactionView(
                 row.transactionId, row.revisionId, row.state, row.originalMinor, row.originalCurrency, row.baseMinor, row.baseCurrency,
                 row.refunded, maxOf(row.originalMinor - row.refunded, 0L), maxOf(row.refunded - row.originalMinor, 0L), row.occurredAt,
                 row.localDate, row.accountId, row.cardId, row.categoryId, row.categoryName, row.nature, row.merchantId, row.merchantName,
-                row.projectId, row.projectName, row.goalId, row.goalName, row.activityId, shares, row.installmentId,
+                row.projectId,
+                row.projectName,
+                row.goalId,
+                row.goalName,
+                row.activityId,
+                sharesByRevision[row.revisionId].orEmpty(),
+                row.installmentId,
             )
         }
+        val nextCursor = if (rows.size > limit) {
+            pageRows.lastOrNull()?.let { RefundCandidateCursor(it.occurredAt.toEpochMilli(), it.transactionId) }
+        } else {
+            null
+        }
+        return RefundCandidatePage(items, nextCursor)
     }
 
     private suspend fun <T> withDatabase(
         bookId: app.ledger.core.common.StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
         block: suspend (LedgerDatabase) -> DomainResult<T>,
     ): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+        databaseAccess.withCurrentDatabase(bookId, mode, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -337,6 +414,8 @@ public class SecureRoomRefundApplicationPort(
 
     private companion object {
         const val HASH_BYTE_COUNT = 32
+        const val REFUND_CANDIDATE_PAGE_SIZE = 50
+        const val MAX_REFUND_CANDIDATE_PAGE_SIZE = 100
     }
 
     private data class OriginalRow(
@@ -379,11 +458,8 @@ public class SecureRoomRefundApplicationPort(
     }
 }
 
-private class RefundWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
-}
-
 private fun android.database.Cursor.int(name: String): Int = getInt(getColumnIndexOrThrow(name))
 private fun android.database.Cursor.long(name: String): Long = getLong(getColumnIndexOrThrow(name))
 private fun android.database.Cursor.string(name: String): String = getString(getColumnIndexOrThrow(name))
+
+private const val ENTRY_OPTION_PAGE_SIZE = 50

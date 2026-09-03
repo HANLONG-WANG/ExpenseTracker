@@ -20,6 +20,8 @@ import app.ledger.core.security.AndroidKeystoreKeys
 import app.ledger.core.security.BackupKeyEnvelopeStore
 import app.ledger.core.security.DeviceKeyHierarchy
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerDatabaseOperationAccess
+import app.ledger.core.security.OfflinePrimaryMaintenancePermit
 import app.ledger.core.security.RecoveryPassword
 import app.ledger.core.security.SecretBytes
 import app.ledger.core.security.SecurePrimaryLedgerAccess
@@ -27,13 +29,13 @@ import app.ledger.core.security.SecureTransferHandleStore
 import app.ledger.core.security.SecurityEnvelopeStore
 import app.ledger.core.security.VaultBackupEnvelopeStore
 import app.ledger.feature.transfer.CloudClearPresentation
-import app.ledger.feature.transfer.RestoreConflictUi
 import app.ledger.feature.transfer.RestoreConflictField
 import app.ledger.feature.transfer.RestoreConflictFieldUi
+import app.ledger.feature.transfer.RestoreConflictUi
 import app.ledger.feature.transfer.RestoreFlowUiState
+import app.ledger.feature.transfer.RestoreInspectPresentation
 import app.ledger.feature.transfer.RestoreIntegrityCheck
 import app.ledger.feature.transfer.RestoreIntegrityCheckUi
-import app.ledger.feature.transfer.RestoreInspectPresentation
 import app.ledger.feature.transfer.RestorePasswordInput
 import app.ledger.feature.transfer.RestorePasswordPresentation
 import app.ledger.feature.transfer.RestoreProgressPresentation
@@ -85,10 +87,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class RestoreController(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
+    databaseAccess: LedgerDatabaseOperationAccess,
     private val runtime: AppRuntimeSources,
     private val formatCreatedAt: (Instant) -> String,
 ) {
     private val applicationContext = context.applicationContext
+    private val sessionPrimaryAccess = SecurePrimaryLedgerAccess(applicationContext, keyProvider, databaseAccess)
+    private var offlinePrimaryAccess: SecurePrimaryLedgerAccess? = null
     private val mutableState = MutableStateFlow(RestoreFlowUiState())
     val state: StateFlow<RestoreFlowUiState> = mutableState.asStateFlow()
     private val keyHierarchy = DeviceKeyHierarchy(AndroidKeystoreKeys(applicationContext), SecurityEnvelopeStore(applicationContext))
@@ -96,6 +101,7 @@ internal class RestoreController(
         applicationContext,
         keyHierarchy,
         AndroidRestoreArtifactSwapPort(applicationContext),
+        ::primaryAccess,
     )
     private val mergeApplication = SecureRoomMergeRestoreApplicationPort(
         applicationContext,
@@ -103,10 +109,11 @@ internal class RestoreController(
         runtime.stableIds,
         runtime.clock::now,
         restoreLedger,
+        ::primaryAccess,
     )
     private val mergeLedger = AndroidMergeLedgerPort(mergeApplication)
     private val materializer = RestoreMaterializer()
-    private val safety = AndroidPreRestoreSafetySnapshotPort(applicationContext, keyProvider, runtime)
+    private val safety = AndroidPreRestoreSafetySnapshotPort(applicationContext, keyProvider, runtime, ::primaryAccess)
     private var bookId: StableId? = null
     private var operationId: StableId? = null
     private var source: EncryptedRestoreSource? = null
@@ -124,6 +131,17 @@ internal class RestoreController(
         cleanupTransient()
         bookId = activeBookId
         replaceState(RestoreFlowUiState(screenId = "RST-001", baseCurrency = baseCurrency))
+    }
+
+    fun enterOfflinePrimaryMaintenance(permit: OfflinePrimaryMaintenancePermit) {
+        check(offlinePrimaryAccess == null)
+        check(bookId == null || bookId == permit.bookId)
+        if (bookId == null) bookId = permit.bookId
+        offlinePrimaryAccess = SecurePrimaryLedgerAccess.forOfflineMaintenance(applicationContext, keyProvider, permit)
+    }
+
+    fun leaveOfflinePrimaryMaintenance() {
+        offlinePrimaryAccess = null
     }
 
     fun setScreen(screenId: String) {
@@ -433,7 +451,7 @@ internal class RestoreController(
                             )
                         },
                     )
-                    if (preview.value.plan.conflicts.isEmpty()) applyMerge() else true
+                    true
                 }
             }
         }
@@ -515,7 +533,7 @@ internal class RestoreController(
         }
         val catalogSnapshots = createBackupCatalog(
             activeBook,
-            SecurePrimaryLedgerAccess(applicationContext, keyProvider),
+            primaryAccess(),
         ).completeSnapshots(configuration.repositoryId).associateBy { it.id.value.bytes.toHex() + ".manifest" }
         cloudFiles = listed.associateBy { it.name }
         cloudSnapshots = catalogSnapshots.filterKeys { it in cloudFiles }
@@ -571,7 +589,7 @@ internal class RestoreController(
                 token.accessToken,
                 requests,
                 cloudFiles.values.toList(),
-                createBackupCatalog(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider)),
+                createBackupCatalog(activeBook, primaryAccess()),
             )
         } else {
             DomainResult.Failure(app.ledger.transfer.domain.BackupFailure.RepositoryUnavailable)
@@ -657,7 +675,7 @@ internal class RestoreController(
         safety,
         mergeLedger,
         restoreLedger,
-        SqlCipherMergeSessionStore(SecurePrimaryLedgerAccess(applicationContext, keyProvider), runtime.clock::now),
+        SqlCipherMergeSessionStore(primaryAccess(), runtime.clock::now),
     )
 
     private fun MergeConflict.entityLabel(): String {
@@ -767,7 +785,9 @@ internal class RestoreController(
         if (previous.password !== value.password) previous.password.close()
     }
 
-    private fun operations(activeBook: StableId) = SqlCipherBackgroundOperationRepository(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider))
+    private fun operations(activeBook: StableId) = SqlCipherBackgroundOperationRepository(activeBook, primaryAccess())
+
+    private fun primaryAccess(): SecurePrimaryLedgerAccess = offlinePrimaryAccess ?: sessionPrimaryAccess
 
     private fun repositoryStorage(book: StableId, configuration: BackupConfiguration) = when (configuration.repositoryKind) {
         BackupRepositoryKind.APP_PRIVATE,
@@ -796,7 +816,7 @@ internal class RestoreController(
 
     private fun snapshotPickerItems(activeBook: StableId, configuration: BackupConfiguration): List<RestoreSnapshotUi> {
         val storage = repositoryStorage(activeBook, configuration)
-        return createBackupCatalog(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider))
+        return createBackupCatalog(activeBook, primaryAccess())
             .completeSnapshots(configuration.repositoryId)
             .filter { snapshot ->
                 storage.exists(

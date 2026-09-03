@@ -72,8 +72,8 @@ object LedgerWidgetRuntime {
         val installed = dependencies.get() ?: return null
         (installed.snapshots as? WidgetSnapshotRefreshApplicationPort)?.refreshIfStale(bookId, installed.localDate(bookId))
         return when (val result = installed.snapshots.read(bookId)) {
-        is DomainResult.Success -> result.value
-        else -> null
+            is DomainResult.Success -> result.value
+            else -> null
         }
     }
 

@@ -116,18 +116,18 @@ class EncryptedSchemaV1DeviceTest {
     }
 
     @Test
-    fun schemaVersionFiveHasRegisteredNonDestructivePredecessorMigrations() {
-        assertEquals(5, LedgerMigrations.CURRENT_VERSION)
-        assertEquals(4, LedgerMigrations.registered(context).size)
-        assertEquals(4, LedgerMigrations.contracts.size)
+    fun schemaVersionSevenHasRegisteredNonDestructivePredecessorMigrations() {
+        assertEquals(7, LedgerMigrations.CURRENT_VERSION)
+        assertEquals(6, LedgerMigrations.registered(context).size)
+        assertEquals(6, LedgerMigrations.contracts.size)
         assertEquals(1, StagingMigrations.CURRENT_VERSION)
         assertTrue(StagingMigrations.registered.isEmpty())
         assertTrue(StagingMigrations.contracts.isEmpty())
     }
 
     @Test
-    fun everyEncryptedPredecessorMigratesToVersionFiveWithFinancialAndQueryContractsIntact() {
-        (1..4).forEach { predecessor ->
+    fun everyEncryptedPredecessorMigratesToVersionSevenWithFinancialAndQueryContractsIntact() {
+        (1..6).forEach { predecessor ->
             context.deleteDatabase(PRIMARY_NAME)
             val passphrase = passphrase(0x60 + predecessor)
             val initial = EncryptedDatabaseFactory.openPrimary(context, passphrase)
@@ -138,9 +138,9 @@ class EncryptedSchemaV1DeviceTest {
 
             val migrated = EncryptedDatabaseFactory.openPrimary(context, passphrase)
             val database = migrated.openHelper.writableDatabase
-            assertEquals(5L, singleLong(database, "PRAGMA user_version"))
+            assertEquals(7L, singleLong(database, "PRAGMA user_version"))
             assertEquals(1L, singleLong(database, "SELECT count(*) FROM book WHERE base_currency='JPY'"))
-            assertEquals(5L, singleLong(database, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
+            assertEquals(7L, singleLong(database, "SELECT logicalSchemaVersion FROM _room_schema_registry WHERE id=1"))
             assertEquals(
                 LedgerSchemaDefinition.primaryContractSha256(context),
                 singleString(database, "SELECT contractSha256 FROM _room_schema_registry WHERE id=1"),
@@ -149,6 +149,21 @@ class EncryptedSchemaV1DeviceTest {
             assertTrue(columnNames(database, "widget_book_snapshot").contains("today_available_base_minor"))
             assertTrue(columnNames(database, "widget_book_snapshot").contains("previous_core_net_financial_assets_base_minor"))
             assertEquals(15L, singleLong(database, "SELECT COUNT(*) FROM projection_family_state"))
+            val journalPlan = database.query(
+                "EXPLAIN QUERY PLAN SELECT transaction_id FROM current_transaction_projection WHERE state=0 " +
+                    "ORDER BY occurred_at DESC,transaction_id DESC LIMIT 100",
+            ).use { cursor ->
+                buildList {
+                    val detail = cursor.getColumnIndexOrThrow("detail")
+                    while (cursor.moveToNext()) add(cursor.getString(detail))
+                }
+            }
+            assertTrue(journalPlan.any { it.contains("ix_current_transaction_state_keyset") })
+            assertTrue(journalPlan.none { it.contains("TEMP B-TREE", ignoreCase = true) })
+            val referenceReport = MigrationPostValidation.run(context, database, LedgerMigrations.CURRENT_VERSION)
+            assertTrue(referenceReport.referenceMerchantPageUsesBoundedIndexes)
+            assertTrue(referenceReport.referenceLocationPageUsesBoundedIndexes)
+            assertTrue(referenceReport.referencePagesAvoidTempAggregation)
             assertEquals(0L, singleLong(database, "SELECT COUNT(*) FROM journal_balance_audit WHERE is_balanced=0"))
             assertEquals(
                 1L,
@@ -167,11 +182,12 @@ class EncryptedSchemaV1DeviceTest {
                 ),
             )
 
-            AnalyticsProjectionEngine.rebuild(database, 1L)
-            assertTrue(AnalyticsProjectionEngine.audit(database, 1L).consistent)
+            AnalyticsProjectionEngine.rebuild(database, 2L)
+            assertTrue(AnalyticsProjectionEngine.audit(database, 2L).consistent)
             assertEquals(1L, singleLong(database, "SELECT COUNT(*) FROM transaction_fts WHERE transaction_fts MATCH 'migration'"))
             assertEquals(1L, singleLong(database, "SELECT COUNT(*) FROM location_rtree WHERE min_lat<=35.05 AND max_lat>=35.05"))
-            assertTrue(DatabaseIntegrityAudit.run(database).isValid)
+            val integrity = DatabaseIntegrityAudit.run(database)
+            assertTrue(integrity.toString(), integrity.isValid)
             migrated.close()
 
             val reopened = EncryptedDatabaseFactory.openPrimary(context, passphrase)
@@ -181,8 +197,28 @@ class EncryptedSchemaV1DeviceTest {
     }
 
     private fun recreatePredecessorSurface(database: SupportSQLiteDatabase, version: Int) {
-        require(version in 1..4)
+        require(version in 1..6)
         database.setForeignKeyConstraintsEnabled(false)
+        V7_INDEXES.forEach { index -> database.execSQL("DROP INDEX IF EXISTS $index") }
+        if (version == 6) {
+            database.execSQL(
+                "UPDATE _room_schema_registry SET logicalSchemaVersion=?,contractSha256=? WHERE id=1",
+                arrayOf<Any>(version, LedgerSchemaDefinition.primaryV6ContractSha256(context)),
+            )
+            database.execSQL("PRAGMA user_version=$version")
+            database.setForeignKeyConstraintsEnabled(true)
+            return
+        }
+        database.execSQL("DROP INDEX IF EXISTS ix_current_transaction_state_keyset")
+        if (version == 5) {
+            database.execSQL(
+                "UPDATE _room_schema_registry SET logicalSchemaVersion=?,contractSha256=? WHERE id=1",
+                arrayOf<Any>(version, LedgerSchemaDefinition.primaryV5ContractSha256(context)),
+            )
+            database.execSQL("PRAGMA user_version=$version")
+            database.setForeignKeyConstraintsEnabled(true)
+            return
+        }
         LedgerSchemaDefinition.immutableTables.forEach { table ->
             database.execSQL("DROP TRIGGER IF EXISTS ${table}_reject_update")
             database.execSQL("DROP TRIGGER IF EXISTS ${table}_reject_delete")
@@ -204,6 +240,7 @@ class EncryptedSchemaV1DeviceTest {
                 database.execSQL("DROP TABLE $table")
             }
         }
+        installHistoricalAppendOnlyTriggers(database)
         val contract = when (version) {
             1 -> LedgerSchemaDefinition.primaryV1ContractSha256(context)
             2 -> LedgerSchemaDefinition.primaryV2ContractSha256(context)
@@ -215,6 +252,22 @@ class EncryptedSchemaV1DeviceTest {
             arrayOf<Any>(version, contract),
         )
         database.execSQL("PRAGMA user_version=$version")
+    }
+
+    private fun installHistoricalAppendOnlyTriggers(database: SupportSQLiteDatabase) {
+        LedgerSchemaDefinition.immutableTables.sorted().forEach { table ->
+            database.execSQL(
+                "CREATE TRIGGER ${table}_reject_update BEFORE UPDATE ON $table " +
+                    "BEGIN SELECT RAISE(ABORT, 'immutable table update rejected'); END",
+            )
+            database.execSQL(
+                "CREATE TRIGGER ${table}_reject_delete BEFORE DELETE ON $table " +
+                    "WHEN NOT (" +
+                    "EXISTS(SELECT 1 FROM book WHERE id=1 AND state=1) AND " +
+                    "EXISTS(SELECT 1 FROM _schema_runtime_guard WHERE id=1 AND allow_fact_purge=1)" +
+                    ") BEGIN SELECT RAISE(ABORT, 'immutable table delete rejected'); END",
+            )
+        }
     }
 
     private fun seedMigrationLedger(database: SupportSQLiteDatabase) {
@@ -245,6 +298,7 @@ class EncryptedSchemaV1DeviceTest {
             "INSERT INTO book_commit(id,uid,local_revision,kind,command_uid,device_instance_uid,created_at,root_hash) VALUES(2,?,2,0,?,?,2,?)",
             arrayOf<Any>(blob(21, 16), blob(22, 16), blob(23, 16), blob(24, 32)),
         )
+        database.execSQL("UPDATE book SET head_commit_id=2,local_revision=2,valuation_revision=2 WHERE id=1")
         database.execSQL(
             "INSERT INTO entity_change(commit_id,entity_type,entity_uid,operation,before_hash,after_hash,entity_revision_uid) " +
                 "VALUES(1,1,?,0,NULL,?,NULL),(2,1,?,1,?,?,NULL)",
@@ -253,7 +307,9 @@ class EncryptedSchemaV1DeviceTest {
         database.execSQL(
             "INSERT INTO credit_account_profile(account_id,statement_rule_type,statement_day,due_rule_type,due_day,days_after_statement," +
                 "zone_id,standard_limit_minor,temporary_limit_minor,temporary_limit_expires_on,default_payment_account_id," +
-                "auto_payment_mode,weekend_adjustment,last_commit_id) VALUES(1,0,25,0,10,NULL,'Asia/Tokyo',100000,NULL,NULL,NULL,0,0,1)",
+                "auto_payment_mode,weekend_adjustment,last_commit_id,row_version,content_hash) " +
+                "VALUES(1,0,25,0,10,NULL,'Asia/Tokyo',100000,NULL,NULL,NULL,0,0,1,1,?)",
+            arrayOf<Any>(blob(10, 32)),
         )
         database.execSQL(
             "INSERT INTO command_receipt(command_uid,command_type,payload_hash,commit_id,primary_entity_uid,executed_at) " +
@@ -261,8 +317,9 @@ class EncryptedSchemaV1DeviceTest {
             arrayOf<Any>(blob(40, 16), blob(41, 32), blob(42, 16)),
         )
         database.execSQL(
-            "INSERT INTO budget_month(id,uid,year_month,current_revision_id) VALUES(1,?,202608,NULL)",
-            arrayOf<Any>(blob(42, 16)),
+            "INSERT INTO budget_month(id,uid,year_month,current_revision_id,last_commit_id,row_version,content_hash) " +
+                "VALUES(1,?,202608,NULL,1,1,?)",
+            arrayOf<Any>(blob(42, 16), blob(41, 32)),
         )
         database.execSQL(
             "INSERT INTO budget_month_revision(id,uid,budget_month_id,revision_no,base_total_minor,source_template_revision_id,created_commit_id) " +
@@ -274,15 +331,30 @@ class EncryptedSchemaV1DeviceTest {
             "INSERT INTO location_record(id,uid,lat_e7,lon_e7,accuracy_mm,captured_at,source,provider,created_commit_id) VALUES(1,?,350500000,1390500000,1000,1,0,'migration',1)",
             arrayOf<Any>(blob(11, 16)),
         )
-        database.execSQL("INSERT INTO location_rtree(location_id,min_lat,max_lat,min_lon,max_lon) VALUES(1,35.05,35.05,139.05,139.05)")
+        database.execSQL(
+            "INSERT INTO category(id,uid,direction,parent_id,depth,name,normalized_name,icon_key,color_argb,sort_order,status," +
+                "statistical_nature,default_account_id,default_card_id,default_merchant_id,last_commit_id,row_version,content_hash) " +
+                "VALUES(1,?,0,NULL,1,'Migration','migration','migration',-1,0,0,1,NULL,NULL,NULL,1,1,?)",
+            arrayOf<Any>(blob(26, 16), blob(27, 32)),
+        )
+        database.execSQL(
+            "INSERT INTO location_rtree(location_id,min_lat,max_lat,min_lon,max_lon) " +
+                "VALUES(1,35.05,35.05,139.05,139.05)",
+        )
         database.execSQL(
             "INSERT INTO business_transaction(id,uid,kind,current_revision_id,lifecycle_state,created_commit_id,last_commit_id,row_version,content_hash) VALUES(1,?,0,NULL,0,1,1,1,?)",
             arrayOf<Any>(blob(12, 16), blob(13, 32)),
         )
         database.execSQL(
-            "INSERT INTO transaction_revision(id,uid,transaction_id,revision_no,action,resulting_state,created_commit_id,created_at,occurred_at,zone_id,local_date,location_record_id,source_type,content_hash) " +
-                "VALUES(1,?,1,1,0,0,1,1,1,'Asia/Tokyo',20260820,1,0,?)",
+            "INSERT INTO transaction_revision(id,uid,transaction_id,revision_no,action,resulting_state," +
+                "created_commit_id,created_at,occurred_at,zone_id,local_date,category_id,location_record_id," +
+                "source_type,content_hash) " +
+                "VALUES(1,?,1,1,0,0,1,1,1,'Asia/Tokyo',20260820,1,1,0,?)",
             arrayOf<Any>(blob(14, 16), blob(15, 32)),
+        )
+        database.execSQL(
+            "INSERT INTO revision_amount(id,revision_id,component_index,role,representation,amount_minor,currency_code," +
+                "related_account_id,fx_rate_snapshot_id) VALUES(1,1,0,0,0,100,'JPY',NULL,NULL)",
         )
         database.execSQL("INSERT INTO expense_revision_detail(revision_id,payer_kind,payer_account_id) VALUES(1,0,1)")
         database.execSQL("UPDATE business_transaction SET current_revision_id=1 WHERE id=1")
@@ -311,7 +383,7 @@ class EncryptedSchemaV1DeviceTest {
         )
         database.execSQL(
             "WITH RECURSIVE family(value) AS (SELECT 0 UNION ALL SELECT value+1 FROM family WHERE value<14) " +
-                "INSERT INTO projection_family_state(family,as_of_local_revision,as_of_valuation_revision) SELECT value,1,1 FROM family",
+                "INSERT INTO projection_family_state(family,as_of_local_revision,as_of_valuation_revision) SELECT value,2,2 FROM family",
         )
     }
 
@@ -405,6 +477,16 @@ class EncryptedSchemaV1DeviceTest {
         const val PRIMARY_NAME = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME
         const val STAGING_NAME = "import_00112233445566778899aabbccddeeff.db"
         const val SENSITIVE_SENTINEL = "p07-secret-amount-987654-note"
+
+        val V7_INDEXES = listOf(
+            "ix_merchant_name_keyset",
+            "ix_place_name_keyset",
+            "ix_place_merchant",
+            "ix_location_record_captured_keyset",
+            "ix_current_transaction_merchant",
+            "ix_transaction_revision_location",
+            "ix_current_transaction_revision",
+        )
 
         val RETENTION_MANAGED_TABLES = setOf("backup_snapshot", "backup_object", "backup_snapshot_object")
         val V5_COLUMNS = listOf(

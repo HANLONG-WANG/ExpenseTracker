@@ -43,8 +43,8 @@ import app.ledger.core.common.map
 import app.ledger.core.designsystem.LedgerReferenceDisplayDefaults
 import app.ledger.core.designsystem.LedgerRetainedStateStore
 import app.ledger.core.files.SecureBookAttachmentObjectPort
-import app.ledger.core.geo.ForegroundLocationSaveSession
 import app.ledger.core.geo.ForegroundLocationRetryRunner
+import app.ledger.core.geo.ForegroundLocationSaveSession
 import app.ledger.core.geo.LocationSaveDisposition
 import app.ledger.core.geo.ProductionForegroundLocationClient
 import app.ledger.core.money.CurrencyCode
@@ -56,6 +56,7 @@ import app.ledger.core.navigation.FiveStackNavigator
 import app.ledger.core.navigation.FiveStackSnapshot
 import app.ledger.core.navigation.LedgerDestinationKey
 import app.ledger.core.navigation.LedgerRouteContract
+import app.ledger.core.navigation.NavigationOutcome
 import app.ledger.core.navigation.RouteArgumentKind
 import app.ledger.core.navigation.SafeRouteArgument
 import app.ledger.core.navigation.ScreenId
@@ -64,6 +65,7 @@ import app.ledger.core.navigation.StableIdArgument
 import app.ledger.core.navigation.TopLevelDestination
 import app.ledger.core.navigation.TopLevelStackSnapshot
 import app.ledger.core.navigation.YearMonthArgument
+import app.ledger.core.security.ActiveBookSessionRuntime
 import app.ledger.core.security.AndroidKeystoreKeys
 import app.ledger.core.security.AppLockController
 import app.ledger.core.security.AppLockSettings
@@ -73,9 +75,11 @@ import app.ledger.core.security.Argon2idCalibrator
 import app.ledger.core.security.BiometricErrorCode
 import app.ledger.core.security.BookSessionManager
 import app.ledger.core.security.BookSessionState
-import app.ledger.core.security.DefaultLedgerStartupInspector
 import app.ledger.core.security.DeviceLedgerKeyProvider
 import app.ledger.core.security.DeviceSecurityCapability
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerInteractionOperation
+import app.ledger.core.security.LedgerSessionPerformance
 import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.RecoveryPassword
 import app.ledger.core.security.RecoveryPasswordKeyWrapper
@@ -84,7 +88,6 @@ import app.ledger.core.security.ScreenPrivacyPolicy
 import app.ledger.core.security.SecretBytes
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.core.security.SecurityAssociatedData
-import app.ledger.core.security.SqlCipherBookDatabaseResourceFactory
 import app.ledger.core.security.VaultExposureRegistry
 import app.ledger.core.telemetry.TelemetryRuntime
 import app.ledger.core.time.InjectedJavaClock
@@ -92,7 +95,6 @@ import app.ledger.feature.accounts.AccountEditorSubmission
 import app.ledger.feature.accounts.CardEditorSubmission
 import app.ledger.feature.accounts.CheckpointSubmission
 import app.ledger.feature.accounts.OpeningBalanceSubmission
-import app.ledger.feature.analysis.R as AnalysisR
 import app.ledger.feature.analysis.AnalysisLoadState
 import app.ledger.feature.automation.AutomationFeatureState
 import app.ledger.feature.automation.AutomationLoadState
@@ -101,15 +103,14 @@ import app.ledger.feature.automation.AutomationPresentation
 import app.ledger.feature.automation.AutomationSeriesFilter
 import app.ledger.feature.automation.AutomationTemplateFilter
 import app.ledger.feature.automation.AutomationTemplateSort
-import app.ledger.feature.automation.BlueprintField
 import app.ledger.feature.automation.BlueprintEditorDraft
+import app.ledger.feature.automation.BlueprintField
 import app.ledger.feature.automation.RecurrenceEditorDraft
 import app.ledger.feature.automation.RecurrenceField
 import app.ledger.feature.journal.JournalLoadState
 import app.ledger.feature.journal.JournalOperationState
 import app.ledger.feature.journal.JournalPagingSource
 import app.ledger.feature.journal.JournalSelectionPolicy
-import app.ledger.feature.journal.R as JournalR
 import app.ledger.feature.liabilities.CreditAllocationMode
 import app.ledger.feature.liabilities.CreditFeatureState
 import app.ledger.feature.liabilities.CreditField
@@ -149,9 +150,9 @@ import app.ledger.feature.record.OrdinaryRecordEditorState
 import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.record.OrdinaryRecordPolicy
 import app.ledger.feature.record.OrdinaryRecordScreenUiState
+import app.ledger.feature.record.RecordAttachmentPresentation
 import app.ledger.feature.record.RecordEditorMode
 import app.ledger.feature.record.RecordEditorPresentation
-import app.ledger.feature.record.RecordAttachmentPresentation
 import app.ledger.feature.record.RecordField
 import app.ledger.feature.record.RecordLocationEditorState
 import app.ledger.feature.record.RecordPendingLocation
@@ -193,9 +194,11 @@ import app.ledger.feature.transfer.RestoreFlowUiState
 import app.ledger.feature.vault.VaultEditSubmission
 import app.ledger.feature.vault.VaultPresentationState
 import app.ledger.finance.application.AccountDraft
+import app.ledger.finance.application.AccountSummarySnapshot
 import app.ledger.finance.application.ApplyInstallmentSettlementRequest
 import app.ledger.finance.application.ApplyLoanSimulationRequest
 import app.ledger.finance.application.AssignCreditStatementRequest
+import app.ledger.finance.application.AsyncContent
 import app.ledger.finance.application.AttachmentContentSource
 import app.ledger.finance.application.AttachmentImportRequest
 import app.ledger.finance.application.AutomationApplicationPort
@@ -208,14 +211,20 @@ import app.ledger.finance.application.BudgetMutationIds
 import app.ledger.finance.application.CardDraft
 import app.ledger.finance.application.CategoryDraft
 import app.ledger.finance.application.ChangeProjectStatusRequest
+import app.ledger.finance.application.CommittedLedgerChange
 import app.ledger.finance.application.CompleteGoalRequest
 import app.ledger.finance.application.ControlledPurgeApplicationPort
 import app.ledger.finance.application.ControlledPurgeRequest
+import app.ledger.finance.application.CreateCreditAccountProfileRequest
 import app.ledger.finance.application.CreditApplicationPort
 import app.ledger.finance.application.CreditMutationIds
 import app.ledger.finance.application.CreditPaymentContext
 import app.ledger.finance.application.CreditStatementMutationIds
 import app.ledger.finance.application.CreditTransactionMutationIds
+import app.ledger.finance.application.DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS
+import app.ledger.finance.application.DebouncedSingleFlightLoader
+import app.ledger.finance.application.FinancialCommitObserver
+import app.ledger.finance.application.FinancialCommitObserverRegistry
 import app.ledger.finance.application.GoalCompletionStrategy
 import app.ledger.finance.application.GoalMovementMutationIds
 import app.ledger.finance.application.ImportFinancialApplicationPort
@@ -235,8 +244,12 @@ import app.ledger.finance.application.JournalMutationRequest
 import app.ledger.finance.application.JournalSavedFilterCommand
 import app.ledger.finance.application.JournalSelectionSpec
 import app.ledger.finance.application.JournalTransactionView
+import app.ledger.finance.application.KeyedLoadRegistry
+import app.ledger.finance.application.LedgerDataScope
 import app.ledger.finance.application.LedgerGenesisIds
 import app.ledger.finance.application.LedgerInitializationPort
+import app.ledger.finance.application.LedgerRevisionCacheControl
+import app.ledger.finance.application.LoadResult
 import app.ledger.finance.application.LoanApplicationPort
 import app.ledger.finance.application.LoanComponentAllocationDraft
 import app.ledger.finance.application.LoanComponentAmountDraft
@@ -276,6 +289,7 @@ import app.ledger.finance.application.ReferenceMutation
 import app.ledger.finance.application.ReferenceMutationCommand
 import app.ledger.finance.application.ReferenceMutationIds
 import app.ledger.finance.application.RefundApplicationPort
+import app.ledger.finance.application.RefundCandidatePage
 import app.ledger.finance.application.RefundSearchQuery
 import app.ledger.finance.application.RefundWriteIds
 import app.ledger.finance.application.RefundWriteRequest
@@ -283,7 +297,6 @@ import app.ledger.finance.application.SaveBlueprintRequest
 import app.ledger.finance.application.SaveBudgetMonthRequest
 import app.ledger.finance.application.SaveBudgetTemplateRequest
 import app.ledger.finance.application.SaveCreditProfileRequest
-import app.ledger.finance.application.CreateCreditAccountProfileRequest
 import app.ledger.finance.application.SaveCreditStatementRequest
 import app.ledger.finance.application.SaveGoalRequest
 import app.ledger.finance.application.SaveInstallmentPlanRequest
@@ -294,20 +307,18 @@ import app.ledger.finance.application.SaveSettlementActivityRequest
 import app.ledger.finance.application.SettlementApplicationPort
 import app.ledger.finance.application.SettlementMutationIds
 import app.ledger.finance.application.SettlementPaymentIds
+import app.ledger.finance.application.SingleFlightLoader
 import app.ledger.finance.application.SpecializedAccountAmountDraft
 import app.ledger.finance.application.SpecializedFxQuoteRequest
 import app.ledger.finance.application.SpecializedTransactionContext
 import app.ledger.finance.application.SpecializedTransactionEntryPort
 import app.ledger.finance.application.SpecializedTransactionWriteIds
 import app.ledger.finance.application.SpecializedTransactionWriteRequest
-import app.ledger.finance.application.StructuredImportApplicationPort
 import app.ledger.finance.application.UpdateBookLocaleCommand
 import app.ledger.finance.application.VaultSecretApplicationPort
 import app.ledger.finance.application.WidgetQuickDirection
 import app.ledger.finance.application.WidgetQuickTargetKind
 import app.ledger.finance.application.WidgetSnapshotRefreshApplicationPort
-import app.ledger.finance.data.RoomLedgerStartupInspector
-import app.ledger.finance.data.SecureRoomControlledPurgeApplicationPort
 import app.ledger.finance.domain.AutoGenerationMode
 import app.ledger.finance.domain.BalanceAdjustmentDirection
 import app.ledger.finance.domain.BudgetAdjustmentKind
@@ -379,12 +390,13 @@ import app.ledger.widget.LedgerWidgetRuntime
 import com.google.protobuf.ByteString
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -392,12 +404,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.math.BigDecimal
@@ -413,6 +428,8 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 import javax.inject.Inject
+import app.ledger.feature.analysis.R as AnalysisR
+import app.ledger.feature.journal.R as JournalR
 import app.ledger.feature.settings.AppLockTimeout as SettingsAppLockTimeout
 import app.ledger.finance.application.SettlementParticipantDraft as SettlementParticipantWriteDraft
 
@@ -486,11 +503,13 @@ internal sealed interface AppReferenceDataState {
 internal class AppRootViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsRepository: AppSettingsRepository,
+    private val activeBookSessionRuntime: ActiveBookSessionRuntime,
     private val keyProvider: DeviceLedgerKeyProvider,
     private val initializationPort: LedgerInitializationPort,
     private val referenceDataPort: ReferenceDataManagementPort,
     vaultSecretApplicationPort: VaultSecretApplicationPort,
     private val journalApplicationPort: JournalApplicationPort,
+    private val controlledPurgeApplicationPort: ControlledPurgeApplicationPort,
     private val openingBalanceWritePort: OpeningBalanceWritePort,
     private val ordinaryTransactionEntryPort: OrdinaryTransactionEntryPort,
     batchEntryApplicationPort: BatchEntryApplicationPort,
@@ -503,14 +522,16 @@ internal class AppRootViewModel @Inject constructor(
     private val settlementApplicationPort: SettlementApplicationPort,
     private val automationApplicationPort: AutomationApplicationPort,
     importFinancialApplicationPort: ImportFinancialApplicationPort,
-    structuredImportApplicationPort: StructuredImportApplicationPort,
     analyticsApplicationPort: AnalyticsApplicationPort,
     private val specializedTransactionEntryPort: SpecializedTransactionEntryPort,
     private val bookAttachmentObjectPort: SecureBookAttachmentObjectPort,
     private val widgetSnapshotRefreshApplicationPort: WidgetSnapshotRefreshApplicationPort,
     private val runtimeSources: AppRuntimeSources,
+    private val vaultExposureRegistry: VaultExposureRegistry,
+    private val revisionCacheControl: LedgerRevisionCacheControl,
 ) : ViewModel() {
-    private val vaultExposureRegistry = VaultExposureRegistry(SystemClock::elapsedRealtime)
+    internal fun currentUiInstant(): Instant = runtimeSources.clock.now()
+
     private val vaultController = VaultController(
         context,
         vaultSecretApplicationPort,
@@ -546,14 +567,20 @@ internal class AppRootViewModel @Inject constructor(
         keyProvider,
         referenceDataPort,
         importFinancialApplicationPort,
-        structuredImportApplicationPort,
         runtimeSources,
+        activeBookSessionRuntime,
         ::formatPresentationDateTime,
         ::formatImportPreviewValue,
     )
-    private val exportController = ExportController(context, keyProvider, runtimeSources)
-    private val backupController = BackupController(context, keyProvider, runtimeSources, ::formatPresentationDateTime)
-    private val restoreController = RestoreController(context, keyProvider, runtimeSources, ::formatPresentationDateTime)
+    private val exportController = ExportController(context, keyProvider, runtimeSources, activeBookSessionRuntime)
+    private val backupController = BackupController(context, keyProvider, runtimeSources, activeBookSessionRuntime, ::formatPresentationDateTime)
+    private val restoreController = RestoreController(
+        context,
+        keyProvider,
+        activeBookSessionRuntime,
+        runtimeSources,
+        ::formatPresentationDateTime,
+    )
     private val schemaVersionMarker = LedgerSchemaVersionMarker(context)
     private val attachmentController = AttachmentController(
         context,
@@ -561,8 +588,6 @@ internal class AppRootViewModel @Inject constructor(
         ::formatPresentationDateTime,
         ::formatPresentationFileSize,
     )
-    private val controlledPurgeApplicationPort: ControlledPurgeApplicationPort =
-        SecureRoomControlledPurgeApplicationPort(context, keyProvider)
     val importWizard = importController.state
     val exportFlow: StateFlow<ExportFlowUiState> = exportController.state
     val backupFlow: StateFlow<BackupFlowUiState> = backupController.state
@@ -582,6 +607,9 @@ internal class AppRootViewModel @Inject constructor(
     val batchRecordPending: StateFlow<Boolean> = batchEntryController.pending
     private val mutableRootState = MutableStateFlow<AppRootState>(AppRootState.Starting)
     val rootState: StateFlow<AppRootState> = mutableRootState.asStateFlow()
+    private val mutableCurrentRouteContentReadyGeneration = MutableStateFlow<Long?>(null)
+    val currentRouteContentReadyGeneration: StateFlow<Long?> = mutableCurrentRouteContentReadyGeneration.asStateFlow()
+    private val mutableTopLevelContentGenerations = MutableStateFlow<Map<TopLevelDestination, Long>>(emptyMap())
     private val mutableRecoveryRestoreActive = MutableStateFlow(false)
     val recoveryRestoreActive: StateFlow<Boolean> = mutableRecoveryRestoreActive.asStateFlow()
     private val mutableRecoveryBackupAvailable = MutableStateFlow<Boolean?>(null)
@@ -614,6 +642,37 @@ internal class AppRootViewModel @Inject constructor(
 
     private val mutableReferenceData = MutableStateFlow<AppReferenceDataState>(AppReferenceDataState.Loading)
     val referenceData: StateFlow<AppReferenceDataState> = mutableReferenceData.asStateFlow()
+    private val referenceRouteLoader = SingleFlightLoader<ReferenceDataLoadKey, ReferenceDataSnapshot>(
+        viewModelScope,
+        worker = { key ->
+            val previous = (mutableReferenceData.value as? AppReferenceDataState.Content)?.snapshot
+            val loaded = loadReferenceRouteSnapshot(
+                key.bookId,
+                key.screenId,
+                key.accountId,
+                key.categoryDirection,
+                previous,
+            )
+            if (loaded == null) LoadResult.Failure("REFERENCE_ROUTE_FAILED") else LoadResult.Success(loaded)
+        },
+        publish = { key, state ->
+            when (state) {
+                is AsyncContent.Content -> if (
+                    activeBookSessionRuntime.readyGeneration(key.bookId) == key.sessionGeneration &&
+                    currentRouteScopeKey() == key.routeScope
+                ) {
+                    mutableReferenceData.value = AppReferenceDataState.Content(state.value)
+                }
+                AsyncContent.Empty,
+                is AsyncContent.Failure,
+                is AsyncContent.Loading,
+                -> Unit
+            }
+        },
+    )
+    private val featureLoadRegistry = KeyedLoadRegistry<String, AppFeatureLoadKey>()
+    private val featureLoadKeyLock = Any()
+    private val completedFeatureLoadKeys = mutableMapOf<String, AppFeatureLoadKey>()
     private val mutableReferenceMutationPending = MutableStateFlow(false)
     val referenceMutationPending: StateFlow<Boolean> = mutableReferenceMutationPending.asStateFlow()
     private val mutableOrdinaryRecord = MutableStateFlow<OrdinaryRecordLoadState>(OrdinaryRecordLoadState.Loading)
@@ -624,6 +683,29 @@ internal class AppRootViewModel @Inject constructor(
     val refund: StateFlow<RefundLoadState> = mutableRefund.asStateFlow()
     private val mutableRefundPicker = MutableStateFlow<RefundPickerState>(RefundPickerState.Loading)
     val refundPicker: StateFlow<RefundPickerState> = mutableRefundPicker.asStateFlow()
+    private val refundSearchLoader = DebouncedSingleFlightLoader<RefundSearchLoadKey, DomainResult<RefundCandidatePage>>(
+        viewModelScope,
+        delayMillis = SEARCH_DEBOUNCE_MILLIS,
+        worker = { key -> refundApplicationPort.candidates(key.bookId, key.query) },
+        onTimeout = { key ->
+            val current = mutableRefundPicker.value as? RefundPickerState.Content
+            if (activeBookSessionRuntime.readyGeneration(key.bookId) == key.sessionGeneration && current?.query == key.query) {
+                mutableRefundPicker.value = current.copy(searching = false)
+            }
+        },
+        publish = { key, result ->
+            val current = mutableRefundPicker.value as? RefundPickerState.Content
+            if (activeBookSessionRuntime.readyGeneration(key.bookId) == key.sessionGeneration && current?.query == key.query) {
+                mutableRefundPicker.value = when (result) {
+                    is DomainResult.Success -> current.copy(
+                        snapshot = current.snapshot.copy(originals = result.value.items),
+                        searching = false,
+                    )
+                    is DomainResult.Failure -> current.copy(searching = false)
+                }
+            }
+        },
+    )
     private val mutableRefundPending = MutableStateFlow(false)
     val refundPending: StateFlow<Boolean> = mutableRefundPending.asStateFlow()
     private val mutableSpecializedTransaction = MutableStateFlow<SpecializedTransactionLoadState>(SpecializedTransactionLoadState.Loading)
@@ -635,6 +717,41 @@ internal class AppRootViewModel @Inject constructor(
     private val mutableJournal = MutableStateFlow<JournalLoadState>(JournalLoadState.Loading)
     val journal: StateFlow<JournalLoadState> = mutableJournal.asStateFlow()
     private val mutableJournalPagingRequest = MutableStateFlow<JournalPagingRequest?>(null)
+    private val journalSearchLoader = DebouncedSingleFlightLoader<JournalSearchLoadKey, JournalSearchLoadKey>(
+        viewModelScope,
+        delayMillis = SEARCH_DEBOUNCE_MILLIS,
+        worker = { it },
+        onTimeout = { key ->
+            val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready
+            val current = mutableJournal.value as? JournalLoadState.Content
+            if (ready?.bookId == key.bookId && ready.generation == key.sessionGeneration && current?.filter == key.filter) {
+                mutableJournal.value = current.copy(searchPending = false, searchResultReady = false)
+                cancelJournalSearchTrace()
+            }
+        },
+        publish = { key, _ ->
+            val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready
+            val current = mutableJournal.value as? JournalLoadState.Content
+            if (ready?.bookId == key.bookId && ready.generation == key.sessionGeneration && current?.filter == key.filter) {
+                journalSearchContentTrace?.close()
+                journalSearchContentTrace = if (key.filter.searchText.isNullOrBlank()) {
+                    null
+                } else {
+                    LedgerSessionPerformance.begin(LedgerInteractionOperation.SEARCH_CONTENT)
+                }
+                val request = JournalPagingRequest(
+                    key.bookId,
+                    key.filter,
+                    refreshEpoch = (mutableJournalPagingRequest.value?.refreshEpoch ?: 0) + 1,
+                )
+                mutableJournal.value = current.copy(
+                    pagingEpoch = request.refreshEpoch,
+                    pageLoadedEpoch = null,
+                )
+                mutableJournalPagingRequest.value = request
+            }
+        },
+    )
     private val mutableBudget = MutableStateFlow<BudgetLoadState>(BudgetLoadState.Loading)
     val budget: StateFlow<BudgetLoadState> = mutableBudget.asStateFlow()
     private val mutableBudgetPending = MutableStateFlow(false)
@@ -688,7 +805,17 @@ internal class AppRootViewModel @Inject constructor(
         } else {
             Pager(
                 PagingConfig(pageSize = 40, prefetchDistance = 10, initialLoadSize = 40, enablePlaceholders = false, maxSize = 200),
-            ) { JournalPagingSource(journalApplicationPort, request.bookId, request.filter, request.runningBalanceAccountId) }.flow
+            ) {
+                JournalPagingSource(
+                    journalApplicationPort,
+                    request.bookId,
+                    request.filter,
+                    request.runningBalanceAccountId,
+                    onPageLoadStarted = { beginJournalPageTrace(request) },
+                ) { successful ->
+                    completeJournalPage(request, successful)
+                }
+            }.flow
         }
     }.cachedIn(viewModelScope)
 
@@ -711,11 +838,35 @@ internal class AppRootViewModel @Inject constructor(
 
     private var onboardingState = OnboardingUiState()
     private var sessionManager: BookSessionManager? = null
+    private val invalidatedLedgerScopes = MutableStateFlow<Map<LedgerDataScope, Long>>(emptyMap())
+    private val financialCommitRegistration = FinancialCommitObserverRegistry.register(
+        FinancialCommitObserver(::onFinancialCommitted),
+    )
     private var restoreRecoveryRunning = false
     private var appLockController: AppLockController? = null
     private var applicationUnlockJob: Job? = null
     private var applicationUnlockGeneration: Long = 0L
+    private var unlockToContentJob: Job? = null
+    private var unlockToContentTrace: AutoCloseable? = null
     private var applicationLockJob: Job? = null
+    private var postFirstContentJob: Job? = null
+    private var routeInteractionJob: Job? = null
+    private var routeRequestTrace: AutoCloseable? = null
+    private var routeContentTrace: AutoCloseable? = null
+    private var journalMetadataTrace: AutoCloseable? = null
+    private var journalPageTrace: AutoCloseable? = null
+    private var journalPresentationTrace: AutoCloseable? = null
+    private var journalStageRequest: JournalPagingRequest? = null
+    private var journalSearchRequestTrace: AutoCloseable? = null
+    private var journalSearchContentTrace: AutoCloseable? = null
+    private var journalBulkOptionsJob: Job? = null
+    private var journalBulkOptionsGeneration: Long? = null
+    private var presentedJournalPagingRequest: JournalPagingRequest? = null
+    private var currentOrdinaryLoadKey: OrdinaryLoadKey? = null
+    private var currentOrdinaryLoadJob: Job? = null
+    private var currentBudgetLoadKey: BudgetLoadKey? = null
+    private var currentBudgetLoadJob: Job? = null
+    private var lastReferenceRouteLoadKey: String? = null
     private var unsavedContentLossNotice: Boolean = false
     val navigator: FiveStackNavigator = FiveStackNavigator()
     private var pendingDeepLink: LedgerDestinationKey? = null
@@ -723,7 +874,9 @@ internal class AppRootViewModel @Inject constructor(
     private val scrollStates = mutableMapOf<TopLevelDestination, Pair<String, Int>>()
     private var recordLocationJob: Job? = null
     private var recordLocationGeneration: Long = 0L
+
     @Volatile private var recordLocationShouldRun: Boolean = false
+
     @Volatile private var recordLocationHostForeground: Boolean = true
     private var recordAttachmentImportJob: Job? = null
     private var pendingBatchAttachmentRowId: StableId? = null
@@ -990,6 +1143,7 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     private suspend fun openSavedBook(saved: LedgerAppSettings) {
+        revisionCacheControl.clearAll()
         mutableOpeningPresentation.value = if (schemaVersionMarker.migrationExpected()) {
             OpeningPresentation.MIGRATION_DETECTED
         } else {
@@ -1005,15 +1159,7 @@ internal class AppRootViewModel @Inject constructor(
         val bookId = requireBookId(saved)
         restoreNavigationIfAllowed(saved)
         unsavedContentLossNotice = settingsRepository.consumeUnsavedContentLoss()
-        val manager = BookSessionManager(
-            bookId,
-            keyProvider,
-            SqlCipherBookDatabaseResourceFactory(
-                context,
-                listOf(DefaultLedgerStartupInspector, RoomLedgerStartupInspector()),
-            ),
-            vaultExposureRegistry,
-        )
+        val manager = activeBookSessionRuntime.activate(bookId)
         sessionManager = manager
         val lockSettings = AppLockSettings(saved.appLockEnabled, timeout(saved.appLockTimeoutMillis))
         appLockController = AppLockController(lockSettings, SystemClock::elapsedRealtime) {
@@ -1023,18 +1169,28 @@ internal class AppRootViewModel @Inject constructor(
         }
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             manager.state.collectLatest { state ->
+                if (state !is BookSessionState.Ready) {
+                    revisionCacheControl.clearBook(bookId)
+                    mutableCurrentRouteContentReadyGeneration.value = null
+                    mutableTopLevelContentGenerations.value = emptyMap()
+                    cancelRouteInteractionTrace()
+                    cancelJournalSearchTrace()
+                    journalBulkOptionsJob?.cancel()
+                    journalBulkOptionsJob = null
+                    journalBulkOptionsGeneration = null
+                    presentedJournalPagingRequest = null
+                }
                 publishSession(state)
                 if (state is BookSessionState.Ready) {
                     runCatching { schemaVersionMarker.markCurrent() }
                     mutableOpeningPresentation.value = OpeningPresentation.OPENING
                     mutableMaintenancePresentation.value = null
                     mutableRecoveryBackupAvailable.value = null
-                    refreshWidgetSnapshot(state.bookId)
                     consumePendingDeepLink()
                     loadReferenceData()
-                    loadOrdinaryRecord()
-                    loadJournal()
-                    catchUpAutomation(bookId)
+                    loadTopLevelMinimum(navigator.currentTopLevel)
+                    trackTopLevelContent(bookId, state.generation, navigator.currentTopLevel, reportFullyDrawn = true)
+                    schedulePostFirstContentWork(bookId, state.generation, navigator.currentTopLevel)
                 } else if (
                     state is BookSessionState.Maintenance &&
                     state.reason == MaintenanceReason.UNFINISHED_OPERATION &&
@@ -1046,7 +1202,7 @@ internal class AppRootViewModel @Inject constructor(
                         try {
                             mutableMaintenancePresentation.value = MaintenancePresentation.RUNNING
                             manager.close()
-                            if (restoreController.recoverInterrupted(bookId)) {
+                            if (withOfflinePrimaryMaintenance(manager) { restoreController.recoverInterrupted(bookId) }) {
                                 mutableMaintenancePresentation.value = MaintenancePresentation.SUCCEEDED
                                 delay(MAINTENANCE_RESULT_VISIBILITY_MILLIS)
                                 manager.finishMaintenance()
@@ -1065,6 +1221,7 @@ internal class AppRootViewModel @Inject constructor(
                         MaintenanceReason.UNFINISHED_OPERATION -> MaintenancePresentation.PREPARING
                     }
                 } else if (state is BookSessionState.RecoveryRequired) {
+                    revisionCacheControl.clearBook(bookId)
                     mutableRecoveryBackupAvailable.value = null
                     viewModelScope.launch(Dispatchers.IO) {
                         mutableRecoveryBackupAvailable.value = VerifiedBackupAvailabilityStore(context).hasVerifiedBackup(bookId)
@@ -1073,15 +1230,229 @@ internal class AppRootViewModel @Inject constructor(
             }
         }
         manager.initialize()
-        if (!saved.appLockEnabled) manager.unlockUi()
+        if (AppUnlockTransitionPolicy.mayOpenWithoutAuthentication(manager.state.value, saved.appLockEnabled)) {
+            unlockUiAndTrackContent(manager)
+        }
     }
 
-    private fun catchUpAutomation(bookId: StableId) {
-        RecurrenceWorkScheduler.enqueueCatchUp(context, bookId)
-        RecurrenceWorkScheduler.ensurePeriodicCatchUp(context, bookId)
-        viewModelScope.launch(Dispatchers.IO) {
-            automationApplicationPort.catchUp(bookId, runtimeSources.clock.now())
+    private suspend fun unlockUiAndTrackContent(manager: BookSessionManager) {
+        cancelUnlockToContentTrace()
+        val trace = LedgerSessionPerformance.begin(LedgerInteractionOperation.UNLOCK_TO_CONTENT)
+        unlockToContentTrace = trace
+        manager.unlockUi()
+        val ready = manager.state.value as? BookSessionState.Ready
+        if (ready == null) {
+            trace.close()
+            if (unlockToContentTrace === trace) unlockToContentTrace = null
+            return
         }
+        unlockToContentJob = viewModelScope.launch {
+            try {
+                mutableCurrentRouteContentReadyGeneration.filter { it == ready.generation }.first()
+            } finally {
+                trace.close()
+                if (unlockToContentTrace === trace) {
+                    unlockToContentTrace = null
+                    unlockToContentJob = null
+                }
+            }
+        }
+    }
+
+    private fun cancelUnlockToContentTrace() {
+        unlockToContentJob?.cancel()
+        unlockToContentJob = null
+        unlockToContentTrace?.close()
+        unlockToContentTrace = null
+    }
+
+    private suspend fun catchUpAutomation(bookId: StableId) {
+        automationApplicationPort.catchUp(bookId, runtimeSources.clock.now())
+        RecurrenceWorkScheduler.scheduleStartupCatchUpAndAwait(context, bookId)
+    }
+
+    private fun loadTopLevelMinimum(target: TopLevelDestination) {
+        when (target) {
+            TopLevelDestination.RECORD -> if (mutableOrdinaryRecord.value !is OrdinaryRecordLoadState.Content) {
+                loadOrdinaryRecord()
+            }
+            // Journal owns a frame-first loading handshake in AppRootScreen. Starting its fast
+            // metadata read here can replace Loading before Compose presents that bounded response,
+            // forcing target-scale Paging content into the first navigation frame.
+            TopLevelDestination.JOURNAL -> Unit
+            TopLevelDestination.ACCOUNTS -> if (mutableReferenceData.value !is AppReferenceDataState.Content) {
+                loadReferenceData()
+            }
+            // Budget and Analysis destinations own their route-keyed LaunchedEffect loaders.
+            TopLevelDestination.BUDGET,
+            TopLevelDestination.ANALYSIS,
+            -> Unit
+        }
+    }
+
+    private fun schedulePostFirstContentWork(
+        bookId: StableId,
+        generation: Long,
+        topLevel: TopLevelDestination,
+    ) {
+        val application = context.applicationContext as? LedgerApplication ?: return
+        if (application.hasStartedFirstInteractiveContentWork()) return
+        postFirstContentJob?.cancel()
+        postFirstContentJob = viewModelScope.launch {
+            awaitTopLevelContent(topLevel, generation)
+            if (
+                activeBookSessionRuntime.readyGeneration(bookId) != generation ||
+                navigator.currentTopLevel != topLevel
+            ) {
+                return@launch
+            }
+            application.onFirstInteractiveContent {
+                catchUpAutomation(bookId)
+                refreshWidgetSnapshotNow(bookId)
+            }
+        }
+    }
+
+    private fun trackTopLevelContent(
+        bookId: StableId,
+        generation: Long,
+        topLevel: TopLevelDestination,
+        reportFullyDrawn: Boolean,
+    ) {
+        cancelRouteInteractionTrace()
+        val requestTrace = LedgerSessionPerformance.begin(LedgerInteractionOperation.ROUTE_REQUEST)
+        val contentTrace = LedgerSessionPerformance.begin(LedgerInteractionOperation.ROUTE_CONTENT)
+        routeRequestTrace = requestTrace
+        routeContentTrace = contentTrace
+        routeInteractionJob = viewModelScope.launch {
+            try {
+                awaitTopLevelContent(topLevel, generation)
+                if (
+                    activeBookSessionRuntime.readyGeneration(bookId) == generation &&
+                    navigator.currentTopLevel == topLevel &&
+                    reportFullyDrawn
+                ) {
+                    mutableCurrentRouteContentReadyGeneration.value = generation
+                }
+            } finally {
+                contentTrace.close()
+                requestTrace.close()
+                if (routeContentTrace === contentTrace) routeContentTrace = null
+                if (routeRequestTrace === requestTrace) routeRequestTrace = null
+            }
+        }
+    }
+
+    private suspend fun awaitTopLevelContent(topLevel: TopLevelDestination, generation: Long) {
+        mutableTopLevelContentGenerations.filter { it[topLevel] == generation }.first()
+    }
+
+    private fun markTopLevelContent(bookId: StableId, topLevel: TopLevelDestination) {
+        val generation = activeBookSessionRuntime.readyGeneration(bookId) ?: return
+        mutableTopLevelContentGenerations.update { current -> current + (topLevel to generation) }
+    }
+
+    private fun cancelRouteInteractionTrace() {
+        routeInteractionJob?.cancel()
+        routeInteractionJob = null
+        routeContentTrace?.close()
+        routeContentTrace = null
+        routeRequestTrace?.close()
+        routeRequestTrace = null
+        resetJournalRouteStageTraces()
+    }
+
+    private fun resetJournalRouteStageTraces() {
+        journalMetadataTrace?.close()
+        journalMetadataTrace = null
+        journalPageTrace?.close()
+        journalPageTrace = null
+        journalPresentationTrace?.close()
+        journalPresentationTrace = null
+        journalStageRequest = null
+    }
+
+    @Suppress("ComplexCondition")
+    private fun beginJournalPageTrace(request: JournalPagingRequest) {
+        if (
+            routeContentTrace == null ||
+            mutableJournalPagingRequest.value != request ||
+            journalStageRequest != request ||
+            journalPageTrace != null
+        ) {
+            return
+        }
+        journalPageTrace = LedgerSessionPerformance.begin(LedgerInteractionOperation.JOURNAL_PAGE)
+    }
+
+    private fun beginJournalSearchTrace() {
+        cancelJournalSearchTrace()
+        journalSearchRequestTrace = LedgerSessionPerformance.begin(LedgerInteractionOperation.SEARCH_REQUEST)
+    }
+
+    private fun completeJournalPage(request: JournalPagingRequest, successful: Boolean) {
+        if (mutableJournalPagingRequest.value != request) return
+        if (journalStageRequest == request) {
+            journalPageTrace?.close()
+            journalPageTrace = null
+            if (successful && journalPresentationTrace == null) {
+                journalPresentationTrace = LedgerSessionPerformance.begin(
+                    LedgerInteractionOperation.JOURNAL_PRESENTATION,
+                )
+            }
+        }
+        val current = mutableJournal.value as? JournalLoadState.Content
+        if (
+            successful &&
+            current?.filter == request.filter &&
+            current.pagingEpoch == request.refreshEpoch
+        ) {
+            mutableJournal.value = current.copy(pageLoadedEpoch = request.refreshEpoch)
+        }
+        completeJournalSearchTrace(request, successful)
+    }
+
+    fun onJournalPagePresented() {
+        val request = mutableJournalPagingRequest.value ?: return
+        if (presentedJournalPagingRequest == request) return
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        if (ready.bookId != request.bookId || navigator.currentTopLevel != TopLevelDestination.JOURNAL) return
+        presentedJournalPagingRequest = request
+        if (journalStageRequest == request) {
+            journalPresentationTrace?.close()
+            journalPresentationTrace = null
+        }
+        completeJournalRoutePresentation(request.bookId)
+    }
+
+    private fun completeJournalRoutePresentation(bookId: StableId) {
+        markTopLevelContent(bookId, TopLevelDestination.JOURNAL)
+        routeContentTrace?.close()
+        routeContentTrace = null
+        routeRequestTrace?.close()
+        routeRequestTrace = null
+    }
+
+    private fun completeJournalSearchTrace(request: JournalPagingRequest, successful: Boolean) {
+        if (request.filter.searchText.isNullOrBlank()) return
+        val current = mutableJournal.value as? JournalLoadState.Content ?: return
+        if (current.filter != request.filter) return
+        mutableJournal.value = current.copy(searchPending = false, searchResultReady = successful)
+        if (successful) {
+            journalSearchContentTrace?.close()
+            journalSearchContentTrace = null
+            journalSearchRequestTrace?.close()
+            journalSearchRequestTrace = null
+        } else {
+            cancelJournalSearchTrace()
+        }
+    }
+
+    private fun cancelJournalSearchTrace() {
+        journalSearchContentTrace?.close()
+        journalSearchContentTrace = null
+        journalSearchRequestTrace?.close()
+        journalSearchRequestTrace = null
     }
 
     fun beginAuthentication() {
@@ -1111,7 +1482,7 @@ internal class AppRootViewModel @Inject constructor(
                 pendingLock?.join()
                 if (generation != applicationUnlockGeneration) return@launch
                 when (manager.state.value) {
-                    BookSessionState.Locked -> manager.unlockUi()
+                    BookSessionState.Locked -> unlockUiAndTrackContent(manager)
                     BookSessionState.Opening -> Unit
                     is BookSessionState.Ready -> publishSession(manager.state.value)
                     else -> publishSession(manager.state.value)
@@ -1140,9 +1511,20 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     private fun lockApplicationSession(manager: BookSessionManager? = sessionManager) {
+        manager?.let { revisionCacheControl.clearBook(it.bookId) }
         applicationUnlockGeneration++
         applicationUnlockJob?.cancel()
         applicationUnlockJob = null
+        cancelUnlockToContentTrace()
+        postFirstContentJob?.cancel()
+        postFirstContentJob = null
+        referenceRouteLoader.cancel()
+        journalSearchLoader.reset()
+        refundSearchLoader.reset()
+        featureLoadRegistry.cancelAll()
+        synchronized(featureLoadKeyLock) { completedFeatureLoadKeys.clear() }
+        currentOrdinaryLoadJob?.cancel()
+        currentBudgetLoadJob?.cancel()
         publishSession(BookSessionState.Locked)
         if (manager == null || applicationLockJob?.isActive == true) return
         applicationLockJob = viewModelScope.launch(Dispatchers.IO) {
@@ -1173,12 +1555,16 @@ internal class AppRootViewModel @Inject constructor(
 
     private fun refreshWidgetSnapshot(bookId: StableId) {
         viewModelScope.launch(Dispatchers.IO) {
-            val saved = settingsRepository.current()
-            val zone = runCatching { ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }) }.getOrDefault(ZoneId.of(DEFAULT_ZONE))
-            val today = runtimeSources.clock.now().atZone(zone).toLocalDate()
-            val refreshed = (widgetSnapshotRefreshApplicationPort.refreshIfStale(bookId, today) as? DomainResult.Success)?.value
-            if (refreshed == true) LedgerWidgetRuntime.updateAll(context)
+            refreshWidgetSnapshotNow(bookId)
         }
+    }
+
+    private suspend fun refreshWidgetSnapshotNow(bookId: StableId) {
+        val saved = settingsRepository.current()
+        val zone = runCatching { ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }) }.getOrDefault(ZoneId.of(DEFAULT_ZONE))
+        val today = runtimeSources.clock.now().atZone(zone).toLocalDate()
+        val refreshed = (widgetSnapshotRefreshApplicationPort.refreshIfStale(bookId, today) as? DomainResult.Success)?.value
+        if (refreshed == true) LedgerWidgetRuntime.updateAll(context)
     }
 
     fun retryOpen() {
@@ -1464,18 +1850,34 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun loadOperationCenter() {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        val previous = mutableOperationCenter.value as? OperationCenterLoadState.Content
+        val lease = beginFeatureLoad(
+            FEATURE_LOAD_OPERATION_CENTER,
+            AppFeatureLoadKey(ready.bookId, ready.generation, "SYS-002"),
+            previous != null,
+        ) {
+            mutableOperationCenter.value = previous ?: OperationCenterLoadState.Failure("OPERATION_LOAD_TIMEOUT")
+        } ?: return
+        if (previous == null) mutableOperationCenter.value = OperationCenterLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
-            mutableOperationCenter.value = OperationCenterLoadState.Loading
             val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull()
-                ?: return@launch run { mutableOperationCenter.value = OperationCenterLoadState.Failure("OPERATION_BOOK_UNAVAILABLE") }
+            if (bookId == null) {
+                publishFeatureLoad(lease, reusable = false) {
+                    mutableOperationCenter.value = previous ?: OperationCenterLoadState.Failure("OPERATION_BOOK_UNAVAILABLE")
+                }
+                return@launch
+            }
             val repository = SqlCipherBackgroundOperationRepository(
                 bookId,
-                SecurePrimaryLedgerAccess(context, keyProvider),
+                SecurePrimaryLedgerAccess(context, keyProvider, activeBookSessionRuntime),
             )
-            mutableOperationCenter.value = when (val result = repository.list()) {
+            val loaded = when (val result = repository.list()) {
                 is DomainResult.Success -> OperationCenterLoadState.Content(result.value)
-                is DomainResult.Failure -> OperationCenterLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Failure -> previous ?: OperationCenterLoadState.Failure(sanitizeCode(result.error.code))
+            }
+            publishFeatureLoad(lease, reusable = loaded is OperationCenterLoadState.Content) {
+                mutableOperationCenter.value = loaded
             }
         }
     }
@@ -1483,7 +1885,10 @@ internal class AppRootViewModel @Inject constructor(
     fun cancelOperation(operationId: BackgroundOperationId) {
         viewModelScope.launch(Dispatchers.IO) {
             val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
-            val repository = SqlCipherBackgroundOperationRepository(bookId, SecurePrimaryLedgerAccess(context, keyProvider))
+            val repository = SqlCipherBackgroundOperationRepository(
+                bookId,
+                SecurePrimaryLedgerAccess(context, keyProvider, activeBookSessionRuntime),
+            )
             val operation = (repository.get(operationId) as? DomainResult.Success)?.value ?: return@launch
             if (operation.state !in CANCELABLE_OPERATION_STATES) return@launch
             val cancelling = (operation.transition(BackgroundOperationState.CANCEL_REQUESTED, runtimeSources.clock.now()) as? DomainResult.Success)
@@ -1516,7 +1921,10 @@ internal class AppRootViewModel @Inject constructor(
     fun retryOperation(operationId: BackgroundOperationId) {
         viewModelScope.launch(Dispatchers.IO) {
             val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
-            val repository = SqlCipherBackgroundOperationRepository(bookId, SecurePrimaryLedgerAccess(context, keyProvider))
+            val repository = SqlCipherBackgroundOperationRepository(
+                bookId,
+                SecurePrimaryLedgerAccess(context, keyProvider, activeBookSessionRuntime),
+            )
             val operation = (repository.get(operationId) as? DomainResult.Success)?.value ?: return@launch
             if (!operation.canRetryFromOperationCenter()) return@launch
             if (operation.type == BackgroundOperationType.IMPORT) {
@@ -1528,11 +1936,13 @@ internal class AppRootViewModel @Inject constructor(
                 withContext(Dispatchers.Main.immediate) { navigateImportStage() }
                 return@launch
             }
-            val queued = (operation.transition(
-                BackgroundOperationState.QUEUED,
-                runtimeSources.clock.now(),
-                errorCode = null,
-            ) as? DomainResult.Success)?.value ?: return@launch
+            val queued = (
+                operation.transition(
+                    BackgroundOperationState.QUEUED,
+                    runtimeSources.clock.now(),
+                    errorCode = null,
+                ) as? DomainResult.Success
+                )?.value ?: return@launch
             if (repository.save(queued) !is DomainResult.Success) return@launch
             when (operation.type) {
                 BackgroundOperationType.EXPORT -> ExportWorkScheduler.enqueue(context, operation.id.value, remoteProvider = false)
@@ -1673,6 +2083,11 @@ internal class AppRootViewModel @Inject constructor(
         )
         if (screenId.startsWith("VLT-")) vaultController.synchronizeVisibleScreen(screenId)
         if (!screenId.startsWith("VLT-") && vault.value.screenId.startsWith("VLT-")) vaultController.hideSensitive(autoHidden = false)
+        val routeLoadKey = currentRouteScopeKey()
+        if (screenId.requiresReferenceRouteData() && lastReferenceRouteLoadKey != routeLoadKey) {
+            lastReferenceRouteLoadKey = routeLoadKey
+            loadReferenceRouteData(screenId)
+        }
     }
 
     private fun refreshLocalClear(
@@ -1709,6 +2124,7 @@ internal class AppRootViewModel @Inject constructor(
             }
             sessionManager?.close()
             sessionManager = null
+            revisionCacheControl.clearAll()
             val cleared = bookId?.let { initializationPort.clearLocalBook(it) }
             if (cleared !is DomainResult.Success) {
                 mutableGlobalSnackbarMessages.tryEmit(GlobalSnackbarMessage.LOCAL_CLEAR_FAILED)
@@ -1825,19 +2241,124 @@ internal class AppRootViewModel @Inject constructor(
         if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
         viewModelScope.launch(Dispatchers.IO) {
             val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
-            mutableReferenceData.value = AppReferenceDataState.Loading
-            mutableReferenceData.value = when (val result = referenceDataPort.snapshot(bookId)) {
+            if (mutableReferenceData.value !is AppReferenceDataState.Content) {
+                mutableReferenceData.value = AppReferenceDataState.Loading
+            }
+            val result = withTimeoutOrNull(DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS) {
+                referenceDataPort.accountSummary(bookId)
+            }
+            mutableReferenceData.value = when (result) {
+                null -> AppReferenceDataState.Error("REFERENCE_LOAD_TIMEOUT")
                 is DomainResult.Success -> {
-                    updateCurrencySettings(result.value)
+                    val snapshot = result.value.toReferenceSnapshot(
+                        (mutableReferenceData.value as? AppReferenceDataState.Content)?.snapshot,
+                    )
+                    updateCurrencySettings(snapshot)
                     withContext(Dispatchers.Main.immediate) {
-                        vaultController.synchronizeCards(bookId, result.value.cards)
+                        vaultController.synchronizeCards(bookId, snapshot.cards)
                     }
-                    AppReferenceDataState.Content(result.value)
+                    AppReferenceDataState.Content(snapshot)
                 }
                 is DomainResult.Failure -> AppReferenceDataState.Error(result.error.code)
             }
+            if (mutableReferenceData.value is AppReferenceDataState.Content) {
+                markTopLevelContent(bookId, TopLevelDestination.ACCOUNTS)
+            }
         }
     }
+
+    private fun loadReferenceRouteData(screenId: String) {
+        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        val route = navigator.currentKey
+        val bookId = runCatching { requireBookId(settings.value) }.getOrNull() ?: return
+        val generation = activeBookSessionRuntime.readyGeneration(bookId) ?: return
+        val previous = (mutableReferenceData.value as? AppReferenceDataState.Content)?.snapshot
+        val accountId = route.encodedArguments["accountId"]?.let { StableId.parse(it).getOrNull() }
+        val categoryDirection = route.encodedArguments["direction"]
+            ?.let { runCatching { CategoryDirection.valueOf(it) }.getOrNull() }
+        referenceRouteLoader.request(
+            ReferenceDataLoadKey(
+                bookId,
+                generation,
+                currentRouteScopeKey(),
+                screenId,
+                accountId,
+                categoryDirection,
+            ),
+            previous,
+        )
+    }
+
+    private suspend fun loadReferenceRouteSnapshot(
+        bookId: StableId,
+        screenId: String,
+        accountId: StableId?,
+        categoryDirection: CategoryDirection?,
+        previous: ReferenceDataSnapshot?,
+    ): ReferenceDataSnapshot? {
+        val summary = (referenceDataPort.accountSummary(bookId) as? DomainResult.Success)?.value ?: return null
+        var snapshot = summary.toReferenceSnapshot(previous)
+        when {
+            screenId.startsWith("ACC-") -> {
+                if (accountId != null && screenId in ACCOUNT_HISTORY_SCREENS) {
+                    val history = (referenceDataPort.accountHistory(bookId, accountId) as? DomainResult.Success)?.value
+                        ?: return null
+                    snapshot = snapshot.copy(
+                        checkpoints = history.checkpoints,
+                        accountTransactions = history.transactions,
+                        accountGoals = history.goals,
+                    )
+                }
+            }
+            screenId.startsWith("CAT-") -> {
+                val direction = categoryDirection ?: CategoryDirection.EXPENSE
+                val categories = (referenceDataPort.categoryPage(bookId, direction) as? DomainResult.Success)?.value
+                    ?: return null
+                val merchants = if (screenId == "CAT-002") {
+                    (referenceDataPort.merchantPage(bookId) as? DomainResult.Success)?.value?.items ?: return null
+                } else {
+                    snapshot.merchants
+                }
+                snapshot = snapshot.copy(categories = categories.items, merchants = merchants)
+            }
+            screenId.startsWith("MER-") -> {
+                val merchants = (referenceDataPort.merchantPage(bookId) as? DomainResult.Success)?.value ?: return null
+                snapshot = snapshot.copy(merchants = merchants.items)
+            }
+            screenId.startsWith("PLC-") -> {
+                val places = (referenceDataPort.placePage(bookId) as? DomainResult.Success)?.value ?: return null
+                val locations = (referenceDataPort.locationPage(bookId) as? DomainResult.Success)?.value ?: return null
+                val merchants = (referenceDataPort.merchantPage(bookId) as? DomainResult.Success)?.value ?: return null
+                snapshot = snapshot.copy(
+                    merchants = merchants.items,
+                    places = places.items,
+                    locations = locations.items,
+                )
+            }
+        }
+        return snapshot
+    }
+
+    private fun AccountSummarySnapshot.toReferenceSnapshot(previous: ReferenceDataSnapshot?): ReferenceDataSnapshot = ReferenceDataSnapshot(
+        bookId = bookId,
+        baseCurrency = baseCurrency,
+        localRevision = localRevision,
+        valuationRevision = valuationRevision,
+        accounts = accounts,
+        cards = cards,
+        categories = previous?.takeIf { it.bookId == bookId }?.categories.orEmpty(),
+        merchants = previous?.takeIf { it.bookId == bookId }?.merchants.orEmpty(),
+        places = previous?.takeIf { it.bookId == bookId }?.places.orEmpty(),
+        locations = previous?.takeIf { it.bookId == bookId }?.locations.orEmpty(),
+        checkpoints = previous?.takeIf { it.bookId == bookId }?.checkpoints.orEmpty(),
+        accountTransactions = previous?.takeIf { it.bookId == bookId }?.accountTransactions.orEmpty(),
+        accountGoals = previous?.takeIf { it.bookId == bookId }?.accountGoals.orEmpty(),
+        coreNetFinancialAssetsMinor = coreNetFinancialAssetsMinor,
+        adjustedNetFinancialPositionMinor = adjustedNetFinancialPositionMinor,
+        valuationMissing = valuationMissing,
+    )
+
+    private fun String.requiresReferenceRouteData(): Boolean = startsWith("ACC-") || startsWith("CAT-") || startsWith("MER-") || startsWith("PLC-")
 
     fun loadAnalysis(
         screenId: String,
@@ -1852,7 +2373,14 @@ internal class AppRootViewModel @Inject constructor(
             val bookId = runCatching { requireBookId(saved) }.getOrNull() ?: return@launch
             val currency = CurrencyCode.parse(saved.baseCurrency.ifBlank { DEFAULT_CURRENCY }).getOrNull() ?: return@launch
             val today = runtimeSources.clock.now().atZone(ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE })).toLocalDate()
-            analysisController.open(bookId, currency, today, screenId, reportKey, queryId?.let(::DrilldownQueryId), entityId, forecastKey)
+            val completed = withTimeoutOrNull(DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS) {
+                analysisController.open(bookId, currency, today, screenId, reportKey, queryId?.let(::DrilldownQueryId), entityId, forecastKey)
+                true
+            } ?: false
+            if (!completed) analysisController.loadTimedOut()
+            if (completed && analysis.value is AnalysisLoadState.Content) {
+                markTopLevelContent(bookId, TopLevelDestination.ANALYSIS)
+            }
         }
     }
 
@@ -1886,8 +2414,7 @@ internal class AppRootViewModel @Inject constructor(
 
     fun cycleAnalysisSort(stableKey: String) = analysisController.cycleSort(stableKey)
 
-    fun toggleAnalysisReportFilter(filter: app.ledger.feature.analysis.AnalysisEntityFilter, id: StableId) =
-        analysisController.toggleReportFilter(filter, id)
+    fun toggleAnalysisReportFilter(filter: app.ledger.feature.analysis.AnalysisEntityFilter, id: StableId) = analysisController.toggleReportFilter(filter, id)
 
     fun removeAnalysisReportFilter(stableKey: String) = analysisController.removeReportFilter(stableKey)
 
@@ -1988,17 +2515,13 @@ internal class AppRootViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) { analysisController.cycleMapPresentation() }
     }
 
-    fun selectConsumptionMapMode(value: app.ledger.analytics.domain.ConsumptionMapMode) =
-        viewModelScope.launch(Dispatchers.IO) { analysisController.selectMapMode(value) }
+    fun selectConsumptionMapMode(value: app.ledger.analytics.domain.ConsumptionMapMode) = viewModelScope.launch(Dispatchers.IO) { analysisController.selectMapMode(value) }
 
-    fun selectConsumptionMapWeight(value: app.ledger.analytics.domain.ConsumptionMapWeight) =
-        viewModelScope.launch(Dispatchers.IO) { analysisController.selectMapWeight(value) }
+    fun selectConsumptionMapWeight(value: app.ledger.analytics.domain.ConsumptionMapWeight) = viewModelScope.launch(Dispatchers.IO) { analysisController.selectMapWeight(value) }
 
-    fun selectConsumptionMapAggregation(value: app.ledger.analytics.domain.ConsumptionMapAggregation) =
-        viewModelScope.launch(Dispatchers.IO) { analysisController.selectMapAggregation(value) }
+    fun selectConsumptionMapAggregation(value: app.ledger.analytics.domain.ConsumptionMapAggregation) = viewModelScope.launch(Dispatchers.IO) { analysisController.selectMapAggregation(value) }
 
-    fun selectConsumptionMapPresentation(value: app.ledger.analytics.domain.ConsumptionMapPresentation) =
-        viewModelScope.launch(Dispatchers.IO) { analysisController.selectMapPresentation(value) }
+    fun selectConsumptionMapPresentation(value: app.ledger.analytics.domain.ConsumptionMapPresentation) = viewModelScope.launch(Dispatchers.IO) { analysisController.selectMapPresentation(value) }
 
     fun toggleConsumptionMapSpecialTransactions() {
         viewModelScope.launch(Dispatchers.IO) { analysisController.toggleMapSpecialTransactions() }
@@ -2090,31 +2613,117 @@ internal class AppRootViewModel @Inject constructor(
 
     fun loadJournal() {
         if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        journalSearchLoader.reset()
+        if (routeContentTrace != null && navigator.currentTopLevel == TopLevelDestination.JOURNAL) {
+            resetJournalRouteStageTraces()
+            journalMetadataTrace = LedgerSessionPerformance.begin(LedgerInteractionOperation.JOURNAL_METADATA)
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val saved = settingsRepository.current()
-            val bookId = runCatching { requireBookId(saved) }.getOrNull() ?: return@launch
+            val bookId = runCatching { requireBookId(saved) }.getOrNull()
+            if (bookId == null) {
+                journalMetadataTrace?.close()
+                journalMetadataTrace = null
+                return@launch
+            }
             val current = mutableJournal.value as? JournalLoadState.Content
-            val presets = (journalApplicationPort.savedFilters(bookId) as? DomainResult.Success)?.value.orEmpty()
-            val options = (journalApplicationPort.bulkEditOptions(bookId) as? DomainResult.Success)?.value
-                ?: return@launch run { mutableJournal.value = JournalLoadState.Failure("JOURNAL_OPTIONS_FAILED") }
-            val defaultPreset = presets.singleOrNull { it.isDefault }
-            val filter = current?.filter ?: defaultPreset?.filter ?: TransactionFilter(lifecycleStates = setOf(TransactionLifecycleState.ACTIVE))
-            mutableJournal.value = (current ?: JournalLoadState.Content()).copy(
-                filter = filter,
-                zoneId = saved.zoneId.ifBlank { DEFAULT_ZONE },
-                searchText = filter.searchText.orEmpty(),
-                presets = presets,
-                bulkOptions = options,
-                activePresetId = current?.activePresetId ?: defaultPreset?.id,
+            val loaded: JournalLoadState? = withTimeoutOrNull(DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS) {
+                val presets = (journalApplicationPort.savedFilters(bookId) as? DomainResult.Success)?.value.orEmpty()
+                val defaultPreset = presets.singleOrNull { it.isDefault }
+                val filter = current?.filter
+                    ?: defaultPreset?.filter
+                    ?: TransactionFilter(lifecycleStates = setOf(TransactionLifecycleState.ACTIVE))
+                (current ?: JournalLoadState.Content()).copy(
+                    filter = filter,
+                    zoneId = saved.zoneId.ifBlank { DEFAULT_ZONE },
+                    searchText = filter.searchText.orEmpty(),
+                    presets = presets,
+                    activePresetId = current?.activePresetId ?: defaultPreset?.id,
+                )
+            }
+            journalMetadataTrace?.close()
+            journalMetadataTrace = null
+            if (loaded == null) {
+                mutableJournal.value = current ?: JournalLoadState.Failure("JOURNAL_LOAD_TIMEOUT")
+                return@launch
+            }
+            if (loaded is JournalLoadState.Failure) {
+                mutableJournal.value = current ?: loaded
+                return@launch
+            }
+            check(loaded is JournalLoadState.Content)
+            val request = JournalPagingRequest(
+                bookId,
+                loaded.filter,
+                refreshEpoch = (mutableJournalPagingRequest.value?.refreshEpoch ?: 0) + 1,
             )
-            mutableJournalPagingRequest.value = JournalPagingRequest(bookId, filter, refreshEpoch = (mutableJournalPagingRequest.value?.refreshEpoch ?: 0) + 1)
+            if (routeContentTrace != null) journalStageRequest = request
+            mutableJournal.value = loaded.copy(
+                pagingEpoch = request.refreshEpoch,
+                pageLoadedEpoch = null,
+            )
+            mutableJournalPagingRequest.value = request
         }
     }
 
+    /** Completes the bounded Journal response before admitting metadata and Paging work. */
+    fun onJournalFirstResponsePresented(screenId: String) {
+        LedgerSessionPerformance.completeBlockingProgress()
+        val state = mutableJournal.value
+        if (state === JournalLoadState.Loading) {
+            loadJournal()
+        } else if (state is JournalLoadState.Content) {
+            if (screenId in JOURNAL_OPTION_SCREENS) loadJournalBulkOptions()
+            if (screenId !in JOURNAL_PAGED_SCREENS || screenId == "JRN-002" && state.searchText.isBlank()) {
+                val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready
+                if (ready != null && navigator.currentTopLevel == TopLevelDestination.JOURNAL) {
+                    completeJournalRoutePresentation(ready.bookId)
+                }
+            }
+        }
+    }
+
+    private fun loadJournalBulkOptions() {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        if (journalBulkOptionsGeneration == ready.generation || journalBulkOptionsJob?.isActive == true) return
+        journalBulkOptionsJob = viewModelScope.launch {
+            try {
+                val options = withContext(Dispatchers.IO) {
+                    withTimeoutOrNull(DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS) {
+                        (journalApplicationPort.bulkEditOptions(ready.bookId) as? DomainResult.Success)?.value
+                    }
+                } ?: return@launch
+                val currentReady = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready
+                if (currentReady?.bookId == ready.bookId && currentReady.generation == ready.generation) {
+                    updateJournalContent { copy(bulkOptions = options) }
+                    journalBulkOptionsGeneration = ready.generation
+                }
+            } finally {
+                journalBulkOptionsJob = null
+            }
+        }
+    }
+
+    @Suppress("ComplexCondition")
     fun updateJournalSearch(value: String) {
         val query = value.take(RECORD_SEARCH_LIMIT)
-        updateJournalContent { copy(searchText = query, filter = filter.copy(searchText = query.takeIf(String::isNotBlank))) }
-        refreshJournalPaging()
+        val current = mutableJournal.value as? JournalLoadState.Content ?: return
+        if (
+            current.searchText == query &&
+            (query.isBlank() || current.searchPending || current.searchResultReady)
+        ) {
+            return
+        }
+        val updated = current.copy(
+            searchText = query,
+            filter = current.filter.copy(searchText = query.takeIf(String::isNotBlank)),
+            searchPending = query.isNotBlank(),
+            searchResultReady = false,
+        )
+        mutableJournal.value = updated
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        if (query.isBlank()) cancelJournalSearchTrace() else beginJournalSearchTrace()
+        journalSearchLoader.request(JournalSearchLoadKey(ready.bookId, ready.generation, updated.filter))
     }
 
     fun applyJournalFilter(filter: TransactionFilter) {
@@ -2172,28 +2781,27 @@ internal class AppRootViewModel @Inject constructor(
         updateJournalContent { copy(detail = null, detailLoading = true, detailFailureCode = null) }
         viewModelScope.launch(Dispatchers.IO) {
             val bookId = requireBookId(settingsRepository.current())
-            val detail = journalApplicationPort.detail(bookId, transactionId)
-            val history = journalApplicationPort.history(bookId, transactionId)
-            val dependencies = journalApplicationPort.dependencies(bookId, transactionId)
-            if (detail is DomainResult.Success && detail.value != null) {
+            val bundle = withTimeoutOrNull(DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS) {
+                journalApplicationPort.detailBundle(bookId, transactionId)
+            }
+            if (bundle is DomainResult.Success && bundle.value.detail != null) {
                 updateJournalContent {
                     copy(
-                        detail = detail.value,
+                        detail = bundle.value.detail,
                         detailLoading = false,
                         detailFailureCode = null,
-                        history = when (history) {
-                            is DomainResult.Success -> history.value
-                            is DomainResult.Failure -> emptyList()
-                        },
-                        dependencies = when (dependencies) {
-                            is DomainResult.Success -> dependencies.value
-                            is DomainResult.Failure -> emptyList()
-                        },
+                        history = bundle.value.history,
+                        dependencies = bundle.value.dependencies,
                         dependencyResolutions = emptyList(),
                     )
                 }
             } else {
-                updateJournalContent { copy(detailLoading = false, detailFailureCode = "JOURNAL_DETAIL_FAILED") }
+                updateJournalContent {
+                    copy(
+                        detailLoading = false,
+                        detailFailureCode = if (bundle == null) "JOURNAL_DETAIL_TIMEOUT" else "JOURNAL_DETAIL_FAILED",
+                    )
+                }
             }
         }
     }
@@ -2556,10 +3164,20 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     private fun refreshJournalPaging() {
+        journalSearchLoader.reset()
         viewModelScope.launch(Dispatchers.IO) {
             val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
             val content = mutableJournal.value as? JournalLoadState.Content ?: return@launch
-            mutableJournalPagingRequest.value = JournalPagingRequest(bookId, content.filter, refreshEpoch = (mutableJournalPagingRequest.value?.refreshEpoch ?: 0) + 1)
+            val request = JournalPagingRequest(
+                bookId,
+                content.filter,
+                refreshEpoch = (mutableJournalPagingRequest.value?.refreshEpoch ?: 0) + 1,
+            )
+            mutableJournal.value = content.copy(
+                pagingEpoch = request.refreshEpoch,
+                pageLoadedEpoch = null,
+            )
+            mutableJournalPagingRequest.value = request
         }
     }
 
@@ -2569,24 +3187,40 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun loadOrdinaryRecord(transactionId: StableId? = null) {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
-        viewModelScope.launch(Dispatchers.IO) {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        val key = OrdinaryLoadKey(ready.bookId, ready.generation, transactionId)
+        val visible = (mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content)
+            ?.takeIf { currentOrdinaryLoadKey == key }
+        if (currentOrdinaryLoadKey == key && (visible != null || currentOrdinaryLoadJob?.isActive == true)) return
+        currentOrdinaryLoadJob?.cancel()
+        currentOrdinaryLoadKey = key
+        if (visible == null) mutableOrdinaryRecord.value = OrdinaryRecordLoadState.Loading
+        currentOrdinaryLoadJob = viewModelScope.launch(Dispatchers.IO) {
             val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
-            if (transactionId == null) mutableOrdinaryRecord.value = OrdinaryRecordLoadState.Loading
-            mutableOrdinaryRecord.value = when (val result = ordinaryTransactionEntryPort.snapshot(bookId, transactionId)) {
+            val result = withTimeoutOrNull(DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS) {
+                ordinaryTransactionEntryPort.snapshot(bookId, transactionId)
+            }
+            val loaded = when (result) {
+                null -> visible ?: OrdinaryRecordLoadState.Failure("RECORD_LOAD_TIMEOUT")
                 is DomainResult.Success -> {
-                    val previous = mutableOrdinaryRecord.value as? OrdinaryRecordLoadState.Content
                     OrdinaryRecordLoadState.Content(
                         result.value,
-                        previous?.tab ?: RecordTab.EXPENSE,
-                        previous?.search.orEmpty(),
-                        previous?.selectedCategoryId,
-                        previous?.editor,
-                        previous?.expenseScrollIndex ?: 0,
-                        previous?.incomeScrollIndex ?: 0,
+                        visible?.tab ?: RecordTab.EXPENSE,
+                        visible?.search.orEmpty(),
+                        visible?.selectedCategoryId,
+                        visible?.editor,
+                        visible?.expenseScrollIndex ?: 0,
+                        visible?.incomeScrollIndex ?: 0,
                     )
                 }
-                is DomainResult.Failure -> OrdinaryRecordLoadState.Failure(sanitizeCode(result.error.code))
+                is DomainResult.Failure -> visible ?: OrdinaryRecordLoadState.Failure(sanitizeCode(result.error.code))
+            }
+            if (currentOrdinaryLoadKey == key && activeBookSessionRuntime.readyGeneration(bookId) == key.sessionGeneration) {
+                mutableOrdinaryRecord.value = loaded
+                if (loaded is OrdinaryRecordLoadState.Content) {
+                    markTopLevelContent(bookId, TopLevelDestination.RECORD)
+                }
+                currentOrdinaryLoadJob = null
             }
         }
     }
@@ -2624,8 +3258,7 @@ internal class AppRootViewModel @Inject constructor(
     fun pasteBatchRows(text: String) = batchEntryController.paste(text)
     fun updateBatchRow(row: BatchRowDraft) = batchEntryController.updateRow(row)
     fun cycleBatchReference(rowId: StableId, field: BatchEntryField) = batchEntryController.cycle(rowId, field)
-    fun selectBatchReference(rowId: StableId, field: BatchEntryField, selectedId: StableId?) =
-        batchEntryController.selectReference(rowId, field, selectedId)
+    fun selectBatchReference(rowId: StableId, field: BatchEntryField, selectedId: StableId?) = batchEntryController.selectReference(rowId, field, selectedId)
 
     fun openAttachment(value: StableId) {
         val activeBook = ((mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready)?.bookId ?: return
@@ -3149,9 +3782,11 @@ internal class AppRootViewModel @Inject constructor(
 
     fun saveAttachmentName(onSaved: () -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
-            if (attachmentController.commitRename()) withContext(Dispatchers.Main.immediate) {
-                navigator.pop()
-                onSaved()
+            if (attachmentController.commitRename()) {
+                withContext(Dispatchers.Main.immediate) {
+                    navigator.pop()
+                    onSaved()
+                }
             }
         }
     }
@@ -3183,14 +3818,25 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun loadRefund(presetOriginalId: StableId? = null) {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
-        mutableRefund.value = RefundLoadState.Loading
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        val previous = mutableRefund.value as? RefundLoadState.Content
+        val lease = beginFeatureLoad(
+            FEATURE_LOAD_REFUND,
+            AppFeatureLoadKey(ready.bookId, ready.generation, "REC-015", listOf(presetOriginalId?.toString())),
+            previous != null,
+        ) {
+            mutableRefund.value = previous ?: RefundLoadState.Failure("REFUND_LOAD_TIMEOUT")
+        } ?: return
+        if (previous == null) mutableRefund.value = RefundLoadState.Loading
+        refundSearchLoader.reset()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val saved = settingsRepository.current()
                 val bookId = requireBookId(saved)
                 when (val result = refundApplicationPort.snapshot(bookId)) {
-                    is DomainResult.Failure -> mutableRefund.value = RefundLoadState.Failure(sanitizeCode(result.error.code))
+                    is DomainResult.Failure -> publishFeatureLoad(lease, reusable = false) {
+                        mutableRefund.value = previous ?: RefundLoadState.Failure(sanitizeCode(result.error.code))
+                    }
                     is DomainResult.Success -> {
                         val editor = RefundPolicy.create(
                             result.value,
@@ -3199,12 +3845,16 @@ internal class AppRootViewModel @Inject constructor(
                             ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }),
                             recordLocale(),
                         )
-                        mutableRefund.value = RefundLoadState.Content(editor)
-                        mutableRefundPicker.value = RefundPickerState.Content(result.value)
+                        publishFeatureLoad(lease, reusable = true) {
+                            mutableRefund.value = RefundLoadState.Content(editor)
+                            mutableRefundPicker.value = RefundPickerState.Content(result.value)
+                        }
                     }
                 }
             } catch (_: Exception) {
-                mutableRefund.value = RefundLoadState.Failure("REFUND_LOAD_FAILED")
+                publishFeatureLoad(lease, reusable = false) {
+                    mutableRefund.value = previous ?: RefundLoadState.Failure("REFUND_LOAD_FAILED")
+                }
             }
         }
     }
@@ -3213,13 +3863,10 @@ internal class AppRootViewModel @Inject constructor(
         val editor = (mutableRefund.value as? RefundLoadState.Content)?.editor
         val bookId = editor?.snapshot?.references?.bookId ?: return loadRefund()
         val current = mutableRefundPicker.value as? RefundPickerState.Content
+        if (current?.query == query) return
         if (current != null) mutableRefundPicker.value = current.copy(query = query, searching = true)
-        viewModelScope.launch(Dispatchers.IO) {
-            when (val result = refundApplicationPort.snapshot(bookId, query)) {
-                is DomainResult.Failure -> mutableRefundPicker.value = RefundPickerState.Failure(sanitizeCode(result.error.code))
-                is DomainResult.Success -> mutableRefundPicker.value = RefundPickerState.Content(result.value, query)
-            }
-        }
+        val generation = activeBookSessionRuntime.readyGeneration(bookId) ?: return
+        refundSearchLoader.request(RefundSearchLoadKey(bookId, generation, query))
     }
 
     fun chooseRefundOriginal(id: StableId) {
@@ -3333,7 +3980,7 @@ internal class AppRootViewModel @Inject constructor(
                     is DomainResult.Success -> {
                         mutableSuccessHapticEvents.tryEmit(Unit)
                         loadReferenceDataAfterMutation(validated.snapshot.references.bookId)
-                        mutableRefund.value = RefundLoadState.Loading
+                        invalidateFeatureLoad(FEATURE_LOAD_REFUND)
                         navigator.pop()
                     }
                     is DomainResult.Failure -> updateRefund { it.copy(presentation = RefundPresentation.SAVE_ERROR, failureCode = sanitizeCode(result.error.code)) }
@@ -3354,7 +4001,7 @@ internal class AppRootViewModel @Inject constructor(
         presetAccountId: StableId? = null,
         transactionId: StableId? = null,
     ) {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
         val kind = when (screenId) {
             "REC-013" -> SpecializedTransactionKind.TRANSFER
             "REC-020" -> SpecializedTransactionKind.BALANCE_ADJUSTMENT
@@ -3362,24 +4009,50 @@ internal class AppRootViewModel @Inject constructor(
             "REC-022" -> SpecializedTransactionKind.OPENING_BALANCE
             else -> return
         }
-        mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Loading
+        val previous = mutableSpecializedTransaction.value as? SpecializedTransactionLoadState.Content
+        val lease = beginFeatureLoad(
+            FEATURE_LOAD_SPECIALIZED,
+            AppFeatureLoadKey(
+                ready.bookId,
+                ready.generation,
+                screenId,
+                listOf(presetAccountId?.toString(), transactionId?.toString()),
+            ),
+            previous != null,
+        ) {
+            mutableSpecializedTransaction.value = previous
+                ?: SpecializedTransactionLoadState.Failure("SPECIALIZED_LOAD_TIMEOUT")
+        } ?: return
+        if (previous == null) mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
-            val saved = settingsRepository.current()
-            val bookId = requireBookId(saved)
-            when (val result = specializedTransactionEntryPort.snapshot(bookId, transactionId)) {
-                is DomainResult.Failure -> mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Failure(sanitizeCode(result.error.code))
-                is DomainResult.Success -> {
-                    val editor = SpecializedTransactionPolicy.create(
-                        kind,
-                        result.value.references,
-                        presetAccountId,
-                        runtimeSources.clock.now(),
-                        ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }),
-                        recordLocale(),
-                        result.value.editing,
-                    )
-                    mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Content(editor)
-                    quoteSpecializedRates(refreshOnline = true)
+            try {
+                val saved = settingsRepository.current()
+                val bookId = requireBookId(saved)
+                when (val result = specializedTransactionEntryPort.snapshot(bookId, transactionId)) {
+                    is DomainResult.Failure -> publishFeatureLoad(lease, reusable = false) {
+                        mutableSpecializedTransaction.value = previous
+                            ?: SpecializedTransactionLoadState.Failure(sanitizeCode(result.error.code))
+                    }
+                    is DomainResult.Success -> {
+                        val editor = SpecializedTransactionPolicy.create(
+                            kind,
+                            result.value.references,
+                            presetAccountId,
+                            runtimeSources.clock.now(),
+                            ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }),
+                            recordLocale(),
+                            result.value.editing,
+                        )
+                        val published = publishFeatureLoad(lease, reusable = true) {
+                            mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Content(editor)
+                        }
+                        if (published) quoteSpecializedRates(refreshOnline = true)
+                    }
+                }
+            } catch (_: Exception) {
+                publishFeatureLoad(lease, reusable = false) {
+                    mutableSpecializedTransaction.value = previous
+                        ?: SpecializedTransactionLoadState.Failure("SPECIALIZED_LOAD_FAILED")
                 }
             }
         }
@@ -3535,7 +4208,7 @@ internal class AppRootViewModel @Inject constructor(
                     is DomainResult.Success -> {
                         mutableSuccessHapticEvents.tryEmit(Unit)
                         loadReferenceDataAfterMutation(validated.snapshot.bookId)
-                        mutableSpecializedTransaction.value = SpecializedTransactionLoadState.Loading
+                        invalidateFeatureLoad(FEATURE_LOAD_SPECIALIZED)
                         if (validated.transactionId != null) {
                             refreshJournalPaging()
                             loadJournalDetail(ids.transactionId)
@@ -3588,9 +4261,10 @@ internal class AppRootViewModel @Inject constructor(
             mutableOrdinaryRecord.value = content.copy(editor = validated.copy(presentation = RecordEditorPresentation.SAVE_ERROR, sanitizedFailureCode = "FX_EVIDENCE_UNAVAILABLE"))
             return
         }
+        val requestTrace = LedgerSessionPerformance.begin(LedgerInteractionOperation.SAVE_REQUEST)
         mutableOrdinaryRecordPending.value = true
         mutableOrdinaryRecord.value = content.copy(editor = validated.copy(presentation = RecordEditorPresentation.SAVING, errors = emptyList()))
-        viewModelScope.launch(Dispatchers.IO) {
+        val saveJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val pendingLocation = validated.pendingLocation
                 val locationId = pendingLocation?.let { nextId() }
@@ -3639,11 +4313,22 @@ internal class AppRootViewModel @Inject constructor(
                     createdAt = runtimeSources.clock.now(),
                     acceptedCandidateId = validated.sourceReferenceId.takeIf { validated.mode == RecordEditorMode.CANDIDATE },
                 )
-                when (val result = ordinaryTransactionEntryPort.submit(request)) {
+                val commitTrace = LedgerSessionPerformance.begin(LedgerInteractionOperation.SAVE_COMMIT)
+                val result = try {
+                    ordinaryTransactionEntryPort.submit(request)
+                } finally {
+                    commitTrace.close()
+                }
+                when (result) {
                     is DomainResult.Success -> {
-                        mutableSuccessHapticEvents.tryEmit(Unit)
-                        if (validated.mode == RecordEditorMode.CANDIDATE) pendingCandidateId = null
-                        finishRecordSave(validated, ids.transactionId)
+                        val settledTrace = LedgerSessionPerformance.begin(LedgerInteractionOperation.SAVE_SETTLED)
+                        try {
+                            mutableSuccessHapticEvents.tryEmit(Unit)
+                            if (validated.mode == RecordEditorMode.CANDIDATE) pendingCandidateId = null
+                            finishRecordSave(validated, ids.transactionId)
+                        } finally {
+                            settledTrace.close()
+                        }
                     }
                     is DomainResult.Failure -> {
                         val code = sanitizeCode(result.error.code)
@@ -3652,19 +4337,30 @@ internal class AppRootViewModel @Inject constructor(
                     }
                 }
             } finally {
+                requestTrace.close()
                 mutableOrdinaryRecordPending.value = false
             }
         }
+        saveJob.invokeOnCompletion { requestTrace.close() }
     }
 
     fun loadBudget(month: YearMonth, templateId: StableId? = null, screenId: String = "BUD-001") {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
-        mutableBudget.value = BudgetLoadState.Loading
-        viewModelScope.launch(Dispatchers.IO) {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        val key = BudgetLoadKey(ready.bookId, ready.generation, month, templateId, screenId)
+        val visible = mutableBudget.value as? BudgetLoadState.Content
+        if (currentBudgetLoadKey == key && (visible != null || currentBudgetLoadJob?.isActive == true)) return
+        currentBudgetLoadJob?.cancel()
+        currentBudgetLoadKey = key
+        if (visible == null) mutableBudget.value = BudgetLoadState.Loading
+        currentBudgetLoadJob = viewModelScope.launch(Dispatchers.IO) {
             val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
             val today = runtimeSources.clock.now().atZone(ZoneId.of(settingsRepository.current().zoneId.ifBlank { DEFAULT_ZONE })).toLocalDate()
-            mutableBudget.value = when (val result = budgetApplicationPort.snapshot(bookId, month, today)) {
-                is DomainResult.Failure -> BudgetLoadState.Failure(sanitizeCode(result.error.code))
+            val result = withTimeoutOrNull(DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS) {
+                budgetApplicationPort.snapshot(bookId, month, today)
+            }
+            val loaded = when (result) {
+                null -> visible ?: BudgetLoadState.Failure("BUDGET_LOAD_TIMEOUT")
+                is DomainResult.Failure -> visible ?: BudgetLoadState.Failure(sanitizeCode(result.error.code))
                 is DomainResult.Success -> {
                     var state = BudgetPolicy.create(result.value)
                     if (templateId != null) {
@@ -3696,6 +4392,13 @@ internal class AppRootViewModel @Inject constructor(
                     }
                     BudgetLoadState.Content(state)
                 }
+            }
+            if (currentBudgetLoadKey == key && activeBookSessionRuntime.readyGeneration(bookId) == key.sessionGeneration) {
+                mutableBudget.value = loaded
+                if (loaded is BudgetLoadState.Content) {
+                    markTopLevelContent(bookId, TopLevelDestination.BUDGET)
+                }
+                currentBudgetLoadJob = null
             }
         }
     }
@@ -3896,14 +4599,33 @@ internal class AppRootViewModel @Inject constructor(
         goalId: StableId? = null,
         movementKind: GoalMovementKind? = null,
     ) {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
-        mutableProjectGoal.value = ProjectGoalLoadState.Loading
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        val previous = mutableProjectGoal.value as? ProjectGoalLoadState.Content
+        val lease = beginFeatureLoad(
+            FEATURE_LOAD_PROJECT_GOAL,
+            AppFeatureLoadKey(
+                ready.bookId,
+                ready.generation,
+                screenId,
+                listOf(projectId?.toString(), goalId?.toString(), movementKind?.name),
+            ),
+            previous != null,
+        ) {
+            mutableProjectGoal.value = previous ?: ProjectGoalLoadState.Failure("PROJECT_GOAL_LOAD_TIMEOUT")
+        } ?: return
+        if (previous == null) mutableProjectGoal.value = ProjectGoalLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
             val appSettings = settingsRepository.current()
-            val bookId = runCatching { requireBookId(appSettings) }.getOrNull() ?: return@launch
+            val bookId = runCatching { requireBookId(appSettings) }.getOrNull()
+            if (bookId == null) {
+                publishFeatureLoad(lease, reusable = false) {
+                    mutableProjectGoal.value = previous ?: ProjectGoalLoadState.Failure("PROJECT_GOAL_BOOK_UNAVAILABLE")
+                }
+                return@launch
+            }
             val today = runtimeSources.clock.now().atZone(ZoneId.of(appSettings.zoneId.ifBlank { DEFAULT_ZONE })).toLocalDate()
-            mutableProjectGoal.value = when (val result = projectGoalApplicationPort.snapshot(bookId)) {
-                is DomainResult.Failure -> ProjectGoalLoadState.Failure(sanitizeCode(result.error.code))
+            val loaded = when (val result = projectGoalApplicationPort.snapshot(bookId)) {
+                is DomainResult.Failure -> previous ?: ProjectGoalLoadState.Failure(sanitizeCode(result.error.code))
                 is DomainResult.Success -> {
                     val requestedEntityMissing =
                         projectId != null && result.value.projects.none { it.id == projectId } ||
@@ -3926,6 +4648,9 @@ internal class AppRootViewModel @Inject constructor(
                         ProjectGoalLoadState.Content(initial.copy(movementKind = movementKind ?: initial.movementKind))
                     }
                 }
+            }
+            publishFeatureLoad(lease, reusable = loaded is ProjectGoalLoadState.Content) {
+                mutableProjectGoal.value = loaded
             }
         }
     }
@@ -4187,44 +4912,62 @@ internal class AppRootViewModel @Inject constructor(
         statementId: StableId? = null,
         transactionId: StableId? = null,
     ) {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
         currentCreditScreenId = screenId
         currentCreditTransactionId = transactionId
-        mutableCredit.value = CreditLoadState.Loading
+        val previous = mutableCredit.value as? CreditLoadState.Content
+        val lease = beginFeatureLoad(
+            FEATURE_LOAD_CREDIT,
+            AppFeatureLoadKey(
+                ready.bookId,
+                ready.generation,
+                screenId,
+                listOf(accountId?.toString(), statementId?.toString(), transactionId?.toString()),
+            ),
+            previous != null,
+        ) {
+            mutableCredit.value = previous ?: CreditLoadState.Failure("CREDIT_LOAD_TIMEOUT")
+        } ?: return
+        if (previous == null) mutableCredit.value = CreditLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val appSettings = settingsRepository.current()
                 val bookId = requireBookId(appSettings)
-                mutableCredit.value = when (val result = creditApplicationPort.snapshot(bookId)) {
-                is DomainResult.Failure -> CreditLoadState.Failure(sanitizeCode(result.error.code))
-                is DomainResult.Success -> {
-                    val resolvedAccountId = accountId ?: statementId?.let { target ->
-                        result.value.accounts.singleOrNull { account -> account.statements.any { it.id == target } }?.id
-                    }
-                    val missing = resolvedAccountId != null && result.value.accounts.none { it.id == resolvedAccountId } ||
-                        statementId != null && result.value.accounts.none { account -> account.statements.any { it.id == statementId } }
-                    if (missing) {
-                        CreditLoadState.Failure(CREDIT_NOT_FOUND)
-                    } else {
-                        val state = CreditPolicy.create(result.value, screenId, resolvedAccountId, statementId)
-                        val zone = ZoneId.of(appSettings.zoneId.ifBlank { DEFAULT_ZONE })
-                        val transactionAmount = transactionId?.let { id ->
-                            (journalApplicationPort.detail(bookId, id) as? DomainResult.Success)?.value?.transaction?.amountMinor
+                val loaded = when (val result = creditApplicationPort.snapshot(bookId)) {
+                    is DomainResult.Failure -> previous ?: CreditLoadState.Failure(sanitizeCode(result.error.code))
+                    is DomainResult.Success -> {
+                        val resolvedAccountId = accountId ?: statementId?.let { target ->
+                            result.value.accounts.singleOrNull { account -> account.statements.any { it.id == target } }?.id
                         }
-                        CreditLoadState.Content(
-                            state.copy(
-                                draft = state.draft.copy(
-                                    date = state.draft.date.ifBlank { runtimeSources.clock.now().atZone(zone).toLocalDate().toString() },
-                                    amount = transactionAmount?.let { amount -> state.account?.let { CreditPolicy.minorText(amount, it.currency) } } ?: state.draft.amount,
+                        val missing = resolvedAccountId != null && result.value.accounts.none { it.id == resolvedAccountId } ||
+                            statementId != null && result.value.accounts.none { account -> account.statements.any { it.id == statementId } }
+                        if (missing) {
+                            CreditLoadState.Failure(CREDIT_NOT_FOUND)
+                        } else {
+                            val state = CreditPolicy.create(result.value, screenId, resolvedAccountId, statementId)
+                            val zone = ZoneId.of(appSettings.zoneId.ifBlank { DEFAULT_ZONE })
+                            val transactionAmount = transactionId?.let { id ->
+                                (journalApplicationPort.detail(bookId, id) as? DomainResult.Success)?.value?.transaction?.amountMinor
+                            }
+                            CreditLoadState.Content(
+                                state.copy(
+                                    draft = state.draft.copy(
+                                        date = state.draft.date.ifBlank { runtimeSources.clock.now().atZone(zone).toLocalDate().toString() },
+                                        amount = transactionAmount?.let { amount -> state.account?.let { CreditPolicy.minorText(amount, it.currency) } } ?: state.draft.amount,
+                                    ),
                                 ),
-                            ),
-                        )
+                            )
+                        }
                     }
                 }
+                publishFeatureLoad(lease, reusable = loaded is CreditLoadState.Content) {
+                    mutableCredit.value = loaded
+                    (loaded as? CreditLoadState.Content)?.let { creditDraftBaseline = it.state.draft }
                 }
-                (mutableCredit.value as? CreditLoadState.Content)?.let { creditDraftBaseline = it.state.draft }
             } catch (_: Exception) {
-                mutableCredit.value = CreditLoadState.Failure("CREDIT_LOAD_FAILED")
+                publishFeatureLoad(lease, reusable = false) {
+                    mutableCredit.value = previous ?: CreditLoadState.Failure("CREDIT_LOAD_FAILED")
+                }
             }
         }
     }
@@ -4391,25 +5134,25 @@ internal class AppRootViewModel @Inject constructor(
             try {
                 val now = runtimeSources.clock.now()
                 val profileRequest = SaveCreditProfileRequest(
-                        CreditMutationIds(state.snapshot.bookId, CommandId(nextId()), nextId(), nextId()),
-                        account.id,
-                        account.profile?.lastCommitId,
-                        StatementDateRule.DayOfMonth(requireNotNull(statementDay), MissingDayPolicy.MOVE_TO_MONTH_END),
-                        if (state.draft.dueRuleMode == app.ledger.feature.liabilities.CreditDueRuleMode.FIXED_DAY) {
-                            DueDateRule.FixedDay(requireNotNull(dueDay), MissingDayPolicy.MOVE_TO_MONTH_END)
-                        } else {
-                            DueDateRule.DaysAfterStatement(requireNotNull(dueDay))
-                        },
-                        ZoneId.of(state.draft.zoneId),
-                        standard,
-                        temporary,
-                        expires,
-                        state.draft.selectedPaymentAccountId,
-                        state.draft.autoPaymentMode,
-                        WeekendAdjustment.NEXT_BUSINESS_DAY,
-                        now.atZone(ZoneId.of(state.draft.zoneId)).toLocalDate().takeIf { standard != account.profile?.standardLimitMinor },
-                        now,
-                    )
+                    CreditMutationIds(state.snapshot.bookId, CommandId(nextId()), nextId(), nextId()),
+                    account.id,
+                    account.profile?.lastCommitId,
+                    StatementDateRule.DayOfMonth(requireNotNull(statementDay), MissingDayPolicy.MOVE_TO_MONTH_END),
+                    if (state.draft.dueRuleMode == app.ledger.feature.liabilities.CreditDueRuleMode.FIXED_DAY) {
+                        DueDateRule.FixedDay(requireNotNull(dueDay), MissingDayPolicy.MOVE_TO_MONTH_END)
+                    } else {
+                        DueDateRule.DaysAfterStatement(requireNotNull(dueDay))
+                    },
+                    ZoneId.of(state.draft.zoneId),
+                    standard,
+                    temporary,
+                    expires,
+                    state.draft.selectedPaymentAccountId,
+                    state.draft.autoPaymentMode,
+                    WeekendAdjustment.NEXT_BUSINESS_DAY,
+                    now.atZone(ZoneId.of(state.draft.zoneId)).toLocalDate().takeIf { standard != account.profile?.standardLimitMinor },
+                    now,
+                )
                 val pendingAccount = pendingCreditAccountDraft?.takeIf { it.accountId == account.id }
                 val result = if (pendingAccount == null) {
                     creditApplicationPort.saveProfile(profileRequest)
@@ -4594,16 +5337,35 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun loadInstallment(screenId: String, planId: StableId? = null, purchaseId: StableId? = null) {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
         currentInstallmentScreenId = screenId
-        mutableInstallment.value = InstallmentLoadState.Loading
+        val previous = mutableInstallment.value as? InstallmentLoadState.Content
+        val lease = beginFeatureLoad(
+            FEATURE_LOAD_INSTALLMENT,
+            AppFeatureLoadKey(
+                ready.bookId,
+                ready.generation,
+                screenId,
+                listOf(planId?.toString(), purchaseId?.toString()),
+            ),
+            previous != null,
+        ) {
+            mutableInstallment.value = previous ?: InstallmentLoadState.Failure("INSTALLMENT_LOAD_TIMEOUT")
+        } ?: return
+        if (previous == null) mutableInstallment.value = InstallmentLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
             val saved = settingsRepository.current()
-            val bookId = runCatching { requireBookId(saved) }.getOrNull() ?: return@launch
+            val bookId = runCatching { requireBookId(saved) }.getOrNull()
+            if (bookId == null) {
+                publishFeatureLoad(lease, reusable = false) {
+                    mutableInstallment.value = previous ?: InstallmentLoadState.Failure("INSTALLMENT_BOOK_UNAVAILABLE")
+                }
+                return@launch
+            }
             val zone = ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE })
             val today = runtimeSources.clock.now().atZone(zone).toLocalDate()
-            mutableInstallment.value = when (val result = installmentApplicationPort.snapshot(bookId, today)) {
-                is DomainResult.Failure -> InstallmentLoadState.Failure(sanitizeCode(result.error.code))
+            val loaded = when (val result = installmentApplicationPort.snapshot(bookId, today)) {
+                is DomainResult.Failure -> previous ?: InstallmentLoadState.Failure(sanitizeCode(result.error.code))
                 is DomainResult.Success -> {
                     val missing = planId != null && result.value.plans.none { it.id == planId } ||
                         purchaseId != null && result.value.purchases.none { it.transactionId == purchaseId }
@@ -4613,6 +5375,9 @@ internal class AppRootViewModel @Inject constructor(
                         InstallmentLoadState.Content(InstallmentPolicy.create(result.value, screenId, planId, purchaseId))
                     }
                 }
+            }
+            publishFeatureLoad(lease, reusable = loaded is InstallmentLoadState.Content) {
+                mutableInstallment.value = loaded
             }
         }
     }
@@ -4905,73 +5670,121 @@ internal class AppRootViewModel @Inject constructor(
         transactionId: StableId? = null,
         simulationId: StableId? = null,
     ) {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
         currentLoanScreenId = screenId
-        mutableLoan.value = LoanLoadState.Loading
+        val previous = mutableLoan.value as? LoanLoadState.Content
+        val lease = beginFeatureLoad(
+            FEATURE_LOAD_LOAN,
+            AppFeatureLoadKey(
+                ready.bookId,
+                ready.generation,
+                screenId,
+                listOf(contractId?.toString(), trancheId?.toString(), transactionId?.toString(), simulationId?.toString()),
+            ),
+            previous != null,
+        ) {
+            mutableLoan.value = previous ?: LoanLoadState.Failure("LOAN_LOAD_TIMEOUT")
+        } ?: return
+        if (previous == null) mutableLoan.value = LoanLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val savedSettings = settingsRepository.current()
                 val bookId = requireBookId(savedSettings)
-                mutableLoan.value = when (val result = loanApplicationPort.snapshot(bookId)) {
-                is DomainResult.Failure -> LoanLoadState.Failure(sanitizeCode(result.error.code))
-                is DomainResult.Success -> {
-                    val missing = contractId != null && result.value.contracts.none { it.id == contractId } ||
-                        trancheId != null && result.value.contracts.none { contract -> contract.tranches.any { it.id == trancheId } }
-                    if (missing) {
-                        LoanLoadState.Failure(LOAN_NOT_FOUND)
-                    } else {
-                        val created = LoanPolicy.create(result.value, screenId, contractId, trancheId, transactionId, simulationId).let { state ->
-                            if (screenId != "LIA-001") return@let state
-                            val withCredit = when (val creditResult = creditApplicationPort.snapshot(bookId)) {
-                                is DomainResult.Success -> state.copy(creditAccounts = creditResult.value.accounts)
-                                is DomainResult.Failure -> state.copy(creditLoadFailureCode = sanitizeCode(creditResult.error.code))
-                            }
-                            val today = runtimeSources.clock.now().atZone(ZoneId.of(savedSettings.zoneId.ifBlank { DEFAULT_ZONE })).toLocalDate()
-                            val enriched = when (val installmentResult = installmentApplicationPort.snapshot(bookId, today)) {
-                                is DomainResult.Success -> withCredit.copy(installmentPlans = installmentResult.value.plans)
-                                is DomainResult.Failure -> withCredit.copy(installmentLoadFailureCode = sanitizeCode(installmentResult.error.code))
-                            }
-                            val hasAny = enriched.creditAccounts.isNotEmpty() || enriched.snapshot.contracts.isNotEmpty() || enriched.installmentPlans.isNotEmpty()
-                            val loanScheduleOverdue = enriched.snapshot.contracts.flatMap { it.tranches }.flatMap { it.schedule }.any { row ->
-                                row.plannedDate < today && row.actualPrincipalMinor + row.actualInterestMinor + row.actualFeeMinor + row.actualPenaltyMinor <
-                                    row.principalMinor + row.interestMinor + row.feeMinor
-                            }
-                            val overdue = enriched.creditAccounts.any { it.overdueMinor > 0L } ||
-                                enriched.snapshot.contracts.any { it.status == LoanStatus.DEFAULTED } || loanScheduleOverdue
-                            enriched.copy(presentation = when { overdue -> LoanPresentation.OVERDUE; !hasAny -> LoanPresentation.EMPTY; else -> LoanPresentation.CONTENT })
-                        }
-                        val operationReady = if (screenId in setOf("REC-018", "REC-019")) {
-                            created.copy(
-                                operationOccurredAt = runtimeSources.clock.now(),
-                                operationZoneId = ZoneId.of(savedSettings.zoneId.ifBlank { DEFAULT_ZONE }),
-                            )
-                        } else {
-                            created
-                        }
-                        val withPayment = if (screenId == "LOA-009" && transactionId != null) {
-                            when (val payment = loanApplicationPort.paymentDetail(bookId, transactionId)) {
-                                is DomainResult.Success -> payment.value?.let { operationReady.copy(paymentDetail = it) }
-                                    ?: return@launch run { mutableLoan.value = LoanLoadState.Failure(LOAN_NOT_FOUND) }
-                                is DomainResult.Failure -> return@launch run { mutableLoan.value = LoanLoadState.Failure(sanitizeCode(payment.error.code)) }
-                            }
-                        } else {
-                            operationReady
-                        }
-                        val retained = currentLoanSimulationRequest?.takeIf { request ->
-                            request.contractId == withPayment.selectedContractId && request.simulationId == simulationId
-                        }
-                        LoanLoadState.Content(
-                            if (screenId == "LOA-011" && retained != null) {
-                                withPayment.copy(simulation = currentLoanSimulation)
-                            } else {
-                                withPayment
-                            },
+                val today = runtimeSources.clock.now()
+                    .atZone(ZoneId.of(savedSettings.zoneId.ifBlank { DEFAULT_ZONE }))
+                    .toLocalDate()
+                val hub = activeBookSessionRuntime.withCurrentDatabase(bookId, LedgerAccessMode.READ) {
+                    val loan = loanApplicationPort.snapshot(bookId)
+                    if (screenId == "LIA-001" && loan is DomainResult.Success) {
+                        LiabilityHubQueryResults(
+                            loan,
+                            creditApplicationPort.snapshot(bookId),
+                            installmentApplicationPort.snapshot(bookId, today),
                         )
+                    } else {
+                        LiabilityHubQueryResults(loan, null, null)
                     }
                 }
+                val loaded = when (val result = hub.loan) {
+                    is DomainResult.Failure -> previous ?: LoanLoadState.Failure(sanitizeCode(result.error.code))
+                    is DomainResult.Success -> {
+                        val missing = contractId != null && result.value.contracts.none { it.id == contractId } ||
+                            trancheId != null && result.value.contracts.none { contract -> contract.tranches.any { it.id == trancheId } }
+                        if (missing) {
+                            LoanLoadState.Failure(LOAN_NOT_FOUND)
+                        } else {
+                            val created = LoanPolicy.create(result.value, screenId, contractId, trancheId, transactionId, simulationId).let { state ->
+                                if (screenId != "LIA-001") return@let state
+                                val withCredit = when (val creditResult = hub.credit) {
+                                    is DomainResult.Success -> state.copy(creditAccounts = creditResult.value.accounts)
+                                    is DomainResult.Failure -> state.copy(creditLoadFailureCode = sanitizeCode(creditResult.error.code))
+                                    null -> state
+                                }
+                                val enriched = when (val installmentResult = hub.installment) {
+                                    is DomainResult.Success -> withCredit.copy(installmentPlans = installmentResult.value.plans)
+                                    is DomainResult.Failure -> withCredit.copy(installmentLoadFailureCode = sanitizeCode(installmentResult.error.code))
+                                    null -> withCredit
+                                }
+                                val hasAny = enriched.creditAccounts.isNotEmpty() || enriched.snapshot.contracts.isNotEmpty() || enriched.installmentPlans.isNotEmpty()
+                                val loanScheduleOverdue = enriched.snapshot.contracts.flatMap { it.tranches }.flatMap { it.schedule }.any { row ->
+                                    row.plannedDate < today && row.actualPrincipalMinor + row.actualInterestMinor + row.actualFeeMinor + row.actualPenaltyMinor <
+                                        row.principalMinor + row.interestMinor + row.feeMinor
+                                }
+                                val overdue = enriched.creditAccounts.any { it.overdueMinor > 0L } ||
+                                    enriched.snapshot.contracts.any { it.status == LoanStatus.DEFAULTED } || loanScheduleOverdue
+                                enriched.copy(
+                                    presentation = when {
+                                        overdue -> LoanPresentation.OVERDUE
+                                        !hasAny -> LoanPresentation.EMPTY
+                                        else -> LoanPresentation.CONTENT
+                                    },
+                                )
+                            }
+                            val operationReady = if (screenId in setOf("REC-018", "REC-019")) {
+                                created.copy(
+                                    operationOccurredAt = runtimeSources.clock.now(),
+                                    operationZoneId = ZoneId.of(savedSettings.zoneId.ifBlank { DEFAULT_ZONE }),
+                                )
+                            } else {
+                                created
+                            }
+                            val payment = if (screenId == "LOA-009" && transactionId != null) {
+                                loanApplicationPort.paymentDetail(bookId, transactionId)
+                            } else {
+                                null
+                            }
+                            val paymentFailure = when (payment) {
+                                is DomainResult.Success -> if (payment.value == null) LOAN_NOT_FOUND else null
+                                is DomainResult.Failure -> sanitizeCode(payment.error.code)
+                                null -> null
+                            }
+                            if (paymentFailure != null) {
+                                LoanLoadState.Failure(paymentFailure)
+                            } else {
+                                val withPayment = (payment as? DomainResult.Success)?.value
+                                    ?.let { operationReady.copy(paymentDetail = it) }
+                                    ?: operationReady
+                                val retained = currentLoanSimulationRequest?.takeIf { request ->
+                                    request.contractId == withPayment.selectedContractId && request.simulationId == simulationId
+                                }
+                                LoanLoadState.Content(
+                                    if (screenId == "LOA-011" && retained != null) {
+                                        withPayment.copy(simulation = currentLoanSimulation)
+                                    } else {
+                                        withPayment
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                publishFeatureLoad(lease, reusable = loaded is LoanLoadState.Content) {
+                    mutableLoan.value = loaded
                 }
             } catch (_: Exception) {
-                mutableLoan.value = LoanLoadState.Failure("LIABILITY_LOAD_FAILED")
+                publishFeatureLoad(lease, reusable = false) {
+                    mutableLoan.value = previous ?: LoanLoadState.Failure("LIABILITY_LOAD_FAILED")
+                }
             }
         }
     }
@@ -5101,7 +5914,8 @@ internal class AppRootViewModel @Inject constructor(
         state.copy(
             editingRatePeriodIndex = index,
             draft = state.draft.copy(
-                startDate = period.effectiveFrom.toString(), endDate = period.effectiveTo?.toString().orEmpty(),
+                startDate = period.effectiveFrom.toString(),
+                endDate = period.effectiveTo?.toString().orEmpty(),
                 annualRate = period.annualRate.annualDecimal.toPlainString(),
             ),
             presentation = LoanPresentation.EDITING,
@@ -5553,13 +6367,32 @@ internal class AppRootViewModel @Inject constructor(
     }
 
     fun loadSettlement(screenId: String, activityId: StableId? = null, participantId: StableId? = null) {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
         currentSettlementScreenId = screenId
-        mutableSettlement.value = SettlementLoadState.Loading
+        val previous = mutableSettlement.value as? SettlementLoadState.Content
+        val lease = beginFeatureLoad(
+            FEATURE_LOAD_SETTLEMENT,
+            AppFeatureLoadKey(
+                ready.bookId,
+                ready.generation,
+                screenId,
+                listOf(activityId?.toString(), participantId?.toString()),
+            ),
+            previous != null,
+        ) {
+            mutableSettlement.value = previous ?: SettlementLoadState.Failure("SETTLEMENT_LOAD_TIMEOUT")
+        } ?: return
+        if (previous == null) mutableSettlement.value = SettlementLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
-            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull() ?: return@launch
-            mutableSettlement.value = when (val result = settlementApplicationPort.snapshot(bookId)) {
-                is DomainResult.Failure -> SettlementLoadState.Failure(sanitizeCode(result.error.code))
+            val bookId = runCatching { requireBookId(settingsRepository.current()) }.getOrNull()
+            if (bookId == null) {
+                publishFeatureLoad(lease, reusable = false) {
+                    mutableSettlement.value = previous ?: SettlementLoadState.Failure("SETTLEMENT_BOOK_UNAVAILABLE")
+                }
+                return@launch
+            }
+            val loaded = when (val result = settlementApplicationPort.snapshot(bookId)) {
+                is DomainResult.Failure -> previous ?: SettlementLoadState.Failure(sanitizeCode(result.error.code))
                 is DomainResult.Success -> {
                     val activity = activityId?.let { id -> result.value.activities.singleOrNull { it.id == id } }
                     val missingActivity = activityId != null && activity == null
@@ -5580,6 +6413,9 @@ internal class AppRootViewModel @Inject constructor(
                         )
                     }
                 }
+            }
+            publishFeatureLoad(lease, reusable = loaded is SettlementLoadState.Content) {
+                mutableSettlement.value = loaded
             }
         }
     }
@@ -5903,15 +6739,42 @@ internal class AppRootViewModel @Inject constructor(
             updateEditor { it.copy(showUnsavedDialog = true) }
         } else {
             if (editor != null) stopRecordLocationAcquisition()
-            navigator.select(target)
+            if (target == TopLevelDestination.JOURNAL && navigator.currentTopLevel != target) {
+                presentedJournalPagingRequest = null
+                LedgerSessionPerformance.beginBlockingProgress()
+            } else {
+                LedgerSessionPerformance.completeBlockingProgress()
+            }
+            val outcome = navigator.select(target)
+            loadTopLevelMinimum(target)
+            val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready
+            if (ready != null && outcome != NavigationOutcome.ScrollRootToTop) {
+                trackTopLevelContent(ready.bookId, ready.generation, target, reportFullyDrawn = false)
+                schedulePostFirstContentWork(ready.bookId, ready.generation, target)
+            }
         }
     }
 
     override fun onCleared() {
+        financialCommitRegistration.close()
         attachmentController.close()
+        revisionCacheControl.clearAll()
         applicationUnlockGeneration++
         applicationUnlockJob?.cancel()
+        cancelUnlockToContentTrace()
         applicationLockJob?.cancel()
+        postFirstContentJob?.cancel()
+        cancelRouteInteractionTrace()
+        cancelJournalSearchTrace()
+        LedgerSessionPerformance.completeBlockingProgress()
+        journalBulkOptionsJob?.cancel()
+        referenceRouteLoader.cancel()
+        journalSearchLoader.reset()
+        refundSearchLoader.reset()
+        featureLoadRegistry.cancelAll()
+        synchronized(featureLoadKeyLock) { completedFeatureLoadKeys.clear() }
+        currentOrdinaryLoadJob?.cancel()
+        currentBudgetLoadJob?.cancel()
         stopRecordLocationAcquisition()
         super.onCleared()
     }
@@ -5929,7 +6792,10 @@ internal class AppRootViewModel @Inject constructor(
         updateEditor { it.copy(showUnsavedDialog = false) }
         when (val pending = pendingRecordExit) {
             PendingRecordExit.Back -> navigator.pop()
-            is PendingRecordExit.TopLevel -> navigator.select(pending.target)
+            is PendingRecordExit.TopLevel -> {
+                navigator.select(pending.target)
+                loadTopLevelMinimum(pending.target)
+            }
             null -> Unit
         }
         pendingRecordExit = null
@@ -5991,7 +6857,10 @@ internal class AppRootViewModel @Inject constructor(
         mutableGeneralUnsavedPrompt.value = false
         when (pending) {
             is PendingGeneralExit.Back -> navigator.pop()
-            is PendingGeneralExit.TopLevel -> navigator.select(pending.target)
+            is PendingGeneralExit.TopLevel -> {
+                navigator.select(pending.target)
+                loadTopLevelMinimum(pending.target)
+            }
         }
     }
 
@@ -6072,27 +6941,27 @@ internal class AppRootViewModel @Inject constructor(
         }
         var savedAccountId = value.accountId
         executeReferenceMutation(factory = { snapshot ->
-        val existing = value.accountId?.let { id -> snapshot.accounts.singleOrNull { it.id == id } }
-        val currency = CurrencyCode.parse(value.currencyCode).getOrNull() ?: error("REFERENCE_INVALID_CURRENCY")
-        val accountId = existing?.id ?: nextId()
-        savedAccountId = accountId
-        ReferenceMutation.SaveAccount(
-            AccountDraft(
-                accountId = accountId,
-                ledgerAccountId = if (existing == null) nextId() else nextId(),
-                expectedRowVersion = existing?.rowVersion,
-                type = value.type,
-                name = value.name,
-                currency = currency,
-                institutionName = value.institutionName,
-                branchName = value.branchName,
-                accountNumber = value.accountNumber,
-                openedOn = value.openedOn,
-                iconKey = value.iconKey,
-                colorArgb = value.colorArgb,
-                sortOrder = existing?.sortOrder ?: snapshot.accounts.size,
-            ),
-        )
+            val existing = value.accountId?.let { id -> snapshot.accounts.singleOrNull { it.id == id } }
+            val currency = CurrencyCode.parse(value.currencyCode).getOrNull() ?: error("REFERENCE_INVALID_CURRENCY")
+            val accountId = existing?.id ?: nextId()
+            savedAccountId = accountId
+            ReferenceMutation.SaveAccount(
+                AccountDraft(
+                    accountId = accountId,
+                    ledgerAccountId = if (existing == null) nextId() else nextId(),
+                    expectedRowVersion = existing?.rowVersion,
+                    type = value.type,
+                    name = value.name,
+                    currency = currency,
+                    institutionName = value.institutionName,
+                    branchName = value.branchName,
+                    accountNumber = value.accountNumber,
+                    openedOn = value.openedOn,
+                    iconKey = value.iconKey,
+                    colorArgb = value.colorArgb,
+                    sortOrder = existing?.sortOrder ?: snapshot.accounts.size,
+                ),
+            )
         }, onSuccess = {
             if (value.accountId == null) {
                 when (value.type) {
@@ -6296,10 +7165,10 @@ internal class AppRootViewModel @Inject constructor(
             mutableReferenceMutationPending.value = true
             try {
                 // Financial writes advance the same book revision used by reference mutations.
-                // Always build the command from a fresh snapshot so an account/category save made
-                // after recording a transaction cannot be rejected by a stale UI revision.
-                val snapshot = when (val latest = referenceDataPort.snapshot(cached.bookId)) {
-                    is DomainResult.Success -> latest.value
+                // Refresh the authoritative header/balances while retaining only the bounded
+                // reference family loaded for this route.
+                val snapshot = when (val latest = referenceDataPort.accountSummary(cached.bookId)) {
+                    is DomainResult.Success -> latest.value.toReferenceSnapshot(cached)
                     is DomainResult.Failure -> {
                         mutableGlobalSnackbarMessages.emit(GlobalSnackbarMessage.REFERENCE_MUTATION_FAILED)
                         return@launch
@@ -6331,26 +7200,51 @@ internal class AppRootViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadReferenceDataAfterMutation(bookId: StableId): Boolean =
-        when (val result = referenceDataPort.snapshot(bookId)) {
-            is DomainResult.Success -> {
-                updateCurrencySettings(result.value)
-                mutableReferenceData.value = AppReferenceDataState.Content(result.value)
-                withContext(Dispatchers.Main.immediate) {
-                    vaultController.synchronizeCards(bookId, result.value.cards)
-                }
-                updateRecordContent {
-                    val refreshed = snapshot.copy(references = result.value)
-                    val currentEditor = editor
-                    copy(
-                        snapshot = refreshed,
-                        editor = currentEditor?.copy(snapshot = currentEditor.snapshot.copy(references = result.value)),
-                    )
-                }
-                true
+    private suspend fun loadReferenceDataAfterMutation(bookId: StableId): Boolean = when (val result = referenceDataPort.accountSummary(bookId)) {
+        is DomainResult.Success -> {
+            val previous = (mutableReferenceData.value as? AppReferenceDataState.Content)?.snapshot
+            val summarySnapshot = result.value.toReferenceSnapshot(previous)
+            val screenId = navigator.currentKey.contract.screenId.value
+            val snapshot = if (screenId.requiresReferenceRouteData()) {
+                val arguments = navigator.currentKey.encodedArguments
+                loadReferenceRouteSnapshot(
+                    bookId,
+                    screenId,
+                    arguments["accountId"]?.let { StableId.parse(it).getOrNull() },
+                    arguments["direction"]?.let { runCatching { CategoryDirection.valueOf(it) }.getOrNull() },
+                    summarySnapshot,
+                ) ?: return false
+            } else {
+                summarySnapshot
             }
-            is DomainResult.Failure -> false
+            updateCurrencySettings(snapshot)
+            mutableReferenceData.value = AppReferenceDataState.Content(snapshot)
+            withContext(Dispatchers.Main.immediate) {
+                vaultController.synchronizeCards(bookId, snapshot.cards)
+            }
+            updateRecordContent {
+                val refreshedReferences = this.snapshot.references.copy(
+                    localRevision = snapshot.localRevision,
+                    valuationRevision = snapshot.valuationRevision,
+                    accounts = snapshot.accounts,
+                    cards = snapshot.cards,
+                    coreNetFinancialAssetsMinor = snapshot.coreNetFinancialAssetsMinor,
+                    adjustedNetFinancialPositionMinor = snapshot.adjustedNetFinancialPositionMinor,
+                    valuationMissing = snapshot.valuationMissing,
+                )
+                val refreshed = this.snapshot.copy(references = refreshedReferences)
+                val currentEditor = editor
+                copy(
+                    snapshot = refreshed,
+                    editor = currentEditor?.copy(
+                        snapshot = currentEditor.snapshot.copy(references = refreshedReferences),
+                    ),
+                )
+            }
+            true
         }
+        is DomainResult.Failure -> false
+    }
 
     private fun popToReferenceScreen(screenId: String) {
         while (navigator.currentKey.contract.screenId.value != screenId && navigator.currentBackStack.size > 1) {
@@ -6491,16 +7385,18 @@ internal class AppRootViewModel @Inject constructor(
                 }
             }
             val zone = runCatching { ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE }) }.getOrDefault(ZoneId.of(DEFAULT_ZONE))
-            val editor = hydrateRecordEditor(OrdinaryRecordPolicy.createEditor(
-                snapshot,
-                seed.mode,
-                seed.direction,
-                seed.categoryId,
-                seed.sourceId,
-                runtimeSources.clock.now(),
-                zone,
-                recordLocale(),
-            ))
+            val editor = hydrateRecordEditor(
+                OrdinaryRecordPolicy.createEditor(
+                    snapshot,
+                    seed.mode,
+                    seed.direction,
+                    seed.categoryId,
+                    seed.sourceId,
+                    runtimeSources.clock.now(),
+                    zone,
+                    recordLocale(),
+                ),
+            )
             mutableOrdinaryRecord.value = OrdinaryRecordLoadState.Content(
                 snapshot,
                 if (seed.direction == OrdinaryDirection.EXPENSE) RecordTab.EXPENSE else RecordTab.INCOME,
@@ -6598,7 +7494,8 @@ internal class AppRootViewModel @Inject constructor(
         seriesId: StableId? = null,
         candidateId: StableId? = null,
     ) {
-        if ((mutableRootState.value as? AppRootState.Session)?.state !is BookSessionState.Ready) return
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        val previousContent = mutableAutomation.value as? AutomationLoadState.Content
         val previousAutomation = (mutableAutomation.value as? AutomationLoadState.Content)?.state
         automationBlueprintDraftCache = if (screenId == "AUT-003" && previousAutomation?.screenId == "AUT-003") {
             previousAutomation.blueprintDraft ?: automationBlueprintDraftCache
@@ -6620,25 +7517,49 @@ internal class AppRootViewModel @Inject constructor(
             automationRecurrenceDraftCache = null
         }
         currentAutomationScreenId = screenId
+        val lease = beginFeatureLoad(
+            FEATURE_LOAD_AUTOMATION,
+            AppFeatureLoadKey(
+                ready.bookId,
+                ready.generation,
+                screenId,
+                listOf(blueprintId?.toString(), seriesId?.toString(), candidateId?.toString()),
+            ),
+            previousContent != null,
+        ) {
+            mutableAutomation.value = previousContent ?: AutomationLoadState.Failure("AUTOMATION_LOAD_TIMEOUT")
+        } ?: return
+        if (previousContent == null) mutableAutomation.value = AutomationLoadState.Loading
         viewModelScope.launch(Dispatchers.IO) {
             val saved = settingsRepository.current()
-            val bookId = runCatching { requireBookId(saved) }.getOrNull() ?: return@launch
+            val bookId = runCatching { requireBookId(saved) }.getOrNull()
+            if (bookId == null) {
+                publishFeatureLoad(lease, reusable = false) {
+                    mutableAutomation.value = previousContent ?: AutomationLoadState.Failure("AUTOMATION_BOOK_UNAVAILABLE")
+                }
+                return@launch
+            }
             val zone = ZoneId.of(saved.zoneId.ifBlank { DEFAULT_ZONE })
             val today = runtimeSources.clock.now().atZone(zone).toLocalDate()
-            mutableAutomation.value = AutomationLoadState.Loading
-            val automationResult = automationApplicationPort.snapshot(bookId)
-            val entryResult = ordinaryTransactionEntryPort.snapshot(bookId)
-            mutableAutomation.value = if (automationResult is DomainResult.Success && entryResult is DomainResult.Success) {
+            val hub = activeBookSessionRuntime.withCurrentDatabase(bookId, LedgerAccessMode.READ) {
+                AutomationHubQueryResults(
+                    automationApplicationPort.snapshot(bookId),
+                    ordinaryTransactionEntryPort.snapshot(bookId),
+                )
+            }
+            val automationResult = hub.automation
+            val entryResult = hub.entry
+            val loaded = if (automationResult is DomainResult.Success && entryResult is DomainResult.Success) {
                 val created = AutomationPolicy.create(
-                        automationResult.value,
-                        entryResult.value,
-                        screenId,
-                        blueprintId,
-                        seriesId,
-                        candidateId,
-                        zone,
-                        today,
-                    )
+                    automationResult.value,
+                    entryResult.value,
+                    screenId,
+                    blueprintId,
+                    seriesId,
+                    candidateId,
+                    zone,
+                    today,
+                )
                 val retainedRule = pendingAutomationRuleDraft?.takeIf { draft ->
                     screenId == "AUT-006" || screenId == "AUT-005" && draft.id == seriesId
                 }
@@ -6657,7 +7578,10 @@ internal class AppRootViewModel @Inject constructor(
                 val code = (automationResult as? DomainResult.Failure)?.error?.code
                     ?: (entryResult as? DomainResult.Failure)?.error?.code
                     ?: "AUTOMATION_LOAD_FAILED"
-                AutomationLoadState.Failure(sanitizeCode(code))
+                previousContent ?: AutomationLoadState.Failure(sanitizeCode(code))
+            }
+            publishFeatureLoad(lease, reusable = loaded is AutomationLoadState.Content) {
+                mutableAutomation.value = loaded
             }
         }
     }
@@ -7110,8 +8034,12 @@ internal class AppRootViewModel @Inject constructor(
         RecordEditorMode.CREATE, RecordEditorMode.DUPLICATE -> TransactionSource.MANUAL
     }
 
-    private suspend fun finishRecordSave(editor: OrdinaryRecordEditorState, transactionId: StableId) {
-        loadReferenceDataAfterMutation(editor.snapshot.references.bookId)
+    private fun finishRecordSave(editor: OrdinaryRecordEditorState, transactionId: StableId) {
+        mutableOrdinaryRecord.value = OrdinaryRecordLoadState.Content(
+            snapshot = editor.snapshot,
+            tab = if (editor.draft.direction == OrdinaryDirection.EXPENSE) RecordTab.EXPENSE else RecordTab.INCOME,
+            selectedCategoryId = editor.draft.categoryId,
+        )
         when (editor.mode) {
             RecordEditorMode.EDIT -> {
                 val screen = ScreenId("JRN-007")
@@ -7133,12 +8061,53 @@ internal class AppRootViewModel @Inject constructor(
                 while (navigator.currentKey.contract.screenId.value != "REC-001" && navigator.currentBackStack.size > 1) navigator.pop()
             }
         }
-        val loaded = ordinaryTransactionEntryPort.snapshot(editor.snapshot.references.bookId)
-        mutableOrdinaryRecord.value = when (loaded) {
-            is DomainResult.Success -> OrdinaryRecordLoadState.Content(loaded.value, if (editor.draft.direction == OrdinaryDirection.EXPENSE) RecordTab.EXPENSE else RecordTab.INCOME, selectedCategoryId = editor.draft.categoryId)
-            is DomainResult.Failure -> OrdinaryRecordLoadState.Failure(sanitizeCode(loaded.error.code))
-        }
+        refreshJournalPaging()
         stopRecordLocationAcquisition()
+    }
+
+    private fun onFinancialCommitted(change: CommittedLedgerChange) {
+        val ready = (mutableRootState.value as? AppRootState.Session)?.state as? BookSessionState.Ready ?: return
+        if (ready.bookId != change.bookId) return
+        invalidatedLedgerScopes.value = invalidatedLedgerScopes.value.toMutableMap().apply {
+            change.scopes.forEach { scope -> put(scope, change.localRevision.value) }
+        }
+        synchronized(featureLoadKeyLock) { completedFeatureLoadKeys.clear() }
+    }
+
+    private fun beginFeatureLoad(
+        owner: String,
+        key: AppFeatureLoadKey,
+        hasContent: Boolean,
+        onTimeout: () -> Unit,
+    ): KeyedLoadRegistry.Lease<String, AppFeatureLoadKey>? {
+        if (hasContent && synchronized(featureLoadKeyLock) { completedFeatureLoadKeys[owner] == key }) return null
+        val lease = featureLoadRegistry.begin(owner, key) ?: return null
+        viewModelScope.launch {
+            delay(DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS)
+            publishFeatureLoad(lease, reusable = false, publish = onTimeout)
+        }
+        return lease
+    }
+
+    private fun invalidateFeatureLoad(owner: String) {
+        synchronized(featureLoadKeyLock) { completedFeatureLoadKeys.remove(owner) }
+    }
+
+    private fun publishFeatureLoad(
+        lease: KeyedLoadRegistry.Lease<String, AppFeatureLoadKey>,
+        reusable: Boolean,
+        publish: () -> Unit,
+    ): Boolean {
+        val current = featureLoadRegistry.isCurrent(lease) &&
+            activeBookSessionRuntime.readyGeneration(lease.key.bookId) == lease.key.sessionGeneration
+        if (current) {
+            publish()
+            synchronized(featureLoadKeyLock) {
+                if (reusable) completedFeatureLoadKeys[lease.owner] = lease.key else completedFeatureLoadKeys.remove(lease.owner)
+            }
+        }
+        featureLoadRegistry.complete(lease)
+        return current
     }
 
     private fun recordLocale(): Locale {
@@ -7192,7 +8161,7 @@ internal class AppRootViewModel @Inject constructor(
         }
     }.getOrNull()
 
-    private fun recordAttachmentPresentations(
+    private suspend fun recordAttachmentPresentations(
         bookId: StableId,
         attachmentIds: List<StableId>,
     ): List<RecordAttachmentPresentation> {
@@ -7216,7 +8185,7 @@ internal class AppRootViewModel @Inject constructor(
         }.getOrDefault(emptyList())
     }
 
-    private fun hydrateRecordEditor(editor: OrdinaryRecordEditorState): OrdinaryRecordEditorState {
+    private suspend fun hydrateRecordEditor(editor: OrdinaryRecordEditorState): OrdinaryRecordEditorState {
         val selectedLocation = editor.draft.locationRecordId?.let { id ->
             editor.snapshot.references.locations.singleOrNull { it.id == id }
         }
@@ -7461,9 +8430,7 @@ internal class AppRootViewModel @Inject constructor(
         return true
     }
 
-    fun selectLatestRestoreRepository(): Boolean {
-        return restoreController.showRepositorySnapshots()
-    }
+    fun selectLatestRestoreRepository(): Boolean = restoreController.showRepositorySnapshots()
 
     fun selectRestoreRepositorySnapshot(snapshotId: String): Boolean {
         if (!restoreController.selectRepositorySnapshot(snapshotId)) return false
@@ -7563,10 +8530,11 @@ internal class AppRootViewModel @Inject constructor(
             val manager = sessionManager ?: return@launch
             val recovering = manager.state.value is BookSessionState.RecoveryRequired
             mutableMaintenancePresentation.value = MaintenancePresentation.PREPARING
+            revisionCacheControl.clearBook(manager.bookId)
             if (!recovering) manager.enterMaintenance(MaintenanceReason.CONTROLLED_MAINTENANCE)
             manager.close()
             mutableMaintenancePresentation.value = MaintenancePresentation.CANCELABLE
-            val succeeded = block()
+            val succeeded = withOfflinePrimaryMaintenance(manager, block)
             val recoveredVaultDek = if (succeeded) restoreController.takeRecoveredVaultDek() else null
             if (!recovering) {
                 mutableMaintenancePresentation.value = if (succeeded) MaintenancePresentation.SUCCEEDED else MaintenancePresentation.FAILED
@@ -7588,6 +8556,21 @@ internal class AppRootViewModel @Inject constructor(
 
     fun cancelMaintenance() = restoreController.cancel()
 
+    private suspend fun <T> withOfflinePrimaryMaintenance(
+        manager: app.ledger.core.security.BookSessionManager,
+        block: suspend () -> T,
+    ): T {
+        val operationId = restoreController.currentOperationId() ?: runtimeSources.stableIds.nextStableId()
+        val permit = manager.acquireOfflinePrimaryMaintenancePermit(operationId)
+        restoreController.enterOfflinePrimaryMaintenance(permit)
+        return try {
+            block()
+        } finally {
+            restoreController.leaveOfflinePrimaryMaintenance()
+            permit.release()
+        }
+    }
+
     fun retryMaintenance() {
         val manager = sessionManager ?: return
         val state = manager.state.value as? BookSessionState.Maintenance ?: return
@@ -7598,7 +8581,10 @@ internal class AppRootViewModel @Inject constructor(
             try {
                 mutableMaintenancePresentation.value = MaintenancePresentation.RUNNING
                 manager.close()
-                if (restoreController.recoverInterrupted(requireBookId(settingsRepository.current()))) {
+                if (withOfflinePrimaryMaintenance(manager) {
+                        restoreController.recoverInterrupted(requireBookId(settingsRepository.current()))
+                    }
+                ) {
                     mutableMaintenancePresentation.value = MaintenancePresentation.SUCCEEDED
                     delay(MAINTENANCE_RESULT_VISIBILITY_MILLIS)
                     manager.finishMaintenance()
@@ -7631,8 +8617,7 @@ internal class AppRootViewModel @Inject constructor(
     fun changeImportMissingCreation(type: String, enabled: Boolean) = importController.setCreateMissing(type, enabled)
     fun cycleImportEntityMapping(type: String, source: String) = importController.cycleEntityMapping(type, source)
     fun selectImportEntityMapping(type: String, source: String, target: String) = importController.selectEntityMapping(type, source, target)
-    fun changeImportFxPolicy(source: String, policy: app.ledger.feature.transfer.ImportFxPolicyUi) =
-        importController.setFxPolicy(source, policy)
+    fun changeImportFxPolicy(source: String, policy: app.ledger.feature.transfer.ImportFxPolicyUi) = importController.setFxPolicy(source, policy)
     fun changeImportFxRate(sourceCurrency: String, value: String) = importController.setFxRate(sourceCurrency, value)
     fun resolveImportDuplicate(rowNumber: Long, resolution: app.ledger.transfer.domain.DuplicateResolution) {
         viewModelScope.launch(Dispatchers.IO) { importController.resolveDuplicate(rowNumber, resolution) }
@@ -7781,11 +8766,24 @@ internal class AppRootViewModel @Inject constructor(
         const val FINANCIAL_FACT_ID_RESERVE = 256
         const val FX_ID_RESERVE = 8
         const val RECORD_SEARCH_LIMIT = 80
+        const val SEARCH_DEBOUNCE_MILLIS = 300L
+        val JOURNAL_OPTION_SCREENS = setOf("JRN-003", "JRN-006")
+        val JOURNAL_PAGED_SCREENS = setOf("JRN-001", "JRN-002", "JRN-005", "JRN-011")
+        const val FEATURE_LOAD_REFUND = "refund"
+        const val FEATURE_LOAD_SPECIALIZED = "specialized"
+        const val FEATURE_LOAD_PROJECT_GOAL = "project_goal"
+        const val FEATURE_LOAD_CREDIT = "credit"
+        const val FEATURE_LOAD_INSTALLMENT = "installment"
+        const val FEATURE_LOAD_SETTLEMENT = "settlement"
+        const val FEATURE_LOAD_AUTOMATION = "automation"
+        const val FEATURE_LOAD_LOAN = "loan"
+        const val FEATURE_LOAD_OPERATION_CENTER = "operation_center"
         const val RECORD_ATTACHMENT_NAME_LIMIT = 255
         const val SECONDS_PER_DAY = 24L * 60L * 60L
         const val AUTOMATION_TEMPLATE_NAME_LIMIT = 80
         const val AUTOMATION_TEMPLATE_NOTE_LIMIT = 500
         val REMAINING_SETTINGS_SCREENS = setOf("SETG-001", "SETG-002", "SETG-003", "SETG-005", "SETG-012")
+        val ACCOUNT_HISTORY_SCREENS = setOf("ACC-005", "ACC-006", "ACC-007", "ACC-008")
         val SUPPORTED_LANGUAGE_TAGS = setOf("zh-CN", "ja", "en")
         val CANCELABLE_OPERATION_STATES = setOf(
             BackgroundOperationState.QUEUED,
@@ -7865,6 +8863,50 @@ internal data class JournalPagingRequest(
     val refreshEpoch: Int,
 )
 
+private data class JournalSearchLoadKey(
+    val bookId: StableId,
+    val sessionGeneration: Long,
+    val filter: TransactionFilter,
+)
+
+private data class OrdinaryLoadKey(
+    val bookId: StableId,
+    val sessionGeneration: Long,
+    val transactionId: StableId?,
+)
+
+private data class BudgetLoadKey(
+    val bookId: StableId,
+    val sessionGeneration: Long,
+    val month: YearMonth,
+    val templateId: StableId?,
+    val screenId: String,
+)
+
+private data class AppFeatureLoadKey(
+    val bookId: StableId,
+    val sessionGeneration: Long,
+    val screenId: String,
+    val arguments: List<String?> = emptyList(),
+)
+
+private data class RefundSearchLoadKey(
+    val bookId: StableId,
+    val sessionGeneration: Long,
+    val query: RefundSearchQuery,
+)
+
+private data class AutomationHubQueryResults(
+    val automation: DomainResult<app.ledger.finance.application.AutomationSnapshot>,
+    val entry: DomainResult<app.ledger.finance.application.OrdinaryTransactionEntrySnapshot>,
+)
+
+private data class LiabilityHubQueryResults(
+    val loan: DomainResult<app.ledger.finance.application.LoanSnapshot>,
+    val credit: DomainResult<app.ledger.finance.application.CreditSnapshot>?,
+    val installment: DomainResult<app.ledger.finance.application.InstallmentSnapshot>?,
+)
+
 internal data class ProjectTransactionPagingRequest(
     val bookId: StableId,
     val projectId: StableId,
@@ -7882,6 +8924,15 @@ private sealed interface PendingRecordExit {
     data object Back : PendingRecordExit
     data class TopLevel(val target: TopLevelDestination) : PendingRecordExit
 }
+
+private data class ReferenceDataLoadKey(
+    val bookId: StableId,
+    val sessionGeneration: Long,
+    val routeScope: String,
+    val screenId: String,
+    val accountId: StableId?,
+    val categoryDirection: CategoryDirection?,
+)
 
 private sealed interface PendingGeneralExit {
     val scope: String

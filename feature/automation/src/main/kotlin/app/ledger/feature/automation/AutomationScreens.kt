@@ -6,11 +6,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -33,20 +33,20 @@ import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerChoiceSelector
 import app.ledger.core.designsystem.LedgerCycleChoiceSelector
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
+import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
-import app.ledger.core.designsystem.LedgerLoadingState
-import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerIcon
+import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerStatusVariant
+import app.ledger.core.designsystem.LedgerTabRow
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
-import app.ledger.core.designsystem.LedgerTabRow
 import app.ledger.core.designsystem.SearchField
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.StatusBadge
@@ -266,12 +266,14 @@ private fun SeriesList(state: AutomationFeatureState, actions: AutomationActions
         EmptyScreen(Modifier.testTag(LedgerTestTags.AUTOMATION_SERIES_LIST), R.string.automation_series_empty, R.string.automation_series_empty_body) { actions.onNavigate("AUT-005", null) }
         return
     }
-    val visible = state.snapshot.series.filter { series -> when (state.seriesFilter) {
-        AutomationSeriesFilter.ALL -> true
-        AutomationSeriesFilter.ACTIVE -> series.status == RecurrenceStatus.ACTIVE
-        AutomationSeriesFilter.PAUSED -> series.status == RecurrenceStatus.PAUSED
-        AutomationSeriesFilter.ARCHIVED -> series.status == RecurrenceStatus.ARCHIVED
-    } }
+    val visible = state.snapshot.series.filter { series ->
+        when (state.seriesFilter) {
+            AutomationSeriesFilter.ALL -> true
+            AutomationSeriesFilter.ACTIVE -> series.status == RecurrenceStatus.ACTIVE
+            AutomationSeriesFilter.PAUSED -> series.status == RecurrenceStatus.PAUSED
+            AutomationSeriesFilter.ARCHIVED -> series.status == RecurrenceStatus.ARCHIVED
+        }
+    }
     ScreenList(Modifier.testTag(LedgerTestTags.AUTOMATION_SERIES_LIST)) {
         if (state.presentation == AutomationPresentation.PAUSED) item { LedgerBanner(stringResource(R.string.automation_all_paused), LedgerBannerVariant.WARNING) }
         item {
@@ -406,8 +408,18 @@ private fun RuleEditor(state: AutomationFeatureState, actions: AutomationActions
         item { LedgerTextField(draft.maxOccurrences, { actions.onRecurrenceField(RecurrenceField.MAX_OCCURRENCES, it) }, stringResource(R.string.automation_max_occurrences), keyboardType = KeyboardType.Number, errorText = errorIf(state, "maxOccurrences")) }
         item { LedgerButton(stringResource(R.string.automation_apply_rule), actions.onApplyRule, Modifier.fillMaxWidth()) }
     }
-    if (startPicker) AutomationDatePicker(draft.startDate, { actions.onRecurrenceField(RecurrenceField.START_DATE, it); startPicker = false }, { startPicker = false })
-    if (endPicker) AutomationDatePicker(draft.endDate, { actions.onRecurrenceField(RecurrenceField.END_DATE, it); endPicker = false }, { endPicker = false })
+    if (startPicker) {
+        AutomationDatePicker(draft.startDate, {
+            actions.onRecurrenceField(RecurrenceField.START_DATE, it)
+            startPicker = false
+        }, { startPicker = false })
+    }
+    if (endPicker) {
+        AutomationDatePicker(draft.endDate, {
+            actions.onRecurrenceField(RecurrenceField.END_DATE, it)
+            endPicker = false
+        }, { endPicker = false })
+    }
 }
 
 @Composable
@@ -622,7 +634,7 @@ private fun candidateErrorLabel(code: String): String = stringResource(
 
 @Composable
 private fun AutomationDatePicker(value: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    val initial = value.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
+    val initial = value.toLocalDateOrNull() ?: LedgerTheme.now.atZone(LedgerTheme.timeZone).toLocalDate()
     LedgerDatePickerFlow(
         initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         { millis -> onConfirm(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()) },

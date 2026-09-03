@@ -32,25 +32,25 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerDatePickerFlow
+import app.ledger.core.designsystem.LedgerDateTimePickerFlow
 import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerErrorState
-import app.ledger.core.designsystem.LedgerDateTimePickerFlow
 import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MoneyExpressionField
 import app.ledger.core.designsystem.SearchField
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.designsystem.UiText
+import app.ledger.core.money.FxRateSource
 import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.domain.BalanceAdjustmentDirection
-import app.ledger.core.money.FxRateSource
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.Instant
@@ -277,7 +277,7 @@ private fun SpecializedEditor(state: SpecializedTransactionEditorState, actions:
                 onClear = { accountSearch = "" },
                 autoFocus = false,
             )
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = LedgerTheme.dimensions.dialogMaxWidth)) {
                 items(accounts, key = { it.id.toString() }) { account ->
                     LedgerChoiceRow(
                         title = account.accountLabel(),
@@ -453,13 +453,11 @@ private fun BigDecimal.localizedRate(locale: Locale): String = NumberFormat.getN
     isGroupingUsed = true
 }.format(this)
 
-private fun LocalDate.localized(locale: Locale): String =
-    LedgerDateFormatterRuntime.formatter(locale).format(this)
+private fun LocalDate.localized(locale: Locale): String = LedgerDateFormatterRuntime.formatter(locale).format(this)
 
-private fun Instant.localized(zoneId: java.time.ZoneId, locale: Locale): String =
-    LedgerDateFormatterRuntime.dateTimeFormatter(locale)
-        .withZone(zoneId)
-        .format(this)
+private fun Instant.localized(zoneId: java.time.ZoneId, locale: Locale): String = LedgerDateFormatterRuntime.dateTimeFormatter(locale)
+    .withZone(zoneId)
+    .format(this)
 
 private fun AccountReferenceView.accountLabel(): String = "$name · ${currency.value}"
 

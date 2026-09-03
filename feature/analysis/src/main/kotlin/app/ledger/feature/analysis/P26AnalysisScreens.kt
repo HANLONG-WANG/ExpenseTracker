@@ -51,21 +51,21 @@ import app.ledger.core.designsystem.LedgerChartUiModel
 import app.ledger.core.designsystem.LedgerCheckboxRow
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerCycleChoiceSelector
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerEmptyState
-import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerLineChart
+import app.ledger.core.designsystem.LedgerLoadingState
 import app.ledger.core.designsystem.LedgerScaffold
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
 import app.ledger.core.designsystem.LedgerVicoLineRenderer
-import app.ledger.core.money.LocaleNumberFormatter
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
+import app.ledger.core.money.LocaleNumberFormatter
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -143,79 +143,79 @@ internal fun DashboardEditorScreen(state: AnalysisFeatureState, actions: Analysi
             ),
             verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.md),
         ) {
-        if (state.presentation == AnalysisPresentation.INVALID) {
-            item { LedgerBanner(stringResource(R.string.analysis_dashboard_invalid), LedgerBannerVariant.DANGER) }
-        }
-        item {
-            LedgerTextField(
-                state.draftName,
-                { actions.onDraftNameChanged(it.take(80)) },
-                stringResource(R.string.analysis_dashboard_name),
-                required = true,
-                errorText = stringResource(R.string.analysis_name_required).takeIf { state.presentation == AnalysisPresentation.INVALID },
-            )
-        }
-        if (selectedIds.isEmpty()) {
-            item { LedgerBanner(stringResource(R.string.analysis_dashboard_empty_canvas), LedgerBannerVariant.INFO) }
-        } else {
-            items(selectedIds.values.sortedBy { it.sortOrder }, key = { "dashboard-item-${it.reportId.value}" }) { item ->
-                val report = state.savedReports.singleOrNull { it.definition.id == item.reportId }
-                val dragLabel = stringResource(R.string.analysis_drag_handle)
-                val haptic = LocalHapticFeedback.current
-                var dragDistance by remember(item.reportId) { mutableFloatStateOf(0f) }
-                LedgerCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                        LedgerText(
-                            "⋮⋮",
-                            LedgerTextRole.LABEL,
-                            Modifier
-                                .draggable(
-                                    orientation = Orientation.Vertical,
-                                    onDragStarted = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
-                                    state = rememberDraggableState { delta ->
-                                        dragDistance += delta
-                                        if (dragDistance > DRAG_REORDER_THRESHOLD) {
-                                            actions.onMoveDashboardReport(item.reportId, 1)
-                                            dragDistance = 0f
-                                        } else if (dragDistance < -DRAG_REORDER_THRESHOLD) {
-                                            actions.onMoveDashboardReport(item.reportId, -1)
-                                            dragDistance = 0f
-                                        }
-                                    },
-                                )
-                                .semantics { contentDescription = dragLabel },
-                        )
-                        LedgerText(report?.definition?.name ?: stringResource(R.string.analysis_saved_report), LedgerTextRole.SECTION)
-                        LedgerText(
-                            if (item.width == DashboardItemWidth.FULL) stringResource(R.string.analysis_card_full_width) else stringResource(R.string.analysis_card_half_width),
-                            LedgerTextRole.SUPPORTING,
-                        )
-                        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-                            LedgerButton(stringResource(R.string.analysis_move_up), { actions.onMoveDashboardReport(item.reportId, -1) }, variant = LedgerButtonVariant.TEXT, enabled = item.sortOrder > 0)
-                            LedgerButton(stringResource(R.string.analysis_move_down), { actions.onMoveDashboardReport(item.reportId, 1) }, variant = LedgerButtonVariant.TEXT, enabled = item.sortOrder < selectedIds.size - 1)
-                            LedgerButton(stringResource(R.string.analysis_toggle_width), { actions.onToggleDashboardWidth(item.reportId) }, variant = LedgerButtonVariant.TEXT)
-                            if (report != null) {
-                                LedgerButton(
-                                    stringResource(R.string.analysis_edit_custom_report),
-                                    { actions.onNavigateP26("ANA-008", report.definition.id.value, null) },
-                                    variant = LedgerButtonVariant.TEXT,
-                                )
+            if (state.presentation == AnalysisPresentation.INVALID) {
+                item { LedgerBanner(stringResource(R.string.analysis_dashboard_invalid), LedgerBannerVariant.DANGER) }
+            }
+            item {
+                LedgerTextField(
+                    state.draftName,
+                    { actions.onDraftNameChanged(it.take(80)) },
+                    stringResource(R.string.analysis_dashboard_name),
+                    required = true,
+                    errorText = stringResource(R.string.analysis_name_required).takeIf { state.presentation == AnalysisPresentation.INVALID },
+                )
+            }
+            if (selectedIds.isEmpty()) {
+                item { LedgerBanner(stringResource(R.string.analysis_dashboard_empty_canvas), LedgerBannerVariant.INFO) }
+            } else {
+                items(selectedIds.values.sortedBy { it.sortOrder }, key = { "dashboard-item-${it.reportId.value}" }) { item ->
+                    val report = state.savedReports.singleOrNull { it.definition.id == item.reportId }
+                    val dragLabel = stringResource(R.string.analysis_drag_handle)
+                    val haptic = LocalHapticFeedback.current
+                    var dragDistance by remember(item.reportId) { mutableFloatStateOf(0f) }
+                    LedgerCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(LedgerTheme.spacing.sm), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                            LedgerText(
+                                "⋮⋮",
+                                LedgerTextRole.LABEL,
+                                Modifier
+                                    .draggable(
+                                        orientation = Orientation.Vertical,
+                                        onDragStarted = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                                        state = rememberDraggableState { delta ->
+                                            dragDistance += delta
+                                            if (dragDistance > DRAG_REORDER_THRESHOLD) {
+                                                actions.onMoveDashboardReport(item.reportId, 1)
+                                                dragDistance = 0f
+                                            } else if (dragDistance < -DRAG_REORDER_THRESHOLD) {
+                                                actions.onMoveDashboardReport(item.reportId, -1)
+                                                dragDistance = 0f
+                                            }
+                                        },
+                                    )
+                                    .semantics { contentDescription = dragLabel },
+                            )
+                            LedgerText(report?.definition?.name ?: stringResource(R.string.analysis_saved_report), LedgerTextRole.SECTION)
+                            LedgerText(
+                                if (item.width == DashboardItemWidth.FULL) stringResource(R.string.analysis_card_full_width) else stringResource(R.string.analysis_card_half_width),
+                                LedgerTextRole.SUPPORTING,
+                            )
+                            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                                LedgerButton(stringResource(R.string.analysis_move_up), { actions.onMoveDashboardReport(item.reportId, -1) }, variant = LedgerButtonVariant.TEXT, enabled = item.sortOrder > 0)
+                                LedgerButton(stringResource(R.string.analysis_move_down), { actions.onMoveDashboardReport(item.reportId, 1) }, variant = LedgerButtonVariant.TEXT, enabled = item.sortOrder < selectedIds.size - 1)
+                                LedgerButton(stringResource(R.string.analysis_toggle_width), { actions.onToggleDashboardWidth(item.reportId) }, variant = LedgerButtonVariant.TEXT)
+                                if (report != null) {
+                                    LedgerButton(
+                                        stringResource(R.string.analysis_edit_custom_report),
+                                        { actions.onNavigateP26("ANA-008", report.definition.id.value, null) },
+                                        variant = LedgerButtonVariant.TEXT,
+                                    )
+                                }
+                                LedgerButton(stringResource(R.string.analysis_remove), { actions.onToggleDashboardReport(item.reportId) }, variant = LedgerButtonVariant.TEXT)
                             }
-                            LedgerButton(stringResource(R.string.analysis_remove), { actions.onToggleDashboardReport(item.reportId) }, variant = LedgerButtonVariant.TEXT)
                         }
                     }
                 }
             }
-        }
-        item { LedgerText(stringResource(R.string.analysis_dashboard_palette), LedgerTextRole.SECTION) }
-        items(state.savedReports, key = { "dashboard-palette-${it.definition.id.value}" }) { report ->
-            LedgerCheckboxRow(
-                report.definition.name,
-                report.definition.id in selectedIds,
-                { actions.onToggleDashboardReport(report.definition.id) },
-                supportingText = stringResource(R.string.analysis_dashboard_palette_help),
-            )
-        }
+            item { LedgerText(stringResource(R.string.analysis_dashboard_palette), LedgerTextRole.SECTION) }
+            items(state.savedReports, key = { "dashboard-palette-${it.definition.id.value}" }) { report ->
+                LedgerCheckboxRow(
+                    report.definition.name,
+                    report.definition.id in selectedIds,
+                    { actions.onToggleDashboardReport(report.definition.id) },
+                    supportingText = stringResource(R.string.analysis_dashboard_palette_help),
+                )
+            }
         }
     }
 }
@@ -683,13 +683,11 @@ private fun AnalysisSaveBar(onSave: () -> Unit, enabled: Boolean) {
     }
 }
 
-private fun LocalDate.localized(locale: Locale): String =
-    format(LedgerDateFormatterRuntime.formatter(locale))
+private fun LocalDate.localized(locale: Locale): String = format(LedgerDateFormatterRuntime.formatter(locale))
 
 private const val DRAG_REORDER_THRESHOLD = 72f
 private const val BUILDER_LAST_STEP = 6
 
 private val chartCurrencyCatalog = JvmLegalTenderCurrencyCatalog.create()
 
-private fun chartMajor(minor: Long, currency: CurrencyCode): Double =
-    BigDecimal.valueOf(minor, requireNotNull(chartCurrencyCatalog.find(currency)).fractionDigits).toDouble()
+private fun chartMajor(minor: Long, currency: CurrencyCode): Double = BigDecimal.valueOf(minor, requireNotNull(chartCurrencyCatalog.find(currency)).fractionDigits).toDouble()

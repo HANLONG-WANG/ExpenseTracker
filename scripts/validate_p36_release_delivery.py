@@ -12,8 +12,8 @@ from xml.etree import ElementTree
 
 
 ROOT = Path(__file__).resolve().parents[1]
-IMPLEMENTATION = ROOT / "docs/implementation"
-RELEASE_DOCS = ROOT / "docs/release"
+IMPLEMENTATION = ROOT / "docs/初始开发文件存档/implementation"
+RELEASE_DOCS = ROOT / "docs/初始开发文件存档/release"
 
 
 def read(relative: str) -> str:
@@ -102,9 +102,9 @@ def validate_coverage_ledgers(
     screens: list[dict[str, str]] | None = None,
     domain: str | None = None,
 ) -> list[str]:
-    requirements = requirements or read_csv("docs/implementation/REQUIREMENT_COVERAGE.csv")
-    screens = screens or read_csv("docs/implementation/SCREEN_COVERAGE.csv")
-    domain = domain or read("docs/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md")
+    requirements = requirements or read_csv("docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv")
+    screens = screens or read_csv("docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv")
+    domain = domain or read("docs/初始开发文件存档/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md")
     errors: list[str] = []
     if len(requirements) != 90 or len({row.get("requirement_id") for row in requirements}) != 90:
         errors.append("requirement ledger must contain exactly 90 unique rows")
@@ -129,13 +129,13 @@ def validate_coverage_ledgers(
 def validate_delivery_documents(files: dict[str, str] | None = None) -> list[str]:
     required = (
         "NOTICE",
-        "docs/release/PRIVACY_POLICY_zh-CN.md",
-        "docs/release/PRIVACY_POLICY_ja.md",
-        "docs/release/PRIVACY_POLICY_en.md",
-        "docs/release/ABOUT_AND_OPEN_SOURCE.md",
-        "docs/release/RELEASE_NOTES_v1.0.0.md",
-        "docs/release/REPRODUCIBLE_BUILD.md",
-        "docs/release/PLAY_RELEASE_INPUTS.md",
+        "docs/初始开发文件存档/release/PRIVACY_POLICY_zh-CN.md",
+        "docs/初始开发文件存档/release/PRIVACY_POLICY_ja.md",
+        "docs/初始开发文件存档/release/PRIVACY_POLICY_en.md",
+        "docs/初始开发文件存档/release/ABOUT_AND_OPEN_SOURCE.md",
+        "docs/初始开发文件存档/release/RELEASE_NOTES_v1.0.0.md",
+        "docs/初始开发文件存档/release/REPRODUCIBLE_BUILD.md",
+        "docs/初始开发文件存档/release/PLAY_RELEASE_INPUTS.md",
     )
     files = files or {relative: read(relative) for relative in required if (ROOT / relative).is_file()}
     errors = [f"release delivery file missing: {relative}" for relative in required if relative not in files]
@@ -146,11 +146,11 @@ def validate_delivery_documents(files: dict[str, str] | None = None) -> list[str
                 errors.append(f"privacy policy lacks required disclosure {marker}: {relative}")
         if len(text) < 600 or text.count("\n\n") < 4:
             errors.append(f"privacy policy is not a complete long-form disclosure: {relative}")
-    build_doc = files.get("docs/release/REPRODUCIBLE_BUILD.md", "")
+    build_doc = files.get("docs/初始开发文件存档/release/REPRODUCIBLE_BUILD.md", "")
     for marker in ("p36Check", "p36Artifacts", "ledgerApplicationId", "ledgerSigningStoreFile", "dependency-verification=strict"):
         if marker not in build_doc:
             errors.append(f"reproducible build guide lacks {marker}")
-    inputs = files.get("docs/release/PLAY_RELEASE_INPUTS.md", "")
+    inputs = files.get("docs/初始开发文件存档/release/PLAY_RELEASE_INPUTS.md", "")
     for marker in ("applicationId", "Play App Signing", "drive.file", "Telemetry", "Policy/support/source"):
         if marker not in inputs:
             errors.append(f"external release-input checklist lacks {marker}")
@@ -270,8 +270,9 @@ def validate_refund_projection_invalidation(source: str | None = None) -> list[s
     errors: list[str] = []
     for marker in (
         "directlyChangedTransactionUids + refundUids",
-        "economicEffectDates(database, transactionUids)",
-        "SELECT DISTINCT ee.accrual_local_date FROM economic_effect ee",
+        "AnalyticsProjectionEngine.applyCommitDeltas(",
+        "economicEffectUids = plan.economicEffects.map { it.id.value.bytes }",
+        "currentTransactionDeltas = currentTransactionDeltas(before, after)",
     ):
         if marker not in source:
             errors.append(f"refund projection invalidation marker missing: {marker}")
@@ -306,10 +307,10 @@ def validate_release_automation(root_build: str | None = None, workflow: str | N
 
 def validate_final_ledgers() -> list[str]:
     errors: list[str] = []
-    state = read("docs/implementation/PROJECT_STATE.md")
-    evidence = read("docs/implementation/TEST_EVIDENCE.md")
-    readiness = read("docs/implementation/RELEASE_READINESS.md")
-    decision = read("docs/implementation/DECISION_LOG.md")
+    state = read("docs/初始开发文件存档/implementation/PROJECT_STATE.md")
+    evidence = read("docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
+    readiness = read("docs/初始开发文件存档/implementation/RELEASE_READINESS.md")
+    decision = read("docs/初始开发文件存档/implementation/DECISION_LOG.md")
     if not re.search(r"Current stage: P36\b", state) or not re.search(r"^\| P36 \| VERIFIED \|", state, re.MULTILINE):
         errors.append("PROJECT_STATE does not mark P36 VERIFIED")
     for index in range(1, 9):

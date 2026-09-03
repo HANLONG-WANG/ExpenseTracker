@@ -145,8 +145,7 @@ public object BatchRecordPolicy {
         )
     }
 
-    public fun parseMajorAmount(expression: String, currency: CurrencyCode, locale: Locale): Long? =
-        currencyCatalog.find(currency)?.let { expressionEvaluator.evaluate(expression, locale, it).getOrNull()?.roundedMoney?.minor }
+    public fun parseMajorAmount(expression: String, currency: CurrencyCode, locale: Locale): Long? = currencyCatalog.find(currency)?.let { expressionEvaluator.evaluate(expression, locale, it).getOrNull()?.roundedMoney?.minor }
 
     public fun changeKind(row: BatchRowDraft, kind: BatchRowKind): BatchRowDraft = row.copy(
         kind = kind,
@@ -329,8 +328,7 @@ public object BatchRecordPolicy {
         LocalDateTime.parse(value.trim(), LOCAL_DATE_TIME).atZone(zoneId).toInstant()
     }.getOrNull()
 
-    public fun occurredAtText(value: Instant, zoneId: ZoneId, locale: Locale): String =
-        LOCAL_DATE_TIME.withLocale(locale).format(value.atZone(zoneId))
+    public fun occurredAtText(value: Instant, zoneId: ZoneId, locale: Locale): String = LOCAL_DATE_TIME.withLocale(locale).format(value.atZone(zoneId))
 
     private fun issue(
         rowId: StableId?,

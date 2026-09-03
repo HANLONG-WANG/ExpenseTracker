@@ -11,7 +11,10 @@ import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.Money
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.time.EffectiveTime
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.ChangeProjectStatusRequest
 import app.ledger.finance.application.CompleteGoalRequest
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
@@ -23,7 +26,6 @@ import app.ledger.finance.application.GoalDraft
 import app.ledger.finance.application.GoalMovementView
 import app.ledger.finance.application.GoalTrendPoint
 import app.ledger.finance.application.GoalView
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.PlanningAccountView
 import app.ledger.finance.application.PlanningProjectionReadiness
 import app.ledger.finance.application.ProjectCashflowPoint
@@ -66,8 +68,6 @@ import app.ledger.finance.domain.RecordGoalMovementCommand
 import app.ledger.finance.domain.RowVersion
 import app.ledger.finance.domain.TransactionKind
 import app.ledger.finance.domain.UserAccountId
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -75,19 +75,15 @@ import java.time.ZoneId
 private const val RECENT_TRANSACTION_LIMIT = 3
 
 class SecureRoomProjectGoalApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
-    private val references: ReferenceDataManagementPort = SecureRoomReferenceDataManagementPort(context, keyProvider),
-    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
+    private val references: ReferenceDataManagementPort,
 ) : ProjectGoalApplicationPort {
-    private val applicationContext = context.applicationContext
-    private val writeGate: LedgerWriteGate = ProjectGoalWriteGate()
 
-    override suspend fun snapshot(bookId: StableId): DomainResult<ProjectGoalSnapshot> = withDatabase(bookId) { database ->
+    override suspend fun snapshot(bookId: StableId): DomainResult<ProjectGoalSnapshot> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db -> DomainResult.Success(readSnapshot(db, bookId)) }
     }
 
-    override suspend fun projectTransactionPage(request: ProjectTransactionPageRequest): DomainResult<ProjectTransactionPage> = withDatabase(request.bookId) { database ->
+    override suspend fun projectTransactionPage(request: ProjectTransactionPageRequest): DomainResult<ProjectTransactionPage> = withDatabase(request.bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val book = RoomBookRepository.mapCurrent(db)
             if (book.id.value != request.bookId) abort(FinanceDataError.CorruptData)
@@ -254,7 +250,7 @@ class SecureRoomProjectGoalApplicationPort(
     ): DomainResult<CommandReceipt> {
         val repository = RoomFinancialCommitRepository(database)
         return DefaultFinancialMutationCoordinator(
-            writeGate,
+            CallerOwnedLedgerWriteGate,
             repository,
             object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: app.ledger.finance.domain.FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
@@ -467,16 +463,10 @@ class SecureRoomProjectGoalApplicationPort(
 
     private suspend fun <T> withDatabase(
         bookId: StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
         block: suspend (LedgerDatabase) -> DomainResult<T>,
     ): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { openSelectedLedger(applicationContext, it, databaseName) }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+        databaseAccess.withCurrentDatabase(bookId, mode, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -498,11 +488,6 @@ class SecureRoomProjectGoalApplicationPort(
     private fun currency(code: String): CurrencyCode = CurrencyCode.parse(code).valueOrAbort()
     private data class StoredGoal(val goal: Goal, val zoneId: ZoneId, val balanceMinor: Long)
     private data class GoalDelta(val date: LocalDate, val kind: GoalEffectKind, val polarity: EffectPolarity, val amount: Long)
-}
-
-private class ProjectGoalWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
 }
 
 private const val HASH_SIZE_BYTES = 32

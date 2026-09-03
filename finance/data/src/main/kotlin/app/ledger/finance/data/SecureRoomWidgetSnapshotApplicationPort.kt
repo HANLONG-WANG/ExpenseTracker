@@ -2,13 +2,12 @@
 
 package app.ledger.finance.data
 
-import android.content.Context
 import android.database.Cursor
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
-import app.ledger.core.database.EncryptedDatabaseFactory
-import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.WidgetAccountSnapshot
 import app.ledger.finance.application.WidgetBookSnapshot
@@ -25,14 +24,11 @@ import java.time.LocalDate
 
 /** Opens SQLCipher and selects only the four widget snapshot tables for the Glance read path. */
 class SecureRoomWidgetSnapshotApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
-    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
 ) : WidgetSnapshotApplicationPort,
     WidgetSnapshotRefreshApplicationPort {
-    private val applicationContext = context.applicationContext
 
-    override suspend fun read(bookId: StableId): DomainResult<WidgetSnapshotBundle> = withDatabase(bookId) { database ->
+    override suspend fun read(bookId: StableId): DomainResult<WidgetSnapshotBundle> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { connection ->
             val book = connection.query(
                 "SELECT core_net_financial_assets_base_minor,adjusted_net_financial_position_base_minor," +
@@ -59,7 +55,7 @@ class SecureRoomWidgetSnapshotApplicationPort(
     }
 
     /** Configuration-only query. Glance rendering never calls this method. */
-    override suspend fun quickTargets(bookId: StableId): DomainResult<List<WidgetQuickTarget>> = withDatabase(bookId) { database ->
+    override suspend fun quickTargets(bookId: StableId): DomainResult<List<WidgetQuickTarget>> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { connection ->
             val categories = connection.query(
                 "SELECT uid,direction,name FROM category WHERE status=0 ORDER BY direction,sort_order,id",
@@ -112,23 +108,12 @@ class SecureRoomWidgetSnapshotApplicationPort(
         }
     }
 
-    private suspend fun <T> withDatabase(bookId: StableId, block: suspend (app.ledger.core.database.LedgerDatabase) -> T): DomainResult<T> = try {
-        val keys = keyProvider.open(bookId)
-        try {
-            val passphrase = keys.databaseDek.useBytes(ByteArray::copyOf)
-            try {
-                val database = openSelectedLedger(applicationContext, passphrase, databaseName)
-                try {
-                    DomainResult.Success(block(database))
-                } finally {
-                    database.close()
-                }
-            } finally {
-                passphrase.fill(0)
-            }
-        } finally {
-            keys.close()
-        }
+    private suspend fun <T> withDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
+        block: suspend (app.ledger.core.database.LedgerDatabase) -> T,
+    ): DomainResult<T> = try {
+        DomainResult.Success(databaseAccess.withCurrentDatabase(bookId, mode, block))
     } catch (_: Exception) {
         DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
     }

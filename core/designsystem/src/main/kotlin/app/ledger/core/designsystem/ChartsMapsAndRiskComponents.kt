@@ -16,7 +16,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -69,9 +69,9 @@ import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
-import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.columnModel
 import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
 import com.patrykandpatrick.vico.compose.cartesian.layer.ColumnCartesianLayer
@@ -387,8 +387,7 @@ private fun LedgerChartUiModel.hasRenderablePoints(): Boolean = series.any { cha
     chartSeries.values.indices.any { it !in chartSeries.missingPointIndices }
 }
 
-private fun LedgerChartUiModel.shouldUseHorizontalBars(): Boolean =
-    series.any { chartSeries -> chartSeries.pointLabels.any { it.length > HORIZONTAL_BAR_LABEL_THRESHOLD } }
+private fun LedgerChartUiModel.shouldUseHorizontalBars(): Boolean = series.any { chartSeries -> chartSeries.pointLabels.any { it.length > HORIZONTAL_BAR_LABEL_THRESHOLD } }
 
 @Composable
 private fun LedgerChartEmptyState(modifier: Modifier) {
@@ -588,8 +587,14 @@ private fun ChartPointExplorer(
             .semantics {
                 text = AnnotatedString(listOfNotNull(detail, stackTotal).joinToString(". "))
                 customActions = listOf(
-                    CustomAccessibilityAction(label = previousLabel) { onPrevious(); true },
-                    CustomAccessibilityAction(label = nextLabel) { onNext(); true },
+                    CustomAccessibilityAction(label = previousLabel) {
+                        onPrevious()
+                        true
+                    },
+                    CustomAccessibilityAction(label = nextLabel) {
+                        onNext()
+                        true
+                    },
                 )
             },
         variant = LedgerCardVariant.EMPHASIZED,

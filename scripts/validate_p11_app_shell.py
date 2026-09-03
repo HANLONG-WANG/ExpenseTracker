@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 P11_SCREENS = {f"G-{number:03d}" for number in range(1, 9)} | {
     f"ONB-{number:03d}" for number in range(1, 11)
 }
+LATER_STAGE_GLOBAL_SCREENS = {"G-007", "G-008"}
 VERIFIED_REQUIREMENTS = {"REQ-070", "REQ-071", "REQ-081", "REQ-085", "REQ-087"}
 FOUNDATION_REQUIREMENTS = {
     "REQ-001", "REQ-002", "REQ-078", "REQ-082", "REQ-083", "REQ-084", "REQ-086"
@@ -38,9 +39,9 @@ EXPECTED_STATES = {
 }
 GOLDENS = {
     "p11_locked.png": "10d02985c15c790c515549b412b5c0f531b45d08fdf0417fd689d1adff839dec",
-    "p11_maintenance.png": "23984bd7176a655975a09d2fb92b27d6c51996375a82b36a4822b6f9d27523d4",
-    "p11_onboarding_backup_error.png": "d0f27fdfb8a2e66224fb8b7cc5b6d9476452e4b42dca066a333500fc0927aaf9",
-    "p11_recovery.png": "6b6ced104f9147cea560483270984dc281383636f6eaff80cebcd1434a2c38e8",
+    "p11_maintenance.png": "62759361fceac79f9f0161987177f0f78768a25bf369b532f5a51dfe3631dc1b",
+    "p11_onboarding_backup_error.png": "2f1f1f7bb76a6ba569992df3d855ae9090894a110c28373cf4b308a0d6d31d7f",
+    "p11_recovery.png": "f38b471210a5b57e1a36417c9a90c1aa4dba43c9b7ade2b08582a281bde7c2e4",
 }
 PLACEHOLDER = re.compile(r"\b(?:TODO|NotImplemented|UnsupportedOperationException)\b")
 ORDINARY_LOG = re.compile(r"\b(?:println|printStackTrace|android\.util\.Log|Timber\.)")
@@ -78,7 +79,8 @@ def require_tokens(errors: list[str], source: str, label: str, tokens: tuple[str
 def validate_sources(sources: Mapping[str, str]) -> list[str]:
     errors: list[str] = []
     required = {
-        "MainActivity.kt", "LedgerApplication.kt", "AppRootViewModel.kt", "AppRootScreen.kt", "ReadyRootScaffold.kt",
+        "MainActivity.kt", "LedgerApplication.kt", "AppDependencyModule.kt", "AppRootViewModel.kt", "AppRootScreen.kt",
+        "ReadyRootScaffold.kt",
         "AppSettingsRepository.kt", "OnboardingContract.kt", "OnboardingScreen.kt",
         "FiveStackNavigator.kt", "NavigationContract.kt", "LedgerInitialization.kt",
         "SecureRoomLedgerInitializationPort.kt", "RoomLedgerStartupInspector.kt",
@@ -131,7 +133,7 @@ def validate_sources(sources: Mapping[str, str]) -> list[str]:
         view_model,
         "root state and secure onboarding",
         (
-            "BookSessionManager(", "AppLockController(", "SqlCipherBookDatabaseResourceFactory(",
+            "ActiveBookSessionRuntime", "activeBookSessionRuntime.activate(bookId)", "AppLockController(",
             "LedgerInitializationPort", "restoreNavigationIfAllowed", "persistNavigationIfAllowed",
             "pendingDeepLink", "consumePendingDeepLink", "parameters.isEmpty()", "clearRecoveryPlaintextIfLeavingBackup",
             "RecoveryPassword.copyOf", "SecretBytes.copyOf", "recoveryWrappedVerifier", "onboardingComplete = true",
@@ -139,6 +141,20 @@ def validate_sources(sources: Mapping[str, str]) -> list[str]:
     )
     if re.search(r"(?m)^import\s+.*(?:Dao|Entity)\b|\b(?:interface|class)\s+\w*(?:Dao|Entity)\b", view_model):
         errors.append("app root ViewModel obtained a DAO/Entity")
+
+    dependency_module = named(sources, "AppDependencyModule.kt")
+    require_tokens(
+        errors,
+        dependency_module,
+        "process-owned session runtime composition",
+        (
+            "@Singleton",
+            "fun activeBookSessionRuntime(",
+            "SqlCipherBookDatabaseResourceFactory(",
+            "return ActiveBookSessionRuntime(",
+            "BookSessionManager(bookId, keyProvider, resourceFactory, vaultExposureRegistry)",
+        ),
+    )
 
     onboarding = named(sources, "OnboardingContract.kt") + named(sources, "OnboardingScreen.kt")
     for screen_id in (f"ONB-{number:03d}" for number in range(1, 11)):
@@ -218,7 +234,7 @@ def validate_proto_dependencies_and_goldens() -> list[str]:
 
 def validate_contract_and_tests() -> list[str]:
     errors: list[str] = []
-    contract = yaml.safe_load(read(ROOT / "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))
+    contract = yaml.safe_load(read(ROOT / "docs/初始开发文件存档/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))
     actual_screens = {screen["id"]: set(screen.get("requiredStates", [])) for screen in contract["screens"]}
     for screen_id, states in EXPECTED_STATES.items():
         if actual_screens.get(screen_id) != states:
@@ -255,9 +271,9 @@ def validate_contract_and_tests() -> list[str]:
 
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
-    state = read(ROOT / "docs/implementation/PROJECT_STATE.md")
-    evidence = read(ROOT / "docs/implementation/TEST_EVIDENCE.md")
-    mapping_path = ROOT / "docs/implementation/P11_APP_SHELL_MAPPING.md"
+    state = read(ROOT / "docs/初始开发文件存档/implementation/PROJECT_STATE.md")
+    evidence = read(ROOT / "docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
+    mapping_path = ROOT / "docs/初始开发文件存档/implementation/P11_APP_SHELL_MAPPING.md"
     mapping = read(mapping_path) if mapping_path.is_file() else ""
     if "| P11 | VERIFIED |" not in state or "### P11 result" not in state:
         errors.append("PROJECT_STATE does not record P11 VERIFIED and its result")
@@ -268,7 +284,7 @@ def validate_ledgers() -> list[str]:
         if token not in mapping:
             errors.append(f"P11 mapping missing {token}")
 
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         requirements = {row["requirement_id"]: row for row in csv.DictReader(handle)}
     for requirement_id in VERIFIED_REQUIREMENTS:
         row = requirements.get(requirement_id, {})
@@ -276,15 +292,16 @@ def validate_ledgers() -> list[str]:
             errors.append(f"{requirement_id} must carry P11 VERIFIED evidence")
     for requirement_id in FOUNDATION_REQUIREMENTS:
         row = requirements.get(requirement_id, {})
-        if row.get("status") != "IN_PROGRESS" or "P11" not in row.get("implementation_evidence", "") or "P11-E" not in row.get("verification_evidence", ""):
-            errors.append(f"{requirement_id} must retain truthful IN_PROGRESS P11 evidence")
+        if row.get("status") != "VERIFIED" or "P11" not in row.get("implementation_evidence", "") or "P11-E" not in row.get("verification_evidence", ""):
+            errors.append(f"{requirement_id} must retain its P11 foundation evidence after final verification")
 
-    with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = {row["screen_id"]: row for row in csv.DictReader(handle)}
     for screen_id in P11_SCREENS:
         row = screens.get(screen_id, {})
-        if row.get("status") != "VERIFIED" or "P11-E" not in row.get("verification_evidence", ""):
-            errors.append(f"{screen_id} must be VERIFIED by P11")
+        evidence_id = "P33-E" if screen_id in LATER_STAGE_GLOBAL_SCREENS else "P11-E"
+        if row.get("status") != "VERIFIED" or evidence_id not in row.get("verification_evidence", ""):
+            errors.append(f"{screen_id} must retain VERIFIED evidence from its owning stage")
     return errors
 
 

@@ -15,6 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.finance.application.ImportFinancialCommitResult
 import app.ledger.finance.application.ImportFinancialError
@@ -31,10 +32,11 @@ import java.security.MessageDigest
 class SecureRoomStructuredImportApplicationPort(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
+    databaseAccess: LedgerDatabaseOperationAccess,
 ) : StructuredImportApplicationPort {
     private val applicationContext = context.applicationContext
-    private val primaryAccess = SecurePrimaryLedgerAccess(applicationContext, keyProvider)
-    private val shadowAccess = SecureShadowLedgerAccess(applicationContext, keyProvider)
+    private val primaryAccess = SecurePrimaryLedgerAccess(applicationContext, keyProvider, databaseAccess)
+    private val shadowAccess = SecureShadowLedgerAccess(applicationContext, keyProvider, databaseAccess)
 
     override suspend fun commit(request: StructuredImportCommitRequest): DomainResult<ImportFinancialCommitResult> = try {
         existingRows(request.bookId, request.metadata.sourceFingerprint)?.let { importedRows ->
@@ -116,16 +118,15 @@ class SecureRoomStructuredImportApplicationPort(
                         )
                     }
                 }
-                val shadowReferences = SecureRoomReferenceDataManagementPort(
+                val shadowAccess = OfflineSelectedLedgerDatabaseAccess(
                     applicationContext,
                     keyProvider,
                     snapshot.shadowDatabaseName,
                 )
+                val shadowReferences = SecureRoomReferenceDataManagementPort(shadowAccess)
                 val port = SecureRoomBatchEntryApplicationPort(
-                    applicationContext,
-                    keyProvider,
+                    shadowAccess,
                     shadowReferences,
-                    databaseName = snapshot.shadowDatabaseName,
                     additionalAfterFinancialSideEffect = sideEffect,
                 )
                 when (val committed = port.submit(page.submitRequest)) {
@@ -150,7 +151,8 @@ class SecureRoomStructuredImportApplicationPort(
                     arrayOf(request.metadata.requestedAt.toEpochMilli(), revision, request.metadata.importRecordId.bytes),
                 )
             }
-            if (!shadowAccess.validate(request.bookId, request.metadata.operationId).isValid) {
+            val validation = shadowAccess.validate(request.bookId, request.metadata.operationId)
+            if (!validation.isValid) {
                 return DomainResult.Failure(ImportFinancialError.ShadowValidationFailed)
             }
             val exchanged = try {
@@ -158,7 +160,9 @@ class SecureRoomStructuredImportApplicationPort(
             } catch (_: IllegalArgumentException) {
                 return DomainResult.Failure(ImportFinancialError.LiveHeadChanged)
             }
-            if (!exchanged.isValid) return DomainResult.Failure(ImportFinancialError.ShadowValidationFailed)
+            if (!exchanged.isValid) {
+                return DomainResult.Failure(ImportFinancialError.ShadowValidationFailed)
+            }
             DomainResult.Success(ImportFinancialCommitResult(importedRows, commitCount, true, replayed = false))
         } finally {
             shadowAccess.discard(request.metadata.operationId)
@@ -187,7 +191,8 @@ class SecureRoomStructuredImportApplicationPort(
             shadowAccess.writeShadow(request.bookId, request.operationId) { database ->
                 insertRestoreAudit(database, request, audit)
             }
-            if (!shadowAccess.validate(request.bookId, request.operationId).isValid) {
+            val validation = shadowAccess.validate(request.bookId, request.operationId)
+            if (!validation.isValid) {
                 return DomainResult.Failure(ImportFinancialError.ShadowValidationFailed)
             }
             val exchanged = try {
@@ -195,7 +200,9 @@ class SecureRoomStructuredImportApplicationPort(
             } catch (_: IllegalArgumentException) {
                 return DomainResult.Failure(ImportFinancialError.LiveHeadChanged)
             }
-            if (!exchanged.isValid) return DomainResult.Failure(ImportFinancialError.ShadowValidationFailed)
+            if (!exchanged.isValid) {
+                return DomainResult.Failure(ImportFinancialError.ShadowValidationFailed)
+            }
             shadowAccess.discardSafety(audit.operationId)
             DomainResult.Success(ImportFinancialUndoResult(audit.totalRows, 1, replayed = false))
         } finally {
@@ -364,6 +371,8 @@ class SecureRoomStructuredImportApplicationPort(
             "INSERT INTO import_batch_commit(import_record_id,batch_uid,commit_id,first_row_number,last_row_number) VALUES(?,?,?,?,?)",
             arrayOf(importInternal, request.batchId.bytes, internalCommit, 1L, audit.totalRows),
         )
+        val valuationRevision = database.singleLong("SELECT valuation_revision FROM book WHERE id=1")
+        RoomProjectionEngine().rebuildAll(database, revision, valuationRevision)
     }
 
     private fun derived(seed: StableId, label: String): StableId = StableId.fromBytes(

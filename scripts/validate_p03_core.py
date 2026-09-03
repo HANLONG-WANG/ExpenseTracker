@@ -103,7 +103,7 @@ def validate() -> dict[str, int]:
             if marker not in source:
                 raise AssertionError(f"{relative} is missing required marker {marker!r}")
 
-    requirement_rows = read_csv(ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv")
+    requirement_rows = read_csv(ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv")
     tracked = {row["requirement_id"]: row for row in requirement_rows if row["requirement_id"] in TARGET_REQUIREMENTS}
     if set(tracked) != TARGET_REQUIREMENTS:
         raise AssertionError("P03 requirement tracking rows are incomplete")
@@ -112,7 +112,7 @@ def validate() -> dict[str, int]:
     if any(not row["implementation_evidence"] or "P03-E" not in row["verification_evidence"] for row in tracked.values()):
         raise AssertionError("P03 requirement rows must retain implementation and verification evidence")
 
-    screens = read_csv(ROOT / "docs/implementation/SCREEN_COVERAGE.csv")
+    screens = read_csv(ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv")
     p11_promotions = {
         "REC-009": "IN_PROGRESS",
         "REC-010": "IN_PROGRESS",
@@ -133,9 +133,9 @@ def validate() -> dict[str, int]:
     ):
         raise AssertionError("screen coverage contains a promotion outside the cumulative P12 scope")
 
-    project_state = (ROOT / "docs/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
-    domain_coverage = (ROOT / "docs/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md").read_text(encoding="utf-8")
-    test_evidence = (ROOT / "docs/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
+    project_state = (ROOT / "docs/初始开发文件存档/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
+    domain_coverage = (ROOT / "docs/初始开发文件存档/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md").read_text(encoding="utf-8")
+    test_evidence = (ROOT / "docs/初始开发文件存档/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
     if "| P03 | VERIFIED |" not in project_state or any(f"P03-E{number:03d}" not in test_evidence for number in range(1, 10)):
         raise AssertionError("PROJECT_STATE does not retain P03 as a verified completed stage")
     if "| INV-034 |" not in domain_coverage or "INV-034` `VERIFIED" not in project_state:

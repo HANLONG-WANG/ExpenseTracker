@@ -65,6 +65,7 @@ import java.util.UUID
 class RefundApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var ordinary: SecureRoomOrdinaryTransactionEntryPort
     private lateinit var references: SecureRoomReferenceDataManagementPort
     private lateinit var refunds: SecureRoomRefundApplicationPort
@@ -77,12 +78,13 @@ class RefundApplicationPortDeviceTest {
             context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
             keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
             keys.destroyLocal(BOOK_ID)
+            databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
             SecureRoomLedgerInitializationPort(context, keys).apply {
                 initialize(InitializeLedgerCommand(LedgerGenesisIds(BOOK_ID, id(2), id(3), id(4), SystemLedgerCode.entries.mapIndexed { index, code -> code to id(100L + index) }.toMap()), JPY, ZONE, Instant.ofEpochMilli(1_000))).success()
                 createFirstAccount(BOOK_ID, InitialAccountCommand(ACCOUNT_A, id(201), id(202), id(203), id(204), Instant.ofEpochMilli(2_000), UserAccountType.CASH, "Wallet", JPY, "account", 0xff006c4c.toInt())).success()
                 createFirstCategory(BOOK_ID, InitialCategoryCommand(CATEGORY_ID, id(211), id(212), id(213), Instant.ofEpochMilli(3_000), CategoryDirection.EXPENSE, "Food", "food", StatisticalNature.CONSUMPTION_EXPENSE, "record", 0xff006c4c.toInt())).success()
             }
-            references = SecureRoomReferenceDataManagementPort(context, keys)
+            references = SecureRoomReferenceDataManagementPort(databaseAccess)
             val beforeAccount = references.snapshot(BOOK_ID).success()
             references.mutate(
                 ReferenceMutationCommand(
@@ -90,9 +92,9 @@ class RefundApplicationPortDeviceTest {
                     ReferenceMutation.SaveAccount(AccountDraft(ACCOUNT_B, id(250), null, UserAccountType.BANK, "Refund bank", JPY, null, null, null, null, "account", 0xff4f6357.toInt(), 1)),
                 ),
             ).success()
-            ordinary = SecureRoomOrdinaryTransactionEntryPort(context, keys, references)
-            refunds = SecureRoomRefundApplicationPort(context, keys, references)
-            journal = SecureRoomJournalApplicationPort(context, keys)
+            ordinary = SecureRoomOrdinaryTransactionEntryPort(databaseAccess, references)
+            refunds = SecureRoomRefundApplicationPort(databaseAccess, references)
+            journal = SecureRoomJournalApplicationPort(context, databaseAccess)
             ordinary.submit(expense(1_000, ORIGINAL_A, 1_000L)).success()
             ordinary.submit(expense(500, ORIGINAL_B, 2_000L)).success()
         }

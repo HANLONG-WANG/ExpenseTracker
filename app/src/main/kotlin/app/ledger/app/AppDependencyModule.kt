@@ -3,32 +3,40 @@
 package app.ledger.app
 
 import android.content.Context
+import android.os.SystemClock
 import app.ledger.analytics.data.SecureRoomAnalyticsApplicationPort
 import app.ledger.analytics.domain.AnalyticsApplicationPort
 import app.ledger.core.common.StableId
 import app.ledger.core.common.StableIdSource
 import app.ledger.core.common.getOrNull
 import app.ledger.core.files.SecureBookAttachmentObjectPort
+import app.ledger.core.security.ActiveBookSessionManagerFactory
+import app.ledger.core.security.ActiveBookSessionRuntime
 import app.ledger.core.security.AndroidKeystoreKeys
+import app.ledger.core.security.BookSessionManager
 import app.ledger.core.security.CryptographicRandomSource
+import app.ledger.core.security.DefaultLedgerStartupInspector
 import app.ledger.core.security.DeviceKeyHierarchy
 import app.ledger.core.security.DeviceLedgerKeyProvider
 import app.ledger.core.security.PlatformCryptographicRandomSource
 import app.ledger.core.security.SecurityEnvelopeStore
+import app.ledger.core.security.SqlCipherBookDatabaseResourceFactory
+import app.ledger.core.security.VaultExposureRegistry
 import app.ledger.core.time.InjectedJavaClock
 import app.ledger.core.time.JavaTimeLedgerClock
 import app.ledger.core.time.LedgerClock
 import app.ledger.finance.application.AutomationApplicationPort
 import app.ledger.finance.application.BatchEntryApplicationPort
 import app.ledger.finance.application.BudgetApplicationPort
-import app.ledger.finance.application.CreditApplicationPort
 import app.ledger.finance.application.ControlledPurgeApplicationPort
+import app.ledger.finance.application.CreditApplicationPort
 import app.ledger.finance.application.FormalOccurrenceGenerator
 import app.ledger.finance.application.ImportFinancialApplicationPort
 import app.ledger.finance.application.InstallmentApplicationPort
 import app.ledger.finance.application.JournalApplicationPort
 import app.ledger.finance.application.LedgerExportQueryPort
 import app.ledger.finance.application.LedgerInitializationPort
+import app.ledger.finance.application.LedgerRevisionCacheControl
 import app.ledger.finance.application.LoanApplicationPort
 import app.ledger.finance.application.OpeningBalanceWritePort
 import app.ledger.finance.application.OrdinaryTransactionEntryPort
@@ -41,11 +49,12 @@ import app.ledger.finance.application.StructuredImportApplicationPort
 import app.ledger.finance.application.VaultSecretApplicationPort
 import app.ledger.finance.application.WidgetSnapshotApplicationPort
 import app.ledger.finance.application.WidgetSnapshotRefreshApplicationPort
+import app.ledger.finance.data.RoomLedgerStartupInspector
 import app.ledger.finance.data.SecureRoomAutomationApplicationPort
 import app.ledger.finance.data.SecureRoomBatchEntryApplicationPort
 import app.ledger.finance.data.SecureRoomBudgetApplicationPort
-import app.ledger.finance.data.SecureRoomCreditApplicationPort
 import app.ledger.finance.data.SecureRoomControlledPurgeApplicationPort
+import app.ledger.finance.data.SecureRoomCreditApplicationPort
 import app.ledger.finance.data.SecureRoomImportFinancialApplicationPort
 import app.ledger.finance.data.SecureRoomInstallmentApplicationPort
 import app.ledger.finance.data.SecureRoomJournalApplicationPort
@@ -93,6 +102,28 @@ internal object AppDependencyModule {
     fun keyProvider(hierarchy: DeviceKeyHierarchy): DeviceLedgerKeyProvider = hierarchy
 
     @Provides
+    @Singleton
+    fun vaultExposureRegistry(): VaultExposureRegistry = VaultExposureRegistry(SystemClock::elapsedRealtime)
+
+    @Provides
+    @Singleton
+    fun activeBookSessionRuntime(
+        @ApplicationContext context: Context,
+        keyProvider: DeviceLedgerKeyProvider,
+        vaultExposureRegistry: VaultExposureRegistry,
+    ): ActiveBookSessionRuntime {
+        val resourceFactory = SqlCipherBookDatabaseResourceFactory(
+            context,
+            listOf(DefaultLedgerStartupInspector, RoomLedgerStartupInspector()),
+        )
+        return ActiveBookSessionRuntime(
+            ActiveBookSessionManagerFactory { bookId ->
+                BookSessionManager(bookId, keyProvider, resourceFactory, vaultExposureRegistry)
+            },
+        )
+    }
+
+    @Provides
     fun ledgerClock(): LedgerClock = JavaTimeLedgerClock.systemUtc()
 
     @Provides
@@ -120,95 +151,100 @@ internal object AppDependencyModule {
 
     @Provides
     @Singleton
-    fun referenceDataPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): ReferenceDataManagementPort = SecureRoomReferenceDataManagementPort(context, keyProvider)
+    fun secureReferenceDataPort(
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): SecureRoomReferenceDataManagementPort = SecureRoomReferenceDataManagementPort(sessionRuntime)
+
+    @Provides
+    fun referenceDataPort(port: SecureRoomReferenceDataManagementPort): ReferenceDataManagementPort = port
+
+    @Provides
+    fun ledgerRevisionCacheControl(port: SecureRoomReferenceDataManagementPort): LedgerRevisionCacheControl = port
 
     @Provides
     @Singleton
     fun vaultSecretApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): VaultSecretApplicationPort = SecureRoomVaultSecretApplicationPort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): VaultSecretApplicationPort = SecureRoomVaultSecretApplicationPort(sessionRuntime)
 
     @Provides
     @Singleton
     fun journalApplicationPort(
         @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): JournalApplicationPort = SecureRoomJournalApplicationPort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): JournalApplicationPort = SecureRoomJournalApplicationPort(context, sessionRuntime)
 
     @Provides
     @Singleton
     fun controlledPurgeApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): ControlledPurgeApplicationPort = SecureRoomControlledPurgeApplicationPort(context, keyProvider)
+        journal: JournalApplicationPort,
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): ControlledPurgeApplicationPort = SecureRoomControlledPurgeApplicationPort(
+        sessionRuntime,
+        journal,
+    )
 
     @Provides
     @Singleton
     fun ledgerExportQueryPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): LedgerExportQueryPort = SecureRoomLedgerExportQueryPort(context, keyProvider)
+        journal: JournalApplicationPort,
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): LedgerExportQueryPort = SecureRoomLedgerExportQueryPort(sessionRuntime, journal)
 
     @Provides
     @Singleton
     fun widgetSnapshotApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): WidgetSnapshotApplicationPort = SecureRoomWidgetSnapshotApplicationPort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): WidgetSnapshotApplicationPort = AppHeadlessWidgetSnapshotApplicationPort(
+        sessionRuntime,
+        SecureRoomWidgetSnapshotApplicationPort(sessionRuntime),
+    )
 
     @Provides
     @Singleton
     fun widgetSnapshotRefreshApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): WidgetSnapshotRefreshApplicationPort = SecureRoomWidgetSnapshotApplicationPort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): WidgetSnapshotRefreshApplicationPort = SecureRoomWidgetSnapshotApplicationPort(sessionRuntime)
 
     @Provides
     @Singleton
     fun budgetApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): BudgetApplicationPort = SecureRoomBudgetApplicationPort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): BudgetApplicationPort = SecureRoomBudgetApplicationPort(sessionRuntime)
 
     @Provides
     @Singleton
     fun projectGoalApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
         referenceDataPort: ReferenceDataManagementPort,
-    ): ProjectGoalApplicationPort = SecureRoomProjectGoalApplicationPort(context, keyProvider, referenceDataPort)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): ProjectGoalApplicationPort = SecureRoomProjectGoalApplicationPort(
+        sessionRuntime,
+        referenceDataPort,
+    )
 
     @Provides
     @Singleton
     fun creditApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): CreditApplicationPort = SecureRoomCreditApplicationPort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): CreditApplicationPort = SecureRoomCreditApplicationPort(sessionRuntime)
 
     @Provides
     @Singleton
     fun installmentApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): InstallmentApplicationPort = SecureRoomInstallmentApplicationPort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): InstallmentApplicationPort = SecureRoomInstallmentApplicationPort(sessionRuntime)
 
     @Provides
     @Singleton
     fun loanApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): LoanApplicationPort = SecureRoomLoanApplicationPort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): LoanApplicationPort = SecureRoomLoanApplicationPort(sessionRuntime)
 
     @Provides
     @Singleton
     fun settlementApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): SettlementApplicationPort = SecureRoomSettlementApplicationPort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): SettlementApplicationPort = SecureRoomSettlementApplicationPort(sessionRuntime)
 
     @Provides
     @Singleton
@@ -221,24 +257,20 @@ internal object AppDependencyModule {
     @Provides
     @Singleton
     fun automationApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
         generator: FormalOccurrenceGenerator,
-    ): AutomationApplicationPort = SecureRoomAutomationApplicationPort(context, keyProvider, generator)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): AutomationApplicationPort = SecureRoomAutomationApplicationPort(
+        sessionRuntime,
+        generator,
+    )
 
     @Provides
     @Singleton
     fun analyticsApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
+        sessionRuntime: ActiveBookSessionRuntime,
         runtime: AppRuntimeSources,
     ): AnalyticsApplicationPort = SecureRoomAnalyticsApplicationPort(
-        context,
-        { bookId ->
-            keyProvider.open(bookId).use { keys ->
-                keys.databaseDek.useBytes(ByteArray::copyOf)
-            }
-        },
+        sessionRuntime,
         runtime.stableIds,
         runtime.clock,
     )
@@ -246,33 +278,32 @@ internal object AppDependencyModule {
     @Provides
     @Singleton
     fun headlessRecurrenceExecutor(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
+        sessionRuntime: ActiveBookSessionRuntime,
         automation: AutomationApplicationPort,
-    ): HeadlessRecurrenceExecutor = AppHeadlessRecurrenceExecutor(context, keyProvider, automation)
+    ): HeadlessRecurrenceExecutor = AppHeadlessRecurrenceExecutor(sessionRuntime, automation)
 
     @Provides
     @Singleton
     fun openingBalanceWritePort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
-    ): OpeningBalanceWritePort = SecureRoomOpeningBalanceWritePort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): OpeningBalanceWritePort = SecureRoomOpeningBalanceWritePort(sessionRuntime)
 
     @Provides
     @Singleton
     fun ordinaryTransactionEntryPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
+        sessionRuntime: ActiveBookSessionRuntime,
         referenceDataPort: ReferenceDataManagementPort,
-    ): OrdinaryTransactionEntryPort = SecureRoomOrdinaryTransactionEntryPort(context, keyProvider, referenceDataPort)
+    ): OrdinaryTransactionEntryPort = SecureRoomOrdinaryTransactionEntryPort(sessionRuntime, referenceDataPort)
 
     @Provides
     @Singleton
     fun batchEntryApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
         referenceDataPort: ReferenceDataManagementPort,
-    ): BatchEntryApplicationPort = SecureRoomBatchEntryApplicationPort(context, keyProvider, referenceDataPort)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): BatchEntryApplicationPort = SecureRoomBatchEntryApplicationPort(
+        sessionRuntime,
+        referenceDataPort,
+    )
 
     @Provides
     @Singleton
@@ -281,35 +312,44 @@ internal object AppDependencyModule {
         keyProvider: DeviceLedgerKeyProvider,
         referenceDataPort: ReferenceDataManagementPort,
         stableIds: StableIdSource,
-    ): ImportFinancialApplicationPort = SecureRoomImportFinancialApplicationPort(context, keyProvider, referenceDataPort, stableIds)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): ImportFinancialApplicationPort = SecureRoomImportFinancialApplicationPort(
+        context,
+        keyProvider,
+        referenceDataPort,
+        stableIds,
+        databaseAccess = sessionRuntime,
+    )
 
     @Provides
     @Singleton
     fun structuredImportApplicationPort(
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
-    ): StructuredImportApplicationPort = SecureRoomStructuredImportApplicationPort(context, keyProvider)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): StructuredImportApplicationPort = SecureRoomStructuredImportApplicationPort(context, keyProvider, sessionRuntime)
 
     @Provides
     @Singleton
     fun refundApplicationPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
         referenceDataPort: ReferenceDataManagementPort,
-    ): RefundApplicationPort = SecureRoomRefundApplicationPort(context, keyProvider, referenceDataPort)
+        sessionRuntime: ActiveBookSessionRuntime,
+    ): RefundApplicationPort = SecureRoomRefundApplicationPort(
+        sessionRuntime,
+        referenceDataPort,
+    )
 
     @Provides
     @Singleton
     fun specializedTransactionEntryPort(
-        @ApplicationContext context: Context,
-        keyProvider: DeviceLedgerKeyProvider,
         referenceDataPort: ReferenceDataManagementPort,
         runtimeSources: AppRuntimeSources,
+        sessionRuntime: ActiveBookSessionRuntime,
     ): SpecializedTransactionEntryPort = SecureRoomSpecializedTransactionEntryPort.production(
-        context,
-        keyProvider,
+        sessionRuntime,
         referenceDataPort,
-    ) { runtimeSources.clock.now() }
+        instantSource = { runtimeSources.clock.now() },
+    )
 
     @Provides
     @Singleton
@@ -317,11 +357,13 @@ internal object AppDependencyModule {
         @ApplicationContext context: Context,
         keyProvider: DeviceLedgerKeyProvider,
         runtimeSources: AppRuntimeSources,
+        sessionRuntime: ActiveBookSessionRuntime,
     ): SecureBookAttachmentObjectPort = SecureBookAttachmentObjectPort(
         context,
         keyProvider,
         runtimeSources.stableIds,
         InjectedJavaClock(runtimeSources.clock),
         runtimeSources.cryptographicRandom,
+        sessionRuntime,
     )
 }

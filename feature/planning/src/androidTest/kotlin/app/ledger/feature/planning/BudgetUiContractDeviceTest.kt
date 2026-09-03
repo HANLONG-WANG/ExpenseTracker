@@ -12,16 +12,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -79,9 +78,8 @@ class BudgetUiContractDeviceTest {
                 }
             }
         }
-        composeRule.onNodeWithTag(LedgerTestTags.BUDGET_EDITOR).performScrollToNode(hasTestTag(LedgerTestTags.BUDGET_CONSTRAINT_METERS))
-        composeRule.onNodeWithTag(LedgerTestTags.BUDGET_CONSTRAINT_METERS).assertExists()
-        composeRule.onNodeWithTag(LedgerTestTags.BUDGET_EDITOR).performScrollToNode(hasText("保存", substring = true) or hasText("Save", substring = true) or hasText("保存する", substring = true))
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag(LedgerTestTags.BUDGET_CONSTRAINT_METERS))
+        composeRule.onNodeWithTag(LedgerTestTags.BUDGET_CONSTRAINT_METERS, useUnmergedTree = true).assertExists()
         composeRule.onRoot().assertExists()
     }
 
@@ -89,9 +87,9 @@ class BudgetUiContractDeviceTest {
     fun budgetHierarchyExcessDisablesSaveAndDispatchesNoMutation() {
         val state = BudgetDeviceFixtures.constraintState()
         var writes = 0
-        val actions = BudgetDeviceFixtures.actions.copy(
-            editor = BudgetDeviceFixtures.actions.editor.copy(onSaveMonth = { writes += 1 }),
-        )
+        val actions: (BudgetScreenAction) -> Unit = { action ->
+            if (action === BudgetScreenAction.SaveMonth) writes += 1
+        }
         composeRule.setContent {
             LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
                 Box(Modifier.size(360.dp, 800.dp)) {

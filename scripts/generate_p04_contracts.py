@@ -19,7 +19,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-UI_ROOT = ROOT / "docs/UI设计稿与实现契约_v1.0"
+UI_ROOT = ROOT / "docs/初始开发文件存档/UI设计稿与实现契约_v1.0"
 TOKEN_SOURCE = UI_ROOT / "android_ledger_ui_tokens_v1.json"
 SCREEN_SOURCE = UI_ROOT / "android_ledger_screen_contract_v1.yaml"
 TOKEN_OUTPUT = (

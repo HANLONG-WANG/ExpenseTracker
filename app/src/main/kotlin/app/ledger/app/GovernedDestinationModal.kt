@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming")
+@file:Suppress("FunctionNaming", "ktlint:standard:function-naming")
 
 package app.ledger.app
 

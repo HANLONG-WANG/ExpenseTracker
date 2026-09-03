@@ -21,10 +21,10 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FROZEN = ROOT / "docs" / "规格冻结_v1.0"
-UI = ROOT / "docs" / "UI设计稿与实现契约_v1.0"
-IMPLEMENTATION = ROOT / "docs" / "implementation"
-PLAN = ROOT / "docs" / "Android记账软件_完整开发计划_Codex执行版.md"
+FROZEN = ROOT / "docs" / "初始开发文件存档" / "规格冻结_v1.0"
+UI = ROOT / "docs" / "初始开发文件存档" / "UI设计稿与实现契约_v1.0"
+IMPLEMENTATION = ROOT / "docs" / "初始开发文件存档" / "implementation"
+PLAN = ROOT / "docs" / "初始开发文件存档" / "Android记账软件_完整开发计划_Codex执行版.md"
 
 REQUIREMENTS_SOURCE = UI / "UI需求追踪矩阵_v1.csv"
 SCREENS_SOURCE = UI / "android_ledger_screen_contract_v1.yaml"
@@ -50,16 +50,16 @@ MANIFEST_TEXT_INPUTS = {
 }
 
 EXPECTED_FROZEN_SHA256 = {
-    "docs/规格冻结_v1.0/需求.md": "539723ce5abca31747e1b3d2f75ab705d3acca6b3ecd69ab7552b9ec0ac906b7",
-    "docs/规格冻结_v1.0/技术栈.md": "9bc8aa0a214795909f6c0d9cbfebffe73d58b9e0688e56a48dc85bbd805f0dc0",
-    "docs/规格冻结_v1.0/系统架构.md": "c8033e8696b52909ea61d4459866b914bee5c9369ccc376beb44b8c1f7e2c171",
-    "docs/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md": "e519ea2bd99d2afce305bad720f0c874bb297e7a500e96b404448f08d4d916de",
-    "docs/UI设计稿与实现契约_v1.0/README_交付说明.md": "65e90b4329d2f79af3b6e9e6ff3f6d8baf613c3238570de9cfacbcab0d358e97",
-    "docs/UI设计稿与实现契约_v1.0/Android记账软件_UI设计系统与实现契约_v1.0.md": "050cbbee9f6236eadd7d3194ea539ed4641b3c2f999957222247e778dc3daaf7",
-    "docs/UI设计稿与实现契约_v1.0/android_ledger_ui_tokens_v1.json": "d7be41816bfe1d53b0b9b521de69b60dd193b0a1a040f2c749e3099ef5fc0b1f",
-    "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml": "70c5077ee7cc91e996dbeabbcfcaf3b8052b1eb76501a774c4acc249cd3dc3c7",
-    "docs/UI设计稿与实现契约_v1.0/UI需求追踪矩阵_v1.csv": "4c587e22497e693594b61995efb3527711b6552b5ecf862efdbe4a89827d1049",
-    "docs/UI设计稿与实现契约_v1.0/MANIFEST.sha256": "f1fa76e2ca3ec3da839496471d9f890ee7e830e9238e2e1edfa873a812f924bc",
+    "docs/初始开发文件存档/规格冻结_v1.0/需求.md": "539723ce5abca31747e1b3d2f75ab705d3acca6b3ecd69ab7552b9ec0ac906b7",
+    "docs/初始开发文件存档/规格冻结_v1.0/技术栈.md": "9bc8aa0a214795909f6c0d9cbfebffe73d58b9e0688e56a48dc85bbd805f0dc0",
+    "docs/初始开发文件存档/规格冻结_v1.0/系统架构.md": "c8033e8696b52909ea61d4459866b914bee5c9369ccc376beb44b8c1f7e2c171",
+    "docs/初始开发文件存档/规格冻结_v1.0/领域模型与数据库逻辑模型设计.md": "e519ea2bd99d2afce305bad720f0c874bb297e7a500e96b404448f08d4d916de",
+    "docs/初始开发文件存档/UI设计稿与实现契约_v1.0/README_交付说明.md": "65e90b4329d2f79af3b6e9e6ff3f6d8baf613c3238570de9cfacbcab0d358e97",
+    "docs/初始开发文件存档/UI设计稿与实现契约_v1.0/Android记账软件_UI设计系统与实现契约_v1.0.md": "050cbbee9f6236eadd7d3194ea539ed4641b3c2f999957222247e778dc3daaf7",
+    "docs/初始开发文件存档/UI设计稿与实现契约_v1.0/android_ledger_ui_tokens_v1.json": "d7be41816bfe1d53b0b9b521de69b60dd193b0a1a040f2c749e3099ef5fc0b1f",
+    "docs/初始开发文件存档/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml": "70c5077ee7cc91e996dbeabbcfcaf3b8052b1eb76501a774c4acc249cd3dc3c7",
+    "docs/初始开发文件存档/UI设计稿与实现契约_v1.0/UI需求追踪矩阵_v1.csv": "4c587e22497e693594b61995efb3527711b6552b5ecf862efdbe4a89827d1049",
+    "docs/初始开发文件存档/UI设计稿与实现契约_v1.0/MANIFEST.sha256": "f1fa76e2ca3ec3da839496471d9f890ee7e830e9238e2e1edfa873a812f924bc",
 }
 
 REQ_SOURCE_FIELDS = ["需求ID", "来源章节", "需求摘要", "覆盖页面/流程", "核心组件", "验收条件"]

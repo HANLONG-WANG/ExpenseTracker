@@ -186,14 +186,14 @@ def validate_tests() -> list[str]:
 
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
-    project_state = (ROOT / "docs/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
+    project_state = (ROOT / "docs/初始开发文件存档/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
     if "| P08 | VERIFIED |" not in project_state or "### P08 result" not in project_state:
         errors.append("PROJECT_STATE does not record P08 VERIFIED and its result")
-    evidence = (ROOT / "docs/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
+    evidence = (ROOT / "docs/初始开发文件存档/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
     for value in range(1, 7):
         if f"P08-E{value:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P08-E{value:03d}")
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         rows = {row["requirement_id"]: row for row in csv.DictReader(handle)}
     for requirement_id in TARGET_REQUIREMENTS:
         row = rows.get(requirement_id)
@@ -201,7 +201,7 @@ def validate_ledgers() -> list[str]:
             errors.append(f"{requirement_id} must remain truthful IN_PROGRESS after its P08 foundation")
         elif "P08" not in row["implementation_evidence"] or "P08-E" not in row["verification_evidence"]:
             errors.append(f"{requirement_id} lacks P08 implementation/verification evidence")
-    with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = list(csv.DictReader(handle))
     p11_promotions = {
         "REC-009": "IN_PROGRESS",

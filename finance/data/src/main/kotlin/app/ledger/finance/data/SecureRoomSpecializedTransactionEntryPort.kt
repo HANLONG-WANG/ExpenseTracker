@@ -20,20 +20,23 @@ import app.ledger.core.network.NetworkFxQuoteRequest
 import app.ledger.core.network.NetworkFxQuoteResult
 import app.ledger.core.network.OkHttpFxQuoteNetworkClient
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.time.EffectiveTime
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.SpecializedAccountAmountDraft
 import app.ledger.finance.application.SpecializedFxQuote
 import app.ledger.finance.application.SpecializedFxQuoteRequest
-import app.ledger.finance.application.SpecializedTransactionEntryPort
 import app.ledger.finance.application.SpecializedTransactionEditView
+import app.ledger.finance.application.SpecializedTransactionEntryPort
 import app.ledger.finance.application.SpecializedTransactionSnapshot
 import app.ledger.finance.application.SpecializedTransactionWriteRequest
+import app.ledger.finance.application.toBoundedReferenceSnapshot
 import app.ledger.finance.domain.AccountAmount
 import app.ledger.finance.domain.AccountingPlanningContext
 import app.ledger.finance.domain.AmountEvidenceKey
@@ -69,8 +72,6 @@ import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.TransferPayload
 import app.ledger.finance.domain.UserAccountId
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
@@ -80,28 +81,27 @@ import java.time.ZoneOffset
 
 /** SQLCipher-backed P14 entry/cache adapter; formal mutations terminate at FinancialMutationCoordinator. */
 public class SecureRoomSpecializedTransactionEntryPort internal constructor(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
     private val referenceDataPort: ReferenceDataManagementPort,
     private val network: FxQuoteNetworkPort,
 ) : SpecializedTransactionEntryPort {
-    private val applicationContext = context.applicationContext
-    private val writeGate = SpecializedWriteGate()
     private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
 
     override suspend fun snapshot(
         bookId: app.ledger.core.common.StableId,
         transactionId: app.ledger.core.common.StableId?,
-    ): DomainResult<SpecializedTransactionSnapshot> = when (val references = referenceDataPort.snapshot(bookId)) {
+    ): DomainResult<SpecializedTransactionSnapshot> = when (val references = referenceDataPort.entryCoreReferences(bookId)) {
         is DomainResult.Failure -> references
         is DomainResult.Success -> if (transactionId == null) {
-            DomainResult.Success(SpecializedTransactionSnapshot(references.value, references.value.valuationRevision))
+            val snapshot = references.value.toBoundedReferenceSnapshot()
+            DomainResult.Success(SpecializedTransactionSnapshot(snapshot, snapshot.valuationRevision))
         } else {
-            withDatabase(bookId) { database ->
+            withDatabase(bookId, LedgerAccessMode.READ) { database ->
+                val snapshot = references.value.toBoundedReferenceSnapshot()
                 DomainResult.Success(
                     SpecializedTransactionSnapshot(
-                        references.value,
-                        references.value.valuationRevision,
+                        snapshot,
+                        snapshot.valuationRevision,
                         database.readLedger { editing(it, transactionId) },
                     ),
                 )
@@ -173,7 +173,7 @@ public class SecureRoomSpecializedTransactionEntryPort internal constructor(
         )
     } ?: abort(FinanceDataError.CorruptData)
 
-    override suspend fun quote(request: SpecializedFxQuoteRequest): DomainResult<SpecializedFxQuote?> = withDatabase(request.bookId) { database ->
+    override suspend fun quote(request: SpecializedFxQuoteRequest): DomainResult<SpecializedFxQuote?> = withDatabase(request.bookId, LedgerAccessMode.READ) { database ->
         val book = database.readLedger(RoomBookRepository::mapCurrent)
         if (book.id.value != request.bookId) abort(FinanceDataError.CorruptData)
         val online = if (request.refreshOnline) {
@@ -224,7 +224,7 @@ public class SecureRoomSpecializedTransactionEntryPort internal constructor(
         val command = command(request, snapshot)
         val repository = RoomFinancialCommitRepository(database)
         return DefaultFinancialMutationCoordinator(
-            writeGate,
+            CallerOwnedLedgerWriteGate,
             repository,
             object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
@@ -549,16 +549,10 @@ public class SecureRoomSpecializedTransactionEntryPort internal constructor(
 
     private suspend fun <T> withDatabase(
         bookId: app.ledger.core.common.StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
         block: suspend (LedgerDatabase) -> DomainResult<T>,
     ): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+        databaseAccess.withCurrentDatabase(bookId, mode, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -582,13 +576,11 @@ public class SecureRoomSpecializedTransactionEntryPort internal constructor(
 
     public companion object {
         public fun production(
-            context: Context,
-            keyProvider: DeviceLedgerKeyProvider,
+            databaseAccess: LedgerDatabaseOperationAccess,
             referenceDataPort: ReferenceDataManagementPort,
             instantSource: () -> Instant,
         ): SpecializedTransactionEntryPort = SecureRoomSpecializedTransactionEntryPort(
-            context,
-            keyProvider,
+            databaseAccess,
             referenceDataPort,
             OkHttpFxQuoteNetworkClient.production { instantSource() },
         )
@@ -596,9 +588,4 @@ public class SecureRoomSpecializedTransactionEntryPort internal constructor(
         private const val STALE_DAYS = 3L
         private val MATH_CONTEXT = MathContext(34, RoundingMode.HALF_EVEN)
     }
-}
-
-private class SpecializedWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
 }

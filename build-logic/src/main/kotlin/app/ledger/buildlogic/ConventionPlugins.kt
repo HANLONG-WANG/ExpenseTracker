@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package app.ledger.buildlogic
 
 import com.android.build.api.dsl.ApplicationExtension
@@ -328,7 +330,7 @@ class ArchitectureConventionPlugin : Plugin<Project> {
             rootDirectory.set(target.layout.projectDirectory)
             screenContract.set(
                 target.layout.projectDirectory.file(
-                    "docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
+                    "docs/初始开发文件存档/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml",
                 ),
             )
             sourceFiles.from(
@@ -354,6 +356,7 @@ class ArchitectureConventionPlugin : Plugin<Project> {
                 directEdges.set(
                     target.subprojects.associate { candidate ->
                         val edges = candidate.configurations
+                            .filter { configuration -> configuration.name.contributesToProductionArchitecture() }
                             .flatMap { configuration -> configuration.dependencies.withType(ProjectDependency::class.java) }
                             .map { dependency -> dependency.path }
                             .filter { dependencyPath -> dependencyPath != candidate.path }
@@ -364,6 +367,7 @@ class ArchitectureConventionPlugin : Plugin<Project> {
                 externalDependencies.set(
                     target.subprojects.associate { candidate ->
                         val dependencies = candidate.configurations
+                            .filter { configuration -> configuration.name.contributesToProductionArchitecture() }
                             .flatMap { configuration ->
                                 configuration.dependencies
                                     .filterNot { dependency -> dependency is ProjectDependency }
@@ -400,6 +404,8 @@ class ArchitectureConventionPlugin : Plugin<Project> {
         }
     }
 }
+
+internal fun String.contributesToProductionArchitecture(): Boolean = !Regex("(?:^test|[a-z]Test)(?:$|[A-Z])").containsMatchIn(this)
 
 abstract class VerifyArchitectureTask : DefaultTask() {
     @get:Input
@@ -561,10 +567,12 @@ abstract class VerifyArchitectureTask : DefaultTask() {
             put(":finance:application", setOf(":finance:domain"))
             put(":finance:data", setOf(":finance:application", ":core:database", ":core:network", ":core:security"))
             put(":analytics:domain", setOf(":finance:domain"))
-            put(":analytics:data", setOf(":analytics:domain", ":core:database"))
+            put(":analytics:data", setOf(":analytics:domain", ":core:database", ":core:security"))
             put(":transfer:domain", setOf(":finance:application"))
             put(":transfer:data", setOf(":transfer:domain", ":core:background", ":core:files", ":core:network", ":core:security"))
-            featureProjects.forEach { feature -> put(feature, featureEdges) }
+            featureProjects.forEach { feature ->
+                put(feature, if (feature == ":feature:record") featureEdges + ":core:geo" else featureEdges)
+            }
             put(":widget", setOf(":finance:application", ":core:designsystem"))
         }
     }

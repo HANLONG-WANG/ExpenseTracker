@@ -56,6 +56,7 @@ import java.util.UUID
 class BudgetApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var references: SecureRoomReferenceDataManagementPort
     private lateinit var ordinary: SecureRoomOrdinaryTransactionEntryPort
     private lateinit var budgets: SecureRoomBudgetApplicationPort
@@ -66,6 +67,7 @@ class BudgetApplicationPortDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         SecureRoomLedgerInitializationPort(context, keys).apply {
             initialize(
                 InitializeLedgerCommand(
@@ -84,7 +86,7 @@ class BudgetApplicationPortDeviceTest {
                 InitialCategoryCommand(ROOT_CATEGORY_ID, id(211), id(212), id(213), Instant.ofEpochMilli(3_000), CategoryDirection.EXPENSE, "Food", "food", StatisticalNature.CONSUMPTION_EXPENSE, "record", 0xff006c4c.toInt()),
             ).success()
         }
-        references = SecureRoomReferenceDataManagementPort(context, keys)
+        references = SecureRoomReferenceDataManagementPort(databaseAccess)
         val snapshot = references.snapshot(BOOK_ID).success()
         references.mutate(
             ReferenceMutationCommand(
@@ -94,8 +96,8 @@ class BudgetApplicationPortDeviceTest {
                 ),
             ),
         ).success()
-        ordinary = SecureRoomOrdinaryTransactionEntryPort(context, keys, references)
-        budgets = SecureRoomBudgetApplicationPort(context, keys)
+        ordinary = SecureRoomOrdinaryTransactionEntryPort(databaseAccess, references)
+        budgets = SecureRoomBudgetApplicationPort(databaseAccess)
     }
 
     @After
@@ -125,22 +127,27 @@ class BudgetApplicationPortDeviceTest {
         assertEquals(-200L, august.composition.single { it.categoryId == null }.rolloverMinor)
         assertEquals(800L, august.composition.single { it.categoryId == null }.remainingMinor)
 
+        ordinary.submit(expense(100L, 2_500L)).success()
+        august = budgets.snapshot(BOOK_ID, YearMonth.of(2026, 8), LocalDate.of(2026, 8, 10)).success()
+        assertEquals(-300L, august.composition.single { it.categoryId == null }.rolloverMinor)
+        assertEquals(700L, august.composition.single { it.categoryId == null }.remainingMinor)
+
         val currentJuly = budgets.snapshot(BOOK_ID, YearMonth.of(2026, 7), LocalDate.of(2026, 7, 20)).success()
         budgets.saveMonth(monthRequest(YearMonth.of(2026, 7), 2_000L, 1_500L, 1_500L, 4_000L, currentJuly.currentRevision?.id)).success()
         august = budgets.snapshot(BOOK_ID, YearMonth.of(2026, 8), LocalDate.of(2026, 8, 10)).success()
-        assertEquals(800L, august.composition.single { it.categoryId == null }.rolloverMinor)
-        assertEquals(1_800L, august.composition.single { it.categoryId == null }.remainingMinor)
+        assertEquals(700L, august.composition.single { it.categoryId == null }.rolloverMinor)
+        assertEquals(1_700L, august.composition.single { it.categoryId == null }.remainingMinor)
         assertEquals(2, budgets.snapshot(BOOK_ID, YearMonth.of(2026, 7), LocalDate.of(2026, 7, 20)).success().revisionHistory.size)
 
         seedFutureFixedReservation(august.localRevision.value)
         august = budgets.snapshot(BOOK_ID, YearMonth.of(2026, 8), LocalDate.of(2026, 8, 10)).success()
         assertEquals(310L, august.dailyAvailable?.reservedRecurrenceBaseMinor)
         assertEquals(22, august.dailyAvailable?.remainingDayCount)
-        assertEquals(67L, august.dailyAvailable?.dailyAvailableBaseMinor)
+        assertEquals(63L, august.dailyAvailable?.dailyAvailableBaseMinor)
         budgets.saveTemplate(templateRequest("Reservation revision carry", 2_000L, 1_500L, 1_000L, 4_500L)).success()
         august = budgets.snapshot(BOOK_ID, YearMonth.of(2026, 8), LocalDate.of(2026, 8, 10)).success()
         assertEquals(310L, august.dailyAvailable?.reservedRecurrenceBaseMinor)
-        assertEquals(67L, august.dailyAvailable?.dailyAvailableBaseMinor)
+        assertEquals(63L, august.dailyAvailable?.dailyAvailableBaseMinor)
 
         val beforeInvalid = august.localRevision
         val invalid = budgets.saveMonth(monthRequest(YearMonth.of(2026, 9), 1_000L, 1_001L, 0L, 5_000L))

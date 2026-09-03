@@ -1,7 +1,7 @@
 # P37 Interactive Performance Remediation Plan
 
-Last updated: 2026-09-01 (Asia/Tokyo)  
-Status: verified
+Last updated: 2026-09-04 (Asia/Tokyo)
+Status: VERIFIED — implementation, same-candidate API 28/API 36 evidence, final aggregates and delivery hygiene are complete
 Scope: interactive latency, encrypted database lifecycle, data loading, query count, UI state propagation and performance gates
 
 ## 1. Executive decision
@@ -638,9 +638,9 @@ These do not depend on device speed:
 | Book switch/restore | old generation cannot publish or access the new session; caches empty |
 | Production source scan | no forbidden direct live-primary open/passphrase copy outside the allowlist |
 
-### 10.2 Proposed latency gates
+### 10.2 Frozen latency gates
 
-The following are initial candidate budgets for the checked-in target-scale fixtures on the existing API 28 x86 and API 36 x86_64 emulator environments. P37-00 must record the host/device/fixture and variance. Budgets may be tightened after evidence; they may not be silently relaxed merely to make a regression pass.
+The following budgets are frozen for the checked-in target-scale fixtures on the API 28 x86 and API 36 x86_64 emulator environments. P37-00 records the host/device/fixture, raw samples and variance. The final evidence satisfies every budget without relaxation; later changes may tighten a budget but may not silently relax one merely to make a regression pass.
 
 | Interaction | Measurement boundary | Candidate gate |
 |---|---|---:|
@@ -735,42 +735,44 @@ P37 is complete only when all statements below are true and backed by checked-in
 
 ### Architecture and security
 
-- [ ] The selected live-primary database has one process owner.
-- [ ] Normal interactive Ports cannot directly unwrap the database key or open/close the primary database.
-- [ ] UI and headless callers share the same resource when compatible.
-- [ ] Initialization/copy/restore access is explicitly separated and allowlisted.
-- [ ] Lock, generation, maintenance and resource-drain tests pass.
-- [ ] No encryption, vault, privacy, logging or recovery guarantee is weakened.
+- [x] The selected live-primary database has one process owner.
+- [x] Normal interactive Ports cannot directly unwrap the database key or open/close the primary database.
+- [x] UI and headless callers share the same resource when compatible.
+- [x] Initialization/copy/restore access is explicitly separated and allowlisted.
+- [x] Lock, generation, maintenance and resource-drain tests pass.
+- [x] No encryption, vault, privacy, logging or recovery guarantee is weakened.
 
 ### Correctness
 
-- [ ] All accounting, persistence, idempotency, projection and failure-injection suites pass.
-- [ ] Cross-feature writes are globally ordered and deadlock-free.
-- [ ] Save success occurs only after commit.
-- [ ] Cached financial views are revision-aligned with the authoritative database.
-- [ ] Restore and book switch cannot expose stale data from the previous generation.
+- [x] All accounting, persistence, idempotency, projection and failure-injection suites pass.
+- [x] Cross-feature writes are globally ordered and deadlock-free.
+- [x] Save success occurs only after commit.
+- [x] Cached financial views are revision-aligned with the authoritative database.
+- [x] Restore and book switch cannot expose stale data from the previous generation.
 
 ### Loading and queries
 
-- [ ] No ordinary startup/navigation/save/search path calls the full reference snapshot.
-- [ ] Ordinary save performs no database reopen after Ready and no synchronous global reload.
-- [ ] Every route has one load owner and stale-result protection.
-- [ ] Valid content remains visible during refresh.
-- [ ] Journal and other list query counts are bounded independently of page length.
+- [x] No ordinary startup/navigation/save/search path calls the full reference snapshot.
+- [x] Ordinary save performs no database reopen after Ready and no synchronous global reload.
+- [x] Every route has one load owner and stale-result protection.
+- [x] Valid content remains visible during refresh.
+- [x] Journal and other list query counts are bounded independently of page length.
 
 ### Performance evidence
 
-- [ ] Open/unwrap/query counters satisfy Section 10.1.
-- [ ] End-to-end latency gates satisfy Section 10.2 on both target emulator environments.
-- [ ] Existing frame, heap and file-descriptor gates still pass.
-- [ ] Results include fixture identity, sample counts, P50/P90/P95/max and failure handling.
-- [ ] `reportFullyDrawn` corresponds to real current-route content, not merely the first window frame.
+- [x] Open/unwrap/query counters satisfy Section 10.1.
+- [x] End-to-end latency gates satisfy Section 10.2 on both target emulator environments.
+- [x] Existing frame, heap and file-descriptor gates still pass.
+- [x] Results include fixture identity, sample counts, P50/P90/P95/max and failure handling.
+- [x] `reportFullyDrawn` corresponds to real current-route content, not merely the first window frame.
 
 ### Delivery hygiene
 
-- [ ] Obsolete direct-open helpers, per-Port gates and compatibility APIs are removed after migration.
-- [ ] Static architecture verification runs in CI.
-- [ ] `TEST_EVIDENCE.md`, `PROJECT_STATE.md`, `DECISION_LOG.md`, performance budgets and release-readiness records contain the final evidence and no premature `VERIFIED` claim.
+- [x] Obsolete direct-open helpers, per-Port gates and compatibility APIs are removed after migration.
+- [x] Static architecture verification runs in CI.
+- [x] `TEST_EVIDENCE.md`, `PROJECT_STATE.md`, `DECISION_LOG.md`, performance budgets and release-readiness records contain the final evidence and no premature `VERIFIED` claim.
+
+Closure evidence is recorded as `P37-E001`—`P37-E008` in `TEST_EVIDENCE.md` and as the durable execution history in `P37_Progress.md`. Both official result files bind to the exact current target APK `fa808559a0a4ab324a19445786601af465c0baf5cebdbf99d917cf54298db17b` and benchmark APK `e82e091ba138752042c61bb85e3b2d2d2a4657e9cd62168ae28506127899b11e`. Result SHA-256 values are `ec98fd786d2d1cc6083a762538700ec9c4de3dd5be7f7752ef3619f217a41e3b` for API 28 and `8e8ea76cc36fff6acbf047f3f3ca4d2c5756aa3bf3d3d0812c7e421d25ef6b78` for API 36. Every latency, frame and deterministic-counter gate passes with zero failed/timed-out samples, and the strengthened evidence validator proves cross-API plus current-disk artifact identity. Final host/evidence aggregates, all 24 Definition of Done statements and repository hygiene pass. Android provenance remains KVM-backed emulator evidence only; no physical-device or remote-CI execution is claimed.
 
 ## 14. Recommended change-set boundaries
 

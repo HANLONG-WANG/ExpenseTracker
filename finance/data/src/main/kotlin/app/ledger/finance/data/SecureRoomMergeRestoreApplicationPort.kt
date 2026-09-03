@@ -12,9 +12,11 @@ import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.security.DeviceKeyHierarchy
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.security.SecretBytes
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
-import app.ledger.finance.application.DefaultLedgerWriteGate
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinanceMergeCommitVertex
 import app.ledger.finance.application.FinanceMergeEntityVersion
@@ -53,13 +55,15 @@ import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 
 /** Same-book merge inspection and shadow application; the only mutation entry is the shared coordinator. */
+@Suppress("LongParameterList")
 class SecureRoomMergeRestoreApplicationPort(
     context: Context,
     private val keyHierarchy: DeviceKeyHierarchy,
     private val stableIds: StableIdSource,
     private val now: () -> Instant,
     private val restoreExchange: SecureRoomRestoreLedgerApplicationPort,
-    private val writeGate: LedgerWriteGate = DefaultLedgerWriteGate(),
+    private val liveDatabaseAccess: () -> LedgerDatabaseOperationAccess,
+    private val writeGate: LedgerWriteGate = CallerOwnedLedgerWriteGate,
 ) : MergeRestoreApplicationPort {
     private val applicationContext = context.applicationContext
     private val sessions = ConcurrentHashMap<StableId, MergeSourceSession>()
@@ -340,20 +344,11 @@ class SecureRoomMergeRestoreApplicationPort(
         arrayOf(id.value.bytes),
     ).use { it.moveToFirst() && it.getLong(0) == 1L }
 
-    private fun checkpointLive(bookId: StableId) = withLive(bookId) { database ->
+    private suspend fun checkpointLive(bookId: StableId) = withLive(bookId) { database ->
         database.readLedger { it.query("PRAGMA wal_checkpoint(TRUNCATE)").close() }
     }
 
-    private fun <T> withLive(bookId: StableId, block: (LedgerDatabase) -> T): T = keyHierarchy.open(bookId).use { keys ->
-        keys.databaseDek.useBytes { key ->
-            val database = EncryptedDatabaseFactory.openPrimary(applicationContext, key)
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
-    }
+    private suspend fun <T> withLive(bookId: StableId, block: suspend (LedgerDatabase) -> T): T = liveDatabaseAccess().withCurrentDatabase(bookId, LedgerAccessMode.READ, block)
 
     private fun copyDurably(source: File, target: File) {
         FileInputStream(source).use { input ->

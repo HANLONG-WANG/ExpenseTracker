@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -267,7 +268,7 @@ private fun RestorePassword(state: RestoreFlowUiState, actions: RestoreFlowActio
 @Composable
 private fun RestoreInspection(state: RestoreFlowUiState, modifier: Modifier) {
     val context = LocalContext.current
-    val numberFormat = NumberFormat.getIntegerInstance(context.resources.configuration.locales[0])
+    val numberFormat = NumberFormat.getIntegerInstance(LocalConfiguration.current.locales[0])
     LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
         item {
             val (text, variant) = when (state.inspectPresentation) {
@@ -520,18 +521,20 @@ private fun CloudBackupClear(state: RestoreFlowUiState, actions: RestoreFlowActi
             state.cloudAuthenticated &&
             state.selectedCloudSnapshots.isNotEmpty() &&
             state.cloudClearPresentation != CloudClearPresentation.DELETING
-        ) item {
-            HighRiskConfirmation(
-                stringResource(R.string.clear_cloud_title),
-                stringResource(R.string.clear_cloud_scope),
-                stringResource(R.string.clear_cloud_consequence),
-                stringResource(R.string.clear_cloud_unaffected),
-                stringResource(R.string.clear_cloud_phrase),
-                state.cloudConfirmationPhrase,
-                actions.onCloudConfirmationChanged,
-                actions.onDeleteCloudBackups,
-                actions.onBack,
-            )
+        ) {
+            item {
+                HighRiskConfirmation(
+                    stringResource(R.string.clear_cloud_title),
+                    stringResource(R.string.clear_cloud_scope),
+                    stringResource(R.string.clear_cloud_consequence),
+                    stringResource(R.string.clear_cloud_unaffected),
+                    stringResource(R.string.clear_cloud_phrase),
+                    state.cloudConfirmationPhrase,
+                    actions.onCloudConfirmationChanged,
+                    actions.onDeleteCloudBackups,
+                    actions.onBack,
+                )
+            }
         }
     }
 }
@@ -605,10 +608,9 @@ private fun RestoreState.label(): String = stringResource(
     },
 )
 
-private fun RestoreState.isBefore(other: RestoreState): Boolean =
-    this !in setOf(RestoreState.FAILED, RestoreState.ROLLING_BACK) &&
-        other !in setOf(RestoreState.FAILED, RestoreState.ROLLING_BACK) &&
-        ordinal < other.ordinal
+private fun RestoreState.isBefore(other: RestoreState): Boolean = this !in setOf(RestoreState.FAILED, RestoreState.ROLLING_BACK) &&
+    other !in setOf(RestoreState.FAILED, RestoreState.ROLLING_BACK) &&
+    ordinal < other.ordinal
 
 @Composable
 private fun RestoreIntegrityCheck.label(): String = stringResource(
@@ -634,7 +636,7 @@ private fun RestoreConflictField.label(): String = stringResource(R.string.resto
 private fun conflictVersionLabel(fixtureValue: String, generation: Long?): String = when {
     generation != null -> stringResource(
         R.string.restore_conflict_version_generation,
-        NumberFormat.getIntegerInstance(LocalContext.current.resources.configuration.locales[0]).format(generation),
+        NumberFormat.getIntegerInstance(LocalConfiguration.current.locales[0]).format(generation),
     )
     fixtureValue.isNotBlank() -> fixtureValue
     else -> stringResource(R.string.restore_conflict_version_absent)

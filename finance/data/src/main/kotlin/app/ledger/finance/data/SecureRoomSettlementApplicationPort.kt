@@ -14,13 +14,15 @@ import app.ledger.core.money.FxEvidence
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.Money
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.time.EffectiveTime
 import app.ledger.finance.application.AtomicFinancialCommitRepository
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.RecordSettlementExpenseRequest
 import app.ledger.finance.application.RecordSettlementPaymentRequest
 import app.ledger.finance.application.SaveSettlementActivityRequest
@@ -82,24 +84,18 @@ import app.ledger.finance.domain.TransactionId
 import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.TransactionSource
 import app.ledger.finance.domain.UserAccountId
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.YearMonth
 
 class SecureRoomSettlementApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
-    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
 ) : SettlementApplicationPort {
-    private val applicationContext = context.applicationContext
     private val mapper = RoomReferenceFinancialSnapshotMapper()
     private val currencies = JvmLegalTenderCurrencyCatalog.create()
-    private val writeGate: LedgerWriteGate = SettlementWriteGate()
     private val projections = RoomProjectionEngine()
 
-    override suspend fun snapshot(bookId: StableId): DomainResult<SettlementSnapshot> = withDatabase(bookId) { database ->
+    override suspend fun snapshot(bookId: StableId): DomainResult<SettlementSnapshot> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val book = RoomBookRepository.mapCurrent(db)
             if (book.id.value != bookId) abort(FinanceDataError.CorruptData)
@@ -122,7 +118,7 @@ class SecureRoomSettlementApplicationPort(
     }
 
     override suspend fun saveActivity(request: SaveSettlementActivityRequest): DomainResult<Unit> = withDatabase(request.ids.bookId) { database ->
-        writeGate.execute {
+        CallerOwnedLedgerWriteGate.execute {
             database.inLedgerTransaction { db ->
                 val book = requireBook(db, request.ids.bookId)
                 if (book.localRevision != request.ids.expectedLocalRevision.value) abort(DomainViolation.StaleExpectedRevision)
@@ -372,7 +368,7 @@ class SecureRoomSettlementApplicationPort(
     }
 
     override suspend fun rebuildAndAudit(bookId: StableId): DomainResult<Unit> = withDatabase(bookId) { database ->
-        writeGate.execute {
+        CallerOwnedLedgerWriteGate.execute {
             database.inLedgerTransaction { db ->
                 val book = RoomBookRepository.mapCurrent(db)
                 projections.rebuildAll(db, book.localRevision.value, book.valuationRevision.value)
@@ -622,7 +618,7 @@ class SecureRoomSettlementApplicationPort(
     ): DomainResult<CommandReceipt> {
         val repository: AtomicFinancialCommitRepository = RoomFinancialCommitRepository(database, sideEffect = sideEffect)
         return DefaultFinancialMutationCoordinator(
-            writeGate,
+            CallerOwnedLedgerWriteGate,
             repository as app.ledger.finance.application.CommandReceiptRepository,
             object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
@@ -687,15 +683,12 @@ class SecureRoomSettlementApplicationPort(
         ?.also { if (!it.uid.contentEquals(bookId.bytes) || it.state != 0) abort(FinanceDataError.MaintenanceRequired) }
         ?: abort(FinanceDataError.CorruptData)
 
-    private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> DomainResult<T>): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { openSelectedLedger(applicationContext, it, databaseName) }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+    private suspend fun <T> withDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
+        block: suspend (LedgerDatabase) -> DomainResult<T>,
+    ): DomainResult<T> = try {
+        databaseAccess.withCurrentDatabase(bookId, mode, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -713,11 +706,6 @@ class SecureRoomSettlementApplicationPort(
     private data class ActivityCurrent(val id: Long, val lastCommitId: StableId, val status: Int, val requiresAdditional: Boolean)
     private data class ParticipantCurrent(val id: Long, val name: String, val isSelf: Boolean, val status: Int)
     private data class PaymentActivity(val currency: CurrencyCode, val status: SettlementActivityStatus)
-}
-
-private class SettlementWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
 }
 
 private fun RecordSettlementPaymentRequest.paymentRecordId(): StableId = ids.paymentRecordId

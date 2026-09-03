@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import java.security.MessageDigest
 
 internal object LedgerSchemaDefinition {
-    const val PRIMARY_VERSION: Int = 5
+    const val PRIMARY_VERSION: Int = 7
     const val STAGING_VERSION: Int = 1
 
     internal val primaryV1Assets: List<String> = listOf(
@@ -29,8 +29,16 @@ internal object LedgerSchemaDefinition {
         "ledger_schema_v4_projection_generation.sql",
     )
 
-    val primaryAssets: List<String> = primaryV4Assets + listOf(
+    private val primaryV5Assets: List<String> = primaryV4Assets + listOf(
         "ledger_schema_v5_architecture_alignment.sql",
+    )
+
+    private val primaryV6Assets: List<String> = primaryV5Assets + listOf(
+        "ledger_schema_v6_journal_keyset.sql",
+    )
+
+    val primaryAssets: List<String> = primaryV6Assets + listOf(
+        "ledger_schema_v7_reference_keysets.sql",
     )
 
     val stagingAssets: List<String> = listOf("import_staging_schema_v1.sql")
@@ -162,6 +170,22 @@ internal object LedgerSchemaDefinition {
         database.execSQL("DROP TABLE IF EXISTS _schema_runtime_guard")
         database.execSQL(
             "UPDATE _room_schema_registry SET logicalSchemaVersion=?, contractSha256=? WHERE id=1",
+            arrayOf<Any>(PRIMARY_V5_VERSION, primaryV5ContractSha256(context)),
+        )
+    }
+
+    fun migratePrimaryV5ToV6(context: Context, database: SupportSQLiteDatabase) {
+        SchemaSqlAssets.install(context, database, listOf("ledger_schema_v6_journal_keyset.sql"))
+        database.execSQL(
+            "UPDATE _room_schema_registry SET logicalSchemaVersion=?, contractSha256=? WHERE id=1",
+            arrayOf<Any>(PRIMARY_V6_VERSION, primaryV6ContractSha256(context)),
+        )
+    }
+
+    fun migratePrimaryV6ToV7(context: Context, database: SupportSQLiteDatabase) {
+        SchemaSqlAssets.install(context, database, listOf("ledger_schema_v7_reference_keysets.sql"))
+        database.execSQL(
+            "UPDATE _room_schema_registry SET logicalSchemaVersion=?, contractSha256=? WHERE id=1",
             arrayOf<Any>(PRIMARY_VERSION, primaryContractSha256(context)),
         )
     }
@@ -175,6 +199,10 @@ internal object LedgerSchemaDefinition {
     internal fun primaryV3ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV3Assets)
 
     internal fun primaryV4ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV4Assets)
+
+    internal fun primaryV5ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV5Assets)
+
+    internal fun primaryV6ContractSha256(context: Context): String = SchemaSqlAssets.contractSha256(context, primaryV6Assets)
 
     internal fun primaryV1Statements(context: Context): List<String> = SchemaSqlAssets.statements(context, primaryV1Assets)
 
@@ -224,6 +252,8 @@ private val retentionManagedTables = setOf("backup_snapshot", "backup_object", "
 private const val LAST_PROJECTION_FAMILY_ID = 14
 private const val PRIMARY_V3_VERSION = 3
 private const val PRIMARY_V4_VERSION = 4
+private const val PRIMARY_V5_VERSION = 5
+private const val PRIMARY_V6_VERSION = 6
 
 private object SchemaSqlAssets {
     fun install(context: Context, database: SupportSQLiteDatabase, assets: List<String>) {

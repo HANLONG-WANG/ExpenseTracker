@@ -1,0 +1,27 @@
+package app.ledger.feature.journal
+
+internal val JOURNAL_TEST_ACTIONS = JournalActions(
+    onNavigate = { _, _ -> },
+    onSearch = {},
+    onApplyFilter = {},
+    onRemoveFilter = {},
+    onRetry = {},
+    onLoadDetail = {},
+    onSelect = {},
+    onSelectAllMatching = {},
+    onClearSelection = {},
+    onBulkEdit = {},
+    onSaveFilter = {},
+    onApplyPreset = {},
+    onCopyPreset = {},
+    onSetDefaultPreset = {},
+    onDeletePreset = {},
+    onReorderPresets = {},
+    onResolveDependency = { _, _ -> },
+    onMoveToTrash = { _, _, _ -> },
+    onRestore = { _, _ -> },
+    onCompareRevisions = { _, _, _ -> },
+    onRestoreRevision = { _, _, _, _ -> },
+    onVerifyPurge = {},
+    onPurgeRequested = {},
+)

@@ -9,6 +9,8 @@ import app.ledger.core.common.StableId
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.VaultCiphertext
 import app.ledger.finance.application.VaultSecretApplicationPort
@@ -17,12 +19,10 @@ import java.time.Instant
 
 /** SQLCipher adapter restricted to card_vault_secret and payment_card identity lookup. */
 public class SecureRoomVaultSecretApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
 ) : VaultSecretApplicationPort {
-    private val applicationContext = context.applicationContext
 
-    override suspend fun listCardIds(bookId: StableId): DomainResult<Set<StableId>> = withDatabase(bookId) { database ->
+    override suspend fun listCardIds(bookId: StableId): DomainResult<Set<StableId>> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { connection ->
             connection.query(
                 "SELECT pc.uid FROM card_vault_secret cvs JOIN payment_card pc ON pc.id=cvs.card_id ORDER BY pc.uid",
@@ -30,7 +30,7 @@ public class SecureRoomVaultSecretApplicationPort(
         }
     }
 
-    override suspend fun read(bookId: StableId, cardId: StableId): DomainResult<VaultSecretRecord?> = withDatabase(bookId) { database ->
+    override suspend fun read(bookId: StableId, cardId: StableId): DomainResult<VaultSecretRecord?> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { connection ->
             connection.query(
                 "SELECT pc.uid,cvs.holder_name_ciphertext,cvs.pan_ciphertext,cvs.expiry_ciphertext," +
@@ -74,15 +74,12 @@ public class SecureRoomVaultSecretApplicationPort(
         }
     }
 
-    private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> T): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-            try {
-                DomainResult.Success(block(database))
-            } finally {
-                database.close()
-            }
-        }
+    private suspend fun <T> withDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
+        block: suspend (LedgerDatabase) -> T,
+    ): DomainResult<T> = try {
+        DomainResult.Success(databaseAccess.withCurrentDatabase(bookId, mode, block))
     } catch (_: Exception) {
         DomainResult.Failure(FinanceDataError.DatabaseUnavailable)
     }

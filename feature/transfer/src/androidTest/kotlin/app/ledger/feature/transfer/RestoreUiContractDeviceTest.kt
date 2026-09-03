@@ -166,9 +166,8 @@ class RestoreUiContractDeviceTest {
         val actual = states.map { state ->
             composeRule.runOnIdle { active.value = state }
             composeRule.waitForIdle()
-            composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap().pixelSha256().also {
-                println("P31_GOLDEN_${state.screenId}=$it")
-            }
+            val bitmap = composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap()
+            bitmap.pixelSha256().also { println("P31_GOLDEN_${state.screenId}=$it") }
         }
         assertEquals(EXPECTED_GOLDENS, actual)
     }
@@ -271,14 +270,14 @@ class RestoreUiContractDeviceTest {
         const val GOLDEN_TAG = "p31_restore_golden_root"
         val EXPECTED_GOLDENS = listOf(
             "339869d466d26e53fb877e81270de09a6894e8d2eee1610784bf1881653d9fda",
-            "ec6e99eac7c059e541b19ec577e264ca75351b5d0f0d28c8b69199454da421b8",
+            "b59556f30337c786a9d12a1524efb3ae4331a07e6e1ab69ef253194aebecd1d0",
         )
         val ACTIONS = RestoreFlowActions(
             onBack = {}, onPortableSource = {}, onRepositorySource = {}, onDriveSource = {},
             onSnapshotSourceSelected = {},
             onPasswordChanged = {}, onVerifyPassword = {}, onModeSelected = {}, onHighRiskPhraseChanged = {},
             onStartRestore = {}, onResolveConflict = { _, _ -> }, onApplyToSimilarChanged = {}, onApplyMerge = {}, onCancel = {}, onRetry = {},
-            onOpenApp = {}, onCloudSnapshotSelected = {}, onCloudConfirmationChanged = {},
+            onOpenApp = {}, onConfirmSafetySnapshotCleanup = {}, onCloudSnapshotSelected = {}, onCloudConfirmationChanged = {},
             onAuthenticateCloudDelete = {}, onDeleteCloudBackups = {},
         )
     }

@@ -82,13 +82,13 @@ class P20GoldenDeviceTest {
                 "INS-003",
                 ThemeMode.LIGHT,
                 InstallmentDeviceFixtures.state("INS-003", InstallmentPresentation.ACTIVE),
-                "c6d1de210d8502eb243278563d07b832bf5c6442b4dcfcdba51556719e2c1c53",
+                "975b08a6983ab0b0d8f7e6b804bae913a4aa7b7c7f2fb7d089970768cda8e61c",
             ),
             Golden(
                 "INS-005",
                 ThemeMode.DARK,
                 InstallmentDeviceFixtures.state("INS-005", InstallmentPresentation.CALCULATED),
-                "1e3725075f06351a7028db744bf043c9d825febd93495ed11a431face5bd7ac9",
+                "4828eeb33aa563e08740b9b08d90aa0b4c9dec31e901b8300864d6b6f1c0bb30",
             ),
         )
     }

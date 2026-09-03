@@ -113,6 +113,102 @@ internal object SourcePolicyEngine {
             findings += SourcePolicyFinding(ruleId, normalizedPath, source.lineAt(match.range.first), message)
         }
 
+        val fullReferenceSnapshotAllowed = normalizedPath.endsWith("app/src/main/kotlin/app/ledger/app/ImportController.kt") ||
+            normalizedPath.endsWith("finance/data/src/main/kotlin/app/ledger/finance/data/StructuredImportRowApplier.kt")
+        if (!fullReferenceSnapshotAllowed) {
+            Regex("\\b(?:referenceDataPort|references)\\s*\\.\\s*snapshot\\s*\\(")
+                .findAll(source)
+                .forEach {
+                    report(
+                        "P37-INTERACTIVE-FULL-SNAPSHOT",
+                        it,
+                        "complete reference snapshots are restricted to explicit import/maintenance code",
+                    )
+                }
+        }
+
+        val livePrimaryOpenAllowed = setOf(
+            "core/security/src/main/kotlin/app/ledger/core/security/BookSessionManager.kt",
+            "core/security/src/main/kotlin/app/ledger/core/security/SecurePrimaryLedgerAccess.kt",
+            "finance/data/src/main/kotlin/app/ledger/finance/data/SecureRoomLedgerInitializationPort.kt",
+        ).any(normalizedPath::endsWith)
+        if (!livePrimaryOpenAllowed) {
+            Regex("\\b(?:app\\.ledger\\.core\\.database\\.)?EncryptedDatabaseFactory\\.openPrimary\\s*\\(")
+                .findAll(source)
+                .forEach {
+                    report(
+                        "P37-LIVE-PRIMARY-OPEN",
+                        it,
+                        "live-primary opens are restricted to the session factory, initialization, and permitted offline maintenance",
+                    )
+                }
+        }
+
+        val databasePassphraseAllowed = setOf(
+            "core/database/src/main/kotlin/app/ledger/core/database/LedgerDatabase.kt",
+            "core/security/src/main/kotlin/app/ledger/core/security/BookSessionManager.kt",
+            "core/security/src/main/kotlin/app/ledger/core/security/DeviceKeyHierarchy.kt",
+            "core/security/src/main/kotlin/app/ledger/core/security/SecureImportStagingAccess.kt",
+            "core/security/src/main/kotlin/app/ledger/core/security/SecurePrimaryLedgerAccess.kt",
+            "finance/data/src/main/kotlin/app/ledger/finance/data/SelectedLedgerDatabase.kt",
+            "finance/data/src/main/kotlin/app/ledger/finance/data/SecureRoomLedgerInitializationPort.kt",
+            "finance/data/src/main/kotlin/app/ledger/finance/data/SecureRoomMergeRestoreApplicationPort.kt",
+            "finance/data/src/main/kotlin/app/ledger/finance/data/SecureShadowLedgerAccess.kt",
+        ).any(normalizedPath::endsWith)
+        if (!databasePassphraseAllowed) {
+            Regex("\\bdatabaseDek\\s*\\.\\s*useBytes\\b|\\b(?:databasePassphrase|passphrase)\\s*\\.\\s*copyOf\\s*\\(")
+                .findAll(source)
+                .forEach {
+                    report(
+                        "P37-DATABASE-PASSPHRASE",
+                        it,
+                        "database passphrases are confined to reviewed session/offline resource-opening boundaries",
+                    )
+                }
+        }
+
+        Regex(
+            "\\b(?:LegacyLivePrimaryDatabaseAccess|LegacySessionAccessAdapter|selectedDatabaseOperationAccess|" +
+                "openSelectedLedger)\\b",
+        ).findAll(source).forEach {
+            report(
+                "P37-LEGACY-PRIMARY-ACCESS",
+                it,
+                "legacy live-primary adapters and selected-primary helpers are forbidden",
+            )
+        }
+
+        if (normalizedPath.endsWith("app/src/main/kotlin/app/ledger/app/ReadyRootScaffold.kt")) {
+            Regex("\\bnavigationEpoch\\b").findAll(source).forEach {
+                report(
+                    "P37-NAVIGATION-EPOCH",
+                    it,
+                    "the Snapshot-observable navigator version is the sole shell navigation invalidation source",
+                )
+            }
+            val readyDeclaration = Regex("\\bfun\\s+ReadyRootScaffold\\s*\\(").find(source)
+            val openingBrace = readyDeclaration?.let { source.indexOf('{', it.range.last + 1) } ?: -1
+            val readyRange = if (openingBrace >= 0) source.balancedBraces(openingBrace) else null
+            if (readyRange != null) {
+                val readyBody = source.substring(readyRange)
+                val featureFlowCollection = Regex(
+                    "viewModel\\s*\\.\\s*(?:referenceData|referenceMutationPending|ordinaryRecord|ordinaryRecordPending|" +
+                        "batchRecord|batchRecordPending|specializedTransaction|specializedTransactionPending|refund|" +
+                        "refundPending|currencySettings|journal|credit|creditPending|installment|installmentPending|" +
+                        "loan|loanPending|settlement|settlementPending|automation|automationPending|budget|projectGoal|analysis)" +
+                        "\\s*\\.\\s*collectAsStateWithLifecycle\\s*\\(",
+                )
+                featureFlowCollection.findAll(readyBody).forEach { match ->
+                    findings += SourcePolicyFinding(
+                        "P37-SHELL-FEATURE-COLLECTION",
+                        normalizedPath,
+                        source.lineAt(readyRange.first + match.range.first),
+                        "feature flows must be collected by the active route or its fixed-action boundary",
+                    )
+                }
+            }
+        }
+
         if (normalizedPath.startsWith("feature/")) {
             Regex("(?m)^import\\s+(?:app\\.ledger\\..*\\.(?:data|database)(?:\\.|$)|androidx\\.room(?:\\.|$))")
                 .findAll(source)
@@ -233,12 +329,11 @@ internal object SourcePolicyEngine {
             }
         }
 
-        Regex("\\.testTag\\s*\\(\\s*([^\\n)]*)")
+        Regex("\\.testTag\\s*\\(\\s*((?:[^()\\n]|[A-Za-z_][A-Za-z0-9_]*\\(\\))*)\\s*\\)")
             .findAll(source)
             .filter { match ->
                 val argument = match.groupValues[1].trim()
-                !Regex("LedgerTestTags\\.[A-Z][A-Z0-9_]*").matches(argument) &&
-                    !Regex("\"[a-z][a-z0-9_]{2,63}\"").matches(argument)
+                !isProvablyFixedTestTag(normalizedPath, source, argument)
             }
             .forEach { report("PRIVACY-TEST-TAG", it, "test tags must be fixed semantic IDs without runtime or sensitive values") }
 
@@ -528,6 +623,45 @@ internal object SourcePolicyEngine {
         val newline = indexOf('\n', index.coerceAtLeast(0))
         return if (newline < 0) length else newline
     }
+}
+
+private fun isProvablyFixedTestTag(
+    normalizedPath: String,
+    source: String,
+    argument: String,
+): Boolean = when {
+    Regex("LedgerTestTags\\.[A-Z][A-Z0-9_]*").matches(argument) -> true
+    Regex("\"[a-z][a-z0-9_]{2,63}\"").matches(argument) -> true
+    normalizedPath == "core/designsystem/src/main/kotlin/app/ledger/core/designsystem/FoundationComponents.kt" &&
+        argument == "destination.navigationTestTag()" -> hasFixedNavigationTagMapping(source)
+    normalizedPath == "feature/journal/src/main/kotlin/app/ledger/feature/journal/JournalDestination.kt" &&
+        argument == "readyTestTag" -> hasFixedJournalReadyTagFlow(source)
+    else -> false
+}
+
+private fun hasFixedNavigationTagMapping(source: String): Boolean {
+    val body = Regex(
+        "private fun LedgerTopLevel\\.navigationTestTag\\(\\): String = when \\(this\\) \\{\\n([\\s\\S]*?)\\n}",
+    ).find(source)?.groupValues?.get(1) ?: return false
+    return body.lineSequence().map(String::trim).filter(String::isNotEmpty).toList() == listOf(
+        "LedgerTopLevel.RECORD -> LedgerTestTags.NAVIGATION_RECORD",
+        "LedgerTopLevel.JOURNAL -> LedgerTestTags.NAVIGATION_JOURNAL",
+        "LedgerTopLevel.ACCOUNTS -> LedgerTestTags.NAVIGATION_ACCOUNTS",
+        "LedgerTopLevel.BUDGET -> LedgerTestTags.NAVIGATION_BUDGET",
+        "LedgerTopLevel.ANALYSIS -> LedgerTestTags.NAVIGATION_ANALYSIS",
+    )
+}
+
+private fun hasFixedJournalReadyTagFlow(source: String): Boolean {
+    val assignments = Regex("(?m)^\\s*readyTestTag\\s*=\\s*([^,\\n]+),\\s*$")
+        .findAll(source)
+        .map { it.groupValues[1].trim() }
+        .toList()
+    return source.contains("private fun PagedJournalList(") &&
+        source.contains("readyTestTag: String? = null") &&
+        assignments == listOf(
+            "LedgerTestTags.JOURNAL_SEARCH_RESULTS.takeIf { state.searchResultReady }",
+        ) && Regex("\\.testTag\\s*\\(\\s*readyTestTag\\s*\\)").findAll(source).count() == 1
 }
 
 abstract class VerifySourcePoliciesTask : DefaultTask() {

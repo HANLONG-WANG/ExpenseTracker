@@ -16,12 +16,12 @@ import app.ledger.core.money.MoneyUiModel
 import app.ledger.finance.application.AccountReferenceView
 import app.ledger.finance.application.OrdinaryDirection
 import app.ledger.finance.application.OrdinaryLocationDraft
+import app.ledger.finance.application.OrdinaryLocationProvider
 import app.ledger.finance.application.OrdinaryRecentDefaultView
 import app.ledger.finance.application.OrdinarySettlementShareDraft
 import app.ledger.finance.application.OrdinaryTemplateView
 import app.ledger.finance.application.OrdinaryTransactionEditView
 import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
-import app.ledger.finance.application.OrdinaryLocationProvider
 import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.ParticipantId
 import app.ledger.finance.domain.SettlementAllocationPolicy
@@ -277,8 +277,7 @@ public object OrdinaryRecordPolicy {
         )
     }
 
-    public fun consumeAmountAutoFocus(state: OrdinaryRecordEditorState): OrdinaryRecordEditorState =
-        if (state.amountAutoFocusConsumed) state else state.copy(amountAutoFocusConsumed = true)
+    public fun consumeAmountAutoFocus(state: OrdinaryRecordEditorState): OrdinaryRecordEditorState = if (state.amountAutoFocusConsumed) state else state.copy(amountAutoFocusConsumed = true)
 
     public fun appendOperator(state: OrdinaryRecordEditorState, operator: String, locale: Locale): OrdinaryRecordEditorState {
         val expression = if (operator == "DELETE") state.draft.expression.dropLast(1) else state.draft.expression + normalizeOperator(operator)

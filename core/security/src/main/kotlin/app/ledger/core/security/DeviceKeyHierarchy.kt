@@ -120,6 +120,7 @@ class DeviceKeyHierarchy(
     }
 
     override fun open(bookId: StableId): DeviceLedgerKeys {
+        LedgerSessionPerformance.recordDatabaseKeyUnwrap()
         val suffix = SecurityEnvelopeStore.aliasSuffix(bookId)
         val envelope = envelopeStore.readDeviceBundle(bookId) ?: throw SecurityException.KeyUnavailable()
         require(envelope.purpose == KeyMaterialPurpose.DEVICE_LEDGER_BUNDLE)
@@ -287,11 +288,29 @@ class PreparedDeviceLedgerKeyReplacement internal constructor(
     override fun toString(): String = "PreparedDeviceLedgerKeyReplacement(redacted,activated=$activated)"
 }
 
+internal class SessionLedgerSecureSettings(
+    private val keyset: SecretBytes,
+) : LedgerSecureSettings,
+    AutoCloseable {
+    override fun encryptSecureSettings(plaintext: ByteArray, associatedData: ByteArray): ByteArray = keyset.useBytes { serialized ->
+        LedgerTink.aead(serialized).encrypt(plaintext, associatedData)
+    }
+
+    override fun decryptSecureSettings(ciphertext: ByteArray, associatedData: ByteArray): ByteArray = keyset.useBytes { serialized ->
+        LedgerTink.aead(serialized).decrypt(ciphertext, associatedData)
+    }
+
+    override fun close() = keyset.close()
+
+    override fun toString(): String = "SessionLedgerSecureSettings(redacted)"
+}
+
 class DeviceLedgerKeys internal constructor(
     val databaseDek: SecretBytes,
     private val attachmentRootKeyset: SecretBytes,
     private val secureSettingsKeyset: SecretBytes,
-) : AutoCloseable {
+) : LedgerSecureSettings,
+    AutoCloseable {
     /** Exported only into a recovery-password protected backup package. */
     fun portableKeyMaterial(): SecretBytes = ByteArrayOutputStream().use { bytes ->
         DataOutputStream(bytes).use { output ->
@@ -311,12 +330,16 @@ class DeviceLedgerKeys internal constructor(
     }
     fun secureSettingsAead(): Aead = secureSettingsKeyset.useBytes(LedgerTink::aead)
 
-    fun encryptSecureSettings(plaintext: ByteArray, associatedData: ByteArray): ByteArray = secureSettingsKeyset.useBytes { keyset ->
+    override fun encryptSecureSettings(plaintext: ByteArray, associatedData: ByteArray): ByteArray = secureSettingsKeyset.useBytes { keyset ->
         LedgerTink.aead(keyset).encrypt(plaintext, associatedData)
     }
 
-    fun decryptSecureSettings(ciphertext: ByteArray, associatedData: ByteArray): ByteArray = secureSettingsKeyset.useBytes { keyset ->
+    override fun decryptSecureSettings(ciphertext: ByteArray, associatedData: ByteArray): ByteArray = secureSettingsKeyset.useBytes { keyset ->
         LedgerTink.aead(keyset).decrypt(ciphertext, associatedData)
+    }
+
+    internal fun copySecureSettingsForSession(): SessionLedgerSecureSettings = secureSettingsKeyset.useBytes { keyset ->
+        SessionLedgerSecureSettings(SecretBytes.copyOf(keyset))
     }
 
     fun createAttachmentDataKey(): SecretBytes = LedgerTink.generateStreamingAeadKeyset()

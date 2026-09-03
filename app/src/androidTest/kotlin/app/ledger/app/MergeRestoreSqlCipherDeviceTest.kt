@@ -45,6 +45,7 @@ import java.util.UUID
 class MergeRestoreSqlCipherDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var work: File
     private var originalSettings: ByteArray? = null
 
@@ -52,6 +53,7 @@ class MergeRestoreSqlCipherDeviceTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         work = context.noBackupFilesDir.resolve("p31-merge-device")
         work.deleteRecursively()
         require(work.mkdirs())
@@ -139,13 +141,19 @@ class MergeRestoreSqlCipherDeviceTest {
         context.filesDir.resolve("ledger_app_settings.pb").writeText("local-settings")
 
         var generated = 10_000L
-        val exchange = SecureRoomRestoreLedgerApplicationPort(context, keys, AndroidRestoreArtifactSwapPort(context))
+        val exchange = SecureRoomRestoreLedgerApplicationPort(
+            context,
+            keys,
+            AndroidRestoreArtifactSwapPort(context),
+            { databaseAccess },
+        )
         val application = SecureRoomMergeRestoreApplicationPort(
             context,
             keys,
             StableIdSource { id(generated++) },
             { Instant.parse("2026-08-10T03:00:00Z") },
             exchange,
+            { databaseAccess },
         )
         val merge = AndroidMergeLedgerPort(application)
         val materialized = RestoreMaterializationResult(
@@ -166,7 +174,7 @@ class MergeRestoreSqlCipherDeviceTest {
         val exchanged = exchange.exchange(prepared, SAFETY).success()
         assertTrue(exchange.validateLive(BOOK, exchanged.resultingHead).success().isValid)
         exchange.finalizeExchange(BOOK, OPERATION).success()
-        SecurePrimaryLedgerAccess(context, keys).read(BOOK) { database ->
+        SecurePrimaryLedgerAccess(context, keys, databaseAccess).read(BOOK) { database ->
             assertEquals(1L, database.scalar("SELECT COUNT(*) FROM user_account WHERE uid=?", arrayOf(LOCAL_ACCOUNT.bytes)))
             assertEquals(1L, database.scalar("SELECT COUNT(*) FROM category WHERE uid=?", arrayOf(INCOMING_CATEGORY.bytes)))
             val parents = database.scalar(
@@ -186,17 +194,17 @@ class MergeRestoreSqlCipherDeviceTest {
     }
 
     private fun checkpoint() {
-        SecurePrimaryLedgerAccess(context, keys).read(BOOK) { it.query("PRAGMA wal_checkpoint(TRUNCATE)").close() }
+        SecurePrimaryLedgerAccess(context, keys, databaseAccess).read(BOOK) { it.query("PRAGMA wal_checkpoint(TRUNCATE)").close() }
     }
 
-    private fun currentSchemaVersion(): Int = SecurePrimaryLedgerAccess(context, keys).read(BOOK) { database ->
+    private fun currentSchemaVersion(): Int = SecurePrimaryLedgerAccess(context, keys, databaseAccess).read(BOOK) { database ->
         database.query("PRAGMA user_version").use { cursor ->
             check(cursor.moveToFirst())
             cursor.getInt(0)
         }
     }
 
-    private fun databaseFile(): File = SecurePrimaryLedgerAccess(context, keys).encryptedDatabaseFile()
+    private fun databaseFile(): File = SecurePrimaryLedgerAccess(context, keys, databaseAccess).encryptedDatabaseFile()
 
     private fun androidx.sqlite.db.SupportSQLiteDatabase.scalar(sql: String, args: Array<out Any?>): Long = query(sql, args).use { if (it.moveToFirst()) it.getLong(0) else 0L }
     private fun currency(): CurrencyCode = requireNotNull(CurrencyCode.parse("JPY").getOrNull())

@@ -32,8 +32,13 @@ import app.ledger.core.background.OperationNotificationCoordinator
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
+import app.ledger.core.security.ActiveBookSessionRuntime
 import app.ledger.core.security.BackupKeyEnvelopeStore
+import app.ledger.core.security.BookSessionState
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.HeadlessBookLease
+import app.ledger.core.security.HeadlessLeaseCapability
+import app.ledger.core.security.HeadlessLedgerDatabaseAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.core.security.SecureTransferHandleStore
 import app.ledger.core.time.LedgerClock
@@ -148,75 +153,148 @@ private class BackupOperationRunner(private val context: Context) {
     suspend fun run(operationStableId: StableId, retryAllowed: Boolean, progress: suspend (BackupPhase, Long) -> Unit): BackupRunOutcome {
         val dependencies = EntryPointAccessors.fromApplication(context, BackupWorkerEntryPoint::class.java)
         val bookId = StableId.fromBytes(dependencies.settings().current().bookId.toByteArray()).getOrNull() ?: return BackupRunOutcome.FAILED
-        val access = SecurePrimaryLedgerAccess(context, dependencies.keyProvider())
-        val operations = SqlCipherBackgroundOperationRepository(bookId, access)
-        val operationId = BackgroundOperationId(operationStableId)
-        var operation = operations.get(operationId).successOrNull() ?: return BackupRunOutcome.FAILED
-        val repositoryId = when (val parameters = operation.parameters) {
-            is OperationParameters.FullBackup -> parameters.repositoryId
-            is OperationParameters.BackupRecoveryReencryption -> parameters.repositoryId
-            else -> return BackupRunOutcome.FAILED
-        }
-        if (operation.state == BackgroundOperationState.SUCCEEDED) return BackupRunOutcome.SUCCEEDED
-        val configuration = BackupConfigurationStore(context, dependencies.keyProvider()).read(bookId)
-            ?.takeIf { it.repositoryId == repositoryId } ?: return fail(operation, operations, BackupFailure.RepositoryUnavailable, dependencies.clock(), false)
-        if (configuration.policy.validate(BackupKeyEnvelopeStore(context, dependencies.keyProvider()).isConfigured(configuration.repositoryId.value)) is DomainResult.Failure) {
-            return fail(operation, operations, BackupFailure.RecoveryPasswordRequired, dependencies.clock(), false)
-        }
-        if (operation.state == BackgroundOperationState.CANCEL_REQUESTED) {
-            return cancel(operation, operations, dependencies.clock())
-        }
-        if (operation.state == BackgroundOperationState.FAILED_RETRYABLE) {
-            operation = operation.transition(BackgroundOperationState.QUEUED, dependencies.clock().now(), errorCode = null).successOrNull()
-                ?: return BackupRunOutcome.FAILED
-            operations.save(operation)
-        }
-        if (operation.state == BackgroundOperationState.QUEUED) {
-            operation = operation.transition(BackgroundOperationState.PREPARING, dependencies.clock().now()).successOrNull()
-                ?: return BackupRunOutcome.FAILED
-            operations.save(operation)
-        }
-        val control = BackupRunControlRegistry.control(operationStableId)
-        val progressStore = BackupProgressStore(context, dependencies.keyProvider())
-        progressStore.save(bookId, operationStableId, app.ledger.transfer.domain.BackupProgress(BackupPhase.DATABASE_SNAPSHOT, 0L, null, 0L))
-        val snapshotId = BackupSnapshotId(operationStableId)
-        val keyStore = BackupKeyEnvelopeStore(context, dependencies.keyProvider())
-        val repositoryKey = try {
-            keyStore.openForAutomaticBackup(bookId, configuration.repositoryId.value)
-        } catch (_: Exception) {
-            return fail(operation, operations, BackupFailure.RecoveryPasswordRequired, dependencies.clock(), false)
-        }
-        repositoryKey.use { key ->
-            try {
-                if (operation.state == BackgroundOperationState.PREPARING) {
-                    operation = operation.transition(BackgroundOperationState.RUNNING, dependencies.clock().now()).successOrNull()
-                        ?: return BackupRunOutcome.FAILED
-                    operations.save(operation)
-                }
-                if (operation.parameters is OperationParameters.BackupRecoveryReencryption) {
-                    val result = reencryptAccessibleHistory(
+        val sessionRuntime = dependencies.sessionRuntime()
+        val manager = sessionRuntime.activate(bookId)
+        var lease: HeadlessBookLease? = null
+        try {
+            if (manager.state.value == BookSessionState.Uninitialized) manager.initialize()
+            lease = manager.acquireHeadlessLease(operationStableId, HeadlessLeaseCapability.BACKUP_WRITE)
+            val access = SecurePrimaryLedgerAccess(
+                context,
+                dependencies.keyProvider(),
+                HeadlessLedgerDatabaseAccess(sessionRuntime, lease),
+            )
+            val operations = SqlCipherBackgroundOperationRepository(bookId, access)
+            val operationId = BackgroundOperationId(operationStableId)
+            var operation = operations.get(operationId).successOrNull() ?: return BackupRunOutcome.FAILED
+            val repositoryId = when (val parameters = operation.parameters) {
+                is OperationParameters.FullBackup -> parameters.repositoryId
+                is OperationParameters.BackupRecoveryReencryption -> parameters.repositoryId
+                else -> return BackupRunOutcome.FAILED
+            }
+            if (operation.state == BackgroundOperationState.SUCCEEDED) return BackupRunOutcome.SUCCEEDED
+            val configuration = BackupConfigurationStore(context, dependencies.keyProvider()).read(bookId)
+                ?.takeIf { it.repositoryId == repositoryId } ?: return fail(operation, operations, BackupFailure.RepositoryUnavailable, dependencies.clock(), false)
+            if (configuration.policy.validate(BackupKeyEnvelopeStore(context, dependencies.keyProvider()).isConfigured(configuration.repositoryId.value)) is DomainResult.Failure) {
+                return fail(operation, operations, BackupFailure.RecoveryPasswordRequired, dependencies.clock(), false)
+            }
+            if (operation.state == BackgroundOperationState.CANCEL_REQUESTED) {
+                return cancel(operation, operations, dependencies.clock())
+            }
+            if (operation.state == BackgroundOperationState.FAILED_RETRYABLE) {
+                operation = operation.transition(BackgroundOperationState.QUEUED, dependencies.clock().now(), errorCode = null).successOrNull()
+                    ?: return BackupRunOutcome.FAILED
+                operations.save(operation)
+            }
+            if (operation.state == BackgroundOperationState.QUEUED) {
+                operation = operation.transition(BackgroundOperationState.PREPARING, dependencies.clock().now()).successOrNull()
+                    ?: return BackupRunOutcome.FAILED
+                operations.save(operation)
+            }
+            val control = BackupRunControlRegistry.control(operationStableId)
+            val progressStore = BackupProgressStore(context, dependencies.keyProvider())
+            progressStore.save(bookId, operationStableId, app.ledger.transfer.domain.BackupProgress(BackupPhase.DATABASE_SNAPSHOT, 0L, null, 0L))
+            val snapshotId = BackupSnapshotId(operationStableId)
+            val keyStore = BackupKeyEnvelopeStore(context, dependencies.keyProvider())
+            val repositoryKey = try {
+                keyStore.openForAutomaticBackup(bookId, configuration.repositoryId.value)
+            } catch (_: Exception) {
+                return fail(operation, operations, BackupFailure.RecoveryPasswordRequired, dependencies.clock(), false)
+            }
+            repositoryKey.use { key ->
+                try {
+                    if (operation.state == BackgroundOperationState.PREPARING) {
+                        operation = operation.transition(BackgroundOperationState.RUNNING, dependencies.clock().now()).successOrNull()
+                            ?: return BackupRunOutcome.FAILED
+                        operations.save(operation)
+                    }
+                    if (operation.parameters is OperationParameters.BackupRecoveryReencryption) {
+                        val result = reencryptAccessibleHistory(
+                            bookId,
+                            operationStableId,
+                            configuration,
+                            access,
+                            dependencies,
+                            key,
+                            keyStore.recoveryEnvelope(configuration.repositoryId.value),
+                            control,
+                        ) { value ->
+                            progressStore.save(bookId, operationStableId, value)
+                            operation.advance(OperationProgress(value.completedBytes, value.totalBytes), dependencies.clock().now())
+                                .successOrNull()?.let { advanced ->
+                                    operation = advanced
+                                    operations.save(advanced)
+                                }
+                            progress(value.phase, value.completedBytes)
+                        }
+                        if (result is DomainResult.Failure) {
+                            return if (result.error == BackupFailure.Cancelled) {
+                                cancel(operation, operations, dependencies.clock())
+                            } else {
+                                fail(operation, operations, result.error as? BackupFailure ?: BackupFailure.RepositoryUnavailable, dependencies.clock(), retryAllowed)
+                            }
+                        }
+                        operation = operation.transition(BackgroundOperationState.COMMITTING, dependencies.clock().now(), operation.progress).successOrNull()
+                            ?: return BackupRunOutcome.FAILED
+                        operations.save(operation)
+                        operation = operation.transition(BackgroundOperationState.SUCCEEDED, dependencies.clock().now(), operation.progress).successOrNull()
+                            ?: return BackupRunOutcome.FAILED
+                        operations.save(operation)
+                        BackupRunControlRegistry.remove(operationStableId)
+                        return BackupRunOutcome.SUCCEEDED
+                    }
+                    val parameters = operation.parameters as OperationParameters.FullBackup
+                    val prepared = AndroidBackupInputFactory(context, dependencies.keyProvider(), access).prepare(
                         bookId,
                         operationStableId,
-                        configuration,
-                        access,
-                        dependencies,
-                        key,
-                        keyStore.recoveryEnvelope(configuration.repositoryId.value),
-                        control,
-                    ) { value ->
-                        progressStore.save(bookId, operationStableId, value)
-                        operation.advance(OperationProgress(value.completedBytes, value.totalBytes), dependencies.clock().now())
-                            .successOrNull()?.let { advanced ->
-                                operation = advanced
-                                operations.save(advanced)
-                            }
-                        progress(value.phase, value.completedBytes)
-                    }
-                    if (result is DomainResult.Failure) {
-                        return if (result.error == BackupFailure.Cancelled) {
-                            cancel(operation, operations, dependencies.clock())
+                        configuration.repositoryId,
+                        configuration.repositoryKind,
+                        configuration.repositoryHandleId,
+                        snapshotId,
+                        operation.createdAt,
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "unknown",
+                        configuration.policy.includeVault,
+                    )
+                    prepared.use {
+                        val persistProgress: suspend (app.ledger.transfer.domain.BackupProgress) -> Unit = { value ->
+                            progressStore.save(bookId, operationStableId, value)
+                            operation.advance(OperationProgress(value.completedBytes, value.totalBytes), dependencies.clock().now())
+                                .successOrNull()?.let { advanced ->
+                                    operation = advanced
+                                    operations.save(advanced)
+                                }
+                            progress(value.phase, value.completedBytes)
+                        }
+                        val result = if (parameters.portable) {
+                            createPortable(
+                                bookId,
+                                prepared,
+                                key,
+                                keyStore.recoveryEnvelope(configuration.repositoryId.value),
+                                parameters.destinationHandleId ?: configuration.repositoryHandleId,
+                                control,
+                                progressStore,
+                                operationStableId,
+                            )
                         } else {
-                            fail(operation, operations, result.error as? BackupFailure ?: BackupFailure.RepositoryUnavailable, dependencies.clock(), retryAllowed)
+                            createManagedAndMaybeDrive(
+                                bookId, operationStableId, prepared, key, keyStore.recoveryEnvelope(configuration.repositoryId.value), configuration,
+                                access, dependencies, control, persistProgress,
+                            )
+                        }
+                        if (result is DomainResult.Failure) {
+                            return if (result.error == BackupFailure.Cancelled) {
+                                cancel(operation, operations, dependencies.clock())
+                            } else {
+                                fail(operation, operations, result.error as? BackupFailure ?: BackupFailure.RepositoryUnavailable, dependencies.clock(), retryAllowed)
+                            }
+                        }
+                        progressStore.read(bookId, operationStableId)?.let { value ->
+                            operation.advance(OperationProgress(value.completedBytes, value.totalBytes), dependencies.clock().now())
+                                .successOrNull()?.let { advanced ->
+                                    operation = advanced
+                                    operations.save(advanced)
+                                }
                         }
                     }
                     operation = operation.transition(BackgroundOperationState.COMMITTING, dependencies.clock().now(), operation.progress).successOrNull()
@@ -227,73 +305,17 @@ private class BackupOperationRunner(private val context: Context) {
                     operations.save(operation)
                     BackupRunControlRegistry.remove(operationStableId)
                     return BackupRunOutcome.SUCCEEDED
+                } catch (_: SecurityException) {
+                    return fail(operation, operations, BackupFailure.PermissionRevoked, dependencies.clock(), retryAllowed)
+                } catch (_: Exception) {
+                    return fail(operation, operations, BackupFailure.RepositoryUnavailable, dependencies.clock(), retryAllowed)
                 }
-                val parameters = operation.parameters as OperationParameters.FullBackup
-                val prepared = AndroidBackupInputFactory(context, dependencies.keyProvider()).prepare(
-                    bookId,
-                    operationStableId,
-                    configuration.repositoryId,
-                    configuration.repositoryKind,
-                    configuration.repositoryHandleId,
-                    snapshotId,
-                    operation.createdAt,
-                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "unknown",
-                    configuration.policy.includeVault,
-                )
-                prepared.use {
-                    val persistProgress: suspend (app.ledger.transfer.domain.BackupProgress) -> Unit = { value ->
-                        progressStore.save(bookId, operationStableId, value)
-                        operation.advance(OperationProgress(value.completedBytes, value.totalBytes), dependencies.clock().now())
-                            .successOrNull()?.let { advanced ->
-                                operation = advanced
-                                operations.save(advanced)
-                            }
-                        progress(value.phase, value.completedBytes)
-                    }
-                    val result = if (parameters.portable) {
-                        createPortable(
-                            bookId,
-                            prepared,
-                            key,
-                            keyStore.recoveryEnvelope(configuration.repositoryId.value),
-                            parameters.destinationHandleId ?: configuration.repositoryHandleId,
-                            control,
-                            progressStore,
-                            operationStableId,
-                        )
-                    } else {
-                        createManagedAndMaybeDrive(
-                            bookId, operationStableId, prepared, key, keyStore.recoveryEnvelope(configuration.repositoryId.value), configuration,
-                            access, dependencies, control, persistProgress,
-                        )
-                    }
-                    if (result is DomainResult.Failure) {
-                        return if (result.error == BackupFailure.Cancelled) {
-                            cancel(operation, operations, dependencies.clock())
-                        } else {
-                            fail(operation, operations, result.error as? BackupFailure ?: BackupFailure.RepositoryUnavailable, dependencies.clock(), retryAllowed)
-                        }
-                    }
-                    progressStore.read(bookId, operationStableId)?.let { value ->
-                        operation.advance(OperationProgress(value.completedBytes, value.totalBytes), dependencies.clock().now())
-                            .successOrNull()?.let { advanced ->
-                                operation = advanced
-                                operations.save(advanced)
-                            }
-                    }
-                }
-                operation = operation.transition(BackgroundOperationState.COMMITTING, dependencies.clock().now(), operation.progress).successOrNull()
-                    ?: return BackupRunOutcome.FAILED
-                operations.save(operation)
-                operation = operation.transition(BackgroundOperationState.SUCCEEDED, dependencies.clock().now(), operation.progress).successOrNull()
-                    ?: return BackupRunOutcome.FAILED
-                operations.save(operation)
-                BackupRunControlRegistry.remove(operationStableId)
-                return BackupRunOutcome.SUCCEEDED
-            } catch (_: SecurityException) {
-                return fail(operation, operations, BackupFailure.PermissionRevoked, dependencies.clock(), retryAllowed)
-            } catch (_: Exception) {
-                return fail(operation, operations, BackupFailure.RepositoryUnavailable, dependencies.clock(), retryAllowed)
+            }
+        } finally {
+            try {
+                lease?.release()
+            } finally {
+                if (manager.state.value !is BookSessionState.Ready) manager.close()
             }
         }
     }
@@ -551,6 +573,7 @@ internal interface BackupWorkerEntryPoint {
     fun keyProvider(): DeviceLedgerKeyProvider
     fun clock(): LedgerClock
     fun stableIds(): app.ledger.core.common.StableIdSource
+    fun sessionRuntime(): ActiveBookSessionRuntime
 }
 
 internal object BackupRunControlRegistry {

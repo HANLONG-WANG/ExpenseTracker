@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.app.settings.SessionRestorePolicyProto
 import app.ledger.core.common.StableId
 import app.ledger.core.navigation.ScreenId
@@ -18,6 +19,7 @@ import app.ledger.feature.record.OrdinaryRecordLoadState
 import app.ledger.feature.record.RecordEditorMode
 import app.ledger.feature.record.RecordTab
 import app.ledger.finance.application.OrdinaryDirection
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -26,6 +28,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Exercises the real Hilt Activity, Proto DataStore, Keystore and SQLCipher bootstrap. */
 @RunWith(AndroidJUnit4::class)
@@ -81,7 +84,7 @@ class P11RuntimeDeviceTest {
             awaitStep(viewModel, OnboardingStep.COMPLETE)
             scenario.action { viewModel.onboardingNext() }
 
-            withTimeout(DEVICE_TIMEOUT_MILLIS) {
+            awaitDeviceState("session ready after onboarding") {
                 viewModel.rootState.first { state ->
                     (state as? AppRootState.Session)?.state is BookSessionState.Ready
                 }
@@ -108,10 +111,12 @@ class P11RuntimeDeviceTest {
                 saved.restorePolicy,
             )
 
+            scenario.assertP37RouteStateContainment(viewModel)
+
             // Drive the same ViewModel actions that the production Compose destinations dispatch,
             // through the real Navigation 3 stack and SQLCipher write path. The optional location
             // prefetch is intentionally unresolved; its timeout/failure must never block the save.
-            val recordHome = withTimeout(DEVICE_TIMEOUT_MILLIS) {
+            val recordHome = awaitDeviceState("initial Record content") {
                 viewModel.ordinaryRecord.first { it is OrdinaryRecordLoadState.Content } as OrdinaryRecordLoadState.Content
             }
             val categoryId = recordHome.snapshot.references.categories.single { it.name == "Device test expense" }.id
@@ -120,17 +125,21 @@ class P11RuntimeDeviceTest {
                 viewModel.recordExpression("1250")
                 viewModel.saveOrdinaryRecord()
             }
-            val savedRecordHome = withTimeout(DEVICE_TIMEOUT_MILLIS) {
-                viewModel.ordinaryRecord.first {
-                    viewModel.navigator.currentKey.contract.screenId.value == "REC-001" &&
-                        (it as? OrdinaryRecordLoadState.Content)?.selectedCategoryId == categoryId
-                } as OrdinaryRecordLoadState.Content
+            awaitDeviceState("ordinary save settlement") {
+                viewModel.ordinaryRecordPending.first { pending -> !pending }
             }
+            val settledRecord = viewModel.ordinaryRecord.value
+            assertTrue(
+                "ordinary save did not return Content at REC-001: route=${viewModel.navigator.currentKey.contract.screenId.value}, state=$settledRecord",
+                viewModel.navigator.currentKey.contract.screenId.value == "REC-001" &&
+                    settledRecord is OrdinaryRecordLoadState.Content,
+            )
+            val savedRecordHome = settledRecord as OrdinaryRecordLoadState.Content
             assertEquals(RecordTab.EXPENSE, savedRecordHome.tab)
             assertEquals(categoryId, savedRecordHome.selectedCategoryId)
 
             scenario.action { viewModel.openRecordEditor(RecordEditorMode.CREATE, OrdinaryDirection.EXPENSE, categoryId, null) }
-            withTimeout(DEVICE_TIMEOUT_MILLIS) {
+            awaitDeviceState("Record editor route") {
                 viewModel.ordinaryRecord.first { viewModel.navigator.currentKey.contract.screenId.value == "REC-003" }
             }
             scenario.action {
@@ -140,7 +149,7 @@ class P11RuntimeDeviceTest {
                     mapOf("direction" to OrdinaryDirection.EXPENSE.name),
                 )
             }
-            withTimeout(DEVICE_TIMEOUT_MILLIS) {
+            awaitDeviceState("Record category route content") {
                 viewModel.ordinaryRecord.first {
                     viewModel.navigator.currentKey.contract.screenId.value == "REC-004" &&
                         (it as? OrdinaryRecordLoadState.Content)?.snapshot?.references?.categories?.isNotEmpty() == true
@@ -150,7 +159,7 @@ class P11RuntimeDeviceTest {
             scenario.action { viewModel.requestRootBack() }
 
             // A short background transition keeps all in-memory stack histories intact.
-            viewModel.navigator.select(TopLevelDestination.JOURNAL)
+            viewModel.selectRootTopLevel(TopLevelDestination.JOURNAL)
             viewModel.navigator.navigate(
                 app.ledger.core.navigation.LedgerRouteContract.destination(ScreenId("G-007")),
                 SessionGateState.READY,
@@ -170,7 +179,7 @@ class P11RuntimeDeviceTest {
     }
 
     private suspend fun awaitStep(viewModel: AppRootViewModel, expected: OnboardingStep) {
-        withTimeout(DEVICE_TIMEOUT_MILLIS) {
+        awaitDeviceState("onboarding step ${expected.name}") {
             viewModel.rootState.first { state ->
                 (state as? AppRootState.Onboarding)?.state?.let {
                     it.step == expected && it.renderState != app.ledger.feature.onboarding.OnboardingRenderState.SUBMITTING
@@ -193,8 +202,8 @@ class P11RuntimeDeviceTest {
             ApplicationProvider.getApplicationContext(),
             MainActivity::class.java,
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        onActivity { it.startActivity(quickEntry) }
-        val editor = withTimeout(DEVICE_TIMEOUT_MILLIS) {
+        action { viewModel.handleDeepLink(quickEntry.data) }
+        val editor = awaitDeviceState("widget quick-entry editor") {
             viewModel.ordinaryRecord.first {
                 viewModel.navigator.currentKey.contract.screenId.value == "REC-003" &&
                     (it as? OrdinaryRecordLoadState.Content)?.editor != null
@@ -207,7 +216,52 @@ class P11RuntimeDeviceTest {
         assertFalse(viewModel.ordinaryRecordPending.value)
     }
 
+    private suspend fun ActivityScenario<MainActivity>.assertP37RouteStateContainment(viewModel: AppRootViewModel) {
+        val shellCompositions = AtomicInteger()
+        val routeCompositions = AtomicInteger()
+        P37ComposeRecompositionProbe.installForTest { scope, _ ->
+            when (scope) {
+                P37ComposeRecompositionProbe.Scope.READY_SHELL -> shellCompositions.incrementAndGet()
+                P37ComposeRecompositionProbe.Scope.ROUTE -> routeCompositions.incrementAndGet()
+            }
+        }
+        try {
+            action { viewModel.selectRootTopLevel(TopLevelDestination.JOURNAL) }
+            awaitDeviceState("Journal content for route containment") {
+                viewModel.journal.first { it is app.ledger.feature.journal.JournalLoadState.Content }
+            }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            action { viewModel.selectRootTopLevel(TopLevelDestination.RECORD) }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+            assertTrue("observable navigator must recompose the Ready shell", shellCompositions.get() >= 2)
+            assertTrue("observable navigator must replace the route composition", routeCompositions.get() >= 2)
+            val shellBeforeOffscreenEmission = shellCompositions.get()
+            val routeBeforeOffscreenEmission = routeCompositions.get()
+
+            action { viewModel.updateJournalSearch("p37-offscreen-probe") }
+            awaitDeviceState("offscreen Journal search state") {
+                viewModel.journal.first {
+                    (it as? app.ledger.feature.journal.JournalLoadState.Content)?.searchText == "p37-offscreen-probe"
+                }
+            }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+            assertEquals(shellBeforeOffscreenEmission, shellCompositions.get())
+            assertEquals(routeBeforeOffscreenEmission, routeCompositions.get())
+        } finally {
+            P37ComposeRecompositionProbe.clearForTest()
+            action { viewModel.updateJournalSearch("") }
+        }
+    }
+
     private companion object {
         const val DEVICE_TIMEOUT_MILLIS = 60_000L
+    }
+
+    private suspend fun <T> awaitDeviceState(label: String, block: suspend () -> T): T = try {
+        withTimeout(DEVICE_TIMEOUT_MILLIS) { block() }
+    } catch (failure: TimeoutCancellationException) {
+        throw AssertionError("Timed out waiting for $label", failure)
     }
 }

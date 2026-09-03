@@ -24,6 +24,36 @@ class P33WidgetNavigationContractMutationTest(unittest.TestCase):
     def test_glance_must_read_the_snapshot_table(self) -> None:
         self.assertTrue(self.mutate("SecureRoomWidgetSnapshotApplicationPort.kt", "widget_book_snapshot", "business_transaction"))
 
+    def test_widget_snapshot_must_use_the_process_owned_database_session(self) -> None:
+        self.assertTrue(
+            self.mutate(
+                "SecureRoomWidgetSnapshotApplicationPort.kt",
+                "databaseAccess.withCurrentDatabase",
+                "EncryptedDatabaseFactory.openPrimary",
+            ),
+        )
+
+    def test_headless_widget_read_must_retain_its_narrow_capability(self) -> None:
+        self.assertTrue(
+            self.mutate(
+                "AppHeadlessWidgetSnapshotApplicationPort.kt",
+                "HeadlessLeaseCapability.WIDGET_SNAPSHOT_READ",
+                "HeadlessLeaseCapability.AUTOMATIC_BACKUP",
+            ),
+        )
+
+    def test_widget_session_database_must_close_with_the_owner(self) -> None:
+        self.assertTrue(self.mutate("BookSessionManager.kt", "openedDatabase?.close()", "Unit"))
+
+    def test_financial_commit_must_schedule_widget_refresh(self) -> None:
+        self.assertTrue(
+            self.mutate(
+                "LedgerApplication.kt",
+                "LedgerWidgetRuntime.updateAll(this@LedgerApplication)",
+                "Unit",
+            ),
+        )
+
     def test_widget_render_must_not_depend_on_app_lock(self) -> None:
         self.assertTrue(self.mutate("LedgerGlanceWidget.kt", "LedgerWidgetRuntime.resolve", "AppLock.resolve"))
 

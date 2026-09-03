@@ -194,6 +194,8 @@ class EncryptedAttachmentObjectStore(
 
     fun activeMetadata(): List<AttachmentMetadata> = catalog.activeAttachments().map { it.metadata() }
 
+    internal fun activeStoredObjects(): List<StoredAttachmentObject> = catalog.activeAttachments()
+
     override fun openOriginal(attachmentId: AttachmentId): DecryptedAttachment = openEncryptedVariant(
         attachmentId,
         AttachmentContentVariant.ORIGINAL,

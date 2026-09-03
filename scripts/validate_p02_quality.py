@@ -20,8 +20,8 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-UI_ROOT = ROOT / "docs/UI设计稿与实现契约_v1.0"
-IMPLEMENTATION_ROOT = ROOT / "docs/implementation"
+UI_ROOT = ROOT / "docs/初始开发文件存档/UI设计稿与实现契约_v1.0"
+IMPLEMENTATION_ROOT = ROOT / "docs/初始开发文件存档/implementation"
 
 EXPECTED_REQUIREMENTS = [f"REQ-{number:03d}" for number in range(1, 91)]
 EXPECTED_SCREEN_COUNT = 215
@@ -201,8 +201,8 @@ def validate_ledger_state(row: dict[str, str], evidence_text: str, identifier: s
 
 
 def validate_repository(root: Path = ROOT) -> dict[str, int]:
-    ui_root = root / "docs/UI设计稿与实现契约_v1.0"
-    implementation_root = root / "docs/implementation"
+    ui_root = root / "docs/初始开发文件存档/UI设计稿与实现契约_v1.0"
+    implementation_root = root / "docs/初始开发文件存档/implementation"
     tokens = json.loads((ui_root / "android_ledger_ui_tokens_v1.json").read_text(encoding="utf-8"))
     contract = yaml.safe_load((ui_root / "android_ledger_screen_contract_v1.yaml").read_text(encoding="utf-8"))
     matrix_rows = read_csv(ui_root / "UI需求追踪矩阵_v1.csv")

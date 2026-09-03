@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
+import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.files.AttachmentMetadata
 import app.ledger.core.files.AttachmentMetadataPolicy
 import app.ledger.core.files.AttachmentMetadataUiModel
@@ -12,7 +13,6 @@ import app.ledger.core.files.AttachmentRenameState
 import app.ledger.core.files.SecureAttachmentImageLoader
 import app.ledger.core.files.SecureAttachmentSession
 import app.ledger.core.files.SecureBookAttachmentObjectPort
-import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.finance.domain.AttachmentId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -117,15 +117,13 @@ internal class AttachmentController(
         )
     }
 
-    private fun AttachmentMetadata.toUi(): AttachmentMetadataUiModel {
-        return AttachmentMetadataUiModel(
-            attachmentId,
-            displayName,
-            mimeType,
-            formatSize(plaintextSize),
-            formatImportedAt(importedAt),
-        )
-    }
+    private fun AttachmentMetadata.toUi(): AttachmentMetadataUiModel = AttachmentMetadataUiModel(
+        attachmentId,
+        displayName,
+        mimeType,
+        formatSize(plaintextSize),
+        formatImportedAt(importedAt),
+    )
 
     private fun closeSession() {
         session?.close()

@@ -9,6 +9,8 @@ import app.ledger.core.common.StableId
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.finance.application.BatchAuditView
 import app.ledger.finance.application.BatchEntryApplicationPort
 import app.ledger.finance.application.BatchEntryCommitResult
@@ -19,11 +21,11 @@ import app.ledger.finance.application.BatchUndoRequest
 import app.ledger.finance.application.BatchValidationIssue
 import app.ledger.finance.application.BatchValidationReport
 import app.ledger.finance.application.BatchValidationSeverity
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.domain.BatchFinancialCommand
 import app.ledger.finance.domain.CanonicalFinancialHash
@@ -36,31 +38,25 @@ import app.ledger.finance.domain.MoveTransactionToTrashCommand
 import app.ledger.finance.domain.PlanningSnapshot
 import app.ledger.finance.domain.TransactionId
 import app.ledger.finance.domain.TransactionRevisionId
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import java.time.Duration
 
 /** SQLCipher P24 adapter. A batch is planned once and persisted by one coordinator transaction. */
 public class SecureRoomBatchEntryApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
     referenceDataPort: ReferenceDataManagementPort,
     private val failureInjector: FinancialCommitFailureInjector = FinancialCommitFailureInjector.NONE,
-    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
     private val additionalAfterFinancialSideEffect: FinancialCommitSideEffect = FinancialCommitSideEffect.NONE,
 ) : BatchEntryApplicationPort {
-    private val applicationContext = context.applicationContext
-    private val gate: LedgerWriteGate = BatchLedgerWriteGate()
-    private val ordinary = SecureRoomOrdinaryTransactionEntryPort(context, keyProvider, referenceDataPort)
-    private val refunds = SecureRoomRefundApplicationPort(context, keyProvider, referenceDataPort)
+    private val ordinary = SecureRoomOrdinaryTransactionEntryPort(databaseAccess, referenceDataPort)
+    private val refunds = SecureRoomRefundApplicationPort(databaseAccess, referenceDataPort)
     private val mapper = RoomReferenceFinancialSnapshotMapper()
 
-    override suspend fun validate(request: BatchEntrySubmitRequest): DomainResult<BatchValidationReport> = withDatabaseResult(request.bookId) { database ->
+    override suspend fun validate(request: BatchEntrySubmitRequest): DomainResult<BatchValidationReport> = withDatabaseResult(request.bookId, LedgerAccessMode.READ) { database ->
         DomainResult.Success(validateInside(database, request).first)
     }
 
-    override suspend fun submit(request: BatchEntrySubmitRequest): DomainResult<BatchEntryCommitResult> = withDatabaseResult(request.bookId) { database ->
+    override suspend fun submit(request: BatchEntrySubmitRequest): DomainResult<BatchEntryCommitResult> = withDatabaseResult(request.bookId, LedgerAccessMode.WRITE) { database ->
         val (report, prepared) = validateInside(database, request)
         if (!report.canCommit) return@withDatabaseResult DomainResult.Failure(DomainViolation.InvalidField("batch.errors"))
         if (report.warnings.isNotEmpty() && !request.warningsConfirmed) {
@@ -87,7 +83,7 @@ public class SecureRoomBatchEntryApplicationPort(
         }
     }
 
-    override suspend fun audit(bookId: StableId, batchCommandId: CommandId): DomainResult<BatchAuditView?> = withDatabaseResult(bookId) { database ->
+    override suspend fun audit(bookId: StableId, batchCommandId: CommandId): DomainResult<BatchAuditView?> = withDatabaseResult(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val header = db.queryOne(
                 "SELECT bc.uid,bc.created_at FROM command_receipt cr JOIN book_commit bc ON bc.id=cr.commit_id " +
@@ -112,7 +108,7 @@ public class SecureRoomBatchEntryApplicationPort(
         }
     }
 
-    override suspend fun undo(request: BatchUndoRequest): DomainResult<CommandReceipt> = withDatabaseResult(request.bookId) { database ->
+    override suspend fun undo(request: BatchUndoRequest): DomainResult<CommandReceipt> = withDatabaseResult(request.bookId, LedgerAccessMode.WRITE) { database ->
         val audit = when (val audited = auditInside(database, request.originalBatchCommandId)) {
             null -> return@withDatabaseResult DomainResult.Failure(DomainViolation.InvalidField("batch.audit"))
             else -> audited
@@ -239,7 +235,7 @@ public class SecureRoomBatchEntryApplicationPort(
         command: FinancialCommand,
         snapshot: PlanningSnapshot,
     ): DomainResult<CommandReceipt> = DefaultFinancialMutationCoordinator(
-        gate,
+        CallerOwnedLedgerWriteGate,
         repository,
         object : FinancialPlanningSnapshotRepository {
             override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(snapshot)
@@ -263,22 +259,10 @@ public class SecureRoomBatchEntryApplicationPort(
 
     private suspend fun <T> withDatabaseResult(
         bookId: StableId,
+        mode: LedgerAccessMode,
         block: suspend (LedgerDatabase) -> DomainResult<T>,
     ): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes {
-                if (databaseName == EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME) {
-                    EncryptedDatabaseFactory.openPrimary(applicationContext, it)
-                } else {
-                    EncryptedDatabaseFactory.openLedgerCopy(applicationContext, databaseName, it)
-                }
-            }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+        databaseAccess.withCurrentDatabase(bookId, mode, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: Exception) {
@@ -300,8 +284,3 @@ public class SecureRoomBatchEntryApplicationPort(
 private fun android.database.Cursor.int(name: String): Int = getInt(getColumnIndexOrThrow(name))
 
 private fun android.database.Cursor.long(name: String): Long = getLong(getColumnIndexOrThrow(name))
-
-private class BatchLedgerWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
-}

@@ -19,13 +19,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import app.ledger.core.designsystem.AmountSize
 import app.ledger.core.designsystem.AmountText
 import app.ledger.core.designsystem.LedgerBanner
 import app.ledger.core.designsystem.LedgerBannerVariant
+import app.ledger.core.designsystem.LedgerBottomSheet
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
-import app.ledger.core.designsystem.LedgerBottomSheet
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerModalDialog
@@ -45,7 +46,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.WeekFields
 import java.util.TimeZone
-import androidx.compose.ui.unit.dp
 
 enum class SettingsThemeMode { FOLLOW_SYSTEM, LIGHT, DARK }
 
@@ -256,7 +256,10 @@ private fun LanguageRegionSettings(state: RemainingSettingsState, actions: Remai
             SelectorField(
                 label = stringResource(R.string.settings_time_zone),
                 selectedText = state.zoneId,
-                onClick = { zoneQuery = ""; showZoneChooser = true },
+                onClick = {
+                    zoneQuery = ""
+                    showZoneChooser = true
+                },
                 supportingText = zoneDisplayName(state.zoneId, locale),
             )
         }
@@ -376,8 +379,11 @@ private fun weekPreview(value: SettingsWeekStart, locale: java.util.Locale): Str
         SettingsWeekStart.SUNDAY -> java.time.DayOfWeek.SUNDAY
     }
     return stringResource(
-        if (firstDay == java.time.DayOfWeek.SUNDAY) R.string.settings_week_preview_sunday
-        else R.string.settings_week_preview_monday,
+        if (firstDay == java.time.DayOfWeek.SUNDAY) {
+            R.string.settings_week_preview_sunday
+        } else {
+            R.string.settings_week_preview_monday
+        },
     )
 }
 

@@ -7,7 +7,6 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
-import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.FxEvidence
@@ -17,12 +16,14 @@ import app.ledger.core.money.FxRateSource
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.money.Money
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.time.EffectiveTime
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
-import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.application.OrdinaryAmountDraft
 import app.ledger.finance.application.OrdinaryDirection
 import app.ledger.finance.application.OrdinaryParticipantView
@@ -36,6 +37,7 @@ import app.ledger.finance.application.OrdinaryTransactionEntryPort
 import app.ledger.finance.application.OrdinaryTransactionEntrySnapshot
 import app.ledger.finance.application.OrdinaryTransactionWriteRequest
 import app.ledger.finance.application.ReferenceDataManagementPort
+import app.ledger.finance.application.toBoundedReferenceSnapshot
 import app.ledger.finance.domain.AccountAmount
 import app.ledger.finance.domain.AccountingPlanningContext
 import app.ledger.finance.domain.AmountEvidenceKey
@@ -86,8 +88,6 @@ import app.ledger.finance.domain.TransactionKind
 import app.ledger.finance.domain.TransactionRevisionId
 import app.ledger.finance.domain.UserAccountId
 import app.ledger.finance.domain.WeekendAdjustment
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.math.MathContext
 import java.math.RoundingMode
 import java.security.MessageDigest
@@ -96,21 +96,32 @@ import java.time.ZoneId
 
 /** SQLCipher-backed ordinary entry adapter; every write terminates at FinancialMutationCoordinator. */
 public class SecureRoomOrdinaryTransactionEntryPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
-    private val referenceDataPort: ReferenceDataManagementPort = SecureRoomReferenceDataManagementPort(context, keyProvider),
+    private val databaseAccess: LedgerDatabaseOperationAccess,
+    private val referenceDataPort: ReferenceDataManagementPort,
 ) : OrdinaryTransactionEntryPort {
-    private val applicationContext = context.applicationContext
-    private val gate = OrdinaryLedgerWriteGate()
     private val mapper = RoomReferenceFinancialSnapshotMapper()
     private val currencies = JvmLegalTenderCurrencyCatalog.create()
 
+    @Suppress("ReturnCount")
     override suspend fun snapshot(bookId: StableId, transactionId: StableId?): DomainResult<OrdinaryTransactionEntrySnapshot> {
-        val references = when (val result = referenceDataPort.entrySnapshot(bookId)) {
+        val core = when (val result = referenceDataPort.entryCoreReferences(bookId)) {
             is DomainResult.Success -> result.value
             is DomainResult.Failure -> return result
         }
-        return withDatabase(bookId) { database ->
+        val merchants = when (val result = referenceDataPort.merchantPage(bookId, limit = ENTRY_OPTION_PAGE_SIZE)) {
+            is DomainResult.Success -> result.value.items
+            is DomainResult.Failure -> return result
+        }
+        val places = when (val result = referenceDataPort.placePage(bookId, limit = ENTRY_OPTION_PAGE_SIZE)) {
+            is DomainResult.Success -> result.value.items
+            is DomainResult.Failure -> return result
+        }
+        val locations = when (val result = referenceDataPort.locationPage(bookId, limit = ENTRY_OPTION_PAGE_SIZE)) {
+            is DomainResult.Success -> result.value.items
+            is DomainResult.Failure -> return result
+        }
+        val references = core.toBoundedReferenceSnapshot(merchants, places, locations)
+        return withDatabase(bookId, LedgerAccessMode.READ) { database ->
             database.readLedger { db ->
                 if (RoomBookRepository.mapCurrent(db).id.value != bookId) abort(FinanceDataError.CorruptData)
                 OrdinaryTransactionEntrySnapshot(
@@ -126,7 +137,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
     }
 
     override suspend fun submit(request: OrdinaryTransactionWriteRequest): DomainResult<CommandReceipt> = when (
-        val opened = withDatabase(request.ids.bookId) { database -> execute(database, request) }
+        val opened = withDatabase(request.ids.bookId, LedgerAccessMode.WRITE) { database -> execute(database, request) }
     ) {
         is DomainResult.Success -> opened.value
         is DomainResult.Failure -> opened
@@ -140,7 +151,7 @@ public class SecureRoomOrdinaryTransactionEntryPort(
             afterFinancialWriteSideEffect = prepared.afterFinancialWriteSideEffect,
         )
         return DefaultFinancialMutationCoordinator(
-            writeGate = gate,
+            writeGate = CallerOwnedLedgerWriteGate,
             receiptRepository = repository,
             snapshotRepository = object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: app.ledger.finance.domain.FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(prepared.snapshot)
@@ -557,15 +568,12 @@ public class SecureRoomOrdinaryTransactionEntryPort(
         arrayOf(revisionId.bytes),
     ) { OrdinarySettlementShareDraft(it.stableId("uid"), it.getLong(1), it.getLong(2), it.nullableString("weight_decimal")?.toBigDecimal(), it.getLong(4)) }
 
-    private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> T): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-            try {
-                DomainResult.Success(block(database))
-            } finally {
-                database.close()
-            }
-        }
+    private suspend fun <T> withDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode,
+        block: suspend (LedgerDatabase) -> T,
+    ): DomainResult<T> = try {
+        DomainResult.Success(databaseAccess.withCurrentDatabase(bookId, mode, block))
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: Exception) {
@@ -593,10 +601,6 @@ public class SecureRoomOrdinaryTransactionEntryPort(
 
     private companion object {
         const val AUTOMATIC_STATEMENT_ID_COUNT = 2
+        const val ENTRY_OPTION_PAGE_SIZE = 50
     }
-}
-
-private class OrdinaryLedgerWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
 }

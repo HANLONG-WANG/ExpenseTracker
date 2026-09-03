@@ -53,12 +53,14 @@ import java.util.UUID
 class ManagedBackupSqlCipherDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var root: File
 
     @Before
     fun setUp() = runBlocking {
         context = ApplicationProvider.getApplicationContext()
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         SecureRoomLedgerInitializationPort(context, keys).clearLocalBook(BOOK).success()
         root = context.noBackupFilesDir.resolve("p30-device-repository")
         root.deleteRecursively()
@@ -86,12 +88,12 @@ class ManagedBackupSqlCipherDeviceTest {
 
     @Test
     fun realSqlCipherCatalogPublishesOnlyAfterEncryptedObjectAndManifestVerification() = runBlocking {
-        val shadowAccess = SecureShadowLedgerAccess(context, keys)
+        val shadowAccess = SecureShadowLedgerAccess(context, keys, databaseAccess)
         val shadow = shadowAccess.createSnapshot(BOOK, OPERATION)
         val database = context.getDatabasePath(shadow.shadowDatabaseName)
         assertTrue(database.isFile)
         val storage = FileBackupRepositoryStorage(root)
-        val catalog = createBackupCatalog(BOOK, SecurePrimaryLedgerAccess(context, keys))
+        val catalog = createBackupCatalog(BOOK, SecurePrimaryLedgerAccess(context, keys, databaseAccess))
         var next = 1_000L
         val engine = ManagedBackupRepositoryEngine { id(next++) }
         val repositoryKey = LedgerTink.generateStreamingAeadKeyset()

@@ -40,24 +40,24 @@ import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerChoiceSelector
 import app.ledger.core.designsystem.LedgerCycleChoiceSelector
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
+import app.ledger.core.designsystem.LedgerDatePickerFlow
+import app.ledger.core.designsystem.LedgerDateTimePickerFlow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
-import app.ledger.core.designsystem.LedgerDatePickerFlow
-import app.ledger.core.designsystem.LedgerDateTimePickerFlow
 import app.ledger.core.designsystem.LedgerProgressIndicator
 import app.ledger.core.designsystem.LedgerStatusVariant
+import app.ledger.core.designsystem.LedgerTabRow
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
-import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.SelectorField
-import app.ledger.core.designsystem.LedgerTabRow
+import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.LocaleNumberFormatter
@@ -65,11 +65,11 @@ import app.ledger.finance.application.CreditAccountView
 import app.ledger.finance.application.LoanContractView
 import app.ledger.finance.application.LoanScheduleItemView
 import app.ledger.finance.application.LoanTrancheView
+import app.ledger.finance.domain.LoanPaymentComponent
+import app.ledger.finance.domain.LoanPrepaymentPolicy
+import app.ledger.finance.domain.LoanRateType
 import app.ledger.finance.domain.LoanRepaymentMethod
 import app.ledger.finance.domain.LoanScheduleSummary
-import app.ledger.finance.domain.LoanPrepaymentPolicy
-import app.ledger.finance.domain.LoanPaymentComponent
-import app.ledger.finance.domain.LoanRateType
 import app.ledger.finance.domain.LoanStatus
 import app.ledger.finance.domain.PaymentFrequency
 import app.ledger.finance.domain.PrepaymentRecalculationStrategy
@@ -377,7 +377,8 @@ private fun LoanDetail(state: LoanFeatureState, actions: LoanActions) {
         item {
             LedgerProgressIndicator(
                 if (contract.originalPrincipalMinor > 0L) (contract.originalPrincipalMinor - contract.remainingPrincipalMinor).toFloat() / contract.originalPrincipalMinor.toFloat() else 1f,
-                Modifier.fillMaxWidth(), stringResource(R.string.loan_repayment_progress),
+                Modifier.fillMaxWidth(),
+                stringResource(R.string.loan_repayment_progress),
             )
         }
         item {
@@ -389,12 +390,14 @@ private fun LoanDetail(state: LoanFeatureState, actions: LoanActions) {
             LedgerTabRow(
                 0,
                 listOf(stringResource(R.string.loan_tab_overview), stringResource(R.string.loan_tab_schedule), stringResource(R.string.loan_tab_transactions), stringResource(R.string.loan_tab_rates), stringResource(R.string.loan_tab_simulation)),
-                { index -> when (index) {
-                    1 -> actions.onNavigate("LOA-008", contract.id, null)
-                    2 -> actions.onOpenTransactions(contract.displayAccountId)
-                    3 -> contract.tranches.firstOrNull()?.let { actions.onNavigate("LOA-005", contract.id, it.id) }
-                    4 -> actions.onNavigate("LOA-010", contract.id, null)
-                } },
+                { index ->
+                    when (index) {
+                        1 -> actions.onNavigate("LOA-008", contract.id, null)
+                        2 -> actions.onOpenTransactions(contract.displayAccountId)
+                        3 -> contract.tranches.firstOrNull()?.let { actions.onNavigate("LOA-005", contract.id, it.id) }
+                        4 -> actions.onNavigate("LOA-010", contract.id, null)
+                    }
+                },
             )
         }
         item { LedgerText(stringResource(R.string.loan_next_payment), LedgerTextRole.SECTION) }
@@ -407,7 +410,10 @@ private fun LoanDetail(state: LoanFeatureState, actions: LoanActions) {
         items(recent) { (tranche, row) ->
             LedgerCard(Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) { LedgerText(tranche.name, LedgerTextRole.BODY); LedgerText(row.plannedDate.localized(locale), LedgerTextRole.SUPPORTING) }
+                    Column(Modifier.weight(1f)) {
+                        LedgerText(tranche.name, LedgerTextRole.BODY)
+                        LedgerText(row.plannedDate.localized(locale), LedgerTextRole.SUPPORTING)
+                    }
                     AmountText(CreditPolicy.money(row.actualPrincipalMinor + row.actualInterestMinor + row.actualFeeMinor + row.actualPenaltyMinor, contract.currency, locale), AmountSize.LIST)
                 }
             }
@@ -455,36 +461,36 @@ private fun LoanSchedule(state: LoanFeatureState) {
 private fun LoanPaymentDetail(state: LoanFeatureState) {
     val locale = LocalLocale.current.platformLocale
     LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_PAYMENT_DETAIL)) {
-    val detail = state.paymentDetail
-    if (detail == null) {
-        item { LedgerText(stringResource(R.string.loan_payment_not_found), LedgerTextRole.BODY) }
-        return@LoanListLayout
-    }
-    item { LedgerText(stringResource(R.string.loan_payment_breakdown), LedgerTextRole.TITLE) }
-    item { LedgerText(stringResource(R.string.loan_payment_context, detail.contractName, detail.localDate.localized(locale), detail.paymentAccountName ?: stringResource(R.string.loan_unknown_account)), LedgerTextRole.BODY) }
-    item { MetricCard(stringResource(R.string.loan_principal_component), CreditPolicy.money(detail.principalMinor, detail.currency, locale), Modifier.fillMaxWidth()) }
-    item { MetricCard(stringResource(R.string.loan_interest_component), CreditPolicy.money(detail.interestMinor, detail.currency, locale), Modifier.fillMaxWidth()) }
-    item { MetricCard(stringResource(R.string.loan_fee_component), CreditPolicy.money(detail.feeMinor, detail.currency, locale), Modifier.fillMaxWidth()) }
-    item { MetricCard(stringResource(R.string.loan_penalty_component), CreditPolicy.money(detail.penaltyMinor, detail.currency, locale), Modifier.fillMaxWidth()) }
-    item { LedgerText(stringResource(R.string.loan_schedule_allocations), LedgerTextRole.SECTION) }
-    if (detail.allocations.isEmpty()) item { LedgerText(stringResource(R.string.loan_no_schedule_allocations), LedgerTextRole.SUPPORTING) }
-    items(detail.allocations) { allocation ->
-        LedgerCard(Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), horizontalArrangement = Arrangement.SpaceBetween) {
-                LedgerText(
-                    stringResource(
-                        R.string.loan_allocation_natural,
-                        allocation.trancheName,
-                        allocation.installmentNumber?.let { LocaleNumberFormatter.integer(it, locale) } ?: stringResource(R.string.loan_unplanned),
-                        loanComponentLabel(allocation.component),
-                    ),
-                    LedgerTextRole.BODY,
-                )
-                AmountText(CreditPolicy.money(allocation.amountMinor, detail.currency, locale), AmountSize.LIST)
+        val detail = state.paymentDetail
+        if (detail == null) {
+            item { LedgerText(stringResource(R.string.loan_payment_not_found), LedgerTextRole.BODY) }
+            return@LoanListLayout
+        }
+        item { LedgerText(stringResource(R.string.loan_payment_breakdown), LedgerTextRole.TITLE) }
+        item { LedgerText(stringResource(R.string.loan_payment_context, detail.contractName, detail.localDate.localized(locale), detail.paymentAccountName ?: stringResource(R.string.loan_unknown_account)), LedgerTextRole.BODY) }
+        item { MetricCard(stringResource(R.string.loan_principal_component), CreditPolicy.money(detail.principalMinor, detail.currency, locale), Modifier.fillMaxWidth()) }
+        item { MetricCard(stringResource(R.string.loan_interest_component), CreditPolicy.money(detail.interestMinor, detail.currency, locale), Modifier.fillMaxWidth()) }
+        item { MetricCard(stringResource(R.string.loan_fee_component), CreditPolicy.money(detail.feeMinor, detail.currency, locale), Modifier.fillMaxWidth()) }
+        item { MetricCard(stringResource(R.string.loan_penalty_component), CreditPolicy.money(detail.penaltyMinor, detail.currency, locale), Modifier.fillMaxWidth()) }
+        item { LedgerText(stringResource(R.string.loan_schedule_allocations), LedgerTextRole.SECTION) }
+        if (detail.allocations.isEmpty()) item { LedgerText(stringResource(R.string.loan_no_schedule_allocations), LedgerTextRole.SUPPORTING) }
+        items(detail.allocations) { allocation ->
+            LedgerCard(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().padding(LedgerTheme.spacing.sm), horizontalArrangement = Arrangement.SpaceBetween) {
+                    LedgerText(
+                        stringResource(
+                            R.string.loan_allocation_natural,
+                            allocation.trancheName,
+                            allocation.installmentNumber?.let { LocaleNumberFormatter.integer(it, locale) } ?: stringResource(R.string.loan_unplanned),
+                            loanComponentLabel(allocation.component),
+                        ),
+                        LedgerTextRole.BODY,
+                    )
+                    AmountText(CreditPolicy.money(allocation.amountMinor, detail.currency, locale), AmountSize.LIST)
+                }
             }
         }
-    }
-    item { LedgerBanner(stringResource(R.string.loan_account_impact_detail, detail.paymentAccountName ?: stringResource(R.string.loan_unknown_account), CreditPolicy.money(detail.principalMinor, detail.currency, locale).formatted, CreditPolicy.money(detail.interestMinor + detail.feeMinor + detail.penaltyMinor, detail.currency, locale).formatted), LedgerBannerVariant.INFO) }
+        item { LedgerBanner(stringResource(R.string.loan_account_impact_detail, detail.paymentAccountName ?: stringResource(R.string.loan_unknown_account), CreditPolicy.money(detail.principalMinor, detail.currency, locale).formatted, CreditPolicy.money(detail.interestMinor + detail.feeMinor + detail.penaltyMinor, detail.currency, locale).formatted), LedgerBannerVariant.INFO) }
     }
 }
 
@@ -492,26 +498,26 @@ private fun LoanPaymentDetail(state: LoanFeatureState) {
 private fun LoanSimulation(state: LoanFeatureState, actions: LoanActions) {
     val locale = LocalLocale.current.platformLocale
     LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_SIMULATION)) {
-    item { StateBanner(state) }
-    item { AmountEditor(state.draft.principalComponent, LoanField.PRINCIPAL_COMPONENT, R.string.loan_prepayment_amount, actions) }
-    item { StrategySelector(state, actions) }
-    item { LedgerButton(stringResource(R.string.loan_calculate), actions.onSimulate, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
-    state.simulation?.let { simulation ->
-        val contract = state.contract
-        val currency = contract?.currency ?: state.snapshot.baseCurrency
-        item { LedgerText(stringResource(R.string.loan_before_after), LedgerTextRole.SECTION) }
-        item { SimulationSummary(stringResource(R.string.loan_before), simulation.before, currency) }
-        item { SimulationSummary(stringResource(R.string.loan_after), simulation.afterSummary, currency) }
-        item { MetricCard(stringResource(R.string.loan_saved_cost), CreditPolicy.money(simulation.savedInterestAndFeeMinor, currency, locale), Modifier.fillMaxWidth(), MetricCardVariant.EMPHASIZED) }
-        contract?.let {
-            item { LedgerText(stringResource(R.string.loan_before), LedgerTextRole.SECTION) }
-            item { ScheduleTable(it.tranches.flatMap { tranche -> tranche.schedule }, currency) }
+        item { StateBanner(state) }
+        item { AmountEditor(state.draft.principalComponent, LoanField.PRINCIPAL_COMPONENT, R.string.loan_prepayment_amount, actions) }
+        item { StrategySelector(state, actions) }
+        item { LedgerButton(stringResource(R.string.loan_calculate), actions.onSimulate, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
+        state.simulation?.let { simulation ->
+            val contract = state.contract
+            val currency = contract?.currency ?: state.snapshot.baseCurrency
+            item { LedgerText(stringResource(R.string.loan_before_after), LedgerTextRole.SECTION) }
+            item { SimulationSummary(stringResource(R.string.loan_before), simulation.before, currency) }
+            item { SimulationSummary(stringResource(R.string.loan_after), simulation.afterSummary, currency) }
+            item { MetricCard(stringResource(R.string.loan_saved_cost), CreditPolicy.money(simulation.savedInterestAndFeeMinor, currency, locale), Modifier.fillMaxWidth(), MetricCardVariant.EMPHASIZED) }
+            contract?.let {
+                item { LedgerText(stringResource(R.string.loan_before), LedgerTextRole.SECTION) }
+                item { ScheduleTable(it.tranches.flatMap { tranche -> tranche.schedule }, currency) }
+            }
+            item { LedgerText(stringResource(R.string.loan_after), LedgerTextRole.SECTION) }
+            item { ScheduleTable(simulation.after.items.map { LoanScheduleItemView(it.installmentNumber, it.plannedDate, it.principalMinor, it.interestMinor, it.feeMinor, it.remainingPrincipalMinor, 0, 0, 0, 0) }, currency) }
+            item { LedgerBanner(stringResource(R.string.loan_simulation_no_write), LedgerBannerVariant.NEUTRAL) }
+            item { LedgerButton(stringResource(R.string.loan_apply_plan), { actions.onNavigate("LOA-011", state.selectedContractId, null) }, Modifier.fillMaxWidth()) }
         }
-        item { LedgerText(stringResource(R.string.loan_after), LedgerTextRole.SECTION) }
-        item { ScheduleTable(simulation.after.items.map { LoanScheduleItemView(it.installmentNumber, it.plannedDate, it.principalMinor, it.interestMinor, it.feeMinor, it.remainingPrincipalMinor, 0, 0, 0, 0) }, currency) }
-        item { LedgerBanner(stringResource(R.string.loan_simulation_no_write), LedgerBannerVariant.NEUTRAL) }
-        item { LedgerButton(stringResource(R.string.loan_apply_plan), { actions.onNavigate("LOA-011", state.selectedContractId, null) }, Modifier.fillMaxWidth()) }
-    }
     }
 }
 
@@ -519,29 +525,29 @@ private fun LoanSimulation(state: LoanFeatureState, actions: LoanActions) {
 private fun ApplySimulation(state: LoanFeatureState, actions: LoanActions) {
     val locale = LocalLocale.current.platformLocale
     LoanListLayout(Modifier.testTag(LedgerTestTags.LOAN_SIMULATION_APPLY)) {
-    item { StateBanner(state) }
-    item { LedgerBanner(stringResource(R.string.loan_apply_creates_versions), LedgerBannerVariant.WARNING) }
-    state.simulation?.let { simulation ->
-        val currency = state.contract?.currency ?: state.snapshot.baseCurrency
-        item { MetricCard(stringResource(R.string.loan_apply_payment_now), CreditPolicy.money(simulation.paymentNowMinor, currency, locale), Modifier.fillMaxWidth(), MetricCardVariant.EMPHASIZED) }
-        item { MetricCard(stringResource(R.string.loan_apply_principal), CreditPolicy.money(simulation.prepaymentPrincipalMinor, currency, locale), Modifier.fillMaxWidth()) }
-        item { MetricCard(stringResource(R.string.loan_apply_penalty), CreditPolicy.money(simulation.penaltyMinor, currency, locale), Modifier.fillMaxWidth()) }
-        item { LedgerText(stringResource(R.string.loan_apply_version_summary, simulation.afterSummary.paymentCount, simulation.afterSummary.endDate.localized(locale)), LedgerTextRole.BODY) }
-    }
-    if (state.presentation == LoanPresentation.CONFLICT) item { LedgerButton(stringResource(R.string.loan_reload_simulation), actions.onRetry, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
-    item {
-        HighRiskConfirmation(
-            stringResource(R.string.loan_apply_plan),
-            stringResource(R.string.loan_apply_scope),
-            stringResource(R.string.loan_apply_consequence),
-            stringResource(R.string.loan_apply_unaffected),
-            stringResource(R.string.loan_confirmation_phrase),
-            state.draft.confirmPhrase,
-            { actions.onFieldChanged(LoanField.CONFIRM_PHRASE, it) },
-            actions.onApplySimulation,
-            actions.onCancelConfirmation,
-        )
-    }
+        item { StateBanner(state) }
+        item { LedgerBanner(stringResource(R.string.loan_apply_creates_versions), LedgerBannerVariant.WARNING) }
+        state.simulation?.let { simulation ->
+            val currency = state.contract?.currency ?: state.snapshot.baseCurrency
+            item { MetricCard(stringResource(R.string.loan_apply_payment_now), CreditPolicy.money(simulation.paymentNowMinor, currency, locale), Modifier.fillMaxWidth(), MetricCardVariant.EMPHASIZED) }
+            item { MetricCard(stringResource(R.string.loan_apply_principal), CreditPolicy.money(simulation.prepaymentPrincipalMinor, currency, locale), Modifier.fillMaxWidth()) }
+            item { MetricCard(stringResource(R.string.loan_apply_penalty), CreditPolicy.money(simulation.penaltyMinor, currency, locale), Modifier.fillMaxWidth()) }
+            item { LedgerText(stringResource(R.string.loan_apply_version_summary, simulation.afterSummary.paymentCount, simulation.afterSummary.endDate.localized(locale)), LedgerTextRole.BODY) }
+        }
+        if (state.presentation == LoanPresentation.CONFLICT) item { LedgerButton(stringResource(R.string.loan_reload_simulation), actions.onRetry, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
+        item {
+            HighRiskConfirmation(
+                stringResource(R.string.loan_apply_plan),
+                stringResource(R.string.loan_apply_scope),
+                stringResource(R.string.loan_apply_consequence),
+                stringResource(R.string.loan_apply_unaffected),
+                stringResource(R.string.loan_confirmation_phrase),
+                state.draft.confirmPhrase,
+                { actions.onFieldChanged(LoanField.CONFIRM_PHRASE, it) },
+                actions.onApplySimulation,
+                actions.onCancelConfirmation,
+            )
+        }
     }
 }
 
@@ -555,7 +561,10 @@ private fun BasicFields(state: LoanFeatureState, actions: LoanActions) {
         SelectorField(stringResource(R.string.loan_disbursement_date), state.draft.startDate.toLocalDateOrNull()?.localized(locale) ?: stringResource(R.string.loan_choose_date), { showDate = true })
     }
     if (showDate) {
-        LoanDatePicker(state.draft.startDate, { actions.onFieldChanged(LoanField.START_DATE, it); showDate = false }, { showDate = false })
+        LoanDatePicker(state.draft.startDate, {
+            actions.onFieldChanged(LoanField.START_DATE, it)
+            showDate = false
+        }, { showDate = false })
     }
 }
 
@@ -595,7 +604,10 @@ private fun TermsFields(state: LoanFeatureState, actions: LoanActions) {
         RoundingMode.entries.forEach { value -> LedgerChoiceRow(loanRoundingLabel(value), state.draft.roundingMode == value, { actions.onRoundingMode(value) }) }
     }
     if (showFirstDate) {
-        LoanDatePicker(state.draft.firstPaymentDate, { actions.onFieldChanged(LoanField.FIRST_PAYMENT_DATE, it); showFirstDate = false }, { showFirstDate = false })
+        LoanDatePicker(state.draft.firstPaymentDate, {
+            actions.onFieldChanged(LoanField.FIRST_PAYMENT_DATE, it)
+            showFirstDate = false
+        }, { showFirstDate = false })
     }
 }
 
@@ -611,8 +623,18 @@ private fun RatePeriodEditor(state: LoanFeatureState, actions: LoanActions) {
         if (state.draft.rateType == LoanRateType.FLOATING) LedgerText(stringResource(R.string.loan_floating_rate_evidence), LedgerTextRole.SUPPORTING)
         LedgerButton(stringResource(if (state.editingRatePeriodIndex == null) R.string.loan_add_rate_period else R.string.loan_update_rate_period), actions.onAddRatePeriod, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY)
     }
-    if (startPicker) LoanDatePicker(state.draft.startDate, { actions.onFieldChanged(LoanField.START_DATE, it); startPicker = false }, { startPicker = false })
-    if (endPicker) LoanDatePicker(state.draft.endDate, { actions.onFieldChanged(LoanField.END_DATE, it); endPicker = false }, { endPicker = false })
+    if (startPicker) {
+        LoanDatePicker(state.draft.startDate, {
+            actions.onFieldChanged(LoanField.START_DATE, it)
+            startPicker = false
+        }, { startPicker = false })
+    }
+    if (endPicker) {
+        LoanDatePicker(state.draft.endDate, {
+            actions.onFieldChanged(LoanField.END_DATE, it)
+            endPicker = false
+        }, { endPicker = false })
+    }
 }
 
 @Composable
@@ -859,9 +881,12 @@ private fun ScheduleTable(
                 val interest = if (actualOnly) it.actualInterestMinor else it.interestMinor
                 val fee = if (actualOnly) it.actualFeeMinor else it.feeMinor
                 listOf(
-                    LocaleNumberFormatter.integer(it.installmentNumber, locale), it.plannedDate.localized(locale),
-                    CreditPolicy.money(principal, currency, locale).formatted, CreditPolicy.money(interest, currency, locale).formatted,
-                    CreditPolicy.money(fee, currency, locale).formatted, CreditPolicy.money(if (actualOnly) it.actualPenaltyMinor else 0L, currency, locale).formatted,
+                    LocaleNumberFormatter.integer(it.installmentNumber, locale),
+                    it.plannedDate.localized(locale),
+                    CreditPolicy.money(principal, currency, locale).formatted,
+                    CreditPolicy.money(interest, currency, locale).formatted,
+                    CreditPolicy.money(fee, currency, locale).formatted,
+                    CreditPolicy.money(if (actualOnly) it.actualPenaltyMinor else 0L, currency, locale).formatted,
                     CreditPolicy.money(it.remainingPrincipalMinor, currency, locale).formatted,
                 )
             },
@@ -1017,7 +1042,7 @@ private fun loanComponentLabel(component: LoanPaymentComponent): String = string
 
 @Composable
 private fun LoanDatePicker(value: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    val initial = value.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
+    val initial = value.toLocalDateOrNull() ?: LedgerTheme.now.atZone(LedgerTheme.timeZone).toLocalDate()
     LedgerDatePickerFlow(
         initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         { millis -> onConfirm(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()) },

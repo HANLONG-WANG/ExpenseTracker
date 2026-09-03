@@ -17,7 +17,9 @@ import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.money.CurrencyCode
+import app.ledger.core.security.ActiveBookSessionRuntime
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.SecureImportSourceHandleStore
 import app.ledger.core.security.SecureImportStagingAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
@@ -34,22 +36,24 @@ import app.ledger.feature.transfer.ImportPreviewRowUi
 import app.ledger.feature.transfer.ImportResultCountsUi
 import app.ledger.feature.transfer.ImportResultOutcomeUi
 import app.ledger.feature.transfer.ImportStructureState
-import app.ledger.feature.transfer.ImportValidationState
 import app.ledger.feature.transfer.ImportValidationIssueUi
 import app.ledger.feature.transfer.ImportValidationSeverityUi
+import app.ledger.feature.transfer.ImportValidationState
 import app.ledger.feature.transfer.ImportWizardUiState
 import app.ledger.finance.application.ImportCommitMetadata
 import app.ledger.finance.application.ImportFinancialApplicationPort
 import app.ledger.finance.application.ImportFinancialCommitRequest
 import app.ledger.finance.application.ImportFinancialUndoRequest
 import app.ledger.finance.application.ReferenceDataManagementPort
-import app.ledger.finance.application.StructuredImportApplicationPort
 import app.ledger.finance.application.StructuredImportCommitRequest
 import app.ledger.finance.application.StructuredImportEntityType
 import app.ledger.finance.application.StructuredImportPageSource
 import app.ledger.finance.application.StructuredImportPhase
 import app.ledger.finance.application.StructuredImportRow
 import app.ledger.finance.application.StructuredImportValues
+import app.ledger.finance.data.SecureRoomImportFinancialApplicationPort
+import app.ledger.finance.data.SecureRoomReferenceDataManagementPort
+import app.ledger.finance.data.SecureRoomStructuredImportApplicationPort
 import app.ledger.finance.domain.Hash256
 import app.ledger.transfer.data.ImportControlAction
 import app.ledger.transfer.data.ImportPreparationService
@@ -87,13 +91,14 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneId
 
+@Suppress("LongParameterList")
 internal class ImportController(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
     private val references: ReferenceDataManagementPort,
     private val financial: ImportFinancialApplicationPort,
-    private val structured: StructuredImportApplicationPort,
     private val runtime: AppRuntimeSources,
+    private val sessionRuntime: ActiveBookSessionRuntime,
     private val formatImportedAt: (Instant) -> String,
     private val formatPreviewValue: (StagingValue) -> String,
 ) {
@@ -301,11 +306,14 @@ internal class ImportController(
                 mutableState.value = mutableState.value.copy(stage = ImportWizardStage.FX)
             }
             ImportWizardStage.FX -> if (mutableState.value.fxRows.all { row ->
-                when (row.policy) {
-                    ImportFxPolicyUi.HISTORICAL_FROM_FILE -> row.historicalAvailable
-                    ImportFxPolicyUi.MANUAL -> !row.manualRequired
+                    when (row.policy) {
+                        ImportFxPolicyUi.HISTORICAL_FROM_FILE -> row.historicalAvailable
+                        ImportFxPolicyUi.MANUAL -> !row.manualRequired
+                    }
                 }
-            }) prepare()
+            ) {
+                prepare()
+            }
             ImportWizardStage.VALIDATION -> if (mutableState.value.errorCount == 0L) {
                 mutableState.value = mutableState.value.copy(stage = ImportWizardStage.CONFIRMATION)
             }
@@ -489,7 +497,7 @@ internal class ImportController(
         val activeBook = bookId ?: return
         val activeBatch = batchId ?: return
         val request = ImportFinancialUndoRequest(activeBook, activeBatch, runtime.stableIds.nextStableId(), runtime.clock.now())
-        val result = if (useStructuredUndo) structured.undo(request) else financial.undo(request)
+        val result = undoInExclusiveMaintenance(request, useStructuredUndo)
         mutableState.value = if (result is DomainResult.Success) {
             mutableState.value.copy(executionState = ImportExecutionState.SUCCEEDED, resultOutcome = ImportResultOutcomeUi.ROLLED_BACK)
         } else {
@@ -540,10 +548,52 @@ internal class ImportController(
     suspend fun rollbackHistory(batchIdText: String) {
         val activeBook = bookId ?: return
         val selectedBatch = StableId.parse(batchIdText).getOrNull() ?: return
-        val result = financial.undo(
+        val result = undoInExclusiveMaintenance(
             ImportFinancialUndoRequest(activeBook, selectedBatch, runtime.stableIds.nextStableId(), runtime.clock.now()),
+            structuredUndo = false,
         )
         if (result is DomainResult.Success) showHistory(activeBook)
+    }
+
+    private suspend fun undoInExclusiveMaintenance(
+        request: ImportFinancialUndoRequest,
+        structuredUndo: Boolean,
+    ): DomainResult<app.ledger.finance.application.ImportFinancialUndoResult> {
+        val manager = sessionRuntime.activate(request.bookId)
+        manager.enterMaintenance(MaintenanceReason.CONTROLLED_MAINTENANCE)
+        manager.close()
+        val permit = try {
+            manager.acquireOfflinePrimaryMaintenancePermit(request.operationId)
+        } catch (error: Exception) {
+            manager.finishMaintenance()
+            throw error
+        }
+        return try {
+            val offlinePrimary = SecurePrimaryLedgerAccess.forOfflineMaintenance(
+                applicationContext,
+                keyProvider,
+                permit,
+            )
+            val offlineReferences = SecureRoomReferenceDataManagementPort(offlinePrimary)
+            if (structuredUndo) {
+                SecureRoomStructuredImportApplicationPort(
+                    applicationContext,
+                    keyProvider,
+                    offlinePrimary,
+                ).undo(request)
+            } else {
+                SecureRoomImportFinancialApplicationPort(
+                    applicationContext,
+                    keyProvider,
+                    offlineReferences,
+                    runtime.stableIds,
+                    databaseAccess = offlinePrimary,
+                ).undo(request)
+            }
+        } finally {
+            permit.release()
+            manager.finishMaintenance()
+        }
     }
 
     private fun requiresReingestion(): Boolean {
@@ -748,7 +798,7 @@ internal class ImportController(
         )
         val repository = staging(activeBook, id)
         val result = ImportPreparationService(
-            PrimaryLedgerDuplicateMatcher(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider)),
+            PrimaryLedgerDuplicateMatcher(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider, sessionRuntime)),
         ).prepare(
             id,
             format,
@@ -1135,7 +1185,7 @@ internal class ImportController(
 
     private fun operations(activeBookId: StableId) = SqlCipherBackgroundOperationRepository(
         activeBookId,
-        SecurePrimaryLedgerAccess(applicationContext, keyProvider),
+        SecurePrimaryLedgerAccess(applicationContext, keyProvider, sessionRuntime),
     )
 
     private fun staging(activeBookId: StableId, id: BackgroundOperationId) = SqlCipherStagingRepository(

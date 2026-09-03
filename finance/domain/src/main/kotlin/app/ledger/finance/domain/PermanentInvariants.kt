@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:filename")
+
 package app.ledger.finance.domain
 
 /** Frozen cross-layer standard shared by domain rules, database audits, and restore validation. */

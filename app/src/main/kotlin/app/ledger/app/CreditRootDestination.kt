@@ -53,30 +53,30 @@ internal fun CreditRootDestination(
             onNavigationChanged()
         },
     ) {
-    CreditDestination(
-        screenId,
-        state,
-        encodedArguments,
-        CreditActions(
-            onRetry = { viewModel.loadCredit(screenId, accountId, statementId, transactionId) },
-            onNavigate = { target, stableId ->
-                viewModel.navigateCredit(target, stableId)
-                onNavigationChanged()
-            },
-            onFieldChanged = viewModel::updateCreditField,
-            onNextPaymentAccount = viewModel::selectNextCreditPaymentAccount,
-            onNextZone = viewModel::selectNextCreditZone,
-            onCycleDueRule = viewModel::cycleCreditDueRule,
-            onSelectStatement = viewModel::selectCreditStatement,
-            onSelectEarliest = viewModel::selectCreditEarliest,
-            onSelectUnallocated = viewModel::selectCreditUnallocated,
-            onAssignment = viewModel::assignCreditStatement,
-            onToggleAutoPayment = viewModel::toggleCreditAutoPayment,
-            onToggleSeal = viewModel::toggleCreditStatementSeal,
-            onPaymentAccountSelected = viewModel::selectCreditPaymentAccount,
-            onZoneSelected = viewModel::selectCreditZone,
-        ),
-    )
+        CreditDestination(
+            screenId,
+            state,
+            encodedArguments,
+            CreditActions(
+                onRetry = { viewModel.loadCredit(screenId, accountId, statementId, transactionId) },
+                onNavigate = { target, stableId ->
+                    viewModel.navigateCredit(target, stableId)
+                    onNavigationChanged()
+                },
+                onFieldChanged = viewModel::updateCreditField,
+                onNextPaymentAccount = viewModel::selectNextCreditPaymentAccount,
+                onNextZone = viewModel::selectNextCreditZone,
+                onCycleDueRule = viewModel::cycleCreditDueRule,
+                onSelectStatement = viewModel::selectCreditStatement,
+                onSelectEarliest = viewModel::selectCreditEarliest,
+                onSelectUnallocated = viewModel::selectCreditUnallocated,
+                onAssignment = viewModel::assignCreditStatement,
+                onToggleAutoPayment = viewModel::toggleCreditAutoPayment,
+                onToggleSeal = viewModel::toggleCreditStatementSeal,
+                onPaymentAccountSelected = viewModel::selectCreditPaymentAccount,
+                onZoneSelected = viewModel::selectCreditZone,
+            ),
+        )
     }
 }
 

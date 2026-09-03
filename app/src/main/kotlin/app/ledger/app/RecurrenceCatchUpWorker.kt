@@ -18,6 +18,9 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 /** Worker payload is deliberately restricted to the single opaque operation ID. */
@@ -54,23 +57,47 @@ internal interface RecurrenceWorkerEntryPoint {
 
 internal object RecurrenceWorkScheduler {
     fun enqueueCatchUp(context: Context, operationId: StableId) {
-        val request = OneTimeWorkRequestBuilder<RecurrenceCatchUpWorker>()
-            .setInputData(operationData(operationId))
-            .setConstraints(Constraints.Builder().setRequiresStorageNotLow(true).build())
-            .build()
+        val request = catchUpRequest(operationId)
         WorkManager.getInstance(context).enqueueUniqueWork(uniqueName(operationId), ExistingWorkPolicy.KEEP, request)
+    }
+
+    /**
+     * Enqueues both durable schedules after the foreground catch-up, then joins the unique
+     * one-time worker. The periodic worker has a full-period initial delay, so it cannot duplicate
+     * startup work inside the first interactive measurement window.
+     */
+    suspend fun scheduleStartupCatchUpAndAwait(context: Context, operationId: StableId) {
+        val workManager = WorkManager.getInstance(context)
+        val request = catchUpRequest(operationId)
+        val enqueue = workManager.enqueueUniqueWork(uniqueName(operationId), ExistingWorkPolicy.KEEP, request)
+        ensurePeriodicCatchUp(context, operationId)
+        withContext(Dispatchers.IO) { enqueue.result.get() }
+        while (true) {
+            val work = withContext(Dispatchers.IO) {
+                workManager.getWorkInfosForUniqueWork(uniqueName(operationId)).get()
+            }
+            if (work.isNotEmpty() && work.none { info -> !info.state.isFinished }) return
+            delay(WORK_COMPLETION_POLL_MILLIS)
+        }
     }
 
     fun ensurePeriodicCatchUp(context: Context, operationId: StableId) {
         val request = PeriodicWorkRequestBuilder<RecurrenceCatchUpWorker>(PERIODIC_HOURS, TimeUnit.HOURS)
             .setInputData(operationData(operationId))
             .setConstraints(Constraints.Builder().setRequiresStorageNotLow(true).build())
+            .setInitialDelay(PERIODIC_HOURS, TimeUnit.HOURS)
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(periodicName(operationId), ExistingPeriodicWorkPolicy.KEEP, request)
     }
+
+    private fun catchUpRequest(operationId: StableId) = OneTimeWorkRequestBuilder<RecurrenceCatchUpWorker>()
+        .setInputData(operationData(operationId))
+        .setConstraints(Constraints.Builder().setRequiresStorageNotLow(true).build())
+        .build()
 
     internal fun operationData(operationId: StableId): Data = Data.Builder().putString(RecurrenceCatchUpWorker.INPUT_OPERATION_ID, operationId.toString()).build()
     internal fun uniqueName(operationId: StableId): String = "recurrence-catch-up-$operationId"
     internal fun periodicName(operationId: StableId): String = "recurrence-periodic-$operationId"
     private const val PERIODIC_HOURS = 12L
+    private const val WORK_COMPLETION_POLL_MILLIS = 100L
 }

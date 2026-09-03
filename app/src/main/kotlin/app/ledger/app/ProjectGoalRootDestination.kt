@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
@@ -48,40 +48,40 @@ internal fun ProjectGoalRootDestination(
         viewModel.loadProjectGoal(screenId, projectId, goalId, movementKind)
     }
     val actions = ProjectGoalActions(
-            onRetry = { viewModel.loadProjectGoal(screenId, projectId, goalId, movementKind) },
-            onNavigate = { target, stable, kind ->
-                if (target in setOf("PRJ-003", "PRJ-004", "PRJ-005") && stable != null && screenId in setOf("PRJ-003", "PRJ-004", "PRJ-005")) {
-                    viewModel.switchProjectView(target, stable)
-                } else {
-                    viewModel.navigateProjectGoal(target, stable, kind)
-                }
-                onNavigationChanged()
-            },
-            onProjectStatusTabSelected = viewModel::selectProjectStatusTab,
-            onProjectNameChanged = viewModel::updateProjectName,
-            onProjectDescriptionChanged = viewModel::updateProjectDescription,
-            onProjectStartDateChanged = viewModel::updateProjectStartDate,
-            onProjectEndDateChanged = viewModel::updateProjectEndDate,
-            onProjectBudgetChanged = viewModel::updateProjectBudget,
-            onProjectMonthlyBudgetChanged = viewModel::toggleProjectMonthlyBudget,
-            onProjectGoalChanged = viewModel::selectProjectGoal,
-            onSaveProject = viewModel::saveProject,
-            onOpenTransaction = { transactionId ->
-                viewModel.openProjectTransaction(transactionId)
-                onNavigationChanged()
-            },
-            onChangeProjectStatus = viewModel::changeProjectStatus,
-            onGoalNameChanged = viewModel::updateGoalName,
-            onGoalTargetChanged = viewModel::updateGoalTarget,
-            onGoalSuggestedChanged = viewModel::updateGoalSuggested,
-            onGoalDueDateChanged = viewModel::updateGoalDueDate,
-            onGoalAccountChanged = viewModel::selectGoalAccount,
-            onSaveGoal = viewModel::saveGoal,
-            onMovementAmountChanged = viewModel::updateGoalMovementAmount,
-            onMovementDateChanged = viewModel::updateGoalMovementDate,
-            onSaveMovement = viewModel::saveGoalMovement,
-            onCompleteGoal = viewModel::completeGoal,
-            onProjectTransactionKindChanged = viewModel::setProjectTransactionKind,
+        onRetry = { viewModel.loadProjectGoal(screenId, projectId, goalId, movementKind) },
+        onNavigate = { target, stable, kind ->
+            if (target in setOf("PRJ-003", "PRJ-004", "PRJ-005") && stable != null && screenId in setOf("PRJ-003", "PRJ-004", "PRJ-005")) {
+                viewModel.switchProjectView(target, stable)
+            } else {
+                viewModel.navigateProjectGoal(target, stable, kind)
+            }
+            onNavigationChanged()
+        },
+        onProjectStatusTabSelected = viewModel::selectProjectStatusTab,
+        onProjectNameChanged = viewModel::updateProjectName,
+        onProjectDescriptionChanged = viewModel::updateProjectDescription,
+        onProjectStartDateChanged = viewModel::updateProjectStartDate,
+        onProjectEndDateChanged = viewModel::updateProjectEndDate,
+        onProjectBudgetChanged = viewModel::updateProjectBudget,
+        onProjectMonthlyBudgetChanged = viewModel::toggleProjectMonthlyBudget,
+        onProjectGoalChanged = viewModel::selectProjectGoal,
+        onSaveProject = viewModel::saveProject,
+        onOpenTransaction = { transactionId ->
+            viewModel.openProjectTransaction(transactionId)
+            onNavigationChanged()
+        },
+        onChangeProjectStatus = viewModel::changeProjectStatus,
+        onGoalNameChanged = viewModel::updateGoalName,
+        onGoalTargetChanged = viewModel::updateGoalTarget,
+        onGoalSuggestedChanged = viewModel::updateGoalSuggested,
+        onGoalDueDateChanged = viewModel::updateGoalDueDate,
+        onGoalAccountChanged = viewModel::selectGoalAccount,
+        onSaveGoal = viewModel::saveGoal,
+        onMovementAmountChanged = viewModel::updateGoalMovementAmount,
+        onMovementDateChanged = viewModel::updateGoalMovementDate,
+        onSaveMovement = viewModel::saveGoalMovement,
+        onCompleteGoal = viewModel::completeGoal,
+        onProjectTransactionKindChanged = viewModel::setProjectTransactionKind,
     )
     Box(Modifier.fillMaxSize()) {
         if (screenId == "GOL-005") {

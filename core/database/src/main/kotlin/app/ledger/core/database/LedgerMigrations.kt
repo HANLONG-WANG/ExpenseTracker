@@ -60,6 +60,19 @@ object LedgerMigrations {
         object : Migration(PRIMARY_V4, PRIMARY_V5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 LedgerSchemaDefinition.migratePrimaryV4ToV5(context, db)
+                MigrationPostValidation.validateOrThrow(context, db, PRIMARY_V5)
+            }
+        },
+        object : Migration(PRIMARY_V5, PRIMARY_V6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                LedgerSchemaDefinition.migratePrimaryV5ToV6(context, db)
+                MigrationPostValidation.validateOrThrow(context, db, PRIMARY_V6)
+            }
+        },
+        object : Migration(PRIMARY_V6, PRIMARY_V7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                LedgerSchemaDefinition.migratePrimaryV6ToV7(context, db)
+                MigrationPostValidation.validateOrThrow(context, db, PRIMARY_V7)
             }
         },
     )
@@ -101,6 +114,22 @@ object LedgerMigrations {
                 MigrationStep(MigrationPhase.CONTRACT, "remove the obsolete immutable-fact purge guard"),
             ),
         ),
+        MigrationContract(
+            PRIMARY_V5,
+            PRIMARY_V6,
+            listOf(
+                MigrationStep(MigrationPhase.EXPAND, "add the state-aware Journal keyset index proven by target-scale EXPLAIN evidence"),
+                MigrationStep(MigrationPhase.SWITCH, "register the primary logical schema v6 contract"),
+            ),
+        ),
+        MigrationContract(
+            PRIMARY_V6,
+            PRIMARY_V7,
+            listOf(
+                MigrationStep(MigrationPhase.EXPAND, "add reference-page keyset and bounded usage-count indexes proven by target-scale EXPLAIN evidence"),
+                MigrationStep(MigrationPhase.SWITCH, "register the primary logical schema v7 contract"),
+            ),
+        ),
     )
 
     private const val PRIMARY_V1: Int = 1
@@ -108,6 +137,8 @@ object LedgerMigrations {
     private const val PRIMARY_V3: Int = 3
     private const val PRIMARY_V4: Int = 4
     private const val PRIMARY_V5: Int = 5
+    private const val PRIMARY_V6: Int = 6
+    private const val PRIMARY_V7: Int = 7
 }
 
 object StagingMigrations {

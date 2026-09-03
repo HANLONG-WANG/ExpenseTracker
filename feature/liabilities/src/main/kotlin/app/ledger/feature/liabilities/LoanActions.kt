@@ -1,9 +1,9 @@
 package app.ledger.feature.liabilities
 
 import app.ledger.core.common.StableId
-import app.ledger.finance.domain.LoanRepaymentMethod
 import app.ledger.finance.domain.LoanPrepaymentPolicy
 import app.ledger.finance.domain.LoanRateType
+import app.ledger.finance.domain.LoanRepaymentMethod
 import app.ledger.finance.domain.PaymentFrequency
 import app.ledger.finance.domain.PrepaymentRecalculationStrategy
 import java.math.RoundingMode

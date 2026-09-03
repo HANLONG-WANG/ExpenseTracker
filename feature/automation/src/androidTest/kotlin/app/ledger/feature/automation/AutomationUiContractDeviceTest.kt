@@ -147,7 +147,7 @@ class AutomationUiContractDeviceTest {
 
         composeRule.onNodeWithText("Rent").performClick()
         composeRule.onNodeWithTag(LedgerTestTags.AUTOMATION_CANDIDATE_EDITOR).assertExists()
-        val confirm = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.automation_confirm_and_post)
+        val confirm = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.automation_review_and_edit)
         composeRule.onNodeWithText(confirm).performClick()
         composeRule.runOnIdle {
             assertEquals(1, fullEditorLaunches)
@@ -221,8 +221,8 @@ class AutomationUiContractDeviceTest {
         val ZONE = ZoneId.of("Asia/Tokyo")
         val CURRENCY = (CurrencyCode.parse("JPY") as DomainResult.Success).value
         const val GOLDEN_TAG = "p23_automation_golden_root"
-        const val EXPECTED_HUB_SHA256 = "0f73c7a9ae623b1482cb53b37a0a1851ac4689868ada7a8cce81e047a8d6f874"
-        const val EXPECTED_CANDIDATE_SHA256 = "7b9f1701eccafa0c06de9f2bccee96be12e9a0fcb3ba330dbd0276907e77e497"
+        const val EXPECTED_HUB_SHA256 = "963be8946dd193f24e6b7636e4a254a7b982a34e051682783154dc08a487f734"
+        const val EXPECTED_CANDIDATE_SHA256 = "d12a84ecb979589c23329dfbc8b271303daded57d36c85b11e07e2b59b8570e9"
         val ACTIONS = AutomationActions(
             onRetry = {}, onNavigate = { _, _ -> }, onSearch = {}, onTemplateFilter = {}, onTemplateSort = {}, onArchiveBlueprint = {}, onBlueprintField = { _, _ -> }, onBlueprintKind = {},
             onBlueprintReference = { _, _ -> }, onSaveBlueprint = {}, onRecurrenceField = { _, _ -> }, onRecurrenceBlueprint = {},

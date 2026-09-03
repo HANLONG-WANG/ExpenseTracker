@@ -60,7 +60,7 @@ def table_map(catalog: dict[str, object]) -> dict[str, dict[str, object]]:
 
 
 def frozen_domain_fields() -> dict[str, set[str]]:
-    source = read(ROOT / "docs" / "规格冻结_v1.0" / "领域模型与数据库逻辑模型设计.md")
+    source = read(ROOT / "docs" / "初始开发文件存档" / "规格冻结_v1.0" / "领域模型与数据库逻辑模型设计.md")
     section = source.split("# 二十五、数据库逻辑表设计", 1)[1].split("# 二十六、查询投影", 1)[0]
     headings = list(re.finditer(r"^### `([^`]+)`[^\n]*$", section, flags=re.MULTILINE))
     result: dict[str, set[str]] = {}
@@ -216,12 +216,13 @@ def validate_kotlin_and_build() -> None:
 
 
 def validate_ledgers() -> int:
-    project_state = read(ROOT / "docs" / "implementation" / "PROJECT_STATE.md")
-    evidence = read(ROOT / "docs" / "implementation" / "TEST_EVIDENCE.md")
-    coverage = read(ROOT / "docs" / "implementation" / "DOMAIN_AND_SCHEMA_COVERAGE.md")
-    mapping = read(ROOT / "docs" / "implementation" / "P07_SCHEMA_MAPPING.md")
-    requirements = read(ROOT / "docs" / "implementation" / "REQUIREMENT_COVERAGE.csv")
-    screens = read(ROOT / "docs" / "implementation" / "SCREEN_COVERAGE.csv")
+    implementation = ROOT / "docs" / "初始开发文件存档" / "implementation"
+    project_state = read(implementation / "PROJECT_STATE.md")
+    evidence = read(implementation / "TEST_EVIDENCE.md")
+    coverage = read(implementation / "DOMAIN_AND_SCHEMA_COVERAGE.md")
+    mapping = read(implementation / "P07_SCHEMA_MAPPING.md")
+    requirements = read(implementation / "REQUIREMENT_COVERAGE.csv")
+    screens = read(implementation / "SCREEN_COVERAGE.csv")
 
     current_stage = re.search(r"Current stage: P(\d{2})", project_state)
     require(

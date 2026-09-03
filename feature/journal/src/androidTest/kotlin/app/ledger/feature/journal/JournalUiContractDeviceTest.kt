@@ -12,10 +12,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.paging.PagingData
@@ -33,12 +38,15 @@ import app.ledger.finance.application.JournalPurgeAssessment
 import app.ledger.finance.application.JournalRevisionComparison
 import app.ledger.finance.application.JournalRevisionView
 import app.ledger.finance.application.JournalTransactionView
+import app.ledger.finance.application.PurgeIneligibilityReason
 import app.ledger.finance.domain.RevisionAction
 import app.ledger.finance.domain.TransactionDependencyType
+import app.ledger.finance.domain.TransactionFilter
 import app.ledger.finance.domain.TransactionKind
 import app.ledger.finance.domain.TransactionLifecycleState
 import app.ledger.finance.domain.TransactionSource
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -47,6 +55,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(AndroidJUnit4::class)
 class JournalUiContractDeviceTest {
@@ -79,12 +89,16 @@ class JournalUiContractDeviceTest {
         cases.forEach { case ->
             composeRule.runOnIdle { active.value = case }
             composeRule.waitForIdle()
-            composeRule.onNodeWithTag("journal_screen").assertExists()
+            if (case.screen == "JRN-012") {
+                composeRule.onNode(isDialog()).assertExists("${case.screen}:${case.state} must render its purge dialog")
+            } else {
+                composeRule.onNodeWithTag("journal_screen").assertExists("${case.screen}:${case.state} must render its screen root")
+            }
         }
     }
 
     @Test
-    fun trashRestoreDispatchesOnceAndIneligiblePurgeExposesReasonWithoutPurging() {
+    fun trashRestoreDispatchesOnceAndBackupReadBlocksPurgeWithoutPurging() {
         val trashed = ROW.copy(
             state = TransactionLifecycleState.TRASHED,
             trashedAt = NOW.minusSeconds(120),
@@ -99,7 +113,7 @@ class JournalUiContractDeviceTest {
                     ID,
                     NOW.minusSeconds(120),
                     NOW.plusSeconds(86_400),
-                    setOf(PurgeIneligibilityReason.PHYSICAL_PURGE_REQUIRES_MAINTENANCE),
+                    setOf(PurgeIneligibilityReason.ATTACHMENTS_READ_BY_BACKUP),
                 ),
             ),
         )
@@ -123,12 +137,64 @@ class JournalUiContractDeviceTest {
         }
 
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        composeRule.onNodeWithText(context.getString(R.string.p15_journal_restore)).performClick()
+        val restoreAction = hasText(context.getString(R.string.p15_journal_restore)) and hasClickAction()
+        composeRule.onNodeWithTag("journal_screen").performScrollToNode(restoreAction)
+        composeRule.onNode(restoreAction).performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle { assertEquals(1, restores) }
 
         composeRule.runOnIdle { screen.value = "JRN-012" }
-        composeRule.onNodeWithText(context.getString(R.string.p15_purge_reason_maintenance)).assertExists()
+        composeRule.onNodeWithText(context.getString(R.string.p15_purge_reason_backup)).assertExists()
         composeRule.runOnIdle { assertEquals(0, purges) }
+    }
+
+    @Test
+    fun pendingSearchKeepsPagingCollectorActiveBehindTheBlockingLoadingState() {
+        val collected = AtomicBoolean(false)
+        val pages = flow {
+            collected.set(true)
+            emit(PagingData.from(listOf(ROW)))
+        }
+        val content = JournalLoadState.Content(
+            filter = TransactionFilter(searchText = "needle"),
+            searchText = "needle",
+            searchPending = true,
+        )
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 800.dp)) {
+                    JournalDestination("JRN-002", emptyMap(), content, pages, ACTIONS)
+                }
+            }
+        }
+
+        composeRule.waitUntil(5_000) { collected.get() }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(R.string.p15_journal_loading)).assertExists()
+        composeRule.onNodeWithTag("journal_search_results").assertDoesNotExist()
+    }
+
+    @Test
+    fun pagePresentationWaitsForTheMatchingLoadedEpochAndAFrame() {
+        val presentations = AtomicInteger()
+        val content = mutableStateOf(JournalLoadState.Content(pagingEpoch = 7))
+        val pages = MutableStateFlow(PagingData.from(listOf(ROW)))
+        val actions = ACTIONS.copy(onPagePresented = { presentations.incrementAndGet() })
+        composeRule.setContent {
+            LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
+                Box(Modifier.size(360.dp, 800.dp)) {
+                    JournalDestination("JRN-001", emptyMap(), content.value, pages, actions)
+                }
+            }
+        }
+
+        composeRule.waitForIdle()
+        assertEquals(0, presentations.get())
+        composeRule.runOnIdle {
+            content.value = content.value.copy(pageLoadedEpoch = 7)
+        }
+        composeRule.waitUntil(5_000) { presentations.get() >= 1 }
+        composeRule.waitForIdle()
+        assertEquals(1, presentations.get())
     }
 
     private fun cases(): List<Case> {
@@ -157,7 +223,7 @@ class JournalUiContractDeviceTest {
             JournalRevisionView(id(3), 1, RevisionAction.CREATE, TransactionLifecycleState.ACTIVE, NOW.minusSeconds(60), NOW, "Meals", "Cash", 1000, JPY, listOf("created")),
         )
         val DETAIL = JournalDetailView(ROW, NOW.minusSeconds(60), NOW, "Asia/Tokyo", "1000+280", "private note", "Local shop", "Trip", "Station", listOf(id(5)), listOf("receipt.pdf"), "included", "CONSUMPTION_EXPENSE", listOf(JournalFxEvidenceView(JPY, JPY, "1", "identity", NOW, false, false)), listOf("REFUND"), listOf("Cash:credit:1280 JPY"), "MANUAL", null, 1)
-        val ACTIONS: (JournalScreenAction) -> Unit = {}
+        val ACTIONS: JournalActions = JOURNAL_TEST_ACTIONS
         val EXPECTED = linkedMapOf(
             "JRN-001" to setOf("loading", "content", "empty", "error", "refreshing"),
             "JRN-002" to setOf("idle", "typing", "results", "empty", "error"),

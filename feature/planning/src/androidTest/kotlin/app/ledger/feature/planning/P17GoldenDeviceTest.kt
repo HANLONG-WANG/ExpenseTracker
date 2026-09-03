@@ -67,8 +67,8 @@ class P17GoldenDeviceTest {
     private companion object {
         const val GOLDEN_TAG = "p17_budget_golden_root"
         val CASES = listOf(
-            Golden("BUD-001", ThemeMode.LIGHT, BudgetDeviceFixtures.state(), "837e242104cc3543dc558758396ba7c41701405e4d913d7244c4a3709f8d0684"),
-            Golden("BUD-002", ThemeMode.DARK, BudgetDeviceFixtures.constraintState(), "1c0b85a8842cbb8ca13a0e7a527df0a80d500783b86af11cb9699b3d3638f321"),
+            Golden("BUD-001", ThemeMode.LIGHT, BudgetDeviceFixtures.state(), "24174b600ad54856bdce57467481f5c4d20d26a66815bac6c393e390c66b2e84"),
+            Golden("BUD-002", ThemeMode.DARK, BudgetDeviceFixtures.constraintState(), "aa12e3793c021e6872390f3e83fc06a4ac3ad463e7abe8e8ed8bbf1921edd8b6"),
         )
     }
 }

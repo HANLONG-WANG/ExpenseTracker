@@ -7,13 +7,13 @@ import app.ledger.finance.application.LoanContractView
 import app.ledger.finance.application.LoanPaymentDetailView
 import app.ledger.finance.application.LoanSnapshot
 import app.ledger.finance.application.LoanTrancheView
+import app.ledger.finance.domain.LoanPrepaymentPolicy
 import app.ledger.finance.domain.LoanPrepaymentSimulation
+import app.ledger.finance.domain.LoanRatePeriod
+import app.ledger.finance.domain.LoanRateType
 import app.ledger.finance.domain.LoanRepaymentMethod
 import app.ledger.finance.domain.LoanScheduleRevision
 import app.ledger.finance.domain.LoanStatus
-import app.ledger.finance.domain.LoanPrepaymentPolicy
-import app.ledger.finance.domain.LoanRatePeriod
-import app.ledger.finance.domain.LoanRateType
 import app.ledger.finance.domain.PaymentFrequency
 import app.ledger.finance.domain.PrepaymentRecalculationStrategy
 import java.math.RoundingMode
@@ -171,7 +171,9 @@ public object LoanPolicy {
             contractId?.let { target -> snapshot.contracts.singleOrNull { it.id == target } }
                 ?: snapshot.contracts.firstOrNull()
         }
-        val tranche = if (screenId == "LOA-003" && trancheId == null) null else {
+        val tranche = if (screenId == "LOA-003" && trancheId == null) {
+            null
+        } else {
             trancheId?.let { target -> contract?.tranches?.singleOrNull { it.id == target } } ?: contract?.tranches?.firstOrNull()
         }
         val presentation = when (screenId) {

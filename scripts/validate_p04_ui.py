@@ -18,7 +18,7 @@ from validate_p02_quality import validate_repository
 
 
 ROOT = Path(__file__).resolve().parents[1]
-UI_ROOT = ROOT / "docs/UI设计稿与实现契约_v1.0"
+UI_ROOT = ROOT / "docs/初始开发文件存档/UI设计稿与实现契约_v1.0"
 TOKEN_SOURCE = UI_ROOT / "android_ledger_ui_tokens_v1.json"
 SCREEN_SOURCE = UI_ROOT / "android_ledger_screen_contract_v1.yaml"
 MATRIX_SOURCE = UI_ROOT / "UI需求追踪矩阵_v1.csv"
@@ -213,8 +213,8 @@ def validate_repository_state() -> dict[str, int]:
         if rule not in policy:
             raise P04ValidationError(f"P04 static rule missing: {rule}")
 
-    state = source_text("docs/implementation/PROJECT_STATE.md")
-    evidence = source_text("docs/implementation/TEST_EVIDENCE.md")
+    state = source_text("docs/初始开发文件存档/implementation/PROJECT_STATE.md")
+    evidence = source_text("docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
     if "| P04 | VERIFIED |" not in state or "### P04 result" not in state:
         raise P04ValidationError("PROJECT_STATE does not truthfully mark P04 VERIFIED")
     if any(f"P04-E{number:03d}" not in evidence for number in range(1, 12)):

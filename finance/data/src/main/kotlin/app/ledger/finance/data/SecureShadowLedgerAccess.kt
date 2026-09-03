@@ -8,6 +8,8 @@ import app.ledger.core.common.StableId
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerMigrations
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.nio.file.AtomicMoveNotSupportedException
@@ -35,11 +37,12 @@ data class SecureShadowValidation(
 class SecureShadowLedgerAccess(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
+    private val liveDatabaseAccess: LedgerDatabaseOperationAccess,
 ) {
     private val applicationContext = context.applicationContext
     val currentDatabaseSchemaVersion: Int get() = LedgerMigrations.CURRENT_VERSION
 
-    fun createSnapshot(bookId: StableId, operationId: StableId): ShadowSnapshot {
+    suspend fun createSnapshot(bookId: StableId, operationId: StableId): ShadowSnapshot {
         val shadowName = shadowName(operationId)
         applicationContext.deleteDatabase(shadowName)
         val expectedHead = withPrimary(bookId, write = true) { database ->
@@ -66,7 +69,7 @@ class SecureShadowLedgerAccess(
     }
 
     /** Builds a rollback candidate from the retained pre-exchange safety database. */
-    fun createRollbackSnapshot(
+    suspend fun createRollbackSnapshot(
         bookId: StableId,
         retainedOperationId: StableId,
         rollbackOperationId: StableId,
@@ -157,7 +160,7 @@ class SecureShadowLedgerAccess(
         }
     }
 
-    fun recoverInterruptedExchange(bookId: StableId, operationId: StableId): Boolean {
+    suspend fun recoverInterruptedExchange(bookId: StableId, operationId: StableId): Boolean {
         val marker = applicationContext.filesDir.resolve("ledger_exchange_${operationId.bytes.toHex()}.marker").toPath()
         if (!Files.exists(marker)) return false
         val safety = safetyName(operationId)
@@ -198,27 +201,32 @@ class SecureShadowLedgerAccess(
         )
     }
 
-    private fun <T> withPrimary(bookId: StableId, write: Boolean, block: (SupportSQLiteDatabase) -> T): T = withLedger(bookId, null, write, block)
+    private suspend fun <T> withPrimary(
+        bookId: StableId,
+        write: Boolean,
+        block: (SupportSQLiteDatabase) -> T,
+    ): T = liveDatabaseAccess.withCurrentDatabase(
+        bookId,
+        if (write) LedgerAccessMode.WRITE else LedgerAccessMode.READ,
+    ) { database ->
+        if (write) database.inLedgerTransaction(block) else database.readLedger(block)
+    }
 
     private fun <T> withCopy(
         bookId: StableId,
         name: String,
         write: Boolean,
         block: (SupportSQLiteDatabase) -> T,
-    ): T = withLedger(bookId, name, write, block)
+    ): T = withCopyDatabase(bookId, name, write, block)
 
-    private fun <T> withLedger(
+    private fun <T> withCopyDatabase(
         bookId: StableId,
-        copyName: String?,
+        copyName: String,
         write: Boolean,
         block: (SupportSQLiteDatabase) -> T,
     ): T = keyProvider.open(bookId).use { keys ->
         keys.databaseDek.useBytes { key ->
-            val database = if (copyName == null) {
-                EncryptedDatabaseFactory.openPrimary(applicationContext, key)
-            } else {
-                EncryptedDatabaseFactory.openLedgerCopy(applicationContext, copyName, key)
-            }
+            val database = EncryptedDatabaseFactory.openLedgerCopy(applicationContext, copyName, key)
             try {
                 if (write) database.inLedgerTransaction(block) else database.readLedger(block)
             } finally {

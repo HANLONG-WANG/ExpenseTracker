@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:function-naming")
+
 package app.ledger.app
 
 import android.content.ActivityNotFoundException

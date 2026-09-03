@@ -59,6 +59,7 @@ import java.util.UUID
 class SettlementApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var references: SecureRoomReferenceDataManagementPort
     private lateinit var settlements: SecureRoomSettlementApplicationPort
     private lateinit var ordinary: SecureRoomOrdinaryTransactionEntryPort
@@ -69,6 +70,7 @@ class SettlementApplicationPortDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         SecureRoomLedgerInitializationPort(context, keys).apply {
             initialize(
                 InitializeLedgerCommand(
@@ -87,9 +89,9 @@ class SettlementApplicationPortDeviceTest {
                 InitialCategoryCommand(CATEGORY_ID, id(211), id(212), id(213), Instant.parse("2026-08-01T00:00:02Z"), CategoryDirection.EXPENSE, "Shared meals", "record", StatisticalNature.CONSUMPTION_EXPENSE, "record", 0xff006c4c.toInt()),
             ).success()
         }
-        references = SecureRoomReferenceDataManagementPort(context, keys)
-        settlements = SecureRoomSettlementApplicationPort(context, keys)
-        ordinary = SecureRoomOrdinaryTransactionEntryPort(context, keys, references)
+        references = SecureRoomReferenceDataManagementPort(databaseAccess)
+        settlements = SecureRoomSettlementApplicationPort(databaseAccess)
+        ordinary = SecureRoomOrdinaryTransactionEntryPort(databaseAccess, references)
     }
 
     @After

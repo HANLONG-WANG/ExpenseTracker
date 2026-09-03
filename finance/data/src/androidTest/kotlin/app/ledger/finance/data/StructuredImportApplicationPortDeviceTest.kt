@@ -55,6 +55,7 @@ import java.util.UUID
 class StructuredImportApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
 
     @Before
     fun prepare() = runBlocking {
@@ -63,6 +64,7 @@ class StructuredImportApplicationPortDeviceTest {
         deleteTestCopies()
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         SecureRoomLedgerInitializationPort(context, keys).initialize(
             InitializeLedgerCommand(
                 LedgerGenesisIds(
@@ -107,7 +109,7 @@ class StructuredImportApplicationPortDeviceTest {
             ImportFinancialPageSource { after, _ -> if (after == 0L) DomainResult.Success(transactionPage) else DomainResult.Success(null) },
             1,
         )
-        val port = SecureRoomStructuredImportApplicationPort(context, keys)
+        val port = SecureRoomStructuredImportApplicationPort(context, keys, databaseAccess)
         val result = port.commit(request).success()
 
         assertTrue(result.usedShadowLedger)
@@ -150,8 +152,9 @@ class StructuredImportApplicationPortDeviceTest {
         val auditPort = SecureRoomImportFinancialApplicationPort(
             context,
             keys,
-            SecureRoomReferenceDataManagementPort(context, keys),
+            SecureRoomReferenceDataManagementPort(databaseAccess),
             StableIdSource { id(900_000) },
+            databaseAccess = databaseAccess,
         )
         val audit = auditPort.audit(BOOK_ID, id(90_003)).success()
         requireNotNull(audit)

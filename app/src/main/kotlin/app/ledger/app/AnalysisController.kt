@@ -12,10 +12,10 @@ import app.ledger.analytics.domain.DashboardItem
 import app.ledger.analytics.domain.DashboardItemWidth
 import app.ledger.analytics.domain.Dimension
 import app.ledger.analytics.domain.DrilldownQueryId
+import app.ledger.analytics.domain.FilterExpression
 import app.ledger.analytics.domain.FixedReport
 import app.ledger.analytics.domain.FixedReportCatalog
 import app.ledger.analytics.domain.ForecastKey
-import app.ledger.analytics.domain.FilterExpression
 import app.ledger.analytics.domain.MapViewport
 import app.ledger.analytics.domain.ReportDefinitionId
 import app.ledger.analytics.domain.ReportExecution
@@ -31,9 +31,9 @@ import app.ledger.analytics.domain.SaveReportDefinitionRequest
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.money.CurrencyCode
-import app.ledger.feature.analysis.AnalysisFeatureState
 import app.ledger.feature.analysis.AnalysisEntityFilter
 import app.ledger.feature.analysis.AnalysisExportScope
+import app.ledger.feature.analysis.AnalysisFeatureState
 import app.ledger.feature.analysis.AnalysisLoadState
 import app.ledger.feature.analysis.AnalysisPolicy
 import app.ledger.feature.analysis.AnalysisPresentation
@@ -115,6 +115,12 @@ internal class AnalysisController(
         loadCurrent()
     }
 
+    fun loadTimedOut() {
+        val previous = (mutableState.value as? AnalysisLoadState.Content)?.state
+            ?: (mutableState.value as? AnalysisLoadState.Loading)?.previous
+        mutableState.value = AnalysisLoadState.Failure(screenId, "ANALYSIS_LOAD_TIMEOUT", previous)
+    }
+
     suspend fun reload() = loadCurrent()
 
     suspend fun previousPeriod() {
@@ -166,7 +172,13 @@ internal class AnalysisController(
                 presentation = if (value.isBlank()) {
                     AnalysisPresentation.INVALID
                 } else if (screenId == "ANA-007") {
-                    if (dashboardItems.isEmpty()) AnalysisPresentation.EMPTY_CANVAS else if (dashboardDraftId == null) AnalysisPresentation.CREATE else AnalysisPresentation.EDIT
+                    if (dashboardItems.isEmpty()) {
+                        AnalysisPresentation.EMPTY_CANVAS
+                    } else if (dashboardDraftId == null) {
+                        AnalysisPresentation.CREATE
+                    } else {
+                        AnalysisPresentation.EDIT
+                    }
                 } else {
                     AnalysisPresentation.EDITING
                 },
@@ -248,7 +260,13 @@ internal class AnalysisController(
         updateCurrent {
             it.copy(
                 dashboardItems = dashboardItems,
-                presentation = if (dashboardItems.isEmpty()) AnalysisPresentation.EMPTY_CANVAS else if (dashboardDraftId == null) AnalysisPresentation.CREATE else AnalysisPresentation.EDIT,
+                presentation = if (dashboardItems.isEmpty()) {
+                    AnalysisPresentation.EMPTY_CANVAS
+                } else if (dashboardDraftId == null) {
+                    AnalysisPresentation.CREATE
+                } else {
+                    AnalysisPresentation.EDIT
+                },
             )
         }
     }

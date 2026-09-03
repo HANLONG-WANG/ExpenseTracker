@@ -3,24 +3,27 @@ package app.ledger.app
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.UiAutomation
 import android.content.Context
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
-import androidx.lifecycle.ViewModelProvider
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.onAllNodes
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextReplacement
-import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
-import app.ledger.core.security.BookSessionState
 import app.ledger.core.designsystem.LedgerTestTags
-import app.ledger.feature.record.OrdinaryRecordLoadState
+import app.ledger.core.navigation.TopLevelDestination
+import app.ledger.core.security.BookSessionState
 import app.ledger.feature.onboarding.OnboardingLanguage
 import app.ledger.feature.onboarding.OnboardingStep
+import app.ledger.feature.record.OrdinaryRecordLoadState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -53,9 +56,20 @@ class A11yP34TalkBackDeviceTest {
             awaitStep(viewModel, OnboardingStep.LANGUAGE)
         }
         completeOnboarding(viewModel)
-        withTimeout(DEVICE_TIMEOUT_MILLIS) {
+        val ready = withTimeout(DEVICE_TIMEOUT_MILLIS) {
             viewModel.rootState.first { state -> (state as? AppRootState.Session)?.state is BookSessionState.Ready }
+        }.let { (it as AppRootState.Session).state as BookSessionState.Ready }
+        composeRule.runOnUiThread { viewModel.selectRootTopLevel(TopLevelDestination.RECORD) }
+        withTimeout(DEVICE_TIMEOUT_MILLIS) {
+            viewModel.ordinaryRecord.first { state ->
+                val content = state as? OrdinaryRecordLoadState.Content
+                content?.snapshot?.references?.bookId == ready.bookId &&
+                    content.snapshot.references.categories.any { it.name == CATEGORY_NAME }
+            }
         }
+        composeRule.runOnUiThread { viewModel.selectRecordTab(app.ledger.feature.record.RecordTab.EXPENSE) }
+        composeRule.onNodeWithTag(LedgerTestTags.CATEGORY_GRID).assertExists()
+        composeRule.onNode(hasText(CATEGORY_NAME, substring = true) and hasClickAction()).assertExists()
 
         instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
         val packageManager = instrumentation.targetContext.packageManager
@@ -66,9 +80,12 @@ class A11yP34TalkBackDeviceTest {
         enableTalkBackForDedicatedFlow()
         assertTrue("The dedicated device flow could not enable TalkBack", waitForTalkBack())
 
-        composeRule.waitUntil(DEVICE_TIMEOUT_MILLIS) {
-            runCatching { composeRule.onNodeWithText(CATEGORY_NAME, substring = true).fetchSemanticsNode() }.isSuccess
-        }
+        val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        assertTrue(
+            "The rendered category was not exposed through the Android accessibility tree: " +
+                accessibilityTreeSummary(automation.rootInActiveWindow),
+            waitForActionableAccessibilityNode(automation, CATEGORY_NAME),
+        )
         performAccessibilityClick(CATEGORY_NAME)
         composeRule.waitUntil(DEVICE_TIMEOUT_MILLIS) {
             composeRule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty()
@@ -103,8 +120,8 @@ class A11yP34TalkBackDeviceTest {
         composeRule.waitUntil(DEVICE_TIMEOUT_MILLIS) {
             viewModel.navigator.currentKey.contract.screenId.value == "REC-001"
         }
-        composeRule.onNodeWithText(CATEGORY_NAME, substring = true).assertExists()
-        composeRule.onNodeWithText("Record").assertExists()
+        composeRule.onNode(hasText(CATEGORY_NAME, substring = true) and hasClickAction()).assertExists()
+        composeRule.onNodeWithTag(LedgerTestTags.NAVIGATION_RECORD).assertExists()
         assertTrue("TalkBack stopped during the record flow", waitForTalkBack())
 
         composeRule.runOnUiThread {
@@ -159,9 +176,7 @@ class A11yP34TalkBackDeviceTest {
         val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
         repeat(SERVICE_POLL_ATTEMPTS) {
             composeRule.waitForIdle()
-            val labeled = findAccessibilityNode(automation.rootInActiveWindow, label)
-            var actionable = labeled
-            while (actionable != null && !actionable.isClickable) actionable = actionable.parent
+            val actionable = findActionableAccessibilityNode(automation.rootInActiveWindow, label)
             if (actionable?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
                 composeRule.waitForIdle()
                 return
@@ -176,11 +191,18 @@ class A11yP34TalkBackDeviceTest {
 
     private fun enableTalkBackForDedicatedFlow() {
         val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
-        automation.executeShellCommand("settings put secure enabled_accessibility_services $TALKBACK_COMPONENT").close()
-        automation.executeShellCommand("settings put secure accessibility_enabled 1").close()
+        executeShellCommandAndWait(
+            automation,
+            "pm grant $TALKBACK_PACKAGE android.permission.POST_NOTIFICATIONS",
+        )
+        executeShellCommandAndWait(
+            automation,
+            "settings put secure enabled_accessibility_services $TALKBACK_COMPONENT",
+        )
+        executeShellCommandAndWait(automation, "settings put secure accessibility_enabled 1")
     }
 
-    private fun findAccessibilityNode(root: AccessibilityNodeInfo?, label: String): AccessibilityNodeInfo? {
+    private fun findActionableAccessibilityNode(root: AccessibilityNodeInfo?, label: String): AccessibilityNodeInfo? {
         var result: AccessibilityNodeInfo? = null
         if (root != null) {
             if (
@@ -188,16 +210,28 @@ class A11yP34TalkBackDeviceTest {
                 root.contentDescription?.toString()?.contains(label) == true ||
                 root.hintText?.toString()?.contains(label) == true
             ) {
-                result = root
-            } else {
-                var index = 0
-                while (result == null && index < root.childCount) {
-                    result = findAccessibilityNode(root.getChild(index), label)
-                    index += 1
-                }
+                var actionable: AccessibilityNodeInfo? = root
+                while (actionable != null && !actionable.isClickable) actionable = actionable.parent
+                result = actionable
+            }
+            var index = 0
+            while (result == null && index < root.childCount) {
+                result = findActionableAccessibilityNode(root.getChild(index), label)
+                index += 1
             }
         }
         return result
+    }
+
+    private fun waitForActionableAccessibilityNode(
+        automation: UiAutomation,
+        label: String,
+    ): Boolean {
+        repeat(SERVICE_POLL_ATTEMPTS) {
+            if (findActionableAccessibilityNode(automation.rootInActiveWindow, label) != null) return true
+            SystemClock.sleep(SERVICE_POLL_MILLIS)
+        }
+        return false
     }
 
     private fun accessibilityTreeSummary(root: AccessibilityNodeInfo?): String {
@@ -218,13 +252,25 @@ class A11yP34TalkBackDeviceTest {
     @After
     fun disableTalkBackBeforePixelAndRemainingUiSuites() {
         val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
-        automation.executeShellCommand("settings delete secure enabled_accessibility_services").close()
-        automation.executeShellCommand("settings put secure accessibility_enabled 0").close()
+        executeShellCommandAndWait(automation, "settings delete secure enabled_accessibility_services")
+        executeShellCommandAndWait(automation, "settings put secure accessibility_enabled 0")
+        if (automation.rootInActiveWindow?.packageName?.toString() == PERMISSION_CONTROLLER_PACKAGE) {
+            executeShellCommandAndWait(automation, "input keyevent KEYCODE_BACK")
+        }
         repeat(SERVICE_POLL_ATTEMPTS) {
             if (!waitForTalkBack(singleAttempt = true)) return
             SystemClock.sleep(SERVICE_POLL_MILLIS)
         }
         assertTrue("TalkBack remained active after the dedicated flow", !waitForTalkBack(singleAttempt = true))
+    }
+
+    private fun executeShellCommandAndWait(
+        automation: UiAutomation,
+        command: String,
+    ) {
+        ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).use { output ->
+            output.readBytes()
+        }
     }
 
     companion object {
@@ -246,6 +292,7 @@ class A11yP34TalkBackDeviceTest {
         const val TALKBACK_PACKAGE = "com.google.android.marvin.talkback"
         const val TALKBACK_COMPONENT =
             "com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService"
+        const val PERMISSION_CONTROLLER_PACKAGE = "com.google.android.permissioncontroller"
         const val SERVICE_POLL_ATTEMPTS = 30
         const val SERVICE_POLL_MILLIS = 200L
         const val MAXIMUM_DIAGNOSTIC_NODES = 80

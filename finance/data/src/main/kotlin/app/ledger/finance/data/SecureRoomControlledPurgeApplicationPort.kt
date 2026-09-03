@@ -9,14 +9,17 @@ import app.ledger.core.common.StableId
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.ControlledPurgeApplicationPort
 import app.ledger.finance.application.ControlledPurgeRequest
 import app.ledger.finance.application.ControlledPurgeResult
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
-import app.ledger.finance.application.DefaultLedgerWriteGate
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
+import app.ledger.finance.application.JournalApplicationPort
 import app.ledger.finance.application.JournalPurgeAssessment
 import app.ledger.finance.application.LedgerWriteGate
 import app.ledger.finance.domain.BookCommitId
@@ -36,13 +39,11 @@ import java.time.Instant
 
 /** P31 entry: the UI can request purge only through the shared financial coordinator. */
 class SecureRoomControlledPurgeApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
-    private val writeGate: LedgerWriteGate = DefaultLedgerWriteGate(),
+    private val databaseAccess: LedgerDatabaseOperationAccess,
+    private val journal: JournalApplicationPort,
+    private val writeGate: LedgerWriteGate = CallerOwnedLedgerWriteGate,
     private val failureInjector: FinancialCommitFailureInjector = FinancialCommitFailureInjector.NONE,
 ) : ControlledPurgeApplicationPort {
-    private val applicationContext = context.applicationContext
-    private val journal = SecureRoomJournalApplicationPort(applicationContext, keyProvider)
     private val mapper = RoomReferenceFinancialSnapshotMapper()
 
     override suspend fun assess(
@@ -119,14 +120,7 @@ class SecureRoomControlledPurgeApplicationPort(
     }
 
     private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> DomainResult<T>): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(applicationContext, it) }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+        databaseAccess.withCurrentDatabase(bookId, LedgerAccessMode.WRITE, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (failure: Exception) {

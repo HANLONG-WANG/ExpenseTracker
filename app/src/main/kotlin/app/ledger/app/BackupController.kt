@@ -17,6 +17,7 @@ import app.ledger.core.security.Argon2idCalibrator
 import app.ledger.core.security.Argon2idParameters
 import app.ledger.core.security.BackupKeyEnvelopeStore
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.core.security.RecoveryPassword
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.core.security.SecureTransferHandleStore
@@ -47,8 +48,8 @@ import app.ledger.transfer.domain.BackupNetworkPolicy
 import app.ledger.transfer.domain.BackupPolicy
 import app.ledger.transfer.domain.BackupRepositoryId
 import app.ledger.transfer.domain.BackupRepositoryKind
-import app.ledger.transfer.domain.BackupSnapshotId
 import app.ledger.transfer.domain.BackupRetentionPolicy
+import app.ledger.transfer.domain.BackupSnapshotId
 import app.ledger.transfer.domain.OperationParameters
 import app.ledger.transfer.domain.RecoveryPasswordChangeMode
 import kotlinx.coroutines.delay
@@ -62,6 +63,7 @@ internal class BackupController(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
     private val runtime: AppRuntimeSources,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
     private val formatCreatedAt: (Instant) -> String,
 ) {
     private val applicationContext = context.applicationContext
@@ -218,7 +220,7 @@ internal class BackupController(
             }
             persistConfiguration()
             val hasAccessibleHistory = wasConfigured && runCatching {
-                createBackupCatalog(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider))
+                createBackupCatalog(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider, databaseAccess))
                     .completeSnapshots(repositoryId).isNotEmpty()
             }.getOrDefault(false)
             if (hasAccessibleHistory && state.recoveryPasswordChangeMode == RecoveryPasswordChangeMode.RE_ENCRYPT_ACCESSIBLE_HISTORY) {
@@ -324,7 +326,7 @@ internal class BackupController(
         val config = configuration ?: return false
         if (config.repositoryKind == BackupRepositoryKind.GOOGLE_DRIVE) return false
         val snapshotId = StableId.parse(snapshotIdText).getOrNull()?.let(::BackupSnapshotId) ?: return false
-        val catalog = createBackupCatalog(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider))
+        val catalog = createBackupCatalog(activeBook, SecurePrimaryLedgerAccess(applicationContext, keyProvider, databaseAccess))
         val snapshot = catalog.completeSnapshots(config.repositoryId).singleOrNull { it.id == snapshotId } ?: return false
         val storage = runCatching { repositoryStorage(activeBook, config) }.getOrNull() ?: return false
         val manifestName = snapshot.id.value.bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) } + ".manifest"
@@ -515,7 +517,7 @@ internal class BackupController(
 
     private fun loadSnapshots(activeBook: StableId, config: BackupConfiguration?): List<BackupSnapshotUi> {
         if (config == null) return emptyList()
-        val access = SecurePrimaryLedgerAccess(applicationContext, keyProvider)
+        val access = SecurePrimaryLedgerAccess(applicationContext, keyProvider, databaseAccess)
         val catalog = createBackupCatalog(activeBook, access)
         val snapshots = runCatching { catalog.completeSnapshots(config.repositoryId) }.getOrDefault(emptyList())
         val storage = runCatching { repositoryStorage(activeBook, config) }.getOrNull()
@@ -573,7 +575,7 @@ internal class BackupController(
 
     private fun operations(activeBook: StableId) = SqlCipherBackgroundOperationRepository(
         activeBook,
-        SecurePrimaryLedgerAccess(applicationContext, keyProvider),
+        SecurePrimaryLedgerAccess(applicationContext, keyProvider, databaseAccess),
     )
 
     private fun repositoryCustomLabel(activeBook: StableId, config: BackupConfiguration): String = if (config.repositoryKind == BackupRepositoryKind.USER_SELECTED_DIRECTORY) {

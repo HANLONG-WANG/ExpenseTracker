@@ -56,7 +56,7 @@ def require_tokens(errors: list[str], text: str, label: str, tokens: tuple[str, 
 
 
 def validate_contract() -> list[str]:
-    contract = yaml.safe_load(read("docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))
+    contract = yaml.safe_load(read("docs/初始开发文件存档/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))
     screens = {item["id"]: item for item in contract["screens"]}
     errors: list[str] = []
     for screen_id, (route, params, states) in EXPECTED.items():
@@ -231,10 +231,10 @@ def validate_tests_resources() -> list[str]:
 
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
-    state = read("docs/implementation/PROJECT_STATE.md")
-    evidence = read("docs/implementation/TEST_EVIDENCE.md")
-    decision = read("docs/implementation/DECISION_LOG.md")
-    mapping_path = ROOT / "docs/implementation/P32_SECURITY_PRIVACY_DIAGNOSTICS_MAPPING.md"
+    state = read("docs/初始开发文件存档/implementation/PROJECT_STATE.md")
+    evidence = read("docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
+    decision = read("docs/初始开发文件存档/implementation/DECISION_LOG.md")
+    mapping_path = ROOT / "docs/初始开发文件存档/implementation/P32_SECURITY_PRIVACY_DIAGNOSTICS_MAPPING.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
     require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "| P32 | VERIFIED |"))
     for index in range(1, 9):
@@ -244,13 +244,13 @@ def validate_ledgers() -> list[str]:
         "CryptoObject", "30 seconds", "SQLCipher", "ACRA", "ApplicationExitInfo", "P32 is `VERIFIED`",
     ))
     require_tokens(errors, decision, "P32 decision log", ("P32", "unlockedSession", "replaceable HTTPS"))
-    with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = {row["screen_id"]: row for row in csv.DictReader(handle)}
     for screen_id in EXPECTED:
         row = screens.get(screen_id, {})
         if row.get("status") != "VERIFIED" or "P32" not in row.get("implementation_evidence", "") or "P32-E" not in row.get("verification_evidence", ""):
             errors.append(f"{screen_id} lacks VERIFIED P32 evidence")
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         requirements = {row["requirement_id"]: row for row in csv.DictReader(handle)}
     for requirement_id in ("REQ-004", "REQ-005", "REQ-077", "REQ-078", "REQ-079", "REQ-080"):
         row = requirements.get(requirement_id, {})

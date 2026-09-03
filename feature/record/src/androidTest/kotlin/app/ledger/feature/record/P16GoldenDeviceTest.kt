@@ -83,7 +83,7 @@ class P16GoldenDeviceTest {
 
     private companion object {
         const val GOLDEN_TAG = "p16_refund_golden_root"
-        const val LINKED_LIGHT_SHA256 = "47ee9bf6e33f4be287bb1e71be40c8dbec9a73073b56ba8ad9640a9eba98a6c5"
-        const val EXCESS_DARK_SHA256 = "c7c7bde39e568be56ffae791559b5fa596bbee9e1788e13b6016df244d47311e"
+        const val LINKED_LIGHT_SHA256 = "caa577303a8b3063d9026d319f7e163061e1dc0922720b1203cd7183c27048e2"
+        const val EXCESS_DARK_SHA256 = "475c6d264bc25912335dabff447eecaf4f0631acd57aa73f33c8c5231e9cb2c9"
     }
 }

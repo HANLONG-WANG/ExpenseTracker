@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.ledger.core.designsystem.tokens.GeneratedLedgerTokenContract
+import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatterBuilder
@@ -247,16 +248,15 @@ public object LedgerDateFormatterRuntime {
         LedgerDateFormat.MONTH_DAY_YEAR -> DateTimeFormatter.ofPattern("MM/dd/yyyy", locale)
     }
 
-    public fun dateTimeFormatter(locale: Locale, timeStyle: FormatStyle = FormatStyle.SHORT): DateTimeFormatter =
-        if (configuredFormat == LedgerDateFormat.LOCALE_DEFAULT) {
-            DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, timeStyle).withLocale(locale)
-        } else {
-            DateTimeFormatterBuilder()
-                .append(formatter(locale))
-                .appendLiteral(' ')
-                .appendLocalized(null, timeStyle)
-                .toFormatter(locale)
-        }
+    public fun dateTimeFormatter(locale: Locale, timeStyle: FormatStyle = FormatStyle.SHORT): DateTimeFormatter = if (configuredFormat == LedgerDateFormat.LOCALE_DEFAULT) {
+        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, timeStyle).withLocale(locale)
+    } else {
+        DateTimeFormatterBuilder()
+            .append(formatter(locale))
+            .appendLiteral(' ')
+            .appendLocalized(null, timeStyle)
+            .toFormatter(locale)
+    }
 }
 
 private val LocalLedgerColors = staticCompositionLocalOf { LedgerTokenMapping.lightColors() }
@@ -266,6 +266,7 @@ private val LocalLedgerShapes = staticCompositionLocalOf { LedgerTokenMapping.sh
 private val LocalLedgerMotion = compositionLocalOf { LedgerTokenMapping.motion(reduceMotion = false) }
 private val LocalLedgerDimensions = staticCompositionLocalOf { LedgerTokenMapping.dimensions }
 private val LocalLedgerTimeZone = staticCompositionLocalOf { ZoneId.of("UTC") }
+private val LocalLedgerNow = staticCompositionLocalOf<() -> Instant> { { Instant.EPOCH } }
 private val LocalLedgerDateFormat = staticCompositionLocalOf { LedgerDateFormat.LOCALE_DEFAULT }
 private val LocalLedgerWeekStart = staticCompositionLocalOf { LedgerWeekStart.LOCALE_DEFAULT }
 
@@ -291,6 +292,9 @@ public object LedgerTheme {
     public val timeZone: ZoneId
         @Composable @ReadOnlyComposable
         get() = LocalLedgerTimeZone.current
+    public val now: Instant
+        @Composable @ReadOnlyComposable
+        get() = LocalLedgerNow.current()
     public val dateFormat: LedgerDateFormat
         @Composable @ReadOnlyComposable
         get() = LocalLedgerDateFormat.current
@@ -304,11 +308,13 @@ public object LedgerTheme {
 }
 
 @Composable
+@Suppress("LongParameterList")
 public fun LedgerTheme(
     themeMode: ThemeMode,
     dynamicColor: Boolean,
     reduceMotion: Boolean,
     ledgerTimeZoneId: String = "UTC",
+    ledgerNow: () -> Instant = { Instant.EPOCH },
     ledgerDateFormat: LedgerDateFormat = LedgerDateFormat.LOCALE_DEFAULT,
     ledgerWeekStart: LedgerWeekStart = LedgerWeekStart.LOCALE_DEFAULT,
     content: @Composable () -> Unit,
@@ -337,6 +343,7 @@ public fun LedgerTheme(
         LocalLedgerMotion provides LedgerTokenMapping.motion(effectiveReduceMotion),
         LocalLedgerDimensions provides LedgerTokenMapping.dimensions,
         LocalLedgerTimeZone provides ledgerTimeZone,
+        LocalLedgerNow provides ledgerNow,
         LocalLedgerDateFormat provides ledgerDateFormat,
         LocalLedgerWeekStart provides ledgerWeekStart,
     ) {

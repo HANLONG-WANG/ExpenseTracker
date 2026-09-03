@@ -37,7 +37,7 @@ class MigrationTestInfrastructureDeviceTest {
     @After
     fun cleanUp() {
         context.deleteDatabase(DATABASE_NAME)
-        (1..3).forEach { version ->
+        (1..6).forEach { version ->
             context.deleteDatabase("migration-backup-v$version.db")
             context.deleteDatabase(backupRestoreName(version))
         }
@@ -59,8 +59,23 @@ class MigrationTestInfrastructureDeviceTest {
     }
 
     @Test
+    fun versionFourToFiveRunsCompletePostMigrationValidation() {
+        assertSingleMigrationValidated(fromVersion = 4, toVersion = 5, migrationIndex = 3)
+    }
+
+    @Test
+    fun versionFiveToSixAddsTheJournalStateKeysetPlanWithoutTemporarySorting() {
+        assertSingleMigrationValidated(fromVersion = 5, toVersion = 6, migrationIndex = 4)
+    }
+
+    @Test
+    fun versionSixToSevenAddsBoundedReferencePagePlansWithoutProjectionScans() {
+        assertSingleMigrationValidated(fromVersion = 6, toVersion = 7, migrationIndex = 5)
+    }
+
+    @Test
     fun encryptedBackupsFromEveryPredecessorRestoreThroughCurrentSchema() {
-        (1..3).forEach { version ->
+        (1..6).forEach { version ->
             val predecessorName = "migration-backup-v$version.db"
             val restoredName = backupRestoreName(version)
             context.deleteDatabase(predecessorName)
@@ -81,7 +96,7 @@ class MigrationTestInfrastructureDeviceTest {
     private fun assertSingleMigrationValidated(fromVersion: Int, toVersion: Int, migrationIndex: Int) {
         createLogicalPredecessor(fromVersion, DATABASE_NAME)
         val migration = LedgerMigrations.registered(context)[migrationIndex]
-        val migrated = helper.runMigrationsAndValidate(DATABASE_NAME, toVersion, true, migration)
+        val migrated = helper.runMigrationsAndValidate(DATABASE_NAME, toVersion, false, migration)
         val report = MigrationPostValidation.run(context, migrated, toVersion)
 
         assertTrue(report.failureSummary(), report.isValid)
@@ -89,6 +104,11 @@ class MigrationTestInfrastructureDeviceTest {
         assertTrue(report.integrity.capability.fts5)
         assertTrue(report.integrity.capability.rTree)
         assertTrue(report.representativeQueryUsesIndex)
+        assertTrue(report.journalStateKeysetQueryUsesIndex)
+        assertTrue(report.journalStateKeysetAvoidsTempSort)
+        assertTrue(report.referenceMerchantPageUsesBoundedIndexes)
+        assertTrue(report.referenceLocationPageUsesBoundedIndexes)
+        assertTrue(report.referencePagesAvoidTempAggregation)
         assertTrue(report.representativeQueryElapsedMillis <= MigrationPostValidationReport.MAX_REPRESENTATIVE_QUERY_MILLIS)
         assertEquals(DatabaseIntegrityAudit.permanentInvariantIds, report.integrity.permanentInvariantViolationCounts.keys)
         assertTrue(report.integrity.failedInvariantIds.isEmpty())
@@ -143,6 +163,9 @@ class MigrationTestInfrastructureDeviceTest {
         )
         if (version >= 2) LedgerSchemaDefinition.migratePrimaryV1ToV2(context, database)
         if (version >= 3) LedgerSchemaDefinition.migratePrimaryV2ToV3(context, database)
+        if (version >= 4) LedgerSchemaDefinition.migratePrimaryV3ToV4(context, database)
+        if (version >= 5) LedgerSchemaDefinition.migratePrimaryV4ToV5(context, database)
+        if (version >= 6) LedgerSchemaDefinition.migratePrimaryV5ToV6(context, database)
         assertEquals(version.toLong(), singleLong(database, "PRAGMA user_version"))
         database.close()
     }
@@ -156,7 +179,6 @@ class MigrationTestInfrastructureDeviceTest {
         const val DATABASE_NAME = "migration-post-validation.db"
         val PASSPHRASE: ByteArray = ByteArray(32) { index -> (0x71 + index).toByte() }
 
-        fun backupRestoreName(version: Int): String =
-            "ledger_shadow_${version.toString().padStart(32, '0')}.db"
+        fun backupRestoreName(version: Int): String = "ledger_shadow_${version.toString().padStart(32, '0')}.db"
     }
 }

@@ -11,11 +11,7 @@
 
 package app.ledger.feature.journal
 
-import app.ledger.core.common.StableId
-import app.ledger.core.common.getOrNull
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,16 +24,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -47,6 +46,7 @@ import androidx.paging.PagingData
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.ledger.core.common.DomainResult
+import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.designsystem.AccessibleDataTable
 import app.ledger.core.designsystem.AccessibleTableUiModel
@@ -61,30 +61,30 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
-import app.ledger.core.designsystem.LedgerChip
 import app.ledger.core.designsystem.LedgerCheckboxRow
+import app.ledger.core.designsystem.LedgerChip
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerChoiceSelector
 import app.ledger.core.designsystem.LedgerCycleChoiceSelector
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
+import app.ledger.core.designsystem.LedgerDateTimePickerFlow
+import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerIcon
-import app.ledger.core.designsystem.LedgerDateTimePickerFlow
 import app.ledger.core.designsystem.LedgerIconView
 import app.ledger.core.designsystem.LedgerLoadingState
-import app.ledger.core.designsystem.LocalLedgerAmountsVisible
-import app.ledger.core.designsystem.LedgerDialog
 import app.ledger.core.designsystem.LedgerProgressIndicator
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
-import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
+import app.ledger.core.designsystem.LocalLedgerAmountsVisible
 import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
 import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
+import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
 import app.ledger.core.designsystem.SearchField
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
@@ -146,7 +146,11 @@ fun JournalDestination(
     state: JournalLoadState,
     pages: Flow<PagingData<JournalTransactionView>>,
     actions: JournalActions,
+    onFirstResponsePresented: () -> Unit = {},
 ) {
+    LaunchedEffect(screenId, state) {
+        withFrameNanos { onFirstResponsePresented() }
+    }
     val content = state as? JournalLoadState.Content
     when {
         !journalArgumentsValid(screenId, encodedArguments) -> LedgerErrorState(
@@ -154,7 +158,10 @@ fun JournalDestination(
             stringResource(R.string.p15_journal_error),
             actions.onRetry,
         )
-        state === JournalLoadState.Loading -> LedgerLoadingState(Modifier.fillMaxSize(), stringResource(R.string.p15_journal_loading))
+        state === JournalLoadState.Loading -> LedgerLoadingState(
+            Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_LOADING),
+            stringResource(R.string.p15_journal_loading),
+        )
         state is JournalLoadState.Failure -> LedgerErrorState(UiErrorCode("JOURNAL_QUERY_FAILED"), stringResource(R.string.p15_journal_error), actions.onRetry)
         content == null -> LedgerErrorState(UiErrorCode("JOURNAL_STATE_INVALID"), stringResource(R.string.p15_journal_error), actions.onRetry)
         screenId == "JRN-001" -> JournalListScreen(content, pages, actions)
@@ -198,7 +205,12 @@ private fun JournalListScreen(state: JournalLoadState.Content, pages: Flow<Pagin
             }, Modifier.weight(1f), LedgerButtonVariant.TEXT)
         }
         ActiveJournalFilterRow(state, actions)
-        PagedJournalList(pages, actions, showRunningBalance = false)
+        PagedJournalList(
+            pages,
+            actions,
+            showRunningBalance = false,
+            pageReady = state.pageLoadedEpoch == state.pagingEpoch,
+        )
     }
 }
 
@@ -262,6 +274,9 @@ private fun JournalSearchScreen(state: JournalLoadState.Content, pages: Flow<Pag
                 pages,
                 actions,
                 showRunningBalance = false,
+                pageReady = state.pageLoadedEpoch == state.pagingEpoch,
+                blockingLoadingLabel = stringResource(R.string.p15_journal_loading).takeIf { state.searchPending },
+                readyTestTag = LedgerTestTags.JOURNAL_SEARCH_RESULTS.takeIf { state.searchResultReady },
                 emptyTitle = stringResource(R.string.p15_journal_no_search_matches),
                 emptyBody = stringResource(R.string.p15_journal_no_search_matches_body, state.searchText),
                 emptyActionLabel = stringResource(R.string.p15_journal_clear_search),
@@ -353,87 +368,87 @@ private fun JournalFilterScreen(state: JournalLoadState.Content, actions: Journa
     Column(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN)) {
         LedgerBanner(filterSummary(previewFilter), LedgerBannerVariant.INFO)
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-        item {
-            FilterChoiceSection(stringResource(R.string.p15_journal_filter_type)) {
-                TransactionKind.entries.forEach { value -> LedgerCheckboxRow(value.label(), value in draft.kinds, { draft = draft.copy(kinds = draft.kinds.toggled(value)) }) }
-            }
-        }
-        item {
-            FilterChoiceSection(stringResource(R.string.p15_journal_filter_state)) {
-                TransactionLifecycleState.entries.forEach { value -> LedgerCheckboxRow(value.label(), value in draft.lifecycleStates, { draft = draft.copy(lifecycleStates = draft.lifecycleStates.toggled(value)) }) }
-            }
-        }
-        item {
-            FilterChoiceSection(stringResource(R.string.p15_journal_filter_source)) {
-                TransactionSource.entries.forEach { value -> LedgerCheckboxRow(value.label(), value in draft.sources, { draft = draft.copy(sources = draft.sources.toggled(value)) }) }
-            }
-        }
-        item {
-            FilterChoiceSection(stringResource(R.string.p15_journal_filter_context)) {
-                state.bulkOptions.accounts.forEach { option -> LedgerCheckboxRow(option.label, UserAccountId(option.id) in draft.accountIds, { draft = draft.copy(accountIds = draft.accountIds.toggled(UserAccountId(option.id))) }) }
-                state.bulkOptions.cards.forEach { option -> LedgerCheckboxRow(option.label, PaymentCardId(option.id) in draft.cardIds, { draft = draft.copy(cardIds = draft.cardIds.toggled(PaymentCardId(option.id))) }) }
-                state.bulkOptions.categories.forEach { option -> LedgerCheckboxRow(option.label, CategoryId(option.id) in draft.categoryIds, { draft = draft.copy(categoryIds = draft.categoryIds.toggled(CategoryId(option.id))) }) }
-                state.bulkOptions.merchants.forEach { option -> LedgerCheckboxRow(option.label, MerchantId(option.id) in draft.merchantIds, { draft = draft.copy(merchantIds = draft.merchantIds.toggled(MerchantId(option.id))) }) }
-                state.bulkOptions.projects.forEach { option -> LedgerCheckboxRow(option.label, ProjectId(option.id) in draft.projectIds, { draft = draft.copy(projectIds = draft.projectIds.toggled(ProjectId(option.id))) }) }
-                state.bulkOptions.settlementActivities.forEach { option -> LedgerCheckboxRow(option.label, SettlementActivityId(option.id) in draft.settlementActivityIds, { draft = draft.copy(settlementActivityIds = draft.settlementActivityIds.toggled(SettlementActivityId(option.id))) }) }
-                state.bulkOptions.participants.forEach { option -> LedgerCheckboxRow(option.label, ParticipantId(option.id) in draft.participantIds, { draft = draft.copy(participantIds = draft.participantIds.toggled(ParticipantId(option.id))) }) }
-            }
-        }
-        item {
-            FormSection(stringResource(R.string.p15_journal_filter_time)) {
-                FilterInstantField(occurredFrom, stringResource(R.string.p15_journal_occurred_from), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.OCCURRED_FROM }, { occurredFrom = null })
-                FilterInstantField(occurredThrough, stringResource(R.string.p15_journal_occurred_through), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.OCCURRED_THROUGH }, { occurredThrough = null })
-                FilterInstantField(createdFrom, stringResource(R.string.p15_journal_created_from), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.CREATED_FROM }, { createdFrom = null })
-                FilterInstantField(createdThrough, stringResource(R.string.p15_journal_created_through), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.CREATED_THROUGH }, { createdThrough = null })
-                FilterInstantField(modifiedFrom, stringResource(R.string.p15_journal_modified_from), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.MODIFIED_FROM }, { modifiedFrom = null })
-                FilterInstantField(modifiedThrough, stringResource(R.string.p15_journal_modified_through), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.MODIFIED_THROUGH }, { modifiedThrough = null })
-            }
-        }
-        item {
-            FormSection(stringResource(R.string.p15_journal_filter_amount)) {
-                LedgerTextField(minimumMajor, { minimumMajor = it.take(24) }, stringResource(R.string.p15_journal_minimum_amount), errorText = stringResource(R.string.p15_journal_invalid_amount).takeIf { !parsedMinimum.valid })
-                LedgerTextField(maximumMajor, { maximumMajor = it.take(24) }, stringResource(R.string.p15_journal_maximum_amount), errorText = stringResource(R.string.p15_journal_invalid_amount).takeIf { !parsedMaximum.valid })
-                state.bulkOptions.currencies.forEach { currency ->
-                    LedgerCheckboxRow(currency.value, currency in draft.currencies, {
-                        draft = draft.copy(currencies = draft.currencies.toggled(currency))
-                        amountCurrency = currency
-                    })
+            item {
+                FilterChoiceSection(stringResource(R.string.p15_journal_filter_type)) {
+                    TransactionKind.entries.forEach { value -> LedgerCheckboxRow(value.label(), value in draft.kinds, { draft = draft.copy(kinds = draft.kinds.toggled(value)) }) }
                 }
-                StatisticalNature.entries.forEach { nature -> LedgerCheckboxRow(nature.label(), nature in draft.statisticalNatures, { draft = draft.copy(statisticalNatures = draft.statisticalNatures.toggled(nature)) }) }
             }
-        }
-        item {
-            FormSection(stringResource(R.string.p15_journal_filter_location)) {
-                LedgerToggleRow(stringResource(R.string.p15_journal_filter_radius_enabled), geoEnabled, { geoEnabled = it })
-                LedgerTextField(latitude, { latitude = it.take(16) }, stringResource(R.string.p15_journal_filter_latitude), enabled = geoEnabled, errorText = stringResource(R.string.p15_journal_invalid_location).takeIf { geoEnabled && !parsedGeo.valid })
-                LedgerTextField(longitude, { longitude = it.take(17) }, stringResource(R.string.p15_journal_filter_longitude), enabled = geoEnabled)
-                LedgerTextField(radiusMeters, { radiusMeters = it.filter(Char::isDigit).take(7) }, stringResource(R.string.p15_journal_filter_radius), enabled = geoEnabled)
+            item {
+                FilterChoiceSection(stringResource(R.string.p15_journal_filter_state)) {
+                    TransactionLifecycleState.entries.forEach { value -> LedgerCheckboxRow(value.label(), value in draft.lifecycleStates, { draft = draft.copy(lifecycleStates = draft.lifecycleStates.toggled(value)) }) }
+                }
             }
-        }
-        item {
-            FormSection(stringResource(R.string.p15_journal_filter_flags)) {
-                TriStateFilter(stringResource(R.string.p15_journal_filter_attachment), draft.hasAttachment) { draft = draft.copy(hasAttachment = it) }
-                TriStateFilter(stringResource(R.string.p15_journal_filter_refund), draft.isRefund) { draft = draft.copy(isRefund = it) }
-                TriStateFilter(stringResource(R.string.p15_journal_filter_installment), draft.hasInstallment) { draft = draft.copy(hasInstallment = it) }
-                TriStateFilter(stringResource(R.string.p15_journal_filter_budget), draft.includedInBudget) { draft = draft.copy(includedInBudget = it) }
-                TriStateFilter(stringResource(R.string.p15_journal_filter_recurrence), draft.generatedByRecurrence) { draft = draft.copy(generatedByRecurrence = it) }
+            item {
+                FilterChoiceSection(stringResource(R.string.p15_journal_filter_source)) {
+                    TransactionSource.entries.forEach { value -> LedgerCheckboxRow(value.label(), value in draft.sources, { draft = draft.copy(sources = draft.sources.toggled(value)) }) }
+                }
             }
-        }
-        if (!rangesValid) item { LedgerBanner(stringResource(R.string.p15_journal_filter_invalid_range), LedgerBannerVariant.DANGER) }
-        item {
-            FormSection(stringResource(R.string.p15_journal_save_filter)) {
-                LedgerTextField(presetName, { presetName = it.take(80) }, stringResource(R.string.p15_journal_filter_name))
-                LedgerButton(
-                    stringResource(R.string.p15_journal_save_filter),
-                    {
-                        actions.onSaveFilter(presetName)
-                        presetName = ""
-                    },
-                    Modifier.fillMaxWidth(),
-                    enabled = presetName.isNotBlank(),
-                )
+            item {
+                FilterChoiceSection(stringResource(R.string.p15_journal_filter_context)) {
+                    state.bulkOptions.accounts.forEach { option -> LedgerCheckboxRow(option.label, UserAccountId(option.id) in draft.accountIds, { draft = draft.copy(accountIds = draft.accountIds.toggled(UserAccountId(option.id))) }) }
+                    state.bulkOptions.cards.forEach { option -> LedgerCheckboxRow(option.label, PaymentCardId(option.id) in draft.cardIds, { draft = draft.copy(cardIds = draft.cardIds.toggled(PaymentCardId(option.id))) }) }
+                    state.bulkOptions.categories.forEach { option -> LedgerCheckboxRow(option.label, CategoryId(option.id) in draft.categoryIds, { draft = draft.copy(categoryIds = draft.categoryIds.toggled(CategoryId(option.id))) }) }
+                    state.bulkOptions.merchants.forEach { option -> LedgerCheckboxRow(option.label, MerchantId(option.id) in draft.merchantIds, { draft = draft.copy(merchantIds = draft.merchantIds.toggled(MerchantId(option.id))) }) }
+                    state.bulkOptions.projects.forEach { option -> LedgerCheckboxRow(option.label, ProjectId(option.id) in draft.projectIds, { draft = draft.copy(projectIds = draft.projectIds.toggled(ProjectId(option.id))) }) }
+                    state.bulkOptions.settlementActivities.forEach { option -> LedgerCheckboxRow(option.label, SettlementActivityId(option.id) in draft.settlementActivityIds, { draft = draft.copy(settlementActivityIds = draft.settlementActivityIds.toggled(SettlementActivityId(option.id))) }) }
+                    state.bulkOptions.participants.forEach { option -> LedgerCheckboxRow(option.label, ParticipantId(option.id) in draft.participantIds, { draft = draft.copy(participantIds = draft.participantIds.toggled(ParticipantId(option.id))) }) }
+                }
             }
-        }
+            item {
+                FormSection(stringResource(R.string.p15_journal_filter_time)) {
+                    FilterInstantField(occurredFrom, stringResource(R.string.p15_journal_occurred_from), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.OCCURRED_FROM }, { occurredFrom = null })
+                    FilterInstantField(occurredThrough, stringResource(R.string.p15_journal_occurred_through), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.OCCURRED_THROUGH }, { occurredThrough = null })
+                    FilterInstantField(createdFrom, stringResource(R.string.p15_journal_created_from), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.CREATED_FROM }, { createdFrom = null })
+                    FilterInstantField(createdThrough, stringResource(R.string.p15_journal_created_through), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.CREATED_THROUGH }, { createdThrough = null })
+                    FilterInstantField(modifiedFrom, stringResource(R.string.p15_journal_modified_from), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.MODIFIED_FROM }, { modifiedFrom = null })
+                    FilterInstantField(modifiedThrough, stringResource(R.string.p15_journal_modified_through), dateTimeFormatter, zoneId, { activeTimeField = JournalFilterTimeField.MODIFIED_THROUGH }, { modifiedThrough = null })
+                }
+            }
+            item {
+                FormSection(stringResource(R.string.p15_journal_filter_amount)) {
+                    LedgerTextField(minimumMajor, { minimumMajor = it.take(24) }, stringResource(R.string.p15_journal_minimum_amount), errorText = stringResource(R.string.p15_journal_invalid_amount).takeIf { !parsedMinimum.valid })
+                    LedgerTextField(maximumMajor, { maximumMajor = it.take(24) }, stringResource(R.string.p15_journal_maximum_amount), errorText = stringResource(R.string.p15_journal_invalid_amount).takeIf { !parsedMaximum.valid })
+                    state.bulkOptions.currencies.forEach { currency ->
+                        LedgerCheckboxRow(currency.value, currency in draft.currencies, {
+                            draft = draft.copy(currencies = draft.currencies.toggled(currency))
+                            amountCurrency = currency
+                        })
+                    }
+                    StatisticalNature.entries.forEach { nature -> LedgerCheckboxRow(nature.label(), nature in draft.statisticalNatures, { draft = draft.copy(statisticalNatures = draft.statisticalNatures.toggled(nature)) }) }
+                }
+            }
+            item {
+                FormSection(stringResource(R.string.p15_journal_filter_location)) {
+                    LedgerToggleRow(stringResource(R.string.p15_journal_filter_radius_enabled), geoEnabled, { geoEnabled = it })
+                    LedgerTextField(latitude, { latitude = it.take(16) }, stringResource(R.string.p15_journal_filter_latitude), enabled = geoEnabled, errorText = stringResource(R.string.p15_journal_invalid_location).takeIf { geoEnabled && !parsedGeo.valid })
+                    LedgerTextField(longitude, { longitude = it.take(17) }, stringResource(R.string.p15_journal_filter_longitude), enabled = geoEnabled)
+                    LedgerTextField(radiusMeters, { radiusMeters = it.filter(Char::isDigit).take(7) }, stringResource(R.string.p15_journal_filter_radius), enabled = geoEnabled)
+                }
+            }
+            item {
+                FormSection(stringResource(R.string.p15_journal_filter_flags)) {
+                    TriStateFilter(stringResource(R.string.p15_journal_filter_attachment), draft.hasAttachment) { draft = draft.copy(hasAttachment = it) }
+                    TriStateFilter(stringResource(R.string.p15_journal_filter_refund), draft.isRefund) { draft = draft.copy(isRefund = it) }
+                    TriStateFilter(stringResource(R.string.p15_journal_filter_installment), draft.hasInstallment) { draft = draft.copy(hasInstallment = it) }
+                    TriStateFilter(stringResource(R.string.p15_journal_filter_budget), draft.includedInBudget) { draft = draft.copy(includedInBudget = it) }
+                    TriStateFilter(stringResource(R.string.p15_journal_filter_recurrence), draft.generatedByRecurrence) { draft = draft.copy(generatedByRecurrence = it) }
+                }
+            }
+            if (!rangesValid) item { LedgerBanner(stringResource(R.string.p15_journal_filter_invalid_range), LedgerBannerVariant.DANGER) }
+            item {
+                FormSection(stringResource(R.string.p15_journal_save_filter)) {
+                    LedgerTextField(presetName, { presetName = it.take(80) }, stringResource(R.string.p15_journal_filter_name))
+                    LedgerButton(
+                        stringResource(R.string.p15_journal_save_filter),
+                        {
+                            actions.onSaveFilter(presetName)
+                            presetName = ""
+                        },
+                        Modifier.fillMaxWidth(),
+                        enabled = presetName.isNotBlank(),
+                    )
+                }
+            }
         }
         LedgerCard(Modifier.fillMaxWidth()) {
             Row(
@@ -453,7 +468,7 @@ private fun JournalFilterScreen(state: JournalLoadState.Content, actions: Journa
             JournalFilterTimeField.CREATED_THROUGH -> createdThrough
             JournalFilterTimeField.MODIFIED_FROM -> modifiedFrom
             JournalFilterTimeField.MODIFIED_THROUGH -> modifiedThrough
-        } ?: Instant.now()
+        } ?: LedgerTheme.now
         val local = current.atZone(zoneId)
         LedgerDateTimePickerFlow(
             local.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
@@ -524,7 +539,14 @@ private fun SelectionScreen(state: JournalLoadState.Content, pages: Flow<PagingD
             LedgerButton(stringResource(R.string.p15_journal_clear_selection), actions.onClearSelection, Modifier.weight(1f), LedgerButtonVariant.TEXT, enabled = selection != null)
         }
         Box(Modifier.weight(1f)) {
-            PagedJournalList(pages, actions, false, selectionMode = true, selection = selection)
+            PagedJournalList(
+                pages,
+                actions,
+                showRunningBalance = false,
+                pageReady = state.pageLoadedEpoch == state.pagingEpoch,
+                selectionMode = true,
+                selection = selection,
+            )
         }
         LedgerCard(Modifier.fillMaxWidth()) {
             LedgerButton(
@@ -593,104 +615,109 @@ private fun BulkEditScreen(state: JournalLoadState.Content, actions: JournalActi
     }
     Column(Modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_SCREEN)) {
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
-        item { LedgerBanner(stringResource(R.string.p15_journal_bulk_forbidden), LedgerBannerVariant.WARNING) }
-        item {
-            FormSection(stringResource(R.string.p15_journal_change_summary)) {
-                if (changeSummary.isEmpty()) LedgerText(stringResource(R.string.p15_journal_no_changes_selected), LedgerTextRole.SUPPORTING)
-                else changeSummary.forEach { LedgerText(it, LedgerTextRole.BODY) }
+            item { LedgerBanner(stringResource(R.string.p15_journal_bulk_forbidden), LedgerBannerVariant.WARNING) }
+            item {
+                FormSection(stringResource(R.string.p15_journal_change_summary)) {
+                    if (changeSummary.isEmpty()) {
+                        LedgerText(stringResource(R.string.p15_journal_no_changes_selected), LedgerTextRole.SUPPORTING)
+                    } else {
+                        changeSummary.forEach { LedgerText(it, LedgerTextRole.BODY) }
+                    }
+                }
             }
-        }
-        item { BulkSelector(stringResource(R.string.p15_journal_bulk_category), categoryEnabled, { categoryEnabled = it }, options.categories, categoryIndex, { categoryIndex = it }, options.categories.isNotEmpty()) }
-        item {
-            BulkSelector(stringResource(R.string.p15_journal_bulk_account), accountEnabled, { accountEnabled = it }, options.accounts, accountIndex, {
-                accountIndex = it
-                cardIndex = -1
-            }, options.accounts.isNotEmpty())
-        }
-        item {
-            SearchableBulkChoice(
-                stringResource(R.string.p15_journal_bulk_card),
-                compatibleCards,
-                cardIndex,
-                { cardIndex = it },
-                enabled = accountEnabled && compatibleCards.isNotEmpty(),
-                allowClear = true,
-            )
-        }
-        item { BulkSelector(stringResource(R.string.p15_journal_bulk_merchant), merchantEnabled, { merchantEnabled = it }, options.merchants, merchantIndex, { merchantIndex = it }, true, allowClear = true) }
-        item { BulkSelector(stringResource(R.string.p15_journal_bulk_project), projectEnabled, { projectEnabled = it }, options.projects, projectIndex, { projectIndex = it }, true, allowClear = true) }
-        item {
-            LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_time), timeEnabled, { timeEnabled = it })
-            if (timeEnabled) {
-                DateTimeZoneField(
-                    stringResource(R.string.p15_journal_bulk_time),
-                    occurredAt?.let(timeFormatter::format) ?: stringResource(R.string.p15_journal_choose_time),
-                    zoneId.id,
-                    { showTimePicker = true },
-                    zoneIsDifferent = true,
-                )
-            } else {
-                SelectorField(
-                    stringResource(R.string.p15_journal_bulk_time),
-                    stringResource(R.string.p15_journal_choose_time),
-                    {},
-                    enabled = false,
+            item { BulkSelector(stringResource(R.string.p15_journal_bulk_category), categoryEnabled, { categoryEnabled = it }, options.categories, categoryIndex, { categoryIndex = it }, options.categories.isNotEmpty()) }
+            item {
+                BulkSelector(stringResource(R.string.p15_journal_bulk_account), accountEnabled, { accountEnabled = it }, options.accounts, accountIndex, {
+                    accountIndex = it
+                    cardIndex = -1
+                }, options.accounts.isNotEmpty())
+            }
+            item {
+                SearchableBulkChoice(
+                    stringResource(R.string.p15_journal_bulk_card),
+                    compatibleCards,
+                    cardIndex,
+                    { cardIndex = it },
+                    enabled = accountEnabled && compatibleCards.isNotEmpty(),
+                    allowClear = true,
                 )
             }
-        }
-        item {
-            LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_note), noteEnabled, { noteEnabled = it })
-            LedgerTextField(note, { note = it.take(2_000) }, stringResource(R.string.p15_journal_bulk_note), enabled = noteEnabled, singleLine = false, hideValueFromSemantics = true)
-        }
-        item {
-            LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_budget), budgetEnabled, { budgetEnabled = it })
-            LedgerCycleChoiceSelector(
-                stringResource(R.string.p15_journal_bulk_budget),
-                if (includedInBudget) 1 else 0,
-                listOf(stringResource(R.string.p15_journal_no), stringResource(R.string.p15_journal_yes)),
-                { includedInBudget = !includedInBudget },
-                enabled = budgetEnabled,
-            )
-        }
-        item {
-            LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_nature), natureEnabled, { natureEnabled = it })
-            LedgerCycleChoiceSelector(
-                stringResource(R.string.p15_journal_bulk_nature),
-                natureIndex,
-                StatisticalNature.entries.map { it.label() },
-                { natureIndex = (natureIndex + 1) % StatisticalNature.entries.size },
-                enabled = natureEnabled,
-            )
-        }
-        if (state.operation != JournalOperationState.IDLE) item {
-            LedgerBanner(
-                state.operation.label(),
-                when (state.operation) {
-                    JournalOperationState.FAILED -> LedgerBannerVariant.DANGER
-                    JournalOperationState.NO_CHANGES -> LedgerBannerVariant.NEUTRAL
-                    JournalOperationState.SUCCEEDED -> LedgerBannerVariant.INFO
-                    else -> LedgerBannerVariant.WARNING
-                },
-            )
-        }
+            item { BulkSelector(stringResource(R.string.p15_journal_bulk_merchant), merchantEnabled, { merchantEnabled = it }, options.merchants, merchantIndex, { merchantIndex = it }, true, allowClear = true) }
+            item { BulkSelector(stringResource(R.string.p15_journal_bulk_project), projectEnabled, { projectEnabled = it }, options.projects, projectIndex, { projectIndex = it }, true, allowClear = true) }
+            item {
+                LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_time), timeEnabled, { timeEnabled = it })
+                if (timeEnabled) {
+                    DateTimeZoneField(
+                        stringResource(R.string.p15_journal_bulk_time),
+                        occurredAt?.let(timeFormatter::format) ?: stringResource(R.string.p15_journal_choose_time),
+                        zoneId.id,
+                        { showTimePicker = true },
+                        zoneIsDifferent = true,
+                    )
+                } else {
+                    SelectorField(
+                        stringResource(R.string.p15_journal_bulk_time),
+                        stringResource(R.string.p15_journal_choose_time),
+                        {},
+                        enabled = false,
+                    )
+                }
+            }
+            item {
+                LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_note), noteEnabled, { noteEnabled = it })
+                LedgerTextField(note, { note = it.take(2_000) }, stringResource(R.string.p15_journal_bulk_note), enabled = noteEnabled, singleLine = false, hideValueFromSemantics = true)
+            }
+            item {
+                LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_budget), budgetEnabled, { budgetEnabled = it })
+                LedgerCycleChoiceSelector(
+                    stringResource(R.string.p15_journal_bulk_budget),
+                    if (includedInBudget) 1 else 0,
+                    listOf(stringResource(R.string.p15_journal_no), stringResource(R.string.p15_journal_yes)),
+                    { includedInBudget = !includedInBudget },
+                    enabled = budgetEnabled,
+                )
+            }
+            item {
+                LedgerCheckboxRow(stringResource(R.string.p15_journal_bulk_nature), natureEnabled, { natureEnabled = it })
+                LedgerCycleChoiceSelector(
+                    stringResource(R.string.p15_journal_bulk_nature),
+                    natureIndex,
+                    StatisticalNature.entries.map { it.label() },
+                    { natureIndex = (natureIndex + 1) % StatisticalNature.entries.size },
+                    enabled = natureEnabled,
+                )
+            }
+            if (state.operation != JournalOperationState.IDLE) {
+                item {
+                    LedgerBanner(
+                        state.operation.label(),
+                        when (state.operation) {
+                            JournalOperationState.FAILED -> LedgerBannerVariant.DANGER
+                            JournalOperationState.NO_CHANGES -> LedgerBannerVariant.NEUTRAL
+                            JournalOperationState.SUCCEEDED -> LedgerBannerVariant.INFO
+                            else -> LedgerBannerVariant.WARNING
+                        },
+                    )
+                }
+            }
         }
         LedgerCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(LedgerTheme.spacing.xs), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
-            LedgerText(
-                if (changeSummary.isEmpty()) stringResource(R.string.p15_journal_no_changes_selected) else changeSummary.joinToString(),
-                LedgerTextRole.SUPPORTING,
-            )
-            LedgerButton(
-                stringResource(R.string.p15_journal_apply_atomically),
-                submit,
-                Modifier.fillMaxWidth(),
-                enabled = inputValid && state.operation !in setOf(JournalOperationState.VALIDATING, JournalOperationState.COMMITTING),
-            )
+                LedgerText(
+                    if (changeSummary.isEmpty()) stringResource(R.string.p15_journal_no_changes_selected) else changeSummary.joinToString(),
+                    LedgerTextRole.SUPPORTING,
+                )
+                LedgerButton(
+                    stringResource(R.string.p15_journal_apply_atomically),
+                    submit,
+                    Modifier.fillMaxWidth(),
+                    enabled = inputValid && state.operation !in setOf(JournalOperationState.VALIDATING, JournalOperationState.COMMITTING),
+                )
             }
         }
     }
     if (showTimePicker) {
-        val local = (occurredAt ?: Instant.now()).atZone(zoneId)
+        val local = (occurredAt ?: LedgerTheme.now).atZone(zoneId)
         LedgerDateTimePickerFlow(
             local.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
             local.hour,
@@ -766,23 +793,25 @@ private fun DetailScreen(state: JournalLoadState.Content, actions: JournalAction
         if (budgetValues.isNotEmpty()) item { DetailSection(stringResource(R.string.p15_journal_budget_semantics), budgetValues) }
         if (fxValues.isNotEmpty()) item { DetailSection(stringResource(R.string.p15_journal_fx), fxValues) }
         if (relationshipValues.isNotEmpty()) item { DetailSection(stringResource(R.string.p15_journal_relationships), relationshipValues) }
-        if (detail.attachmentNames.isNotEmpty() || (detail.transaction.state == TransactionLifecycleState.ACTIVE && detail.transaction.kind in ORDINARY_KINDS)) item {
-            FormSection(stringResource(R.string.p15_journal_attachments)) {
-                detail.attachmentIds.zip(detail.attachmentNames).forEach { (attachmentId, displayName) ->
-                    LedgerButton(
-                        displayName,
-                        { actions.onOpenAttachment(attachmentId) },
-                        Modifier.fillMaxWidth(),
-                        LedgerButtonVariant.TEXT,
-                    )
-                }
-                if (detail.transaction.state == TransactionLifecycleState.ACTIVE && detail.transaction.kind in ORDINARY_KINDS) {
-                    LedgerButton(
-                        stringResource(R.string.p15_journal_manage_attachments),
-                        { actions.onEditById(detail.transaction.transactionId, detail.transaction.kind) },
-                        Modifier.fillMaxWidth(),
-                        LedgerButtonVariant.SECONDARY,
-                    )
+        if (detail.attachmentNames.isNotEmpty() || (detail.transaction.state == TransactionLifecycleState.ACTIVE && detail.transaction.kind in ORDINARY_KINDS)) {
+            item {
+                FormSection(stringResource(R.string.p15_journal_attachments)) {
+                    detail.attachmentIds.zip(detail.attachmentNames).forEach { (attachmentId, displayName) ->
+                        LedgerButton(
+                            displayName,
+                            { actions.onOpenAttachment(attachmentId) },
+                            Modifier.fillMaxWidth(),
+                            LedgerButtonVariant.TEXT,
+                        )
+                    }
+                    if (detail.transaction.state == TransactionLifecycleState.ACTIVE && detail.transaction.kind in ORDINARY_KINDS) {
+                        LedgerButton(
+                            stringResource(R.string.p15_journal_manage_attachments),
+                            { actions.onEditById(detail.transaction.transactionId, detail.transaction.kind) },
+                            Modifier.fillMaxWidth(),
+                            LedgerButtonVariant.SECONDARY,
+                        )
+                    }
                 }
             }
         }
@@ -998,30 +1027,30 @@ private fun HistoryScreen(state: JournalLoadState.Content, actions: JournalActio
                     LedgerIconView(LedgerIcon.JOURNAL, contentDescription = null)
                     LedgerCard(Modifier.weight(1f)) {
                         Column(Modifier.padding(LedgerTheme.spacing.sm)) {
-                        LedgerText(stringResource(R.string.p15_journal_revision_number, version.revisionNumber), LedgerTextRole.SECTION)
-                        LedgerChip(version.action.label(), {}, selected = true, enabled = false)
-                        LedgerText(formatter.format(version.createdAt), LedgerTextRole.SUPPORTING)
-                        LedgerText(version.source.label(), LedgerTextRole.SUPPORTING)
-                        LedgerText(version.changedFields.map { it.revisionFieldLabel() }.joinToString(), LedgerTextRole.BODY)
-                        val transaction = state.detail?.transaction
-                        val current = history.firstOrNull()
-                        if (transaction != null && current != null && version.revisionId != current.revisionId) {
-                            LedgerButton(
-                                stringResource(R.string.p15_journal_compare),
-                                {
-                                    actions.onCompareRevisions(transaction.transactionId, version.revisionId, current.revisionId)
-                                    actions.onNavigate("JRN-009", mapOf("transactionId" to transaction.transactionId, "leftRevisionId" to version.revisionId, "rightRevisionId" to current.revisionId))
-                                },
-                                Modifier.fillMaxWidth(),
-                                LedgerButtonVariant.SECONDARY,
-                            )
-                            LedgerButton(
-                                stringResource(R.string.p15_journal_create_revision),
-                                { actions.onRestoreRevision(transaction.transactionId, transaction.revisionId, version.revisionId, state.dependencyResolutions) },
-                                Modifier.fillMaxWidth(),
-                                enabled = state.dependencies.size == state.dependencyResolutions.size,
-                            )
-                        }
+                            LedgerText(stringResource(R.string.p15_journal_revision_number, version.revisionNumber), LedgerTextRole.SECTION)
+                            LedgerChip(version.action.label(), {}, selected = true, enabled = false)
+                            LedgerText(formatter.format(version.createdAt), LedgerTextRole.SUPPORTING)
+                            LedgerText(version.source.label(), LedgerTextRole.SUPPORTING)
+                            LedgerText(version.changedFields.map { it.revisionFieldLabel() }.joinToString(), LedgerTextRole.BODY)
+                            val transaction = state.detail?.transaction
+                            val current = history.firstOrNull()
+                            if (transaction != null && current != null && version.revisionId != current.revisionId) {
+                                LedgerButton(
+                                    stringResource(R.string.p15_journal_compare),
+                                    {
+                                        actions.onCompareRevisions(transaction.transactionId, version.revisionId, current.revisionId)
+                                        actions.onNavigate("JRN-009", mapOf("transactionId" to transaction.transactionId, "leftRevisionId" to version.revisionId, "rightRevisionId" to current.revisionId))
+                                    },
+                                    Modifier.fillMaxWidth(),
+                                    LedgerButtonVariant.SECONDARY,
+                                )
+                                LedgerButton(
+                                    stringResource(R.string.p15_journal_create_revision),
+                                    { actions.onRestoreRevision(transaction.transactionId, transaction.revisionId, version.revisionId, state.dependencyResolutions) },
+                                    Modifier.fillMaxWidth(),
+                                    enabled = state.dependencies.size == state.dependencyResolutions.size,
+                                )
+                            }
                         }
                     }
                 }
@@ -1146,7 +1175,8 @@ private fun TrashScreen(state: JournalLoadState.Content, pages: Flow<PagingData<
         PagedJournalList(
             pages,
             actions,
-            false,
+            showRunningBalance = false,
+            pageReady = state.pageLoadedEpoch == state.pagingEpoch,
             selection = state.selection,
             trashMode = true,
             emptyTitle = stringResource(R.string.p15_trash_empty_title),
@@ -1161,7 +1191,10 @@ private fun TrashScreen(state: JournalLoadState.Content, pages: Flow<PagingData<
 private fun PurgeScreen(state: JournalLoadState.Content, actions: JournalActions) {
     val assessment = state.purgeAssessment
     var phrase by remember { mutableStateOf("") }
-    val dismiss = { phrase = ""; actions.onBack() }
+    val dismiss = {
+        phrase = ""
+        actions.onBack()
+    }
     if (assessment == null) {
         LedgerDialog(
             title = stringResource(R.string.p15_journal_purge),
@@ -1191,7 +1224,7 @@ private fun PurgeScreen(state: JournalLoadState.Content, actions: JournalActions
             onDismiss = dismiss,
             danger = true,
             content = {
-                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Column(Modifier.heightIn(max = LedgerTheme.dimensions.dialogMaxWidth).verticalScroll(rememberScrollState())) {
                     assessment.reasons.forEach { LedgerText(it.label(), LedgerTextRole.BODY) }
                 }
             },
@@ -1207,7 +1240,7 @@ private fun PurgeScreen(state: JournalLoadState.Content, actions: JournalActions
             danger = true,
             confirmEnabled = phrase == required && state.operation != JournalOperationState.COMMITTING,
             content = {
-                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Column(Modifier.heightIn(max = LedgerTheme.dimensions.dialogMaxWidth).verticalScroll(rememberScrollState())) {
                     LedgerText(stringResource(R.string.p15_journal_purge_consequence), LedgerTextRole.BODY)
                     LedgerText(stringResource(R.string.p15_journal_purge_unaffected), LedgerTextRole.SUPPORTING)
                     LedgerBanner(stringResource(R.string.p15_journal_purge_dependency_summary, state.dependencies.size), LedgerBannerVariant.INFO)
@@ -1225,25 +1258,50 @@ private fun PagedJournalList(
     pages: Flow<PagingData<JournalTransactionView>>,
     actions: JournalActions,
     showRunningBalance: Boolean,
+    pageReady: Boolean,
     selectionMode: Boolean = false,
     selection: app.ledger.finance.application.JournalSelectionSpec? = null,
     trashMode: Boolean = false,
     modifier: Modifier = Modifier,
+    blockingLoadingLabel: String? = null,
+    readyTestTag: String? = null,
     emptyTitle: String? = null,
     emptyBody: String? = null,
     emptyActionLabel: String? = null,
     onEmptyAction: (() -> Unit)? = null,
 ) {
     val items = pages.collectAsLazyPagingItems()
+    LaunchedEffect(items.loadState.refresh, items.itemCount, blockingLoadingLabel, pageReady) {
+        if (pageReady && blockingLoadingLabel == null && items.loadState.refresh is LoadState.NotLoading) {
+            withFrameNanos {
+                if (items.loadState.refresh is LoadState.NotLoading) actions.onPagePresented()
+            }
+        }
+    }
+    if (blockingLoadingLabel != null) {
+        LedgerLoadingState(
+            modifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_LOADING),
+            blockingLoadingLabel,
+        )
+        return
+    }
+    val presentedModifier = if (readyTestTag != null && items.loadState.refresh is LoadState.NotLoading) {
+        modifier.testTag(readyTestTag)
+    } else {
+        modifier
+    }
     when {
-        items.itemCount == 0 && items.loadState.refresh is LoadState.Loading -> LedgerLoadingState(modifier.fillMaxSize(), stringResource(R.string.p15_journal_loading))
-        items.itemCount == 0 && items.loadState.refresh is LoadState.Error -> LedgerErrorState(UiErrorCode("JOURNAL_PAGE_FAILED"), stringResource(R.string.p15_journal_error), items::retry, modifier.fillMaxSize())
+        items.itemCount == 0 && items.loadState.refresh is LoadState.Loading -> LedgerLoadingState(
+            presentedModifier.fillMaxSize().testTag(LedgerTestTags.JOURNAL_LOADING),
+            stringResource(R.string.p15_journal_loading),
+        )
+        items.itemCount == 0 && items.loadState.refresh is LoadState.Error -> LedgerErrorState(UiErrorCode("JOURNAL_PAGE_FAILED"), stringResource(R.string.p15_journal_error), items::retry, presentedModifier.fillMaxSize())
         items.itemCount == 0 -> LedgerEmptyState(
             emptyTitle ?: stringResource(R.string.p15_journal_empty_title),
             emptyBody ?: stringResource(R.string.p15_journal_empty_body),
             emptyActionLabel ?: stringResource(R.string.p15_journal_retry),
             onEmptyAction ?: items::retry,
-            modifier,
+            presentedModifier,
         )
         else -> JournalLazyColumn(
             items,
@@ -1254,7 +1312,7 @@ private fun PagedJournalList(
             trashMode,
             refreshing = items.loadState.refresh is LoadState.Loading,
             refreshFailed = items.loadState.refresh is LoadState.Error,
-            modifier = modifier,
+            modifier = presentedModifier,
         )
     }
 }
@@ -1635,9 +1693,13 @@ private fun String.toOptionalMinor(
 private fun Long?.toMajorInput(
     currency: app.ledger.core.money.CurrencyCode?,
     catalog: JvmLegalTenderCurrencyCatalog,
-): String = if (this == null || currency == null) "" else catalog.find(currency)
-    ?.let { BigDecimal.valueOf(this, it.fractionDigits).stripTrailingZeros().toPlainString() }
-    .orEmpty()
+): String = if (this == null || currency == null) {
+    ""
+} else {
+    catalog.find(currency)
+        ?.let { BigDecimal.valueOf(this, it.fractionDigits).stripTrailingZeros().toPlainString() }
+        .orEmpty()
+}
 
 private fun Int.toCoordinateInput(): String = BigDecimal.valueOf(toLong(), GEO_COORDINATE_SCALE).stripTrailingZeros().toPlainString()
 

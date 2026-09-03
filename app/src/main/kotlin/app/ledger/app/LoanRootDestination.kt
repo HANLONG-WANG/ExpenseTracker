@@ -14,10 +14,10 @@ import app.ledger.core.designsystem.LedgerSaveFab
 import app.ledger.feature.liabilities.LoanActions
 import app.ledger.feature.liabilities.LoanDestination
 import app.ledger.feature.liabilities.LoanLoadState
-import app.ledger.feature.liabilities.LoanPresentation
 import app.ledger.feature.liabilities.LoanPolicy
-import app.ledger.feature.liabilities.R as LiabilitiesR
+import app.ledger.feature.liabilities.LoanPresentation
 import app.ledger.finance.domain.UserAccountType
+import app.ledger.feature.liabilities.R as LiabilitiesR
 
 @Composable
 internal fun loanDestinationTitleOrNull(screenId: String, creditAccountsOnly: Boolean = false): String? = when (screenId) {
@@ -62,61 +62,61 @@ internal fun LoanRootDestination(
             onNavigationChanged()
         },
     ) {
-    LoanDestination(
-        screenId,
-        state,
-        encodedArguments,
-        LoanActions(
-            onRetry = { viewModel.loadLoan(screenId, contractId, trancheId, transactionId, simulationId) },
-            onNavigate = { target, primary, secondary ->
-                viewModel.navigateLoan(target, primary, secondary)
-                onNavigationChanged()
-            },
-            onFieldChanged = viewModel::updateLoanField,
-            onSelectContract = viewModel::selectLoanContract,
-            onSelectTranche = viewModel::selectLoanTranche,
-            onSelectPaymentAccount = viewModel::selectLoanPaymentAccount,
-            onSelectScheduleInstallment = viewModel::selectLoanScheduleInstallment,
-            onOperationOccurredAt = viewModel::selectLoanOperationOccurredAt,
-            onRepaymentMethod = viewModel::selectLoanRepaymentMethod,
-            onStrategy = viewModel::selectLoanStrategy,
-            onRateType = viewModel::selectLoanRateType,
-            onFrequency = viewModel::selectLoanFrequency,
-            onPrepaymentPolicy = viewModel::selectLoanPrepaymentPolicy,
-            onRoundingMode = viewModel::selectLoanRoundingMode,
-            onWizardNext = viewModel::nextLoanWizardStep,
-            onWizardBack = viewModel::previousLoanWizardStep,
-            onAddTranche = viewModel::addLoanWizardTranche,
-            onSelectWizardTranche = viewModel::selectLoanWizardTranche,
-            onAddRatePeriod = viewModel::addLoanRatePeriod,
-            onEditRatePeriod = viewModel::editLoanRatePeriod,
-            onPreview = viewModel::previewLoan,
-            onSave = viewModel::saveLoan,
-            onSimulate = viewModel::simulateLoan,
-            onApplySimulation = viewModel::applyLoanSimulation,
-            onCancelConfirmation = {
-                viewModel.requestRootBack()
-                onNavigationChanged()
-            },
-            onOpenCreditAccount = { accountId ->
-                viewModel.navigateCredit("CRD-001", accountId)
-                onNavigationChanged()
-            },
-            onCreateLoanAccount = {
-                viewModel.openNewAccountEditor(UserAccountType.LOAN)
-                onNavigationChanged()
-            },
-            onCreateCreditAccount = {
-                viewModel.openNewAccountEditor(UserAccountType.CREDIT)
-                onNavigationChanged()
-            },
-            onOpenTransactions = { accountId ->
-                viewModel.openJournalForAccount(accountId)
-                onNavigationChanged()
-            },
-        ),
-        creditAccountsOnly = viewModel.liabilityCreditOnly,
-    )
+        LoanDestination(
+            screenId,
+            state,
+            encodedArguments,
+            LoanActions(
+                onRetry = { viewModel.loadLoan(screenId, contractId, trancheId, transactionId, simulationId) },
+                onNavigate = { target, primary, secondary ->
+                    viewModel.navigateLoan(target, primary, secondary)
+                    onNavigationChanged()
+                },
+                onFieldChanged = viewModel::updateLoanField,
+                onSelectContract = viewModel::selectLoanContract,
+                onSelectTranche = viewModel::selectLoanTranche,
+                onSelectPaymentAccount = viewModel::selectLoanPaymentAccount,
+                onSelectScheduleInstallment = viewModel::selectLoanScheduleInstallment,
+                onOperationOccurredAt = viewModel::selectLoanOperationOccurredAt,
+                onRepaymentMethod = viewModel::selectLoanRepaymentMethod,
+                onStrategy = viewModel::selectLoanStrategy,
+                onRateType = viewModel::selectLoanRateType,
+                onFrequency = viewModel::selectLoanFrequency,
+                onPrepaymentPolicy = viewModel::selectLoanPrepaymentPolicy,
+                onRoundingMode = viewModel::selectLoanRoundingMode,
+                onWizardNext = viewModel::nextLoanWizardStep,
+                onWizardBack = viewModel::previousLoanWizardStep,
+                onAddTranche = viewModel::addLoanWizardTranche,
+                onSelectWizardTranche = viewModel::selectLoanWizardTranche,
+                onAddRatePeriod = viewModel::addLoanRatePeriod,
+                onEditRatePeriod = viewModel::editLoanRatePeriod,
+                onPreview = viewModel::previewLoan,
+                onSave = viewModel::saveLoan,
+                onSimulate = viewModel::simulateLoan,
+                onApplySimulation = viewModel::applyLoanSimulation,
+                onCancelConfirmation = {
+                    viewModel.requestRootBack()
+                    onNavigationChanged()
+                },
+                onOpenCreditAccount = { accountId ->
+                    viewModel.navigateCredit("CRD-001", accountId)
+                    onNavigationChanged()
+                },
+                onCreateLoanAccount = {
+                    viewModel.openNewAccountEditor(UserAccountType.LOAN)
+                    onNavigationChanged()
+                },
+                onCreateCreditAccount = {
+                    viewModel.openNewAccountEditor(UserAccountType.CREDIT)
+                    onNavigationChanged()
+                },
+                onOpenTransactions = { accountId ->
+                    viewModel.openJournalForAccount(accountId)
+                    onNavigationChanged()
+                },
+            ),
+            creditAccountsOnly = viewModel.liabilityCreditOnly,
+        )
     }
 }
 

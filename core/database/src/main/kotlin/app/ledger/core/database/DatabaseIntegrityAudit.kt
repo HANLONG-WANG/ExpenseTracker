@@ -35,21 +35,20 @@ data class DatabaseIntegrityReport(
     val isValidIgnoringProjectionInvariants: Boolean
         get() = isValidIgnoringPermanentInvariants(PROJECTION_INVARIANT_IDS)
 
-    private fun isValidIgnoringPermanentInvariants(ignoredIds: Set<String>): Boolean =
-        integrityCheck == "ok" &&
-            foreignKeyViolationCount == 0 &&
-            unbalancedJournalCount == 0 &&
-            invalidCurrentSubtypeCount == 0 &&
-            postingCurrencyViolationCount == 0 &&
-            invalidActiveApplyChainCount == 0 &&
-            nonZeroTrashedTransactionCount == 0 &&
-            permanentInvariantViolationCounts
-                .filterKeys { it !in ignoredIds }
-                .values
-                .all { it == 0 } &&
-            auditQueryFailureCount == 0 &&
-            capability.sqlCipherVersion.isNotBlank() && capability.fts5 && capability.rTree &&
-            capability.json && capability.windowFunctions
+    private fun isValidIgnoringPermanentInvariants(ignoredIds: Set<String>): Boolean = integrityCheck == "ok" &&
+        foreignKeyViolationCount == 0 &&
+        unbalancedJournalCount == 0 &&
+        invalidCurrentSubtypeCount == 0 &&
+        postingCurrencyViolationCount == 0 &&
+        invalidActiveApplyChainCount == 0 &&
+        nonZeroTrashedTransactionCount == 0 &&
+        permanentInvariantViolationCounts
+            .filterKeys { it !in ignoredIds }
+            .values
+            .all { it == 0 } &&
+        auditQueryFailureCount == 0 &&
+        capability.sqlCipherVersion.isNotBlank() && capability.fts5 && capability.rTree &&
+        capability.json && capability.windowFunctions
 
     private companion object {
         val PROJECTION_INVARIANT_IDS: Set<String> = setOf("INV-031", "INV-035")
@@ -209,6 +208,15 @@ object DatabaseIntegrityAudit {
                 OR EXISTS(
                   SELECT 1 FROM settlement_effect effect
                   WHERE effect.source_revision_id=bt.current_revision_id AND effect.reversal_of_id IS NULL
+                    AND NOT EXISTS(SELECT 1 FROM settlement_effect reversal WHERE reversal.reversal_of_id=effect.id)
+                )
+                OR EXISTS(
+                  SELECT 1 FROM transaction_revision current_revision
+                  JOIN settlement_payment_record record ON record.uid=current_revision.source_reference_uid
+                  JOIN settlement_effect effect ON effect.settlement_payment_record_id=record.id
+                  WHERE current_revision.id=bt.current_revision_id AND record.linked_transaction_id IS NULL
+                    AND record.reversal_of_id IS NULL AND effect.reversal_of_id IS NULL
+                    AND NOT EXISTS(SELECT 1 FROM settlement_payment_record reversal WHERE reversal.reversal_of_id=record.id)
                     AND NOT EXISTS(SELECT 1 FROM settlement_effect reversal WHERE reversal.reversal_of_id=effect.id)
                 )
               )

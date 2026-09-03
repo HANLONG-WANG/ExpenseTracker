@@ -25,27 +25,49 @@ import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
+import app.ledger.core.security.LedgerDatabaseSessionAccess
+import app.ledger.core.security.LedgerInteractionOperation
+import app.ledger.core.security.LedgerSessionPerformance
 import app.ledger.finance.application.AccountGoalReferenceView
+import app.ledger.finance.application.AccountHistoryCursor
+import app.ledger.finance.application.AccountHistoryPage
 import app.ledger.finance.application.AccountReferenceView
+import app.ledger.finance.application.AccountSummarySnapshot
 import app.ledger.finance.application.AccountTransactionReferenceView
+import app.ledger.finance.application.CallerOwnedLedgerWriteGate
 import app.ledger.finance.application.CardReferenceView
 import app.ledger.finance.application.CategoryReferenceView
 import app.ledger.finance.application.CheckpointReferenceView
 import app.ledger.finance.application.DefaultFinancialMutationCoordinator
+import app.ledger.finance.application.EntryCoreReferences
 import app.ledger.finance.application.FinanceDataError
 import app.ledger.finance.application.FinancialPlanningPort
 import app.ledger.finance.application.FinancialPlanningSnapshotRepository
 import app.ledger.finance.application.GoalDraft
-import app.ledger.finance.application.LedgerWriteGate
+import app.ledger.finance.application.LedgerDataScope
+import app.ledger.finance.application.LedgerQueryKey
+import app.ledger.finance.application.LedgerRevisionCacheControl
+import app.ledger.finance.application.LedgerRevisionCacheKey
+import app.ledger.finance.application.LocationReferenceCursor
 import app.ledger.finance.application.LocationReferenceView
 import app.ledger.finance.application.MerchantReferenceView
+import app.ledger.finance.application.NamedReferenceCursor
+import app.ledger.finance.application.OrderedReferenceCursor
 import app.ledger.finance.application.PlaceReferenceView
 import app.ledger.finance.application.ProjectDraft
+import app.ledger.finance.application.RecentEntryDefaults
 import app.ledger.finance.application.ReferenceDataManagementPort
 import app.ledger.finance.application.ReferenceDataSnapshot
+import app.ledger.finance.application.ReferenceManagementPage
 import app.ledger.finance.application.ReferenceMutation
 import app.ledger.finance.application.ReferenceMutationCommand
 import app.ledger.finance.application.ReferenceMutationIds
+import app.ledger.finance.application.ReferenceSuggestion
+import app.ledger.finance.application.ReferenceSuggestionKind
+import app.ledger.finance.application.ReferenceSuggestionPage
+import app.ledger.finance.application.RevisionAwareBoundedCache
 import app.ledger.finance.domain.AccountUsage
 import app.ledger.finance.domain.BatchFinancialCommand
 import app.ledger.finance.domain.CanonicalFinancialHash
@@ -80,42 +102,313 @@ import app.ledger.finance.domain.TransactionContextInput
 import app.ledger.finance.domain.TransactionKind
 import app.ledger.finance.domain.TransactionPayload
 import app.ledger.finance.domain.UserAccountType
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import java.time.Instant
 
 /** SQLCipher-backed, revision-audited owner for non-financial account/reference-data mutations. */
 public class SecureRoomReferenceDataManagementPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
-    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
-) : ReferenceDataManagementPort {
-    private val applicationContext = context.applicationContext
+    private val databaseAccess: LedgerDatabaseOperationAccess,
+) : ReferenceDataManagementPort,
+    LedgerRevisionCacheControl {
+    public constructor(databaseAccess: LedgerDatabaseSessionAccess) : this(databaseAccess as LedgerDatabaseOperationAccess)
+
+    internal constructor(databaseAccess: OfflineSelectedLedgerDatabaseAccess) : this(databaseAccess as LedgerDatabaseOperationAccess)
+
     private val currencyCatalog = JvmLegalTenderCurrencyCatalog.create()
     private val projections = RoomProjectionEngine()
-    private val financialWriteGate = ReferenceFinancialWriteGate()
     private val financialSnapshotMapper = RoomReferenceFinancialSnapshotMapper()
+    private val entryCoreCache = RevisionAwareBoundedCache<ReferenceQueryKey, EntryCoreReferences>(ENTRY_CORE_CACHE_SIZE)
+    private val suggestionCache = RevisionAwareBoundedCache<ReferenceQueryKey, ReferenceSuggestionPage>(SUGGESTION_CACHE_SIZE)
+    private val recentDefaultsCache = RevisionAwareBoundedCache<ReferenceQueryKey, RecentEntryDefaults>(RECENT_DEFAULTS_CACHE_SIZE)
+    private val accountSummaryCache = RevisionAwareBoundedCache<ReferenceQueryKey, AccountSummarySnapshot>(ACCOUNT_SUMMARY_CACHE_SIZE)
+    private val accountHistoryCache = RevisionAwareBoundedCache<ReferenceQueryKey, AccountHistoryPage>(ACCOUNT_HISTORY_CACHE_SIZE)
+    private val categoryPageCache = RevisionAwareBoundedCache<ReferenceQueryKey, ReferenceManagementPage<CategoryReferenceView, OrderedReferenceCursor>>(MANAGEMENT_CACHE_SIZE)
+    private val merchantPageCache = RevisionAwareBoundedCache<ReferenceQueryKey, ReferenceManagementPage<MerchantReferenceView, NamedReferenceCursor>>(MANAGEMENT_CACHE_SIZE)
+    private val placePageCache = RevisionAwareBoundedCache<ReferenceQueryKey, ReferenceManagementPage<PlaceReferenceView, NamedReferenceCursor>>(MANAGEMENT_CACHE_SIZE)
+    private val locationPageCache = RevisionAwareBoundedCache<ReferenceQueryKey, ReferenceManagementPage<LocationReferenceView, LocationReferenceCursor>>(MANAGEMENT_CACHE_SIZE)
 
-    override suspend fun snapshot(bookId: StableId): DomainResult<ReferenceDataSnapshot> = withDatabase(bookId) { database ->
-        database.readLedger { connection -> readSnapshot(connection, bookId, ReferenceSnapshotContent.FULL) }
+    override suspend fun snapshot(bookId: StableId): DomainResult<ReferenceDataSnapshot> {
+        val trace = LedgerSessionPerformance.begin(LedgerInteractionOperation.FULL_REFERENCE_SNAPSHOT)
+        return try {
+            withDatabase(bookId, LedgerAccessMode.READ) { database ->
+                database.readLedger { connection -> readSnapshot(connection, bookId, ReferenceSnapshotContent.FULL) }
+            }
+        } finally {
+            trace.close()
+        }
     }
 
-    override suspend fun entrySnapshot(bookId: StableId): DomainResult<ReferenceDataSnapshot> = withDatabase(bookId) { database ->
+    override suspend fun entrySnapshot(bookId: StableId): DomainResult<ReferenceDataSnapshot> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { connection -> readSnapshot(connection, bookId, ReferenceSnapshotContent.ENTRY) }
     }
 
-    override suspend fun mutate(command: ReferenceMutationCommand): DomainResult<Unit> = withDatabase(command.ids.bookId) { database ->
-        when (val mutation = command.mutation) {
-            is ReferenceMutation.RemoveCategory -> if (mutation.strategy == CategoryRemovalStrategy.REASSIGN) {
-                mutateCategoryWithFinancialBatch(database, command.ids, mutation).valueOrAbort()
-            } else {
-                mutateReferenceOnly(database, command)
-            }
-            is ReferenceMutation.SplitPlace -> mutatePlaceSplit(database, command.ids, mutation).valueOrAbort()
-            else -> mutateReferenceOnly(database, command)
+    override suspend fun entryCoreReferences(bookId: StableId): DomainResult<EntryCoreReferences> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
+        database.readLedger { connection ->
+            val book = requireBook(connection, bookId)
+            val key = revisionKey(bookId, book, ReferenceQueryKey.EntryCore, valuationSensitive = true)
+            entryCoreCache.get(key) ?: EntryCoreReferences(
+                bookId,
+                CurrencyCode.parse(book.baseCurrency).valueOrAbort(),
+                book.localRevision,
+                book.valuationRevision,
+                readAccounts(connection).filter { it.status == EntityStatus.ACTIVE }.take(ENTRY_CORE_ROW_CAP),
+                readCards(connection, includeHistoryMetadata = false)
+                    .filter { it.status == EntityStatus.ACTIVE }
+                    .take(ENTRY_CORE_ROW_CAP),
+                readCategories(connection, includeHistoryMetadata = false)
+                    .filter { it.status == CategoryStatus.ACTIVE }
+                    .take(ENTRY_CORE_ROW_CAP),
+            ).also { entryCoreCache.put(key, it) }
         }
     }
+
+    override suspend fun suggestions(
+        bookId: StableId,
+        query: String,
+        offset: Int,
+        limit: Int,
+    ): DomainResult<ReferenceSuggestionPage> {
+        require(offset >= 0 && limit in 1..MAXIMUM_SUGGESTION_PAGE_SIZE)
+        val normalized = query.trim().lowercase()
+        return withDatabase(bookId, LedgerAccessMode.READ) { database ->
+            database.readLedger { connection ->
+                val book = requireBook(connection, bookId)
+                val queryKey = ReferenceQueryKey.Suggestions(queryFingerprint(normalized), offset, limit)
+                val key = revisionKey(bookId, book, queryKey, valuationSensitive = false)
+                suggestionCache.get(key)?.let { return@readLedger it }
+                val rows = connection.queryList(
+                    "SELECT uid,name,kind FROM (" +
+                        "SELECT uid,name,0 kind FROM merchant WHERE status=? AND instr(lower(name),?)>0 " +
+                        "UNION ALL SELECT uid,name,1 kind FROM place WHERE status=? AND instr(lower(name),?)>0" +
+                        ") ORDER BY name,kind,uid LIMIT ? OFFSET ?",
+                    arrayOf<Any?>(
+                        EntityStatus.ACTIVE.ordinal,
+                        normalized,
+                        EntityStatus.ACTIVE.ordinal,
+                        normalized,
+                        limit + 1,
+                        offset,
+                    ),
+                ) { cursor ->
+                    ReferenceSuggestion(
+                        cursor.stableId("uid"),
+                        ReferenceSuggestionKind.entries[cursor.getInt(cursor.getColumnIndexOrThrow("kind"))],
+                        cursor.getString(cursor.getColumnIndexOrThrow("name")),
+                    )
+                }
+                ReferenceSuggestionPage(rows.take(limit), (offset + limit).takeIf { rows.size > limit })
+                    .also { suggestionCache.put(key, it) }
+            }
+        }
+    }
+
+    override suspend fun recentEntryDefaults(bookId: StableId): DomainResult<RecentEntryDefaults> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
+        database.readLedger { connection ->
+            val book = requireBook(connection, bookId)
+            val key = revisionKey(bookId, book, ReferenceQueryKey.RecentDefaults, valuationSensitive = false)
+            recentDefaultsCache.get(key)?.let { return@readLedger it }
+            val rows = connection.queryList(
+                "SELECT m.uid merchant_uid,p.uid place_uid,pr.uid project_uid,tb.uid template_uid " +
+                    "FROM current_transaction_projection ctp INDEXED BY ix_current_transaction_keyset " +
+                    "JOIN transaction_revision tr ON tr.id=ctp.current_revision_id " +
+                    "LEFT JOIN merchant m ON m.id=tr.merchant_id LEFT JOIN location_record lr ON lr.id=tr.location_record_id " +
+                    "LEFT JOIN place p ON p.id=lr.place_id LEFT JOIN project pr ON pr.id=tr.project_id " +
+                    "LEFT JOIN transaction_blueprint tb ON tb.uid=tr.source_reference_uid " +
+                    "WHERE ctp.state=0 ORDER BY ctp.occurred_at DESC,ctp.transaction_id DESC LIMIT ?",
+                arrayOf(RECENT_ENTRY_DEFAULT_LIMIT),
+            ) { cursor ->
+                listOf(
+                    cursor.nullableStableId("merchant_uid"),
+                    cursor.nullableStableId("place_uid"),
+                    cursor.nullableStableId("project_uid"),
+                    cursor.nullableStableId("template_uid"),
+                )
+            }
+            RecentEntryDefaults(
+                rows.mapNotNull { it[0] }.distinct(),
+                rows.mapNotNull { it[1] }.distinct(),
+                rows.mapNotNull { it[2] }.distinct(),
+                rows.mapNotNull { it[3] }.distinct(),
+            ).also { recentDefaultsCache.put(key, it) }
+        }
+    }
+
+    override suspend fun accountSummary(bookId: StableId): DomainResult<AccountSummarySnapshot> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
+        database.readLedger { connection ->
+            val book = requireBook(connection, bookId)
+            val key = revisionKey(bookId, book, ReferenceQueryKey.AccountSummary, valuationSensitive = true)
+            accountSummaryCache.get(key) ?: readAccountSummary(connection, bookId, book)
+                .also { accountSummaryCache.put(key, it) }
+        }
+    }
+
+    override suspend fun accountHistory(
+        bookId: StableId,
+        accountId: StableId,
+        cursor: AccountHistoryCursor?,
+        limit: Int,
+    ): DomainResult<AccountHistoryPage> {
+        require(limit in 1..MAXIMUM_MANAGEMENT_PAGE_SIZE)
+        return withDatabase(bookId, LedgerAccessMode.READ) { database ->
+            database.readLedger { connection ->
+                val book = requireBook(connection, bookId)
+                val queryKey = ReferenceQueryKey.AccountHistory(accountId, cursor, limit)
+                val key = revisionKey(bookId, book, queryKey, valuationSensitive = false)
+                accountHistoryCache.get(key)?.let { return@readLedger it }
+                val matching = readAccountTransactionPage(connection, accountId, cursor, limit + 1)
+                val page = matching.take(limit)
+                AccountHistoryPage(
+                    page,
+                    readAccountCheckpoints(connection, accountId, limit),
+                    readAccountGoals(connection, accountId, limit),
+                    page.lastOrNull()?.takeIf { matching.size > limit }
+                        ?.let { AccountHistoryCursor(it.occurredAt, it.transactionId) },
+                )
+                    .also { accountHistoryCache.put(key, it) }
+            }
+        }
+    }
+
+    override suspend fun categoryPage(
+        bookId: StableId,
+        direction: CategoryDirection,
+        cursor: OrderedReferenceCursor?,
+        limit: Int,
+    ): DomainResult<ReferenceManagementPage<CategoryReferenceView, OrderedReferenceCursor>> {
+        require(limit in 1..MAXIMUM_MANAGEMENT_PAGE_SIZE)
+        return withDatabase(bookId, LedgerAccessMode.READ) { database ->
+            database.readLedger { connection ->
+                val book = requireBook(connection, bookId)
+                val query = ReferenceQueryKey.Categories(direction, cursor, limit)
+                val key = revisionKey(bookId, book, query, valuationSensitive = false)
+                categoryPageCache.get(key) ?: readCategoryPage(connection, direction, cursor, limit)
+                    .also { categoryPageCache.put(key, it) }
+            }
+        }
+    }
+
+    override suspend fun merchantPage(
+        bookId: StableId,
+        cursor: NamedReferenceCursor?,
+        limit: Int,
+    ): DomainResult<ReferenceManagementPage<MerchantReferenceView, NamedReferenceCursor>> {
+        require(limit in 1..MAXIMUM_MANAGEMENT_PAGE_SIZE)
+        return withDatabase(bookId, LedgerAccessMode.READ) { database ->
+            database.readLedger { connection ->
+                val book = requireBook(connection, bookId)
+                val query = ReferenceQueryKey.Merchants(cursor, limit)
+                val key = revisionKey(bookId, book, query, valuationSensitive = false)
+                merchantPageCache.get(key) ?: readMerchantPage(connection, cursor, limit)
+                    .also { merchantPageCache.put(key, it) }
+            }
+        }
+    }
+
+    override suspend fun placePage(
+        bookId: StableId,
+        cursor: NamedReferenceCursor?,
+        limit: Int,
+    ): DomainResult<ReferenceManagementPage<PlaceReferenceView, NamedReferenceCursor>> {
+        require(limit in 1..MAXIMUM_MANAGEMENT_PAGE_SIZE)
+        return withDatabase(bookId, LedgerAccessMode.READ) { database ->
+            database.readLedger { connection ->
+                val book = requireBook(connection, bookId)
+                val query = ReferenceQueryKey.Places(cursor, limit)
+                val key = revisionKey(bookId, book, query, valuationSensitive = false)
+                placePageCache.get(key) ?: readPlacePage(connection, cursor, limit)
+                    .also { placePageCache.put(key, it) }
+            }
+        }
+    }
+
+    override suspend fun locationPage(
+        bookId: StableId,
+        cursor: LocationReferenceCursor?,
+        limit: Int,
+    ): DomainResult<ReferenceManagementPage<LocationReferenceView, LocationReferenceCursor>> {
+        require(limit in 1..MAXIMUM_MANAGEMENT_PAGE_SIZE)
+        return withDatabase(bookId, LedgerAccessMode.READ) { database ->
+            database.readLedger { connection ->
+                val book = requireBook(connection, bookId)
+                val query = ReferenceQueryKey.Locations(cursor, limit)
+                val key = revisionKey(bookId, book, query, valuationSensitive = false)
+                locationPageCache.get(key) ?: readLocationPage(connection, cursor, limit)
+                    .also { locationPageCache.put(key, it) }
+            }
+        }
+    }
+
+    override suspend fun mutate(command: ReferenceMutationCommand): DomainResult<Unit> {
+        val result = withDatabase(command.ids.bookId, LedgerAccessMode.WRITE) { database ->
+            when (val mutation = command.mutation) {
+                is ReferenceMutation.RemoveCategory -> if (mutation.strategy == CategoryRemovalStrategy.REASSIGN) {
+                    mutateCategoryWithFinancialBatch(database, command.ids, mutation).valueOrAbort()
+                } else {
+                    mutateReferenceOnly(database, command)
+                }
+                is ReferenceMutation.SplitPlace -> mutatePlaceSplit(database, command.ids, mutation).valueOrAbort()
+                else -> mutateReferenceOnly(database, command)
+            }
+        }
+        if (result is DomainResult.Success) clearBook(command.ids.bookId)
+        return result
+    }
+
+    override fun committed(change: app.ledger.finance.application.CommittedLedgerChange) {
+        invalidate(change.bookId, change.scopes)
+    }
+
+    override fun clearBook(bookId: StableId) {
+        entryCoreCache.clearBook(bookId)
+        suggestionCache.clearBook(bookId)
+        recentDefaultsCache.clearBook(bookId)
+        accountSummaryCache.clearBook(bookId)
+        accountHistoryCache.clearBook(bookId)
+        categoryPageCache.clearBook(bookId)
+        merchantPageCache.clearBook(bookId)
+        placePageCache.clearBook(bookId)
+        locationPageCache.clearBook(bookId)
+    }
+
+    override fun clearAll() {
+        entryCoreCache.clear()
+        suggestionCache.clear()
+        recentDefaultsCache.clear()
+        accountSummaryCache.clear()
+        accountHistoryCache.clear()
+        categoryPageCache.clear()
+        merchantPageCache.clear()
+        placePageCache.clear()
+        locationPageCache.clear()
+    }
+
+    private fun invalidate(bookId: StableId, scopes: Set<LedgerDataScope>) {
+        entryCoreCache.invalidate(bookId, scopes)
+        suggestionCache.invalidate(bookId, scopes)
+        recentDefaultsCache.invalidate(bookId, scopes)
+        accountSummaryCache.invalidate(bookId, scopes)
+        accountHistoryCache.invalidate(bookId, scopes)
+        categoryPageCache.invalidate(bookId, scopes)
+        merchantPageCache.invalidate(bookId, scopes)
+        placePageCache.invalidate(bookId, scopes)
+        locationPageCache.invalidate(bookId, scopes)
+    }
+
+    private fun revisionKey(
+        bookId: StableId,
+        book: BookRow,
+        query: ReferenceQueryKey,
+        valuationSensitive: Boolean,
+    ): LedgerRevisionCacheKey<ReferenceQueryKey> = LedgerRevisionCacheKey(
+        bookId,
+        (databaseAccess as? LedgerDatabaseSessionAccess)?.readyGeneration(bookId) ?: OFFLINE_SESSION_GENERATION,
+        book.localRevision,
+        book.valuationRevision.takeIf { valuationSensitive },
+        query,
+    )
+
+    private fun queryFingerprint(query: String): String = sha256(query.toByteArray(Charsets.UTF_8))
+        .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
 
     private fun mutateReferenceOnly(database: LedgerDatabase, command: ReferenceMutationCommand): Unit = database.inLedgerTransaction { connection ->
         val book = requireBook(connection, command.ids.bookId)
@@ -284,7 +577,7 @@ public class SecureRoomReferenceDataManagementPort(
         )
         val repository = RoomFinancialCommitRepository(database, sideEffect = sideEffect)
         val result = DefaultFinancialMutationCoordinator(
-            financialWriteGate,
+            CallerOwnedLedgerWriteGate,
             repository,
             object : FinancialPlanningSnapshotRepository {
                 override suspend fun load(command: FinancialCommand): DomainResult<PlanningSnapshot> = DomainResult.Success(root)
@@ -309,41 +602,7 @@ public class SecureRoomReferenceDataManagementPort(
     ): ReferenceDataSnapshot {
         val book = requireBook(connection, bookId)
         val baseCurrency = CurrencyCode.parse(book.baseCurrency).valueOrAbort()
-        val accounts = connection.queryList(
-            """
-            SELECT ua.uid, ua.type, ua.name, ua.currency_code, ua.status, ua.institution_name, ua.branch_name, ua.account_number,
-              ua.opened_date, ua.icon_key, ua.color_argb, ua.sort_order, ua.row_version,
-              COALESCE(abc.normal_balance_minor, 0) balance_minor, avc.current_base_value_minor, avc.rate_quoted_at,
-              avc.rate_decimal,
-              EXISTS(SELECT 1 FROM posting p WHERE p.ledger_account_id = ua.ledger_account_id) has_postings,
-              (SELECT COUNT(*) FROM payment_card pc WHERE pc.account_id = ua.id) card_count
-            FROM user_account ua LEFT JOIN account_balance_current abc ON abc.account_id = ua.id
-              LEFT JOIN account_valuation_current avc ON avc.account_id = ua.id
-            ORDER BY ua.sort_order, ua.id
-            """.trimIndent(),
-        ) { cursor ->
-            AccountReferenceView(
-                id = cursor.stableId("uid"),
-                type = UserAccountType.entries[cursor.getInt(cursor.getColumnIndexOrThrow("type"))],
-                name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
-                currency = CurrencyCode.parse(cursor.getString(cursor.getColumnIndexOrThrow("currency_code"))).valueOrAbort(),
-                status = EntityStatus.entries[cursor.getInt(cursor.getColumnIndexOrThrow("status"))],
-                institutionName = cursor.nullableString("institution_name"),
-                branchName = cursor.nullableString("branch_name"),
-                openedOn = cursor.nullableLong("opened_date")?.toInt()?.toStoredLocalDate(),
-                iconKey = cursor.getString(cursor.getColumnIndexOrThrow("icon_key")),
-                colorArgb = cursor.getInt(cursor.getColumnIndexOrThrow("color_argb")),
-                sortOrder = cursor.getInt(cursor.getColumnIndexOrThrow("sort_order")),
-                rowVersion = cursor.getLong(cursor.getColumnIndexOrThrow("row_version")),
-                balanceMinor = cursor.getLong(cursor.getColumnIndexOrThrow("balance_minor")),
-                currentBaseValueMinor = cursor.nullableLong("current_base_value_minor"),
-                valuationQuotedAt = cursor.nullableLong("rate_quoted_at")?.toStoredInstant(),
-                hasFinancialPostings = cursor.getInt(cursor.getColumnIndexOrThrow("has_postings")) == 1,
-                cardCount = cursor.getLong(cursor.getColumnIndexOrThrow("card_count")),
-                currentValuationRate = cursor.nullableString("rate_decimal")?.toBigDecimal(),
-                accountNumber = cursor.nullableString("account_number"),
-            )
-        }
+        val accounts = readAccounts(connection)
         val includeHistoryMetadata = content == ReferenceSnapshotContent.FULL
         val cards = readCards(connection, includeHistoryMetadata)
         val categories = readCategories(connection, includeHistoryMetadata)
@@ -353,15 +612,7 @@ public class SecureRoomReferenceDataManagementPort(
         val checkpoints = if (includeHistoryMetadata) readCheckpoints(connection) else emptyList()
         val accountTransactions = if (includeHistoryMetadata) readAccountTransactions(connection) else emptyList()
         val accountGoals = if (includeHistoryMetadata) readAccountGoals(connection) else emptyList()
-        val missingValuation = accounts.any { it.status == EntityStatus.ACTIVE && it.currency != baseCurrency && it.currentBaseValueMinor == null }
-        val core = if (missingValuation) null else checkedNetPosition(accounts, baseCurrency)
-        val settlement = connection.queryList(
-            "SELECT sap.net_position_minor, sa.settlement_currency FROM settlement_position_projection sap " +
-                "JOIN settlement_activity sa ON sa.id = sap.activity_id JOIN participant p ON p.id = sap.participant_id WHERE p.is_self = 1",
-        ) { it.getLong(0) to it.getString(1) }
-        val settlementMissing = settlement.any { it.second != baseCurrency.value }
-        val settlementNet = if (settlementMissing) null else CheckedArithmetic.sum(settlement.map(Pair<Long, String>::first)).valueOrAbort()
-        val adjusted = if (core == null || settlementNet == null) null else CheckedArithmetic.add(core, settlementNet).valueOrAbort()
+        val summary = accountTotals(connection, accounts, baseCurrency)
         return ReferenceDataSnapshot(
             bookId = bookId,
             baseCurrency = baseCurrency,
@@ -375,12 +626,307 @@ public class SecureRoomReferenceDataManagementPort(
             checkpoints = checkpoints,
             accountTransactions = accountTransactions,
             accountGoals = accountGoals,
-            coreNetFinancialAssetsMinor = core,
-            adjustedNetFinancialPositionMinor = adjusted,
-            valuationMissing = missingValuation || settlementMissing,
+            coreNetFinancialAssetsMinor = summary.core,
+            adjustedNetFinancialPositionMinor = summary.adjusted,
+            valuationMissing = summary.valuationMissing,
             valuationRevision = book.valuationRevision,
         )
     }
+
+    private fun readAccounts(connection: SupportSQLiteDatabase): List<AccountReferenceView> = connection.queryList(
+        """
+            SELECT ua.uid, ua.type, ua.name, ua.currency_code, ua.status, ua.institution_name, ua.branch_name, ua.account_number,
+              ua.opened_date, ua.icon_key, ua.color_argb, ua.sort_order, ua.row_version,
+              COALESCE(abc.normal_balance_minor, 0) balance_minor, avc.current_base_value_minor, avc.rate_quoted_at,
+              avc.rate_decimal,
+              EXISTS(SELECT 1 FROM posting p WHERE p.ledger_account_id = ua.ledger_account_id) has_postings,
+              (SELECT COUNT(*) FROM payment_card pc WHERE pc.account_id = ua.id) card_count
+            FROM user_account ua LEFT JOIN account_balance_current abc ON abc.account_id = ua.id
+              LEFT JOIN account_valuation_current avc ON avc.account_id = ua.id
+            ORDER BY ua.sort_order, ua.id
+        """.trimIndent(),
+    ) { cursor ->
+        AccountReferenceView(
+            id = cursor.stableId("uid"),
+            type = UserAccountType.entries[cursor.getInt(cursor.getColumnIndexOrThrow("type"))],
+            name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
+            currency = CurrencyCode.parse(cursor.getString(cursor.getColumnIndexOrThrow("currency_code"))).valueOrAbort(),
+            status = EntityStatus.entries[cursor.getInt(cursor.getColumnIndexOrThrow("status"))],
+            institutionName = cursor.nullableString("institution_name"),
+            branchName = cursor.nullableString("branch_name"),
+            openedOn = cursor.nullableLong("opened_date")?.toInt()?.toStoredLocalDate(),
+            iconKey = cursor.getString(cursor.getColumnIndexOrThrow("icon_key")),
+            colorArgb = cursor.getInt(cursor.getColumnIndexOrThrow("color_argb")),
+            sortOrder = cursor.getInt(cursor.getColumnIndexOrThrow("sort_order")),
+            rowVersion = cursor.getLong(cursor.getColumnIndexOrThrow("row_version")),
+            balanceMinor = cursor.getLong(cursor.getColumnIndexOrThrow("balance_minor")),
+            currentBaseValueMinor = cursor.nullableLong("current_base_value_minor"),
+            valuationQuotedAt = cursor.nullableLong("rate_quoted_at")?.toStoredInstant(),
+            hasFinancialPostings = cursor.getInt(cursor.getColumnIndexOrThrow("has_postings")) == 1,
+            cardCount = cursor.getLong(cursor.getColumnIndexOrThrow("card_count")),
+            currentValuationRate = cursor.nullableString("rate_decimal")?.toBigDecimal(),
+            accountNumber = cursor.nullableString("account_number"),
+        )
+    }
+
+    private fun readAccountSummary(
+        connection: SupportSQLiteDatabase,
+        bookId: StableId,
+        book: BookRow = requireBook(connection, bookId),
+    ): AccountSummarySnapshot {
+        val baseCurrency = CurrencyCode.parse(book.baseCurrency).valueOrAbort()
+        val accounts = readAccounts(connection).filter { it.status == EntityStatus.ACTIVE }.take(ENTRY_CORE_ROW_CAP)
+        val summary = accountTotals(connection, accounts, baseCurrency)
+        return AccountSummarySnapshot(
+            bookId,
+            baseCurrency,
+            book.localRevision,
+            book.valuationRevision,
+            accounts,
+            readCards(connection, includeHistoryMetadata = false)
+                .filter { it.status == EntityStatus.ACTIVE }
+                .take(ENTRY_CORE_ROW_CAP),
+            summary.core,
+            summary.adjusted,
+            summary.valuationMissing,
+        )
+    }
+
+    private fun accountTotals(
+        connection: SupportSQLiteDatabase,
+        accounts: List<AccountReferenceView>,
+        baseCurrency: CurrencyCode,
+    ): AccountTotals {
+        val missingValuation = accounts.any { it.status == EntityStatus.ACTIVE && it.currency != baseCurrency && it.currentBaseValueMinor == null }
+        val core = if (missingValuation) null else checkedNetPosition(accounts, baseCurrency)
+        val settlement = connection.queryList(
+            "SELECT sap.net_position_minor, sa.settlement_currency FROM settlement_position_projection sap " +
+                "JOIN settlement_activity sa ON sa.id = sap.activity_id JOIN participant p ON p.id = sap.participant_id WHERE p.is_self = 1",
+        ) { it.getLong(0) to it.getString(1) }
+        val settlementMissing = settlement.any { it.second != baseCurrency.value }
+        val settlementNet = if (settlementMissing) null else CheckedArithmetic.sum(settlement.map(Pair<Long, String>::first)).valueOrAbort()
+        val adjusted = if (core == null || settlementNet == null) null else CheckedArithmetic.add(core, settlementNet).valueOrAbort()
+        return AccountTotals(core, adjusted, missingValuation || settlementMissing)
+    }
+
+    private fun readCategoryPage(
+        connection: SupportSQLiteDatabase,
+        direction: CategoryDirection,
+        cursor: OrderedReferenceCursor?,
+        limit: Int,
+    ): ReferenceManagementPage<CategoryReferenceView, OrderedReferenceCursor> {
+        val after = if (cursor == null) "" else "AND (c.sort_order > ? OR (c.sort_order = ? AND c.uid > ?))"
+        val arguments = buildList<Any?> {
+            add(direction.ordinal)
+            cursor?.let {
+                add(it.sortOrder)
+                add(it.sortOrder)
+                add(it.id.bytes)
+            }
+            add(limit + 1)
+        }.toTypedArray()
+        val rows = connection.queryList(
+            """
+            SELECT c.uid, c.direction, parent.uid parent_uid, c.depth, c.name, c.icon_key, c.color_argb, c.sort_order,
+              c.status, c.statistical_nature, da.uid default_account_uid, dc.uid default_card_uid,
+              dm.uid default_merchant_uid, c.row_version,
+              (SELECT COUNT(*) FROM transaction_revision tr WHERE tr.category_id = c.id) history_count,
+              (SELECT COUNT(*) FROM category child WHERE child.parent_id = c.id) child_count
+            FROM category c LEFT JOIN category parent ON parent.id = c.parent_id
+              LEFT JOIN user_account da ON da.id = c.default_account_id LEFT JOIN payment_card dc ON dc.id = c.default_card_id
+              LEFT JOIN merchant dm ON dm.id = c.default_merchant_id
+            WHERE c.direction = ? $after
+            ORDER BY c.sort_order, c.uid LIMIT ?
+            """.trimIndent(),
+            arguments,
+            ::mapCategory,
+        )
+        val page = rows.take(limit)
+        return ReferenceManagementPage(
+            page,
+            page.lastOrNull()?.takeIf { rows.size > limit }?.let { OrderedReferenceCursor(it.sortOrder, it.id) },
+        )
+    }
+
+    private fun readMerchantPage(
+        connection: SupportSQLiteDatabase,
+        cursor: NamedReferenceCursor?,
+        limit: Int,
+    ): ReferenceManagementPage<MerchantReferenceView, NamedReferenceCursor> {
+        val after = if (cursor == null) "" else "WHERE (m.name > ? OR (m.name = ? AND m.uid > ?))"
+        val arguments = buildList<Any?> {
+            cursor?.let {
+                add(it.name)
+                add(it.name)
+                add(it.id.bytes)
+            }
+            add(limit + 1)
+        }.toTypedArray()
+        val rows = connection.queryList(
+            """
+            WITH page AS (
+              SELECT m.id,m.uid,m.name,m.status,m.merged_into_id,m.row_version
+              FROM merchant m INDEXED BY ix_merchant_name_keyset
+              $after ORDER BY m.name,m.uid LIMIT ?
+            )
+            SELECT page.uid,page.name,page.status,merged.uid merged_uid,page.row_version,
+              (SELECT COUNT(*) FROM current_transaction_projection ctp INDEXED BY ix_current_transaction_merchant
+                WHERE ctp.merchant_id=page.id) transaction_count,
+              (SELECT COUNT(*) FROM place p INDEXED BY ix_place_merchant WHERE p.merchant_id=page.id) place_count
+            FROM page LEFT JOIN merchant merged ON merged.id=page.merged_into_id
+            ORDER BY page.name,page.uid
+            """.trimIndent(),
+            arguments,
+        ) { row ->
+            MerchantReferenceView(
+                row.stableId("uid"),
+                row.getString(row.getColumnIndexOrThrow("name")),
+                emptyList(),
+                EntityStatus.entries[row.getInt(row.getColumnIndexOrThrow("status"))],
+                row.nullableStableId("merged_uid"),
+                row.getLong(row.getColumnIndexOrThrow("row_version")),
+                row.getLong(row.getColumnIndexOrThrow("transaction_count")),
+                row.getLong(row.getColumnIndexOrThrow("place_count")),
+            )
+        }
+        val pageWithoutAliases = rows.take(limit)
+        val aliases = readMerchantAliases(connection, pageWithoutAliases.map(MerchantReferenceView::id))
+        val page = pageWithoutAliases.map { merchant -> merchant.copy(aliases = aliases[merchant.id].orEmpty()) }
+        return ReferenceManagementPage(
+            page,
+            page.lastOrNull()?.takeIf { rows.size > limit }?.let { NamedReferenceCursor(it.name, it.id) },
+        )
+    }
+
+    private fun readMerchantAliases(
+        connection: SupportSQLiteDatabase,
+        merchantIds: List<StableId>,
+    ): Map<StableId, List<String>> {
+        if (merchantIds.isEmpty()) return emptyMap()
+        val placeholders = List(merchantIds.size) { "?" }.joinToString(",")
+        return connection.queryList(
+            "SELECT m.uid,ma.alias FROM merchant_alias ma JOIN merchant m ON m.id=ma.merchant_id " +
+                "WHERE m.uid IN ($placeholders) ORDER BY m.uid,ma.normalized_alias",
+            merchantIds.map { it.bytes }.toTypedArray(),
+        ) { row -> row.stableId("uid") to row.getString(1) }
+            .groupBy(Pair<StableId, String>::first, Pair<StableId, String>::second)
+    }
+
+    private fun readPlacePage(
+        connection: SupportSQLiteDatabase,
+        cursor: NamedReferenceCursor?,
+        limit: Int,
+    ): ReferenceManagementPage<PlaceReferenceView, NamedReferenceCursor> {
+        val after = if (cursor == null) "" else "WHERE (p.name > ? OR (p.name = ? AND p.uid > ?))"
+        val arguments = buildList<Any?> {
+            cursor?.let {
+                add(it.name)
+                add(it.name)
+                add(it.id.bytes)
+            }
+            add(limit + 1)
+        }.toTypedArray()
+        val rows = connection.queryList(
+            """
+            WITH page AS (
+              SELECT p.id,p.uid,p.name,p.center_lat_e7,p.center_lon_e7,p.merchant_id,p.status,p.merged_into_id,p.row_version
+              FROM place p INDEXED BY ix_place_name_keyset
+              $after ORDER BY p.name,p.uid LIMIT ?
+            )
+            SELECT page.uid,page.name,page.center_lat_e7,page.center_lon_e7,m.uid merchant_uid,page.status,
+              merged.uid merged_uid,page.row_version,
+              (SELECT COUNT(*) FROM location_record lr INDEXED BY ix_location_record_place
+                WHERE lr.place_id=page.id) location_count
+            FROM page LEFT JOIN merchant m ON m.id=page.merchant_id
+              LEFT JOIN place merged ON merged.id=page.merged_into_id
+            ORDER BY page.name,page.uid
+            """.trimIndent(),
+            arguments,
+        ) { row ->
+            PlaceReferenceView(
+                row.stableId("uid"),
+                row.getString(row.getColumnIndexOrThrow("name")),
+                row.getInt(row.getColumnIndexOrThrow("center_lat_e7")),
+                row.getInt(row.getColumnIndexOrThrow("center_lon_e7")),
+                row.nullableStableId("merchant_uid"),
+                EntityStatus.entries[row.getInt(row.getColumnIndexOrThrow("status"))],
+                row.nullableStableId("merged_uid"),
+                row.getLong(row.getColumnIndexOrThrow("row_version")),
+                row.getLong(row.getColumnIndexOrThrow("location_count")),
+            )
+        }
+        val page = rows.take(limit)
+        return ReferenceManagementPage(
+            page,
+            page.lastOrNull()?.takeIf { rows.size > limit }?.let { NamedReferenceCursor(it.name, it.id) },
+        )
+    }
+
+    private fun readLocationPage(
+        connection: SupportSQLiteDatabase,
+        cursor: LocationReferenceCursor?,
+        limit: Int,
+    ): ReferenceManagementPage<LocationReferenceView, LocationReferenceCursor> {
+        val after = if (cursor == null) "" else "WHERE (lr.captured_at < ? OR (lr.captured_at = ? AND lr.uid > ?))"
+        val arguments = buildList<Any?> {
+            cursor?.let {
+                add(it.capturedAt.toEpochMilli())
+                add(it.capturedAt.toEpochMilli())
+                add(it.id.bytes)
+            }
+            add(limit + 1)
+        }.toTypedArray()
+        val rows = connection.queryList(
+            """
+            WITH page AS (
+              SELECT lr.id,lr.uid,lr.lat_e7,lr.lon_e7,lr.captured_at,lr.place_id
+              FROM location_record lr INDEXED BY ix_location_record_captured_keyset
+              $after ORDER BY lr.captured_at DESC,lr.uid LIMIT ?
+            )
+            SELECT page.uid,page.lat_e7,page.lon_e7,page.captured_at,p.uid place_uid,
+              (SELECT COUNT(*) FROM transaction_revision tr INDEXED BY ix_transaction_revision_location
+                JOIN current_transaction_projection ctp INDEXED BY ix_current_transaction_revision
+                  ON ctp.current_revision_id=tr.id
+                WHERE tr.location_record_id=page.id) current_transaction_count
+            FROM page LEFT JOIN place p ON p.id=page.place_id
+            ORDER BY page.captured_at DESC,page.uid
+            """.trimIndent(),
+            arguments,
+        ) { row ->
+            LocationReferenceView(
+                row.stableId("uid"),
+                row.getInt(row.getColumnIndexOrThrow("lat_e7")),
+                row.getInt(row.getColumnIndexOrThrow("lon_e7")),
+                row.getLong(row.getColumnIndexOrThrow("captured_at")).toStoredInstant(),
+                row.nullableStableId("place_uid"),
+                row.getLong(row.getColumnIndexOrThrow("current_transaction_count")),
+            )
+        }
+        val page = rows.take(limit)
+        return ReferenceManagementPage(
+            page,
+            page.lastOrNull()?.takeIf { rows.size > limit }?.let { LocationReferenceCursor(it.capturedAt, it.id) },
+        )
+    }
+
+    private fun mapCategory(cursor: android.database.Cursor): CategoryReferenceView = CategoryReferenceView(
+        cursor.stableId("uid"),
+        CategoryDirection.entries[cursor.getInt(cursor.getColumnIndexOrThrow("direction"))],
+        cursor.nullableStableId("parent_uid"),
+        cursor.getInt(cursor.getColumnIndexOrThrow("depth")),
+        cursor.getString(cursor.getColumnIndexOrThrow("name")),
+        cursor.getString(cursor.getColumnIndexOrThrow("icon_key")),
+        cursor.getInt(cursor.getColumnIndexOrThrow("color_argb")),
+        cursor.getInt(cursor.getColumnIndexOrThrow("sort_order")),
+        CategoryStatus.entries[cursor.getInt(cursor.getColumnIndexOrThrow("status"))],
+        StatisticalNature.entries[cursor.getInt(cursor.getColumnIndexOrThrow("statistical_nature"))],
+        cursor.nullableStableId("default_account_uid"),
+        cursor.nullableStableId("default_card_uid"),
+        cursor.nullableStableId("default_merchant_uid"),
+        cursor.getLong(cursor.getColumnIndexOrThrow("row_version")),
+        cursor.getLong(cursor.getColumnIndexOrThrow("history_count")),
+        cursor.getLong(cursor.getColumnIndexOrThrow("child_count")),
+    )
 
     private fun readCards(connection: SupportSQLiteDatabase, includeHistoryMetadata: Boolean): List<CardReferenceView> = connection.queryList(
         """
@@ -542,6 +1088,34 @@ public class SecureRoomReferenceDataManagementPort(
         )
     }
 
+    private fun readAccountCheckpoints(
+        connection: SupportSQLiteDatabase,
+        accountId: StableId,
+        limit: Int,
+    ): List<CheckpointReferenceView> = connection.queryList(
+        """
+        SELECT cp.uid,ua.uid account_uid,cp.as_of_instant,cp.as_of_local_date,cp.observed_amount_minor,
+          cp.calculated_amount_minor,cp.difference_minor,COALESCE(bt.uid,derived_bt.uid) adjustment_uid
+        FROM account_balance_checkpoint cp JOIN user_account ua ON ua.id=cp.account_id
+          LEFT JOIN business_transaction bt ON bt.id=cp.adjustment_transaction_id
+          LEFT JOIN balance_adjustment_revision_detail bad ON bad.checkpoint_id=cp.id
+          LEFT JOIN business_transaction derived_bt ON derived_bt.current_revision_id=bad.revision_id
+        WHERE ua.uid=? ORDER BY cp.as_of_instant DESC,cp.id DESC LIMIT ?
+        """.trimIndent(),
+        arrayOf(accountId.bytes, limit),
+    ) { checkpointCursor ->
+        CheckpointReferenceView(
+            checkpointCursor.stableId("uid"),
+            checkpointCursor.stableId("account_uid"),
+            checkpointCursor.getLong(checkpointCursor.getColumnIndexOrThrow("as_of_instant")).toStoredInstant(),
+            checkpointCursor.getInt(checkpointCursor.getColumnIndexOrThrow("as_of_local_date")).toStoredLocalDate(),
+            checkpointCursor.getLong(checkpointCursor.getColumnIndexOrThrow("observed_amount_minor")),
+            checkpointCursor.getLong(checkpointCursor.getColumnIndexOrThrow("calculated_amount_minor")),
+            checkpointCursor.getLong(checkpointCursor.getColumnIndexOrThrow("difference_minor")),
+            checkpointCursor.nullableStableId("adjustment_uid"),
+        )
+    }
+
     private fun readLocations(connection: SupportSQLiteDatabase, includeHistoryMetadata: Boolean): List<LocationReferenceView> {
         val historyJoin = if (includeHistoryMetadata) {
             "LEFT JOIN (SELECT tr.location_record_id,COUNT(*) current_transaction_count FROM current_transaction_projection ctp " +
@@ -599,18 +1173,62 @@ public class SecureRoomReferenceDataManagementPort(
         SELECT * FROM running ORDER BY account_uid, occurred_at DESC, transaction_id DESC
         """.trimIndent(),
     ) { cursor ->
-        AccountTransactionReferenceView(
-            transactionId = cursor.stableId("transaction_uid"),
-            revisionId = cursor.stableId("revision_uid"),
-            accountId = cursor.stableId("account_uid"),
-            localDate = cursor.getInt(cursor.getColumnIndexOrThrow("local_date")).toStoredLocalDate(),
-            occurredAt = cursor.getLong(cursor.getColumnIndexOrThrow("occurred_at")).toStoredInstant(),
-            kind = TransactionKind.entries[cursor.getInt(cursor.getColumnIndexOrThrow("kind"))],
-            impactMinor = cursor.getLong(cursor.getColumnIndexOrThrow("impact_minor")),
-            runningBalanceMinor = cursor.getLong(cursor.getColumnIndexOrThrow("running_minor")),
-            currency = CurrencyCode.parse(cursor.getString(cursor.getColumnIndexOrThrow("currency_code"))).valueOrAbort(),
-        )
+        cursor.toAccountTransactionReference()
     }
+
+    private fun readAccountTransactionPage(
+        connection: SupportSQLiteDatabase,
+        accountId: StableId,
+        cursor: AccountHistoryCursor?,
+        limit: Int,
+    ): List<AccountTransactionReferenceView> = connection.queryList(
+        """
+        WITH account_impacts AS (
+          SELECT bt.uid transaction_uid,tr.uid revision_uid,ua.uid account_uid,ctp.local_date,ctp.occurred_at,
+            ctp.kind,ua.currency_code,
+            SUM(CASE WHEN p.side=la.normal_side THEN p.account_amount_minor ELSE -p.account_amount_minor END) impact_minor,
+            ctp.transaction_id,ua.id account_internal_id
+          FROM current_transaction_projection ctp INDEXED BY ix_current_transaction_keyset
+          JOIN business_transaction bt ON bt.id=ctp.transaction_id
+          JOIN transaction_revision tr ON tr.id=ctp.current_revision_id
+          JOIN journal_entry je ON je.applies_revision_id=tr.id AND je.entry_role=0
+          JOIN posting p ON p.journal_entry_id=je.id
+          JOIN ledger_account la ON la.id=p.ledger_account_id
+          JOIN user_account ua ON ua.ledger_account_id=la.id
+          WHERE ctp.state=0 AND ua.uid=?
+          GROUP BY ctp.transaction_id,ua.id
+        ), running AS (
+          SELECT impacts.*,
+            current.normal_balance_minor-COALESCE(SUM(impact_minor) OVER (
+              ORDER BY occurred_at DESC,transaction_id DESC ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+            ),0) running_minor
+          FROM account_impacts impacts JOIN account_balance_current current ON current.account_id=impacts.account_internal_id
+        )
+        SELECT * FROM running
+        WHERE (? IS NULL OR occurred_at<? OR (occurred_at=? AND transaction_id<(SELECT id FROM business_transaction WHERE uid=?)))
+        ORDER BY occurred_at DESC,transaction_id DESC LIMIT ?
+        """.trimIndent(),
+        arrayOf<Any?>(
+            accountId.bytes,
+            cursor?.occurredAt?.toEpochMilli(),
+            cursor?.occurredAt?.toEpochMilli(),
+            cursor?.occurredAt?.toEpochMilli(),
+            cursor?.transactionId?.bytes,
+            limit,
+        ),
+    ) { it.toAccountTransactionReference() }
+
+    private fun android.database.Cursor.toAccountTransactionReference() = AccountTransactionReferenceView(
+        transactionId = stableId("transaction_uid"),
+        revisionId = stableId("revision_uid"),
+        accountId = stableId("account_uid"),
+        localDate = getInt(getColumnIndexOrThrow("local_date")).toStoredLocalDate(),
+        occurredAt = getLong(getColumnIndexOrThrow("occurred_at")).toStoredInstant(),
+        kind = TransactionKind.entries[getInt(getColumnIndexOrThrow("kind"))],
+        impactMinor = getLong(getColumnIndexOrThrow("impact_minor")),
+        runningBalanceMinor = getLong(getColumnIndexOrThrow("running_minor")),
+        currency = CurrencyCode.parse(getString(getColumnIndexOrThrow("currency_code"))).valueOrAbort(),
+    )
 
     private enum class ReferenceSnapshotContent { FULL, ENTRY }
 
@@ -630,6 +1248,29 @@ public class SecureRoomReferenceDataManagementPort(
             balanceMinor = cursor.getLong(cursor.getColumnIndexOrThrow("balance_minor")),
             targetMinor = cursor.getLong(cursor.getColumnIndexOrThrow("target_minor")),
             currency = CurrencyCode.parse(cursor.getString(cursor.getColumnIndexOrThrow("currency_code"))).valueOrAbort(),
+        )
+    }
+
+    private fun readAccountGoals(
+        connection: SupportSQLiteDatabase,
+        accountId: StableId,
+        limit: Int,
+    ): List<AccountGoalReferenceView> = connection.queryList(
+        """
+        SELECT g.uid,ua.uid account_uid,g.name,gbp.balance_minor,gbp.target_minor,gbp.currency_code
+        FROM goal g JOIN user_account ua ON ua.id=g.account_id
+          JOIN goal_balance_projection gbp ON gbp.goal_id=g.id
+        WHERE g.status=? AND ua.uid=? ORDER BY g.due_date IS NULL,g.due_date,g.id LIMIT ?
+        """.trimIndent(),
+        arrayOf(EntityStatus.ACTIVE.ordinal, accountId.bytes, limit),
+    ) { goalCursor ->
+        AccountGoalReferenceView(
+            goalCursor.stableId("uid"),
+            goalCursor.stableId("account_uid"),
+            goalCursor.getString(goalCursor.getColumnIndexOrThrow("name")),
+            goalCursor.getLong(goalCursor.getColumnIndexOrThrow("balance_minor")),
+            goalCursor.getLong(goalCursor.getColumnIndexOrThrow("target_minor")),
+            CurrencyCode.parse(goalCursor.getString(goalCursor.getColumnIndexOrThrow("currency_code"))).valueOrAbort(),
         )
     }
 
@@ -1343,17 +1984,12 @@ public class SecureRoomReferenceDataManagementPort(
         return total
     }
 
-    private suspend inline fun <T> withDatabase(bookId: StableId, crossinline block: suspend (LedgerDatabase) -> T): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { passphrase ->
-                openSelectedLedger(applicationContext, passphrase, databaseName)
-            }
-            try {
-                DomainResult.Success(block(database))
-            } finally {
-                database.close()
-            }
-        }
+    private suspend inline fun <T> withDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode,
+        crossinline block: suspend (LedgerDatabase) -> T,
+    ): DomainResult<T> = try {
+        DomainResult.Success(databaseAccess.withCurrentDatabase(bookId, mode) { database -> block(database) })
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -1424,6 +2060,11 @@ public class SecureRoomReferenceDataManagementPort(
 
     private data class BookRow(val uid: ByteArray, val baseCurrency: String, val headCommitId: Long, val localRevision: Long, val valuationRevision: Long, val state: Int)
     private data class AccountRow(val id: Long, val ledgerId: Long, val type: Int, val currency: String, val rowVersion: Long, val hasPostings: Boolean)
+    private data class AccountTotals(
+        val core: Long?,
+        val adjusted: Long?,
+        val valuationMissing: Boolean,
+    )
     private data class ProjectRow(
         val id: Long,
         val name: String,
@@ -1451,11 +2092,48 @@ public class SecureRoomReferenceDataManagementPort(
     )
     private data class ParentRow(val id: Long, val direction: CategoryDirection, val depth: Int, val status: CategoryStatus)
     private data class CategoryRow(val id: Long, val parentId: Long?, val direction: CategoryDirection, val rowVersion: Long)
-}
 
-private class ReferenceFinancialWriteGate : LedgerWriteGate {
-    private val mutex = Mutex()
-    override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
+    private sealed interface ReferenceQueryKey : LedgerQueryKey {
+        data object EntryCore : ReferenceQueryKey {
+            override val scope: LedgerDataScope = LedgerDataScope.ENTRY_REFERENCES
+        }
+
+        data class Suggestions(val queryFingerprint: String, val offset: Int, val limit: Int) : ReferenceQueryKey {
+            override val scope: LedgerDataScope = LedgerDataScope.ENTRY_REFERENCES
+        }
+
+        data object RecentDefaults : ReferenceQueryKey {
+            override val scope: LedgerDataScope = LedgerDataScope.ENTRY_REFERENCES
+        }
+
+        data object AccountSummary : ReferenceQueryKey {
+            override val scope: LedgerDataScope = LedgerDataScope.ACCOUNT_SUMMARIES
+        }
+
+        data class AccountHistory(val accountId: StableId, val cursor: AccountHistoryCursor?, val limit: Int) : ReferenceQueryKey {
+            override val scope: LedgerDataScope = LedgerDataScope.JOURNAL
+        }
+
+        data class Categories(
+            val direction: CategoryDirection,
+            val cursor: OrderedReferenceCursor?,
+            val limit: Int,
+        ) : ReferenceQueryKey {
+            override val scope: LedgerDataScope = LedgerDataScope.ENTRY_REFERENCES
+        }
+
+        data class Merchants(val cursor: NamedReferenceCursor?, val limit: Int) : ReferenceQueryKey {
+            override val scope: LedgerDataScope = LedgerDataScope.ENTRY_REFERENCES
+        }
+
+        data class Places(val cursor: NamedReferenceCursor?, val limit: Int) : ReferenceQueryKey {
+            override val scope: LedgerDataScope = LedgerDataScope.ENTRY_REFERENCES
+        }
+
+        data class Locations(val cursor: LocationReferenceCursor?, val limit: Int) : ReferenceQueryKey {
+            override val scope: LedgerDataScope = LedgerDataScope.ENTRY_REFERENCES
+        }
+    }
 }
 
 private fun androidx.sqlite.db.SupportSQLiteStatement.bindNullableString(index: Int, value: String?) {
@@ -1470,4 +2148,15 @@ private fun android.database.Cursor.int(name: String): Int = getInt(getColumnInd
 private fun android.database.Cursor.long(name: String): Long = getLong(getColumnIndexOrThrow(name))
 private fun android.database.Cursor.string(name: String): String = getString(getColumnIndexOrThrow(name))
 
+private const val ENTRY_CORE_ROW_CAP = 500
+private const val MAXIMUM_SUGGESTION_PAGE_SIZE = 50
+private const val RECENT_ENTRY_DEFAULT_LIMIT = 20
+private const val MAXIMUM_MANAGEMENT_PAGE_SIZE = 100
 private const val RECENT_ACCOUNT_TRANSACTION_LIMIT = 200
+private const val ENTRY_CORE_CACHE_SIZE = 4
+private const val SUGGESTION_CACHE_SIZE = 24
+private const val RECENT_DEFAULTS_CACHE_SIZE = 4
+private const val ACCOUNT_SUMMARY_CACHE_SIZE = 4
+private const val ACCOUNT_HISTORY_CACHE_SIZE = 12
+private const val MANAGEMENT_CACHE_SIZE = 16
+private const val OFFLINE_SESSION_GENERATION = 0L

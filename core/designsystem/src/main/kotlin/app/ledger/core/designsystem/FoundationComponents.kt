@@ -27,8 +27,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -56,8 +56,8 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -102,6 +102,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.editableText
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.inputText
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
@@ -110,20 +111,21 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.semantics.toggleableState
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 
 @Stable
 public class LedgerSnackbarController internal constructor(
@@ -162,7 +164,10 @@ public fun LedgerScaffold(
     ) {
         if (depth == 0) {
             Scaffold(
-                modifier = modifier.testTag(LedgerTestTags.ROOT).semantics { isTraversalGroup = true },
+                modifier = modifier.testTag(LedgerTestTags.ROOT).semantics {
+                    isTraversalGroup = true
+                    testTagsAsResourceId = true
+                },
                 topBar = topBar,
                 bottomBar = bottomBar,
                 snackbarHost = { LedgerSnackbarHost(snackbarController.hostState) },
@@ -178,7 +183,12 @@ public fun LedgerScaffold(
                 )
             }
         } else {
-            Column(modifier.fillMaxSize().testTag(LedgerTestTags.ROOT).semantics { isTraversalGroup = true }) {
+            Column(
+                modifier.fillMaxSize().testTag(LedgerTestTags.ROOT).semantics {
+                    isTraversalGroup = true
+                    testTagsAsResourceId = true
+                },
+            ) {
                 topBar()
                 LedgerScaffoldBody(
                     scaffoldPadding = PaddingValues(),
@@ -330,11 +340,15 @@ public fun LedgerNavigationBar(
         modifier = modifier
             .heightIn(min = LedgerTheme.dimensions.bottomNavigationHeight)
             .testTag(LedgerTestTags.BOTTOM_NAVIGATION)
-            .semantics { traversalIndex = BOTTOM_NAVIGATION_TRAVERSAL_INDEX },
+            .semantics {
+                traversalIndex = BOTTOM_NAVIGATION_TRAVERSAL_INDEX
+                testTagsAsResourceId = true
+            },
         containerColor = LedgerTheme.colors.material.surface,
     ) {
         items.forEach { (destination, label, icon) ->
             NavigationBarItem(
+                modifier = Modifier.testTag(destination.navigationTestTag()),
                 selected = destination == selected,
                 onClick = { onSelected(destination) },
                 icon = {
@@ -351,6 +365,14 @@ public fun LedgerNavigationBar(
             )
         }
     }
+}
+
+private fun LedgerTopLevel.navigationTestTag(): String = when (this) {
+    LedgerTopLevel.RECORD -> LedgerTestTags.NAVIGATION_RECORD
+    LedgerTopLevel.JOURNAL -> LedgerTestTags.NAVIGATION_JOURNAL
+    LedgerTopLevel.ACCOUNTS -> LedgerTestTags.NAVIGATION_ACCOUNTS
+    LedgerTopLevel.BUDGET -> LedgerTestTags.NAVIGATION_BUDGET
+    LedgerTopLevel.ANALYSIS -> LedgerTestTags.NAVIGATION_ANALYSIS
 }
 
 @Composable
@@ -411,12 +433,11 @@ private val LEDGER_CURRENCY_CODE_VALUE = Regex(
 private val LEDGER_PERCENT_VALUE = Regex("""[-+]?\d+(?:[.,]\d+)?\s*%""")
 private val LEDGER_KNOWN_CURRENCY_CODES: Set<String> = java.util.Currency.getAvailableCurrencies().mapTo(linkedSetOf()) { it.currencyCode }
 
-internal fun String.containsLedgerFinancialValue(): Boolean =
-    LEDGER_CURRENCY_SYMBOL_VALUE.containsMatchIn(this) ||
-        LEDGER_PERCENT_VALUE.containsMatchIn(this) ||
-        LEDGER_CURRENCY_CODE_VALUE.findAll(this).any { match ->
-            match.groupValues.drop(1).firstOrNull(String::isNotBlank)?.uppercase() in LEDGER_KNOWN_CURRENCY_CODES
-        }
+internal fun String.containsLedgerFinancialValue(): Boolean = LEDGER_CURRENCY_SYMBOL_VALUE.containsMatchIn(this) ||
+    LEDGER_PERCENT_VALUE.containsMatchIn(this) ||
+    LEDGER_CURRENCY_CODE_VALUE.findAll(this).any { match ->
+        match.groupValues.drop(1).firstOrNull(String::isNotBlank)?.uppercase() in LEDGER_KNOWN_CURRENCY_CODES
+    }
 
 @Composable
 public fun LedgerButton(
@@ -527,6 +548,7 @@ public fun LedgerTextField(
                 if (sensitive) password()
                 if (sensitive || hideValueFromSemantics) {
                     contentDescription = label
+                    inputText = AnnotatedString("")
                     editableText = AnnotatedString("")
                     stateDescription = protectedValueState
                 }
@@ -1145,7 +1167,7 @@ public fun LedgerEmptyState(
 
 @Composable
 public fun LedgerErrorState(
-    @Suppress("UNUSED_PARAMETER") code: UiErrorCode,
+    code: UiErrorCode,
     message: String,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1158,6 +1180,7 @@ public fun LedgerErrorState(
         Text(stringResource(R.string.ledger_error_existing_data_unchanged), Modifier.padding(bottom = LedgerTheme.spacing.sm), style = LedgerTheme.typography.bodyMedium)
         Text(stringResource(R.string.ledger_error_next_step), Modifier.semantics { heading() }, style = LedgerTheme.typography.titleSmall)
         Text(stringResource(R.string.ledger_error_retry_next_step), style = LedgerTheme.typography.bodyMedium)
+        Text(code.value, Modifier.padding(top = LedgerTheme.spacing.xs), style = LedgerTheme.typography.bodySmall)
         LedgerButton(stringResource(R.string.ledger_retry), onRetry, Modifier.padding(top = LedgerTheme.spacing.sm))
     }
 }
@@ -1213,11 +1236,17 @@ public fun LedgerTabRow(
     labels: List<String>,
     onSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    labelMaxLines: Int = 1,
 ) {
     require(labels.isNotEmpty())
+    require(labelMaxLines > 0)
     val tabs: @Composable () -> Unit = {
         labels.forEachIndexed { index, label ->
-            Tab(selected = index == selectedIndex, onClick = { onSelected(index) }, text = { Text(label, maxLines = 1) })
+            Tab(
+                selected = index == selectedIndex,
+                onClick = { onSelected(index) },
+                text = { Text(label, maxLines = labelMaxLines, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center) },
+            )
         }
     }
     if (labels.size > 4) {

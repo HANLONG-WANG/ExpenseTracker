@@ -7,6 +7,8 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,6 +18,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.ledger.core.designsystem.LedgerSaveFab
@@ -42,17 +45,27 @@ class P13GoldenDeviceTest {
         val outputDirectory = File(requireNotNull(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null)), "p13-goldens")
         if (record) check(outputDirectory.mkdirs() || outputDirectory.isDirectory)
         val active = mutableIntStateOf(0)
+        val presented = mutableIntStateOf(-1)
         composeRule.setContent {
-            val case = cases[active.intValue]
-            LedgerTheme(case.theme, dynamicColor = false, reduceMotion = true) {
-                Box(Modifier.size(WIDTH.dp, HEIGHT.dp).testTag(GOLDEN_TAG)) {
-                    OrdinaryRecordDestination(case.screen, case.state(), OrdinaryRecordDeviceFixtures.actions)
-                    if (case.screen == "REC-003") LedgerSaveFab({}, Modifier.align(Alignment.BottomEnd).padding(16.dp))
+            val index = active.intValue
+            val case = cases[index]
+            key(index) {
+                LedgerTheme(case.theme, dynamicColor = false, reduceMotion = true) {
+                    Box(Modifier.size(WIDTH.dp, HEIGHT.dp).testTag(GOLDEN_TAG)) {
+                        OrdinaryRecordDestination(case.screen, case.state(), OrdinaryRecordDeviceFixtures.actions)
+                        if (case.screen == "REC-003") LedgerSaveFab({}, Modifier.align(Alignment.BottomEnd).padding(16.dp))
+                    }
                 }
+                SideEffect { presented.intValue = index }
             }
         }
         cases.forEachIndexed { index, golden ->
             composeRule.runOnIdle { active.intValue = index }
+            composeRule.waitUntil(timeoutMillis = CASE_SETTLEMENT_TIMEOUT_MILLIS) { presented.intValue == index }
+            composeRule.waitForIdle()
+            closeSoftKeyboard()
+            composeRule.waitForIdle()
+            composeRule.mainClock.advanceTimeByFrame()
             composeRule.waitForIdle()
             val actual = composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap()
             if (record) {
@@ -90,6 +103,7 @@ class P13GoldenDeviceTest {
         const val GOLDEN_TAG = "p13_golden_root"
         const val WIDTH = 360
         const val HEIGHT = 720
+        const val CASE_SETTLEMENT_TIMEOUT_MILLIS = 5_000L
         const val RECORD_PULL_WINDOW_MILLIS = 30_000L
     }
 }

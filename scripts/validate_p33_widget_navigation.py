@@ -38,7 +38,7 @@ def read(relative: str) -> str:
 
 def source_map() -> dict[str, str]:
     roots = (
-        "app/src/main/kotlin", "core/background/src/main/kotlin", "feature/settings/src/main/kotlin",
+        "app/src/main/kotlin", "core/background/src/main/kotlin", "core/security/src/main/kotlin", "feature/settings/src/main/kotlin",
         "feature/transfer/src/main/kotlin", "finance/application/src/main/kotlin",
         "finance/data/src/main/kotlin", "widget/src/main/kotlin",
     )
@@ -61,7 +61,7 @@ def require_tokens(errors: list[str], text: str, label: str, tokens: tuple[str, 
 def validate_contract() -> list[str]:
     screens = {
         item["id"]: item
-        for item in yaml.safe_load(read("docs/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))["screens"]
+        for item in yaml.safe_load(read("docs/初始开发文件存档/UI设计稿与实现契约_v1.0/android_ledger_screen_contract_v1.yaml"))["screens"]
     }
     errors: list[str] = []
     for screen_id, (route, params, states) in EXPECTED.items():
@@ -79,7 +79,8 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     required = {
         "WidgetModels.kt", "LedgerWidgetRuntime.kt", "LedgerGlanceWidget.kt", "WidgetConfigurationActivity.kt",
         "AppWidgetConfigurationRepository.kt", "WidgetSnapshotApplication.kt",
-        "SecureRoomWidgetSnapshotApplicationPort.kt", "MoreRootScreen.kt", "TransferHubScreen.kt",
+        "SecureRoomWidgetSnapshotApplicationPort.kt", "AppHeadlessWidgetSnapshotApplicationPort.kt",
+        "BookSessionManager.kt", "MoreRootScreen.kt", "TransferHubScreen.kt",
         "P33SettingsScreens.kt", "OperationNotificationCoordinator.kt", "AppRootViewModel.kt",
         "AppRootScreen.kt", "LedgerApplication.kt", "ImportWorker.kt", "ExportWorker.kt", "BackupWorker.kt",
     }
@@ -113,15 +114,28 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
 
     snapshot_port = named(sources, "SecureRoomWidgetSnapshotApplicationPort.kt")
     read_path = snapshot_port.split("override suspend fun quickTargets", 1)[0]
-    require_tokens(errors, snapshot_port, "SQLCipher snapshot-only Glance read", (
-        "EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME", "DeviceLedgerKeyProvider", "databaseDek",
+    require_tokens(errors, snapshot_port, "session-owned snapshot-only Glance read", (
+        "LedgerDatabaseOperationAccess", "databaseAccess.withCurrentDatabase",
         "widget_book_snapshot", "widget_account_snapshot", "widget_credit_snapshot", "widget_goal_snapshot",
-        "passphrase.fill(0)", "database.close()", "override suspend fun refreshIfStale",
-        "RoomProjectionEngine().rebuildWidgetSnapshot",
+        "override suspend fun refreshIfStale", "RoomProjectionEngine().rebuildWidgetSnapshot",
     ))
+    for forbidden in ("EncryptedDatabaseFactory.openPrimary", "DeviceLedgerKeyProvider("):
+        if forbidden in snapshot_port:
+            errors.append(f"widget snapshot Port bypasses the process-owned session with {forbidden}")
     for forbidden in ("business_transaction", "posting", "journal_entry", "category", "card_vault_secret", "location_record"):
         if forbidden in read_path:
             errors.append(f"Glance read path queries complex/sensitive table {forbidden}")
+
+    headless_snapshot = named(sources, "AppHeadlessWidgetSnapshotApplicationPort.kt")
+    require_tokens(errors, headless_snapshot, "capability-limited headless widget lease", (
+        "ActiveBookSessionRuntime", "sessionRuntime.readyGeneration(bookId)",
+        "sessionRuntime.withHeadlessDatabaseAccess", "HeadlessLeaseCapability.WIDGET_SNAPSHOT_READ",
+    ))
+    session_owner = named(sources, "BookSessionManager.kt")
+    require_tokens(errors, session_owner, "SQLCipher session ownership and zeroizing close", (
+        "databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary", "database.close()", "keys.close()",
+        "private fun closeSessionResource()", "openedDatabase?.close()",
+    ))
 
     glance = named(sources, "LedgerGlanceWidget.kt") + named(sources, "LedgerWidgetRuntime.kt")
     require_tokens(errors, glance, "Glance snapshot and privacy behavior", (
@@ -146,13 +160,18 @@ def validate_sources(sources: dict[str, str] | None = None) -> list[str]:
     ))
 
     root = named(sources, "AppRootViewModel.kt") + named(sources, "AppRootScreen.kt")
+    application = named(sources, "LedgerApplication.kt")
     require_tokens(errors, root, "closed widget deep links and full-form quick entry", (
         "WIDGET_DEEP_LINK_HOST", "parseWidgetDeepLink", "parseWidgetDestination", "widget destination is not allowlisted",
         "WIDGET_CONSUMPTION_REPORT_KEY", "openWidgetQuickForm", "OrdinaryRecordPolicy.createEditor",
         "OperationCenterLoadState", "SqlCipherBackgroundOperationRepository", "CANCEL_REQUESTED",
         "NotificationPermissionPresentation.FIRST_ASK", "NotificationPermissionPresentation.DENIED",
-        "refreshWidgetSnapshot(state.bookId)", "refreshWidgetSnapshot(ready.bookId)",
-        "LedgerWidgetRuntime.updateAll(context)",
+        "refreshWidgetSnapshot(ready.bookId)", "LedgerWidgetRuntime.updateAll(context)",
+    ))
+    require_tokens(errors, application, "post-commit widget refresh", (
+        "FinancialCommitObserverRegistry.register(", "revisionCacheControl.committed(change)",
+        "launchFinancialDependentWork()", "runFinancialDependentWork()",
+        "LedgerWidgetRuntime.updateAll(this@LedgerApplication)",
     ))
     quick_method = root[root.find("private fun openWidgetQuickForm"):root.find("private fun openWidgetQuickForm") + 6000]
     if "FinancialMutationCoordinator" in quick_method or re.search(r"\.(?:save|commit|insert)\(", quick_method):
@@ -249,7 +268,7 @@ def validate_schema_resources_tests() -> list[str]:
         "allP33GlobalTransferSettingsAndNotificationStatesRender",
         "moreTransferSettingsHelpAndPermissionUseAllThreeLocales",
         "durableOperationCenterListsNewestEncryptedOperationsWithoutParameters",
-        "everyEncryptedPredecessorMigratesToVersionFiveWithFinancialAndQueryContractsIntact",
+        "everyEncryptedPredecessorMigratesToVersionSevenWithFinancialAndQueryContractsIntact",
     ))
     for module in ("app", "widget", "feature/settings", "feature/transfer"):
         localized: list[set[str]] = []
@@ -265,10 +284,10 @@ def validate_schema_resources_tests() -> list[str]:
 
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
-    state = read("docs/implementation/PROJECT_STATE.md")
-    evidence = read("docs/implementation/TEST_EVIDENCE.md")
-    decision = read("docs/implementation/DECISION_LOG.md")
-    mapping_path = ROOT / "docs/implementation/P33_WIDGET_MORE_SETTINGS_MAPPING.md"
+    state = read("docs/初始开发文件存档/implementation/PROJECT_STATE.md")
+    evidence = read("docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
+    decision = read("docs/初始开发文件存档/implementation/DECISION_LOG.md")
+    mapping_path = ROOT / "docs/初始开发文件存档/implementation/P33_WIDGET_MORE_SETTINGS_MAPPING.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
     require_tokens(errors, state, "PROJECT_STATE", ("Current stage: P36", "| P33 | VERIFIED |"))
     for index in range(1, 9):
@@ -278,13 +297,13 @@ def validate_ledgers() -> list[str]:
         "nine", "SQLCipher", "Glance", "operationId", "three languages", "P33 is `VERIFIED`",
     ))
     require_tokens(errors, decision, "P33 decision log", ("P33", "systemActivity", "Glance"))
-    with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = {row["screen_id"]: row for row in csv.DictReader(handle)}
     for screen_id in EXPECTED:
         row = screens.get(screen_id, {})
         if row.get("status") != "VERIFIED" or "P33" not in row.get("implementation_evidence", "") or "P33-E" not in row.get("verification_evidence", ""):
             errors.append(f"{screen_id} lacks VERIFIED P33 evidence")
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         requirements = {row["requirement_id"]: row for row in csv.DictReader(handle)}
     for requirement_id in ("REQ-001", "REQ-070", "REQ-072"):
         row = requirements.get(requirement_id, {})

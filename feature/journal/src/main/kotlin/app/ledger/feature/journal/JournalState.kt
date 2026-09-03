@@ -5,6 +5,7 @@ import androidx.paging.PagingState
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.finance.application.CurrentTransactionCursor
+import app.ledger.finance.application.DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS
 import app.ledger.finance.application.JournalApplicationPort
 import app.ledger.finance.application.JournalBulkEditOptions
 import app.ledger.finance.application.JournalBulkEditPatch
@@ -22,6 +23,7 @@ import app.ledger.finance.domain.DependencyPolicy
 import app.ledger.finance.domain.DependencyResolution
 import app.ledger.finance.domain.TransactionFilter
 import app.ledger.finance.domain.TransactionKind
+import kotlinx.coroutines.withTimeoutOrNull
 
 sealed interface JournalLoadState {
     data object Loading : JournalLoadState
@@ -29,6 +31,10 @@ sealed interface JournalLoadState {
         val filter: TransactionFilter = TransactionFilter(),
         val zoneId: String = "UTC",
         val searchText: String = "",
+        val searchPending: Boolean = false,
+        val searchResultReady: Boolean = false,
+        val pagingEpoch: Int = 0,
+        val pageLoadedEpoch: Int? = null,
         val resultCount: Long? = null,
         val presets: List<JournalFilterPreset> = emptyList(),
         val bulkOptions: JournalBulkEditOptions = JournalBulkEditOptions(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()),
@@ -80,6 +86,7 @@ data class JournalActions(
     val onEdit: (JournalTransactionView) -> Unit = {},
     val onRefund: (StableId) -> Unit = {},
     val onCopyTemplate: (StableId) -> Unit = {},
+    val onPagePresented: () -> Unit = {},
     val onBack: () -> Unit = {},
 )
 
@@ -88,20 +95,35 @@ class JournalPagingSource(
     private val bookId: StableId,
     private val filter: TransactionFilter,
     private val accountIdForRunningBalance: StableId? = null,
+    private val onPageLoadStarted: () -> Unit = {},
+    private val onPageLoaded: (successful: Boolean) -> Unit = {},
 ) : PagingSource<CurrentTransactionCursor, JournalTransactionView>() {
-    override suspend fun load(params: LoadParams<CurrentTransactionCursor>): LoadResult<CurrentTransactionCursor, JournalTransactionView> = when (
-        val result = port.page(
-            JournalPageRequest(
-                bookId = bookId,
-                filter = filter,
-                limit = params.loadSize.coerceIn(1, MAX_PAGE_LOAD_SIZE),
-                cursor = params.key,
-                runningBalanceAccountId = accountIdForRunningBalance,
-            ),
-        )
-    ) {
-        is DomainResult.Success -> LoadResult.Page(result.value.items, prevKey = null, nextKey = result.value.nextCursor)
-        is DomainResult.Failure -> LoadResult.Error(JournalQueryException(result.error.code))
+    override suspend fun load(params: LoadParams<CurrentTransactionCursor>): LoadResult<CurrentTransactionCursor, JournalTransactionView> {
+        var completionReported = false
+        onPageLoadStarted()
+        return try {
+            val result = withTimeoutOrNull(DEFAULT_INTERACTIVE_LOAD_TIMEOUT_MILLIS) {
+                port.page(
+                    JournalPageRequest(
+                        bookId = bookId,
+                        filter = filter,
+                        limit = params.loadSize.coerceIn(1, MAX_PAGE_LOAD_SIZE),
+                        cursor = params.key,
+                        runningBalanceAccountId = accountIdForRunningBalance,
+                    ),
+                )
+            }
+            val loaded = when (result) {
+                null -> LoadResult.Error(JournalQueryException("JOURNAL_PAGE_TIMEOUT"))
+                is DomainResult.Success -> LoadResult.Page(result.value.items, prevKey = null, nextKey = result.value.nextCursor)
+                is DomainResult.Failure -> LoadResult.Error(JournalQueryException(result.error.code))
+            }
+            onPageLoaded(loaded is LoadResult.Page)
+            completionReported = true
+            loaded
+        } finally {
+            if (!completionReported) onPageLoaded(false)
+        }
     }
 
     override fun getRefreshKey(state: PagingState<CurrentTransactionCursor, JournalTransactionView>): CurrentTransactionCursor? = state.anchorPosition

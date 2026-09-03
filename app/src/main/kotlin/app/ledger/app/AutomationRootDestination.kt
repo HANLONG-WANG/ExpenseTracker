@@ -14,8 +14,8 @@ import app.ledger.core.designsystem.LedgerSaveFab
 import app.ledger.feature.automation.AutomationActions
 import app.ledger.feature.automation.AutomationDestination
 import app.ledger.feature.automation.AutomationLoadState
-import app.ledger.feature.automation.AutomationPresentation
 import app.ledger.feature.automation.AutomationPolicy
+import app.ledger.feature.automation.AutomationPresentation
 import app.ledger.feature.automation.R as AutomationR
 
 @Composable
@@ -56,52 +56,52 @@ internal fun AutomationRootDestination(
             onNavigationChanged()
         },
     ) {
-    AutomationDestination(
-        screenId,
-        state,
-        AutomationActions(
-            onRetry = { viewModel.loadAutomation(screenId, blueprintId, seriesId, candidateId) },
-            onNavigate = { target, stableId ->
-                viewModel.navigateAutomation(target, stableId)
-                onNavigationChanged()
-            },
-            onSearch = viewModel::updateAutomationSearch,
-            onTemplateFilter = viewModel::updateAutomationTemplateFilter,
-            onTemplateSort = viewModel::updateAutomationTemplateSort,
-            onArchiveBlueprint = viewModel::archiveAutomationBlueprint,
-            onBlueprintField = viewModel::updateAutomationBlueprintField,
-            onBlueprintKind = viewModel::updateAutomationBlueprintKind,
-            onBlueprintReference = viewModel::updateAutomationBlueprintReference,
-            onSaveBlueprint = viewModel::saveAutomationBlueprint,
-            onRecurrenceField = viewModel::updateAutomationRecurrenceField,
-            onRecurrenceBlueprint = viewModel::selectAutomationRecurrenceBlueprint,
-            onFrequency = viewModel::updateAutomationFrequency,
-            onWeekday = viewModel::toggleAutomationWeekday,
-            onNthWeekday = viewModel::updateAutomationNthWeekday,
-            onMissingDay = viewModel::updateAutomationMissingDay,
-            onWeekend = viewModel::updateAutomationWeekend,
-            onGenerationMode = viewModel::updateAutomationGenerationMode,
-            onNotifyCandidate = viewModel::updateAutomationNotifyCandidate,
-            onFixedPlace = viewModel::updateAutomationFixedPlace,
-            onSaveRecurrence = viewModel::saveAutomationRecurrence,
-            onApplyRule = viewModel::applyAutomationRule,
-            onSeriesFilter = viewModel::updateAutomationSeriesFilter,
-            onTemplateSelected = viewModel::selectAutomationTemplate,
-            onCandidateSelected = viewModel::selectAutomationCandidate,
-            onCandidateToggle = viewModel::toggleAutomationCandidate,
-            onReviewSelectedCandidates = viewModel::reviewSelectedAutomationCandidates,
-            onSkipSelectedCandidates = viewModel::skipSelectedAutomationCandidates,
-            onConfirmCandidate = viewModel::confirmAutomationCandidate,
-            onSkipCandidate = viewModel::skipAutomationCandidate,
-            onCancelCandidate = viewModel::cancelAutomationCandidate,
-            onScope = viewModel::updateAutomationScope,
-            onApplyScope = viewModel::applyAutomationScope,
-            onCreateCategory = {
-                viewModel.openAutomationCategoryCreator()
-                onNavigationChanged()
-            },
-        ),
-    )
+        AutomationDestination(
+            screenId,
+            state,
+            AutomationActions(
+                onRetry = { viewModel.loadAutomation(screenId, blueprintId, seriesId, candidateId) },
+                onNavigate = { target, stableId ->
+                    viewModel.navigateAutomation(target, stableId)
+                    onNavigationChanged()
+                },
+                onSearch = viewModel::updateAutomationSearch,
+                onTemplateFilter = viewModel::updateAutomationTemplateFilter,
+                onTemplateSort = viewModel::updateAutomationTemplateSort,
+                onArchiveBlueprint = viewModel::archiveAutomationBlueprint,
+                onBlueprintField = viewModel::updateAutomationBlueprintField,
+                onBlueprintKind = viewModel::updateAutomationBlueprintKind,
+                onBlueprintReference = viewModel::updateAutomationBlueprintReference,
+                onSaveBlueprint = viewModel::saveAutomationBlueprint,
+                onRecurrenceField = viewModel::updateAutomationRecurrenceField,
+                onRecurrenceBlueprint = viewModel::selectAutomationRecurrenceBlueprint,
+                onFrequency = viewModel::updateAutomationFrequency,
+                onWeekday = viewModel::toggleAutomationWeekday,
+                onNthWeekday = viewModel::updateAutomationNthWeekday,
+                onMissingDay = viewModel::updateAutomationMissingDay,
+                onWeekend = viewModel::updateAutomationWeekend,
+                onGenerationMode = viewModel::updateAutomationGenerationMode,
+                onNotifyCandidate = viewModel::updateAutomationNotifyCandidate,
+                onFixedPlace = viewModel::updateAutomationFixedPlace,
+                onSaveRecurrence = viewModel::saveAutomationRecurrence,
+                onApplyRule = viewModel::applyAutomationRule,
+                onSeriesFilter = viewModel::updateAutomationSeriesFilter,
+                onTemplateSelected = viewModel::selectAutomationTemplate,
+                onCandidateSelected = viewModel::selectAutomationCandidate,
+                onCandidateToggle = viewModel::toggleAutomationCandidate,
+                onReviewSelectedCandidates = viewModel::reviewSelectedAutomationCandidates,
+                onSkipSelectedCandidates = viewModel::skipSelectedAutomationCandidates,
+                onConfirmCandidate = viewModel::confirmAutomationCandidate,
+                onSkipCandidate = viewModel::skipAutomationCandidate,
+                onCancelCandidate = viewModel::cancelAutomationCandidate,
+                onScope = viewModel::updateAutomationScope,
+                onApplyScope = viewModel::applyAutomationScope,
+                onCreateCategory = {
+                    viewModel.openAutomationCategoryCreator()
+                    onNavigationChanged()
+                },
+            ),
+        )
     }
 }
 

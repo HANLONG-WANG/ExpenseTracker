@@ -27,7 +27,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onAllNodes
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -149,7 +149,7 @@ class DesignSystemDeviceTest {
             }
         }
 
-        composeRule.onNodeWithText("accessible place list").assertExists()
+        composeRule.onNodeWithText("accessible place list", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("Map attribution").assertExists()
         composeRule.onNodeWithText("map sdk surface").assertDoesNotExist()
     }
@@ -371,9 +371,10 @@ class DesignSystemDeviceTest {
         }
         composeRule.onNodeWithTag(LedgerTestTags.JOURNAL_ROW).assertTextContains("Expense", substring = true)
         composeRule.onNodeWithTag(LedgerTestTags.JOURNAL_ROW).assertTextContains("negative 12 Japanese yen")
-        assertTrue(
-            !composeRule.onNodeWithTag(LedgerTestTags.JOURNAL_ROW)
-                .fetchSemanticsNode().config.contains(SemanticsProperties.ContentDescription),
+        assertEquals(
+            listOf(accessible),
+            composeRule.onNodeWithTag(LedgerTestTags.JOURNAL_ROW)
+                .fetchSemanticsNode().config[SemanticsProperties.ContentDescription],
         )
         val bitmap = composeRule.onNodeWithTag(GRAYSCALE_TAG).captureToImage().asAndroidBitmap()
         val grayLevels = buildSet {
@@ -512,9 +513,9 @@ class DesignSystemDeviceTest {
         }
 
         composeRule.onNodeWithText(exploreLabel).performClick()
-        composeRule.onNodeWithText("¥1,234", substring = true).assertExists()
+        assertTrue(composeRule.onAllNodesWithText("¥1,234", substring = true).fetchSemanticsNodes().isNotEmpty())
         repeat(4) { composeRule.onNodeWithText(nextLabel).performClick() }
-        composeRule.onNodeWithText("¥1,234", substring = true).assertExists()
+        assertTrue(composeRule.onAllNodesWithText("¥1,234", substring = true).fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test

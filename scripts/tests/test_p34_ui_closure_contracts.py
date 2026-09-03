@@ -115,9 +115,17 @@ class P34UiClosureMutationTest(unittest.TestCase):
     def test_record_production_location_wiring_regression_is_rejected(self) -> None:
         sources = copy.deepcopy(self.sources)
         path = next(path for path in sources if path.endswith("AppRootViewModel.kt"))
-        marker = 'target == "REC-009" && editor?.locationPresentation == RecordLocationEditorState.Locating'
+        marker = 'target == "REC-009" && editor?.locationPresentation in setOf('
         self.assertIn(marker, sources[path])
         sources[path] = sources[path].replace(marker, 'target == "REC-009" && false', 1)
+        self.assertTrue(validator.validate_ui_governance(sources, self.tests))
+
+    def test_record_map_composition_boundary_regression_is_rejected(self) -> None:
+        sources = copy.deepcopy(self.sources)
+        path = next(path for path in sources if path.endswith("OrdinaryRecordRootDestination.kt"))
+        marker = "LedgerMapStyleConfiguration.OpenFreeMap"
+        self.assertIn(marker, sources[path])
+        sources[path] = sources[path].replace(marker, "LedgerMapStyleConfiguration.Unavailable", 1)
         self.assertTrue(validator.validate_ui_governance(sources, self.tests))
 
     def test_typed_import_preview_formatting_regression_is_rejected(self) -> None:

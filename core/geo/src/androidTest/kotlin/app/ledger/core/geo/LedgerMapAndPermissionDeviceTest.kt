@@ -90,7 +90,10 @@ class LedgerMapAndPermissionDeviceTest {
             }
         }
 
-        composeRule.onNodeWithTag(LedgerTestTags.MAP_FALLBACK).assertExists()
+        composeRule.onNodeWithTag(
+            testTag = LedgerTestTags.MAP_FALLBACK,
+            useUnmergedTree = true,
+        ).assertExists()
         LocationPermissionDialogState.entries.forEach { next ->
             composeRule.runOnIdle { permissionState.value = next }
             composeRule.waitForIdle()

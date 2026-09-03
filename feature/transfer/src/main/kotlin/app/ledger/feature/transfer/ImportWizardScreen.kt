@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -28,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
@@ -44,21 +46,21 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
-import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerDialog
+import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerModalDialog
 import app.ledger.core.designsystem.LedgerScaffold
+import app.ledger.core.designsystem.LedgerStatusVariant
+import app.ledger.core.designsystem.LedgerTabRow
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerTabRow
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerTopAppBar
 import app.ledger.core.designsystem.LedgerTopAppBarVariant
 import app.ledger.core.designsystem.OperationCapability
 import app.ledger.core.designsystem.OperationProgressPanel
 import app.ledger.core.designsystem.OperationProgressUiModel
-import app.ledger.core.designsystem.LedgerStatusVariant
 import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.money.LocaleNumberFormatter
@@ -196,9 +198,13 @@ fun ImportWizardScreen(state: ImportWizardUiState, actions: ImportWizardActions)
                 onNavigation = actions.onBack,
             )
         },
-        fixedAction = {
+        bottomBar = {
             if (!state.showHistory && state.stage !in setOf(ImportWizardStage.EXECUTION, ImportWizardStage.RESULT)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs)) {
+                Row(
+                    Modifier.fillMaxWidth().navigationBarsPadding().padding(LedgerTheme.spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.xs, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     if (state.stage != ImportWizardStage.SOURCE) {
                         LedgerButton(stringResource(R.string.import_previous), actions.onPrevious, variant = LedgerButtonVariant.SECONDARY)
                     }

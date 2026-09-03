@@ -57,6 +57,7 @@ import java.util.UUID
 class SpecializedTransactionEntryDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var references: SecureRoomReferenceDataManagementPort
     private lateinit var network: MutableFxNetwork
     private lateinit var entry: SecureRoomSpecializedTransactionEntryPort
@@ -68,6 +69,7 @@ class SpecializedTransactionEntryDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         SecureRoomLedgerInitializationPort(context, keys).initialize(
             InitializeLedgerCommand(
                 LedgerGenesisIds(BOOK, id(2), id(3), id(4), SystemLedgerCode.entries.mapIndexed { index, code -> code to id(100L + index) }.toMap()),
@@ -76,12 +78,12 @@ class SpecializedTransactionEntryDeviceTest {
                 Instant.ofEpochMilli(1_000),
             ),
         ).success()
-        references = SecureRoomReferenceDataManagementPort(context, keys)
+        references = SecureRoomReferenceDataManagementPort(databaseAccess)
         createAccount(USD_ACCOUNT, USD_LEDGER, "USD wallet", USD, 0)
         createAccount(EUR_ACCOUNT, EUR_LEDGER, "EUR wallet", EUR, 1)
         createAccount(JPY_ACCOUNT, JPY_LEDGER, "JPY wallet", JPY, 2)
         network = MutableFxNetwork(mutableMapOf("USD" to BigDecimal("150"), "EUR" to BigDecimal("165")))
-        entry = SecureRoomSpecializedTransactionEntryPort(context, keys, references, network)
+        entry = SecureRoomSpecializedTransactionEntryPort(databaseAccess, references, network)
     }
 
     @After

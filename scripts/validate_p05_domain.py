@@ -323,13 +323,13 @@ def load_sources() -> dict[str, str]:
 
 def main() -> int:
     errors = validate_source_contract(load_sources())
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(
         encoding="utf-8", newline=""
     ) as handle:
         errors.extend(validate_requirement_rows(list(csv.DictReader(handle))))
     screen_rows = list(
         csv.DictReader(
-            (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="")
+            (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="")
         )
     )
     p11_promotions = {
@@ -351,11 +351,11 @@ def main() -> int:
         row["status"] != p11_promotions.get(row["screen_id"], "NOT_STARTED") for row in screen_rows
     ):
         errors.append("screen coverage contains a promotion outside the cumulative P12 scope")
-    mapping = (ROOT / "docs/implementation/P05_DOMAIN_API_MAPPING.md").read_text(encoding="utf-8")
+    mapping = (ROOT / "docs/初始开发文件存档/implementation/P05_DOMAIN_API_MAPPING.md").read_text(encoding="utf-8")
     mapping_ids = set(re.findall(r"P05-DOM-(\d{2})", mapping))
     if mapping_ids != {f"{value:02d}" for value in range(1, 36)}:
         errors.append("P05 domain mapping must contain exact chapter rows 01..35")
-    project_state = (ROOT / "docs/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
+    project_state = (ROOT / "docs/初始开发文件存档/implementation/PROJECT_STATE.md").read_text(encoding="utf-8")
     current_stage = re.search(r"Current stage: P(\d{2})", project_state)
     if (
         current_stage is None
@@ -364,7 +364,7 @@ def main() -> int:
         or "### P05 result" not in project_state
     ):
         errors.append("PROJECT_STATE does not retain P05 VERIFIED in the cumulative stage ledger")
-    test_evidence = (ROOT / "docs/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
+    test_evidence = (ROOT / "docs/初始开发文件存档/implementation/TEST_EVIDENCE.md").read_text(encoding="utf-8")
     if any(f"P05-E{value:03d}" not in test_evidence for value in range(1, 7)):
         errors.append("TEST_EVIDENCE does not contain the exact P05-E001..P05-E006 set")
 

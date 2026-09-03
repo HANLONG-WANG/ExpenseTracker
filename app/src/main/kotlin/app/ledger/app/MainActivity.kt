@@ -11,10 +11,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -29,6 +29,7 @@ class MainActivity : FragmentActivity() {
     private lateinit var privacy: app.ledger.core.security.AndroidScreenPrivacyController
     private lateinit var jankMonitor: app.ledger.core.designsystem.LedgerJankMonitor
     private var composeView: ComposeView? = null
+    private var fullyDrawnReported = false
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.notificationPermissionResult(it)
     }
@@ -97,6 +98,26 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.screenPrivacyPolicy.collect(privacy::apply)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.currentRouteContentReadyGeneration.collect { generation ->
+                    val ready = (viewModel.rootState.value as? AppRootState.Session)?.state as?
+                        app.ledger.core.security.BookSessionState.Ready
+                    val root = composeView
+                    if (fullyDrawnReported || generation == null || root == null) return@collect
+                    if (ready?.generation == generation) {
+                        root.postOnAnimation {
+                            val current = (viewModel.rootState.value as? AppRootState.Session)?.state as?
+                                app.ledger.core.security.BookSessionState.Ready
+                            if (!fullyDrawnReported && current?.generation == generation) {
+                                fullyDrawnReported = true
+                                reportFullyDrawn()
+                            }
+                        }
+                    }
+                }
             }
         }
         lifecycleScope.launch {

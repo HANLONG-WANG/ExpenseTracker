@@ -2,8 +2,13 @@ package app.ledger.app
 
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
+import app.ledger.core.security.ActiveBookSessionRuntime
 import app.ledger.core.security.BackupKeyEnvelopeStore
+import app.ledger.core.security.BookSessionState
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.HeadlessBookLease
+import app.ledger.core.security.HeadlessLeaseCapability
+import app.ledger.core.security.HeadlessLedgerDatabaseAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
 import app.ledger.finance.domain.LocalRevision
 import app.ledger.transfer.data.AutomaticBackupCheckpoint
@@ -28,6 +33,7 @@ internal class AutomaticBackupScheduler(
     private val settings: AppSettingsRepository,
     private val keyProvider: DeviceLedgerKeyProvider,
     private val runtime: AppRuntimeSources,
+    private val sessionRuntime: ActiveBookSessionRuntime,
 ) {
     private val mutex = Mutex()
 
@@ -35,50 +41,66 @@ internal class AutomaticBackupScheduler(
         runCatching {
             val saved = settings.current()
             val bookId = StableId.fromBytes(saved.bookId.toByteArray()).successOrNull() ?: return@runCatching
-            val ledgerZone = runCatching { ZoneId.of(saved.zoneId.ifBlank { "UTC" }) }.getOrDefault(ZoneId.of("UTC"))
-            val configuration = BackupConfigurationStore(application, keyProvider).read(bookId) ?: return@runCatching
-            if (!BackupKeyEnvelopeStore(application, keyProvider).isConfigured(configuration.repositoryId.value)) return@runCatching
-            val access = SecurePrimaryLedgerAccess(application, keyProvider)
-            val operations = SqlCipherBackgroundOperationRepository(bookId, access)
-            operations.recoverableBackupOperations()
-                .filter { operation -> operation.repositoryIdOrNull() == configuration.repositoryId }
-                .forEach { operation -> enqueue(operation.id.value, configuration.repositoryKind, configuration.policy.networkPolicy) }
-            if (!configuration.policy.automaticLocalBackup) return@runCatching
-            val checkpointStore = AutomaticBackupCheckpointStore(application, keyProvider)
-            val today = runtime.clock.now().atZone(ledgerZone).toLocalDate()
-            val marker = checkpointStore.read(bookId)
-            if (marker?.date == today) {
-                val existing = (operations.get(BackgroundOperationId(marker.operationId)) as? DomainResult.Success)?.value
-                if (existing != null && existing.state !in TERMINAL_STATES) {
-                    enqueue(existing.id.value, configuration.repositoryKind, configuration.policy.networkPolicy)
+            val manager = sessionRuntime.activate(bookId)
+            var lease: HeadlessBookLease? = null
+            try {
+                if (manager.state.value == BookSessionState.Uninitialized) manager.initialize()
+                lease = manager.acquireHeadlessLease(bookId, HeadlessLeaseCapability.BACKUP_WRITE)
+                val ledgerZone = runCatching { ZoneId.of(saved.zoneId.ifBlank { "UTC" }) }.getOrDefault(ZoneId.of("UTC"))
+                val configuration = BackupConfigurationStore(application, keyProvider).read(bookId) ?: return@runCatching
+                if (!BackupKeyEnvelopeStore(application, keyProvider).isConfigured(configuration.repositoryId.value)) return@runCatching
+                val access = SecurePrimaryLedgerAccess(
+                    application,
+                    keyProvider,
+                    HeadlessLedgerDatabaseAccess(sessionRuntime, lease),
+                )
+                val operations = SqlCipherBackgroundOperationRepository(bookId, access)
+                operations.recoverableBackupOperations()
+                    .filter { operation -> operation.repositoryIdOrNull() == configuration.repositoryId }
+                    .forEach { operation -> enqueue(operation.id.value, configuration.repositoryKind, configuration.policy.networkPolicy) }
+                if (!configuration.policy.automaticLocalBackup) return@runCatching
+                val checkpointStore = AutomaticBackupCheckpointStore(application, keyProvider)
+                val today = runtime.clock.now().atZone(ledgerZone).toLocalDate()
+                val marker = checkpointStore.read(bookId)
+                if (marker?.date == today) {
+                    val existing = (operations.get(BackgroundOperationId(marker.operationId)) as? DomainResult.Success)?.value
+                    if (existing != null && existing.state !in TERMINAL_STATES) {
+                        enqueue(existing.id.value, configuration.repositoryKind, configuration.policy.networkPolicy)
+                    }
+                    return@runCatching
                 }
-                return@runCatching
-            }
-            val currentRevision = access.read(bookId) { database ->
-                database.query("SELECT local_revision FROM book WHERE id=1").use { cursor ->
-                    check(cursor.moveToFirst())
-                    LocalRevision.of(cursor.getLong(0)).required()
+                val currentRevision = access.read(bookId) { database ->
+                    database.query("SELECT local_revision FROM book WHERE id=1").use { cursor ->
+                        check(cursor.moveToFirst())
+                        LocalRevision.of(cursor.getLong(0)).required()
+                    }
+                }
+                val latest = createBackupCatalog(bookId, access).completeSnapshots(configuration.repositoryId).firstOrNull()
+                val due = AutomaticBackupPolicy.shouldCreateDailyBackup(
+                    today,
+                    currentRevision,
+                    latest?.createdAt?.atZone(ledgerZone)?.toLocalDate(),
+                    latest?.localRevision,
+                )
+                if (!due) return@runCatching
+                val operationId = BackgroundOperationId(runtime.stableIds.nextStableId())
+                operations.save(
+                    BackgroundOperation.queued(
+                        operationId,
+                        BackgroundOperationType.FULL_BACKUP,
+                        runtime.clock.now(),
+                        OperationParameters.FullBackup(configuration.repositoryId, portable = false),
+                    ),
+                ).required()
+                checkpointStore.save(bookId, AutomaticBackupCheckpoint(today, currentRevision, operationId.value))
+                enqueue(operationId.value, configuration.repositoryKind, configuration.policy.networkPolicy)
+            } finally {
+                try {
+                    lease?.release()
+                } finally {
+                    if (manager.state.value !is BookSessionState.Ready) manager.close()
                 }
             }
-            val latest = createBackupCatalog(bookId, access).completeSnapshots(configuration.repositoryId).firstOrNull()
-            val due = AutomaticBackupPolicy.shouldCreateDailyBackup(
-                today,
-                currentRevision,
-                latest?.createdAt?.atZone(ledgerZone)?.toLocalDate(),
-                latest?.localRevision,
-            )
-            if (!due) return@runCatching
-            val operationId = BackgroundOperationId(runtime.stableIds.nextStableId())
-            operations.save(
-                BackgroundOperation.queued(
-                    operationId,
-                    BackgroundOperationType.FULL_BACKUP,
-                    runtime.clock.now(),
-                    OperationParameters.FullBackup(configuration.repositoryId, portable = false),
-                ),
-            ).required()
-            checkpointStore.save(bookId, AutomaticBackupCheckpoint(today, currentRevision, operationId.value))
-            enqueue(operationId.value, configuration.repositoryKind, configuration.policy.networkPolicy)
         }
     }
 

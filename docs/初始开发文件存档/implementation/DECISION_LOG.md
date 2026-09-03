@@ -1257,3 +1257,34 @@ This was a P00-time observation. The required JDK 17 and Android SDK 36 toolchai
 - Surface issue: the former maintenance gate allowed an eligible privacy purge to delete transaction revisions, Journal entries and Postings, contradicting the unconditional append-only accounting contract and frozen ADR-003/ADR-007 semantics.
 - Decision: retire the financial-fact purge gate and physical writer. Controlled purge still revalidates retention, zero-net, dependency and backup-read conditions inside the financial commit transaction, but commits only a content-free `purge_tombstone` and rebuilds current projections. Immutable transaction revisions and every financial fact remain stored permanently. Backup catalog retention uses its own scoped encrypted write access and can delete only backup catalog/object-reference rows.
 - Consequence: current UI and queries no longer expose purged content, merge tombstone priority still prevents resurrection, and no maintenance mode can update or delete Journal/Posting history. This decision supersedes the physical-fact deletion portion of DL-142 and DL-151 without weakening their atomicity, privacy or backup-retention requirements.
+
+## DL-178 — One process-scoped session resource owns the selected live primary database
+
+- Date/stage: 2026-09-04 / P37
+- Surface issue: interactive application Ports repeatedly unwrapped the database key and constructed/closed independent Room/SQLCipher instances even though the unlocked session already retained a live database resource. UI and headless orchestration could therefore duplicate expensive opens and race closure or writes.
+- Priority applied: encryption, session isolation, atomic accounting and lock/restore safety outrank local Port convenience. Reuse is allowed only through a capability-limited block whose lifetime cannot escape the active session generation.
+- Decision: `ActiveBookSessionRuntime` is the sole process-scoped owner of the selected live primary resource. Compatible UI and headless callers acquire counted block-scoped read/write/capability leases from that owner; one global non-reentrant write boundary orders cross-feature mutations. Initialization, named copy/staging and exclusive restore/maintenance paths remain distinct reviewed access classes and cannot masquerade as an interactive primary lease.
+- Consequence: Ready-state interactions perform zero additional primary opens/key unwraps, lock first rejects new admissions then drains entered operations before close, an already-entered financial write completes or fails atomically, and static policies reject competing managers, direct passphrase copies and unallowlisted live-primary opens.
+
+## DL-179 — Interactive state is generation- and revision-keyed, bounded and presentation-authoritative
+
+- Date/stage: 2026-09-04 / P37
+- Surface issue: full reference snapshots, duplicate route loaders, blank-on-refresh states, broad root flow collection and per-row Journal enrichment made normal interactions slow and allowed stale asynchronous results to compete with current book state.
+- Priority applied: authoritative financial revision semantics and stale-session isolation outrank speculative UI arithmetic or unversioned cache reuse. A fast result is valid only when it belongs to the current book, session generation, request key and database revision.
+- Decision: publish committed projection scopes with the authoritative local revision; key bounded LRU/reference caches and single-flight loads by complete book/generation/revision/request identity; cancel or discard superseded results; retain valid content during refresh and expose bounded timeout/error/retry states. Route scopes own their flows, and current-route readiness—including Journal Paging—is completed from the matching presented Compose frame. Journal page enrichment is batched and index-backed rather than per-row.
+- Consequence: restore/book switch clears presentation-sensitive state and old generations cannot publish; ordinary save acknowledges only after one committed transaction and triggers scoped background invalidation instead of a synchronous global reload; page query count remains constant at two statements with or without running balance in the final evidence.
+
+## DL-180 — P37 acceptance binds raw samples and both emulator results to identical APK bytes
+
+- Date/stage: 2026-09-04 / P37
+- Surface issue: frame-only measurements could pass while users waited on a spinner, summary-only results could hide timeouts or variance, and evidence generated before later production or source-quality changes could describe a different candidate from the final tree.
+- Priority applied: reproducibility and truthful action-to-authoritative-content evidence outrank retaining an earlier green run. A passing measurement is not final unless its raw payload, logs, fixture, device and tested APKs are independently identifiable.
+- Decision: freeze action-to-content/commit target-process traces, at least 30 warm and 5 cold raw samples, nearest-rank P50/P90/P95/max, population variance, timeout-as-failure and deterministic open/unwrap/write/query counters. The fail-closed generator hashes the raw AndroidX report, instrumentation/counter logs and both APKs. API 28 and API 36 may be promoted together only when both JSON files and the on-disk artifacts name the exact same target and benchmark APK SHA-256 values.
+- Consequence: earlier individually green files were explicitly rejected after their APK hashes diverged from the rebuilt candidate. The accepted files are API 28 `ec98fd786d2d1cc6083a762538700ec9c4de3dd5be7f7752ef3619f217a41e3b` and API 36 `8e8ea76cc36fff6acbf047f3f3ca4d2c5756aa3bf3d3d0812c7e421d25ef6b78`; both bind to target `fa808559a0a4ab324a19445786601af465c0baf5cebdbf99d917cf54298db17b` and benchmark `e82e091ba138752042c61bb85e3b2d2d2a4657e9cd62168ae28506127899b11e`.
+
+## DL-181 — P37 device acceptance retains emulator-only provenance
+
+- Date/stage: 2026-09-04 / P37
+- Surface issue: P37 requires API 28/API 36 platform, SQLCipher, Compose, UiAutomator and Macrobenchmark behavior, while the available authorized execution environments are KVM-backed Gradle Managed Devices rather than physical phones.
+- Decision: use API 28 x86 and API 36 x86_64 Android emulator system images for P37 device and performance acceptance, retain the deterministic P35 target-scale fixture, and label all results as emulator evidence. Do not reinterpret these runs as physical-device, remote-CI or store-publication evidence.
+- Consequence: real Android SQLCipher, Keystore, R8, Paging/Compose presentation and Macrobenchmark paths are exercised without falsifying hardware provenance. A later physical-device or remote-CI run, if requested, is new evidence rather than a relabeling of P37.

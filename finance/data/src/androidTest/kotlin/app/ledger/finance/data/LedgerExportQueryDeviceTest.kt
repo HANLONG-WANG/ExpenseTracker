@@ -39,6 +39,7 @@ import java.util.UUID
 class LedgerExportQueryDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
 
     @Before
     fun prepare() {
@@ -46,6 +47,7 @@ class LedgerExportQueryDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
     }
 
     @After
@@ -87,7 +89,7 @@ class LedgerExportQueryDeviceTest {
         ).success()
         insertCardAndVaultSentinel()
 
-        val vault = SecureRoomVaultSecretApplicationPort(context, keys)
+        val vault = SecureRoomVaultSecretApplicationPort(databaseAccess)
         val stored = requireNotNull(vault.read(BOOK_ID, id(20)).success())
         assertTrue(requireNotNull(stored.primaryNumber).copyBytes().contentEquals(VAULT_SENTINEL.toByteArray()))
         assertEquals(setOf(id(20)), vault.listCardIds(BOOK_ID).success())
@@ -105,7 +107,8 @@ class LedgerExportQueryDeviceTest {
             ),
         ).success()
 
-        val port = SecureRoomLedgerExportQueryPort(context, keys)
+        val journal = SecureRoomJournalApplicationPort(context, databaseAccess)
+        val port = SecureRoomLedgerExportQueryPort(databaseAccess, journal)
         assertTrue(port.metadata(BOOK_ID).success().localRevision >= 3L)
         LedgerWorkbookSheet.entries.forEach { sheet ->
             val page = port.workbookSheet(

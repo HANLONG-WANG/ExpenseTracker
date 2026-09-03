@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "LongParameterList", "ReturnCount", "TooGenericExceptionCaught")
+@file:Suppress("LongMethod", "LongParameterList", "ReturnCount", "TooGenericExceptionCaught", "TooManyFunctions")
 
 package app.ledger.app
 
@@ -16,11 +16,18 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import app.ledger.core.background.OperationNotificationContent
 import app.ledger.core.background.OperationNotificationCoordinator
+import app.ledger.core.common.DomainError
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.money.CurrencyCode
+import app.ledger.core.security.ActiveBookSessionRuntime
+import app.ledger.core.security.BookSessionState
 import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.HeadlessBookLease
+import app.ledger.core.security.HeadlessLeaseCapability
+import app.ledger.core.security.HeadlessLedgerDatabaseAccess
+import app.ledger.core.security.MaintenanceReason
 import app.ledger.core.security.SecureImportSourceHandleStore
 import app.ledger.core.security.SecureImportStagingAccess
 import app.ledger.core.security.SecurePrimaryLedgerAccess
@@ -30,6 +37,9 @@ import app.ledger.finance.application.ImportFinancialApplicationPort
 import app.ledger.finance.application.ImportFinancialCommitRequest
 import app.ledger.finance.application.StructuredImportApplicationPort
 import app.ledger.finance.application.StructuredImportCommitRequest
+import app.ledger.finance.data.SecureRoomImportFinancialApplicationPort
+import app.ledger.finance.data.SecureRoomReferenceDataManagementPort
+import app.ledger.finance.data.SecureRoomStructuredImportApplicationPort
 import app.ledger.transfer.data.ImportIngestionService
 import app.ledger.transfer.data.ImportProgressObserver
 import app.ledger.transfer.data.ImportRunControl
@@ -56,6 +66,7 @@ internal class ImportWorker(
     applicationContext: Context,
     workerParameters: WorkerParameters,
 ) : CoroutineWorker(applicationContext, workerParameters) {
+    @Suppress("CyclomaticComplexMethod")
     override suspend fun doWork(): Result {
         val operationStableId = if (inputData.keyValueMap.keys == setOf(INPUT_OPERATION_ID)) {
             inputData.getString(INPUT_OPERATION_ID)?.let { StableId.parse(it).getOrNull() }
@@ -65,55 +76,168 @@ internal class ImportWorker(
         val dependencies = EntryPointAccessors.fromApplication(applicationContext, ImportWorkerEntryPoint::class.java)
         val saved = dependencies.settings().current()
         val bookId = StableId.fromBytes(saved.bookId.toByteArray()).getOrNull() ?: return Result.failure()
-        val operationId = BackgroundOperationId(operationStableId)
-        val primary = SecurePrimaryLedgerAccess(applicationContext, dependencies.keyProvider())
-        val operations = SqlCipherBackgroundOperationRepository(bookId, primary)
-        val operation = when (val loaded = operations.get(operationId)) {
-            is DomainResult.Success -> loaded.value ?: return Result.failure()
-            is DomainResult.Failure -> return retryOrFailure()
-        }
-        val parameters = operation.parameters as? OperationParameters.Import ?: return Result.failure()
-        val persistedCommit = parameters.commit
-        if (operation.state == BackgroundOperationState.CANCEL_REQUESTED) {
-            var cancelled = operation.transition(BackgroundOperationState.ROLLING_BACK, dependencies.clock().now())
-                .valueOrNull() ?: return Result.failure()
-            operations.save(cancelled)
-            val stagingRemoved = SqlCipherStagingRepository(
+        val sessionRuntime = dependencies.sessionRuntime()
+        val manager = sessionRuntime.activate(bookId)
+        var lease: HeadlessBookLease? = null
+        try {
+            if (manager.state.value == BookSessionState.Uninitialized) manager.initialize()
+            lease = manager.acquireHeadlessLease(operationStableId, HeadlessLeaseCapability.IMPORT_WRITE)
+            val operationId = BackgroundOperationId(operationStableId)
+            val primary = SecurePrimaryLedgerAccess(
+                applicationContext,
+                dependencies.keyProvider(),
+                HeadlessLedgerDatabaseAccess(sessionRuntime, lease),
+            )
+            val operations = SqlCipherBackgroundOperationRepository(bookId, primary)
+            val operation = when (val loaded = operations.get(operationId)) {
+                is DomainResult.Success -> loaded.value ?: return Result.failure()
+                is DomainResult.Failure -> return retryOrFailure()
+            }
+            val parameters = operation.parameters as? OperationParameters.Import ?: return Result.failure()
+            val persistedCommit = parameters.commit
+            if (operation.state == BackgroundOperationState.CANCEL_REQUESTED) {
+                return handleCancellation(bookId, operationId, operation, parameters, operations, dependencies)
+            }
+            if (operation.state == BackgroundOperationState.SUCCEEDED && persistedCommit != null) {
+                return handleAlreadyCommitted(bookId, operationId, parameters, dependencies)
+            }
+            if (operation.state == BackgroundOperationState.COMMITTING && persistedCommit != null) {
+                setForeground(foregroundInfo(operation.progress.current))
+                requireNotNull(lease).release()
+                lease = null
+                return commitUnderMaintenance(
+                    manager,
+                    operationStableId,
+                    bookId,
+                    operationId,
+                    operation,
+                    parameters,
+                    dependencies,
+                )
+            }
+            return ingestPreparedSource(
+                operationStableId,
                 bookId,
                 operationId,
-                SecureImportStagingAccess(applicationContext, dependencies.keyProvider()),
-            ).destroy() is DomainResult.Success
-            val handleRemoved = removeSourceHandle(bookId, parameters.sourceHandleId, dependencies)
-            cancelled = cancelled.transition(
-                BackgroundOperationState.FAILED_FINAL,
-                dependencies.clock().now(),
-                errorCode = ImportFailure.Cancelled.code,
-            ).valueOrNull() ?: return Result.failure()
-            operations.save(cancelled)
-            return Result.success(
-                Data.Builder()
-                    .putBoolean(OUTPUT_CANCELLED, true)
-                    .putBoolean(OUTPUT_CLEANUP_COMPLETE, stagingRemoved && handleRemoved)
-                    .build(),
+                operation,
+                parameters,
+                operations,
+                dependencies,
             )
+        } finally {
+            try {
+                lease?.release()
+            } finally {
+                if (manager.state.value !is BookSessionState.Ready) manager.close()
+            }
         }
-        if (operation.state == BackgroundOperationState.SUCCEEDED && persistedCommit != null) {
-            val stagingRemoved = SqlCipherStagingRepository(
+    }
+
+    private suspend fun handleCancellation(
+        bookId: StableId,
+        operationId: BackgroundOperationId,
+        operation: app.ledger.transfer.domain.BackgroundOperation,
+        parameters: OperationParameters.Import,
+        operations: SqlCipherBackgroundOperationRepository,
+        dependencies: ImportWorkerEntryPoint,
+    ): Result {
+        var cancelled = operation.transition(BackgroundOperationState.ROLLING_BACK, dependencies.clock().now())
+            .valueOrNull() ?: return Result.failure()
+        operations.save(cancelled)
+        val stagingRemoved = stagingRepository(bookId, operationId, dependencies).destroy() is DomainResult.Success
+        val handleRemoved = removeSourceHandle(bookId, parameters.sourceHandleId, dependencies)
+        cancelled = cancelled.transition(
+            BackgroundOperationState.FAILED_FINAL,
+            dependencies.clock().now(),
+            errorCode = ImportFailure.Cancelled.code,
+        ).valueOrNull() ?: return Result.failure()
+        operations.save(cancelled)
+        return Result.success(
+            Data.Builder()
+                .putBoolean(OUTPUT_CANCELLED, true)
+                .putBoolean(OUTPUT_CLEANUP_COMPLETE, stagingRemoved && handleRemoved)
+                .build(),
+        )
+    }
+
+    private suspend fun handleAlreadyCommitted(
+        bookId: StableId,
+        operationId: BackgroundOperationId,
+        parameters: OperationParameters.Import,
+        dependencies: ImportWorkerEntryPoint,
+    ): Result {
+        val commit = requireNotNull(parameters.commit)
+        val stagingRemoved = stagingRepository(bookId, operationId, dependencies).destroy() is DomainResult.Success
+        val handleRemoved = removeSourceHandle(bookId, parameters.sourceHandleId, dependencies)
+        return committedOutput(
+            commit.totalPreparedRows,
+            commit.useStructuredUndo,
+            cleanupComplete = stagingRemoved && handleRemoved,
+        )
+    }
+
+    private suspend fun commitUnderMaintenance(
+        manager: app.ledger.core.security.BookSessionManager,
+        operationStableId: StableId,
+        bookId: StableId,
+        operationId: BackgroundOperationId,
+        operation: app.ledger.transfer.domain.BackgroundOperation,
+        parameters: OperationParameters.Import,
+        dependencies: ImportWorkerEntryPoint,
+    ): Result {
+        manager.enterMaintenance(MaintenanceReason.CONTROLLED_MAINTENANCE)
+        manager.close()
+        val permit = try {
+            manager.acquireOfflinePrimaryMaintenancePermit(operationStableId)
+        } catch (error: Exception) {
+            manager.finishMaintenance()
+            throw error
+        }
+        try {
+            val offlinePrimary = SecurePrimaryLedgerAccess.forOfflineMaintenance(
+                applicationContext,
+                dependencies.keyProvider(),
+                permit,
+            )
+            val offlineOperations = SqlCipherBackgroundOperationRepository(bookId, offlinePrimary)
+            val references = SecureRoomReferenceDataManagementPort(offlinePrimary)
+            val financialImport = SecureRoomImportFinancialApplicationPort(
+                applicationContext,
+                dependencies.keyProvider(),
+                references,
+                dependencies.runtimeSources().stableIds,
+                databaseAccess = offlinePrimary,
+            )
+            val structuredImport = SecureRoomStructuredImportApplicationPort(
+                applicationContext,
+                dependencies.keyProvider(),
+                offlinePrimary,
+            )
+            return commitPrepared(
                 bookId,
                 operationId,
-                SecureImportStagingAccess(applicationContext, dependencies.keyProvider()),
-            ).destroy() is DomainResult.Success
-            val handleRemoved = removeSourceHandle(bookId, parameters.sourceHandleId, dependencies)
-            return committedOutput(
-                persistedCommit.totalPreparedRows,
-                persistedCommit.useStructuredUndo,
-                cleanupComplete = stagingRemoved && handleRemoved,
+                operation,
+                parameters,
+                offlineOperations,
+                dependencies,
+                financialImport,
+                structuredImport,
             )
+        } finally {
+            permit.release()
+            manager.finishMaintenance()
         }
-        if (operation.state == BackgroundOperationState.COMMITTING && persistedCommit != null) {
-            setForeground(foregroundInfo(operation.progress.current))
-            return commitPrepared(bookId, operationId, operation, parameters, operations, dependencies)
-        }
+    }
+
+    private suspend fun ingestPreparedSource(
+        operationStableId: StableId,
+        bookId: StableId,
+        operationId: BackgroundOperationId,
+        operation: app.ledger.transfer.domain.BackgroundOperation,
+        parameters: OperationParameters.Import,
+        operations: SqlCipherBackgroundOperationRepository,
+        dependencies: ImportWorkerEntryPoint,
+    ): Result {
         val persistedHandle = try {
             SecureImportSourceHandleStore(applicationContext, dependencies.keyProvider())
                 .read(bookId, parameters.sourceHandleId)
@@ -124,27 +248,31 @@ internal class ImportWorker(
         val control = ImportRunControlRegistry.get(operationStableId)
         setForeground(foregroundInfo(0L))
         val workerContext = currentCoroutineContext()
-        val result = ImportIngestionService(now = dependencies.clock()::now).ingest(
-            operation,
-            ImportReadRequest(
-                input = ImportInput {
-                    applicationContext.contentResolver.openInputStream(uri) ?: error("persisted source cannot be opened")
+        val result = try {
+            ImportIngestionService(now = dependencies.clock()::now).ingest(
+                operation,
+                ImportReadRequest(
+                    input = ImportInput {
+                        applicationContext.contentResolver.openInputStream(uri)
+                            ?: error("persisted source cannot be opened")
+                    },
+                    selectedSheetNames = StructuredEntityKind.supportedSheetNames
+                        .takeIf { parameters.format == app.ledger.transfer.domain.ImportFormat.STRUCTURED_WORKBOOK },
+                    headerRowNumber = parameters.headerRowNumber,
+                    userCharset = parameters.userCharset,
+                    cancellation = { isStopped || !workerContext.isActive },
+                ),
+                stagingRepository(bookId, operationId, dependencies),
+                operations,
+                control,
+                ImportProgressObserver { progress ->
+                    setProgress(Data.Builder().putLong(PROGRESS_ROWS, progress.current).build())
+                    setForeground(foregroundInfo(progress.current))
                 },
-                selectedSheetNames = StructuredEntityKind.supportedSheetNames
-                    .takeIf { parameters.format == app.ledger.transfer.domain.ImportFormat.STRUCTURED_WORKBOOK },
-                headerRowNumber = parameters.headerRowNumber,
-                userCharset = parameters.userCharset,
-                cancellation = { isStopped || !workerContext.isActive },
-            ),
-            SqlCipherStagingRepository(bookId, operationId, SecureImportStagingAccess(applicationContext, dependencies.keyProvider())),
-            operations,
-            control,
-            ImportProgressObserver { progress ->
-                setProgress(Data.Builder().putLong(PROGRESS_ROWS, progress.current).build())
-                setForeground(foregroundInfo(progress.current))
-            },
-        )
-        ImportRunControlRegistry.remove(operationStableId)
+            )
+        } finally {
+            ImportRunControlRegistry.remove(operationStableId)
+        }
         return when (result) {
             is DomainResult.Success -> Result.success(
                 Data.Builder()
@@ -152,23 +280,41 @@ internal class ImportWorker(
                     .putLong(OUTPUT_ROWS, result.value.stagedRows)
                     .build(),
             )
-            is DomainResult.Failure -> if (result.error == ImportFailure.Cancelled) {
-                val handleRemoved = removeSourceHandle(bookId, parameters.sourceHandleId, dependencies)
-                Result.success(
-                    Data.Builder()
-                        .putBoolean(OUTPUT_CANCELLED, true)
-                        .putBoolean(OUTPUT_CLEANUP_COMPLETE, handleRemoved)
-                        .build(),
-                )
-            } else if (
-                runAttemptCount < MAX_RETRIES &&
-                (operations.get(operationId) as? DomainResult.Success)?.value?.state ==
-                BackgroundOperationState.FAILED_RETRYABLE
-            ) {
-                Result.retry()
-            } else {
-                failIngestion(bookId, operationId, operation, parameters, operations, dependencies, result.error.code)
-            }
+            is DomainResult.Failure -> ingestionFailure(
+                bookId,
+                operationId,
+                operation,
+                parameters,
+                operations,
+                dependencies,
+                result.error,
+            )
+        }
+    }
+
+    private suspend fun ingestionFailure(
+        bookId: StableId,
+        operationId: BackgroundOperationId,
+        operation: app.ledger.transfer.domain.BackgroundOperation,
+        parameters: OperationParameters.Import,
+        operations: SqlCipherBackgroundOperationRepository,
+        dependencies: ImportWorkerEntryPoint,
+        failure: DomainError,
+    ): Result {
+        if (failure == ImportFailure.Cancelled) {
+            val handleRemoved = removeSourceHandle(bookId, parameters.sourceHandleId, dependencies)
+            return Result.success(
+                Data.Builder()
+                    .putBoolean(OUTPUT_CANCELLED, true)
+                    .putBoolean(OUTPUT_CLEANUP_COMPLETE, handleRemoved)
+                    .build(),
+            )
+        }
+        val latest = (operations.get(operationId) as? DomainResult.Success)?.value
+        return if (runAttemptCount < MAX_RETRIES && latest?.state == BackgroundOperationState.FAILED_RETRYABLE) {
+            Result.retry()
+        } else {
+            failIngestion(bookId, operationId, operation, parameters, operations, dependencies, failure.code)
         }
     }
 
@@ -179,6 +325,8 @@ internal class ImportWorker(
         parameters: OperationParameters.Import,
         operations: SqlCipherBackgroundOperationRepository,
         dependencies: ImportWorkerEntryPoint,
+        financialImport: ImportFinancialApplicationPort,
+        structuredImport: StructuredImportApplicationPort,
     ): Result {
         val commit = requireNotNull(parameters.commit)
         val currency = CurrencyCode.parse(commit.baseCurrency).getOrNull()
@@ -227,7 +375,7 @@ internal class ImportWorker(
         )
         val result = when {
             parameters.format == app.ledger.transfer.domain.ImportFormat.STRUCTURED_WORKBOOK -> {
-                dependencies.structuredImport().commit(
+                structuredImport.commit(
                     StructuredImportCommitRequest(
                         bookId,
                         metadata,
@@ -268,7 +416,7 @@ internal class ImportWorker(
                         ImportFailure.ValidationFailed.code,
                     )
                 }
-                dependencies.structuredImport().commit(
+                structuredImport.commit(
                     StructuredImportCommitRequest(
                         bookId,
                         metadata,
@@ -279,7 +427,7 @@ internal class ImportWorker(
                     ),
                 )
             }
-            else -> dependencies.financialImport().commit(ImportFinancialCommitRequest(bookId, metadata, financialPages))
+            else -> financialImport.commit(ImportFinancialCommitRequest(bookId, metadata, financialPages))
         }
         return when (result) {
             is DomainResult.Success -> {
@@ -387,6 +535,16 @@ internal class ImportWorker(
         return store.destroy(handleId) || runCatching { store.read(bookId, handleId) == null }.getOrDefault(false)
     }
 
+    private fun stagingRepository(
+        bookId: StableId,
+        operationId: BackgroundOperationId,
+        dependencies: ImportWorkerEntryPoint,
+    ): SqlCipherStagingRepository = SqlCipherStagingRepository(
+        bookId,
+        operationId,
+        SecureImportStagingAccess(applicationContext, dependencies.keyProvider()),
+    )
+
     private fun committedOutput(rows: Long, structuredUndo: Boolean, cleanupComplete: Boolean): Result = Result.success(
         Data.Builder()
             .putLong(OUTPUT_ROWS, rows)
@@ -437,8 +595,8 @@ internal interface ImportWorkerEntryPoint {
     fun settings(): AppSettingsRepository
     fun keyProvider(): DeviceLedgerKeyProvider
     fun clock(): LedgerClock
-    fun financialImport(): ImportFinancialApplicationPort
-    fun structuredImport(): StructuredImportApplicationPort
+    fun runtimeSources(): AppRuntimeSources
+    fun sessionRuntime(): ActiveBookSessionRuntime
 }
 
 internal object ImportRunControlRegistry {

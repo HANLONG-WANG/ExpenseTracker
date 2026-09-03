@@ -44,6 +44,7 @@ internal object SettlementDeviceFixtures {
         onChargeDistribution = {},
         onRoundingRule = {},
         onToggleParticipant = {},
+        onSetSelfParticipant = {},
         onMoveParticipant = { _, _ -> },
         onAddParticipant = {},
         onSave = {},

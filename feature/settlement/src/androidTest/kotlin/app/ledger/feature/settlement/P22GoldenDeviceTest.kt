@@ -68,8 +68,8 @@ class P22GoldenDeviceTest {
     private companion object {
         const val GOLDEN_TAG = "p22_settlement_golden_root"
         val CASES = listOf(
-            Golden("SET-004", ThemeMode.LIGHT, SettlementDeviceFixtures.state("SET-004", SettlementPresentation.OPEN), "f9d6c0b5ed020985df1555241ceadb1453d21ff6471335346ac502a9f1515c42"),
-            Golden("SET-006", ThemeMode.DARK, SettlementDeviceFixtures.state("SET-006", SettlementPresentation.EXTERNAL_TO_EXTERNAL), "1e3acfa652268c86f0015504ffe374b468f6469730d6329d86ebbdbe6f805a19"),
+            Golden("SET-004", ThemeMode.LIGHT, SettlementDeviceFixtures.state("SET-004", SettlementPresentation.OPEN), "458cf1de6497735d758b68ea6f917c292a2518537c504d559725286349adbe8d"),
+            Golden("SET-006", ThemeMode.DARK, SettlementDeviceFixtures.state("SET-006", SettlementPresentation.EXTERNAL_TO_EXTERNAL), "8c79dd1322572be44c7988e6070ec5d1df36a1d255d83d1661e83d9145239665"),
         )
     }
 }

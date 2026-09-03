@@ -8,15 +8,21 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import android.os.Debug
+import android.os.SystemClock
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
+import app.ledger.core.database.AnalyticsProjectionEngine
 import app.ledger.core.database.DatabaseMaintenance
 import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
+import app.ledger.core.database.LedgerDatabasePerformance
 import app.ledger.core.database.WalCheckpointMode
 import app.ledger.core.money.CurrencyCode
 import app.ledger.core.security.AndroidKeystoreKeys
 import app.ledger.core.security.DeviceKeyHierarchy
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
+import app.ledger.core.security.LedgerSessionPerformance
 import app.ledger.core.security.SecurityEnvelopeStore
 import app.ledger.feature.onboarding.OnboardingStep
 import app.ledger.finance.application.InitialAccountCommand
@@ -32,10 +38,12 @@ import app.ledger.finance.domain.SystemLedgerCode
 import app.ledger.finance.domain.UserAccountType
 import com.google.protobuf.ByteString
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
@@ -56,6 +64,8 @@ public class P35BenchmarkFixtureProvider : ContentProvider() {
             METHOD_AUDIT -> audit()
             METHOD_REFERENCE_AUDIT -> referenceAudit()
             METHOD_RELEASE_REFLECTION_AUDIT -> releaseReflectionAudit(arg)
+            METHOD_P37_RESET -> resetP37Metrics()
+            METHOD_P37_METRICS -> p37Metrics()
             else -> Bundle().apply { putString(KEY_ERROR, "UNKNOWN_METHOD") }
         }
     }
@@ -178,7 +188,7 @@ public class P35BenchmarkFixtureProvider : ContentProvider() {
         val appContext = requireNotNull(context).applicationContext
         try {
             val hierarchy = DeviceKeyHierarchy(AndroidKeystoreKeys(appContext), SecurityEnvelopeStore(appContext))
-            val port = SecureRoomReferenceDataManagementPort(appContext, hierarchy)
+            val port = SecureRoomReferenceDataManagementPort(BenchmarkLedgerDatabaseAccess(appContext, hierarchy))
             var entryCount = 0
             val entryMillis = measureTimeMillis {
                 val snapshot = (port.entrySnapshot(BOOK_ID) as DomainResult.Success).value
@@ -201,6 +211,60 @@ public class P35BenchmarkFixtureProvider : ContentProvider() {
     private fun result(status: String, elapsedMillis: Long = 0L): Bundle = Bundle().apply {
         putString(KEY_STATUS, status)
         putLong(KEY_ELAPSED, elapsedMillis)
+    }
+
+    private suspend fun resetP37Metrics(): Bundle = withContext(Dispatchers.IO) {
+        val startedAt = SystemClock.elapsedRealtime()
+        val application = requireNotNull(context).applicationContext as? LedgerApplication
+            ?: return@withContext p37ResetError("P37_APPLICATION_UNAVAILABLE", startedAt)
+        val postContentCompleted = withTimeoutOrNull(P37_QUIESCENCE_TIMEOUT_MILLIS) {
+            application.awaitFirstInteractiveContentWork()
+            true
+        } == true
+        if (!postContentCompleted) {
+            return@withContext p37ResetError("P37_POST_CONTENT_WORK_NOT_COMPLETE", startedAt)
+        }
+        var previous = LedgerDatabasePerformance.snapshot() to LedgerSessionPerformance.snapshot()
+        var stableObservations = 0
+        while (SystemClock.elapsedRealtime() - startedAt < P37_QUIESCENCE_TIMEOUT_MILLIS) {
+            delay(P37_QUIESCENCE_POLL_MILLIS)
+            val current = LedgerDatabasePerformance.snapshot() to LedgerSessionPerformance.snapshot()
+            if (current == previous) {
+                stableObservations += 1
+            } else {
+                previous = current
+                stableObservations = 0
+            }
+            if (stableObservations >= P37_REQUIRED_STABLE_OBSERVATIONS) {
+                LedgerDatabasePerformance.resetForTest()
+                LedgerSessionPerformance.resetForTest()
+                return@withContext result("reset", SystemClock.elapsedRealtime() - startedAt)
+            }
+        }
+        p37ResetError("P37_BACKGROUND_NOT_QUIESCENT", startedAt)
+    }
+
+    private fun p37ResetError(code: String, startedAt: Long): Bundle = Bundle().apply {
+        putString(KEY_ERROR, code)
+        putLong(KEY_ELAPSED, SystemClock.elapsedRealtime() - startedAt)
+    }
+
+    private fun p37Metrics(): Bundle {
+        val database = LedgerDatabasePerformance.snapshot()
+        val session = LedgerSessionPerformance.snapshot()
+        return Bundle().apply {
+            putString(KEY_STATUS, "measured")
+            putString(
+                KEY_SUMMARY,
+                listOf(
+                    "primaryOpen=${database.primaryOpenCount}",
+                    "sqlStatements=${database.primarySqlStatementCount}",
+                    "financialTransactions=${database.financialCommitTransactionCount}",
+                    "databaseKeyUnwrap=${session.databaseKeyUnwrapCount}",
+                    "sessionAcquisitions=${session.sessionAcquisitionCount}",
+                ).joinToString(","),
+            )
+        }
     }
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
@@ -229,6 +293,8 @@ public class P35BenchmarkFixtureProvider : ContentProvider() {
         const val METHOD_AUDIT = "audit"
         const val METHOD_REFERENCE_AUDIT = "references"
         const val METHOD_RELEASE_REFLECTION_AUDIT = "release-reflection"
+        const val METHOD_P37_RESET = "p37-reset"
+        const val METHOD_P37_METRICS = "p37-metrics"
         const val KEY_STATUS = "status"
         const val KEY_ELAPSED = "elapsedMillis"
         const val KEY_SUMMARY = "summary"
@@ -237,11 +303,36 @@ public class P35BenchmarkFixtureProvider : ContentProvider() {
         const val MARKER_VERSION = "P35_TARGET_SCALE_V1"
         const val OBJECT_DIRECTORY = "p35_attachment_objects"
         const val P35_NAMESPACE = 0x5035L
+        const val P37_QUIESCENCE_TIMEOUT_MILLIS = 15_000L
+        const val P37_QUIESCENCE_POLL_MILLIS = 250L
+        const val P37_REQUIRED_STABLE_OBSERVATIONS = 4
         val BOOK_ID: StableId = StableId.fromUuid(UUID(P35_NAMESPACE, 1L))
         val ACCOUNT_ID: StableId = StableId.fromUuid(UUID(P35_NAMESPACE, 300L))
         val CATEGORY_ID: StableId = StableId.fromUuid(UUID(P35_NAMESPACE, 400L))
         val ZONE: ZoneId = ZoneId.of("Asia/Tokyo")
         val FIXED_INSTANT: Instant = Instant.parse("2026-08-11T00:00:00Z")
+    }
+}
+
+private class BenchmarkLedgerDatabaseAccess(
+    context: android.content.Context,
+    private val keyProvider: DeviceKeyHierarchy,
+) : LedgerDatabaseOperationAccess {
+    private val applicationContext = context.applicationContext
+
+    override suspend fun <T> withCurrentDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode,
+        block: suspend (LedgerDatabase) -> T,
+    ): T = keyProvider.open(bookId).use { keys ->
+        val database = keys.databaseDek.useBytes { passphrase ->
+            EncryptedDatabaseFactory.openPrimary(applicationContext, passphrase)
+        }
+        try {
+            block(database)
+        } finally {
+            database.close()
+        }
     }
 }
 
@@ -260,12 +351,47 @@ private class TargetScaleSeeder(private val objectDirectory: File) {
         seedPlaces(database, refs.commit)
         seedTransactions(database, refs)
         seedAttachments(database)
+        seedExactInteractiveProjections(database, refs)
         writeObjectFiles()
         database.inLedgerTransaction { db ->
             db.execSQL("UPDATE book SET first_financial_commit_at=coalesce(first_financial_commit_at,?) WHERE id=1", arrayOf<Any?>(P35BenchmarkFixtureProvider.FIXED_INSTANT.toEpochMilli()))
             DatabaseMaintenance.optimize(db)
         }
         DatabaseMaintenance.checkpoint(database.openHelper.writableDatabase, WalCheckpointMode.TRUNCATE)
+    }
+
+    private fun seedExactInteractiveProjections(database: LedgerDatabase, refs: FixtureReferences) {
+        database.inLedgerTransaction { db ->
+            db.execSQL("DELETE FROM account_balance_current")
+            db.execSQL("DELETE FROM account_balance_daily")
+            db.execSQL(
+                "INSERT INTO account_balance_current(account_id,normal_balance_minor,currency_code,total_debit_minor," +
+                    "total_credit_minor,as_of_local_revision) VALUES(?,-?,'JPY',0,?,?)",
+                arrayOf<Any>(refs.account, CURRENT_TRANSACTIONS, CURRENT_TRANSACTIONS, refs.revision),
+            )
+            db.execSQL(
+                "INSERT INTO account_balance_daily(account_id,local_date,opening_minor,inflow_minor,outflow_minor," +
+                    "closing_minor,currency_code,as_of_local_revision) VALUES(?,20260811,0,0,?,-?,'JPY',?)",
+                arrayOf<Any>(refs.account, CURRENT_TRANSACTIONS, CURRENT_TRANSACTIONS, refs.revision),
+            )
+            db.execSQL("DELETE FROM budget_usage_projection")
+            db.execSQL("DELETE FROM budget_rollover")
+            db.execSQL(
+                "INSERT INTO budget_usage_projection(year_month,category_id,base_budget_minor,rollover_minor," +
+                    "adjustment_minor,used_minor,remaining_minor,as_of_local_revision) " +
+                    "VALUES(202608,NULL,0,0,0,?,-?,?),(202608,?,0,0,0,?,-?,?)",
+                arrayOf<Any>(
+                    CURRENT_TRANSACTIONS,
+                    CURRENT_TRANSACTIONS,
+                    refs.revision,
+                    refs.category,
+                    CURRENT_TRANSACTIONS,
+                    CURRENT_TRANSACTIONS,
+                    refs.revision,
+                ),
+            )
+            AnalyticsProjectionEngine.rebuild(db, refs.revision)
+        }
     }
 
     private fun seedPlaces(database: LedgerDatabase, commitId: Long) {
@@ -444,9 +570,45 @@ private class TargetScaleAudit(private val objectDirectory: File) {
             require(db.scalar("SELECT COUNT(*) FROM business_transaction") >= 500_000L) { "current transactions below target" }
             require(db.scalar("SELECT COUNT(*) FROM transaction_revision") >= 1_000_000L) { "history below target" }
             require(db.scalar("SELECT COUNT(*) FROM posting") >= 1_000_000L) { "postings below target" }
+            require(db.scalar("SELECT COUNT(*) FROM budget_effect") >= 500_000L) { "budget effects below target" }
             require(db.scalar("SELECT COUNT(*) FROM transaction_revision_attachment") >= 100_000L) { "attachment associations below target" }
             require(db.scalar("SELECT COUNT(*) FROM merchant") >= 5_000L) { "merchants below target" }
             require(db.scalar("SELECT COUNT(*) FROM place") >= 5_000L) { "places below target" }
+            require(
+                db.scalar(
+                    "WITH expected AS (SELECT ua.id account_id," +
+                        "COALESCE(SUM(CASE WHEN p.side=la.normal_side THEN p.account_amount_minor ELSE -p.account_amount_minor END),0) normal_balance_minor," +
+                        "COALESCE(SUM(CASE WHEN p.side=0 THEN p.account_amount_minor ELSE 0 END),0) total_debit_minor," +
+                        "COALESCE(SUM(CASE WHEN p.side=1 THEN p.account_amount_minor ELSE 0 END),0) total_credit_minor " +
+                        "FROM user_account ua JOIN ledger_account la ON la.id=ua.ledger_account_id " +
+                        "LEFT JOIN posting p ON p.ledger_account_id=la.id WHERE ua.uid=? GROUP BY ua.id,la.normal_side) " +
+                        "SELECT COUNT(*) FROM expected JOIN account_balance_current actual ON actual.account_id=expected.account_id " +
+                        "WHERE actual.normal_balance_minor=expected.normal_balance_minor " +
+                        "AND actual.total_debit_minor=expected.total_debit_minor " +
+                        "AND actual.total_credit_minor=expected.total_credit_minor",
+                    arrayOf<Any?>(P35BenchmarkFixtureProvider.ACCOUNT_ID.bytes),
+                ) == 1L,
+            ) { "account projection is not target-scale fact-exact" }
+            require(
+                db.scalar(
+                    "WITH expected AS (SELECT " +
+                        "COALESCE(SUM(CASE WHEN kind<>2 THEN CASE kind WHEN 0 THEN polarity*base_amount_minor ELSE -polarity*base_amount_minor END ELSE 0 END),0) used_minor," +
+                        "COALESCE(SUM(CASE WHEN kind=2 THEN polarity*base_amount_minor ELSE 0 END),0) adjustment_minor " +
+                        "FROM budget_effect_line WHERE target_year_month=202608) " +
+                        "SELECT COUNT(*) FROM budget_usage_projection actual CROSS JOIN expected " +
+                        "WHERE actual.year_month=202608 AND actual.category_id IS NULL " +
+                        "AND actual.used_minor=expected.used_minor AND actual.adjustment_minor=expected.adjustment_minor " +
+                        "AND actual.remaining_minor=actual.base_budget_minor+actual.rollover_minor+actual.adjustment_minor-actual.used_minor",
+                ) == 1L,
+            ) { "budget projection is not target-scale fact-exact" }
+            require(
+                db.scalar(
+                    "SELECT COUNT(*) FROM analytics_daily_total actual WHERE actual.local_date=20260811 " +
+                        "AND actual.metric=${AnalyticsProjectionEngine.TRANSACTION_COUNT_METRIC} " +
+                        "AND actual.amount_base_minor=(SELECT COUNT(*) FROM current_transaction_projection " +
+                        "WHERE state=0 AND local_date=20260811)",
+                ) == 1L,
+            ) { "analytics projection is not target-scale fact-exact" }
             require(streamingFileCount(objectDirectory) >= 50_000L) { "attachment files below target" }
             timings["pagingMs"] = measureQuery(db, "SELECT transaction_id,occurred_at FROM current_transaction_projection WHERE state=0 ORDER BY occurred_at DESC,transaction_id DESC LIMIT 41")
             val recentDefaultsSql = "SELECT recent.kind,c.uid,ua.uid,pc.uid,recent.occurred_at FROM (SELECT kind,category_id,primary_account_id,card_id,occurred_at,transaction_id FROM current_transaction_projection INDEXED BY ix_current_transaction_keyset WHERE state=0 AND kind IN (0,1) ORDER BY occurred_at DESC,transaction_id DESC LIMIT 50) recent JOIN category c ON c.id=recent.category_id LEFT JOIN user_account ua ON ua.id=recent.primary_account_id LEFT JOIN payment_card pc ON pc.id=recent.card_id ORDER BY recent.occurred_at DESC,recent.transaction_id DESC"

@@ -6,7 +6,7 @@ import android.content.Context
 import android.util.AtomicFile
 import app.ledger.core.common.StableId
 import app.ledger.core.money.CurrencyCode
-import app.ledger.core.security.DeviceLedgerKeys
+import app.ledger.core.security.LedgerSecureSettings
 import app.ledger.finance.application.JournalSavedFilter
 import app.ledger.finance.domain.CategoryId
 import app.ledger.finance.domain.GeoPoint
@@ -36,13 +36,13 @@ import java.time.Instant
 internal class EncryptedJournalFilterStore(context: Context) {
     private val directory = File(context.noBackupFilesDir, "journal_filters").also { require(it.exists() || it.mkdirs()) }
 
-    fun read(bookId: StableId, keys: DeviceLedgerKeys): List<JournalSavedFilter> {
+    fun read(bookId: StableId, secureSettings: LedgerSecureSettings): List<JournalSavedFilter> {
         val atomic = AtomicFile(file(bookId))
         if (!atomic.baseFile.exists()) return emptyList()
         val encrypted = atomic.readFully()
         val associatedData = associatedData(bookId)
         val clear = try {
-            keys.decryptSecureSettings(encrypted, associatedData)
+            secureSettings.decryptSecureSettings(encrypted, associatedData)
         } finally {
             encrypted.fill(0)
             associatedData.fill(0)
@@ -54,12 +54,16 @@ internal class EncryptedJournalFilterStore(context: Context) {
         }
     }
 
-    fun write(bookId: StableId, keys: DeviceLedgerKeys, filters: List<JournalSavedFilter>) {
+    fun write(
+        bookId: StableId,
+        secureSettings: LedgerSecureSettings,
+        filters: List<JournalSavedFilter>,
+    ) {
         require(filters.size <= MAX_PRESETS)
         val clear = encode(filters)
         val associatedData = associatedData(bookId)
         val encrypted = try {
-            keys.encryptSecureSettings(clear, associatedData)
+            secureSettings.encryptSecureSettings(clear, associatedData)
         } finally {
             clear.fill(0)
             associatedData.fill(0)

@@ -7,6 +7,7 @@ import app.ledger.core.common.CommandId
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.database.LedgerDatabase
+import app.ledger.core.database.LedgerDatabasePerformance
 import app.ledger.finance.application.AtomicFinancialCommitRepository
 import app.ledger.finance.application.CommandReceiptRepository
 import app.ledger.finance.application.FinanceDataError
@@ -103,6 +104,7 @@ class RoomFinancialCommitRepository(
             }
         }
         return protect {
+            LedgerDatabasePerformance.recordFinancialCommitTransaction()
             database.inLedgerTransaction { connection ->
                 connection.commandReceipt(command.commandId)?.let { stored ->
                     val receipt = stored.toDomain()
@@ -147,8 +149,7 @@ class RoomFinancialCommitRepository(
                 } else {
                     projections.applyIncremental(
                         connection,
-                        plan.projectionChanges,
-                        connection.commitId(plan.commit.id),
+                        plan,
                         book.valuationRevision,
                         projectionDate,
                     )
@@ -410,11 +411,15 @@ class RoomFinancialCommitRepository(
         plan: FinancialMutationPlan,
         valuationRevision: Long,
     ) {
-        val commitId = connection.commitId(plan.commit.id)
-        val unbalanced = connection.queryOne(
-            "SELECT COUNT(*) FROM journal_entry WHERE created_commit_id = ? AND base_debit_total_minor <> base_credit_total_minor",
-            arrayOf(commitId),
-        ) { it.getLong(0) } ?: 0L
+        val unbalanced = plan.journalBundles.map { it.entry.id.value.bytes }
+            .chunked(COMMIT_VERIFICATION_UID_CHUNK_SIZE)
+            .sumOf { chunk ->
+                connection.queryOne(
+                    "SELECT COUNT(*) FROM journal_entry WHERE uid IN " +
+                        "(${chunk.joinToString(",") { "?" }}) AND base_debit_total_minor <> base_credit_total_minor",
+                    chunk.map { it as Any }.toTypedArray(),
+                ) { it.getLong(0) } ?: 0L
+            }
         val transactionUids = plan.transactions.map { it.id.value.bytes }.fold(mutableListOf<ByteArray>()) { unique, candidate ->
             if (unique.none { existing -> existing.contentEquals(candidate) }) unique += candidate
             unique
@@ -720,6 +725,7 @@ private data class BookWriteState(
 )
 
 private const val CREDIT_ACCOUNT_TYPE = 2
+private const val COMMIT_VERIFICATION_UID_CHUNK_SIZE = 400
 private const val EXPENSE_TRANSACTION_KIND = 0
 private const val ACTIVE_TRANSACTION_LIFECYCLE = 0
 private const val REFUND_TRANSACTION_KIND = 3

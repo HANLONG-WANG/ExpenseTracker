@@ -183,38 +183,27 @@ public open class LedgerDestinationKey internal constructor(
 }
 
 /** Runtime-distinct keys let each feature own its Navigation 3 EntryProviderScope registration. */
-public class RecordDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class RecordDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
-public class JournalDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class JournalDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
-public class AccountsDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class AccountsDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
-public class PlanningDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class PlanningDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
-public class LiabilitiesDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class LiabilitiesDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
-public class SettlementDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class SettlementDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
-public class AnalysisDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class AnalysisDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
-public class AutomationDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class AutomationDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
-public class VaultDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class VaultDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
-public class TransferDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class TransferDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
-public class SettingsDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) :
-    LedgerDestinationKey(contract, arguments)
+public class SettingsDestinationKey internal constructor(contract: ScreenContract, arguments: Map<String, SafeRouteArgument>) : LedgerDestinationKey(contract, arguments)
 
 /** One immutable state object is created for every Navigation 3 screen entry. */
 @Immutable

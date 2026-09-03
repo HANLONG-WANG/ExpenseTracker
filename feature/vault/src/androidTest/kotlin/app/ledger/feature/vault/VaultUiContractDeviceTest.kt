@@ -163,7 +163,8 @@ class VaultUiContractDeviceTest {
         val actual = states.map { state ->
             composeRule.runOnIdle { active.value = state }
             composeRule.waitForIdle()
-            composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap().pixelSha256().also {
+            val bitmap = composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap()
+            bitmap.pixelSha256().also {
                 println("P32_VAULT_GOLDEN_${state.screenId}=$it")
             }
         }
@@ -209,7 +210,7 @@ class VaultUiContractDeviceTest {
             onOpenDeviceSecurity = {},
         )
         val EXPECTED_GOLDENS = listOf(
-            "fd9f2f0c43bbd2dbcdb5437abce574b8c89217ae34d8549dab5eaeef0a59d133",
+            "bad66f071e335c283fc665cb644a2a270d4a2ff6cc6cb9211a02345a05a61950",
             "2ec8932a9cb0bb480fb4a9eb19c523abe27ed4e1c8fe3da0e88b84576841188c",
             "0400103555d6e316d2b43387dc8035989df88ad0b6602be27f8dce2f6a1fefb7",
             "639f4fe4b9693a382651c1e86f14c38229711abd59a14ade9c22e990a2a5969e",

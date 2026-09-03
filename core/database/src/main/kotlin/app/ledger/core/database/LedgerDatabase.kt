@@ -8,6 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import net.zetetic.database.sqlcipher.SQLiteConnection
 import net.zetetic.database.sqlcipher.SQLiteDatabaseHook
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
+import java.util.concurrent.Executor
 
 @Database(
     entities = [PrimarySchemaRegistryEntity::class],
@@ -58,12 +59,25 @@ object EncryptedDatabaseFactory {
     private fun openPrimaryNamed(context: Context, passphrase: ByteArray, name: String): LedgerDatabase {
         validatePassphrase(passphrase)
         SqlCipherNativeLibrary.ensureLoaded()
-        return Room.databaseBuilder(context.applicationContext, LedgerDatabase::class.java, name)
-            .openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf(), SecureSqlCipherHook, true))
-            .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .apply { LedgerMigrations.registered(context.applicationContext).forEach { migration -> addMigrations(migration) } }
-            .addCallback(PrimaryDatabaseCallback(context.applicationContext))
-            .build()
+        val isLivePrimary = name == PRIMARY_DATABASE_NAME
+        if (isLivePrimary) LedgerDatabasePerformance.recordPrimaryOpen()
+        val buildDatabase = {
+            Room.databaseBuilder(context.applicationContext, LedgerDatabase::class.java, name)
+                .openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf(), SecureSqlCipherHook, true))
+                .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+                .apply { LedgerMigrations.registered(context.applicationContext).forEach { migration -> addMigrations(migration) } }
+                .apply {
+                    if (isLivePrimary) {
+                        setQueryCallback(
+                            { _, _ -> LedgerDatabasePerformance.recordPrimarySqlStatement() },
+                            DirectQueryCallbackExecutor,
+                        )
+                    }
+                }
+                .addCallback(PrimaryDatabaseCallback(context.applicationContext))
+                .build()
+        }
+        return if (isLivePrimary) LedgerDatabasePerformance.tracePrimaryOpen(buildDatabase) else buildDatabase()
     }
 
     fun openImportStaging(
@@ -90,6 +104,10 @@ object EncryptedDatabaseFactory {
     private val STAGING_NAME = Regex("import_[0-9a-f]{32}\\.db")
     private val LEDGER_COPY_NAME = Regex("ledger_(shadow|safety)_[0-9a-f]{32}\\.db")
     private const val MINIMUM_PASSPHRASE_BYTES = 32
+}
+
+private object DirectQueryCallbackExecutor : Executor {
+    override fun execute(command: Runnable) = command.run()
 }
 
 internal object SqlCipherNativeLibrary {

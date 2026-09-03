@@ -5,11 +5,11 @@ package app.ledger.feature.settlement
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -35,16 +35,16 @@ import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerCheckboxRow
 import app.ledger.core.designsystem.LedgerChoiceRow
 import app.ledger.core.designsystem.LedgerChoiceSelector
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
+import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
 import app.ledger.core.designsystem.LedgerLoadingState
-import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerStatusVariant
 import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.MetricCard
 import app.ledger.core.designsystem.MetricCardVariant
@@ -149,8 +149,18 @@ private fun SettlementEditor(state: SettlementFeatureState, actions: SettlementA
         item { LedgerTextField(state.draft.participantName, { actions.onFieldChanged(SettlementField.PARTICIPANT_NAME, it) }, stringResource(R.string.settlement_participant_name), Modifier.fillMaxWidth()) }
         item { LedgerButton(stringResource(R.string.settlement_add_participant), actions.onAddParticipant, Modifier.fillMaxWidth(), LedgerButtonVariant.SECONDARY) }
     }
-    if (startPicker) SettlementDatePicker(state.draft.startDate, { actions.onFieldChanged(SettlementField.START_DATE, it); startPicker = false }, { startPicker = false })
-    if (endPicker) SettlementDatePicker(state.draft.endDate, { actions.onFieldChanged(SettlementField.END_DATE, it); endPicker = false }, { endPicker = false })
+    if (startPicker) {
+        SettlementDatePicker(state.draft.startDate, {
+            actions.onFieldChanged(SettlementField.START_DATE, it)
+            startPicker = false
+        }, { startPicker = false })
+    }
+    if (endPicker) {
+        SettlementDatePicker(state.draft.endDate, {
+            actions.onFieldChanged(SettlementField.END_DATE, it)
+            endPicker = false
+        }, { endPicker = false })
+    }
 }
 
 @Composable
@@ -317,7 +327,12 @@ private fun PaymentEditor(state: SettlementFeatureState, actions: SettlementActi
         }
         item { LedgerTextField(state.draft.note, { actions.onFieldChanged(SettlementField.NOTE, it) }, stringResource(R.string.settlement_note), Modifier.fillMaxWidth()) }
     }
-    if (datePicker) SettlementDatePicker(state.draft.paymentDate, { actions.onFieldChanged(SettlementField.PAYMENT_DATE, it); datePicker = false }, { datePicker = false })
+    if (datePicker) {
+        SettlementDatePicker(state.draft.paymentDate, {
+            actions.onFieldChanged(SettlementField.PAYMENT_DATE, it)
+            datePicker = false
+        }, { datePicker = false })
+    }
 }
 
 @Composable
@@ -520,7 +535,7 @@ private fun money(minor: Long, activity: SettlementActivityView, locale: java.ut
 
 @Composable
 private fun SettlementDatePicker(value: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    val initial = value.toLocalDateOrNull() ?: LocalDate.now(LedgerTheme.timeZone)
+    val initial = value.toLocalDateOrNull() ?: LedgerTheme.now.atZone(LedgerTheme.timeZone).toLocalDate()
     LedgerDatePickerFlow(
         initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         { millis -> onConfirm(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()) },
@@ -529,6 +544,7 @@ private fun SettlementDatePicker(value: String, onConfirm: (String) -> Unit, onD
 }
 
 private fun LocalDate.localized(locale: java.util.Locale): String = LedgerDateFormatterRuntime.formatter(locale).format(this)
+
 @Composable
 private fun Instant.localized(locale: java.util.Locale): String = LedgerDateFormatterRuntime.dateTimeFormatter(locale, FormatStyle.MEDIUM).withZone(LedgerTheme.timeZone).format(this)
 private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()

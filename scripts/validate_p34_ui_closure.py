@@ -15,13 +15,13 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-UI_ROOT = ROOT / "docs/UI设计稿与实现契约_v1.0"
+UI_ROOT = ROOT / "docs/初始开发文件存档/UI设计稿与实现契约_v1.0"
 SCREEN_SOURCE = UI_ROOT / "android_ledger_screen_contract_v1.yaml"
 MATRIX_SOURCE = UI_ROOT / "UI需求追踪矩阵_v1.csv"
-SCREEN_LEDGER = ROOT / "docs/implementation/SCREEN_COVERAGE.csv"
-REQUIREMENT_LEDGER = ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv"
-MANUAL_FINDINGS = ROOT / "docs/testing/ManualTestFindings/UI.md"
-MANUAL_PROGRESS = ROOT / "docs/testing/ManualTestFindings/UI_FIX_PROGRESS.md"
+SCREEN_LEDGER = ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv"
+REQUIREMENT_LEDGER = ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv"
+MANUAL_FINDINGS = ROOT / "docs/ManualTest/Phase1/UI.md"
+MANUAL_PROGRESS = ROOT / "docs/ManualTest/Phase1/UI_FIX_PROGRESS.md"
 MANUAL_FINDINGS_SHA256 = "bcdbc9573bff31add46cad6a298413898db5e04b3cd00d9ffeae5a2901924e13"
 SUPPORTED_RESOURCE_MODULES = (
     "app",
@@ -365,8 +365,8 @@ def validate_ui_governance(
         "",
     )
     for marker in (
-        "LedgerMapStyleConfiguration.OpenFreeMap",
-        "onCoordinateSelected = actions.onLocationCoordinate",
+        "RecordLocationMapSlot",
+        "actions.onLocationCoordinate,",
         "RecordLocationEditorState.PermissionDenied",
         "RecordLocationEditorState.MapUnavailable",
         "metadata?.typeLabel.attachmentIcon()",
@@ -374,9 +374,20 @@ def validate_ui_governance(
     ):
         if marker not in record_screen:
             errors.append(f"REC-009/010/011 production UI marker missing: {marker}")
+    record_root = sources.get(
+        "app/src/main/kotlin/app/ledger/app/OrdinaryRecordRootDestination.kt",
+        "",
+    )
+    for marker in (
+        "RecordLocationMapContent(",
+        "LedgerMapStyleConfiguration.OpenFreeMap",
+        "onCoordinateSelected = onCoordinateSelected",
+    ):
+        if marker not in record_root:
+            errors.append(f"REC-009/010/011 app map boundary marker missing: {marker}")
     app_view_model = sources.get("app/src/main/kotlin/app/ledger/app/AppRootViewModel.kt", "")
     for marker in (
-        'target == "REC-009" && editor?.locationPresentation == RecordLocationEditorState.Locating',
+        'target == "REC-009" && editor?.locationPresentation in setOf(',
         "LocationSaveDisposition.LOCATED",
         "OrdinaryLocationProvider.MANUAL",
         "recordAttachmentPresentations(",
@@ -557,7 +568,7 @@ def validate_ui_governance(
         "refundRemainingLimitAndCrossMonthPolicyCompleteThroughUserActions",
         "creditOverpaymentDisablesProductionSaveAndCannotDispatchAWrite",
         "batchCommitWithAnyValidationErrorDispatchesNoWrite",
-        "trashRestoreDispatchesOnceAndIneligiblePurgeExposesReasonWithoutPurging",
+        "trashRestoreDispatchesOnceAndBackupReadBlocksPurgeWithoutPurging",
         "budgetHierarchyExcessDisablesSaveAndDispatchesNoMutation",
         "candidateConfirmationOpensFullEditorWithoutChangingFormalMetrics",
         "mergeRestorePurgeTombstoneWinsThroughTheApplyAction",
@@ -627,12 +638,12 @@ def validate_requirements(rows: list[dict[str, str]] | None = None) -> list[str]
 
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
-    state = read("docs/implementation/PROJECT_STATE.md")
-    evidence = read("docs/implementation/TEST_EVIDENCE.md")
-    decision = read("docs/implementation/DECISION_LOG.md")
-    mapping_path = ROOT / "docs/implementation/P34_UI_CONTRACT_CLOSURE.md"
+    state = read("docs/初始开发文件存档/implementation/PROJECT_STATE.md")
+    evidence = read("docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
+    decision = read("docs/初始开发文件存档/implementation/DECISION_LOG.md")
+    mapping_path = ROOT / "docs/初始开发文件存档/implementation/P34_UI_CONTRACT_CLOSURE.md"
     mapping = mapping_path.read_text(encoding="utf-8") if mapping_path.is_file() else ""
-    for marker in ("Stage status: VERIFIED", "215 / 215"):
+    for marker in ("| P34 | VERIFIED |", "215 / 215"):
         if marker not in state:
             errors.append(f"PROJECT_STATE missing {marker}")
     if not re.search(r"Current stage: P(?:34|35|36)\b", state):

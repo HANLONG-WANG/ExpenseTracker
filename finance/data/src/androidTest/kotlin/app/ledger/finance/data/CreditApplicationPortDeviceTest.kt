@@ -63,6 +63,7 @@ import java.util.UUID
 class CreditApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var references: SecureRoomReferenceDataManagementPort
     private lateinit var ordinary: SecureRoomOrdinaryTransactionEntryPort
     private lateinit var credit: SecureRoomCreditApplicationPort
@@ -74,6 +75,7 @@ class CreditApplicationPortDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         SecureRoomLedgerInitializationPort(context, keys).apply {
             initialize(
                 InitializeLedgerCommand(
@@ -92,9 +94,9 @@ class CreditApplicationPortDeviceTest {
                 InitialCategoryCommand(CATEGORY_ID, id(211), id(212), id(213), Instant.parse("2026-08-01T00:00:02Z"), CategoryDirection.EXPENSE, "Food", "food", StatisticalNature.CONSUMPTION_EXPENSE, "record", 0xff006c4c.toInt()),
             ).success()
         }
-        references = SecureRoomReferenceDataManagementPort(context, keys)
-        ordinary = SecureRoomOrdinaryTransactionEntryPort(context, keys, references)
-        credit = SecureRoomCreditApplicationPort(context, keys)
+        references = SecureRoomReferenceDataManagementPort(databaseAccess)
+        ordinary = SecureRoomOrdinaryTransactionEntryPort(databaseAccess, references)
+        credit = SecureRoomCreditApplicationPort(databaseAccess)
         references.mutate(
             ReferenceMutationCommand(
                 ReferenceMutationIds(BOOK_ID, 3, nextId(), List(16) { nextId() }, nextId(), Instant.parse("2026-08-01T00:00:03Z")),

@@ -77,6 +77,13 @@ data class JournalDetailView(
     val dependencyCount: Int,
 )
 
+data class JournalDetailBundle(
+    val detail: JournalDetailView?,
+    val history: List<JournalRevisionView>,
+    val dependencies: List<JournalDependencyView>,
+    val optionalFailureCodes: Set<String> = emptySet(),
+)
+
 data class JournalFxEvidenceView(
     val sourceCurrency: CurrencyCode,
     val targetCurrency: CurrencyCode,
@@ -189,6 +196,23 @@ interface JournalApplicationPort {
         rightRevisionId: StableId,
     ): DomainResult<JournalRevisionComparison>
     suspend fun dependencies(bookId: StableId, transactionId: StableId): DomainResult<List<JournalDependencyView>>
+    suspend fun detailBundle(bookId: StableId, transactionId: StableId): DomainResult<JournalDetailBundle> {
+        val detail = detail(bookId, transactionId)
+        if (detail is DomainResult.Failure) return detail
+        val history = history(bookId, transactionId)
+        val dependencies = dependencies(bookId, transactionId)
+        return DomainResult.Success(
+            JournalDetailBundle(
+                (detail as DomainResult.Success).value,
+                (history as? DomainResult.Success)?.value.orEmpty(),
+                (dependencies as? DomainResult.Success)?.value.orEmpty(),
+                buildSet {
+                    if (history is DomainResult.Failure) add("JOURNAL_HISTORY_FAILED")
+                    if (dependencies is DomainResult.Failure) add("JOURNAL_DEPENDENCIES_FAILED")
+                },
+            ),
+        )
+    }
     suspend fun assessPurge(bookId: StableId, transactionId: StableId, now: Instant): DomainResult<JournalPurgeAssessment>
     suspend fun mutate(request: JournalMutationRequest): DomainResult<CommandReceipt>
     suspend fun bulkEdit(request: JournalBulkEditRequest): DomainResult<CommandReceipt>

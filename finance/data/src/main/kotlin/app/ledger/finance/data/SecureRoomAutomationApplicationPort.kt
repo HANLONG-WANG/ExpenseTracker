@@ -4,14 +4,14 @@ package app.ledger.finance.data
 
 import android.content.Context
 import androidx.sqlite.db.SupportSQLiteDatabase
-import app.ledger.core.common.DomainResult
 import app.ledger.core.common.CommandId
+import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.database.DatabaseIntegrityAudit
-import app.ledger.core.database.EncryptedDatabaseFactory
 import app.ledger.core.database.LedgerDatabase
 import app.ledger.core.money.CurrencyCode
-import app.ledger.core.security.DeviceLedgerKeyProvider
+import app.ledger.core.security.LedgerAccessMode
+import app.ledger.core.security.LedgerDatabaseOperationAccess
 import app.ledger.finance.application.AutomationApplicationPort
 import app.ledger.finance.application.AutomationSnapshot
 import app.ledger.finance.application.BlueprintDraft
@@ -38,7 +38,6 @@ import app.ledger.finance.domain.EntityStatus
 import app.ledger.finance.domain.EntityType
 import app.ledger.finance.domain.FinancialCommandType
 import app.ledger.finance.domain.Hash256
-import app.ledger.finance.domain.StableEntityReference
 import app.ledger.finance.domain.MissingDayPolicy
 import app.ledger.finance.domain.RecurrenceCandidateStatus
 import app.ledger.finance.domain.RecurrenceEngine
@@ -53,6 +52,7 @@ import app.ledger.finance.domain.RecurrenceSeriesId
 import app.ledger.finance.domain.RecurrenceSeriesRevision
 import app.ledger.finance.domain.RecurrenceSeriesRevisionId
 import app.ledger.finance.domain.RecurrenceStatus
+import app.ledger.finance.domain.StableEntityReference
 import app.ledger.finance.domain.TransactionBlueprintRevisionId
 import app.ledger.finance.domain.TransactionKind
 import app.ledger.finance.domain.WeekendAdjustment
@@ -65,15 +65,12 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 class SecureRoomAutomationApplicationPort(
-    context: Context,
-    private val keyProvider: DeviceLedgerKeyProvider,
+    private val databaseAccess: LedgerDatabaseOperationAccess,
     private val formalGenerator: FormalOccurrenceGenerator,
-    private val databaseName: String = EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME,
 ) : AutomationApplicationPort {
-    private val applicationContext = context.applicationContext
     private val projections = RoomProjectionEngine()
 
-    override suspend fun snapshot(bookId: StableId): DomainResult<AutomationSnapshot> = withDatabase(bookId) { database ->
+    override suspend fun snapshot(bookId: StableId): DomainResult<AutomationSnapshot> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val book = requireBook(db, bookId)
             val blueprints = blueprints(db)
@@ -220,7 +217,7 @@ class SecureRoomAutomationApplicationPort(
         processReserved(database, operationId, reserved)
     }
 
-    override suspend fun confirmCandidate(bookId: StableId, candidateId: StableId): DomainResult<CandidateView> = withDatabase(bookId) { database ->
+    override suspend fun confirmCandidate(bookId: StableId, candidateId: StableId): DomainResult<CandidateView> = withDatabase(bookId, LedgerAccessMode.READ) { database ->
         database.readLedger { db ->
             val candidate = candidates(db).singleOrNull { it.id == candidateId }
                 ?: abort(DomainViolation.InvalidField("candidate.id"))
@@ -591,15 +588,12 @@ class SecureRoomAutomationApplicationPort(
         if (book.localRevision != expected) abort(DomainViolation.StaleExpectedRevision)
     }
 
-    private suspend fun <T> withDatabase(bookId: StableId, block: suspend (LedgerDatabase) -> DomainResult<T>): DomainResult<T> = try {
-        keyProvider.open(bookId).use { keys ->
-            val database = keys.databaseDek.useBytes { openSelectedLedger(applicationContext, it, databaseName) }
-            try {
-                block(database)
-            } finally {
-                database.close()
-            }
-        }
+    private suspend fun <T> withDatabase(
+        bookId: StableId,
+        mode: LedgerAccessMode = LedgerAccessMode.WRITE,
+        block: suspend (LedgerDatabase) -> DomainResult<T>,
+    ): DomainResult<T> = try {
+        databaseAccess.withCurrentDatabase(bookId, mode, block)
     } catch (abort: FinancialPersistenceAbort) {
         DomainResult.Failure(abort.domainError)
     } catch (_: ArithmeticException) {
@@ -639,8 +633,7 @@ class SecureRoomAutomationApplicationPort(
         d.fixedPlaceId?.toString().orEmpty(),
     )
 
-    private fun canonicalSeries(d: RecurrenceSeriesDraft, exceptions: List<RecurrenceExceptionDraft>): ByteArray =
-        canonical(*seriesCanonicalValues(d, exceptions).toTypedArray())
+    private fun canonicalSeries(d: RecurrenceSeriesDraft, exceptions: List<RecurrenceExceptionDraft>): ByteArray = canonical(*seriesCanonicalValues(d, exceptions).toTypedArray())
 
     private fun canonicalOccurrenceModification(request: ModifyOccurrenceRequest): ByteArray = canonical(
         *(

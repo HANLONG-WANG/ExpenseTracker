@@ -9,13 +9,20 @@ import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import app.ledger.core.money.CurrencyCode
+import app.ledger.core.security.ActiveBookSessionManagerFactory
+import app.ledger.core.security.ActiveBookSessionRuntime
 import app.ledger.core.security.AndroidKeystoreKeys
+import app.ledger.core.security.BookSessionManager
+import app.ledger.core.security.DefaultLedgerStartupInspector
 import app.ledger.core.security.DeviceKeyHierarchy
 import app.ledger.core.security.SecurityEnvelopeStore
+import app.ledger.core.security.SqlCipherBookDatabaseResourceFactory
+import app.ledger.core.security.VaultExposureRegistry
 import app.ledger.finance.application.AutomationApplicationPort
 import app.ledger.finance.application.CatchUpResult
 import app.ledger.finance.application.InitializeLedgerCommand
 import app.ledger.finance.application.LedgerGenesisIds
+import app.ledger.finance.data.RoomLedgerStartupInspector
 import app.ledger.finance.data.SecureRoomLedgerInitializationPort
 import app.ledger.finance.domain.SystemLedgerCode
 import kotlinx.coroutines.runBlocking
@@ -78,7 +85,16 @@ class HeadlessRecurrenceExecutorDeviceTest {
             DomainResult.Success(CatchUpResult(0, 0, 0, 0))
         } as AutomationApplicationPort
 
-        val result = AppHeadlessRecurrenceExecutor(context, keys, port).catchUp(BOOK_ID, THROUGH)
+        val resourceFactory = SqlCipherBookDatabaseResourceFactory(
+            context,
+            listOf(DefaultLedgerStartupInspector, RoomLedgerStartupInspector()),
+        )
+        val runtime = ActiveBookSessionRuntime(
+            ActiveBookSessionManagerFactory { bookId ->
+                BookSessionManager(bookId, keys, resourceFactory, VaultExposureRegistry { 0L })
+            },
+        )
+        val result = AppHeadlessRecurrenceExecutor(runtime, port).catchUp(BOOK_ID, THROUGH)
 
         assertTrue(result is DomainResult.Success)
         assertEquals(BOOK_ID, observedBook)

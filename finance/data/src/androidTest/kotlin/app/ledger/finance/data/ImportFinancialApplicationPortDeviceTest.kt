@@ -56,6 +56,7 @@ import java.util.UUID
 class ImportFinancialApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var referenceData: SecureRoomReferenceDataManagementPort
     private lateinit var importPort: SecureRoomImportFinancialApplicationPort
     private var generatedId = 1_000_000L
@@ -66,7 +67,8 @@ class ImportFinancialApplicationPortDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
-        referenceData = SecureRoomReferenceDataManagementPort(context, keys)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
+        referenceData = SecureRoomReferenceDataManagementPort(databaseAccess)
         val initialization = SecureRoomLedgerInitializationPort(context, keys)
         initialization.initialize(
             InitializeLedgerCommand(
@@ -115,7 +117,13 @@ class ImportFinancialApplicationPortDeviceTest {
             ),
         ).success()
         generatedId = 1_000_000L
-        importPort = SecureRoomImportFinancialApplicationPort(context, keys, referenceData, StableIdSource { id(generatedId++) })
+        importPort = SecureRoomImportFinancialApplicationPort(
+            context,
+            keys,
+            referenceData,
+            StableIdSource { id(generatedId++) },
+            databaseAccess = databaseAccess,
+        )
     }
 
     @After

@@ -8,6 +8,97 @@ import org.junit.jupiter.api.Test
 
 class SourcePolicyEngineTest {
     @Test
+    fun `rejects direct primary opens passphrase exposure and legacy adapters outside the P37 allowlist`() {
+        val rules = scan(
+            "finance/data/src/main/kotlin/app/ledger/finance/data/SecureRoomBudgetApplicationPort.kt",
+            """
+                val database = databaseDek.useBytes { passphrase ->
+                    EncryptedDatabaseFactory.openPrimary(context, passphrase.copyOf())
+                }
+                val legacy = LegacyLivePrimaryDatabaseAccess()
+                fun open() = openSelectedLedger(PRIMARY_DATABASE_NAME)
+            """.trimIndent(),
+        )
+
+        rules.shouldContainAll(
+            "P37-LIVE-PRIMARY-OPEN",
+            "P37-DATABASE-PASSPHRASE",
+            "P37-LEGACY-PRIMARY-ACCESS",
+        )
+    }
+
+    @Test
+    fun `allows reviewed session initialization and named-copy key boundaries`() {
+        val sessionRules = scan(
+            "core/security/src/main/kotlin/app/ledger/core/security/BookSessionManager.kt",
+            "val database = databaseDek.useBytes { EncryptedDatabaseFactory.openPrimary(context, it) }",
+        )
+        val copyRules = scan(
+            "finance/data/src/main/kotlin/app/ledger/finance/data/SelectedLedgerDatabase.kt",
+            "val database = keys.databaseDek.useBytes { EncryptedDatabaseFactory.openLedgerCopy(context, name, it) }",
+        )
+
+        sessionRules.shouldNotContain("P37-LIVE-PRIMARY-OPEN")
+        sessionRules.shouldNotContain("P37-DATABASE-PASSPHRASE")
+        copyRules.shouldNotContain("P37-DATABASE-PASSPHRASE")
+    }
+
+    @Test
+    fun `rejects manual navigation epochs and feature flow collection in the Ready shell only`() {
+        val path = "app/src/main/kotlin/app/ledger/app/ReadyRootScaffold.kt"
+        val rules = scan(
+            path,
+            """
+                fun ReadyRootScaffold(viewModel: AppRootViewModel) {
+                    var navigationEpoch = 0
+                    val journal by viewModel.journal.collectAsStateWithLifecycle()
+                }
+
+                fun currentRouteFixedAction(viewModel: AppRootViewModel) {
+                    val refund by viewModel.refund.collectAsStateWithLifecycle()
+                }
+            """.trimIndent(),
+        )
+
+        rules.count { it == "P37-NAVIGATION-EPOCH" } shouldBe 1
+        rules.count { it == "P37-SHELL-FEATURE-COLLECTION" } shouldBe 1
+    }
+
+    @Test
+    fun `allows global shell state and route selective fixed action collection`() {
+        val findings = SourcePolicyEngine.scan(
+            "app/src/main/kotlin/app/ledger/app/ReadyRootScaffold.kt",
+            """
+                fun ReadyRootScaffold(viewModel: AppRootViewModel) {
+                    val settings by viewModel.settings.collectAsStateWithLifecycle()
+                    val current = viewModel.navigator.version.let { viewModel.navigator.currentTopLevel }
+                }
+
+                fun currentRouteFixedAction(viewModel: AppRootViewModel) {
+                    val refund by viewModel.refund.collectAsStateWithLifecycle()
+                }
+            """.trimIndent(),
+        )
+
+        findings.map(SourcePolicyFinding::ruleId).shouldNotContain("P37-SHELL-FEATURE-COLLECTION")
+        findings.map(SourcePolicyFinding::ruleId).shouldNotContain("P37-NAVIGATION-EPOCH")
+    }
+
+    @Test
+    fun `rejects full reference snapshots in interactive code and allows explicit import maintenance`() {
+        scan(
+            "app/src/main/kotlin/app/ledger/app/AppRootViewModel.kt",
+            "suspend fun load() = referenceDataPort.snapshot(bookId)",
+        ).shouldContain("P37-INTERACTIVE-FULL-SNAPSHOT")
+
+        val maintenance = SourcePolicyEngine.scan(
+            "app/src/main/kotlin/app/ledger/app/ImportController.kt",
+            "suspend fun inspect() = references.snapshot(bookId)",
+        )
+        maintenance.map(SourcePolicyFinding::ruleId).shouldNotContain("P37-INTERACTIVE-FULL-SNAPSHOT")
+    }
+
+    @Test
     fun `rejects feature data and unmanaged UI access`() {
         val rules = scan(
             "feature/record/src/main/kotlin/Record.kt",
@@ -91,6 +182,51 @@ class SourcePolicyEngineTest {
             """.trimIndent(),
         )
         check(findings.isEmpty()) { findings.joinToString { it.diagnostic() } }
+    }
+
+    @Test
+    fun `allows proven fixed test tag adapters and rejects dynamic drift`() {
+        val navigation = """
+            fun content() = Modifier.testTag(destination.navigationTestTag())
+
+            private fun LedgerTopLevel.navigationTestTag(): String = when (this) {
+                LedgerTopLevel.RECORD -> LedgerTestTags.NAVIGATION_RECORD
+                LedgerTopLevel.JOURNAL -> LedgerTestTags.NAVIGATION_JOURNAL
+                LedgerTopLevel.ACCOUNTS -> LedgerTestTags.NAVIGATION_ACCOUNTS
+                LedgerTopLevel.BUDGET -> LedgerTestTags.NAVIGATION_BUDGET
+                LedgerTopLevel.ANALYSIS -> LedgerTestTags.NAVIGATION_ANALYSIS
+            }
+        """.trimIndent()
+        val navigationPath = "core/designsystem/src/main/kotlin/app/ledger/core/designsystem/FoundationComponents.kt"
+        check(SourcePolicyEngine.scan(navigationPath, navigation).isEmpty())
+        SourcePolicyEngine.scan(
+            navigationPath,
+            navigation.replace(
+                "LedgerTopLevel.ANALYSIS -> LedgerTestTags.NAVIGATION_ANALYSIS",
+                "LedgerTopLevel.ANALYSIS -> destination.runtimeTag",
+            ),
+        ).map(SourcePolicyFinding::ruleId).shouldContain("PRIVACY-TEST-TAG")
+
+        val journal = """
+            fun content() {
+                PagedJournalList(
+                    readyTestTag = LedgerTestTags.JOURNAL_SEARCH_RESULTS.takeIf { state.searchResultReady },
+                )
+            }
+
+            private fun PagedJournalList(
+                readyTestTag: String? = null,
+            ) = Modifier.testTag(readyTestTag)
+        """.trimIndent()
+        val journalPath = "feature/journal/src/main/kotlin/app/ledger/feature/journal/JournalDestination.kt"
+        check(SourcePolicyEngine.scan(journalPath, journal).isEmpty())
+        SourcePolicyEngine.scan(
+            journalPath,
+            journal.replace(
+                "LedgerTestTags.JOURNAL_SEARCH_RESULTS.takeIf { state.searchResultReady }",
+                "state.searchText",
+            ),
+        ).map(SourcePolicyFinding::ruleId).shouldContain("PRIVACY-TEST-TAG")
     }
 
     @Test

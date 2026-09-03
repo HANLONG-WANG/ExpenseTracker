@@ -5,6 +5,7 @@ plugins {
 android {
     experimentalProperties["android.experimental.self-instrumenting"] = true
     defaultConfig {
+        testInstrumentationRunner = "app.ledger.benchmark.P37BenchmarkRunner"
         // P35 is explicitly authorized to use API 28/API 36 emulators. Keep AndroidX's
         // environment finding visible as a warning while allowing reproducible collection.
         testInstrumentationRunnerArguments["androidx.benchmark.suppressErrors"] = "EMULATOR"

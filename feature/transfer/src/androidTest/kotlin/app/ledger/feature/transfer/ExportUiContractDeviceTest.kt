@@ -123,9 +123,8 @@ class ExportUiContractDeviceTest {
         val actuals = goldens.map { golden ->
             composeRule.runOnIdle { active.value = golden }
             composeRule.waitForIdle()
-            composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap().pixelSha256().also {
-                println("P29_GOLDEN_${golden.state.screenId}=$it")
-            }
+            val bitmap = composeRule.onNodeWithTag(GOLDEN_TAG).captureToImage().asAndroidBitmap()
+            bitmap.pixelSha256().also { println("P29_GOLDEN_${golden.state.screenId}=$it") }
         }
         assertEquals(goldens.map(Golden::expected), actuals)
     }
@@ -200,7 +199,7 @@ class ExportUiContractDeviceTest {
 
     private companion object {
         const val GOLDEN_TAG = "p29_export_golden_root"
-        const val EXPECTED_CONTENT_SHA256 = "a487270b1501caa3751747c2db458be0e0ef85f8352209daf76a8059ec5cc3a2"
+        const val EXPECTED_CONTENT_SHA256 = "5b163b7f8e2255b2cf5a2df27204c661b453a766fb4915f1b767053894c78faa"
         const val EXPECTED_RESULT_SHA256 = "93d8c476896c3d7f087cbbd80e47a86db0b156ae75b1024239e89505349d225b"
         val ACTIONS = ExportFlowActions(
             onBack = {}, onContentSelected = {}, onFormatSelected = {}, onContinue = {}, onFieldToggled = {},

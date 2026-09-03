@@ -15,31 +15,31 @@ import app.ledger.analytics.domain.DashboardItem
 import app.ledger.analytics.domain.Dimension
 import app.ledger.analytics.domain.DimensionValue
 import app.ledger.analytics.domain.DrilldownPage
-import app.ledger.analytics.domain.FixedReport
-import app.ledger.analytics.domain.FixedReportDefinition
-import app.ledger.analytics.domain.ForecastKey
-import app.ledger.analytics.domain.ForecastResult
 import app.ledger.analytics.domain.FilterExpression
 import app.ledger.analytics.domain.FilterField
 import app.ledger.analytics.domain.FilterOperator
 import app.ledger.analytics.domain.FilterValue
+import app.ledger.analytics.domain.FixedReport
+import app.ledger.analytics.domain.FixedReportDefinition
+import app.ledger.analytics.domain.ForecastKey
+import app.ledger.analytics.domain.ForecastResult
 import app.ledger.analytics.domain.Measure
 import app.ledger.analytics.domain.ReportExecution
 import app.ledger.analytics.domain.ReportExportFormat
 import app.ledger.analytics.domain.ReportExportPayload
 import app.ledger.analytics.domain.ReportPeriod
 import app.ledger.analytics.domain.ReportRow
-import app.ledger.analytics.domain.ReportSpec
 import app.ledger.analytics.domain.ReportSort
+import app.ledger.analytics.domain.ReportSpec
 import app.ledger.analytics.domain.ReportVisualization
-import app.ledger.analytics.domain.SortDirection
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.analytics.domain.SavedAnomalyRule
 import app.ledger.analytics.domain.SavedDashboard
 import app.ledger.analytics.domain.SavedReportDefinition
+import app.ledger.analytics.domain.SortDirection
 import app.ledger.analytics.domain.TimeGranularity
 import app.ledger.core.common.DomainResult
 import app.ledger.core.common.StableId
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.money.AmountSemantic
 import app.ledger.core.money.AmountVisibility
 import app.ledger.core.money.CurrencyCode
@@ -192,8 +192,7 @@ object AnalysisPolicy {
         return (formatter.format(MoneyFormatRequest(Money(minor, currency), locale, semantic, AmountVisibility.VISIBLE)) as DomainResult.Success).value
     }
 
-    fun decimalText(value: BigDecimal, locale: Locale = Locale.getDefault()): String =
-        LocaleNumberFormatter.percentage(value, locale)
+    fun decimalText(value: BigDecimal, locale: Locale = Locale.getDefault()): String = LocaleNumberFormatter.percentage(value, locale)
 
     fun dimensionLabel(value: DimensionValue, locale: Locale = Locale.getDefault()): String = when (value) {
         is DimensionValue.Date -> value.value.format(LedgerDateFormatterRuntime.formatter(locale))
@@ -316,15 +315,25 @@ object AnalysisPolicy {
             updated += requested
         } else {
             updated[index] = when (val current = updated[index]) {
-                is ReportSort.ByMeasure -> if (current.direction == SortDirection.ASCENDING) current.copy(direction = SortDirection.DESCENDING) else return spec.copy(sorting = updated - current)
-                is ReportSort.ByDimension -> if (current.direction == SortDirection.ASCENDING) current.copy(direction = SortDirection.DESCENDING) else return spec.copy(sorting = updated - current)
+                is ReportSort.ByMeasure -> if (current.direction == SortDirection.ASCENDING) {
+                    current.copy(direction = SortDirection.DESCENDING)
+                } else {
+                    return spec.copy(sorting = updated - current)
+                }
+                is ReportSort.ByDimension -> if (current.direction == SortDirection.ASCENDING) {
+                    current.copy(direction = SortDirection.DESCENDING)
+                } else {
+                    return spec.copy(sorting = updated - current)
+                }
             }
         }
         return spec.copy(sorting = updated.take(4))
     }
 
-    fun selectedFilterIds(spec: ReportSpec, entityFilter: AnalysisEntityFilter): Set<StableId> =
-        spec.filters.predicates().filter { it.field == entityFilter.field }.flatMap { predicate ->
+    fun selectedFilterIds(spec: ReportSpec, entityFilter: AnalysisEntityFilter): Set<StableId> = spec.filters
+        .predicates()
+        .filter { it.field == entityFilter.field }
+        .flatMap { predicate ->
             when (val value = predicate.value) {
                 is FilterValue.Accounts -> value.values.map { it.value }
                 is FilterValue.Categories -> value.values.map { it.value }
@@ -403,8 +412,10 @@ object AnalysisPolicy {
 
     private fun app.ledger.analytics.domain.MeasureValue.chartValue(): Double = minorValue?.toDouble() ?: decimalValue?.toDouble() ?: 0.0
 
-    private fun app.ledger.analytics.domain.MeasureValue.formattedChartValue(baseCurrency: CurrencyCode, locale: Locale): String =
-        minorValue?.let { money(it, currency ?: baseCurrency, locale).formatted }
-            ?: decimalValue?.let { decimalText(it, locale) }
-            ?: "—"
+    private fun app.ledger.analytics.domain.MeasureValue.formattedChartValue(
+        baseCurrency: CurrencyCode,
+        locale: Locale,
+    ): String = minorValue?.let { money(it, currency ?: baseCurrency, locale).formatted }
+        ?: decimalValue?.let { decimalText(it, locale) }
+        ?: "—"
 }

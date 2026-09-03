@@ -14,9 +14,9 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
 BUDGETS = ROOT / "quality/performance/p35_budgets.json"
-REQUIREMENT_LEDGER = ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv"
-PROJECT_STATE = ROOT / "docs/implementation/PROJECT_STATE.md"
-P35_AUDIT = ROOT / "docs/implementation/P35_PERFORMANCE_FAULT_SECURITY_AUDIT.md"
+REQUIREMENT_LEDGER = ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv"
+PROJECT_STATE = ROOT / "docs/初始开发文件存档/implementation/PROJECT_STATE.md"
+P35_AUDIT = ROOT / "docs/初始开发文件存档/implementation/P35_PERFORMANCE_FAULT_SECURITY_AUDIT.md"
 
 
 def read(relative: str) -> str:

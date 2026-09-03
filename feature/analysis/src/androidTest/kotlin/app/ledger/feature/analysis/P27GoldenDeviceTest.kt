@@ -96,13 +96,13 @@ class P27GoldenDeviceTest {
                 "ANA-011",
                 ThemeMode.LIGHT,
                 AnalysisDeviceFixtures.base("ANA-011", AnalysisPresentation.CLUSTERS),
-                "4bfbfc87834852c480b51e4fd411ce3f26b4d04217c1a40ae50f459bf181304d",
+                "33bb9e4850836bd106eaa4d8b0af004f2a4f2f8b9aaebfcdfe6a55f04142060c",
             ),
             Golden(
                 "ANA-012",
                 ThemeMode.DARK,
                 AnalysisDeviceFixtures.base("ANA-012", AnalysisPresentation.PLACE),
-                "bcf9ce902212d1aa707f3e5a5b5f8e901c63e9255deddf0fe4f6740792e3cc61",
+                "c7e1aedce85c239c8e42424ab7edcf397d33d1d244253505e853fc453a62615a",
             ),
         )
     }

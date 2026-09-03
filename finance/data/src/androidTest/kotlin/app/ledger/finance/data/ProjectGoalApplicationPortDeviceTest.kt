@@ -64,6 +64,7 @@ import java.util.UUID
 class ProjectGoalApplicationPortDeviceTest {
     private lateinit var context: Context
     private lateinit var keys: DeviceKeyHierarchy
+    private lateinit var databaseAccess: DeviceTestLedgerDatabaseAccess
     private lateinit var references: SecureRoomReferenceDataManagementPort
     private lateinit var planning: SecureRoomProjectGoalApplicationPort
     private lateinit var ordinary: SecureRoomOrdinaryTransactionEntryPort
@@ -75,6 +76,7 @@ class ProjectGoalApplicationPortDeviceTest {
         context.deleteDatabase(EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         keys = DeviceKeyHierarchy(AndroidKeystoreKeys(context), SecurityEnvelopeStore(context))
         keys.destroyLocal(BOOK_ID)
+        databaseAccess = DeviceTestLedgerDatabaseAccess(context, keys)
         SecureRoomLedgerInitializationPort(context, keys).apply {
             initialize(
                 InitializeLedgerCommand(
@@ -93,10 +95,10 @@ class ProjectGoalApplicationPortDeviceTest {
                 InitialCategoryCommand(CATEGORY_ID, id(211), id(212), id(213), Instant.ofEpochMilli(3_000), CategoryDirection.EXPENSE, "Food", "food", StatisticalNature.CONSUMPTION_EXPENSE, "record", 0xff006c4c.toInt()),
             ).success()
         }
-        references = SecureRoomReferenceDataManagementPort(context, keys)
-        planning = SecureRoomProjectGoalApplicationPort(context, keys, references)
-        ordinary = SecureRoomOrdinaryTransactionEntryPort(context, keys, references)
-        refunds = SecureRoomRefundApplicationPort(context, keys, references)
+        references = SecureRoomReferenceDataManagementPort(databaseAccess)
+        planning = SecureRoomProjectGoalApplicationPort(databaseAccess, references)
+        ordinary = SecureRoomOrdinaryTransactionEntryPort(databaseAccess, references)
+        refunds = SecureRoomRefundApplicationPort(databaseAccess, references)
     }
 
     @After

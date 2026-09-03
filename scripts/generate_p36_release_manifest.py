@@ -20,13 +20,13 @@ ARTIFACTS = (
     "build/reports/dependency-license/index.html",
     "build/reports/dependency-license/THIRD_PARTY_NOTICES.txt",
     "NOTICE",
-    "docs/release/ABOUT_AND_OPEN_SOURCE.md",
-    "docs/release/PLAY_RELEASE_INPUTS.md",
-    "docs/release/PRIVACY_POLICY_en.md",
-    "docs/release/PRIVACY_POLICY_ja.md",
-    "docs/release/PRIVACY_POLICY_zh-CN.md",
-    "docs/release/REPRODUCIBLE_BUILD.md",
-    "docs/release/RELEASE_NOTES_v1.0.0.md",
+    "docs/初始开发文件存档/release/ABOUT_AND_OPEN_SOURCE.md",
+    "docs/初始开发文件存档/release/PLAY_RELEASE_INPUTS.md",
+    "docs/初始开发文件存档/release/PRIVACY_POLICY_en.md",
+    "docs/初始开发文件存档/release/PRIVACY_POLICY_ja.md",
+    "docs/初始开发文件存档/release/PRIVACY_POLICY_zh-CN.md",
+    "docs/初始开发文件存档/release/REPRODUCIBLE_BUILD.md",
+    "docs/初始开发文件存档/release/RELEASE_NOTES_v1.0.0.md",
 )
 
 

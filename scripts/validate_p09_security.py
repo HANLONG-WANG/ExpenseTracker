@@ -250,19 +250,19 @@ def validate_tests() -> list[str]:
 
 def validate_ledgers() -> list[str]:
     errors: list[str] = []
-    project_state = read(ROOT / "docs/implementation/PROJECT_STATE.md")
+    project_state = read(ROOT / "docs/初始开发文件存档/implementation/PROJECT_STATE.md")
     current_stage = re.search(r"Current stage: P(\d{2})", project_state)
     if "| P09 | VERIFIED |" not in project_state or "### P09 result" not in project_state:
         errors.append("PROJECT_STATE does not record P09 VERIFIED and its result")
-    evidence = read(ROOT / "docs/implementation/TEST_EVIDENCE.md")
+    evidence = read(ROOT / "docs/初始开发文件存档/implementation/TEST_EVIDENCE.md")
     for index in range(1, 7):
         if f"P09-E{index:03d}" not in evidence:
             errors.append(f"TEST_EVIDENCE missing P09-E{index:03d}")
-    mapping = read(ROOT / "docs/implementation/P09_SECURITY_RUNTIME_MAPPING.md")
+    mapping = read(ROOT / "docs/初始开发文件存档/implementation/P09_SECURITY_RUNTIME_MAPPING.md")
     for token in ("DeviceLedgerKEK", "VaultAuthenticationKEK", "Argon2id", "HeadlessBookLease", "FLAG_SECURE"):
         if token not in mapping:
             errors.append(f"P09 mapping missing {token}")
-    with (ROOT / "docs/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         rows = {row["requirement_id"]: row for row in csv.DictReader(handle)}
     for requirement_id in TARGET_REQUIREMENTS:
         row = rows.get(requirement_id)
@@ -275,7 +275,7 @@ def validate_ledgers() -> list[str]:
             errors.append(f"{requirement_id} must retain its truthful P09-or-later status")
         elif "P09" not in row["implementation_evidence"] or "P09-E" not in row["verification_evidence"]:
             errors.append(f"{requirement_id} lacks P09 implementation/verification evidence")
-    with (ROOT / "docs/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
+    with (ROOT / "docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv").open(encoding="utf-8", newline="") as handle:
         screens = list(csv.DictReader(handle))
     p11_promotions = {
         "REC-009": "IN_PROGRESS",
@@ -296,7 +296,7 @@ def validate_ledgers() -> list[str]:
         row["status"] != p11_promotions.get(row["screen_id"], "NOT_STARTED") for row in screens
     ):
         errors.append("screen coverage contains a promotion outside the cumulative P12 scope")
-    domain = read(ROOT / "docs/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md")
+    domain = read(ROOT / "docs/初始开发文件存档/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md")
     if "| ADR-016 | Ledger, vault and recovery-password key hierarchies are separate | VERIFIED" not in domain:
         errors.append("ADR-016 is not VERIFIED")
     if "| ADR-017 | App lock is UI access control; vault uses a cryptographic authentication gate | VERIFIED" not in domain:

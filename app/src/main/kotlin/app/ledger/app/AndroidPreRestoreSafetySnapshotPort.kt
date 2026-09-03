@@ -30,13 +30,15 @@ internal class AndroidPreRestoreSafetySnapshotPort(
     context: Context,
     private val keyProvider: DeviceLedgerKeyProvider,
     private val runtime: AppRuntimeSources,
+    private val primaryAccess: () -> SecurePrimaryLedgerAccess,
 ) : PreRestoreSafetySnapshotPort {
     private val applicationContext = context.applicationContext
 
     override suspend fun create(bookId: StableId, operationId: StableId): DomainResult<StableId> = try {
         val configuration = requireNotNull(BackupConfigurationStore(applicationContext, keyProvider).read(bookId))
         val snapshotId = BackupSnapshotId(runtime.stableIds.nextStableId())
-        val input = AndroidBackupInputFactory(applicationContext, keyProvider).prepare(
+        val access = primaryAccess()
+        val input = AndroidBackupInputFactory(applicationContext, keyProvider, access).prepare(
             bookId = bookId,
             operationId = operationId,
             repositoryId = configuration.repositoryId,
@@ -60,7 +62,6 @@ internal class AndroidPreRestoreSafetySnapshotPort(
                     SafBackupRepositoryStorage(applicationContext, Uri.parse(handle.substringBefore('\n')))
                 }
             }
-            val access = SecurePrimaryLedgerAccess(applicationContext, keyProvider)
             val keyStore = BackupKeyEnvelopeStore(applicationContext, keyProvider)
             keyStore.openForAutomaticBackup(bookId, configuration.repositoryId.value).use { key ->
                 when (
@@ -86,7 +87,7 @@ internal class AndroidPreRestoreSafetySnapshotPort(
         val snapshotId = runtime.stableIds.nextStableId()
         val root = File(applicationContext.noBackupFilesDir, "pre-restore-safety-v1/$bookId/$snapshotId")
         require(root.mkdirs())
-        val database = SecurePrimaryLedgerAccess(applicationContext, keyProvider).encryptedDatabaseFile()
+        val database = applicationContext.getDatabasePath(app.ledger.core.database.EncryptedDatabaseFactory.PRIMARY_DATABASE_NAME)
         val attachments = File(applicationContext.noBackupFilesDir, "attachment_objects/${bookId.toUuid()}/objects")
         val vaultEnvelope = File(applicationContext.noBackupFilesDir, "vault-backup-envelopes-v1/$bookId.envelope")
         val candidates = buildList {

@@ -12,6 +12,7 @@
 
 package app.ledger.feature.record
 
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,24 +23,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -49,11 +49,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import app.ledger.core.common.StableId
+import app.ledger.core.designsystem.AmountSize
+import app.ledger.core.designsystem.AmountText
 import app.ledger.core.designsystem.AttachmentField
 import app.ledger.core.designsystem.AttachmentTransferState
 import app.ledger.core.designsystem.AttachmentUiModel
-import app.ledger.core.designsystem.AmountSize
-import app.ledger.core.designsystem.AmountText
 import app.ledger.core.designsystem.CategoryGrid
 import app.ledger.core.designsystem.CategoryGroupUiModel
 import app.ledger.core.designsystem.CategoryTile
@@ -66,6 +66,7 @@ import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
 import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerDateTimePickerFlow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
@@ -79,13 +80,12 @@ import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
 import app.ledger.core.designsystem.LedgerTheme
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerToggleRow
-import app.ledger.core.designsystem.LocationField
-import app.ledger.core.designsystem.LocationFieldState
-import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
 import app.ledger.core.designsystem.LocalLedgerRestoredScrollState
 import app.ledger.core.designsystem.LocalLedgerScrollStateReporter
+import app.ledger.core.designsystem.LocalLedgerScrollToTopRequest
+import app.ledger.core.designsystem.LocationField
+import app.ledger.core.designsystem.LocationFieldState
 import app.ledger.core.designsystem.MoneyExpressionField
 import app.ledger.core.designsystem.ReferenceDataRow
 import app.ledger.core.designsystem.ReferenceDataRowUiModel
@@ -94,12 +94,6 @@ import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.UiErrorCode
 import app.ledger.core.designsystem.ValidationItemUiModel
 import app.ledger.core.designsystem.ValidationSummary
-import app.ledger.core.geo.LedgerMap
-import app.ledger.core.geo.LedgerMapAccessibleRow
-import app.ledger.core.geo.LedgerMapMode
-import app.ledger.core.geo.LedgerMapPoint
-import app.ledger.core.geo.LedgerMapState
-import app.ledger.core.geo.LedgerMapStyleConfiguration
 import app.ledger.finance.application.CategoryReferenceView
 import app.ledger.finance.application.OrdinaryDirection
 import app.ledger.finance.application.OrdinaryTemplateView
@@ -111,6 +105,7 @@ import app.ledger.finance.domain.SettlementRoundingRule
 import app.ledger.finance.domain.SettlementSplitMethod
 import app.ledger.finance.domain.StatisticalNature
 import app.ledger.finance.domain.UserAccountType
+import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.ZoneOffset
@@ -118,7 +113,6 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 import java.util.UUID
-import kotlinx.coroutines.launch
 
 public data class OrdinaryRecordScreenUiState(
     val loadState: OrdinaryRecordLoadState,
@@ -172,6 +166,7 @@ public data class RecordLocationMapPoint(
     val id: StableId,
     val latitudeE7: Int,
     val longitudeE7: Int,
+    val weight: Long,
     val selected: Boolean,
 )
 
@@ -193,18 +188,26 @@ public data class RecordLocationMapModel(
     val rows: List<RecordLocationMapRow>,
 )
 
+public typealias RecordLocationMapSlot = @Composable (
+    model: RecordLocationMapModel,
+    onFailure: () -> Unit,
+    onPointSelected: (StableId) -> Unit,
+    onCoordinateSelected: (latitudeE7: Int, longitudeE7: Int) -> Unit,
+) -> Unit
+
 @Composable
 public fun OrdinaryRecordDestination(
     screenId: String,
     state: OrdinaryRecordLoadState,
     actions: OrdinaryRecordActions,
     modifier: Modifier = Modifier,
+    locationMap: RecordLocationMapSlot = { _, _, _, _ -> },
 ) {
     Box(modifier.fillMaxSize().testTag(LedgerTestTags.RECORD_ROOT)) {
         when (state) {
             OrdinaryRecordLoadState.Loading -> LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
             is OrdinaryRecordLoadState.Failure -> LedgerErrorState(UiErrorCode(state.code), stringResource(R.string.record_load_failed), actions.onRetry)
-            is OrdinaryRecordLoadState.Content -> RecordContent(screenId, state, actions)
+            is OrdinaryRecordLoadState.Content -> RecordContent(screenId, state, actions, locationMap)
         }
     }
 }
@@ -214,6 +217,7 @@ private fun RecordContent(
     screenId: String,
     state: OrdinaryRecordLoadState.Content,
     actions: OrdinaryRecordActions,
+    locationMap: RecordLocationMapSlot,
 ) {
     when (screenId) {
         "REC-001" -> CategoryFirstHome(state, actions)
@@ -224,7 +228,8 @@ private fun RecordContent(
         "REC-006" -> state.editor?.let { CardPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-007" -> state.editor?.let { MerchantPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-008" -> state.editor?.let { ProjectPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
-        "REC-009" -> state.editor?.let { LocationPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
+        "REC-009" -> state.editor?.let { LocationPicker(it, actions, locationMap) }
+            ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-010" -> state.editor?.let { AttachmentPicker(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-011" -> state.editor?.let { SettlementAllocation(it, actions) } ?: LedgerText(stringResource(R.string.record_loading), LedgerTextRole.SUPPORTING)
         "REC-012" -> OtherTransactionCards(state, actions)
@@ -254,7 +259,10 @@ private fun CategoryFirstHome(state: OrdinaryRecordLoadState.Content, actions: O
             scrollReporter("index_$index", offset)
         }
     }
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm)) {
+    Column(
+        Modifier.fillMaxSize().testTag(LedgerTestTags.RECORD_CONTENT),
+        verticalArrangement = Arrangement.spacedBy(LedgerTheme.spacing.sm),
+    ) {
         LedgerTabRow(state.tab.ordinal, labels, { actions.onTab(RecordTab.entries[it]) })
         if (state.tab == RecordTab.OTHER) {
             OtherTransactionCards(state, actions)
@@ -554,10 +562,12 @@ private fun OrdinaryEditor(state: OrdinaryRecordEditorState, actions: OrdinaryRe
                 modifier = Modifier.testTag(LedgerTestTags.RECORD_SETTLEMENT).focusRequester(fieldFocusRequesters.getValue(RecordField.SETTLEMENT)).focusable(),
             )
         }
-        if (d.settlementEnabled) item {
-            FormSection(stringResource(R.string.record_field_settlement), Modifier.testTag(LedgerTestTags.RECORD_SETTLEMENT).focusRequester(fieldFocusRequesters.getValue(RecordField.SETTLEMENT)).focusable(), expanded = d.settlementEnabled) {
-                val activity = state.snapshot.settlementActivities.singleOrNull { it.id == d.settlementActivityId }
-                SelectorField(stringResource(R.string.record_settlement_activity), activity?.name ?: stringResource(R.string.record_not_selected), { actions.onNavigate("REC-011", d.settlementActivityId?.let { mapOf("activityId" to it) }.orEmpty(), emptyMap()) })
+        if (d.settlementEnabled) {
+            item {
+                FormSection(stringResource(R.string.record_field_settlement), Modifier.testTag(LedgerTestTags.RECORD_SETTLEMENT).focusRequester(fieldFocusRequesters.getValue(RecordField.SETTLEMENT)).focusable(), expanded = d.settlementEnabled) {
+                    val activity = state.snapshot.settlementActivities.singleOrNull { it.id == d.settlementActivityId }
+                    SelectorField(stringResource(R.string.record_settlement_activity), activity?.name ?: stringResource(R.string.record_not_selected), { actions.onNavigate("REC-011", d.settlementActivityId?.let { mapOf("activityId" to it) }.orEmpty(), emptyMap()) })
+                }
             }
         }
         item { LocationField(state.locationPresentation.toLocationFieldState(), { actions.onNavigate("REC-009", emptyMap(), emptyMap()) }, Modifier.focusRequester(fieldFocusRequesters.getValue(RecordField.LOCATION)).focusable(), mapLabel = stringResource(R.string.record_location_adjust)) }
@@ -766,12 +776,16 @@ private fun ProjectPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRec
 }
 
 @Composable
-private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRecordActions) {
+private fun LocationPicker(
+    state: OrdinaryRecordEditorState,
+    actions: OrdinaryRecordActions,
+    locationMap: RecordLocationMapSlot,
+) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val pendingPointId = remember { StableId.fromUuid(UUID(0x5245_4300_9L, 1L)) }
     val savedPoints = state.snapshot.references.locations.map { location ->
-        LedgerMapPoint(
+        RecordLocationMapPoint(
             id = location.id,
             latitudeE7 = location.latitudeE7,
             longitudeE7 = location.longitudeE7,
@@ -780,7 +794,7 @@ private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRe
         )
     }
     val pendingPoint = state.pendingLocation?.let { location ->
-        LedgerMapPoint(
+        RecordLocationMapPoint(
             id = pendingPointId,
             latitudeE7 = location.latitudeE7,
             longitudeE7 = location.longitudeE7,
@@ -790,9 +804,10 @@ private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRe
     }
     val accessibleRows = state.snapshot.references.locations.map { location ->
         val place = state.snapshot.references.places.singleOrNull { it.id == location.placeId }
-        LedgerMapAccessibleRow(
-            primaryText = place?.name ?: stringResource(R.string.record_saved_location),
-            secondaryText = stringResource(
+        RecordLocationMapRow(
+            id = location.id,
+            label = place?.name ?: stringResource(R.string.record_saved_location),
+            coordinates = stringResource(
                 R.string.record_location_coordinates,
                 location.latitudeE7 / 10_000_000.0,
                 location.longitudeE7 / 10_000_000.0,
@@ -800,13 +815,14 @@ private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRe
         )
     } + listOfNotNull(
         state.pendingLocation?.let { location ->
-            LedgerMapAccessibleRow(
-                primaryText = when (val presentation = state.locationPresentation) {
+            RecordLocationMapRow(
+                id = pendingPointId,
+                label = when (val presentation = state.locationPresentation) {
                     is RecordLocationEditorState.Located -> presentation.selectedPlaceText
                     is RecordLocationEditorState.Manual -> presentation.selectedPlaceText
                     else -> stringResource(R.string.record_location_new_pin)
                 },
-                secondaryText = stringResource(
+                coordinates = stringResource(
                     R.string.record_location_coordinates,
                     location.latitudeE7 / 10_000_000.0,
                     location.longitudeE7 / 10_000_000.0,
@@ -816,17 +832,17 @@ private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRe
     )
     val mapSummary = stringResource(R.string.record_location_map_summary, accessibleRows.size)
     val mapUnavailable = state.locationMapUnavailable || state.locationPresentation == RecordLocationEditorState.MapUnavailable
-    val mapState = if (mapUnavailable) {
-        LedgerMapState.Unavailable(mapSummary, accessibleRows)
-    } else {
-        LedgerMapState.Available(
-            summary = mapSummary,
-            mode = LedgerMapMode.SINGLE_POINTS,
-            points = savedPoints + listOfNotNull(pendingPoint),
-            accessibleRows = accessibleRows,
-            userLocation = pendingPoint,
-        )
-    }
+    val mapModel = RecordLocationMapModel(
+        unavailable = mapUnavailable,
+        summary = mapSummary,
+        caption = stringResource(R.string.record_location_map_caption),
+        nameHeader = stringResource(R.string.record_location_map_place),
+        coordinateHeader = stringResource(R.string.record_location_map_coordinate),
+        showListLabel = stringResource(R.string.record_location_show_list),
+        hideListLabel = stringResource(R.string.record_location_hide_list),
+        points = savedPoints + listOfNotNull(pendingPoint),
+        rows = accessibleRows,
+    )
     val locationFieldState = state.locationPresentation.toLocationFieldState()
     val hasStatusBanner = mapUnavailable || state.locationPresentation in setOf(
         RecordLocationEditorState.PermissionDenied,
@@ -846,8 +862,11 @@ private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRe
                 locationFieldState,
                 {
                     scope.launch {
-                        if (reduceMotion) listState.scrollToItem(mapItemIndex)
-                        else listState.animateScrollToItem(mapItemIndex)
+                        if (reduceMotion) {
+                            listState.scrollToItem(mapItemIndex)
+                        } else {
+                            listState.animateScrollToItem(mapItemIndex)
+                        }
                     }
                 },
                 mapLabel = stringResource(R.string.record_location_adjust),
@@ -888,19 +907,11 @@ private fun LocationPicker(state: OrdinaryRecordEditorState, actions: OrdinaryRe
         }
         item { LedgerBanner(stringResource(R.string.record_location_retry_policy), LedgerBannerVariant.INFO) }
         item {
-            LedgerMap(
-                state = mapState,
-                styleConfiguration = LedgerMapStyleConfiguration.OpenFreeMap,
-                accessibleCaption = stringResource(R.string.record_location_map_caption),
-                accessibleColumnHeaders = listOf(
-                    stringResource(R.string.record_location_map_place),
-                    stringResource(R.string.record_location_map_coordinate),
-                ),
-                showAccessibleListLabel = stringResource(R.string.record_location_show_list),
-                hideAccessibleListLabel = stringResource(R.string.record_location_hide_list),
-                onFailure = { actions.onLocationMapUnavailable() },
-                onPointSelected = { id -> if (id != pendingPointId) actions.onLocationPoint(id) },
-                onCoordinateSelected = actions.onLocationCoordinate,
+            locationMap(
+                mapModel,
+                actions.onLocationMapUnavailable,
+                { id -> if (id != pendingPointId) actions.onLocationPoint(id) },
+                actions.onLocationCoordinate,
             )
         }
         items(state.snapshot.references.locations, key = { "location:${it.id}" }) { location ->

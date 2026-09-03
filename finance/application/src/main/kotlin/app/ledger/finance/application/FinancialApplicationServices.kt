@@ -15,6 +15,14 @@ class DefaultLedgerWriteGate : LedgerWriteGate {
     override suspend fun <T> execute(block: suspend () -> T): T = mutex.withLock { block() }
 }
 
+/**
+ * Adapter used only when the caller already owns the process-wide session write boundary (or an
+ * exclusive offline-primary maintenance permit). It deliberately adds no Port-local mutex.
+ */
+object CallerOwnedLedgerWriteGate : LedgerWriteGate {
+    override suspend fun <T> execute(block: suspend () -> T): T = block()
+}
+
 sealed interface FinanceDataError : DomainError {
     data object DatabaseUnavailable : FinanceDataError {
         override val code: String = "DATA_DATABASE_UNAVAILABLE"

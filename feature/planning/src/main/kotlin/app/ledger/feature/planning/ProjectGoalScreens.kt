@@ -41,14 +41,15 @@ import app.ledger.core.designsystem.LedgerBannerVariant
 import app.ledger.core.designsystem.LedgerButton
 import app.ledger.core.designsystem.LedgerButtonVariant
 import app.ledger.core.designsystem.LedgerCard
-import app.ledger.core.designsystem.LedgerChoiceRow
-import app.ledger.core.designsystem.LedgerChoiceSelector
 import app.ledger.core.designsystem.LedgerChartSeries
 import app.ledger.core.designsystem.LedgerChartType
 import app.ledger.core.designsystem.LedgerChartUiModel
+import app.ledger.core.designsystem.LedgerChoiceRow
+import app.ledger.core.designsystem.LedgerChoiceSelector
+import app.ledger.core.designsystem.LedgerDateFormatterRuntime
+import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerEmptyState
 import app.ledger.core.designsystem.LedgerErrorState
-import app.ledger.core.designsystem.LedgerDatePickerFlow
 import app.ledger.core.designsystem.LedgerIcon
 import app.ledger.core.designsystem.LedgerLineChart
 import app.ledger.core.designsystem.LedgerLoadingState
@@ -60,7 +61,6 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerText
 import app.ledger.core.designsystem.LedgerTextField
 import app.ledger.core.designsystem.LedgerTextRole
-import app.ledger.core.designsystem.LedgerDateFormatterRuntime
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.LedgerToggleRow
 import app.ledger.core.designsystem.LedgerVicoLineRenderer
@@ -69,6 +69,9 @@ import app.ledger.core.designsystem.MetricCardVariant
 import app.ledger.core.designsystem.SelectorField
 import app.ledger.core.designsystem.StatusBadge
 import app.ledger.core.designsystem.UiErrorCode
+import app.ledger.core.money.AmountSemantic
+import app.ledger.core.money.CurrencyCode
+import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
 import app.ledger.finance.application.GoalCompletionStrategy
 import app.ledger.finance.application.GoalView
 import app.ledger.finance.application.ProjectSettlementView
@@ -78,16 +81,13 @@ import app.ledger.finance.domain.GoalMovementKind
 import app.ledger.finance.domain.GoalStatus
 import app.ledger.finance.domain.ProjectStatus
 import app.ledger.finance.domain.TransactionKind
-import app.ledger.core.money.AmountSemantic
-import app.ledger.core.money.CurrencyCode
-import app.ledger.core.money.JvmLegalTenderCurrencyCatalog
+import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import kotlinx.coroutines.flow.Flow
 
 @Composable
 public fun ProjectGoalDestination(
@@ -262,14 +262,20 @@ private fun ProjectEditor(state: ProjectGoalFeatureState, actions: ProjectGoalAc
     if (showStartDatePicker) {
         LedgerDatePickerFlow(
             draft.startDate.utcDateMillis(),
-            { millis -> actions.onProjectStartDateChanged(millis.utcLocalDate().toString()); showStartDatePicker = false },
+            { millis ->
+                actions.onProjectStartDateChanged(millis.utcLocalDate().toString())
+                showStartDatePicker = false
+            },
             { showStartDatePicker = false },
         )
     }
     if (showEndDatePicker) {
         LedgerDatePickerFlow(
             (draft.endDate ?: draft.startDate).utcDateMillis(),
-            { millis -> actions.onProjectEndDateChanged(millis.utcLocalDate().toString()); showEndDatePicker = false },
+            { millis ->
+                actions.onProjectEndDateChanged(millis.utcLocalDate().toString())
+                showEndDatePicker = false
+            },
             { showEndDatePicker = false },
         )
     }
@@ -656,7 +662,10 @@ private fun GoalEditor(state: ProjectGoalFeatureState, actions: ProjectGoalActio
     if (showDueDatePicker) {
         LedgerDatePickerFlow(
             (draft.dueDate ?: state.movementDate).utcDateMillis(),
-            { millis -> actions.onGoalDueDateChanged(millis.utcLocalDate().toString()); showDueDatePicker = false },
+            { millis ->
+                actions.onGoalDueDateChanged(millis.utcLocalDate().toString())
+                showDueDatePicker = false
+            },
             { showDueDatePicker = false },
         )
     }
@@ -803,7 +812,10 @@ private fun GoalMovementEditor(state: ProjectGoalFeatureState, actions: ProjectG
     if (showDatePicker) {
         LedgerDatePickerFlow(
             state.movementDate.utcDateMillis(),
-            { millis -> actions.onMovementDateChanged(millis.utcLocalDate().toString()); showDatePicker = false },
+            { millis ->
+                actions.onMovementDateChanged(millis.utcLocalDate().toString())
+                showDatePicker = false
+            },
             { showDatePicker = false },
         )
     }
@@ -818,6 +830,7 @@ private fun ProjectTabRow(selectedIndex: Int, project: ProjectView, actions: Pro
             actions.onNavigate(listOf("PRJ-003", "PRJ-004", "PRJ-005")[index], project.id, null)
         },
         Modifier.fillMaxWidth(),
+        labelMaxLines = 2,
     )
 }
 
@@ -953,18 +966,16 @@ private fun PlanningStickySaveBar(onSave: () -> Unit, enabled: Boolean, saving: 
 }
 
 @Composable
-private fun LocalDate.localizedDate(): String =
-    format(LedgerDateFormatterRuntime.formatter(LocalLocale.current.platformLocale))
+private fun LocalDate.localizedDate(): String = format(LedgerDateFormatterRuntime.formatter(LocalLocale.current.platformLocale))
 
 private fun LocalDate.utcDateMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 
 private fun Long.utcLocalDate(): LocalDate = java.time.Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
 
 @Composable
-private fun java.time.Instant.localizedDateTime(): String =
-    LedgerDateFormatterRuntime.dateTimeFormatter(LocalLocale.current.platformLocale)
-        .withZone(LedgerTheme.timeZone)
-        .format(this)
+private fun java.time.Instant.localizedDateTime(): String = LedgerDateFormatterRuntime.dateTimeFormatter(LocalLocale.current.platformLocale)
+    .withZone(LedgerTheme.timeZone)
+    .format(this)
 
 @Composable
 private fun GoalStatus.goalStatusLabel(): String = stringResource(
@@ -1032,5 +1043,4 @@ private fun Map<String, String>.stableId(name: String): StableId? = get(name)?.l
 
 private val chartCurrencyCatalog = JvmLegalTenderCurrencyCatalog.create()
 
-private fun chartMajor(minor: Long, currency: CurrencyCode): Double =
-    BigDecimal.valueOf(minor, requireNotNull(chartCurrencyCatalog.find(currency)).fractionDigits).toDouble()
+private fun chartMajor(minor: Long, currency: CurrencyCode): Double = BigDecimal.valueOf(minor, requireNotNull(chartCurrencyCatalog.find(currency)).fractionDigits).toDouble()

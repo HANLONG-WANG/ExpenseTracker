@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:function-naming")
+
 package app.ledger.feature.record
 
 import androidx.compose.foundation.layout.Arrangement

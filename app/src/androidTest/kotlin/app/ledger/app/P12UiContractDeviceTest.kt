@@ -28,14 +28,14 @@ import app.ledger.core.designsystem.LedgerTestTags
 import app.ledger.core.designsystem.LedgerTheme
 import app.ledger.core.designsystem.ThemeMode
 import app.ledger.core.money.CurrencyCode
+import app.ledger.feature.accounts.AccountsActions
 import app.ledger.feature.accounts.AccountsDataState
 import app.ledger.feature.accounts.AccountsDestination
 import app.ledger.feature.accounts.AccountsRequiredState
-import app.ledger.feature.accounts.AccountsScreenAction
 import app.ledger.feature.accounts.AccountsScreenUiState
+import app.ledger.feature.settings.ManagementActions
 import app.ledger.feature.settings.ManagementDataState
 import app.ledger.feature.settings.ManagementRequiredState
-import app.ledger.feature.settings.ManagementScreenAction
 import app.ledger.feature.settings.ReferenceManagementDestination
 import app.ledger.finance.application.AccountGoalReferenceView
 import app.ledger.finance.application.AccountReferenceView
@@ -139,15 +139,14 @@ class P12UiContractDeviceTest {
             val context = localizedTargetContext(active.value.first)
             CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides context.resources.configuration) {
                 LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = false) {
-                    AccountsDestination(
-                        uiState = AccountsScreenUiState(
+                    accountsDestination(
+                        AccountsScreenUiState(
                             "ACC-001",
                             emptyMap(),
                             AccountsDataState.Content(representativeSnapshot()),
                             UserAccountType.CASH,
                             stateOverride = AccountsRequiredState.ACC_001_NO_ACCOUNTS,
                         ),
-                        onAction = accountActions,
                     )
                 }
             }
@@ -166,21 +165,22 @@ class P12UiContractDeviceTest {
             CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides Density(1f, 1f)) {
                 LedgerTheme(ThemeMode.LIGHT, dynamicColor = false, reduceMotion = true) {
                     Box(Modifier.size(360.dp, 720.dp).testTag(ACCOUNT_GOLDEN_TAG)) {
-                        AccountsDestination(
-                            uiState = AccountsScreenUiState(
+                        accountsDestination(
+                            AccountsScreenUiState(
                                 "ACC-001",
                                 emptyMap(),
                                 AccountsDataState.Content(representativeSnapshot()),
                                 UserAccountType.BANK,
                                 stateOverride = AccountsRequiredState.ACC_001_CONTENT,
                             ),
-                            onAction = accountActions,
                         )
                     }
                 }
             }
         }
-        val digest = composeRule.onNodeWithTag(ACCOUNT_GOLDEN_TAG).captureToImage().asAndroidBitmap().pixelSha256()
+        val actual = composeRule.onNodeWithTag(ACCOUNT_GOLDEN_TAG).captureToImage().asAndroidBitmap()
+        val digest = actual.pixelSha256()
+        actual.recycle()
         println("P34_GOLDEN_ACC_001=$digest")
         assertEquals(ACCOUNT_GOLDEN_SHA256, digest)
     }
@@ -198,8 +198,8 @@ class P12UiContractDeviceTest {
     @androidx.compose.runtime.Composable
     private fun render(target: RenderTarget) {
         when (target) {
-            is RenderTarget.Account -> AccountsDestination(
-                uiState = AccountsScreenUiState(
+            is RenderTarget.Account -> accountsDestination(
+                AccountsScreenUiState(
                     target.state.screenId,
                     accountArguments(target.state),
                     AccountsDataState.Content(representativeSnapshot()),
@@ -207,7 +207,6 @@ class P12UiContractDeviceTest {
                     pending = target.state.contractName == "saving",
                     stateOverride = target.state,
                 ),
-                onAction = accountActions,
             )
             is RenderTarget.Management -> ReferenceManagementDestination(
                 screenId = target.state.screenId,
@@ -228,6 +227,20 @@ class P12UiContractDeviceTest {
         "ACC-003" -> if (state.contractName in setOf("edit", "currencyLocked")) mapOf("accountId" to TEST_ID.toString()) else emptyMap()
         "ACC-010" -> if (state.contractName == "edit") mapOf("cardId" to TEST_ID.toString()) else emptyMap()
         else -> emptyMap()
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun accountsDestination(state: AccountsScreenUiState) {
+        AccountsDestination(
+            screenId = state.screenId,
+            encodedArguments = state.encodedArguments,
+            dataState = state.dataState,
+            actions = accountActions,
+            selectedAccountType = state.selectedAccountType,
+            preferredCardAccountId = state.preferredCardAccountId,
+            pending = state.pending,
+            stateOverride = state.stateOverride,
+        )
     }
 
     private fun managementArguments(state: ManagementRequiredState): Map<String, String> = when (state.screenId) {
@@ -330,8 +343,30 @@ class P12UiContractDeviceTest {
 
     private data class RenderCase(val width: Int, val fontScale: Float, val theme: ThemeMode, val dynamic: Boolean)
 
-    private val accountActions: (AccountsScreenAction) -> Unit = {}
-    private val managementActions: (ManagementScreenAction) -> Unit = {}
+    private val accountActions = AccountsActions(
+        onNavigate = { _, _ -> },
+        onSelectAccountType = {},
+        onSaveAccount = {},
+        onArchiveAccount = { _, _ -> },
+        onDeleteEmptyAccount = { _, _ -> },
+        onSaveCard = {},
+        onArchiveCard = { _, _ -> },
+        onSaveCheckpoint = {},
+        onSaveOpeningBalance = {},
+        onRetry = {},
+    )
+    private val managementActions = ManagementActions(
+        onNavigate = { _, _, _ -> },
+        onSaveCategory = {},
+        onReorderCategories = { _, _ -> },
+        onRemoveCategory = { _, _, _, _ -> },
+        onSaveMerchant = {},
+        onMergeMerchant = { _, _ -> },
+        onSavePlace = {},
+        onMergePlace = { _, _ -> },
+        onSplitPlace = { _, _, _ -> },
+        onRetry = {},
+    )
 
     private companion object {
         val TEST_ID: StableId = StableId.fromUuid(UUID(0x12, 1))
@@ -341,6 +376,6 @@ class P12UiContractDeviceTest {
         const val STATE_HOST_TAG = "p12_contract_state_host"
         const val MATRIX_TAG = "p12_layout_matrix"
         const val ACCOUNT_GOLDEN_TAG = "p34_account_home_golden"
-        const val ACCOUNT_GOLDEN_SHA256 = "d335201e139a3632b4eb5777addf1eafdae5d78286b6501718251804ac9ffc93"
+        const val ACCOUNT_GOLDEN_SHA256 = "da8182525700c61fc3bbd9317394ba084f867ec9cee49b230a281e6f364bb8bb"
     }
 }

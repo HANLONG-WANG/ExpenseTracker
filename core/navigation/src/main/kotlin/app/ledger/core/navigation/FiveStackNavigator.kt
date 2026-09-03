@@ -1,9 +1,9 @@
 package app.ledger.core.navigation
 
-import androidx.navigation3.runtime.NavBackStack
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import androidx.navigation3.runtime.NavBackStack
 import app.ledger.core.common.StableId
 import app.ledger.core.common.getOrNull
 import java.time.YearMonth
@@ -79,8 +79,7 @@ public class FiveStackNavigator(
     private val scrollRootRequestVersions: MutableMap<TopLevelDestination, Int> =
         TopLevelDestination.entries.associateWith { 0 }.toMutableMap()
 
-    public fun scrollRootRequestVersion(destination: TopLevelDestination): Int =
-        scrollRootRequestVersions.getValue(destination)
+    public fun scrollRootRequestVersion(destination: TopLevelDestination): Int = scrollRootRequestVersions.getValue(destination)
 
     private val roots: Map<TopLevelDestination, LedgerDestinationKey> = mapOf(
         TopLevelDestination.RECORD to LedgerRouteContract.destination(

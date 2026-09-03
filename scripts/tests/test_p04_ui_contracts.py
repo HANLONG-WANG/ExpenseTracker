@@ -20,7 +20,7 @@ from validate_p04_ui import P04ValidationError, validate_contract_data  # noqa: 
 class P04ContractFailureTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ui_root = ROOT / "docs/UI设计稿与实现契约_v1.0"
+        ui_root = ROOT / "docs/初始开发文件存档/UI设计稿与实现契约_v1.0"
         cls.tokens = json.loads((ui_root / "android_ledger_ui_tokens_v1.json").read_text(encoding="utf-8"))
         cls.screen_document = yaml.safe_load(
             (ui_root / "android_ledger_screen_contract_v1.yaml").read_text(encoding="utf-8")

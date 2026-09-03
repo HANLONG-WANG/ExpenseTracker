@@ -181,12 +181,12 @@ private fun BookAmount(
         Text(
             context.getString(
                 R.string.widget_used_value,
-                    formattedAmount(
-                        requireNotNull(book.monthBudgetUsedBaseMinor),
-                        book.baseCurrency,
-                        configuration.revealAmounts,
-                        locale,
-                        context.getString(R.string.widget_amount_unavailable),
+                formattedAmount(
+                    requireNotNull(book.monthBudgetUsedBaseMinor),
+                    book.baseCurrency,
+                    configuration.revealAmounts,
+                    locale,
+                    context.getString(R.string.widget_amount_unavailable),
                 ),
             ),
             style = TextStyle(color = color, fontSize = LedgerGlanceTokens.light.labelSizeSp.sp),
@@ -277,9 +277,13 @@ private fun formattedAmount(minor: Long, code: String, reveal: Boolean, locale: 
 }
 
 private fun goalProgress(balance: Long, target: Long, locale: Locale): String {
-    val ratio = if (target <= 0L) BigDecimal.ZERO else BigDecimal.valueOf(balance)
-        .divide(BigDecimal.valueOf(target), 4, RoundingMode.DOWN)
-        .coerceIn(BigDecimal.ZERO, BigDecimal.valueOf(9.99))
+    val ratio = if (target <= 0L) {
+        BigDecimal.ZERO
+    } else {
+        BigDecimal.valueOf(balance)
+            .divide(BigDecimal.valueOf(target), 4, RoundingMode.DOWN)
+            .coerceIn(BigDecimal.ZERO, BigDecimal.valueOf(9.99))
+    }
     return NumberFormat.getPercentInstance(locale).apply { maximumFractionDigits = 0 }.format(ratio)
 }
 
@@ -291,8 +295,10 @@ private fun Int.toDisplayDate(locale: Locale, setting: String): String {
         "DATE_FORMAT_MONTH_DAY_YEAR" -> "MM/dd/yyyy"
         else -> null
     }
-    return (pattern?.let { DateTimeFormatter.ofPattern(it, locale) }
-        ?: DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)).format(date)
+    return (
+        pattern?.let { DateTimeFormatter.ofPattern(it, locale) }
+            ?: DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
+        ).format(date)
 }
 
 private fun deepLinkIntent(context: Context, configuration: LedgerWidgetConfiguration): Intent {

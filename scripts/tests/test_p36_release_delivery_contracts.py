@@ -13,9 +13,9 @@ class P36ReleaseDeliveryMutationTest(unittest.TestCase):
         cls.app_build = validator.read("app/build.gradle.kts")
         cls.root_build = validator.read("build.gradle.kts")
         cls.proguard = validator.read("app/proguard-rules.pro")
-        cls.requirements = validator.read_csv("docs/implementation/REQUIREMENT_COVERAGE.csv")
-        cls.screens = validator.read_csv("docs/implementation/SCREEN_COVERAGE.csv")
-        cls.domain = validator.read("docs/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md")
+        cls.requirements = validator.read_csv("docs/初始开发文件存档/implementation/REQUIREMENT_COVERAGE.csv")
+        cls.screens = validator.read_csv("docs/初始开发文件存档/implementation/SCREEN_COVERAGE.csv")
+        cls.domain = validator.read("docs/初始开发文件存档/implementation/DOMAIN_AND_SCHEMA_COVERAGE.md")
         cls.sources = validator.production_sources()
 
     def test_stale_application_version_is_rejected(self) -> None:
@@ -88,12 +88,22 @@ class P36ReleaseDeliveryMutationTest(unittest.TestCase):
         )
         self.assertTrue(validator.validate_incremental_analytics_projection(incremental))
 
-    def test_refund_without_original_and_accrual_invalidation_is_rejected(self) -> None:
+    def test_refund_without_original_and_delta_invalidation_is_rejected(self) -> None:
         source = validator.read(
             "finance/data/src/main/kotlin/app/ledger/finance/data/RoomProjectionEngine.kt",
         ).replace(
             "directlyChangedTransactionUids + refundUids",
             "directlyChangedTransactionUids",
+        )
+        self.assertTrue(validator.validate_refund_projection_invalidation(source))
+
+    def test_refund_without_commit_owned_analytics_delta_is_rejected(self) -> None:
+        source = validator.read(
+            "finance/data/src/main/kotlin/app/ledger/finance/data/RoomProjectionEngine.kt",
+        ).replace(
+            "AnalyticsProjectionEngine.applyCommitDeltas(",
+            "AnalyticsProjectionEngine.rebuildDates(",
+            1,
         )
         self.assertTrue(validator.validate_refund_projection_invalidation(source))
 
