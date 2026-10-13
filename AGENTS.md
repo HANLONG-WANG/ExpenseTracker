@@ -93,3 +93,7 @@ Additional documentation is available for specialized tasks:
 These references are available when their additional details are useful.
 
 <!-- gitnexus:end -->
+
+# 开发时注意事项
+
+三套主题应该拥有完全独立的设计方案，且需要保持单主题内的UI一致性。所有页面，菜单，选项，弹出页面等一切用户可以看到的地方都应该拥有只属于这个主题的元素，且这三套主题需要差异化，让用户切换主题之后有眼前一亮感觉。

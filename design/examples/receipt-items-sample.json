@@ -1,0 +1,55 @@
+{
+  "kind": "yohaku.receipt-items",
+  "version": 1,
+  "book_id": "daily",
+  "records": [
+    {
+      "record_id": "f2",
+      "receipt_id": "receipt-f2",
+      "currency": "JPY",
+      "items": [
+        {
+          "name": "越光米 5kg",
+          "ja": "コシヒカリ 5kg",
+          "quantity": 1,
+          "unit": "袋",
+          "unit_price": 3280,
+          "total": 3280
+        },
+        {
+          "name": "鸡蛋 10个装",
+          "ja": "卵 10個入り",
+          "quantity": 2,
+          "unit": "盒",
+          "unit_price": 268,
+          "total": 536
+        },
+        {
+          "name": "洗衣液",
+          "ja": "洗濯洗剤",
+          "quantity": 1,
+          "unit": "瓶",
+          "unit_price": 1680,
+          "total": 1680
+        },
+        {
+          "name": "时蔬组合",
+          "ja": "野菜セット",
+          "quantity": 1,
+          "unit": "份",
+          "unit_price": 754,
+          "total": 754
+        },
+        {
+          "name": "煎茶",
+          "ja": "煎茶",
+          "quantity": 2,
+          "unit": "袋",
+          "unit_price": 1125,
+          "total": 2250
+        }
+      ],
+      "receipt_total": 8500
+    }
+  ]
+}
