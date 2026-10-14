@@ -1,0 +1,4 @@
+YohakuJournalStar is a renamed single-glyph subset of DejaVu Sans.
+Only U+2733 is retained; the original glyph outline and advance are unchanged.
+Copyright and distribution terms: see DejaVu-LICENSE.txt.
+Generation: tools/prepare-journal-star.py.

@@ -1,0 +1,11 @@
+YohakuNumbers is derived from Gelasio Regular.
+Copyright 2022 The Gelasio Project Authors (https://github.com/SorkinType/Gelasio)
+Licensed under the SIL Open Font License 1.1; see Gelasio-OFL.txt.
+
+ExpenseTracker modifications, 2026-10-14:
+- Renamed font family and PostScript name to YohakuNumbers.
+- Adjusted hhea and OS/2 typographic ascent/descent/line gap for the magazine layout.
+- Glyph outlines, horizontal advances and character map are unchanged.
+
+Source and transformation: android/tools/font-source/gelasio-regular.ttf
+and android/tools/prepare-number-font.py in the project.

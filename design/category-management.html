@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>分类管理 · 双用途分组</title>
+<style>html,body{margin:0;height:100%;background:#f7f7ef}iframe{display:block;width:100%;height:100%;border:0}</style>
+<iframe id="reference" title="分类管理设计"></iframe>
+<script>
+const params=new URLSearchParams(location.search);
+const theme=['magazine','journal','objects'].includes(params.get('theme'))?params.get('theme'):'magazine';
+const language=params.get('language')==='ja'?'ja':'zh';
+const income=params.get('income')==='empty'?'empty':'populated';
+const frame=document.getElementById('reference');
+frame.onload=()=>frame.contentWindow.eval(`(()=>{
+  const language=${JSON.stringify(language)},income=${JSON.stringify(income)};
+  book().language=language;book().name=book().ja='生活';
+  book().categories=[{id:'food',name:['餐饮','餐饮'],icon:'wallet'},{id:'coffee',parent:'food',name:['咖啡','咖啡'],icon:'wallet'}];
+  book().incomeCategories=income==='empty'?[]:[{id:'work',name:'收入',icon:'wallet'},{id:'salary',parent:'work',name:'工资',icon:'wallet'}];
+  const groups=list=>list.filter(c=>!c.parent).map(c=>
+    '<section class="hierarchy-manage-group"><button class="hierarchy-manage-parent">'+icon('wallet')+'<strong>'+esc(categoryName(c))+'</strong><span>'+t('一级分类','親カテゴリ')+'</span><i>↗</i></button><div class="hierarchy-manage-children">'+
+    list.filter(ch=>ch.parent===c.id).map(ch=>'<button><span>↳ '+esc(categoryName(ch))+'</span><small>↗</small></button>').join('')+
+    act('hierarchy-new',t('＋ 添加二级分类','＋ 子カテゴリを追加'),'','hierarchy-add-child')+'</div></section>').join('')||empty(t('从自己的用途开始，尚无预建分类。','自分の使い道から。初期カテゴリはありません。'));
+  const part=(kind,title,list)=>'<div class="category-kind-block" data-kind="'+kind+'">'+section(title,'')+'<div class="hierarchy-management">'+groups(list)+'</div>'+act('new-category',t('＋ 添加一级分类','＋ 親カテゴリを追加'),'','full-button')+'</div>';
+  screens.categories=()=>experienceLead('categories',t('用途有层次，记录更清楚。','使い道を、親と子で整理。'),t('一级归纳，二级细分。直接记入一级的消费列为未细分。','親で集計、子で詳細。親への直接記録は内訳未分類。'),'CATEGORIES / TWO LEVELS')+
+    part('expense',t('支出分类','支出カテゴリ'),book().categories)+part('income',t('收入分类','収入カテゴリ'),book().incomeCategories)+
+    auditPanel('favorites',t('常用分类快捷入口','よく使うカテゴリのショートカット'),'<details class="entry-details"><summary>'+t('设置常用 / 一级或二级均可','よく使うカテゴリを設定・親も子も可')+'</summary>'+[...book().categories,...book().incomeCategories].map(c=>'<button class="audit-link" data-supplement-favorite>☆ '+esc(c.parent?categoryName([...book().categories,...book().incomeCategories].find(p=>p.id===c.parent))+' / '+categoryName(c):categoryName(c))+'</button>').join('')+'</details>');
+  document.addEventListener('click',e=>{const button=e.target.closest('[data-supplement-favorite]');if(button)button.textContent=(button.textContent.startsWith('☆')?'★':'☆')+button.textContent.slice(1);});
+  navigate('categories');
+})()`);
+frame.src='app.html?theme='+theme;
+</script>
+</html>

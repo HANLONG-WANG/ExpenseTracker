@@ -1,0 +1,10 @@
+YohakuJournalCheck contains the check glyph from Noto Sans CJK SC.
+Licensed under the SIL Open Font License 1.1; see Noto-OFL.txt.
+Original copyright notices remain in the font metadata.
+
+ExpenseTracker modifications, 2026-10-14:
+- Instantiated the wght axis at 400, verified against HTML glyph advance.
+- Subset to U+2713 and renamed to YohakuJournalCheck.
+- Glyph shape is retained; no tracing or scaling of the font outline.
+
+Generation script: android/tools/prepare-journal-check.py

@@ -1,0 +1,128 @@
+[
+  {
+    "theme": "magazine",
+    "language": "zh",
+    "nodes": [
+      {
+        "tag": "lead-cover",
+        "top": 40.0,
+        "height": 274.59375
+      },
+      {
+        "tag": "setup-intro",
+        "top": 339.59375,
+        "height": 298.171875
+      },
+      {
+        "tag": "setup-start-button",
+        "top": 652.765625,
+        "height": 48
+      }
+    ]
+  },
+  {
+    "theme": "magazine",
+    "language": "ja",
+    "nodes": [
+      {
+        "tag": "lead-cover",
+        "top": 40.0,
+        "height": 324.59375
+      },
+      {
+        "tag": "setup-intro",
+        "top": 389.59375,
+        "height": 298.171875
+      },
+      {
+        "tag": "setup-start-button",
+        "top": 702.765625,
+        "height": 48
+      }
+    ]
+  },
+  {
+    "theme": "journal",
+    "language": "zh",
+    "nodes": [
+      {
+        "tag": "lead-cover",
+        "top": 47.201300792001504,
+        "height": 329.484375
+      },
+      {
+        "tag": "setup-intro",
+        "top": 400.484375,
+        "height": 364.1875
+      },
+      {
+        "tag": "setup-start-button",
+        "top": 802.671875,
+        "height": 50
+      }
+    ]
+  },
+  {
+    "theme": "journal",
+    "language": "ja",
+    "nodes": [
+      {
+        "tag": "lead-cover",
+        "top": 47.20147137706375,
+        "height": 343.484375
+      },
+      {
+        "tag": "setup-intro",
+        "top": 414.484375,
+        "height": 396.1875
+      },
+      {
+        "tag": "setup-start-button",
+        "top": 848.671875,
+        "height": 50
+      }
+    ]
+  },
+  {
+    "theme": "objects",
+    "language": "zh",
+    "nodes": [
+      {
+        "tag": "lead-cover",
+        "top": 29.0,
+        "height": 305.375
+      },
+      {
+        "tag": "setup-intro",
+        "top": 359.375,
+        "height": 310.78125
+      },
+      {
+        "tag": "setup-start-button",
+        "top": 709.15625,
+        "height": 52
+      }
+    ]
+  },
+  {
+    "theme": "objects",
+    "language": "ja",
+    "nodes": [
+      {
+        "tag": "lead-cover",
+        "top": 29.0,
+        "height": 320.375
+      },
+      {
+        "tag": "setup-intro",
+        "top": 374.375,
+        "height": 310.78125
+      },
+      {
+        "tag": "setup-start-button",
+        "top": 724.15625,
+        "height": 52
+      }
+    ]
+  }
+]

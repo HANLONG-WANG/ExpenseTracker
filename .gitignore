@@ -1,0 +1,4 @@
+/.playwright-cli/
+/android/verification/
+/android/artifacts/*.apk
+/android/artifacts/*.sha256

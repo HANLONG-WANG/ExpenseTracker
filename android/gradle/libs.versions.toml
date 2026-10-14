@@ -1,0 +1,24 @@
+[versions]
+agp = "9.3.3"
+kotlin = "2.3.20"
+ksp = "2.3.10"
+compose = "2026.09.00"
+activity = "1.12.4"
+lifecycle = "2.10.0"
+room = "2.8.4"
+datastore = "1.2.1"
+serialization = "1.10.0"
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+[libraries]
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose" }
+activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+room = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+serialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }

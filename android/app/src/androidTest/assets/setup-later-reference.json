@@ -1,0 +1,518 @@
+[
+  {
+    "theme": "magazine",
+    "language": "zh",
+    "step": 2,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 329.59375,
+        "height": 213.96875
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 555.5625,
+        "height": 41
+      },
+      {
+        "tag": "setup-note",
+        "top": 616.5625,
+        "height": 55
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 706.5625,
+        "height": 48
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 773.5625,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "magazine",
+    "language": "zh",
+    "step": 3,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 351.59375,
+        "height": 213.96875
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 577.5625,
+        "height": 41
+      },
+      {
+        "tag": "setup-note",
+        "top": 638.5625,
+        "height": 55
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 728.5625,
+        "height": 48
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 795.5625,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "magazine",
+    "language": "zh",
+    "step": 4,
+    "nodes": [
+      {
+        "tag": "setup-review",
+        "top": 329.59375,
+        "height": 717.59375
+      },
+      {
+        "tag": "setup-finish-button",
+        "top": 1082.1875,
+        "height": 48
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 1149.1875,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "magazine",
+    "language": "ja",
+    "step": 2,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 351.59375,
+        "height": 213.96875
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 577.5625,
+        "height": 41
+      },
+      {
+        "tag": "setup-note",
+        "top": 638.5625,
+        "height": 55
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 728.5625,
+        "height": 48
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 795.5625,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "magazine",
+    "language": "ja",
+    "step": 3,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 351.59375,
+        "height": 213.96875
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 577.5625,
+        "height": 41
+      },
+      {
+        "tag": "setup-note",
+        "top": 638.5625,
+        "height": 55
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 728.5625,
+        "height": 48
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 795.5625,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "magazine",
+    "language": "ja",
+    "step": 4,
+    "nodes": [
+      {
+        "tag": "setup-review",
+        "top": 329.59375,
+        "height": 717.59375
+      },
+      {
+        "tag": "setup-finish-button",
+        "top": 1082.1875,
+        "height": 48
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 1149.1875,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "journal",
+    "language": "zh",
+    "step": 2,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 325.796875,
+        "height": 224
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 562.6951512215213,
+        "height": 45
+      },
+      {
+        "tag": "setup-note",
+        "top": 627.6952320758431,
+        "height": 56.796875
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 718.59375,
+        "height": 50
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 787.59375,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "journal",
+    "language": "zh",
+    "step": 3,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 325.796875,
+        "height": 224
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 562.6951512215213,
+        "height": 45
+      },
+      {
+        "tag": "setup-note",
+        "top": 627.6953883228041,
+        "height": 79.59375
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 741.390625,
+        "height": 50
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 810.390625,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "journal",
+    "language": "zh",
+    "step": 4,
+    "nodes": [
+      {
+        "tag": "setup-review",
+        "top": 325.796875,
+        "height": 762.265625
+      },
+      {
+        "tag": "setup-finish-button",
+        "top": 1123.0625,
+        "height": 50
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 1192.0625,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "journal",
+    "language": "ja",
+    "step": 2,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 325.796875,
+        "height": 224
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 562.6951512215213,
+        "height": 45
+      },
+      {
+        "tag": "setup-note",
+        "top": 627.6952320758431,
+        "height": 56.796875
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 718.59375,
+        "height": 50
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 787.59375,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "journal",
+    "language": "ja",
+    "step": 3,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 390.59375,
+        "height": 224
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 627.4920262215213,
+        "height": 45
+      },
+      {
+        "tag": "setup-note",
+        "top": 692.4921070758431,
+        "height": 56.796875
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 783.390625,
+        "height": 50
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 852.390625,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "journal",
+    "language": "ja",
+    "step": 4,
+    "nodes": [
+      {
+        "tag": "setup-review",
+        "top": 325.796875,
+        "height": 762.265625
+      },
+      {
+        "tag": "setup-finish-button",
+        "top": 1123.0625,
+        "height": 50
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 1192.0625,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "objects",
+    "language": "zh",
+    "step": 2,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 303.28125,
+        "height": 209.96875
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 525.25,
+        "height": 43
+      },
+      {
+        "tag": "setup-note",
+        "top": 588.25,
+        "height": 53
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 676.25,
+        "height": 52
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 747.25,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "objects",
+    "language": "zh",
+    "step": 3,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 303.28125,
+        "height": 209.96875
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 525.25,
+        "height": 43
+      },
+      {
+        "tag": "setup-note",
+        "top": 588.25,
+        "height": 53
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 676.25,
+        "height": 52
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 747.25,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "objects",
+    "language": "zh",
+    "step": 4,
+    "nodes": [
+      {
+        "tag": "setup-review",
+        "top": 303.28125,
+        "height": 691.59375
+      },
+      {
+        "tag": "setup-finish-button",
+        "top": 1029.875,
+        "height": 52
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 1100.875,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "objects",
+    "language": "ja",
+    "step": 2,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 303.28125,
+        "height": 209.96875
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 525.25,
+        "height": 43
+      },
+      {
+        "tag": "setup-note",
+        "top": 588.25,
+        "height": 53
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 676.25,
+        "height": 52
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 747.25,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "objects",
+    "language": "ja",
+    "step": 3,
+    "nodes": [
+      {
+        "tag": "setup-account-list",
+        "top": 342.28125,
+        "height": 209.96875
+      },
+      {
+        "tag": "setup-add-account",
+        "top": 564.25,
+        "height": 43
+      },
+      {
+        "tag": "setup-note",
+        "top": 627.25,
+        "height": 53
+      },
+      {
+        "tag": "setup-next-button",
+        "top": 715.25,
+        "height": 52
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 786.25,
+        "height": 18
+      }
+    ]
+  },
+  {
+    "theme": "objects",
+    "language": "ja",
+    "step": 4,
+    "nodes": [
+      {
+        "tag": "setup-review",
+        "top": 303.28125,
+        "height": 691.59375
+      },
+      {
+        "tag": "setup-finish-button",
+        "top": 1029.875,
+        "height": 52
+      },
+      {
+        "tag": "setup-back-link",
+        "top": 1100.875,
+        "height": 18
+      }
+    ]
+  }
+]

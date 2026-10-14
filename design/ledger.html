@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>流水 · 筛选补充设计</title>
+<style>html,body{margin:0;height:100%;background:#f7f7ef}iframe{display:block;width:100%;height:100%;border:0}</style>
+<iframe id="reference" title="流水筛选设计"></iframe>
+<script>
+const params=new URLSearchParams(location.search);
+const theme=['magazine','journal','objects'].includes(params.get('theme'))?params.get('theme'):'magazine';
+const language=params.get('language')==='ja'?'ja':'zh';
+const expanded=params.get('expanded')==='true';
+const empty=params.get('empty')==='true';
+const frame=document.getElementById('reference');
+frame.onload=()=>frame.contentWindow.eval(`(()=>{
+  book().language=${JSON.stringify(language)};
+  if(${empty})book().records=[];
+  const original=screens.ledger;
+  screens.ledger=()=>{
+    const filters=selectField('ledger-type',t('类型','種類'),[['ALL',t('全部','すべて')],['EXPENSE',t('支出','支出')],['INCOME',t('收入','収入')]],'ALL')+
+      '<details class="entry-details" '+(${expanded}?'open':'')+'><summary>'+t('筛选账户、分类与日期','口座・カテゴリ・日付を絞る')+'</summary>'+
+      selectField('ledger-account',t('账户','口座'),[['ALL',t('全部账户','すべての口座')],...accountOptions(()=>true)],'ALL')+
+      selectField('ledger-category',t('分类','カテゴリ'),[['ALL',t('全部分类','すべてのカテゴリ')],...orderedCategories().map(c=>[c.id,categoryPath(c.id)])],'ALL')+
+      selectField('ledger-period',t('日期范围','日付範囲'),[['ALL',t('全部日期','すべての日付')],['MONTH',t('本月','今月')],['CUSTOM',t('自定义区间','期間を指定')]],'ALL')+
+      '<button class="audit-link">'+t('清除筛选','絞り込みを解除')+'</button></details>';
+    const content=document.createElement('div');
+    content.innerHTML=original().replace('<div id="ledger-list"',filters+'<div id="ledger-list"');
+    content.querySelectorAll('.pill-row [data-type="transfer"],.pill-row [data-type="repayment"],.disclaimer').forEach(e=>e.remove());
+    if(!book().records.length)content.querySelector('#ledger-list').innerHTML=empty(t('还没有记录','記録はまだありません'));
+    return content.innerHTML;
+  };
+  navigate('ledger');
+})()`);
+frame.src='app.html?theme='+theme;
+</script>
+</html>
