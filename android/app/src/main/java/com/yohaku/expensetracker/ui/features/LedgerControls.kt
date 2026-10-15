@@ -18,12 +18,12 @@ import com.yohaku.expensetracker.ui.theme.*
 @Composable internal fun LedgerEntryActions(onStart:(EntryKind)->Unit){
     val t=LocalYohaku.current
     FlowRow(Modifier.fillMaxWidth().testTag("ledger-entry-actions"),horizontalArrangement=Arrangement.spacedBy(7.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
-        for(kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME)){
+        for(kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME,EntryKind.TRANSFER)){
             val size=when(t.id){"journal"->11;"objects"->10;else->9}
             val padding=when(t.id){"journal"->6;"objects"->9;else->7}
             val horizontal=when(t.id){"journal"->8.dp;"objects"->12.dp;else->9.dp}
             val frame=if(t.id=="objects")Modifier.background(Color(0xfff2e8d8),RoundedCornerShape(12.dp)) else Modifier.drawBehind{drawLine(t.line,Offset(0f,this.size.height-.5.dp.toPx()),Offset(this.size.width,this.size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=if(t.id=="journal")PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())) else null)}
-            YText(if(kind==EntryKind.EXPENSE)word("记支出","支出") else word("记收入","収入"),size,
+            YText(when(kind){EntryKind.EXPENSE->word("记支出","支出");EntryKind.INCOME->word("记收入","収入");else->word("转账 / 换汇","振替・両替")},size,
                 Modifier.testTag("ledger-entry-${kind.name}").then(frame).clickable(role=Role.Button){onStart(kind)}.padding(start=horizontal,end=horizontal,top=padding.dp,bottom=(padding+if(t.id=="objects")0 else 1).dp),
                 color=t.muted,lineHeightMultiplier=when(t.id){"journal"->16f/size;"objects"->15f/size;else->13f/size},cssLineBox=true)
         }

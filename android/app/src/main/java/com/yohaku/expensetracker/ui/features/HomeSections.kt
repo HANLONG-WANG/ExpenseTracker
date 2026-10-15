@@ -41,14 +41,14 @@ import com.yohaku.expensetracker.ui.theme.*
     val t=LocalYohaku.current;val paper=t.id=="journal";val objects=t.id=="objects"
     val labels=listOf(word("本月剩余 / 含今天","今月の残り・今日を含む"),word("预留后日均可花","確保後、一日あたり"),word("今天全部净消费","今日の純支出全体"))
     val values=listOf(days.toString(),daily,today)
-    @Composable fun Value(index:Int){Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){val font=if(paper)25 else if(objects)22 else 21;YText(values[index],font,Modifier.alignByBaseline(),number=true,color=if(paper)t.warm else t.ink,lineHeightMultiplier=if(paper)36f/25 else if(objects)32f/22 else 24f/21,cssLineBox=true);if(index==0)YText(word("天","日"),12,Modifier.alignByBaseline().padding(start=5.dp),lineHeightMultiplier=17f/12,cssLineBox=true)}}
-    @Composable fun Cell(index:Int,modifier:Modifier=Modifier){Column(modifier.then(if(objects)Modifier.background(Color(0xfffffae9),RoundedCornerShape(11.dp)).padding(14.dp) else Modifier)){
+    @Composable fun Value(index:Int){Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){val font=if(paper)25 else if(objects)22 else 21;YText(values[index],font,Modifier.alignByBaseline().testTag("home-daily-value-$index"),number=true,color=if(paper)t.warm else t.ink,lineHeightMultiplier=if(paper)36f/25 else if(objects)32f/22 else 24f/21,cssLineBox=true);if(index==0)YText(word("天","日"),12,Modifier.alignByBaseline().padding(start=5.dp),lineHeightMultiplier=17f/12,cssLineBox=true)}}
+    @Composable fun Cell(index:Int,modifier:Modifier=Modifier){Column(modifier.testTag("home-daily-cell-$index").then(if(objects)Modifier.background(Color(0xfffffae9),RoundedCornerShape(11.dp)).padding(14.dp) else Modifier)){
         YText(labels[index],9,color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
         Box(Modifier.padding(vertical=8.dp)){Value(index)}
     }}
     Column(Modifier.fillMaxWidth().testTag("home-daily-stats").padding(vertical=20.dp)){
         if(paper)for(index in 0..2){Row(Modifier.fillMaxWidth().drawBehind{drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())))}.padding(top=10.dp,bottom=11.dp),horizontalArrangement=Arrangement.spacedBy(15.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){YText(labels[index],12,Modifier.weight(1f),color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true);Box(Modifier.padding(vertical=8.dp)){Value(index)}}}
-        else if(objects||LocalConfiguration.current.screenWidthDp<=360){Cell(0,Modifier.fillMaxWidth());Row(Modifier.fillMaxWidth().padding(top=if(objects)9.dp else 18.dp),horizontalArrangement=Arrangement.spacedBy(if(objects)9.dp else 18.dp)){Cell(1,Modifier.weight(1f));Cell(2,Modifier.weight(1f))}}
+        else if(objects||LocalConfiguration.current.screenWidthDp<=360){Cell(0,Modifier.fillMaxWidth());Row(Modifier.fillMaxWidth().padding(top=if(objects)9.dp else 18.dp).height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(if(objects)9.dp else 18.dp)){Cell(1,Modifier.weight(1f).fillMaxHeight());Cell(2,Modifier.weight(1f).fillMaxHeight())}}
         else Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)){for(index in 0..2)Cell(index,Modifier.weight(1f))}
     }
 }

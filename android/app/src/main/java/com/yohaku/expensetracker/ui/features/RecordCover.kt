@@ -75,13 +75,15 @@ import com.yohaku.expensetracker.ui.theme.*
     val t=LocalYohaku.current
     BoxWithConstraints(Modifier.fillMaxWidth()){
     val maxValueWidth=(maxWidth-if(t.id=="objects")24.dp else 0.dp)*.55f
+    val factGap=if(audit)12.dp else if(t.id=="magazine")18.dp else 15.dp
+    val maxLabelWidth=(maxWidth-(if(t.id=="objects")if(audit)24.dp else 12.dp else 0.dp)-factGap)*.45f
     Column(Modifier.fillMaxWidth().testTag("record-facts"),verticalArrangement=Arrangement.spacedBy(if(t.id=="objects")6.dp else 0.dp)){
         facts.forEachIndexed{i,(label,value)->
             val objects=t.id=="objects";val journal=t.id=="journal"
             Column(Modifier.fillMaxWidth().testTag("record-fact-$i")){
                 Row(Modifier.fillMaxWidth().then(if(objects)Modifier.background(Color(0x60ffffff),RoundedCornerShape(10.dp)) else Modifier).padding(horizontal=if(objects)if(audit)12.dp else 6.dp else 0.dp,vertical=if(objects)12.dp else if(journal)15.dp else 16.dp),horizontalArrangement=Arrangement.spacedBy(if(audit)12.dp else if(t.id=="magazine")18.dp else 15.dp),verticalAlignment=if(objects)Alignment.CenterVertically else Alignment.Top){
                     val line=if(audit)1.9f else if(journal)1.7f else 1.6f
-                    YText(label,if(journal)12 else if(audit)10 else 11,color=t.muted,lineHeightMultiplier=line,cssLineBox=exactLineBox)
+                    YText(label,if(journal)12 else if(audit)10 else 11,Modifier.widthIn(max=maxLabelWidth),color=t.muted,lineHeightMultiplier=line,cssLineBox=exactLineBox)
                     val valueSize=if(journal)13 else if(audit)10 else 11
                     if(audit)Box(Modifier.weight(1f),contentAlignment=Alignment.TopEnd){YText(value,valueSize,Modifier.widthIn(max=maxValueWidth),textAlign=TextAlign.End,lineHeightMultiplier=line,cssLineBox=exactLineBox)}
                     else YText(value,valueSize,Modifier.weight(1f),textAlign=TextAlign.End,lineHeightMultiplier=line,cssLineBox=exactLineBox)

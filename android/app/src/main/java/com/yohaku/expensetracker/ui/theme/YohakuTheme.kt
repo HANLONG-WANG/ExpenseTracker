@@ -2,6 +2,8 @@ package com.yohaku.expensetracker.ui.theme
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
@@ -59,7 +61,7 @@ private object ThemeFonts {
 }
 @Composable fun YohakuTheme(theme:String,language:String,content:@Composable () -> Unit) {
     val style=yohakuStyle(theme)
-    CompositionLocalProvider(LocalYohaku provides style,LocalLanguage provides language) {
+    CompositionLocalProvider(LocalYohaku provides style,LocalLanguage provides language,LocalTextSelectionColors provides TextSelectionColors(handleColor=style.accent,backgroundColor=style.accent.copy(alpha=.28f))) {
         Box(Modifier.fillMaxSize().background(style.bg)) {
             if(theme=="journal") Canvas(Modifier.fillMaxSize()) {
                 // Final body grain and transparent app-shell layers, both 0deg CSS gradients.

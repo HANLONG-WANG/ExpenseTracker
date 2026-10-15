@@ -18,10 +18,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontStyle
 import com.yohaku.expensetracker.ui.theme.LocalYohaku
 
-@Composable fun YToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){
+@Composable fun YToggle(label:String,value:Boolean,onChange:(Boolean)->Unit,modifier:Modifier=Modifier){
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
-    Row(Modifier.fillMaxWidth().testTag("toggle-$label").toggleable(value,role=if(journal)Role.Checkbox else Role.Switch,onValueChange=onChange).padding(vertical=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+    Row(modifier.fillMaxWidth().testTag("toggle-$label").toggleable(value,role=if(journal)Role.Checkbox else Role.Switch,onValueChange=onChange).padding(vertical=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
         val size=if(journal)13 else if(objects)12 else 11
         YText(label,size,Modifier.weight(1f),lineHeightMultiplier=if(journal)19f/13 else if(objects)17f/12 else 16f/11)
         when(t.id){

@@ -12,6 +12,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
 import com.yohaku.expensetracker.data.db.EventEntity
 import com.yohaku.expensetracker.data.repository.BookSnapshot
+import com.yohaku.expensetracker.data.repository.netExpense
+import com.yohaku.expensetracker.data.repository.monthExpense
+import com.yohaku.expensetracker.data.repository.budgetProjection
+import com.yohaku.expensetracker.data.repository.provisionalExpenseCount
+import com.yohaku.expensetracker.data.repository.pendingOccurrences
+import com.yohaku.expensetracker.data.repository.visibleComponents
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
@@ -62,19 +68,31 @@ import java.time.YearMonth
         }
     }
 }
-@Composable internal fun HomeScreen(s:BookSnapshot,navigate:(String)->Unit,onAdd:()->Unit,onResume:()->Unit,onEvent:(EventEntity)->Unit,onBudget:()->Unit) {
+@Composable internal fun HomeScreen(s:BookSnapshot,navigate:(String)->Unit,onAdd:()->Unit,onResume:()->Unit,onEvent:(EventEntity)->Unit,onBudget:()->Unit,today:LocalDate=LocalDate.now(),onRecurring:()->Unit={}) {
     val t=LocalYohaku.current
-    val today=LocalDate.now()
     val month=YearMonth.from(today)
     val currency=Currency.valueOf(s.book.currency)
     val entries=s.visibleEvents.filter{it.date.startsWith(month.toString())}
-    val spent=entries.filter{it.kind=="EXPENSE"}.sumOf{it.baseMinor}
-    val remaining=s.book.budgetMinor?.minus(spent)
+    val projection=s.budgetProjection(month.toString())
+    val spent=projection.spentMinor
+    val remaining=projection.remainingMinor
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(15.dp)) {
-        if(s.book.budgetMinor==null)YLead(word("从第一笔，开始。","最初の一筆から。"),word("先设置月预算，也可以先添加账户。","月予算の設定、または口座追加から。"),"A FRESH START",pageFlow=true)
-        else HomeCover(currency,s.book.budgetMinor,spent)
-        if(s.book.budgetMinor==null)Box(Modifier.padding(top=15.dp)){YButton(word("设置月预算","月予算を設定"),onBudget,Modifier.testTag("home-set-budget"),primary=true)}
-        Box(Modifier.padding(top=if(s.book.budgetMinor==null)5.dp else 9.dp)){HomeSpendContext(Money(currency,spent).display(),Money(currency,0).display())}
+        if(projection.limitMinor==null)YLead(word("从第一笔，开始。","最初の一筆から。"),word("先设置月预算，也可以先添加账户。","月予算の設定、または口座追加から。"),"A FRESH START",pageFlow=true)
+        else HomeCover(currency,projection.limitMinor,spent,projection.reserveMinor,projection.availableMinor,today)
+        val provisional=s.provisionalExpenseCount(month.toString())
+        if(provisional>0)BudgetEstimateNote(provisional)
+        if(projection.limitMinor==null)Box(Modifier.padding(top=15.dp)){YButton(word("设置月预算","月予算を設定"),onBudget,Modifier.testTag("home-set-budget"),primary=true)}
+        Box(Modifier.padding(top=if(projection.limitMinor==null)5.dp else 9.dp)){HomeSpendContext(Money(currency,projection.allExpenseMinor).display(),Money(currency,projection.independentMinor).display())}
+        if(projection.pendingCount>0||projection.fundReserveMinor>0)ThemeAuditPanel(word("先为固定支出，留好位置。","固定費にも、余白を。"),Modifier.testTag("home-fixed-reserve")) {
+            RecordFacts(listOf(word("待付固定预算预留","固定費の未払い予算予定") to (projection.fixedReserveMinor?.let{Money(currency,it).display()}?:word("金额 / 折算待补齐","金額・換算待ち")),
+                word("本月活动预算预留","今月のシーン予算の確保") to Money(currency,projection.activityReserveMinor).display(),
+                word("全部活动资金预留","全シーンの資金確保") to Money(currency,projection.fundReserveMinor).display(),
+                word("预留后可支配","予定を除いた残額") to (projection.availableMinor?.let{Money(currency,it).display()}?:"—")),audit=true)
+            YLink(word("确认 / 管理周期账单","定期支払を確認・管理"),onRecurring)
+        }
+        YLink(word("预算与分类限额","予算とカテゴリの上限"),onBudget)
+        if(s.recurrences.isEmpty())YLink(word("添加周期账单","定期支払を追加"),onRecurring)
+        else if(projection.pendingCount==0)YLink(word("查看周期账单与历史","定期支払と履歴を見る"),onRecurring)
         ThemeSection(word("钱够不够，还要看账户。","支払いは、口座残高も。"),"REAL FUNDS",pageGap=15)
         Box(Modifier.padding(top=3.dp)){HomeCashNote(Currency.entries.mapNotNull{c->val accounts=s.accounts.filter{it.currency==c.name&&!AccountType.valueOf(it.type).debt};if(accounts.isEmpty())null else Money(c,accounts.sumOf{s.balance(it)}).display()},{navigate("accounts")})}
         ThemeSection(word("最近的几笔","最近の記録"),"DAILY NOTES",word("全部流水","すべて"),{navigate("ledger")},pageGap=15)
@@ -82,7 +100,7 @@ import java.time.YearMonth
         TransactionList(s,recentExpenses,onEvent,emptyContent={YEmpty(word("分类由你创建，记第一笔就开始。","カテゴリは自分で作成。最初の一筆から。"),onAdd,word("记一笔","記録"))})
         ThemeAuditPanel(word("给接下来的日常，留一点。","これからの日々に、少し。"),Modifier.testTag("home-daily-panel"),contentTopMargin=20){
             val days=month.lengthOfMonth()-today.dayOfMonth+1
-            HomeDailyStats(days,remaining?.let{Money(currency,it.coerceAtLeast(0)/days).display()} ?: "—",Money(currency,entries.filter{it.date==today.toString()&&it.kind=="EXPENSE"}.sumOf{it.baseMinor}).display())
+            HomeDailyStats(days,projection.availableMinor?.let{Money(currency,it.coerceAtLeast(0)/days).display()} ?: "—",Money(currency,(entries.filter{it.date==today.toString()&&it.kind=="EXPENSE"}.sumOf{s.netExpense(it)}+s.visibleComponents().filter{it.date==today.toString()}.sumOf{it.baseMinor})).display())
             if(s.draft!=null)HomeResumeDraft(onResume)
         }
     }

@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application android:label="Yohaku Verification Files" android:allowBackup="false" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <provider android:name=".FixtureDocuments" android:authorities="com.yohaku.verification.documents" android:exported="true" android:grantUriPermissions="true" android:permission="android.permission.MANAGE_DOCUMENTS">
+      <intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER"/></intent-filter>
+    </provider>
+    <activity android:name=".ReadOnlyViewer" android:exported="true">
+      <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><data android:scheme="content" android:mimeType="application/x-yohaku-verification"/></intent-filter>
+    </activity>
+  </application>
+</manifest>

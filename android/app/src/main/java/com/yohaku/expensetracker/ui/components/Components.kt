@@ -13,6 +13,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
@@ -105,21 +106,21 @@ import java.time.YearMonth
 }
 @Composable fun YLink(label:String,onClick:()->Unit,modifier:Modifier=Modifier) { YText(label,12,modifier.defaultMinSize(minHeight=40.dp).clickable(onClick=onClick).padding(vertical=8.dp),color=LocalYohaku.current.accent) }
 /** Final field label metrics; ink marks belong to journal text/date fields only. */
-@Composable private fun FieldLabel(label:String,modifier:Modifier=Modifier,inkMark:Boolean=false){
+@Composable private fun FieldLabel(label:String,modifier:Modifier=Modifier,inkMark:Boolean=false,compactNumber:Boolean=false){
     val t=LocalYohaku.current
-    val size=when(t.id){"journal"->13;"objects"->11;else->9}
-    val line=when(t.id){"journal"->19f;"objects"->16f;else->13f}
+    val size=if(compactNumber)if(t.id=="journal")11 else 9 else when(t.id){"journal"->13;"objects"->11;else->9}
+    val line=if(compactNumber)size*1.8f else when(t.id){"journal"->19f;"objects"->16f;else->13f}
     Row(modifier.fillMaxWidth()){
         if(inkMark&&t.id=="journal")YText("·",13,Modifier.clearAndSetSemantics{}.padding(end=5.dp),color=t.warm,lineHeightMultiplier=19f/13,cssLineBox=true)
         YText(label,size,Modifier.weight(1f),color=t.muted,letterSpacing=if(t.id=="magazine").3f else 0f,lineHeightMultiplier=line/size,cssLineBox=true)
     }
 }
 
-@Composable fun YField(label:String,value:String,onChange:(String)->Unit,modifier:Modifier=Modifier,numeric:Boolean=false,multiline:Boolean=false,emphasizeAmount:Boolean=false,amountSymbol:String="¥",displayLabel:String=label) {
+@Composable fun YField(label:String,value:String,onChange:(String)->Unit,modifier:Modifier=Modifier,numeric:Boolean=false,multiline:Boolean=false,emphasizeAmount:Boolean=false,amountSymbol:String="¥",displayLabel:String=label,compactNumber:Boolean=false,readOnly:Boolean=false) {
     val t=LocalYohaku.current
     val objects=t.id=="objects";val journal=t.id=="journal"
-    val size=if(emphasizeAmount)if(objects)43 else if(journal)46 else 49 else if(journal)15 else 13
-    val textLine=if(emphasizeAmount)if(objects)62f else if(journal)66f else 56f else if(journal)21f else 19f
+    val size=if(compactNumber)if(journal)30 else if(objects)25 else 23 else if(emphasizeAmount)if(objects)43 else if(journal)46 else 49 else if(journal)15 else 13
+    val textLine=if(compactNumber)size*1.45f else if(emphasizeAmount)if(objects)62f else if(journal)66f else 56f else if(journal)21f else 19f
     var lines by remember(value,size){mutableIntStateOf(1)}
     val textHeight=with(LocalDensity.current){textLine.sp.toDp()*lines}
     val frame=if(objects)Modifier.background(if(emphasizeAmount)Color(0xfff1e0ba) else Color(0xfff7efdf),RoundedCornerShape(if(emphasizeAmount)17.dp else 13.dp)).border(1.dp,Color(0xffe7d7bc),RoundedCornerShape(if(emphasizeAmount)17.dp else 13.dp)) else Modifier.drawBehind{
@@ -128,10 +129,10 @@ import java.time.YearMonth
     }
     val inset=if(emphasizeAmount)Modifier.padding(start=if(objects)14.dp else 13.dp,end=if(objects)56.dp else 13.dp,top=if(objects)14.dp else 13.dp,bottom=if(journal)15.dp else 14.dp) else if(objects)Modifier.padding(start=12.dp,end=if(multiline)12.dp else 31.dp,top=14.dp,bottom=14.dp) else if(journal)Modifier.padding(start=2.dp,end=2.dp,top=12.dp,bottom=9.dp) else Modifier.padding(top=13.dp,bottom=14.dp)
     Column(modifier.fillMaxWidth().testTag("field-group-"+label),verticalArrangement=Arrangement.spacedBy(if(journal)6.dp else if(objects)9.dp else 10.dp)) {
-        FieldLabel(displayLabel,inkMark=true)
+        FieldLabel(displayLabel,inkMark=true,compactNumber=compactNumber)
         Box(Modifier.fillMaxWidth()){
             BasicTextField(value,onValueChange=onChange,Modifier.testTag("field-"+label).semantics{contentDescription=displayLabel}.fillMaxWidth().then(frame).then(inset).height(textHeight).wrapContentHeight(Alignment.CenterVertically,unbounded=true),
-                textStyle=TextStyle(color=if(journal&&emphasizeAmount)t.accent else t.ink,fontFamily=if(emphasizeAmount)t.number else t.body,fontSize=size.sp,lineHeight=textLine.sp,fontWeight=if(objects&&emphasizeAmount)FontWeight.Medium else FontWeight.Normal,letterSpacing=(if(emphasizeAmount)if(objects||journal)-2f else -1.7f else 0f).sp),cursorBrush=SolidColor(t.accent),singleLine=!multiline,onTextLayout={lines=it.lineCount},
+                textStyle=TextStyle(color=if(journal&&emphasizeAmount)t.accent else t.ink,fontFamily=if(emphasizeAmount||compactNumber)t.number else t.body,fontSize=size.sp,lineHeight=textLine.sp,fontWeight=if(objects&&emphasizeAmount)FontWeight.Medium else FontWeight.Normal,letterSpacing=(if(compactNumber)-.6f else if(emphasizeAmount)if(objects||journal)-2f else -1.7f else 0f).sp),cursorBrush=SolidColor(t.accent),singleLine=!multiline,readOnly=readOnly,onTextLayout={lines=it.lineCount},
                 keyboardOptions=KeyboardOptions(keyboardType=if(numeric)KeyboardType.Decimal else KeyboardType.Text))
             if(objects&&!emphasizeAmount)Box(Modifier.align(Alignment.BottomEnd).offset(x=(-13).dp,y=(-6).dp).size(13.dp,3.dp).background(Color(0xffe5d4ba),RoundedCornerShape(5.dp)))
             if(objects&&emphasizeAmount)Box(Modifier.align(Alignment.CenterEnd).padding(end=14.dp).size(29.dp).background(Color(0xffe3c38d),RoundedCornerShape(50)).border(1.dp,Color(0xffcfa969),RoundedCornerShape(50)).drawBehind{drawCircle(Color(0xfff4dcaf),radius=this.size.minDimension/2-2.5.dp.toPx(),style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))},contentAlignment=Alignment.Center){
@@ -184,12 +185,22 @@ import java.time.YearMonth
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     Column(Modifier.testTag("date-field-grid").fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-        Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){fields.forEachIndexed{i,(label,value)->
-            DateTrigger(label,value,Modifier.weight(1f).testTag("date-field-$i")){
-                if(activeOwner!=i){focus.clearFocus();keyboard?.hide()}
-                onOwner(if(activeOwner==i)null else i)
+        val measurer=rememberTextMeasurer()
+        val density=LocalDensity.current
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val textSize=if(t.id=="journal")15 else 13
+            val reserved=if(t.id=="objects")48.dp else if(t.id=="journal")37.dp else 35.dp
+            val available=with(density){((maxWidth-12.dp*(fields.size-1))/fields.size-reserved).toPx()}
+            val stacked=fields.any{(_,value)->measurer.measure(value.replace("T"," "),TextStyle(fontFamily=t.body,fontSize=textSize.sp),softWrap=false).size.width>available}
+            @Composable fun trigger(i:Int,label:String,value:String,modifier:Modifier) {
+                DateTrigger(label,value,modifier.testTag("date-field-$i")){
+                    if(activeOwner!=i){focus.clearFocus();keyboard?.hide()}
+                    onOwner(if(activeOwner==i)null else i)
+                }
             }
-        }}
+            if(stacked)Column(verticalArrangement=Arrangement.spacedBy(16.dp)){fields.forEachIndexed{i,(label,value)->trigger(i,label,value,Modifier.fillMaxWidth())}}
+            else Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){fields.forEachIndexed{i,(label,value)->trigger(i,label,value,Modifier.weight(1f))}}
+        }
         activeOwner?.let{owner->
             val raw=fields[owner].second
             val selected=LocalDate.parse(raw.substringBefore("T"))
@@ -208,11 +219,11 @@ import java.time.YearMonth
         }
     }
 }
-@Composable fun YIcon(name:String,modifier:Modifier=Modifier,tint:Color=LocalYohaku.current.ink) {
+@Composable fun YIcon(name:String,modifier:Modifier=Modifier,tint:Color=LocalYohaku.current.ink,stroke:Float=1.6f) {
     val data=iconPaths[name] ?: iconPaths.getValue("wallet")
     Canvas(modifier.size(22.dp)) {
         drawIntoCanvas{c->val native=c.nativeCanvas;native.save();native.scale(size.width/24f,size.height/24f)
-            val paint=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply{color=tint.toArgb();style=android.graphics.Paint.Style.STROKE;strokeWidth=1.6f;strokeCap=android.graphics.Paint.Cap.ROUND;strokeJoin=android.graphics.Paint.Join.ROUND}
+            val paint=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply{color=tint.toArgb();style=android.graphics.Paint.Style.STROKE;strokeWidth=stroke;strokeCap=android.graphics.Paint.Cap.ROUND;strokeJoin=android.graphics.Paint.Join.ROUND}
             data.forEach{d->native.drawPath(PathParser.createPathFromPathData(d),paint)};native.restore()
         }
     }

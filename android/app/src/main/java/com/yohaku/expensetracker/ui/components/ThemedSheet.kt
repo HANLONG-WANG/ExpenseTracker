@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
+import androidx.core.view.WindowCompat
 import com.yohaku.expensetracker.ui.theme.*
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -50,9 +51,15 @@ import com.yohaku.expensetracker.ui.theme.*
     Dialog(onDismissRequest=onClose,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
         val window=(LocalView.current.parent as DialogWindowProvider).window
         // Our themed backdrop already applies the design opacity; Android must not dim it again.
-        SideEffect{window.setDimAmount(0f)}
+        SideEffect {
+            window.setDimAmount(0f)
+            WindowCompat.getInsetsController(window,window.decorView).apply {
+                isAppearanceLightStatusBars=true
+                isAppearanceLightNavigationBars=true
+            }
+        }
         val backdrop=when(t.id){"magazine"->Color(0x6e1a342c);"journal"->Color(0x62615641);else->Color(0x5291694b)}
-        Box(Modifier.fillMaxSize().background(backdrop).navigationBarsPadding().imePadding().testTag("sheet-viewport").pointerInput(onClose){detectTapGestures{if(it.y<sheetTop)onClose()}},contentAlignment=Alignment.BottomCenter) {
+        Box(Modifier.fillMaxSize().background(backdrop).statusBarsPadding().navigationBarsPadding().imePadding().testTag("sheet-viewport").pointerInput(onClose){detectTapGestures{if(it.y<sheetTop)onClose()}},contentAlignment=Alignment.BottomCenter) {
             Column(Modifier.onGloballyPositioned{sheetTop=it.positionInParent().y}.fillMaxWidth().heightIn(max=maximum).testTag("theme-sheet").clip(shape).background(background).drawBehind{
                 if(journal){
                     val step=30.dp.toPx();var y=size.height-step

@@ -48,7 +48,7 @@ import com.yohaku.expensetracker.ui.theme.*
             BookSymbol()
             Column(Modifier.weight(1f)){
                 YText(overview.book.name,if(journal)18 else if(objects)16 else 13,weight=if(journal)FontWeight.Normal else if(objects)FontWeight.Medium else FontWeight(550),lineHeightMultiplier=if(journal)26f/18 else if(objects)24f/16 else 19f/13,cssLineBox=true)
-                val money=overview.book.budgetMinor?.let{Money(Currency.valueOf(overview.book.currency),it).display()} ?: "—"
+                val money=overview.monthlyBudgetMinor?.let{Money(Currency.valueOf(overview.book.currency),it).display()} ?: "—"
                 YText("${overview.accountCount} "+word("个账户","口座")+" · "+word("月预算","月予算")+" "+money,if(journal)11 else 9,Modifier.padding(top=8.dp),color=t.muted,lineHeightMultiplier=if(journal)16f/11 else 13f/9,cssLineBox=true)
             }
             YIcon(if(selected)"check" else "arrow",Modifier.size(17.dp),t.accent)

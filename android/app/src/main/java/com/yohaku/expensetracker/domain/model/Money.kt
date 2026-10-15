@@ -29,5 +29,27 @@ data class EntryDraft(
     val id: String? = null, val kind: EntryKind = EntryKind.EXPENSE,
     val categoryId: String? = null, val accountId: String? = null,
     val amount: String = "", val baseAmount: String = "", val date: String = java.time.LocalDate.now().toString(),
-    val merchant: String = "", val note: String = "", val historicalIncluded: Boolean = false
+    val merchant: String = "", val merchantId:String?=null,val note: String = "", val historicalIncluded: Boolean = false,
+    val originalCurrency: Currency? = null, val accountAmount: String = "",
+    val settlementConfirmed: Boolean = true, val settlementDate: String = date,
+    val rateSource: String = "manual", val rateDate: String = date,
+    val originalEventId: String? = null, val manualRate: String = "",
+    val toAccountId:String?=null,val toAmount:String="",val toDate:String=date,
+    val fromConfirmed:Boolean=false,val toConfirmed:Boolean=false,
+    val feeAmount:String="",val feeCurrency:Currency?=null,val feeAccountAmount:String="",val feeBaseAmount:String="",val feePosition:TransferFeePosition=TransferFeePosition.INCLUDED_FROM,
+    val feeAccountId:String?=null,val feeDate:String=date,val feeConfirmed:Boolean=false,
+    val estimateDirection:String="TO",val activityId:String?=null,val occurrenceId:String?=null,
+    val reserveId:String?=null,val reserveAmount:String="",val treatEnabled:Boolean=false,val treatFriends:List<String> = emptyList(),
+    val mediaSession:String=java.util.UUID.randomUUID().toString(),val mediaInitialized:Boolean=false,val attachmentIds:List<String> = emptyList(),val receiptFileIds:List<String> = emptyList(),
+    val treatMode:TreatSplitMode=TreatSplitMode.EQUAL,val treatWeights:Map<String,String> = emptyMap(),
+    val occurrenceLinkEventId:String?=null
 )
+
+@Serializable
+enum class TransferFeePosition { INCLUDED_FROM, DEDUCTED_TO, SEPARATE }
+
+@Serializable
+enum class RecurrenceFrequency { WEEKLY, MONTHLY, YEARLY }
+
+@Serializable
+enum class TreatSplitMode { EQUAL, AMOUNTS, PERCENT }

@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.LedgerRepository
+import com.yohaku.expensetracker.data.repository.expectedMoney
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
@@ -39,7 +40,7 @@ class DatabaseUpgradeTest {
             old.execSQL("INSERT INTO postings VALUES ('b','p','e','a',-500,'JPY','2026-10-13',1)")
             old.version=1
         }finally{old.close()}
-        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3).build()
+        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11).build()
         try {
             val repo=LedgerRepository(db)
             val book=repo.dao.book("b")!!
@@ -51,4 +52,41 @@ class DatabaseUpgradeTest {
             assertEquals(9500L,snapshot.balance(snapshot.accounts.single()))
         }finally{db.close();context.deleteDatabase(name)}
     }
+    @Test fun fourthVersionKeepsOriginalPredictionAndSettlementCurrency()=runBlocking {
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val context=instrumentation.targetContext
+        val name="upgrade-currency-verification.db"
+        context.deleteDatabase(name)
+        val schema=JSONObject(instrumentation.context.assets.open("room-v4-schema.json").bufferedReader().readText()).getJSONObject("database")
+        val old=SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name),null)
+        try {
+            val entities=schema.getJSONArray("entities")
+            for(i in 0 until entities.length()) {
+                val entity=entities.getJSONObject(i)
+                old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}",entity.getString("tableName")))
+                val indices=entity.optJSONArray("indices")
+                for(j in 0 until (indices?.length() ?: 0))old.execSQL(indices!!.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}",entity.getString("tableName")))
+            }
+            val setup=schema.getJSONArray("setupQueries")
+            for(i in 0 until setup.length())old.execSQL(setup.getString(i))
+            old.execSQL("INSERT INTO books VALUES ('b','外币','JPY','2026-09-01','magazine','zh',1,100000,4)")
+            old.execSQL("INSERT INTO accounts VALUES ('b','a','卡','CREDIT','JPY',0,'2026-09-01',1)")
+            old.execSQL("INSERT INTO categories VALUES ('b','c','购物','EXPENSE',NULL,0,1)")
+            old.execSQL("INSERT INTO events VALUES ('b','e','EXPENSE','a','c',10000,'USD',15100,'2026-09-10','Shop','',0,2,NULL,1)")
+            old.execSQL("INSERT INTO postings VALUES ('b','p','e','a',15100,'JPY','2026-09-12',1)")
+            old.execSQL("INSERT INTO settlements VALUES ('b','e',15100,'JPY',1,'2026-09-12','manual','2026-09-10',15000,15000,NULL)")
+            old.version=4
+        }finally{old.close()}
+        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11).build()
+        try {
+            val repo=LedgerRepository(db)
+            val snapshot=repo.snapshot(repo.dao.book("b")!!).first()
+            assertEquals(15100L,snapshot.balance(snapshot.accounts.single()))
+            assertEquals("USD",snapshot.events.single().currency)
+            assertEquals(15000L,snapshot.settlements.single().expectedMoney().minor)
+            assertEquals("JPY",snapshot.settlements.single().expectedMoney().currency.name)
+            assertEquals("",snapshot.settlements.single().manualRate)
+        }finally{db.close();context.deleteDatabase(name)}
+    }
+
 }

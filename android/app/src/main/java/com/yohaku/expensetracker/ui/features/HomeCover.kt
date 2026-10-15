@@ -19,10 +19,13 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import java.time.LocalDate
 
-@Composable internal fun HomeCover(currency:Currency,budget:Long,spent:Long) {
+@Composable internal fun HomeCover(currency:Currency,budget:Long,spent:Long,reserved:Long?,available:Long?,date:LocalDate) {
     val t=LocalYohaku.current
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val left=budget-spent
+    val unknown=word("待补齐","要補完")
+    val reservedText=reserved?.let{Money(currency,it).display()}?:unknown
+    val availableText=available?.let{Money(currency,it).display()}?:unknown
     when(t.id){
         "magazine"->Column(Modifier.fillMaxWidth().testTag("home-cover")){
             CoverRule(t.ink,2)
@@ -38,8 +41,8 @@ import java.time.LocalDate
                         ThemeArtwork(width=if(narrow)55 else 75,height=if(narrow)65 else 80)
                         Spacer(Modifier.height(4.dp))
                         YText(word("预留安排后","予定分を確保した後"),8,Modifier.padding(top=14.dp),color=t.muted,lineHeightMultiplier=1.9f)
-                        CoverLineText(if(currency==Currency.JPY)"¥" else currency.name,8,10.4f,Modifier.padding(top=7.dp,bottom=4.dp).testTag("cover-side-prefix"),color=t.muted,letterSpacing=.5f)
-                        YText(Money(currency,left).digits(),if(narrow)14 else 16,number=true,letterSpacing=if(narrow)-.4f else -.2f,lineHeightMultiplier=if(narrow)30.4f/14 else 36.1f/16)
+                        if(available!=null)CoverLineText(if(currency==Currency.JPY)"¥" else currency.name,8,10.4f,Modifier.padding(top=7.dp,bottom=4.dp).testTag("cover-side-prefix"),color=t.muted,letterSpacing=.5f)
+                        YText(available?.let{Money(currency,it).digits()}?:unknown,if(narrow)14 else 16,Modifier.testTag("cover-available"),number=available!=null,letterSpacing=if(narrow)-.4f else -.2f,lineHeightMultiplier=if(narrow)30.4f/14 else 36.1f/16)
                     }
                 }
                 CoverRule(t.line)
@@ -54,7 +57,7 @@ import java.time.LocalDate
             Canvas(Modifier.matchParentSize()){var y=size.height;while(y>0){drawLine(Color(0x15718695),Offset(0f,y),Offset(size.width,y),1.dp.toPx());y-=32.dp.toPx()}}
             Box(Modifier.align(Alignment.TopCenter).offset(y=(-8).dp).size(88.dp,17.dp).rotate(-3f).background(Color(0x80d6bf86)))
             Column(Modifier.padding(start=18.dp,end=18.dp,top=26.dp,bottom=20.dp)){
-                val month=LocalDate.now().monthValue
+                val month=date.monthValue
                 val zhMonth=listOf("一","二","三","四","五","六","七","八","九","十","十一","十二")[month-1]
                 YText(word("${zhMonth}月的生活小算式","${month}月の暮らしの計算"),12,color=t.warm,lineHeightMultiplier=20f/12)
                 YText(word("今天，也慢慢记。","今日も、ゆっくり記そう。"),if(narrow)25 else 27,Modifier.padding(top=12.dp),lineHeightMultiplier=1.6f)
@@ -68,8 +71,8 @@ import java.time.LocalDate
                 YText(word("本月预算内还能花","今月の予算内で使える")+" ↗",13,Modifier.fillMaxWidth().padding(top=10.dp),color=t.warm,lineHeightMultiplier=19f/13,textAlign=androidx.compose.ui.text.style.TextAlign.End)
                 Spacer(Modifier.height(20.dp))
                 CoverRule(t.line,dashed=true)
-                YText(word("再留出计划支出 ","予定支出も確保して ")+Money(currency,0).display(),12,Modifier.padding(top=16.dp),color=t.muted,lineHeightMultiplier=1.5f)
-                YText(word("自由可花 ","自由に使える ")+Money(currency,left).display(),23,Modifier.padding(top=9.dp),color=t.accent,number=true,lineHeightMultiplier=33f/23)
+                YText(word("再留出计划支出 ","予定支出も確保して ")+reservedText,12,Modifier.padding(top=16.dp).testTag("cover-reserved"),color=t.muted,lineHeightMultiplier=1.5f)
+                YText(word("自由可花 ","自由に使える ")+availableText,23,Modifier.padding(top=9.dp).testTag("cover-available"),color=t.accent,number=true,lineHeightMultiplier=33f/23)
             }
         }
         else->{
@@ -85,10 +88,10 @@ import java.time.LocalDate
                     Box(Modifier.padding(top=18.dp,bottom=7.dp)){CoverMoney(currency,left,if(narrow)42 else 49)}
                     YText(word("本月预算内还能花","今月の予算内で使える"),10,color=Color(0xffa17f54),lineHeightMultiplier=1.9f)
                     Row(Modifier.fillMaxWidth().padding(top=25.dp),horizontalArrangement=Arrangement.spacedBy(14.dp)){
-                        listOf(word("待付安排先留好","予定支払を確保") to 0L,word("自由可花","自由に使える") to left).forEach{(label,value)->
+                        listOf(word("待付安排先留好","予定支払を確保") to reservedText,word("自由可花","自由に使える") to availableText).forEachIndexed{index,(label,value)->
                             Column(Modifier.weight(1f).background(Color(0xfff9ebce),RoundedCornerShape(10.dp,10.dp,19.dp,13.dp)).padding(horizontal=11.dp,vertical=14.dp)){
                                 YText(label,9,color=Color(0xffa48157),lineHeightMultiplier=13f/9)
-                                YText(Money(currency,value).display(),20,Modifier.padding(top=9.dp),number=true,color=Color(0xff9d6c44),lineHeightMultiplier=1.45f)
+                                YText(value,20,Modifier.padding(top=9.dp).testTag(if(index==0)"cover-reserved"else"cover-available"),number=true,color=Color(0xff9d6c44),lineHeightMultiplier=1.45f)
                             }
                         }
                     }

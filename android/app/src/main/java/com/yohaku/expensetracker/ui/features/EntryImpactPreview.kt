@@ -25,12 +25,18 @@ import com.yohaku.expensetracker.ui.theme.*
             ImpactChange(change.account.name+" · "+if(AccountType.valueOf(change.account.type).debt)word("欠款","借入残高") else word("余额","残高"),
                 Currency.valueOf(change.account.currency),change.before,change.after,"impact-balance-${change.account.id}")
         }
-        if(impact.balances.isEmpty())YText(word("已包含期初，只改变记账资料，不改变账户余额。","期首残高に含む記録。内容のみ変更し、口座残高は変わりません。"),11,color=t.muted)
-        if(event.kind==EntryKind.EXPENSE.name)ImpactChange(impact.month+" · "+word("消费统计","支出集計"),impact.currency,impact.expenseBefore,impact.expenseAfter,"impact-expense")
+        if(impact.balances.isEmpty())YText(if(event.historicalIncluded)word("已包含期初，只改变记账资料，不改变账户余额。","期首残高に含む記録。内容のみ変更し、口座残高は変わりません。")else word("实际账户余额没有变化。","口座の実残高は変わりません。"),11,color=t.muted)
+        if(event.kind in listOf(EntryKind.EXPENSE.name,EntryKind.REFUND.name,EntryKind.TRANSFER.name))ImpactChange(impact.month+" · "+word("消费统计","支出集計"),impact.currency,impact.expenseBefore,impact.expenseAfter,"impact-expense")
         if(event.kind==EntryKind.INCOME.name)ImpactChange(impact.month+" · "+word("收入统计","収入集計"),impact.currency,impact.incomeBefore,impact.incomeAfter,"impact-income")
-        val budget=impact.remainingBudget(currentMonth,s.book.budgetMinor)
+        val budget=impact.remainingBudget(impact.month,s.budgetLimit(impact.month))
         if(budget!=null)ImpactChange(word("当月预算内还能花","今月の予算内で使える"),impact.currency,budget.before,budget.after,"impact-budget")
-        else YText(if(impact.month==currentMonth)word("未设置当月预算，预算余量未知。","今月の予算は未設定。予算残額は不明です。") else word("该月预算尚未记录，不使用当前预算推算。","この月の予算は未記録。現在の予算から推定しません。"),11,Modifier.testTag("impact-budget-unknown").padding(vertical=12.dp),color=t.muted)
+        if(impact.reserveBefore!=0L||impact.reserveAfter!=0L) {
+            if(impact.reserveBefore!=null&&impact.reserveAfter!=null)ImpactChange(word("待付预算预留","未払い予算の確保額"),impact.currency,impact.reserveBefore,impact.reserveAfter,"impact-reserve")
+            else YText(word("待付预留存在尚未填写或折算的金额。","未払い予定に未入力・未換算の金額があります。"),11,color=t.muted)
+            if(budget!=null&&impact.reserveBefore!=null&&impact.reserveAfter!=null)ImpactChange(word("预留后可支配","予定を除いた残額"),impact.currency,Math.subtractExact(budget.before,impact.reserveBefore),Math.subtractExact(budget.after,impact.reserveAfter),"impact-available")
+        }
+        impact.friendChanges.forEach{change->ImpactChange(change.activityName+" · "+change.friendName+word("互请差额","ごちそうの差額"),impact.currency,change.before,change.after,"impact-friend-"+change.friendName)}
+        if(budget==null)YText(if(impact.month==currentMonth)word("未设置当月预算，预算余量未知。","今月の予算は未設定。予算残額は不明です。") else word("该月预算尚未记录，不使用当前预算推算。","この月の予算は未記録。現在の予算から推定しません。"),11,Modifier.testTag("impact-budget-unknown").padding(vertical=12.dp),color=t.muted)
     }
 }
 

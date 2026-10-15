@@ -83,7 +83,7 @@ private val inkCircle=GenericShape{size,_->
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val shape=if(journal&&chosen)inkCircle else RoundedCornerShape(if(objects)8.dp else 0.dp)
     val frame=if(date==null)Modifier else if(objects)Modifier.drawBehind{drawRoundRect(if(chosen)Color(0x35906344) else Color(0x18c6ab80),topLeft=Offset(0f,if(chosen)2.dp.toPx() else 1.dp.toPx()),size=size,cornerRadius=androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()))}.background(if(chosen)Color(0xffb77d57) else Color(0xfff0e5d0),shape) else if(journal){if(chosen)Modifier.border(1.dp,t.warm,shape) else Modifier} else Modifier.background(if(chosen)t.soft else Color.Transparent).drawBehind{val width=if(chosen)2.dp.toPx() else 1.dp.toPx();drawLine(if(chosen)t.ink else t.line,Offset(0f,size.height-width/2),Offset(size.width,size.height-width/2),width)}
-    Box(modifier.heightIn(min=32.dp).then(if(journal&&chosen)Modifier.rotate(-8f) else Modifier).then(frame).then(if(date!=null)Modifier.selectable(chosen,role=Role.Button,onClick={onPick(date)}) else Modifier),contentAlignment=Alignment.Center){
+    Box(modifier.heightIn(min=32.dp).then(if(journal&&chosen)Modifier.rotate(-8f) else Modifier).then(frame).then(if(date!=null)Modifier.semantics{contentDescription=date.toString()}.selectable(chosen,role=Role.Button,onClick={onPick(date)}) else Modifier),contentAlignment=Alignment.Center){
         if(date!=null)YText(date.dayOfMonth.toString(),if(journal)16 else if(objects)13 else 12,number=true,color=if(chosen)if(objects)Color(0xfffff8e7) else if(journal)t.warm else t.accent else t.ink,lineHeightMultiplier=if(journal)23f/16 else if(objects)19f/13 else 14f/12,cssLineBox=true)
     }
 }
