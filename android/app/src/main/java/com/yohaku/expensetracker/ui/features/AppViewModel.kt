@@ -20,7 +20,7 @@ sealed interface AppState {
 }
 data class AppNotice(val id:Long,val bookId:String,val zh:String,val ja:String)
 @OptIn(ExperimentalCoroutinesApi::class)
-class AppViewModel(val repository:LedgerRepository,val preferences:AppPreferences):ViewModel() {
+class AppViewModel(val repository:LedgerRepository,val preferences:AppPreferences,val referenceRates:ReferenceRates=ReferenceRates(preferences,clock=repository.clock)):ViewModel() {
     private val writes=Mutex()
     private val readRequests=MutableStateFlow(0L)
     val today=MutableStateFlow(LocalDate.now(repository.clock))
@@ -32,6 +32,8 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun dismissNotice(id:Long){if(notice.value?.id==id)notice.value=null}
     val selectedBookMetadata=MutableStateFlow<BookEntity?>(null)
     val route=MutableStateFlow("home")
+    internal val activeFinancialDraft=MutableStateFlow<FinancialDraftSession?>(null)
+    internal val financialDraftSessions=java.util.concurrent.ConcurrentHashMap<String,FinancialDraftSession>()
     val entry=MutableStateFlow<EntryDraft?>(null)
     val entryReview=MutableStateFlow<LedgerChangeReview?>(null)
     val reviewRefreshed=MutableStateFlow(false)
@@ -52,6 +54,21 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         .onStart{emit(AppState.Loading)}
     }
         .stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),AppState.Loading)
+    val financialState=state.map{(it as? AppState.Ready)?.snapshot?.book?.id}.distinctUntilChanged()
+        .flatMapLatest{bookId->if(bookId==null)flowOf(null)else repository.db.financialDao().graph(bookId)}
+        .catch{error.value=it.message ?: "金融资料读取失败 / 金融情報の読込に失敗しました";emit(null)}
+        .stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),null)
+    val financialPredictionReview=MutableStateFlow<FinancialPredictionReview?>(null)
+    val financialRuleReview=MutableStateFlow<FinancialRuleReview?>(null)
+    val manualFinancialPlanReview=MutableStateFlow<ManualFinancialPlanReview?>(null)
+    val creditLimitState=combine(state.map{(it as? AppState.Ready)?.snapshot?.book?.id}.distinctUntilChanged(),readRequests){bookId,_->bookId}
+        .flatMapLatest{bookId->if(bookId==null)flowOf(null)else repository.db.creditLimitDao().graph(bookId)
+            .catch{error.value=it.message ?: "额度资料读取失败 / 利用枠情報の読込に失敗しました";emit(null)}}
+        .stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),null)
+    val financialArrangementReview=MutableStateFlow<FinancialArrangementReview?>(null)
+    val financialLedgerReview=MutableStateFlow<FinancialLedgerReview?>(null)
+    val financialBillReview=MutableStateFlow<BillConfirmationReview?>(null)
+    val financialReviewRefreshed=MutableStateFlow(false)
     val setupDraft=state.mapNotNull{(it as? AppState.Ready)?.firstSetup}.map<SetupDraft,SetupDraft?>{it}.stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),null)
     init { execute { repository.purgeExpired();repository.collectUnusedMedia() } }
     fun execute(onSuccess:()->Unit={},onComplete:()->Unit={},action:suspend()->Unit) { viewModelScope.launch {
@@ -103,9 +120,9 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val use=snapshot.reserveUses.firstOrNull{it.eventId==event.id}
         entry.value=EntryDraft(reserveId=use?.reserveId,reserveAmount=use?.let{Money(Currency.valueOf(snapshot.book.currency),it.amountMinor).decimal.toPlainString()}.orEmpty(),treatEnabled=treat!=null,treatFriends=snapshot.allocations.filter{it.treatId==treat?.id}.mapNotNull{it.friendId},treatMode=treat?.let{TreatSplitMode.valueOf(it.mode)}?:TreatSplitMode.EQUAL,treatWeights=treat?.let{repository.json.decodeFromString<Map<String,String>>(it.weightsJson)}?:emptyMap(),id=event.id,kind=EntryKind.valueOf(event.kind),categoryId=event.categoryId,accountId=event.accountId,
             amount=Money(Currency.valueOf(event.currency),event.amountMinor).decimal.toPlainString(),
-            baseAmount=Money(Currency.valueOf(snapshot.book.currency),event.baseMinor).decimal.toPlainString(),date=event.date,merchant=event.merchant,merchantId=snapshot.eventMerchants.find{it.eventId==event.id}?.merchantId,note=event.note,historicalIncluded=event.historicalIncluded,originalCurrency=Currency.valueOf(event.currency),
+            baseAmount=Money(Currency.valueOf(snapshot.book.currency),event.baseMinor).decimal.toPlainString(),date=event.date,cardPaymentChoice=event.cardPaymentChoice,cardPaymentPeriods=event.cardPaymentPeriods?.toString().orEmpty(),merchant=event.merchant,merchantId=snapshot.eventMerchants.find{it.eventId==event.id}?.merchantId,note=event.note,historicalIncluded=event.historicalIncluded,originalCurrency=Currency.valueOf(event.currency),
             accountAmount=settlement?.let{Money(Currency.valueOf(it.accountCurrency),it.accountMinor).decimal.toPlainString()}.orEmpty(),
-            settlementConfirmed=settlement?.confirmed?:true,settlementDate=settlement?.settlementDate?:event.date,rateSource=settlement?.rateSource?:"manual",rateDate=settlement?.rateDate?:event.date,originalEventId=settlement?.originalEventId,manualRate=settlement?.manualRate.orEmpty(),activityId=snapshot.eventActivities.find{it.eventId==event.id}?.activityId,occurrenceId=snapshot.occurrences.firstOrNull{it.eventId==event.id&&it.status in listOf("PENDING","COMPLETED")}?.id)
+            settlementConfirmed=settlement?.confirmed?:true,settlementDate=settlement?.settlementDate?:event.date,rateSource=settlement?.rateSource?:"manual",rateDate=settlement?.rateDate?:event.date,originalEventId=settlement?.originalEventId,manualRate=settlement?.manualRate.orEmpty(),referenceRates=settlement?.referenceRatesJson?.let{repository.json.decodeFromString(it)}?:emptyList(),activityId=snapshot.eventActivities.find{it.eventId==event.id}?.activityId,occurrenceId=snapshot.occurrences.firstOrNull{it.eventId==event.id&&it.status in listOf("PENDING","COMPLETED")}?.id)
         navigate("entry");persistDraft(snapshot.book.id)
     }
     fun changeEntry(bookId:String,draft:EntryDraft) {if(savingEntry)return;entry.value=draft;persistDraft(bookId)}
@@ -192,7 +209,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
             toAmount=Money(Currency.valueOf(toCurrency),transfer?.toMinor?:toPosting?.deltaMinor?:0).decimal.toPlainString(),
             date=event.date,toDate=transfer?.toDate?:toPosting?.date?:event.date,
             fromConfirmed=transfer?.fromConfirmed?:sourcePosting?.confirmed?:false,toConfirmed=transfer?.toConfirmed?:toPosting?.confirmed?:false,
-            merchant=event.merchant,merchantId=snapshot.eventMerchants.find{it.eventId==event.id}?.merchantId,note=event.note,manualRate=transfer?.manualRate.orEmpty(),rateDate=transfer?.rateDate?:event.date,
+            merchant=event.merchant,merchantId=snapshot.eventMerchants.find{it.eventId==event.id}?.merchantId,note=event.note,rateSource=snapshot.settlements.firstOrNull{it.eventId==event.id}?.rateSource?:"manual",referenceRates=snapshot.settlements.firstOrNull{it.eventId==event.id}?.referenceRatesJson?.let{repository.json.decodeFromString(it)}?:emptyList(),manualRate=transfer?.manualRate.orEmpty(),rateDate=transfer?.rateDate?:event.date,
             feeAmount=component?.let{Money(Currency.valueOf(it.originalCurrency),it.originalMinor).decimal.toPlainString()}.orEmpty(),
             feeCurrency=component?.let{Currency.valueOf(it.originalCurrency)},
             feeAccountAmount=component?.let{Money(Currency.valueOf(it.currency),it.amountMinor).decimal.toPlainString()}.orEmpty(),

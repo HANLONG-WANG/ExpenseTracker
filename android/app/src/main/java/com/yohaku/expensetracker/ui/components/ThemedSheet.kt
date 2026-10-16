@@ -28,7 +28,7 @@ import androidx.core.view.WindowCompat
 import com.yohaku.expensetracker.ui.theme.*
 
 @OptIn(ExperimentalFoundationApi::class)
-@Composable fun YSheet(title:String,onClose:()->Unit,content:@Composable ColumnScope.()->Unit) {
+@Composable fun YSheet(title:String,onClose:()->Unit,scrollState:ScrollState=rememberScrollState(),content:@Composable ColumnScope.()->Unit) {
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
     val narrow=LocalConfiguration.current.screenWidthDp<=360
@@ -40,7 +40,7 @@ import com.yohaku.expensetracker.ui.theme.*
     val right=if(journal)if(narrow)16 else 19 else left
     val border=if(objects||journal)1 else 2
     val closeLabel=word("关闭","閉じる")
-    val scroll=rememberScrollState()
+    val scroll=scrollState
     var headerHeight by remember{mutableIntStateOf(0)}
     val focusScroll=remember{object:BringIntoViewSpec{
         override fun calculateScrollDistance(offset:Float,size:Float,containerSize:Float):Float =

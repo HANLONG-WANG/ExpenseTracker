@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class Currency(val scale: Int, val symbol: String) { JPY(0,"¥"), CNY(2,"CN¥"), USD(2,"US$") }
+@Serializable
 data class Money(val currency: Currency, val minor: Long) {
     val decimal: BigDecimal get() = BigDecimal.valueOf(minor, currency.scale)
     fun digits(): String = java.text.DecimalFormat("#,##0" + if(currency.scale==2)".00" else "", java.text.DecimalFormatSymbols(java.util.Locale.JAPAN)).format(decimal)
@@ -42,7 +43,12 @@ data class EntryDraft(
     val reserveId:String?=null,val reserveAmount:String="",val treatEnabled:Boolean=false,val treatFriends:List<String> = emptyList(),
     val mediaSession:String=java.util.UUID.randomUUID().toString(),val mediaInitialized:Boolean=false,val attachmentIds:List<String> = emptyList(),val receiptFileIds:List<String> = emptyList(),
     val treatMode:TreatSplitMode=TreatSplitMode.EQUAL,val treatWeights:Map<String,String> = emptyMap(),
-    val occurrenceLinkEventId:String?=null
+    val referenceQueryDate:String?=null,val referenceAccountLinked:Boolean=false,val referenceBaseLinked:Boolean=false,
+    val referenceExpectedFromMinor:Long?=null,val referenceExpectedToMinor:Long?=null,
+    val referenceExpectedAccountMinor:Long?=null,val referenceExpectedBaseMinor:Long?=null,
+    val referenceRates:List<com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot> = emptyList(),
+    val occurrenceLinkEventId:String?=null,
+    val cardPaymentChoice:String?=null,val cardPaymentPeriods:String="",val cardPaymentRecheck:Boolean=false
 )
 
 @Serializable

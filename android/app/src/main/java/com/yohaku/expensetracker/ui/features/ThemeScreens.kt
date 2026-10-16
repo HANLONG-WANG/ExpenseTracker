@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
 import com.yohaku.expensetracker.data.db.EventEntity
+import com.yohaku.expensetracker.data.repository.cashBalanceAt
 import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.data.repository.netExpense
 import com.yohaku.expensetracker.data.repository.monthExpense
@@ -68,7 +69,7 @@ import java.time.YearMonth
         }
     }
 }
-@Composable internal fun HomeScreen(s:BookSnapshot,navigate:(String)->Unit,onAdd:()->Unit,onResume:()->Unit,onEvent:(EventEntity)->Unit,onBudget:()->Unit,today:LocalDate=LocalDate.now(),onRecurring:()->Unit={}) {
+@Composable internal fun HomeScreen(s:BookSnapshot,navigate:(String)->Unit,onAdd:()->Unit,onResume:()->Unit,onEvent:(EventEntity)->Unit,onBudget:()->Unit,today:LocalDate=LocalDate.now(),onRecurring:()->Unit={},financialContent:@Composable ()->Unit={}) {
     val t=LocalYohaku.current
     val month=YearMonth.from(today)
     val currency=Currency.valueOf(s.book.currency)
@@ -94,7 +95,8 @@ import java.time.YearMonth
         if(s.recurrences.isEmpty())YLink(word("添加周期账单","定期支払を追加"),onRecurring)
         else if(projection.pendingCount==0)YLink(word("查看周期账单与历史","定期支払と履歴を見る"),onRecurring)
         ThemeSection(word("钱够不够，还要看账户。","支払いは、口座残高も。"),"REAL FUNDS",pageGap=15)
-        Box(Modifier.padding(top=3.dp)){HomeCashNote(Currency.entries.mapNotNull{c->val accounts=s.accounts.filter{it.currency==c.name&&!AccountType.valueOf(it.type).debt};if(accounts.isEmpty())null else Money(c,accounts.sumOf{s.balance(it)}).display()},{navigate("accounts")})}
+        Box(Modifier.padding(top=3.dp)){HomeCashNote(Currency.entries.mapNotNull{c->val accounts=s.accounts.filter{it.currency==c.name&&!AccountType.valueOf(it.type).debt};if(accounts.isEmpty())null else Money(c,accounts.sumOf{s.cashBalanceAt(it,today.toString())}).display()},{navigate("accounts")})}
+        financialContent()
         ThemeSection(word("最近的几笔","最近の記録"),"DAILY NOTES",word("全部流水","すべて"),{navigate("ledger")},pageGap=15)
         val recentExpenses=s.visibleEvents.filter{it.kind=="EXPENSE"}.take(3)
         TransactionList(s,recentExpenses,onEvent,emptyContent={YEmpty(word("分类由你创建，记第一笔就开始。","カテゴリは自分で作成。最初の一筆から。"),onAdd,word("记一笔","記録"))})

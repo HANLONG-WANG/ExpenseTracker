@@ -1,0 +1,5371 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 20,
+    "identityHash": "0a97ced59afc1f445f6d741ec34aca1d",
+    "entities": [
+      {
+        "tableName": "books",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `currency` TEXT NOT NULL, `startDate` TEXT NOT NULL, `theme` TEXT NOT NULL, `language` TEXT NOT NULL, `initialized` INTEGER NOT NULL, `budgetMinor` INTEGER, `setupStep` INTEGER NOT NULL DEFAULT 2, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startDate",
+            "columnName": "startDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "theme",
+            "columnName": "theme",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "language",
+            "columnName": "language",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "initialized",
+            "columnName": "initialized",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "budgetMinor",
+            "columnName": "budgetMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "setupStep",
+            "columnName": "setupStep",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "2"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "accounts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `type` TEXT NOT NULL, `currency` TEXT NOT NULL, `openingMinor` INTEGER NOT NULL, `openingDate` TEXT NOT NULL, `active` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "openingMinor",
+            "columnName": "openingMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "openingDate",
+            "columnName": "openingDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_accounts_bookId",
+            "unique": false,
+            "columnNames": [
+              "bookId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_accounts_bookId` ON `${TABLE_NAME}` (`bookId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "categories",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `kind` TEXT NOT NULL, `parentId` TEXT, `favorite` INTEGER NOT NULL, `active` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `parentId`) REFERENCES `categories`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentId",
+            "columnName": "parentId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "favorite",
+            "columnName": "favorite",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_categories_bookId",
+            "unique": false,
+            "columnNames": [
+              "bookId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_categories_bookId` ON `${TABLE_NAME}` (`bookId`)"
+          },
+          {
+            "name": "index_categories_bookId_parentId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "parentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_categories_bookId_parentId` ON `${TABLE_NAME}` (`bookId`, `parentId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "categories",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "parentId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "events",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `kind` TEXT NOT NULL, `accountId` TEXT NOT NULL, `categoryId` TEXT, `amountMinor` INTEGER NOT NULL, `currency` TEXT NOT NULL, `baseMinor` INTEGER NOT NULL, `date` TEXT NOT NULL, `merchant` TEXT NOT NULL, `note` TEXT NOT NULL, `historicalIncluded` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `deletedAt` INTEGER, `createdAt` INTEGER NOT NULL DEFAULT 0, `cardPaymentChoice` TEXT DEFAULT NULL, `cardPaymentMode` TEXT DEFAULT NULL, `cardPaymentRuleId` TEXT DEFAULT NULL, `cardPaymentPeriods` INTEGER DEFAULT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `categoryId`) REFERENCES `categories`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoryId",
+            "columnName": "categoryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baseMinor",
+            "columnName": "baseMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "merchant",
+            "columnName": "merchant",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "historicalIncluded",
+            "columnName": "historicalIncluded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deletedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "cardPaymentChoice",
+            "columnName": "cardPaymentChoice",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "cardPaymentMode",
+            "columnName": "cardPaymentMode",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "cardPaymentRuleId",
+            "columnName": "cardPaymentRuleId",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "cardPaymentPeriods",
+            "columnName": "cardPaymentPeriods",
+            "affinity": "INTEGER",
+            "defaultValue": "NULL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_events_bookId",
+            "unique": false,
+            "columnNames": [
+              "bookId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_events_bookId` ON `${TABLE_NAME}` (`bookId`)"
+          },
+          {
+            "name": "index_events_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_events_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          },
+          {
+            "name": "index_events_bookId_categoryId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "categoryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_events_bookId_categoryId` ON `${TABLE_NAME}` (`bookId`, `categoryId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "categories",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "categoryId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "postings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `eventId` TEXT NOT NULL, `accountId` TEXT NOT NULL, `deltaMinor` INTEGER NOT NULL, `currency` TEXT NOT NULL, `date` TEXT NOT NULL, `confirmed` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deltaMinor",
+            "columnName": "deltaMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confirmed",
+            "columnName": "confirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_postings_bookId_eventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_postings_bookId_eventId` ON `${TABLE_NAME}` (`bookId`, `eventId`)"
+          },
+          {
+            "name": "index_postings_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_postings_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "revisions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `eventId` TEXT NOT NULL, `version` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `beforeJson` TEXT, `afterJson` TEXT NOT NULL, `beforeDetailsJson` TEXT, `afterDetailsJson` TEXT, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "beforeJson",
+            "columnName": "beforeJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "afterJson",
+            "columnName": "afterJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "beforeDetailsJson",
+            "columnName": "beforeDetailsJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "afterDetailsJson",
+            "columnName": "afterDetailsJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_revisions_bookId_eventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_revisions_bookId_eventId` ON `${TABLE_NAME}` (`bookId`, `eventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "drafts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `json` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "json",
+            "columnName": "json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "file_blobs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `path` TEXT NOT NULL, `originalName` TEXT NOT NULL, `mime` TEXT NOT NULL, `size` INTEGER NOT NULL, `checksum` TEXT NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "path",
+            "columnName": "path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalName",
+            "columnName": "originalName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mime",
+            "columnName": "mime",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "size",
+            "columnName": "size",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "checksum",
+            "columnName": "checksum",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_file_blobs_bookId",
+            "unique": false,
+            "columnNames": [
+              "bookId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_file_blobs_bookId` ON `${TABLE_NAME}` (`bookId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "attachment_links",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `eventId` TEXT NOT NULL, `fileId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `fileId`) REFERENCES `file_blobs`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileId",
+            "columnName": "fileId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_attachment_links_bookId_fileId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "fileId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_attachment_links_bookId_fileId` ON `${TABLE_NAME}` (`bookId`, `fileId`)"
+          },
+          {
+            "name": "index_attachment_links_bookId_eventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_attachment_links_bookId_eventId` ON `${TABLE_NAME}` (`bookId`, `eventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "file_blobs",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "fileId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "settlements",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `eventId` TEXT NOT NULL, `accountMinor` INTEGER NOT NULL, `accountCurrency` TEXT NOT NULL, `confirmed` INTEGER NOT NULL, `settlementDate` TEXT NOT NULL, `rateSource` TEXT NOT NULL, `rateDate` TEXT NOT NULL, `expectedAccountMinor` INTEGER NOT NULL, `expectedBaseMinor` INTEGER NOT NULL, `originalEventId` TEXT, `manualRate` TEXT NOT NULL DEFAULT '', `expectedAccountCurrency` TEXT NOT NULL DEFAULT '', `referenceRatesJson` TEXT DEFAULT NULL, PRIMARY KEY(`bookId`, `eventId`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `originalEventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountMinor",
+            "columnName": "accountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountCurrency",
+            "columnName": "accountCurrency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confirmed",
+            "columnName": "confirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "settlementDate",
+            "columnName": "settlementDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rateSource",
+            "columnName": "rateSource",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rateDate",
+            "columnName": "rateDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedAccountMinor",
+            "columnName": "expectedAccountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedBaseMinor",
+            "columnName": "expectedBaseMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalEventId",
+            "columnName": "originalEventId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "manualRate",
+            "columnName": "manualRate",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "expectedAccountCurrency",
+            "columnName": "expectedAccountCurrency",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "referenceRatesJson",
+            "columnName": "referenceRatesJson",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "eventId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_settlements_bookId_originalEventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "originalEventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_settlements_bookId_originalEventId` ON `${TABLE_NAME}` (`bookId`, `originalEventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "events",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "originalEventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "transfers",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `eventId` TEXT NOT NULL, `toAccountId` TEXT NOT NULL, `toMinor` INTEGER NOT NULL, `fromCurrency` TEXT NOT NULL, `toCurrency` TEXT NOT NULL, `fromDate` TEXT NOT NULL, `toDate` TEXT NOT NULL, `fromConfirmed` INTEGER NOT NULL, `toConfirmed` INTEGER NOT NULL, `expectedToMinor` INTEGER NOT NULL, `expectedToCurrency` TEXT NOT NULL, `manualRate` TEXT NOT NULL, `rateDate` TEXT NOT NULL, PRIMARY KEY(`bookId`, `eventId`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `toAccountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toAccountId",
+            "columnName": "toAccountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toMinor",
+            "columnName": "toMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fromCurrency",
+            "columnName": "fromCurrency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toCurrency",
+            "columnName": "toCurrency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fromDate",
+            "columnName": "fromDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toDate",
+            "columnName": "toDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fromConfirmed",
+            "columnName": "fromConfirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toConfirmed",
+            "columnName": "toConfirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedToMinor",
+            "columnName": "expectedToMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedToCurrency",
+            "columnName": "expectedToCurrency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "manualRate",
+            "columnName": "manualRate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rateDate",
+            "columnName": "rateDate",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "eventId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_transfers_bookId_toAccountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "toAccountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfers_bookId_toAccountId` ON `${TABLE_NAME}` (`bookId`, `toAccountId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "toAccountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "expense_components",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `eventId` TEXT NOT NULL, `accountId` TEXT NOT NULL, `amountMinor` INTEGER NOT NULL, `currency` TEXT NOT NULL, `baseMinor` INTEGER NOT NULL, `date` TEXT NOT NULL, `confirmed` INTEGER NOT NULL, `position` TEXT NOT NULL, `originalMinor` INTEGER NOT NULL, `originalCurrency` TEXT NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baseMinor",
+            "columnName": "baseMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confirmed",
+            "columnName": "confirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalMinor",
+            "columnName": "originalMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalCurrency",
+            "columnName": "originalCurrency",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_expense_components_bookId_eventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_expense_components_bookId_eventId` ON `${TABLE_NAME}` (`bookId`, `eventId`)"
+          },
+          {
+            "name": "index_expense_components_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_expense_components_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "budgets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `month` TEXT NOT NULL, `scope` TEXT NOT NULL, `categoryId` TEXT, `amountMinor` INTEGER, PRIMARY KEY(`bookId`, `month`, `scope`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `categoryId`) REFERENCES `categories`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "month",
+            "columnName": "month",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoryId",
+            "columnName": "categoryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "month",
+            "scope"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_budgets_bookId_categoryId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "categoryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_budgets_bookId_categoryId` ON `${TABLE_NAME}` (`bookId`, `categoryId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "categories",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "categoryId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "activities",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `startDate` TEXT NOT NULL, `endDate` TEXT NOT NULL, `budgetMinor` INTEGER, `excludeMonthly` INTEGER NOT NULL, `ended` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startDate",
+            "columnName": "startDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endDate",
+            "columnName": "endDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "budgetMinor",
+            "columnName": "budgetMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "excludeMonthly",
+            "columnName": "excludeMonthly",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ended",
+            "columnName": "ended",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_activities_bookId",
+            "unique": false,
+            "columnNames": [
+              "bookId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activities_bookId` ON `${TABLE_NAME}` (`bookId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "book_features",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `activityMode` INTEGER NOT NULL, `activeActivityId` TEXT, PRIMARY KEY(`bookId`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `activeActivityId`) REFERENCES `activities`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityMode",
+            "columnName": "activityMode",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activeActivityId",
+            "columnName": "activeActivityId",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_book_features_bookId_activeActivityId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "activeActivityId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_book_features_bookId_activeActivityId` ON `${TABLE_NAME}` (`bookId`, `activeActivityId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "activities",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "activeActivityId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "event_activities",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `eventId` TEXT NOT NULL, `activityId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `eventId`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `activityId`) REFERENCES `activities`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityId",
+            "columnName": "activityId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "eventId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_event_activities_bookId_activityId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "activityId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_event_activities_bookId_activityId` ON `${TABLE_NAME}` (`bookId`, `activityId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "activities",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "activityId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "recurrences",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `accountId` TEXT NOT NULL, `categoryId` TEXT NOT NULL, `currency` TEXT NOT NULL, `amountMinor` INTEGER, `baseMinor` INTEGER, `estimated` INTEGER NOT NULL, `frequency` TEXT NOT NULL, `anchorDate` TEXT NOT NULL, `endDate` TEXT, `active` INTEGER NOT NULL, `activityId` TEXT, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `categoryId`) REFERENCES `categories`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `activityId`) REFERENCES `activities`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoryId",
+            "columnName": "categoryId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "baseMinor",
+            "columnName": "baseMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "estimated",
+            "columnName": "estimated",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "frequency",
+            "columnName": "frequency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "anchorDate",
+            "columnName": "anchorDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endDate",
+            "columnName": "endDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityId",
+            "columnName": "activityId",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_recurrences_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_recurrences_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          },
+          {
+            "name": "index_recurrences_bookId_categoryId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "categoryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_recurrences_bookId_categoryId` ON `${TABLE_NAME}` (`bookId`, `categoryId`)"
+          },
+          {
+            "name": "index_recurrences_bookId_activityId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "activityId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_recurrences_bookId_activityId` ON `${TABLE_NAME}` (`bookId`, `activityId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "categories",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "categoryId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "activities",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "activityId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "occurrences",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `recurrenceId` TEXT NOT NULL, `scheduledDate` TEXT NOT NULL, `name` TEXT NOT NULL, `accountId` TEXT NOT NULL, `categoryId` TEXT NOT NULL, `currency` TEXT NOT NULL, `amountMinor` INTEGER, `baseMinor` INTEGER, `estimated` INTEGER NOT NULL, `status` TEXT NOT NULL, `eventId` TEXT, `activityId` TEXT, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `recurrenceId`) REFERENCES `recurrences`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `categoryId`) REFERENCES `categories`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `activityId`) REFERENCES `activities`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recurrenceId",
+            "columnName": "recurrenceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scheduledDate",
+            "columnName": "scheduledDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoryId",
+            "columnName": "categoryId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "baseMinor",
+            "columnName": "baseMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "estimated",
+            "columnName": "estimated",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "activityId",
+            "columnName": "activityId",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_occurrences_bookId_recurrenceId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "recurrenceId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_occurrences_bookId_recurrenceId` ON `${TABLE_NAME}` (`bookId`, `recurrenceId`)"
+          },
+          {
+            "name": "index_occurrences_bookId_eventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_occurrences_bookId_eventId` ON `${TABLE_NAME}` (`bookId`, `eventId`)"
+          },
+          {
+            "name": "index_occurrences_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_occurrences_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          },
+          {
+            "name": "index_occurrences_bookId_categoryId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "categoryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_occurrences_bookId_categoryId` ON `${TABLE_NAME}` (`bookId`, `categoryId`)"
+          },
+          {
+            "name": "index_occurrences_bookId_activityId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "activityId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_occurrences_bookId_activityId` ON `${TABLE_NAME}` (`bookId`, `activityId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "recurrences",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "recurrenceId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "events",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "categories",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "categoryId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "activities",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "activityId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "activity_budgets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `activityId` TEXT NOT NULL, `categoryId` TEXT NOT NULL, `amountMinor` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `activityId`, `categoryId`), FOREIGN KEY(`bookId`, `activityId`) REFERENCES `activities`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `categoryId`) REFERENCES `categories`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityId",
+            "columnName": "activityId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoryId",
+            "columnName": "categoryId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "activityId",
+            "categoryId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_activity_budgets_bookId_categoryId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "categoryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activity_budgets_bookId_categoryId` ON `${TABLE_NAME}` (`bookId`, `categoryId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "activities",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "activityId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "categories",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "categoryId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "activity_reserves",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `activityId` TEXT NOT NULL, `name` TEXT NOT NULL, `date` TEXT NOT NULL, `amountMinor` INTEGER NOT NULL, `accountId` TEXT, `accountMinor` INTEGER, `accountCurrency` TEXT, `occurrenceId` TEXT, `releasedMinor` INTEGER NOT NULL, `active` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `activityId`) REFERENCES `activities`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `occurrenceId`) REFERENCES `occurrences`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityId",
+            "columnName": "activityId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "accountMinor",
+            "columnName": "accountMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "accountCurrency",
+            "columnName": "accountCurrency",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "occurrenceId",
+            "columnName": "occurrenceId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "releasedMinor",
+            "columnName": "releasedMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_activity_reserves_bookId_activityId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "activityId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activity_reserves_bookId_activityId` ON `${TABLE_NAME}` (`bookId`, `activityId`)"
+          },
+          {
+            "name": "index_activity_reserves_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activity_reserves_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          },
+          {
+            "name": "index_activity_reserves_bookId_occurrenceId",
+            "unique": true,
+            "columnNames": [
+              "bookId",
+              "occurrenceId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_activity_reserves_bookId_occurrenceId` ON `${TABLE_NAME}` (`bookId`, `occurrenceId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "activities",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "activityId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "occurrences",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "occurrenceId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "reserve_uses",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `eventId` TEXT NOT NULL, `reserveId` TEXT NOT NULL, `amountMinor` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `eventId`, `reserveId`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `reserveId`) REFERENCES `activity_reserves`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reserveId",
+            "columnName": "reserveId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "eventId",
+            "reserveId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_reserve_uses_bookId_reserveId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "reserveId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_reserve_uses_bookId_reserveId` ON `${TABLE_NAME}` (`bookId`, `reserveId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "activity_reserves",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "reserveId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "friends",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `active` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_friends_bookId",
+            "unique": false,
+            "columnNames": [
+              "bookId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_friends_bookId` ON `${TABLE_NAME}` (`bookId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "activity_participants",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `activityId` TEXT NOT NULL, `friendId` TEXT NOT NULL, `position` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `activityId`, `friendId`), FOREIGN KEY(`bookId`, `activityId`) REFERENCES `activities`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `friendId`) REFERENCES `friends`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityId",
+            "columnName": "activityId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "friendId",
+            "columnName": "friendId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "activityId",
+            "friendId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_activity_participants_bookId_friendId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "friendId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activity_participants_bookId_friendId` ON `${TABLE_NAME}` (`bookId`, `friendId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "activities",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "activityId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "friends",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "friendId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "treats",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `activityId` TEXT NOT NULL, `eventId` TEXT, `payerFriendId` TEXT, `amountMinor` INTEGER NOT NULL, `currency` TEXT NOT NULL, `baseMinor` INTEGER NOT NULL, `date` TEXT NOT NULL, `name` TEXT NOT NULL, `mode` TEXT NOT NULL, `weightsJson` TEXT NOT NULL, `revision` INTEGER NOT NULL, `deletedAt` INTEGER, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `activityId`) REFERENCES `activities`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `payerFriendId`) REFERENCES `friends`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityId",
+            "columnName": "activityId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "payerFriendId",
+            "columnName": "payerFriendId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baseMinor",
+            "columnName": "baseMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "weightsJson",
+            "columnName": "weightsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deletedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_treats_bookId_activityId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "activityId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_treats_bookId_activityId` ON `${TABLE_NAME}` (`bookId`, `activityId`)"
+          },
+          {
+            "name": "index_treats_bookId_eventId",
+            "unique": true,
+            "columnNames": [
+              "bookId",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_treats_bookId_eventId` ON `${TABLE_NAME}` (`bookId`, `eventId`)"
+          },
+          {
+            "name": "index_treats_bookId_payerFriendId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "payerFriendId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_treats_bookId_payerFriendId` ON `${TABLE_NAME}` (`bookId`, `payerFriendId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "activities",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "activityId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "friends",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "payerFriendId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "treat_allocations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `treatId` TEXT NOT NULL, `participant` TEXT NOT NULL, `friendId` TEXT, `amountMinor` INTEGER NOT NULL, `baseMinor` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `treatId`, `participant`), FOREIGN KEY(`bookId`, `treatId`) REFERENCES `treats`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `friendId`) REFERENCES `friends`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "treatId",
+            "columnName": "treatId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "participant",
+            "columnName": "participant",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "friendId",
+            "columnName": "friendId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baseMinor",
+            "columnName": "baseMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "treatId",
+            "participant"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_treat_allocations_bookId_friendId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "friendId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_treat_allocations_bookId_friendId` ON `${TABLE_NAME}` (`bookId`, `friendId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "treats",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "treatId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "friends",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "friendId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "analysis_preferences",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `modulesJson` TEXT NOT NULL, `pinnedJson` TEXT NOT NULL, PRIMARY KEY(`bookId`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modulesJson",
+            "columnName": "modulesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pinnedJson",
+            "columnName": "pinnedJson",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "merchants",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `note` TEXT NOT NULL, `active` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_merchants_bookId",
+            "unique": false,
+            "columnNames": [
+              "bookId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_merchants_bookId` ON `${TABLE_NAME}` (`bookId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "merchant_locations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `merchantId` TEXT NOT NULL, `name` TEXT NOT NULL, `latitude` REAL, `longitude` REAL, `radiusMeters` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `merchantId`) REFERENCES `merchants`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "merchantId",
+            "columnName": "merchantId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "radiusMeters",
+            "columnName": "radiusMeters",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_merchant_locations_bookId_merchantId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "merchantId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_merchant_locations_bookId_merchantId` ON `${TABLE_NAME}` (`bookId`, `merchantId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "merchants",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "merchantId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "event_merchants",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `eventId` TEXT NOT NULL, `merchantId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `eventId`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `merchantId`) REFERENCES `merchants`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "merchantId",
+            "columnName": "merchantId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "eventId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_event_merchants_bookId_merchantId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "merchantId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_event_merchants_bookId_merchantId` ON `${TABLE_NAME}` (`bookId`, `merchantId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "merchants",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "merchantId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "draft_media",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `fileId` TEXT NOT NULL, `sessionId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `fileId`), FOREIGN KEY(`bookId`, `fileId`) REFERENCES `file_blobs`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileId",
+            "columnName": "fileId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "fileId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_draft_media_bookId_sessionId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_draft_media_bookId_sessionId` ON `${TABLE_NAME}` (`bookId`, `sessionId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "file_blobs",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "fileId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "receipts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `eventId` TEXT NOT NULL, `revision` INTEGER NOT NULL, `status` TEXT NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_receipts_bookId_eventId",
+            "unique": true,
+            "columnNames": [
+              "bookId",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_receipts_bookId_eventId` ON `${TABLE_NAME}` (`bookId`, `eventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "receipt_images",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `receiptId` TEXT NOT NULL, `revision` INTEGER NOT NULL, `position` INTEGER NOT NULL, `fileId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `receiptId`, `revision`, `position`), FOREIGN KEY(`bookId`, `receiptId`) REFERENCES `receipts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `fileId`) REFERENCES `file_blobs`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receiptId",
+            "columnName": "receiptId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileId",
+            "columnName": "fileId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "receiptId",
+            "revision",
+            "position"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_receipt_images_bookId_fileId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "fileId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_receipt_images_bookId_fileId` ON `${TABLE_NAME}` (`bookId`, `fileId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "receipts",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "receiptId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "file_blobs",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "fileId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "financial_rules",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `mode` TEXT NOT NULL, `version` INTEGER NOT NULL, `effectiveFrom` TEXT NOT NULL, `json` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "effectiveFrom",
+            "columnName": "effectiveFrom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "json",
+            "columnName": "json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_financial_rules_bookId_accountId_mode_version",
+            "unique": true,
+            "columnNames": [
+              "bookId",
+              "accountId",
+              "mode",
+              "version"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_financial_rules_bookId_accountId_mode_version` ON `${TABLE_NAME}` (`bookId`, `accountId`, `mode`, `version`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "financial_plans",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `name` TEXT NOT NULL, `mode` TEXT NOT NULL, `origin` TEXT NOT NULL, `sourceEventId` TEXT, `currency` TEXT NOT NULL, `principalMinor` INTEGER, `complete` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `active` INTEGER NOT NULL, `termsJson` TEXT DEFAULT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `sourceEventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "origin",
+            "columnName": "origin",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceEventId",
+            "columnName": "sourceEventId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "principalMinor",
+            "columnName": "principalMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "complete",
+            "columnName": "complete",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "termsJson",
+            "columnName": "termsJson",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_financial_plans_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_plans_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          },
+          {
+            "name": "index_financial_plans_bookId_sourceEventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "sourceEventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_plans_bookId_sourceEventId` ON `${TABLE_NAME}` (`bookId`, `sourceEventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "events",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "sourceEventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "financial_bills",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `planId` TEXT NOT NULL, `number` INTEGER NOT NULL, `paymentAccountId` TEXT, `ruleVersionId` TEXT, `predictedDate` TEXT, `predictedPrincipalMinor` INTEGER, `predictedFeeMinor` INTEGER, `predictedTotalMinor` INTEGER, `basisJson` TEXT, `confirmedDate` TEXT, `confirmedPrincipalMinor` INTEGER, `confirmedFeeMinor` INTEGER, `confirmedTotalMinor` INTEGER, `confirmedAt` INTEGER, `revision` INTEGER NOT NULL, `active` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `planId`) REFERENCES `financial_plans`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `paymentAccountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `ruleVersionId`) REFERENCES `financial_rules`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "planId",
+            "columnName": "planId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "number",
+            "columnName": "number",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paymentAccountId",
+            "columnName": "paymentAccountId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "ruleVersionId",
+            "columnName": "ruleVersionId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "predictedDate",
+            "columnName": "predictedDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "predictedPrincipalMinor",
+            "columnName": "predictedPrincipalMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "predictedFeeMinor",
+            "columnName": "predictedFeeMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "predictedTotalMinor",
+            "columnName": "predictedTotalMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "basisJson",
+            "columnName": "basisJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "confirmedDate",
+            "columnName": "confirmedDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "confirmedPrincipalMinor",
+            "columnName": "confirmedPrincipalMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "confirmedFeeMinor",
+            "columnName": "confirmedFeeMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "confirmedTotalMinor",
+            "columnName": "confirmedTotalMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "confirmedAt",
+            "columnName": "confirmedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_financial_bills_bookId_planId_number",
+            "unique": true,
+            "columnNames": [
+              "bookId",
+              "planId",
+              "number"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_financial_bills_bookId_planId_number` ON `${TABLE_NAME}` (`bookId`, `planId`, `number`)"
+          },
+          {
+            "name": "index_financial_bills_bookId_paymentAccountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "paymentAccountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_bills_bookId_paymentAccountId` ON `${TABLE_NAME}` (`bookId`, `paymentAccountId`)"
+          },
+          {
+            "name": "index_financial_bills_bookId_ruleVersionId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "ruleVersionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_bills_bookId_ruleVersionId` ON `${TABLE_NAME}` (`bookId`, `ruleVersionId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "financial_plans",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "planId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "paymentAccountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "financial_rules",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "ruleVersionId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "financial_rule_validations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `ruleVersionId` TEXT NOT NULL, `billId` TEXT NOT NULL, `billRevision` INTEGER NOT NULL, `principalDifferenceMinor` INTEGER, `feeDifferenceMinor` INTEGER, `totalDifferenceMinor` INTEGER NOT NULL, `dateChanged` INTEGER NOT NULL, `checkedAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `ruleVersionId`) REFERENCES `financial_rules`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `billId`) REFERENCES `financial_bills`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ruleVersionId",
+            "columnName": "ruleVersionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "billId",
+            "columnName": "billId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "billRevision",
+            "columnName": "billRevision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "principalDifferenceMinor",
+            "columnName": "principalDifferenceMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "feeDifferenceMinor",
+            "columnName": "feeDifferenceMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "totalDifferenceMinor",
+            "columnName": "totalDifferenceMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateChanged",
+            "columnName": "dateChanged",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "checkedAt",
+            "columnName": "checkedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_financial_rule_validations_bookId_ruleVersionId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "ruleVersionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_rule_validations_bookId_ruleVersionId` ON `${TABLE_NAME}` (`bookId`, `ruleVersionId`)"
+          },
+          {
+            "name": "index_financial_rule_validations_bookId_billId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "billId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_rule_validations_bookId_billId` ON `${TABLE_NAME}` (`bookId`, `billId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "financial_rules",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "ruleVersionId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "financial_bills",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "billId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "debt_contracts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `name` TEXT NOT NULL, `mode` TEXT NOT NULL, `currency` TEXT NOT NULL, `principalMinor` INTEGER NOT NULL, `date` TEXT NOT NULL, `fundingEventId` TEXT, `fundingAccountId` TEXT, `receivedMinor` INTEGER, `withheldFeeMinor` INTEGER, `withheldFeeBaseMinor` INTEGER, `separateFeeMinor` INTEGER, `separateFeeAccountId` TEXT, `separateFeeBaseMinor` INTEGER, `createdAt` INTEGER NOT NULL, `revision` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `fundingAccountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `fundingEventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `separateFeeAccountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "principalMinor",
+            "columnName": "principalMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fundingEventId",
+            "columnName": "fundingEventId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fundingAccountId",
+            "columnName": "fundingAccountId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "receivedMinor",
+            "columnName": "receivedMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "withheldFeeMinor",
+            "columnName": "withheldFeeMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "withheldFeeBaseMinor",
+            "columnName": "withheldFeeBaseMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "separateFeeMinor",
+            "columnName": "separateFeeMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "separateFeeAccountId",
+            "columnName": "separateFeeAccountId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "separateFeeBaseMinor",
+            "columnName": "separateFeeBaseMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_debt_contracts_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_debt_contracts_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          },
+          {
+            "name": "index_debt_contracts_bookId_fundingAccountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "fundingAccountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_debt_contracts_bookId_fundingAccountId` ON `${TABLE_NAME}` (`bookId`, `fundingAccountId`)"
+          },
+          {
+            "name": "index_debt_contracts_bookId_fundingEventId",
+            "unique": true,
+            "columnNames": [
+              "bookId",
+              "fundingEventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_debt_contracts_bookId_fundingEventId` ON `${TABLE_NAME}` (`bookId`, `fundingEventId`)"
+          },
+          {
+            "name": "index_debt_contracts_bookId_separateFeeAccountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "separateFeeAccountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_debt_contracts_bookId_separateFeeAccountId` ON `${TABLE_NAME}` (`bookId`, `separateFeeAccountId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "fundingAccountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "events",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "fundingEventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "separateFeeAccountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "financial_repayments",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `eventId` TEXT NOT NULL, `debtAccountId` TEXT NOT NULL, `receivedMinor` INTEGER, `principalMinor` INTEGER, `interestMinor` INTEGER, `feeMinor` INTEGER, `feeBaseMinor` INTEGER, `clearingDate` TEXT, `platformConfirmed` INTEGER NOT NULL, `paymentType` TEXT NOT NULL, `linkedTransferEventId` TEXT, `originalInputJson` TEXT NOT NULL, `sourceFeeMinor` INTEGER, `sourceFeeBaseMinor` INTEGER, PRIMARY KEY(`bookId`, `eventId`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `debtAccountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `linkedTransferEventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "debtAccountId",
+            "columnName": "debtAccountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receivedMinor",
+            "columnName": "receivedMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "principalMinor",
+            "columnName": "principalMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "interestMinor",
+            "columnName": "interestMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "feeMinor",
+            "columnName": "feeMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "feeBaseMinor",
+            "columnName": "feeBaseMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "clearingDate",
+            "columnName": "clearingDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "platformConfirmed",
+            "columnName": "platformConfirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paymentType",
+            "columnName": "paymentType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "linkedTransferEventId",
+            "columnName": "linkedTransferEventId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "originalInputJson",
+            "columnName": "originalInputJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceFeeMinor",
+            "columnName": "sourceFeeMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sourceFeeBaseMinor",
+            "columnName": "sourceFeeBaseMinor",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "eventId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_financial_repayments_bookId_debtAccountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "debtAccountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_repayments_bookId_debtAccountId` ON `${TABLE_NAME}` (`bookId`, `debtAccountId`)"
+          },
+          {
+            "name": "index_financial_repayments_bookId_linkedTransferEventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "linkedTransferEventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_repayments_bookId_linkedTransferEventId` ON `${TABLE_NAME}` (`bookId`, `linkedTransferEventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "events",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "debtAccountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "events",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "linkedTransferEventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "financial_repayment_allocations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `eventId` TEXT NOT NULL, `billId` TEXT, `contractId` TEXT, `principalMinor` INTEGER, `interestMinor` INTEGER, `feeMinor` INTEGER, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `financial_repayments`(`bookId`, `eventId`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `billId`) REFERENCES `financial_bills`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `contractId`) REFERENCES `debt_contracts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "billId",
+            "columnName": "billId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "contractId",
+            "columnName": "contractId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "principalMinor",
+            "columnName": "principalMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "interestMinor",
+            "columnName": "interestMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "feeMinor",
+            "columnName": "feeMinor",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_financial_repayment_allocations_bookId_eventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_repayment_allocations_bookId_eventId` ON `${TABLE_NAME}` (`bookId`, `eventId`)"
+          },
+          {
+            "name": "index_financial_repayment_allocations_bookId_billId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "billId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_repayment_allocations_bookId_billId` ON `${TABLE_NAME}` (`bookId`, `billId`)"
+          },
+          {
+            "name": "index_financial_repayment_allocations_bookId_contractId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "contractId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_repayment_allocations_bookId_contractId` ON `${TABLE_NAME}` (`bookId`, `contractId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "financial_repayments",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "eventId"
+            ]
+          },
+          {
+            "table": "financial_bills",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "billId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "debt_contracts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "contractId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "financial_contract_plans",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `planId` TEXT NOT NULL, `contractId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `planId`), FOREIGN KEY(`bookId`, `planId`) REFERENCES `financial_plans`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `contractId`) REFERENCES `debt_contracts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "planId",
+            "columnName": "planId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contractId",
+            "columnName": "contractId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "planId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_financial_contract_plans_bookId_contractId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "contractId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_contract_plans_bookId_contractId` ON `${TABLE_NAME}` (`bookId`, `contractId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "financial_plans",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "planId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "debt_contracts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "contractId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "financial_plan_revisions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `planId` TEXT NOT NULL, `version` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `reason` TEXT NOT NULL, `causeEventId` TEXT, `json` TEXT NOT NULL, PRIMARY KEY(`bookId`, `planId`, `version`), FOREIGN KEY(`bookId`, `planId`) REFERENCES `financial_plans`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `causeEventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "planId",
+            "columnName": "planId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reason",
+            "columnName": "reason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "causeEventId",
+            "columnName": "causeEventId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "json",
+            "columnName": "json",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "planId",
+            "version"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_financial_plan_revisions_bookId_causeEventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "causeEventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_plan_revisions_bookId_causeEventId` ON `${TABLE_NAME}` (`bookId`, `causeEventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "financial_plans",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "planId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "events",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "causeEventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "financial_arrangements",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `originalPlanId` TEXT NOT NULL, `targetPlanId` TEXT NOT NULL, `effectiveDate` TEXT NOT NULL, `appliedAt` TEXT NOT NULL, `principalMinor` INTEGER NOT NULL, `changeFeeMinor` INTEGER NOT NULL, `feeTreatment` TEXT NOT NULL, `exceptionAccepted` INTEGER NOT NULL, `baselineJson` TEXT NOT NULL, `inputJson` TEXT NOT NULL, `comparisonJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `originalPlanId`) REFERENCES `financial_plans`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `targetPlanId`) REFERENCES `financial_plans`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalPlanId",
+            "columnName": "originalPlanId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetPlanId",
+            "columnName": "targetPlanId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "effectiveDate",
+            "columnName": "effectiveDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "appliedAt",
+            "columnName": "appliedAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "principalMinor",
+            "columnName": "principalMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changeFeeMinor",
+            "columnName": "changeFeeMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "feeTreatment",
+            "columnName": "feeTreatment",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exceptionAccepted",
+            "columnName": "exceptionAccepted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baselineJson",
+            "columnName": "baselineJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputJson",
+            "columnName": "inputJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "comparisonJson",
+            "columnName": "comparisonJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_financial_arrangements_bookId_originalPlanId",
+            "unique": true,
+            "columnNames": [
+              "bookId",
+              "originalPlanId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_financial_arrangements_bookId_originalPlanId` ON `${TABLE_NAME}` (`bookId`, `originalPlanId`)"
+          },
+          {
+            "name": "index_financial_arrangements_bookId_targetPlanId",
+            "unique": true,
+            "columnNames": [
+              "bookId",
+              "targetPlanId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_financial_arrangements_bookId_targetPlanId` ON `${TABLE_NAME}` (`bookId`, `targetPlanId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "financial_plans",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "originalPlanId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "financial_plans",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "targetPlanId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "financial_bill_adjustments",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `arrangementId` TEXT NOT NULL, `billId` TEXT NOT NULL, `principalMinor` INTEGER NOT NULL, `feeMinor` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `arrangementId`) REFERENCES `financial_arrangements`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `billId`) REFERENCES `financial_bills`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "arrangementId",
+            "columnName": "arrangementId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "billId",
+            "columnName": "billId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "principalMinor",
+            "columnName": "principalMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "feeMinor",
+            "columnName": "feeMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_financial_bill_adjustments_bookId_arrangementId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "arrangementId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_bill_adjustments_bookId_arrangementId` ON `${TABLE_NAME}` (`bookId`, `arrangementId`)"
+          },
+          {
+            "name": "index_financial_bill_adjustments_bookId_billId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "billId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_financial_bill_adjustments_bookId_billId` ON `${TABLE_NAME}` (`bookId`, `billId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "financial_arrangements",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "arrangementId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "financial_bills",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "billId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "expected_incomes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `amountMinor` INTEGER NOT NULL, `currency` TEXT NOT NULL, `date` TEXT NOT NULL, `accountId` TEXT NOT NULL, `accountMinor` INTEGER, `status` TEXT NOT NULL, `eventId` TEXT, `revision` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `accountEstimateJson` TEXT DEFAULT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountMinor",
+            "columnName": "accountMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountEstimateJson",
+            "columnName": "accountEstimateJson",
+            "affinity": "TEXT",
+            "defaultValue": "NULL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_expected_incomes_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_expected_incomes_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          },
+          {
+            "name": "index_expected_incomes_bookId_eventId",
+            "unique": true,
+            "columnNames": [
+              "bookId",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_expected_incomes_bookId_eventId` ON `${TABLE_NAME}` (`bookId`, `eventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "events",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "credit_limit_configs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `version` INTEGER NOT NULL, `effectiveFrom` TEXT NOT NULL, `currency` TEXT NOT NULL, `totalMinor` INTEGER, `installmentMinor` INTEGER, `revolvingMinor` INTEGER, `sharing` TEXT, `combinedMinor` INTEGER, `basisDate` TEXT NOT NULL, `usedTotalMinor` INTEGER, `usedInstallmentMinor` INTEGER, `usedRevolvingMinor` INTEGER, `basisJson` TEXT NOT NULL, `recovery` TEXT, `usageBasis` TEXT, `usageStart` TEXT, `zoneId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "effectiveFrom",
+            "columnName": "effectiveFrom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalMinor",
+            "columnName": "totalMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "installmentMinor",
+            "columnName": "installmentMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "revolvingMinor",
+            "columnName": "revolvingMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sharing",
+            "columnName": "sharing",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "combinedMinor",
+            "columnName": "combinedMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "basisDate",
+            "columnName": "basisDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "usedTotalMinor",
+            "columnName": "usedTotalMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "usedInstallmentMinor",
+            "columnName": "usedInstallmentMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "usedRevolvingMinor",
+            "columnName": "usedRevolvingMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "basisJson",
+            "columnName": "basisJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recovery",
+            "columnName": "recovery",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "usageBasis",
+            "columnName": "usageBasis",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "usageStart",
+            "columnName": "usageStart",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "zoneId",
+            "columnName": "zoneId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_credit_limit_configs_bookId_accountId_version",
+            "unique": true,
+            "columnNames": [
+              "bookId",
+              "accountId",
+              "version"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_credit_limit_configs_bookId_accountId_version` ON `${TABLE_NAME}` (`bookId`, `accountId`, `version`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "credit_limit_groups",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `currency` TEXT NOT NULL, `totalMinor` INTEGER, `usedMinor` INTEGER, `basisDate` TEXT NOT NULL, `basisJson` TEXT NOT NULL, `revision` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalMinor",
+            "columnName": "totalMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "usedMinor",
+            "columnName": "usedMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "basisDate",
+            "columnName": "basisDate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "basisJson",
+            "columnName": "basisJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_credit_limit_groups_bookId",
+            "unique": false,
+            "columnNames": [
+              "bookId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_credit_limit_groups_bookId` ON `${TABLE_NAME}` (`bookId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "books",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "credit_limit_group_members",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `accountId` TEXT NOT NULL, `groupId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `accountId`), FOREIGN KEY(`bookId`, `groupId`) REFERENCES `credit_limit_groups`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "accountId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_credit_limit_group_members_bookId_groupId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "groupId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_credit_limit_group_members_bookId_groupId` ON `${TABLE_NAME}` (`bookId`, `groupId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "credit_limit_groups",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "groupId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "credit_limit_group_revisions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `groupId` TEXT NOT NULL, `version` INTEGER NOT NULL, `json` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `groupId`, `version`), FOREIGN KEY(`bookId`, `groupId`) REFERENCES `credit_limit_groups`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "json",
+            "columnName": "json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "groupId",
+            "version"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "credit_limit_groups",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "groupId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "credit_limit_recoveries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `eventId` TEXT NOT NULL, `date` TEXT NOT NULL, `principalMinor` INTEGER NOT NULL, `installmentMinor` INTEGER, `revolvingMinor` INTEGER, `sourceProof` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `voidedAt` INTEGER, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "principalMinor",
+            "columnName": "principalMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "installmentMinor",
+            "columnName": "installmentMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "revolvingMinor",
+            "columnName": "revolvingMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sourceProof",
+            "columnName": "sourceProof",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "voidedAt",
+            "columnName": "voidedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_credit_limit_recoveries_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_credit_limit_recoveries_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          },
+          {
+            "name": "index_credit_limit_recoveries_bookId_eventId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_credit_limit_recoveries_bookId_eventId` ON `${TABLE_NAME}` (`bookId`, `eventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "events",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "eventId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "credit_limit_observations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT, `groupId` TEXT, `scope` TEXT NOT NULL, `availableMinor` INTEGER NOT NULL, `observedAt` TEXT NOT NULL, `basisJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`bookId`, `groupId`) REFERENCES `credit_limit_groups`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "bookId",
+            "columnName": "bookId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "availableMinor",
+            "columnName": "availableMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "observedAt",
+            "columnName": "observedAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "basisJson",
+            "columnName": "basisJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bookId",
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_credit_limit_observations_bookId_accountId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "accountId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_credit_limit_observations_bookId_accountId` ON `${TABLE_NAME}` (`bookId`, `accountId`)"
+          },
+          {
+            "name": "index_credit_limit_observations_bookId_groupId",
+            "unique": false,
+            "columnNames": [
+              "bookId",
+              "groupId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_credit_limit_observations_bookId_groupId` ON `${TABLE_NAME}` (`bookId`, `groupId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "accounts",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "accountId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          },
+          {
+            "table": "credit_limit_groups",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "bookId",
+              "groupId"
+            ],
+            "referencedColumns": [
+              "bookId",
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0a97ced59afc1f445f6d741ec34aca1d')"
+    ]
+  }
+}

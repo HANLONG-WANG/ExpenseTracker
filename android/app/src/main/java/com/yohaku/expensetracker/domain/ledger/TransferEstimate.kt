@@ -15,7 +15,7 @@ fun estimateTransfer(d:EntryDraft,from:Currency,to:Currency,direction:String):En
     }
     val sourceFee=if(d.feePosition==TransferFeePosition.INCLUDED_FROM)fee(from)else BigDecimal.ZERO
     val targetFee=if(d.feePosition==TransferFeePosition.DEDUCTED_TO)fee(to)else BigDecimal.ZERO
-    return if(direction=="TO") {
+    val value=if(direction=="TO") {
         require(!d.toConfirmed){"实际到账金额已确认，请先改为预计 / 実入金額は確認済み。先に見込みへ変更してください"}
         val principal=Money.parse(d.amount,from).decimal.subtract(sourceFee)
         val incoming=principal.multiply(rate).subtract(targetFee)
@@ -26,4 +26,5 @@ fun estimateTransfer(d:EntryDraft,from:Currency,to:Currency,direction:String):En
         val outgoing=Money.parse(d.toAmount,to).decimal.add(targetFee).divide(rate,12,RoundingMode.HALF_UP).add(sourceFee)
         d.copy(amount=outgoing.setScale(from.scale,RoundingMode.HALF_UP).toPlainString(),estimateDirection="FROM")
     }
+    return if(d.referenceRates.any{it.base==from&&it.quote==to})value.copy(referenceExpectedFromMinor=Money.parse(value.amount,from).minor,referenceExpectedToMinor=Money.parse(value.toAmount,to).minor)else value
 }

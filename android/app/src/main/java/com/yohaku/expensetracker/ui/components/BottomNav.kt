@@ -19,7 +19,7 @@ import com.yohaku.expensetracker.ui.theme.*
 @Composable fun YBottomNav(route:String,onNavigate:(String)->Unit,onAdd:()->Unit) {
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
-    val active=when(route){"ledger","detail","settings","trash"->"home";"categories"->"analysis";"account-detail"->"accounts";else->route}
+    val active=when(route){"ledger","detail","settings","trash","reminders"->"home";"categories"->"analysis";"account-detail","rules","calendar"->"accounts";"forecast"->"analysis";else->route}
     val background=if(journal)Color(0xffe9e2ce) else if(objects)Color(0xfffffaef) else t.bg
     val shape=RoundedCornerShape(topStart=if(objects)23.dp else 0.dp,topEnd=if(objects)23.dp else 0.dp)
     Column(Modifier.fillMaxWidth().testTag("bottom-nav").background(background,shape).drawBehind{

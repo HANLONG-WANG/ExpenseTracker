@@ -25,6 +25,8 @@ import com.yohaku.expensetracker.ui.theme.*
     YSheet(word("换算资料 · 保留历史金额","換算情報・履歴額を保持"),onClose) {
         Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             RecordFacts(listOf(word("方向","方向") to "1 ${original.name} → ${target.name}",word("来源","出典") to word("手动填写","手入力")),audit=true)
+            if(original!=target)ReferenceRatePanel(vm.referenceRates,original,target,date,enabled=!d.settlementConfirmed,onUse={q->vm.changeEntry(s.book.id,applyReferenceAccountAmount(d,target,q));onClose()})
+            if(target.name!=s.book.currency)ReferenceRatePanel(vm.referenceRates,target,Currency.valueOf(s.book.currency),date,onUse={q->vm.changeEntry(s.book.id,applyReferenceBaseAmount(d,target,Currency.valueOf(s.book.currency),q));onClose()})
             YField(word("手动汇率 / 仅预填预计金额","手動レート・見込額の仮入力のみ"),rate,{rate=it},numeric=true)
             if(target.name!=s.book.currency)YField(word("该笔本位币统计金额","この取引の基準通貨集計額")+" · "+s.book.currency,base,{base=it},numeric=true)
             YDateFields(listOf(word("汇率日期","レートの日付") to date),owner,{owner=it},{_,value->date=value})
@@ -37,7 +39,7 @@ import com.yohaku.expensetracker.ui.theme.*
                     require(parsed.signum()>0){"汇率应大于零 / レートは0より大きくしてください"}
                     require(original!=target||parsed.compareTo(java.math.BigDecimal.ONE)==0){"相同币种汇率为1 / 同じ通貨のレートは1です"}
                     java.time.LocalDate.parse(date)
-                    changed=d.copy(manualRate=rate,baseAmount=base,rateDate=date,rateSource="manual")
+                    changed=d.copy(manualRate=rate,baseAmount=base,rateDate=date,rateSource="manual",referenceAccountLinked=false,referenceBaseLinked=false,referenceExpectedAccountMinor=null,referenceExpectedBaseMinor=null,referenceRates=emptyList())
                     if(estimate){
                         val amount=Money.parse(d.amount,original).convert(target,parsed).decimal.toPlainString()
                         changed=if(original==target)changed.copy(amount=amount,settlementConfirmed=false)else changed.copy(accountAmount=amount,settlementConfirmed=false)

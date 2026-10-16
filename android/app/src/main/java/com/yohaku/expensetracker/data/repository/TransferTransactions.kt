@@ -3,6 +3,7 @@ package com.yohaku.expensetracker.data.repository
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.model.*
 import java.time.LocalDate
+import kotlinx.serialization.encodeToString
 
 internal suspend fun LedgerRepository.prepareTransfer(bookId:String,d:EntryDraft):PreparedLedgerChange {
     val book=dao.book(bookId)?:error("账本不存在 / 帳簿がありません")
@@ -21,9 +22,9 @@ internal suspend fun LedgerRepository.prepareTransfer(bookId:String,d:EntryDraft
     val previous=old?.let{dao.transfer(bookId,it.id)}
     val priorSettlement=old?.let{dao.settlement(bookId,it.id)}
     val transfer=TransferEntity(bookId,event.id,to.id,target.minor,from.currency,to.currency,d.date,d.toDate,d.fromConfirmed,d.toConfirmed,
-        previous?.expectedToMinor?:target.minor,previous?.expectedToCurrency?:to.currency,d.manualRate,d.rateDate)
+        previous?.expectedToMinor?:d.referenceExpectedToMinor?:target.minor,previous?.expectedToCurrency?:to.currency,d.manualRate,d.rateDate)
     val settlement=SettlementEntity(bookId,event.id,source.minor,from.currency,d.fromConfirmed,d.date,d.rateSource,d.rateDate,
-        priorSettlement?.expectedAccountMinor?:source.minor,0,manualRate=d.manualRate,expectedAccountCurrency=priorSettlement?.expectedMoney()?.currency?.name?:from.currency)
+        priorSettlement?.expectedAccountMinor?:d.referenceExpectedFromMinor?:source.minor,0,manualRate=d.manualRate,expectedAccountCurrency=priorSettlement?.expectedMoney()?.currency?.name?:from.currency,referenceRatesJson=d.referenceRates.takeIf{it.isNotEmpty()}?.let{json.encodeToString(it)})
     val postings=mutableListOf(
         PostingEntity(bookId,event.id+":from",event.id,from.id,-source.minor,from.currency,d.date,d.fromConfirmed),
         PostingEntity(bookId,event.id+":to",event.id,to.id,target.minor,to.currency,d.toDate,d.toConfirmed))

@@ -31,7 +31,7 @@ import kotlin.math.abs
 internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModule.CATEGORIES->"bag";AnalysisModule.MERCHANTS->"coffee";AnalysisModule.TREND,AnalysisModule.COMPARISON->"chart";AnalysisModule.ACTIVITIES->"life"}
 @Composable private fun analysisCategoryItems(s:BookSnapshot,report:AnalysisReport,currency:Currency)=s.categoryGroups(report).map{g->AnalysisListItem(g.key,if(g.key=="FEES")word("明确费用","確定した手数料")else s.categories.first{it.id==g.key}.name,Money(currency,g.amount).display(),g.count,if(report.total==0L)"—"else g.amount.toBigDecimal().multiply(100.toBigDecimal()).divide(report.total.toBigDecimal(),0,java.math.RoundingMode.HALF_UP).toPlainString()+"%",if(g.key=="FEES")"transfer"else"bag")}
 @Composable private fun analysisMerchantItems(s:BookSnapshot,report:AnalysisReport,currency:Currency)=report.groups{it.merchantKey}.map{g->AnalysisListItem(g.key,s.merchantLabel(g.key).ifBlank{word("未填写商户","お店未入力")},Money(currency,g.amount).display(),g.count)}
-@Composable internal fun AnalysisScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit,onCategories:()->Unit) {
+@Composable internal fun AnalysisScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit,onCategories:()->Unit,onFinancial:(String)->Unit={}) {
     val today by vm.today.collectAsStateWithLifecycle()
     var start by rememberSaveable(s.book.id){mutableStateOf(YearMonth.from(today).atDay(1).toString())}
     var end by rememberSaveable(s.book.id){mutableStateOf(YearMonth.from(today).atEndOfMonth().toString())}
@@ -96,7 +96,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
             }
         }
         "budget"->AnalysisBudgetView(s,filter,{category=it},{month->vm.openBudgetMonth.value=month;vm.navigate("budget")})
-        "future"->AnalysisFutureView(s,filter,{vm.navigate("recurring")},{vm.openActivity.value=it;vm.navigate("life")},onRecord)
+        "future"->AnalysisFutureView(s,filter,vm,{vm.navigate("recurring")},{vm.openActivity.value=it;vm.navigate("life")},onRecord,onFinancial)
     }
     YLink(word("商户资料与保存地点","お店の情報と保存した場所"),{vm.navigate("merchants")})
     YLink(word("朋友名册","友達の名簿"),{vm.navigate("friends")})

@@ -38,9 +38,9 @@ class DatabaseUpgradeTest {
             old.execSQL("INSERT INTO categories VALUES ('b','c','餐饮','EXPENSE',NULL,0,1)")
             old.execSQL("INSERT INTO events VALUES ('b','e','EXPENSE','a','c',500,'JPY',500,'2026-10-13','喫茶と余白','',0,1,NULL)")
             old.execSQL("INSERT INTO postings VALUES ('b','p','e','a',-500,'JPY','2026-10-13',1)")
-            old.version=1
+            old.execSQL("DROP TABLE IF EXISTS financial_drafts");old.version=1
         }finally{old.close()}
-        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11).build()
+        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11,com.yohaku.expensetracker.data.db.MIGRATION_11_12,com.yohaku.expensetracker.data.db.MIGRATION_12_13,com.yohaku.expensetracker.data.db.MIGRATION_13_14,com.yohaku.expensetracker.data.db.MIGRATION_14_15,com.yohaku.expensetracker.data.db.MIGRATION_15_16,com.yohaku.expensetracker.data.db.MIGRATION_16_17,com.yohaku.expensetracker.data.db.MIGRATION_17_18,com.yohaku.expensetracker.data.db.MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23).build()
         try {
             val repo=LedgerRepository(db)
             val book=repo.dao.book("b")!!
@@ -75,9 +75,9 @@ class DatabaseUpgradeTest {
             old.execSQL("INSERT INTO events VALUES ('b','e','EXPENSE','a','c',10000,'USD',15100,'2026-09-10','Shop','',0,2,NULL,1)")
             old.execSQL("INSERT INTO postings VALUES ('b','p','e','a',15100,'JPY','2026-09-12',1)")
             old.execSQL("INSERT INTO settlements VALUES ('b','e',15100,'JPY',1,'2026-09-12','manual','2026-09-10',15000,15000,NULL)")
-            old.version=4
+            old.execSQL("DROP TABLE IF EXISTS financial_drafts");old.version=4
         }finally{old.close()}
-        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11).build()
+        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11,com.yohaku.expensetracker.data.db.MIGRATION_11_12,com.yohaku.expensetracker.data.db.MIGRATION_12_13,com.yohaku.expensetracker.data.db.MIGRATION_13_14,com.yohaku.expensetracker.data.db.MIGRATION_14_15,com.yohaku.expensetracker.data.db.MIGRATION_15_16,com.yohaku.expensetracker.data.db.MIGRATION_16_17,com.yohaku.expensetracker.data.db.MIGRATION_17_18,com.yohaku.expensetracker.data.db.MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23).build()
         try {
             val repo=LedgerRepository(db)
             val snapshot=repo.snapshot(repo.dao.book("b")!!).first()

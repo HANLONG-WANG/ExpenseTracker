@@ -23,7 +23,7 @@ data class BookSnapshot(val book:BookEntity,val accounts:List<AccountEntity>,val
     val budgets:List<BudgetEntity> = emptyList(),val activities:List<ActivityEntity> = emptyList(),val features:BookFeaturesEntity?=null,
     val eventActivities:List<EventActivityEntity> = emptyList(),val recurrences:List<RecurrenceEntity> = emptyList(),val occurrences:List<OccurrenceEntity> = emptyList(),
     val activityBudgets:List<ActivityBudgetEntity> = emptyList(),val reserves:List<ActivityReserveEntity> = emptyList(),val reserveUses:List<ReserveUseEntity> = emptyList(),
-    val friends:List<FriendEntity> = emptyList(),val participants:List<ActivityParticipantEntity> = emptyList(),val treats:List<TreatEntity> = emptyList(),val allocations:List<TreatAllocationEntity> = emptyList(),val analysisPreferences:AnalysisPreferencesEntity?=null,val merchants:List<MerchantEntity> = emptyList(),val merchantLocations:List<MerchantLocationEntity> = emptyList(),val eventMerchants:List<EventMerchantEntity> = emptyList(),val files:List<FileBlobEntity> = emptyList(),val attachments:List<AttachmentLinkEntity> = emptyList(),val stagedMedia:List<DraftMediaEntity> = emptyList(),val receipts:List<ReceiptEntity> = emptyList(),val receiptImages:List<ReceiptImageEntity> = emptyList()) {
+    val friends:List<FriendEntity> = emptyList(),val participants:List<ActivityParticipantEntity> = emptyList(),val treats:List<TreatEntity> = emptyList(),val allocations:List<TreatAllocationEntity> = emptyList(),val analysisPreferences:AnalysisPreferencesEntity?=null,val merchants:List<MerchantEntity> = emptyList(),val merchantLocations:List<MerchantLocationEntity> = emptyList(),val eventMerchants:List<EventMerchantEntity> = emptyList(),val files:List<FileBlobEntity> = emptyList(),val attachments:List<AttachmentLinkEntity> = emptyList(),val stagedMedia:List<DraftMediaEntity> = emptyList(),val receipts:List<ReceiptEntity> = emptyList(),val receiptImages:List<ReceiptImageEntity> = emptyList(),val contracts:List<DebtContractEntity> = emptyList(),val repayments:List<FinancialRepaymentEntity> = emptyList(),val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val arrangements:List<FinancialArrangementEntity> = emptyList(),val billAdjustments:List<FinancialBillAdjustmentEntity> = emptyList(),val expectedIncomes:List<ExpectedIncomeEntity> = emptyList()) {
     val visibleEvents get()=events.filter { it.deletedAt==null }
     fun balance(account:AccountEntity):Long=postings.filter{it.accountId==account.id}.fold(account.openingMinor){a,p->Math.addExact(a,p.deltaMinor)}
     fun removalImpact(eventId:String)=removalImpacts(eventId).first()
@@ -61,7 +61,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
         val liveIds=g.events.filter{it.deletedAt==null}.map{it.id}.toSet()
         BookSnapshot(g.book,g.accounts,g.categories,g.events.sortedWith(compareByDescending<EventEntity>{it.date}.thenByDescending{it.createdAt}.thenBy{it.id}),
             g.postings.filter{it.confirmed && it.eventId in liveIds},
-            g.drafts.singleOrNull()?.let{json.decodeFromString<EntryDraft>(it.json)},g.postings,g.settlements,g.transfers,g.expenseComponents,g.budgets,g.activities,g.features.singleOrNull(),g.eventActivities,g.recurrences,g.occurrences,g.activityBudgets,g.reserves,g.reserveUses,g.friends,g.participants,g.treats,g.allocations,g.analysisPreferences.singleOrNull(),g.merchants,g.merchantLocations,g.eventMerchants,g.files,g.attachments,g.stagedMedia,g.receipts,g.receiptImages)
+            g.drafts.singleOrNull()?.let{json.decodeFromString<EntryDraft>(it.json)},g.postings,g.settlements,g.transfers,g.expenseComponents,g.budgets,g.activities,g.features.singleOrNull(),g.eventActivities,g.recurrences,g.occurrences,g.activityBudgets,g.reserves,g.reserveUses,g.friends,g.participants,g.treats,g.allocations,g.analysisPreferences.singleOrNull(),g.merchants,g.merchantLocations,g.eventMerchants,g.files,g.attachments,g.stagedMedia,g.receipts,g.receiptImages,g.contracts,g.repayments,g.repaymentAllocations,g.arrangements,g.billAdjustments,g.expectedIncomes)
     }
     fun id()=UUID.randomUUID().toString()
     suspend fun createBook(name:String,currency:Currency,theme:String="magazine",language:String="zh",startDate:String=LocalDate.now(clock).toString(),budgetMinor:Long?=null):String=db.withTransaction {
@@ -71,7 +71,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
     suspend fun updateBook(book:BookEntity) { require(book.name.isNotBlank()); db.withTransaction {
         val old=dao.book(book.id) ?: error("账本不存在 / 帳簿がありません")
         require(old.currency==book.currency || dao.eventCount(book.id)==0){"已有记录，本位币不可更改 / 記録済みの基準通貨は変更できません"}
-        if(old.currency!=book.currency)require(dao.recurrences(book.id).isEmpty()&&dao.activityCount(book.id)==0){"已有周期或活动资料，本位币不可直接改写 / 定期・シーン情報の基準通貨は直接変更できません"}
+        if(old.currency!=book.currency)require(dao.recurrences(book.id).isEmpty()&&dao.activityCount(book.id)==0&&!db.financialDao().hasBookData(book.id)&&snapshot(old).first().expectedIncomes.isEmpty()){"已有周期、活动或金融资料，本位币不可直接改写 / 定期・シーン・金融情報の基準通貨は直接変更できません"}
         if(old.currency!=book.currency&&old.initialized)require(dao.budgets(book.id).none{it.amountMinor!=null}&&dao.recurrences(book.id).isEmpty()){ "已有预算或周期资料，本位币不可直接改写 / 予算・定期情報の基準通貨は直接変更できません" }
         if(book.budgetMinor!=old.budgetMinor||!old.initialized&&book.currency!=old.currency) {
             if(!old.initialized&&book.currency!=old.currency)dao.clearBudgets(book.id)
@@ -93,7 +93,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
         require(name.isNotBlank()){ "请输入名称 / 名前を入力してください" };require(opening.currency==currency);LocalDate.parse(date)
         val old=accountId?.let{dao.account(bookId,it) ?: error("账户不存在 / 口座がありません")}
         require(old==null || old.type==type.name){"账户类型不可改写 / 口座の種類は変更できません"}
-        require(old==null || old.currency==currency.name || (!dao.hasAccountHistory(bookId,old.id)&&dao.reserves(bookId).none{it.accountId==old.id})){"已有交易、周期或资金预留的账户币种不可更改 / 記録・定期予定・資金確保がある口座の通貨は変更できません"}
+        require(old==null || old.currency==currency.name || (!dao.hasAccountHistory(bookId,old.id)&&dao.reserves(bookId).none{it.accountId==old.id})){"已有交易、规划或金融资料的账户币种不可更改 / 記録・予定・金融情報がある口座の通貨は変更できません"}
         val account=AccountEntity(bookId,old?.id?:id(),name.trim(),type.name,currency.name,opening.minor,date,old?.active?:true)
         dao.putAccount(account);account.id
     }
@@ -140,14 +140,14 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
         require(linkedRefunds.isEmpty() || old?.currency==amount.currency.name && old.kind==draft.kind.name && linkedRefunds.sumOf{it.amountMinor}<=amount.minor){"修改不能使关联退款超过原消费 / 変更後の金額は返金総額以上にしてください"}
         val merchant=draft.merchantId?.let{dao.merchant(bookId,it)?:error("商户不属于本账本 / 別の帳簿のお店です")}
         require(merchant==null||merchant.active||old?.let{dao.eventMerchant(bookId,it.id)?.merchantId}==merchant.id)
-        val event=EventEntity(bookId,old?.id?:id(),draft.kind.name,a.id,c.id,amount.minor,amount.currency.name,base.minor,date.toString(),draft.merchant.trim(),draft.note,draft.historicalIncluded,(old?.revision?:0)+1,createdAt=old?.createdAt ?: clock.millis())
+        val event=cardPayment(EventEntity(bookId,old?.id?:id(),draft.kind.name,a.id,c.id,amount.minor,amount.currency.name,base.minor,date.toString(),draft.merchant.trim(),draft.note,draft.historicalIncluded,(old?.revision?:0)+1,createdAt=old?.createdAt ?: clock.millis()),draft,old,a)
         val expenseSign=if(draft.kind==EntryKind.EXPENSE)-1L else 1L
         val accountSign=if(AccountType.valueOf(a.type).debt)-expenseSign else expenseSign
         val postings=if(draft.historicalIncluded)emptyList()else listOf(PostingEntity(bookId,event.id+":settlement",event.id,a.id,
             Math.multiplyExact(accountAmount.minor,accountSign),a.currency,draft.settlementDate,draft.settlementConfirmed))
         val previousSettlement=old?.let{dao.settlement(bookId,it.id)}
         val settlement=SettlementEntity(bookId,event.id,accountAmount.minor,a.currency,draft.settlementConfirmed,draft.settlementDate,draft.rateSource,draft.rateDate,
-            previousSettlement?.expectedAccountMinor ?: accountAmount.minor,previousSettlement?.expectedBaseMinor ?: base.minor,manualRate=draft.manualRate,expectedAccountCurrency=previousSettlement?.expectedMoney()?.currency?.name?:a.currency)
+            previousSettlement?.expectedAccountMinor ?: draft.referenceExpectedAccountMinor ?: accountAmount.minor,previousSettlement?.expectedBaseMinor ?: draft.referenceExpectedBaseMinor ?: base.minor,manualRate=draft.manualRate,expectedAccountCurrency=previousSettlement?.expectedMoney()?.currency?.name?:a.currency,referenceRatesJson=draft.referenceRates.takeIf{it.isNotEmpty()}?.let{json.encodeToString(it)})
         val occurrence=draft.occurrenceId?.let{dao.occurrence(bookId,it)?:error("周期实例不属于本账本 / 別の帳簿の定期予定です")}
         require(occurrence==null||draft.kind==EntryKind.EXPENSE&&(occurrence.status=="PENDING"||occurrence.status=="COMPLETED"&&occurrence.eventId==old?.id)){"周期实例已完成或取消，请编辑已关联记录 / 定期予定は完了・取消済みです。関連記録を編集してください"}
         if(old!=null&&dao.eventOccurrences(bookId,old.id).any{it.status in listOf("PENDING","COMPLETED")})require(draft.kind==EntryKind.EXPENSE){"请先解除周期关联再改变类型 / 種類を変える前に定期予定との関連を解除してください"}
@@ -171,7 +171,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
             listOf(ReserveUseEntity(bookId,event.id,rid,used))
         }.orEmpty()
         val treat=if(draft.treatEnabled)prepareTreat(bookId,draft.activityId?:error("互请必须关联活动 / ごちそうはシーンに関連付けてください"),event,null,draft.treatFriends,draft.treatMode,draft.treatWeights)else null
-        return PreparedLedgerChange(old,event,settlement,postings,activityId=draft.activityId,occurrenceId=draft.occurrenceId,reserveUses=uses,treat=treat,merchantId=merchant?.id)
+        return PreparedLedgerChange(old,event,settlement,postings,activityId=draft.activityId,occurrenceId=draft.occurrenceId,reserveUses=uses,treat=treat,merchantId=merchant?.id,cardRuleChecked=event.cardPaymentChoice==CardPaymentChoice.ACCOUNT_RULE.name&&!retainCardPayment(old,draft))
     }
     /** Foundation for transfers/borrowing/repayments. UI is implemented in subsequent phases. */
     suspend fun saveMovement(bookId:String,kind:EntryKind,fromId:String,toId:String,fromAmount:Money,toAmount:Money,date:String):String=db.withTransaction {

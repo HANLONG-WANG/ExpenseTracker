@@ -23,7 +23,7 @@ private val tapeShape=GenericShape{size,_->
 
 // Page columns supply 15dp. Only the remainder of collapsed HTML margins belongs here.
 // SetupProgress supplies 7dp below itself, so its following cover contributes another 3dp.
-@Composable fun YLead(title:String,description:String,kicker:String,amount:String="",aside:String="",amountIsText:Boolean=false,pageFlow:Boolean=false,afterSetupProgress:Boolean=false) {
+@Composable fun YLead(title:String,description:String,kicker:String,amount:String="",aside:String="",amountIsText:Boolean=false,pageFlow:Boolean=false,afterSetupProgress:Boolean=false,wideTitle:Boolean=false) {
     val t=LocalYohaku.current
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val editionHeight=with(LocalDensity.current){11.sp.toDp()}
@@ -35,9 +35,10 @@ private val tapeShape=GenericShape{size,_->
                     YText(kicker,8,Modifier.height(editionHeight).wrapContentHeight(Alignment.CenterVertically,unbounded=true),color=t.muted,letterSpacing=1.2f,lineHeightMultiplier=11f/8)
                     YText("YOHAKU / 05",8,Modifier.height(editionHeight).wrapContentHeight(Alignment.CenterVertically,unbounded=true),color=t.muted,letterSpacing=1.2f,lineHeightMultiplier=11f/8)
                 }
+                if(wideTitle)YText(title,if(narrow)25 else 28,Modifier.fillMaxWidth().padding(top=10.dp).testTag("lead-title"),letterSpacing=-.6f,lineHeightMultiplier=1.6f)
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(if(narrow)11.dp else 17.dp),verticalAlignment=Alignment.Bottom){
                     Column(Modifier.weight(1f).padding(top=10.dp)){
-                        YText(title,if(narrow)25 else 28,Modifier.testTag("lead-title"),letterSpacing=-.6f,lineHeightMultiplier=1.6f)
+                        if(!wideTitle)YText(title,if(narrow)25 else 28,Modifier.testTag("lead-title"),letterSpacing=-.6f,lineHeightMultiplier=1.6f)
                         YText(description,11,Modifier.padding(top=10.dp,bottom=if(amount.isEmpty())10.dp else 0.dp).testTag("lead-description"),color=t.muted,lineHeightMultiplier=2f)
                         if(amount.isNotEmpty())LeadAmount(amount,if(narrow)30 else 35,if(amountIsText)if(narrow)44f else 50f else if(narrow)35f else 40f,amountIsText,Modifier.padding(top=17.dp))
                     }

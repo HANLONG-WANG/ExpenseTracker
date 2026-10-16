@@ -27,12 +27,17 @@ data class CategoryEntity(val bookId: String, val id: String, val name: String, 
 @kotlinx.serialization.Serializable
 data class EventEntity(val bookId: String, val id: String, val kind: String, val accountId: String, val categoryId: String?,
     val amountMinor: Long, val currency: String, val baseMinor: Long, val date: String, val merchant: String,
-    val note: String, val historicalIncluded: Boolean=false, val revision: Int=1, val deletedAt: Long?=null, @ColumnInfo(defaultValue="0") val createdAt: Long=0)
+    val note: String, val historicalIncluded: Boolean=false, val revision: Int=1, val deletedAt: Long?=null, @ColumnInfo(defaultValue="0") val createdAt: Long=0,
+    @ColumnInfo(defaultValue="NULL") val cardPaymentChoice:String?=null,
+    @ColumnInfo(defaultValue="NULL") val cardPaymentMode:String?=null,
+    @ColumnInfo(defaultValue="NULL") val cardPaymentRuleId:String?=null,
+    @ColumnInfo(defaultValue="NULL") val cardPaymentPeriods:Int?=null)
 
 @Entity(tableName="postings", primaryKeys=["bookId","id"], foreignKeys=[
     ForeignKey(entity=EventEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","eventId"],onDelete=ForeignKey.CASCADE),
     ForeignKey(entity=AccountEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","accountId"])
 ], indices=[Index(value=["bookId","eventId"]),Index(value=["bookId","accountId"])])
+@kotlinx.serialization.Serializable
 data class PostingEntity(val bookId: String,val id: String,val eventId: String,val accountId: String,
     val deltaMinor: Long,val currency: String,val date: String,val confirmed: Boolean=true)
 
@@ -56,7 +61,7 @@ data class AttachmentLinkEntity(val bookId:String,val id:String,val eventId:Stri
 @kotlinx.serialization.Serializable
 data class SettlementEntity(val bookId:String,val eventId:String,val accountMinor:Long,val accountCurrency:String,
     val confirmed:Boolean,val settlementDate:String,val rateSource:String,val rateDate:String,
-    val expectedAccountMinor:Long,val expectedBaseMinor:Long,val originalEventId:String?=null,@ColumnInfo(defaultValue="''") val manualRate:String="",@ColumnInfo(defaultValue="''") val expectedAccountCurrency:String="")
+    val expectedAccountMinor:Long,val expectedBaseMinor:Long,val originalEventId:String?=null,@ColumnInfo(defaultValue="''") val manualRate:String="",@ColumnInfo(defaultValue="''") val expectedAccountCurrency:String="",@ColumnInfo(defaultValue="NULL") val referenceRatesJson:String?=null)
 
 @Entity(tableName="transfers",primaryKeys=["bookId","eventId"],foreignKeys=[
     ForeignKey(entity=EventEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","eventId"],onDelete=ForeignKey.CASCADE),

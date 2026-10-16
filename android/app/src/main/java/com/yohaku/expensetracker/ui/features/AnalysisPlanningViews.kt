@@ -43,20 +43,11 @@ import java.time.YearMonth
     YButton(word("管理月预算","月予算を管理"),{onManage(selected)},Modifier.testTag("analysis-budget-manage"),primary=true)
 }
 
-@Composable internal fun AnalysisFutureView(s:BookSnapshot,filter:AnalysisFilter,onRecurring:()->Unit,onActivity:(String)->Unit,onTransfer:(EventEntity)->Unit) {
+@Composable internal fun AnalysisFutureView(s:BookSnapshot,filter:AnalysisFilter,vm:AppViewModel,onRecurring:()->Unit,onActivity:(String)->Unit,onTransfer:(EventEntity)->Unit,onFinancial:(String)->Unit={},outlook:FinancialOutlookRead?=null,onTimelineItem:((CashTimelineItem)->Unit)?=null,onOutlookRetry:(()->Unit)?=null,beforeTimeline:@Composable ()->Unit={}) {
     val currency=Currency.valueOf(s.book.currency)
-    YLead(word("提前一点，看见安排。","少し先の、予定を見よう。"),word("已保存固定安排、活动资金与在途转账。预留不是已花。","保存済みの定期予定・シーン資金・送金中の振替。確保額は支出済みではありません。"),"A LITTLE AHEAD",pageFlow=true)
-    YText(word("已保存的固定安排；不自动生成支出。","保存済みの定期予定。支出は自動生成しません。"),13)
-    ThemeSection(word("实际扣款账户的时间线","引落口座ごとの予定"),"ACCOUNT BY ACCOUNT")
-    val pending=s.pendingOccurrences().filter{it.scheduledDate in filter.start..filter.end&&(filter.categoryId==null||it.categoryId==filter.categoryId||s.categories.any{c->c.id==it.categoryId&&c.parentId==filter.categoryId})&&(filter.activityId==null||it.activityId.orEmpty()==filter.activityId)}.sortedWith(compareBy<OccurrenceEntity>{it.scheduledDate}.thenBy{it.id})
-    if(pending.isEmpty())YEmpty(word("这个期间没有待付固定安排。","この期間の未払い予定はありません。"))
-    if(filter.merchantKey!=null)YText(word("固定安排没有商户归属，商户筛选不适用于这份时间线。","定期予定にお店の帰属はなく、お店の絞込はこの予定表に適用されません。"),11,color=LocalYohaku.current.muted)
-    pending.forEach{o->
-        val account=s.accounts.first{it.id==o.accountId}
-        FutureTimelineRow(o.id,o.scheduledDate,o.name,account.name+" · "+o.currency,o.amountMinor?.let{"− "+Money(Currency.valueOf(o.currency),it).display()}?:word("金额待补齐","金額未入力"),
-            (if(o.estimated)word("预计 · ","見込み・")else word("金额已知 · ","金額確定・"))+(o.baseMinor?.let{word("本位币：","基準通貨：")+Money(currency,it).display()}?:word("本位币折算待补齐","基準通貨の換算未補足")))
-    }
-    YText(word("金额或折算尚未确定的安排，请补齐后再确认付款。","金額・換算が未確定の予定は、補足してから支払を確認してください。"),11,color=LocalYohaku.current.muted)
+    YLead(word("提前一点，看见压力。","少し先の、負担を見よう。"),word("预算风险与扣款账户风险分开；预计收入不隐藏当前缺口。","予算と引落口座のリスクを区別。見込み収入で不足を隠しません。"),"A LITTLE AHEAD",pageFlow=true)
+    CashTimelineView(s,filter,vm,onRecurring,onActivity,onTransfer,onFinancial,outlook,onTimelineItem,onOutlookRetry,beforeTimeline)
+    ExpectedIncomeSection(s,vm,onTransfer)
     YButton(word("管理周期账单","定期支払を管理"),onRecurring)
     ThemeSection(word("活动资金与未完成转账","シーン資金と未完了の振替"),"RESERVED / IN TRANSIT")
     YText(word("这里列出账本全部仍有效的资金安排，日期注明各自计划时间。","帳簿の有効な資金予定をすべて表示。日付はそれぞれの予定日です。"),11,color=LocalYohaku.current.muted)

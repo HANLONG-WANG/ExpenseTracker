@@ -14,9 +14,9 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import java.time.YearMonth
 
-@Composable internal fun RecurringScreen(s:BookSnapshot,vm:AppViewModel,onConfirm:(OccurrenceEntity)->Unit,onRecord:(EventEntity)->Unit,onAccounts:()->Unit,onCategories:()->Unit) {
+@Composable internal fun RecurringScreen(s:BookSnapshot,vm:AppViewModel,onConfirm:(OccurrenceEntity)->Unit,onRecord:(EventEntity)->Unit,onAccounts:()->Unit,onCategories:()->Unit,initialMonth:String?=null) {
     val today by vm.today.collectAsStateWithLifecycle()
-    var month by rememberSaveable(s.book.id){mutableStateOf(YearMonth.from(today).toString())}
+    var month by rememberSaveable(s.book.id){mutableStateOf(initialMonth?:YearMonth.from(today).toString())}
     var editor by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var linking by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     val review by vm.occurrenceLinkReview.collectAsStateWithLifecycle()

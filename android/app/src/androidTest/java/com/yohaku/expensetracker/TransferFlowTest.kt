@@ -31,7 +31,7 @@ class TransferFlowTest {
     @Before fun open() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
-        repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC));vm=AppViewModel(repo,AppPreferences(context))
+        repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC));vm=AppViewModel(repo,AppPreferences(context),ReferenceRates(TestReferenceRateStore().apply{automaticReferenceRates.value=false},clock=repo.clock))
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}

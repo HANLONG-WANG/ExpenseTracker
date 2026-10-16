@@ -31,9 +31,9 @@ import com.yohaku.expensetracker.ui.theme.*
     val t=LocalYohaku.current;val paper=t.id=="journal";val objects=t.id=="objects";val shape=RoundedCornerShape(if(objects)16.dp else 0.dp)
     val edge=if(paper)Modifier.drawBehind{drawRect(t.line,style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))} else if(objects)Modifier.drawBehind{drawRoundRect(Color(0x22b1b895),topLeft=Offset(0f,3.dp.toPx()),size=size,cornerRadius=androidx.compose.ui.geometry.CornerRadius(16.dp.toPx()))} else Modifier.drawBehind{drawLine(t.ink,Offset(1.dp.toPx(),0f),Offset(1.dp.toPx(),size.height),2.dp.toPx())}
     Column(Modifier.fillMaxWidth().testTag("home-cash-note").clickable(role=Role.Button,onClick=onOpen).then(if(paper)Modifier.rotate(.3f) else Modifier).then(if(objects)edge else Modifier).background(if(paper)Color(0xfff8f2df) else if(objects)Color(0xffe8e9d9) else t.soft,shape).then(if(objects)Modifier else edge).padding(start=if(paper)19.dp else if(objects)20.dp else 17.dp,end=if(paper)19.dp else if(objects)20.dp else 18.dp,top=if(paper)19.dp else if(objects)20.dp else 18.dp,bottom=if(paper)19.dp else if(objects)20.dp else 18.dp)){
-        YText(word("资金账户","資金口座"),10,color=t.muted,lineHeightMultiplier=1.5f,cssLineBox=true)
+        YText(word("今日实际资金","本日の実資金"),10,color=t.muted,lineHeightMultiplier=1.5f,cssLineBox=true)
         Column(Modifier.padding(vertical=9.dp)){(amounts.ifEmpty{listOf("—")}).forEach{YText(it,30,number=true,lineHeightMultiplier=if(t.id=="magazine")35f/30 else 44f/30,cssLineBox=true)}}
-        YText(word("账户按原币分别显示，信用额度不计入。","口座は通貨ごとに表示。利用枠は含みません。"),if(paper)11 else 9,color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
+        YText(word("截至今日的已确认余额按原币展示，未来记账和信用额度不计入。","本日までの確定残高を通貨別に表示。将来の記録・利用枠は含みません。"),if(paper)11 else 9,color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
     }
 }
 

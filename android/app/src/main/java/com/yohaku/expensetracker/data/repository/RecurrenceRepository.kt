@@ -105,3 +105,18 @@ suspend fun LedgerRepository.commitOccurrenceLink(review:OccurrenceLinkReview,di
     if(discardPaymentDraft)clearDraft(book.id)
     true
 }
+
+/** Forecast missing future tasks without writing them or reviving cancelled/completed tasks. */
+internal fun BookSnapshot.forecastOccurrences(from:LocalDate,through:LocalDate):List<OccurrenceEntity> {
+    val known=occurrences.associateBy{it.id};val result=occurrences.toMutableList()
+    var month=YearMonth.from(from);val last=YearMonth.from(through)
+    while(month<=last) {
+        for(rule in recurrences.filter{it.active})for(date in recurrenceDates(LocalDate.parse(rule.anchorDate),rule.endDate?.let{LocalDate.parse(it)},RecurrenceFrequency.valueOf(rule.frequency),month)) {
+            if(date>through)continue
+            val id=UUID.nameUUIDFromBytes("${book.id}/${rule.id}/$date".toByteArray(Charsets.UTF_8)).toString()
+            if(id !in known)result+=OccurrenceEntity(book.id,id,rule.id,date.toString(),rule.name,rule.accountId,rule.categoryId,rule.currency,rule.amountMinor,rule.baseMinor,rule.estimated,activityId=rule.activityId)
+        }
+        month=month.plusMonths(1)
+    }
+    return result
+}

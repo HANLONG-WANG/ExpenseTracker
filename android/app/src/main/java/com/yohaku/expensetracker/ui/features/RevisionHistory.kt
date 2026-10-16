@@ -11,6 +11,7 @@ import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.data.repository.LedgerDetails
 import com.yohaku.expensetracker.data.repository.accountMoney
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import kotlinx.coroutines.flow.*
@@ -61,11 +62,25 @@ private sealed interface HistoryRead{
                 val oldAttachments=change.beforeDetails?.attachmentIds.orEmpty();val newAttachments=change.afterDetails?.attachmentIds.orEmpty()
                 if(oldAttachments!=newAttachments)field(word("附件列表 / 顺序","添付一覧・順序"),oldAttachments.size.toString(),newAttachments.size.toString())
                 if(change.beforeDetails?.receiptRevision!=change.afterDetails?.receiptRevision)field(word("小票原图修订","レシート原画像の版"),change.beforeDetails?.receiptRevision?.toString().orEmpty(),change.afterDetails?.receiptRevision?.toString().orEmpty())
+                if(b.cardPaymentChoice!=a.cardPaymentChoice||b.cardPaymentMode!=a.cardPaymentMode||b.cardPaymentPeriods!=a.cardPaymentPeriods) {
+                    field(word("记录的付款方式","記録した支払方法"),cardPaymentLabel(b.cardPaymentChoice),cardPaymentLabel(a.cardPaymentChoice))
+                    field(word("采用的方式","適用した方式"),cardPaymentLabel(b.cardPaymentMode),cardPaymentLabel(a.cardPaymentMode))
+                    field(word("分期次数","分割回数"),b.cardPaymentPeriods?.toString().orEmpty(),a.cardPaymentPeriods?.toString().orEmpty())
+                }
+                if(b.cardPaymentRuleId!=a.cardPaymentRuleId) {
+                    val finance by vm.financialState.collectAsStateWithLifecycle()
+                    fun rule(id:String?)=finance?.rules?.firstOrNull{it.id==id}?.let{"v${it.version} · ${it.effectiveFrom}"}.orEmpty()
+                    field(word("自动リボ依据版本","自動リボの条件の版"),rule(b.cardPaymentRuleId),rule(a.cardPaymentRuleId))
+                }
                 val bs=change.beforeDetails?.settlement;val ds=change.afterDetails?.settlement
                 if(bs!=null&&ds!=null) {
                     if(bs.accountMinor!=ds.accountMinor||bs.accountCurrency!=ds.accountCurrency)field(word("账户入账金额","口座の計上額"),bs.accountMoney().display(),ds.accountMoney().display())
                     if(bs.confirmed!=ds.confirmed)field(word("入账状态","計上の状態"),if(bs.confirmed)word("已确认","確認済")else word("预计","見込み"),if(ds.confirmed)word("已确认","確認済")else word("预计","見込み"))
                     if(bs.settlementDate!=ds.settlementDate)field(word("入账日期","計上日"),bs.settlementDate,ds.settlementDate)
+                }
+                if(bs?.referenceRatesJson!=ds?.referenceRatesJson) {
+                    fun summary(value:String?)=value?.let{vm.repository.json.decodeFromString<List<ReferenceRateSnapshot>>(it).joinToString("; "){r->"1 ${r.base.name} = ${r.rate} ${r.quote.name} · Frankfurter v2 / ${r.provider} · ${r.date} · ${r.fetchedAt}"}}.orEmpty()
+                    field(word("参考估算依据","参考見積もりの根拠"),summary(bs?.referenceRatesJson),summary(ds?.referenceRatesJson))
                 }
                 val bt=change.beforeDetails?.transfer;val dt=change.afterDetails?.transfer
                 if(bt!=null&&dt!=null) {
@@ -74,17 +89,43 @@ private sealed interface HistoryRead{
                     if(bt.toConfirmed!=dt.toConfirmed)field(word("到账状态","入金の状態"),if(bt.toConfirmed)word("已到账","入金済")else word("待到账","未入金"),if(dt.toConfirmed)word("已到账","入金済")else word("待到账","未入金"))
                     if(bt.toDate!=dt.toDate)field(word("到账日期","入金日"),bt.toDate,dt.toDate)
                 }
-                val beforeFee=change.beforeDetails?.components?.firstOrNull();val afterFee=change.afterDetails?.components?.firstOrNull()
-                if(beforeFee!=afterFee) {
-                    field(word("手续费","手数料"),beforeFee?.let{Money(Currency.valueOf(it.originalCurrency),it.originalMinor).display()}.orEmpty(),afterFee?.let{Money(Currency.valueOf(it.originalCurrency),it.originalMinor).display()}.orEmpty())
-                    if(beforeFee!=null&&afterFee!=null) {
-                        if(beforeFee.position!=afterFee.position)field(word("费用扣收方式","手数料の扱い"),feePositionName(TransferFeePosition.valueOf(beforeFee.position)),feePositionName(TransferFeePosition.valueOf(afterFee.position)))
-                        if(beforeFee.confirmed!=afterFee.confirmed)field(word("费用扣收状态","手数料の状態"),if(beforeFee.confirmed)word("已扣收","引落済")else word("未扣收","未引落"),if(afterFee.confirmed)word("已扣收","引落済")else word("未扣收","未引落"))
-                        if(beforeFee.date!=afterFee.date)field(word("费用日期","手数料の日付"),beforeFee.date,afterFee.date)
-                    }
+                val beforeFees=change.beforeDetails?.components.orEmpty();val afterFees=change.afterDetails?.components.orEmpty()
+                val unknown=word("未知","不明")
+                fun feeSummary(values:List<ExpenseComponentEntity>)=values.joinToString("; "){Money(Currency.valueOf(it.originalCurrency),it.originalMinor).display()+" · "+it.date+if(it.originalCurrency!=s.book.currency)" ("+Money(Currency.valueOf(s.book.currency),it.baseMinor).display()+")"else ""}
+                for(position in (beforeFees+afterFees).map{it.position}.distinct()) {
+                    val before=beforeFees.filter{it.position==position};val after=afterFees.filter{it.position==position}
+                    if(before!=after)field(financialFeePositionName(position),feeSummary(before),feeSummary(after))
+                }
+                val br=change.beforeDetails?.repayment;val dr=change.afterDetails?.repayment
+                if(dr!=null) {
+                    val currency=s.accounts.first{it.id==dr.debtAccountId}.currency
+                    fun repaid(value:Long?)=value?.let{Money(Currency.valueOf(currency),it).display()}?:unknown
+                    if(br?.debtAccountId!=dr.debtAccountId)field(word("还款目标","返済先"),s.accounts.firstOrNull{it.id==br?.debtAccountId}?.name.orEmpty(),s.accounts.first{it.id==dr.debtAccountId}.name)
+                    if(br?.platformConfirmed!=dr.platformConfirmed)field(word("平台清偿确认","返済先の返済確定"),if(br?.platformConfirmed==true)word("已确认","確定済み")else word("未确认","未確定"),if(dr.platformConfirmed)word("已确认","確定済み")else word("未确认","未確定"))
+                    if(br?.receivedMinor!=dr.receivedMinor)field(word("平台实收","返済先受取額"),repaid(br?.receivedMinor),repaid(dr.receivedMinor))
+                    if(br?.principalMinor!=dr.principalMinor)field(word("清偿本金","返済元金"),repaid(br?.principalMinor),repaid(dr.principalMinor))
+                    if(br?.interestMinor!=dr.interestMinor)field(word("实付利息","実支払利息"),repaid(br?.interestMinor),repaid(dr.interestMinor))
+                    if(br?.feeMinor!=dr.feeMinor)field(word("平台费用","返済先手数料"),repaid(br?.feeMinor),repaid(dr.feeMinor))
+                    if(br?.clearingDate!=dr.clearingDate)field(word("清偿日期","返済確定日"),br?.clearingDate?:unknown,dr.clearingDate?:unknown)
+                    if(br?.paymentType!=dr.paymentType)field(word("还款类型","返済種別"),br?.let{repaymentTypeLabel(com.yohaku.expensetracker.domain.finance.RepaymentType.valueOf(it.paymentType))}.orEmpty(),repaymentTypeLabel(com.yohaku.expensetracker.domain.finance.RepaymentType.valueOf(dr.paymentType)))
+                    fun allocationSummary(rows:List<FinancialRepaymentAllocationEntity>)=rows.joinToString("; "){listOfNotNull(it.billId,it.contractId).joinToString(" / "){id->s.contracts.firstOrNull{c->c.id==id}?.name?:id.take(8)}+" · "+listOf(it.principalMinor,it.interestMinor,it.feeMinor).joinToString(" / "){n->repaid(n)}}
+                    if(change.beforeDetails?.repaymentAllocations!=change.afterDetails?.repaymentAllocations)field(word("清偿分配：本金 / 利息 / 费用","返済充当：元金・利息・手数料"),allocationSummary(change.beforeDetails?.repaymentAllocations.orEmpty()),allocationSummary(change.afterDetails?.repaymentAllocations.orEmpty()))
+                }
+                val bc=change.beforeDetails?.contract;val dc=change.afterDetails?.contract
+                if(bc!=null&&dc!=null) {
+                    if(bc.name!=dc.name)field(word("合同名称","契約名"),bc.name,dc.name)
+                    if(bc.mode!=dc.mode)field(word("借款模式","借入方式"),financeLabel(bc.mode),financeLabel(dc.mode))
+                    if(bc.fundingAccountId!=dc.fundingAccountId)field(word("实际到账账户","実際の入金先口座"),s.accounts.firstOrNull{it.id==bc.fundingAccountId}?.name.orEmpty(),s.accounts.firstOrNull{it.id==dc.fundingAccountId}?.name.orEmpty())
+                    if(bc.receivedMinor!=dc.receivedMinor)field(word("实际到账","実入金額"),bc.receivedMinor?.let{Money(Currency.valueOf(s.accounts.first{a->a.id==bc.fundingAccountId}.currency),it).display()}?:unknown,dc.receivedMinor?.let{Money(Currency.valueOf(s.accounts.first{a->a.id==dc.fundingAccountId}.currency),it).display()}?:unknown)
                 }
                 RecordFacts(fields,audit=true)
             }}
         }
     }
+}
+
+@Composable private fun financialFeePositionName(position:String):String=when(position) {
+    "WITHHELD"->word("预扣费用","天引手数料")
+    "INCLUDED_PAYMENT"->word("还款内含利息及平台费用","返済に含む利息・返済先手数料")
+    else->feePositionName(TransferFeePosition.valueOf(position))
 }

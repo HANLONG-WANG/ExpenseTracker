@@ -47,7 +47,7 @@ suspend fun LedgerRepository.previewBookBudget(updated:BookEntity,month:String,a
     val old=dao.book(updated.id)?:error("账本不存在 / 帳簿がありません")
     require(updated.name.isNotBlank()){ "请输入名称 / 名前を入力してください" }
     if(old.currency!=updated.currency) {
-        require(dao.eventCount(old.id)==0&&dao.recurrences(old.id).isEmpty()&&dao.activityCount(old.id)==0&&(!old.initialized||dao.budgets(old.id).none{it.amountMinor!=null})){ "已有账务或预算资料，本位币不可直接改写 / 記録・予算情報の基準通貨は直接変更できません" }
+        require(dao.eventCount(old.id)==0&&!db.financialDao().hasBookData(old.id)&&dao.recurrences(old.id).isEmpty()&&dao.activityCount(old.id)==0&&snapshot(old).first().expectedIncomes.isEmpty()&&(!old.initialized||dao.budgets(old.id).none{it.amountMinor!=null})){ "已有账务或预算资料，本位币不可直接改写 / 記録・予算情報の基準通貨は直接変更できません" }
     }
     require(amount==null||amount.currency.name==updated.currency&&amount.minor>=0)
     val snapshot=snapshot(old).first()

@@ -17,11 +17,11 @@ import com.yohaku.expensetracker.ui.theme.*
         YSelect(word("消费 / 收付原币","取引の原通貨"),original,Currency.entries.map{it.name as String? to it.name},{selected->
             val currency=Currency.valueOf(selected!!)
             val accountAmount=if(foreign)d.accountAmount else d.amount
-            onChange(if(selected==accountCurrency)d.copy(originalCurrency=currency,amount=accountAmount,accountAmount="",settlementConfirmed=true)
-                else d.copy(originalCurrency=currency,amount=if(foreign)d.amount else "",accountAmount=accountAmount,settlementConfirmed=false))
+            onChange(if(selected==accountCurrency)d.copy(originalCurrency=currency,amount=accountAmount,accountAmount="",settlementConfirmed=true,manualRate="",referenceAccountLinked=false,referenceBaseLinked=false,referenceExpectedAccountMinor=null,referenceExpectedBaseMinor=null,referenceRates=emptyList())
+                else d.copy(originalCurrency=currency,amount=if(foreign)d.amount else "",accountAmount=accountAmount,settlementConfirmed=false,manualRate="",referenceAccountLinked=false,referenceBaseLinked=false,referenceExpectedAccountMinor=null,referenceExpectedBaseMinor=null,referenceRates=emptyList()))
         })
         if(foreign) {
-            YField(word("原币金额","原通貨額")+" · "+original,d.amount,{onChange(d.copy(amount=it))},numeric=true)
+            YField(word("原币金额","原通貨額")+" · "+original,d.amount,{onChange(d.copy(amount=it,accountAmount=if(!d.settlementConfirmed&&d.referenceAccountLinked)""else d.accountAmount,baseAmount=if(!d.settlementConfirmed&&d.referenceAccountLinked&&d.referenceBaseLinked)""else d.baseAmount))},numeric=true)
             CurrencyEntryNote {
                 YText(word("两种金额，仍是一笔记录","二つの金額、同じ一件"),12)
                 YText(word("保留原币价格；预算按入账金额折算。已确认金额不会随参考汇率变化。","原通貨の価格を保持。予算は計上額から換算。実額は参考レートで変更しません。"),if(LocalYohaku.current.id=="journal")11 else 9,color=LocalYohaku.current.muted,lineHeightMultiplier=1.9f,cssLineBox=true)

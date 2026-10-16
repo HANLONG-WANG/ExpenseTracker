@@ -20,7 +20,7 @@ import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
-@Composable internal fun SettingsScreen(s:BookSnapshot,onTheme:(String)->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit) {
+@Composable internal fun SettingsScreen(s:BookSnapshot,onTheme:(String)->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={}) {
     val t=LocalYohaku.current
     YTitle(word("让它，像你的生活。","自分らしい、暮らしに。"),"SETTINGS",pageFlow=true)
     Panel(Modifier.testTag("settings-theme-panel"),contentSpacing=0.dp) {
@@ -46,6 +46,7 @@ import com.yohaku.expensetracker.ui.theme.*
         SettingsRow(word("独立账本管理","独立した帳簿"),onBooks)
         SettingsRow(word("账本名称与资料","帳簿情報"),onRename)
         SettingsRow(word("两级分类管理","カテゴリ管理"),onCategories)
+        SettingsRow(word("参考汇率与自动获取","参考レート・自動取得"),onRates,"settings-reference-rates")
         SettingsRow(word("回收站 · 30天","ごみ箱 · 30日"),onTrash)
         SettingsRow(word("切换为日语","中国語へ切替"),onLanguage,"settings-language",arrow=false)
     }

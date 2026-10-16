@@ -23,13 +23,15 @@ interface YohakuDao {
         CASE WHEN EXISTS(SELECT 1 FROM budgets b WHERE b.bookId=books.id AND b.scope='' AND b.month<=:month)
         THEN (SELECT b.amountMinor FROM budgets b WHERE b.bookId=books.id AND b.scope='' AND b.month<=:month ORDER BY b.month DESC LIMIT 1)
         ELSE CASE WHEN substr(books.startDate,1,7)<=:month THEN books.budgetMinor ELSE NULL END END AS monthlyBudgetMinor,
-        (SELECT COUNT(*) FROM budgets b WHERE b.bookId=books.id AND b.amountMinor IS NOT NULL)+(SELECT COUNT(*) FROM recurrences r WHERE r.bookId=books.id)+(SELECT COUNT(*) FROM activities a WHERE a.bookId=books.id) AS planningCount
+        (SELECT COUNT(*) FROM budgets b WHERE b.bookId=books.id AND b.amountMinor IS NOT NULL)+(SELECT COUNT(*) FROM recurrences r WHERE r.bookId=books.id)+(SELECT COUNT(*) FROM activities a WHERE a.bookId=books.id)+(SELECT COUNT(*) FROM expected_incomes i WHERE i.bookId=books.id)+(SELECT COUNT(*) FROM financial_rules f WHERE f.bookId=books.id)+(SELECT COUNT(*) FROM financial_plans f WHERE f.bookId=books.id)+(SELECT COUNT(*) FROM debt_contracts c WHERE c.bookId=books.id)+(SELECT COUNT(*) FROM credit_limit_configs l WHERE l.bookId=books.id)+(SELECT COUNT(*) FROM credit_limit_groups l WHERE l.bookId=books.id)+(SELECT COUNT(*) FROM credit_limit_observations l WHERE l.bookId=books.id)+(SELECT COUNT(*) FROM financial_drafts d WHERE d.bookId=books.id) AS planningCount
         FROM books ORDER BY books.rowid""")
     fun bookOverviews(month:String=java.time.YearMonth.now().toString()):Flow<List<BookOverview>>
     @Query("SELECT * FROM books WHERE id=:id") suspend fun book(id:String):BookEntity?
     @Upsert suspend fun putBook(book:BookEntity)
     @Query("SELECT * FROM accounts WHERE bookId=:bookId ORDER BY rowid") fun accounts(bookId:String):Flow<List<AccountEntity>>
     @Query("SELECT * FROM accounts WHERE bookId=:bookId AND id=:id") suspend fun account(bookId:String,id:String):AccountEntity?
+    @Upsert suspend fun putExpectedIncome(income:ExpectedIncomeEntity)
+    @Query("SELECT * FROM expected_incomes WHERE bookId=:bookId AND id=:id") suspend fun expectedIncome(bookId:String,id:String):ExpectedIncomeEntity?
     @Upsert suspend fun putAccount(account:AccountEntity)
     @Query("SELECT * FROM categories WHERE bookId=:bookId ORDER BY rowid") fun categories(bookId:String):Flow<List<CategoryEntity>>
     @Query("SELECT * FROM categories WHERE bookId=:bookId AND id=:id") suspend fun category(bookId:String,id:String):CategoryEntity?
@@ -37,10 +39,11 @@ interface YohakuDao {
     @Query("SELECT * FROM events WHERE bookId=:bookId ORDER BY date DESC,rowid DESC") fun events(bookId:String):Flow<List<EventEntity>>
     @Query("SELECT * FROM events WHERE bookId=:bookId AND id=:id") suspend fun event(bookId:String,id:String):EventEntity?
     @Query("SELECT COUNT(*) FROM events WHERE bookId=:bookId") suspend fun eventCount(bookId:String):Int
-    @Query("SELECT EXISTS(SELECT 1 FROM events WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM postings WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM recurrences WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM occurrences WHERE bookId=:bookId AND accountId=:accountId)") suspend fun hasAccountHistory(bookId:String,accountId:String):Boolean
+    @Query("SELECT EXISTS(SELECT 1 FROM events WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM postings WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM recurrences WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM occurrences WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM credit_limit_configs WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM credit_limit_group_members WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM credit_limit_observations WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM expected_incomes WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM financial_rules WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM financial_plans WHERE bookId=:bookId AND accountId=:accountId) OR EXISTS(SELECT 1 FROM financial_bills WHERE bookId=:bookId AND paymentAccountId=:accountId) OR EXISTS(SELECT 1 FROM debt_contracts WHERE bookId=:bookId AND (accountId=:accountId OR fundingAccountId=:accountId OR separateFeeAccountId=:accountId)) OR EXISTS(SELECT 1 FROM financial_repayments WHERE bookId=:bookId AND debtAccountId=:accountId) OR EXISTS(SELECT 1 FROM financial_drafts WHERE bookId=:bookId AND accountId=:accountId)") suspend fun hasAccountHistory(bookId:String,accountId:String):Boolean
     @Upsert suspend fun putEvent(event:EventEntity)
     @Query("DELETE FROM postings WHERE bookId=:bookId AND eventId=:eventId") suspend fun clearPostings(bookId:String,eventId:String)
     @Insert suspend fun putPostings(postings:List<PostingEntity>)
+    @Query("SELECT * FROM postings WHERE bookId=:bookId AND eventId=:eventId") suspend fun eventPostings(bookId:String,eventId:String):List<PostingEntity>
     @Query("SELECT p.* FROM postings p JOIN events e ON e.bookId=p.bookId AND e.id=p.eventId WHERE p.bookId=:bookId AND e.deletedAt IS NULL AND p.confirmed=1") fun postings(bookId:String):Flow<List<PostingEntity>>
     @Upsert suspend fun putSettlement(settlement:SettlementEntity)
     @Query("SELECT * FROM settlements WHERE bookId=:bookId AND eventId=:eventId") suspend fun settlement(bookId:String,eventId:String):SettlementEntity?
@@ -119,10 +122,10 @@ interface YohakuDao {
     @Upsert suspend fun putDraft(draft:DraftEntity)
     @Query("DELETE FROM drafts WHERE bookId=:bookId") suspend fun clearDraft(bookId:String)
     @Query("DELETE FROM events WHERE deletedAt IS NOT NULL AND deletedAt<=:cutoff AND kind='REFUND'") suspend fun purgeUnlinkedRefunds(cutoff:Long)
-    @Query("DELETE FROM events WHERE deletedAt IS NOT NULL AND deletedAt<=:cutoff AND NOT EXISTS (SELECT 1 FROM settlements s WHERE s.bookId=events.bookId AND s.originalEventId=events.id) AND NOT EXISTS (SELECT 1 FROM occurrences o WHERE o.bookId=events.bookId AND o.eventId=events.id)") suspend fun purgeUnlinked(cutoff:Long)
+    @Query("DELETE FROM events WHERE deletedAt IS NOT NULL AND deletedAt<=:cutoff AND NOT EXISTS (SELECT 1 FROM settlements s WHERE s.bookId=events.bookId AND s.originalEventId=events.id) AND NOT EXISTS (SELECT 1 FROM occurrences o WHERE o.bookId=events.bookId AND o.eventId=events.id) AND NOT EXISTS (SELECT 1 FROM credit_limit_recoveries l WHERE l.bookId=events.bookId AND l.eventId=events.id) AND NOT EXISTS (SELECT 1 FROM expected_incomes i WHERE i.bookId=events.bookId AND i.eventId=events.id) AND NOT EXISTS (SELECT 1 FROM financial_plans f WHERE f.bookId=events.bookId AND f.sourceEventId=events.id) AND NOT EXISTS (SELECT 1 FROM debt_contracts c WHERE c.bookId=events.bookId AND c.fundingEventId=events.id) AND NOT EXISTS (SELECT 1 FROM financial_repayments r WHERE r.bookId=events.bookId AND (r.eventId=events.id OR r.linkedTransferEventId=events.id)) AND NOT EXISTS (SELECT 1 FROM financial_plan_revisions v WHERE v.bookId=events.bookId AND v.causeEventId=events.id)") suspend fun purgeUnlinked(cutoff:Long)
 }
-@Database(entities=[BookEntity::class,AccountEntity::class,CategoryEntity::class,EventEntity::class,PostingEntity::class,RevisionEntity::class,DraftEntity::class,FileBlobEntity::class,AttachmentLinkEntity::class,SettlementEntity::class,TransferEntity::class,ExpenseComponentEntity::class,BudgetEntity::class,ActivityEntity::class,BookFeaturesEntity::class,EventActivityEntity::class,RecurrenceEntity::class,OccurrenceEntity::class,ActivityBudgetEntity::class,ActivityReserveEntity::class,ReserveUseEntity::class,FriendEntity::class,ActivityParticipantEntity::class,TreatEntity::class,TreatAllocationEntity::class,AnalysisPreferencesEntity::class,MerchantEntity::class,MerchantLocationEntity::class,EventMerchantEntity::class,DraftMediaEntity::class,ReceiptEntity::class,ReceiptImageEntity::class],version=11,exportSchema=true)
-abstract class YohakuDatabase:RoomDatabase() { abstract fun dao():YohakuDao }
+@Database(entities=[BookEntity::class,AccountEntity::class,CategoryEntity::class,EventEntity::class,PostingEntity::class,RevisionEntity::class,DraftEntity::class,FileBlobEntity::class,AttachmentLinkEntity::class,SettlementEntity::class,TransferEntity::class,ExpenseComponentEntity::class,BudgetEntity::class,ActivityEntity::class,BookFeaturesEntity::class,EventActivityEntity::class,RecurrenceEntity::class,OccurrenceEntity::class,ActivityBudgetEntity::class,ActivityReserveEntity::class,ReserveUseEntity::class,FriendEntity::class,ActivityParticipantEntity::class,TreatEntity::class,TreatAllocationEntity::class,AnalysisPreferencesEntity::class,MerchantEntity::class,MerchantLocationEntity::class,EventMerchantEntity::class,DraftMediaEntity::class,ReceiptEntity::class,ReceiptImageEntity::class,FinancialRuleEntity::class,FinancialPlanEntity::class,FinancialBillEntity::class,FinancialRuleValidationEntity::class,DebtContractEntity::class,FinancialRepaymentEntity::class,FinancialRepaymentAllocationEntity::class,FinancialContractPlanEntity::class,FinancialPlanRevisionEntity::class,FinancialArrangementEntity::class,FinancialBillAdjustmentEntity::class,ExpectedIncomeEntity::class,CreditLimitConfigEntity::class,CreditLimitGroupEntity::class,CreditLimitGroupMemberEntity::class,CreditLimitGroupRevisionEntity::class,CreditLimitRecoveryEntity::class,CreditLimitObservationEntity::class,FinancialDraftEntity::class],version=23,exportSchema=true)
+abstract class YohakuDatabase:RoomDatabase() { abstract fun dao():YohakuDao; abstract fun financialDao():FinancialDao; abstract fun creditLimitDao():CreditLimitDao }
 
 val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -162,7 +165,13 @@ data class BookGraph(
     @Relation(parentColumn="id",entityColumn="bookId") val attachments:List<AttachmentLinkEntity>,
     @Relation(parentColumn="id",entityColumn="bookId") val stagedMedia:List<DraftMediaEntity>,
     @Relation(parentColumn="id",entityColumn="bookId") val receipts:List<ReceiptEntity>,
-    @Relation(parentColumn="id",entityColumn="bookId") val receiptImages:List<ReceiptImageEntity>
+    @Relation(parentColumn="id",entityColumn="bookId") val receiptImages:List<ReceiptImageEntity>,
+    @Relation(parentColumn="id",entityColumn="bookId") val contracts:List<DebtContractEntity>,
+    @Relation(parentColumn="id",entityColumn="bookId") val repayments:List<FinancialRepaymentEntity>,
+    @Relation(parentColumn="id",entityColumn="bookId") val repaymentAllocations:List<FinancialRepaymentAllocationEntity>,
+    @Relation(parentColumn="id",entityColumn="bookId") val arrangements:List<FinancialArrangementEntity>,
+    @Relation(parentColumn="id",entityColumn="bookId") val billAdjustments:List<FinancialBillAdjustmentEntity>,
+    @Relation(parentColumn="id",entityColumn="bookId") val expectedIncomes:List<ExpectedIncomeEntity>
 )
 
 val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
@@ -280,5 +289,132 @@ val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_receipts_bookId_eventId` ON `receipts` (`bookId`, `eventId`)")
         db.execSQL("CREATE TABLE IF NOT EXISTS `receipt_images` (`bookId` TEXT NOT NULL, `receiptId` TEXT NOT NULL, `revision` INTEGER NOT NULL, `position` INTEGER NOT NULL, `fileId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `receiptId`, `revision`, `position`), FOREIGN KEY(`bookId`, `receiptId`) REFERENCES `receipts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`bookId`, `fileId`) REFERENCES `file_blobs`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_receipt_images_bookId_fileId` ON `receipt_images` (`bookId`, `fileId`)")
+    }
+}
+
+val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `financial_rules` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `mode` TEXT NOT NULL, `version` INTEGER NOT NULL, `effectiveFrom` TEXT NOT NULL, `json` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_financial_rules_bookId_accountId_mode_version` ON `financial_rules` (`bookId`, `accountId`, `mode`, `version`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `financial_plans` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `name` TEXT NOT NULL, `mode` TEXT NOT NULL, `origin` TEXT NOT NULL, `sourceEventId` TEXT, `currency` TEXT NOT NULL, `principalMinor` INTEGER, `complete` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `active` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `sourceEventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_plans_bookId_accountId` ON `financial_plans` (`bookId`, `accountId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_plans_bookId_sourceEventId` ON `financial_plans` (`bookId`, `sourceEventId`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `financial_bills` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `planId` TEXT NOT NULL, `number` INTEGER NOT NULL, `paymentAccountId` TEXT, `ruleVersionId` TEXT, `predictedDate` TEXT, `predictedPrincipalMinor` INTEGER, `predictedFeeMinor` INTEGER, `predictedTotalMinor` INTEGER, `basisJson` TEXT, `confirmedDate` TEXT, `confirmedPrincipalMinor` INTEGER, `confirmedFeeMinor` INTEGER, `confirmedTotalMinor` INTEGER, `confirmedAt` INTEGER, `revision` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `planId`) REFERENCES `financial_plans`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `paymentAccountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `ruleVersionId`) REFERENCES `financial_rules`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_financial_bills_bookId_planId_number` ON `financial_bills` (`bookId`, `planId`, `number`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_bills_bookId_paymentAccountId` ON `financial_bills` (`bookId`, `paymentAccountId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_bills_bookId_ruleVersionId` ON `financial_bills` (`bookId`, `ruleVersionId`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `financial_rule_validations` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `ruleVersionId` TEXT NOT NULL, `billId` TEXT NOT NULL, `billRevision` INTEGER NOT NULL, `principalDifferenceMinor` INTEGER, `feeDifferenceMinor` INTEGER, `totalDifferenceMinor` INTEGER NOT NULL, `dateChanged` INTEGER NOT NULL, `checkedAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `ruleVersionId`) REFERENCES `financial_rules`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `billId`) REFERENCES `financial_bills`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_rule_validations_bookId_ruleVersionId` ON `financial_rule_validations` (`bookId`, `ruleVersionId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_rule_validations_bookId_billId` ON `financial_rule_validations` (`bookId`, `billId`)")
+    }
+}
+
+val MIGRATION_12_13 = object : androidx.room.migration.Migration(12,13) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE financial_plans ADD COLUMN termsJson TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE financial_bills ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+    }
+}
+
+val MIGRATION_13_14 = object : androidx.room.migration.Migration(13,14) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `debt_contracts` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `name` TEXT NOT NULL, `mode` TEXT NOT NULL, `currency` TEXT NOT NULL, `principalMinor` INTEGER NOT NULL, `date` TEXT NOT NULL, `fundingEventId` TEXT, `fundingAccountId` TEXT, `receivedMinor` INTEGER, `withheldFeeMinor` INTEGER, `withheldFeeBaseMinor` INTEGER, `separateFeeMinor` INTEGER, `separateFeeAccountId` TEXT, `separateFeeBaseMinor` INTEGER, `createdAt` INTEGER NOT NULL, `revision` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `fundingAccountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `fundingEventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `separateFeeAccountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_debt_contracts_bookId_accountId` ON `debt_contracts` (`bookId`, `accountId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_debt_contracts_bookId_fundingAccountId` ON `debt_contracts` (`bookId`, `fundingAccountId`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_debt_contracts_bookId_fundingEventId` ON `debt_contracts` (`bookId`, `fundingEventId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_debt_contracts_bookId_separateFeeAccountId` ON `debt_contracts` (`bookId`, `separateFeeAccountId`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `financial_repayments` (`bookId` TEXT NOT NULL, `eventId` TEXT NOT NULL, `debtAccountId` TEXT NOT NULL, `receivedMinor` INTEGER, `principalMinor` INTEGER, `interestMinor` INTEGER, `feeMinor` INTEGER, `feeBaseMinor` INTEGER, `clearingDate` TEXT, `platformConfirmed` INTEGER NOT NULL, `paymentType` TEXT NOT NULL, `linkedTransferEventId` TEXT, `originalInputJson` TEXT NOT NULL, `sourceFeeMinor` INTEGER, `sourceFeeBaseMinor` INTEGER, PRIMARY KEY(`bookId`, `eventId`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `debtAccountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `linkedTransferEventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_repayments_bookId_debtAccountId` ON `financial_repayments` (`bookId`, `debtAccountId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_repayments_bookId_linkedTransferEventId` ON `financial_repayments` (`bookId`, `linkedTransferEventId`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `financial_repayment_allocations` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `eventId` TEXT NOT NULL, `billId` TEXT, `contractId` TEXT, `principalMinor` INTEGER, `interestMinor` INTEGER, `feeMinor` INTEGER, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `eventId`) REFERENCES `financial_repayments`(`bookId`, `eventId`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `billId`) REFERENCES `financial_bills`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `contractId`) REFERENCES `debt_contracts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_repayment_allocations_bookId_eventId` ON `financial_repayment_allocations` (`bookId`, `eventId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_repayment_allocations_bookId_billId` ON `financial_repayment_allocations` (`bookId`, `billId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_repayment_allocations_bookId_contractId` ON `financial_repayment_allocations` (`bookId`, `contractId`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `financial_contract_plans` (`bookId` TEXT NOT NULL, `planId` TEXT NOT NULL, `contractId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `planId`), FOREIGN KEY(`bookId`, `planId`) REFERENCES `financial_plans`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `contractId`) REFERENCES `debt_contracts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_contract_plans_bookId_contractId` ON `financial_contract_plans` (`bookId`, `contractId`)")
+    }
+}
+
+
+val MIGRATION_14_15 = object : androidx.room.migration.Migration(14,15) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `financial_plan_revisions` (`bookId` TEXT NOT NULL, `planId` TEXT NOT NULL, `version` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `reason` TEXT NOT NULL, `causeEventId` TEXT, `json` TEXT NOT NULL, PRIMARY KEY(`bookId`, `planId`, `version`), FOREIGN KEY(`bookId`, `planId`) REFERENCES `financial_plans`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `causeEventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_plan_revisions_bookId_causeEventId` ON `financial_plan_revisions` (`bookId`, `causeEventId`)")
+    }
+}
+
+
+val MIGRATION_15_16 = object : androidx.room.migration.Migration(15,16) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `financial_arrangements` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `originalPlanId` TEXT NOT NULL, `targetPlanId` TEXT NOT NULL, `effectiveDate` TEXT NOT NULL, `appliedAt` TEXT NOT NULL, `principalMinor` INTEGER NOT NULL, `changeFeeMinor` INTEGER NOT NULL, `feeTreatment` TEXT NOT NULL, `exceptionAccepted` INTEGER NOT NULL, `baselineJson` TEXT NOT NULL, `inputJson` TEXT NOT NULL, `comparisonJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `originalPlanId`) REFERENCES `financial_plans`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `targetPlanId`) REFERENCES `financial_plans`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_financial_arrangements_bookId_originalPlanId` ON `financial_arrangements` (`bookId`, `originalPlanId`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_financial_arrangements_bookId_targetPlanId` ON `financial_arrangements` (`bookId`, `targetPlanId`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `financial_bill_adjustments` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `arrangementId` TEXT NOT NULL, `billId` TEXT NOT NULL, `principalMinor` INTEGER NOT NULL, `feeMinor` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `arrangementId`) REFERENCES `financial_arrangements`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `billId`) REFERENCES `financial_bills`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_bill_adjustments_bookId_arrangementId` ON `financial_bill_adjustments` (`bookId`, `arrangementId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_financial_bill_adjustments_bookId_billId` ON `financial_bill_adjustments` (`bookId`, `billId`)")
+    }
+}
+
+val MIGRATION_16_17 = object : androidx.room.migration.Migration(16,17) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE `expected_incomes` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `amountMinor` INTEGER NOT NULL, `currency` TEXT NOT NULL, `date` TEXT NOT NULL, `accountId` TEXT NOT NULL, `accountMinor` INTEGER, `status` TEXT NOT NULL, `eventId` TEXT, `revision` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX `index_expected_incomes_bookId_accountId` ON `expected_incomes` (`bookId`, `accountId`)")
+        db.execSQL("CREATE UNIQUE INDEX `index_expected_incomes_bookId_eventId` ON `expected_incomes` (`bookId`, `eventId`)")
+    }
+}
+
+val MIGRATION_17_18 = object : androidx.room.migration.Migration(17,18) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE settlements ADD COLUMN referenceRatesJson TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE expected_incomes ADD COLUMN accountEstimateJson TEXT DEFAULT NULL")
+    }
+}
+
+val MIGRATION_18_19 = object : androidx.room.migration.Migration(18,19) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE `credit_limit_configs` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `version` INTEGER NOT NULL, `effectiveFrom` TEXT NOT NULL, `currency` TEXT NOT NULL, `totalMinor` INTEGER, `installmentMinor` INTEGER, `revolvingMinor` INTEGER, `sharing` TEXT, `combinedMinor` INTEGER, `basisDate` TEXT NOT NULL, `usedTotalMinor` INTEGER, `usedInstallmentMinor` INTEGER, `usedRevolvingMinor` INTEGER, `basisJson` TEXT NOT NULL, `recovery` TEXT, `usageBasis` TEXT, `usageStart` TEXT, `zoneId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE UNIQUE INDEX `index_credit_limit_configs_bookId_accountId_version` ON `credit_limit_configs` (`bookId`, `accountId`, `version`)")
+        db.execSQL("CREATE TABLE `credit_limit_groups` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `currency` TEXT NOT NULL, `totalMinor` INTEGER, `usedMinor` INTEGER, `basisDate` TEXT NOT NULL, `basisJson` TEXT NOT NULL, `revision` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX `index_credit_limit_groups_bookId` ON `credit_limit_groups` (`bookId`)")
+        db.execSQL("CREATE TABLE `credit_limit_group_members` (`bookId` TEXT NOT NULL, `accountId` TEXT NOT NULL, `groupId` TEXT NOT NULL, PRIMARY KEY(`bookId`, `accountId`), FOREIGN KEY(`bookId`, `groupId`) REFERENCES `credit_limit_groups`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX `index_credit_limit_group_members_bookId_groupId` ON `credit_limit_group_members` (`bookId`, `groupId`)")
+        db.execSQL("CREATE TABLE `credit_limit_group_revisions` (`bookId` TEXT NOT NULL, `groupId` TEXT NOT NULL, `version` INTEGER NOT NULL, `json` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `groupId`, `version`), FOREIGN KEY(`bookId`, `groupId`) REFERENCES `credit_limit_groups`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE TABLE `credit_limit_recoveries` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `eventId` TEXT NOT NULL, `date` TEXT NOT NULL, `principalMinor` INTEGER NOT NULL, `installmentMinor` INTEGER, `revolvingMinor` INTEGER, `sourceProof` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `voidedAt` INTEGER, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `eventId`) REFERENCES `events`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX `index_credit_limit_recoveries_bookId_accountId` ON `credit_limit_recoveries` (`bookId`, `accountId`)")
+        db.execSQL("CREATE INDEX `index_credit_limit_recoveries_bookId_eventId` ON `credit_limit_recoveries` (`bookId`, `eventId`)")
+        db.execSQL("CREATE TABLE `credit_limit_observations` (`bookId` TEXT NOT NULL, `id` TEXT NOT NULL, `accountId` TEXT, `groupId` TEXT, `scope` TEXT NOT NULL, `availableMinor` INTEGER NOT NULL, `observedAt` TEXT NOT NULL, `basisJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `id`), FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `groupId`) REFERENCES `credit_limit_groups`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX `index_credit_limit_observations_bookId_accountId` ON `credit_limit_observations` (`bookId`, `accountId`)")
+        db.execSQL("CREATE INDEX `index_credit_limit_observations_bookId_groupId` ON `credit_limit_observations` (`bookId`, `groupId`)")
+    }
+}
+
+val MIGRATION_19_20 = object : androidx.room.migration.Migration(19,20) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE events ADD COLUMN cardPaymentChoice TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE events ADD COLUMN cardPaymentMode TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE events ADD COLUMN cardPaymentRuleId TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE events ADD COLUMN cardPaymentPeriods INTEGER DEFAULT NULL")
+    }
+}
+
+val MIGRATION_20_21 = object : androidx.room.migration.Migration(20,21) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE `financial_drafts` (`bookId` TEXT NOT NULL, `slot` TEXT NOT NULL, `accountId` TEXT, `contextJson` TEXT NOT NULL, `valuesJson` TEXT NOT NULL, `basis` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`bookId`, `slot`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION, FOREIGN KEY(`bookId`, `accountId`) REFERENCES `accounts`(`bookId`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION)")
+        db.execSQL("CREATE INDEX `index_financial_drafts_bookId_accountId` ON `financial_drafts` (`bookId`, `accountId`)")
+    }
+}
+
+/** A live revolving pool can transfer separate principal portions more than once. */
+val MIGRATION_21_22 = object : androidx.room.migration.Migration(21,22) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("DROP INDEX index_financial_arrangements_bookId_originalPlanId")
+        db.execSQL("CREATE INDEX index_financial_arrangements_bookId_originalPlanId ON financial_arrangements(bookId, originalPlanId)")
+    }
+}
+
+/** Reconciliation is versioned with the plan; original applications and actual events remain intact. */
+val MIGRATION_22_23 = object : androidx.room.migration.Migration(22,23) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE financial_plans ADD COLUMN reconciliationJson TEXT DEFAULT NULL")
     }
 }
