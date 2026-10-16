@@ -19,7 +19,7 @@ suspend fun LedgerRepository.saveMerchant(bookId:String,name:String,note:String=
     val merchant=MerchantEntity(bookId,old?.id?:this.id(),name.trim(),note,active)
     dao.putMerchant(merchant);merchant.id
 }
-suspend fun LedgerRepository.saveMerchantLocation(bookId:String,merchantId:String,name:String,latitude:Double?,longitude:Double?,radiusMeters:Int=150,id:String?=null):String=db.withTransaction {
+suspend fun LedgerRepository.saveMerchantLocation(bookId:String,merchantId:String,name:String,latitude:Double?,longitude:Double?,radiusMeters:Int=100,id:String?=null):String=db.withTransaction {
     require(dao.merchant(bookId,merchantId)!=null)
     require(name.isNotBlank()){ "请输入地点名称 / 場所の名前を入力してください" }
     require((latitude==null)==(longitude==null)){"经纬度请同时填写 / 緯度・経度を両方入力してください"}
@@ -30,18 +30,21 @@ suspend fun LedgerRepository.saveMerchantLocation(bookId:String,merchantId:Strin
     val location=MerchantLocationEntity(bookId,old?.id?:this.id(),merchantId,name.trim(),latitude,longitude,radiusMeters)
     dao.putMerchantLocation(location);location.id
 }
-data class MerchantCandidate(val merchant:MerchantEntity,val location:MerchantLocationEntity,val distanceMeters:Double)
-/** Candidates from explicit saved coordinates; a later foreground location provider supplies the fix. */
-fun BookSnapshot.merchantCandidates(latitude:Double,longitude:Double):List<MerchantCandidate> {
+data class MerchantCandidate(val merchant:MerchantEntity,val location:MerchantLocationEntity,val distanceMeters:Double,val accuracyMeters:Double=0.0) {
+    val trustworthy get()=distanceMeters+accuracyMeters<=location.radiusMeters
+}
+/** Include uncertain overlaps for manual choice; auto-fill requires the entire accuracy circle inside one place. */
+fun BookSnapshot.merchantCandidates(latitude:Double,longitude:Double,accuracyMeters:Double=0.0):List<MerchantCandidate> {
     require(latitude.isFinite()&&latitude in -90.0..90.0&&longitude.isFinite()&&longitude in -180.0..180.0)
-    return merchantLocations.mapNotNull{location->
-        val merchant=merchants.find{it.id==location.merchantId&&it.active}?:return@mapNotNull null
+    require(accuracyMeters.isFinite()&&accuracyMeters>=0)
+    return merchantLocations.filter{it.bookId==book.id}.mapNotNull{location->
+        val merchant=merchants.find{it.bookId==book.id&&it.id==location.merchantId&&it.active}?:return@mapNotNull null
         val lat=location.latitude?:return@mapNotNull null;val lon=location.longitude!!
         val dLat=Math.toRadians(lat-latitude);val dLon=Math.toRadians(lon-longitude)
         val a=sin(dLat/2).pow(2)+cos(Math.toRadians(latitude))*cos(Math.toRadians(lat))*sin(dLon/2).pow(2)
         val distance=6371000.0*2*atan2(sqrt(a),sqrt((1-a).coerceAtLeast(0.0)))
-        if(distance<=location.radiusMeters)MerchantCandidate(merchant,location,distance)else null
-    }.sortedBy{it.distanceMeters}.distinctBy{it.merchant.id}
+        if(distance<=location.radiusMeters+accuracyMeters)MerchantCandidate(merchant,location,distance,accuracyMeters)else null
+    }.sortedWith(compareByDescending<MerchantCandidate>{it.trustworthy}.thenBy{it.distanceMeters}).distinctBy{it.merchant.id}
 }
 
 suspend fun LedgerRepository.setFriendActive(bookId:String,friendId:String,active:Boolean)=db.withTransaction {

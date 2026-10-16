@@ -88,7 +88,7 @@ import kotlinx.serialization.encodeToString
                 YField(word("实际到账金额","実入金額")+" · "+account.currency,actualAmount,{actualAmount=it},numeric=true)
                 if(account.currency!=s.book.currency)YField(word("实际本位币金额","実際の基準通貨額")+" · "+s.book.currency,baseAmount,{baseAmount=it},numeric=true)
                 YDateFields(listOf(word("实际到账日","実入金日") to actualDate),owner,{owner=it},{_,v->actualDate=v})
-                YSelect(word("收入分类","収入カテゴリ"),category,listOf(null to word("请选择","選択してください"))+s.categories.filter{it.active&&it.kind==EntryKind.INCOME.name}.map{it.id as String? to s.path(it.id)},{category=it})
+                YSelect(word("收入分类","収入カテゴリ"),category,listOf(null to word("请选择","選択してください"))+s.categories.filter{s.categoryEnabled(it.id)&&it.kind==EntryKind.INCOME.name}.map{it.id as String? to s.path(it.id)},{category=it})
                 YLink(word("管理收入分类","収入カテゴリを管理"),{onClose();vm.navigate("categories")})
             }
             YButton(word("预览到账影响","入金の影響を確認"),{vm.execute{receipt=vm.repository.previewExpectedIncomeArrival(s.book.id,old.id,if(existingMode)null else EntryDraft(kind=EntryKind.INCOME,accountId=old.accountId,categoryId=category,amount=actualAmount,baseAmount=baseAmount,date=actualDate,settlementDate=actualDate,rateDate=actualDate,note=old.name),if(existingMode)existingId?:error("请选择已有收入 / 既存の収入を選択してください")else null)}},Modifier.testTag("expected-arrival-preview"),primary=true,enabled=!busy)

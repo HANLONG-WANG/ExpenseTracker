@@ -19,10 +19,11 @@ suspend fun LedgerRepository.previewActivity(bookId:String,input:ActivityInput):
     require(input.budget==null||input.budget.currency.name==book.currency&&input.budget.minor>=0)
     val snapshot=snapshot(book).first()
     val old=input.id?.let{dao.activity(bookId,it)?:error("活动不属于本账本 / 別の帳簿のシーンです")}
+    require(old?.deletedAt==null){"活动已删除 / シーンは削除済みです"}
     require(old?.ended!=true||input.ended){"结束的活动不能开启新一轮 / 終了済みシーンは再開できません"}
     val activity=ActivityEntity(bookId,old?.id?:id(),input.name.trim(),input.start,input.end,input.budget?.minor,input.excludeMonthly,input.ended)
     val budgets=input.categoryBudgets.map{(categoryId,amount)->
-        require(snapshot.categories.any{it.id==categoryId&&it.kind==EntryKind.EXPENSE.name&&it.active})
+        require(snapshot.categories.any{it.id==categoryId&&it.kind==EntryKind.EXPENSE.name&&(snapshot.categoryEnabled(it.id)||snapshot.activityBudgets.any{b->b.activityId==old?.id&&b.categoryId==it.id})})
         require(amount.currency.name==book.currency&&amount.minor>=0)
         ActivityBudgetEntity(bookId,activity.id,categoryId,amount.minor)
     }
@@ -46,7 +47,7 @@ suspend fun LedgerRepository.commitActivity(review:ActivityReview):Boolean=db.wi
 suspend fun LedgerRepository.previewReserve(bookId:String,input:ReserveInput):ReserveReview=db.withTransaction {
     val book=dao.book(bookId)!!;val snapshot=snapshot(book).first()
     val activity=dao.activity(bookId,input.activityId)?:error("活动不存在 / シーンがありません")
-    require(dao.features(bookId)?.activityMode==true&&!activity.ended)
+    require(dao.features(bookId)?.activityMode==true&&!activity.ended&&activity.deletedAt==null)
     require(input.name.isNotBlank());LocalDate.parse(input.date)
     require(input.amount.currency.name==book.currency&&input.amount.minor>0)
     val account=input.accountId?.let{dao.account(bookId,it)?:error("账户不属于本账本 / 別の帳簿の口座です")}

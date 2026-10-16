@@ -24,6 +24,7 @@ import org.json.JSONArray
 @RunWith(AndroidJUnit4::class)
 class SetupFlowTest {
     @get:Rule val ui=createComposeRule()
+    @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var prefs:AppPreferences
@@ -275,10 +276,18 @@ class SetupFlowTest {
             val account=runBlocking{repo.saveAccount(id,"外币账户",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01").also{repo.setupStep(id,4);prefs.select(id)}}
             if(!mounted){ui.setContent{NativeApp(vm)};mounted=true}
             waitStep(id,4)
+            ui.waitForIdle()
             val currencyLabel=if(language=="zh")"账户币种" else "通貨"
             val amountLabel=if(language=="zh")"期初余额" else "期首残高"
             fun changeCurrency(){
-                ui.onNodeWithTag("setup-account-$account").performScrollTo().performClick()
+                val card=ui.onNodeWithTag("setup-account-$account")
+                card.performScrollTo();ui.waitForIdle()
+                InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(100,5000)
+                val bounds=card.getUnclippedBoundsInRoot()
+                val viewport=ui.onNodeWithTag("setup-viewport").getUnclippedBoundsInRoot()
+                assertTrue("Account card must be inside the setup viewport before tapping",bounds.top>=viewport.top&&bounds.bottom<=viewport.bottom)
+                card.performClick()
+                ui.waitUntil(10000){ui.onAllNodesWithTag("select-trigger-$currencyLabel").fetchSemanticsNodes().isNotEmpty()&&!vm.busy.value}
                 ui.onNodeWithTag("select-trigger-$currencyLabel").performScrollTo().assertTextContains("JPY",substring=true).performClick()
                 ui.onNodeWithTag("select-option-$currencyLabel-1").performScrollTo().performClick()
                 ui.onNodeWithTag("field-$amountLabel").performScrollTo().performTextReplacement("12.34")

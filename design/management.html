@@ -1,0 +1,33 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>余量 · 资料与回收管理</title>
+<style>html,body{margin:0;height:100%}iframe{display:block;width:100%;height:100%;border:0}</style>
+<iframe id="reference" title="资料与回收管理"></iframe>
+<script>
+const q=new URLSearchParams(location.search),theme=['magazine','journal','objects'].includes(q.get('theme'))?q.get('theme'):'magazine',language=q.get('language')==='ja'?'ja':'zh',state=q.get('state')||'books';
+const frame=document.querySelector('iframe');
+frame.onload=()=>frame.contentWindow.eval(`(()=>{
+  book().language=${JSON.stringify(language)};book().name=book().ja='生活';
+  const state=${JSON.stringify(state)},style=document.createElement('style');
+  style.textContent='.management-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}.management-actions button{min-height:36px}.management-note{font-size:11px;line-height:1.9;color:var(--muted)}.management-state{color:var(--warm);font-size:10px;letter-spacing:.5px}.journal .management-state{font-size:12px}.objects .management-state{display:inline-block;background:var(--soft);padding:5px 9px;border-radius:8px}';document.head.append(style);
+  const button=(label)=>'<button class="text-link">'+label+'</button>',actions=(labels)=>'<div class="management-actions">'+labels.map(button).join('')+'</div>';
+  const facts=(pairs)=>rows(pairs);
+  const note=(text)=>'<p class="management-note">'+text+'</p>';
+  const views={
+    books:()=>experienceLead('books',t('每一本，都妥善安放。','帳簿を、きちんとしまう。'),t('归档保留资料与未完提醒；整本回收保留30天。','アーカイブは情報・未完了の通知を保持。ごみ箱は30日間保存。'),'BOOKS / KEEP & RECOVER')+
+      auditPanel('book',t('生活账本','生活の帳簿'),'<span class="management-state">'+t('正在使用','使用中')+'</span>'+facts([[t('账户 / 记录 / 附件','口座・記録・添付'),'3 / 24 / 5']])+actions([t('归档','アーカイブ'),t('移至回收站','ごみ箱へ')]))+
+      auditPanel('archive',t('旅行账本','旅行の帳簿'),'<span class="management-state">'+t('已归档','アーカイブ済み')+'</span>'+note(t('不会出现在日常切换中。未完成付款仍按本账本提醒。','通常の切替から非表示。未完了の支払はこの帳簿の名前で通知。'))+actions([t('取消归档','アーカイブを解除'),t('查看资料','情報を見る'),t('移至回收站','ごみ箱へ')]))+button(t('查看整本回收站','帳簿のごみ箱を見る')),
+    'book-delete':()=>experienceLead('books',t('整本移至回收站','帳簿をごみ箱へ'),t('请确认本次处理范围。其他账本不受影响。','対象を確認してください。他の帳簿に影響しません。'),'BEFORE YOU MOVE')+auditPanel('warning',t('生活账本','生活の帳簿'),facts([[t('账户','口座'),'3'],[t('记录','記録'),'24'],[t('附件与小票原图','添付・レシート原画像'),'5'],[t('金融计划 / 核对资料','金融プラン・照合資料'),'2 / 1']])+note(t('账目立即退出正常视图，该账本通知取消。30天内恢复原ID、资料与文件；到期永久清理。','通常表示から外し、この帳簿の通知を取消。30日以内は元のID・情報・ファイルを復元。期限後は完全削除。'))+'<button class="full-button">'+t('确认整本回收','帳簿をごみ箱へ移動')+'</button>'),
+    'book-trash':()=>experienceLead('trash',t('给误删，留一点余地。','消しすぎにも、余白を。'),t('这里是应用内恢复，不是外部备份。到期后自动永久清理。','アプリ内の復元です。外部バックアップではありません。期限後は自動で完全削除。'),'RECOVER WITHIN 30 DAYS')+auditPanel('trash',t('生活账本','生活の帳簿'),facts([[t('保留至','保存期限'),'2026-11-15 09:00'],[t('账户 / 记录 / 附件','口座・記録・添付'),'3 / 24 / 5']])+note(t('恢复原ID与关联，并重建未完成提醒。','元のIDと関連を復元し、未完了の通知を再構築。'))+actions([t('恢复账本','帳簿を復元'),t('永久删除','完全削除')]))+button(t('清空整本回收站','帳簿のごみ箱を空にする')),
+    account:()=>experienceLead('accounts',t('停用，保留走过的账。','停止しても、履歴はそのまま。'),t('从日常选择隐藏；不会把欠款当作结清。','通常の選択から非表示。債務の完済にはしません。'),'ACCOUNT / KEEP HISTORY')+auditPanel('account',t('信用卡','クレジットカード'),facts([[t('未清偿本金与费用','未返済の元金・費用'),'JPY ¥12,000'],[t('未完成安排','未完了の予定'),'2']])+note(t('历史记录和必要还款提醒保留。只有没有记录、计划或核对引用的空账户可直接删除。','履歴と必要な返済通知を保持。記録・プラン・照合の参照がない空口座のみ削除できます。'))+'<button class="full-button">'+t('确认停用账户','口座を停止')+'</button>'),
+    category:()=>experienceLead('categories',t('调整归属，先看影响。','分類の変更は、影響を確認。'),t('历史记录与分类预算会按新归属重新汇总。','履歴とカテゴリ予算を新しい分類で再集計。'),'CATEGORY / BEFORE & AFTER')+auditPanel('category',t('咖啡 → 饮食 / 咖啡','コーヒー → 食事 / コーヒー'),facts([[t('迁移记录','移動する記録'),'8'],[t('消费合计','支出合計'),'JPY ¥3,200'],[t('分类预算','カテゴリ予算'),'JPY ¥5,000']])+note(t('最多保留两级；消费总额与账户资金不变。确认前资料变化会重新展示影响。','2階層まで。支出総額と口座資金は変わりません。確認前に情報が変われば影響を再表示。'))+'<button class="full-button">'+t('确认调整归属','分類変更を確定')+'</button>'),
+    'entry-trash':()=>experienceLead('trash',t('暂时移开，原账可恢复。','いったん外して、元の記録を復元。'),t('原消费与关联退款成组，转账两端同时处理。','元の支出と関連返金はひと組。振替の両端を同時に扱います。'),'RECORD / REVIEW THE IMPACT')+auditPanel('trash',t('消费与退款','支出と返金'),facts([[t('记录 / 原图附件','記録・原画像添付'),'2 / 1'],[t('账户余额变化','口座残高の変化'),'JPY ¥9,200 → ¥10,000'],[t('月预算消费','月予算に含む支出'),'JPY ¥800 → ¥0']])+note(t('30天内恢复原ID；旧手工核对关联失效，须重新确认。独立还款与已确认账单保留。','30日以内は元のIDで復元。古い手動照合は失効し、再確認が必要。独立した返済・確定請求は保持。'))+'<button class="full-button">'+t('确认移至回收站','ごみ箱へ移動')+'</button>'),
+    'entry-purge':()=>experienceLead('trash',t('永久清理前，再确认一次。','完全削除の前に、もう一度確認。'),t('这不是备份；最后一个文件引用消失才清理原文件。','バックアップではありません。最後の参照がなくなったファイルだけを削除。'),'RECORD / PERMANENT DELETE')+auditPanel('trash',t('本组清理范围','対象の削除範囲'),facts([[t('记录 / 编辑草稿','記録・編集下書き'),'2 / 1'],[t('附件 / 原图','添付・原画像'),'1'],[t('独立账单 / 还款','独立した請求・返済'),t('保留','保持')]])+note(t('无法恢复。独立合同、账单和原始流水资料保留，不联动其他账本。','復元できません。独立した契約・請求・元の明細資料は保持し、他の帳簿には影響しません。'))+'<button class="full-button">'+t('确认永久删除','完全削除を確定')+'</button>'),
+    activity:()=>experienceLead('activity',t('结束活动，留下共同回忆。','シーンを終えて、思い出を残す。'),t('消费和互请历史保留，未用预留解除。','支出・ごちそうの履歴を保持。未使用の確保を解除。'),'SCENE / KEEP THE FACTS')+auditPanel('activity',t('秋日出游','秋のお出かけ'),facts([[t('关联消费','関連する支出'),'4'],[t('未用预留','未使用の確保'),'JPY ¥2,000'],[t('删除后回归日常的消费','削除後に日常へ戻る支出'),'JPY ¥8,500']])+note(t('删除活动不删除消费；回归日常后的月份预算变化须确认。互请不会转入其他活动。','シーンの削除で支出は削除しません。日常へ戻す月予算への影響を確認。ごちそうを他のシーンへ移しません。'))+actions([t('结束活动','シーンを終了'),t('查看删除影响','削除の影響を見る')]))
+  };
+  views.library=()=>experienceLead('books',t('每一本，都妥善安放。','帳簿を、きちんとしまう。'),t('归档保留资料与未完提醒；整本回收保留30天。','アーカイブは情報・未完了の通知を保持。ごみ箱は30日間保存。'),'BOOKS / KEEP & RECOVER')+button(t('查看整本回收站','帳簿のごみ箱を見る'))+auditPanel('archive','生活 / 暮らし','<span class="management-state">'+t('已归档','アーカイブ済み')+'</span>'+facts([[t('账户','口座'),'1'],[t('记录（含回收记录）','記録（ごみ箱を含む）'),'1'],[t('附件与小票原图','添付・レシート原画像'),'0'],[t('金融计划 / 核对资料','金融プラン・照合資料'),'0 / 0']])+note(t('从日常切换隐藏，未完成付款仍按本账本提醒。','通常の切替から非表示。未完了の支払はこの帳簿の名前で通知。'))+'<button class="outline-button">'+t('取消归档','アーカイブを解除')+'</button>'+button(t('查看资料','情報を見る'))+button(t('移至回收站','ごみ箱へ')))+'<button class="full-button">'+t('＋ 创建独立账本','＋ 独立した帳簿を作成')+'</button>';
+  screens['book-management']=()=> (views[state]||views.books)();navigate('book-management');
+  if(state.endsWith('-sheet')){const script=document.createElement('script');script.src='management-dialogs.js';script.onload=()=>renderManagementDialog(state);document.head.append(script);}
+  if(state==='library'){document.querySelector('#book-switch').remove();document.querySelector('.header-actions').remove();document.querySelector('.bottom-nav').remove();document.querySelector('.app-header').setAttribute('aria-label',t('保留资料管理','保持した情報の管理'));}
+
+})()`);
+frame.src='app.html?theme='+theme;
+</script></html>

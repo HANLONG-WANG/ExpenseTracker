@@ -56,9 +56,9 @@ class ReferenceRateStorageTest {
                 dropCreditLimitFixtureTables(old)
                 restoreFixtureTable(old,"room-v17-schema.json","settlements");restoreFixtureTable(old,"room-v17-schema.json","expected_incomes")
                 val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v17-schema.json").bufferedReader().readText()).getJSONObject("database")
-                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));old.execSQL("DROP TABLE IF EXISTS financial_drafts");old.version=17
+                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));old.execSQL("DROP TABLE IF EXISTS financial_drafts");restoreBookLifecycleFixture(old);old.version=17
             }finally{old.close()}
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25).build();repo=LedgerRepository(db,clock)
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28).build();repo=LedgerRepository(db,clock)
             assertNull(repo.dao.settlement(b,event)!!.referenceRatesJson);assertNull(repo.dao.expectedIncome(b,income)!!.accountEstimateJson)
             val rate=ReferenceRateSnapshot(Currency.JPY,Currency.CNY,"0.04","2026-10-14",clock.instant().toString())
             val estimated=applyReferenceTransfer(draft.copy(id=event,toConfirmed=false),Currency.JPY,Currency.CNY,rate,"TO")

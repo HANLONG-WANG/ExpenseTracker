@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FinancialDao {
+    @Query("SELECT * FROM financial_drafts WHERE bookId=:bookId ORDER BY slot") suspend fun bookDrafts(bookId:String):List<FinancialDraftEntity>
     @Upsert suspend fun putDraft(draft:FinancialDraftEntity)
     @Query("SELECT * FROM financial_drafts WHERE bookId=:bookId AND slot=:slot") suspend fun draft(bookId:String,slot:String):FinancialDraftEntity?
     @Query("SELECT * FROM financial_drafts WHERE bookId=:bookId AND accountId IS :accountId ORDER BY updatedAt DESC") fun drafts(bookId:String,accountId:String?):Flow<List<FinancialDraftEntity>>

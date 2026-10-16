@@ -24,6 +24,7 @@ import kotlinx.coroutines.CompletableDeferred
 @RunWith(AndroidJUnit4::class)
 class EntryFlowTest {
     @get:Rule val ui=createComposeRule()
+    @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
@@ -156,7 +157,7 @@ class EntryFlowTest {
             ui.waitUntil(10000){ui.onAllNodesWithTag(originalTag).fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag(originalTag).performScrollTo().assertTextEquals("100.00")
             ui.onNodeWithTag(amountTag).performScrollTo().assertTextEquals("15000")
-            refundTarget(ui.onNodeWithTag("currency-entry-note"))
+            refundTarget(ui.onNode(hasTestTag("currency-entry-note") and hasAnyDescendant(hasText(if(language=="ja")"二つの金額、同じ一件" else "两种金额，仍是一笔记录"))))
             refundShot("$theme-$language-currency-entry-note",false)
             tap(if(language=="ja")"換算を確認・手入力" else "查看 / 手动填写换算")
             val rateLabel=if(language=="ja")"手動レート・見込額の仮入力のみ" else "手动汇率 / 仅预填预计金额"
@@ -396,6 +397,8 @@ class EntryFlowTest {
             val file=File(context.getExternalFilesDir(null),"phase-b-p08/$theme-$language-lifecycle-trash-screen.png")
             val auto=InstrumentationRegistry.getInstrumentation().uiAutomation;auto.waitForIdle(300,5000);val image=auto.takeScreenshot();file.outputStream().use{image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()
             ui.onNodeWithTag("restore-$original").performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-entry-lifecycle").fetchSemanticsNodes().isNotEmpty()}
+            refundTarget(ui.onNodeWithTag("confirm-entry-lifecycle")).performClick()
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.visibleEvents?.size==3&&!vm.busy.value}
             val restored=snapshot()
             assertEquals(setOf(original,arrived,pending),restored.visibleEvents.map{it.id}.toSet());assertEquals(2,restored.postings.size);assertEquals(3,restored.storedPostings.size)
@@ -411,6 +414,8 @@ class EntryFlowTest {
             assertEquals(15000L,snapshot().monthExpense("2026-09"))
             ui.runOnIdle{vm.navigate("trash")};ui.waitForIdle()
             ui.onNodeWithTag("restore-$arrived").performScrollTo().assertIsEnabled().performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-entry-lifecycle").fetchSemanticsNodes().isNotEmpty()}
+            refundTarget(ui.onNodeWithTag("confirm-entry-lifecycle")).performClick()
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.visibleEvents?.size==3&&!vm.busy.value}
             val individuallyRestored=snapshot()
             assertEquals(9820L,individuallyRestored.monthExpense("2026-09"));assertEquals(9820L,individuallyRestored.balance(individuallyRestored.accounts.single{it.id==card}));assertEquals(3,individuallyRestored.events.size)

@@ -19,7 +19,7 @@ import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
-@Composable internal fun BooksScreen(books:List<BookOverview>,current:String,onSelect:(String)->Unit,onCreate:()->Unit,onEdit:(String)->Unit){
+@Composable internal fun BooksScreen(books:List<BookOverview>,current:String,onSelect:(String)->Unit,onCreate:()->Unit,onEdit:(String)->Unit,onManage:()->Unit={}){
     val t=LocalYohaku.current
     Column(Modifier.fillMaxWidth().testTag("books-page"),verticalArrangement=Arrangement.spacedBy(15.dp)){
         YTitle(word("每本，都有自己的生活。","帳簿ごとに、独立した暮らし。"),"INDEPENDENT BOOKS",word("账户、预算、朋友、商户与核对资料全部独立。","口座・予算・友人・お店・明細はすべて独立。"),pageFlow=true)
@@ -28,6 +28,7 @@ import com.yohaku.expensetracker.ui.theme.*
             YButton(word("＋ 创建独立账本","＋ 独立した帳簿を作成"),onCreate,Modifier.testTag("books-create"),primary=true)
             YText(word("新账本不会复制原流水或余额。同名账户也不会联动。","新しい帳簿に記録・残高はコピーしません。同名口座も連動しません。"),if(t.id=="journal")11 else 10,Modifier.padding(top=if(t.id=="journal")11.dp else 10.dp).testTag("books-note"),color=t.muted,lineHeightMultiplier=if(t.id=="magazine")1.8f else 1.9f,cssLineBox=true)
         }
+        YLink(word("归档与整本回收","アーカイブ・帳簿のごみ箱"),onManage,Modifier.testTag("books-manage-lifecycle"))
         ThemeAuditPanel(word("账本资料与本位币","帳簿情報・基準通貨"),Modifier.testTag("books-audit-container")){books.forEach{b->
             val size=if(t.id=="journal")15 else 12
             Column(Modifier.fillMaxWidth().testTag("book-edit-${b.book.id}").clickable{onEdit(b.book.id)}){

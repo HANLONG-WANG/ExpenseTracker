@@ -58,9 +58,9 @@ class FinancialPoolArrangementTest {
                 legacy.execSQL("CREATE UNIQUE INDEX index_financial_arrangements_bookId_originalPlanId ON financial_arrangements(bookId, originalPlanId)")
                 val schema=org.json.JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v21-schema.json").bufferedReader().readText()).getJSONObject("database")
                 legacy.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")))
-                restoreFixtureTable(legacy,"room-v21-schema.json","financial_plans");legacy.version=21
+                restoreFixtureTable(legacy,"room-v21-schema.json","financial_plans");restoreBookLifecycleFixture(legacy);legacy.version=21
             }
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,file).addMigrations(MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25).build();r=LedgerRepository(db,clock)
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,file).addMigrations(MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28).build();r=LedgerRepository(db,clock)
             assertEquals(stored,s());assertEquals(saved.arrangements,f().arrangements);assertEquals(saved.billAdjustments,f().billAdjustments)
             val second=r.commitFinancialArrangement(r.previewFinancialArrangement(b,change(200)),clock.instant().toString(),true)!!
             assertEquals(2,f().arrangements.size);assertEquals(300L,s().billOutstanding(confirmed).principalMinor)

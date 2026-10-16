@@ -20,7 +20,7 @@ sealed interface AppState {
 }
 data class AppNotice(val id:Long,val bookId:String,val zh:String,val ja:String)
 @OptIn(ExperimentalCoroutinesApi::class)
-class AppViewModel(val repository:LedgerRepository,val preferences:AppPreferences,val referenceRates:ReferenceRates=ReferenceRates(preferences,clock=repository.clock)):ViewModel() {
+class AppViewModel(val repository:LedgerRepository,val preferences:AppPreferences,val referenceRates:ReferenceRates=ReferenceRates(preferences,clock=repository.clock),val reminders:com.yohaku.expensetracker.platform.ReminderCoordinator?=null,val locationSource:com.yohaku.expensetracker.platform.CurrentLocationSource?=null):ViewModel() {
     private val writes=Mutex()
     private val readRequests=MutableStateFlow(0L)
     val today=MutableStateFlow(LocalDate.now(repository.clock))
@@ -49,7 +49,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     }
     fun back(){route.value=if(backStack.isEmpty())"home" else backStack.removeAt(backStack.lastIndex)}
     val state=combine(readRequests,today){_,date->date}.flatMapLatest{date->
-        combine(repository.dao.bookOverviews(java.time.YearMonth.from(date).toString()),preferences.activeBook,preferences.setupDraft){overviews,id,first->Triple(overviews,overviews.map{it.book}.let{books->books.find{it.id==id} ?: books.firstOrNull()},first).also{selectedBookMetadata.value=it.second}}
+        combine(repository.dao.bookOverviews(java.time.YearMonth.from(date).toString()),preferences.activeBook,preferences.setupDraft){overviews,id,first->Triple(overviews,overviews.map{it.book}.let{books->books.find{it.id==id&&it.deletedAt==null} ?: books.firstOrNull{!it.archived&&it.deletedAt==null}},first).also{selectedBookMetadata.value=it.second}}
         .flatMapLatest{(overviews,book,first)-> val books=overviews.map{it.book};if(book==null)flowOf<AppState>(AppState.Ready(books,null,first,overviews)) else repository.snapshot(book).map{AppState.Ready(books,it,first,overviews)}}
         .catch{emit(AppState.Failure(it.message ?: "数据库读取失败 / データ読込失敗"))}
         .onStart{emit(AppState.Loading)}
@@ -71,7 +71,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     val financialBillReview=MutableStateFlow<BillConfirmationReview?>(null)
     val financialReviewRefreshed=MutableStateFlow(false)
     val setupDraft=state.mapNotNull{(it as? AppState.Ready)?.firstSetup}.map<SetupDraft,SetupDraft?>{it}.stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),null)
-    init { execute { repository.purgeExpired();repository.collectUnusedMedia() } }
+    init { execute { repository.purgeExpired();repository.collectUnusedMedia();preferences.pruneBookPreferences(repository.books.first().map{it.id}.toSet()) } }
     fun execute(onSuccess:()->Unit={},onComplete:()->Unit={},action:suspend()->Unit) { viewModelScope.launch {
         writes.withLock {
             busy.value=true
@@ -84,7 +84,38 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun createBook(name:String,currency:Currency,theme:String,language:String)=execute {
         preferences.select(repository.createBook(name,currency,theme,language))
     }
-    fun selectBook(bookId:String)=execute({entry.value=null;backStack.clear();route.value="home"}) { preferences.select(bookId) }
+    val reminderBook=MutableStateFlow<String?>(null)
+    val reminderTarget=MutableStateFlow<com.yohaku.expensetracker.domain.reminders.ReminderItem?>(null)
+    fun openReminderBook(bookId:String,itemJson:String?=null)=execute(onSuccess={entry.value=null;backStack.clear();route.value="home";reminderBook.value=bookId}) {
+        val book=repository.dao.book(bookId)?:error("账本不存在 / 帳簿がありません")
+        require(book.initialized)
+        val item=itemJson?.let{repository.json.decodeFromString<com.yohaku.expensetracker.domain.reminders.ReminderItem>(it)}
+        require(item==null||item.bookId==bookId)
+        preferences.select(bookId);reminderTarget.value=item
+    }
+    fun selectBook(bookId:String)=execute({entry.value=null;backStack.clear();route.value="home"}) { require(repository.dao.book(bookId)!=null){"账本不可用 / 帳簿が利用できません"};preferences.select(bookId) }
+    val bookOperationReview=MutableStateFlow<BookLifecycleReview?>(null)
+    val bookOperationRefreshed=MutableStateFlow(false)
+    fun previewBookOperation(bookId:String,operation:BookOperation)=execute {
+        bookOperationReview.value=repository.previewBookOperation(bookId,operation);bookOperationRefreshed.value=false
+    }
+    fun commitBookOperation() {
+        val review=bookOperationReview.value?:return
+        var saved=false
+        execute(onSuccess={
+            if(saved){bookOperationReview.value=null;entry.value=null;backStack.clear();route.value="book-management"}
+        }) {
+            saved=repository.commitBookOperation(review)
+            if(!saved) {
+                bookOperationReview.value=repository.previewBookOperation(review.scope.book.id,review.operation);bookOperationRefreshed.value=true
+            }else {
+                if(preferences.activeBook.first()==review.scope.book.id&&review.operation in listOf(BookOperation.ARCHIVE,BookOperation.TRASH,BookOperation.PURGE))preferences.clearSelection()
+                repository.collectUnusedMedia()
+                preferences.pruneBookPreferences(repository.books.first().map{it.id}.toSet())
+                reminders?.rebuildSafely(false)
+            }
+        }
+    }
     fun recentCategories(bookId:String,kind:EntryKind)=repository.dao.recentCategoryIds(bookId,kind.name)
     fun updateBook(book:BookEntity)=execute { repository.updateBook(book) }
     fun appearance(bookId:String,theme:String?=null,language:String?=null)=execute {repository.updateAppearance(bookId,theme,language)}
@@ -125,6 +156,15 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
             accountAmount=settlement?.let{Money(Currency.valueOf(it.accountCurrency),it.accountMinor).decimal.toPlainString()}.orEmpty(),
             settlementConfirmed=settlement?.confirmed?:true,settlementDate=settlement?.settlementDate?:event.date,rateSource=settlement?.rateSource?:"manual",rateDate=settlement?.rateDate?:event.date,originalEventId=settlement?.originalEventId,manualRate=settlement?.manualRate.orEmpty(),referenceRates=settlement?.referenceRatesJson?.let{repository.json.decodeFromString(it)}?:emptyList(),activityId=snapshot.eventActivities.find{it.eventId==event.id}?.activityId,occurrenceId=snapshot.occurrences.firstOrNull{it.eventId==event.id&&it.status in listOf("PENDING","COMPLETED")}?.id)
         navigate("entry");persistDraft(snapshot.book.id)
+    }
+    fun offerLocatedMerchant(bookId:String,session:String,candidates:List<MerchantCandidate>) {
+        val d=entry.value?:return
+        val current=(state.value as? AppState.Ready)?.snapshot?.takeIf{it.book.id==bookId}?:return
+        val candidate=candidates.singleOrNull()?.takeIf{it.trustworthy}?:return
+        if(d.mediaSession!=session||d.id!=null||d.kind!=EntryKind.EXPENSE||d.merchantManuallyEdited||d.merchant.isNotBlank()||d.merchantId!=null)return
+        val merchant=current.merchants.firstOrNull{it.bookId==bookId&&it.id==candidate.merchant.id&&it.active}?:return
+        if(current.merchantLocations.none{it==candidate.location})return
+        changeEntry(bookId,d.copy(merchantId=merchant.id,merchant=merchant.name))
     }
     fun changeEntry(bookId:String,draft:EntryDraft) {if(savingEntry)return;entry.value=draft;persistDraft(bookId)}
     fun persistDraft(bookId:String) {
@@ -291,7 +331,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun keepEntry(bookId:String) {persistDraft(bookId);entry.value=null;route.value="home"}
     companion object {
         fun factory(application:YohakuApplication)=object:ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST") override fun <T:ViewModel> create(modelClass:Class<T>):T = AppViewModel(application.repository,application.preferences) as T
+            @Suppress("UNCHECKED_CAST") override fun <T:ViewModel> create(modelClass:Class<T>):T = AppViewModel(application.repository,application.preferences,reminders=application.reminders,locationSource=com.yohaku.expensetracker.platform.ForegroundLocation(application)) as T
         }
     }
 }

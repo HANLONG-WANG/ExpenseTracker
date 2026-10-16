@@ -48,10 +48,10 @@ data class BookSnapshot(val book:BookEntity,val accounts:List<AccountEntity>,val
                 if(index==0)balances else emptyList(),before.spentMinor,after.spentMinor,before.reserveMinor,after.reserveMinor,if(index==0)friendChanges(next)else emptyList())
         }
     }
-    fun entryAccounts(kind:EntryKind)=accounts.filter{it.active&&(kind!=EntryKind.INCOME||!AccountType.valueOf(it.type).debt)}
+    fun entryAccounts(kind:EntryKind,preservedId:String?=null)=accounts.filter{(it.active||it.id==preservedId)&&(kind!=EntryKind.INCOME||!AccountType.valueOf(it.type).debt)}
     fun path(id:String?):String { val c=categories.find{it.id==id} ?: return ""; return c.parentId?.let{p->categories.find{it.id==p}?.name?.plus(" / ")} .orEmpty()+c.name }
 }
-class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaultZone(),val mediaRoot:java.io.File?=null) {
+class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val mediaRoot:java.io.File?=null) {
     internal val mediaWrites=kotlinx.coroutines.sync.Mutex()
     val dao=db.dao()
     val json=Json { encodeDefaults=true }
@@ -59,7 +59,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
     fun snapshot(book:BookEntity):Flow<BookSnapshot> = dao.graph(book.id).map { graph ->
         val g=graph ?: error("账本不存在 / 帳簿がありません")
         val liveIds=g.events.filter{it.deletedAt==null}.map{it.id}.toSet()
-        BookSnapshot(g.book,g.accounts,g.categories,g.events.sortedWith(compareByDescending<EventEntity>{it.date}.thenByDescending{it.createdAt}.thenBy{it.id}),
+        BookSnapshot(g.book,g.accounts,g.categories,g.events.filter{it.purgedAt==null}.sortedWith(compareByDescending<EventEntity>{it.date}.thenByDescending{it.createdAt}.thenBy{it.id}),
             g.postings.filter{it.confirmed && it.eventId in liveIds},
             g.drafts.singleOrNull()?.let{json.decodeFromString<EntryDraft>(it.json)},g.postings,g.settlements,g.transfers,g.expenseComponents,g.budgets,g.activities,g.features.singleOrNull(),g.eventActivities,g.recurrences,g.occurrences,g.activityBudgets,g.reserves,g.reserveUses,g.friends,g.participants,g.treats,g.allocations,g.analysisPreferences.singleOrNull(),g.merchants,g.merchantLocations,g.eventMerchants,g.files,g.attachments,g.stagedMedia,g.receipts,g.receiptImages,g.contracts,g.repayments,g.repaymentAllocations,g.arrangements,g.billAdjustments,g.expectedIncomes)
     }
@@ -78,7 +78,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
             val month=if(old.initialized)java.time.YearMonth.now(clock).toString()else book.startDate.take(7)
             dao.putBudget(BudgetEntity(book.id,month,"",null,book.budgetMinor))
         }
-        require(book.theme in listOf("magazine","journal","objects"));require(book.language in listOf("zh","ja"));dao.putBook(book)
+        require(book.theme in listOf("magazine","journal","objects"));require(book.language in listOf("zh","ja"));dao.putBook(book.copy(archived=old.archived,deletedAt=old.deletedAt))
     } }
     suspend fun updateAppearance(bookId:String,theme:String?=null,language:String?=null) { db.withTransaction {
         val old=dao.book(bookId) ?: error("账本不存在 / 帳簿がありません")
@@ -90,24 +90,28 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
         dao.putBook(old.copy(setupStep=step))
     } }
     suspend fun saveAccount(bookId:String,name:String,type:AccountType,currency:Currency,opening:Money,date:String,accountId:String?=null):String = db.withTransaction {
+        require(dao.book(bookId)!=null){"账本不可用 / 帳簿が利用できません"}
         require(name.isNotBlank()){ "请输入名称 / 名前を入力してください" };require(opening.currency==currency);LocalDate.parse(date)
         val old=accountId?.let{dao.account(bookId,it) ?: error("账户不存在 / 口座がありません")}
         require(old==null || old.type==type.name){"账户类型不可改写 / 口座の種類は変更できません"}
-        require(old==null || old.currency==currency.name || (!dao.hasAccountHistory(bookId,old.id)&&dao.reserves(bookId).none{it.accountId==old.id})){"已有交易、规划或金融资料的账户币种不可更改 / 記録・予定・金融情報がある口座の通貨は変更できません"}
+        require(old==null || old.currency==currency.name || !accountUsage(bookId,old.id).inUse){"已有交易、规划或金融资料的账户币种不可更改 / 記録・予定・金融情報がある口座の通貨は変更できません"}
         val account=AccountEntity(bookId,old?.id?:id(),name.trim(),type.name,currency.name,opening.minor,date,old?.active?:true)
         dao.putAccount(account);account.id
     }
     suspend fun saveCategory(bookId:String,name:String,kind:EntryKind,parentId:String?,categoryId:String?=null,favorite:Boolean=false):String = db.withTransaction {
+        require(dao.book(bookId)!=null)
         require(name.isNotBlank()){ "请输入名称 / 名前を入力してください" };require(kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))
         val parent=parentId?.let{dao.category(bookId,it) ?: error("父分类不存在 / 親カテゴリがありません")}
         require(parent==null || parent.parentId==null && parent.kind==kind.name){"最多两级且用途相同 / 同じ用途で2階層まで"}
         require(parentId!=categoryId || categoryId==null){"不能归属自己 / 自分を親にはできません"}
+        val oldCategory=categoryId?.let{dao.category(bookId,it)}
         if(categoryId!=null) {
             val old=dao.category(bookId,categoryId) ?: error("分类不存在 / カテゴリがありません")
             require(old.parentId==parentId && old.kind==kind.name){"已有分类层级调整需影响预览 / 階層変更には影響確認が必要です"}
         }
+        require(oldCategory!=null||parent==null||categoryEnabled(bookId,parent.id)){"父分类已停用 / 親カテゴリは停止済みです"}
         val savedId=categoryId?:id()
-        dao.putCategory(CategoryEntity(bookId,savedId,name.trim(),kind.name,parentId,favorite))
+        dao.putCategory(CategoryEntity(bookId,savedId,name.trim(),kind.name,parentId,favorite,oldCategory?.active?:true))
         savedId
     }
     suspend fun toggleCategoryFavorite(bookId:String,categoryId:String)=db.withTransaction {
@@ -120,11 +124,12 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
     internal suspend fun prepareEntry(bookId:String,draft:EntryDraft):PreparedLedgerChange {
         val b=dao.book(bookId) ?: error("账本不存在 / 帳簿がありません")
         require(draft.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))
+        val old=draft.id?.let{dao.event(bookId,it) ?: error("原记录不存在 / 元の記録がありません")}
         val a=dao.account(bookId,draft.accountId ?: error("请选择账户 / 口座を選択してください")) ?: error("账户不属于本账本 / 別の帳簿の口座です")
-        require(a.active)
+        require(a.active||old?.accountId==a.id){"请选择启用的付款账户 / 有効な支払口座を選択してください"}
         require(draft.kind!=EntryKind.INCOME||!AccountType.valueOf(a.type).debt){"收入请选择资金账户；还款或退款使用对应类型 / 収入は資金口座へ。返済・返金は専用の種類で記録してください"}
         val c=dao.category(bookId,draft.categoryId ?: error("请选择分类 / カテゴリを選択してください")) ?: error("分类不属于本账本 / 別の帳簿のカテゴリです")
-        require(c.kind==draft.kind.name && c.active)
+        require(c.kind==draft.kind.name && (categoryEnabled(bookId,c.id)||old?.categoryId==c.id))
         val amount=Money.parse(draft.amount,draft.originalCurrency ?: Currency.valueOf(a.currency)); require(amount.minor>0){"金额应大于零 / 金額は0より大きくしてください"}
         val accountAmount=if(amount.currency.name==a.currency)amount else Money.parse(draft.accountAmount,Currency.valueOf(a.currency))
         require(accountAmount.minor>0)
@@ -133,7 +138,6 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
         LocalDate.parse(draft.settlementDate);LocalDate.parse(draft.rateDate)
         val date=LocalDate.parse(draft.date)
         require(!draft.historicalIncluded || date<=LocalDate.parse(a.openingDate)){"只有期初已包含的历史记录可使用此选项 / 期首以前の記録のみ指定できます"}
-        val old=draft.id?.let{dao.event(bookId,it) ?: error("原记录不存在 / 元の記録がありません")}
         require(old==null||old.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name))
         require(old?.deletedAt==null){"请先恢复记录 / 記録を復元してください"}
         val linkedRefunds=old?.let{dao.refunds(bookId,it.id).filter{r->r.deletedAt==null}}.orEmpty()
@@ -154,6 +158,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
         if(draft.activityId!=null) {
             val activity=dao.activity(bookId,draft.activityId)
             require(activity!=null){"活动不属于本账本 / 別の帳簿のシーンです"}
+            require(activity.deletedAt==null||old?.let{dao.eventActivity(bookId,it.id)?.activityId}==activity.id){"不能向已删除活动添加记录 / 削除済みシーンには追加できません"}
             require(draft.kind==EntryKind.EXPENSE){"活动只关联支出 / シーンは支出に関連付けてください"}
             require(!activity.ended||draft.date in activity.startDate..activity.endDate){"结束活动只补录期间事实 / 終了済みシーンは期間内の事実のみ記録できます"}
             require(dao.features(bookId)?.activityMode==true||old?.let{dao.eventActivity(bookId,it.id)?.activityId}==draft.activityId||occurrence?.activityId==draft.activityId)
@@ -197,35 +202,15 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=Clock.systemDefaul
         dao.storedDraft(bookId)?.let{stored->dao.clearStagedMedia(bookId,json.decodeFromString<EntryDraft>(stored.json).mediaSession)}
         dao.clearDraft(bookId)
     }
-    suspend fun deleteEntry(bookId:String,id:String) { db.withTransaction {
-        val old=dao.event(bookId,id) ?: error("记录不存在 / 記録がありません")
-        if(old.deletedAt==null) {
-            val deletedAt=clock.millis()
-            if(old.kind==EntryKind.EXPENSE.name)dao.refunds(bookId,old.id).filter{it.deletedAt==null}.forEach{dao.putEvent(it.copy(deletedAt=deletedAt))}
-            dao.putEvent(old.copy(deletedAt=deletedAt));recheckOccurrences(bookId,old.id)
-        }
-    } }
-    suspend fun restoreEntry(bookId:String,id:String) { db.withTransaction {
-        val old=dao.event(bookId,id) ?: error("记录不存在 / 記録がありません")
-        require(old.deletedAt!=null && old.deletedAt>clock.millis()-Duration.ofDays(30).toMillis()){ "记录已超过恢复期限 / 復元期限を過ぎました" }
-        val originalId=dao.settlement(bookId,old.id)?.originalEventId
-        require(originalId==null||dao.event(bookId,originalId)?.deletedAt==null){"请先恢复原消费 / 元の支出を先に復元してください"}
-        if(originalId!=null) {
-            val original=dao.event(bookId,originalId)!!
-            require(original.kind==EntryKind.EXPENSE.name&&original.currency==old.currency){"原消费类型或币种已改变，不能恢复退款 / 元の支出の種類・通貨が変わったため返金を復元できません"}
-            val other=dao.refunds(bookId,originalId).filter{it.deletedAt==null&&it.id!=old.id}.fold(0L){sum,r->Math.addExact(sum,r.amountMinor)}
-            require(Math.addExact(other,old.amountMinor)<=original.amountMinor){"恢复后退款超过原消费，请先修正金额 / 復元後の返金総額が元の支出額を超えます"}
-        }
-        val current=snapshot(dao.book(bookId)!!).first()
-        dao.reserveUses(bookId,old.id).forEach{use->val reserve=dao.reserve(bookId,use.reserveId)!!
-            require(!reserve.active||use.amountMinor<=current.reserveRemaining(reserve)){"原预留已被使用或释放，请先调整预留再恢复 / 元の確保は使用・解放済みです。確保を調整してから復元してください"}
-        }
-        if(old.kind==EntryKind.EXPENSE.name)dao.refunds(bookId,old.id).filter{it.deletedAt==old.deletedAt}.forEach{dao.putEvent(it.copy(deletedAt=null))}
-        dao.putEvent(old.copy(deletedAt=null));recheckOccurrences(bookId,old.id)
-    } }
+    suspend fun deleteEntry(bookId:String,id:String) { commitEntryLifecycle(previewEntryLifecycle(bookId,id,EntryLifecycleOperation.TRASH)).also{check(it)} }
+    suspend fun restoreEntry(bookId:String,id:String) { commitEntryLifecycle(previewEntryLifecycle(bookId,id,EntryLifecycleOperation.RESTORE)).also{check(it)} }
     suspend fun purgeExpired()=db.withTransaction {
         val cutoff=clock.millis()-Duration.ofDays(30).toMillis()
-        dao.purgeUnlinkedRefunds(cutoff)
-        dao.purgeUnlinked(cutoff)
+        dao.books().first().filter{it.deletedAt?.let{date->date<=cutoff}==true}.forEach{purgeWholeBook(it.id)}
+        dao.books().first().forEach{book->
+            dao.events(book.id).first().filter{it.deletedAt?.let{date->date<=cutoff}==true}.forEach{event->
+                if(dao.event(book.id,event.id)!=null)purgeEntryGroup(book.id,event.id)
+            }
+        }
     }
 }

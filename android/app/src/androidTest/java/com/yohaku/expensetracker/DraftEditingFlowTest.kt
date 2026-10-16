@@ -20,6 +20,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class DraftEditingFlowTest {
     @get:Rule val ui=createComposeRule()
+    @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
@@ -72,7 +73,9 @@ class DraftEditingFlowTest {
             val parentHeight=if(fixed)when(theme){"journal"->56.797f;"objects"->53f;else->55f} else when(theme){"journal"->72f;"objects"->71f;else->69f}
             val nameTop=noteTop+noteHeight+16
             val parentTop=nameTop+nameHeight+if(fixed)20 else 16
-            val saveTop=parentTop+parentHeight+if(fixed)35 else 31
+            // The P23 management link is a formal extension below the unchanged source fields.
+            val managementHeight=if(fixed)ui.onNodeWithTag("category-manage").getUnclippedBoundsInRoot().let{(it.bottom-it.top).value} else 0f
+            val saveTop=parentTop+parentHeight+(if(fixed)35+16+managementHeight else 31f)
             val expected=listOf(Triple("category-editor-intro",noteTop,noteHeight),Triple(if(ja)"field-group-カテゴリ名" else "field-group-分类名称",nameTop,nameHeight),Triple(if(fixed)"category-parent-fixed" else if(ja)"select-field-階層" else "select-field-分类层级",parentTop,parentHeight),Triple("category-editor-save",saveTop,when(theme){"journal"->50f;"objects"->52f;else->48f}))
             for((tag,top,height) in expected){
                 val r=ui.onNodeWithTag(tag).getUnclippedBoundsInRoot()
@@ -126,6 +129,13 @@ class DraftEditingFlowTest {
         }
     }
     @Test fun foreignAccountReferenceUsesEnteredBaseAmountAndNeverInventsZero(){
+        // This case verifies the no-reference state, independently of earlier persisted rates.
+        val previous=runBlocking { vm.preferences.referenceRateCache() to vm.preferences.automaticReferenceRatesEnabled() }
+        runBlocking {
+            vm.preferences.saveReferenceRateCache(com.yohaku.expensetracker.domain.currency.ReferenceRateCache())
+            vm.preferences.setAutomaticReferenceRates(false)
+        }
+        try {
         val foreign=runBlocking{repo.saveAccount(a,"人民币账户",AccountType.BANK,Currency.CNY,Money(Currency.CNY,10000),"2026-10-01")}
         ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.accounts?.any{it.id==foreign}==true}
         ui.runOnIdle{vm.startEntry(snapshot(a));vm.changeEntry(a,vm.entry.value!!.copy(accountId=foreign,categoryId=category,amount="100"));vm.navigate("entry")}
@@ -137,7 +147,14 @@ class DraftEditingFlowTest {
         assertEquals(10000L,snapshot(a).balance(snapshot(a).accounts.first{it.id==foreign}))
         ui.runOnIdle{vm.leaveEntry(a,false)}
         ui.waitUntil(10000){vm.entry.value==null}
+        } finally {
+            runBlocking {
+                vm.preferences.saveReferenceRateCache(previous.first)
+                vm.preferences.setAutomaticReferenceRates(previous.second)
+            }
+        }
     }
+
     @Test fun yenQuickEntrySavesSameRecordAndIsAbsentForIncome(){
         for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language)}
@@ -238,6 +255,7 @@ class DraftEditingFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             val before=snapshot(a).visibleEvents.single()
             ui.onNodeWithTag("event-"+event).performScrollTo().performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("record-edit-button").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("record-edit-button").performScrollTo().performClick()
             ui.onNodeWithTag(if(language=="zh")"field-金额 · JPY" else "field-金額 · JPY").performTextReplacement("999")
             ui.onNodeWithTag("entry-save-button").assert(hasText(if(language=="zh")"保存修改" else "変更を保存"))
@@ -250,6 +268,7 @@ class DraftEditingFlowTest {
             assertEquals(before,snapshot(a).visibleEvents.single());assertNull(snapshot(a).draft)
             ui.onNodeWithText("×").performClick();ui.waitUntil(10000){vm.route.value=="ledger"}
             ui.onNodeWithTag("event-"+event).performScrollTo().performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("record-edit-button").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("record-edit-button").performScrollTo().performClick()
             val amount=before.amountMinor+100
             ui.onNodeWithTag(if(language=="zh")"field-金额 · JPY" else "field-金額 · JPY").performTextReplacement(amount.toString())
@@ -571,10 +590,12 @@ class DraftEditingFlowTest {
             tap(if(ja)"ごみ箱 · 30日" else "回收站 · 30天")
             waitFor(if(ja)"記録を復元" else "恢复原记录")
             ui.onNodeWithTag("trash-"+event).assertExists()
+            ui.onNodeWithTag("restore-"+event).performScrollTo().performClick()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-entry-lifecycle").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("impact-balance-"+account).performScrollTo().onChildren().onLast().assertTextEquals("¥10,000 → ¥9,700")
             ui.onNodeWithTag("impact-budget").performScrollTo().onChildren().onLast().assertTextEquals("¥10,000 → ¥9,700")
             captureScreen("trash","$theme-$language")
-            ui.onNodeWithTag("restore-"+event).performScrollTo().performClick()
+            ui.onNodeWithTag("confirm-entry-lifecycle").performScrollTo().performClick()
             ui.waitUntil(10000){snapshot(a).visibleEvents.size==1}
             val restored=snapshot(a)
             assertEquals(event,restored.visibleEvents.single().id)
@@ -737,6 +758,7 @@ class DraftEditingFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
             ui.onNodeWithTag("account-"+account).performScrollTo().performClick()
             tap("编辑账户")
+            ui.waitUntil(10000){ui.onAllNodesWithTag("account-form").fetchSemanticsNodes().isNotEmpty()&&!vm.busy.value}
             ui.onNodeWithTag("account-currency-fixed").assertExists()
             ui.onNodeWithTag("select-trigger-账户币种").assertDoesNotExist()
             ui.onNodeWithTag("field-期初余额").performScrollTo().performTextReplacement("12000")
@@ -745,6 +767,7 @@ class DraftEditingFlowTest {
             assertEquals(10000L,snapshot(a).accounts.single().openingMinor)
             assertEquals(9700L,snapshot(a).balance(snapshot(a).accounts.single()))
             tap("编辑账户")
+            ui.waitUntil(10000){ui.onAllNodesWithTag("account-form").fetchSemanticsNodes().isNotEmpty()&&!vm.busy.value}
             ui.onNodeWithTag("account-currency-fixed").assertExists()
             ui.onNodeWithTag("select-trigger-账户币种").assertDoesNotExist()
             ui.onNodeWithTag("field-期初余额").assertTextEquals("10000")
@@ -802,14 +825,15 @@ class DraftEditingFlowTest {
             repo.saveEntry(a,EntryDraft(accountId=account,categoryId=other,amount="50",merchant="日用品"))
             repo.saveEntry(a,EntryDraft(kind=EntryKind.INCOME,accountId=account,categoryId=income,amount="400",merchant="收入"))
             repo.saveEntry(a,EntryDraft(accountId=account,categoryId=other,amount="600",date=java.time.LocalDate.now().minusMonths(1).withDayOfMonth(1).toString(),merchant="上月消费"))
+            repo.saveAnalysisPreferences(a,listOf(AnalysisModule.CATEGORIES),emptySet())
             other
         }
         for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("analysis")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
-            ui.onNodeWithTag("analysis-total").performScrollTo().assertIsDisplayed()
-            ui.onNodeWithText("¥650").assertExists()
-            val totalBounds=ui.onNodeWithTag("analysis-total").fetchSemanticsNode().boundsInRoot
+            ui.onNodeWithTag("lead-amount").performScrollTo().assertIsDisplayed()
+            ui.onNodeWithTag("lead-amount").assertTextEquals(if(theme=="journal")"¥650 ↗" else "¥650")
+            val totalBounds=ui.onNodeWithTag("lead-amount").fetchSemanticsNode().boundsInRoot
             val totalDensity=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             dimensions+="$theme,$language,total,${totalBounds.width/totalDensity},${totalBounds.height/totalDensity}"
             captureScreen("basic-analysis","$theme-$language-top")
@@ -907,6 +931,7 @@ class DraftEditingFlowTest {
             ui.runOnIdle{vm.appearance(a,theme=theme,language=if(ja)"ja" else "zh");vm.navigate("settings")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
             val old=snapshot(a).book.name
+            val previousLimit=snapshot(a).budgetProjection(java.time.YearMonth.now(repo.clock).toString()).limitMinor
             val nameTag=if(ja)"field-帳簿名" else "field-账本名称"
             val budgetTag=if(ja)"field-月予算・後から設定可" else "field-月预算 / 可稍后设置"
             val info=if(ja)"帳簿情報" else "账本名称与资料"
@@ -921,9 +946,13 @@ class DraftEditingFlowTest {
             ui.onNodeWithTag(budgetTag).performScrollTo().performTextReplacement("52000")
             captureScreen("book-editor",theme)
             tap(if(ja)"帳簿を保存" else "保存账本")
+            if(previousLimit!=52000L){
+                assertEquals(old,snapshot(a).book.name)
+                tap(if(ja)"帳簿と予算を保存" else "确认保存账本与预算")
+            }
             ui.waitUntil(10000){snapshot(a).book.name=="日常 $theme"}
             val saved=snapshot(a)
-            assertEquals("JPY",saved.book.currency);assertEquals(52000L,saved.book.budgetMinor)
+            assertEquals("JPY",saved.book.currency);assertEquals(52000L,saved.budgetProjection(java.time.YearMonth.now(repo.clock).toString()).limitMinor)
             assertEquals(event,saved.events.single().id);assertEquals(300L,saved.events.single().amountMinor)
             assertEquals(9700L,saved.balance(saved.accounts.single()))
             assertEquals("journal",snapshot(b).book.theme);assertEquals("ja",snapshot(b).book.language)
@@ -936,10 +965,12 @@ class DraftEditingFlowTest {
         ui.onNodeWithTag("select-option-基準通貨-2").performScrollTo().performClick()
         ui.onNodeWithTag("field-月予算・後から設定可").performScrollTo().performTextReplacement("12.34")
         tap("帳簿を保存")
+        assertEquals("CNY",snapshot(b).book.currency)
+        tap("帳簿と予算を保存")
         ui.waitUntil(10000){snapshot(b).book.currency=="USD"}
-        assertEquals(1234L,snapshot(b).book.budgetMinor)
+        assertEquals(1234L,snapshot(b).budgetProjection(java.time.YearMonth.now(repo.clock).toString()).limitMinor)
         assertTrue(snapshot(b).events.isEmpty());assertTrue(snapshot(b).accounts.isEmpty())
-        assertEquals("JPY",snapshot(a).book.currency);assertEquals(52000L,snapshot(a).book.budgetMinor)
+        assertEquals("JPY",snapshot(a).book.currency);assertEquals(52000L,snapshot(a).budgetProjection(java.time.YearMonth.now(repo.clock).toString()).limitMinor)
     }
     @Test fun realKeyboardLeavesSaveReachableAcrossThemesAndLanguages(){
         Assume.assumeTrue("Requires -e realKeyboard true with an actual visible IME",InstrumentationRegistry.getArguments().getString("realKeyboard")=="true")

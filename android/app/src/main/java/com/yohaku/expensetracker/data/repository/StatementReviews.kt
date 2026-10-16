@@ -28,7 +28,7 @@ fun BookSnapshot.reviewStatements(batches:List<StatementBatchEntity>,decisions:L
     val reviewed=decisions.filter{it.batchId in batchIds}.map { saved ->
         val original=FileProtocols.json.decodeFromString<ReviewedPostingFact>(saved.postingJson)
         val current=facts[saved.postingId]
-        ReviewedStatementDifference(saved,original,current,current==original)
+        ReviewedStatementDifference(saved,original,current,current==original&&saved.invalidatedAt==null)
     }
     val occupied=reviewed.filter{it.active}.map{it.saved.postingId}.toMutableSet()
     val projected=batches.map { batch ->

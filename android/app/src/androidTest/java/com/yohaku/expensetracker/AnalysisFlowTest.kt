@@ -26,6 +26,7 @@ import java.time.*
 @RunWith(AndroidJUnit4::class)
 class AnalysisFlowTest {
     @get:Rule val ui=createComposeRule()
+    @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var restoration:StateRestorationTester
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
@@ -87,7 +88,8 @@ class AnalysisFlowTest {
             ui.onNodeWithTag("analysis-tab-budget").performScrollTo().performClick()
             ui.onNodeWithText(text("预算按完整自然月展示，消费筛选不会改写月预算。","予算は暦月全体を表示。支出の絞込は月予算を変更しません。")).performScrollTo().assertExists()
             ui.onNodeWithTag("analysis-tab-future").performScrollTo().performClick()
-            ui.onNodeWithText(text("这个期间没有待付固定安排。","この期間の未払い予定はありません。")).assertExists()
+            ui.onNodeWithText(text("这个期间没有已知资金安排。","この期間の既知の資金予定はありません。")).performScrollTo().assertExists()
+            ui.onNodeWithText(text("没有活动资金预留或未完成转账。","シーンの資金確保・未完了の振替はありません。")).performScrollTo().assertExists()
             ui.onNodeWithTag("analysis-tab-spend").performScrollTo().performClick()
             ui.onNodeWithTag("lead-amount").assertDoesNotExist()
             shot("$theme-$language-first-choice",false)
@@ -284,8 +286,9 @@ class AnalysisFlowTest {
             ui.waitUntil(10000){!vm.busy.value}
             val current=(vm.state.value as AppState.Ready).snapshot!!
             val occurrence=current.pendingOccurrences().single()
-            ui.onNodeWithTag("future-occurrence-${occurrence.id}").assertExists()
-            ui.onNodeWithTag("future-occurrence-${occurrence.id}").performScrollTo()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("cash-occurrence:${occurrence.id}").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("cash-occurrence:${occurrence.id}").assertExists()
+            ui.onNodeWithTag("cash-occurrence:${occurrence.id}").performScrollTo()
             shot("$theme-$language-future-timeline",false,false)
             ui.onNodeWithTag("future-fund-reserve-$reserve").performScrollTo()
             shot("$theme-$language-future-funds",false,false)
@@ -302,7 +305,7 @@ class AnalysisFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.occurrences?.count{it.scheduledDate.startsWith("2026-11")}==2&&!vm.busy.value}
             val next=(vm.state.value as AppState.Ready).snapshot!!
             val unknown=next.pendingOccurrences().single{it.name=="未知安排"}
-            ui.onNodeWithTag("future-occurrence-${unknown.id}").performScrollTo()
+            ui.onNodeWithTag("cash-occurrence:${unknown.id}").performScrollTo()
             shot("$theme-$language-future-new-month",false,false)
             ui.onNodeWithTag("analysis-tab-budget").performScrollTo().performClick()
             ui.onNodeWithTag("analysis-budget-month").performScrollTo().performClick()

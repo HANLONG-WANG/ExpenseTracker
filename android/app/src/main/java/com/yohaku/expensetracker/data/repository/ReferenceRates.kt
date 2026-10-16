@@ -34,7 +34,7 @@ class FrankfurterTransport:ReferenceRateTransport {
         }finally{connection.disconnect()}
     }
 }
-class ReferenceRates(val store:ReferenceRateStore,private val transport:ReferenceRateTransport=FrankfurterTransport(),val clock:Clock=Clock.systemDefaultZone()) {
+class ReferenceRates(val store:ReferenceRateStore,private val transport:ReferenceRateTransport=FrankfurterTransport(),val clock:Clock=DeviceClock()) {
     private val mutex=Mutex()
     val cacheRevision=kotlinx.coroutines.flow.MutableStateFlow(0L)
     val automatic=store.automaticReferenceRates

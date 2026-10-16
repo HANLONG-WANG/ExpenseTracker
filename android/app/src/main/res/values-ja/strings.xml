@@ -1,1 +1,2 @@
-<resources><string name="app_name">ヨハク</string></resources>
+<resources><string name="app_name">ヨハク</string><string name="important_notification_channel">大事な予定</string>
+</resources>

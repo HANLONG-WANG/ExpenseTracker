@@ -85,6 +85,7 @@ import com.yohaku.expensetracker.ui.theme.*
             FinancialAttentionList(s,value,onAttention)
         }
     }
+    YLink(word("调整提醒","通知を設定"),{vm.navigate("notification-settings")},Modifier.testTag("important-settings"))
     YButton(word("查看账户缺口与预算风险","口座不足・予算リスクを見る"),onForecast,Modifier.testTag("important-forecast"))
 }
 

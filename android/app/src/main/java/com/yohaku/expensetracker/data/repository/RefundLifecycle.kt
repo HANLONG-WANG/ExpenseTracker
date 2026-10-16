@@ -7,5 +7,5 @@ import com.yohaku.expensetracker.domain.model.EntryKind
 fun BookSnapshot.linkedLifecycleRefunds(event:EventEntity,restoring:Boolean):List<EventEntity> {
     if(event.kind!=EntryKind.EXPENSE.name)return emptyList()
     val linked=settlements.filter{it.originalEventId==event.id}.map{it.eventId}.toSet()
-    return events.filter{it.id in linked&&if(restoring)it.deletedAt==event.deletedAt else it.deletedAt==null}
+    return events.filter{it.id in linked&&if(restoring)(if(event.deletionGroupId!=null)it.deletionGroupId==event.deletionGroupId else it.deletionGroupId==null&&it.deletedAt==event.deletedAt) else it.deletedAt==null}
 }

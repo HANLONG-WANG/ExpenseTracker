@@ -103,12 +103,12 @@ suspend fun LedgerRepository.previewBorrowing(bookId:String,input:FinancialBorro
 
 suspend fun LedgerRepository.previewRepayment(bookId:String,input:FinancialRepaymentInput):FinancialLedgerReview=db.withTransaction {
     val state=financialReviewState(bookId);val s=state.ledger
-    val source=requireNotNull(s.accounts.firstOrNull{it.id==input.sourceAccountId&&it.active&&!AccountType.valueOf(it.type).debt}){"请选择实际付款资金账户 / 実際の支払資金口座を選択してください"}
-    val debt=requireNotNull(s.accounts.firstOrNull{it.id==input.debtAccountId&&it.active&&AccountType.valueOf(it.type).debt}){"请选择本账本的债务账户 / この帳簿の債務口座を選択してください"}
+    val old=input.eventId?.let{requireNotNull(s.visibleEvents.firstOrNull{e->e.id==it&&e.kind in listOf(EntryKind.REPAYMENT.name,EntryKind.EXPENSE.name)}){"请选择有效的已有付款记录 / 有効な既存の支払記録を選択してください"}}
+    val source=requireNotNull(s.accounts.firstOrNull{it.id==input.sourceAccountId&&(it.active||old?.accountId==it.id)&&!AccountType.valueOf(it.type).debt}){"请选择实际付款资金账户 / 実際の支払資金口座を選択してください"}
+    val debt=requireNotNull(s.accounts.firstOrNull{it.id==input.debtAccountId&&AccountType.valueOf(it.type).debt}){"请选择本账本的债务账户 / この帳簿の債務口座を選択してください"}
     requireMoney(input.paid,source.currency,true);LocalDate.parse(input.date)
     listOfNotNull(input.received,input.principal,input.interest,input.fee).forEach{requireMoney(it,debt.currency)}
     input.clearingDate?.let{LocalDate.parse(it)}
-    val old=input.eventId?.let{requireNotNull(s.visibleEvents.firstOrNull{e->e.id==it&&e.kind in listOf(EntryKind.REPAYMENT.name,EntryKind.EXPENSE.name)}){"请选择有效的已有付款记录 / 有効な既存の支払記録を選択してください"}}
     if(old!=null&&s.repayments.none{it.eventId==old.id}) {
         require(old.accountId==source.id&&s.storedPostings.any{it.eventId==old.id&&it.accountId==source.id&&it.confirmed&&it.deltaMinor== -input.paid.minor&&it.date==input.date}){"关联付款须与实际账户、日期和金额一致 / 関連する支払は実口座・日付・金額を一致させてください"}
     }

@@ -8,6 +8,7 @@ lifecycle = "2.10.0"
 room = "2.8.4"
 datastore = "1.2.1"
 serialization = "1.10.0"
+work = "2.12.0"
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
@@ -22,3 +23,5 @@ room = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 serialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+
+work = { module = "androidx.work:work-runtime", version.ref = "work" }

@@ -26,7 +26,7 @@ fun BookSnapshot.merchantLabel(key:String):String=if(key.startsWith("id:"))merch
 fun BookSnapshot.analysis(filter:AnalysisFilter):AnalysisReport {
     require(LocalDate.parse(filter.start)<=LocalDate.parse(filter.end)){"开始日期不能晚于结束日期 / 開始日は終了日以前にしてください"}
     val ids=filter.categoryId?.let{id->setOf(id)+categories.filter{it.parentId==id}.map{it.id}}
-    fun activity(e:EventEntity)=eventActivities.find{it.eventId==e.id}?.activityId
+    fun activity(e:EventEntity)=currentActivityId(e.id)
     val expenses=visibleEvents.filter{it.kind==EntryKind.EXPENSE.name}.map{e->AnalysisFact(e,e.date,e.categoryId,merchantKey(e),activity(e),e.baseMinor,Math.subtractExact(e.baseMinor,netExpense(e)),0)}
     val fees=visibleComponents().map{c->val e=visibleEvents.first{it.id==c.eventId};AnalysisFact(e,c.date,null,merchantKey(e),activity(e),0,0,c.baseMinor)}
     val selected=(expenses+fees).filter{f->f.date in filter.start..filter.end&&(ids==null||f.categoryId in ids)&&(filter.merchantKey==null||f.merchantKey==filter.merchantKey)&&(filter.activityId==null||f.activityId.orEmpty()==filter.activityId)}

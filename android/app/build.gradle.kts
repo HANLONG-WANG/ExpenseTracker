@@ -4,6 +4,13 @@ plugins {
     alias(libs.plugins.serialization)
     alias(libs.plugins.ksp)
 }
+// Keep the release identity outside the checkout. Debug builds need no release secrets.
+val releaseSigningDirectory = providers.environmentVariable("YOHAKU_SIGNING_DIR")
+    .orElse("${System.getProperty("user.home")}/.local/share/yohaku/signing")
+val releaseSigningPassword = providers.provider {
+    file("${releaseSigningDirectory.get()}/store-password")
+        .takeIf { it.isFile }?.readText()?.trimEnd()
+}
 android {
     namespace = "com.yohaku.expensetracker"
     compileSdk = 37
@@ -11,11 +18,26 @@ android {
         applicationId = "com.yohaku.expensetracker"
         minSdk = 29
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = providers.gradleProperty("yohakuVersionCode").orElse("5").get().toInt()
+        versionName = providers.gradleProperty("yohakuVersionName").orElse("0.5.0").get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    buildTypes { debug { applicationIdSuffix = ".dev" }; release { isMinifyEnabled = false } }
+    signingConfigs {
+        create("release") {
+            storeFile = file("${releaseSigningDirectory.get()}/release.p12")
+            storeType = "PKCS12"
+            storePassword = releaseSigningPassword.orNull
+            keyAlias = "yohaku-release"
+            keyPassword = releaseSigningPassword.orNull
+        }
+    }
+    buildTypes {
+        debug { applicationIdSuffix = ".dev" }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
     buildFeatures { compose = true }
     sourceSets["main"].assets.srcDir("../../docs/formats")
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -35,6 +57,7 @@ dependencies {
     implementation(libs.room)
     ksp(libs.room.compiler)
     implementation(libs.datastore)
+    implementation(libs.work)
     implementation(libs.serialization)
     implementation("androidx.core:core-ktx:1.18.0")
     testImplementation("junit:junit:4.13.2")

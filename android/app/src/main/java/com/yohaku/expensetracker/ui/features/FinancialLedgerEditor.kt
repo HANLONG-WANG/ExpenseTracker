@@ -98,7 +98,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
     val d=vm.repository.json.decodeFromString<RepaymentDraft>(encoded)
     fun update(v:RepaymentDraft){encoded=vm.repository.json.encodeToString(v)}
     fun row(index:Int,value:AllocationDraft){update(d.copy(rows=d.rows.mapIndexed{i,a->if(i==index)value else a}))}
-    val funds=s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}
+    val funds=s.accounts.filter{(it.active||event?.accountId==it.id)&&!AccountType.valueOf(it.type).debt}
     val source=s.accounts.firstOrNull{it.id==d.source}
     val sourceCurrency=source?.currency?:s.book.currency
     val bills=finance.bills.filter{it.active&&finance.plans.any{p->p.id==it.planId&&p.accountId==account.id}}

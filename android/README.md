@@ -1,88 +1,69 @@
-# 余量 Android · 阶段D
+# 余量 Android · 阶段E 0.5.0
 
-原生 Kotlin / Compose 应用。阶段A P01–P07、阶段B P08–P13和阶段C P14–P18的实现、验收与交付见[开发计划](../docs/plans/development-plan.md)、[阶段B状态](verification/phase-b-status.md)和[阶段C状态](verification/phase-c-status.md)。阶段D P19–P20实现正式文件协议、银行卡流水核对、小票ZIP与商品回填，验收依据见[阶段D状态](verification/phase-d-status.md)。后续P21–P25继续系统提醒/定位、完整资料管理与发行交付。
+原生 Kotlin / Compose 本地记账应用。阶段E P21–P25的实现与本轮可执行验收完成，交付0.5.0/code5。用户明确选择本轮交付APK，用户实机检查保持未验。准确状态见[阶段E记录](verification/phase-e-status.md)与[UI01–UI27验收](../docs/phase-e-acceptance.md)。历史范围见[开发计划](../docs/plans/development-plan.md)、[阶段A](verification/phase-a-status.md)、[阶段B](verification/phase-b-status.md)、[阶段C](verification/phase-c-status.md)、[阶段D](verification/phase-d-status.md)。
 
 ## 安装包
 
-[阶段D APK 0.4.0](artifacts/yohaku-phase-d-0.4.0.apk) · [SHA-256](artifacts/yohaku-phase-d-0.4.0.apk.sha256)
-
-历史交付：[阶段C 0.3.0](artifacts/yohaku-phase-c-0.3.0.apk) · [阶段B 0.2.0](artifacts/yohaku-phase-b-0.2.0.apk) · [阶段A 0.1.0](artifacts/yohaku-phase-a-0.1.0.apk)。
-
-- Android 10及以上（minSdk29），compile/target SDK37，开发包名 `com.yohaku.expensetracker.dev`，versionCode4，Room v25。
-- 已签名开发包，约86.9MiB，与阶段A/B/C证书一致。覆盖更新保留账本与本地资料，**不要先卸载**；卸载会删除本地数据。正式发行包及固定正式签名按P25处理。
-- 新安装从空白设置开始，没有预建分类、流水或测试资料。测试APK、模拟器数据与截图不打入产品包。
-- API36专用模拟器验证；用户实机未连接，不能据此声称实机验收通过。
-
-将APK传到手机，用系统文件管理器打开；系统要求时允许该文件管理器安装应用。也可在 `android/` 目录执行：
+- [正式APK 0.5.0](artifacts/yohaku-release-0.5.0.apk) · [SHA-256](artifacts/yohaku-release-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker`，固定正式签名。
+- [开发APK 0.5.0](artifacts/yohaku-dev-0.5.0.apk) · [SHA-256](artifacts/yohaku-dev-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker.dev`，沿用阶段A–D开发证书。
+- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v28。三主题、中日文按账本保存。
+- 开发包可覆盖原开发版本。正式包独立安装，与开发包并存，不自动转移开发包资料。覆盖升级不要先卸载；卸载或清除应用存储会删除账本与内部附件。无云端备份。
+- 当前仅专用API36模拟器验证，用户实机未连接。精简实机检查、密钥位置和完整安装升级说明见[发行说明](RELEASE.md)。
 
 ```sh
 adb devices
-adb -s <serial> install -r artifacts/yohaku-phase-d-0.4.0.apk
+adb -s <serial> install -r artifacts/yohaku-dev-0.5.0.apk
+adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 ```
 
-## 可用范围
+历史交付：[D 0.4.0](artifacts/yohaku-phase-d-0.4.0.apk)、[C 0.3.0](artifacts/yohaku-phase-c-0.3.0.apk)、[B 0.2.0](artifacts/yohaku-phase-b-0.2.0.apk)、[A 0.1.0](artifacts/yohaku-phase-a-0.1.0.apk)。这些历史包不包含阶段E的真实通知/定位和完整资料管理。
 
-- 三套独立主题、中文/日语，按账本保存偏好；空白设置、独立账本、两级分类、现金/银行/信用卡/贷款/交通IC账户。
-- 收支、历史补录、商户、筛选/详情、原ID修改与修订、独立草稿和进程恢复、基础删除/恢复。
-- 原币/账户币/统计币、预计与实际金额、部分退款、同币转账及跨币换汇、两端实际日期和在途确认。
-- 自然月/分类预算、周期待办与实际执行、活动预算和资金预留、多人互请；可选分析模块、分类/商户下钻。
-- 系统多选附件和小票、应用内副本、图片/音频及外部只读打开，小票排序与修订。
-- 用户配置的一次付/分期/リボ/固定贷款/循环贷款规则，生效版本、日期/端点/费用/舍入/时区，缺项与不支持状态，手动已知账单；没有金融机构预设。
-- 信用卡消费付款方式、自动リボ与账户余额池、逐期本金/费用/合计/期后本金、确认账单优先；总/子/共享额度及实际恢复依据。
-- 固定合同四种还款方式及循环借入；本金、净到账、预扣和另付费用分开，借入不算收入。实际付款与平台清偿分开，支持部分/提前/跨币种付款、原记录关联、未知拆分。
-- 原/新安排比较、期限与费用、独立确认已办理、部分转出/转池/同池月付调整、来源更正后的重核，保留原账单、实际流水和不可覆盖版本；纯试算不写正式账。
-- 预计收入手记及到账新建/关联；按真实资金账户的逐日预测、基础/含预计收入两情景、预算与资金缺口分列、付款日历、重要事项及实际处理入口。
-- 固定Frankfurter v2参考汇率服务、币种/日期查询、持久缓存、自动查询开关/手动刷新、离线保留和手填。请求只含币种/日期，不上传账目；参考金额不改写实际账。
+## 功能范围
 
-- 正式银行卡JSON的标识导出、整体预览、一对一资金端核对、独立人工差异、类型补记及实际入账/账单确认；原始文件可另存与删除，导入不自动写账。
-- 真实小票多图ZIP、按小票分包、原字节校验、商品JSON整体回填、独立商品编辑；旧修订/重复替换需确认，新增原图仍待整理。格式帮助可保存完整说明/schema/样例ZIP。
+- 空白设置、独立账本、两级支出/收入分类、现金/银行/交通IC/信用卡/贷款账户；期初债务不重复计收入/消费。
+- 收支、历史补录、原ID编辑/修订、按账本草稿及进程恢复。原币/账户币/统计币、预计与实际、部分/分次退款、同币转账/异币换汇、两端独立日期/在途及明确费用。
+- 自然月/分类预算、周期待办、确认或关联已有记录、活动预算/资金预留、多人互请；分析模块排序、分类/商户/活动筛选与下钻。
+- 用户配置的一次付/分期/リボ/固定贷款/循环贷款规则，生效版本、计息/费用/舍入/时区及逐期计划；缺项不假设零费用，特殊算法使用平台已知手动金额，无机构预设。
+- 信用卡消费付款方式、自动リボ/余额池、总/子/共享额度；实际借还、部分/提前/跨币种付款、待平台清偿/未知拆分。纯试算不修改正式账，确认办理保留原账单和历史。
+- 预计收入及实际到账/关联、按实际资金账户的逐日预测、基础/含预计收入两情景、预算与资金缺口分列、付款日历及重要事项。其他账户资金和信用额度不自动抵消扣款账户缺口。
+- Frankfurter v2参考汇率、来源日期/持久缓存、自动开关/手动刷新/离线手填；请求仅含币种/日期，不上传账目，参考金额不改写实际账。
+- 真实附件/小票多选、内部副本、图片预览、音频播放、外部只读打开；每个文件严格小于100 MB。
+- 正式流水JSON整体校验/预览、一对一核对、独立人工差异、按类型正式补记；小票多图ZIP/原字节校验、商品JSON回填/替换/修订与商品编辑；导入不自动写账，无OCR/银行连接。
+- 五类重要事项的真实通知、非精确AlarmManager调度、持久去重、修改撤销、重启/升级/时区变化重建；金额优先展示，点击进入所属账本和目标月份。用户保存开启时才申请通知权限，拒绝仍能记账。后台时机受Android及厂商省电策略影响。
+- 主动前台单次定位、保存地点匹配、默认100米、精度/唯一候选控制自动填入；多个候选手选，手改/清空/旧记录优先。离开前台取消，不申请后台位置权限或记录轨迹。
+- 整本归档/回收/恢复/永久清理；账户停用/启用/无引用删除；分类停用/改父级/明确迁移；活动删除影响与历史保留；记录关联组回收/恢复/永久清空及文件最后引用清理。
 
-未知金额保持未知，未确认清偿不假结清，其他账户余额和信用额度不自动抵消扣款账户缺口。特殊机构算法不冒充支持，可使用平台已知的手动逐期金额。
+没有登录、云同步、备份或应用锁。未知金额保持未知，未确认清偿不假结清。产品包不含测试种子、评审入口或测试验证器；格式帮助中的正常/错误样例仅供明确导出后转换使用。
 
-尚未完成：P21系统通知及提醒设置、P22定位、P23完整资料归档管理、P24/25最终全应用审查和正式发行。当前“重要事项”为应用内列表，不申请通知权限。无金融机构连接、登录、云同步、备份、应用锁或OCR。
+## 常用入口
 
-## 验收路径
+- 设置→独立账本管理→归档与整本回收。归档保留未完提醒；回收取消相应通知，30天内恢复原ID/归档状态。没有正常账本时仍能查看保留资料。回收站不是备份，永久删除/清空不可撤销。
+- 账户详情→账户状态与停用。停用保留历史与债务处理；有记录、计划、核对、预留或草稿引用时不能删除。
+- 分类编辑→分类状态与归属管理。迁移需选择同用途目标和预算处理方式，确认页展示历史月份/活动预算影响，金额与原记录ID保持。
+- 活动详情→查看删除影响。列出跨月回归日常后的预算，保留记录/资金/文件及原互请历史；停止该活动安排并释放未用预留。结束活动与删除活动为不同操作。
+- 原记录→移至回收站。原消费与本次关联退款、转账两端按组处理；以前独立删除的退款不混入。恢复旧人工核对后须重新确认；独立合同、确认账单和实际还款不因清理来源消费而抹去。
+- 分析→商户资料与保存地点。手填坐标或“使用当前位置”后仍须确认保存；记账页主动启用定位，拒绝/系统关闭仍可手填。
+- 设置→重要提醒。保存开启才请求权限；系统不允许时可进入系统通知设置。
 
-1. 新建账本与资金/信用卡或贷款账户；已有债务按原币期初补充，检查没有再次计收入或消费。
-2. 进入金融详情配置规则；缺项先查看提示，也可输入已知逐期账单。试算后保存，核对每期本金、费用、合计和依据。
-3. 录入信用卡消费并选择付款方式，查看账单月份、余额池和额度；确认平台账单后修改规则，原确认历史应保留。
-4. 新建固定/循环借款，例如本金10000、净到账9700、预扣300；检查本金债务10000、资金增加9700、费用300一次。
-5. 从账单记录实际还款；平台未确认时源资金已扣、债务仍待清偿，确认后只减少明确分配的本金/费用，不再次扣款。跨币种分别填写实付与实收。
-6. 比较分期/リボ或调整月付款，返回修改不改变正式计划；只有独立确认平台已办理后才改变未来义务，历史与实际资金保留。
-7. 添加预计收入，从首页重要事项/未来风险查看两个情景；预计收入不增加实际余额。确认新到账或关联已有收入后，不应重复入账。
-8. 从风险入口转入资金或记录实际收入；核对扣款账户风险变化。切换账本、三主题与两语言，重要事项应只显示当前账本资料。
-9. 在设置查询参考汇率，选择币种/日期、关闭自动后手动刷新；断网保留来源日期和缓存，也可手填实际金额。
+30天到期资格严格按时间判定；物理清理由启动及每日唯一WorkManager任务执行，后台可能延后。原文件仍被其他记录引用时保留。
+
+## 文件工作流
+
+1. 设置→银行/信用卡流水核对→导入标识说明→保存JSON。交给助手按[正式格式](../docs/formats/README.md)转换为`yohaku.statement` v1，名称不能代替UUID。
+2. 系统选JSON→检查账户/日期语义/覆盖/币种/汇总/疑点→确认导入。逐笔匹配或明确差异；补记进入普通/金融表单，已有草稿必须继续或明确放弃。
+3. 小票工作台多选原图组→导出ZIP→系统保存。将实际ZIP交给助手生成`yohaku.receipt-items` v1。
+4. 导入商品明细→整体预览→确认回填。旧修订/已有明细须确认替换；新增原图仍待整理，商品合计不改原记账金额。
+5. 格式帮助可保存说明、四份schema及样例ZIP。格式为UTF-8 JSON/version1，任一字段无效或不支持版本整份拒绝，显示字段路径。文件只在本地操作，无自动上传。
 
 ## 构建与验证
 
-JDK17、AGP9.3.3、Gradle Wrapper9.5.1、Compose BOM2026.09.00。SDK由本机 `local.properties` 或 `ANDROID_HOME` 指定。
+JDK17、AGP9.3.3、Gradle Wrapper9.5.1、Compose BOM2026.09.00。SDK由`local.properties`或`ANDROID_HOME`指定；正式密钥配置见[发行说明](RELEASE.md)。
 
 ```sh
-./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
-./gradlew :app:testDebugUnitTest :app:lintDebug
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease
 ```
 
-设备测试按对应测试类与专项参数运行；默认跳过真实IME/跨进程测试不能当作通过。阶段C的计算、数据库/迁移、标准390dp、320dp大字、必要真实IME和独立进程恢复范围及最终结果见[阶段C状态](verification/phase-c-status.md)。真实HTTPS记录与确定性UI测试分别标注，离线测试不冒充在线服务验证。字体许可和数字字形适配见[字体迁移记录](verification/font-migration.md)。
+仪器测试需要实际兼容设备。真实权限/GPS、IME、跨进程、闹钟/重启、网络服务不能无前置地整类混跑，默认跳过不算通过。专项方法/参数见各测试源码和[阶段E记录](verification/phase-e-status.md)；历史进程/IME依据见A/B/C记录。独立`media-verifier`模块仅提供系统DocumentsProvider和跨UID只读验证，需单独安装，绝不打入产品APK，完成后卸载`com.yohaku.verification`。
 
-## 专项测试说明
-
-跨进程测试 `ProcessRecoveryTest` 必须按seedSetup→force-stop→verifySetupAndSeedDraft→force-stop→verifyDraftAndCleanup分别执行，传 `-e processRecovery true`；最终三次不同PID恢复及验证库清理均通过。真实IME分别使用 `SetupFlowTest#realKeyboardKeepsSetupSaveReachableInEveryThemeAndLanguage` 与 `DraftEditingFlowTest#realKeyboardLeavesSaveReachableAcrossThemesAndLanguages`，传 `-e realKeyboard true`，启用真实键盘并在结束后恢复配置。已有标准和320dp/1.3字体成功结果，普通跳过不能代替这些检查。
-
-当前专用模拟器 `emulator-5580`（API36）：阶段C最终基准为1170×2532/density480/fontScale1，即390dp；窄屏为960×2078/density480/fontScale1.3，即320dp。测试后恢复标准尺寸、字体与键盘设置。未连接用户实机。
-
-
-P13真实系统选择和外部只读验证使用独立测试模块 `media-verifier`。它提供无用户数据的DocumentsProvider及不同UID的读取验证器，不被打包进产品 `app` APK。构建/安装 `media-verifier-debug.apk` 后，运行 `MediaFlowTest` 可检查系统多选、真实媒体操作及外部只读交接；结束后卸载 `com.yohaku.verification`。当前验证日志和剩余验收范围见 `verification/phase-b-status.md`。
-
-阶段B草稿进程恢复使用`PhaseBProcessRecoveryTest`的三个独立步骤（须传`-e phaseBRecovery true`），每步之间执行`am force-stop`；PID变化和持久库/媒体核对用于区别于仅重建Compose界面。顺序为`seedTransferDraft`、`resumeTransferAndSeedActivityDraft`、`resumeActivitySaveOnceAndCleanup`。只在专用模拟器执行，最后一步清理专用库/媒体并恢复原选中账本；证据见阶段B状态。
-
-预算与周期持久化恢复使用`PlanningProcessRecoveryTest`（须传`-e planningRecovery true`），依次单独运行`seedStoppedRulesAndBudget`、`resumeStoppedRulesAndReactivateThroughUi`、`verifyReactivatedFactsAfterAnotherProcessAndCleanup`，步骤间执行`am force-stop`。使用专用数据库和固定日期，验证三主题中日文的规则撤下/恢复、主动取消、付款事实、预算与稳定待办ID；最后一步清理专用库并恢复选中账本。此不验证未保存表单的进程恢复。
-
-## 阶段D文件操作
-
-1. 设置→银行/信用卡流水核对→导入标识说明→保存JSON。将此标识和银行原始资料交给助手，按[正式格式说明](../docs/formats/README.md)转换为 `yohaku.statement` v1；名称不能代替UUID。
-2. 选择JSON，检查账户、日期语义、覆盖区间、币种、笔数、汇总及疑点，再确认导入。重复文件打开已有资料；重叠资料须明确确认。按候选处理差异，或先选类型再进入普通记账/金融表单保存。仅导入不改变余额。
-3. 小票工作台选择待整理图片组→导出→选择系统目录。将实际ZIP交给助手，按包内manifest及格式说明生成 `yohaku.receipt-items` v1。不要把格式样例当成当前账本资料。
-4. 工作台“导入商品明细”或原记录小票区的导入入口→选择JSON→检查图片关联、原币商品合计/差额和未知字段→确认回填。旧修订或已有明细需要再次确认；原记账金额保持用户输入。
-5. 回到原记录查看或编辑商品。新增图片仍待整理；取消文件选择、预览或替换不会覆盖已有商品。设置→正式文件格式与导入标识可保存说明、四份schema及样例ZIP。
-
-四类正式格式均为UTF-8 JSON、版本1；不支持的版本或任一字段错误会整份拒绝，并显示字段路径。工作流只操作本地文件，无OCR、自动上传或银行连接。
+专用模拟器`emulator-5580`：标准1170×2532/density480/fontScale1（390dp），窄屏960×2078/density480/fontScale1.3（320dp）。测试后恢复原尺寸/字体/网络/权限等配置。字体许可及数值字形适配见[字体迁移记录](verification/font-migration.md)。

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -19,6 +20,7 @@ import java.time.LocalDate
     val requestedActivity by vm.openActivity.collectAsStateWithLifecycle()
     val requestedFriend by vm.openActivityFriend.collectAsStateWithLifecycle()
     var selected by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
+    var deleting by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var editing by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var reserveFor by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var treatFor by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
@@ -40,13 +42,31 @@ import java.time.LocalDate
         YButton(word("退出记录模式","記録モードを終了"),{vm.execute{vm.repository.setActivityMode(s.book.id,true)}})
     }}}
     if(activity==null) {
-        if(s.activities.isEmpty())YEmpty(word("一次旅行，一段生活。开启活动后开始记录。","旅や暮らしのひと区切り。シーンを有効にして記録しましょう。"))
-        s.activities.sortedWith(compareBy<ActivityEntity>{it.ended}.thenByDescending{it.startDate}).forEachIndexed{index,a->
+        if(s.availableActivities.isEmpty())YEmpty(word("一次旅行，一段生活。开启活动后开始记录。","旅や暮らしのひと区切り。シーンを有効にして記録しましょう。"))
+        s.availableActivities.sortedWith(compareBy<ActivityEntity>{it.ended}.thenByDescending{it.startDate}).forEachIndexed{index,a->
             val spent=s.activitySpent(a.id)
             ActivityCard(index,a.name,a.startDate,a.endDate,money(spent),a.budgetMinor?.let{money(it-spent)},a.budgetMinor?.let{money(it)},spent,a.budgetMinor,
                 if(a.ended)word("已结束 · 保留历史","終了済み・履歴を保存")else if(a.excludeMonthly)word("独立预算","独立予算")else word("计入月预算","月予算に含む"),{selected=a.id})
         }
         if(s.features?.activityMode==true)YButton(word("＋ 创建活动","＋ シーンを作成"),{editing=""},primary=true)
+        if(s.activities.any{it.deletedAt!=null}) {
+            ThemeSection(word("已删除活动的历史","削除済みシーンの履歴"),"KEPT WITH THE ORIGINAL SCENE")
+            s.activities.filter{it.deletedAt!=null}.forEach{a->YLink(a.name,{selected=a.id},Modifier.testTag("deleted-activity-${a.id}"))}
+        }
+    }else if(activity.deletedAt!=null) {
+        YLink(word("返回全部活动","すべてのシーンへ"),{selected=null})
+        YText(activity.name,20)
+        YText(word("已删除 · 消费已计入日常，原活动互请保留。","削除済み・支出は日常に計上し、元のごちそうを保持。"),12)
+        RecordFacts(listOf(word("原活动消费","元のシーンの支出") to money(s.activitySpent(activity.id))),audit=true)
+        s.friendBalances(activity.id).forEach{pair->Panel {
+            YText(pair.friend.name,16)
+            RecordFacts(listOf(word("我替对方承担","自分が相手の分を負担") to money(pair.iGive),word("对方替我承担","相手が自分の分を負担") to money(pair.theyGive)))
+        }}
+        s.activityExpenses(activity.id).forEach{e->YLink(e.date+" · "+e.merchant.ifBlank{s.path(e.categoryId)}+" · "+money(s.netExpense(e)),{onRecord(e)})}
+        s.liveTreats(activity.id).filter{it.eventId==null}.forEach{t->Panel {
+            YText(s.friends.first{it.id==t.payerFriendId}.name+word("付款","の支払"),14)
+            YText(t.date+" · "+t.name+" · "+Money(Currency.valueOf(t.currency),t.amountMinor).display(),12)
+        }}
     }else {
         YLink(word("返回全部活动","すべてのシーンへ"),{selected=null})
         ActivityCover(activity.name,activity.startDate,activity.endDate,money(s.activitySpent(activity.id)),activity.budgetMinor?.let{money(it)}?:word("未设置","未設定"),activity.budgetMinor?.let{money(it-s.activitySpent(activity.id))}?:word("未知","不明"),s.activityExpenses(activity.id).size,activity.excludeMonthly)
@@ -61,6 +81,7 @@ import java.time.LocalDate
                 YButton(word("编辑活动与预算","シーンと予算を編集"),{editing=activity.id})
                 if(!activity.ended)YButton(word("进入记录模式","記録モードを開始"),{vm.execute{vm.repository.setActivityMode(s.book.id,true,activity.id)}})
             }
+            YLink(word("查看删除影响","削除の影響を見る"),{deleting=activity.id},Modifier.testTag("activity-delete-preview"))
             YButton(if(activity.ended)word("补录期间的支出","期間内の支出を追加")else word("记一笔活动支出","シーンの支出を記録"),{
                 onExpense(activity.id,null)
             },enabled=s.features?.activityMode==true)
@@ -112,7 +133,7 @@ import java.time.LocalDate
         YLead(word("我和","自分と")+pair.friend.name,a.name+" · "+a.startDate+" — "+a.endDate,"WITHIN THIS SCENE",money(kotlin.math.abs(pair.difference)),
             if(pair.difference==0L)word("本活动已平衡","このシーンは均衡")else if(pair.difference>0)word("你多替对方承担","自分が多く負担")else word("对方多替你承担","相手が多く負担"))
         RecordFacts(listOf(word("你替对方承担","自分が相手の分を負担") to money(pair.iGive),word("对方替你承担","相手が自分の分を負担") to money(pair.theyGive)))
-        if(s.features?.activityMode==true) {
+        if(s.features?.activityMode==true&&a.deletedAt==null) {
             @Composable fun paymentButtons(first:Modifier,second:Modifier) {
                 YButton(if(a.ended)word("补录期间的我付款","期間内の自分の支払を追加")else word("我请客","ごちそうした"),{friendDetail=null;onExpense(a.id,friendId)},first,primary=true)
                 YButton(if(a.ended)word("补录期间的对方付款","期間内の友達の支払を追加")else word("别人请我","ごちそうになった"),{friendDetail=null;treatFriend=friendId;treatId=null;treatFor=a.id},second)
@@ -129,6 +150,7 @@ import java.time.LocalDate
 
         }
     }}}
+    deleting?.let{id->s.activities.find{it.id==id}?.let{a->ActivityDeletionSheet(a,vm,{deleting=null},{deleting=null;selected=null})}}
     editing?.let{id->ActivityEditor(s,s.activities.find{it.id==id},vm,{editing=null})}
     reserveFor?.let{id->ReserveEditor(s,id,vm,{reserveFor=null})}
     treatFor?.let{id->OtherTreatEditor(s,id,treatId,vm,treatFriend,{treatFor=null;treatId=null;treatFriend=null})}
@@ -150,7 +172,7 @@ import java.time.LocalDate
             YField(word("活动名称","シーン名"),name,{name=it})
             ActivityDate(word("开始日期","開始日"),start,{start=it});ActivityDate(word("结束日期","終了日"),end,{end=it})
             YField(word("总预算 / 可留空","総予算・空欄可"),amount,{amount=it},numeric=true)
-            s.categories.filter{it.active&&it.kind==EntryKind.EXPENSE.name}.forEach{c->YField(c.name+word("预算 / 可留空","予算・空欄可"),categoryValues[c.id].orEmpty(),{categoryValues=categoryValues+(c.id to it)},numeric=true)}
+            s.categories.filter{(s.categoryEnabled(it.id)||it.id in categoryValues)&&it.kind==EntryKind.EXPENSE.name}.forEach{c->YField(c.name+word("预算 / 可留空","予算・空欄可"),categoryValues[c.id].orEmpty(),{categoryValues=categoryValues+(c.id to it)},numeric=true)}
             YToggle(word("从月预算排除","月予算から除外"),excluded,{excluded=it})
             YToggle(word("结束活动并释放预留","終了して確保を解放"),ended,{if(old?.ended!=true)ended=it})
             YButton(word("预览影响","影響を確認"),{vm.execute{review=vm.repository.previewActivity(s.book.id,ActivityInput(name,start,end,amount.takeIf{it.isNotBlank()}?.let{Money.parse(it,currency)},categoryValues.filterValues{it.isNotBlank()}.mapValues{Money.parse(it.value,currency)},excluded,ended,old?.id))}},primary=true,enabled=!busy)

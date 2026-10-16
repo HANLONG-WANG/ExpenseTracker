@@ -24,6 +24,7 @@ import com.yohaku.expensetracker.ui.theme.*
     val merchant=s.merchants.find{it.id==selected}
     if(merchant==null) {
         MerchantLocationNotice()
+        MerchantLocationPreferences(s,vm,onEntry)
         if(s.merchants.isEmpty())YEmpty(word("保存常去商户与地点，记账时可以主动选择。","いつものお店と場所を保存すると、記録で選べます。"))
         s.merchants.forEach{m->MerchantPlaceCard(m.id,m.name,s.merchantLocations.filter{it.merchantId==m.id}.map{it.name},m.active,{selected=m.id},{onEntry(m.id)})}
         YButton(word("＋ 保存商户","＋ お店を保存"),{newName="";editing=""},Modifier.testTag("merchant-add"),primary=true)
@@ -46,7 +47,7 @@ import com.yohaku.expensetracker.ui.theme.*
             YLink(word("移除保存地点","保存した場所を削除"),{vm.execute{vm.repository.dao.removeMerchantLocation(s.book.id,l.id)}})
         }}
         YButton(word("＋ 添加地点","＋ 場所を追加"),{locationId=null;locationFor=merchant.id},primary=true)
-        YText(word("当前位置自动匹配尚未提供，仍可手动选择商户。","現在地からの自動選択は未提供です。お店は手動で選べます。"),11,color=LocalYohaku.current.muted)
+        MerchantLocationPreferences(s,vm,onEntry)
         ThemeSection(word("关联这个商户的记录","このお店に関連する記録"),"LINKED RECORDS")
         val events=s.visibleEvents.filter{e->e.kind!=EntryKind.REFUND.name&&s.merchantKey(e)=="id:${merchant.id}"}
         if(events.isEmpty())YEmpty(word("选择这个商户记账后，记录会显示在这里。","このお店を選んで記録すると表示されます。"))
@@ -74,10 +75,11 @@ import com.yohaku.expensetracker.ui.theme.*
     var name by rememberSaveable{mutableStateOf(old?.name.orEmpty())}
     var latitude by rememberSaveable{mutableStateOf(old?.latitude?.toString().orEmpty())}
     var longitude by rememberSaveable{mutableStateOf(old?.longitude?.toString().orEmpty())}
-    var radius by rememberSaveable{mutableStateOf((old?.radiusMeters?:150).toString())}
+    var radius by rememberSaveable{mutableStateOf((old?.radiusMeters?:100).toString())}
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(word("保存商户地点","お店の場所を保存"),onDismiss) {
         YField(word("地点名称","場所の名前"),name,{name=it})
+        CapturePlaceLocation(vm){fix->latitude=fix.latitude.toString();longitude=fix.longitude.toString()}
         YField(word("纬度 / 可留空","緯度・空欄可"),latitude,{latitude=it})
         YField(word("经度 / 可留空","経度・空欄可"),longitude,{longitude=it})
         YField(word("匹配半径 / 米","選択範囲・メートル"),radius,{radius=it},numeric=true)

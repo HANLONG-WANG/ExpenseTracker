@@ -26,7 +26,7 @@ fun BookSnapshot.budgetPace(asOf:LocalDate,finance:FinancialGraph?=null,referenc
     fun rate(from:String)=referenceRates.filter{it.base.name==from&&it.quote.name==book.currency&&it.date<=today}.maxByOrNull{it.date}
     val planned=copy(occurrences=forecastOccurrences(asOf,month.atEndOfMonth()).map{o->if(o.baseMinor==null&&o.amountMinor!=null)rate(o.currency)?.let{q->o.copy(baseMinor=q.convert(Money(Currency.valueOf(o.currency),o.amountMinor)).minor,estimated=true)}?:o else o})
     val recurringIds=planned.occurrences.mapNotNull{it.eventId}.toSet()
-    val activityIds=eventActivities.map{it.eventId}.toSet()
+    val activityIds=eventActivities.filter{link->availableActivities.any{it.id==link.activityId}}.map{it.eventId}.toSet()
     val daily=current.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&it.date in start.toString()..today&&it.id !in recurringIds&&it.id !in activityIds}.fold(0L){sum,e->Math.addExact(sum,current.netExpense(e))}
     val remaining=month.lengthOfMonth()-asOf.dayOfMonth
     val futureDaily=daily.toBigDecimal().multiply(remaining.toBigDecimal()).divide(days.toBigDecimal(),0,RoundingMode.HALF_UP).longValueExact()

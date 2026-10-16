@@ -63,7 +63,7 @@ import java.time.YearMonth
     }}
     when {
         s.accounts.none{it.active&&it.type!=AccountType.LOAN.name}->YButton(word("添加付款账户","支払口座を追加"),onAccounts,primary=true)
-        s.categories.none{it.active&&it.kind==EntryKind.EXPENSE.name}->YButton(word("创建支出分类","支出カテゴリを作成"),onCategories,primary=true)
+        s.categories.none{s.categoryEnabled(it.id)&&it.kind==EntryKind.EXPENSE.name}->YButton(word("创建支出分类","支出カテゴリを作成"),onCategories,primary=true)
         else->YButton(word("＋ 添加周期账单","＋ 定期支払を追加"),{editor=""},Modifier.testTag("recurrence-add"),primary=true)
     }
     editor?.let{id->RecurrenceEditor(s,if(id.isBlank())null else s.recurrences.first{it.id==id},vm,{editor=null})}
@@ -86,8 +86,8 @@ import java.time.YearMonth
 }
 
 @Composable private fun RecurrenceEditor(s:BookSnapshot,original:RecurrenceEntity?,vm:AppViewModel,onClose:()->Unit) {
-    val accounts=s.accounts.filter{it.active&&it.type!=AccountType.LOAN.name}
-    val categories=s.categories.filter{it.active&&it.kind==EntryKind.EXPENSE.name}
+    val accounts=s.accounts.filter{(it.active||it.id==original?.accountId)&&it.type!=AccountType.LOAN.name}
+    val categories=s.categories.filter{(s.categoryEnabled(it.id)||it.id==original?.categoryId)&&it.kind==EntryKind.EXPENSE.name}
     var name by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.name.orEmpty())}
     var accountId by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.accountId?:accounts.firstOrNull()?.id)}
     var categoryId by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.categoryId?:categories.firstOrNull()?.id)}
@@ -117,7 +117,7 @@ import java.time.YearMonth
             if(amount.isBlank())YText(word("金额未定，预留金额仍未知；填写后可选择预计或已确认金额。","金額未定のため確保額は不明です。入力後に見込み・確定を選べます。"),11,Modifier.testTag("recurrence-unknown-amount"),color=LocalYohaku.current.muted)
             else YToggle(word("金额为预计","金額は見込み"),estimated,{estimated=it})
             YToggle(word("设置结束日期","終了日を設定"),endEnabled,{owner=null;endEnabled=it})
-            if(s.features?.activityMode==true)YSelect(word("所属活动 / 可选","シーン・任意"),activity,listOf(null to word("日常","日常"))+s.activities.map{it.id as String? to it.name},{activity=it})
+            if(s.features?.activityMode==true)YSelect(word("所属活动 / 可选","シーン・任意"),activity,listOf(null to word("日常","日常"))+s.availableActivities.map{it.id as String? to it.name},{activity=it})
             YToggle(word("启用此周期规则","この定期ルールを有効にする"),active,{active=it})
             YText(word("规则只生成待办。实际确认后才写账；停用保留已确认事实。","ルールは予定のみ生成。実際の確認後に記録し、停止しても確認済みの事実を保持します。"),11,color=LocalYohaku.current.muted)
             YButton(word("保存周期规则","定期ルールを保存"),{

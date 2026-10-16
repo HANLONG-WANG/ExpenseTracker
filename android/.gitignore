@@ -6,3 +6,6 @@ local.properties
 *.keystore
 .tools/
 verification/runtime/
+*.p12
+*.pfx
+store-password

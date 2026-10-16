@@ -30,7 +30,7 @@ data class EntryDraft(
     val id: String? = null, val kind: EntryKind = EntryKind.EXPENSE,
     val categoryId: String? = null, val accountId: String? = null,
     val amount: String = "", val baseAmount: String = "", val date: String = java.time.LocalDate.now().toString(),
-    val merchant: String = "", val merchantId:String?=null,val note: String = "", val historicalIncluded: Boolean = false,
+    val merchant: String = "", val merchantId:String?=null,val merchantManuallyEdited:Boolean=false,val note: String = "", val historicalIncluded: Boolean = false,
     val originalCurrency: Currency? = null, val accountAmount: String = "",
     val settlementConfirmed: Boolean = true, val settlementDate: String = date,
     val rateSource: String = "manual", val rateDate: String = date,

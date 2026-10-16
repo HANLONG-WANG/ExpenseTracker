@@ -74,9 +74,10 @@ private sealed interface HistoryRead{
                 }
                 val bs=change.beforeDetails?.settlement;val ds=change.afterDetails?.settlement
                 if(bs!=null&&ds!=null) {
-                    if(bs.accountMinor!=ds.accountMinor||bs.accountCurrency!=ds.accountCurrency)field(word("账户入账金额","口座の計上額"),bs.accountMoney().display(),ds.accountMoney().display())
+                    val separateAccountAmount=bs.accountCurrency!=b.currency||ds.accountCurrency!=a.currency||bs.accountMinor!=b.amountMinor||ds.accountMinor!=a.amountMinor
+                    if(separateAccountAmount&&(bs.accountMinor!=ds.accountMinor||bs.accountCurrency!=ds.accountCurrency))field(word("账户入账金额","口座の計上額"),bs.accountMoney().display(),ds.accountMoney().display())
                     if(bs.confirmed!=ds.confirmed)field(word("入账状态","計上の状態"),if(bs.confirmed)word("已确认","確認済")else word("预计","見込み"),if(ds.confirmed)word("已确认","確認済")else word("预计","見込み"))
-                    if(bs.settlementDate!=ds.settlementDate)field(word("入账日期","計上日"),bs.settlementDate,ds.settlementDate)
+                    if(bs.settlementDate!=ds.settlementDate&&(bs.settlementDate!=b.date||ds.settlementDate!=a.date))field(word("入账日期","計上日"),bs.settlementDate,ds.settlementDate)
                 }
                 if(bs?.referenceRatesJson!=ds?.referenceRatesJson) {
                     fun summary(value:String?)=value?.let{vm.repository.json.decodeFromString<List<ReferenceRateSnapshot>>(it).joinToString("; "){r->"1 ${r.base.name} = ${r.rate} ${r.quote.name} · Frankfurter v2 / ${r.provider} · ${r.date} · ${r.fetchedAt}"}}.orEmpty()

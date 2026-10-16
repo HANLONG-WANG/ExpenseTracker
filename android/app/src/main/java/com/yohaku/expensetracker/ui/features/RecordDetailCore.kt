@@ -22,7 +22,7 @@ import com.yohaku.expensetracker.ui.theme.word
         RecordFacts(listOf(
             word("账户","口座") to s.accounts.find{it.id==e.accountId}?.name.orEmpty(),
             word("分类","カテゴリ") to s.path(e.categoryId).ifBlank{"—"},
-            word("活动","シーン") to (s.activities.find{a->s.eventActivities.any{it.eventId==e.id&&it.activityId==a.id}}?.name?:word("日常","日常")),
+            word("活动","シーン") to (s.activities.find{a->s.eventActivities.any{it.eventId==e.id&&it.activityId==a.id}}?.let{it.name+if(it.deletedAt!=null)word(" · 已删除，计入日常","・削除済み、日常に計上")else ""}?:word("日常","日常")),
             word("备注","メモ") to e.note.ifBlank{"—"}
         ),exactLineBox=true)
     }

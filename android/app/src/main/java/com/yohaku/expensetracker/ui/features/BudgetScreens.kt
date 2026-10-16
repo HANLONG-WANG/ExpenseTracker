@@ -78,7 +78,7 @@ import java.time.YearMonth
     IndependentBudgetNote(Money(projection.currency,projection.independentMinor).display())
     ThemeSection(word("月分类预算","月のカテゴリ予算"),"CATEGORY LIMITS",word("管理分类","カテゴリ管理"),onCategories,previousBottomPadding=8)
     YText(word("一级预算含二级与未细分消费；二级预算是其中专项，不重复相加。","親予算は子と内訳未分類を含む。子予算は内訳で、二重加算しません。"),11,color=LocalYohaku.current.muted,lineHeightMultiplier=1.9f)
-    val roots=s.categories.filter{it.active&&it.kind==EntryKind.EXPENSE.name&&it.parentId==null}
+    val roots=s.categories.filter{s.categoryEnabled(it.id)&&it.kind==EntryKind.EXPENSE.name&&it.parentId==null}
     if(roots.isEmpty())YEmpty(word("先创建自己的支出分类。","自分の支出カテゴリから。"),onCategories,word("创建分类","カテゴリを作成"))
     val ordered=roots.flatMap{root->listOf(root)+s.categories.filter{it.active&&it.parentId==root.id}}
     val projections=ordered.associate{it.id to s.budgetProjection(month,it.id)}

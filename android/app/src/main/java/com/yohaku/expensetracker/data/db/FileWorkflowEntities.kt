@@ -65,7 +65,7 @@ val MIGRATION_23_24 = object : androidx.room.migration.Migration(23, 24) {
     ForeignKey(entity=StatementBatchEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","batchId"],onDelete=ForeignKey.CASCADE)
 ],indices=[Index(value=["bookId","batchId"]),Index(value=["bookId","postingId"],unique=true)])
 data class StatementDecisionEntity(val bookId:String,val batchId:String,val rowId:String,val postingId:String,
-    val postingJson:String,val note:String,val updatedAt:Long)
+    val postingJson:String,val note:String,val updatedAt:Long,@ColumnInfo(defaultValue="NULL") val invalidatedAt:Long?=null)
 
 val MIGRATION_24_25=object:androidx.room.migration.Migration(24,25) {
     override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {

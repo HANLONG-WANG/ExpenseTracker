@@ -1,1 +1,2 @@
-<resources><string name="app_name">余量</string></resources>
+<resources><string name="app_name">余量</string><string name="important_notification_channel">重要事项</string>
+</resources>

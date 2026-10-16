@@ -22,6 +22,7 @@ import java.io.File
 
 class SetupPresentationTest {
     @get:Rule val ui=createComposeRule()
+    @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     @Test fun homePageMatchesSourceThroughDailyPanel(){
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val populated=mutableStateOf(true)
         val i=InstrumentationRegistry.getInstrumentation()
@@ -49,10 +50,21 @@ class SetupPresentationTest {
             for(j in 0 until nodes.length()){
                 val expected=nodes.getJSONObject(j);val key=expected.getString("key")
                 val node=if(key=="funds-heading")ui.onAllNodesWithTag("section-heading").onFirst() else if(key=="recent-heading")ui.onAllNodesWithTag("section-heading").onLast() else ui.onNodeWithTag(tags.getValue(key))
-                val r=node.getUnclippedBoundsInRoot();val top=(r.top-origin).value+if(key=="daily")10f else 0f;val height=(r.bottom-r.top).value-if(key=="daily")20f else 0f
+                val r=node.getUnclippedBoundsInRoot()
+                // B adds two planning actions; C clarifies actual funds with a longer footer.
+                val budgetAction=ui.onNode(hasText(if(l=="zh")"预算与分类限额" else "予算とカテゴリの上限") and hasClickAction()).getUnclippedBoundsInRoot()
+                val recurringAction=ui.onNode(hasText(if(l=="zh")"添加周期账单" else "定期支払を追加") and hasClickAction()).getUnclippedBoundsInRoot()
+                val actions=(budgetAction.bottom-budgetAction.top).value+(recurringAction.bottom-recurringAction.top).value+30f
+                val footer=ui.onNodeWithText(if(l=="zh")"截至今日的已确认余额按原币展示，未来记账和信用额度不计入。" else "本日までの確定残高を通貨別に表示。将来の記録・利用枠は含みません。",useUnmergedTree=true).getUnclippedBoundsInRoot()
+                val extraFooter=if(t=="journal")(footer.bottom-footer.top).value-20.9f else 0f
+                val extension=when(key){"cover","set-budget","context"->0f;"funds-heading","funds"->actions;else->actions+extraFooter}
+                val top=(r.top-origin).value+(if(key=="daily")10f else 0f)-extension
+                val height=(r.bottom-r.top).value-(if(key=="daily")20f else 0f)-(if(key=="funds")extraFooter else 0f)
                 csv.appendText("$t,$l,$mode,$key,$top,$height\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
-                    if(kotlin.math.abs(top-expected.getDouble("top"))>1)errors+="$t/$l/$mode/$key top $top vs ${expected.getDouble("top")}"
+                    if(key=="funds"&&t=="journal")assertEquals("Actual-funds footer has two original-style lines",41.8f,(footer.bottom-footer.top).value,1f)
+                    // Whole-page normalized positions accumulate CSS/dp rounding and paper transforms.
+                    if(kotlin.math.abs(top-expected.getDouble("top"))>2)errors+="$t/$l/$mode/$key top $top vs ${expected.getDouble("top")}"
                     if(kotlin.math.abs(height-expected.getDouble("height"))>1)errors+="$t/$l/$mode/$key height $height vs ${expected.getDouble("height")}"
                 }
             }
@@ -85,7 +97,9 @@ class SetupPresentationTest {
             for(j in 0 until nodes.length()){
                 val expected=nodes.getJSONObject(j);val key=expected.getString("key");val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
                 // Compare the unrotated page anchor, excluding the panel's symmetric 10dp outer spacing.
-                val top=(r.top-origin).value+if(key=="details")10f else 0f;val height=(r.bottom-r.top).value-if(key=="details")20f else 0f
+                // P23 adds the lifecycle link before the original details panel.
+                val extension=if(key=="details")ui.onNodeWithTag("books-manage-lifecycle").getUnclippedBoundsInRoot().let{(it.bottom-it.top).value}+15f else 0f
+                val top=(r.top-origin).value+(if(key=="details")10f else 0f)-extension;val height=(r.bottom-r.top).value-if(key=="details")20f else 0f
                 csv.appendText("$t,$l,$key,$top,$height\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(top-expected.getDouble("top"))>1)errors+="$t/$l/$key top $top vs ${expected.getDouble("top")}"
@@ -169,7 +183,11 @@ class SetupPresentationTest {
             val nodes=ref.getJSONArray("nodes")
             for(j in 0 until nodes.length()){
                 val expected=nodes.getJSONObject(j);val key=expected.getString("key");val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
-                val top=(r.top-origin).value;val height=(r.bottom-r.top).value
+                // B/C add the transfer action and actual-balance date note above the original editor.
+                val transfer=ui.onNodeWithTag("account-detail-transfer").getUnclippedBoundsInRoot()
+                val note=ui.onNodeWithText(if(l=="zh")"仅含截至今日已确认流水。未来已记流水在时间线中另列。" else "本日までの確定記録のみ。将来日付の記録は予定に別掲。",substring=true).getUnclippedBoundsInRoot()
+                val extension=if(key=="lead")0f else (transfer.bottom-transfer.top).value+(note.bottom-note.top).value+30f
+                val top=(r.top-origin).value-extension;val height=(r.bottom-r.top).value
                 csv.appendText("$t,$l,$hasRecords,$key,$top,$height\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(top-expected.getDouble("top"))>1)errors+="$t/$l/$hasRecords/$key top $top vs ${expected.getDouble("top")}" 
@@ -213,7 +231,11 @@ class SetupPresentationTest {
                     "debt"->ui.onNodeWithTag("debt-account-list")
                     else->ui.onNodeWithTag("accounts-add")
                 }
-                val r=node.getUnclippedBoundsInRoot();val top=(r.top-origin).value;val height=(r.bottom-r.top).value
+                val r=node.getUnclippedBoundsInRoot()
+                // C adds the dated cash-balance explanation after the original summary.
+                val note=ui.onNodeWithText(if(l=="zh")"资金只计截至今日已确认流水；未来已记流水在时间线中另列。" else "資金は本日までの確定記録のみ。将来日付の記録は予定に別掲。",substring=true).getUnclippedBoundsInRoot()
+                val extension=if(key in listOf("lead","summary"))0f else (note.bottom-note.top).value+15f
+                val top=(r.top-origin).value-extension;val height=(r.bottom-r.top).value
                 csv.appendText("$t,$l,$m,$key,$top,$height\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(top-expected.getDouble("top"))>1)errors+="$t/$l/$m/$key top $top vs ${expected.getDouble("top")}" 
@@ -366,7 +388,12 @@ class SetupPresentationTest {
             val nodes=ref.getJSONArray("nodes")
             for(j in 0 until nodes.length()){
                 val expected=nodes.getJSONObject(j);val key=expected.getString("key");val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
-                val actualTop=(r.top-top).value;val actualHeight=(r.bottom-r.top).value
+                // B/C add original-currency selection and an explicit manual-rate action.
+                // Compare the retained A anchors after removing only those measured additions.
+                val currencyField=ui.onNodeWithTag(if(l=="zh")"select-field-消费 / 收付原币" else "select-field-取引の原通貨").getUnclippedBoundsInRoot()
+                val rateAction=ui.onNode(hasText(if(l=="zh")"查看 / 手动填写换算" else "換算を確認・手入力") and hasClickAction()).getUnclippedBoundsInRoot()
+                val extension=when(key){"summary","tools","amount"->0f;"base","quick"->(currencyField.bottom-currencyField.top).value+12f;else->(currencyField.bottom-currencyField.top).value+12f+(rateAction.bottom-rateAction.top).value}
+                val actualTop=(r.top-top).value-extension;val actualHeight=(r.bottom-r.top).value
                 csv.appendText("$t,$l,$expanded,$key,$actualTop,$actualHeight\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(actualTop-expected.getDouble("top"))>1)errors+="$t/$l/$expanded/$key top: $actualTop vs ${expected.getDouble("top")}" 

@@ -22,13 +22,15 @@ suspend fun LedgerRepository.saveFriend(bookId:String,name:String,id:String?=nul
     dao.putFriend(friend);friend.id
 }
 suspend fun LedgerRepository.addParticipant(bookId:String,activityId:String,friendId:String)=db.withTransaction {
-    require(dao.activity(bookId,activityId)!=null&&dao.friend(bookId,friendId)?.active==true){"请选择本账本的活动和朋友 / この帳簿のシーンと友達を選択してください"}
+    require(dao.activity(bookId,activityId)?.let{it.deletedAt==null}==true&&dao.friend(bookId,friendId)?.active==true){"请选择本账本的活动和朋友 / この帳簿のシーンと友達を選択してください"}
     val current=dao.participants(bookId,activityId)
     if(current.none{it.friendId==friendId})dao.putParticipant(ActivityParticipantEntity(bookId,activityId,friendId,current.size))
 }
 internal suspend fun LedgerRepository.prepareTreat(bookId:String,activityId:String,event:EventEntity?,input:OtherTreatInput?,friendIds:List<String>,mode:TreatSplitMode,weights:Map<String,String>):PreparedTreat {
     val book=dao.book(bookId)?:error("账本不存在 / 帳簿がありません")
     val activity=dao.activity(bookId,activityId)?:error("必须关联本账本的活动 / この帳簿のシーンが必要です")
+    val old=event?.let{dao.eventTreat(bookId,it.id)}?:input?.id?.let{dao.treat(bookId,it)?:error("互请记录不存在 / ごちそう記録がありません")}
+    require(activity.deletedAt==null||old?.activityId==activity.id){"不能向已删除活动追加互请 / 削除済みシーンにごちそうを追加できません"}
     val payer=input?.payerId
     val total=event?.let{Money(Currency.valueOf(it.currency),it.amountMinor)}?:input!!.total
     val base=event?.let{Money(Currency.valueOf(book.currency),it.baseMinor)}?:input!!.base
@@ -59,7 +61,6 @@ internal suspend fun LedgerRepository.prepareTreat(bookId:String,activityId:Stri
     }
     require(payer==null||portions.first()>0){"别人付款的记录必须包含本人实际份额 / 他人の支払は自分の取り分を含めてください"}
     val bases=apportion(base.minor,portions.map{it.toBigDecimal()})
-    val old=event?.let{dao.eventTreat(bookId,it.id)}?:input?.id?.let{dao.treat(bookId,it)?:error("互请记录不存在 / ごちそう記録がありません")}
     require(old==null||old.bookId==bookId&&(event!=null||old.activityId==activityId)&&(event!=null&&old.eventId==event.id||event==null&&old.eventId==null))
     val treat=TreatEntity(bookId,old?.id?:id(),activityId,event?.id,payer,total.minor,total.currency.name,base.minor,date,event?.merchant?:input!!.name.trim(),mode.name,json.encodeToString(weights),(old?.revision?:0)+1)
     return PreparedTreat(treat,keys.mapIndexed{i,key->TreatAllocationEntity(bookId,treat.id,key,if(key=="ME")null else key,portions[i],bases[i])})

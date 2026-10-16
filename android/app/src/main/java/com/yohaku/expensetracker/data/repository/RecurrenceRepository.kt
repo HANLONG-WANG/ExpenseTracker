@@ -15,16 +15,16 @@ data class RecurrenceInput(val name:String,val accountId:String,val categoryId:S
 suspend fun LedgerRepository.saveRecurrence(bookId:String,input:RecurrenceInput):String=db.withTransaction {
     val book=dao.book(bookId)?:error("账本不存在 / 帳簿がありません")
     require(input.name.isNotBlank()){ "请输入名称 / 名前を入力してください" }
+    val old=input.id?.let{dao.recurrence(bookId,it)?:error("周期规则不存在 / 定期ルールがありません")}
     val account=dao.account(bookId,input.accountId)?:error("账户不属于本账本 / 別の帳簿の口座です")
     val category=dao.category(bookId,input.categoryId)?:error("分类不属于本账本 / 別の帳簿のカテゴリです")
-    require(account.active&&account.type!=AccountType.LOAN.name&&category.active&&category.kind==EntryKind.EXPENSE.name){"请选择启用的支出分类和消费付款账户 / 有効な支出カテゴリと支払口座を選択してください"}
+    require((account.active||old?.accountId==account.id)&&account.type!=AccountType.LOAN.name&&(categoryEnabled(bookId,category.id)||old?.categoryId==category.id)&&category.kind==EntryKind.EXPENSE.name){"请选择启用的支出分类和消费付款账户 / 有効な支出カテゴリと支払口座を選択してください"}
     require(input.amount==null||input.amount.currency.name==account.currency&&input.amount.minor>0){"金额应大于零，未知请留空 / 金額は0より大きく、不明なら空欄にしてください"}
     val base=if(input.amount==null)null else if(account.currency==book.currency)input.amount else input.baseAmount
     require(base==null||base.currency.name==book.currency&&base.minor>0){"本位币预留应大于零，未知请留空 / 基準通貨の確保額は0より大きく、不明なら空欄にしてください"}
     val anchor=LocalDate.parse(input.anchorDate);input.endDate?.let{require(LocalDate.parse(it)>=anchor){"结束日期不能早于首次安排 / 終了日は最初の予定日以降にしてください"}}
-    val old=input.id?.let{dao.recurrence(bookId,it)?:error("周期规则不存在 / 定期ルールがありません")}
     if(input.activityId!=null) {
-        require(dao.activity(bookId,input.activityId)!=null)
+        require(dao.activity(bookId,input.activityId)?.let{it.deletedAt==null}==true)
         require(dao.features(bookId)?.activityMode==true||old?.activityId==input.activityId)
     }
     val rule=RecurrenceEntity(bookId,old?.id?:id(),input.name.trim(),account.id,category.id,account.currency,input.amount?.minor,base?.minor,

@@ -166,8 +166,8 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     val groups=report.groups{it.activityId.orEmpty()}.associateBy{it.key}
     fun money(amount:Long)=Money(currency,amount).display()
     YText(word("活动卡片展示全程消费与预算；期间明细沿用当前筛选。","シーンカードは全期間の支出と予算。期間明細には現在の絞込を適用。"),11,color=LocalYohaku.current.muted)
-    if(s.activities.isEmpty())YEmpty(word("创建活动后，在这里查看每段生活。","シーンを作成すると、ひと区切りごとに表示されます。"))
-    s.activities.sortedWith(compareBy<ActivityEntity>{it.ended}.thenByDescending{it.startDate}).forEachIndexed{index,a->
+    if(s.availableActivities.isEmpty())YEmpty(word("创建活动后，在这里查看每段生活。","シーンを作成すると、ひと区切りごとに表示されます。"))
+    s.availableActivities.sortedWith(compareBy<ActivityEntity>{it.ended}.thenByDescending{it.startDate}).forEachIndexed{index,a->
         val spent=s.activitySpent(a.id)
         val group=groups[a.id]
         Column(Modifier.fillMaxWidth().testTag("analysis-activity-${a.id}")) {
@@ -286,7 +286,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
         YSelect(word("分类","カテゴリ"),category,listOf(null to word("全部","すべて"))+s.categories.filter{it.kind==EntryKind.EXPENSE.name}.map{it.id as String? to s.path(it.id)},{category=it})
         val keys=s.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name||it.kind==EntryKind.TRANSFER.name}.map{s.merchantKey(it)}.distinct()
         YSelect(word("商户","お店"),merchant,listOf(null to word("全部","すべて"))+keys.map{it as String? to s.merchantLabel(it).ifBlank{word("未填写商户","お店未入力")}},{merchant=it})
-        YSelect(word("活动","シーン"),activity,listOf(null to word("全部","すべて"),"" to word("日常","日常"))+s.activities.map{it.id as String? to it.name},{activity=it})
+        YSelect(word("活动","シーン"),activity,listOf(null to word("全部","すべて"),"" to word("日常","日常"))+s.availableActivities.map{it.id as String? to it.name},{activity=it})
         val value=AnalysisFilter(start,end,category,merchant,activity)
         YButton(word("应用筛选","絞込を適用"),{vm.execute(onSuccess={onApply(value)}){s.analysis(value)}},Modifier.testTag("analysis-filter-apply"),primary=true,enabled=!busy)
         YLink(word("清除分类、商户和活动筛选","カテゴリ・お店・シーンの絞込を解除"),{category=null;merchant=null;activity=null})

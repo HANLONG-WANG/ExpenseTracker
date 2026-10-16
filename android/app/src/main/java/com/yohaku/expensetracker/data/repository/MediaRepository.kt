@@ -79,9 +79,11 @@ internal suspend fun LedgerRepository.writeMedia(bookId:String,eventId:String,me
 /** A file is removed only after the database proves there is no event, receipt or draft reference. */
 suspend fun LedgerRepository.collectUnusedMedia()=mediaWrites.withLock { db.withTransaction {
     if(mediaRoot==null)return@withTransaction
-    dao.allFiles().forEach{file->if(!dao.fileReferenced(file.bookId,file.id)) {
+    val files=dao.allFiles()
+    val referencedPaths=files.filter{dao.fileReferenced(it.bookId,it.id)}.map{mediaFile(it).canonicalPath}.toSet()
+    files.forEach{file->if(!dao.fileReferenced(file.bookId,file.id)) {
         val physical=mediaFile(file)
-        check(!physical.exists()||physical.delete()){ "无法清理未引用的附件 / 未参照ファイルを削除できません" }
+        check(physical.canonicalPath in referencedPaths||!physical.exists()||physical.delete()){ "无法清理未引用的附件 / 未参照ファイルを削除できません" }
         dao.deleteFile(file.bookId,file.id)
     }}
     val known=dao.allFiles().map{mediaFile(it).canonicalPath}.toSet()

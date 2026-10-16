@@ -30,7 +30,7 @@ import java.time.YearMonth
     IndependentBudgetNote(money(p.independentMinor))
     ThemeSection(word("月分类预算","月のカテゴリ予算"),"CATEGORY LIMITS",previousBottomPadding=8)
     YText(word("一级含二级与未细分消费，不重复相加。选择分类查看其预算；通过管理入口调整。","親には子と内訳未分類を含み、二重加算しません。カテゴリを選んで予算を確認。変更は管理から。"),11,color=LocalYohaku.current.muted,lineHeightMultiplier=1.9f)
-    val roots=s.categories.filter{it.active&&it.kind==EntryKind.EXPENSE.name&&it.parentId==null}
+    val roots=s.categories.filter{s.categoryEnabled(it.id)&&it.kind==EntryKind.EXPENSE.name&&it.parentId==null}
     if(roots.isEmpty())YEmpty(word("先创建自己的支出分类。","自分の支出カテゴリから。"))
     val ordered=roots.flatMap{root->listOf(root)+s.categories.filter{it.active&&it.parentId==root.id}}
     val projections=ordered.associate{it.id to s.budgetProjection(selected,it.id)}

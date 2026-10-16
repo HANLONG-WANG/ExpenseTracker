@@ -29,6 +29,7 @@ import kotlinx.serialization.encodeToString
 
 @Composable fun NativeApp(vm:AppViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val reminderBook by vm.reminderBook.collectAsStateWithLifecycle()
     val route by vm.route.collectAsStateWithLifecycle()
     val entryReturnRoute by vm.entryReturnRoute.collectAsStateWithLifecycle()
     val draft by vm.entry.collectAsStateWithLifecycle()
@@ -77,8 +78,9 @@ import kotlinx.serialization.encodeToString
     var categoryKind by remember{mutableStateOf(EntryKind.EXPENSE)}
     var editCategory by remember{mutableStateOf<CategoryEntity?>(null)}
     var switchTarget by remember{mutableStateOf<String?>(null)}
+    val libraryAppearance=ready?.books?.firstOrNull{it.deletedAt==null}?:ready?.books?.firstOrNull()
     val book=snapshot?.book
-    YohakuTheme(book?.theme?:openingBook?.theme?:firstSetup?.theme?:"magazine",book?.language?:openingBook?.language?:firstSetup?.language?:"zh") {
+    YohakuTheme(book?.theme?:openingBook?.theme?:libraryAppearance?.theme?:firstSetup?.theme?:"magazine",book?.language?:openingBook?.language?:libraryAppearance?.language?:firstSetup?.language?:"zh") {
         val t=LocalYohaku.current
         val accessibility=LocalAccessibilityManager.current
         LaunchedEffect(notice?.id){notice?.let{
@@ -88,11 +90,13 @@ import kotlinx.serialization.encodeToString
         Box(Modifier.fillMaxSize()){
         if(state is AppState.Failure) ReadFailureScreen((state as AppState.Failure).message,vm::retryRead)
         else if(state==AppState.Loading || book==null&&firstSetup==null) YStartup()
+        else if(book==null&&ready!=null&&ready.books.isNotEmpty())BookLibrary(ready,vm)
         else if(book?.initialized!=true) Setup(vm,snapshot,firstSetup ?: SetupDraft())
         else {
             val openEntry=draft!=null && route in listOf("entry","category-picker")
             val returnPage=if(openEntry)entryReturnRoute else route
             val baseRoute=if(returnPage=="detail")detailReturnRoute else returnPage
+            var managedAccountId by rememberSaveable(book.id){mutableStateOf<String?>(null)}
             fun openRecord(event:EventEntity){selectedEventId=event.id;detailReturnRoute=baseRoute;vm.navigate("detail")}
             fun startRequestedEntry(current:BookSnapshot) {
                 val kind=EntryKind.valueOf(requestedEntryKind)
@@ -138,6 +142,19 @@ import kotlinx.serialization.encodeToString
                 else openTimelineItem(com.yohaku.expensetracker.data.repository.CashTimelineItem(item.id,item.kind,item.sourceId,today.toString(),"",item.accountId,book.currency,null,false,null))
             }
             fun openRisk(id:String){riskAccountId=id;sheet="cash-risk"}
+            LaunchedEffect(book.id,reminderBook) {
+                if(reminderBook==book.id) {
+                    val target=vm.reminderTarget.value
+                    vm.entry.value=null;sheet=null;vm.navigate("reminders")
+                    when(target?.kind) {
+                        "REPAYMENT","DEADLINE"->target.targetAccountId?.takeIf{id->snapshot.accounts.any{it.id==id}}?.let{openFinancial(it,target.targetMonth?:target.date.take(7))}
+                        "RECURRING"->{recurringInitialMonth=target.date.take(7);vm.navigate("recurring")}
+                        "BUDGET"->vm.navigate("forecast")
+                        "FUNDS"->target.targetAccountId?.takeIf{id->snapshot.accounts.any{it.id==id}}?.let{openRisk(it)}
+                    }
+                    vm.reminderBook.value=null;vm.reminderTarget.value=null
+                }
+            }
             fun requestOccurrence(occurrence:OccurrenceEntity) {
                 requestedMerchant=null;requestedTreatFriend=null;requestedActivity=null;requestedEntryKind=EntryKind.EXPENSE.name;requestedTransferAccount=null;requestedDestination=null;requestedOccurrence=occurrence.id
                 if(snapshot.draft!=null)sheet="existing-draft"else vm.startOccurrence(snapshot,occurrence)
@@ -156,16 +173,18 @@ import kotlinx.serialization.encodeToString
                     if(baseRoute !in listOf("home","analysis","life","accounts")) YBackBar(book.name,{if(openEntry){leaveTarget="home";sheet="leave-entry"}else vm.back()})
                     when(baseRoute) {
                         "home"->HomeScreen(snapshot,{vm.navigate(it)},{requestEntry()},{vm.resumeEntry(snapshot)},{openRecord(it)},{vm.navigate("budget")},today=today,onRecurring={recurringInitialMonth=null;vm.navigate("recurring")},financialContent={HomeFinancialOutlook(snapshot,vm,{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openTimelineItem(it)},{openAttention(it)},{vm.navigate("reminders")})})
-                        "books"->BooksScreen(ready.overviews,book.id,{vm.selectBook(it)},{sheet="new-book"},{editBookId=it;sheet="rename-book"})
+                        "books"->BooksScreen(ready.overviews.filter{!it.book.archived&&it.book.deletedAt==null},book.id,{vm.selectBook(it)},{sheet="new-book"},{editBookId=it;sheet="rename-book"},{vm.navigate("book-management")})
+                        "book-management"->BookManagementScreen(ready.overviews,book.id,vm,{sheet="new-book"})
                         "accounts"->AccountsScreen(snapshot,{editAccount=null;sheet="account"},{selectedAccountId=it.id;vm.navigate("account-detail")},vm.referenceRates,financialContent={AccountsFinancialOutlook(snapshot,vm,{requestEntry(EntryKind.TRANSFER)},{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openAttention(it)},{vm.navigate("reminders")})},today=today)
-                        "account-detail"->snapshot.accounts.find{it.id==selectedAccountId}?.let{a->AccountDetail(snapshot,a,{editAccount=a;sheet="account"},{openRecord(it)},{requestEntry(EntryKind.TRANSFER,a.id)},{openFinancial(a.id)},today,{openRisk(a.id)})}
+                        "account-detail"->snapshot.accounts.find{it.id==selectedAccountId}?.let{a->AccountDetail(snapshot,a,{editAccount=a;sheet="account"},{openRecord(it)},{requestEntry(EntryKind.TRANSFER,a.id)},{openFinancial(a.id)},today,{openRisk(a.id)},{managedAccountId=a.id})}
                         "calendar"->PaymentCalendarScreen(snapshot,vm,{openTimelineItem(it)},{vm.navigate("forecast")})
+                        "notification-settings"->NotificationSettingsScreen(snapshot,vm)
                         "reminders"->ImportantItemsScreen(snapshot,vm,{openTimelineItem(it)},{account,month->openFinancial(account,month)},{openRisk(it)},{openAttention(it)},{vm.navigate("forecast")})
                         "forecast"->FinancialForecastScreen(snapshot,vm,{openRecord(it)},{openFinancial(it)},{openRisk(it)},{openAttention(it)},{openTimelineItem(it)})
                         "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
                         "ledger"->LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)})
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}})
-                        "settings"->SettingsScreen(snapshot,{vm.appearance(book.id,theme=it)},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{fileFormats=true})
+                        "settings"->SettingsScreen(snapshot,{vm.appearance(book.id,theme=it)},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{fileFormats=true},{vm.navigate("notification-settings")})
                         "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "reference-rates"->ReferenceRatesScreen(vm)
@@ -200,9 +219,10 @@ import kotlinx.serialization.encodeToString
                     else EntryForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},{editAccount=null;sheet="account"},{vm.navigate("category-picker")},busy,{sheet="entry-themes"},{sheet="books"},{
                         if(entryReturnRoute!="detail"){selectedEventId=activeDraft.id;detailReturnRoute=entryReturnRoute}
                         vm.leaveEntry(book.id,false,entryReturnRoute){if(entryReturnRoute!="detail")vm.navigate("detail")}
-                    },referenceService=vm.referenceRates,onPreviewExisting={eventId->vm.previewOccurrenceLink(book.id,activeDraft.occurrenceId!!,eventId)},onRate={sheet="manual-rate"},onExitActivity={vm.execute{vm.repository.setActivityMode(book.id,true)};vm.changeEntry(book.id,activeDraft.copy(activityId=null,reserveId=null,reserveAmount="",treatEnabled=false,treatFriends=emptyList(),treatWeights=emptyMap()))},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
+                    },referenceService=vm.referenceRates,onPreviewExisting={eventId->vm.previewOccurrenceLink(book.id,activeDraft.occurrenceId!!,eventId)},onRate={sheet="manual-rate"},locationContent={EntryLocation(snapshot,activeDraft,vm){vm.changeEntry(book.id,it)}},onExitActivity={vm.execute{vm.repository.setActivityMode(book.id,true)};vm.changeEntry(book.id,activeDraft.copy(activityId=null,reserveId=null,reserveAmount="",treatEnabled=false,treatFriends=emptyList(),treatWeights=emptyMap()))},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
                 }
             }
+            managedAccountId?.let{id->snapshot.accounts.firstOrNull{it.id==id}?.let{account->AccountManagementSheet(account,vm,{managedAccountId=null},{vm.navigate("accounts")})}}
             entryReview?.let{EntryReviewSheet(it,reviewRefreshed,busy,{vm.confirmEntryReview(book.id)},{vm.dismissEntryReview()})}
             occurrenceLinkReview?.takeIf{it.occurrence.bookId==book.id}?.let{r->
                 OccurrenceLinkReviewSheet(r,occurrenceLinkRefreshed,busy,openEntry,{vm.occurrenceLinkReview.value=null},{vm.confirmOccurrenceLink()})
@@ -258,7 +278,7 @@ import kotlinx.serialization.encodeToString
                 "category"->CategoryEditor(snapshot,categoryKind,categoryParent,editCategory,vm,{sheet=null},
                     onUse=if(openEntry&&route=="category-picker"&&editCategory==null){id->vm.entry.value?.let{vm.changeEntry(book.id,it.copy(categoryId=id));vm.navigate("entry")};sheet=null} else null)
                 "books"->YSheet(word("切换账本","帳簿を切替"),{sheet=null}) {
-                    ready.books.forEach{b->YButton(b.name+(if(b.id==book.id)" ✓" else ""),{if(b.id==book.id)sheet=null else if(openEntry){switchTarget=b.id;sheet="switch-entry"}else if(financialDraft?.hasInput==true){switchTarget=b.id;sheet="switch-financial"}else{vm.selectBook(b.id);sheet=null}},Modifier.fillMaxWidth())}
+                    ready.books.filter{!it.archived&&it.deletedAt==null}.forEach{b->YButton(b.name+(if(b.id==book.id)" ✓" else ""),{if(b.id==book.id)sheet=null else if(openEntry){switchTarget=b.id;sheet="switch-entry"}else if(financialDraft?.hasInput==true){switchTarget=b.id;sheet="switch-financial"}else{vm.selectBook(b.id);sheet=null}},Modifier.fillMaxWidth())}
                     YButton(word("＋ 创建独立账本","＋ 独立した帳簿を作成"),{if(openEntry){leaveTarget="new-book";sheet="leave-entry"}else sheet="new-book"},primary=true)
                 }
                 "existing-draft"->YSheet(word("还有一笔草稿","下書きが残っています"),{sheet=null}) {
@@ -285,17 +305,11 @@ import kotlinx.serialization.encodeToString
                     YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.clearDraft(book.id);vm.preferences.select(target)}})
                     YLink(word("继续编辑","編集を続ける"),{sheet=null})
                 }
-                "delete"->selectedEvent?.takeIf{it.deletedAt==null}?.let{event->YSheet(word("移至回收站","ごみ箱に移動"),{sheet=null}) {
-                    YText(word("确认后从正常记录与统计中移除，30天内可以恢复。","通常の記録と集計から除外。30日以内は復元できます。"))
-                    YText(snapshot.path(event.categoryId)+" · "+Money(Currency.valueOf(event.currency),event.amountMinor).display(),18,number=true)
-                    RefundLifecycleNotice(snapshot,event)
-                    if(snapshot.contracts.any{it.fundingEventId==event.id})YText(word("仅撤销这次借入的资金与本金变动；独立还款、账单与合同资料保留。","この借入の資金・元金の変動のみ取り消します。独立した返済・請求・契約情報は保持します。"),12)
-                    if(snapshot.repayments.any{it.eventId==event.id})YText(word("撤销这次实际扣款、费用和清偿分配，恢复对应待付义务；合同与账单资料保留。","今回の実出金・手数料・返済充当を取り消し、支払義務を戻します。契約・請求情報は保持します。"),12)
-                    snapshot.removalImpacts(event.id).forEach{EntryImpactPreview(snapshot,event,it,YearMonth.now(vm.repository.clock).toString())}
-                    YButton(word("确认移至回收站","ごみ箱へ移動"),{vm.execute({sheet=null;vm.navigate("ledger")}){vm.repository.deleteEntry(book.id,event.id)}},primary=true)
-                }}
+                "delete"->selectedEvent?.takeIf{it.deletedAt==null}?.let{event->EntryLifecycleSheet(snapshot,vm,event.id,EntryLifecycleOperation.TRASH,{sheet=null},{sheet=null;vm.navigate("ledger")})}
+
             }
         }
+        BookOperationConfirmation(vm)
         if(fileFormats)ReceiptFormatHelp({fileFormats=false},{fileFormats=false;globalIdentifiers=true})
         if(globalIdentifiers&&snapshot!=null)StatementIdentifiers(snapshot,vm,{globalIdentifiers=false})
         if(error!=null) YSheet(word("请检查","確認してください"),{vm.error.value=null}) {val language=LocalLanguage.current;YText(error!!.lineSequence().joinToString("\n"){line->if(language=="ja")line.substringAfter(" / ",line)else line.substringBefore(" / ")});YButton(word("知道了","確認"),{vm.error.value=null},primary=true)}
@@ -359,7 +373,7 @@ import kotlinx.serialization.encodeToString
     s.reserveUses.filter{it.eventId==e.id}.forEach{u->YText(word("使用预留：","使用した確保：")+s.reserves.first{it.id==u.reserveId}.name+" · "+Money(Currency.valueOf(s.book.currency),u.amountMinor).display(),13)}
     RecordMediaPanel(s,e,vm)
     RevisionHistory(s,e,vm)
-    YLink(word("移至回收站","ごみ箱に移動"),onDelete)
+    YLink(word("移至回收站","ごみ箱に移動"),onDelete,Modifier.testTag("record-trash-preview"))
 }
 
 @Composable private fun CategoryPicker(vm:AppViewModel,s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onCreate:(String?)->Unit,onChoose:()->Unit) {
@@ -369,7 +383,7 @@ import kotlinx.serialization.encodeToString
     CategorySectionCaption()
     var search by rememberSaveable(s.book.id,d.kind){mutableStateOf("")}
     var expanded by rememberSaveable(s.book.id,d.kind){mutableStateOf(s.categories.find{it.id==d.categoryId}?.let{listOf(it.parentId?:it.id)} ?: emptyList())}
-    val categories=s.categories.filter{it.active&&it.kind==d.kind.name}
+    val categories=s.categories.filter{s.categoryEnabled(it.id)&&it.kind==d.kind.name}
     val roots=categories.filter{it.parentId==null}
     fun matches(root:CategoryEntity,query:String)=root.name.contains(query.trim(),true)||categories.any{it.parentId==root.id&&it.name.contains(query.trim(),true)}
     val recentIds by remember(s.book.id,d.kind){vm.recentCategories(s.book.id,d.kind)}.collectAsStateWithLifecycle(emptyList())
@@ -397,8 +411,8 @@ import kotlinx.serialization.encodeToString
     CategoryStepFooter()
 }
 
-@Composable internal fun EntryForm(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onSave:()->Unit,onAccount:()->Unit,onCategory:()->Unit,busy:Boolean,onTheme:()->Unit,onBooks:()->Unit,onCancelEdit:()->Unit,onRate:()->Unit={},onPreviewExisting:(String)->Unit={},onExitActivity:()->Unit={},referenceService:ReferenceRates?=null,mediaContent:@Composable ()->Unit={}) {
-    val t=LocalYohaku.current;val eligible=s.entryAccounts(d.kind);val a=eligible.find{it.id==d.accountId};val currency=a?.currency ?: s.book.currency
+@Composable internal fun EntryForm(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onSave:()->Unit,onAccount:()->Unit,onCategory:()->Unit,busy:Boolean,onTheme:()->Unit,onBooks:()->Unit,onCancelEdit:()->Unit,onRate:()->Unit={},onPreviewExisting:(String)->Unit={},onExitActivity:()->Unit={},referenceService:ReferenceRates?=null,mediaContent:@Composable ()->Unit={},locationContent:@Composable ()->Unit={}) {
+    val t=LocalYohaku.current;val eligible=s.entryAccounts(d.kind,d.accountId.takeIf{d.id!=null});val a=eligible.find{it.id==d.accountId};val currency=a?.currency ?: s.book.currency
     val foreign=d.originalCurrency!=null&&d.originalCurrency.name!=currency
     val occurrence=s.occurrences.find{it.id==d.occurrenceId}
     val confirmingOccurrence=occurrence!=null&&d.id==null
@@ -449,7 +463,7 @@ import kotlinx.serialization.encodeToString
         if(d.kind==EntryKind.EXPENSE&&a?.type==AccountType.CREDIT.name)CardPaymentFields(d,onChange)
         if((s.features?.activityMode==true||d.activityId!=null)&&d.kind==EntryKind.EXPENSE) {
             s.features?.activeActivityId?.let{id->s.activities.find{it.id==id}?.let{YText(word("正在记录：","記録中：")+it.name,13);YLink(word("退出活动记录模式","シーンの記録モードを終了"),onExitActivity)}}
-            YSelect(word("活动 / 可选","シーン・任意"),d.activityId,listOf(null to word("日常","日常"))+s.activities.map{it.id as String? to it.name},{onChange(d.copy(activityId=it,reserveId=null,reserveAmount="",treatEnabled=false,treatFriends=emptyList(),treatWeights=emptyMap()))})
+            YSelect(word("活动 / 可选","シーン・任意"),d.activityId,listOf(null to word("日常","日常"))+s.activities.filter{it.deletedAt==null||d.id!=null&&it.id==d.activityId}.map{it.id as String? to (it.name+if(it.deletedAt!=null)word(" · 已删除，计入日常","・削除済み、日常に計上")else "")},{onChange(d.copy(activityId=it,reserveId=null,reserveAmount="",treatEnabled=false,treatFriends=emptyList(),treatWeights=emptyMap()))})
             d.activityId?.let{activityId->
                 val choices=s.reserves.filter{it.activityId==activityId&&(it.id==d.reserveId||it.active&&s.reserveRemaining(it,d.id)>0)}
                 if(choices.isNotEmpty()) {
@@ -460,8 +474,9 @@ import kotlinx.serialization.encodeToString
                 if(d.treatEnabled)TreatSplitFields(s,activityId,d.treatFriends,d.treatMode,d.treatWeights,{onChange(d.copy(treatFriends=it))},{onChange(d.copy(treatMode=it))},{onChange(d.copy(treatWeights=it))})
             }
         }
-        if(d.kind==EntryKind.EXPENSE&&s.merchants.any{it.active})YSelect(word("已保存的商户 / 可手动填写","保存済みのお店・手入力可"),d.merchantId,listOf(null to word("手动填写","手入力"))+s.merchants.filter{it.active||it.id==d.merchantId}.map{it.id as String? to it.name},{id->onChange(d.copy(merchantId=id,merchant=id?.let{s.merchants.first{it.id==id}.name}?:d.merchant))})
-        YField(if(d.kind==EntryKind.INCOME)word("名称 / 说明","名称 / 内容") else word("商户 / 买了什么","お店 / 買ったもの"),d.merchant,{onChange(d.copy(merchant=it,merchantId=null))})
+        if(d.kind==EntryKind.EXPENSE)locationContent()
+        if(d.kind==EntryKind.EXPENSE&&s.merchants.any{it.active})YSelect(word("已保存的商户 / 可手动填写","保存済みのお店・手入力可"),d.merchantId,listOf(null to word("手动填写","手入力"))+s.merchants.filter{it.active||it.id==d.merchantId}.map{it.id as String? to it.name},{id->onChange(d.copy(merchantId=id,merchant=id?.let{s.merchants.first{it.id==id}.name}?:d.merchant,merchantManuallyEdited=true))})
+        YField(if(d.kind==EntryKind.INCOME)word("名称 / 说明","名称 / 内容") else word("商户 / 买了什么","お店 / 買ったもの"),d.merchant,{onChange(d.copy(merchant=it,merchantId=null,merchantManuallyEdited=true))})
         var activeDate by remember{mutableStateOf<Int?>(null)}
         YDateFields(listOf((if(confirmingOccurrence)word("实际付款日期","実際の支払日")else word("日期","日付")) to d.date)+if(foreign)listOf(word("实际 / 预计入账日期","実際・予定計上日") to d.settlementDate)else emptyList(),activeDate,{activeDate=it},{index,date->
             onChange(if(index==0)d.copy(date=date,settlementDate=if(d.settlementDate==d.date)date else d.settlementDate)else d.copy(settlementDate=date))
@@ -488,7 +503,7 @@ import kotlinx.serialization.encodeToString
         val roots=s.categories.filter{it.kind==kind.name&&it.parentId==null}
         if(roots.isEmpty())YEmpty(word("从自己的用途开始，尚无预建分类。","自分の使い道から。初期カテゴリはありません。"))
         else Column(Modifier.fillMaxWidth().padding(top=5.dp,bottom=17.dp),verticalArrangement=Arrangement.spacedBy(17.dp)){roots.forEach{root->
-            CategoryManageGroup(root.id,root.name,root.favorite,s.categories.filter{it.parentId==root.id}.map{it.id to (it.name+if(it.favorite)" ★" else "")},{onEdit(root)},
+            CategoryManageGroup(root.id,root.name+(if(!root.active)word(" · 已停用","・停止中")else ""),root.favorite,s.categories.filter{it.parentId==root.id}.map{it.id to (it.name+(if(it.favorite)" ★" else "")+(if(!s.categoryEnabled(it.id))word(" · 已停用","・停止中")else ""))},{onEdit(root)},
                 {id->onEdit(s.categories.first{it.id==id})},{onCreate(root.id,kind)})
         }}
         YButton(word("＋ 添加一级分类","＋ 親カテゴリを追加"),{onCreate(null,kind)},Modifier.testTag("category-kind-add-${kind.name}"),primary=true)
@@ -497,6 +512,8 @@ import kotlinx.serialization.encodeToString
 }
 
 @Composable private fun CategoryEditor(s:BookSnapshot,kind:EntryKind,parentId:String?,original:CategoryEntity?,vm:AppViewModel,onClose:()->Unit,onUse:((String)->Unit)?=null) {
+    var managing by remember(original?.id){mutableStateOf(false)}
+    if(managing&&original!=null){CategoryManagementSheet(s,original,vm,onClose);return}
     var name by remember(original?.id){mutableStateOf(original?.name.orEmpty())}
     var parent by remember(original?.id,parentId){mutableStateOf(parentId)}
     var saving by remember(original?.id){mutableStateOf(false)}
@@ -506,10 +523,11 @@ import kotlinx.serialization.encodeToString
                 YText(word("一级归纳用途，二级记录细节。最多两级，也可以只用一级。","親で用途をまとめ、子で詳しく記録。最大2階層、親だけでも使えます。"),11,Modifier.testTag("category-editor-intro"),color=LocalYohaku.current.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
             }
             YField(word("分类名称","カテゴリ名"),name,{name=it})
-            if(original==null)YSelect(word("分类层级","階層"),parent,listOf(null to word("无 · 创建为一级分类","なし・親カテゴリとして作成"))+s.categories.filter{it.kind==kind.name&&it.parentId==null}.map{it.id as String? to it.name},{parent=it},displayLabel=word("归属一级分类","親カテゴリ"))
+            if(original==null)YSelect(word("分类层级","階層"),parent,listOf(null to word("无 · 创建为一级分类","なし・親カテゴリとして作成"))+s.categories.filter{s.categoryEnabled(it.id)&&it.kind==kind.name&&it.parentId==null}.map{it.id as String? to it.name},{parent=it},displayLabel=word("归属一级分类","親カテゴリ"))
             else Box(Modifier.padding(vertical=4.dp)){
                 SetupNote(if(s.categories.any{it.parentId==original.id})word("已有子分类，保持为一级分类。","子カテゴリがあるため親カテゴリを保持。") else word("归属一级分类","親カテゴリ")+" · "+(s.categories.firstOrNull{it.id==original.parentId}?.name?:word("无 · 一级分类","なし・親カテゴリ")),pageFlow=false,modifier=Modifier.testTag("category-parent-fixed"))
             }
+            if(original!=null)YLink(word("分类状态与归属管理","カテゴリの状態・分類を管理"),{managing=true},Modifier.testTag("category-manage"))
             Box(Modifier.padding(top=15.dp)){
                 YButton(if(onUse!=null)word("创建并使用","作成して使う") else word("保存分类","カテゴリを保存"),{
                     if(saving)return@YButton
@@ -532,7 +550,8 @@ import kotlinx.serialization.encodeToString
     var date by rememberSaveable(original?.id){mutableStateOf(original?.openingDate ?: s.book.startDate)}
     var owner by remember{mutableStateOf<Int?>(null)}
     var saving by remember(original?.id){mutableStateOf(false)}
-    val hasHistory=original!=null&&(s.events.any{it.accountId==original.id}||s.storedPostings.any{it.accountId==original.id})
+    var hasHistory by remember(original?.id){mutableStateOf(original!=null)}
+    LaunchedEffect(original?.id,s) {if(original!=null)vm.execute{hasHistory=vm.repository.accountUsage(s.book.id,original.id).inUse}}
     YSheet(if(original==null)word("添加账户与期初信息","口座・期首情報を追加") else word("编辑账户与期初信息","口座・期首情報を編集"),onClose) {
         Column(Modifier.fillMaxWidth().testTag("account-form")){
         Box(Modifier.padding(bottom=20.dp)){SetupNote(if(!s.book.initialized)word("首次设置 · 不计收入或消费","初回設定・収入と支出に含めません") else word("账户币种决定余额与实际入账金额","口座通貨が残高と計上額の基準"),pageFlow=false,modifier=Modifier.testTag("account-setup-label"))}
@@ -560,7 +579,7 @@ import kotlinx.serialization.encodeToString
     }
 }
 
-@Composable private fun BookEditor(original:BookEntity?,current:BookEntity,vm:AppViewModel,onClose:()->Unit,hasRecords:Boolean=false,monthlyBudgetMinor:Long?=original?.budgetMinor) {
+@Composable internal fun BookEditor(original:BookEntity?,current:BookEntity,vm:AppViewModel,onClose:()->Unit,hasRecords:Boolean=false,monthlyBudgetMinor:Long?=original?.budgetMinor) {
     var name by rememberSaveable(original?.id){mutableStateOf(original?.name.orEmpty())};var currency by rememberSaveable(original?.id){mutableStateOf(Currency.valueOf(original?.currency?:current.currency))}
     val month=rememberSaveable(original?.id){YearMonth.now(vm.repository.clock).toString()}
     var budget by rememberSaveable(original?.id){mutableStateOf(monthlyBudgetMinor?.let{Money(Currency.valueOf(original?.currency?:current.currency),it).decimal.toPlainString()}.orEmpty())}
@@ -709,11 +728,11 @@ import kotlinx.serialization.encodeToString
     if(accountSheet&&s!=null)AccountEditor(s,vm,{accountSheet=false},s.accounts.find{it.id==originalAccountId},debtOnly=if(step==4)null else step==3)
 }
 
-@Composable internal fun AccountDetail(s:BookSnapshot,a:AccountEntity,onEdit:()->Unit,onEvent:(EventEntity)->Unit,onTransfer:()->Unit={},onFinancial:(()->Unit)?=null,today:LocalDate=LocalDate.now(),onRisk:(()->Unit)?=null) {
+@Composable internal fun AccountDetail(s:BookSnapshot,a:AccountEntity,onEdit:()->Unit,onEvent:(EventEntity)->Unit,onTransfer:()->Unit={},onFinancial:(()->Unit)?=null,today:LocalDate=LocalDate.now(),onRisk:(()->Unit)?=null,onManage:(()->Unit)?=null) {
     val debt=AccountType.valueOf(a.type).debt
     val amount=Money(Currency.valueOf(a.currency),if(debt)s.balance(a)else s.cashBalanceAt(a,today.toString())).display()
     YLead(a.name,a.currency+" · "+if(AccountType.valueOf(a.type).debt)word("账户原币欠款","口座の元通貨借入残高") else word("账户原币余额","口座の元通貨残高"),"AVAILABLE BALANCE",amount,word("本位币参考","基準通貨参考")+" "+if(a.currency==s.book.currency)amount else "—",pageFlow=true)
-    if(!AccountType.valueOf(a.type).debt)AccountTransferShortcut(onTransfer)
+    if(!AccountType.valueOf(a.type).debt&&a.active)AccountTransferShortcut(onTransfer)
     else if(onFinancial!=null)YButton(word("账单、计划与金融规则","請求・予定と金融条件"),onFinancial,Modifier.testTag("account-financial"),primary=true)
     if(!debt&&onRisk!=null)YButton(word("核对未来资金安排","将来の資金予定を確認"),onRisk,Modifier.testTag("account-cash-risk"))
     if(!debt)YText(today.toString()+" · "+word("仅含截至今日已确认流水。未来已记流水在时间线中另列。","本日までの確定記録のみ。将来日付の記録は予定に別掲。"),11)
@@ -725,6 +744,7 @@ import kotlinx.serialization.encodeToString
     ThemeSection(word("账户流水","口座の記録"),"RECENT")
     val entries=s.visibleEvents.filter{e->e.accountId==a.id||s.storedPostings.any{it.eventId==e.id&&it.accountId==a.id}}
     TransactionList(s,entries,onEvent,emptyContent={YEmpty(word("还没有流水，余额来自期初状态。","記録はまだありません。残高は期首情報から。"))},accountId=a.id)
+    onManage?.let{YButton(word("账户状态与停用","口座の状態・停止"),it,Modifier.testTag("account-manage"))}
 }
 
 @Composable internal fun entryKindName(kind:EntryKind)=when(kind){

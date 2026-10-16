@@ -4,9 +4,10 @@ import androidx.room.*
 
 @Entity(tableName="books")
 data class BookEntity(@PrimaryKey val id: String, val name: String, val currency: String, val startDate: String,
-    val theme: String="magazine", val language: String="zh", val initialized: Boolean=false, val budgetMinor: Long?=null, @ColumnInfo(defaultValue="2") val setupStep: Int=2)
+    val theme: String="magazine", val language: String="zh", val initialized: Boolean=false, val budgetMinor: Long?=null, @ColumnInfo(defaultValue="2") val setupStep: Int=2,
+    @ColumnInfo(defaultValue="0") val archived:Boolean=false,@ColumnInfo(defaultValue="NULL") val deletedAt:Long?=null)
 
-data class BookOverview(@Embedded val book:BookEntity,val accountCount:Int,val recordCount:Int,val monthlyBudgetMinor:Long?=book.budgetMinor,val planningCount:Int=0)
+data class BookOverview(@Embedded val book:BookEntity,val accountCount:Int,val recordCount:Int,val monthlyBudgetMinor:Long?=book.budgetMinor,val planningCount:Int=0,val fileCount:Int=0,val financialPlanCount:Int=0,val statementCount:Int=0)
 
 @Entity(tableName="accounts", primaryKeys=["bookId","id"], foreignKeys=[ForeignKey(entity=BookEntity::class,parentColumns=["id"],childColumns=["bookId"])], indices=[Index("bookId")])
 data class AccountEntity(val bookId: String, val id: String, val name: String, val type: String, val currency: String,
@@ -31,7 +32,9 @@ data class EventEntity(val bookId: String, val id: String, val kind: String, val
     @ColumnInfo(defaultValue="NULL") val cardPaymentChoice:String?=null,
     @ColumnInfo(defaultValue="NULL") val cardPaymentMode:String?=null,
     @ColumnInfo(defaultValue="NULL") val cardPaymentRuleId:String?=null,
-    @ColumnInfo(defaultValue="NULL") val cardPaymentPeriods:Int?=null)
+    @ColumnInfo(defaultValue="NULL") val cardPaymentPeriods:Int?=null,
+    @ColumnInfo(defaultValue="NULL") val deletionGroupId:String?=null,
+    @ColumnInfo(defaultValue="NULL") val purgedAt:Long?=null)
 
 @Entity(tableName="postings", primaryKeys=["bookId","id"], foreignKeys=[
     ForeignKey(entity=EventEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","eventId"],onDelete=ForeignKey.CASCADE),
@@ -87,7 +90,7 @@ data class ExpenseComponentEntity(val bookId:String,val id:String,val eventId:St
 data class BudgetEntity(val bookId:String,val month:String,val scope:String,val categoryId:String?,val amountMinor:Long?)
 
 @Entity(tableName="activities",primaryKeys=["bookId","id"],foreignKeys=[ForeignKey(entity=BookEntity::class,parentColumns=["id"],childColumns=["bookId"])],indices=[Index("bookId")])
-data class ActivityEntity(val bookId:String,val id:String,val name:String,val startDate:String,val endDate:String,val budgetMinor:Long?,val excludeMonthly:Boolean=false,val ended:Boolean=false)
+data class ActivityEntity(val bookId:String,val id:String,val name:String,val startDate:String,val endDate:String,val budgetMinor:Long?,val excludeMonthly:Boolean=false,val ended:Boolean=false,@ColumnInfo(defaultValue="NULL") val deletedAt:Long?=null)
 
 @Entity(tableName="book_features",foreignKeys=[ForeignKey(entity=BookEntity::class,parentColumns=["id"],childColumns=["bookId"]),
     ForeignKey(entity=ActivityEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","activeActivityId"])],indices=[Index(value=["bookId","activeActivityId"])])
@@ -172,7 +175,7 @@ data class AnalysisPreferencesEntity(@PrimaryKey val bookId:String,val modulesJs
 data class MerchantEntity(val bookId:String,val id:String,val name:String,val note:String="",val active:Boolean=true)
 
 @Entity(tableName="merchant_locations",primaryKeys=["bookId","id"],foreignKeys=[ForeignKey(entity=MerchantEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","merchantId"])],indices=[Index(value=["bookId","merchantId"])])
-data class MerchantLocationEntity(val bookId:String,val id:String,val merchantId:String,val name:String,val latitude:Double?,val longitude:Double?,val radiusMeters:Int=150)
+data class MerchantLocationEntity(val bookId:String,val id:String,val merchantId:String,val name:String,val latitude:Double?,val longitude:Double?,val radiusMeters:Int=100)
 
 @Entity(tableName="event_merchants",primaryKeys=["bookId","eventId"],foreignKeys=[
     ForeignKey(entity=EventEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","eventId"],onDelete=ForeignKey.CASCADE),
