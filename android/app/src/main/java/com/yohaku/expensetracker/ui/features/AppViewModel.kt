@@ -32,6 +32,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun dismissNotice(id:Long){if(notice.value?.id==id)notice.value=null}
     val selectedBookMetadata=MutableStateFlow<BookEntity?>(null)
     val route=MutableStateFlow("home")
+    val selectedStatementBatch=MutableStateFlow<String?>(null)
     internal val activeFinancialDraft=MutableStateFlow<FinancialDraftSession?>(null)
     internal val financialDraftSessions=java.util.concurrent.ConcurrentHashMap<String,FinancialDraftSession>()
     val entry=MutableStateFlow<EntryDraft?>(null)
@@ -254,7 +255,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     }
     private fun entrySaved(bookId:String,d:EntryDraft) {
         entryReview.value=null;reviewRefreshed.value=false
-        entry.value=null;backStack.clear();route.value="ledger"
+        entry.value=null;backStack.clear();route.value=if(entryReturnRoute.value=="statements")"statements"else"ledger"
         execute{repository.collectUnusedMedia()}
         notice.value=AppNotice(++noticeSequence,bookId,if(d.id==null)"记录已保存" else "修改已保存到原条目",if(d.id==null)"記録を保存しました" else "元の記録に変更を保存")
     }

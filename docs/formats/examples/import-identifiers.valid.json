@@ -1,0 +1,13 @@
+{
+  "kind": "yohaku.import-identifiers",
+  "version": 1,
+  "book_id": "00000000-0000-4000-8000-000000000002",
+  "book_name": "サンプル（実際のIDに置換）",
+  "accounts": [
+    {
+      "account_id": "00000000-0000-4000-8000-000000000003",
+      "name": "銀行",
+      "currency": "JPY"
+    }
+  ]
+}

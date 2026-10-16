@@ -11,12 +11,13 @@ android {
         applicationId = "com.yohaku.expensetracker"
         minSdk = 29
         targetSdk = 37
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes { debug { applicationIdSuffix = ".dev" }; release { isMinifyEnabled = false } }
     buildFeatures { compose = true }
+    sourceSets["main"].assets.srcDir("../../docs/formats")
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     testOptions { unitTests.isReturnDefaultValues = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }

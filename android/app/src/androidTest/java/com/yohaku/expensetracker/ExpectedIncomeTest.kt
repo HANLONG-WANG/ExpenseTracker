@@ -131,7 +131,7 @@ class ExpectedIncomeTest {
                 val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v16-schema.json").bufferedReader().readText()).getJSONObject("database")
                 old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));restoreFixtureTable(old,"room-v16-schema.json","settlements");old.execSQL("DROP TABLE IF EXISTS financial_drafts");old.version=16
             }finally{old.close()}
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_16_17,MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23).build()
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_16_17,MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25).build()
             val s=LedgerRepository(db,clock).snapshot(db.dao().book(b)!!).first()
             assertEquals(event,s.events.single().id);assertEquals(1450L,s.balance(s.accounts.single()));assertTrue(s.expectedIncomes.isEmpty())
         }finally{db.close();context.deleteDatabase(name)}

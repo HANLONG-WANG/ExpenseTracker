@@ -1,15 +1,15 @@
-# 余量 Android · 阶段C
+# 余量 Android · 阶段D
 
-原生 Kotlin / Compose 应用。阶段A P01–P07、阶段B P08–P13和阶段C P14–P18的实现、验收与交付见[开发计划](../docs/plans/development-plan.md)、[阶段B状态](verification/phase-b-status.md)和[阶段C状态](verification/phase-c-status.md)。后续阶段D/E继续正式文件协议、系统提醒/定位及完整资料管理与发行交付。
+原生 Kotlin / Compose 应用。阶段A P01–P07、阶段B P08–P13和阶段C P14–P18的实现、验收与交付见[开发计划](../docs/plans/development-plan.md)、[阶段B状态](verification/phase-b-status.md)和[阶段C状态](verification/phase-c-status.md)。阶段D P19–P20实现正式文件协议、银行卡流水核对、小票ZIP与商品回填，验收依据见[阶段D状态](verification/phase-d-status.md)。后续P21–P25继续系统提醒/定位、完整资料管理与发行交付。
 
 ## 安装包
 
-[阶段C APK 0.3.0](artifacts/yohaku-phase-c-0.3.0.apk) · [SHA-256](artifacts/yohaku-phase-c-0.3.0.apk.sha256)
+[阶段D APK 0.4.0](artifacts/yohaku-phase-d-0.4.0.apk) · [SHA-256](artifacts/yohaku-phase-d-0.4.0.apk.sha256)
 
-历史交付：[阶段B 0.2.0](artifacts/yohaku-phase-b-0.2.0.apk) · [阶段A 0.1.0](artifacts/yohaku-phase-a-0.1.0.apk)。
+历史交付：[阶段C 0.3.0](artifacts/yohaku-phase-c-0.3.0.apk) · [阶段B 0.2.0](artifacts/yohaku-phase-b-0.2.0.apk) · [阶段A 0.1.0](artifacts/yohaku-phase-a-0.1.0.apk)。
 
-- Android 10及以上（minSdk29），compile/target SDK37，开发包名 `com.yohaku.expensetracker.dev`，versionCode3，Room v23。
-- 已签名开发包，约79.9MiB，与阶段A/B证书一致。覆盖更新保留账本与本地资料，**不要先卸载**；卸载会删除本地数据。正式发行包及固定正式签名按P25处理。
+- Android 10及以上（minSdk29），compile/target SDK37，开发包名 `com.yohaku.expensetracker.dev`，versionCode4，Room v25。
+- 已签名开发包，约86.9MiB，与阶段A/B/C证书一致。覆盖更新保留账本与本地资料，**不要先卸载**；卸载会删除本地数据。正式发行包及固定正式签名按P25处理。
 - 新安装从空白设置开始，没有预建分类、流水或测试资料。测试APK、模拟器数据与截图不打入产品包。
 - API36专用模拟器验证；用户实机未连接，不能据此声称实机验收通过。
 
@@ -17,7 +17,7 @@
 
 ```sh
 adb devices
-adb -s <serial> install -r artifacts/yohaku-phase-c-0.3.0.apk
+adb -s <serial> install -r artifacts/yohaku-phase-d-0.4.0.apk
 ```
 
 ## 可用范围
@@ -34,9 +34,12 @@ adb -s <serial> install -r artifacts/yohaku-phase-c-0.3.0.apk
 - 预计收入手记及到账新建/关联；按真实资金账户的逐日预测、基础/含预计收入两情景、预算与资金缺口分列、付款日历、重要事项及实际处理入口。
 - 固定Frankfurter v2参考汇率服务、币种/日期查询、持久缓存、自动查询开关/手动刷新、离线保留和手填。请求只含币种/日期，不上传账目；参考金额不改写实际账。
 
+- 正式银行卡JSON的标识导出、整体预览、一对一资金端核对、独立人工差异、类型补记及实际入账/账单确认；原始文件可另存与删除，导入不自动写账。
+- 真实小票多图ZIP、按小票分包、原字节校验、商品JSON整体回填、独立商品编辑；旧修订/重复替换需确认，新增原图仍待整理。格式帮助可保存完整说明/schema/样例ZIP。
+
 未知金额保持未知，未确认清偿不假结清，其他账户余额和信用额度不自动抵消扣款账户缺口。特殊机构算法不冒充支持，可使用平台已知的手动逐期金额。
 
-尚未完成：P19/20正式银行账单与商品文件导入导出、P21系统通知及提醒设置、P22定位、P23完整资料归档管理、P24/25最终全应用审查和正式发行。当前“重要事项”为应用内列表，不申请通知权限。无金融机构连接、登录、云同步、备份、应用锁或OCR。
+尚未完成：P21系统通知及提醒设置、P22定位、P23完整资料归档管理、P24/25最终全应用审查和正式发行。当前“重要事项”为应用内列表，不申请通知权限。无金融机构连接、登录、云同步、备份、应用锁或OCR。
 
 ## 验收路径
 
@@ -73,3 +76,13 @@ P13真实系统选择和外部只读验证使用独立测试模块 `media-verifi
 阶段B草稿进程恢复使用`PhaseBProcessRecoveryTest`的三个独立步骤（须传`-e phaseBRecovery true`），每步之间执行`am force-stop`；PID变化和持久库/媒体核对用于区别于仅重建Compose界面。顺序为`seedTransferDraft`、`resumeTransferAndSeedActivityDraft`、`resumeActivitySaveOnceAndCleanup`。只在专用模拟器执行，最后一步清理专用库/媒体并恢复原选中账本；证据见阶段B状态。
 
 预算与周期持久化恢复使用`PlanningProcessRecoveryTest`（须传`-e planningRecovery true`），依次单独运行`seedStoppedRulesAndBudget`、`resumeStoppedRulesAndReactivateThroughUi`、`verifyReactivatedFactsAfterAnotherProcessAndCleanup`，步骤间执行`am force-stop`。使用专用数据库和固定日期，验证三主题中日文的规则撤下/恢复、主动取消、付款事实、预算与稳定待办ID；最后一步清理专用库并恢复选中账本。此不验证未保存表单的进程恢复。
+
+## 阶段D文件操作
+
+1. 设置→银行/信用卡流水核对→导入标识说明→保存JSON。将此标识和银行原始资料交给助手，按[正式格式说明](../docs/formats/README.md)转换为 `yohaku.statement` v1；名称不能代替UUID。
+2. 选择JSON，检查账户、日期语义、覆盖区间、币种、笔数、汇总及疑点，再确认导入。重复文件打开已有资料；重叠资料须明确确认。按候选处理差异，或先选类型再进入普通记账/金融表单保存。仅导入不改变余额。
+3. 小票工作台选择待整理图片组→导出→选择系统目录。将实际ZIP交给助手，按包内manifest及格式说明生成 `yohaku.receipt-items` v1。不要把格式样例当成当前账本资料。
+4. 工作台“导入商品明细”或原记录小票区的导入入口→选择JSON→检查图片关联、原币商品合计/差额和未知字段→确认回填。旧修订或已有明细需要再次确认；原记账金额保持用户输入。
+5. 回到原记录查看或编辑商品。新增图片仍待整理；取消文件选择、预览或替换不会覆盖已有商品。设置→正式文件格式与导入标识可保存说明、四份schema及样例ZIP。
+
+四类正式格式均为UTF-8 JSON、版本1；不支持的版本或任一字段错误会整份拒绝，并显示字段路径。工作流只操作本地文件，无OCR、自动上传或银行连接。

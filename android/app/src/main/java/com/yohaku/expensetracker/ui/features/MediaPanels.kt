@@ -62,6 +62,7 @@ import kotlinx.coroutines.withContext
     }
     MaterialUpload(word("添加小票图片","レシート画像を追加"),"media-add-receipts",!busy){receipts.launch(arrayOf("image/*"))}
     YText(word("小票独立于普通附件，原图保留，不自动识别或新增消费。","レシートは添付と分け、原画像を保存します。自動認識や支出の追加は行いません。"),11,color=LocalYohaku.current.muted)
+    d.id?.let { ReceiptProducts(s,it,vm) }
     preview?.let{id->s.files.find{it.id==id}?.let{file->MediaPreview(vm.repository,file,{preview=null},if(id in d.receiptFileIds)d.receiptFileIds.mapNotNull{key->s.files.find{it.id==key}}else d.attachmentIds.mapNotNull{key->s.files.find{it.id==key}})}}
 }
 @Composable private fun MediaFileRow(repository:LedgerRepository,file:FileBlobEntity,onPreview:()->Unit,onRemove:(()->Unit)?=null) {
@@ -69,6 +70,7 @@ import kotlinx.coroutines.withContext
     MaterialFileTile(file.id,file.originalName,file.mime+" · "+file.size+word(" 字节"," バイト"),file.mime.startsWith("audio/"),onPreview,onRemove,thumbnail)
 }
 @Composable internal fun RecordMediaPanel(s:BookSnapshot,event:EventEntity,vm:AppViewModel) {
+    var importOpen by rememberSaveable(event.id){mutableStateOf(false)}
     var preview by rememberSaveable(event.id){mutableStateOf<String?>(null)}
     val attachments=s.entryAttachments(event.id);val receipts=s.entryReceiptImages(event.id)
     if(attachments.isNotEmpty())ThemeSection(word("普通附件","添付ファイル"),"ATTACHMENTS")
@@ -76,14 +78,17 @@ import kotlinx.coroutines.withContext
         attachments.forEach{file->MediaFileRow(vm.repository,file,{preview=file.id})}
     }
     if(receipts.isNotEmpty()) {
-        ThemeSection(word("小票原图 · 待整理","レシート原画像・未整理"),"ORIGINAL RECEIPTS")
+        ThemeSection(word("小票与买过的东西","レシートと、買ったもの"),"RECEIPT / ITEMS")
         MaterialReceiptStrip(receipts.size,s.receipts.find{it.eventId==event.id}?.revision) {
             receipts.forEachIndexed{index,file->MaterialReceiptImage(file.id,index,{preview=file.id},null,null,null) {
                 MediaThumbnail(vm.repository,file,Modifier.fillMaxSize(),crop=true)
             }}
         }
         YLink(word("打开小票工作台","レシート一覧を開く"),{vm.navigate("receipts")})
+        YLink(word("导入商品明细","商品明細を取込"),{importOpen=true},Modifier.testTag("receipt-import-for-record"))
     }
+    ReceiptProducts(s,event.id,vm)
+    if(importOpen)ReceiptImportFlow(s,vm,{importOpen=false},{importOpen=false},targetRecordId=event.id)
     preview?.let{id->s.files.find{it.id==id}?.let{MediaPreview(vm.repository,it,{preview=null},if(receipts.any{f->f.id==id})receipts else attachments)}}
 }
 private suspend fun decodeMedia(repository:LedgerRepository,file:FileBlobEntity,maxSize:Int):android.graphics.Bitmap=withContext(Dispatchers.IO) {
@@ -93,7 +98,7 @@ private suspend fun decodeMedia(repository:LedgerRepository,file:FileBlobEntity,
     var sample=1;while(bounds.outWidth/sample>maxSize||bounds.outHeight/sample>maxSize)sample*=2
     BitmapFactory.decodeFile(path.path,BitmapFactory.Options().apply{inSampleSize=sample})?:error("无法解码这张图片 / この画像を読み込めません")
 }
-@Composable private fun MediaThumbnail(repository:LedgerRepository,file:FileBlobEntity,modifier:Modifier=Modifier.fillMaxWidth().heightIn(max=180.dp),crop:Boolean=false) {
+@Composable internal fun MediaThumbnail(repository:LedgerRepository,file:FileBlobEntity,modifier:Modifier=Modifier.fillMaxWidth().heightIn(max=180.dp),crop:Boolean=false) {
     var failure by remember(file.id){mutableStateOf<String?>(null)}
     val bitmap by produceState<android.graphics.Bitmap?>(null,file.id){try{value=decodeMedia(repository,file,512)}catch(e:kotlinx.coroutines.CancellationException){throw e}catch(e:Exception){failure=e.message}}
     bitmap?.let{Image(it.asImageBitmap(),file.originalName,modifier,contentScale=if(crop)ContentScale.Crop else ContentScale.Fit,alignment=androidx.compose.ui.Alignment.TopCenter)}
@@ -170,24 +175,4 @@ private suspend fun decodeMedia(repository:LedgerRepository,file:FileBlobEntity,
         if(playing)media.pause()else {if(position>=duration){media.seekTo(0);position=0};media.start()}
         playing=!playing
     },{position=it;player?.seekTo(it)})
-}
-
-@Composable internal fun ReceiptsScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit) {
-    var tab by rememberSaveable(s.book.id){mutableStateOf("UNSORTED")}
-    var preview by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
-    val available=s.receipts.filter{r->s.visibleEvents.any{it.id==r.eventId}&&s.receiptImages.any{it.receiptId==r.id&&it.revision==r.revision}}
-    ReceiptInboxCover(available.count{it.status=="UNSORTED"})
-    YText(word("保存原图，查看并关联原记账。小票不会自动识别或生成消费。","原画像を保存し、元の記録を確認。自動認識や支出の生成は行いません。"),11,color=LocalYohaku.current.muted)
-    ReceiptInboxTabs(tab){tab=it}
-    val records=available.filter{tab=="ALL"||it.status==tab}
-    if(records.isEmpty())YEmpty(if(available.isEmpty())word("在记账表单中添加小票原图。","記録フォームでレシート原画像を追加しましょう。")else if(tab=="SORTED")word("暂无已整理的小票。原图可在待整理中查看。","整理済みレシートはありません。原画像は未整理タブで確認できます。")else word("没有待整理的小票。","未整理のレシートはありません。"))
-    records.forEachIndexed{index,receipt->
-        val event=s.visibleEvents.first{it.id==receipt.eventId}
-        val images=s.entryReceiptImages(event.id)
-        ReceiptInboxCard(receipt.id,index,event.merchant.ifBlank{word("这张小票","このレシート")},event.date+" · "+s.path(event.categoryId)+" · "+Money(Currency.valueOf(event.currency),event.amountMinor).display()+" · "+word("第${receipt.revision}版","第${receipt.revision}版"),if(receipt.status=="SORTED")word("已整理","整理済み")else word("待整理","未整理"),receipt.status=="SORTED",images.size,{onRecord(event)}) {
-            images.forEachIndexed{imageIndex,file->ReceiptThumbnailFrame(file.id,imageIndex,{preview=file.id}){MediaThumbnail(vm.repository,file,Modifier.fillMaxSize(),crop=true)}}
-        }
-    }
-    YText(word("原图导出与商品导入尚未提供。原图可在原记录中增减并保留修订。","画像の書出し・商品取込は未提供です。元の記録で画像を増減し、改訂を保持できます。"),11,color=LocalYohaku.current.muted)
-    preview?.let{id->s.files.find{it.id==id}?.let{MediaPreview(vm.repository,it,{preview=null},s.receipts.find{r->s.entryReceiptImages(r.eventId).any{f->f.id==id}}?.let{r->s.entryReceiptImages(r.eventId)}?:listOf(it))}}
 }

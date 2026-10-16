@@ -38,11 +38,11 @@ private fun Modifier.dashed(color:Color)=drawBehind{drawRect(color,style=Stroke(
         onRemove?.let{MaterialRemove(Modifier.align(Alignment.TopEnd).offset(x=5.dp,y=(-5).dp),"media-remove-$id",word("移除附件","添付を削除"),it)}
     }
 }
-@Composable internal fun MaterialUpload(label:String,tag:String,enabled:Boolean,onClick:()->Unit) {
+@Composable internal fun MaterialUpload(label:String,tag:String,enabled:Boolean,leadingIcon:(@Composable ()->Unit)?=null,onClick:()->Unit) {
     val t=LocalYohaku.current
     val frame=when(t.id){"magazine"->Modifier.border(1.dp,t.ink);"journal"->Modifier.rotate(.2f).background(Color(0xffeee9d8)).dashed(Color(0xffb4ad96));else->Modifier.background(Color(0xfff7eedb),RoundedCornerShape(13.dp)).drawBehind{drawRoundRect(Color(0xffcebb98),cornerRadius=androidx.compose.ui.geometry.CornerRadius(13.dp.toPx()),style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))))}}
     Row(Modifier.fillMaxWidth().padding(vertical=12.dp).testTag(tag).then(frame).clickable(enabled=enabled,role=Role.Button,onClick=onClick).padding(horizontal=10.dp,vertical=16.dp),horizontalArrangement=Arrangement.spacedBy(9.dp,Alignment.CenterHorizontally),verticalAlignment=Alignment.CenterVertically) {
-        YIcon("paperclip",Modifier.size(18.dp),if(t.id=="objects")Color(0xffae815a)else t.accent)
+        if(leadingIcon!=null)leadingIcon()else YIcon("paperclip",Modifier.size(18.dp),if(t.id=="objects")Color(0xffae815a)else t.accent)
         YText(label,if(t.id=="journal")15 else 12,Modifier.weight(1f,false),color=if(t.id=="objects")Color(0xffae815a)else t.ink)
     }
 }

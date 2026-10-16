@@ -25,6 +25,7 @@ import com.yohaku.expensetracker.ui.theme.*
 import java.time.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
+import kotlinx.serialization.encodeToString
 
 @Composable fun NativeApp(vm:AppViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -46,6 +47,10 @@ import kotlinx.coroutines.delay
     val ready=state as? AppState.Ready;val snapshot=ready?.snapshot
     val firstSetup=ready?.firstSetup ?: storedFirstSetup
     var sheet by rememberSaveable{mutableStateOf<String?>(null)}
+    var requestedStatement by rememberSaveable{mutableStateOf<String?>(null)}
+    var requestedStatementActual by rememberSaveable{mutableStateOf<String?>(null)}
+    var fileFormats by rememberSaveable{mutableStateOf(false)}
+    var globalIdentifiers by rememberSaveable{mutableStateOf(false)}
     var requestedEntryKind by rememberSaveable{mutableStateOf(EntryKind.EXPENSE.name)}
     var requestedActivity by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedTreatFriend by rememberSaveable{mutableStateOf<String?>(null)}
@@ -101,6 +106,19 @@ import kotlinx.coroutines.delay
                 requestedMerchant=merchantId;requestedTreatFriend=treatFriendId;requestedActivity=activityId;requestedEntryKind=kind.name;requestedTransferAccount=fromAccountId;requestedDestination=toAccountId;requestedOccurrence=null
                 if(snapshot.draft!=null)sheet="existing-draft"else startRequestedEntry(snapshot)
             }
+            fun startStatementRequest() {
+                requestedStatement?.let{vm.startStatementSupplement(snapshot,vm.repository.json.decodeFromString<StatementSupplementSeed>(it))}
+                requestedStatementActual?.let{vm.startStatementActual(snapshot,vm.repository.json.decodeFromString<StatementActualSeed>(it))}
+                requestedStatement=null;requestedStatementActual=null
+            }
+            fun requestStatement(seed:StatementSupplementSeed) {
+                requestedStatement=vm.repository.json.encodeToString(seed);requestedStatementActual=null
+                if(snapshot.draft!=null)sheet="statement-existing-draft"else startStatementRequest()
+            }
+            fun requestStatementActual(eventId:String,accountId:String,row:com.yohaku.expensetracker.data.files.StatementRow,date:String) {
+                requestedStatementActual=vm.repository.json.encodeToString(StatementActualSeed(eventId,accountId,row,date));requestedStatement=null
+                if(snapshot.draft!=null)sheet="statement-existing-draft"else startStatementRequest()
+            }
             fun openFinancial(id:String,month:String?=null) {
                 selectedAccountId=id;financialInitialTab=if(month==null)"overview"else"statement";financialInitialMonth=month;sheet=null;vm.navigate("rules")
             }
@@ -147,7 +165,9 @@ import kotlinx.coroutines.delay
                         "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
                         "ledger"->LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)})
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}})
-                        "settings"->SettingsScreen(snapshot,{vm.appearance(book.id,theme=it)},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")})
+                        "settings"->SettingsScreen(snapshot,{vm.appearance(book.id,theme=it)},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{fileFormats=true})
+                        "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
+                        "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "reference-rates"->ReferenceRatesScreen(vm)
                         "trash"->TrashScreen(snapshot,vm)
                         "budget"->BudgetScreen(snapshot,vm,{vm.navigate("recurring")},{vm.navigate("categories")})
@@ -222,6 +242,11 @@ import kotlinx.coroutines.delay
                         sheet=null
                     }){vm.repository.clearDraft(book.id)}})
                 }}
+                "statement-existing-draft"->YSheet(word("还有一笔草稿","下書きが残っています"),{sheet=null;requestedStatement=null;requestedStatementActual=null}) {
+                    YText(word("先继续已有草稿，或明确放弃后打开流水对应表单。核对文件不会自动记账。","既存の下書きを続けるか、破棄を確認して明細のフォームを開いてください。照合ファイルは自動記録しません。"),13)
+                    YButton(word("继续已有草稿","既存の下書きを続ける"),{requestedStatement=null;requestedStatementActual=null;sheet=null;vm.resumeEntry(snapshot)})
+                    YButton(word("放弃草稿，打开流水表单","下書きを破棄して明細フォームを開く"),{vm.execute(onSuccess={sheet=null;startStatementRequest()}){vm.repository.clearDraft(book.id)}},primary=true)
+                }
                 "refund-existing-draft"->selectedEvent?.let{original->YSheet(word("还有一笔草稿","下書きが残っています"),{sheet=null}) {
                     YButton(word("继续这笔草稿","下書きを続ける"),{vm.resumeEntry(snapshot);sheet=null},primary=true)
                     YButton(word("放弃草稿，记录退款","下書きを破棄して返金を記録"),{vm.execute({vm.startRefund(snapshot,original);sheet=null}){vm.repository.clearDraft(book.id)}})
@@ -271,7 +296,9 @@ import kotlinx.coroutines.delay
                 }}
             }
         }
-        if(error!=null) YSheet(word("请检查","確認してください"),{vm.error.value=null}) {YText(if(LocalLanguage.current=="ja")error!!.substringAfter(" / ",error!!) else error!!.substringBefore(" / "));YButton(word("知道了","確認"),{vm.error.value=null},primary=true)}
+        if(fileFormats)ReceiptFormatHelp({fileFormats=false},{fileFormats=false;globalIdentifiers=true})
+        if(globalIdentifiers&&snapshot!=null)StatementIdentifiers(snapshot,vm,{globalIdentifiers=false})
+        if(error!=null) YSheet(word("请检查","確認してください"),{vm.error.value=null}) {val language=LocalLanguage.current;YText(error!!.lineSequence().joinToString("\n"){line->if(language=="ja")line.substringAfter(" / ",line)else line.substringBefore(" / ")});YButton(word("知道了","確認"),{vm.error.value=null},primary=true)}
         notice?.takeIf{it.bookId==book?.id&&error==null}?.let{
             Box(Modifier.fillMaxSize().safeDrawingPadding().padding(bottom=95.dp),contentAlignment=Alignment.BottomCenter){
                 YToast(word(it.zh,it.ja),Modifier.widthIn(max=androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp*.9f))
@@ -289,7 +316,7 @@ import kotlinx.coroutines.delay
             (if(settlement.confirmed)word("账户实际入账","口座の実計上額")else word("预计入账 · 待确认","計上見込み・確認待ち")) to Money(Currency.valueOf(settlement.accountCurrency),settlement.accountMinor).display(),
             word("原预计入账","元の計上見込み") to settlement.expectedMoney().display(),
             word("实际 / 预计入账日期","実際・予定計上日") to settlement.settlementDate,
-            word("保存的换算来源 / 日期","保存した換算情報・日付") to ((if(settlement.rateSource=="manual")word("手动填写","手入力")else settlement.rateSource)+" · "+settlement.rateDate)
+            word("保存的换算来源 / 日期","保存した換算情報・日付") to ((when(settlement.rateSource){"manual"->word("手动填写","手入力");"statement"->word("核对流水","照合明細");else->settlement.rateSource})+" · "+settlement.rateDate)
         ),audit=true)
     }
     if(e.cardPaymentChoice!=null) {
@@ -302,6 +329,7 @@ import kotlinx.coroutines.delay
     val settlement=s.settlements.find{it.eventId==e.id}
     if(e.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name,EntryKind.REFUND.name)&&settlement!=null&&(settlement.accountCurrency!=e.currency||!settlement.confirmed))YButton(word("确认实际入账金额","実計上額を確認"),onConfirm,primary=true)
     s.repayments.firstOrNull{it.eventId==e.id}?.let{FinancialRepaymentFacts(s,e,it)}
+    RecordStatementSides(s,e,vm)
     s.contracts.firstOrNull{it.fundingEventId==e.id}?.let{FinancialBorrowingFacts(s,it)}
     s.transfers.find{it.eventId==e.id}?.let{TransferFacts(s,e,it,s.expenseComponents.filter{c->c.eventId==e.id})}
     if(e.kind==EntryKind.EXPENSE.name) {

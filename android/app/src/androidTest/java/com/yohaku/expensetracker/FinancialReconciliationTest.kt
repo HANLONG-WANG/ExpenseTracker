@@ -51,7 +51,7 @@ class FinancialReconciliationTest {
                 val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v22-schema.json").bufferedReader().readText()).getJSONObject("database")
                 old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));old.version=22
             }
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_22_23).build();r=LedgerRepository(db,clock)
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25).build();r=LedgerRepository(db,clock)
             assertEquals(applied,db.financialDao().graph(x.b).first()!!.arrangements.single());assertEquals(versions,db.financialDao().planRevisions(x.b,x.target).first())
             r.saveEntry(x.b,EntryDraft(id=x.source,accountId=x.card,categoryId=x.cat,amount="1200",date="2026-10-02"))
             val partial=r.previewArrangementReconciliation(x.b,input(r,x,1000))

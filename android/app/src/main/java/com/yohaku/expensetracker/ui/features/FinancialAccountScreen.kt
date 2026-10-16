@@ -197,14 +197,14 @@ import kotlinx.serialization.encodeToString
     if(bill.confirmed&&bill.predictedTotalMinor!=null)YText(word("原预测：","元の予測：")+money(bill.predictedTotalMinor)+" · "+bill.predictedDate,11,color=LocalYohaku.current.muted)
 }
 
-@Composable internal fun FinancialBillConfirmationEditor(s:BookSnapshot,accountId:String,bill:FinancialBillEntity,currency:Currency,vm:AppViewModel,onClose:()->Unit) {
-    FinancialDraftHost(s,FinancialDraftContext("BILL",accountId,billId=bill.id),vm,onClose){FinancialBillConfirmationEditorContent(s,bill,currency,vm,onClose)}
+@Composable internal fun FinancialBillConfirmationEditor(s:BookSnapshot,accountId:String,bill:FinancialBillEntity,currency:Currency,vm:AppViewModel,onClose:()->Unit,initial:KnownBillDraft?=null) {
+    FinancialDraftHost(s,FinancialDraftContext("BILL",accountId,billId=bill.id),vm,onClose){FinancialBillConfirmationEditorContent(s,bill,currency,vm,onClose,initial)}
 }
 
-@Composable private fun FinancialBillConfirmationEditorContent(s:BookSnapshot,bill:FinancialBillEntity,currency:Currency,vm:AppViewModel,onClose:()->Unit) {
+@Composable private fun FinancialBillConfirmationEditorContent(s:BookSnapshot,bill:FinancialBillEntity,currency:Currency,vm:AppViewModel,onClose:()->Unit,initial:KnownBillDraft?) {
     val draftSession=requireNotNull(LocalFinancialDraft.current)
     fun amount(value:Long?)=value?.let{Money(currency,it).decimal.toPlainString()}.orEmpty()
-    var encoded by financialField("encoded"){vm.repository.json.encodeToString(KnownBillDraft(bill.date,amount(bill.totalMinor),amount(bill.principalMinor),amount(bill.feeMinor),bill.paymentAccountId))}
+    var encoded by financialField("encoded"){vm.repository.json.encodeToString(initial?:KnownBillDraft(bill.date,amount(bill.totalMinor),amount(bill.principalMinor),amount(bill.feeMinor),bill.paymentAccountId))}
     val draft=vm.repository.json.decodeFromString<KnownBillDraft>(encoded)
     var date by remember{mutableStateOf<Int?>(null)}
     val busy by vm.busy.collectAsStateWithLifecycle()

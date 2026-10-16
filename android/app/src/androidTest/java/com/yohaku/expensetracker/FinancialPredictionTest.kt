@@ -232,7 +232,7 @@ class FinancialPredictionTest {
             old.execSQL("INSERT INTO financial_bills (bookId,id,planId,number,paymentAccountId,confirmedDate,confirmedTotalMinor,confirmedAt,revision) VALUES ('b','bill','p',1,'a','2026-11-27',10100,1,1)")
             old.execSQL("DROP TABLE IF EXISTS financial_drafts");old.version=12
         }finally{old.close()}
-        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_12_13,MIGRATION_13_14,MIGRATION_14_15,MIGRATION_15_16,MIGRATION_16_17,MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23).build()
+        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_12_13,MIGRATION_13_14,MIGRATION_14_15,MIGRATION_15_16,MIGRATION_16_17,MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25).build()
         try {
             val graph=db.financialDao().graph("b").first()!!
             assertNull(graph.plans.single().termsJson)

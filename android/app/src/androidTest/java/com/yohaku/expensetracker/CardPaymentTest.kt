@@ -110,7 +110,7 @@ class CardPaymentTest {
             var v=setup(db);val oldEvent=v.repo.saveEntry(v.book,v.draft(choice=null))
             db.close();val old=SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE)
             try{restoreFixtureTable(old,"room-v19-schema.json","events");val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v19-schema.json").bufferedReader().readText()).getJSONObject("database");old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));old.execSQL("DROP TABLE IF EXISTS financial_drafts");restoreFixtureTable(old,"room-v19-schema.json","financial_plans");old.version=19}finally{old.close()}
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23).build();v=v.copy(repo=LedgerRepository(db,clock))
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25).build();v=v.copy(repo=LedgerRepository(db,clock))
             assertNull(v.repo.dao.event(v.book,oldEvent)!!.cardPaymentMode)
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER reject_card_plan BEFORE INSERT ON financial_plan_revisions BEGIN SELECT RAISE(ABORT,'atomic source plan'); END")
             try{v.repo.saveEntry(v.book,v.draft());fail("transaction must fail")}catch(_:android.database.sqlite.SQLiteException){}
