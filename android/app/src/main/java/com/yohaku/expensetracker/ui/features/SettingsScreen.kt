@@ -38,25 +38,40 @@ import com.yohaku.expensetracker.ui.theme.*
                     }
                     Box(Modifier.width(23.dp)){if(selected)YIcon("check",tint=t.accent)}
                 }
-                SettingsRule()
+                // The panel edge closes the last row; another rule would double it.
+                if(id!="objects")SettingsRule()
             }
         }
     }
-    Panel(contentSpacing=0.dp) {
+    SettingsGroup(word("账本与分类","帳簿とカテゴリ")) {
         SettingsRow(word("独立账本管理","独立した帳簿"),onBooks)
         SettingsRow(word("账本名称与资料","帳簿情報"),onRename)
-        SettingsRow(word("两级分类管理","カテゴリ管理"),onCategories)
+        SettingsRow(word("两级分类管理","カテゴリ管理"),onCategories,last=true)
+    }
+    SettingsGroup(word("提醒与汇率","通知とレート")) {
         SettingsRow(word("重要提醒设置","重要な通知の設定"),onReminders,"settings-reminders")
-        SettingsRow(word("参考汇率与自动获取","参考レート・自動取得"),onRates,"settings-reference-rates")
+        SettingsRow(word("参考汇率与自动获取","参考レート・自動取得"),onRates,"settings-reference-rates",last=true)
+    }
+    SettingsGroup(word("流水与文件","明細とファイル")) {
         SettingsRow(word("银行 / 信用卡流水核对","銀行・カード明細の照合"),onStatements,"settings-statements")
-        SettingsRow(word("正式文件格式与导入标识","正式ファイル形式・取込用ID"),onFormats,"settings-file-formats")
+        SettingsRow(word("正式文件格式与导入标识","正式ファイル形式・取込用ID"),onFormats,"settings-file-formats",last=true)
+    }
+    SettingsGroup(word("其他","その他")) {
         SettingsRow(word("回收站 · 30天","ごみ箱 · 30日"),onTrash)
-        SettingsRow(word("切换为日语","中国語へ切替"),onLanguage,"settings-language",arrow=false)
+        SettingsRow(word("切换为日语","中国語へ切替"),onLanguage,"settings-language",arrow=false,last=true)
     }
     YText("余量 / ヨハク / YOHAKU",12,color=t.muted)
 }
 
-@Composable private fun SettingsRow(label:String,onClick:()->Unit,tag:String=label,arrow:Boolean=true) {
+@Composable private fun SettingsGroup(title:String,content:@Composable ColumnScope.()->Unit) {
+    val t=LocalYohaku.current
+    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        YText(title,if(t.id=="journal")13 else 11,Modifier.padding(start=if(t.id=="magazine")0.dp else 4.dp),color=if(t.id=="journal")t.warm else t.muted,letterSpacing=if(t.id=="magazine").5f else 0f)
+        Panel(contentSpacing=0.dp,content=content)
+    }
+}
+
+@Composable private fun SettingsRow(label:String,onClick:()->Unit,tag:String=label,arrow:Boolean=true,last:Boolean=false) {
     val t=LocalYohaku.current
     Column(Modifier.fillMaxWidth().testTag(tag).clickable(role=Role.Button,onClick=onClick)){
         Row(Modifier.fillMaxWidth().padding(vertical=if(t.id=="objects")18.dp else 17.dp).heightIn(min=when(t.id){"journal"->if(arrow)21.dp else 20.dp;"objects"->if(arrow)20.dp else 19.dp;else->if(arrow)17.dp else 16.dp}),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
@@ -64,7 +79,7 @@ import com.yohaku.expensetracker.ui.theme.*
             YText(label,size,Modifier.weight(1f),lineHeightMultiplier=when(t.id){"journal"->20f/15;"objects"->19f/14;else->16f/12})
             if(arrow)YIcon("arrow",Modifier.size(17.dp))
         }
-        SettingsRule()
+        if(!last)SettingsRule()
     }
 }
 

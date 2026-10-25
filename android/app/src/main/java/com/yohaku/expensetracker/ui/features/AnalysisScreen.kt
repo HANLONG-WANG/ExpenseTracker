@@ -61,19 +61,19 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     if(category!=null||merchant!=null||activity!=null)RecordFacts(listOf(word("分类","カテゴリ") to (category?.let{s.path(it)}?:word("全部","すべて")),word("商户","お店") to (merchant?.let{s.merchantLabel(it).ifBlank{word("未填写","未入力")}}?:word("全部","すべて")),word("活动","シーン") to (activity?.let{id->s.activities.find{it.id==id}?.name?:word("日常","日常")}?:word("全部","すべて"))))
     when(tab) {
         "spend"->{
+            // The period total is shown before any module is chosen; only the module emphasis is left to the user.
+            val provisional=report.events.any{event->s.settlements.any{it.eventId==event.id&&!it.confirmed}}
+            YLead(word("从你的重点，看日常。","自分の視点で、日々を見る。"),"$start — $end · ${report.events.size} "+word("笔记录 · 含独立活动实际消费","件の記録・独立シーンの実支出を含む"),"MONEY IN CONTEXT",Money(currency,report.total).display(),if(provisional)word("净消费含预计换算","純支出に仮換算を含む")else word("本位币净消费","基準通貨の純支出"),pageFlow=true)
+            RecordFacts(listOf(word("原消费","元の支出") to Money(currency,report.gross).display(),word("已到账退款 · 归原消费期间","入金済み返金・元の購入期間へ") to Money(currency,report.refunds).display(),word("明确实际费用","確定した実際の手数料") to Money(currency,report.fees).display()))
             if(s.analysisPreferences==null||modules.isEmpty()) {
-                YLead(word("你想先看清什么？","まず、何を見たい？"),word("分类、商户、趋势和活动，选择你关心的内容与顺序。","カテゴリ・お店・推移・シーン。気になる内容と順序を選んで。"),"YOUR OWN PERSPECTIVE",pageFlow=true)
+                ThemeSection(word("你想先看清什么？","まず、何を見たい？"),"YOUR OWN PERSPECTIVE")
+                YText(word("分类、商户、趋势和活动，选择你关心的内容与顺序。","カテゴリ・お店・推移・シーン。気になる内容と順序を選んで。"),11,color=LocalYohaku.current.muted)
                 @Composable fun choice(module:AnalysisModule,modifier:Modifier=Modifier){AnalysisChoice(module.name,module.ordinal,analysisModuleName(module),analysisModuleNote(module),analysisModuleIcon(module),modifier,{initialModule=module;editor=true})}
                 if(LocalYohaku.current.id=="journal")AnalysisModule.entries.forEach{choice(it)}
                 else AnalysisModule.entries.chunked(2).forEach{row->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(if(LocalYohaku.current.id=="magazine")20.dp else 13.dp)){row.forEach{choice(it,Modifier.weight(1f))};if(row.size==1)Spacer(Modifier.weight(1f))}}
                 YButton(word("选择分析模块","分析項目を選ぶ"),{initialModule=null;editor=true},primary=true)
                 YText(word("未选择时不替你预设重点，偏好按账本保存。","未選択の視点は自動設定しません。帳簿ごとに保存。"),11,color=LocalYohaku.current.muted)
-            }else {
-                val provisional=report.events.any{event->s.settlements.any{it.eventId==event.id&&!it.confirmed}}
-                YLead(word("从你的重点，看日常。","自分の視点で、日々を見る。"),"$start — $end · ${report.events.size} "+word("笔记录 · 含独立活动实际消费","件の記録・独立シーンの実支出を含む"),"MONEY IN CONTEXT",Money(currency,report.total).display(),if(provisional)word("净消费含预计换算","純支出に仮換算を含む")else word("本位币净消费","基準通貨の純支出"),pageFlow=true)
-                YButton(word("自定义分析","分析をカスタマイズ"),{initialModule=null;editor=true},Modifier.testTag("analysis-customize"))
-                RecordFacts(listOf(word("原消费","元の支出") to Money(currency,report.gross).display(),word("已到账退款 · 归原消费期间","入金済み返金・元の購入期間へ") to Money(currency,report.refunds).display(),word("明确实际费用","確定した実際の手数料") to Money(currency,report.fees).display()))
-            }
+            }else YButton(word("自定义分析","分析をカスタマイズ"),{initialModule=null;editor=true},Modifier.testTag("analysis-customize"))
             ordered.forEach{module->
                 AnalysisModuleHeading(analysisModuleName(module),analysisModuleNote(module),module==ordered.firstOrNull()||module in pinned)
                 when(module) {
@@ -98,9 +98,12 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
         "budget"->AnalysisBudgetView(s,filter,{category=it},{month->vm.openBudgetMonth.value=month;vm.navigate("budget")})
         "future"->AnalysisFutureView(s,filter,vm,{vm.navigate("recurring")},{vm.openActivity.value=it;vm.navigate("life")},onRecord,onFinancial)
     }
-    YLink(word("商户资料与保存地点","お店の情報と保存した場所"),{vm.navigate("merchants")})
-    YLink(word("朋友名册","友達の名簿"),{vm.navigate("friends")})
-    YLink(word("小票原图工作台","レシート原画像の一覧"),{vm.navigate("receipts")})
+    ThemeSection(word("资料与工具","情報とツール"),"MORE")
+    FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
+        YLink(word("商户资料与保存地点","お店の情報と保存した場所"),{vm.navigate("merchants")},arrow=true)
+        YLink(word("朋友名册","友達の名簿"),{vm.navigate("friends")},arrow=true)
+        YLink(word("小票原图工作台","レシート原画像の一覧"),{vm.navigate("receipts")},arrow=true)
+    }
     if(editor)AnalysisPreferenceEditor(s,vm,initialModule,filter,today,{editor=false;initialModule=null})
     if(filtering)AnalysisFilterEditor(s,filter,vm,{filtering=false},{value->start=value.start;end=value.end;category=value.categoryId;merchant=value.merchantKey;activity=value.activityId;filtering=false})
     detail?.let{key->

@@ -30,14 +30,14 @@ import com.yohaku.expensetracker.ui.theme.*
     val hasForeign=totals.keys.any{it!=base.name}
     YLead(word("钱与欠款，都有位置。","お金も借入も、それぞれに。"),
         word("账户保留原币；信用额度不计入资金。","口座は元通貨。利用枠は資金に含みません。"),"A PLACE FOR EVERY CURRENCY",
-        if(hasForeign)"—" else Money(base,totals[base.name]?:0).display(),
-        if(hasForeign)word("各币种分别查看","通貨ごとに確認") else word("今日实际资金","本日の実資金"),pageFlow=true)
+        // Mixed currencies are never summed; their per-currency totals follow in the summary card.
+        if(hasForeign)"" else Money(base,totals[base.name]?:0).display(),
+        if(hasForeign)"" else word("今日实际资金","本日の実資金"),pageFlow=true)
     if(hasForeign)Box(Modifier.padding(bottom=5.dp)){AccountSummary(word("持有的资金 · 按原币","手元の資金・元通貨別"),totals.map{(currency,value)->Money(Currency.valueOf(currency),value).display()},word("各币种按实际余额分别展示。","実残高を通貨別に表示。"))}
-    if(hasForeign&&referenceService!=null)ReferenceAssetValuation(s,referenceService,today)
     val debtTotals=debts.groupBy{it.currency}.map{(currency,accounts)->Money(Currency.valueOf(currency),accounts.fold(0L){total,a->Math.addExact(total,s.balance(a))}).display()}
     AccountSummary(word("当前欠款 · 不计入资金","現在の借入残高・資金には含まない"),debtTotals.ifEmpty{listOf(Money(base,0).display())},word("信用额度不计入资金。","利用枠は資金に含めません。"),Modifier.testTag("accounts-reference-note"))
-    YText(today.toString()+" · "+word("资金只计截至今日已确认流水；未来已记流水在时间线中另列。","資金は本日までの確定記録のみ。将来日付の記録は予定に別掲。"),11)
-    financialContent()
+    YText(today.toString()+" · "+word("资金只计截至今日已确认流水；未来已记流水在时间线中另列。","資金は本日までの確定記録のみ。将来日付の記録は予定に別掲。"),11,color=t.muted)
+    // The account lists come before valuation and planning so the page opens on the accounts themselves.
     ThemeSection(word("持有的资金","持っている資金"),"AVAILABLE FUNDS")
     Column(Modifier.fillMaxWidth().padding(top=8.dp,bottom=12.dp).testTag("funds-account-list"),verticalArrangement=Arrangement.spacedBy(13.dp)){
         if(funds.isEmpty())YEmpty(word("添加第一个账户","最初の口座を追加"),onAdd,word("添加账户","口座を追加"))
@@ -48,6 +48,9 @@ import com.yohaku.expensetracker.ui.theme.*
         debts.forEachIndexed{i,a->AccountCard(s,a,i,{onSelect(a)},today)}
     }
     YButton(word("＋ 添加账户","＋ 口座を追加"),onAdd,Modifier.testTag("accounts-add"),primary=true)
+    if(hasForeign&&referenceService!=null)ReferenceAssetValuation(s,referenceService,today)
+    ThemeSection(word("付款与资金安排","支払と資金の予定"),"PLANNING")
+    financialContent()
 }
 
 @Composable private fun AccountSummary(title:String,values:List<String>,footer:String,modifier:Modifier=Modifier) {
@@ -69,7 +72,7 @@ import com.yohaku.expensetracker.ui.theme.*
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val debt=AccountType.valueOf(a.type).debt
     val amount=Money(Currency.valueOf(a.currency),if(debt)s.balance(a)else s.cashBalanceAt(a,today.toString())).display()
-    val note=if(!a.active)word("已停用 · 请核对资金安排","停止中・資金予定を確認")else if(debt)word("当前欠款","現在の借入残高") else when(t.id){"magazine"->word("保留原币余额","元通貨の残高を保持");"journal"->word("余额记在这一页","残高をこのページに");else->word("可用余额","利用可能残高")}
+    val note=if(!a.active)word("已停用 · 请核对资金安排","停止中・資金予定を確認")else if(debt)accountTypeName(AccountType.valueOf(a.type))+" · "+word("当前欠款","現在の借入残高") else accountTypeName(AccountType.valueOf(a.type))
     val click=Modifier.testTag("account-"+a.id).fillMaxWidth().clickable(role=Role.Button,onClick=onClick)
     when(t.id){
         "magazine"->Column(click){

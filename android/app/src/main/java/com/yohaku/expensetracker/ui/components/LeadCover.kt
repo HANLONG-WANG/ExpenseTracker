@@ -23,7 +23,7 @@ private val tapeShape=GenericShape{size,_->
 
 // Page columns supply 15dp. Only the remainder of collapsed HTML margins belongs here.
 // SetupProgress supplies 7dp below itself, so its following cover contributes another 3dp.
-@Composable fun YLead(title:String,description:String,kicker:String,amount:String="",aside:String="",amountIsText:Boolean=false,pageFlow:Boolean=false,afterSetupProgress:Boolean=false,wideTitle:Boolean=false) {
+@Composable fun YLead(title:String,description:String,kicker:String,amount:String="",aside:String="",amountIsText:Boolean=false,pageFlow:Boolean=false,afterSetupProgress:Boolean=false) {
     val t=LocalYohaku.current
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val editionHeight=with(LocalDensity.current){11.sp.toDp()}
@@ -33,12 +33,12 @@ private val tapeShape=GenericShape{size,_->
             Column(Modifier.padding(top=18.dp,bottom=22.dp)){
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
                     YText(kicker,8,Modifier.height(editionHeight).wrapContentHeight(Alignment.CenterVertically,unbounded=true),color=t.muted,letterSpacing=1.2f,lineHeightMultiplier=11f/8)
-                    YText("YOHAKU / 05",8,Modifier.height(editionHeight).wrapContentHeight(Alignment.CenterVertically,unbounded=true),color=t.muted,letterSpacing=1.2f,lineHeightMultiplier=11f/8)
+                    // Decorative folio; on narrow screens it would collide with a long kicker.
+                    if(!narrow)YText("YOHAKU / 05",8,Modifier.height(editionHeight).wrapContentHeight(Alignment.CenterVertically,unbounded=true),color=t.muted,letterSpacing=1.2f,lineHeightMultiplier=11f/8)
                 }
-                if(wideTitle)YText(title,if(narrow)25 else 28,Modifier.fillMaxWidth().padding(top=10.dp).testTag("lead-title"),letterSpacing=-.6f,lineHeightMultiplier=1.6f)
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(if(narrow)11.dp else 17.dp),verticalAlignment=Alignment.Bottom){
                     Column(Modifier.weight(1f).padding(top=10.dp)){
-                        if(!wideTitle)YText(title,if(narrow)25 else 28,Modifier.testTag("lead-title"),letterSpacing=-.6f,lineHeightMultiplier=1.6f)
+                        YText(title,if(narrow)25 else 28,Modifier.testTag("lead-title"),letterSpacing=-.6f,lineHeightMultiplier=1.6f,balanced=true)
                         YText(description,11,Modifier.padding(top=10.dp,bottom=if(amount.isEmpty())10.dp else 0.dp).testTag("lead-description"),color=t.muted,lineHeightMultiplier=2f)
                         if(amount.isNotEmpty())LeadAmount(amount,if(narrow)30 else 35,if(amountIsText)if(narrow)44f else 50f else if(narrow)35f else 40f,amountIsText,Modifier.padding(top=17.dp))
                     }
@@ -61,7 +61,7 @@ private val tapeShape=GenericShape{size,_->
                     Box(Modifier.offset(x=maxWidth*.31f,y=(-8).dp).size(88.dp,17.dp).rotate(-3f).background(Color(0x80d6bf86),tapeShape))
                     Column(Modifier.padding(start=17.dp,end=17.dp,top=25.dp,bottom=23.dp)){
                         YText("✳ $kicker",11,color=t.warm,lineHeightMultiplier=16f/11)
-                        YText(title,if(narrow)25 else 28,Modifier.padding(top=10.dp).testTag("lead-title"),letterSpacing=-.6f,lineHeightMultiplier=1.5f)
+                        YText(title,if(narrow)25 else 28,Modifier.padding(top=10.dp).testTag("lead-title"),letterSpacing=-.6f,lineHeightMultiplier=1.5f,balanced=true)
                         YText(description,12,Modifier.padding(top=10.dp,bottom=if(amount.isEmpty())10.dp else 0.dp).testTag("lead-description"),color=t.muted,lineHeightMultiplier=1.9f)
                         if(amount.isNotEmpty())LeadAmount(amount,if(narrow)30 else 39,if(narrow)44f else 56f,amountIsText,Modifier.fillMaxWidth().padding(top=24.dp),t.accent,arrow=true)
                         if(aside.isNotEmpty())YText(aside,11,Modifier.padding(top=13.dp).drawBehind{drawLine(Color(0x49be8778),Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())},color=t.warm,lineHeightMultiplier=1.9f)
@@ -77,7 +77,7 @@ private val tapeShape=GenericShape{size,_->
                     ThemeArtwork(Modifier.align(Alignment.BottomEnd).offset(x=(-10).dp,y=(-14).dp).alpha(.16f),109,91,Color(0xffa7784e))
                     Column(Modifier.padding(start=20.dp,end=20.dp,top=25.dp,bottom=23.dp)){
                         YText(kicker,8,Modifier.drawBehind{drawRoundRect(Color(0xffb78a62),Offset((-10).dp.toPx(),0f),androidx.compose.ui.geometry.Size(5.dp.toPx(),12.dp.toPx()),androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()))},color=Color(0xffac8860),letterSpacing=1.4f,lineHeightMultiplier=19f/8)
-                        YText(title,if(narrow)25 else 26,Modifier.fillMaxWidth(.95f).padding(top=10.dp).testTag("lead-title"),weight=FontWeight.Medium,lineHeightMultiplier=1.5f,letterSpacing=-.6f)
+                        YText(title,if(narrow)25 else 26,Modifier.fillMaxWidth(.95f).padding(top=10.dp).testTag("lead-title"),weight=FontWeight.Medium,lineHeightMultiplier=1.5f,letterSpacing=-.6f,balanced=true)
                         YText(description,11,Modifier.padding(top=10.dp,bottom=if(amount.isEmpty())10.dp else 0.dp).testTag("lead-description"),color=t.muted,lineHeightMultiplier=1.9f)
                         if(amount.isNotEmpty())LeadAmount(amount,if(narrow)30 else 37,if(narrow)44f else 54f,amountIsText,Modifier.padding(top=17.dp),t.accent)
                         if(aside.isNotEmpty())YText(aside,9,Modifier.padding(top=17.dp).background(Color(0xfffffae9),RoundedCornerShape(6.dp)).padding(horizontal=11.dp,vertical=7.dp),color=Color(0xffa0815a),lineHeightMultiplier=1.9f)

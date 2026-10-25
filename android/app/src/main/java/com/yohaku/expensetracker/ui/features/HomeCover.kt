@@ -40,9 +40,11 @@ import java.time.LocalDate
                     Column(Modifier.testTag("cover-aside").width(if(narrow)68.dp else 90.dp).drawBehind{drawLine(t.line,Offset.Zero,Offset(0f,size.height),1.dp.toPx())}.padding(start=if(narrow)8.dp else 13.dp)){
                         ThemeArtwork(width=if(narrow)55 else 75,height=if(narrow)65 else 80)
                         Spacer(Modifier.height(4.dp))
-                        YText(word("预留安排后","予定分を確保した後"),8,Modifier.padding(top=14.dp),color=t.muted,lineHeightMultiplier=1.9f)
-                        if(available!=null)CoverLineText(if(currency==Currency.JPY)"¥" else currency.name,8,10.4f,Modifier.padding(top=7.dp,bottom=4.dp).testTag("cover-side-prefix"),color=t.muted,letterSpacing=.5f)
-                        YText(available?.let{Money(currency,it).digits()}?:unknown,if(narrow)14 else 16,Modifier.testTag("cover-available"),number=available!=null,letterSpacing=if(narrow)-.4f else -.2f,lineHeightMultiplier=if(narrow)30.4f/14 else 36.1f/16)
+                        YText(word("扣除待付安排后","予定分を除くと"),8,Modifier.padding(top=14.dp),color=t.muted,lineHeightMultiplier=1.9f)
+                        // One line in the narrow aside: the figure shrinks instead of breaking between digits.
+                        androidx.compose.foundation.text.BasicText(availableText,Modifier.padding(top=4.dp).testTag("cover-available"),
+                            style=androidx.compose.ui.text.TextStyle(color=t.ink,fontFamily=if(available!=null)t.number else t.body,letterSpacing=(if(narrow)-.4f else -.2f).sp),maxLines=1,
+                            autoSize=androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize=9.sp,maxFontSize=(if(narrow)14 else 16).sp))
                     }
                 }
                 CoverRule(t.line)

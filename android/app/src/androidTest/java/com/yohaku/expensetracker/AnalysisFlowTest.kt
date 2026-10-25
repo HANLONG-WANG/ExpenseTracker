@@ -91,7 +91,7 @@ class AnalysisFlowTest {
             ui.onNodeWithText(text("这个期间没有已知资金安排。","この期間の既知の資金予定はありません。")).performScrollTo().assertExists()
             ui.onNodeWithText(text("没有活动资金预留或未完成转账。","シーンの資金確保・未完了の振替はありません。")).performScrollTo().assertExists()
             ui.onNodeWithTag("analysis-tab-spend").performScrollTo().performClick()
-            ui.onNodeWithTag("lead-amount").assertDoesNotExist()
+            ui.onNodeWithTag("lead-amount").assertTextContains("¥6,000",substring=true)
             shot("$theme-$language-first-choice",false)
             ui.onNodeWithTag("analysis-choice-CATEGORIES").performScrollTo()
             shot("$theme-$language-choice-cards",false,false)
@@ -103,7 +103,7 @@ class AnalysisFlowTest {
             shot("$theme-$language-custom-preview",true,false)
             ui.onNodeWithTag("sheet-close").performClick()
             assertNull((vm.state.value as AppState.Ready).snapshot!!.analysisPreferences)
-            ui.onNodeWithTag("lead-amount").assertDoesNotExist()
+            ui.onNodeWithTag("lead-amount").assertExists()
             tap(text("选择分析模块","分析項目を選ぶ"))
             AnalysisModule.entries.forEach{module->ui.onNodeWithTag("analysis-module-${module.name}").performScrollTo().performClick();ui.onNodeWithTag("analysis-module-${module.name}").assertIsOn()}
             sheetTap("analysis-up-MERCHANTS")

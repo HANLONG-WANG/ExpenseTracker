@@ -58,7 +58,7 @@ import com.yohaku.expensetracker.ui.theme.*
         if(loan)"MY BORROWING"else"CREDIT / IN CONTEXT",
         if(loan)Money(currency,s.cashBalanceAt(a,today)).display()else next,
         if(loan)word("未还本金","未返済元金")else listOfNotNull(summary.nextDate,status).joinToString(" · "),
-        amountIsText=!loan&&(summary.next.isEmpty()||summary.next.any{!it.bill.confirmed&&it.plan.id in stale}),pageFlow=true,wideTitle=wideTitle)
+        amountIsText=!loan&&(summary.next.isEmpty()||summary.next.any{!it.bill.confirmed&&it.plan.id in stale}),pageFlow=true)
 }
 
 /** The balance column belongs to each saved plan, never the account's total actual debt. */

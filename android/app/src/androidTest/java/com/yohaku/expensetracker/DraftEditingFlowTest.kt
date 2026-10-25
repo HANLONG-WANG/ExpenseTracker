@@ -118,7 +118,7 @@ class DraftEditingFlowTest {
             assertEquals(9700L,saved.balance(saved.accounts.single()))
             ui.runOnIdle{vm.navigate("ledger")};tap(merchant)
             ui.onNodeWithTag("record-fact-1").performScrollTo()
-            ui.onNodeWithText("$parentName / $childName").assertIsDisplayed()
+            ui.onNode(hasText("$parentName / $childName") and hasAnyAncestor(hasTestTag("record-fact-1"))).assertIsDisplayed()
             val r=ui.onNodeWithTag("record-fact-1").getUnclippedBoundsInRoot()
             val viewport=ui.onNodeWithTag("sheet-viewport").getUnclippedBoundsInRoot()
             val header=ui.onNodeWithTag("sheet-header",useUnmergedTree=true).getUnclippedBoundsInRoot()
@@ -188,7 +188,7 @@ class DraftEditingFlowTest {
         tap("纸质手账")
         ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme=="journal"}
         ui.runOnIdle{vm.appearance(a,language="ja")}
-        waitFor("口座の実際の計上額 · JPY")
+        waitFor("金額 · JPY")
         ui.onNodeWithTag("field-金額 · JPY").assertTextEquals("680")
         ui.onNodeWithText("×").performClick()
         tap("編集を続ける")
@@ -518,7 +518,7 @@ class DraftEditingFlowTest {
             ui.runOnIdle{vm.appearance(a,theme=theme)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
             ui.runOnIdle{vm.editEntry(before,before.events.single())}
-            waitFor("账户实际入账金额 · JPY")
+            waitFor("金额 · JPY")
             ui.onNodeWithTag("field-金额 · JPY").performTextReplacement("680")
             ui.onNodeWithTag("entry-reselect").performScrollTo().performClick()
             waitFor("餐饮 / 未细分")
@@ -1107,10 +1107,10 @@ class DraftEditingFlowTest {
             val bounds=ui.onNodeWithTag("home-cover").fetchSemanticsNode().boundsInRoot
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             sizes+="$theme,$language,${bounds.width/density},${bounds.height/density}"
-            if(theme=="magazine")listOf("cover-caption","cover-title","cover-grid","cover-aside","cover-main-money","cover-footer","cover-footer-text","cover-prefix","cover-value","cover-side-prefix").forEach{tag->
+            if(theme=="magazine")listOf("cover-caption","cover-title","cover-grid","cover-aside","cover-main-money","cover-footer","cover-footer-text","cover-prefix","cover-value","cover-available").forEach{tag->
                 val rect=ui.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
                 sizes+="$theme,$language,$tag,${rect.top/density},${rect.width/density},${rect.height/density}"
-                if(tag in listOf("cover-prefix","cover-value","cover-side-prefix"))ui.onNodeWithTag(tag).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult){get->
+                if(tag in listOf("cover-prefix","cover-value","cover-available"))ui.onNodeWithTag(tag).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult){get->
                     val text=mutableListOf<androidx.compose.ui.text.TextLayoutResult>();get(text)
                     sizes+="$theme,$language,$tag-baseline,${text.single().firstBaseline/density},${text.single().size.height/density}"
                 }

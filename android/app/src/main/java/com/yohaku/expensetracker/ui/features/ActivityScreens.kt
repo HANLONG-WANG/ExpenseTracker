@@ -46,7 +46,7 @@ import java.time.LocalDate
         s.availableActivities.sortedWith(compareBy<ActivityEntity>{it.ended}.thenByDescending{it.startDate}).forEachIndexed{index,a->
             val spent=s.activitySpent(a.id)
             ActivityCard(index,a.name,a.startDate,a.endDate,money(spent),a.budgetMinor?.let{money(it-spent)},a.budgetMinor?.let{money(it)},spent,a.budgetMinor,
-                if(a.ended)word("已结束 · 保留历史","終了済み・履歴を保存")else if(a.excludeMonthly)word("独立预算","独立予算")else word("计入月预算","月予算に含む"),{selected=a.id})
+                if(a.ended)word("已结束 · 保留历史","終了済み・履歴を保存")else if(a.excludeMonthly)word("独立预算 · 不计入月预算","独立予算・月予算に含めない")else word("计入月预算","月予算に含む"),{selected=a.id})
         }
         if(s.features?.activityMode==true)YButton(word("＋ 创建活动","＋ シーンを作成"),{editing=""},primary=true)
         if(s.activities.any{it.deletedAt!=null}) {

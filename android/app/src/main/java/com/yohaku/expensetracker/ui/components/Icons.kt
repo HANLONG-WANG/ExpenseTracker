@@ -16,5 +16,6 @@ internal val iconPaths=mapOf(
     "bag" to listOf("M4 8h16l-1 13H5zM8 8V6a4 4 0 0 1 8 0v2"),
     "check" to listOf("m5 12 4 4L19 6"),
     "close" to listOf("m6 6 12 12M6 18 18 6"),
-    "leaf" to listOf("M5 18C1 7 9 3 20 4c1 10-4 17-13 14M4 21 16 8")
+    "leaf" to listOf("M5 18C1 7 9 3 20 4c1 10-4 17-13 14M4 21 16 8"),
+    "settings" to listOf("M4 7h10m4 0h2M4 17h4m4 0h8","M18 7a2 2 0 1 1-4 0a2 2 0 0 1 4 0M12 17a2 2 0 1 1-4 0a2 2 0 0 1 4 0")
 )

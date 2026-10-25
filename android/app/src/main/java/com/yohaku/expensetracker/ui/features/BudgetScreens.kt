@@ -14,11 +14,11 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import java.time.YearMonth
 
-@Composable internal fun MonthChooser(month:String,onMonth:(String)->Unit) {
+@Composable internal fun MonthChooser(month:String,onMonth:(String)->Unit,previousTag:String="month-previous",nextTag:String="month-next",monthTag:String="month-current",previousEnabled:Boolean=true) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-        YButton("‹",{onMonth(YearMonth.parse(month).minusMonths(1).toString())},Modifier.testTag("month-previous"))
-        YText(month,19,Modifier.weight(1f),number=true,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
-        YButton("›",{onMonth(YearMonth.parse(month).plusMonths(1).toString())},Modifier.testTag("month-next"))
+        YButton("‹",{onMonth(YearMonth.parse(month).minusMonths(1).toString())},Modifier.testTag(previousTag),enabled=previousEnabled)
+        YText(month,19,Modifier.weight(1f).testTag(monthTag),number=true,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+        YButton("›",{onMonth(YearMonth.parse(month).plusMonths(1).toString())},Modifier.testTag(nextTag))
     }
 }
 @Composable internal fun BudgetValues(projection:BudgetProjection) {
@@ -66,7 +66,7 @@ import java.time.YearMonth
     val missing=word("未设置 / 待补齐","未設定・未補足")
     fun value(amount:Long?)=amount?.let{Money(projection.currency,it).display()}?:missing
     YLead(word("日常与活动，分开留。","日常とシーン、分けて残す。"),word("月预算内支出与独立活动支出分开表达。","月予算の支出と独立シーン支出を区別。"),"THE MONTHLY BALANCE",value(projection.remainingMinor),word("本月预算余额","今月の予算残額"),amountIsText=projection.remainingMinor==null,pageFlow=true)
-    MonthChooser(month){month=it}
+    MonthChooser(month,{month=it})
     val provisional=s.provisionalExpenseCount(month)
     Box(Modifier.padding(top=5.dp,bottom=if(provisional>0)5.dp else 20.dp)) {
     BudgetEquation {
@@ -82,9 +82,9 @@ import java.time.YearMonth
     if(roots.isEmpty())YEmpty(word("先创建自己的支出分类。","自分の支出カテゴリから。"),onCategories,word("创建分类","カテゴリを作成"))
     val ordered=roots.flatMap{root->listOf(root)+s.categories.filter{it.active&&it.parentId==root.id}}
     val projections=ordered.associate{it.id to s.budgetProjection(month,it.id)}
-    BudgetLimitList(ordered,ordered.map{projections.getValue(it.id).remainingMinor?.let{n->Money(projection.currency,n).display()}?:word("未设置","未設定")}) {category,modifier->
+    BudgetLimitList(ordered,ordered.map{projections.getValue(it.id).let{p->if(p.limitMinor==null)Money(p.currency,p.spentMinor).display()else p.remainingMinor?.let{n->Money(p.currency,n).display()}?:word("待补齐","未補足")}}) {category,modifier->
         val p=projections.getValue(category.id)
-        BudgetLimitRow(category.id,category.name,category.parentId!=null,p.spentMinor,p.limitMinor,Money(p.currency,p.spentMinor).display(),p.limitMinor?.let{Money(p.currency,it).display()}?:word("未设置","未設定"),p.remainingMinor?.let{Money(p.currency,it).display()}?:word("未设置","未設定"),{openEditor(category.id)},modifier)
+        BudgetLimitRow(category.id,category.name,category.parentId!=null,p.spentMinor,p.limitMinor,Money(p.currency,p.spentMinor).display(),p.limitMinor?.let{Money(p.currency,it).display()}?:word("未设置","未設定"),p.remainingMinor?.let{Money(p.currency,it).display()}?:word("待补齐","未補足"),{openEditor(category.id)},modifier)
     }
     roots.forEach{root->
         val parentLimit=s.budgetLimit(month,root.id)

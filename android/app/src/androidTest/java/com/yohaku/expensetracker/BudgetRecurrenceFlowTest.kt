@@ -154,7 +154,7 @@ class BudgetRecurrenceFlowTest {
             tap(text("管理分类","カテゴリ管理"))
             ui.waitUntil(10000){vm.route.value=="categories"}
             ui.runOnIdle{vm.navigate("budget")}
-            ui.onNodeWithTag("budget-category-${ids[3]}").performScrollTo().assertTextContains(text("未设置","未設定"),substring=true)
+            ui.onNodeWithTag("budget-category-${ids[3]}").performScrollTo().assertTextContains(text("未设分类预算","カテゴリ予算なし"),substring=true)
             shot("$theme-$language-budget-category-layout-tail",false,false)
             ui.onNodeWithText(text("收入到账不会自动增加预算。未单独设置的后续月份沿用最近一次设置。","入金しても予算は自動で増えません。未設定の後続月は直近の設定を引き継ぎます。")).performScrollTo()
             shot("$theme-$language-budget-category-layout-reserves",false,false)
@@ -428,7 +428,7 @@ class BudgetRecurrenceFlowTest {
             }
             ui.runOnIdle{vm.navigate("budget")}
             ui.waitUntil(10000){ui.onAllNodesWithTag("budget-category-$child").fetchSemanticsNodes().isNotEmpty()&&!vm.busy.value}
-            ui.onNodeWithTag("budget-category-$child").assertTextContains(text("未设置","未設定"),substring=true)
+            ui.onNodeWithTag("budget-category-$child").assertTextContains(text("未设分类预算","カテゴリ予算なし"),substring=true)
             ui.onNodeWithTag("budget-category-$child").performScrollTo().performClick()
             sheetTarget(ui.onNodeWithTag("field-"+text("预算金额 / 留空取消设置","予算額・空欄で未設定")+" · JPY")).performClick().performTextReplacement("60000")
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}

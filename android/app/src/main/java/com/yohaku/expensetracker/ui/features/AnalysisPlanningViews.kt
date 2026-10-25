@@ -34,7 +34,7 @@ import java.time.YearMonth
     if(roots.isEmpty())YEmpty(word("先创建自己的支出分类。","自分の支出カテゴリから。"))
     val ordered=roots.flatMap{root->listOf(root)+s.categories.filter{it.active&&it.parentId==root.id}}
     val projections=ordered.associate{it.id to s.budgetProjection(selected,it.id)}
-    BudgetLimitList(ordered,ordered.map{money(projections.getValue(it.id).remainingMinor)}) {c,modifier->
+    BudgetLimitList(ordered,ordered.map{projections.getValue(it.id).let{cp->if(cp.limitMinor==null)money(cp.spentMinor)else money(cp.remainingMinor)}}) {c,modifier->
         val cp=projections.getValue(c.id)
         BudgetLimitRow(c.id,c.name,c.parentId!=null,cp.spentMinor,cp.limitMinor,money(cp.spentMinor),money(cp.limitMinor),money(cp.remainingMinor),{onScope(c.id)},modifier)
     }

@@ -51,7 +51,9 @@ import java.time.LocalDate
 @Composable internal fun ReferenceRateFacts(rate:ReferenceRateSnapshot) {
     YText("1 ${rate.base.name} = ${rate.rate} ${rate.quote.name}",14,number=true)
     YText("Frankfurter v2 / ${rate.provider} · "+word("汇率日：","レート日：")+rate.date,11)
-    YText(word("获取时间：","取得日時：")+rate.fetchedAt,10,color=LocalYohaku.current.muted)
+    // fetchedAt is stored as an ISO instant; show it in the device's local time.
+    val fetched=java.time.Instant.parse(rate.fetchedAt).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+    YText(word("获取时间：","取得日時：")+fetched,10,color=LocalYohaku.current.muted)
 }
 @Composable internal fun StoredReferenceRates(encoded:String?) {
     if(encoded==null)return

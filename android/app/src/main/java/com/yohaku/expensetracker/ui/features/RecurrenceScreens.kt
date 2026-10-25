@@ -24,7 +24,7 @@ import java.time.YearMonth
     val busy by vm.busy.collectAsStateWithLifecycle()
     LaunchedEffect(s.book.id,month,s.recurrences){vm.materializeMonth(s.book.id,month)}
     YTitle(word("先为日常，留好位置。","いつもの支払いに、余白を。"),"RECURRING BILLS",word("预留不是已花；确认后才成为记账。","予定は支出済みではありません。確認して記録。"),pageFlow=true)
-    Box(Modifier.fillMaxWidth().testTag("recurring-month")) {MonthChooser(month){month=it}}
+    Box(Modifier.fillMaxWidth().testTag("recurring-month")) {MonthChooser(month,{month=it})}
     val projection=s.budgetProjection(month)
     val journal=LocalYohaku.current.id=="journal"
     Panel(Modifier.testTag("recurring-reserve-summary"),contentSpacing=0.dp) {

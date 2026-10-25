@@ -180,9 +180,9 @@ class FinancialOutlookFlowTest {
                 ui.onNodeWithTag("forecast-budget-status").assertTextEquals(state)
                 ui.onNodeWithTag("forecast-budget-low-confidence").assertExists()
                 ui.onNodeWithTag("forecast-budget-amount").performScrollTo()
-                shot("$theme-$language-budget-"+when(amount){"¥0"->"normal";"¥100"->if(state.contains("已经")||state.contains("発生"))"actual"else"projected";else->"unknown"})
+                shot("$theme-$language-budget-"+when{state.contains("余量")||state.contains("予算内")->"normal";state.contains("已经")||state.contains("発生")->"actual";amount=="¥100"->"projected";else->"unknown"})
             }
-            check(if(language=="ja")"現在のペースでは予算内"else"按目前节奏仍有余量","¥0")
+            check(if(language=="ja")"現在のペースでは予算内"else"按目前节奏仍有余量","¥100")
             runBlocking{repo.updateBook(repo.dao.book(b)!!.copy(budgetMinor=300))}
             check(if(language=="ja")"月末に予算超過の見込み"else"月底可能超预算","¥100")
             runBlocking{repo.saveEntry(b,EntryDraft(accountId=bank,categoryId=category,amount="300",date="2026-10-25"))}

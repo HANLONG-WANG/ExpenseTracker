@@ -84,26 +84,29 @@ import java.time.YearMonth
         if(provisional>0)BudgetEstimateNote(provisional)
         if(projection.limitMinor==null)Box(Modifier.padding(top=15.dp)){YButton(word("设置月预算","月予算を設定"),onBudget,Modifier.testTag("home-set-budget"),primary=true)}
         Box(Modifier.padding(top=if(projection.limitMinor==null)5.dp else 9.dp)){HomeSpendContext(Money(currency,projection.allExpenseMinor).display(),Money(currency,projection.independentMinor).display())}
-        if(projection.pendingCount>0||projection.fundReserveMinor>0)ThemeAuditPanel(word("先为固定支出，留好位置。","固定費にも、余白を。"),Modifier.testTag("home-fixed-reserve")) {
-            RecordFacts(listOf(word("待付固定预算预留","固定費の未払い予算予定") to (projection.fixedReserveMinor?.let{Money(currency,it).display()}?:word("金额 / 折算待补齐","金額・換算待ち")),
-                word("本月活动预算预留","今月のシーン予算の確保") to Money(currency,projection.activityReserveMinor).display(),
-                word("全部活动资金预留","全シーンの資金確保") to Money(currency,projection.fundReserveMinor).display(),
-                word("预留后可支配","予定を除いた残額") to (projection.availableMinor?.let{Money(currency,it).display()}?:"—")),audit=true)
-            YLink(word("确认 / 管理周期账单","定期支払を確認・管理"),onRecurring)
-        }
-        YLink(word("预算与分类限额","予算とカテゴリの上限"),onBudget)
-        if(s.recurrences.isEmpty())YLink(word("添加周期账单","定期支払を追加"),onRecurring)
-        else if(projection.pendingCount==0)YLink(word("查看周期账单与历史","定期支払と履歴を見る"),onRecurring)
-        ThemeSection(word("钱够不够，还要看账户。","支払いは、口座残高も。"),"REAL FUNDS",pageGap=15)
-        Box(Modifier.padding(top=3.dp)){HomeCashNote(Currency.entries.mapNotNull{c->val accounts=s.accounts.filter{it.currency==c.name&&!AccountType.valueOf(it.type).debt};if(accounts.isEmpty())null else Money(c,accounts.sumOf{s.cashBalanceAt(it,today.toString())}).display()},{navigate("accounts")})}
-        financialContent()
-        ThemeSection(word("最近的几笔","最近の記録"),"DAILY NOTES",word("全部流水","すべて"),{navigate("ledger")},pageGap=15)
-        val recentExpenses=s.visibleEvents.filter{it.kind=="EXPENSE"}.take(3)
-        TransactionList(s,recentExpenses,onEvent,emptyContent={YEmpty(word("分类由你创建，记第一笔就开始。","カテゴリは自分で作成。最初の一筆から。"),onAdd,word("记一笔","記録"))})
+        // Daily allowance sits next to the monthly figures so the first screen answers "how much can I spend".
         ThemeAuditPanel(word("给接下来的日常，留一点。","これからの日々に、少し。"),Modifier.testTag("home-daily-panel"),contentTopMargin=20){
             val days=month.lengthOfMonth()-today.dayOfMonth+1
             HomeDailyStats(days,projection.availableMinor?.let{Money(currency,it.coerceAtLeast(0)/days).display()} ?: "—",Money(currency,(entries.filter{it.date==today.toString()&&it.kind=="EXPENSE"}.sumOf{s.netExpense(it)}+s.visibleComponents().filter{it.date==today.toString()}.sumOf{it.baseMinor})).display())
             if(s.draft!=null)HomeResumeDraft(onResume)
         }
+        FlowRow(Modifier.fillMaxWidth().testTag("home-shortcuts"),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
+            YLink(word("预算与分类限额","予算とカテゴリの上限"),onBudget,arrow=true)
+            if(s.recurrences.isEmpty())YLink(word("添加周期账单","定期支払を追加"),onRecurring,arrow=true)
+            else if(projection.pendingCount==0)YLink(word("周期账单与历史","定期支払と履歴"),onRecurring,arrow=true)
+        }
+        if(projection.pendingCount>0||projection.fundReserveMinor>0)ThemeAuditPanel(word("先为固定支出，留好位置。","固定費にも、余白を。"),Modifier.testTag("home-fixed-reserve")) {
+            RecordFacts(listOf(word("待付固定预算预留","固定費の未払い予算予定") to (projection.fixedReserveMinor?.let{Money(currency,it).display()}?:word("金额 / 折算待补齐","金額・換算待ち")),
+                word("本月活动预算预留","今月のシーン予算の確保") to Money(currency,projection.activityReserveMinor).display(),
+                word("全部活动资金预留","全シーンの資金確保") to Money(currency,projection.fundReserveMinor).display(),
+                word("预留后可支配","予定を除いた残額") to (projection.availableMinor?.let{Money(currency,it).display()}?:"—")),audit=true)
+            YLink(word("确认 / 管理周期账单","定期支払を確認・管理"),onRecurring,arrow=true)
+        }
+        ThemeSection(word("最近的几笔","最近の記録"),"DAILY NOTES",word("全部流水","すべて"),{navigate("ledger")},pageGap=15)
+        val recentExpenses=s.visibleEvents.filter{it.kind=="EXPENSE"}.take(3)
+        TransactionList(s,recentExpenses,onEvent,emptyContent={YEmpty(word("分类由你创建，记第一笔就开始。","カテゴリは自分で作成。最初の一筆から。"),onAdd,word("记一笔","記録"))})
+        ThemeSection(word("钱够不够，还要看账户。","支払いは、口座残高も。"),"REAL FUNDS",pageGap=15)
+        Box(Modifier.padding(top=3.dp)){HomeCashNote(Currency.entries.mapNotNull{c->val accounts=s.accounts.filter{it.currency==c.name&&!AccountType.valueOf(it.type).debt};if(accounts.isEmpty())null else Money(c,accounts.sumOf{s.cashBalanceAt(it,today.toString())}).display()},{navigate("accounts")})}
+        financialContent()
     }
 }

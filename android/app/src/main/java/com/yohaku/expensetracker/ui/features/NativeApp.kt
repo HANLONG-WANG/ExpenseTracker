@@ -170,7 +170,7 @@ import kotlinx.serialization.encodeToString
                 YAppHeader(book.name,{if(openEntry||financialDraft?.hasInput==true)sheet="books" else vm.navigate("books")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{if(openEntry){leaveTarget="settings";sheet="leave-entry"}else vm.navigate("settings")})
                 Column(Modifier.padding(pageContentPadding()).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
                     PageEdition(if(baseRoute=="rules")if(snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.type==AccountType.LOAN.name)"loan"else"credit"else baseRoute)
-                    if(baseRoute !in listOf("home","analysis","life","accounts")) YBackBar(book.name,{if(openEntry){leaveTarget="home";sheet="leave-entry"}else vm.back()})
+                    if(baseRoute !in listOf("home","analysis","life","accounts")) YBackBar(pageName(baseRoute,snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.name),{if(openEntry){leaveTarget="home";sheet="leave-entry"}else vm.back()})
                     when(baseRoute) {
                         "home"->HomeScreen(snapshot,{vm.navigate(it)},{requestEntry()},{vm.resumeEntry(snapshot)},{openRecord(it)},{vm.navigate("budget")},today=today,onRecurring={recurringInitialMonth=null;vm.navigate("recurring")},financialContent={HomeFinancialOutlook(snapshot,vm,{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openTimelineItem(it)},{openAttention(it)},{vm.navigate("reminders")})})
                         "books"->BooksScreen(ready.overviews.filter{!it.book.archived&&it.book.deletedAt==null},book.id,{vm.selectBook(it)},{sheet="new-book"},{editBookId=it;sheet="rename-book"},{vm.navigate("book-management")})
@@ -361,7 +361,7 @@ import kotlinx.serialization.encodeToString
             TransactionList(s,refunds.sortedByDescending{it.date},onRecord)
             }
         }
-        if(refunds.sumOf{it.amountMinor}<e.amountMinor)YButton(word("记录退款","返金を記録"),onRefund,primary=true)
+        if(refunds.sumOf{it.amountMinor}<e.amountMinor)YButton(word("记录退款","返金を記録"),onRefund,Modifier.fillMaxWidth())
         else YText(word("原币退款已全部记录，实际收支差额仍保留在原消费月。","原通貨の返金は全額記録済み。実収支の差額は元の購入月に保持します。"),11)
     }
     settlement?.originalEventId?.let{id->s.visibleEvents.find{it.id==id}?.let{original->YLink(word("查看原消费","元の購入を見る"),{onRecord(original)})}}
@@ -396,7 +396,8 @@ import kotlinx.serialization.encodeToString
         if(query.isNotBlank())expanded=(expanded+roots.filter{matches(it,query)}.map{it.id}).distinct()
     },category=true,displayPlaceholder=word("搜索一级或二级分类","親・子カテゴリを検索"))
     val visibleRoots=roots.filter{search.isBlank()||matches(it,search)}
-    if(visibleRoots.isNotEmpty())Column(Modifier.fillMaxWidth().padding(top=5.dp,bottom=7.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+    // Magazine groups are separated by their own hairline; the other themes use card gaps.
+    if(visibleRoots.isNotEmpty())Column(Modifier.fillMaxWidth().padding(top=5.dp,bottom=7.dp),verticalArrangement=Arrangement.spacedBy(if(t.id=="magazine")0.dp else 12.dp)){
         visibleRoots.forEach{c->
             val children=categories.filter{it.parentId==c.id}
             CategoryGroup(c.name,roots.indexOf(c),children.map{it.id to it.name},c.id in expanded,
@@ -435,7 +436,7 @@ import kotlinx.serialization.encodeToString
     }
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         Column(Modifier.fillMaxWidth().padding(bottom=4.dp)){
-            YField(word("金额","金額")+" · "+currency,accountText,{changeAccountAmount(it)},numeric=true,emphasizeAmount=true,amountSymbol=Currency.valueOf(currency).symbol.takeLast(1),displayLabel=(if(confirmingOccurrence&&d.settlementConfirmed)word("实际支付金额","実際の支払額")else if(d.settlementConfirmed)word("账户实际入账金额","口座の実際の計上額")else word("预计入账金额","計上見込額"))+" · "+currency)
+            YField(word("金额","金額")+" · "+currency,accountText,{changeAccountAmount(it)},numeric=true,emphasizeAmount=true,amountSymbol=Currency.valueOf(currency).symbol.takeLast(1),displayLabel=(if(confirmingOccurrence&&d.settlementConfirmed)word("实际支付金额","実際の支払額")else if(!d.settlementConfirmed)word("预计入账金额","計上見込額")else if(foreign||currency!=s.book.currency)word("账户实际入账金额","口座の実際の計上額")else word("金额","金額"))+" · "+currency)
             EntryCurrencyControls(d,currency,onChange)
             if(foreign&&referenceService!=null)ReferenceRatePanel(referenceService,d.originalCurrency!!,Currency.valueOf(currency),d.referenceQueryDate?:d.date,
                 enabled=!d.settlementConfirmed,autoKey=d.amount+"/"+d.accountAmount+"/"+d.settlementConfirmed,
@@ -754,4 +755,17 @@ import kotlinx.serialization.encodeToString
     EntryKind.REPAYMENT->word("还款","返済")
     EntryKind.BORROWING->word("借入","借入")
     EntryKind.REFUND->word("退款","返金")
+}
+
+@Composable internal fun pageName(route:String,accountName:String?=null)=when(route){
+    "books"->word("切换账本","帳簿を切替");"book-management"->word("账本管理","帳簿の管理")
+    "account-detail","rules"->accountName?:word("账户","口座");"calendar"->word("付款日历","支払カレンダー")
+    "notification-settings"->word("重要提醒设置","大事な通知の設定");"reminders"->word("重要事项","大事なこと")
+    "forecast"->word("未来资金与预算风险","今後の資金と予算リスク");"ledger"->word("全部流水","すべての記録")
+    "categories"->word("分类管理","カテゴリ管理");"settings"->word("设置","設定")
+    "statements"->word("流水核对","明細の照合");"statement-import"->word("导入流水","明細の取込")
+    "reference-rates"->word("参考汇率","参考レート");"trash"->word("回收站","ごみ箱")
+    "budget"->word("预算","予算");"recurring"->word("周期账单","定期支払")
+    "receipts"->word("小票原图","レシート原本");"merchants"->word("商户与地点","お店と場所")
+    "friends"->word("朋友名册","友人リスト");else->""
 }

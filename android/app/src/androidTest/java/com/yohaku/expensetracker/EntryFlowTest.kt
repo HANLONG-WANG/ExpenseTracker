@@ -118,7 +118,7 @@ class EntryFlowTest {
         tap("创建第一个分类")
         ui.onNodeWithTag("field-分类名称").performTextInput("餐饮")
         tap("创建并使用")
-        waitFor("账户实际入账金额 · JPY")
+        waitFor("金额 · JPY")
         ui.onNodeWithTag("field-金额 · JPY").performTextInput("680")
         ui.onNodeWithTag("field-商户 / 买了什么").performTextInput("喫茶と余白")
         tap("添加第一个账户")

@@ -32,7 +32,7 @@ import com.yohaku.expensetracker.ui.theme.*
                     Column(Modifier.weight(1f)){YText(word("已花","支出"),9,color=t.muted);YText(spent,18,number=true)}
                     Column(Modifier.weight(1f)){YText(word("剩余","残り"),9,color=t.muted);YText(remaining?:word("未知","不明"),18,number=true)}
                 }
-                YText(status,10,Modifier.padding(top=11.dp),color=t.muted);open()
+                YText(status,10,Modifier.padding(top=11.dp,bottom=12.dp),color=t.muted);open()
             }
         }
         "journal"->Box(Modifier.fillMaxWidth().padding(top=29.dp,bottom=28.dp).rotate(if(index%2==0)-.8f else .8f).background(t.surface).border(1.dp,Color(0xffded2b8))) {
@@ -45,7 +45,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 Row(Modifier.fillMaxWidth().padding(top=18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween){YText(word("这一趟花了","今回の支出"),13);YText(spent,29,number=true)}
                 budgetMinor?.let{BudgetTrack(spentMinor,it,12)}
                 YText(word("总预算","総予算")+" "+(budget?:word("未设置","未設定"))+" · "+word("余量","残り")+" "+(remaining?:word("未知","不明")),10,Modifier.padding(top=11.dp),color=t.muted)
-                YText(status,10,color=t.muted);open()
+                YText(status,10,Modifier.padding(bottom=12.dp),color=t.muted);open()
             }
         }
         else->{
@@ -65,7 +65,7 @@ import com.yohaku.expensetracker.ui.theme.*
                         YText(dates,9,color=Color(0xffb09874));YText(spent,24,number=true)
                         YText(word("总预算","総予算")+" "+(budget?:word("未设置","未設定"))+" · "+word("余量","残り")+" "+(remaining?:word("未知","不明")),9,color=Color(0xffa99577))
                     }
-                    YText(status,10,Modifier.padding(top=11.dp));open()
+                    YText(status,10,Modifier.padding(top=11.dp,bottom=12.dp));open()
                 }
             }
         }

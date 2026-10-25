@@ -37,7 +37,7 @@ import com.yohaku.expensetracker.ui.theme.*
 import java.time.LocalDate
 import java.time.YearMonth
 
-@Composable fun YText(text:String,size:Int=14,modifier:Modifier=Modifier,color:Color=LocalYohaku.current.ink,number:Boolean=false,bold:Boolean=false,letterSpacing:Float=0f,lineHeightMultiplier:Float=1.65f,weight:FontWeight=if(bold)FontWeight.SemiBold else FontWeight.Normal,textAlign:androidx.compose.ui.text.style.TextAlign?=null,onTextLayout:(androidx.compose.ui.text.TextLayoutResult)->Unit={},cssLineBox:Boolean=false,fontStyle:FontStyle=FontStyle.Normal) {
+@Composable fun YText(text:String,size:Int=14,modifier:Modifier=Modifier,color:Color=LocalYohaku.current.ink,number:Boolean=false,bold:Boolean=false,letterSpacing:Float=0f,lineHeightMultiplier:Float=1.65f,weight:FontWeight=if(bold)FontWeight.SemiBold else FontWeight.Normal,textAlign:androidx.compose.ui.text.style.TextAlign?=null,onTextLayout:(androidx.compose.ui.text.TextLayoutResult)->Unit={},cssLineBox:Boolean=false,fontStyle:FontStyle=FontStyle.Normal,balanced:Boolean=false) {
     val t=LocalYohaku.current
     // CSS includes trailing tracking in an inline box; Android omits it.
     // Match the box width without rescaling or clipping the number glyphs.
@@ -47,7 +47,8 @@ import java.time.YearMonth
     } else Modifier
     val lines=if(cssLineBox)remember(text,size,lineHeightMultiplier){mutableIntStateOf(1)} else null
     val lineBox=if(lines!=null)Modifier.height(with(LocalDensity.current){(size*lineHeightMultiplier).sp.toDp()*lines.intValue}).wrapContentHeight(Alignment.CenterVertically,unbounded=true) else Modifier
-    Text(text,modifier.then(lineBox).then(tracking),color=color,fontSize=size.sp,fontFamily=if(number)t.number else t.body,fontWeight=weight,fontStyle=fontStyle,lineHeight=(size*lineHeightMultiplier).sp,letterSpacing=letterSpacing.sp,textAlign=textAlign,onTextLayout={lines?.intValue=it.lineCount;onTextLayout(it)})
+    // Balanced phrase breaking keeps short display lines from ending on a single orphaned character.
+    Text(text,modifier.then(lineBox).then(tracking),style=if(balanced)androidx.compose.material3.LocalTextStyle.current.copy(lineBreak=androidx.compose.ui.text.style.LineBreak.Heading)else androidx.compose.material3.LocalTextStyle.current,color=color,fontSize=size.sp,fontFamily=if(number)t.number else t.body,fontWeight=weight,fontStyle=fontStyle,lineHeight=(size*lineHeightMultiplier).sp,letterSpacing=letterSpacing.sp,textAlign=textAlign,onTextLayout={lines?.intValue=it.lineCount;onTextLayout(it)})
 }
 /** pageFlow accounts for the parent page's 15dp gap and collapsed title margins. */
 @Composable fun YTitle(title:String,eyebrow:String="",description:String="",icon:String="leaf",pageFlow:Boolean=false) {
@@ -104,7 +105,15 @@ import java.time.YearMonth
         Column(Modifier.fillMaxWidth().background(if(journal)Color(0xfffaf5e7) else if(objects)t.surface else Color.Transparent,shape).then(edge).padding(horizontal=if(journal)15.dp else if(objects)17.dp else 0.dp,vertical=if(journal)19.dp else if(objects)20.dp else 22.dp),verticalArrangement=Arrangement.spacedBy(contentSpacing),content=content)
     }
 }
-@Composable fun YLink(label:String,onClick:()->Unit,modifier:Modifier=Modifier) { YText(label,12,modifier.defaultMinSize(minHeight=40.dp).clickable(onClick=onClick).padding(vertical=8.dp),color=LocalYohaku.current.accent) }
+/** [arrow] marks links that open another page, matching section-heading links. */
+@Composable fun YLink(label:String,onClick:()->Unit,modifier:Modifier=Modifier,arrow:Boolean=false) {
+    val link=modifier.defaultMinSize(minHeight=40.dp).clickable(onClick=onClick).padding(vertical=8.dp)
+    if(!arrow)YText(label,12,link,color=LocalYohaku.current.accent)
+    else Row(link,horizontalArrangement=Arrangement.spacedBy(4.dp)){
+        YText(label,12,color=LocalYohaku.current.accent)
+        YText("→",12,Modifier.clearAndSetSemantics{},color=LocalYohaku.current.accent)
+    }
+}
 /** Final field label metrics; ink marks belong to journal text/date fields only. */
 @Composable private fun FieldLabel(label:String,modifier:Modifier=Modifier,inkMark:Boolean=false,compactNumber:Boolean=false){
     val t=LocalYohaku.current

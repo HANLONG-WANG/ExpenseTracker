@@ -47,27 +47,25 @@ class SetupPresentationTest {
             ui.onNodeWithTag(cover).performScrollTo();val origin=ui.onNodeWithTag(cover).getUnclippedBoundsInRoot().top
             val tags=mapOf("cover" to cover,"set-budget" to "home-set-budget","context" to "home-spend-context","funds" to "home-cash-note","records" to "transaction-list","daily" to "home-daily-panel")
             val nodes=ref.getJSONArray("nodes")
+            // 2026-10-25 refinement reorders the home page: daily allowance follows the monthly figures and recent
+            // records come before actual funds. Only the unchanged top anchors are still compared with the frozen
+            // HTML; the magazine cover is shorter because its aside amount is one line instead of prefix + digits.
             for(j in 0 until nodes.length()){
                 val expected=nodes.getJSONObject(j);val key=expected.getString("key")
-                val node=if(key=="funds-heading")ui.onAllNodesWithTag("section-heading").onFirst() else if(key=="recent-heading")ui.onAllNodesWithTag("section-heading").onLast() else ui.onNodeWithTag(tags.getValue(key))
-                val r=node.getUnclippedBoundsInRoot()
-                // B adds two planning actions; C clarifies actual funds with a longer footer.
-                val budgetAction=ui.onNode(hasText(if(l=="zh")"预算与分类限额" else "予算とカテゴリの上限") and hasClickAction()).getUnclippedBoundsInRoot()
-                val recurringAction=ui.onNode(hasText(if(l=="zh")"添加周期账单" else "定期支払を追加") and hasClickAction()).getUnclippedBoundsInRoot()
-                val actions=(budgetAction.bottom-budgetAction.top).value+(recurringAction.bottom-recurringAction.top).value+30f
-                val footer=ui.onNodeWithText(if(l=="zh")"截至今日的已确认余额按原币展示，未来记账和信用额度不计入。" else "本日までの確定残高を通貨別に表示。将来の記録・利用枠は含みません。",useUnmergedTree=true).getUnclippedBoundsInRoot()
-                val extraFooter=if(t=="journal")(footer.bottom-footer.top).value-20.9f else 0f
-                val extension=when(key){"cover","set-budget","context"->0f;"funds-heading","funds"->actions;else->actions+extraFooter}
-                val top=(r.top-origin).value+(if(key=="daily")10f else 0f)-extension
-                val height=(r.bottom-r.top).value-(if(key=="daily")20f else 0f)-(if(key=="funds")extraFooter else 0f)
+                if(key !in listOf("cover","set-budget","context"))continue
+                val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
+                val top=(r.top-origin).value;val height=(r.bottom-r.top).value
                 csv.appendText("$t,$l,$mode,$key,$top,$height\n")
+                val coverChanged=t=="magazine"&&mode=="budget"
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
-                    if(key=="funds"&&t=="journal")assertEquals("Actual-funds footer has two original-style lines",41.8f,(footer.bottom-footer.top).value,1f)
-                    // Whole-page normalized positions accumulate CSS/dp rounding and paper transforms.
-                    if(kotlin.math.abs(top-expected.getDouble("top"))>2)errors+="$t/$l/$mode/$key top $top vs ${expected.getDouble("top")}"
-                    if(kotlin.math.abs(height-expected.getDouble("height"))>1)errors+="$t/$l/$mode/$key height $height vs ${expected.getDouble("height")}"
+                    if(!(coverChanged&&key=="context")&&kotlin.math.abs(top-expected.getDouble("top"))>2)errors+="$t/$l/$mode/$key top $top vs ${expected.getDouble("top")}"
+                    if(!(coverChanged&&key=="cover")&&kotlin.math.abs(height-expected.getDouble("height"))>1)errors+="$t/$l/$mode/$key height $height vs ${expected.getDouble("height")}"
                 }
             }
+            fun top(tag:String)=ui.onNodeWithTag(tag).getUnclippedBoundsInRoot().top
+            val fundsHeading=ui.onAllNodesWithTag("section-heading").onLast().getUnclippedBoundsInRoot().top
+            assertTrue("$t/$l/$mode daily panel precedes recent records",top("home-daily-panel")<top("transaction-list"))
+            assertTrue("$t/$l/$mode recent records precede actual funds",top("transaction-list")<fundsHeading&&fundsHeading<top("home-cash-note"))
             ui.onNodeWithTag("home-daily-stats").performScrollTo().assertIsDisplayed()
             i.uiAutomation.takeScreenshot().let{bitmap->File(folder,"$t-$l-$mode.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
         }
@@ -139,7 +137,11 @@ class SetupPresentationTest {
             val nodes=ref.getJSONArray("nodes")
             for(j in 0 until nodes.length()){
                 val expected=nodes.getJSONObject(j);val key=expected.getString("key");val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
-                val top=(r.top-origin).value;val height=(r.bottom-r.top).value
+                // 2026-10-25 refinement groups the ledger by day; compare the original rows by removing the day headers,
+                // which replace the list's opening rule (magazine/journal) or add one 8dp card gap each (objects).
+                val headers=if(key!="records"||mode=="empty")emptyList() else ui.onAllNodes(SemanticsMatcher("ledger day header"){androidx.compose.ui.semantics.SemanticsProperties.TestTag in it.config&&it.config[androidx.compose.ui.semantics.SemanticsProperties.TestTag].startsWith("ledger-day-")}).fetchSemanticsNodes()
+                val dayHeaders=if(headers.isEmpty())0f else headers.sumOf{(it.boundsInRoot.height/i.targetContext.resources.displayMetrics.density).toDouble()}.toFloat()+(if(t=="objects")8f*headers.size else -1f)
+                val top=(r.top-origin).value;val height=(r.bottom-r.top).value-dayHeaders
                 csv.appendText("$t,$l,$mode,$key,$top,$height\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(top-expected.getDouble("top"))>1)errors+="$t/$l/$mode/$key top $top vs ${expected.getDouble("top")}"
@@ -226,7 +228,8 @@ class SetupPresentationTest {
                     "lead"->ui.onNodeWithTag("lead-cover")
                     "summary"->ui.onNodeWithTag("accounts-reference-note")
                     "funds-heading"->ui.onAllNodesWithTag("section-heading").onFirst()
-                    "debt-heading"->ui.onAllNodesWithTag("section-heading").onLast()
+                    // A planning section now follows the account lists, so the debt heading is the second one.
+                    "debt-heading"->ui.onAllNodesWithTag("section-heading")[1]
                     "funds"->ui.onNodeWithTag("funds-account-list")
                     "debt"->ui.onNodeWithTag("debt-account-list")
                     else->ui.onNodeWithTag("accounts-add")
@@ -443,7 +446,8 @@ class SetupPresentationTest {
         for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
             ui.runOnIdle{theme.value=t;language.value=l}
             ui.onNodeWithTag("category-group-fixture").performScrollTo()
-            val heights=when(t){"journal"->listOf(276f,63f,78f,59f,49f);"objects"->listOf(264f,62f,69f,52f,44f);else->listOf(255f,62f,67f,56f,44f)}
+            // 2026-10-25 refinement: magazine groups keep only their bottom hairline, one rule less than the frozen row.
+            val heights=when(t){"journal"->listOf(276f,63f,78f,59f,49f);"objects"->listOf(264f,62f,69f,52f,44f);else->listOf(254f,62f,67f,56f,44f)}
             val tags=listOf("category-group-fixture","category-group-trigger-fixture","category-parent-choice-fixture","category-child-coffee","category-add-child")
             for((tag,expected) in tags.zip(heights)){
                 val r=ui.onNodeWithTag(tag).getUnclippedBoundsInRoot();val h=(r.bottom-r.top).value

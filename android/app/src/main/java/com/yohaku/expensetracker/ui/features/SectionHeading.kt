@@ -24,7 +24,7 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
 /** section(): original independent headings and collapsed margins in a spaced page. */
-@Composable internal fun ThemeSection(title:String,eyebrow:String="",link:String="",onClick:(()->Unit)?=null,pageGap:Int=15,previousBottomPadding:Int=0){
+@Composable internal fun ThemeSection(title:String,eyebrow:String="",link:String="",onClick:(()->Unit)?=null,pageGap:Int=15,previousBottomPadding:Int=0,linkTag:String="section-link"){
     val t=LocalYohaku.current
     val label=if(t.id=="journal"&&LocalConfiguration.current.screenWidthDp<=360)""else eyebrow
     val marginTop=if(t.id=="magazine")23 else 20
@@ -48,10 +48,10 @@ import com.yohaku.expensetracker.ui.theme.*
             val wrapLink=onClick!=null&&titleWidth+linkWidth+with(density){10.dp.toPx()}>constraints.maxWidth
             if(wrapLink)Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                 SectionTitle(title,label,Modifier.fillMaxWidth())
-                SectionLink(link,onClick!!,Modifier.align(Alignment.End))
+                SectionLink(link,onClick!!,Modifier.align(Alignment.End),linkTag)
             }else Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=Alignment.CenterVertically) {
                 SectionTitle(title,label,Modifier.weight(1f))
-                if(onClick!=null)SectionLink(link,onClick)
+                if(onClick!=null)SectionLink(link,onClick,tag=linkTag)
             }
         }
     }
@@ -73,10 +73,10 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable private fun SectionLink(link:String,onClick:()->Unit,modifier:Modifier=Modifier) {
+@Composable private fun SectionLink(link:String,onClick:()->Unit,modifier:Modifier=Modifier,tag:String="section-link") {
     val t=LocalYohaku.current
     val size=if(t.id=="magazine")9 else if(t.id=="journal")12 else 11
-    Row(modifier.testTag("section-link").clickable(role=Role.Button,onClick=onClick).padding(vertical=5.dp),horizontalArrangement=Arrangement.spacedBy(3.dp),verticalAlignment=Alignment.CenterVertically) {
+    Row(modifier.testTag(tag).clickable(role=Role.Button,onClick=onClick).padding(vertical=5.dp),horizontalArrangement=Arrangement.spacedBy(3.dp),verticalAlignment=Alignment.CenterVertically) {
         YText(link,size,color=t.muted,lineHeightMultiplier=(if(t.id=="magazine")13f else if(t.id=="journal")17f else 16f)/size,cssLineBox=true)
         YIcon("arrow",Modifier.size(15.dp),t.muted)
     }

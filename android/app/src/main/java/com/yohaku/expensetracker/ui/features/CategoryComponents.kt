@@ -53,18 +53,20 @@ import com.yohaku.expensetracker.ui.theme.*
         else->Modifier
     }
     Column(Modifier.fillMaxWidth().testTag("category-group-$id").then(frame)){
-        if(t.id=="magazine")CategoryRule(t.ink,false)
-        if(children.isEmpty())CategoryChoice(name,onToggle,Modifier.fillMaxWidth())
-        else {
-            Row(Modifier.fillMaxWidth().testTag("category-group-trigger-$id").clickable(role=Role.Button,onClick=onToggle).padding(horizontal=if(t.id=="magazine")0.dp else if(narrow)10.dp else 14.dp,vertical=if(narrow)16.dp else 18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(narrow)7.dp else 10.dp)){
+        // Leaf and parent roots share one header row so numbers, icons and names stay in the same columns.
+        run {
+            Row(Modifier.fillMaxWidth().testTag(if(children.isEmpty())"category-leaf-$id" else "category-group-trigger-$id").clickable(role=Role.Button,onClick=onToggle).padding(horizontal=if(t.id=="magazine")0.dp else if(narrow)10.dp else 14.dp,vertical=if(narrow)16.dp else 18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(narrow)7.dp else 10.dp)){
                 val numberFrame=if(t.id=="objects")Modifier.background(Color(0xffd7b994),RoundedCornerShape(5.dp)).padding(horizontal=6.dp,vertical=4.dp) else Modifier
                 YText((index+1).toString().padStart(2,'0'),if(t.id=="journal")14 else if(t.id=="objects")9 else 11,numberFrame,number=true,color=if(t.id=="journal")t.warm else t.muted,lineHeightMultiplier=if(t.id=="journal")20f/14 else if(t.id=="objects")13f/9 else 12f/11,cssLineBox=true)
                 YIcon("wallet",Modifier.size(20.dp))
                 YText(name,if(t.id=="journal")if(narrow)18 else 19 else if(narrow)14 else 15,Modifier.weight(1f),weight=FontWeight.Medium,lineHeightMultiplier=if(t.id=="journal")if(narrow)26f/18 else 27f/19 else if(narrow)20f/14 else 21f/15,cssLineBox=true)
-                YText(children.size.toString()+" "+word("个子分类","子カテゴリ"),if(t.id=="journal")11 else if(narrow)8 else 9,Modifier.then(if(t.id=="objects")Modifier.background(Color(0xfffff6e4),RoundedCornerShape(5.dp)).padding(horizontal=7.dp,vertical=5.dp) else Modifier),color=t.muted,lineHeightMultiplier=if(t.id=="journal")16f/11 else if(narrow)12f/8 else 13f/9,cssLineBox=true)
-                YText("＋",18,Modifier.rotate(if(open)45f else 0f),color=t.ink,lineHeightMultiplier=26f/18,cssLineBox=true)
+                if(children.isEmpty())YText("↗",14,color=t.muted,lineHeightMultiplier=20f/14,cssLineBox=true)
+                else {
+                    YText(children.size.toString()+" "+word("个子分类","子カテゴリ"),if(t.id=="journal")11 else if(narrow)8 else 9,Modifier.then(if(t.id=="objects")Modifier.background(Color(0xfffff6e4),RoundedCornerShape(5.dp)).padding(horizontal=7.dp,vertical=5.dp) else Modifier),color=t.muted,lineHeightMultiplier=if(t.id=="journal")16f/11 else if(narrow)12f/8 else 13f/9,cssLineBox=true)
+                    YText("＋",18,Modifier.rotate(if(open)45f else 0f),color=t.ink,lineHeightMultiplier=26f/18,cssLineBox=true)
+                }
             }
-            if(open){
+            if(open&&children.isNotEmpty()){
                 if(t.id=="journal")CategoryRule(t.line,true)
                 val inset=if(t.id=="magazine")Modifier.padding(start=26.dp).drawBehind{drawLine(t.line,Offset.Zero,Offset(0f,size.height),1.dp.toPx())}.padding(start=17.dp,end=14.dp,bottom=16.dp) else Modifier.padding(start=14.dp,end=14.dp,bottom=16.dp)
                 Column(Modifier.fillMaxWidth().then(inset),verticalArrangement=Arrangement.spacedBy(if(t.id=="objects")8.dp else 0.dp)){

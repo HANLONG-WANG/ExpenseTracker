@@ -73,7 +73,7 @@ class ProcessRecoveryTest {
         ui.setContent{NativeApp(vm)}
         waitFor("继续本账本未保存的记录")
         ui.onNodeWithText("继续本账本未保存的记录").performScrollTo().performClick()
-        waitFor("账户实际入账金额 · JPY")
+        waitFor("金额 · JPY")
         ui.onNodeWithTag("field-金额 · JPY").assertTextEquals("777")
         ui.onNodeWithTag("field-商户 / 买了什么").assertTextEquals("喫茶と余白")
         ui.onNodeWithTag("field-备注").performScrollTo().assertTextEquals("继续这一笔")

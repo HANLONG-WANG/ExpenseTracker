@@ -41,7 +41,9 @@ import com.yohaku.expensetracker.ui.theme.*
     val unknown=if(compact)word("未知","不明")else word("未知 / 资料待补齐","不明・情報未補足")
     fun amount(n:Long?)=n?.let{Money(currency,it).display()}?:unknown
     val actualOver=pace.actualOverMinor?.let{it>0}==true
-    val primaryAmount=if(actualOver)pace.actualOverMinor else pace.projectedOverMinor
+    // Within budget the headline is the projected month-end headroom, not a zero overrun painted as a warning.
+    val within=!actualOver&&pace.projectedOverMinor==0L&&pace.limitMinor!=null&&pace.projectedMinor!=null
+    val primaryAmount=if(actualOver)pace.actualOverMinor else if(within)pace.limitMinor!!-pace.projectedMinor!! else pace.projectedOverMinor
     var details by rememberSaveable(pace.sampleStart){mutableStateOf(false)}
     Column(Modifier.fillMaxWidth().testTag("forecast-budget").then(frame),verticalArrangement=Arrangement.spacedBy(13.dp)) {
         YText(word("消费趋势 · 当月推算","支出推移・今月の推計"),10,color=t.muted)
@@ -52,8 +54,8 @@ import com.yohaku.expensetracker.ui.theme.*
             pace.projectedOverMinor!!>0->word("月底可能超预算","月末に予算超過の見込み")
             else->word("按目前节奏仍有余量","現在のペースでは予算内")
         },if(journal)23 else 20,Modifier.testTag("forecast-budget-status"))
-        YText(if(actualOver)word("已发生超出","実支出の超過")else word("预计超出","超過の見込み"),10,color=t.muted)
-        YText(amount(primaryAmount),31,Modifier.testTag("forecast-budget-amount"),number=primaryAmount!=null,color=if(objects)Color(0xffae7951)else t.warm)
+        YText(if(actualOver)word("已发生超出","実支出の超過")else if(within)word("预计月底还剩","月末の残り見込み")else word("预计超出","超過の見込み"),10,color=t.muted)
+        YText(amount(primaryAmount),31,Modifier.testTag("forecast-budget-amount"),number=primaryAmount!=null,color=if(within)t.accent else if(objects)Color(0xffae7951)else t.warm)
         if(actualOver)RecordFacts(listOf(word("预计月末消费","月末支出の予測") to amount(pace.projectedMinor),word("预计超出","超過の見込み") to amount(pace.projectedOverMinor)))
         YText(pace.sampleStart+" — "+pace.asOf+" · "+word("样本${pace.sampleDays}个自然日，剩余${pace.remainingDays}日；只外推日常净消费，活动、固定账单与费用不重复外推。","${pace.sampleDays}暦日の標本、残り${pace.remainingDays}日。日常純支出のみ外挿し、シーン・固定費・手数料は重ねて推計しません。"),if(journal)12 else 10,color=t.muted,lineHeightMultiplier=2f)
         if(pace.lowConfidence)YText(word("月初或资料较少：低置信估计。","月初・標本が少ないため信頼度の低い推計です。"),11,Modifier.testTag("forecast-budget-low-confidence"),color=t.warm)
