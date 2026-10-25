@@ -653,11 +653,12 @@ class DraftEditingFlowTest {
                 pageDimensions.appendText("$theme,$language,$tag,${r.left.value},$y,${(r.right-r.left).value},$height\n")
                 if(metrics.widthPixels/metrics.density==390f&&instrumentation.targetContext.resources.configuration.fontScale==1f){
                     if(tag=="page-title"){
-                        val expectedY=when(theme){"magazine"->94f;"journal"->101f;else->83f}
+                        // Magazine's masthead and back bar no longer draw hairlines (2026-10-25 rule hierarchy): anchors move up 2dp.
+                        val expectedY=when(theme){"magazine"->92f;"journal"->101f;else->83f}
                         assertEquals("HTML title page anchor: $theme/$language",expectedY,y,1f)
                     }
                     if(tag=="settings-theme-panel"){
-                        val expectedY=when(theme){"magazine"->if(language=="zh")208.14f else 259.28f;"journal"->230.30f;else->165.5f}
+                        val expectedY=when(theme){"magazine"->if(language=="zh")206.14f else 257.28f;"journal"->230.30f;else->165.5f}
                         assertEquals("HTML panel page anchor: $theme/$language",expectedY,y,1f)
                     }
                 }

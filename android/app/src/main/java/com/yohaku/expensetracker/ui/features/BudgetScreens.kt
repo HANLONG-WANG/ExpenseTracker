@@ -70,7 +70,7 @@ import java.time.YearMonth
     val provisional=s.provisionalExpenseCount(month)
     Box(Modifier.padding(top=5.dp,bottom=if(provisional>0)5.dp else 20.dp)) {
     BudgetEquation {
-        RecordFacts(listOf(word("月预算","月予算") to value(projection.limitMinor),word("预算内已花","予算内支出") to ("− "+value(projection.spentMinor)),word("预算内待付预留","予算内予定の確保") to ("− "+value(projection.reserveMinor)),word("预留后还能花","確保後に使える") to value(projection.availableMinor)))
+        RecordFacts(listOf(word("月预算","月予算") to value(projection.limitMinor),word("预算内已花","予算内支出") to ("− "+value(projection.spentMinor)),word("预算内待付预留","予算内予定の確保") to ("− "+value(projection.reserveMinor)),word("预留后还能花","確保後に使える") to value(projection.availableMinor)),total=true)
     }
     }
     if(provisional>0)BudgetEstimateNote(provisional)

@@ -24,10 +24,11 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
 /** section(): original independent headings and collapsed margins in a spaced page. */
-@Composable internal fun ThemeSection(title:String,eyebrow:String="",link:String="",onClick:(()->Unit)?=null,pageGap:Int=15,previousBottomPadding:Int=0,linkTag:String="section-link"){
+/** [afterFrame]: a boxed block (card, note) ends right above; magazine then needs the room a closing rule used to give. */
+@Composable internal fun ThemeSection(title:String,eyebrow:String="",link:String="",onClick:(()->Unit)?=null,pageGap:Int=15,previousBottomPadding:Int=0,linkTag:String="section-link",afterFrame:Boolean=false){
     val t=LocalYohaku.current
     val label=if(t.id=="journal"&&LocalConfiguration.current.screenWidthDp<=360)""else eyebrow
-    val marginTop=if(t.id=="magazine")23 else 20
+    val marginTop=if(t.id=="magazine")if(afterFrame)40 else 23 else 20
     val trailing=12-pageGap
     Column(Modifier.fillMaxWidth().layout{measurable,constraints->
         val p=measurable.measure(constraints)

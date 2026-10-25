@@ -47,7 +47,6 @@ import java.time.LocalDate
                             autoSize=androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize=9.sp,maxFontSize=(if(narrow)14 else 16).sp))
                     }
                 }
-                CoverRule(t.line)
                 Row(Modifier.fillMaxWidth().testTag("cover-footer").padding(top=18.dp),horizontalArrangement=Arrangement.SpaceBetween){
                     YText(word("预算 ","予算 ")+Money(currency,budget).display(),9,Modifier.testTag("cover-footer-text"),color=t.muted,lineHeightMultiplier=13f/9)
                     YText(word("预算内已花 ","予算内の支出 ")+Money(currency,spent).display(),9,color=t.muted,lineHeightMultiplier=13f/9)

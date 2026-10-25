@@ -51,10 +51,10 @@ import com.yohaku.expensetracker.ui.theme.*
         ThemeSection(word("关联这个商户的记录","このお店に関連する記録"),"LINKED RECORDS")
         val events=s.visibleEvents.filter{e->e.kind!=EntryKind.REFUND.name&&s.merchantKey(e)=="id:${merchant.id}"}
         if(events.isEmpty())YEmpty(word("选择这个商户记账后，记录会显示在这里。","このお店を選んで記録すると表示されます。"))
-        events.forEach{e->EventRow(s,e,{onRecord(e)})}
+        events.forEach{e->EventRow(s,e,{onRecord(e)},last=e===events.last())}
         val refunds=s.visibleEvents.filter{r->s.settlements.any{it.eventId==r.id&&it.confirmed&&events.any{e->e.id==it.originalEventId}}}
         if(refunds.isNotEmpty())ThemeSection(word("关联消费的退款","関連支出の返金"),"REFUNDS")
-        refunds.forEach{e->EventRow(s,e,{onRecord(e)})}
+        refunds.forEach{e->EventRow(s,e,{onRecord(e)},last=e===refunds.last())}
     }
     editing?.let{id->MerchantEditor(s,s.merchants.find{it.id==id},newName,vm,{editing=null})}
     locationFor?.let{id->LocationEditor(s,id,s.merchantLocations.find{it.id==locationId},vm,{locationFor=null;locationId=null})}

@@ -59,7 +59,8 @@ class SetupPresentationTest {
                 val coverChanged=t=="magazine"&&mode=="budget"
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(!(coverChanged&&key=="context")&&kotlin.math.abs(top-expected.getDouble("top"))>2)errors+="$t/$l/$mode/$key top $top vs ${expected.getDouble("top")}"
-                    if(!(coverChanged&&key=="cover")&&kotlin.math.abs(height-expected.getDouble("height"))>1)errors+="$t/$l/$mode/$key height $height vs ${expected.getDouble("height")}"
+                    val expectedHeight=expected.getDouble("height")+if(key=="context")magazineRules(t,-21f) else 0f
+                    if(!(coverChanged&&key=="cover")&&kotlin.math.abs(height-expectedHeight)>1)errors+="$t/$l/$mode/$key height $height vs $expectedHeight"
                 }
             }
             fun top(tag:String)=ui.onNodeWithTag(tag).getUnclippedBoundsInRoot().top
@@ -99,9 +100,10 @@ class SetupPresentationTest {
                 val extension=if(key=="details")ui.onNodeWithTag("books-manage-lifecycle").getUnclippedBoundsInRoot().let{(it.bottom-it.top).value}+15f else 0f
                 val top=(r.top-origin).value+(if(key=="details")10f else 0f)-extension;val height=(r.bottom-r.top).value-if(key=="details")20f else 0f
                 csv.appendText("$t,$l,$key,$top,$height\n")
+                val expectedHeight=expected.getDouble("height")+if(key=="details")magazineRules(t,-33f) else 0f
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(top-expected.getDouble("top"))>1)errors+="$t/$l/$key top $top vs ${expected.getDouble("top")}"
-                    if(kotlin.math.abs(height-expected.getDouble("height"))>1)errors+="$t/$l/$key height $height vs ${expected.getDouble("height")}"
+                    if(kotlin.math.abs(height-expectedHeight)>1)errors+="$t/$l/$key height $height vs $expectedHeight"
                 }
             }
             ui.onNodeWithTag("books-create").performScrollTo().assertIsDisplayed()
@@ -143,9 +145,10 @@ class SetupPresentationTest {
                 val dayHeaders=if(headers.isEmpty())0f else headers.sumOf{(it.boundsInRoot.height/i.targetContext.resources.displayMetrics.density).toDouble()}.toFloat()+(if(t=="objects")8f*headers.size else -1f)
                 val top=(r.top-origin).value;val height=(r.bottom-r.top).value-dayHeaders
                 csv.appendText("$t,$l,$mode,$key,$top,$height\n")
+                val expectedHeight=expected.getDouble("height")+if(key=="records"&&headers.isNotEmpty())magazineRules(t,-1f) else 0f
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(top-expected.getDouble("top"))>1)errors+="$t/$l/$mode/$key top $top vs ${expected.getDouble("top")}"
-                    if(kotlin.math.abs(height-expected.getDouble("height"))>1)errors+="$t/$l/$mode/$key height $height vs ${expected.getDouble("height")}"
+                    if(kotlin.math.abs(height-expectedHeight)>1)errors+="$t/$l/$mode/$key height $height vs $expectedHeight"
                 }
             }
             i.uiAutomation.takeScreenshot().let{bitmap->File(folder,"$t-$l-$mode.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
@@ -240,9 +243,12 @@ class SetupPresentationTest {
                 val extension=if(key in listOf("lead","summary"))0f else (note.bottom-note.top).value+15f
                 val top=(r.top-origin).value-extension;val height=(r.bottom-r.top).value
                 csv.appendText("$t,$l,$m,$key,$top,$height\n")
+                val lists=when(m){"empty"->0f;"funds"->1f;else->2f}
+                val expectedTop=expected.getDouble("top")+if(key=="add")magazineRules(t,-27f-lists) else 0f
+                val expectedHeight=expected.getDouble("height")+if(key in listOf("funds","debt")&&m!="empty"&&!(key=="debt"&&m=="funds"))magazineRules(t,-1f) else 0f
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
-                    if(kotlin.math.abs(top-expected.getDouble("top"))>1)errors+="$t/$l/$m/$key top $top vs ${expected.getDouble("top")}" 
-                    if(kotlin.math.abs(height-expected.getDouble("height"))>1)errors+="$t/$l/$m/$key height $height vs ${expected.getDouble("height")}" 
+                    if(kotlin.math.abs(top-expectedTop)>1)errors+="$t/$l/$m/$key top $top vs $expectedTop"
+                    if(kotlin.math.abs(height-expectedHeight)>1)errors+="$t/$l/$m/$key height $height vs $expectedHeight"
                 }
             }
             ui.onNodeWithTag("accounts-add").performScrollTo().assertIsDisplayed()
@@ -284,9 +290,12 @@ class SetupPresentationTest {
                 }
                 val r=node.getUnclippedBoundsInRoot();val top=(r.top-origin).value;val height=(r.bottom-r.top).value
                 csv.appendText("$t,$l,$populated,$key,$top,$height\n")
+                val groupsAbove=when(key){"lead","expense-heading","expense-content"->0;"expense-add","income-heading","income-content"->1;else->if(populated)2 else 1}
+                val expectedTop=expected.getDouble("top")+magazineRules(t,-2f*groupsAbove)
+                val expectedHeight=expected.getDouble("height")+when{key=="favorites"->magazineRules(t,-23f);key.endsWith("content")&&(key=="expense-content"||populated)->magazineRules(t,-2f);else->0f}
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
-                    if(kotlin.math.abs(top-expected.getDouble("top"))>1)errors+="$t/$l/$populated/$key top $top vs ${expected.getDouble("top")}" 
-                    if(kotlin.math.abs(height-expected.getDouble("height"))>1)errors+="$t/$l/$populated/$key height $height vs ${expected.getDouble("height")}" 
+                    if(kotlin.math.abs(top-expectedTop)>1)errors+="$t/$l/$populated/$key top $top vs $expectedTop"
+                    if(kotlin.math.abs(height-expectedHeight)>1)errors+="$t/$l/$populated/$key height $height vs $expectedHeight"
                 }
             }
             ui.onNodeWithTag("category-kind-add-INCOME").performScrollTo().assertIsDisplayed()
@@ -348,7 +357,7 @@ class SetupPresentationTest {
             val panel=ui.onNodeWithTag("audit-panel-body").getUnclippedBoundsInRoot()
             csv.appendText("$t,$l,${(panel.bottom-panel.top).value},${(details.top-panel.top).value}\n")
             if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
-                val panelHeight=when(t){"magazine"->if(l=="zh")258.484f else 290.781f;"journal"->if(l=="zh")304.797f else 345.594f;else->if(l=="zh")292.188f else 326.188f}
+                val panelHeight=when(t){"magazine"->(if(l=="zh")258.484f else 290.781f)+magazineRules(t,-23f);"journal"->if(l=="zh")304.797f else 345.594f;else->if(l=="zh")292.188f else 326.188f}
                 assertEquals("Original whole favorites panel $t/$l",panelHeight,(panel.bottom-panel.top).value,1f)
                 val detailsTop=when(t){"magazine"->if(l=="zh")78.297f else 110.594f;"journal"->if(l=="zh")111.797f else 152.594f;else->if(l=="zh")110f else 144f}
                 assertEquals("Original favorites title and body position $t/$l",detailsTop,(details.top-panel.top).value,1f)
@@ -584,7 +593,7 @@ class SetupPresentationTest {
             if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                 val expected=when(t){"journal"->107.891f;"objects"->162.484f;else->86.484f}
                 assertEquals("Original funding card height $t/$l",expected,h1,1f)
-                assertEquals("Original second card height $t/$l",expected,h2,1f)
+                assertEquals("Original second card height $t/$l",expected+magazineRules(t,-1f),h2,1f)
             }
             data.appendText("$t,$l,$h1,$h2,$listHeight,$gap\n")
             i.uiAutomation.takeScreenshot().let{bitmap->File(folder,"$t-$l.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
@@ -643,7 +652,7 @@ class SetupPresentationTest {
             val h=(review.bottom-review.top).value;val ah=(account.bottom-account.top).value;val nh=(note.bottom-note.top).value
             data.appendText("$t,$l,$h,$ah,$nh\n")
             if(i.targetContext.resources.configuration.fontScale==1f&&i.targetContext.resources.configuration.screenWidthDp==390){
-                assertEquals("review $t/$l",when(t){"journal"->477f;"objects"->428f;else->448f},h,1f)
+                assertEquals("review $t/$l",when(t){"journal"->477f;"objects"->428f;else->448f+magazineRules(t,-1f)},h,1f)
                 assertEquals("account $t/$l",when(t){"journal"->85f;"objects"->78f;else->80f},ah,1f)
                 assertEquals("note $t/$l",when(t){"journal"->if(l=="ja")80f else 57f;"objects"->53f;else->55f},nh,1f)
             }
@@ -654,3 +663,7 @@ class SetupPresentationTest {
         }
     }
 }
+
+/** 2026-10-25 magazine rule hierarchy (design/themes/magazine-rules.css): lists draw no hairline after their last row,
+ *  and blocks that lost a closing rule also lost the space kept around it. Frozen v55 sizes shift by exactly that much. */
+private fun magazineRules(theme:String,shift:Float)=if(theme=="magazine")shift else 0f

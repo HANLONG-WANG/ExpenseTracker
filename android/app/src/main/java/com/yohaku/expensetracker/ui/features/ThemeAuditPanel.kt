@@ -24,11 +24,12 @@ import com.yohaku.expensetracker.ui.theme.*
 @Composable internal fun ThemeAuditPanel(title:String,modifier:Modifier=Modifier,contentTopMargin:Int=0,content:@Composable ColumnScope.()->Unit){
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val shape=RoundedCornerShape(if(objects)18.dp else 0.dp)
-    BoxWithConstraints(modifier.fillMaxWidth().padding(vertical=10.dp).then(if(journal)Modifier.rotate(-.25f) else Modifier)){
+    // Magazine panels end without a closing rule, so the space below collapses into the page gap.
+    BoxWithConstraints(modifier.fillMaxWidth().padding(top=10.dp,bottom=if(t.id=="magazine")0.dp else 10.dp).then(if(journal)Modifier.rotate(-.25f) else Modifier)){
         if(journal||objects)Box(Modifier.matchParentSize().offset(x=if(journal)2.dp else 0.dp,y=if(journal)3.dp else 4.dp).background(if(journal)Color(0x55ddd0b3) else Color(0xffddd4bd),shape))
         if(journal)Box(Modifier.align(Alignment.TopStart).offset(x=maxWidth*.32f,y=(-8).dp).size(75.dp,15.dp).rotate(-3f).background(Color(0x88d7bf8b)))
-        val edge=if(journal)Modifier.border(1.dp,Color(0xffd9ccb0)) else if(objects)Modifier else Modifier.drawBehind{drawLine(t.ink,Offset(0f,1.dp.toPx()),Offset(size.width,1.dp.toPx()),2.dp.toPx());drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx())}
-        Column(Modifier.fillMaxWidth().testTag("audit-panel-body").background(if(journal)Color(0xfffff8e6) else if(objects)Color(0xffede6d2) else Color.Transparent,shape).then(edge).padding(start=if(journal)19.dp else if(objects)17.dp else 0.dp,end=if(journal)19.dp else if(objects)17.dp else 0.dp,top=if(journal)25.dp else if(objects)21.dp else 24.dp,bottom=if(journal)25.dp else if(objects)21.dp else 23.dp)){
+        val edge=if(journal)Modifier.border(1.dp,Color(0xffd9ccb0)) else if(objects)Modifier else Modifier.drawBehind{drawLine(t.ink,Offset(0f,.5.dp.toPx()),Offset(size.width,.5.dp.toPx()),1.dp.toPx())}
+        Column(Modifier.fillMaxWidth().testTag("audit-panel-body").background(if(journal)Color(0xfffff8e6) else if(objects)Color(0xffede6d2) else Color.Transparent,shape).then(edge).padding(start=if(journal)19.dp else if(objects)17.dp else 0.dp,end=if(journal)19.dp else if(objects)17.dp else 0.dp,top=if(journal)25.dp else if(objects)21.dp else 24.dp,bottom=if(journal)25.dp else if(objects)21.dp else 0.dp)){
             if(t.id=="magazine")Row(horizontalArrangement=Arrangement.spacedBy(13.dp),verticalAlignment=Alignment.Top){
                 YText("FIELD NOTES",8,Modifier.width(65.dp).drawBehind{drawLine(t.line,Offset(size.width,0f),Offset(size.width,size.height),1.dp.toPx())}.padding(top=11.dp),color=t.muted,letterSpacing=1f,lineHeightMultiplier=2f,cssLineBox=true)
                 YText(title,19,Modifier.weight(1f).padding(top=5.dp,bottom=17.dp),weight=FontWeight.Medium,lineHeightMultiplier=1.7f,cssLineBox=true,balanced=true)

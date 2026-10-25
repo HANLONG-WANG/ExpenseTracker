@@ -71,7 +71,9 @@ import com.yohaku.expensetracker.ui.theme.*
     YText(amount,size,modifier.height(height).wrapContentHeight(Alignment.CenterVertically,unbounded=true),number=true,color=color,letterSpacing=spacing,lineHeightMultiplier=1.4f,onTextLayout={lines=it.lineCount})
 }
 
-@Composable internal fun RecordFacts(facts:List<Pair<String,String>>,audit:Boolean=false,exactLineBox:Boolean=false) {
+/** [total] marks the last fact as a sum; magazine draws an ink line above it instead of boxing the table.
+ *  [framed]: the facts sit inside a bordered card, so magazine lists them without hairlines. */
+@Composable internal fun RecordFacts(facts:List<Pair<String,String>>,audit:Boolean=false,exactLineBox:Boolean=false,total:Boolean=false,framed:Boolean=false) {
     val t=LocalYohaku.current
     BoxWithConstraints(Modifier.fillMaxWidth()){
     val maxValueWidth=(maxWidth-if(t.id=="objects")24.dp else 0.dp)*.55f
@@ -80,8 +82,10 @@ import com.yohaku.expensetracker.ui.theme.*
     Column(Modifier.fillMaxWidth().testTag("record-facts"),verticalArrangement=Arrangement.spacedBy(if(t.id=="objects")6.dp else 0.dp)){
         facts.forEachIndexed{i,(label,value)->
             val objects=t.id=="objects";val journal=t.id=="journal"
+            val magazine=t.id=="magazine";val last=i==facts.lastIndex||magazine&&framed
             Column(Modifier.fillMaxWidth().testTag("record-fact-$i")){
-                Row(Modifier.fillMaxWidth().then(if(objects)Modifier.background(Color(0x60ffffff),RoundedCornerShape(10.dp)) else Modifier).padding(horizontal=if(objects)if(audit)12.dp else 6.dp else 0.dp,vertical=if(objects)12.dp else if(journal)15.dp else 16.dp),horizontalArrangement=Arrangement.spacedBy(if(audit)12.dp else if(t.id=="magazine")18.dp else 15.dp),verticalAlignment=if(objects)Alignment.CenterVertically else Alignment.Top){
+                if(magazine&&total&&last)Box(Modifier.fillMaxWidth().height(1.dp).background(t.ink))
+                Row(Modifier.fillMaxWidth().then(if(objects)Modifier.background(Color(0x60ffffff),RoundedCornerShape(10.dp)) else Modifier).padding(horizontal=if(objects)if(audit)12.dp else 6.dp else 0.dp,vertical=if(objects)12.dp else if(journal)15.dp else if(framed)7.dp else 16.dp),horizontalArrangement=Arrangement.spacedBy(if(audit)12.dp else if(t.id=="magazine")18.dp else 15.dp),verticalAlignment=if(objects)Alignment.CenterVertically else Alignment.Top){
                     val line=if(audit)1.9f else if(journal)1.7f else 1.6f
                     YText(label,if(journal)12 else if(audit)10 else 11,Modifier.widthIn(max=maxLabelWidth),color=t.muted,lineHeightMultiplier=line,cssLineBox=exactLineBox)
                     val valueSize=if(journal)13 else if(audit)10 else 11
@@ -89,7 +93,8 @@ import com.yohaku.expensetracker.ui.theme.*
                     else YText(value,valueSize,Modifier.weight(1f),textAlign=TextAlign.End,lineHeightMultiplier=line,cssLineBox=exactLineBox)
                 }
                 if(journal&&audit)Canvas(Modifier.fillMaxWidth().height(1.dp)){drawLine(t.line,Offset.Zero,Offset(size.width,0f),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())))}
-                else if(!objects)Box(Modifier.fillMaxWidth().height(1.dp).background(t.line))
+                // Magazine hairlines separate facts; none after the last one or above a total.
+                else if(!objects&&!(magazine&&(last||total&&i==facts.lastIndex-1)))Box(Modifier.fillMaxWidth().height(1.dp).background(t.line))
             }
         }
     }

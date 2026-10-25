@@ -28,7 +28,7 @@ import java.time.LocalDate
             YText(word("以今天实际资金为起点，按账户独立推算；分类、商户与活动筛选不移除其他扣款。未到账收入另列情景。","本日の実資金を起点に口座別に推計。他の引落はカテゴリ・お店・シーンの絞込で除外しません。未入金の収入は別シナリオです。"),11)
             ThemeSection(word("实际扣款账户的时间线","引落口座ごとの予定"),"ACCOUNT BY ACCOUNT")
             YText(t.asOf+" → "+t.through,12)
-            t.openings.forEach{o->RecordFacts(listOf(o.account.name+" · "+o.account.currency to Money(Currency.valueOf(o.account.currency),o.actualMinor).display()))}
+            if(t.openings.isNotEmpty())RecordFacts(t.openings.map{o->o.account.name+" · "+o.account.currency to Money(Currency.valueOf(o.account.currency),o.actualMinor).display()})
             YText(word("同一天未配置扣款顺序，先扣后入；活动预留从可安排资金中扣除，不是真实支出。待确认金额影响后，余额显示未知。","同日の処理順が未設定のため出金を先に計算。シーン確保額は予定に使える資金から差し引き、実支出にはしません。未確定額の影響後は残高を不明と表示します。"),11,color=LocalYohaku.current.muted)
             val rows=t.steps.filter{it.item.date>=maxOf(filter.start,t.asOf)}
             if(rows.isEmpty())YEmpty(word("这个期间没有已知资金安排。","この期間の既知の資金予定はありません。"))
@@ -37,7 +37,7 @@ import java.time.LocalDate
                 Column(Modifier.testTag("cash-${item.id}")) {
                     FutureTimelineRow(item.id,item.date,if(item.name in EntryKind.entries.map{it.name})entryKindName(EntryKind.valueOf(item.name))else item.name,account?.let{it.name+" · "+it.currency}?:word("扣款账户未确定","引落口座未定"),
                         item.amountMinor?.let{(if(item.incoming)"+ "else"− ")+Money(Currency.valueOf(item.currency),it).display()}?:word("金额未知","金額不明"),
-                        when(item.kind){"EXPECTED_INCOME"->word("预计收入 · 尚未到账","収入予定・未入金");"RESERVE"->word("主动资金预留 · 非实际支出","自分で設定した資金確保・実支出ではない");else->if(item.estimated)word("预计 / 待确认安排","見込み・確認待ち予定")else word("已知安排","既知の予定")},atRisk=step.baselineAfterMinor?.let{it<0}==true) {
+                        when(item.kind){"EXPECTED_INCOME"->word("预计收入 · 尚未到账","収入予定・未入金");"RESERVE"->word("主动资金预留 · 非实际支出","自分で設定した資金確保・実支出ではない");else->if(item.estimated)word("预计 / 待确认安排","見込み・確認待ち予定")else word("已知安排","既知の予定")},atRisk=step.baselineAfterMinor?.let{it<0}==true,last=step===rows.last()) {
                     val unknown=word("未知 / 请补充资料","不明・情報を補足してください")
                     fun amount(n:Long?,estimated:Boolean=false)=if(account==null||n==null)unknown else (if(estimated)"≈ "else"")+Money(Currency.valueOf(account.currency),n).display()
                     YText(word("不含预计收入，安排后：","収入見込みなし・予定後：")+amount(step.baselineAfterMinor,step.baselineEstimated),11,Modifier.padding(top=9.dp),color=if(step.baselineAfterMinor?.let{it<0}==true)LocalYohaku.current.warm else LocalYohaku.current.muted)

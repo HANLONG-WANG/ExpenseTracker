@@ -24,7 +24,7 @@ import java.time.YearMonth
     if(months.size>1)YSelect(word("预算月份","予算の月"),selected,months.map{it to it},{selected=it},Modifier.testTag("analysis-budget-month"))else YText(selected,19,number=true)
     YText(word("预算按完整自然月展示，消费筛选不会改写月预算。","予算は暦月全体を表示。支出の絞込は月予算を変更しません。"),12,color=LocalYohaku.current.muted)
     val provisional=if(filter.categoryId==null)s.provisionalExpenseCount(selected)else 0
-    Box(Modifier.padding(top=5.dp,bottom=if(provisional>0)5.dp else 20.dp)) {BudgetEquation {RecordFacts(listOf(word("月预算","月予算") to money(p.limitMinor),word("预算内已花","予算内支出") to ("− "+money(p.spentMinor)),word("预算内待付预留","予算内予定の確保") to ("− "+money(p.reserveMinor)),word("预留后还能花","確保後に使える") to money(p.availableMinor)))}}
+    Box(Modifier.padding(top=5.dp,bottom=if(provisional>0)5.dp else 20.dp)) {BudgetEquation {RecordFacts(listOf(word("月预算","月予算") to money(p.limitMinor),word("预算内已花","予算内支出") to ("− "+money(p.spentMinor)),word("预算内待付预留","予算内予定の確保") to ("− "+money(p.reserveMinor)),word("预留后还能花","確保後に使える") to money(p.availableMinor)),total=true)}}
     if(provisional>0)BudgetEstimateNote(provisional)
     Box(Modifier.padding(top=if(provisional>0)15.dp else 0.dp)) {YButton(word("调整月预算","月予算を変更"),{onManage(selected)},Modifier.testTag("analysis-budget-adjust"),primary=true)}
     IndependentBudgetNote(money(p.independentMinor))

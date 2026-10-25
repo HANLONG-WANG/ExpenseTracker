@@ -35,7 +35,6 @@ import java.time.YearMonth
                 YText("YOHAKU / ${when(page){"statement-import"->"IMPORT";"statements"->"RECONCILE";else->page.uppercase()}}",8,Modifier.weight(1f).padding(end=8.dp),color=t.muted,letterSpacing=1.25f,lineHeightMultiplier=1.375f,cssLineBox=true)
                 YText("VOL. ${today.monthValue} · ${today.year}",8,color=t.muted,letterSpacing=1.25f,lineHeightMultiplier=1.375f,cssLineBox=true)
             }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(t.line))
         }
         "journal"->Column(Modifier.fillMaxWidth().padding(bottom=7.dp).testTag("page-edition")){
             Row(Modifier.fillMaxWidth().padding(bottom=7.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
@@ -55,8 +54,7 @@ import java.time.YearMonth
     Column(Modifier.fillMaxWidth().padding(top=12.dp,bottom=5.dp)){
         when(t.id){
             "magazine"->{
-                Box(Modifier.fillMaxWidth().height(1.dp).background(t.ink))
-                Row(Modifier.padding(top=13.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                Row(Modifier.padding(top=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
                     YText(word("生活的余量","暮らしの余白"),10,color=t.muted,lineHeightMultiplier=1.5f)
                     YText("— ${page.uppercase()} —",8,color=t.muted,letterSpacing=1f,lineHeightMultiplier=1.375f)
                 }
@@ -99,7 +97,7 @@ import java.time.YearMonth
             RecordFacts(listOf(word("待付固定预算预留","固定費の未払い予算予定") to (projection.fixedReserveMinor?.let{Money(currency,it).display()}?:word("金额 / 折算待补齐","金額・換算待ち")),
                 word("本月活动预算预留","今月のシーン予算の確保") to Money(currency,projection.activityReserveMinor).display(),
                 word("全部活动资金预留","全シーンの資金確保") to Money(currency,projection.fundReserveMinor).display(),
-                word("预留后可支配","予定を除いた残額") to (projection.availableMinor?.let{Money(currency,it).display()}?:"—")),audit=true)
+                word("预留后可支配","予定を除いた残額") to (projection.availableMinor?.let{Money(currency,it).display()}?:"—")),audit=true,total=true)
             YLink(word("确认 / 管理周期账单","定期支払を確認・管理"),onRecurring,arrow=true)
         }
         ThemeSection(word("最近的几笔","最近の記録"),"DAILY NOTES",word("全部流水","すべて"),{navigate("ledger")},pageGap=15)

@@ -27,10 +27,8 @@ import com.yohaku.expensetracker.ui.theme.*
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val shape=RoundedCornerShape(topStart=20.dp,topEnd=20.dp,bottomEnd=27.dp,bottomStart=20.dp)
     val frame=when(t.id) {
-        "magazine"->Modifier.drawBehind {
-            drawLine(t.ink,Offset.Zero,Offset(size.width,0f),1.dp.toPx())
-            drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())
-        }.padding(vertical=21.dp)
+        // Sits right under the lead's closing rule; magazine needs no lines of its own.
+        "magazine"->Modifier.padding(bottom=16.dp)
         "journal"->Modifier.rotate(-.3f).background(Color(0xfffff5dc)).drawBehind {
             drawRect(t.line,style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))
         }.padding(22.dp)

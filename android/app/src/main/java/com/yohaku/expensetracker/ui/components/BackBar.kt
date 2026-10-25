@@ -22,6 +22,7 @@ import com.yohaku.expensetracker.ui.theme.*
             YText(word("← 返回","← 戻る"),if(t.id=="journal")14 else 13,Modifier.weight(1f).clickable(onClick=onBack),color=t.muted,lineHeightMultiplier=if(t.id=="journal")19f/14 else 18f/13,cssLineBox=true)
             YText(pageName,if(t.id=="journal")13 else 12,Modifier.testTag("page-back-name"),color=t.ink,lineHeightMultiplier=18f/12,cssLineBox=true)
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(t.line))
+        // Magazine pages open with the lead's thick rule; a hairline right above it would double it.
+        if(t.id!="magazine")Box(Modifier.fillMaxWidth().height(1.dp).background(t.line))
     }
 }

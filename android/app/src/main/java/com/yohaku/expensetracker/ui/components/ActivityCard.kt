@@ -21,7 +21,7 @@ import com.yohaku.expensetracker.ui.theme.*
     val dates="$start — $end"
     @Composable fun open(){onOpen?.let{YButton(word("打开活动","シーンを開く"),it,if(openTag.isEmpty())Modifier else Modifier.testTag(openTag))}}
     when(t.id) {
-        "magazine"->Row(Modifier.fillMaxWidth().padding(top=22.dp,bottom=28.dp).drawBehind{drawLine(t.ink,Offset.Zero,Offset(size.width,0f),1.dp.toPx());drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}.padding(bottom=22.dp)) {
+        "magazine"->Row(Modifier.fillMaxWidth().padding(top=22.dp,bottom=28.dp).drawBehind{drawLine(t.ink,Offset.Zero,Offset(size.width,0f),1.dp.toPx())}) {
             YText((index+1).toString().padStart(2,'0'),24,Modifier.width(39.dp).padding(top=20.dp),number=true,color=t.muted)
             Column(Modifier.weight(1f)) {
                 Box(Modifier.fillMaxWidth().padding(vertical=18.dp).height(150.dp).background(Color(0xffe7ecde)),contentAlignment=Alignment.Center){TripArtwork(Modifier.size(170.dp,140.dp))}

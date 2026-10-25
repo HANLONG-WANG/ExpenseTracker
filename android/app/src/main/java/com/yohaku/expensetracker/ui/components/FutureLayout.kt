@@ -14,11 +14,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.theme.*
 
-@Composable internal fun FutureTimelineRow(id:String,date:String,name:String,account:String,amount:String,note:String,atRisk:Boolean=false,details:@Composable ColumnScope.()->Unit={}) {
+@Composable internal fun FutureTimelineRow(id:String,date:String,name:String,account:String,amount:String,note:String,atRisk:Boolean=false,last:Boolean=false,details:@Composable ColumnScope.()->Unit={}) {
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val frame=if(objects)Modifier.drawBehind{drawRoundRect(Color(0x24c6aa80),Offset(0f,3.dp.toPx()),cornerRadius=androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()))}.background(if(atRisk)Color(0xfffff3dd)else Color(0xfffff8e8),RoundedCornerShape(14.dp)).border(1.dp,if(atRisk)Color(0xffd7b185)else Color(0xffe3cda8),RoundedCornerShape(14.dp)).padding(horizontal=11.dp,vertical=20.dp)
-        else Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=if(journal)PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))else null)}.padding(vertical=22.dp)
+        else Modifier.drawBehind{if(journal||!last)drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=if(journal)PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))else null)}.padding(vertical=22.dp)
     Column(Modifier.fillMaxWidth().testTag("future-occurrence-$id").then(if(atRisk&&!objects)Modifier.drawBehind{drawLine(t.warm,Offset.Zero,Offset(0f,size.height),1.dp.toPx())}.padding(start=9.dp)else Modifier).then(frame)) {
         Row(horizontalArrangement=Arrangement.spacedBy(if(narrow)7.dp else 9.dp),verticalAlignment=Alignment.Top) {
             YText(date.substring(5).replace('-','\n'),if(objects)13 else 11,Modifier.widthIn(min=if(narrow)35.dp else 42.dp).then(if(objects)Modifier.background(Color(0xffecddc0),RoundedCornerShape(7.dp)).padding(horizontal=4.dp,vertical=8.dp)else Modifier),number=true,color=if(objects)Color(0xffaf875d)else t.muted)

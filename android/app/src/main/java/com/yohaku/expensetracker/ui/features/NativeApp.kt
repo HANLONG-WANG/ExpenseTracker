@@ -365,7 +365,7 @@ import kotlinx.serialization.encodeToString
         else YText(word("原币退款已全部记录，实际收支差额仍保留在原消费月。","原通貨の返金は全額記録済み。実収支の差額は元の購入月に保持します。"),11)
     }
     settlement?.originalEventId?.let{id->s.visibleEvents.find{it.id==id}?.let{original->YLink(word("查看原消费","元の購入を見る"),{onRecord(original)})}}
-    s.occurrences.filter{it.eventId==e.id}.forEach{o->RecordFacts(listOf(word("关联周期实例","関連する定期予定") to (o.name+" · "+o.scheduledDate)),audit=true)}
+    s.occurrences.filter{it.eventId==e.id}.takeIf{it.isNotEmpty()}?.let{list->RecordFacts(list.map{o->word("关联周期实例","関連する定期予定") to (o.name+" · "+o.scheduledDate)},audit=true)}
     s.treats.find{it.eventId==e.id}?.let{treat->
         ThemeSection(word("活动内互请份额","シーンのごちそうの取り分"),"SHARED PORTIONS")
         s.allocations.filter{it.treatId==treat.id}.forEach{a->YText((if(a.participant=="ME")word("本人","自分")else s.friends.first{it.id==a.friendId}.name)+" · "+Money(Currency.valueOf(treat.currency),a.amountMinor).display(),14)}
@@ -505,7 +505,7 @@ import kotlinx.serialization.encodeToString
         if(roots.isEmpty())YEmpty(word("从自己的用途开始，尚无预建分类。","自分の使い道から。初期カテゴリはありません。"))
         else Column(Modifier.fillMaxWidth().padding(top=5.dp,bottom=17.dp),verticalArrangement=Arrangement.spacedBy(17.dp)){roots.forEach{root->
             CategoryManageGroup(root.id,root.name+(if(!root.active)word(" · 已停用","・停止中")else ""),root.favorite,s.categories.filter{it.parentId==root.id}.map{it.id to (it.name+(if(it.favorite)" ★" else "")+(if(!s.categoryEnabled(it.id))word(" · 已停用","・停止中")else ""))},{onEdit(root)},
-                {id->onEdit(s.categories.first{it.id==id})},{onCreate(root.id,kind)})
+                {id->onEdit(s.categories.first{it.id==id})},{onCreate(root.id,kind)},first=root===roots.first())
         }}
         YButton(word("＋ 添加一级分类","＋ 親カテゴリを追加"),{onCreate(null,kind)},Modifier.testTag("category-kind-add-${kind.name}"),primary=true)
     }

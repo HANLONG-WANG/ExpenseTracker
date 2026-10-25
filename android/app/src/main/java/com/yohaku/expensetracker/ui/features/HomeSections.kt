@@ -18,7 +18,7 @@ import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun HomeSpendContext(total:String,independent:String){
     val t=LocalYohaku.current;val paper=t.id=="journal";val objects=t.id=="objects"
-    val frame=if(objects)Modifier.background(Color(0xfff0e6d3),RoundedCornerShape(16.dp)).padding(horizontal=15.dp,vertical=19.dp) else Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=if(paper)PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())) else null)}.padding(bottom=21.dp)
+    val frame=if(objects)Modifier.background(Color(0xfff0e6d3),RoundedCornerShape(16.dp)).padding(horizontal=15.dp,vertical=19.dp) else if(!paper)Modifier else Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=if(paper)PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())) else null)}.padding(bottom=21.dp)
     Row(Modifier.fillMaxWidth().testTag("home-spend-context").then(frame),horizontalArrangement=Arrangement.spacedBy(15.dp)){
         listOf(word("本月全部净消费","今月の純支出全体") to total,word("其中独立活动支出","うち独立シーンの支出") to independent).forEach{(label,value)->Column(Modifier.weight(1f)){
             YText(label,if(paper)11 else 9,color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
@@ -55,5 +55,5 @@ import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun HomeResumeDraft(onResume:()->Unit){
     val t=LocalYohaku.current;val size=if(t.id=="journal")15 else 12
-    YText(word("继续本账本未保存的记录","この帳簿の下書きを続ける"),size,Modifier.fillMaxWidth().testTag("home-resume-draft").clickable(role=Role.Button,onClick=onResume).drawBehind{drawLine(t.line,Offset(0f,this.size.height-.5.dp.toPx()),Offset(this.size.width,this.size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=if(t.id=="magazine")null else PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())))}.padding(top=if(t.id=="objects")15.dp else 14.dp,bottom=if(t.id=="objects")16.dp else 15.dp),color=t.accent,lineHeightMultiplier=1.8f,cssLineBox=true)
+    YText(word("继续本账本未保存的记录","この帳簿の下書きを続ける"),size,Modifier.fillMaxWidth().testTag("home-resume-draft").clickable(role=Role.Button,onClick=onResume).drawBehind{if(t.id!="magazine")drawLine(t.line,Offset(0f,this.size.height-.5.dp.toPx()),Offset(this.size.width,this.size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())))}.padding(top=if(t.id=="objects")15.dp else 14.dp,bottom=if(t.id=="objects")16.dp else 15.dp),color=t.accent,lineHeightMultiplier=1.8f,cssLineBox=true)
 }

@@ -48,7 +48,7 @@ import java.time.*
         Column(Modifier.fillMaxWidth().testTag("cash-risk-${a.id}").riskFrame(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             YText(a.name+" · "+a.currency,if(LocalYohaku.current.id=="journal")16 else 14)
             YText(when{risk.incompleteDate!=null->word("资金资料待补齐","資金情報を要補完");risk.currentGapMinor?.let{it>0}==true->word("当前备款尚不足","現在の準備資金が不足");else->word("未来安排存在缺口","将来の予定で不足")},13)
-            RecordFacts(listOf(word("当前备款缺口","現在の準備不足") to outlookAmount(a.currency,risk.currentGapMinor),word("基础最大缺口","基本・最大不足") to outlookAmount(a.currency,risk.maximumGapMinor,risk.estimated),word("含预计收入情景","収入見込みあり") to outlookAmount(a.currency,risk.includingIncomeGapMinor,risk.includingEstimated)))
+            RecordFacts(listOf(word("当前备款缺口","現在の準備不足") to outlookAmount(a.currency,risk.currentGapMinor),word("基础最大缺口","基本・最大不足") to outlookAmount(a.currency,risk.maximumGapMinor,risk.estimated),word("含预计收入情景","収入見込みあり") to outlookAmount(a.currency,risk.includingIncomeGapMinor,risk.includingEstimated)),framed=true)
             risk.firstRiskDate?.let{YText(word("基础首次不足：","基本シナリオの初回不足：")+it,11)}
             risk.incompleteDate?.let{YText(word("从此日后无法确定完整余额：","この日以降の残高は未確定：")+it,11)}
             YButton(word("核对并处理","確認・対応する"),{onRisk(a.id)},Modifier.testTag("cash-risk-open-${a.id}"),inline=true)
@@ -59,18 +59,19 @@ import java.time.*
 
 @Composable internal fun FinancialAttentionList(s:BookSnapshot,ready:FinancialOutlookRead.Ready,onAttention:(FinancialAttention)->Unit,limit:Int=Int.MAX_VALUE) {
     if(ready.attention.isEmpty())return
-    ThemeSection(word("需要先核对的资料","先に確認する情報"),"TO CHECK")
+    ThemeSection(word("需要先核对的资料","先に確認する情報"),"TO CHECK",afterFrame=true)
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(if(LocalYohaku.current.id=="objects")8.dp else 0.dp)) {
         ready.attention.take(limit).forEach{item->
-            AttentionRow(s.accounts.firstOrNull{it.id==item.accountId}?.name.orEmpty(),attentionLabel(item.reason),{onAttention(item)},Modifier.testTag("outlook-attention-${item.id}"))
+            AttentionRow(s.accounts.firstOrNull{it.id==item.accountId}?.name.orEmpty(),attentionLabel(item.reason),{onAttention(item)},Modifier.testTag("outlook-attention-${item.id}"),last=item===ready.attention.take(limit).last())
         }
     }
 }
 
 /** One full-width row per item keeps a stack of checks aligned instead of ragged outline buttons. */
-@Composable private fun AttentionRow(account:String,reason:String,onClick:()->Unit,modifier:Modifier=Modifier) {
+@Composable private fun AttentionRow(account:String,reason:String,onClick:()->Unit,modifier:Modifier=Modifier,last:Boolean=false) {
     val t=LocalYohaku.current;val journal=t.id=="journal"
     val frame=if(t.id=="objects")Modifier.background(t.surface,RoundedCornerShape(13.dp)).border(1.dp,Color(0xffead6b8),RoundedCornerShape(13.dp)).padding(horizontal=14.dp,vertical=12.dp)
+        else if(last&&!journal)Modifier.padding(vertical=12.dp)
         else Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=if(journal)PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))else null)}.padding(vertical=12.dp)
     Row(modifier.fillMaxWidth().clickable(role=Role.Button,onClick=onClick).then(frame),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
         Box(Modifier.size(6.dp).background(t.warm,androidx.compose.foundation.shape.CircleShape))
@@ -82,11 +83,11 @@ import java.time.*
     }
 }
 
-@Composable internal fun ScheduledCashRow(item:CashTimelineItem,s:BookSnapshot,onClick:()->Unit) {
+@Composable internal fun ScheduledCashRow(item:CashTimelineItem,s:BookSnapshot,onClick:()->Unit,last:Boolean=false) {
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val narrow=with(LocalDensity.current){LocalWindowInfo.current.containerSize.width.toDp()}<=360.dp||LocalDensity.current.fontScale>1.1f
     val frame=when(t.id) {
-        "magazine"->Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}.padding(vertical=17.dp)
+        "magazine"->Modifier.drawBehind{if(!last)drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}.padding(vertical=17.dp)
         "journal"->Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())))}.padding(vertical=17.dp)
         else->Modifier.shadow(2.dp,RoundedCornerShape(14.dp)).background(Color(0xfffff8e8),RoundedCornerShape(14.dp)).border(1.dp,Color(0xffe3cda8),RoundedCornerShape(14.dp)).padding(11.dp,20.dp)
     }
@@ -111,7 +112,7 @@ import java.time.*
 @Composable internal fun HomeFinancialOutlook(s:BookSnapshot,vm:AppViewModel,onCalendar:()->Unit,onForecast:()->Unit,onRisk:(String)->Unit,onItem:(CashTimelineItem)->Unit,onAttention:(FinancialAttention)->Unit,onImportant:()->Unit) {
     val today by vm.today.collectAsStateWithLifecycle();var attempt by remember{mutableIntStateOf(0)}
     val read by rememberFinancialOutlook(s,vm,today.plusDays(90),attempt)
-    ThemeSection(word("重要事项","大事な予定"),"IMPORTANT",word("全部事项","すべて"),onImportant,pageGap=15,linkTag="home-important")
+    ThemeSection(word("重要事项","大事な予定"),"IMPORTANT",word("全部事项","すべて"),onImportant,pageGap=15,linkTag="home-important",afterFrame=true)
     when(val value=read) {
         FinancialOutlookRead.Loading->YText(word("正在读取近期安排…","直近の予定を読込中…"),11)
         is FinancialOutlookRead.Failure->{YText(value.message,12);YButton(word("重新读取","再読込"),{attempt++})}
@@ -124,7 +125,7 @@ import java.time.*
             ThemeSection(word("接下来的付款","これからのお支払い"),"UP NEXT",word("日历","カレンダー"),onCalendar,pageGap=15)
             val items=value.timeline.steps.filter{!it.item.incoming&&it.item.accountDeltaMinor!=0L}.take(3)
             if(items.isEmpty())YEmpty(word("还没有已知付款安排","既知の支払予定はありません"))
-            items.forEach{ScheduledCashRow(it.item,s,{onItem(it.item)})}
+            items.forEach{ScheduledCashRow(it.item,s,{onItem(it.item)},it===items.last())}
             YLink(word("查看未来资金与预算风险","将来の資金・予算リスクを見る"),onForecast,Modifier.testTag("home-open-forecast"),arrow=true)
         }
     }
@@ -145,7 +146,7 @@ import java.time.*
         is FinancialOutlookRead.Ready->{
             val rows=value.timeline.steps.filter{it.item.date.take(7)==month.toString()&&it.item.accountDeltaMinor!=0L}
             if(rows.isEmpty())YEmpty(word("本月没有已知安排","今月の既知の予定はありません"))
-            rows.forEach{ScheduledCashRow(it.item,s,{onItem(it.item)})}
+            rows.forEach{ScheduledCashRow(it.item,s,{onItem(it.item)},it===rows.last())}
         }
     }
     YButton(word("检查未来资金缺口","将来の不足を確認"),onForecast,Modifier.testTag("calendar-open-forecast"))
@@ -170,7 +171,7 @@ import java.time.*
                 if(other!=null)YButton(word("记录转入 / 换汇","振替・両替を記録"),{onTransfer(other.id,a.id)},Modifier.testTag("risk-transfer-${a.id}"),primary=true)
                 YButton(word("补记已实际到账收入","実入金の記録を補完"),{onActualIncome(a.id)},Modifier.testTag("risk-actual-income-${a.id}"))
                 YButton(word("添加预计收入情景","収入予定のシナリオを追加"),{onIncome(a.id)},Modifier.testTag("risk-expected-income-${a.id}"))
-                value.timeline.steps.filter{it.item.accountId==a.id&&it.item.accountDeltaMinor!=0L}.forEach{ScheduledCashRow(it.item,s,{onItem(it.item)})}
+                value.timeline.steps.filter{it.item.accountId==a.id&&it.item.accountDeltaMinor!=0L}.let{steps->steps.forEach{ScheduledCashRow(it.item,s,{onItem(it.item)},it===steps.last())}}
                 YButton(word("查看完整资金时间线","資金予定の全体を見る"),onForecast)
             }
         }

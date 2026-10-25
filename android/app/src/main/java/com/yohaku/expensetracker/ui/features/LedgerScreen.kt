@@ -24,7 +24,7 @@ import com.yohaku.expensetracker.ui.theme.*
 import java.time.LocalDate
 import java.time.YearMonth
 
-@Composable internal fun EventRow(s:BookSnapshot,e:EventEntity,onClick:()->Unit,accountId:String?=null,showDate:Boolean=true) {
+@Composable internal fun EventRow(s:BookSnapshot,e:EventEntity,onClick:()->Unit,accountId:String?=null,showDate:Boolean=true,last:Boolean=false) {
     val t=LocalYohaku.current
     val kind=EntryKind.valueOf(e.kind)
     val settlement=s.settlements.find{it.eventId==e.id}
@@ -59,7 +59,8 @@ import java.time.YearMonth
                 YText(s.accounts.find{it.id==(accountId?:e.accountId)}?.name.orEmpty(),if(journal)10 else 8,Modifier.padding(top=5.dp),color=t.muted,lineHeightMultiplier=if(journal)15f/10 else if(objects)11f/8 else 13f/8,cssLineBox=true)
             }
         }
-        if(!objects)Box(Modifier.fillMaxWidth().height(1.dp).background(if(journal)Color(0xffd9d1bd) else t.line))
+        // Magazine hairlines sit between rows only.
+        if(!objects&&!(last&&t.id=="magazine"))Box(Modifier.fillMaxWidth().height(1.dp).background(if(journal)Color(0xffd9d1bd) else t.line))
     }
 }
 
@@ -113,9 +114,9 @@ import java.time.YearMonth
         val ordered=if(accountId==null)entries else entries.sortedByDescending{date(it)}
         if(byDay)ordered.groupBy{date(it)}.forEach{(day,events)->
             LedgerDayHeader(day,Money(Currency.valueOf(s.book.currency),events.filter{it.kind==EntryKind.EXPENSE.name}.sumOf{s.netExpense(it)}))
-            events.forEach{EventRow(s,it,{onSelect(it)},accountId,showDate=false)}
+            events.forEach{EventRow(s,it,{onSelect(it)},accountId,showDate=false,last=it===events.last())}
         }
-        else ordered.forEach{EventRow(s,it,{onSelect(it)},accountId)}
+        else ordered.forEach{EventRow(s,it,{onSelect(it)},accountId,last=it===ordered.last())}
         if(entries.isEmpty())emptyContent?.invoke()
     }
 }

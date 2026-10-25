@@ -174,8 +174,9 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
     }
     ThemeSection(word("余额与支出变化","残高・支出の変化"),"BEFORE / AFTER")
     if(r.balances.isEmpty())YText(word("实际账户余额不变","実際の口座残高は変わりません"),12)
-    r.balances.forEach{b->RecordFacts(listOf(b.account.name to (Money(Currency.valueOf(b.account.currency),b.before).display()+" → "+Money(Currency.valueOf(b.account.currency),b.after).display())))}
-    r.expenses.forEach{e->RecordFacts(listOf(e.month+" · "+word("预算支出","予算支出") to (Money(Currency.valueOf(r.after.book.currency),e.beforeMinor).display()+" → "+Money(Currency.valueOf(r.after.book.currency),e.afterMinor).display())))}
+    val changes=r.balances.map{b->b.account.name to (Money(Currency.valueOf(b.account.currency),b.before).display()+" → "+Money(Currency.valueOf(b.account.currency),b.after).display())}+
+        r.expenses.map{e->e.month+" · "+word("预算支出","予算支出") to (Money(Currency.valueOf(r.after.book.currency),e.beforeMinor).display()+" → "+Money(Currency.valueOf(r.after.book.currency),e.afterMinor).display())}
+    if(changes.isNotEmpty())RecordFacts(changes)
     if(r.limitImpacts.isNotEmpty()) {
         ThemeSection(word("额度预计变化","利用枠の予測変化"),"ESTIMATED CAPACITY")
         r.limitImpacts.forEach{impact->

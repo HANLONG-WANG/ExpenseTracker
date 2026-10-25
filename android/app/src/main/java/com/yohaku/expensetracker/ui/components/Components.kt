@@ -100,9 +100,10 @@ import java.time.YearMonth
         if(journal||objects)Box(Modifier.matchParentSize().offset(x=if(journal)2.dp else 0.dp,y=if(journal)3.dp else 4.dp).background(if(journal)Color(0x0b927850) else Color(0x18d4c3a8),shape))
         val edge=if(objects)Modifier else Modifier.drawBehind{
             if(journal)drawRect(Color(0xffc8beaa),topLeft=Offset(.5.dp.toPx(),.5.dp.toPx()),size=androidx.compose.ui.geometry.Size(size.width-1.dp.toPx(),size.height-1.dp.toPx()),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))
-            else {drawLine(t.line,Offset(0f,.5.dp.toPx()),Offset(size.width,.5.dp.toPx()),1.dp.toPx());drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx())}
+            else drawLine(t.line,Offset(0f,.5.dp.toPx()),Offset(size.width,.5.dp.toPx()),1.dp.toPx())
         }
-        Column(Modifier.fillMaxWidth().background(if(journal)Color(0xfffaf5e7) else if(objects)t.surface else Color.Transparent,shape).then(edge).padding(horizontal=if(journal)15.dp else if(objects)17.dp else 0.dp,vertical=if(journal)19.dp else if(objects)20.dp else 22.dp),verticalArrangement=Arrangement.spacedBy(contentSpacing),content=content)
+        // Magazine panels close with space: 7dp plus the page's 15dp gap matches the 22dp before the next opening line.
+        Column(Modifier.fillMaxWidth().background(if(journal)Color(0xfffaf5e7) else if(objects)t.surface else Color.Transparent,shape).then(edge).padding(horizontal=if(journal)15.dp else if(objects)17.dp else 0.dp).padding(top=if(journal)19.dp else if(objects)20.dp else 22.dp,bottom=if(journal)19.dp else if(objects)20.dp else 7.dp),verticalArrangement=Arrangement.spacedBy(contentSpacing),content=content)
     }
 }
 /** [arrow] marks links that open another page, matching section-heading links. */

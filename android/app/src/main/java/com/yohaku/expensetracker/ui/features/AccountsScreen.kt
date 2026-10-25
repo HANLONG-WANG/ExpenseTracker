@@ -41,11 +41,12 @@ import com.yohaku.expensetracker.ui.theme.*
     ThemeSection(word("持有的资金","持っている資金"),"AVAILABLE FUNDS")
     Column(Modifier.fillMaxWidth().padding(top=8.dp,bottom=12.dp).testTag("funds-account-list"),verticalArrangement=Arrangement.spacedBy(13.dp)){
         if(funds.isEmpty())YEmpty(word("添加第一个账户","最初の口座を追加"),onAdd,word("添加账户","口座を追加"))
-        funds.forEachIndexed{i,a->AccountCard(s,a,i,{onSelect(a)},today)}
+        funds.forEachIndexed{i,a->AccountCard(s,a,i,{onSelect(a)},today,i==funds.lastIndex)}
     }
     ThemeSection(word("信用卡与借款","カードと借入"),"TO REPAY",previousBottomPadding=12)
-    Column(Modifier.fillMaxWidth().padding(top=8.dp,bottom=27.dp).testTag("debt-account-list"),verticalArrangement=Arrangement.spacedBy(13.dp)){
-        debts.forEachIndexed{i,a->AccountCard(s,a,i,{onSelect(a)},today)}
+    // Magazine's last row no longer closes with a rule, so its own padding is enough room above the button.
+    Column(Modifier.fillMaxWidth().padding(top=8.dp,bottom=if(t.id=="magazine")0.dp else 27.dp).testTag("debt-account-list"),verticalArrangement=Arrangement.spacedBy(13.dp)){
+        debts.forEachIndexed{i,a->AccountCard(s,a,i,{onSelect(a)},today,i==debts.lastIndex)}
     }
     YButton(word("＋ 添加账户","＋ 口座を追加"),onAdd,Modifier.testTag("accounts-add"),primary=true)
     if(hasForeign&&referenceService!=null)ReferenceAssetValuation(s,referenceService,today)
@@ -67,7 +68,7 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable internal fun AccountCard(s:BookSnapshot,a:AccountEntity,index:Int,onClick:()->Unit,today:LocalDate=LocalDate.now()) {
+@Composable internal fun AccountCard(s:BookSnapshot,a:AccountEntity,index:Int,onClick:()->Unit,today:LocalDate=LocalDate.now(),last:Boolean=false) {
     val t=LocalYohaku.current
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val debt=AccountType.valueOf(a.type).debt
@@ -82,7 +83,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 YText(amount,if(narrow)17 else 20,number=true,lineHeightMultiplier=22f/20,cssLineBox=true)
                 if(!narrow)YText("↗",13,color=t.muted,lineHeightMultiplier=19f/13,cssLineBox=true)
             }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(t.line))
+            if(!last)Box(Modifier.fillMaxWidth().height(1.dp).background(t.line))
         }
         "journal"->Box(click.rotate(if(index%2==0)-.3f else .4f).background(Color(0xfffff8e7)).dashedAccountBorder(t.line)){
             Column(Modifier.padding(start=15.dp,end=15.dp,top=21.dp,bottom=18.dp)){

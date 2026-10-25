@@ -21,7 +21,8 @@ import com.yohaku.expensetracker.ui.theme.*
 @Composable internal fun BudgetEquation(modifier:Modifier=Modifier,content:@Composable ColumnScope.()->Unit) {
     val t=LocalYohaku.current
     val frame=when(t.id) {
-        "magazine"->Modifier.drawBehind{drawLine(t.ink,Offset.Zero,Offset(size.width,0f),1.dp.toPx());drawLine(t.ink,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}.padding(vertical=10.dp)
+        // The facts close with their own sum line, so magazine no longer boxes the table.
+        "magazine"->Modifier
         "journal"->Modifier.rotate(-.3f).background(Color(0xfffff9e9)).drawBehind{var y=size.height-30.dp.toPx();while(y>0){drawLine(Color(0x13718695),Offset(0f,y),Offset(size.width,y),1.dp.toPx());y-=30.dp.toPx()};drawRect(t.line,style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))))}.padding(17.dp)
         else->Modifier.drawBehind{drawRoundRect(Color(0x24b9996f),Offset(0f,3.dp.toPx()),cornerRadius=androidx.compose.ui.geometry.CornerRadius(17.dp.toPx()))}.background(Color(0xfffff8e8),RoundedCornerShape(17.dp)).border(1.dp,Color(0xffe3cda8),RoundedCornerShape(17.dp)).padding(horizontal=15.dp,vertical=19.dp)
     }
@@ -75,7 +76,9 @@ import com.yohaku.expensetracker.ui.theme.*
     val caption=if(limit==null)word("未设分类预算","カテゴリ予算なし")else word("已花 ","支出 ")+spentText+" / "+word("预算 ","予算 ")+limitText
     val mainColor=if(over)t.warm else if(limit==null)t.muted else t.ink
     val frame=if(objects)Modifier.drawBehind{drawRoundRect(Color(0x20d4c3a8),Offset(0f,4.dp.toPx()),cornerRadius=androidx.compose.ui.geometry.CornerRadius(17.dp.toPx()))}.background(t.surface,RoundedCornerShape(17.dp)).padding(horizontal=14.dp,vertical=16.dp)
-        else Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=if(t.id=="journal")PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))else null)}.padding(vertical=if(t.id=="magazine")18.dp else 16.dp)
+        // Magazine rows are already separated by their progress track; a hairline under it would read as a second bar.
+        else if(t.id=="magazine")Modifier.padding(vertical=18.dp)
+        else Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx())))}.padding(vertical=16.dp)
     Column(modifier.testTag("budget-category-$id").clickable(onClick=onEdit).then(frame),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         if(objects) {
             Box(Modifier.fillMaxWidth()) {

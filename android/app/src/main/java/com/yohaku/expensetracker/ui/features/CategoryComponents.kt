@@ -91,7 +91,7 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable internal fun CategoryManageGroup(id:String,name:String,favorite:Boolean,children:List<Pair<String,String>>,onParent:()->Unit,onChild:(String)->Unit,onAdd:()->Unit) {
+@Composable internal fun CategoryManageGroup(id:String,name:String,favorite:Boolean,children:List<Pair<String,String>>,onParent:()->Unit,onChild:(String)->Unit,onAdd:()->Unit,first:Boolean=false) {
     val t=LocalYohaku.current
     val frame=when(t.id){
         "journal"->Modifier.background(Color(0xfffff8e4)).drawBehind{drawRect(t.line,style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))}.padding(1.dp)
@@ -99,7 +99,8 @@ import com.yohaku.expensetracker.ui.theme.*
         else->Modifier
     }
     Column(Modifier.fillMaxWidth().testTag("category-manage-group-$id").then(frame)){
-        if(t.id=="magazine")CategoryRule(t.ink,false)
+        // Magazine groups are rows of one list: a hairline between groups, none above the first or below the last.
+        if(t.id=="magazine"&&!first)CategoryRule(t.line,false)
         Row(Modifier.fillMaxWidth().testTag("category-manage-parent-$id").clickable(role=Role.Button,onClick=onParent).padding(start=if(t.id=="magazine")0.dp else 16.dp,end=16.dp,top=20.dp,bottom=20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(10.dp)){
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
@@ -123,7 +124,6 @@ import com.yohaku.expensetracker.ui.theme.*
             }
             CategoryAddChild(onAdd,"category-manage-add-$id")
         }
-        if(t.id=="magazine")CategoryRule(t.line,false)
     }
 }
 

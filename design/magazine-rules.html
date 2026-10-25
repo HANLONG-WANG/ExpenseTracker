@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>杂志主题 · 线条层级对照</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#eae9e3;color:#303b35;font-family:system-ui,-apple-system,"Noto Sans CJK SC",sans-serif}
+header{max-width:900px;margin:auto;padding:32px 24px 12px}h1{font-size:24px;font-weight:500;margin:0 0 10px}
+header p{font-size:13px;line-height:1.8;color:#5f6b63;margin:0 0 8px}
+table{border-collapse:collapse;font-size:12px;margin:12px 0 4px;width:100%}td,th{padding:7px 10px;text-align:left;border-bottom:1px solid #d2d6cc;vertical-align:top;line-height:1.6}th{font-weight:500;color:#4a5a50;white-space:nowrap}
+.pages{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}.pages button{font:inherit;font-size:12px;border:1px solid #c1c9c0;background:transparent;border-radius:7px;padding:7px 11px;cursor:pointer;color:inherit}.pages button.active{background:#303f36;border-color:#303f36;color:#fff}
+.sync{font-size:12px;color:#5f6b63;margin-top:10px;display:flex;gap:6px;align-items:center}
+main{display:flex;justify-content:center;gap:28px;padding:16px 16px 40px;flex-wrap:wrap}
+section{width:390px;max-width:100%}section h2{font-size:14px;font-weight:500;margin:0 0 10px}section h2 small{color:#6c756e;font-weight:400;margin-left:6px}
+.device{border:6px solid #343b35;border-radius:34px;overflow:hidden;background:#fff}iframe{display:block;width:100%;height:844px;border:0}
+</style>
+<header>
+  <h1>现代生活杂志 · 线条层级</h1>
+  <p>左边是现状，右边是减线后。只改杂志主题，手账和小物不变。线不再承担所有分隔，只留下三种用途，其余靠留白：</p>
+  <table>
+    <tr><th>粗墨线 2</th><td>每页一处：封面 / 页首的开篇线。页眉下、返回栏下那条紧贴着它的细线去掉。</td></tr>
+    <tr><th>细墨线 1</th><td>封面收尾；一个区块（FIELD NOTES 面板）的开头；列表标题下的底线；表格的合计线（如“预留后可支配”）。面板不再用粗线开头，也不再画结尾线。</td></tr>
+    <tr><th>发丝线</th><td>同一列表的行与行之间，最后一行后面不画。链接、说明文字、统计数字、带框卡片内部都不再画线。预算行已有进度条，不再叠一条底线。</td></tr>
+  </table>
+  <p>“首页”按现在 App 的区块顺序重排（设计稿原首页是旧顺序），其余页面是原设计稿页面套用新规则。</p>
+  <div class="pages" id="pages">
+    <button data-page="native-home" class="active">首页（App 现顺序）</button><button data-page="accounts">账户</button><button data-page="budget">预算</button><button data-page="future">未来</button><button data-page="ledger">全部流水</button><button data-page="reminders">重要事项</button><button data-page="settings">设置</button><button data-page="activities">活动</button><button data-page="categories">分类管理</button>
+  </div>
+  <label class="sync"><input type="checkbox" id="sync" checked>左右同步滚动</label>
+</header>
+<main>
+  <section><h2>现状<small>v55 线条</small></h2><div class="device"><iframe id="before" title="现状"></iframe></div></section>
+  <section><h2>减线后<small>新线条层级</small></h2><div class="device"><iframe id="after" title="减线后"></iframe></div></section>
+</main>
+<script>
+// Blocks that exist in the Android app but not in the v55 prototype; both frames share them, so only the rules differ.
+const appBlocksCss=`
+.native-shortcuts{display:flex;flex-wrap:wrap;gap:4px 18px;margin:22px 0 4px}.native-shortcuts .text-link{border:0;padding:6px 0;width:auto;gap:6px}
+.native-range{font-size:10px;color:var(--muted);margin:-6px 0 14px;font-family:var(--font-meta)}
+.native-risk{border:1px solid #bc664f;background:#f9efe8;padding:16px 16px 18px;margin-bottom:28px}
+.native-risk strong{display:block;font-weight:400;font-size:14px}.native-risk>p{margin:8px 0 6px;font-size:12px}
+.native-risk-row{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);padding:13px 0;border-bottom:1px solid var(--line)}.native-risk-row b{font-weight:400;color:var(--ink)}
+.native-risk small{display:block;font-size:11px;margin:12px 0}.native-risk .outline-button{width:auto;padding:10px 14px}
+.native-check{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.native-check i{width:5px;height:5px;border-radius:50%;background:var(--warm)}.native-check small{display:block;font-size:8px;color:var(--muted);margin-bottom:3px}.native-check span{font-size:12px}.native-check em{font-style:normal;color:var(--muted)}`;
+const nativeHome=`(()=>{
+  const original=screens.home;
+  screens.home=()=>{
+    const n=homeNumbers(),b=book(),days=31-Number(TODAY.slice(-2))+1;
+    const cover=original().split('<div class="home-spend-context">')[0];
+    const context='<div class="home-spend-context">'+original().split('<div class="home-spend-context">')[1].split('</div></div>')[0]+'</div></div>';
+    const daily=auditPanel('daily',t('给接下来的日常，留一点。','これからの日々に、少し。'),'<div class="audit-three-stats"><div><span>'+t('本月剩余 / 含今天','今月の残り・今日を含む')+'</span><b>'+days+'<small>'+t('天','日')+'</small></b></div><div><span>'+t('预留后日均可花','確保後、一日あたり')+'</span><b>'+baseMoney(Math.max(0,n.free)/days)+'</b></div><div><span>'+t('今天全部净消费','今日の純支出全体')+'</span><b>'+baseMoney(0)+'</b></div></div>');
+    const shortcuts='<div class="native-shortcuts">'+pageButton('budget',t('预算与分类限额','予算とカテゴリ上限'))+'</div>';
+    const reserve=auditPanel('reserve',t('先为固定支出，留好位置。','固定支出の場所を先に。'),'<div class="native-reserve-rows">'+rows([[t('待付固定预算预留','固定支払の確保'),baseMoney(n.held)],[t('本月活动预算预留','今月のシーン予算確保'),baseMoney(0)],[t('全部活动资金预留','シーン資金の確保'),baseMoney(28000)],[t('预留后可支配','確保後に使える'),baseMoney(n.free)]])+'</div>'+pageButton('recurring',t('确认 / 管理周期账单','定期支払を確認・管理'),'','audit-link'));
+    const recent=section(t('最近的几笔','最近の記録'),'DAILY NOTES','ledger',t('全部流水','すべて'))+'<div class="transaction-list">'+b.records.filter(r=>r.type==='expense').slice().sort((a,c)=>c.date.localeCompare(a.date)).slice(0,3).map(transaction).join('')+'</div>';
+    const funds=section(t('钱够不够，还要看账户。','支払いは、口座残高も。'),'REAL FUNDS')+'<div class="home-cash-note"><span>'+t('今日实际资金','今日の実資金')+'</span><strong>'+baseMoney(n.cash)+'</strong><small>'+t('截至今日的已确认余额按原币展示，未来记账和信用额度不计入。','今日までの確定残高を原通貨で表示。')+'</small></div>';
+    const important=section(t('重要事项','大事な予定'),'IMPORTANT','reminders',t('全部事项','すべて'))+'<div class="native-range">'+t('未来90天内的已知安排 · 10/12 → 2027/01/10','今後90日の予定 · 10/12 → 2027/01/10')+'</div>'+
+      '<div class="native-risk"><strong>'+t('三井住友银行 · JPY','三井住友銀行 · JPY')+'</strong><p>'+t('资金资料待补齐','資金データ未入力')+'</p>'+[[t('当前备款缺口','現在の不足'),baseMoney(0)],[t('基础最大缺口','基本の最大不足'),t('未知','不明')],[t('含预计收入情景','予定収入込み'),t('未知','不明')]].map(([k,v])=>'<div class="native-risk-row"><span>'+k+'</span><b>'+v+'</b></div>').join('')+'<small>'+t('从此日后无法确定完整余额：2026-11-12','この日以降の残高は未確定：2026-11-12')+'</small><button class="outline-button">'+t('核对并处理','確認して対応')+'</button></div>';
+    const check=section(t('需要先核对的资料','先に確認したい資料'),'TO CHECK')+'<div class="native-checks">'+[[t('乐天信用卡','楽天カード'),t('消费 / 借入或期初本金尚无完整付款安排','支払予定が未完成')],[t('乐天信用卡','楽天カード'),t('此安排使用债务账户，尚无实际资金扣款安排。','引落口座が未設定')]].map(([a,r])=>'<div class="native-check"><i></i><div><small>'+a+'</small><span>'+r+'</span></div><em>→</em></div>').join('')+'</div>';
+    const due=section(t('接下来的付款','これからのお支払い'),'UP NEXT','calendar',t('日历','カレンダー'))+'<div class="exp-due-list">'+b.accounts.filter(isDebt).sort((a,c)=>a.date.localeCompare(c.date)).slice(0,3).map(a=>'<button class="exp-due"><span>'+shortDate(a.date)+'</span><div><strong>'+esc(label(a))+'</strong><small>'+esc(label(account(a.bank)))+'</small></div><b>'+accountMoney(a,a.next)+'</b></button>').join('')+'</div>';
+    return cover+context+daily+shortcuts+reserve+recent+funds+important+check+due;
+  };
+})()`;
+const frames={before:document.getElementById('before'),after:document.getElementById('after')};
+let page=new URLSearchParams(location.search).get('page')||'native-home',syncing=false;
+function show(win){
+  if(page==='native-home'){win.navigate('home');}
+  else if(page==='ledger'||page==='categories'){win.navigate(page);}
+  else win.postMessage({type:'yohaku-preview',page},location.origin);
+  win.scrollTo(0,0);
+}
+for(const [name,frame] of Object.entries(frames)){
+  frame.onload=()=>{
+    const doc=frame.contentDocument,win=frame.contentWindow;
+    if(name==='before')doc.querySelectorAll('link[href*="magazine-rules"]').forEach(l=>l.disabled=true);
+    const style=doc.createElement('style');style.textContent=appBlocksCss;doc.head.append(style);
+    win.eval(nativeHome);show(win);
+    win.addEventListener('scroll',()=>{if(!document.getElementById('sync').checked||syncing)return;const other=frames[name==='before'?'after':'before'].contentWindow;syncing=true;other.scrollTo(0,win.scrollY);requestAnimationFrame(()=>syncing=false);});
+  };
+  frame.src='app.html?theme=magazine&v=55';
+}
+document.querySelectorAll('#pages button').forEach(b=>{b.classList.toggle('active',b.dataset.page===page);b.onclick=()=>{page=b.dataset.page;document.querySelectorAll('#pages button').forEach(x=>x.classList.toggle('active',x===b));Object.values(frames).forEach(f=>show(f.contentWindow));};});
+</script>
+</html>

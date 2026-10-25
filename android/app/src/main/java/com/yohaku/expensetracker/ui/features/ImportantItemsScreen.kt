@@ -51,7 +51,7 @@ import com.yohaku.expensetracker.ui.theme.*
                     ImportantEvent(item.scheduledDate+" · "+name,bank+" · "+item.currency,
                         obligation,if(item.kind=="BILL")(if(payment.confirmed)word("已确认待清偿 / 仍需备款：","確定未返済額・今後必要な資金：")else word("本地预测待付 / 仍需备款：","ローカル未払予測・今後必要な資金："))+obligation+" / "+cash
                         else if(item.estimated)word("预计金额，确认实际执行后解除。","見込み額です。実行確認後に解消します。")else word("尚未确认实际执行。","実際の処理は未確認です。"),
-                        "important-payment-${item.id}",{onItem(item)},warning=item.issue!=null||item.scheduledDate<value.timeline.asOf)
+                        "important-payment-${item.id}",{onItem(item)},warning=item.issue!=null||item.scheduledDate<value.timeline.asOf,last=payment===rows.last())
                     item.issue?.let{YText(cashIssue(it),11,color=LocalYohaku.current.warm)}
                 }
             }
@@ -63,7 +63,7 @@ import com.yohaku.expensetracker.ui.theme.*
                         financeLabel(d.changeType.name)+" · "+d.zoneId+" · "+row.billDate,
                         Money(Currency.valueOf(row.currency),row.outstandingMinor).display(),
                         if(expired)word("期限已过，请核对平台实际受理结果。","締切経過。返済先の実際の受付結果を確認してください。")else word("账期：","対象：")+row.planName,
-                        "important-deadline-${d.billId}-${d.changeType.name}",{onDeadline(row.accountId,row.billDate.take(7))},warning=expired)
+                        "important-deadline-${d.billId}-${d.changeType.name}",{onDeadline(row.accountId,row.billDate.take(7))},warning=expired,last=row===value.deadlines.last())
                 }
             }
             if(recurring.isNotEmpty()) {ThemeSection(word("未完成周期账单","未完了の定期支払"),"RECURRING");paymentRows(recurring)}
@@ -72,14 +72,14 @@ import com.yohaku.expensetracker.ui.theme.*
                 val actual=pace.actualOverMinor?.let{it>0}==true
                 ImportantEvent(word("本月预算","今月の予算"),if(actual)word("已发生超出","実支出の超過")else word("预计超出","超過の見込み"),
                     outlookAmount(s.book.currency,if(actual)pace.actualOverMinor else pace.projectedOverMinor),
-                    word("按${pace.sampleDays}个自然日的已记录消费测算，打开查看依据。","記録済み支出・${pace.sampleDays}暦日から推計。根拠を確認できます。"),"important-budget",onForecast,warning=true)
+                    word("按${pace.sampleDays}个自然日的已记录消费测算，打开查看依据。","記録済み支出・${pace.sampleDays}暦日から推計。根拠を確認できます。"),"important-budget",onForecast,warning=true,last=true)
             }
             if(risks.isNotEmpty()) {
                 ThemeSection(word("实际资金账户风险","実資金口座のリスク"),"FUNDS")
                 risks.forEach{risk->val a=risk.opening.account
                     ImportantEvent(a.name+" · "+a.currency,word("基础最大缺口","基本の最大不足"),outlookAmount(a.currency,risk.maximumGapMinor,risk.estimated),
                         word("当前备款 / 含预计收入缺口：","現在の準備不足・収入見込みありの不足：")+outlookAmount(a.currency,risk.currentGapMinor)+" / "+outlookAmount(a.currency,risk.includingIncomeGapMinor,risk.includingEstimated),
-                        "important-risk-${a.id}",{onRisk(a.id)},warning=true)
+                        "important-risk-${a.id}",{onRisk(a.id)},warning=true,last=risk===risks.last())
                 }
             }
             FinancialAttentionList(s,value,onAttention)
@@ -89,13 +89,13 @@ import com.yohaku.expensetracker.ui.theme.*
     YButton(word("查看账户缺口与预算风险","口座不足・予算リスクを見る"),onForecast,Modifier.testTag("important-forecast"))
 }
 
-@Composable private fun ImportantEvent(title:String,subtitle:String,amount:String,note:String,tag:String,onClick:()->Unit,warning:Boolean=false) {
+@Composable private fun ImportantEvent(title:String,subtitle:String,amount:String,note:String,tag:String,onClick:()->Unit,warning:Boolean=false,last:Boolean=false) {
     val t=LocalYohaku.current;val journal=t.id=="journal";val objects=t.id=="objects"
     val density=LocalDensity.current
     val compact=with(density){LocalWindowInfo.current.containerSize.width.toDp()<=360.dp}||density.fontScale>1.1f
     val shape=RoundedCornerShape(12.dp)
     val frame=if(objects)Modifier.background(Color(0xfffff9eb),shape).border(1.dp,t.line,shape).padding(horizontal=13.dp,vertical=16.dp)
-        else Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=if(journal)PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))else null)}.padding(vertical=18.dp)
+        else Modifier.drawBehind{if(journal||!last)drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx(),pathEffect=if(journal)PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))else null)}.padding(vertical=18.dp)
     Column(Modifier.fillMaxWidth().testTag(tag).clickable(role=Role.Button,onClick=onClick).then(frame),verticalArrangement=Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement=Arrangement.spacedBy(14.dp)) {
             Column(Modifier.weight(1f)) {

@@ -1,0 +1,65 @@
+/* Magazine rule hierarchy (2026-10-25).
+   Thick ink = the page opener only. Thin ink = closes the opener, underlines a list heading, or sums a table.
+   Hairline = between rows of the same list. Everything else is separated by white space. */
+
+/* 1. One opener per page: the masthead/back bar no longer draw a line right above the lead's thick rule. */
+.magazine .edition-line,.magazine .back-bar{border-bottom:0}
+
+/* 2. Nothing starts with a line right after the opener or a tab bar closes. */
+.magazine :is(.exp-lead,.editorial-home-cover,.tab-bar)+*{border-top:0}
+.magazine .editorial-home-cover footer{border-top:0}
+
+/* 3. Notes and stat blocks are not rows. */
+.magazine :is(.budget-estimate-note,.home-spend-context,.reconcile-summary){border-bottom:0}
+
+/* 4. Sections open with one thin ink line and close with space; links inside are not rows. */
+.magazine .audit-panel:not(.audit-notification){border-top:1px solid var(--ink);border-bottom:0;margin-top:30px}
+.magazine .audit-panel>.audit-link,.magazine .shortcut{border-top:0;border-bottom:0}
+.magazine .audit-panel>.audit-link+.audit-link{border-top:1px solid var(--line)}
+.magazine .panel{border-bottom:0}
+.magazine :is(.future-budget-scenario,.portfolio-cover,.payment-card,.book-card,.category-setting,.editorial-credit,.magazine-activity,.magazine-friend){border-bottom:0}
+
+/* A progress track already separates budget rows; a hairline under it would read as a second bar. */
+.magazine .theme-budget-item{border-bottom:0}
+
+/* 5. Rows: hairlines between items, never after the last one. */
+.magazine :is(.detail-row,.theme-option,.exp-due,.transaction,.exp-account,.editorial-account,.theme-budget-item,.future-timeline-row,.audit-event,.settings-row,.text-link,.list-button,.editorial-category):last-child{border-bottom:0}
+
+/* Category groups are rows of one list; an input's own underline already heads the list below it. */
+.magazine .hierarchy-manage-group{border-top:0;border-bottom:0}
+.magazine .hierarchy-manage-group+.hierarchy-manage-group{border-top:1px solid var(--line)}
+.magazine :is(.search-field,.hierarchy-search)+.transaction-list{border-top:0}
+
+/* 6. A table closes with its sum line instead of a box. */
+.magazine .exp-budget-equation{border-top:0;border-bottom:0;padding:0}
+.magazine .exp-budget-equation .detail-row:last-child{border-top:1px solid var(--ink)}
+.magazine :is(.exp-budget-equation,.native-reserve-rows) .detail-row:nth-last-child(2){border-bottom:0}
+
+/* 7. The bottom navigation already closes the page; the colophon is a sign-off, not another rule. */
+.magazine .editorial-colophon{border-top:0}
+
+/* App-only blocks (not in v55): risk card facts sit inside a frame, attention list follows rule 5, reserve total is a sum line. */
+.magazine .native-risk-row{border-bottom:0;padding:7px 0}
+.magazine .native-check:last-child{border-bottom:0}
+.magazine .native-reserve-rows .detail-row:last-child{border-top:1px solid var(--ink)}
+
+/* 8. Spacing: a removed line takes its padding with it, so the space on both sides no longer stacks.
+   Rhythm (content to content): ~56 across a section line, ~44 into a new section heading, ~24 inside a section. */
+.magazine .budget-estimate-note{padding-bottom:0}
+.magazine .home-spend-context{padding-bottom:0}
+.magazine .audit-panel:not(.audit-notification){padding-bottom:0;margin-top:28px}
+.magazine .audit-panel:not(.audit-notification)>:last-child{margin-bottom:0}
+.magazine .panel{padding-bottom:0;margin:22px 0}
+.magazine .panel>:is(.theme-option,.text-link,.settings-row,.detail-row):last-child{padding-bottom:0}
+.magazine .panel>:is(.text-link,.settings-row,.detail-row):first-child{padding-top:0}
+.magazine :is(.magazine-activity,.magazine-friend,.payment-card,.book-card,.category-setting,.editorial-credit){padding-bottom:0}
+.magazine :is(.exp-lead,.editorial-home-cover)+.future-budget-scenario{padding-top:0;padding-bottom:16px}
+.magazine :is(.home-cash-note,.native-risk,.exp-risk-card)+.section-head{margin-top:40px}
+.magazine .native-checks+.section-head{margin-top:30px}
+.magazine .editorial-colophon{padding-top:0}
+.magazine :is(.full-button,.outline-button,.receipt-life-link)+.editorial-colophon{padding-top:13px}
+.magazine .audit-link+.audit-panel{margin-top:10px}
+.magazine .exp-account-list:has(+.full-button){margin-bottom:0}
+.magazine .exp-account-list+.full-button{margin-top:12px}
+.magazine .exp-lead+.exp-budget-equation .detail-row:first-child{padding-top:4px}
+.magazine .shortcut{padding:8px 0}

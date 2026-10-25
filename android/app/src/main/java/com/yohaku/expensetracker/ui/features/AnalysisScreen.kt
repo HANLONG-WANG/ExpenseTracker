@@ -223,7 +223,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
         if(child!=null)YLink(word("返回一级分类汇总","親カテゴリの合計へ"),{child=null},Modifier.testTag("analysis-child-back"))
         ThemeSection(word("原消费与实际费用","元の支出と実際の手数料"),"RECORDED FACTS")
         if(visible.facts.isEmpty())YEmpty(word("此区间没有记录","この期間の記録はありません"))
-        visible.events.filter{it.kind==EntryKind.EXPENSE.name}.forEach{e->EventRow(s,e,{onDismiss();onRecord(e)})}
+        visible.events.filter{it.kind==EntryKind.EXPENSE.name}.let{list->list.forEach{e->EventRow(s,e,{onDismiss();onRecord(e)},last=e===list.last())}}
         visible.facts.filter{it.fee>0}.forEach{f->Panel {
             YText(f.date+" · "+word("实际费用","実際の手数料"),13)
             YText(Money(currency,f.fee).display(),22,number=true)
@@ -232,7 +232,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
         val refunds=s.confirmedRefunds(visible)
         if(refunds.isNotEmpty()) {
             ThemeSection(word("已到账退款 · 按原消费归属","入金済み返金・元の支出に帰属"),"REFUNDS")
-            refunds.forEach{e->EventRow(s,e,{onDismiss();onRecord(e)})}
+            refunds.forEach{e->EventRow(s,e,{onDismiss();onRecord(e)},last=e===refunds.last())}
         }
     }
 }
