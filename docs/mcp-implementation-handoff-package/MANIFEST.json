@@ -1,0 +1,33 @@
+{
+  "documentVersion": "1.0",
+  "date": "2026-10-20",
+  "baselineCommit": "12daac2767e81cca1a3901ea7e6e4212be7286e7",
+  "sitesVersion": 1,
+  "offlineChecks": 12,
+  "hostedProbe": "list_analysis_tasks read-only success",
+  "hashAlgorithm": "SHA-256",
+  "files": {
+    "README.txt": "5e2f5015117f7e6c1ffa637a65be4e84fe1141109c0513e288d8f5593f18a3da",
+    "contract-test.mjs": "1f898eaf65cdb54089fb327bd29ac264496eda387fd37312a8c093478b012969",
+    "fixtures/import-identifiers.valid.json": "8250934c0ca485e35d9fcf54664bf7e4542545e8db8c5f1d87dfd9e044a6358c",
+    "fixtures/receipt-bundle.valid.json": "491a82410a97c5ef87bab5d6823fac2ee43edf3dfdbc214ff58609e14546837d",
+    "fixtures/receipt-items.invalid.json": "dcd79e19dcd603d58b44584f0207d70dad732300c5e0d1ff7b42f52001648695",
+    "fixtures/receipt-items.valid.json": "11dcb7df2d37a97b722d2affb43c6d29bbd4ea3a952dec8555ba6730c623d9f5",
+    "fixtures/statement.invalid.json": "5f37b715b9705a4acd28bc18ca4192f77b923ce32f6db9a14a4427904a6799b1",
+    "fixtures/statement.valid.json": "d81fe1c6d55b494471d5129da4ca4b5c0fad7cefb0c7d221cd0166deb1f7e9fa",
+    "mcp-implementation-handoff.docx": "ea2081541bad3b65e5e5c1f9d4ce7fea18acd14e2172b3171414ecbfa2b3f8f6",
+    "reference/.openai/hosting.json": "e46e03ef676799898a5ba20331f787e1a73fd3acaef27e95d43772fea397afd4",
+    "reference/app/mcp/route.ts": "a41a3297f265ae37e12dd5a5321fc86650c1b0f0257b96d999eb84881f2d042a",
+    "reference/db/schema.ts": "77be17f5bd4585701c67e894fc2539065245cdd456c3c965e3834f35c3b1d6ef",
+    "reference/lib/formats/README.md": "e2e838e9c66f5c65a5f8494bc7af7cc9539cf0362e5e9f6a01b78297ffa63391",
+    "reference/lib/formats/import-identifiers.v1.schema.json": "d0420212e9b09288ccda1d9655dc4b70e0d1ea6652bf537f0a02aa4549ca7d78",
+    "reference/lib/formats/receipt-bundle.v1.schema.json": "64114d6b8b64a76a1c829cdef8f29e4812fa12adbfd1680a017fdcca5a16fc9b",
+    "reference/lib/formats/receipt-items.v1.schema.json": "83bbbbe778fc829147376156db0ee8c009feb18521a670c06d260553278a3bb7",
+    "reference/lib/formats/statement.v1.schema.json": "f97c2e360ea46c856dfb74da9ac3fae77f061e1e557e38001139690850f68ce8",
+    "reference/lib/protocol.ts": "a900c34ec0c868c8776a3995e349f8985891e6d7832082d3bba02f9416a85087",
+    "reference/lib/service.ts": "e446d84ee3d425a974db78a2f548338e1dc735d859b9f1461d6fdcbfe03d527f",
+    "reference/lib/zip.ts": "ae775c45355d3f66e243841351c9bba6faebc16501aa83d836cde211249e8157",
+    "rpc-examples.json": "c20ef11e8a49a304f119dba3d292e4dc501a3140b07f30f62cc9f1561ea73297",
+    "tools.json": "1e61ef45bee4b86d8ebbcd75dcf61e7a8c091ad48d8029bf348bf044b5946158"
+  }
+}

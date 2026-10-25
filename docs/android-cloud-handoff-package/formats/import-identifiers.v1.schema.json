@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yohaku.local/formats/import-identifiers.v1.schema.json",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "yohaku.import-identifiers"
+    },
+    "version": {
+      "const": 1
+    },
+    "book_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "book_name": {
+      "type": "string"
+    },
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "currency": {
+            "enum": [
+              "JPY",
+              "CNY",
+              "USD"
+            ]
+          }
+        },
+        "required": [
+          "account_id",
+          "name",
+          "currency"
+        ]
+      }
+    }
+  },
+  "required": [
+    "kind",
+    "version",
+    "book_id",
+    "book_name",
+    "accounts"
+  ]
+}

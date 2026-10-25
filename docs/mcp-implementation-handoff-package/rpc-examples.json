@@ -1,0 +1,126 @@
+[
+  {
+    "label": "discover",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "server/discover",
+      "params": {}
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "supportedVersions": [
+          "2026-07-28"
+        ],
+        "capabilities": {
+          "tools": {}
+        }
+      }
+    }
+  },
+  {
+    "label": "list queued",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "tools/call",
+      "params": {
+        "name": "list_analysis_tasks",
+        "arguments": {
+          "status": "queued"
+        }
+      }
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"tasks\":[]}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "label": "read chunk",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "tools/call",
+      "params": {
+        "name": "read_analysis_file",
+        "arguments": {
+          "fileId": "synthetic-file-id",
+          "offset": 0,
+          "length": 500000
+        }
+      }
+    }
+  },
+  {
+    "label": "submit generic",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "tools/call",
+      "params": {
+        "name": "submit_analysis_result",
+        "arguments": {
+          "taskId": "synthetic-task-id",
+          "inputRevision": 1,
+          "content": "合成分析结果",
+          "summary": "已人工检查合成资料",
+          "name": "analysis.txt"
+        }
+      }
+    }
+  },
+  {
+    "label": "publish",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "method": "tools/call",
+      "params": {
+        "name": "publish_analysis_result",
+        "arguments": {
+          "taskId": "synthetic-task-id",
+          "resultId": "synthetic-result-id"
+        }
+      }
+    }
+  },
+  {
+    "label": "tool error",
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "result": {
+        "isError": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "任务不存在"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "label": "transport auth error",
+    "httpStatus": 401,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": null,
+      "error": {
+        "code": -32000,
+        "message": "请先登录；手机请求需携带平台访问头和设备令牌"
+      }
+    }
+  }
+]

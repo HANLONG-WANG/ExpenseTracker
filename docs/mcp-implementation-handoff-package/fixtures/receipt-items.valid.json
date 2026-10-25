@@ -1,0 +1,36 @@
+{
+  "kind": "yohaku.receipt-items",
+  "version": 1,
+  "bundle_id": "00000000-0000-4000-8000-000000000006",
+  "book_id": "00000000-0000-4000-8000-000000000002",
+  "records": [
+    {
+      "record_id": "00000000-0000-4000-8000-000000000007",
+      "receipt_id": "00000000-0000-4000-8000-000000000008",
+      "record_revision": 1,
+      "receipt_revision": 1,
+      "currency": "JPY",
+      "image_ids": [
+        "00000000-0000-4000-8000-000000000009"
+      ],
+      "items": [
+        {
+          "item_id": "00000000-0000-4000-8000-000000000010",
+          "name": "りんご",
+          "quantity": "2",
+          "unit": "個",
+          "unit_price": "600",
+          "line_amount": "1200",
+          "image_ids": [
+            "00000000-0000-4000-8000-000000000009"
+          ],
+          "uncertain_fields": []
+        }
+      ],
+      "adjustments": [],
+      "receipt_total": "1200",
+      "complete": true,
+      "issues": []
+    }
+  ]
+}

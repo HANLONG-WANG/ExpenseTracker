@@ -1,0 +1,41 @@
+{
+  "kind": "yohaku.statement",
+  "version": 1,
+  "file_id": "00000000-0000-4000-8000-000000000001",
+  "book_id": "00000000-0000-4000-8000-000000000002",
+  "account_id": "00000000-0000-4000-8000-000000000003",
+  "account_currency": "JPY",
+  "from": "2026-10-01",
+  "to": "2026-10-31",
+  "date_basis": "posted_date",
+  "complete": true,
+  "source": "用户提供的银行导出 / 利用者提供の銀行明細",
+  "issues": [],
+  "rows": [
+    {
+      "row_id": "00000000-0000-4000-8000-000000000004",
+      "date": "2026-10-05",
+      "direction": "out",
+      "settlement": {
+        "currency": "JPY",
+        "amount": "1200"
+      },
+      "summary": "スーパー",
+      "posted_date": "2026-10-05",
+      "occurred_date": "2026-10-04",
+      "source_ref": "CSV row 2",
+      "event_hint": "expense"
+    },
+    {
+      "row_id": "00000000-0000-4000-8000-000000000005",
+      "date": "2026-10-05",
+      "direction": "out",
+      "settlement": {
+        "currency": "JPY",
+        "amount": "1200"
+      },
+      "summary": "別の支払",
+      "source_ref": "CSV row 3"
+    }
+  ]
+}

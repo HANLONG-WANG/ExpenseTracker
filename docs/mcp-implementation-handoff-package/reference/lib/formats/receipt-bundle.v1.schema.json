@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yohaku.local/formats/receipt-bundle.v1.schema.json",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "yohaku.receipt-bundle"
+    },
+    "version": {
+      "const": 1
+    },
+    "bundle_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "book_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "part": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "parts": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "record_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "receipt_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "record_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "receipt_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "original": {
+            "type": "object",
+            "properties": {
+              "currency": {
+                "enum": [
+                  "JPY",
+                  "CNY",
+                  "USD"
+                ]
+              },
+              "amount": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+              }
+            },
+            "required": [
+              "currency",
+              "amount"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "currency": {
+                      "const": "JPY"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "amount": {
+                      "pattern": "^(0|[1-9][0-9]*)$"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "currency": {
+                      "const": "CNY"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "amount": {
+                      "pattern": "^(0|[1-9][0-9]*)\\.[0-9]{2}$"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "currency": {
+                      "const": "USD"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "amount": {
+                      "pattern": "^(0|[1-9][0-9]*)\\.[0-9]{2}$"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "settlement": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "currency": {
+                    "enum": [
+                      "JPY",
+                      "CNY",
+                      "USD"
+                    ]
+                  },
+                  "amount": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+                  }
+                },
+                "required": [
+                  "currency",
+                  "amount"
+                ],
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "currency": {
+                          "const": "JPY"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "amount": {
+                          "pattern": "^(0|[1-9][0-9]*)$"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "currency": {
+                          "const": "CNY"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "amount": {
+                          "pattern": "^(0|[1-9][0-9]*)\\.[0-9]{2}$"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "currency": {
+                          "const": "USD"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "amount": {
+                          "pattern": "^(0|[1-9][0-9]*)\\.[0-9]{2}$"
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "image_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                "position": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^images/[0-9a-fA-F-]+/[0-9a-fA-F-]+$"
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "mime_type": {
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "image_id",
+                "position",
+                "path",
+                "sha256",
+                "mime_type",
+                "size_bytes"
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "record_id",
+          "receipt_id",
+          "record_revision",
+          "receipt_revision",
+          "date",
+          "original",
+          "images"
+        ]
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "kind",
+    "version",
+    "bundle_id",
+    "book_id",
+    "part",
+    "parts",
+    "records"
+  ]
+}
