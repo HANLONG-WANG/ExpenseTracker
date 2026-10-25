@@ -85,6 +85,7 @@ import java.io.File
             path=File.createTempFile("receipt-manifest-", ".json",context.cacheDir).apply{writeText(FileProtocols.json.encodeToString(manifest!!))}.path
         }
     },Modifier.fillMaxWidth().testTag("receipt-export"),primary=true,enabled=!busy&&selected.any{it in pending})
+    CloudReceiptHandoff(s,vm,selected.filter{it in pending}){selected=emptyList();vm.navigate("cloud")}
     YButton(word("导入助手整理结果","助手の整理結果を取込"),{importOpen=true},Modifier.fillMaxWidth().testTag("receipt-import"),enabled=!busy)
     YLink(word("文件格式与助手说明","ファイル形式・助手への説明"),{formatHelp=true})
     exportManifest?.let { manifest -> YSheet(word("导出包预览","書出しパックの確認"),{if(!busy){exportPath?.let{File(it).delete()};exportPath=null;exportManifest=null}}) {

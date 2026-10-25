@@ -65,6 +65,7 @@
 | UI24 | 重要事项、提醒设置 `reminders/notification-settings` | 五类重要事项、提前天数/时间/权限、真实通知设置；点击进入对应账本与事项，金额不隐藏 | `completion.js` | P18基础、P21 |
 | UI25 | 设置、账本 `settings/books` | 主题/语言、账本创建编辑切换、归档恢复、本位币限制、文件格式帮助、资料管理 | `views.js`、`experience.js`、`completion.js` | P05,P19,P23 |
 | UI26 | 新增管理状态 | 回收站、影响预览、永久删除、停用/迁移分类、归档、修改记录、规则验证结果 | 现有 sheet/panel/menu 主题样式；`lifecycle.html`补充阶段A影响预览；其余新增设计 | P07,P14,P23 |
+| UI28 | 云端分析交接台 `cloud`、小票/流水云端入口 | 连接配置导入确认/测试/解除、任务列表五段进度、待补资料补充、结果领取后进入原有流水/小票预览、通用结果另存；三主题各自的刊头/信封邮戳/行李吊牌与轨道 | 无HTML稿；按`docs/android-cloud-handoff-package/`契约新增原生设计，组件沿用UI21/UI23主题语汇 | 云端交接 |
 | UI27 | 通用控件与状态 | 各主题独立下拉/日期时间/按钮/开关/选择框/Toast/确认/加载/空/错误/未授权/未保存；单个全宽日历 | `themes.js`、`theme-system.css`、各补充CSS | P03，各功能任务 |
 
 UI26新增管理概览/库页见`management.html`，正式管理弹层见`management-dialogs.js`，原生命周期影响预览见`lifecycle.html`。补充设计保留三主题并保存同数据基准，不重做已认可页面。新增数据管理入口不加入评审工具或开发专用菜单。

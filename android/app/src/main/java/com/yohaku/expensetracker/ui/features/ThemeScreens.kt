@@ -32,7 +32,7 @@ import java.time.YearMonth
     when(t.id){
         "magazine"->Column(Modifier.fillMaxWidth().padding(bottom=3.dp).testTag("page-edition")){
             Row(Modifier.fillMaxWidth().padding(bottom=10.dp),horizontalArrangement=Arrangement.SpaceBetween){
-                YText("YOHAKU / ${when(page){"statement-import"->"IMPORT";"statements"->"RECONCILE";else->page.uppercase()}}",8,Modifier.weight(1f).padding(end=8.dp),color=t.muted,letterSpacing=1.25f,lineHeightMultiplier=1.375f,cssLineBox=true)
+                YText("YOHAKU / ${when(page){"statement-import"->"IMPORT";"statements"->"RECONCILE";"cloud"->"CLOUD DESK";else->page.uppercase()}}",8,Modifier.weight(1f).padding(end=8.dp),color=t.muted,letterSpacing=1.25f,lineHeightMultiplier=1.375f,cssLineBox=true)
                 YText("VOL. ${today.monthValue} · ${today.year}",8,color=t.muted,letterSpacing=1.25f,lineHeightMultiplier=1.375f,cssLineBox=true)
             }
         }

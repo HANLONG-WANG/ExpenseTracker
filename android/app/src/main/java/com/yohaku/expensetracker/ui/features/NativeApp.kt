@@ -184,9 +184,10 @@ import kotlinx.serialization.encodeToString
                         "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
                         "ledger"->LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)})
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}})
-                        "settings"->SettingsScreen(snapshot,{vm.appearance(book.id,theme=it)},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{fileFormats=true},{vm.navigate("notification-settings")})
+                        "settings"->SettingsScreen(snapshot,{vm.appearance(book.id,theme=it)},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{fileFormats=true},{vm.navigate("notification-settings")},{vm.navigate("cloud")})
                         "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
+                        "cloud"->key(book.id){CloudScreen(snapshot,vm)}
                         "reference-rates"->ReferenceRatesScreen(vm)
                         "trash"->TrashScreen(snapshot,vm)
                         "budget"->BudgetScreen(snapshot,vm,{vm.navigate("recurring")},{vm.navigate("categories")})
@@ -764,6 +765,7 @@ import kotlinx.serialization.encodeToString
     "forecast"->word("未来资金与预算风险","今後の資金と予算リスク");"ledger"->word("全部流水","すべての記録")
     "categories"->word("分类管理","カテゴリ管理");"settings"->word("设置","設定")
     "statements"->word("流水核对","明細の照合");"statement-import"->word("导入流水","明細の取込")
+    "cloud"->word("云端分析","クラウド分析")
     "reference-rates"->word("参考汇率","参考レート");"trash"->word("回收站","ごみ箱")
     "budget"->word("预算","予算");"recurring"->word("周期账单","定期支払")
     "receipts"->word("小票原图","レシート原本");"merchants"->word("商户与地点","お店と場所")

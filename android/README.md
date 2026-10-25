@@ -6,7 +6,7 @@
 
 - [正式APK 0.5.0](artifacts/yohaku-release-0.5.0.apk) · [SHA-256](artifacts/yohaku-release-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker`，固定正式签名。
 - [开发APK 0.5.0](artifacts/yohaku-dev-0.5.0.apk) · [SHA-256](artifacts/yohaku-dev-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker.dev`，沿用阶段A–D开发证书。
-- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v28。三主题、中日文按账本保存。
+- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v29（新增云端交接表，迁移28→29）。三主题、中日文按账本保存。
 - 开发包可覆盖原开发版本。正式包独立安装，与开发包并存，不自动转移开发包资料。覆盖升级不要先卸载；卸载或清除应用存储会删除账本与内部附件。无云端备份。
 - 当前仅专用API36模拟器验证，用户实机未连接。精简实机检查、密钥位置和完整安装升级说明见[发行说明](RELEASE.md)。
 
@@ -31,9 +31,10 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 - 正式流水JSON整体校验/预览、一对一核对、独立人工差异、按类型正式补记；小票多图ZIP/原字节校验、商品JSON回填/替换/修订与商品编辑；导入不自动写账，无OCR/银行连接。
 - 五类重要事项的真实通知、非精确AlarmManager调度、持久去重、修改撤销、重启/升级/时区变化重建；金额优先展示，点击进入所属账本和目标月份。用户保存开启时才申请通知权限，拒绝仍能记账。后台时机受Android及厂商省电策略影响。
 - 主动前台单次定位、保存地点匹配、默认100米、精度/唯一候选控制自动填入；多个候选手选，手改/清空/旧记录优先。离开前台取消，不申请后台位置权限或记录轨迹。
+- 云端分析交接：导入网页生成的连接配置（Keystore加密），把所选小票原图ZIP或银行资料交给私人分析台；中断后按同一份内部文件整份重传（无断点续传）、领取结果核验大小/SHA后走原有预览确认，回执独立重试。
 - 整本归档/回收/恢复/永久清理；账户停用/启用/无引用删除；分类停用/改父级/明确迁移；活动删除影响与历史保留；记录关联组回收/恢复/永久清空及文件最后引用清理。
 
-没有登录、云同步、备份或应用锁。未知金额保持未知，未确认清偿不假结清。产品包不含测试种子、评审入口或测试验证器；格式帮助中的正常/错误样例仅供明确导出后转换使用。
+没有账户登录、云同步、备份或应用锁；云端交接只上传用户逐次选中的资料。未知金额保持未知，未确认清偿不假结清。产品包不含测试种子、评审入口或测试验证器；格式帮助中的正常/错误样例仅供明确导出后转换使用。
 
 ## 常用入口
 
@@ -53,7 +54,25 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 2. 系统选JSON→检查账户/日期语义/覆盖/币种/汇总/疑点→确认导入。逐笔匹配或明确差异；补记进入普通/金融表单，已有草稿必须继续或明确放弃。
 3. 小票工作台多选原图组→导出ZIP→系统保存。将实际ZIP交给助手生成`yohaku.receipt-items` v1。
 4. 导入商品明细→整体预览→确认回填。旧修订/已有明细须确认替换；新增原图仍待整理，商品合计不改原记账金额。
-5. 格式帮助可保存说明、四份schema及样例ZIP。格式为UTF-8 JSON/version1，任一字段无效或不支持版本整份拒绝，显示字段路径。文件只在本地操作，无自动上传。
+5. 格式帮助可保存说明、四份schema及样例ZIP。格式为UTF-8 JSON/version1，任一字段无效或不支持版本整份拒绝，显示字段路径。手动文件路径不联网；云端交接见下节。
+
+## 云端分析交接
+
+契约与限制见[交接包](../docs/android-cloud-handoff-package/)和[落地规格3.2](../docs/implementation-spec.md)。
+
+1. 网站登录→设备连接→生成配置。设置→云端分析交接台→导入连接配置（粘贴或选文件），核对站点/设备ID后保存，自动测试`GET /api/v1/types`。
+2. 小票工作台选未整理小票→交给云端整理；或导入流水页→让云端转换原始流水（选账户与资料）；或交接台→通用分析任务。资料先复制到内部目录，再由WorkManager串行上传、提交。
+3. 交接台前台每30秒刷新进行中任务，也可手动刷新。待补资料可补充文件；结果可领取时下载核验后进入原有预览，保存后才发送imported回执。
+4. 解除连接只删除本机凭证，任务与导入记录保留。没有推送、扫码绑定或后台同步。
+
+本地联调（仅可调试包允许`http://10.0.2.2`）：
+
+```sh
+python3 tools/cloud_mock_server.py --config /tmp/yohaku-mock-config.json   # 输出可导入的连接配置
+curl http://127.0.0.1:8787/admin/tasks                                     # 查看任务
+curl -X POST -H 'Content-Type: application/json' -d '{"status":"needs_info"}' http://127.0.0.1:8787/admin/tasks/<taskId>/status
+curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<taskId>/results?summary=...'   # 发布结果并置ready
+```
 
 ## 构建与验证
 

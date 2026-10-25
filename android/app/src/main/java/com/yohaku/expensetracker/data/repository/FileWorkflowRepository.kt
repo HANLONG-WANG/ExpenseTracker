@@ -94,7 +94,7 @@ suspend fun LedgerRepository.receiptArchiveSources(bookId: String, receiptIds: S
     }
 }
 
-/** Call only after the actual user-chosen destination has been successfully written and closed. */
+/** Call after a user-chosen destination is saved and closed, or after confirmed complete cloud submission. */
 suspend fun LedgerRepository.recordSavedReceiptExport(manifest: ReceiptBundleFile) = db.withTransaction {
     val text = FileProtocols.json.encodeToString(manifest)
     FileProtocols.receiptBundle(text)

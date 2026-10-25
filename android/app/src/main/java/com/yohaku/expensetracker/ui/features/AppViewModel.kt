@@ -20,7 +20,7 @@ sealed interface AppState {
 }
 data class AppNotice(val id:Long,val bookId:String,val zh:String,val ja:String)
 @OptIn(ExperimentalCoroutinesApi::class)
-class AppViewModel(val repository:LedgerRepository,val preferences:AppPreferences,val referenceRates:ReferenceRates=ReferenceRates(preferences,clock=repository.clock),val reminders:com.yohaku.expensetracker.platform.ReminderCoordinator?=null,val locationSource:com.yohaku.expensetracker.platform.CurrentLocationSource?=null):ViewModel() {
+class AppViewModel(val repository:LedgerRepository,val preferences:AppPreferences,val referenceRates:ReferenceRates=ReferenceRates(preferences,clock=repository.clock),val reminders:com.yohaku.expensetracker.platform.ReminderCoordinator?=null,val locationSource:com.yohaku.expensetracker.platform.CurrentLocationSource?=null,val cloud:com.yohaku.expensetracker.data.cloud.CloudRepository?=null):ViewModel() {
     private val writes=Mutex()
     private val readRequests=MutableStateFlow(0L)
     val today=MutableStateFlow(LocalDate.now(repository.clock))
@@ -331,7 +331,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun keepEntry(bookId:String) {persistDraft(bookId);entry.value=null;route.value="home"}
     companion object {
         fun factory(application:YohakuApplication)=object:ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST") override fun <T:ViewModel> create(modelClass:Class<T>):T = AppViewModel(application.repository,application.preferences,reminders=application.reminders,locationSource=com.yohaku.expensetracker.platform.ForegroundLocation(application)) as T
+            @Suppress("UNCHECKED_CAST") override fun <T:ViewModel> create(modelClass:Class<T>):T = AppViewModel(application.repository,application.preferences,reminders=application.reminders,locationSource=com.yohaku.expensetracker.platform.ForegroundLocation(application),cloud=application.cloud) as T
         }
     }
 }
