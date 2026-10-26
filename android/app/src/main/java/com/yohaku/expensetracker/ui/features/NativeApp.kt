@@ -191,9 +191,10 @@ import kotlinx.serialization.encodeToString
                         "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
                         "ledger"->LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)},{requestEntry(date=it)},today)
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}})
+                        "csv-import"->CsvImportScreen(snapshot,vm)
                         "backup"->BackupScreen()
                         "appearance"->AppearanceScreen(snapshot,{vm.appearance(book.id,theme=it)})
-                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")},{vm.navigate("backup")})
+                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")},{vm.navigate("backup")},{vm.navigate("csv-import")})
                         "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "cloud"->key(book.id){CloudScreen(snapshot,vm)}
@@ -559,7 +560,7 @@ import kotlinx.serialization.encodeToString
     }
 }
 
-@Composable private fun AccountEditor(s:BookSnapshot,vm:AppViewModel,onClose:()->Unit,original:AccountEntity?=null,debtOnly:Boolean?=null) {
+@Composable internal fun AccountEditor(s:BookSnapshot,vm:AppViewModel,onClose:()->Unit,original:AccountEntity?=null,debtOnly:Boolean?=null) {
     val types=AccountType.entries.filter{debtOnly==null||it.debt==debtOnly}
     var name by rememberSaveable(original?.id){mutableStateOf(original?.name.orEmpty())}
     var type by rememberSaveable(original?.id,debtOnly){mutableStateOf(original?.let{AccountType.valueOf(it.type)} ?: types.first())}
@@ -780,6 +781,7 @@ import kotlinx.serialization.encodeToString
 }
 
 @Composable internal fun pageName(route:String,accountName:String?=null)=when(route){
+    "csv-import"->word("从 CSV 导入","CSV から移行")
     "backup"->word("备份与恢复","バックアップと復元")
     "appearance"->word("外观主题","テーマ")
     "books"->word("切换账本","帳簿を切替");"book-management"->word("账本管理","帳簿の管理")

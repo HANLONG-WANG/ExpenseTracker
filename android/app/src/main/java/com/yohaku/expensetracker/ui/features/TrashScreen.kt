@@ -19,14 +19,16 @@ import java.time.format.DateTimeFormatter
     YLead(word("给误删，留一点余地。","消しすぎにも、余白を。"),word("30天内恢复原ID；到期自动清理。这是应用内恢复，不是备份。","30日以内は元のIDで復元。期限後は自動削除。アプリ内の復元であり、バックアップではありません。"),"RECOVER WITHIN 30 DAYS")
     val entries=s.events.filter{it.deletedAt!=null}.sortedByDescending{it.deletedAt}
     if(entries.isEmpty())YEmpty(word("回收站是空的","ごみ箱は空です"))
-    val groupedRefundIds=entries.flatMap{s.linkedLifecycleRefunds(it,true)}.map{it.id}.toSet()
-    entries.filter{it.id !in groupedRefundIds}.forEach{e->
+    val groupedRefundIds=entries.filter{it.deletionGroupId==null}.flatMap{s.linkedLifecycleRefunds(it,true)}.map{it.id}.toSet()
+    entries.groupBy{it.deletionGroupId?:it.id}.values.map{group->group.firstOrNull{it.kind==EntryKind.EXPENSE.name}?:group.first()}.filter{it.id !in groupedRefundIds}.forEach{e->
         val expiry=Instant.ofEpochMilli(e.deletedAt!!).plus(Duration.ofDays(30))
         val available=expiry.isAfter(vm.repository.clock.instant())
         val expiryText=expiry.atZone(vm.repository.clock.zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
         Column(Modifier.fillMaxWidth().testTag("trash-"+e.id),verticalArrangement=Arrangement.spacedBy(15.dp)){
             RecordCover(e.merchant.ifBlank{s.path(e.categoryId)},Money(Currency.valueOf(e.currency),e.amountMinor).display(),e.date,word("已移至回收站","ごみ箱に移動済み"),stamp="↺")
             RecordFacts(listOf(word("分类","カテゴリ") to s.path(e.categoryId),word("保留至","保存期限") to expiryText))
+            val groupCount=1+s.linkedLifecycleRefunds(e,true).size
+            if(groupCount>1)YText(word("本组共 $groupCount 条，将一起恢复。","このグループの $groupCount 件をまとめて復元します。"),12)
             RefundLifecycleNotice(s,e,restoring=true)
             val originalId=s.settlements.find{it.eventId==e.id}?.originalEventId
             val originalDeleted=originalId!=null&&s.events.first{it.id==originalId}.deletedAt!=null

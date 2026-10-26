@@ -16,6 +16,35 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DatabaseUpgradeTest {
+    @Test fun version29AddsCsvTablesAndKeepsExistingLedger()=runBlocking {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val name="upgrade-csv-29-30.db"
+        context.deleteDatabase(name)
+        val old=SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name),null)
+        try {
+            val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v29-schema.json").bufferedReader().readText()).getJSONObject("database")
+            val entities=schema.getJSONArray("entities")
+            for(i in 0 until entities.length()) {
+                val entity=entities.getJSONObject(i)
+                old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}",entity.getString("tableName")))
+                val indices=entity.optJSONArray("indices")
+                for(j in 0 until (indices?.length()?:0))old.execSQL(indices!!.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}",entity.getString("tableName")))
+            }
+            val queries=schema.getJSONArray("setupQueries")
+            for(i in 0 until queries.length())old.execSQL(queries.getString(i))
+            old.execSQL("INSERT INTO books (id,name,currency,startDate,theme,language,initialized,budgetMinor,setupStep,archived,deletedAt) VALUES ('csv-book','Existing','JPY','2024-01-01','journal','ja',1,1000,4,0,NULL)")
+            old.version=29
+        }finally{old.close()}
+        val db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        try {
+            assertEquals("Existing",db.dao().book("csv-book")!!.name)
+            assertEquals(30,db.openHelper.readableDatabase.version)
+            assertTrue(db.csvImportDao().batches("csv-book").first().isEmpty())
+            db.csvImportDao().putProfile(CsvProfileEntity("csv-book","header","{}"))
+            assertEquals("{}",db.csvImportDao().profile("csv-book","header")!!.settingsJson)
+            db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
+        }finally{db.close();context.deleteDatabase(name)}
+    }
     @Test fun firstVersionUpgradesWithoutErasingBookOrPostings()=runBlocking {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val context=instrumentation.targetContext
@@ -40,7 +69,7 @@ class DatabaseUpgradeTest {
             old.execSQL("INSERT INTO postings VALUES ('b','p','e','a',-500,'JPY','2026-10-13',1)")
             old.execSQL("DROP TABLE IF EXISTS financial_drafts");restoreBookLifecycleFixture(old);old.version=1
         }finally{old.close()}
-        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11,com.yohaku.expensetracker.data.db.MIGRATION_11_12,com.yohaku.expensetracker.data.db.MIGRATION_12_13,com.yohaku.expensetracker.data.db.MIGRATION_13_14,com.yohaku.expensetracker.data.db.MIGRATION_14_15,com.yohaku.expensetracker.data.db.MIGRATION_15_16,com.yohaku.expensetracker.data.db.MIGRATION_16_17,com.yohaku.expensetracker.data.db.MIGRATION_17_18,com.yohaku.expensetracker.data.db.MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28,com.yohaku.expensetracker.data.db.MIGRATION_28_29).build()
+        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11,com.yohaku.expensetracker.data.db.MIGRATION_11_12,com.yohaku.expensetracker.data.db.MIGRATION_12_13,com.yohaku.expensetracker.data.db.MIGRATION_13_14,com.yohaku.expensetracker.data.db.MIGRATION_14_15,com.yohaku.expensetracker.data.db.MIGRATION_15_16,com.yohaku.expensetracker.data.db.MIGRATION_16_17,com.yohaku.expensetracker.data.db.MIGRATION_17_18,com.yohaku.expensetracker.data.db.MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28,com.yohaku.expensetracker.data.db.MIGRATION_28_29,com.yohaku.expensetracker.data.db.MIGRATION_29_30).build()
         try {
             val repo=LedgerRepository(db)
             val book=repo.dao.book("b")!!
@@ -77,7 +106,7 @@ class DatabaseUpgradeTest {
             old.execSQL("INSERT INTO settlements VALUES ('b','e',15100,'JPY',1,'2026-09-12','manual','2026-09-10',15000,15000,NULL)")
             old.execSQL("DROP TABLE IF EXISTS financial_drafts");restoreBookLifecycleFixture(old);old.version=4
         }finally{old.close()}
-        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11,com.yohaku.expensetracker.data.db.MIGRATION_11_12,com.yohaku.expensetracker.data.db.MIGRATION_12_13,com.yohaku.expensetracker.data.db.MIGRATION_13_14,com.yohaku.expensetracker.data.db.MIGRATION_14_15,com.yohaku.expensetracker.data.db.MIGRATION_15_16,com.yohaku.expensetracker.data.db.MIGRATION_16_17,com.yohaku.expensetracker.data.db.MIGRATION_17_18,com.yohaku.expensetracker.data.db.MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28,com.yohaku.expensetracker.data.db.MIGRATION_28_29).build()
+        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11,com.yohaku.expensetracker.data.db.MIGRATION_11_12,com.yohaku.expensetracker.data.db.MIGRATION_12_13,com.yohaku.expensetracker.data.db.MIGRATION_13_14,com.yohaku.expensetracker.data.db.MIGRATION_14_15,com.yohaku.expensetracker.data.db.MIGRATION_15_16,com.yohaku.expensetracker.data.db.MIGRATION_16_17,com.yohaku.expensetracker.data.db.MIGRATION_17_18,com.yohaku.expensetracker.data.db.MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28,com.yohaku.expensetracker.data.db.MIGRATION_28_29,com.yohaku.expensetracker.data.db.MIGRATION_29_30).build()
         try {
             val repo=LedgerRepository(db)
             val snapshot=repo.snapshot(repo.dao.book("b")!!).first()
