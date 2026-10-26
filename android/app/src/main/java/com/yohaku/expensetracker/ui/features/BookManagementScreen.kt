@@ -108,6 +108,7 @@ import java.time.format.DateTimeFormatter
         Column(Modifier.padding(pageContentPadding()).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
             PageEdition("book-management")
             BookManagementScreen(ready.overviews,null,vm,{creating=true})
+            YButton(word("备份与恢复","バックアップと復元"),{vm.navigate("backup")})
             PageFootnote("book-management")
         }
     }

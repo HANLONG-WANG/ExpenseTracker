@@ -27,7 +27,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.serialization.encodeToString
 
-@Composable fun NativeApp(vm:AppViewModel) {
+@Composable fun NativeApp(vm:AppViewModel,backupResult:String?=null,onDismissBackupResult:()->Unit={}) {
     val state by vm.state.collectAsStateWithLifecycle()
     val reminderBook by vm.reminderBook.collectAsStateWithLifecycle()
     val route by vm.route.collectAsStateWithLifecycle()
@@ -89,6 +89,13 @@ import kotlinx.serialization.encodeToString
         Box(Modifier.fillMaxSize()){
         if(state is AppState.Failure) ReadFailureScreen((state as AppState.Failure).message,vm::retryRead)
         else if(state==AppState.Loading || book==null&&firstSetup==null) YStartup()
+        else if(route=="backup"&&book?.initialized!=true) {
+            BackHandler {vm.back()}
+            Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(pageContentPadding()),verticalArrangement=Arrangement.spacedBy(15.dp)) {
+                YBackBar(word("备份与恢复","バックアップと復元"),{vm.back()})
+                BackupScreen()
+            }
+        }
         else if(book==null&&ready!=null&&ready.books.isNotEmpty())BookLibrary(ready,vm)
         else if(book?.initialized!=true) Setup(vm,snapshot,firstSetup ?: SetupDraft())
         else {
@@ -184,8 +191,9 @@ import kotlinx.serialization.encodeToString
                         "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
                         "ledger"->LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)},{requestEntry(date=it)},today)
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}})
+                        "backup"->BackupScreen()
                         "appearance"->AppearanceScreen(snapshot,{vm.appearance(book.id,theme=it)})
-                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")})
+                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")},{vm.navigate("backup")})
                         "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "cloud"->key(book.id){CloudScreen(snapshot,vm)}
@@ -318,6 +326,10 @@ import kotlinx.serialization.encodeToString
             }
         }
         BookOperationConfirmation(vm)
+        if(backupResult!=null)YSheet(word("备份与恢复","バックアップと復元"),onDismissBackupResult) {
+            YText(if(LocalLanguage.current=="ja")backupResult.substringAfter(" / ",backupResult)else backupResult.substringBefore(" / "))
+            YButton(word("知道了","確認"),onDismissBackupResult,primary=true)
+        }
         if(error!=null) YSheet(word("请检查","確認してください"),{vm.error.value=null}) {val language=LocalLanguage.current;YText(error!!.lineSequence().joinToString("\n"){line->if(language=="ja")line.substringAfter(" / ",line)else line.substringBefore(" / ")});YButton(word("知道了","確認"),{vm.error.value=null},primary=true)}
         notice?.takeIf{it.bookId==book?.id&&error==null}?.let{
             Box(Modifier.fillMaxSize().safeDrawingPadding().padding(bottom=95.dp),contentAlignment=Alignment.BottomCenter){
@@ -676,6 +688,7 @@ import kotlinx.serialization.encodeToString
         if(step==0) {
             YLead(word("从今天开始，留一点余量。","今日から、少し余白を。"),word("不用补齐所有过去。从现有余额和欠款开始，慢慢记下日常。","過去の全記録は不要。今の残高と借入から、日々を少しずつ。"),"YOUR FIRST PAGE",word("你好，余量。","こんにちは、ヨハク。"),word("分类从空白开始","カテゴリは空白から"),amountIsText=true,pageFlow=true)
             SetupIntro(listOf(word("一本独立的账本","独立した帳簿") to word("账户、预算、活动和资料各自独立。","口座・予算・シーン・資料を独立管理。"),word("期初不是新的消费","期首残高は新しい支出ではない") to word("现有余额、欠款和已确认账单分别填写。","今の残高・借入・確定明細を分けて入力。"),word("复杂规则可以稍后补齐","計算条件は後からでも") to word("没有规则时，只展示已知安排，不假装能准确预测。","条件未設定なら既知の予定のみ。正確な予測を装いません。")))
+            YButton(word("从备份恢复","バックアップから復元"),{vm.navigate("backup")},Modifier.testTag("setup-restore"))
             YButton(word("开始设置我的账本","マイ帳簿を設定"),{move(1)},Modifier.padding(top=if(t.id=="journal")23.dp else if(t.id=="objects")24.dp else 0.dp).testTag("setup-start-button"),primary=true)
         } else {
             SetupProgress(step,pageFlow=true)
@@ -732,6 +745,7 @@ import kotlinx.serialization.encodeToString
     }
     if(settingsSheet)YSheet(word("设置","設定"),{settingsSheet=false}){
         Column(Modifier.fillMaxWidth()){themeChoices().forEach{(id,label)->SetupSettingOption(label+(if(id==t.id)" ✓" else ""),{persistFirst(id,language);settingsSheet=false})}}
+        SetupSettingOption(word("备份与恢复","バックアップと復元"),{settingsSheet=false;vm.navigate("backup")})
         SetupSettingOption(word("切换为日语","中国語へ切替"),{persistFirst(t.id,if(language=="zh")"ja" else "zh")},Modifier.testTag("settings-language"))
     }
     if(accountSheet&&s!=null)AccountEditor(s,vm,{accountSheet=false},s.accounts.find{it.id==originalAccountId},debtOnly=if(step==4)null else step==3)
@@ -766,6 +780,7 @@ import kotlinx.serialization.encodeToString
 }
 
 @Composable internal fun pageName(route:String,accountName:String?=null)=when(route){
+    "backup"->word("备份与恢复","バックアップと復元")
     "appearance"->word("外观主题","テーマ")
     "books"->word("切换账本","帳簿を切替");"book-management"->word("账本管理","帳簿の管理")
     "account-detail","rules"->accountName?:word("账户","口座");"calendar"->word("付款日历","支払カレンダー")

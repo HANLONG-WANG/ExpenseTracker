@@ -64,4 +64,28 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
     suspend fun select(id: String) { storage.edit { it[active] = id } }
     suspend fun saveSetup(draft: SetupDraft) { storage.edit { it[setup] = json.encodeToString(draft) } }
     suspend fun clearSetup() { storage.edit { it.remove(setup) } }
+    suspend fun backup():com.yohaku.expensetracker.data.backup.BackupPreferences {
+        val p=storage.data.first()
+        return com.yohaku.expensetracker.data.backup.BackupPreferences(
+            p[automaticRates]?:true,
+            p[rateCache]?.let{json.decodeFromString<ReferenceRateCache>(it)}?:ReferenceRateCache(),
+            p[reminderSettingsKey]?.let{json.decodeFromString(it)}?:emptyMap(),
+            p[reminderDeliveryKey]?.let{json.decodeFromString(it)}?:com.yohaku.expensetracker.domain.reminders.ReminderDeliveryState(),
+            p[locationBooksKey]?:emptySet(),p[active],p[setup]?.let{json.decodeFromString<SetupDraft>(it)}
+        )
+    }
+    suspend fun restoreBackup(value:com.yohaku.expensetracker.data.backup.BackupPreferences) {
+        value.validate()
+        storage.edit { p ->
+            p.clear()
+            p[automaticRates]=value.automaticReferenceRates
+            p[rateCache]=json.encodeToString(value.referenceRates)
+            p[reminderSettingsKey]=json.encodeToString(value.reminderSettings)
+            p[reminderDeliveryKey]=json.encodeToString(value.reminderDelivery)
+            p[locationBooksKey]=value.foregroundLocationBooks
+            value.activeBook?.let{p[active]=it}
+            value.setupDraft?.let{p[setup]=json.encodeToString(it)}
+            // Alarm times are device-local derived state and are rebuilt after process restart.
+        }
+    }
 }

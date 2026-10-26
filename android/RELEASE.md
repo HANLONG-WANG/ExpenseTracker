@@ -2,7 +2,7 @@
 
 正式包：`artifacts/yohaku-release-0.5.0.apk`，包名`com.yohaku.expensetracker`，versionCode5。开发包：`artifacts/yohaku-dev-0.5.0.apk`，包名`com.yohaku.expensetracker.dev`，versionCode5。两者Android 10+，Room v28。相应`.apk.sha256`文件用于核对完整性。
 
-开发包可直接覆盖阶段A–D开发包，保留资料。正式包使用独立包名与固定正式证书，与开发包并存；安装正式包不会自动搬入开发包账本。不要以卸载开发包作为升级步骤。应用没有云同步或备份，卸载或清除存储会删除该包的账本与内部附件。
+开发包可直接覆盖阶段A–D开发包，保留资料。正式包使用独立包名与固定正式证书，与开发包并存；安装正式包不会自动搬入开发包账本。不要以卸载开发包作为升级步骤。当前源码提供用户手动的本地完整备份/恢复（整份替换、不加密、不自动备份），无云同步且系统云备份仍关闭；卸载或清除存储会删除该包的账本与内部附件，请先自行导出备份。此功能不追溯加入下列历史发布 APK。
 
 ```sh
 adb -s <serial> install -r artifacts/yohaku-dev-0.5.0.apk

@@ -1,13 +1,30 @@
 package com.yohaku.expensetracker
-import androidx.room.Room
 import kotlinx.coroutines.launch
-import com.yohaku.expensetracker.data.db.YohakuDatabase
+import kotlinx.coroutines.cancelAndJoin
 import com.yohaku.expensetracker.data.repository.*
 class YohakuApplication:android.app.Application() {
-    val repository by lazy { LedgerRepository(Room.databaseBuilder(this,YohakuDatabase::class.java,"yohaku.db").addMigrations(com.yohaku.expensetracker.data.db.MIGRATION_1_2,com.yohaku.expensetracker.data.db.MIGRATION_2_3,com.yohaku.expensetracker.data.db.MIGRATION_3_4,com.yohaku.expensetracker.data.db.MIGRATION_4_5,com.yohaku.expensetracker.data.db.MIGRATION_5_6,com.yohaku.expensetracker.data.db.MIGRATION_6_7,com.yohaku.expensetracker.data.db.MIGRATION_7_8,com.yohaku.expensetracker.data.db.MIGRATION_8_9,com.yohaku.expensetracker.data.db.MIGRATION_9_10,com.yohaku.expensetracker.data.db.MIGRATION_10_11,com.yohaku.expensetracker.data.db.MIGRATION_11_12,com.yohaku.expensetracker.data.db.MIGRATION_12_13,com.yohaku.expensetracker.data.db.MIGRATION_13_14,com.yohaku.expensetracker.data.db.MIGRATION_14_15,com.yohaku.expensetracker.data.db.MIGRATION_15_16,com.yohaku.expensetracker.data.db.MIGRATION_16_17,com.yohaku.expensetracker.data.db.MIGRATION_17_18,com.yohaku.expensetracker.data.db.MIGRATION_18_19,com.yohaku.expensetracker.data.db.MIGRATION_19_20,com.yohaku.expensetracker.data.db.MIGRATION_20_21,com.yohaku.expensetracker.data.db.MIGRATION_21_22,com.yohaku.expensetracker.data.db.MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28,com.yohaku.expensetracker.data.db.MIGRATION_28_29).build(),mediaRoot=java.io.File(filesDir,"attachments")) }
+    val repository by lazy { LedgerRepository(com.yohaku.expensetracker.data.backup.openYohakuDatabase(this),mediaRoot=java.io.File(filesDir,"attachments")) }
     val cloud by lazy { com.yohaku.expensetracker.data.cloud.CloudRepository(this,repository) }
     private val applicationScope=kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.IO)
     val reminders by lazy { com.yohaku.expensetracker.platform.ReminderCoordinator(this) }
-    override fun onCreate() { super.onCreate();reminders.start();com.yohaku.expensetracker.platform.LocalMaintenanceWorker.schedule(this);applicationScope.launch { try { cloud.resumePending() } catch(e:Exception) { android.util.Log.e("YohakuCloud","Cloud resume skipped",e) } } }
+    override fun onCreate() {
+        super.onCreate()
+        if(getProcessName()!=packageName)return
+        com.yohaku.expensetracker.data.backup.RestoreFiles.recoverOnStartup(this)
+        // The default ContentProvider initializer runs BEFORE Application.onCreate. Delay it so no
+        // surviving worker can open Room while an interrupted restore is being rolled back.
+        androidx.work.WorkManager.initialize(this,androidx.work.Configuration.Builder().build())
+        reminders.start()
+        com.yohaku.expensetracker.platform.LocalMaintenanceWorker.schedule(this)
+        applicationScope.launch { try { cloud.resumePending() } catch(e:Exception) { android.util.Log.e("YohakuCloud","Cloud resume skipped",e) } }
+    }
+    suspend fun stopForRestore() {
+        applicationScope.coroutineContext[kotlinx.coroutines.Job]!!.cancelAndJoin()
+        reminders.stopForRestore()
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            androidx.work.WorkManager.getInstance(this@YohakuApplication).cancelAllWork().result.get()
+            repository.db.close()
+        }
+    }
     val preferences by lazy { AppPreferences(this) }
 }
