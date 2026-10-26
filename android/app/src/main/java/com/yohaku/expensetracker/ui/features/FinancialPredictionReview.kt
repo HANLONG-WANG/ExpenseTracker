@@ -45,14 +45,16 @@ import com.yohaku.expensetracker.ui.theme.*
             is Calculation.Unsupported->FinancialCalculationResult(calculation,currency)
             is Calculation.CannotSettle->FinancialCalculationResult(calculation,currency)
         }
-        YButton(word("确认保存预测计划","予測プランを保存"),{var saved=false;vm.execute(onSuccess={if(saved)onSaved()}) {
-            saved=commitFinancialDraft(draftSession){vm.repository.commitFinancialPrediction(r)}!=null
-            if(saved)vm.financialPredictionReview.value=null else {
-                vm.financialPredictionReview.value=vm.repository.previewFinancialPrediction(r.plan.bookId,r.input)
-                vm.financialReviewRefreshed.value=true
-            }
-        }},Modifier.testTag("prediction-confirm"),primary=true,enabled=!busy&&r.calculation is Calculation.Ready)
-        YButton(word("返回修改","戻って修正"),{vm.financialPredictionReview.value=null},Modifier.testTag("prediction-review-back"),enabled=!busy)
+        YActionRow {
+            YButton(word("确认保存预测计划","予測プランを保存"),{var saved=false;vm.execute(onSuccess={if(saved)onSaved()}) {
+                saved=commitFinancialDraft(draftSession){vm.repository.commitFinancialPrediction(r)}!=null
+                if(saved)vm.financialPredictionReview.value=null else {
+                    vm.financialPredictionReview.value=vm.repository.previewFinancialPrediction(r.plan.bookId,r.input)
+                    vm.financialReviewRefreshed.value=true
+                }
+            }},Modifier.testTag("prediction-confirm"),primary=true,enabled=!busy&&r.calculation is Calculation.Ready)
+            YButton(word("返回修改","戻って修正"),{vm.financialPredictionReview.value=null},Modifier.testTag("prediction-review-back"),enabled=!busy)
+        }
     }
 }
 

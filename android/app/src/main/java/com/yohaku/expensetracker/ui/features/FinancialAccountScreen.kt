@@ -103,9 +103,11 @@ import kotlinx.serialization.encodeToString
             FinancialContractFacts(s,c)
             val funding=c.fundingEventId?.let{id->s.events.firstOrNull{it.id==id}}
             if(funding?.deletedAt!=null)YText(word("借入记录已在回收站；独立还款和合同资料仍保留。","借入記録はごみ箱にあります。独立した返済・契約情報は保持しています。"),11,color=LocalYohaku.current.warm)
-            if(c.fundingEventId==null||funding?.deletedAt==null)YButton(word("编辑合同 / 借入","契約・借入を編集"),{movementTarget=c.id;movement=if(c.fundingEventId==null)"opening"else "borrow"},enabled=!busy)
-            YButton(word("关联已有计划","既存プランを関連付け"),{contractLink=c.id},enabled=!busy)
-            YButton(word("对这份合同还款","この契約へ返済"),{movementTarget=c.id;movement="repay-contract"},Modifier.testTag("finance-repay-contract-${c.id}"),enabled=!busy)
+            YActionRow {
+                if(c.fundingEventId==null||funding?.deletedAt==null)YButton(word("编辑合同 / 借入","契約・借入を編集"),{movementTarget=c.id;movement=if(c.fundingEventId==null)"opening"else "borrow"},enabled=!busy)
+                YButton(word("关联已有计划","既存プランを関連付け"),{contractLink=c.id},enabled=!busy)
+                YButton(word("对这份合同还款","この契約へ返済"),{movementTarget=c.id;movement="repay-contract"},Modifier.testTag("finance-repay-contract-${c.id}"),enabled=!busy)
+            }
         }}
         s.repayments.filter{it.debtAccountId==account.id}.mapNotNull{p->s.visibleEvents.firstOrNull{it.id==p.eventId}?.let{it to p}}.sortedByDescending{it.first.date}.forEach{(e,p)->Panel {
             YText(e.date,14);FinancialRepaymentFacts(s,e,p)
@@ -123,9 +125,11 @@ import kotlinx.serialization.encodeToString
             ThemeSection(plan.name,financeLabel(plan.mode))
             val stale=vm.repository.financialPredictionStale(s,finance,plan)
             FinancialPlanProgressView(s,finance,plan,java.time.LocalDate.now(vm.repository.clock).toString(),stale)
-            YButton(word("计划版本与变化","予定の履歴と変化"),{planHistory=plan.id},Modifier.testTag("finance-plan-history-${plan.id}"),enabled=!busy)
-            if(plan.origin=="POOL")YButton(word("调整共同月付款","共通月払いを変更"),{poolPaymentPlan=plan.id},Modifier.testTag("finance-pool-payment-${plan.id}"),enabled=!busy)
-            if(plan.origin=="POOL"||plan.origin!="POOL_RETAINED"&&finance.arrangements.none{it.originalPlanId==plan.id})YButton(word("比较付款方案","支払プランを比較"),{arrangementPlan=plan.id},Modifier.testTag("finance-compare-plan-${plan.id}"),enabled=!busy)
+            YActionRow {
+                YButton(word("计划版本与变化","予定の履歴と変化"),{planHistory=plan.id},Modifier.testTag("finance-plan-history-${plan.id}"),enabled=!busy)
+                if(plan.origin=="POOL")YButton(word("调整共同月付款","共通月払いを変更"),{poolPaymentPlan=plan.id},Modifier.testTag("finance-pool-payment-${plan.id}"),enabled=!busy)
+                if(plan.origin=="POOL"||plan.origin!="POOL_RETAINED"&&finance.arrangements.none{it.originalPlanId==plan.id})YButton(word("比较付款方案","支払プランを比較"),{arrangementPlan=plan.id},Modifier.testTag("finance-compare-plan-${plan.id}"),enabled=!busy)
+            }
             val current=plan.termsJson?.let{vm.repository.json.decodeFromString<FinancialPredictionInput>(it)}
             if(vm.repository.financialPredictionStale(s,finance,plan))YText(word("来源、清偿、账期或规则已变化；以下保留原预测，请核查并重算。","対象・返済・請求期間・条件が変わりました。以下は元の予測です。確認して再計算してください。"),12,Modifier.testTag("prediction-stale-${plan.id}"),color=LocalYohaku.current.warm)
             if(plan.origin=="POOL"||plan.origin!="POOL_RETAINED"&&finance.arrangements.none{it.originalPlanId==plan.id})YButton(if(plan.termsJson==null)word("用规则核对这份计划","条件でこのプランを検算")else word("重算未确认预测","未確定の予測を再計算"),{if(plan.origin=="POOL")poolTarget=plan.id else prediction=plan.id},Modifier.testTag("finance-recalculate-${plan.id}"),enabled=!busy)
@@ -223,13 +227,15 @@ import kotlinx.serialization.encodeToString
                 if(afterOutstanding.totalMinor<0)YText(word("调整后出现多付差额；确认不会撤销已发生付款，请另行核对退款或抵扣。","修正後は過払差額が発生します。確定で実支払は取り消しません。返金・充当を別途確認してください。"),12,color=LocalYohaku.current.warm)
             }
             YText(word("只修改本期平台义务，不修改规则、原消费或实际资金。","この回の返済先の請求のみ修正し、条件・元の支出・実資金は変更しません。"),11)
-            YButton(word("确认本期金额","この回の金額を確定"),{var saved=false;vm.execute(onSuccess={if(saved)onClose()}) {
-                saved=commitFinancialDraft(draftSession){if(vm.repository.commitFinancialBillConfirmation(r))bill.id else null}!=null
-                if(saved)vm.financialBillReview.value=null else {
-                    vm.financialBillReview.value=vm.repository.previewFinancialBillConfirmation(s.book.id,bill.id,KnownBillInput(r.bill.date,r.bill.totalMinor,r.bill.principalMinor,r.bill.feeMinor,r.bill.paymentAccountId));vm.financialReviewRefreshed.value=true
-                }
-            }},Modifier.testTag("finance-bill-confirm"),primary=true,enabled=!busy)
-            YButton(word("返回修改","戻って修正"),{vm.financialBillReview.value=null},Modifier.testTag("finance-review-back"),enabled=!busy)
+            YActionRow {
+                YButton(word("确认本期金额","この回の金額を確定"),{var saved=false;vm.execute(onSuccess={if(saved)onClose()}) {
+                    saved=commitFinancialDraft(draftSession){if(vm.repository.commitFinancialBillConfirmation(r))bill.id else null}!=null
+                    if(saved)vm.financialBillReview.value=null else {
+                        vm.financialBillReview.value=vm.repository.previewFinancialBillConfirmation(s.book.id,bill.id,KnownBillInput(r.bill.date,r.bill.totalMinor,r.bill.principalMinor,r.bill.feeMinor,r.bill.paymentAccountId));vm.financialReviewRefreshed.value=true
+                    }
+                }},Modifier.testTag("finance-bill-confirm"),primary=true,enabled=!busy)
+                YButton(word("返回修改","戻って修正"),{vm.financialBillReview.value=null},Modifier.testTag("finance-review-back"),enabled=!busy)
+            }
         }
         return
     }

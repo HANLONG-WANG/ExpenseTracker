@@ -209,13 +209,15 @@ import java.time.*
             YDateFields(listOf(word("实际办理时间","実際の手続き時刻") to local),owner,{owner=it},{_,v->appliedInstant=LocalDateTime.parse(v).atZone(ZoneId.of(review.zoneId)).toInstant().toString()})
             YToggle(word("已在平台实际办理并确认以上条件","返済先で手続き済みで上記の条件を確認した"),platform,{platform=it},Modifier.testTag("arrangement-platform-confirmed"))
             if(review.deadlines.any{Instant.parse(appliedInstant)>it.instant()})YToggle(word("平台已明确接受此次期限外变更","返済先が期限後の変更を明示的に受理した"),exception,{exception=it},Modifier.testTag("arrangement-exception"))
-            YButton(word("确认记录已办理","手続き済みとして確定"),{val stamp=appliedInstant;val accepted=platform;val late=exception;var saved=false
-                vm.execute(onSuccess={if(saved){vm.financialArrangementReview.value=null;onClose()}else{applying=false;platform=false}}) {
-                    saved=commitFinancialDraft(draftSession){vm.repository.commitFinancialArrangement(review,stamp,accepted,late)}!=null
-                    if(!saved){vm.financialArrangementReview.value=vm.repository.previewFinancialArrangement(s.book.id,review.input);vm.financialReviewRefreshed.value=true}
-                }
-            },Modifier.testTag("arrangement-confirm"),primary=true,enabled=!busy&&platform)
-            YButton(word("返回比较","比較に戻る"),{applying=false},enabled=!busy)
+            YActionRow {
+                YButton(word("确认记录已办理","手続き済みとして確定"),{val stamp=appliedInstant;val accepted=platform;val late=exception;var saved=false
+                    vm.execute(onSuccess={if(saved){vm.financialArrangementReview.value=null;onClose()}else{applying=false;platform=false}}) {
+                        saved=commitFinancialDraft(draftSession){vm.repository.commitFinancialArrangement(review,stamp,accepted,late)}!=null
+                        if(!saved){vm.financialArrangementReview.value=vm.repository.previewFinancialArrangement(s.book.id,review.input);vm.financialReviewRefreshed.value=true}
+                    }
+                },Modifier.testTag("arrangement-confirm"),primary=true,enabled=!busy&&platform)
+                YButton(word("返回比较","比較に戻る"),{applying=false},enabled=!busy)
+            }
         }
     }
 }

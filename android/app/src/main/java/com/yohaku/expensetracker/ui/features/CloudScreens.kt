@@ -72,8 +72,10 @@ import kotlinx.coroutines.delay
     if(connect)CloudConnectSheet(vm,cloud,{connect=false},{connect=false;notice="已绑定云端分析台 / クラウド分析デスクに接続しました"})
     if(unbind)YSheet(word("解除这台设备的连接","この端末の接続を解除"),{if(!busy)unbind=false}) {
         YText(word("只删除本机保存的连接凭证。已导入的账目、云端任务记录与回执队列保留；如配置可能泄露，请在网页撤销设备。","端末に保存した接続情報のみ削除します。取込済みの記録・タスク履歴・受領通知の予約は残ります。漏えいの恐れがあればWebで端末を取り消してください。"),12,color=LocalYohaku.current.muted)
-        YButton(word("解除连接","接続を解除"),{vm.execute(onSuccess={unbind=false}){cloud.unbind()}},Modifier.fillMaxWidth().testTag("cloud-confirm-unbind"),primary=true,enabled=!busy)
-        YLink(word("保留连接","接続を保持"),{unbind=false})
+        YActionRow {
+            YButton(word("解除连接","接続を解除"),{vm.execute(onSuccess={unbind=false}){cloud.unbind()}},Modifier.testTag("cloud-confirm-unbind"),primary=true,enabled=!busy)
+            YLink(word("保留连接","接続を保持"),{unbind=false})
+        }
     }
     if(general)CloudGeneralSheet(s,vm,cloud,{general=false},{general=false;notice="任务已排队上传 / タスクのアップロードを予約しました"})
     claim?.let{c->CloudClaimReview(s,vm,cloud,c,{claim=null},{message->claim=null;notice=message})}
@@ -142,9 +144,11 @@ import kotlinx.coroutines.delay
             FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 YButton(if(info==null)word("导入连接配置","接続設定を取込")else word("更换配置","設定を差し替え"),onImport,Modifier.testTag("cloud-import-config"),primary=info==null||info.needsReconnect,enabled=!busy)
                 if(info!=null) {
-                    YButton(word("测试连接","接続テスト"),onTest,Modifier.testTag("cloud-test"),enabled=!busy)
-                    YButton(word("打开网页工作台","Webデスクを開く"),onOpen,Modifier.testTag("cloud-open-web"))
-                    YButton(word("解除","解除"),onUnbind,Modifier.testTag("cloud-unbind"),enabled=!busy)
+                    YActionRow {
+                        YButton(word("测试连接","接続テスト"),onTest,Modifier.testTag("cloud-test"),enabled=!busy)
+                        YButton(word("打开网页工作台","Webデスクを開く"),onOpen,Modifier.testTag("cloud-open-web"))
+                        YButton(word("解除","解除"),onUnbind,Modifier.testTag("cloud-unbind"),enabled=!busy)
+                    }
                 }
             }
         }
@@ -272,8 +276,10 @@ private fun CloudPhase.step()=when(this) {
         } else {
             YText(word("请确认目标网站与设备。确认后加密保存并测试连接。","接続先と端末を確認してください。確定すると暗号化保存し、接続テストを行います。"),12,color=LocalYohaku.current.muted)
             RecordFacts(listOf(word("网站","サイト") to config.baseUrl.substringAfter("://"),word("设备 ID","端末ID") to config.id,word("接口版本","APIバージョン") to config.apiVersion.toString()),framed=true)
-            YButton(word("确认保存并测试","保存して接続テスト"),{vm.execute(onSuccess={raw="";onBound()}){cloud.bind(config)}},Modifier.fillMaxWidth().testTag("cloud-config-confirm"),primary=true,enabled=!busy)
-            YLink(word("返回修改","戻って修正"),{parsed=null})
+            YActionRow {
+                YButton(word("确认保存并测试","保存して接続テスト"),{vm.execute(onSuccess={raw="";onBound()}){cloud.bind(config)}},Modifier.testTag("cloud-config-confirm"),primary=true,enabled=!busy)
+                YLink(word("返回修改","戻って修正"),{parsed=null})
+            }
         }
     }
 }
@@ -413,8 +419,10 @@ private fun CloudPhase.step()=when(this) {
         ReceiptHandoffSummary("YOHAKU / CLOUD RECEIPTS",word("${selected.size} 组小票，原图不压缩。","${selected.size} 組のレシート。原画像は圧縮しません。"),word("单张小票的原图超过上传上限时无法提交，请先减少该小票的图片。","1枚のレシートの原画像が上限を超えると送信できません。画像を減らしてください。"))
         YField(word("任务名称","タスク名"),title,{title=it.take(150)},Modifier.testTag("receipt-cloud-title"))
         YField(word("补充说明（可选）","補足（任意）"),note,{note=it},Modifier.testTag("receipt-cloud-note"),multiline=true)
-        YButton(word("打包并上传","まとめて送信"),{vm.execute(onSuccess={open=false;note="";onQueued()}){cloud.prepareReceiptTask(s.book.id,selected.toSet(),title,note)}},Modifier.fillMaxWidth().testTag("receipt-cloud-confirm"),primary=true,enabled=!busy&&title.isNotBlank())
-        YLink(word("返回小票工作台","レシート整理へ戻る"),{open=false})
+        YActionRow {
+            YButton(word("打包并上传","まとめて送信"),{vm.execute(onSuccess={open=false;note="";onQueued()}){cloud.prepareReceiptTask(s.book.id,selected.toSet(),title,note)}},Modifier.testTag("receipt-cloud-confirm"),primary=true,enabled=!busy&&title.isNotBlank())
+            YLink(word("返回小票工作台","レシート整理へ戻る"),{open=false})
+        }
     }
 }
 

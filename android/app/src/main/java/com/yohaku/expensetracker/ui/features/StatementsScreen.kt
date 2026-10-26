@@ -87,8 +87,10 @@ import com.yohaku.expensetracker.ui.theme.*
                 val event=posting?.let{post->s.visibleEvents.find{it.id==post.eventId}}
                 if(event!=null)YLink(word("对应记账：","対応記録：")+event.merchant.ifBlank{event.date},{onRecord(event)},Modifier.testTag("statement-open-record-${row.row_id}"))
                 if(exact==null) {
-                    YButton(word("查看候选与差异","候補と差異を見る"),{rowId=row.row_id},Modifier.testTag("statement-candidates-${row.row_id}"),enabled=!busy)
-                    YLink(word("选择类型补记","種類を選んで記録"),{supplement=row.row_id},Modifier.testTag("statement-supplement-${row.row_id}"))
+                    YActionRow {
+                        YButton(word("查看候选与差异","候補と差異を見る"),{rowId=row.row_id},Modifier.testTag("statement-candidates-${row.row_id}"),enabled=!busy)
+                        YLink(word("选择类型补记","種類を選んで記録"),{supplement=row.row_id},Modifier.testTag("statement-supplement-${row.row_id}"))
+                    }
                 }
                 row.source_ref?.let{YText(word("来源行：","元の行：")+it,10,color=LocalYohaku.current.muted)}
             }

@@ -89,13 +89,15 @@ import java.time.LocalDate
         YText(r.plan.name,18)
         YText(word("只保存待付义务；实际资金与消费不会变化。","支払予定のみ保存し、実際の資金・支出は変えません。"),11,color=LocalYohaku.current.muted)
         r.bills.forEach{FinancialBillFacts(it,currency)}
-        YButton(word("确认保存已知计划","既知の予定を保存"),{var saved=false;vm.execute(onSuccess={if(saved)onSaved()}) {
-            saved=commitFinancialDraft(draftSession){vm.repository.commitManualFinancialPlan(r)}!=null
-            if(saved)vm.manualFinancialPlanReview.value=null else {
-                val input=ManualFinancialPlanInput(r.plan.accountId,r.plan.name,FinanceMode.valueOf(r.plan.mode),r.bills.map{KnownBillInput(it.date,it.totalMinor,it.principalMinor,it.feeMinor,it.paymentAccountId)},r.plan.principalMinor,r.plan.complete,r.plan.origin=="OPENING",r.plan.sourceEventId)
-                vm.manualFinancialPlanReview.value=vm.repository.previewManualFinancialPlan(r.plan.bookId,input);vm.financialReviewRefreshed.value=true
-            }
-        }},Modifier.testTag("finance-plan-confirm"),primary=true,enabled=!busy)
-        YButton(word("返回修改","戻って修正"),{vm.manualFinancialPlanReview.value=null},Modifier.testTag("finance-review-back"),enabled=!busy)
+        YActionRow {
+            YButton(word("确认保存已知计划","既知の予定を保存"),{var saved=false;vm.execute(onSuccess={if(saved)onSaved()}) {
+                saved=commitFinancialDraft(draftSession){vm.repository.commitManualFinancialPlan(r)}!=null
+                if(saved)vm.manualFinancialPlanReview.value=null else {
+                    val input=ManualFinancialPlanInput(r.plan.accountId,r.plan.name,FinanceMode.valueOf(r.plan.mode),r.bills.map{KnownBillInput(it.date,it.totalMinor,it.principalMinor,it.feeMinor,it.paymentAccountId)},r.plan.principalMinor,r.plan.complete,r.plan.origin=="OPENING",r.plan.sourceEventId)
+                    vm.manualFinancialPlanReview.value=vm.repository.previewManualFinancialPlan(r.plan.bookId,input);vm.financialReviewRefreshed.value=true
+                }
+            }},Modifier.testTag("finance-plan-confirm"),primary=true,enabled=!busy)
+            YButton(word("返回修改","戻って修正"),{vm.manualFinancialPlanReview.value=null},Modifier.testTag("finance-review-back"),enabled=!busy)
+        }
     }
 }

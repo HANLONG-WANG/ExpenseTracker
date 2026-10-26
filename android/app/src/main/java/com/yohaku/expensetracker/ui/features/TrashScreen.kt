@@ -32,8 +32,10 @@ import java.time.format.DateTimeFormatter
             val originalDeleted=originalId!=null&&s.events.first{it.id==originalId}.deletedAt!=null
             if(originalDeleted)YText(word("请先恢复原消费，再恢复这笔独立删除的退款。","元の購入を復元してから、個別に削除した返金を復元してください。"),12,color=t.warm)
             if(!available)YText(word("已超过30天恢复期限。","30日の復元期限を過ぎています。"),12,color=t.warm)
-            YButton(word("恢复原记录","記録を復元"),{selected=e.id;operation=EntryLifecycleOperation.RESTORE},Modifier.testTag("restore-"+e.id),primary=true,enabled=available&&!originalDeleted)
-            YLink(word("永久删除","完全削除"),{selected=e.id;operation=EntryLifecycleOperation.PURGE},Modifier.testTag("purge-${e.id}"))
+            YActionRow {
+                YButton(word("恢复原记录","記録を復元"),{selected=e.id;operation=EntryLifecycleOperation.RESTORE},Modifier.testTag("restore-"+e.id),primary=true,enabled=available&&!originalDeleted)
+                YLink(word("永久删除","完全削除"),{selected=e.id;operation=EntryLifecycleOperation.PURGE},Modifier.testTag("purge-${e.id}"))
+            }
         }
     }
     if(entries.isNotEmpty())YButton(word("清空回收站","ごみ箱を空にする"),{selected="";operation=EntryLifecycleOperation.EMPTY},Modifier.testTag("empty-entry-trash"))

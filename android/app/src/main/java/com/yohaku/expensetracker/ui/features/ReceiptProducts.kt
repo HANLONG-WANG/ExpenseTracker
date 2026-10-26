@@ -146,7 +146,9 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
         YField(word("票面合计","レシート合計"),edited.receipt_total.orEmpty(),{update(edited.copy(receipt_total=it.ifBlank{null}))},numeric=true)
         YField(word("待确认说明（每行一项）","確認事項（1行1件）"),edited.issues.joinToString("\n"),{update(edited.copy(issues=it.lines().filter{line->line.isNotBlank()}))},multiline=true)
         YToggle(word("明细已补全","明細を補完済み"),edited.complete,{update(edited.copy(complete=it))})
-        YButton(word("保存商品明细","商品明細を保存"),{vm.execute(onSuccess=onClose){vm.repository.editReceiptItems(s.book.id,document.receiptId,baseRevision,edited)}},Modifier.fillMaxWidth().testTag("receipt-save-item-edits"),primary=true,enabled=!busy)
-        YButton(word("取消修改","変更を取消"),onClose,enabled=!busy)
+        YActionRow {
+            YButton(word("保存商品明细","商品明細を保存"),{vm.execute(onSuccess=onClose){vm.repository.editReceiptItems(s.book.id,document.receiptId,baseRevision,edited)}},Modifier.testTag("receipt-save-item-edits"),primary=true,enabled=!busy)
+            YButton(word("取消修改","変更を取消"),onClose,enabled=!busy)
+        }
     }
 }

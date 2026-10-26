@@ -56,10 +56,12 @@ import kotlinx.serialization.encodeToString
                 if(r.entry==null)YText(word("关联已有收入，不再次增加余额。","既存の収入に関連付け、残高を重複加算しません。"),12)
                 r.entry?.impacts?.forEach{EntryImpactPreview(r.before,r.event,it,today.take(7))}
             }?:YText(word("仅保存预计项。未到账不更新真实余额、已到账收入或预算。","収入予定のみ保存。未入金は実残高・入金済み収入・予算に加えません。"),12)
-            YButton(word("确认保存","確定して保存"),{val r=review;val a=receipt;var saved=false
-                vm.execute(onSuccess={if(saved)onClose()else{review=null;receipt=null;refreshed=true}}){saved=commitFinancialDraft(draftSession){if(r!=null)vm.repository.commitExpectedIncome(r)else vm.repository.commitExpectedIncomeArrival(a!!)}!=null}
-            },Modifier.testTag("expected-confirm"),primary=true,enabled=!busy)
-            YButton(word("返回修改","修正に戻る"),{review=null;receipt=null},Modifier.testTag("expected-back"),enabled=!busy)
+            YActionRow {
+                YButton(word("确认保存","確定して保存"),{val r=review;val a=receipt;var saved=false
+                    vm.execute(onSuccess={if(saved)onClose()else{review=null;receipt=null;refreshed=true}}){saved=commitFinancialDraft(draftSession){if(r!=null)vm.repository.commitExpectedIncome(r)else vm.repository.commitExpectedIncomeArrival(a!!)}!=null}
+                },Modifier.testTag("expected-confirm"),primary=true,enabled=!busy)
+                YButton(word("返回修改","修正に戻る"),{review=null;receipt=null},Modifier.testTag("expected-back"),enabled=!busy)
+            }
         }else if(!arriving) {
             FinancialDraftNotice()
             YField(word("预计收入名称","収入予定名"),name,{name=it})
@@ -112,13 +114,17 @@ import kotlinx.serialization.encodeToString
         YText(when{actual!=null->word("已关联实际收入","実収入に関連付け済み");s.expectedIncomeNeedsReview(income)->word("实际收入已删除或改变，请核对关联","実収入が削除・変更されています。関連を確認してください");income.status=="CANCELLED"->word("已取消","取消済み");else->word("未到账 · 仅参与收入情景","未入金・収入シナリオのみ")},12,color=LocalYohaku.current.warm)
         if(actual!=null)YButton(word("查看实际收入","実収入を見る"),{onRecord(actual)},enabled=!busy)
         else if(income.status!="CANCELLED") {
-            YButton(word("确认到账","入金を確認"),{editor=income.id;arriving=true},Modifier.testTag("expected-arrive-${income.id}"),enabled=!busy)
-            YButton(word("修改预计项","予定を編集"),{editor=income.id;arriving=false},Modifier.testTag("expected-edit-${income.id}"),enabled=!busy)
-            if(income.status=="PENDING")YButton(word("取消预计收入","収入予定を取消"),{cancellation=income.id},Modifier.testTag("expected-cancel-${income.id}"),enabled=!busy)
+            YActionRow {
+                YButton(word("确认到账","入金を確認"),{editor=income.id;arriving=true},Modifier.testTag("expected-arrive-${income.id}"),enabled=!busy)
+                YButton(word("修改预计项","予定を編集"),{editor=income.id;arriving=false},Modifier.testTag("expected-edit-${income.id}"),enabled=!busy)
+                if(income.status=="PENDING")YButton(word("取消预计收入","収入予定を取消"),{cancellation=income.id},Modifier.testTag("expected-cancel-${income.id}"),enabled=!busy)
+            }
         }
     }}
-    YButton(word("添加手动预计收入","収入見込みを手入力"),{editor="";arriving=false},Modifier.testTag("expected-add"),primary=true,enabled=!busy)
-    YButton(word("已到账 / 已取消记录","入金済み・取消済み")+if(showHistory)" −"else" +",{showHistory=!showHistory})
+    YActionRow {
+        YButton(word("添加手动预计收入","収入見込みを手入力"),{editor="";arriving=false},Modifier.testTag("expected-add"),primary=true,enabled=!busy)
+        YButton(word("已到账 / 已取消记录","入金済み・取消済み")+if(showHistory)" −"else" +",{showHistory=!showHistory})
+    }
     editor?.let{id->ExpectedIncomeEditor(s,s.expectedIncomes.firstOrNull{it.id==id},arriving,vm,{editor=null})}
     resumed?.let{encoded->
         val context=vm.repository.json.decodeFromString<FinancialDraftContext>(encoded)

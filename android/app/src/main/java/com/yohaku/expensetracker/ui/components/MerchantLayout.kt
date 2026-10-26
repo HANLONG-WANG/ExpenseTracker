@@ -42,8 +42,10 @@ import com.yohaku.expensetracker.ui.theme.*
         }
         // Native targets stack below the name so long names and multiple places remain readable.
         Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-            YButton(word("记一笔","記録"),onEntry,Modifier.testTag("merchant-entry-$id"),enabled=active)
-            YButton(word("查看商户资料","お店の情報を見る"),onOpen,Modifier.testTag("merchant-open-$id"))
+            YActionRow {
+                YButton(word("记一笔","記録"),onEntry,Modifier.testTag("merchant-entry-$id"),enabled=active)
+                YButton(word("查看商户资料","お店の情報を見る"),onOpen,Modifier.testTag("merchant-open-$id"))
+            }
         }
     }
 }

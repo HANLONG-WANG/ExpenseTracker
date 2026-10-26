@@ -13,7 +13,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.features.EntrySummary
-import com.yohaku.expensetracker.ui.features.EntryTools
 import com.yohaku.expensetracker.ui.features.CategoryStepFooter
 import com.yohaku.expensetracker.ui.features.CategoryKindTabs
 import com.yohaku.expensetracker.ui.features.CategoryShortcuts
@@ -122,34 +121,6 @@ class ThemeControlsTest {
             assertEquals("cash",first.value);assertEquals("CNY",second.value)
         }
     }
-    @Test fun entryPrefixKeepsSourceSpacingAndBothToolActions(){
-        val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");var books=0;var themes=0
-        val i=InstrumentationRegistry.getInstrumentation()
-        val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
-        val folder=File(i.targetContext.filesDir,"verification/entry-prefix$suffix").also{it.mkdirs()}
-        val data=File(folder,"dimensions.csv").also{it.writeText("theme,language,component,width,height,top\n")}
-        ui.setContent{YohakuTheme(theme.value,language.value){Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal=if(theme.value=="objects")23.dp else 25.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(15.dp)){
-            EntrySummary("生活","餐饮 / 咖啡",false,{})
-            EntryTools("生活",{books++},{themes++})
-            YField(word("金额","金額")+" · JPY","680",{},numeric=true,emphasizeAmount=true)
-        }}}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
-            ui.runOnIdle{theme.value=t;language.value=l}
-            val summary=ui.onNodeWithTag("entry-summary").getUnclippedBoundsInRoot()
-            val tool=ui.onNodeWithTag("entry-tools-row").getUnclippedBoundsInRoot()
-            val amount=ui.onNodeWithTag("field-group-"+(if(l=="zh")"金额" else "金額")+" · JPY").getUnclippedBoundsInRoot()
-            for((name,r) in listOf("summary" to summary,"tools" to tool,"amount" to amount))data.appendText("$t,$l,$name,${(r.right-r.left).value},${(r.bottom-r.top).value},${r.top.value}\n")
-            if(i.targetContext.resources.configuration.fontScale==1f&&i.targetContext.resources.configuration.screenWidthDp==390){
-                assertEquals("HTML collapsed summary gap",23f,(tool.top-summary.bottom).value,1f)
-                assertEquals("HTML amount gap",20f,(amount.top-tool.bottom).value,1f)
-                assertEquals("HTML tools height",when(t){"magazine"->31.1875f;"journal"->42f;else->63.1875f},(tool.bottom-tool.top).value,1f)
-            }
-            i.uiAutomation.takeScreenshot().let{bitmap->File(folder,"$t-$l.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
-            val b=books;ui.onNodeWithTag("entry-book").performScrollTo().performClick();assertEquals(b+1,books)
-            val a=themes;ui.onNodeWithTag("entry-theme").performScrollTo().performClick();assertEquals(a+1,themes)
-        }
-    }
-
     @Test fun entrySummaryMatchesSourceAndReselectRemainsReachable(){
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");var clicks=0
         val instrumentation=InstrumentationRegistry.getInstrumentation()
@@ -234,7 +205,7 @@ class ThemeControlsTest {
         val dates=mutableStateOf(listOf("2026-10-12","2026-10-15T09:00"))
         val selected=mutableStateOf("cash")
         ui.setContent{YohakuTheme(theme.value,"zh"){
-            if(brand.value)YStartup() else if(header.value)Column(Modifier.fillMaxSize().safeDrawingPadding()){YAppHeader("日常生活",{},{},{})} else Column(Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){
+            if(brand.value)YStartup() else if(header.value)Column(Modifier.fillMaxSize().safeDrawingPadding()){YAppHeader("日常生活",{},{})} else Column(Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){
                 YTitle("日期与账户","THE EVERYDAY CONTROLS")
                 YSelect("付款账户",selected.value,listOf("cash" to "现金","bank" to "银行账户"),{selected.value=it})
                 YDateFields(listOf("转出日期" to dates.value[0],"实际到账日期" to dates.value[1]),owner.value,{owner.value=it},{i,v->dates.value=dates.value.toMutableList().also{it[i]=v}})

@@ -13,7 +13,7 @@ import com.yohaku.expensetracker.domain.ledger.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
-@Composable internal fun TransferForm(s:BookSnapshot,d:EntryDraft,vm:AppViewModel,busy:Boolean,onTheme:()->Unit,onBooks:()->Unit,onAccount:()->Unit,onCancel:()->Unit) {
+@Composable internal fun TransferForm(s:BookSnapshot,d:EntryDraft,vm:AppViewModel,busy:Boolean,onAccount:()->Unit,onCancel:()->Unit) {
     val eligible=s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}
     val from=eligible.find{it.id==d.accountId};val to=eligible.find{it.id==d.toAccountId}
     val source=Currency.valueOf(from?.currency?:s.book.currency);val target=Currency.valueOf(to?.currency?:s.book.currency)
@@ -27,7 +27,6 @@ import com.yohaku.expensetracker.ui.theme.*
         var value=d
         vm.execute(onSuccess={change(value)}){value=estimateTransfer(d,source,target,direction)}
     }
-    EntryTools(s.book.name,onBooks,onTheme)
     TransferPair(from?.currency?:"—",to?.currency?:"—")
     Column(Modifier.fillMaxWidth().testTag("transfer-form"),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         YSelect(word("转出账户","出金口座"),d.accountId,eligible.map{it.id as String? to it.name},{id->

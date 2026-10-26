@@ -165,7 +165,7 @@ import kotlinx.serialization.encodeToString
             val contentScroll=rememberSaveable(baseRoute,book.id,saver=ScrollState.Saver){ScrollState(0)}
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 Column(Modifier.weight(1f).verticalScroll(contentScroll).testTag("page-scroll")) {
-                YAppHeader(book.name,{if(openEntry||financialDraft?.hasInput==true)sheet="books" else vm.navigate("books")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{if(openEntry){leaveTarget="settings";sheet="leave-entry"}else vm.navigate("settings")})
+                YAppHeader(book.name,{if(openEntry||financialDraft?.hasInput==true)sheet="books" else vm.navigate("books")},{if(openEntry){leaveTarget="settings";sheet="leave-entry"}else vm.navigate("settings")})
                 Column(Modifier.padding(pageContentPadding()).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
                     PageEdition(if(baseRoute=="rules")if(snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.type==AccountType.LOAN.name)"loan"else"credit"else baseRoute)
                     if(baseRoute !in listOf("home","analysis","life","accounts")) YBackBar(pageName(baseRoute,snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.name),{if(openEntry){leaveTarget="home";sheet="leave-entry"}else vm.back()})
@@ -182,7 +182,8 @@ import kotlinx.serialization.encodeToString
                         "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
                         "ledger"->LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)})
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}})
-                        "settings"->SettingsScreen(snapshot,{vm.appearance(book.id,theme=it)},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")})
+                        "appearance"->AppearanceScreen(snapshot,{vm.appearance(book.id,theme=it)})
+                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")})
                         "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "cloud"->key(book.id){CloudScreen(snapshot,vm)}
@@ -212,10 +213,10 @@ import kotlinx.serialization.encodeToString
                 val toCurrency=snapshot.accounts.find{it.id==activeDraft.toAccountId}?.currency
                 val transferTitle=if(fromCurrency!=null&&toCurrency!=null&&fromCurrency==toCurrency)word("账户转账","口座振替")else word("换汇与转账","両替と振替")
                 YSheet(if(activeDraft.kind==EntryKind.TRANSFER)transferTitle else if(activeDraft.kind==EntryKind.REFUND)word("退款 · 原币与实际到账","返金・原通貨と実入金") else if(route=="category-picker")word("先选一个分类","まずカテゴリを選ぶ") else if(draft?.id!=null)word("编辑这笔记录","この記録を編集") else if(activeDraft.occurrenceId!=null)word("确认周期账单","定期支払を確認") else word("记一笔","一筆を記録"),{leaveTarget=entryReturnRoute;sheet="leave-entry"}){
-                    if(activeDraft.kind==EntryKind.TRANSFER)TransferForm(snapshot,activeDraft,vm,busy,{sheet="entry-themes"},{sheet="books"},{editAccount=null;sheet="account"},{vm.leaveEntry(book.id,false,entryReturnRoute)})
-                    else if(activeDraft.kind==EntryKind.REFUND)RefundForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},busy,{sheet="entry-themes"},{sheet="books"},{vm.leaveEntry(book.id,false,entryReturnRoute)},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
+                    if(activeDraft.kind==EntryKind.TRANSFER)TransferForm(snapshot,activeDraft,vm,busy,{editAccount=null;sheet="account"},{vm.leaveEntry(book.id,false,entryReturnRoute)})
+                    else if(activeDraft.kind==EntryKind.REFUND)RefundForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},busy,{vm.leaveEntry(book.id,false,entryReturnRoute)},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
                     else if(route=="category-picker")CategoryPicker(vm,snapshot,activeDraft,{vm.changeEntry(book.id,it)},{categoryParent=it;categoryKind=activeDraft.kind;editCategory=null;sheet="category"},{vm.navigate("entry")})
-                    else EntryForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},{editAccount=null;sheet="account"},{vm.navigate("category-picker")},busy,{sheet="entry-themes"},{sheet="books"},{
+                    else EntryForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},{editAccount=null;sheet="account"},{vm.navigate("category-picker")},busy,{
                         if(entryReturnRoute!="detail"){selectedEventId=activeDraft.id;detailReturnRoute=entryReturnRoute}
                         vm.leaveEntry(book.id,false,entryReturnRoute){if(entryReturnRoute!="detail")vm.navigate("detail")}
                     },referenceService=vm.referenceRates,onPreviewExisting={eventId->vm.previewOccurrenceLink(book.id,activeDraft.occurrenceId!!,eventId)},onRate={sheet="manual-rate"},locationContent={EntryLocation(snapshot,activeDraft,vm){vm.changeEntry(book.id,it)}},onExitActivity={vm.execute{vm.repository.setActivityMode(book.id,true)};vm.changeEntry(book.id,activeDraft.copy(activityId=null,reserveId=null,reserveAmount="",treatEnabled=false,treatFriends=emptyList(),treatWeights=emptyMap()))},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
@@ -236,9 +237,11 @@ import kotlinx.serialization.encodeToString
                     YText(income.name,18)
                     RecordFacts(listOf(word("预计金额 / 日期","予定額・日付") to (Money(Currency.valueOf(income.currency),income.amountMinor).display()+" · "+income.date)))
                     if(income.status!="CANCELLED"&&snapshot.expectedIncomeArrival(income)==null) {
-                        YButton(word("确认实际到账","入金の確認"),{incomeArriving=true;sheet="outlook-income"},Modifier.testTag("outlook-income-arrive"),primary=true)
-                        YButton(word("修改预计安排","収入予定を修正"),{incomeArriving=false;sheet="outlook-income"},Modifier.testTag("outlook-income-edit"))
-                        YButton(word("取消预计收入","収入予定を取消"),{vm.execute(onSuccess={sheet=null}){vm.repository.cancelExpectedIncome(book.id,income.id)}},Modifier.testTag("outlook-income-cancel"))
+                        YActionRow {
+                            YButton(word("确认实际到账","入金の確認"),{incomeArriving=true;sheet="outlook-income"},Modifier.testTag("outlook-income-arrive"),primary=true)
+                            YButton(word("修改预计安排","収入予定を修正"),{incomeArriving=false;sheet="outlook-income"},Modifier.testTag("outlook-income-edit"))
+                            YButton(word("取消预计收入","収入予定を取消"),{vm.execute(onSuccess={sheet=null}){vm.repository.cancelExpectedIncome(book.id,income.id)}},Modifier.testTag("outlook-income-cancel"))
+                        }
                     }else snapshot.expectedIncomeArrival(income)?.let{event->YButton(word("查看实际收入","実収入を見る"),{sheet=null;openRecord(event)})}?:YText(word("此预计收入已取消。","この収入予定は取消済みです。"))
                 }}
 
@@ -270,9 +273,7 @@ import kotlinx.serialization.encodeToString
                     YButton(word("继续这笔草稿","下書きを続ける"),{vm.resumeEntry(snapshot);sheet=null},primary=true)
                     YButton(word("放弃草稿，记录退款","下書きを破棄して返金を記録"),{vm.execute({vm.startRefund(snapshot,original);sheet=null}){vm.repository.clearDraft(book.id)}})
                 }}
-                "entry-themes"->YSheet(word("切换主题，保留这笔输入","入力を保持してテーマを切替"),{sheet=null}) {
-                    Column(Modifier.fillMaxWidth()){themeChoices().forEach{(id,label)->EntryThemeOption(label,{vm.appearance(book.id,theme=id);sheet=null})}}
-                }
+
                 "account"->AccountEditor(snapshot,vm,{sheet=null},editAccount,debtOnly=if(openEntry&&draft?.kind in listOf(EntryKind.INCOME,EntryKind.TRANSFER))false else null)
                 "category"->CategoryEditor(snapshot,categoryKind,categoryParent,editCategory,vm,{sheet=null},
                     onUse=if(openEntry&&route=="category-picker"&&editCategory==null){id->vm.entry.value?.let{vm.changeEntry(book.id,it.copy(categoryId=id));vm.navigate("entry")};sheet=null} else null)
@@ -289,20 +290,26 @@ import kotlinx.serialization.encodeToString
                 "leave-entry"->YSheet(word("这笔还未保存","この記録は未保存です"),{sheet=null}) {
                     YText(word("可以保留草稿，下次继续。原记录不会被未保存内容修改。","下書きを残して後で続行できます。元の記録は変更されません。"))
                     YButton(word("保留草稿并返回","下書きを残して戻る"),{vm.leaveEntry(book.id,true,if(leaveTarget=="new-book")"home" else leaveTarget){sheet=if(leaveTarget=="new-book")"new-book" else null}},primary=true)
-                    YButton(word("放弃修改","変更を破棄"),{vm.leaveEntry(book.id,false,if(leaveTarget=="new-book")"home" else leaveTarget){sheet=if(leaveTarget=="new-book")"new-book" else null}})
-                    YLink(word("继续编辑","編集を続ける"),{sheet=null})
+                    YActionRow {
+                        YButton(word("放弃修改","変更を破棄"),{vm.leaveEntry(book.id,false,if(leaveTarget=="new-book")"home" else leaveTarget){sheet=if(leaveTarget=="new-book")"new-book" else null}})
+                        YLink(word("继续编辑","編集を続ける"),{sheet=null})
+                    }
                 }
                 "switch-financial"->financialDraft?.let{session->YSheet(word("切换前保存草稿？","切替前に下書きを残しますか？"),{sheet=null}) {
                     val target=requireNotNull(switchTarget)
                     YButton(word("保留草稿并切换","下書きを残して切替"),{vm.execute(onSuccess={session.close();vm.navigate("home");sheet=null}){session.flush();vm.preferences.select(target)}},Modifier.testTag("financial-draft-switch-keep"),primary=true,enabled=!busy)
-                    YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.execute(onSuccess={session.close();vm.navigate("home");sheet=null}){session.discard();vm.preferences.select(target)}},Modifier.testTag("financial-draft-switch-discard"),enabled=!busy)
-                    YLink(word("继续编辑","編集を続ける"),{sheet=null},Modifier.testTag("financial-draft-switch-continue"))
+                    YActionRow {
+                        YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.execute(onSuccess={session.close();vm.navigate("home");sheet=null}){session.discard();vm.preferences.select(target)}},Modifier.testTag("financial-draft-switch-discard"),enabled=!busy)
+                        YLink(word("继续编辑","編集を続ける"),{sheet=null},Modifier.testTag("financial-draft-switch-continue"))
+                    }
                 }}
                 "switch-entry"->YSheet(word("切换前保存草稿？","切替前に下書きを残しますか？"),{sheet=null}) {
                     val target=switchTarget!!
                     YButton(word("保留草稿并切换","下書きを残して切替"),{val d=draft!!;vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.saveDraft(book.id,d);vm.preferences.select(target)}},primary=true)
-                    YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.clearDraft(book.id);vm.preferences.select(target)}})
-                    YLink(word("继续编辑","編集を続ける"),{sheet=null})
+                    YActionRow {
+                        YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.clearDraft(book.id);vm.preferences.select(target)}})
+                        YLink(word("继续编辑","編集を続ける"),{sheet=null})
+                    }
                 }
                 "delete"->selectedEvent?.takeIf{it.deletedAt==null}?.let{event->EntryLifecycleSheet(snapshot,vm,event.id,EntryLifecycleOperation.TRASH,{sheet=null},{sheet=null;vm.navigate("ledger")})}
 
@@ -409,7 +416,7 @@ import kotlinx.serialization.encodeToString
     CategoryStepFooter()
 }
 
-@Composable internal fun EntryForm(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onSave:()->Unit,onAccount:()->Unit,onCategory:()->Unit,busy:Boolean,onTheme:()->Unit,onBooks:()->Unit,onCancelEdit:()->Unit,onRate:()->Unit={},onPreviewExisting:(String)->Unit={},onExitActivity:()->Unit={},referenceService:ReferenceRates?=null,mediaContent:@Composable ()->Unit={},locationContent:@Composable ()->Unit={}) {
+@Composable internal fun EntryForm(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onSave:()->Unit,onAccount:()->Unit,onCategory:()->Unit,busy:Boolean,onCancelEdit:()->Unit,onRate:()->Unit={},onPreviewExisting:(String)->Unit={},onExitActivity:()->Unit={},referenceService:ReferenceRates?=null,mediaContent:@Composable ()->Unit={},locationContent:@Composable ()->Unit={}) {
     val t=LocalYohaku.current;val eligible=s.entryAccounts(d.kind,d.accountId.takeIf{d.id!=null});val a=eligible.find{it.id==d.accountId};val currency=a?.currency ?: s.book.currency
     val foreign=d.originalCurrency!=null&&d.originalCurrency.name!=currency
     val occurrence=s.occurrences.find{it.id==d.occurrenceId}
@@ -422,7 +429,6 @@ import kotlinx.serialization.encodeToString
         onChange(next.copy(baseAmount=if(clearBase)""else d.baseAmount))
     }
     EntrySummary(s.book.name,s.path(d.categoryId),d.id!=null,onCategory)
-    EntryTools(s.book.name,onBooks,onTheme)
     if(confirmingOccurrence) {
         ThemeAuditPanel(occurrence!!.name,Modifier.testTag("occurrence-payment-context")) {
             RecordFacts(listOf(
@@ -590,16 +596,18 @@ import kotlinx.serialization.encodeToString
             if(refreshed)YText(word("资料已变化，请重新确认。","情報が変わりました。再確認してください。"),12)
             RecordFacts(listOf(word("账本名称","帳簿名") to (value.snapshot.book.name+" → "+value.bookUpdate!!.name),word("统计币种","基準通貨") to (value.snapshot.book.currency+" → "+value.bookUpdate!!.currency),word("预算月份","予算の月") to month),audit=true)
             BudgetChanges(value.before,value.after)
-            YButton(word("确认保存账本与预算","帳簿と予算を保存"),{
-                if(saving)return@YButton
-                saving=true
-                var saved=false
-                vm.execute(onSuccess={if(saved)onClose()},onComplete={saving=false}) {
-                    saved=vm.repository.commitBudget(value)
-                    if(!saved){review=vm.repository.previewBookBudget(value.bookUpdate!!,month,value.setting.amountMinor?.let{Money(Currency.valueOf(value.bookUpdate!!.currency),it)});refreshed=true}
-                }
-            },primary=true,enabled=!saving)
-            YLink(word("返回继续编辑","戻って編集"),{review=null})
+            YActionRow {
+                YButton(word("确认保存账本与预算","帳簿と予算を保存"),{
+                    if(saving)return@YButton
+                    saving=true
+                    var saved=false
+                    vm.execute(onSuccess={if(saved)onClose()},onComplete={saving=false}) {
+                        saved=vm.repository.commitBudget(value)
+                        if(!saved){review=vm.repository.previewBookBudget(value.bookUpdate!!,month,value.setting.amountMinor?.let{Money(Currency.valueOf(value.bookUpdate!!.currency),it)});refreshed=true}
+                    }
+                },primary=true,enabled=!saving)
+                YLink(word("返回继续编辑","戻って編集"),{review=null})
+            }
         }
         return
     }
@@ -647,7 +655,7 @@ import kotlinx.serialization.encodeToString
     var dateOwner by remember{mutableStateOf<Int?>(null)}
     var accountSheet by rememberSaveable{mutableStateOf(false)}
     var originalAccountId by rememberSaveable{mutableStateOf<String?>(null)}
-    var appearanceSheet by rememberSaveable{mutableStateOf(false)}
+    var settingsSheet by rememberSaveable{mutableStateOf(false)}
     var creating by remember(setupKey){mutableStateOf(false)}
     val setupScroll=rememberScrollState()
     LaunchedEffect(step,setupKey){setupScroll.scrollTo(0)}
@@ -660,7 +668,7 @@ import kotlinx.serialization.encodeToString
     BackHandler(enabled=step>0||accountSheet){if(accountSheet)accountSheet=false else move(step-1)}
     Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
         Column(Modifier.weight(1f).testTag("setup-viewport").verticalScroll(setupScroll).testTag("setup-scroll")) {
-        YAppHeader(null,{},{persistFirst(t.id,if(language=="zh")"ja" else "zh")},{focus.clearFocus();keyboard?.hide();appearanceSheet=true})
+        YAppHeader(null,{},{focus.clearFocus();keyboard?.hide();settingsSheet=true})
         Column(Modifier.padding(pageContentPadding()).padding(bottom=28.dp).testTag("setup-page"),verticalArrangement=Arrangement.spacedBy(15.dp)) {
         PageEdition("onboarding")
         if(step==0) {
@@ -720,8 +728,9 @@ import kotlinx.serialization.encodeToString
         }
         }
     }
-    if(appearanceSheet)YSheet(word("外观主题","テーマ"),{appearanceSheet=false}){
-        Column(Modifier.fillMaxWidth()){themeChoices().forEach{(id,label)->EntryThemeOption(label+(if(id==t.id)" ✓" else ""),{persistFirst(id,language);appearanceSheet=false})}}
+    if(settingsSheet)YSheet(word("设置","設定"),{settingsSheet=false}){
+        Column(Modifier.fillMaxWidth()){themeChoices().forEach{(id,label)->SetupSettingOption(label+(if(id==t.id)" ✓" else ""),{persistFirst(id,language);settingsSheet=false})}}
+        SetupSettingOption(word("切换为日语","中国語へ切替"),{persistFirst(t.id,if(language=="zh")"ja" else "zh")},Modifier.testTag("settings-language"))
     }
     if(accountSheet&&s!=null)AccountEditor(s,vm,{accountSheet=false},s.accounts.find{it.id==originalAccountId},debtOnly=if(step==4)null else step==3)
 }
@@ -755,6 +764,7 @@ import kotlinx.serialization.encodeToString
 }
 
 @Composable internal fun pageName(route:String,accountName:String?=null)=when(route){
+    "appearance"->word("外观主题","テーマ")
     "books"->word("切换账本","帳簿を切替");"book-management"->word("账本管理","帳簿の管理")
     "account-detail","rules"->accountName?:word("账户","口座");"calendar"->word("付款日历","支払カレンダー")
     "notification-settings"->word("重要提醒设置","大事な通知の設定");"reminders"->word("重要事项","大事なこと")

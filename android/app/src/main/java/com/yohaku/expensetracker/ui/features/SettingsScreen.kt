@@ -20,13 +20,40 @@ import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
-@Composable internal fun SettingsScreen(s:BookSnapshot,onTheme:(String)->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={}) {
+@Composable internal fun SettingsScreen(s:BookSnapshot,onAppearance:()->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={},onReceipts:()->Unit={}) {
     val t=LocalYohaku.current
     YTitle(word("让它，像你的生活。","自分らしい、暮らしに。"),"SETTINGS",pageFlow=true)
+    SettingsGroup(word("外观与语言","外観と言語")) {
+        SettingsRow(word("外观主题","テーマ"),onAppearance,"settings-appearance",value=themeName(s.book.theme))
+        SettingsRow(word("切换为日语","中国語へ切替"),onLanguage,"settings-language",arrow=false,last=true)
+    }
+    SettingsGroup(word("账本与分类","帳簿とカテゴリ")) {
+        SettingsRow(word("独立账本管理","独立した帳簿"),onBooks)
+        SettingsRow(word("账本名称与资料","帳簿情報"),onRename)
+        SettingsRow(word("两级分类管理","カテゴリ管理"),onCategories,last=true)
+    }
+    SettingsGroup(word("提醒与汇率","通知とレート")) {
+        SettingsRow(word("重要提醒设置","重要な通知の設定"),onReminders,"settings-reminders")
+        SettingsRow(word("参考汇率与自动获取","参考レート・自動取得"),onRates,"settings-reference-rates",last=true)
+    }
+    SettingsGroup(word("小票、流水与云端","レシート・明細とクラウド")) {
+        SettingsRow(word("小票识别与商品明细","レシート認識と商品明細"),onReceipts,"settings-receipts")
+        SettingsRow(word("银行 / 信用卡流水核对","銀行・カード明細の照合"),onStatements,"settings-statements")
+        SettingsRow(word("云端分析交接台","クラウド分析デスク"),onCloud,"settings-cloud",last=true)
+    }
+    SettingsGroup(word("其他","その他")) {
+        SettingsRow(word("回收站 · 30天","ごみ箱 · 30日"),onTrash,last=true)
+    }
+    YText("余量 / ヨハク / YOHAKU",12,color=t.muted)
+}
+
+@Composable internal fun AppearanceScreen(s:BookSnapshot,onTheme:(String)->Unit) {
+    val t=LocalYohaku.current
+    YTitle(word("换一张，喜欢的纸面。","好きな紙面に、着替える。"),"APPEARANCE",pageFlow=true)
     Panel(Modifier.testTag("settings-theme-panel"),contentSpacing=0.dp) {
         YText(word("外观主题","テーマ"),when(t.id){"journal"->18;"objects"->16;else->17},Modifier.padding(bottom=14.dp),weight=if(t.id=="objects")FontWeight.Medium else FontWeight.Normal,lineHeightMultiplier=when(t.id){"journal"->26f/18;"objects"->1.5f;else->25f/17})
         listOf("magazine","journal","objects").forEach{id->
-            val name=when(id){"magazine"->word("现代生活杂志","ライフスタイル誌");"journal"->word("纸质手账","紙の手帳");else->word("日常小物","暮らしの小物")}
+            val name=themeName(id)
             val description=when(id){"magazine"->word("松绿与留白 · 编辑式排版","深緑と余白・誌面のように");"journal"->word("纸页与墨蓝 · 手写批注感","紙と青いインク・手帳の温もり");else->word("陶土橙与黄油色 · 日常小物","テラコッタとバター色・暮らしの小物")}
             val selected=id==s.book.theme
             Column(Modifier.fillMaxWidth().testTag("theme-choice-"+id).selectable(selected=selected,role=Role.RadioButton,onClick={onTheme(id)})){
@@ -43,25 +70,9 @@ import com.yohaku.expensetracker.ui.theme.*
             }
         }
     }
-    SettingsGroup(word("账本与分类","帳簿とカテゴリ")) {
-        SettingsRow(word("独立账本管理","独立した帳簿"),onBooks)
-        SettingsRow(word("账本名称与资料","帳簿情報"),onRename)
-        SettingsRow(word("两级分类管理","カテゴリ管理"),onCategories,last=true)
-    }
-    SettingsGroup(word("提醒与汇率","通知とレート")) {
-        SettingsRow(word("重要提醒设置","重要な通知の設定"),onReminders,"settings-reminders")
-        SettingsRow(word("参考汇率与自动获取","参考レート・自動取得"),onRates,"settings-reference-rates",last=true)
-    }
-    SettingsGroup(word("流水与云端","明細とクラウド")) {
-        SettingsRow(word("银行 / 信用卡流水核对","銀行・カード明細の照合"),onStatements,"settings-statements")
-        SettingsRow(word("云端分析交接台","クラウド分析デスク"),onCloud,"settings-cloud",last=true)
-    }
-    SettingsGroup(word("其他","その他")) {
-        SettingsRow(word("回收站 · 30天","ごみ箱 · 30日"),onTrash)
-        SettingsRow(word("切换为日语","中国語へ切替"),onLanguage,"settings-language",arrow=false,last=true)
-    }
-    YText("余量 / ヨハク / YOHAKU",12,color=t.muted)
 }
+
+@Composable private fun themeName(id:String)=when(id){"magazine"->word("现代生活杂志","ライフスタイル誌");"journal"->word("纸质手账","紙の手帳");else->word("日常小物","暮らしの小物")}
 
 @Composable private fun SettingsGroup(title:String,content:@Composable ColumnScope.()->Unit) {
     val t=LocalYohaku.current
@@ -71,12 +82,13 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable private fun SettingsRow(label:String,onClick:()->Unit,tag:String=label,arrow:Boolean=true,last:Boolean=false) {
+@Composable private fun SettingsRow(label:String,onClick:()->Unit,tag:String=label,arrow:Boolean=true,last:Boolean=false,value:String?=null) {
     val t=LocalYohaku.current
     Column(Modifier.fillMaxWidth().testTag(tag).clickable(role=Role.Button,onClick=onClick)){
         Row(Modifier.fillMaxWidth().padding(vertical=if(t.id=="objects")18.dp else 17.dp).heightIn(min=when(t.id){"journal"->if(arrow)21.dp else 20.dp;"objects"->if(arrow)20.dp else 19.dp;else->if(arrow)17.dp else 16.dp}),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
             val size=when(t.id){"journal"->15;"objects"->14;else->12}
             YText(label,size,Modifier.weight(1f),lineHeightMultiplier=when(t.id){"journal"->20f/15;"objects"->19f/14;else->16f/12})
+            if(value!=null)YText(value,if(t.id=="journal")12 else 10,color=t.muted,lineHeightMultiplier=1.5f)
             if(arrow)YIcon("arrow",Modifier.size(17.dp))
         }
         if(!last)SettingsRule()

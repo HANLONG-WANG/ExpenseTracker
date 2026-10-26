@@ -63,15 +63,17 @@ import com.yohaku.expensetracker.ui.theme.*
                 oldActivity.filter{it.activityId==id}.forEach{YText("− ${s.path(it.categoryId)} · ${money(it.amountMinor)}",12)}
                 newActivity.filter{it.activityId==id}.forEach{YText("＋ ${s.path(it.categoryId)} · ${money(it.amountMinor)}",12)}
             }
-            YButton(word("确认分类调整","カテゴリ変更を確定"),{
-                var saved=false
-                vm.execute(onSuccess={if(saved)onClose()}) {
-                    saved=vm.repository.commitCategoryOperation(value)
-                    if(!saved){review=vm.repository.previewCategoryOperation(s.book.id,c.id,value.operation,value.targetId,value.budgetPolicy);refreshed=true}
-                    else vm.reminders?.rebuildSafely(false)
-                }
-            },Modifier.testTag("confirm-category-operation"),primary=true,enabled=!busy&&(value.operation!=CategoryOperation.DELETE_EMPTY||!value.deletionBlocked))
-            YLink(word("返回修改","戻って変更"),{review=null},Modifier.testTag("category-operation-back"))
+            YActionRow {
+                YButton(word("确认分类调整","カテゴリ変更を確定"),{
+                    var saved=false
+                    vm.execute(onSuccess={if(saved)onClose()}) {
+                        saved=vm.repository.commitCategoryOperation(value)
+                        if(!saved){review=vm.repository.previewCategoryOperation(s.book.id,c.id,value.operation,value.targetId,value.budgetPolicy);refreshed=true}
+                        else vm.reminders?.rebuildSafely(false)
+                    }
+                },Modifier.testTag("confirm-category-operation"),primary=true,enabled=!busy&&(value.operation!=CategoryOperation.DELETE_EMPTY||!value.deletionBlocked))
+                YLink(word("返回修改","戻って変更"),{review=null},Modifier.testTag("category-operation-back"))
+            }
         }
     }
 }

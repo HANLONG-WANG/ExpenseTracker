@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.theme.*
 
 /** v55 app-header; visual bounds stay independent from the larger touch target. */
-@Composable fun YAppHeader(bookName:String?,onBooks:()->Unit,onLanguage:()->Unit,onSettings:()->Unit,showActions:Boolean=true) {
+@Composable fun YAppHeader(bookName:String?,onBooks:()->Unit,onSettings:()->Unit,showActions:Boolean=true) {
     val t=LocalYohaku.current
     val language=LocalLanguage.current
     val narrow=LocalConfiguration.current.screenWidthDp<=360
@@ -47,7 +47,6 @@ import com.yohaku.expensetracker.ui.theme.*
                 YText("⌄",14,color=t.muted,lineHeightMultiplier=1.5f)
             }
             if(showActions)Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy((if(narrow)7 else 11).dp)) {
-                YText(if(language=="zh")"日本語" else "中文",if(narrow&&!journal)8 else 10,Modifier.testTag("header-language").clickable(role=Role.Button,onClick=onLanguage).padding(vertical=7.dp),color=t.muted,lineHeightMultiplier=1.5f)
                 val shape=when(t.id){"journal"->RoundedCornerShape(8.dp,11.dp,9.dp,13.dp);"objects"->RoundedCornerShape(10.dp,10.dp,14.dp,10.dp);else->RoundedCornerShape(50)}
                 Box(Modifier.testTag("header-settings").size((if(narrow)27 else 31).dp).background(if(journal)Color.Transparent else if(objects)Color(0xffe9ddc2) else t.soft,shape).then(if(journal)Modifier.border(1.dp,t.line,shape) else Modifier).semantics{contentDescription=if(language=="zh")"设置" else "設定"}.clickable(role=Role.Button,onClick=onSettings),contentAlignment=Alignment.Center){YIcon("settings",Modifier.size(16.dp))}
             }

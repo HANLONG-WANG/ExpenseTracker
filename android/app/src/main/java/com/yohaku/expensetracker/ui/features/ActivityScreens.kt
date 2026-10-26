@@ -78,8 +78,10 @@ import java.time.LocalDate
             s.activityBudgets.filter{it.activityId==activity.id}.forEach{b->YText((s.categories.find{it.id==b.categoryId}?.name.orEmpty())+" · "+money(s.activitySpent(activity.id,b.categoryId))+" / "+money(b.amountMinor),12)}
             YText(if(activity.excludeMonthly)word("活动消费从各历史月份预算排除，分析与资产仍保留。","シーン支出は各月予算から除外し、分析・資産には残します。")else word("活动消费计入各自然月预算。","シーン支出は各暦月の予算に含みます。"),11,color=LocalYohaku.current.muted)
             if(s.features?.activityMode==true) {
-                YButton(word("编辑活动与预算","シーンと予算を編集"),{editing=activity.id})
-                if(!activity.ended)YButton(word("进入记录模式","記録モードを開始"),{vm.execute{vm.repository.setActivityMode(s.book.id,true,activity.id)}})
+                YActionRow {
+                    YButton(word("编辑活动与预算","シーンと予算を編集"),{editing=activity.id})
+                    if(!activity.ended)YButton(word("进入记录模式","記録モードを開始"),{vm.execute{vm.repository.setActivityMode(s.book.id,true,activity.id)}})
+                }
             }
             YLink(word("查看删除影响","削除の影響を見る"),{deleting=activity.id},Modifier.testTag("activity-delete-preview"))
             YButton(if(activity.ended)word("补录期间的支出","期間内の支出を追加")else word("记一笔活动支出","シーンの支出を記録"),{
@@ -93,8 +95,10 @@ import java.time.LocalDate
             s.reserves.filter{it.activityId==activity.id}.forEach{r->
                 YText(r.name+" · "+r.date+" · "+money(s.reserveRemaining(r)),14)
                 s.reserveAccountRemaining(r)?.let{YText((s.accounts.find{it.id==r.accountId}?.name.orEmpty())+" · "+it.display(),11)}
-                if(r.active&&!activity.ended&&s.features?.activityMode==true)YLink(word("调整预留","確保を調整"),{reserveFor="edit:"+r.id})
-                if(s.reserveRemaining(r)>0)YLink(word("释放剩余预留","残りの確保を解放"),{reserveFor="release:"+r.id})
+                YActionRow {
+                    if(r.active&&!activity.ended&&s.features?.activityMode==true)YLink(word("调整预留","確保を調整"),{reserveFor="edit:"+r.id})
+                    if(s.reserveRemaining(r)>0)YLink(word("释放剩余预留","残りの確保を解放"),{reserveFor="release:"+r.id})
+                }
             }
             if(!activity.ended&&s.features?.activityMode==true)YButton(word("＋ 预留资金","＋ 資金を確保"),{reserveFor=activity.id})
         }
@@ -124,8 +128,10 @@ import java.time.LocalDate
             YText((s.friends.find{it.id==t.payerFriendId}?.name.orEmpty())+word("付款","の支払"),17)
             YText(t.date+" · "+t.name+" · "+Money(Currency.valueOf(t.currency),t.amountMinor).display(),12)
             YText(word("仅互请份额；不记本人消费或账户扣款。","ごちそうの取り分のみ。自分の支出・口座引落は記録しません。"),10,color=LocalYohaku.current.muted)
-            YButton(word("修正份额","取り分を修正"),{treatFriend=null;treatId=t.id;treatFor=activity.id})
-            YLink(word("删除这次互请","このごちそうを削除"),{vm.execute{vm.repository.removeOtherTreat(s.book.id,t.id)}})
+            YActionRow {
+                YButton(word("修正份额","取り分を修正"),{treatFriend=null;treatId=t.id;treatFor=activity.id})
+                YLink(word("删除这次互请","このごちそうを削除"),{vm.execute{vm.repository.removeOtherTreat(s.book.id,t.id)}})
+            }
         }}
     }
     friendDetail?.let{friendId->activity?.let{a->YSheet(s.friends.first{it.id==friendId}.name,{friendDetail=null}) {
@@ -180,8 +186,10 @@ import java.time.LocalDate
             YText(name,21);YText(start+" — "+end,12)
             review!!.months.forEach{(before,after)->YText(before.month+word(" 月预算消费："," 月予算の支出：")+Money(currency,before.spentMinor).display()+" → "+Money(currency,after.spentMinor).display(),12)}
             if(ended)YText(word("结束保留全部历史，并释放剩余预留。","終了後も履歴を保存し、残りの確保を解放します。"),12)
-            YButton(word("确认保存","保存を確定"),{val r=review!!;vm.execute(onSuccess=onDismiss){check(vm.repository.commitActivity(r)){"资料已变化，请重新预览 / 情報が変わりました。再確認してください"}}},primary=true,enabled=!busy)
-            YLink(word("返回修改","編集に戻る"),{review=null})
+            YActionRow {
+                YButton(word("确认保存","保存を確定"),{val r=review!!;vm.execute(onSuccess=onDismiss){check(vm.repository.commitActivity(r)){"资料已变化，请重新预览 / 情報が変わりました。再確認してください"}}},primary=true,enabled=!busy)
+                YLink(word("返回修改","編集に戻る"),{review=null})
+            }
         }
     }
 }
@@ -215,8 +223,10 @@ import java.time.LocalDate
             YText(word("月预算预留：","月予算の確保：")+(r.before.reserveMinor?.let{Money(currency,it).display()}?:"—")+" → "+(r.after.reserveMinor?.let{Money(currency,it).display()}?:"—"),15)
             YText(word("资金总预留：","資金の確保総額：")+Money(currency,r.before.fundReserveMinor).display()+" → "+Money(currency,r.after.fundReserveMinor).display(),15)
             YText(word("账户余额保持不变。","口座残高は変わりません。"),12)
-            YButton(word("确认","確定"),{vm.execute(onSuccess=onDismiss){check(vm.repository.commitReserve(r)){"资料已变化，请重新预览 / 情報が変わりました。再確認してください"}}},primary=true,enabled=!busy)
-            YLink(word("返回修改","編集に戻る"),{review=null})
+            YActionRow {
+                YButton(word("确认","確定"),{vm.execute(onSuccess=onDismiss){check(vm.repository.commitReserve(r)){"资料已变化，请重新预览 / 情報が変わりました。再確認してください"}}},primary=true,enabled=!busy)
+                YLink(word("返回修改","編集に戻る"),{review=null})
+            }
         }
     }
 }
@@ -271,8 +281,10 @@ import java.time.LocalDate
             YText(word("不产生本人消费或账户扣款。","自分の支出・口座引落は発生しません。"),13)
             r.change.allocations.forEach{a->YText((if(a.participant=="ME")word("本人","自分")else s.friends.first{it.id==a.friendId}.name)+" · "+Money(Currency.valueOf(r.change.treat.currency),a.amountMinor).display()+" / "+Money(Currency.valueOf(s.book.currency),a.baseMinor).display(),14)}
             r.after.forEach{b->YText(b.friend.name+word("差额：","の差額：")+Money(Currency.valueOf(s.book.currency),r.before.find{it.friend.id==b.friend.id}?.difference?:0).display()+" → "+Money(Currency.valueOf(s.book.currency),b.difference).display(),15)}
-            YButton(word("确认互请记录","ごちそう記録を確定"),{vm.execute(onSuccess=onDismiss){check(vm.repository.commitOtherTreat(r)){"资料已变化，请重新预览 / 情報が変わりました。再確認してください"}}},primary=true,enabled=!busy)
-            YLink(word("返回修改","編集に戻る"),{review=null})
+            YActionRow {
+                YButton(word("确认互请记录","ごちそう記録を確定"),{vm.execute(onSuccess=onDismiss){check(vm.repository.commitOtherTreat(r)){"资料已变化，请重新预览 / 情報が変わりました。再確認してください"}}},primary=true,enabled=!busy)
+                YLink(word("返回修改","編集に戻る"),{review=null})
+            }
         }
     }
 }

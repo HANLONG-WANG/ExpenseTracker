@@ -357,12 +357,14 @@ class FinancialFlowTest {
             tapTag("finance-edit-SINGLE")
             val closing=text("締め日（1—31）","締日（1〜31）")
             textField(closing).performScrollTo().performTextReplacement("30")
-            tapTag("header-language")
+            tapTag("header-settings");tapTag("settings-language");tapTag("page-back")
             val otherLanguage=if(language=="zh")"ja"else "zh"
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.language==otherLanguage&&!vm.busy.value}
+            tapTag("analysis-tab-rules");tapTag("finance-edit-SINGLE")
             textField(if(language=="zh")"締日（1〜31）"else "締め日（1—31）").assertTextEquals("30")
-            tapTag("header-language")
+            tapTag("header-settings");tapTag("settings-language");tapTag("page-back")
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.language==language&&!vm.busy.value}
+            tapTag("analysis-tab-rules");tapTag("finance-edit-SINGLE")
             tapTag("finance-rule-preview")
             ui.onNodeWithTag("finance-rule-incomplete").assertExists()
             ui.waitUntil(10000){vm.financialRuleReview.value!=null&&!vm.busy.value}

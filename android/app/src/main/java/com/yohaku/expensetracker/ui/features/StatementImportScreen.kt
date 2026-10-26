@@ -58,8 +58,10 @@ import com.yohaku.expensetracker.ui.theme.*
             YText(word("与 ${p.overlappingBatchIds.size} 份资料的区间重叠。同日同额的真实多笔不会合并；资金端仍一一占用。","${p.overlappingBatchIds.size} 件の資料と期間が重複。同日同額の実取引は結合せず、資金側は1件ずつ使用します。"),12,color=LocalYohaku.current.warm)
             YToggle(word("确认保留独立重叠批次","重複期間を別バッチとして保持"),overlap,onOverlap,Modifier.testTag("statement-accept-overlap"))
         }
-        YButton(word("确认导入，开始核对","確認して照合開始"),onConfirm,Modifier.fillMaxWidth().testTag("statement-confirm-import"),primary=true,enabled=!busy&&p.duplicateBatchId==null&&(p.overlappingBatchIds.isEmpty()||overlap))
-        YButton(word("放弃预览","プレビューを破棄"),onCancel,Modifier.testTag("statement-cancel-preview"),enabled=!busy)
+        YActionRow {
+            YButton(word("确认导入，开始核对","確認して照合開始"),onConfirm,Modifier.testTag("statement-confirm-import"),primary=true,enabled=!busy&&p.duplicateBatchId==null&&(p.overlappingBatchIds.isEmpty()||overlap))
+            YButton(word("放弃预览","プレビューを破棄"),onCancel,Modifier.testTag("statement-cancel-preview"),enabled=!busy)
+        }
     }
     ThemeAuditPanel(word("转换资料与待确认项","変換資料・確認事項"),Modifier.testTag("statement-conversion-issues")) {
         RecordFacts(listOf(word("账户入账币种","口座の計上通貨") to p.file.account_currency,

@@ -184,10 +184,14 @@ class DraftEditingFlowTest {
         tap("喫茶と余白")
         tap("↺ 编辑记录")
         ui.onNodeWithTag("field-金额 · JPY").performTextReplacement("680")
-        ui.onNodeWithTag("entry-theme").performScrollTo().performClick()
-        tap("纸质手账")
+        ui.onNodeWithTag("header-settings").performScrollTo().performClick()
+        tap("保留草稿并返回")
+        ui.onNodeWithTag("settings-appearance").performScrollTo().performClick()
+        ui.onNodeWithTag("theme-choice-journal").performScrollTo().performClick()
         ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme=="journal"}
-        ui.runOnIdle{vm.appearance(a,language="ja")}
+        ui.onNodeWithTag("page-back").performScrollTo().performClick()
+        ui.onNodeWithTag("settings-language").performScrollTo().performClick()
+        ui.runOnIdle{vm.navigate("detail");vm.resumeEntry(snapshot(a))}
         waitFor("金額 · JPY")
         ui.onNodeWithTag("field-金額 · JPY").assertTextEquals("680")
         ui.onNodeWithText("×").performClick()
@@ -215,11 +219,11 @@ class DraftEditingFlowTest {
         tap("餐饮")
         tap("咖啡")
         ui.onNodeWithTag("field-金额 · JPY").performTextInput("777")
-        ui.onNodeWithTag("entry-book").performScrollTo().performClick()
+        ui.onNodeWithTag("header-book").performScrollTo().performClick()
         tap("別の生活")
         tap("继续编辑")
         ui.onNodeWithTag("field-金额 · JPY").assertTextEquals("777")
-        ui.onNodeWithTag("entry-book").performScrollTo().performClick()
+        ui.onNodeWithTag("header-book").performScrollTo().performClick()
         tap("別の生活")
         tap("保留草稿并切换")
         ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==b && vm.entry.value==null}
@@ -657,10 +661,7 @@ class DraftEditingFlowTest {
                         val expectedY=when(theme){"magazine"->92f;"journal"->101f;else->83f}
                         assertEquals("HTML title page anchor: $theme/$language",expectedY,y,1f)
                     }
-                    if(tag=="settings-theme-panel"){
-                        val expectedY=when(theme){"magazine"->if(language=="zh")206.14f else 257.28f;"journal"->230.30f;else->165.5f}
-                        assertEquals("HTML panel page anchor: $theme/$language",expectedY,y,1f)
-                    }
+
                 }
             }
             for(option in listOf("magazine","journal","objects")){
@@ -681,13 +682,16 @@ class DraftEditingFlowTest {
         for(theme in listOf("magazine","journal","objects")){
             ui.runOnIdle{vm.appearance(a,language="zh");vm.navigate("settings")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.language=="zh"}
+            ui.onNodeWithTag("settings-appearance").performScrollTo().performClick()
             ui.onNodeWithTag("theme-choice-"+theme).performScrollTo().performClick()
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
             ui.onNodeWithTag("theme-choice-"+theme).assertIsSelected()
             measureOptions(theme,"zh")
             captureScreen("settings","$theme-zh")
+            ui.onNodeWithTag("page-back").performScrollTo().performClick()
             ui.onNodeWithTag("settings-language").performScrollTo().performClick()
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.language=="ja"}
+            ui.onNodeWithTag("settings-appearance").performScrollTo().performClick()
             ui.onNodeWithTag("theme-choice-"+theme).performScrollTo().assertIsSelected()
             measureOptions(theme,"ja")
             captureScreen("settings","$theme-ja")
@@ -706,7 +710,7 @@ class DraftEditingFlowTest {
         tap("喫茶と余白")
         tap("↺ 编辑记录")
         ui.onNodeWithTag("field-金额 · JPY").performTextReplacement("680")
-        ui.onNodeWithTag("entry-book").performScrollTo().performClick()
+        ui.onNodeWithTag("header-book").performScrollTo().performClick()
         tap("別の生活")
         tap("放弃草稿并切换")
         ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==b&&vm.entry.value==null}
@@ -1073,29 +1077,7 @@ class DraftEditingFlowTest {
             ui.waitUntil(10000){vm.entry.value==null}
         }
     }
-    @Test fun themeSheetKeepsDraftAndUsesIndependentShells() {
-        val sizes=mutableListOf<String>()
-        for(theme in listOf("magazine","journal","objects")){
-            ui.runOnIdle{vm.appearance(a,theme=theme,language="zh");vm.editEntry(snapshot(a),snapshot(a).events.single())}
-            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme && vm.entry.value!=null}
-            ui.onNodeWithTag("field-金额 · JPY").performTextReplacement("680")
-            ui.onNodeWithTag("entry-theme").performScrollTo().performClick()
-            waitFor("切换主题，保留这笔输入")
-            ui.onNodeWithTag("sheet-header").assertIsDisplayed()
-            captureScreen("theme-sheet",theme)
-            val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-            for(tag in listOf("theme-sheet","sheet-header")){
-                val r=ui.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
-                sizes+="$theme,$tag,${r.width/density},${r.height/density}"
-            }
-            ui.onNodeWithText("×").performClick()
-            ui.onNodeWithTag("field-金额 · JPY").assertTextEquals("680")
-            assertEquals(event,vm.entry.value!!.id)
-            assertEquals(300L,snapshot(a).events.single().amountMinor)
-        }
-        val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
-        java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir,"verification/theme-sheet$suffix/dimensions.csv").writeText(sizes.joinToString("\n"))
-    }
+
     @Test fun homeCoverShowsSameBudgetInAllThemesAndLanguages() {
         runBlocking{repo.updateBook(repo.dao.book(a)!!.copy(budgetMinor=10000))}
         val sizes=mutableListOf<String>()

@@ -386,7 +386,7 @@ class SetupPresentationTest {
         ui.setContent{YohakuTheme(theme.value,language.value){key(theme.value,language.value){
             val snapshot=BookSnapshot(BookEntity("fixture","生活","JPY","2026-10-01"),listOf(AccountEntity("fixture","cash","现金","CASH","JPY",10000,"2026-10-01")),listOf(CategoryEntity("fixture","food","餐饮","EXPENSE"),CategoryEntity("fixture","coffee","咖啡","EXPENSE","food")),emptyList(),emptyList(),null)
             Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal=if(theme.value=="objects")23.dp else 25.dp),verticalArrangement=Arrangement.spacedBy(15.dp)){
-                EntryForm(snapshot,draft.value,{draft.value=it},{},{},{},false,{},{},{})
+                EntryForm(snapshot,draft.value,{draft.value=it},{},{},{},false,{})
             }
         }}}
         for(index in 0 until source.length()){
@@ -396,16 +396,18 @@ class SetupPresentationTest {
             if(ui.onAllNodesWithTag(noteField).fetchSemanticsNodes().isNotEmpty()!=expanded)ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
             ui.onNodeWithTag("entry-summary").performScrollTo()
             val top=ui.onNodeWithTag("entry-summary").getUnclippedBoundsInRoot().top
-            val tags=mapOf("summary" to "entry-summary","tools" to "entry-tools-row","amount" to if(l=="zh")"field-group-金额 · JPY" else "field-group-金額 · JPY","quick" to "entry-quick-amount","base" to "entry-base-caption","account" to if(l=="zh")"select-field-付款账户" else "select-field-支払口座","merchant" to if(l=="zh")"field-group-商户 / 买了什么" else "field-group-お店 / 買ったもの","date" to "date-field-grid","notes" to "entry-notes","historical" to if(l=="zh")"toggle-历史补录：已包含在期初余额" else "toggle-履歴追加：期首残高に含まれる","save" to "entry-save-button")
+            val tags=mapOf("summary" to "entry-summary","amount" to if(l=="zh")"field-group-金额 · JPY" else "field-group-金額 · JPY","quick" to "entry-quick-amount","base" to "entry-base-caption","account" to if(l=="zh")"select-field-付款账户" else "select-field-支払口座","merchant" to if(l=="zh")"field-group-商户 / 买了什么" else "field-group-お店 / 買ったもの","date" to "date-field-grid","notes" to "entry-notes","historical" to if(l=="zh")"toggle-历史补录：已包含在期初余额" else "toggle-履歴追加：期首残高に含まれる","save" to "entry-save-button")
             val nodes=ref.getJSONArray("nodes")
             for(j in 0 until nodes.length()){
-                val expected=nodes.getJSONObject(j);val key=expected.getString("key");val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
+                val expected=nodes.getJSONObject(j);val key=expected.getString("key");if(key=="tools")continue;val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
                 // B/C add original-currency selection and an explicit manual-rate action.
                 // Compare the retained A anchors after removing only those measured additions.
                 val currencyField=ui.onNodeWithTag(if(l=="zh")"select-field-消费 / 收付原币" else "select-field-取引の原通貨").getUnclippedBoundsInRoot()
                 val rateAction=ui.onNode(hasText(if(l=="zh")"查看 / 手动填写换算" else "換算を確認・手入力") and hasClickAction()).getUnclippedBoundsInRoot()
                 val extension=when(key){"summary","tools","amount"->0f;"base","quick"->(currencyField.bottom-currencyField.top).value+12f;else->(currencyField.bottom-currencyField.top).value+12f+(rateAction.bottom-rateAction.top).value}
-                val actualTop=(r.top-top).value-extension;val actualHeight=(r.bottom-r.top).value
+                // Removing the tools row also removes its two collapsed gaps; the sheet keeps its normal 15dp gap.
+                val removedTools=if(key=="summary")0f else (0 until nodes.length()).map{nodes.getJSONObject(it)}.first{it.getString("key")=="tools"}.getDouble("height").toFloat()+28f
+                val actualTop=(r.top-top).value-extension+removedTools;val actualHeight=(r.bottom-r.top).value
                 csv.appendText("$t,$l,$expanded,$key,$actualTop,$actualHeight\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(actualTop-expected.getDouble("top"))>1)errors+="$t/$l/$expanded/$key top: $actualTop vs ${expected.getDouble("top")}" 

@@ -56,8 +56,10 @@ import java.time.LocalDate
                 RecordFacts(listOf(word("记账实际金额","記録の実金額") to receiptCurrencyText(posting.amount,posting.currency),
                     word("记账入账日","記録の計上日") to posting.postedDate,word("记账发生日","記録の利用日") to posting.occurredDate))
                 YText(word("只保存人工核对决定，此行仍显示差异，不改金额、日期、余额或预算。","手動照合の判断だけを保存し、差異表示を維持。金額・日付・残高・予算は変更しません。"),12)
-                YButton(word("确认保留差异","差異を保持して確定"),{vm.execute(onSuccess=onClose){vm.repository.acceptStatementDifference(currentReview)}},Modifier.fillMaxWidth().testTag("statement-confirm-difference"),primary=true,enabled=!busy)
-                YButton(word("返回选择","候補に戻る"),{review=null},enabled=!busy)
+                YActionRow {
+                    YButton(word("确认保留差异","差異を保持して確定"),{vm.execute(onSuccess=onClose){vm.repository.acceptStatementDifference(currentReview)}},Modifier.testTag("statement-confirm-difference"),primary=true,enabled=!busy)
+                    YButton(word("返回选择","候補に戻る"),{review=null},enabled=!busy)
+                }
             }
         }else {
             YSelect(word("实际资金端候选","実際の資金側の候補"),selected,listOf(null to word("请选择","選択してください"))+candidates.map{post->post.postingId as String? to

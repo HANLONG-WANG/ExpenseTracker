@@ -60,14 +60,16 @@ import com.yohaku.expensetracker.ui.theme.*
         RecordFacts(listOf(word("新版本","新バージョン") to r.version.toString(),word("生效日","適用日") to r.rule.effectiveFrom,
             word("时区","タイムゾーン") to r.rule.zoneId,word("需重算的预测账单","再計算対象の予測請求") to r.affectedPredictions.size.toString(),word("保留已确认账单","保持する確定請求") to r.retainedConfirmedBills.size.toString()))
         YText(word("保存新版本不会覆盖已确认账单，也不会办理金融操作。","新バージョンを保存しても確定請求は書き換えず、金融手続きも行いません。"),11,color=LocalYohaku.current.muted)
-        YButton(word("确认保存规则版本","条件バージョンを保存"),{var saved=false;vm.execute(onSuccess={if(saved)onSaved()}) {
-            saved=commitFinancialDraft(draftSession){vm.repository.commitFinancialRule(r)}!=null
-            if(saved)vm.financialRuleReview.value=null else {
-                vm.financialRuleReview.value=vm.repository.previewFinancialRule(r.rule.bookId,r.rule.accountId,r.rule)
-                vm.financialReviewRefreshed.value=true
-            }
-        }},Modifier.testTag("finance-rule-confirm"),primary=true,enabled=!busy)
-        YButton(word("返回修改","戻って修正"),{vm.financialRuleReview.value=null},Modifier.testTag("finance-review-back"),enabled=!busy)
+        YActionRow {
+            YButton(word("确认保存规则版本","条件バージョンを保存"),{var saved=false;vm.execute(onSuccess={if(saved)onSaved()}) {
+                saved=commitFinancialDraft(draftSession){vm.repository.commitFinancialRule(r)}!=null
+                if(saved)vm.financialRuleReview.value=null else {
+                    vm.financialRuleReview.value=vm.repository.previewFinancialRule(r.rule.bookId,r.rule.accountId,r.rule)
+                    vm.financialReviewRefreshed.value=true
+                }
+            }},Modifier.testTag("finance-rule-confirm"),primary=true,enabled=!busy)
+            YButton(word("返回修改","戻って修正"),{vm.financialRuleReview.value=null},Modifier.testTag("finance-review-back"),enabled=!busy)
+        }
     }
 }
 

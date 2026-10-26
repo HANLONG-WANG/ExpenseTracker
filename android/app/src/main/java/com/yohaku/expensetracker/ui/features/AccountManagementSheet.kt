@@ -43,16 +43,18 @@ import com.yohaku.expensetracker.ui.theme.*
                 YText(if(deleting)word("删除账户及其期初资料，无法恢复；不生成余额调整，也不影响其他账户。","口座と期首情報を削除し、復元できません。残高調整は作成せず、他の口座に影響しません。")else if(a.active)word("从日常选择隐藏，历史、欠款与未完成事项保留。仍可处理已有债务的还款；不会自动结清或取消安排。","通常の選択から非表示。履歴・債務・未完了予定を保持。既存債務の返済は可能で、完済や予定取消にはしません。")else word("重新加入日常选择，原记录与余额保留。","通常の選択へ戻し、元の記録と残高を保持します。"),12)
                 if(deleting&&value.usage.inUse)YText(word("仍有历史、计划、核对、预留或草稿引用，请优先停用。","履歴・予定・照合・確保・下書きの参照があるため、停止を利用してください。"),12,color=LocalYohaku.current.warm)
                 val label=if(deleting)word("确认删除账户","口座の削除を確定")else if(a.active)word("确认停用账户","口座を停止")else word("确认重新启用","口座を再開")
-                YButton(label,{
-                    var saved=false
-                    vm.execute(onSuccess={if(saved){onClose();if(value.operation==AccountOperation.DELETE)onDeleted()}}) {
-                        saved=vm.repository.commitAccountOperation(value)
-                        if(!saved){review=vm.repository.previewAccountOperation(a.bookId,a.id,value.operation);refreshed=true}
-                        else vm.reminders?.rebuildSafely(false)
-                    }
-                },Modifier.testTag("confirm-account-operation"),primary=true,enabled=!busy&&(!deleting||!value.usage.inUse))
-                if(deleting)YLink(word("返回状态管理","状態管理へ戻る"),{load(toggle)},Modifier.testTag("account-operation-back"))
-                else YLink(word("查看删除资格与影响","削除の可否・影響を確認"),{load(AccountOperation.DELETE)},Modifier.testTag("account-delete-preview"))
+                YActionRow {
+                    YButton(label,{
+                        var saved=false
+                        vm.execute(onSuccess={if(saved){onClose();if(value.operation==AccountOperation.DELETE)onDeleted()}}) {
+                            saved=vm.repository.commitAccountOperation(value)
+                            if(!saved){review=vm.repository.previewAccountOperation(a.bookId,a.id,value.operation);refreshed=true}
+                            else vm.reminders?.rebuildSafely(false)
+                        }
+                    },Modifier.testTag("confirm-account-operation"),primary=true,enabled=!busy&&(!deleting||!value.usage.inUse))
+                    if(deleting)YLink(word("返回状态管理","状態管理へ戻る"),{load(toggle)},Modifier.testTag("account-operation-back"))
+                    else YLink(word("查看删除资格与影响","削除の可否・影響を確認"),{load(AccountOperation.DELETE)},Modifier.testTag("account-delete-preview"))
+                }
             }
         }
     }

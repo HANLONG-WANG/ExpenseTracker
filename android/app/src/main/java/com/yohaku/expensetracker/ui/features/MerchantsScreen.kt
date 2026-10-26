@@ -43,8 +43,10 @@ import com.yohaku.expensetracker.ui.theme.*
         s.merchantLocations.filter{it.merchantId==merchant.id}.forEach{l->Panel {
             YText(l.name,18)
             YText(l.latitude?.let{"$it, ${l.longitude} · ${l.radiusMeters}m"}?:word("仅地点名称，未填写坐标","場所名のみ・座標未入力"),11)
-            YButton(word("编辑地点","場所を編集"),{locationId=l.id;locationFor=merchant.id})
-            YLink(word("移除保存地点","保存した場所を削除"),{vm.execute{vm.repository.dao.removeMerchantLocation(s.book.id,l.id)}})
+            YActionRow {
+                YButton(word("编辑地点","場所を編集"),{locationId=l.id;locationFor=merchant.id})
+                YLink(word("移除保存地点","保存した場所を削除"),{vm.execute{vm.repository.dao.removeMerchantLocation(s.book.id,l.id)}})
+            }
         }}
         YButton(word("＋ 添加地点","＋ 場所を追加"),{locationId=null;locationFor=merchant.id},primary=true)
         MerchantLocationPreferences(s,vm,onEntry)

@@ -88,8 +88,10 @@ import java.time.LocalDate
             facts.sources.forEach{source->YText(source.date+" · "+Money(c,source.principalMinor).display()+" · "+(source.eventId?.let{id->s.events.firstOrNull{it.id==id}?.merchant}.orEmpty()),11)}
             facts.payments.forEach{p->YText(p.date+" · "+word("实际清偿本金","実返済元金")+" · "+Money(c,p.allocations.sumOf{it.principalMinor?:0}+(p.explicitMinor?:0)).display(),11)}
             YText(word("只保存一套账户循环预测；不增加借入、消费、收入或资金。确认/已付款关联/逾期账单按原义务保留，未来未付款才进入假设。","口座の循環予測を1つ保存し、借入・支出・収入・資金は増やしません。確定・支払関連・期限経過の請求は保持し、将来の未払分のみを仮定します。"),11)
-            YButton(word("确认保存余额池","プールを保存"),{var ok=false;vm.execute(onSuccess={if(ok)onClose()else{review=null;stale=true}}){ok=commitFinancialDraft(draftSession){vm.repository.commitFinancialPrediction(r)}!=null}},Modifier.testTag("pool-confirm"),primary=true,enabled=!busy&&r.calculation is Calculation.Ready)
-            YButton(word("返回修改","修正に戻る"),{review=null},Modifier.testTag("pool-back"),enabled=!busy)
+            YActionRow {
+                YButton(word("确认保存余额池","プールを保存"),{var ok=false;vm.execute(onSuccess={if(ok)onClose()else{review=null;stale=true}}){ok=commitFinancialDraft(draftSession){vm.repository.commitFinancialPrediction(r)}!=null}},Modifier.testTag("pool-confirm"),primary=true,enabled=!busy&&r.calculation is Calculation.Ready)
+                YButton(word("返回修改","修正に戻る"),{review=null},Modifier.testTag("pool-back"),enabled=!busy)
+            }
         }else {
             FinancialDraftNotice()
             YText(word("账户内的循环本金共同计费、共同计算一次月付款，固定贷款与一次付/分期不混入。","口座内の循環元金をまとめて計算し、月の支払額を1回計算します。固定ローン・一括・分割分は含めません。"),11)

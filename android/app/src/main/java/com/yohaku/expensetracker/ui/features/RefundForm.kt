@@ -11,11 +11,10 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun RefundForm(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onSave:()->Unit,
-    busy:Boolean,onTheme:()->Unit,onBooks:()->Unit,onCancel:()->Unit,mediaContent:@Composable ()->Unit={}) {
+    busy:Boolean,onCancel:()->Unit,mediaContent:@Composable ()->Unit={}) {
     val original=s.visibleEvents.find{it.id==d.originalEventId}
     if(original==null){YText(word("原消费已被删除，请先恢复。","元の支出を復元してください。"));YButton(word("返回","戻る"),onCancel);return}
     val account=s.accounts.find{it.id==d.accountId}
-    EntryTools(s.book.name,onBooks,onTheme)
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         RefundSource(s,original)
         YField(word("商户退回原币金额","お店が返金した原通貨額")+" · "+original.currency,d.amount,{onChange(d.copy(amount=it))},numeric=true)

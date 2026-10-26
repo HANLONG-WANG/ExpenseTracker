@@ -68,7 +68,6 @@ class BookManagementFlowTest {
                 ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.let{it.snapshot==null&&it.books.singleOrNull()?.archived==true}==true}
                 ui.onAllNodesWithTag("book-choice-$b").assertCountEquals(0)
                 ui.onNodeWithTag("app-header").performScrollTo()
-                ui.onAllNodesWithTag("header-language").assertCountEquals(0)
                 ui.onAllNodesWithTag("header-settings").assertCountEquals(0)
                 if(theme=="magazine") {
                     val today=java.time.LocalDate.now()

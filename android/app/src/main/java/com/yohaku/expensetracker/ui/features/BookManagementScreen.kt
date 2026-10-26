@@ -39,13 +39,17 @@ import java.time.format.DateTimeFormatter
                 val available=expiry.isAfter(vm.repository.clock.instant())
                 YText(word("保留至：","保存期限：")+expiry.atZone(vm.repository.clock.zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),11)
                 if(book.archived)YText(word("恢复后仍保持归档，可再取消归档。","復元後もアーカイブを保持。後から解除できます。"),11)
-                YButton(word("恢复账本","帳簿を復元"),{vm.previewBookOperation(book.id,BookOperation.RESTORE)},Modifier.testTag("book-restore-${book.id}"),enabled=available&&!busy)
-                YLink(word("永久删除","完全削除"),{vm.previewBookOperation(book.id,BookOperation.PURGE)},Modifier.testTag("book-purge-${book.id}"))
+                YActionRow {
+                    YButton(word("恢复账本","帳簿を復元"),{vm.previewBookOperation(book.id,BookOperation.RESTORE)},Modifier.testTag("book-restore-${book.id}"),enabled=available&&!busy)
+                    YLink(word("永久删除","完全削除"),{vm.previewBookOperation(book.id,BookOperation.PURGE)},Modifier.testTag("book-purge-${book.id}"))
+                }
             }else {
                 if(book.archived)YText(word("从日常切换隐藏，未完成付款仍按本账本提醒。","通常の切替から非表示。未完了の支払はこの帳簿の名前で通知。"),11)
-                YButton(if(book.archived)word("取消归档","アーカイブを解除")else word("归档","アーカイブ"),{vm.previewBookOperation(book.id,if(book.archived)BookOperation.UNARCHIVE else BookOperation.ARCHIVE)},Modifier.testTag("book-archive-${book.id}"),enabled=!busy)
-                YLink(word("查看资料","情報を見る"),{vm.selectBook(book.id)},Modifier.testTag("book-open-${book.id}"))
-                YLink(word("移至回收站","ごみ箱へ"),{vm.previewBookOperation(book.id,BookOperation.TRASH)},Modifier.testTag("book-trash-${book.id}"))
+                YActionRow {
+                    YButton(if(book.archived)word("取消归档","アーカイブを解除")else word("归档","アーカイブ"),{vm.previewBookOperation(book.id,if(book.archived)BookOperation.UNARCHIVE else BookOperation.ARCHIVE)},Modifier.testTag("book-archive-${book.id}"),enabled=!busy)
+                    YLink(word("查看资料","情報を見る"),{vm.selectBook(book.id)},Modifier.testTag("book-open-${book.id}"))
+                    YLink(word("移至回收站","ごみ箱へ"),{vm.previewBookOperation(book.id,BookOperation.TRASH)},Modifier.testTag("book-trash-${book.id}"))
+                }
             }
         }
     }
@@ -100,7 +104,7 @@ import java.time.format.DateTimeFormatter
     var creating by rememberSaveable{mutableStateOf(false)}
     val fallback=ready.books.firstOrNull{it.deletedAt==null}?:ready.books.first()
     Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).testTag("book-library")) {
-        YAppHeader(null,{},{},{},showActions=false)
+        YAppHeader(null,{},{},showActions=false)
         Column(Modifier.padding(pageContentPadding()).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
             PageEdition("book-management")
             BookManagementScreen(ready.overviews,null,vm,{creating=true})

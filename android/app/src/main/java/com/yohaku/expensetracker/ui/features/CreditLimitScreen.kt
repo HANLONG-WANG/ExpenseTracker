@@ -160,8 +160,10 @@ import java.time.*
     review.recovery?.let{RecordFacts(listOf(word("实际恢复本金","回復元金") to Money(c,it.principalMinor).display(),word("实际恢复日","回復日") to it.date))}
     review.observation?.let{val currency=it.groupId?.let{id->Currency.valueOf(review.before.limits.groups.first{g->g.id==id}.currency)}?:c;YText(limitLabel(it.scope)+" · "+Money(currency,it.availableMinor).display(),18);YText(it.observedAt,12)}
     YText(word("只保存额度资料，不生成资金流水。","枠の情報のみ保存し、資金明細は作成しません。"),12)
-    YButton(word("确认保存","確定して保存"),{var saved=false;vm.execute(onSuccess={if(saved)onClose()else onStale()}){saved=commitFinancialDraft(draftSession){if(vm.repository.commitCreditLimit(review))"saved"else null}!=null}},Modifier.testTag("limit-confirm"),primary=true,enabled=!busy)
-    YButton(word("返回修改","修正に戻る"),onBack,Modifier.testTag("limit-back"),enabled=!busy)
+    YActionRow {
+        YButton(word("确认保存","確定して保存"),{var saved=false;vm.execute(onSuccess={if(saved)onClose()else onStale()}){saved=commitFinancialDraft(draftSession){if(vm.repository.commitCreditLimit(review))"saved"else null}!=null}},Modifier.testTag("limit-confirm"),primary=true,enabled=!busy)
+        YButton(word("返回修改","修正に戻る"),onBack,Modifier.testTag("limit-back"),enabled=!busy)
+    }
     return true
 }
 

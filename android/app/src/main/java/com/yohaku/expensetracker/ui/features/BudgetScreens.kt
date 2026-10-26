@@ -109,8 +109,10 @@ import java.time.YearMonth
             if(limit!=null&&childTotal>limit)YText(word("子预算合计超过父预算。保留输入，父预算仍覆盖所有子级。","子予算合計が親予算を超えています。入力を保持し、親はすべての子を含みます。"),12,color=LocalYohaku.current.warm)
         }
         YText(word("后续未单独设置的月份会沿用此金额；不改变账户余额。","後続の未設定月はこの金額を引き継ぎます。口座残高は変わりません。"),11,color=LocalYohaku.current.muted)
-        YButton(word("确认预算调整","予算変更を確定"),{vm.confirmBudget{editor=null}},primary=true,enabled=!busy)
-        YLink(word("返回继续编辑","戻って編集"),{vm.budgetReview.value=null})
+        YActionRow {
+            YButton(word("确认预算调整","予算変更を確定"),{vm.confirmBudget{editor=null}},primary=true,enabled=!busy)
+            YLink(word("返回继续编辑","戻って編集"),{vm.budgetReview.value=null})
+        }
     }}
 }
 @Composable private fun BudgetEditor(s:BookSnapshot,month:String,categoryId:String?,amount:String,onAmount:(String)->Unit,vm:AppViewModel,onClose:()->Unit) {

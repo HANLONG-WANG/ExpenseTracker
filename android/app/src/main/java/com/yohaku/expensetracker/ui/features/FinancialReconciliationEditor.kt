@@ -155,8 +155,10 @@ import java.time.format.DateTimeFormatter
                     YField(word("分配本金","充当元金"),row.principal,{move(index,row.copy(principal=it))},Modifier.testTag("reconciliation-clearing-principal-$index"),numeric=true)
                     YField(word("分配利息","充当利息"),row.interest,{move(index,row.copy(interest=it))},numeric=true)
                     YField(word("分配费用","充当手数料"),row.fee,{move(index,row.copy(fee=it))},numeric=true)
-                    YButton(word("拆分另一部分","別の部分に分ける"),{moveJson=vm.repository.json.encodeToString(moves+ReconciliationMoveDraft(row.id,row.billId,"","",""))})
-                    if(moves.count{it.id==row.id}>1)YButton(word("移除此部分","この部分を削除"),{moveJson=vm.repository.json.encodeToString(moves.filterIndexed{i,_->i!=index})})
+                    YActionRow {
+                        YButton(word("拆分另一部分","別の部分に分ける"),{moveJson=vm.repository.json.encodeToString(moves+ReconciliationMoveDraft(row.id,row.billId,"","",""))})
+                        if(moves.count{it.id==row.id}>1)YButton(word("移除此部分","この部分を削除"),{moveJson=vm.repository.json.encodeToString(moves.filterIndexed{i,_->i!=index})})
+                    }
                 }
             }
             if(moves.any{m->clearings.none{it.id==m.id}})YButton(word("清偿已变化，重新读取分配行","返済情報が変わりました。充当行を再読込"),{moveJson=vm.repository.json.encodeToString(clearings.map{ReconciliationMoveDraft(it.id,it.billId,value(it.principalMinor),value(it.interestMinor),value(it.feeMinor))})})
@@ -173,11 +175,13 @@ import java.time.format.DateTimeFormatter
             ReconciliationReviewFacts(r,c)
             if(r.calculation is Calculation.Ready) {
                 YToggle(word("已核对平台当前义务与退款归属","返済先の現在の債務・返金の帰属を確認した"),confirmed,{confirmed=it},Modifier.testTag("reconciliation-confirmed"))
-                YButton(word("保存本次重核版本","今回の再確認版を保存"),{var ok=false;vm.execute(onSuccess={if(ok)onClose()else{review=null;confirmed=false;refreshed=true}}) {
-                    ok=commitFinancialDraft(session){vm.repository.commitArrangementReconciliation(r,confirmed)}!=null
-                }},Modifier.testTag("reconciliation-save"),primary=true,enabled=!busy&&confirmed)
-            }
-            YButton(word("返回修改","修正に戻る"),{review=null},Modifier.testTag("reconciliation-back"),enabled=!busy)
+                YActionRow {
+                    YButton(word("保存本次重核版本","今回の再確認版を保存"),{var ok=false;vm.execute(onSuccess={if(ok)onClose()else{review=null;confirmed=false;refreshed=true}}) {
+                        ok=commitFinancialDraft(session){vm.repository.commitArrangementReconciliation(r,confirmed)}!=null
+                    }},Modifier.testTag("reconciliation-save"),primary=true,enabled=!busy&&confirmed)
+                }
+                YButton(word("返回修改","修正に戻る"),{review=null},Modifier.testTag("reconciliation-back"),enabled=!busy)
+                }
         }
     }
 }

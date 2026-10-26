@@ -61,8 +61,10 @@ import com.yohaku.expensetracker.ui.theme.*
             YText(word("只替换已预览的商品明细。原记账金额、分类和小票图片保持原样。","確認した商品明細のみ置換。記録額・カテゴリ・画像は保持。"),12,color=LocalYohaku.current.muted)
             if(needsStale)YText(word("导出后原记录或小票已变化。确认即表示已检查旧修订；新增未覆盖图片仍待整理。","出力後に元記録・レシートが変わっています。確定は旧リビジョンを確認したことを意味し、追加された未処理画像は未整理のままです。"),12,color=LocalYohaku.current.warm)
             YButton(if(needsReplacement)word("替换并保存","置換して保存")else word("确认保存旧修订结果","旧リビジョンの結果を保存"),{onSave(needsStale,needsReplacement)},Modifier.fillMaxWidth().testTag("receipt-confirm-replacement"),primary=true,enabled=!busy)
-            YButton(word("取消，重新选择","取消・選び直す"),onReselect,Modifier.fillMaxWidth().testTag("receipt-cancel-replacement"),enabled=!busy)
-            YLink(word("返回预览","プレビューに戻る"),{confirming=false},Modifier.testTag("receipt-back-to-preview"))
+            YActionRow {
+                YButton(word("取消，重新选择","取消・選び直す"),onReselect,Modifier.testTag("receipt-cancel-replacement"),enabled=!busy)
+                YLink(word("返回预览","プレビューに戻る"),{confirming=false},Modifier.testTag("receipt-back-to-preview"))
+            }
         }
         return
     }

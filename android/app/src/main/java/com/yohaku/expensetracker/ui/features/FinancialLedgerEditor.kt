@@ -189,14 +189,16 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
         YText(word("预计额度不是现金，也不代表平台已恢复可用额度。","予測枠は現金ではなく、返済先での回復確定も意味しません。"),11)
     }
     FinancialLedgerPlanImpacts(r)
-    YButton(word("确认保存实际记录","実際の記録を保存"),{var saved=false;vm.execute(onSuccess={if(saved)onClose()}) {
-        saved=commitFinancialDraft(draftSession){vm.repository.commitFinancialLedger(r)}!=null
-        if(saved)vm.financialLedgerReview.value=null else {
-            vm.financialLedgerReview.value=if(r.borrowingInput!=null)vm.repository.previewBorrowing(r.before.ledger.book.id,r.borrowingInput)else vm.repository.previewRepayment(r.before.ledger.book.id,r.repaymentInput!!)
-            vm.financialReviewRefreshed.value=true
-        }
-    }},Modifier.testTag("finance-ledger-confirm"),primary=true,enabled=!busy)
-    YButton(word("返回修改","戻って修正"),{vm.financialLedgerReview.value=null},Modifier.testTag("finance-ledger-back"),enabled=!busy)
+    YActionRow {
+        YButton(word("确认保存实际记录","実際の記録を保存"),{var saved=false;vm.execute(onSuccess={if(saved)onClose()}) {
+            saved=commitFinancialDraft(draftSession){vm.repository.commitFinancialLedger(r)}!=null
+            if(saved)vm.financialLedgerReview.value=null else {
+                vm.financialLedgerReview.value=if(r.borrowingInput!=null)vm.repository.previewBorrowing(r.before.ledger.book.id,r.borrowingInput)else vm.repository.previewRepayment(r.before.ledger.book.id,r.repaymentInput!!)
+                vm.financialReviewRefreshed.value=true
+            }
+        }},Modifier.testTag("finance-ledger-confirm"),primary=true,enabled=!busy)
+        YButton(word("返回修改","戻って修正"),{vm.financialLedgerReview.value=null},Modifier.testTag("finance-ledger-back"),enabled=!busy)
+    }
 }
 
 @Composable internal fun FinancialRepaymentFacts(s:BookSnapshot,event:EventEntity,p:FinancialRepaymentEntity) {

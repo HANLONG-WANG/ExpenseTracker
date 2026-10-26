@@ -79,7 +79,9 @@ class EntryFlowTest {
         ui.waitUntil(10000){vm.setupDraft.value?.theme=="journal"}
         ui.onNodeWithTag("field-账本名称").performScrollTo().assertTextEquals("我的外币日常")
         ui.onNodeWithTag("field-月预算 / 可稍后设置").performScrollTo().assertTextEquals("68000")
-        ui.onNodeWithTag("header-language").performScrollTo().performClick()
+        ui.onNodeWithTag("header-settings").performScrollTo().performClick()
+        ui.onNodeWithTag("settings-language").performScrollTo().performClick()
+        ui.onNodeWithText("×").performClick()
         waitFor("帳簿名")
         ui.onNodeWithTag("field-帳簿名").performScrollTo().assertTextEquals("我的外币日常")
         ui.onNodeWithTag("field-月予算・後から設定可").performScrollTo().assertTextEquals("68000")
