@@ -54,6 +54,7 @@ import kotlinx.serialization.encodeToString
     var requestedActivity by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedTreatFriend by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedMerchant by rememberSaveable{mutableStateOf<String?>(null)}
+    var requestedDate by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedOccurrence by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedTransferAccount by rememberSaveable{mutableStateOf<String?>(null)}
     var detailReturnRoute by rememberSaveable{mutableStateOf("home")}
@@ -100,12 +101,13 @@ import kotlinx.serialization.encodeToString
                 val kind=EntryKind.valueOf(requestedEntryKind)
                 if(kind==EntryKind.TRANSFER)vm.startTransfer(current,requestedTransferAccount)
                 else vm.startEntry(current,kind,requestedActivity,requestedTreatFriend,requestedMerchant)
+                requestedDate?.let{date->vm.entry.value?.let{d->vm.changeEntry(book.id,d.copy(date=date,settlementDate=if(d.settlementDate==d.date)date else d.settlementDate))}}
                 if(requestedTransferAccount!=null||requestedDestination!=null)vm.entry.value?.let{d->
                     vm.changeEntry(book.id,d.copy(accountId=requestedTransferAccount?:d.accountId,toAccountId=requestedDestination?:d.toAccountId))
                 }
             }
-            fun requestEntry(kind:EntryKind=EntryKind.EXPENSE,fromAccountId:String?=null,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null,toAccountId:String?=null){
-                requestedMerchant=merchantId;requestedTreatFriend=treatFriendId;requestedActivity=activityId;requestedEntryKind=kind.name;requestedTransferAccount=fromAccountId;requestedDestination=toAccountId;requestedOccurrence=null
+            fun requestEntry(kind:EntryKind=EntryKind.EXPENSE,fromAccountId:String?=null,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null,toAccountId:String?=null,date:String?=null){
+                requestedDate=date;requestedMerchant=merchantId;requestedTreatFriend=treatFriendId;requestedActivity=activityId;requestedEntryKind=kind.name;requestedTransferAccount=fromAccountId;requestedDestination=toAccountId;requestedOccurrence=null
                 if(snapshot.draft!=null)sheet="existing-draft"else startRequestedEntry(snapshot)
             }
             fun startStatementRequest() {
@@ -154,7 +156,7 @@ import kotlinx.serialization.encodeToString
                 }
             }
             fun requestOccurrence(occurrence:OccurrenceEntity) {
-                requestedMerchant=null;requestedTreatFriend=null;requestedActivity=null;requestedEntryKind=EntryKind.EXPENSE.name;requestedTransferAccount=null;requestedDestination=null;requestedOccurrence=occurrence.id
+                requestedDate=null;requestedMerchant=null;requestedTreatFriend=null;requestedActivity=null;requestedEntryKind=EntryKind.EXPENSE.name;requestedTransferAccount=null;requestedDestination=null;requestedOccurrence=occurrence.id
                 if(snapshot.draft!=null)sheet="existing-draft"else vm.startOccurrence(snapshot,occurrence)
             }
             LaunchedEffect(book.id,YearMonth.from(today).toString(),snapshot.recurrences){vm.materializeMonth(book.id,YearMonth.from(today).toString())}
@@ -180,7 +182,7 @@ import kotlinx.serialization.encodeToString
                         "reminders"->ImportantItemsScreen(snapshot,vm,{openTimelineItem(it)},{account,month->openFinancial(account,month)},{openRisk(it)},{openAttention(it)},{vm.navigate("forecast")})
                         "forecast"->FinancialForecastScreen(snapshot,vm,{openRecord(it)},{openFinancial(it)},{openRisk(it)},{openAttention(it)},{openTimelineItem(it)})
                         "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
-                        "ledger"->LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)})
+                        "ledger"->LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)},{requestEntry(date=it)},today)
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}})
                         "appearance"->AppearanceScreen(snapshot,{vm.appearance(book.id,theme=it)})
                         "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")})

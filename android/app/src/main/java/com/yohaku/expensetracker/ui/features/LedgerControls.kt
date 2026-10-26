@@ -30,13 +30,13 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable internal fun LedgerFilterDisclosure(expanded:Boolean,onToggle:()->Unit,content:@Composable ()->Unit){
+@Composable internal fun LedgerFilterDisclosure(expanded:Boolean,onToggle:()->Unit,label:String=word("筛选账户、分类与日期","口座・カテゴリ・日付を絞る"),content:@Composable ()->Unit){
     val t=LocalYohaku.current
     val state=if(expanded)word("已展开","展開中") else word("已收起","折りたたみ")
     Column(Modifier.fillMaxWidth().testTag("ledger-filter-panel").drawBehind{drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=if(t.id=="journal")PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())) else null)}.padding(top=15.dp,bottom=16.dp)){
         Row(Modifier.fillMaxWidth().testTag("ledger-filters").semantics{stateDescription=state}.clickable(role=Role.Button,onClick=onToggle),verticalAlignment=Alignment.CenterVertically){
             val size=when(t.id){"journal"->14;"objects"->12;else->10}
-            YText(word("筛选账户、分类与日期","口座・カテゴリ・日付を絞る"),size,Modifier.weight(1f),color=t.accent,lineHeightMultiplier=when(t.id){"journal"->20f/size;"objects"->17f/size;else->14f/size},cssLineBox=true)
+            YText(label,size,Modifier.weight(1f),color=t.accent,lineHeightMultiplier=when(t.id){"journal"->20f/size;"objects"->17f/size;else->14f/size},cssLineBox=true)
             YText(if(expanded)"−" else "+",17,color=t.accent,lineHeightMultiplier=25f/17,cssLineBox=true)
         }
         if(expanded)Column(Modifier.fillMaxWidth().padding(top=16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){content()}

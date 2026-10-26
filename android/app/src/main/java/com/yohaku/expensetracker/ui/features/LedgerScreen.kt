@@ -17,7 +17,7 @@ import com.yohaku.expensetracker.data.db.EventEntity
 import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.data.repository.accountMoney
 import com.yohaku.expensetracker.data.repository.accountEventPostings
-import com.yohaku.expensetracker.data.repository.netExpense
+import com.yohaku.expensetracker.data.repository.dailyExpense
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
@@ -64,8 +64,9 @@ import java.time.YearMonth
     }
 }
 
-@Composable internal fun LedgerScreen(s:BookSnapshot,onSelect:(EventEntity)->Unit,onStart:(EntryKind)->Unit) {
+@Composable internal fun LedgerScreen(s:BookSnapshot,onSelect:(EventEntity)->Unit,onStart:(EntryKind)->Unit,onStartOn:(String)->Unit,today:LocalDate) {
     val t=LocalYohaku.current
+    var calendar by rememberSaveable(s.book.id){mutableStateOf(false)}
     var type by rememberSaveable(s.book.id){mutableStateOf("ALL")}
     var query by rememberSaveable(s.book.id){mutableStateOf("")}
     var filtersOpen by rememberSaveable(s.book.id){mutableStateOf(false)}
@@ -77,9 +78,23 @@ import java.time.YearMonth
     var dateOwner by remember{mutableStateOf<Int?>(null)}
     YTitle(word("日常的每一笔。","日々の記録。"),"THE LEDGER",pageFlow=true)
     LedgerEntryActions(onStart)
+    LedgerViewTabs(calendar){calendar=it;dateOwner=null}
+    val categories=category?.let{id->setOf(id)+s.categories.filter{it.parentId==id}.map{it.id}}
+    if(calendar){
+        // The calendar keeps account and category filters; it only counts spending, so type, date range and search do not apply.
+        val scoped=s.visibleEvents.filter{e->(account==null||e.accountId==account||s.storedPostings.any{it.eventId==e.id&&it.accountId==account})&&(categories==null||e.categoryId in categories)}
+        Column(Modifier.fillMaxWidth()){
+            LedgerFilterDisclosure(filtersOpen,{filtersOpen=!filtersOpen},word("筛选账户与分类","口座・カテゴリを絞る")){
+                YSelect(word("账户","口座"),account,listOf(null to word("全部账户","すべての口座"))+s.accounts.map{it.id as String? to it.name},{account=it})
+                YSelect(word("分类","カテゴリ"),category,listOf(null to word("全部分类","すべてのカテゴリ"))+s.categories.map{it.id as String? to s.path(it.id)},{category=it})
+                LedgerClearFilters{account=null;category=null}
+            }
+            LedgerCalendar(s,scoped,category,account==null,today,onSelect,onStartOn)
+        }
+        return
+    }
     Box(Modifier.padding(top=2.dp)){YSearch(word("搜索商户、备注或金额","お店・メモ・金額で検索"),query,{query=it})}
     Box(Modifier.padding(top=2.dp)){YSelect(word("类型","種類"),type,listOf("ALL" to word("全部","すべて"),"EXPENSE" to word("支出","支出"),"INCOME" to word("收入","収入"),"TRANSFER" to word("转账 / 换汇","振替・両替"),"REFUND" to word("退款","返金")),{type=it})}
-    val categories=category?.let{id->setOf(id)+s.categories.filter{it.parentId==id}.map{it.id}}
     val entries=s.visibleEvents.filter{e->
         val sides=account?.let{id->s.storedPostings.filter{it.eventId==e.id&&it.accountId==id}}
         val dates=if(account==null)listOf(e.date)else sides.orEmpty().map{it.date}.ifEmpty{listOf(e.date)}
@@ -112,8 +127,9 @@ import java.time.YearMonth
         if(t.id!="objects"&&(!byDay||entries.isEmpty()))Box(Modifier.fillMaxWidth().height(1.dp).background(if(t.id=="magazine")t.ink else t.line))
         fun date(e:EventEntity)=if(accountId==null)e.date else s.accountEventPostings(e,accountId).maxOfOrNull{p->p.date}?:e.date
         val ordered=if(accountId==null)entries else entries.sortedByDescending{date(it)}
+        val spent=if(byDay)remember(s,entries){s.dailyExpense(entries)} else emptyMap()
         if(byDay)ordered.groupBy{date(it)}.forEach{(day,events)->
-            LedgerDayHeader(day,Money(Currency.valueOf(s.book.currency),events.filter{it.kind==EntryKind.EXPENSE.name}.sumOf{s.netExpense(it)}))
+            LedgerDayHeader(day,Money(Currency.valueOf(s.book.currency),spent[day]?:0L))
             events.forEach{EventRow(s,it,{onSelect(it)},accountId,showDate=false,last=it===events.last())}
         }
         else ordered.forEach{EventRow(s,it,{onSelect(it)},accountId,last=it===ordered.last())}
@@ -122,7 +138,7 @@ import java.time.YearMonth
 }
 
 /** Day divider for long lists: date with weekday on the left, that day's net spending on the right. */
-@Composable private fun LedgerDayHeader(day:String,spent:Money) {
+@Composable internal fun LedgerDayHeader(day:String,spent:Money) {
     val t=LocalYohaku.current
     val date=LocalDate.parse(day)
     val weekday=if(LocalLanguage.current=="ja")"月火水木金土日"[date.dayOfWeek.value-1].toString() else "周"+"一二三四五六日"[date.dayOfWeek.value-1]
