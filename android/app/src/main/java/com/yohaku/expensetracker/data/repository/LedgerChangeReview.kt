@@ -14,7 +14,7 @@ data class LedgerChangeReview internal constructor(val snapshot:BookSnapshot,val
 @kotlinx.serialization.Serializable
 data class LedgerDetails(val settlement:SettlementEntity?=null,val transfer:TransferEntity?=null,val components:List<ExpenseComponentEntity> = emptyList(),val activityId:String?=null,val occurrenceId:String?=null,val reserveUses:List<ReserveUseEntity> = emptyList(),val treat:TreatEntity?=null,val allocations:List<TreatAllocationEntity> = emptyList(),val merchantId:String?=null,val attachmentIds:List<String> = emptyList(),val receiptRevision:Int?=null,val contract:DebtContractEntity?=null,val repayment:FinancialRepaymentEntity?=null,val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val postings:List<PostingEntity> = emptyList())
 
-internal suspend fun LedgerRepository.writeChange(change:PreparedLedgerChange,clearDraft:Boolean=false):String {
+internal suspend fun LedgerRepository.writeChange(change:PreparedLedgerChange,clearDraft:Boolean=false,refreshFinance:Boolean=true):String {
     val e=change.event
     val beforeDetails=change.before?.let{LedgerDetails(dao.settlement(e.bookId,e.id),dao.transfer(e.bookId,e.id),dao.components(e.bookId,e.id),dao.eventActivity(e.bookId,e.id)?.activityId,dao.eventOccurrences(e.bookId,e.id).firstOrNull{it.status in listOf("PENDING","COMPLETED")}?.id,dao.reserveUses(e.bookId,e.id),dao.eventTreat(e.bookId,e.id),dao.eventTreat(e.bookId,e.id)?.let{t->dao.allocations(e.bookId,t.id)}.orEmpty(),dao.eventMerchant(e.bookId,e.id)?.merchantId,dao.attachments(e.bookId,e.id).map{a->a.fileId},dao.receipt(e.bookId,e.id)?.revision,contract=db.financialDao().fundingContract(e.bookId,e.id),repayment=db.financialDao().repayment(e.bookId,e.id),repaymentAllocations=db.financialDao().repaymentAllocations(e.bookId,e.id),postings=dao.eventPostings(e.bookId,e.id))}
     dao.putEvent(e)
@@ -48,8 +48,10 @@ internal suspend fun LedgerRepository.writeChange(change:PreparedLedgerChange,cl
         db.financialDao().clearRepaymentAllocations(e.bookId,e.id)
         db.financialDao().insertRepaymentAllocations(change.repaymentAllocations)
     }
-    refreshCardEntryPrediction(e)
-    refreshFinancialPools(change)
+    if(refreshFinance) {
+        if(change.before!=null||e.cardPaymentChoice!=null)refreshCardEntryPrediction(e)
+        refreshFinancialPools(change)
+    }
     dao.putRevision(RevisionEntity(e.bookId,id(),e.id,e.revision,clock.millis(),change.before?.let{json.encodeToString(it)},json.encodeToString(e),beforeDetails?.let{json.encodeToString(it)},json.encodeToString(LedgerDetails(change.settlement,change.transfer,change.components,change.activityId,change.occurrenceId,change.reserveUses,change.treat?.treat,change.treat?.allocations.orEmpty(),change.merchantId,dao.attachments(e.bookId,e.id).map{it.fileId},dao.receipt(e.bookId,e.id)?.revision,contract=change.contract,repayment=change.repayment,repaymentAllocations=change.repaymentAllocations,postings=change.postings))))
     if(clearDraft)clearDraft(e.bookId)
     return e.id

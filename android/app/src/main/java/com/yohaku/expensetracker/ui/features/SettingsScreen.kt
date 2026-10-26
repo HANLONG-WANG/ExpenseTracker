@@ -20,7 +20,7 @@ import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
-@Composable internal fun SettingsScreen(s:BookSnapshot,onAppearance:()->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={},onReceipts:()->Unit={},onBackup:()->Unit={}) {
+@Composable internal fun SettingsScreen(s:BookSnapshot,onAppearance:()->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={},onReceipts:()->Unit={},onBackup:()->Unit={},onCsv:()->Unit={}) {
     val t=LocalYohaku.current
     YTitle(word("让它，像你的生活。","自分らしい、暮らしに。"),"SETTINGS",pageFlow=true)
     SettingsGroup(word("外观与语言","外観と言語")) {
@@ -42,8 +42,8 @@ import com.yohaku.expensetracker.ui.theme.*
         SettingsRow(word("云端分析交接台","クラウド分析デスク"),onCloud,"settings-cloud",last=true)
     }
     SettingsGroup(word("数据","データ")) {
-        SettingsRow(word("备份与恢复","バックアップと復元"),onBackup,"settings-backup",last=true)
-        // Future CSV import belongs in this group.
+        SettingsRow(word("备份与恢复","バックアップと復元"),onBackup,"settings-backup")
+        SettingsRow(word("从 CSV 导入","CSV から移行"),onCsv,"settings-csv",last=true)
     }
     SettingsGroup(word("其他","その他")) {
         SettingsRow(word("回收站 · 30天","ごみ箱 · 30日"),onTrash,last=true)

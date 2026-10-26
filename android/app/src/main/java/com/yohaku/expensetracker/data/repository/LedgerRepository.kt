@@ -39,7 +39,7 @@ data class BookSnapshot(val book:BookEntity,val accounts:List<AccountEntity>,val
         val next=copy(events=nextEvents,postings=storedPostings.filter{it.confirmed&&it.eventId in ids})
         val original=settlements.find{it.eventId==event.id}?.originalEventId?.let{id->events.first{it.id==id}}
         val primary=expenseComponents.firstOrNull{it.eventId==event.id}?.date?.take(7) ?: (original?:event).date.take(7)
-        val months=(listOf(primary)+expenseComponents.filter{it.eventId in group}.map{it.date.take(7)}+occurrences.filter{it.eventId in group}.map{it.scheduledDate.take(7)}+reserves.filter{r->reserveUses.any{it.eventId in group&&it.reserveId==r.id}}.map{it.date.take(7)}).distinct()
+        val months=(listOf(primary)+events.filter{it.id in group}.map{it.date.take(7)}+expenseComponents.filter{it.eventId in group}.map{it.date.take(7)}+occurrences.filter{it.eventId in group}.map{it.scheduledDate.take(7)}+reserves.filter{r->reserveUses.any{it.eventId in group&&it.reserveId==r.id}}.map{it.date.take(7)}).distinct()
         val balances=accounts.mapNotNull{a->val before=balance(a);val after=next.balance(a);if(before==after)null else AccountBalanceChange(a,before,after)}
         fun income(s:BookSnapshot,month:String)=s.visibleEvents.filter{it.date.startsWith(month)&&it.kind==EntryKind.INCOME.name}.sumOf{it.baseMinor}
         return months.mapIndexed{index,month->
@@ -163,14 +163,14 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
             require(!activity.ended||draft.date in activity.startDate..activity.endDate){"结束活动只补录期间事实 / 終了済みシーンは期間内の事実のみ記録できます"}
             require(dao.features(bookId)?.activityMode==true||old?.let{dao.eventActivity(bookId,it.id)?.activityId}==draft.activityId||occurrence?.activityId==draft.activityId)
         }
-        val snapshot=snapshot(b).first()
-        val reserveId=draft.reserveId?:occurrence?.let{o->snapshot.reserves.firstOrNull{it.occurrenceId==o.id&&it.active}?.id}
+        val snapshot=if(draft.reserveId!=null||occurrence!=null)snapshot(b).first()else null
+        val reserveId=draft.reserveId?:occurrence?.let{o->snapshot!!.reserves.firstOrNull{it.occurrenceId==o.id&&it.active}?.id}
         val uses=reserveId?.let{rid->
             require(draft.kind==EntryKind.EXPENSE)
             val reserve=dao.reserve(bookId,rid)?:error("预留不存在 / 確保がありません")
             val previousUse=old?.let{dao.reserveUses(bookId,it.id).firstOrNull{u->u.reserveId==rid}}
             require(reserve.activityId==draft.activityId&&(reserve.active||previousUse!=null)){"请选择本活动的有效预留 / このシーンの有効な確保を選択してください"}
-            val remaining=if(reserve.active)snapshot.reserveRemaining(reserve,old?.id)else previousUse!!.amountMinor
+            val remaining=if(reserve.active)snapshot!!.reserveRemaining(reserve,old?.id)else previousUse!!.amountMinor
             val used=if(draft.reserveAmount.isBlank())minOf(base.minor,remaining)else Money.parse(draft.reserveAmount,Currency.valueOf(b.currency)).minor
             require(used>0&&used<=base.minor&&used<=remaining){"使用金额超过本次支出或剩余预留 / 使用額は今回の支出・確保残額以内にしてください"}
             listOf(ReserveUseEntity(bookId,event.id,rid,used))

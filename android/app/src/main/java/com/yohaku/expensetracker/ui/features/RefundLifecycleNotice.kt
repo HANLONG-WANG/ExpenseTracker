@@ -9,7 +9,7 @@ import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun RefundLifecycleNotice(s:BookSnapshot,event:EventEntity,restoring:Boolean=false) {
-    val refunds=s.linkedLifecycleRefunds(event,restoring)
+    val refunds=s.linkedLifecycleRefunds(event,restoring).filter{it.kind==EntryKind.REFUND.name}
     if(refunds.isEmpty())return
     ThemeAuditPanel(if(restoring)word("同时恢复关联退款","関連する返金も復元")else word("同时移除关联退款","関連する返金も移動"),Modifier.testTag("refund-lifecycle")) {
         RecordFacts(refunds.map{refund->
