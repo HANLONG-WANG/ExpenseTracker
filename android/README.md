@@ -7,7 +7,7 @@
 - [正式APK 0.5.0](artifacts/yohaku-release-0.5.0.apk) · [SHA-256](artifacts/yohaku-release-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker`，固定正式签名。
 - [开发APK 0.5.0](artifacts/yohaku-dev-0.5.0.apk) · [SHA-256](artifacts/yohaku-dev-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker.dev`，沿用阶段A–D开发证书。
 - Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v29（新增云端交接表，迁移28→29）。三主题、中日文按账本保存。
-- 开发包可覆盖原开发版本。正式包独立安装，与开发包并存，不自动转移开发包资料。覆盖升级不要先卸载；卸载或清除应用存储会删除账本与内部附件。无云端备份。
+- 开发包可覆盖原开发版本。正式包独立安装，与开发包并存，不自动转移开发包资料。覆盖升级不要先卸载；卸载或清除应用存储会删除账本与内部附件。提供手动本地完整备份/恢复，系统云备份仍关闭。
 - 当前仅专用API36模拟器验证，用户实机未连接。精简实机检查、密钥位置和完整安装升级说明见[发行说明](RELEASE.md)。
 
 ```sh
@@ -20,7 +20,7 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 
 ## 功能范围
 
-设置页依次为「外观与语言」「账本与分类」「提醒与汇率」「小票、流水与云端」「其他」。外观主题行显示当前主题名，进入 `appearance` 二级页选择主题（缩略预览与选中标记保留）；语言切换位于同组。「小票、流水与云端」依次进入 `receipts`、`statements`、`cloud`；「其他」只含回收站。
+设置页依次为「外观与语言」「账本与分类」「提醒与汇率」「小票、流水与云端」「数据」「其他」。外观主题行显示当前主题名，进入 `appearance` 二级页选择主题（缩略预览与选中标记保留）；语言切换位于同组。「小票、流水与云端」依次进入 `receipts`、`statements`、`cloud`；「数据」含「备份与恢复」（`backup`），后续 CSV 导入可在此组扩展但本次不实现；「其他」只含回收站。
 
 账本切换只保留顶部当前账本按钮、设置→独立账本管理及其下级管理页。收支、转账、退款表单不再显示账本/主题工具行；顶部账本按钮在记账中打开切换弹层，其余正常页面进入账本页，金融草稿保护继续沿用。主题只在设置→外观主题切换；离开未保存记账先保留或放弃草稿。顶部不再提供语言按钮。首次设置的顶部设置按钮打开同时含主题和语言的设置弹层，切换保留未保存设置输入。
 
@@ -40,7 +40,17 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 - 云端分析交接：导入网页生成的连接配置（Keystore加密），把所选小票原图ZIP或银行资料交给私人分析台；中断后按同一份内部文件整份重传（无断点续传）、领取结果核验大小/SHA后走原有预览确认，回执独立重试。
 - 整本归档/回收/恢复/永久清理；账户停用/启用/无引用删除；分类停用/改父级/明确迁移；活动删除影响与历史保留；记录关联组回收/恢复/永久清空及文件最后引用清理。
 
-没有账户登录、云同步、备份或应用锁；云端交接只上传用户逐次选中的资料。未知金额保持未知，未确认清偿不假结清。产品包不含测试种子、评审入口或测试验证器。
+提供用户手动的本地完整备份/恢复（整份替换、不加密、不自动备份）；没有账户登录、云同步或应用锁；云端交接只上传用户逐次选中的资料。未知金额保持未知，未确认清偿不假结清。产品包不含测试种子、评审入口或测试验证器。
+
+## 完整备份 / 恢复
+
+本节对应当前源码及新构建的 debug 包；文首既有发布 APK 尚未更新。
+
+设置→数据→备份与恢复；新手机也可在首次设置直接恢复。SAF 创建 `yohaku-backup-YYYYMMDD-HHmm.yohaku`（ZIP），包含 `manifest.json`（`yohaku.backup` v1、应用/schema 版本、创建时间、账本记录数、附件统计及每个载荷的路径/大小/SHA-256）、一致性快照 `database/yohaku.db`、全部 `attachments/`、用户设置 `preferences.json`。
+
+包含全库、草稿/回收站、附件原图、提醒设置/投递去重状态、自动汇率/缓存、定位开关与账本选择。排除云端上传暂存、设备绑定凭证和系统调度/权限；本机云端凭证不变。恢复完整校验并在暂存副本迁移后显示摘要，确认才整份替换；当前数据不会保留，可先自行导出，不自动备份。替换失败回滚，成功重启进程并重建提醒。系统云备份仍关闭；无密码/加密、同步、定期提醒或单账本合并，CSV 导入未实现。详见[格式与执行步骤](../docs/implementation-spec.md#34-手动完整备份--恢复formatversion1)。
+
+验证：`BackupArchiveTest` 覆盖清单/未来版本、路径穿越、大小/SHA 与中途替换失败回滚；`BackupRoundTripTest` 在独立文件目录做全库/附件/设置往返；`BackupVisualTest` 生成三主题×中日文原生页面/确认弹层截图至应用外部文件目录 `backup-visual/`。本轮未连接设备且不启动模拟器，仪器测试运行、截图目视及实际 SAF/跨进程重启仍待设备验收。
 
 ## 常用入口
 
@@ -77,8 +87,11 @@ curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<task
 JDK17、AGP9.3.3、Gradle Wrapper9.5.1、Compose BOM2026.09.00。SDK由`local.properties`或`ANDROID_HOME`指定；正式密钥配置见[发行说明](RELEASE.md)。
 
 ```sh
-./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease
+# 串行执行；每条完成后再启动下一条，禁止并行 Gradle。
+./gradlew :app:testDebugUnitTest --max-workers=2
+./gradlew :app:assembleDebug --max-workers=2
+./gradlew :app:assembleDebugAndroidTest --max-workers=2
+# 如需 release / lint，也分别单独执行并加 --max-workers=2。
 ```
 
 仪器测试需要实际兼容设备。真实权限/GPS、IME、跨进程、闹钟/重启、网络服务不能无前置地整类混跑，默认跳过不算通过。专项方法/参数见各测试源码和[阶段E记录](verification/phase-e-status.md)；历史进程/IME依据见A/B/C记录。独立`media-verifier`模块仅提供系统DocumentsProvider和跨UID只读验证，需单独安装，绝不打入产品APK，完成后卸载`com.yohaku.verification`。

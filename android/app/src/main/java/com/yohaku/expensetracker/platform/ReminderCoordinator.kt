@@ -27,6 +27,7 @@ import java.time.*
 class ReminderCoordinator(private val app:YohakuApplication,private val repository:LedgerRepository=app.repository,private val preferences:AppPreferences=app.preferences) {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val mutex=Mutex()
+    @Volatile private var stopped=false
     private val requests=Channel<Unit>(Channel.CONFLATED)
     val plan=MutableStateFlow<List<ReminderSlot>>(emptyList())
     val failure=MutableStateFlow<String?>(null)
@@ -59,6 +60,7 @@ class ReminderCoordinator(private val app:YohakuApplication,private val reposito
         }
     }
     suspend fun rebuild(deliver:Boolean)=mutex.withLock {
+        if(stopped)return@withLock
         val repo=repository;val settings=preferences.reminderSettings.first()
         val now=repo.clock.instant();val zone=ZoneId.systemDefault()
         val items=repo.reminderItems(preferences)
@@ -103,6 +105,11 @@ class ReminderCoordinator(private val app:YohakuApplication,private val reposito
             val next=if(allowed())minOf(midnight,current.slots.minOfOrNull{it.at}?:midnight)else midnight
             alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,maxOf(now.toEpochMilli()+1000,next),wakeup)
         } else alarms.cancel(wakeup)
+    }
+    suspend fun stopForRestore() {
+        stopped=true
+        scope.coroutineContext[Job]!!.cancelAndJoin()
+        mutex.withLock { alarms.cancel(wakeup); manager.cancelAll() }
     }
     companion object {
         const val CHANNEL="important-v1"
