@@ -125,7 +125,7 @@ class SetupPresentationTest {
             val events=if(populated.value)listOf(EventEntity("fixture","record","EXPENSE","cash","food",300,"JPY",300,"2026-10-14","喫茶と余白","")) else emptyList()
             val snapshot=BookSnapshot(BookEntity("fixture","生活","JPY","2026-10-01"),listOf(account),listOf(CategoryEntity("fixture","food","餐饮","EXPENSE")),events,emptyList(),null)
             Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(pageContentPadding()),verticalArrangement=Arrangement.spacedBy(15.dp)){
-                LedgerScreen(snapshot,{},{})
+                LedgerScreen(snapshot,{},{},{},java.time.LocalDate.parse("2026-10-26"))
             }
         }}
         var expanded=false
