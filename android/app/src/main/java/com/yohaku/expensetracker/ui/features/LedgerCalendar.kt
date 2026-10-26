@@ -305,7 +305,7 @@ private fun compactAmount(currency:Currency,minor:Long):String {
             }
             "objects"->{
                 listOf(Color(0xfffbf0de) to word("少","少"),Color(0xfff5e0bf) to word("中","中"),Color(0xffeccaa0) to (if(dailyBudget!=null)word("超出日均 ","1日平均超え ")+dailyBudget else word("多","多"))).forEach{(color,label)->
-                    Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(12.dp).background(color,RoundedCornerShape(4.dp)));YText(label,size,Modifier.padding(start=4.dp),color=t.muted,lineHeightMultiplier=1.4f,cssLineBox=true)}
+                    Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(12.dp).background(color,RoundedCornerShape(4.dp)).border(1.dp,t.line,RoundedCornerShape(4.dp)));YText(label,size,Modifier.padding(start=4.dp),color=t.muted,lineHeightMultiplier=1.4f,cssLineBox=true)}
                 }
             }
             else->{

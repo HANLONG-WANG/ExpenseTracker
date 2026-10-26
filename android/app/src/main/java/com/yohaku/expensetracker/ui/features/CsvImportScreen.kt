@@ -28,7 +28,7 @@ import com.yohaku.expensetracker.ui.theme.*
     var confirm by remember{mutableStateOf(false)}
     var undo by remember{mutableStateOf<CsvBatchEntity?>(null)}
     val t=LocalYohaku.current
-    YLead(word("让过去的记录，接着走。","これまでの記録も、一緒に。"),word("CSV 迁入会在确认后生成正式账目，参与分析、预算与日历。银行流水核对是另一条独立流程，不会自动记账。","CSV 移行は確認後に正式な記録を作り、分析・予算・カレンダーに反映します。銀行明細の照合とは別の機能です。"),"CSV MIGRATION",pageFlow=true)
+    YLead(word("旧账，接着记。","これまでの記録も、一緒に。"),word("CSV 迁入会在确认后生成正式账目，参与分析、预算与日历。银行流水核对是另一条独立流程，不会自动记账。","CSV 移行は確認後に正式な記録を作り、分析・予算・カレンダーに反映します。銀行明細の照合とは別の機能です。"),"CSV MIGRATION",pageFlow=true)
     YText(word("目标账本：","移行先の帳簿：")+s.book.name+" · "+s.book.currency,14)
     YButton(word("选择 CSV 文件","CSV ファイルを選ぶ"),{select.launch(arrayOf("*/*"))},Modifier.fillMaxWidth().testTag("csv-open"),primary=true,enabled=!state.busy)
     state.error?.let{YText(csvMessage(it),12,color=t.warm)}
