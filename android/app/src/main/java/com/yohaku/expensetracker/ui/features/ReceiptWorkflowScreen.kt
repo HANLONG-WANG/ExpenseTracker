@@ -1,13 +1,10 @@
 package com.yohaku.expensetracker.ui.features
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -18,37 +15,13 @@ import com.yohaku.expensetracker.domain.model.Currency
 import com.yohaku.expensetracker.domain.model.Money
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
-import kotlinx.serialization.encodeToString
-import java.io.File
 
 @Composable internal fun ReceiptsScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit) {
-    val context=LocalContext.current
     val busy by vm.busy.collectAsStateWithLifecycle()
     var tab by rememberSaveable(s.book.id){mutableStateOf("UNSORTED")}
     var selected by rememberSaveable(s.book.id){mutableStateOf(listOf<String>())}
     var imagePreview by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
-    var exportPath by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
-    var importOpen by rememberSaveable(s.book.id){mutableStateOf(false)}
-    var exportManifest by remember(s.book.id){mutableStateOf<ReceiptBundleFile?>(null)}
-    var notice by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var showNote by rememberSaveable(s.book.id){mutableStateOf(false)}
-    var formatHelp by rememberSaveable(s.book.id){mutableStateOf(false)}
-    LaunchedEffect(exportPath) {
-        val path=exportPath ?: return@LaunchedEffect
-        if(exportManifest!=null)return@LaunchedEffect
-        var manifest:ReceiptBundleFile?=null
-        vm.execute(onSuccess={exportManifest=manifest}) {
-            require(File(path).isFile){"导出预览已过期，请重新选择小票 / 出力プレビューの期限が切れました。レシートを選び直してください"}
-            manifest=FileProtocols.receiptBundle(File(path).readText())
-        }
-    }
-    val destination=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        val manifest=exportManifest
-        if(uri!=null&&manifest!=null) vm.execute(onSuccess={
-            exportPath?.let { File(it).delete() };exportPath=null;exportManifest=null
-            selected=emptyList();notice="导出已保存，仍待商品回填 / 書出しを保存しました。商品取込待ちです"
-        }) { vm.repository.saveReceiptArchivesToTree(context,uri,manifest) }
-    }
     val exports by remember(s.book.id){vm.repository.db.fileWorkflowDao().exports(s.book.id)}.collectAsStateWithLifecycle(emptyList())
     val exportedReceiptIds=remember(exports,s.receipts,s.events) { exports.flatMap { FileProtocols.receiptBundle(it.manifestJson).records }.filter { record->
         s.receipts.any{it.id==record.receipt_id&&it.revision==record.receipt_revision}&&s.visibleEvents.any{it.id==record.record_id&&it.revision==record.record_revision}
@@ -58,60 +31,25 @@ import java.io.File
     ReceiptInboxCover(pending.size)
     ReceiptWorkflow()
     YLink(word("应用不识别小票 · 查看整理说明","認識機能なし・整理の説明"),{showNote=!showNote})
-    if(showNote)YText(word("将导出包交给助手，回来后预览并保存商品明细。原图不会自动上传。","書出しを助手へ渡し、結果を確認して商品明細を保存。原画像の自動送信は行いません。"),11,color=LocalYohaku.current.muted)
+    if(showNote)YText(word("所选原图交给云端分析台整理，结果回来后在本机预览并保存商品明细。原图只在你上传时离开本机。","選んだ原画像をクラウド分析デスクで整理し、結果を端末で確認して商品明細を保存。原画像は送信したときだけ端末の外へ出ます。"),11,color=LocalYohaku.current.muted)
     ReceiptInboxTabs(tab){tab=it}
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
         YLink(word("全选待整理","未整理を全選択"),{selected=if(pending.all{it in selected})emptyList()else pending},Modifier.testTag("receipt-select-all"))
         YText(word("已选 ${selected.count{it in pending}}","選択 ${selected.count{it in pending}}"),11)
     }
-    notice?.let { YText(if(LocalLanguage.current=="ja")it.substringAfter(" / ")else it.substringBefore(" / "),12,color=LocalYohaku.current.accent) }
     val records=available.filter{tab=="ALL"||it.status==tab}
     if(records.isEmpty())YEmpty(word("这一格暂时空着。可以从记账中添加小票。","ここは空白です。記録からレシートを追加できます。"))
     records.forEachIndexed{index,receipt->
         val event=s.visibleEvents.first{it.id==receipt.eventId}
         val images=s.entryReceiptImages(event.id)
         ReceiptInboxCard(receipt.id,index,event.merchant.ifBlank{word("这张小票","このレシート")},event.date+" · "+s.path(event.categoryId)+" · "+Money(Currency.valueOf(event.currency),event.amountMinor).display()+" · "+word("第${receipt.revision}版","第${receipt.revision}版"),
-            if(receipt.status=="SORTED")word("已整理","整理済み")else if(receipt.id in exportedReceiptIds)word("已导出 · 待回填","書出済・取込待ち")else word("待整理","未整理"),receipt.status=="SORTED",images.size,{onRecord(event)},
+            if(receipt.status=="SORTED")word("已整理","整理済み")else if(receipt.id in exportedReceiptIds)word("已交云端 · 待回填","クラウドへ送信済・取込待ち")else word("待整理","未整理"),receipt.status=="SORTED",images.size,{onRecord(event)},
             selected=receipt.id in selected,onSelect=if(receipt.status!="SORTED"&&!busy)({selected=if(receipt.id in selected)selected-receipt.id else selected+receipt.id})else null) {
             images.forEachIndexed{imageIndex,file->ReceiptThumbnailFrame(file.id,imageIndex,{imagePreview=file.id}){MediaThumbnail(vm.repository,file,Modifier.fillMaxSize(),crop=true)}}
         }
     }
-    YButton(word("批量导出待整理小票 ↗","未整理レシートを書出し ↗"),{
-        var manifest:ReceiptBundleFile?=null
-        var path:String?=null
-        vm.execute(onSuccess={exportManifest=manifest;exportPath=path}) {
-            val sources=vm.repository.receiptArchiveSources(s.book.id,selected.filter{it in pending}.toSet())
-            manifest=ReceiptBundleFile("yohaku.receipt-bundle",1,vm.repository.id(),s.book.id,1,1,sources.map{it.record})
-            path=File.createTempFile("receipt-manifest-", ".json",context.cacheDir).apply{writeText(FileProtocols.json.encodeToString(manifest!!))}.path
-        }
-    },Modifier.fillMaxWidth().testTag("receipt-export"),primary=true,enabled=!busy&&selected.any{it in pending})
     CloudReceiptHandoff(s,vm,selected.filter{it in pending}){selected=emptyList();vm.navigate("cloud")}
-    YButton(word("导入助手整理结果","助手の整理結果を取込"),{importOpen=true},Modifier.fillMaxWidth().testTag("receipt-import"),enabled=!busy)
-    YLink(word("文件格式与助手说明","ファイル形式・助手への説明"),{formatHelp=true})
-    exportManifest?.let { manifest -> YSheet(word("导出包预览","書出しパックの確認"),{if(!busy){exportPath?.let{File(it).delete()};exportPath=null;exportManifest=null}}) {
-        ReceiptHandoffSummary("YOHAKU / RECEIPT HANDOFF",word("把小票，交给助手。","レシートを、助手へ。"),"",review=false)
-        Row(horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-            YText(manifest.records.size.toString(),26,number=true)
-            YText(word("组小票","組のレシート"),10)
-            YText(manifest.records.sumOf{it.images.size}.toString(),26,number=true)
-            YText(word("张原图","枚の原画像"),10)
-        }
-        ReceiptPaper(packageTree=true) {
-            YText("yohaku-receipts.zip",12)
-            YText("├ manifest.json",11)
-            YText(word("账本、原记账ID、小票ID、图片顺序、金额与币种","帳簿・記録ID・レシートID・画像順・金額・通貨"),10,color=LocalYohaku.current.muted)
-            manifest.records.forEach { record ->
-                YText("└ ${record.record_id} / ${record.receipt_id} /",9,color=LocalYohaku.current.muted)
-                record.images.forEach { image->YText("  ${(image.position+1).toString().padStart(2,'0')} · "+(s.files.find{it.id==image.image_id}?.originalName?:image.image_id),10) }
-            }
-        }
-        YText(word("仅打包所选小票原图和必要关联信息。按100 MB目标分包，同张小票不拆散；大于目标的小票独立成包。导出后仍待回填。","選択したレシート原画像と関連情報のみ。100 MBを目安に分割し、同じレシートは分けません。大きなレシートは単独パックにします。書出し後も取込待ちです。"),11,color=LocalYohaku.current.muted)
-        YButton(word("选择保存目录并导出","保存フォルダを選んで書出し"),{destination.launch(null)},Modifier.fillMaxWidth().testTag("receipt-save-zip"),primary=true,enabled=!busy)
-        YLink(word("返回小票工作台","レシート整理へ戻る"),{if(!busy){exportPath?.let{File(it).delete()};exportPath=null;exportManifest=null}},Modifier.testTag("receipt-export-back"))
-    } }
-    if(importOpen)ReceiptImportFlow(s,vm,{importOpen=false},{importOpen=false;notice="商品明细已保存 / 商品明細を保存しました"})
     imagePreview?.let { id->s.files.find{it.id==id}?.let { file->MediaPreview(vm.repository,file,{imagePreview=null},s.receipts.find{r->s.entryReceiptImages(r.eventId).any{it.id==id}}?.let{r->s.entryReceiptImages(r.eventId)}?:listOf(file)) } }
-    if(formatHelp)ReceiptFormatHelp({formatHelp=false})
 }
 
 @Composable internal fun ReceiptBackfillSheet(s:BookSnapshot,preview:ReceiptBackfillPreview,busy:Boolean,onClose:()->Unit,onReselect:()->Unit,onSave:(Boolean,Boolean)->Unit) {

@@ -1,7 +1,5 @@
 package com.yohaku.expensetracker.ui.features
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -12,7 +10,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.db.ReceiptItemDocumentEntity
@@ -23,7 +20,6 @@ import com.yohaku.expensetracker.domain.model.Currency
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import kotlinx.serialization.encodeToString
-import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 
 /** Preserve decimal unit prices, including fractional JPY, while displaying currency grouping. */
@@ -153,40 +149,4 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
         YButton(word("保存商品明细","商品明細を保存"),{vm.execute(onSuccess=onClose){vm.repository.editReceiptItems(s.book.id,document.receiptId,baseRevision,edited)}},Modifier.fillMaxWidth().testTag("receipt-save-item-edits"),primary=true,enabled=!busy)
         YButton(word("取消修改","変更を取消"),onClose,enabled=!busy)
     }
-}
-
-@Composable internal fun ReceiptFormatHelp(onClose:()->Unit,onIdentifiers:(()->Unit)?=null) {
-    val context=LocalContext.current
-    val scope=rememberCoroutineScope()
-    var error by remember{mutableStateOf<String?>(null)}
-    var saved by remember{mutableStateOf(false)}
-    val destination=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()){tree->if(tree!=null)scope.launchFileHelp(context,tree,{saved=true},{error=it})}
-    YSheet(word("文件格式与助手说明","ファイル形式・助手への説明"),onClose) {
-        ReceiptHandoffSummary("YOHAKU / FILE FORMATS · V1",word("把格式和原图交给助手。","形式と原画像を助手へ。"),word("保存正式说明、JSON Schema和有效/错误样例。应用不会自动上传文件。","正式な説明・JSON Schema・正常/エラー例を保存。ファイルの自動送信は行いません。"))
-        YText(word("助手应原样保留清单中的账本、记账、小票、图片ID和导出修订。未知信息留空；商品回填仅更新原小票。","助手は清単の帳簿・記録・レシート・画像IDと出力リビジョンを保持。不明情報は空欄にし、商品取込は元レシートだけを更新します。"),12)
-        YText("yohaku.receipt-bundle / yohaku.receipt-items\nyohaku.statement / yohaku.import-identifiers",11)
-        onIdentifiers?.let{YButton(word("查看当前账本与账户ID","現在の帳簿・口座IDを見る"),it,Modifier.testTag("file-format-identifiers"))}
-        YButton(word("保存格式说明与样例","形式の説明とサンプルを保存"),{destination.launch(null)},Modifier.testTag("file-format-save"),primary=true)
-        if(saved)YText(word("格式资料已保存。样例ID须替换为实际导出ID。","形式資料を保存しました。サンプルIDは実際の出力IDに置き換えてください。"),12,Modifier.testTag("file-format-saved"),color=LocalYohaku.current.accent)
-        error?.let{YText(it,12,color=LocalYohaku.current.warm)}
-    }
-}
-
-private fun kotlinx.coroutines.CoroutineScope.launchFileHelp(context:android.content.Context,tree:android.net.Uri,onSuccess:()->Unit,onFailure:(String)->Unit) = launch {
-    try {
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            writeNewTreeDocument(context,tree,"yohaku-file-formats-v1.zip","application/zip") { output ->
-                java.util.zip.ZipOutputStream(output).use { zip ->
-                    val names=listOf("README.md","statement.v1.schema.json","receipt-bundle.v1.schema.json","receipt-items.v1.schema.json","import-identifiers.v1.schema.json")+context.assets.list("examples").orEmpty().map{"examples/$it"}
-                    names.forEach { name ->
-                        zip.putNextEntry(java.util.zip.ZipEntry(name))
-                        context.assets.open(name).use{it.copyTo(zip)}
-                        zip.closeEntry()
-                    }
-                }
-            }
-        }
-        onSuccess()
-    } catch(e:kotlinx.coroutines.CancellationException){throw e}
-      catch(e:Exception){onFailure(e.message?:"无法保存文件 / ファイルを保存できません")}
 }

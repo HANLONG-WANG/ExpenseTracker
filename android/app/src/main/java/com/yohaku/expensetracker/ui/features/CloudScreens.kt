@@ -366,7 +366,7 @@ private fun CloudPhase.step()=when(this) {
     }
 }
 
-/** Entry strip on the receipt and statement pages. Magazine: a ruled dispatch line; journal: a pinned note; objects: a parcel pill. */
+/** Entry strip on the receipt page. Magazine: a ruled dispatch line; journal: a pinned note; objects: a parcel pill. */
 @Composable internal fun CloudHandoffStrip(title:String,description:String,tag:String,content:@Composable ColumnScope.()->Unit) {
     val t=LocalYohaku.current
     val frame=when(t.id) {
@@ -405,12 +405,12 @@ private fun CloudPhase.step()=when(this) {
     var title by rememberSaveable(s.book.id){mutableStateOf("")}
     var note by rememberSaveable(s.book.id){mutableStateOf("")}
     val defaultTitle=word("${java.time.LocalDate.now()} 小票整理 · ${selected.size} 组","${java.time.LocalDate.now()} レシート整理・${selected.size} 組")
-    CloudHandoffStrip(word("交给云端整理","クラウドで整理"),if(ready)word("所选小票的原图按原字节打包上传，提交确认后才记为已导出。结果回来仍需本机预览。","選んだレシートの原画像をそのまま送信し、提出確認後に書出済みとして記録します。結果は端末で確認します。")else word("尚未连接云端分析台。连接后可直接上传，无需手动搬运 ZIP。","クラウド分析デスクに未接続です。接続するとZIPを手で渡さずに送信できます。"),"receipt-cloud-handoff") {
-        if(ready)YButton(word("上传所选小票 ↗","選択したレシートを送信 ↗"),{title=defaultTitle;open=true},Modifier.testTag("receipt-cloud-upload"),enabled=!busy&&selected.isNotEmpty())
-        else YLink(word("连接云端分析台","クラウド分析デスクに接続"),{vm.navigate("cloud")},Modifier.testTag("receipt-cloud-connect"),arrow=true)
+    CloudHandoffStrip(word("交给云端整理","クラウドで整理"),if(ready)word("所选小票的原图按原字节上传，提交确认后标记为已交云端。结果回来仍需本机预览。","選んだレシートの原画像をそのまま送信し、提出確認後に送信済みとして記録します。結果は端末で確認します。")else word("小票由云端分析台整理。先连接分析台，再上传所选小票。","レシートはクラウド分析デスクで整理します。先に接続してから、選んだレシートを送信します。"),"receipt-cloud-handoff") {
+        if(ready)YButton(word("上传所选小票 ↗","選択したレシートを送信 ↗"),{title=defaultTitle;open=true},Modifier.fillMaxWidth().testTag("receipt-cloud-upload"),primary=true,enabled=!busy&&selected.isNotEmpty())
+        else YButton(word("连接云端分析台","クラウド分析デスクに接続"),{vm.navigate("cloud")},Modifier.fillMaxWidth().testTag("receipt-cloud-connect"),primary=true)
     }
     if(open)YSheet(word("确认交给云端","クラウドへ渡す内容"),{if(!busy)open=false}) {
-        ReceiptHandoffSummary("YOHAKU / CLOUD RECEIPTS",word("${selected.size} 组小票，原图不压缩。","${selected.size} 組のレシート。原画像は圧縮しません。"),word("超过上传上限的单张小票会被拒绝，请改用手动导出。","上限を超える1枚のレシートは送信できません。手動書出しを使ってください。"))
+        ReceiptHandoffSummary("YOHAKU / CLOUD RECEIPTS",word("${selected.size} 组小票，原图不压缩。","${selected.size} 組のレシート。原画像は圧縮しません。"),word("单张小票的原图超过上传上限时无法提交，请先减少该小票的图片。","1枚のレシートの原画像が上限を超えると送信できません。画像を減らしてください。"))
         YField(word("任务名称","タスク名"),title,{title=it.take(150)},Modifier.testTag("receipt-cloud-title"))
         YField(word("补充说明（可选）","補足（任意）"),note,{note=it},Modifier.testTag("receipt-cloud-note"),multiline=true)
         YButton(word("打包并上传","まとめて送信"),{vm.execute(onSuccess={open=false;note="";onQueued()}){cloud.prepareReceiptTask(s.book.id,selected.toSet(),title,note)}},Modifier.fillMaxWidth().testTag("receipt-cloud-confirm"),primary=true,enabled=!busy&&title.isNotBlank())
@@ -418,7 +418,7 @@ private fun CloudPhase.step()=when(this) {
     }
 }
 
-/** Bank files travel with an identifiers file; the target account is fixed when the task is created. */
+/** Bank files travel with an identifiers file; the target account is fixed when the task is created. The caller frames the entry. */
 @Composable internal fun CloudStatementHandoff(s:BookSnapshot,vm:AppViewModel) {
     val cloud=vm.cloud?:return
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -430,10 +430,9 @@ private fun CloudPhase.step()=when(this) {
     var files by remember(s.book.id){mutableStateOf(listOf<Uri>())}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->files=(files+uris).distinct()}
     val defaultTitle=word("${java.time.LocalDate.now()} 流水转换","${java.time.LocalDate.now()} 明細の変換")
-    CloudHandoffStrip(word("让云端转换原始流水","クラウドで明細を変換"),if(ready)word("上传银行截图、PDF 或导出文件，并附上本账本的账户标识。返回的核对文件仍在这里预览确认。","銀行の画像・PDF・書出しファイルに口座IDを添えて送信します。戻った照合ファイルはここで確認します。")else word("尚未连接云端分析台。也可以继续用上方的手动文件方式。","クラウド分析デスクに未接続です。上の手動ファイル方式も使えます。"),"statement-cloud-handoff") {
-        if(ready)YButton(word("选择账户与资料 ↗","口座と資料を選ぶ ↗"),{if(title.isBlank())title=defaultTitle;open=true},Modifier.testTag("statement-cloud-start"),enabled=!busy&&s.accounts.isNotEmpty())
-        else YLink(word("连接云端分析台","クラウド分析デスクに接続"),{vm.navigate("cloud")},Modifier.testTag("statement-cloud-connect"),arrow=true)
-    }
+    YText(if(ready)word("上传银行截图、PDF 或导出文件，并附上本账本的账户标识。返回的核对文件仍在这里预览确认。","銀行の画像・PDF・書出しファイルに口座IDを添えて送信します。戻った照合ファイルはここで確認します。")else word("原始流水由云端分析台转换。先连接分析台，再选择账户与资料。","元明細はクラウド分析デスクで変換します。先に接続してから、口座と資料を選びます。"),12,color=LocalYohaku.current.muted,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+    if(ready)YButton(word("选择账户与资料 ↗","口座と資料を選ぶ ↗"),{if(title.isBlank())title=defaultTitle;open=true},Modifier.fillMaxWidth().testTag("statement-cloud-start"),primary=true,enabled=!busy&&s.accounts.isNotEmpty())
+    else YButton(word("连接云端分析台","クラウド分析デスクに接続"),{vm.navigate("cloud")},Modifier.fillMaxWidth().testTag("statement-cloud-connect"),primary=true)
     if(open)YSheet(word("交给云端转换流水","明細の変換を依頼"),{if(!busy)open=false}) {
         YSelect(word("目标账户","対象口座"),account,s.accounts.map{it.id to "${it.name} · ${it.currency}"},{account=it})
         YField(word("任务名称","タスク名"),title,{title=it.take(150)},Modifier.testTag("statement-cloud-title"))

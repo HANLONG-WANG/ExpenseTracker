@@ -50,8 +50,6 @@ import kotlinx.serialization.encodeToString
     var sheet by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedStatement by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedStatementActual by rememberSaveable{mutableStateOf<String?>(null)}
-    var fileFormats by rememberSaveable{mutableStateOf(false)}
-    var globalIdentifiers by rememberSaveable{mutableStateOf(false)}
     var requestedEntryKind by rememberSaveable{mutableStateOf(EntryKind.EXPENSE.name)}
     var requestedActivity by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedTreatFriend by rememberSaveable{mutableStateOf<String?>(null)}
@@ -184,7 +182,7 @@ import kotlinx.serialization.encodeToString
                         "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
                         "ledger"->LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)})
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}})
-                        "settings"->SettingsScreen(snapshot,{vm.appearance(book.id,theme=it)},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{fileFormats=true},{vm.navigate("notification-settings")},{vm.navigate("cloud")})
+                        "settings"->SettingsScreen(snapshot,{vm.appearance(book.id,theme=it)},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")})
                         "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "cloud"->key(book.id){CloudScreen(snapshot,vm)}
@@ -311,8 +309,6 @@ import kotlinx.serialization.encodeToString
             }
         }
         BookOperationConfirmation(vm)
-        if(fileFormats)ReceiptFormatHelp({fileFormats=false},{fileFormats=false;globalIdentifiers=true})
-        if(globalIdentifiers&&snapshot!=null)StatementIdentifiers(snapshot,vm,{globalIdentifiers=false})
         if(error!=null) YSheet(word("请检查","確認してください"),{vm.error.value=null}) {val language=LocalLanguage.current;YText(error!!.lineSequence().joinToString("\n"){line->if(language=="ja")line.substringAfter(" / ",line)else line.substringBefore(" / ")});YButton(word("知道了","確認"),{vm.error.value=null},primary=true)}
         notice?.takeIf{it.bookId==book?.id&&error==null}?.let{
             Box(Modifier.fillMaxSize().safeDrawingPadding().padding(bottom=95.dp),contentAlignment=Alignment.BottomCenter){

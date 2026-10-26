@@ -20,7 +20,7 @@ import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
-@Composable internal fun SettingsScreen(s:BookSnapshot,onTheme:(String)->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onFormats:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={}) {
+@Composable internal fun SettingsScreen(s:BookSnapshot,onTheme:(String)->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={}) {
     val t=LocalYohaku.current
     YTitle(word("让它，像你的生活。","自分らしい、暮らしに。"),"SETTINGS",pageFlow=true)
     Panel(Modifier.testTag("settings-theme-panel"),contentSpacing=0.dp) {
@@ -52,9 +52,8 @@ import com.yohaku.expensetracker.ui.theme.*
         SettingsRow(word("重要提醒设置","重要な通知の設定"),onReminders,"settings-reminders")
         SettingsRow(word("参考汇率与自动获取","参考レート・自動取得"),onRates,"settings-reference-rates",last=true)
     }
-    SettingsGroup(word("流水与文件","明細とファイル")) {
+    SettingsGroup(word("流水与云端","明細とクラウド")) {
         SettingsRow(word("银行 / 信用卡流水核对","銀行・カード明細の照合"),onStatements,"settings-statements")
-        SettingsRow(word("正式文件格式与导入标识","正式ファイル形式・取込用ID"),onFormats,"settings-file-formats")
         SettingsRow(word("云端分析交接台","クラウド分析デスク"),onCloud,"settings-cloud",last=true)
     }
     SettingsGroup(word("其他","その他")) {

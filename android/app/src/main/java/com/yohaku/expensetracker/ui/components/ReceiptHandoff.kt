@@ -17,7 +17,7 @@ import com.yohaku.expensetracker.ui.theme.*
         if(t.id != "objects") drawLine(t.line, Offset(0f,size.height), Offset(size.width,size.height),1.dp.toPx(),
             pathEffect=if(t.id=="journal")PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))else null)
     }.padding(bottom=16.dp), horizontalArrangement=Arrangement.spacedBy(5.dp)) {
-        listOf(word("保存图片","画像を保存"), word("导出给助手","助手へ書出し"), word("导入商品","商品を取込")).forEachIndexed { i, label ->
+        listOf(word("保存图片","画像を保存"), word("交给云端","クラウドへ"), word("预览回填","確認して取込")).forEachIndexed { i, label ->
             Column(Modifier.weight(1f).then(if(t.id=="objects")Modifier.background(Color(0xfff0e7d5),RoundedCornerShape(9.dp)).padding(9.dp)else Modifier)) {
                 YText("0${i+1}",if(t.id=="journal")20 else 16,number=true,color=t.accent)
                 YText(label,if(t.id=="journal")11 else 9)

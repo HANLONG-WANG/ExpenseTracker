@@ -59,11 +59,11 @@
 | UI18 | 网贷 `loan`、借入、合同 | 固定/循环、逐笔本金/净到账/预扣费、既有债务、逐期手动/计算计划 | `experience.js`、`completion.js` | P16 |
 | UI19 | 还款、部分/提前/结清 | 本金费用组成、额度恢复状态、直接跨币种实付/实收、未确认清偿、此前换汇关联 | `forms.js`、`completion.js` | P17 |
 | UI20 | 周期账单、预计收入、付款日历 `recurring/calendar` | 周周/月/年生成候选；确认或关联既有记录；解除预留；逐期付款安排与月份切换 | `views.js`、`forms.js`、`experience.js`、`completion.js` | P10,P18 |
-| UI21 | 导入 `import`、核对 `reconcile/fx-check` | 文件选择/范围/币种/疑点预览、1:1匹配、差异、选择类型补记、实际换算确认、仅确认差异 | `views.js`、`forms.js`、`experience.js`、`completion.js` | P19 |
+| UI21 | 导入 `import`、核对 `reconcile/fx-check` | 云端转换入口（替代原稿文件选择）/范围/币种/疑点预览、1:1匹配、差异、选择类型补记、实际换算确认、仅确认差异 | `views.js`、`forms.js`、`experience.js`、`completion.js` | P19 |
 | UI22 | 普通附件、图片/音频/外部打开 | 多文件、<100MB、内部复制、原名类型大小；图片预览/播放条/外部程序、错误状态 | `capture.js`、`completion.js`、`capture.css` | P13 |
-| UI23 | 小票工作台 `receipt-inbox`、导出/回填/商品编辑 | 多张原图、筛选/多选、ZIP预览/保存、独立JSON关联、差异/替换/旧版本、未知商品字段 | `capture.js`、`experience.js`、`completion.js` | P20 |
+| UI23 | 小票工作台 `receipt-inbox`、导出/回填/商品编辑 | 多张原图、筛选/多选、交给云端（原稿ZIP导出/手动导入已移除，回填只经云端领取）、独立JSON关联、差异/替换/旧版本、未知商品字段 | `capture.js`、`experience.js`、`completion.js` | P20 |
 | UI24 | 重要事项、提醒设置 `reminders/notification-settings` | 五类重要事项、提前天数/时间/权限、真实通知设置；点击进入对应账本与事项，金额不隐藏 | `completion.js` | P18基础、P21 |
-| UI25 | 设置、账本 `settings/books` | 主题/语言、账本创建编辑切换、归档恢复、本位币限制、文件格式帮助、资料管理 | `views.js`、`experience.js`、`completion.js` | P05,P19,P23 |
+| UI25 | 设置、账本 `settings/books` | 主题/语言、账本创建编辑切换、归档恢复、本位币限制、资料管理（原稿文件格式帮助已随手动文件链路移除） | `views.js`、`experience.js`、`completion.js` | P05,P19,P23 |
 | UI26 | 新增管理状态 | 回收站、影响预览、永久删除、停用/迁移分类、归档、修改记录、规则验证结果 | 现有 sheet/panel/menu 主题样式；`lifecycle.html`补充阶段A影响预览；其余新增设计 | P07,P14,P23 |
 | UI28 | 云端分析交接台 `cloud`、小票/流水云端入口 | 连接配置导入确认/测试/解除、任务列表五段进度、待补资料补充、结果领取后进入原有流水/小票预览、通用结果另存；三主题各自的刊头/信封邮戳/行李吊牌与轨道 | 无HTML稿；按`docs/android-cloud-handoff-package/`契约新增原生设计，组件沿用UI21/UI23主题语汇 | 云端交接 |
 | UI27 | 通用控件与状态 | 各主题独立下拉/日期时间/按钮/开关/选择框/Toast/确认/加载/空/错误/未授权/未保存；单个全宽日历 | `themes.js`、`theme-system.css`、各补充CSS | P03，各功能任务 |

@@ -36,7 +36,6 @@ import com.yohaku.expensetracker.ui.theme.*
     var supplement by rememberSaveable(active?.batch?.id){mutableStateOf<String?>(null)}
     var deleting by rememberSaveable(active?.batch?.id){mutableStateOf(false)}
     var showSides by rememberSaveable(s.book.id){mutableStateOf(false)}
-    var identifiers by rememberSaveable(s.book.id){mutableStateOf(false)}
     var billChooser by rememberSaveable(active?.batch?.id){mutableStateOf(false)}
     var billId by rememberSaveable(active?.batch?.id){mutableStateOf<String?>(null)}
     var financialKind by rememberSaveable(active?.batch?.id){mutableStateOf<String?>(null)}
@@ -52,10 +51,9 @@ import com.yohaku.expensetracker.ui.theme.*
     YTitle(word("核对，心里更有数。","照合して、確かめる。"),"CHECK, DON’T DUPLICATE",word("流水独立保存，手动账目始终为准。","明細は別に保存。手動記録が基準です。"),pageFlow=true)
     YText(word("导入不会新增、修改或删除正式记账。日期、实际金额与方向一致，笔数逐一核对。","取込で記録を追加・変更・削除しません。日付・実金額・方向を1件ずつ照合。"),12,color=LocalYohaku.current.muted)
     Box(Modifier.heightIn(min=44.dp).testTag("statement-import-entry").clickable(enabled=!busy){vm.navigate("statement-import")},contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
-        YText(word("＋ 导入核对文件","＋ 照合ファイルを取込"),10,Modifier.border(1.dp,LocalYohaku.current.line,RoundedCornerShape(20.dp)).padding(horizontal=12.dp,vertical=8.dp),color=LocalYohaku.current.muted)
+        YText(word("＋ 交给云端转换流水","＋ クラウドで明細を変換"),10,Modifier.border(1.dp,LocalYohaku.current.line,RoundedCornerShape(20.dp)).padding(horizontal=12.dp,vertical=8.dp),color=LocalYohaku.current.muted)
     }
-    YLink(word("导入标识说明","取込用IDの説明"),{identifiers=true},Modifier.testTag("statement-identifiers"))
-    if(projections.isEmpty())YEmpty(word("还没有核对资料，先导出标识并交给助手转换原流水。","照合資料はまだありません。IDを保存して助手に元明細の変換を依頼しましょう。"))
+    if(projections.isEmpty())YEmpty(word("还没有核对资料。把原始流水交给云端转换，结果确认后会出现在这里。","照合資料はまだありません。元明細をクラウドで変換し、確認した結果がここに並びます。"))
     if(projections.size>1)YSelect(word("核对批次","照合バッチ"),active?.batch?.id,projections.map{it.batch.id as String? to ((s.accounts.find{a->a.id==it.batch.accountId}?.name?:"")+" · "+it.file.from+" / "+it.file.rows.size)},{vm.selectedStatementBatch.value=it},Modifier.testTag("statement-batch"))
     active?.let { p->
         val file=p.file
@@ -133,7 +131,6 @@ import com.yohaku.expensetracker.ui.theme.*
         if(events.isEmpty())YEmpty(word("尚无转账或还款记录。","振替・返済記録はありません。"))
         events.forEach{event->ThemeAuditPanel(event.merchant.ifBlank{event.date}){StatementSideFacts(s,event,projections);YLink(word("查看原记账","元の記録を見る"),{showSides=false;onRecord(event)})}}
     }
-    if(identifiers)StatementIdentifiers(s,vm,{identifiers=false})
     val debt=s.accounts.find{it.id==financialAccount}
     if(financialKind==EntryKind.REPAYMENT.name&&debt!=null&&graph!=null)FinancialRepaymentEditor(s,debt,graph,vm,{financialKind=null;financialAccount=null})
     if(financialKind==EntryKind.BORROWING.name&&debt!=null)FinancialBorrowingEditor(s,debt,vm,{financialKind=null;financialAccount=null})

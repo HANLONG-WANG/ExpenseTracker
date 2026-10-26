@@ -23,7 +23,7 @@ JSON Schema检查结构/类型；应用还检查唯一性、日期区间、语�
 
 ## 银行/信用卡转换
 
-1. 从应用导出标识说明，将 `book_id`、`account_id`、`account_currency` 原样填入。不要按账户名称猜ID，不需要完整卡号。
+1. 从任务附带的标识说明中，将 `book_id`、`account_id`、`account_currency` 原样填入。不要按账户名称猜ID，不需要完整卡号。
 2. 填写 `file_id`、`from`/`to`（包含首尾）、`source`、`complete`、`issues`。缺页/筛选/缺行时 `complete:false`；转换疑点逐项写入 `issues`。即使complete为true，有疑点也不能把未匹配账目判为疑似多记。
 3. 明确 `date_basis`：`posted_date` 表示实际入账日，`occurred_date` 表示交易发生日。每行 `date` 必须采用该语义；若对应可选日期也提供，两者必须相同。不能缺入账日就自动拿购买日替代；无法确定时向用户核对。
 4. 每行填写唯一 `row_id`、`date`、`direction`、`settlement`、`summary`；银行原流水号/页行号放 `source_ref`。同日同额真实多笔必须保留各行。摘要原文保留，转换辅助解释另放 `note`。

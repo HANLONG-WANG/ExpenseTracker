@@ -1,15 +1,15 @@
 # 余量正式文件协议 v1
 
-这四种 UTF-8 JSON 格式用于文件转换，不是备份或同步。银行文件与小票商品文件用途不同。应用不会OCR、连接金融机构或自动上传文件；用户也可在应用内主动把原始资料交给已连接的云端分析台，返回的同格式文件同样须预览确认。将原始流水/小票包与本说明交给助手，助手可独立生成文件；用户须在应用预览后确认保存。
+这四种 UTF-8 JSON 格式用于文件转换，不是备份或同步。银行文件与小票商品文件用途不同。应用不会OCR、连接金融机构或自动上传文件；用户在应用内主动把原始资料交给已连接的云端分析台，分析台按本说明生成文件，返回后用户须在应用预览并确认保存。应用不提供本地导出或手动选文件导入。
 
 | kind | Schema | 用途 |
 | --- | --- | --- |
-| `yohaku.import-identifiers` | [schema](import-identifiers.v1.schema.json) | 应用导出的当前账本及账户标识，供转换时引用 |
+| `yohaku.import-identifiers` | [schema](import-identifiers.v1.schema.json) | 应用随云端流水任务附带的当前账本及账户标识，供转换时引用 |
 | `yohaku.statement` | [schema](statement.v1.schema.json) | 独立银行/信用卡核对资料，不产生正式账目 |
 | `yohaku.receipt-bundle` | [schema](receipt-bundle.v1.schema.json) | 原图ZIP中的 `manifest.json` |
 | `yohaku.receipt-items` | [schema](receipt-items.v1.schema.json) | 回填已有小票商品，不改交易金额 |
 
-每种完整示例在 [examples](examples/)；示例UUID只用于说明，不能替代用户实际ID。bundle示例的校验值与大小是占位示意，不能作为真实ZIP。实际导出必须计算原图字节的SHA-256和大小。
+每种完整示例在 [examples](examples/)；示例UUID只用于说明，不能替代用户实际ID。bundle示例的校验值与大小是占位示意，不能作为真实ZIP。实际打包必须计算原图字节的SHA-256和大小。
 
 ## 共通字段与约束
 
@@ -23,7 +23,7 @@ JSON Schema检查结构/类型；应用还检查唯一性、日期区间、语�
 
 ## 银行/信用卡转换
 
-1. 从应用导出标识说明，将 `book_id`、`account_id`、`account_currency` 原样填入。不要按账户名称猜ID，不需要完整卡号。
+1. 从任务附带的标识说明中，将 `book_id`、`account_id`、`account_currency` 原样填入。不要按账户名称猜ID，不需要完整卡号。
 2. 填写 `file_id`、`from`/`to`（包含首尾）、`source`、`complete`、`issues`。缺页/筛选/缺行时 `complete:false`；转换疑点逐项写入 `issues`。即使complete为true，有疑点也不能把未匹配账目判为疑似多记。
 3. 明确 `date_basis`：`posted_date` 表示实际入账日，`occurred_date` 表示交易发生日。每行 `date` 必须采用该语义；若对应可选日期也提供，两者必须相同。不能缺入账日就自动拿购买日替代；无法确定时向用户核对。
 4. 每行填写唯一 `row_id`、`date`、`direction`、`settlement`、`summary`；银行原流水号/页行号放 `source_ref`。同日同额真实多笔必须保留各行。摘要原文保留，转换辅助解释另放 `note`。
@@ -38,7 +38,7 @@ JSON Schema检查结构/类型；应用还检查唯一性、日期区间、语�
 
 ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 原图，无普通附件。每张图含image_id、从0连续的position、path、原字节sha256（小写64位）、mime_type与size_bytes。不要解压路径穿越或绝对路径。多包保持同一bundle_id，用part/parts（1起）关联；每张小票及其图片完整放在同一包，不跨包拆一张小票。
 
-清单每条包括record_id、receipt_id、record_revision、receipt_revision、原交易date、merchant（未知可null）、original货币及可选settlement。原币金额与账户实际金额分开。仅用户选中的未整理小票导出，原图不压缩、不改写。成功保存后仍待回填，导出不意味着已整理。
+清单每条包括record_id、receipt_id、record_revision、receipt_revision、原交易date、merchant（未知可null）、original货币及可选settlement。原币金额与账户实际金额分开。仅用户选中的未整理小票打包上传，原图不压缩、不改写。提交后仍待回填，不意味着已整理。
 
 助手读取清单和原图，返回 `yohaku.receipt-items` JSON，原样复制bundle_id/book_id及每张小票的record_id/receipt_id/两个修订号。每条 `currency` 取原交易币种，`image_ids` 列出本次识别的原图ID。不得把信用卡换算金额当商品原币总额。
 
@@ -53,4 +53,4 @@ ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 原图�
 - `statement.invalid.json`：JPY小数、重复row_id、行日期越过区间。schema能发现精度错误，应用同时报告行ID与区间语义错误。
 - `receipt-items.invalid.json`：商品引用了不属于本条来源图片的ID，结构合法但语义拒绝。
 
-有效示例只证明文件格式；能否关联取决于当前账本真实数据及导出修订。
+有效示例只证明文件格式；能否关联取决于当前账本真实数据及打包修订。

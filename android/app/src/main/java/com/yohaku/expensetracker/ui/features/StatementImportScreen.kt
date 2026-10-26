@@ -1,10 +1,5 @@
 package com.yohaku.expensetracker.ui.features
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,69 +11,28 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.files.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
-import kotlinx.serialization.encodeToString
-import java.io.File
 
 @Composable internal fun StatementImportScreen(s:BookSnapshot,vm:AppViewModel) {
-    val context=LocalContext.current
-    val busy by vm.busy.collectAsStateWithLifecycle()
-    var rawPath by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
-    var preview by remember(s.book.id){mutableStateOf<StatementImportPreview?>(null)}
-    var overlap by rememberSaveable(rawPath){mutableStateOf(false)}
-    var identifiers by rememberSaveable(s.book.id){mutableStateOf(false)}
-    var help by rememberSaveable(s.book.id){mutableStateOf(false)}
-    LaunchedEffect(rawPath) {
-        val path=rawPath?:return@LaunchedEffect
-        if(preview!=null)return@LaunchedEffect
-        var result:StatementImportPreview?=null
-        vm.execute(onSuccess={preview=result}) {
-            require(File(path).isFile){"预览已过期，请重新选择文件 / プレビューの期限が切れました。ファイルを選び直してください"}
-            result=vm.repository.previewStatement(s.book.id,File(path).readText())
-        }
-    }
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null) {
-        var result:StatementImportPreview?=null;var path:String?=null
-        vm.execute(onSuccess={rawPath?.let{File(it).delete()};preview=result;rawPath=path}) {
-            val raw=readUtf8Document(context,uri)
-            result=vm.repository.previewStatement(s.book.id,raw)
-            path=File.createTempFile("statement-preview-",".json",context.cacheDir).apply{writeText(raw)}.path
-        }
-    } }
-    YTitle(word("先预览，再核对。","プレビューして、照合。"),"STATEMENT IMPORT",pageFlow=true)
+    YTitle(word("先转换，再核对。","変換して、照合。"),"STATEMENT IMPORT",pageFlow=true)
     StatementSteps()
     StatementUploadPanel {
         Column(Modifier.fillMaxWidth(),horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(15.dp)) {
         if(LocalYohaku.current.id=="objects")Box(Modifier.size(46.dp).background(Color(0xffd5dbbf),RoundedCornerShape(14.dp)).padding(10.dp)){YIcon("wallet",Modifier.fillMaxSize())}
         else YIcon("wallet",Modifier.size(38.dp))
-        YText(word("导入统一核对文件","共通形式の明細を取込"),20,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
-        YText(word("截图或导出流水由助手转换为 JSON 文件。文件只进入核对资料，不进入账本流水。","画像・明細をアシスタントがJSONに変換。記録ではなく照合用資料へ。"),12,color=LocalYohaku.current.muted,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
-        YButton(word("选择文件","ファイルを選択"),{picker.launch(arrayOf("application/json","text/plain","application/octet-stream"))},Modifier.fillMaxWidth().testTag("statement-pick-file"),primary=true,enabled=!busy)
-        YButton(word("导入标识说明","取込用IDの説明"),{identifiers=true},Modifier.testTag("statement-identifiers"),enabled=!busy)
-        YLink(word("文件格式与助手说明","ファイル形式・助手への説明"),{help=true},Modifier.testTag("statement-format-help"))
+        YText(word("交给云端转换流水","クラウドで明細を変換"),20,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+        CloudStatementHandoff(s,vm)
         }
     }
-    CloudStatementHandoff(s,vm)
-    preview?.let { p->StatementPreviewContent(s,vm,p,overlap,{overlap=it},busy,onConfirm={
-        var id:String?=null
-        vm.execute(onSuccess={rawPath?.let{File(it).delete()};rawPath=null;preview=null;vm.selectedStatementBatch.value=id;vm.navigate("statements")}) {
-            id=vm.repository.saveStatement(s.book.id,p,overlap)
-        }
-    },onCancel={rawPath?.let{File(it).delete()};rawPath=null;preview=null}) }
-    if(identifiers)StatementIdentifiers(s,vm,{identifiers=false})
-    if(help)ReceiptFormatHelp({help=false})
 }
 
-/** Shared by manual file import and verified cloud results; saving stays with the caller. */
+/** Shared by verified cloud results; saving stays with the caller. */
 @Composable internal fun StatementPreviewContent(s:BookSnapshot,vm:AppViewModel,p:StatementImportPreview,overlap:Boolean,onOverlap:(Boolean)->Unit,busy:Boolean,onConfirm:()->Unit,onCancel:()->Unit) {
     val account=s.accounts.first{it.id==p.file.account_id}
     Panel(Modifier.testTag("statement-preview")) {
@@ -139,7 +93,7 @@ import java.io.File
 }
 @Composable internal fun StatementSteps() {
     val t=LocalYohaku.current
-    val titles=listOf(word("交给助手转换","アシスタントで変換"),word("选择核对文件","照合ファイル選択"),word("预览并确认","確認して照合"))
+    val titles=listOf(word("交给云端转换","クラウドで変換"),word("领取转换结果","結果を受け取る"),word("预览并确认","確認して照合"))
     if(t.id=="objects")Column(Modifier.fillMaxWidth().padding(vertical=5.dp),verticalArrangement=Arrangement.spacedBy(9.dp)) {
         titles.forEachIndexed{i,title->YText("0${i+1} $title",11,Modifier.fillMaxWidth().background(Color(0xffefe1c9),RoundedCornerShape(12.dp)).padding(horizontal=15.dp,vertical=13.dp),color=t.muted)}
     }else Column(Modifier.fillMaxWidth().padding(top=5.dp,bottom=10.dp).then(if(t.id=="journal")Modifier.rotate(-1f)else Modifier).drawBehind{
@@ -154,24 +108,4 @@ import java.io.File
     val unknown=word("未知","不明")
     RecordFacts(listOf(word("本金","元金") to (money(info.principal)?:unknown),word("费用","手数料") to (money(info.fees)?:unknown),word("账单合计","請求合計") to (money(info.total)?:unknown),word("还款日","返済日") to (info.payment_date?:unknown)))
     YText(word("仅保存为核对资料。调整正式账单须另行选择账单、预览并确认。","照合資料としてのみ保存。正式な請求の修正は請求を別途選び、プレビューして確定します。"),11,color=LocalYohaku.current.muted)
-}
-@Composable internal fun StatementIdentifiers(s:BookSnapshot,vm:AppViewModel,onClose:()->Unit) {
-    val context=LocalContext.current
-    val busy by vm.busy.collectAsStateWithLifecycle()
-    var copied by remember{mutableStateOf(false)}
-    var saved by remember{mutableStateOf(false)}
-    val identifiers=remember(s.book,s.accounts){ImportIdentifiers(book_id=s.book.id,book_name=s.book.name,accounts=s.accounts.map{ImportAccountIdentifier(it.id,it.name,it.currency)})}
-    val text=remember(identifiers){FileProtocols.json.encodeToString(identifiers)}
-    val directory=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()){uri->if(uri!=null)vm.execute(onSuccess={saved=true}) {
-        writeNewTreeDocument(context,uri,"yohaku-import-identifiers-${s.book.id}.json","application/json"){it.write(text.toByteArray(Charsets.UTF_8))}
-    } }
-    YSheet(word("导入标识说明","取込用IDの説明"),onClose) {
-        YText(word("将标识说明随原流水交给助手。名称仅供显示，关联必须使用ID；不需要完整银行卡号码。","IDの説明を元明細と一緒に助手へ渡してください。名称は表示用で、関連付けにはIDを使用。カード番号全桁は不要です。"),12)
-        RecordFacts(listOf(word("账本","帳簿") to s.book.name,word("账本ID","帳簿ID") to s.book.id,word("协议版本","形式バージョン") to "1"))
-        identifiers.accounts.forEach{a->ThemeAuditPanel(a.name){YText(a.currency,12);YText(a.account_id,11)}}
-        YButton(word("复制标识说明","IDの説明をコピー"),{(context.getSystemService(Context.CLIPBOARD_SERVICE)as ClipboardManager).setPrimaryClip(ClipData.newPlainText("YOHAKU import identifiers",text));copied=true},Modifier.testTag("statement-copy-identifiers"),primary=true)
-        YButton(word("保存标识 JSON","IDのJSONを保存"),{directory.launch(null)},Modifier.testTag("statement-save-identifiers"),enabled=!busy)
-        if(copied)YText(word("已复制","コピーしました"),12,color=LocalYohaku.current.accent)
-        if(saved)YText(word("已保存","保存しました"),12,Modifier.testTag("statement-identifiers-saved"),color=LocalYohaku.current.accent)
-    }
 }

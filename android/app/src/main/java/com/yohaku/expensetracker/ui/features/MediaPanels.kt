@@ -70,7 +70,6 @@ import kotlinx.coroutines.withContext
     MaterialFileTile(file.id,file.originalName,file.mime+" · "+file.size+word(" 字节"," バイト"),file.mime.startsWith("audio/"),onPreview,onRemove,thumbnail)
 }
 @Composable internal fun RecordMediaPanel(s:BookSnapshot,event:EventEntity,vm:AppViewModel) {
-    var importOpen by rememberSaveable(event.id){mutableStateOf(false)}
     var preview by rememberSaveable(event.id){mutableStateOf<String?>(null)}
     val attachments=s.entryAttachments(event.id);val receipts=s.entryReceiptImages(event.id)
     if(attachments.isNotEmpty())ThemeSection(word("普通附件","添付ファイル"),"ATTACHMENTS")
@@ -85,10 +84,8 @@ import kotlinx.coroutines.withContext
             }}
         }
         YLink(word("打开小票工作台","レシート一覧を開く"),{vm.navigate("receipts")})
-        YLink(word("导入商品明细","商品明細を取込"),{importOpen=true},Modifier.testTag("receipt-import-for-record"))
     }
     ReceiptProducts(s,event.id,vm)
-    if(importOpen)ReceiptImportFlow(s,vm,{importOpen=false},{importOpen=false},targetRecordId=event.id)
     preview?.let{id->s.files.find{it.id==id}?.let{MediaPreview(vm.repository,it,{preview=null},if(receipts.any{f->f.id==id})receipts else attachments)}}
 }
 private suspend fun decodeMedia(repository:LedgerRepository,file:FileBlobEntity,maxSize:Int):android.graphics.Bitmap=withContext(Dispatchers.IO) {

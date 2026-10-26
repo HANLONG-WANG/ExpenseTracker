@@ -93,20 +93,7 @@ class StatementFileWorkflowTest {
         file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
     }
 
-    private fun writeFile(path:String,text:String) {
-        val pipes=instrumentation.uiAutomation.executeShellCommandRw("tee $path")
-        ParcelFileDescriptor.AutoCloseOutputStream(pipes[1]).use{it.write(text.toByteArray())}
-        ParcelFileDescriptor.AutoCloseInputStream(pipes[0]).use{it.readBytes()}
-        assertEquals(text,shell("cat $path").toString(Charsets.UTF_8))
-        shell("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://$path")
-    }
-    private fun pick(folder:String,name:String) {
-        ui.waitUntil(15000){systemNodes().any{it.packageName?.toString()?.contains("documentsui")==true}}
-        instrumentation.uiAutomation.waitForIdle(500,5000)
-        if(systemNodes().none{it.text?.toString()==name})openFolder(folder)
-        systemClick(name)
-    }
-    @Test fun identifiersToRealFilePreviewManualDifferenceSupplementAndDuplicateAcrossThemesAndLanguages() {
+    @Test fun savedStatementManualDifferenceSupplementAndDuplicateAcrossThemesAndLanguages() {
         val themes=listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{wanted->it==wanted}?:true}
         val languages=listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{wanted->it==wanted}?:true}
         for(theme in themes)for(language in languages) {
@@ -121,28 +108,14 @@ class StatementFileWorkflowTest {
             }
             fun state()=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
-            ui.runOnIdle{vm.navigate("settings")};click("settings-statements");click("statement-identifiers")
             val folder="YohakuS-"+repo.id();folders+=folder;shell("mkdir -p /sdcard/Download/$folder")
-            click("statement-save-identifiers");openFolder(folder);systemClick("Use this folder");systemClick("Allow")
-            ui.waitUntil(15000){!vm.busy.value&&ui.onAllNodesWithTag("statement-identifiers-saved").fetchSemanticsNodes().isNotEmpty()}
-            val rawIds=shell("cat /sdcard/Download/$folder/yohaku-import-identifiers-$book.json").toString(Charsets.UTF_8)
-            val ids=FileProtocols.json.decodeFromString<ImportIdentifiers>(rawIds)
-            assertEquals(book,ids.book_id);assertEquals(state().accounts.single().id,ids.accounts.single().account_id)
-            ui.onNodeWithTag("sheet-close").performClick();click("statement-import-entry")
+            val ids=runBlocking{repo.importIdentifiers(book)}
             val account=ids.accounts.single()
             val source=StatementFile("yohaku.statement",1,repo.id(),ids.book_id,account.account_id,account.currency,"2026-10-01","2026-10-31","posted_date",true,"銀行CSV",emptyList(),
                 listOf("1000","1000","950","500").map{amount->StatementRow(repo.id(),"2026-10-14","out",FileMoney(account.currency,amount),"原始摘要",occurred_date="2026-10-14",posted_date="2026-10-14")})
-            writeFile("/sdcard/Download/$folder/statement.json",FileProtocols.json.encodeToString(source))
-            click("statement-pick-file");pick(folder,"statement.json")
-            ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("statement-preview").fetchSemanticsNodes().isNotEmpty()}
-            assertEquals(3,state().events.size);assertTrue(runBlocking{db.fileWorkflowDao().statements(book).first().isEmpty()})
-            ui.onNodeWithTag("statement-preview").performScrollTo();shot("$theme-$language-preview")
-            if(theme=="magazine"&&language=="zh") {
-                click("statement-cancel-preview");assertTrue(runBlocking{db.fileWorkflowDao().statements(book).first().isEmpty()})
-                click("statement-pick-file");pick(folder,"statement.json")
-            }
-            click("statement-confirm-import")
-            ui.waitUntil(10000){!vm.busy.value&&vm.route.value=="statements"}
+            val raw=FileProtocols.json.encodeToString(source)
+            val batch=runBlocking{repo.saveStatement(book,repo.previewStatement(book,raw))}
+            ui.runOnIdle{vm.selectedStatementBatch.value=batch;vm.navigate("statements")}
             assertEquals(3,state().events.size)
             val result=state().reviewStatements(runBlocking{db.fileWorkflowDao().statements(book).first()},emptyList()).single()
             assertEquals(2,result.result.exact.size);assertEquals(2,result.result.exact.map{it.postingId}.distinct().size)
@@ -168,11 +141,8 @@ class StatementFileWorkflowTest {
             val matched=after.reviewStatements(runBlocking{db.fileWorkflowDao().statements(book).first()},runBlocking{db.fileWorkflowDao().decisions(book).first()}).single()
             assertEquals(3,matched.result.exact.size);assertEquals(1,matched.decisions.size);assertTrue(matched.decisions.single().active)
             shot("$theme-$language-reconciled")
-            click("statement-import-entry");click("statement-pick-file");pick(folder,"statement.json")
-            ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("statement-open-duplicate").fetchSemanticsNodes().isNotEmpty()}
-            ui.onNodeWithTag("statement-confirm-import").assertIsNotEnabled()
+            assertEquals(batch,runBlocking{repo.previewStatement(book,raw)}.duplicateBatchId)
             assertEquals(1,runBlocking{db.fileWorkflowDao().statements(book).first().size})
-            click("statement-open-duplicate")
             if(theme=="objects"&&language=="ja") {
                 click("statement-export-original");openFolder(folder);systemClick("Use this folder");systemClick("Allow")
                 val exported="/sdcard/Download/$folder/yohaku-statement-${source.file_id}.json"
@@ -186,12 +156,10 @@ class StatementFileWorkflowTest {
                 click("statement-unlink-difference")
                 runBlocking{repo.saveEntry(book,EntryDraft(id=original.id,accountId=account.account_id,categoryId=original.categoryId,amount="1200",date=original.date,merchant=original.merchant))}
                 val partial=source.copy(file_id=repo.id(),complete=false,issues=listOf("转换缺行・要確認"),rows=listOf(source.rows.last().copy(row_id=repo.id(),settlement=FileMoney("JPY","999"))))
-                writeFile("/sdcard/Download/$folder/partial.json",FileProtocols.json.encodeToString(partial))
-                click("statement-import-entry");click("statement-pick-file");pick(folder,"partial.json")
-                ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("statement-accept-overlap").fetchSemanticsNodes().isNotEmpty()}
-                ui.onNodeWithTag("statement-confirm-import").assertIsNotEnabled();shot("objects-ja-overlap-partial")
-                click("statement-accept-overlap");click("statement-confirm-import")
-                ui.waitUntil(10000){!vm.busy.value&&vm.route.value=="statements"}
+                val partialPreview=runBlocking{repo.previewStatement(book,FileProtocols.json.encodeToString(partial))}
+                assertEquals(listOf(batch),partialPreview.overlappingBatchIds)
+                val partialBatch=runBlocking{repo.saveStatement(book,partialPreview,acceptOverlap=true)}
+                ui.runOnIdle{vm.selectedStatementBatch.value=partialBatch}
                 val partialReview=state().reviewStatements(runBlocking{db.fileWorkflowDao().statements(book).first()},runBlocking{db.fileWorkflowDao().decisions(book).first()}).first{it.file.file_id==partial.file_id}
                 assertTrue(partialReview.result.ledgerOnly.isEmpty());assertTrue(partialReview.result.uncovered.isNotEmpty())
                 click("statement-delete");click("statement-delete-confirm")
@@ -202,7 +170,7 @@ class StatementFileWorkflowTest {
             ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.fileWorkflowDao().statements(book).first().isEmpty()}}
             assertTrue(runBlocking{db.fileWorkflowDao().decisions(book).first().isEmpty()})
             assertEquals(4,state().events.size);assertEquals(6300L,state().balance(state().accounts.single()))
-            println("Statement file workflow passed: $theme $language; real identifiers → statement → exact 1:1/manual difference → normal supplement → duplicate rejected; ledger preserved on deletion")
+            println("Statement file workflow passed: $theme $language; saved statement → exact 1:1/manual difference → normal supplement → duplicate rejected; ledger preserved on deletion")
         }
     }
     private fun confirmNormalEntryReview() {
