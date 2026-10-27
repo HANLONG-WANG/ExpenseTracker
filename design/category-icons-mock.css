@@ -1,0 +1,62 @@
+/* Category icon proposal: one shared glyph set, three theme-owned badges and pickers. */
+.magazine{--ci-top:60px;--ci-sheet:#f7f7ef}.journal{--ci-top:55px;--ci-sheet:#faf4e4}.objects{--ci-top:55px;--ci-sheet:#fff9ed}
+.ci{display:inline-flex;align-items:center;justify-content:center;flex:none;position:relative}
+.ci svg{width:19px;height:19px}
+.ci-g-food{--ci-bg:#f6dcc4;--ci-fg:#a8653d}.ci-g-transport{--ci-bg:#d8e4d3;--ci-fg:#5e7a5a}.ci-g-shopping{--ci-bg:#f2d5cc;--ci-fg:#a85a48}.ci-g-home{--ci-bg:#ebdfc4;--ci-fg:#8a6a3c}.ci-g-fun{--ci-bg:#dcdbea;--ci-fg:#64628f}.ci-g-health{--ci-bg:#d3e5e1;--ci-fg:#4f7d74}.ci-g-learn{--ci-bg:#e7e2c5;--ci-fg:#7f7440}.ci-g-social{--ci-bg:#f2d6dc;--ci-fg:#a25867}.ci-g-finance{--ci-bg:#dfe6cc;--ci-fg:#6a7a43}.ci-g-other{--ci-bg:#e9e1d3;--ci-fg:#857565}
+.ci-child-row{display:flex!important;align-items:center;gap:12px}.ci-child-row>span{flex:1;text-align:left}.ci-child-row>span small{font-family:var(--font-meta);font-size:9px;color:var(--muted);margin-left:8px}
+.hierarchy-manage-parent{grid-template-columns:auto 1fr 12px;column-gap:12px}.hierarchy-manage-parent .ci{grid-column:1;grid-row:1/3}.hierarchy-manage-parent strong{grid-column:2;grid-row:1}
+.ci-field{margin:2px 0 18px}.ci-field-label{display:block;font-family:var(--font-meta);font-size:11px;color:var(--muted);margin-bottom:8px}
+.ci-field-current{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:12px}.ci-field-current>span{flex:1;display:flex;flex-direction:column;gap:4px}.ci-field-current strong{font-family:var(--font-body);font-size:15px;font-weight:500}.ci-field-current small{font-family:var(--font-meta);font-size:10px;color:var(--muted)}.ci-field-current i{font-style:normal;font-size:11px;color:var(--accent)}
+.ci-suggest{display:flex;align-items:center;gap:12px;margin-top:12px}.ci-suggest small{font-family:var(--font-meta);font-size:10px;color:var(--muted);flex:none}.ci-suggest div{display:flex;gap:8px;flex-wrap:wrap}.ci-suggest button{padding:2px}
+.ci-sheet{display:flex;flex-direction:column}.ci-preview{display:flex;align-items:center;gap:16px;padding:6px 0 18px}.ci-preview>div{display:flex;flex-direction:column;gap:3px}.ci-preview span{font-family:var(--font-meta);font-size:10px;color:var(--muted)}.ci-preview strong{font-family:var(--font-body);font-size:19px;font-weight:500}.ci-preview small{font-family:var(--font-meta);font-size:10px;color:var(--muted)}
+.ci-search{margin:6px 0 12px}
+.ci-tabs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:8px 0 10px;scroll-padding:0 24px;position:sticky;top:calc(var(--ci-top) - 1px);z-index:2;background:var(--ci-sheet)}.ci-tabs[hidden]{display:none}.ci-tabs button{flex:none;font-family:var(--font-body);font-size:11px;padding:7px 10px;white-space:nowrap}.ci-tabs button.has-pick::after{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-left:5px;vertical-align:middle}
+.ci-group{margin:4px 0 6px}.ci-group[hidden]{display:none}.ci-caption{display:flex;align-items:baseline;gap:8px;margin:8px 0 10px;font-family:var(--font-meta);font-size:10px;color:var(--muted)}.ci-caption small{margin-left:auto;font-family:var(--font-number);font-size:10px}
+.ci-grid{display:grid;grid-template-columns:repeat(6,1fr)}.ci-cell{display:flex;align-items:center;justify-content:center;aspect-ratio:1;position:relative;padding:0}
+.ci-actions{margin-top:16px;position:sticky;bottom:-1px;z-index:2;background:var(--ci-sheet);padding:10px 0 6px}.ci-actions .full-button{margin:0}
+.ci-links{display:flex;justify-content:space-between;gap:12px;margin:-6px 0 4px}.ci-links .text-link{min-height:34px;font-size:11px;padding:6px 0}
+.ci-credit{font-family:var(--font-meta);font-size:9px;color:var(--muted);margin:10px 0 0}
+
+/* Magazine: bare editorial line glyphs, a hairline specimen grid and inverted selection. */
+.magazine .ci{color:var(--ink)}.magazine .ci svg{stroke-width:1.45}
+.magazine .ci-lg{width:44px;height:44px;border:1px solid var(--line)}.magazine .ci-lg svg{width:23px;height:23px}
+.magazine .ci-xl{width:68px;height:68px;border:1px solid var(--ink)}.magazine .ci-xl svg{width:34px;height:34px;stroke-width:1.25}
+.magazine .ci-field-current{padding:12px 0;border-top:1px solid var(--ink);border-bottom:1px solid var(--line)}
+.magazine .ci-suggest button{border:1px solid var(--line);padding:7px}
+.magazine .ci-preview{border-bottom:1px solid var(--ink)}
+.magazine .ci-tabs{gap:18px;padding:4px 0 0;border-bottom:1px solid var(--ink)}.magazine .ci-tabs button{padding:9px 0 10px;color:var(--muted);letter-spacing:.04em}.magazine .ci-tabs button[aria-selected=true]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}.magazine .ci-tabs button.has-pick::after{border-radius:0;background:var(--ink)}
+.magazine .ci-caption{text-transform:uppercase;letter-spacing:.12em;margin-top:14px}
+.magazine .ci-grid{border-left:1px solid var(--line);border-top:1px solid var(--line)}.magazine .ci-cell{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.magazine .ci-cell .ci svg{width:21px;height:21px}
+.magazine .ci-cell.selected{background:var(--ink)}.magazine .ci-cell.selected .ci{color:var(--surface)}
+.magazine .tx-icon.ci-tx{color:var(--ink)}
+
+/* Journal: inked rubber stamps on dotted paper; the pick is circled by hand in red. */
+.journal .ci{width:31px;height:31px;border:1px dashed var(--accent);border-radius:50% 46% 52% 48%/48% 52% 46% 50%;color:var(--accent);transform:rotate(-4deg)}.journal .ci svg{width:17px;height:17px;stroke-width:1.5}
+.journal .ci-lg{width:46px;height:46px}.journal .ci-lg svg{width:24px;height:24px}
+.journal .ci-xl{width:66px;height:66px;outline:1px dashed var(--warm);outline-offset:4px;transform:rotate(-6deg)}.journal .ci-xl svg{width:33px;height:33px}
+.journal .ci-field-current{background:#fff8e4;border:1px dashed var(--line)}.journal .ci-field-current strong{font-size:19px}.journal .ci-field-current small{font-size:12px}.journal .ci-field-current i{font-size:14px;color:var(--warm)}
+.journal .ci-field-label,.journal .ci-suggest small{font-size:13px}
+.journal .ci-preview{background:#fff8e4;border:1px dashed var(--line);padding:16px 14px;margin-bottom:6px;transform:rotate(-.5deg)}.journal .ci-preview strong{font-size:22px}.journal .ci-preview span,.journal .ci-preview small{font-size:12px}
+.journal .ci-tabs{padding-top:10px;border-bottom:1px dashed var(--line)}.journal .ci-tabs button{background:#f6efd2;color:var(--muted);border-bottom:1px dashed var(--line);font-size:14px;transform:rotate(-1deg)}.journal .ci-tabs button:nth-child(even){transform:rotate(1deg)}.journal .ci-tabs button[aria-selected=true]{background:#f6e0c4;color:var(--warm);border-bottom:2px solid var(--warm);transform:translateY(2px) rotate(0)}.journal .ci-tabs button.has-pick::after{background:var(--warm)}
+.journal .ci-caption{font-size:14px;color:var(--warm)}.journal .ci-caption small{font-size:13px;color:var(--muted)}
+.journal .ci-grid{background-image:radial-gradient(#cfc5ad 1px,transparent 1.3px);background-size:14px 14px;padding:4px;gap:2px}
+.journal .ci-cell .ci{border-color:transparent;width:36px;height:36px}.journal .ci-cell .ci svg{width:21px;height:21px}.journal .ci-cell:nth-child(3n+1) .ci{transform:rotate(3deg)}
+.journal .ci-cell.selected .ci{border:1.6px solid var(--warm);color:var(--warm);transform:rotate(-8deg) scale(1.12)}
+.journal .ci-cell.selected::after{content:'✓';position:absolute;right:4px;top:0;font-size:15px;color:var(--warm);transform:rotate(8deg)}
+.journal .tx-icon.ci-tx{color:var(--accent)}.journal .tx-icon .ci{border:0;transform:none}
+
+/* Objects: each glyph is a little coloured enamel tile; the chosen one lifts with a badge. */
+.objects .ci{width:32px;height:32px;border-radius:10px;background:var(--ci-bg);color:var(--ci-fg);box-shadow:0 2px 0 rgba(120,90,50,.12)}.objects .ci svg{width:18px;height:18px;stroke-width:1.7}
+.objects .ci-lg{width:46px;height:46px;border-radius:14px}.objects .ci-lg svg{width:25px;height:25px}
+.objects .ci-xl{width:68px;height:68px;border-radius:20px;transform:rotate(-4deg);box-shadow:0 4px 0 rgba(120,90,50,.16)}.objects .ci-xl svg{width:36px;height:36px}
+.objects .hierarchy-manage-children .ci,.objects .hierarchy-choice .ci{width:27px;height:27px;border-radius:8px}.objects .hierarchy-manage-children .ci svg,.objects .hierarchy-choice .ci svg{width:16px;height:16px}
+.objects .ci-field-current{background:#fffaf0;border:1px solid #ead8b8;border-radius:14px;box-shadow:0 3px 0 #ece0c9}
+.objects .ci-suggest button{background:#fff6e4;border-radius:12px;padding:5px}
+.objects .ci-preview{background:#ece4ce;border-radius:18px;padding:16px;margin-bottom:8px;box-shadow:0 3px 0 #dbd2bd}
+.objects .ci-tabs button{background:#ede5d2;color:var(--muted);border-radius:999px;padding:7px 13px}.objects .ci-tabs button[aria-selected=true]{background:var(--accent);color:#fff;box-shadow:0 2px 0 #8d4d36}.objects .ci-tabs button[aria-selected=true].has-pick::after{background:#fff}
+.objects .ci-caption{font-size:11px}.objects .ci-caption small{background:#ede1cb;border-radius:5px;padding:2px 7px}
+.objects .ci-grid{grid-template-columns:repeat(5,1fr);gap:9px}
+.objects .ci-cell{background:#fffaf0;border-radius:14px;box-shadow:0 3px 0 #eadfca}.objects .ci-cell .ci{box-shadow:none}
+.objects .ci-cell.selected{outline:2px solid var(--accent);transform:translateY(-2px)}
+.objects .ci-cell.selected::after{content:'✓';position:absolute;right:-5px;top:-5px;width:17px;height:17px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;line-height:17px;text-align:center}
+.objects .tx-icon.ci-tx{background:var(--ci-bg);color:var(--ci-fg)}

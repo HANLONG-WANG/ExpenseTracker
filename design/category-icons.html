@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>分类图标方案</title>
+<style>
+:root{--bg:#eeece6;--ink:#2d2f2c;--muted:#76766f;--line:#d3d0c6;--card:#fbfaf6;--on:#2d2f2c;--on-ink:#fbfaf6}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 system-ui,"Noto Sans CJK SC",sans-serif}
+header{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--line);padding:14px 16px}
+h1{font-size:17px;margin:0 0 4px;font-weight:600}header p{margin:0 0 12px;color:var(--muted);font-size:12px}
+.bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.bar button{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer}
+.bar button[aria-pressed=true]{background:var(--on);color:var(--on-ink);border-color:var(--on)}.bar .sep{width:1px;height:20px;background:var(--line);margin:0 6px}
+.note{max-width:1240px;margin:14px auto 0;padding:0 16px;color:var(--muted);font-size:12px}
+.phones{display:flex;gap:24px;justify-content:center;padding:18px 16px 40px;overflow-x:auto}
+figure{margin:0;flex:none}figcaption{font-size:12px;color:var(--muted);margin-bottom:8px}
+iframe{display:block;width:390px;height:844px;border:0;border-radius:28px;box-shadow:0 1px 0 var(--line),0 12px 32px rgba(0,0,0,.08);background:#fff}
+@media(max-width:440px){iframe{width:calc(100vw - 32px)}}
+</style>
+</head>
+<body>
+<header>
+ <h1>分类图标 · 方案确认</h1>
+ <p>同一套精选 Tabler 线性图标（<span id="icon-count"></span>），三套主题各自的徽记与选择弹层。弹层按分组 Tab 切换。每列可直接点击操作：编辑分类 → 更换图标 → 使用。</p>
+ <div class="bar" id="states">
+  <button data-state="picker">记账 · 选分类</button>
+  <button data-state="manage">分类管理</button>
+  <button data-state="editor">编辑分类</button>
+  <button data-state="create">新建 · 按名称推荐</button>
+  <button data-state="sheet">选择图标弹层</button>
+  <button data-state="ledger">全部流水</button>
+  <span class="sep"></span>
+  <button data-lang="zh">中文</button><button data-lang="ja">日本語</button>
+ </div>
+</header>
+<p class="note">二级分类未单独设置时沿用一级图标（如「交通 / 电车」），一级未设置时显示通用图标（「其他与手续费」）。新建时按名称自动推荐，用户手动选过就不再被覆盖。</p>
+<div class="phones">
+ <figure><figcaption>杂志 · Magazine</figcaption><iframe data-theme="magazine" title="杂志主题"></iframe></figure>
+ <figure><figcaption>手账 · Journal</figcaption><iframe data-theme="journal" title="手账主题"></iframe></figure>
+ <figure><figcaption>小物 · Objects</figcaption><iframe data-theme="objects" title="小物主题"></iframe></figure>
+</div>
+<script>document.write(`<script src="category-icon-catalog.js?${Date.now()}"><\/script>`)</script>
+<script>
+document.getElementById('icon-count').textContent=`${CATEGORY_ICON_GROUPS.reduce((n,g)=>n+g.icons.length,0)} 个，${CATEGORY_ICON_GROUPS.length} 组`;
+const frames=[...document.querySelectorAll('iframe')];
+let state=new URLSearchParams(location.search).get('state')||'sheet',lang='zh',ready=0;
+function load(src,doc){return new Promise(ok=>{const s=doc.createElement('script');s.src=src+'?'+Date.now();s.onload=ok;doc.body.appendChild(s);});}
+function apply(){
+ document.querySelectorAll('[data-state]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.state===state));
+ document.querySelectorAll('[data-lang]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.lang===lang));
+ if(ready===frames.length)frames.forEach(f=>f.contentWindow.categoryIconState(state,lang));
+}
+frames.forEach(f=>{
+ f.onload=async()=>{
+  const doc=f.contentDocument,link=doc.createElement('link');
+  link.rel='stylesheet';link.href='category-icons-mock.css?'+Date.now();doc.head.appendChild(link);
+  await load('category-icon-catalog.js',doc);await load('category-icons-mock.js',doc);
+  ready++;apply();
+ };
+ f.src='app.html?theme='+f.dataset.theme;
+});
+document.getElementById('states').addEventListener('click',e=>{
+ const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.state)state=b.dataset.state;if(b.dataset.lang)lang=b.dataset.lang;apply();
+});
+</script>
+</body>
+</html>
