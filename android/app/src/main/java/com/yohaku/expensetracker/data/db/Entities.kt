@@ -18,7 +18,8 @@ data class AccountEntity(val bookId: String, val id: String, val name: String, v
     ForeignKey(entity=CategoryEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","parentId"])
 ], indices=[Index("bookId"),Index(value=["bookId","parentId"])])
 data class CategoryEntity(val bookId: String, val id: String, val name: String, val kind: String,
-    val parentId: String?=null, val favorite: Boolean=false, val active: Boolean=true)
+    val parentId: String?=null, val favorite: Boolean=false, val active: Boolean=true,
+    @ColumnInfo(defaultValue="NULL") val icon: String?=null)
 
 @Entity(tableName="events", primaryKeys=["bookId","id"], foreignKeys=[
     ForeignKey(entity=BookEntity::class,parentColumns=["id"],childColumns=["bookId"]),

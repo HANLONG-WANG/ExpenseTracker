@@ -1,11 +1,11 @@
 const TODAY = '2026-10-12';
 const CURRENT_MONTH = '2026-10';
 const categoriesTemplate = () => [
- {id:'food',name:['餐饮','食費'],icon:'food',budget:50000},
- {id:'shopping',name:['购物','買い物'],icon:'bag',budget:40000},
+ {id:'food',name:['餐饮','食費'],icon:'tools-kitchen-2',budget:50000},
+ {id:'shopping',name:['购物','買い物'],icon:'shopping-bag',budget:40000},
  {id:'transport',name:['交通','交通費'],icon:'train',budget:20000},
  {id:'housing',name:['居住与账单','住まい・請求'],icon:'home',budget:50000},
- {id:'other',name:['其他与手续费','その他・手数料'],icon:'wallet',budget:20000}
+ {id:'other',name:['其他与手续费','その他・手数料'],icon:null,budget:20000}
 ];
 const sampleAccounts = () => [
  {id:'cash',name:'随身现金',ja:'手持ちの現金',type:'cash',balance:8600},

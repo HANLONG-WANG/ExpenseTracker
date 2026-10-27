@@ -14,6 +14,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.domain.category.*
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlin.math.abs
@@ -29,7 +30,7 @@ import kotlin.math.abs
     AnalysisModule.COMPARISON->word("同进度比较，追溯变化原因","同じ進捗で比較し、変化の理由を見る")
 }
 internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModule.CATEGORIES->"bag";AnalysisModule.MERCHANTS->"coffee";AnalysisModule.TREND,AnalysisModule.COMPARISON->"chart";AnalysisModule.ACTIVITIES->"life"}
-@Composable private fun analysisCategoryItems(s:BookSnapshot,report:AnalysisReport,currency:Currency)=s.categoryGroups(report).map{g->AnalysisListItem(g.key,if(g.key=="FEES")word("明确费用","確定した手数料")else s.categories.first{it.id==g.key}.name,Money(currency,g.amount).display(),g.count,if(report.total==0L)"—"else g.amount.toBigDecimal().multiply(100.toBigDecimal()).divide(report.total.toBigDecimal(),0,java.math.RoundingMode.HALF_UP).toPlainString()+"%",if(g.key=="FEES")"transfer"else"bag")}
+@Composable private fun analysisCategoryItems(s:BookSnapshot,report:AnalysisReport,currency:Currency)=s.categoryGroups(report).map{g->AnalysisListItem(g.key,if(g.key=="FEES")word("明确费用","確定した手数料")else s.categories.first{it.id==g.key}.name,Money(currency,g.amount).display(),g.count,if(report.total==0L)"—"else g.amount.toBigDecimal().multiply(100.toBigDecimal()).divide(report.total.toBigDecimal(),0,java.math.RoundingMode.HALF_UP).toPlainString()+"%",if(g.key=="FEES")"transfer"else"bag",if(g.key=="FEES")null else resolveCategoryIcon(g.key,s.categories))}
 @Composable private fun analysisMerchantItems(s:BookSnapshot,report:AnalysisReport,currency:Currency)=report.groups{it.merchantKey}.map{g->AnalysisListItem(g.key,s.merchantLabel(g.key).ifBlank{word("未填写商户","お店未入力")},Money(currency,g.amount).display(),g.count)}
 @Composable internal fun AnalysisScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit,onCategories:()->Unit,onFinancial:(String)->Unit={}) {
     val today by vm.today.collectAsStateWithLifecycle()

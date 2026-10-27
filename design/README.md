@@ -103,6 +103,8 @@ python3 -m http.server 4173 --bind 127.0.0.1
 
 二级分类：点「先选分类」后展开餐饮等一级项，选择子分类或「未细分」。最近使用可直接选子类；支持搜索。展开项下「添加二级分类」会预选父类；「新建分类」可选择一级或归属某一级。顶部「分类管理」可检查层级、编辑名称与预算。分类分析点一级可查看子类与未细分，父级汇总包含二级。正式新账本仍不自动创建任何分类。
 
+分类图标已正式合入 `app.html`（资源版本 `v=56`），由 `category-icons.js` / `category-icons.css` 提供；分类自身的 Tabler id → 父级 id → `category`，新建时按名称推荐，手动选择后保留选择。导航和按钮继续使用原有 symbol。[category-icons.html](category-icons.html) 直接调用原型自身功能，三主题并排对照记账选分类、分类管理、编辑分类、按名称推荐、分组 Tab / 搜索选图标、全部流水、分类预算和小物分析卡片，可切换中日文；不再注入 mock。徽记尺寸及行内间距按原生 `CategoryIconBadge`、`CategoryComponents` 和 `CategoryIconField` 对齐。目录 `category-icon-catalog.js` 由 `android/tools/build-category-icons.py` 生成，不手动修改。
+
 ## 第六轮规格回查补全
 
 顶部新增「重要事项」「提醒设置」「外币退款」「记录借入」「既有分期」「异常与空状态」。

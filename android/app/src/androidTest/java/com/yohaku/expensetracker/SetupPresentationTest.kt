@@ -263,7 +263,7 @@ class SetupPresentationTest {
         val csv=File(folder,"dimensions.csv").also{it.writeText("theme,language,income,key,top,height\n")}
         val errors=mutableListOf<String>()
         ui.setContent{YohakuTheme(theme.value,language.value){
-            val categories=listOf(CategoryEntity("fixture","food","餐饮","EXPENSE"),CategoryEntity("fixture","coffee","咖啡","EXPENSE","food"))+if(income.value)listOf(CategoryEntity("fixture","work","收入","INCOME"),CategoryEntity("fixture","salary","工资","INCOME","work")) else emptyList()
+            val categories=listOf(CategoryEntity("fixture","food","餐饮","EXPENSE",icon="category"),CategoryEntity("fixture","coffee","咖啡","EXPENSE","food",icon="category"))+if(income.value)listOf(CategoryEntity("fixture","work","收入","INCOME",icon="category"),CategoryEntity("fixture","salary","工资","INCOME","work",icon="category")) else emptyList()
             val snapshot=BookSnapshot(BookEntity("fixture","生活","JPY","2026-10-01"),emptyList(),categories,emptyList(),emptyList(),null)
             Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(pageContentPadding()),verticalArrangement=Arrangement.spacedBy(15.dp)){
                 CategoryManagement(snapshot,{_,_->},{},{})
@@ -289,9 +289,10 @@ class SetupPresentationTest {
                 }
                 val r=node.getUnclippedBoundsInRoot();val top=(r.top-origin).value;val height=(r.bottom-r.top).value
                 csv.appendText("$t,$l,$populated,$key,$top,$height\n")
-                val groupsAbove=when(key){"lead","expense-heading","expense-content"->0;"expense-add","income-heading","income-content"->1;else->if(populated)2 else 1}
-                val expectedTop=expected.getDouble("top")+magazineRules(t,-2f*groupsAbove)
-                val expectedHeight=expected.getDouble("height")+when{key=="favorites"->magazineRules(t,-23f);key.endsWith("content")&&(key=="expense-content"||populated)->magazineRules(t,-2f);else->0f}
+                val expectedTop=expected.getDouble("top")
+                // The unchanged favorites reference retains its original frame; native magazine removes
+                // the 22dp bottom padding and 1dp bottom rule (the existing -23dp refinement).
+                val expectedHeight=expected.getDouble("height")+if(key=="favorites")magazineRules(t,-23f) else 0f
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(top-expectedTop)>1)errors+="$t/$l/$populated/$key top $top vs $expectedTop"
                     if(kotlin.math.abs(height-expectedHeight)>1)errors+="$t/$l/$populated/$key height $height vs $expectedHeight"
@@ -308,19 +309,19 @@ class SetupPresentationTest {
         val folder=File(i.targetContext.filesDir,"verification/category-manage-rows$suffix").also{it.mkdirs()}
         val csv=File(folder,"dimensions.csv").also{it.writeText("theme,language,count,tag,top,height\n")}
         ui.setContent{YohakuTheme(theme.value,language.value){Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal=if(theme.value=="objects")23.dp else 25.dp)){
-            CategoryManageGroup("food","餐饮",false,(0 until count.intValue).map{"child$it" to "咖啡"},{chosen="parent"},{chosen=it},{chosen="add"})
+            CategoryManageGroup("food","餐饮",false,(0 until count.intValue).map{"child$it" to "咖啡"},{chosen="parent"},{chosen=it},{chosen="add"},first=true)
         }}}
         for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja"))for(n in 1..2){
             ui.runOnIdle{theme.value=t;language.value=l;count.intValue=n}
             ui.onNodeWithTag("category-manage-group-food").performScrollTo()
             val origin=ui.onNodeWithTag("category-manage-group-food").getUnclippedBoundsInRoot().top
-            val parentTop=if(t=="objects")7f else 1f
-            val parentHeight=if(t=="journal")94f else 87f
+            val parentTop=when(t){"objects"->7f;"journal"->1f;else->0f}
+            val parentHeight=when(t){"journal"->96f;"objects"->97f;else->87f}
             val childTop=parentTop+parentHeight+if(t=="objects")7f else 0f
-            val childHeight=when(t){"journal"->54f;"objects"->43f;else->45f}
+            val childHeight=when(t){"journal"->56f;"objects"->53f;else->46f}
             val childStep=childHeight+if(t=="objects")7f else 0f
             val addHeight=if(t=="journal")49f else 44f
-            val expected=mutableListOf(Triple("category-manage-group-food",0f,childTop+n*childStep+addHeight+12+if(t=="objects")0f else 1f),Triple("category-manage-parent-food",parentTop,parentHeight),Triple("category-manage-children-food",childTop,n*childStep+addHeight+12))
+            val expected=mutableListOf(Triple("category-manage-group-food",0f,childTop+n*childStep+addHeight+12+if(t=="journal")1f else 0f),Triple("category-manage-parent-food",parentTop,parentHeight),Triple("category-manage-children-food",childTop,n*childStep+addHeight+12))
             for(k in 0 until n)expected+=Triple("category-manage-child-child$k",childTop+k*childStep,childHeight)
             expected+=Triple("category-manage-add-food",childTop+n*childStep,addHeight)
             for((tag,top,height) in expected){
@@ -456,8 +457,8 @@ class SetupPresentationTest {
         for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
             ui.runOnIdle{theme.value=t;language.value=l}
             ui.onNodeWithTag("category-group-fixture").performScrollTo()
-            // 2026-10-25 refinement: magazine groups keep only their bottom hairline, one rule less than the frozen row.
-            val heights=when(t){"journal"->listOf(276f,63f,78f,59f,49f);"objects"->listOf(264f,62f,69f,52f,44f);else->listOf(254f,62f,67f,56f,44f)}
+            // Remeasured from capture-category-group-reference.js with the integrated category badges.
+            val heights=when(t){"journal"->listOf(281f,67f,78f,60f,49f);"objects"->listOf(273f,68f,69f,55f,44f);else->listOf(251f,62f,67f,53f,44f)}
             val tags=listOf("category-group-fixture","category-group-trigger-fixture","category-parent-choice-fixture","category-child-coffee","category-add-child")
             for((tag,expected) in tags.zip(heights)){
                 val r=ui.onNodeWithTag(tag).getUnclippedBoundsInRoot();val h=(r.bottom-r.top).value

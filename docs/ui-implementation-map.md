@@ -7,8 +7,12 @@
 - 基准是已获认可的第55版实际渲染结果，以及本次冻结的源码包 [design-v55-source.tar.gz](reference/design-v55-source.tar.gz) 和 [逐文件校验值](reference/design-v55.sha256)。`?v=55` 只是缓存参数，不是不可变版本；后续对照应使用冻结包，不依赖随时可改的工作文件。
 - 历史截图在 `design/previews/`；早期截图与第55版不一致时以冻结源码实际渲染为准。开发开始生成三主题×中日文的最新基准截图，包含滚动内容和交互状态。
 - 业务依据为 [产品规格](product-design.md)、[落地规格](implementation-spec.md)；视觉依据为本文件与冻结 HTML。HTML 中假数据、示例算法、刷新重置、硬编码日期及 JS 叠加补丁不作为正式业务实现。
-- `app.html` 按顺序加载 data → app → art → views → themes → forms → capture → experience → hierarchy → completion。最终页面可能被后续脚本重新定义，不能只读取 `views.js` 的初版。
+- `app.html` 按顺序加载 data → category-icon-catalog → category-icons → app → art → views → themes → forms → capture → experience → hierarchy → completion。最终页面可能被后续脚本重新定义，不能只读取 `views.js` 的初版。
 - 安卓使用原生 Kotlin/Compose 实现，不能用正式 WebView 包装代替复刻。所有业务数据由本地库与正式计算生成。
+
+### 分类图标基准增量（2026-10-27）
+
+分类图标正式进入工作原型 `app.html?v=56`，`category-icons.html` 只作三主题对照入口。本增量覆盖分类管理页/父子行、展开选分类组和编辑栏位置：管理父行（杂志/手账/小物）87/94/87 → 87/96/97px，子行45/54/43 → 46/56/53px；展开组当前旧原型255/276/264 → 251/281/273px（杂志旧测试已扣一条线为254）。新建图标栏91/97.59375/95px；固定父级编辑含推荐栏137/144.59375/149px。已先复跑旧原型，再执行 `capture-category-{page,manage-rows,group,create,fixed-parent,management,cover,favorites}-reference.js`，写回 `androidTest/assets/category-page-measurements.json`、测试常量及本地 `android/verification/reference` 副本；后者仍按仓库约定忽略跟踪。cover/favorites 相对当前旧原型输出完全不变；补查 favorites-panel/basic-analysis，无有意义的布局变化（后者输出完全一致）。旧副本中的杂志管理组边线和 favorites 面板高度已过时，本次重测也移除了该测试对旧基准的补偿；历史阶段数值保留。徽记及编辑栏按现有 Kotlin 尺寸落到 CSS，原生 UI 未改，设备上的 ≤1dp 验收仍待仪器测试。
 
 ## 2. 三主题迁移原则
 

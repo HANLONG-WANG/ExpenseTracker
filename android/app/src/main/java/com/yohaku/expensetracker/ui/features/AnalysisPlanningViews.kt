@@ -11,6 +11,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.domain.category.*
 import java.time.YearMonth
 
 @Composable internal fun AnalysisBudgetView(s:BookSnapshot,filter:AnalysisFilter,onScope:(String)->Unit,onManage:(String)->Unit) {
@@ -36,7 +37,7 @@ import java.time.YearMonth
     val projections=ordered.associate{it.id to s.budgetProjection(selected,it.id)}
     BudgetLimitList(ordered,ordered.map{projections.getValue(it.id).let{cp->if(cp.limitMinor==null)money(cp.spentMinor)else money(cp.remainingMinor)}}) {c,modifier->
         val cp=projections.getValue(c.id)
-        BudgetLimitRow(c.id,c.name,c.parentId!=null,cp.spentMinor,cp.limitMinor,money(cp.spentMinor),money(cp.limitMinor),money(cp.remainingMinor),{onScope(c.id)},modifier)
+        BudgetLimitRow(c.id,c.name,resolveCategoryIcon(c.id,s.categories),c.parentId!=null,cp.spentMinor,cp.limitMinor,money(cp.spentMinor),money(cp.limitMinor),money(cp.remainingMinor),{onScope(c.id)},modifier)
     }
     ThemeSection(word("预留来源明细","確保の内訳"),"PLANNED USES")
     RecordFacts(listOf(word("待付固定支出预留","固定費の未払い予定") to money(p.fixedReserveMinor),word("本月活动预算预留","今月のシーン予算の確保") to money(p.activityReserveMinor),word("全部活动资金预留","全シーンの資金確保") to money(p.fundReserveMinor)),audit=true)

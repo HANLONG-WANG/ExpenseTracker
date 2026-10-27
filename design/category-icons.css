@@ -1,11 +1,11 @@
-/* Category icon proposal: one shared glyph set, three theme-owned badges and pickers. */
+/* Category icons: one shared glyph set, three theme-owned badges and pickers. */
 .magazine{--ci-top:60px;--ci-sheet:#f7f7ef}.journal{--ci-top:55px;--ci-sheet:#faf4e4}.objects{--ci-top:55px;--ci-sheet:#fff9ed}
 .ci{display:inline-flex;align-items:center;justify-content:center;flex:none;position:relative}
 .ci svg{width:19px;height:19px}
 .ci-g-food{--ci-bg:#f6dcc4;--ci-fg:#a8653d}.ci-g-transport{--ci-bg:#d8e4d3;--ci-fg:#5e7a5a}.ci-g-shopping{--ci-bg:#f2d5cc;--ci-fg:#a85a48}.ci-g-home{--ci-bg:#ebdfc4;--ci-fg:#8a6a3c}.ci-g-fun{--ci-bg:#dcdbea;--ci-fg:#64628f}.ci-g-health{--ci-bg:#d3e5e1;--ci-fg:#4f7d74}.ci-g-learn{--ci-bg:#e7e2c5;--ci-fg:#7f7440}.ci-g-social{--ci-bg:#f2d6dc;--ci-fg:#a25867}.ci-g-finance{--ci-bg:#dfe6cc;--ci-fg:#6a7a43}.ci-g-other{--ci-bg:#e9e1d3;--ci-fg:#857565}
-.ci-child-row{display:flex!important;align-items:center;gap:12px}.ci-child-row>span{flex:1;text-align:left}.ci-child-row>span small{font-family:var(--font-meta);font-size:9px;color:var(--muted);margin-left:8px}
-.hierarchy-manage-parent{grid-template-columns:auto 1fr 12px;column-gap:12px}.hierarchy-manage-parent .ci{grid-column:1;grid-row:1/3}.hierarchy-manage-parent strong{grid-column:2;grid-row:1}
-.ci-field{margin:2px 0 18px}.ci-field-label{display:block;font-family:var(--font-meta);font-size:11px;color:var(--muted);margin-bottom:8px}
+.ci-child-row{display:flex;align-items:center;gap:14px}.ci-child-row>span{flex:1;text-align:left}.ci-child-row>span small{font-family:var(--font-meta);font-size:9px;color:var(--muted);margin-left:8px}
+.hierarchy-manage-parent{grid-template-columns:auto 1fr 12px;column-gap:10px}.hierarchy-manage-parent .ci{grid-column:1;grid-row:1}.hierarchy-manage-parent strong{grid-column:2;grid-row:1}
+.ci-field{margin:0 0 16px}.ci-field-label{display:block;font-family:var(--font-meta);font-size:11px;color:var(--muted);margin-bottom:8px}
 .ci-field-current{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:12px}.ci-field-current>span{flex:1;display:flex;flex-direction:column;gap:4px}.ci-field-current strong{font-family:var(--font-body);font-size:15px;font-weight:500}.ci-field-current small{font-family:var(--font-meta);font-size:10px;color:var(--muted)}.ci-field-current i{font-style:normal;font-size:11px;color:var(--accent)}
 .ci-suggest{display:flex;align-items:center;gap:12px;margin-top:12px}.ci-suggest small{font-family:var(--font-meta);font-size:10px;color:var(--muted);flex:none}.ci-suggest div{display:flex;gap:8px;flex-wrap:wrap}.ci-suggest button{padding:2px}
 .ci-sheet{display:flex;flex-direction:column}.ci-preview{display:flex;align-items:center;gap:16px;padding:6px 0 18px}.ci-preview>div{display:flex;flex-direction:column;gap:3px}.ci-preview span{font-family:var(--font-meta);font-size:10px;color:var(--muted)}.ci-preview strong{font-family:var(--font-body);font-size:19px;font-weight:500}.ci-preview small{font-family:var(--font-meta);font-size:10px;color:var(--muted)}
@@ -21,7 +21,7 @@
 .magazine .ci{color:var(--ink)}.magazine .ci svg{stroke-width:1.45}
 .magazine .ci-lg{width:44px;height:44px;border:1px solid var(--line)}.magazine .ci-lg svg{width:23px;height:23px}
 .magazine .ci-xl{width:68px;height:68px;border:1px solid var(--ink)}.magazine .ci-xl svg{width:34px;height:34px;stroke-width:1.25}
-.magazine .ci-field-current{padding:12px 0;border-top:1px solid var(--ink);border-bottom:1px solid var(--line)}
+.magazine .ci-field-current{padding:12px 0;border:0;box-shadow:inset 0 1px var(--ink),inset 0 -1px var(--line)}
 .magazine .ci-suggest button{border:1px solid var(--line);padding:7px}
 .magazine .ci-preview{border-bottom:1px solid var(--ink)}
 .magazine .ci-tabs{gap:18px;padding:4px 0 0;border-bottom:1px solid var(--ink)}.magazine .ci-tabs button{padding:9px 0 10px;color:var(--muted);letter-spacing:.04em}.magazine .ci-tabs button[aria-selected=true]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}.magazine .ci-tabs button.has-pick::after{border-radius:0;background:var(--ink)}
@@ -31,16 +31,16 @@
 .magazine .tx-icon.ci-tx{color:var(--ink)}
 
 /* Journal: inked rubber stamps on dotted paper; the pick is circled by hand in red. */
-.journal .ci{width:31px;height:31px;border:1px dashed var(--accent);border-radius:50% 46% 52% 48%/48% 52% 46% 50%;color:var(--accent);transform:rotate(-4deg)}.journal .ci svg{width:17px;height:17px;stroke-width:1.5}
+.journal .ci{width:31px;height:31px;border:1px dashed var(--accent);border-radius:50%;color:var(--accent);transform:rotate(-4deg)}.journal .ci svg{width:17px;height:17px;stroke-width:1.5}
 .journal .ci-lg{width:46px;height:46px}.journal .ci-lg svg{width:24px;height:24px}
 .journal .ci-xl{width:66px;height:66px;outline:1px dashed var(--warm);outline-offset:4px;transform:rotate(-6deg)}.journal .ci-xl svg{width:33px;height:33px}
-.journal .ci-field-current{background:#fff8e4;border:1px dashed var(--line)}.journal .ci-field-current strong{font-size:19px}.journal .ci-field-current small{font-size:12px}.journal .ci-field-current i{font-size:14px;color:var(--warm)}
+.journal .ci-field-current{background:#fff8e4;outline:1px dashed var(--line);outline-offset:-1px}.journal .ci-field-current strong{font-size:19px}.journal .ci-field-current small{font-size:12px}.journal .ci-field-current i{font-size:14px;color:var(--warm)}
 .journal .ci-field-label,.journal .ci-suggest small{font-size:13px}
-.journal .ci-preview{background:#fff8e4;border:1px dashed var(--line);padding:16px 14px;margin-bottom:6px;transform:rotate(-.5deg)}.journal .ci-preview strong{font-size:22px}.journal .ci-preview span,.journal .ci-preview small{font-size:12px}
+.journal .ci-preview{background:#fff8e4;outline:1px dashed var(--line);outline-offset:-1px;padding:16px 14px;margin-bottom:6px;gap:18px;transform:rotate(-.5deg)}.journal .ci-preview .ci-xl{margin:5px}.journal .ci-preview strong{font-size:22px}.journal .ci-preview span,.journal .ci-preview small{font-size:12px}
 .journal .ci-tabs{padding-top:10px;border-bottom:1px dashed var(--line)}.journal .ci-tabs button{background:#f6efd2;color:var(--muted);border-bottom:1px dashed var(--line);font-size:14px;transform:rotate(-1deg)}.journal .ci-tabs button:nth-child(even){transform:rotate(1deg)}.journal .ci-tabs button[aria-selected=true]{background:#f6e0c4;color:var(--warm);border-bottom:2px solid var(--warm);transform:translateY(2px) rotate(0)}.journal .ci-tabs button.has-pick::after{background:var(--warm)}
 .journal .ci-caption{font-size:14px;color:var(--warm)}.journal .ci-caption small{font-size:13px;color:var(--muted)}
 .journal .ci-grid{background-image:radial-gradient(#cfc5ad 1px,transparent 1.3px);background-size:14px 14px;padding:4px;gap:2px}
-.journal .ci-cell .ci{border-color:transparent;width:36px;height:36px}.journal .ci-cell .ci svg{width:21px;height:21px}.journal .ci-cell:nth-child(3n+1) .ci{transform:rotate(3deg)}
+.journal .ci-cell .ci{border-color:transparent;width:36px;height:36px}.journal .ci-cell .ci svg{width:21px;height:21px}
 .journal .ci-cell.selected .ci{border:1.6px solid var(--warm);color:var(--warm);transform:rotate(-8deg) scale(1.12)}
 .journal .ci-cell.selected::after{content:'✓';position:absolute;right:4px;top:0;font-size:15px;color:var(--warm);transform:rotate(8deg)}
 .journal .tx-icon.ci-tx{color:var(--accent)}.journal .tx-icon .ci{border:0;transform:none}
@@ -50,7 +50,7 @@
 .objects .ci-lg{width:46px;height:46px;border-radius:14px}.objects .ci-lg svg{width:25px;height:25px}
 .objects .ci-xl{width:68px;height:68px;border-radius:20px;transform:rotate(-4deg);box-shadow:0 4px 0 rgba(120,90,50,.16)}.objects .ci-xl svg{width:36px;height:36px}
 .objects .hierarchy-manage-children .ci,.objects .hierarchy-choice .ci{width:27px;height:27px;border-radius:8px}.objects .hierarchy-manage-children .ci svg,.objects .hierarchy-choice .ci svg{width:16px;height:16px}
-.objects .ci-field-current{background:#fffaf0;border:1px solid #ead8b8;border-radius:14px;box-shadow:0 3px 0 #ece0c9}
+.objects .ci-field-current{background:#fffaf0;border:0;outline:1px solid #ead8b8;outline-offset:-1px;border-radius:14px;box-shadow:0 3px 0 #ece0c9}
 .objects .ci-suggest button{background:#fff6e4;border-radius:12px;padding:5px}
 .objects .ci-preview{background:#ece4ce;border-radius:18px;padding:16px;margin-bottom:8px;box-shadow:0 3px 0 #dbd2bd}
 .objects .ci-tabs button{background:#ede5d2;color:var(--muted);border-radius:999px;padding:7px 13px}.objects .ci-tabs button[aria-selected=true]{background:var(--accent);color:#fff;box-shadow:0 2px 0 #8d4d36}.objects .ci-tabs button[aria-selected=true].has-pick::after{background:#fff}
@@ -60,3 +60,48 @@
 .objects .ci-cell.selected{outline:2px solid var(--accent);transform:translateY(-2px)}
 .objects .ci-cell.selected::after{content:'✓';position:absolute;right:-5px;top:-5px;width:17px;height:17px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;line-height:17px;text-align:center}
 .objects .tx-icon.ci-tx{background:var(--ci-bg);color:var(--ci-fg)}
+
+/* Compose CategoryBadge geometry (CSS px correspond to dp at the 390px reference). */
+.ci,.ci-glyph{box-sizing:border-box;vertical-align:middle}
+.ci-glyph{display:inline-flex;flex:none;color:var(--ink)}
+.magazine .ci-row{width:20px;height:20px}.magazine .ci-row svg{width:20px;height:20px}
+.magazine .ci-small{width:18px;height:18px}.magazine .ci-small svg{width:18px;height:18px}
+.journal .ci-small{width:27px;height:27px}.journal .ci-small svg{width:15px;height:15px}
+.objects .ci-small{width:27px;height:27px;border-radius:8px}.objects .ci-small svg{width:16px;height:16px}
+.hierarchy-manage-parent strong{line-height:22px}.journal .hierarchy-manage-parent strong{line-height:29px}
+.hierarchy-manage-parent>span{line-height:15px}.hierarchy-manage-parent>i{width:12px;font-size:13px;line-height:19px}
+.hierarchy-manage-children>.ci-child-row{align-items:center;gap:14px;line-height:17px}
+.hierarchy-manage-children>.ci-child-row>span{flex:1}
+.journal .hierarchy-manage-children>.ci-child-row{line-height:25px}
+.hierarchy-manage-children>.ci-child-row .ci-inherited{font-family:var(--font-body);font-size:9px;line-height:1.5;color:var(--muted)}
+.journal .hierarchy-manage-children>.ci-child-row .ci-inherited{font-size:11px}
+.hierarchy-manage-children>.ci-child-row>small:last-child{line-height:17px}
+/* Avoid the inline span baseline adding extra space around the choice badge. */
+.hierarchy-choice>span{display:flex;flex:none}.hierarchy-choice strong{line-height:20px}.journal .hierarchy-choice strong{line-height:26px}.objects .hierarchy-choice strong{line-height:19px}
+.objects .hierarchy-choice{flex-wrap:nowrap}
+.ci-field-label{font-size:9px;line-height:13px;margin-bottom:10px;letter-spacing:.3px}
+.journal .ci-field-label{font-size:13px;line-height:19px;margin-bottom:6px;letter-spacing:0}
+.objects .ci-field-label{font-size:11px;line-height:16px;margin-bottom:9px;letter-spacing:0}
+.ci-field-current strong{line-height:1.4}.ci-field-current small{line-height:1.5}
+.ci-field-current{border:0}.journal .ci-field-current{border:0}
+.ci-tx .ci-glyph svg{width:18px;height:18px;stroke-width:1.5}
+.journal .ci-tx .ci-glyph{color:var(--accent)}.objects .ci-tx .ci-glyph{color:var(--ci-fg);transform:rotate(4deg)}
+.objects .custom-category-pocket>.ci-glyph{width:23px;height:23px;color:var(--ci-fg)}.objects .custom-category-pocket>.ci-glyph svg{width:23px;height:23px;stroke-width:1.7}
+@media(max-width:360px){.objects .ci-grid{grid-template-columns:repeat(4,1fr)}}
+/* Drawn frames do not add to Compose padding or cell dimensions. */
+.magazine .ci-suggest button{border:0;outline:1px solid var(--line);outline-offset:-1px}
+.ci-suggest div{align-items:center}.ci-suggest button{display:flex;align-items:center;justify-content:center}
+.magazine .hierarchy-group{border-top:0}
+.journal .ci-cell .ci{transform:none}.journal .ci-cell.selected .ci{transform:rotate(-8deg) scale(1.12)}
+.magazine .ci-cell .ci{width:21px;height:21px}
+.journal .ci-tabs{padding-bottom:4px;border-bottom:0;box-shadow:inset 0 -1px var(--line)}
+.objects .ci-tabs{padding-top:8px;padding-bottom:8px}
+.ci-tabs button{line-height:1.4}
+
+/* BudgetLimitRow reserves 28/36px for SMALL badges; Objects places its 27px tile at top right. */
+.budget-item-icon{display:flex;align-items:center}
+.journal .theme-budget-item{grid-template-columns:36px 1fr auto}
+.magazine .theme-budget-item.ci-budget-child{grid-template-columns:42px 1fr auto}
+.journal .theme-budget-item.ci-budget-child{grid-template-columns:50px 1fr auto}
+.magazine .ci-budget-child .budget-item-icon,.journal .ci-budget-child .budget-item-icon{padding-left:14px}
+.objects .budget-item-icon{width:27px;height:27px;background:transparent;border-radius:0}

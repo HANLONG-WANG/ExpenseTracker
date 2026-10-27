@@ -20,6 +20,7 @@ import com.yohaku.expensetracker.data.repository.accountEventPostings
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.domain.category.*
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -33,13 +34,17 @@ import java.time.YearMonth
     val accountDelta=displaySide.takeIf{it.isNotEmpty()}?.sumOf{it.deltaMinor}
     val money=if(accountDelta!=null)Money(Currency.valueOf(displaySide.first().currency),if(accountDelta<0)Math.negateExact(accountDelta)else accountDelta)else s.accountMoney(e)
     val journal=t.id=="journal";val objects=t.id=="objects"
+    val categoryIcon=e.categoryId?.takeIf{kind==EntryKind.EXPENSE||kind==EntryKind.INCOME}?.let{resolveCategoryIcon(it,s.categories)}
     val rowShape=RoundedCornerShape(13.dp)
     val frame=if(objects)Modifier.background(t.surface,rowShape).padding(horizontal=11.dp,vertical=13.dp) else Modifier.padding(vertical=if(journal)17.dp else 20.dp)
     Column(Modifier.fillMaxWidth().testTag("event-"+e.id).clickable(role=Role.Button,onClick=onClick)) {
         Row(Modifier.fillMaxWidth().then(frame),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(objects)10.dp else 12.dp)) {
             val shape=if(journal)RoundedCornerShape(3.dp,5.dp,1.dp,4.dp) else RoundedCornerShape(9.dp)
             Box(Modifier.size(if(journal)30.dp else if(objects)32.dp else 24.dp,if(journal)33.dp else if(objects)32.dp else 30.dp)
-                .rotate(if(journal||objects)-4f else 0f).then(if(journal)Modifier.border(1.dp,Color(0xffbdb8a3),shape) else if(objects)Modifier.background(Color(0xfff0e0bf),shape) else Modifier),contentAlignment=Alignment.Center){YIcon(if(kind==EntryKind.EXPENSE)"bag" else "wallet",Modifier.size(18.dp).rotate(if(objects)4f else 0f),if(objects)Color(0xffa8804a) else t.muted)}
+                .rotate(if(journal||objects)-4f else 0f).then(if(journal)Modifier.border(1.dp,Color(0xffbdb8a3),shape) else if(objects)Modifier.background(categoryIcon?.let{categoryIconTint(it).first}?:Color(0xfff0e0bf),shape) else Modifier),contentAlignment=Alignment.Center){
+                    if(categoryIcon!=null)CategoryGlyph(categoryIcon,Modifier.size(18.dp).rotate(if(objects)4f else 0f),if(objects)categoryIconTint(categoryIcon).second else if(journal)t.accent else t.ink,1.5f)
+                    else YIcon(if(kind==EntryKind.EXPENSE)"bag" else "wallet",Modifier.size(18.dp).rotate(if(objects)4f else 0f),if(objects)Color(0xffa8804a) else t.muted)
+                }
             Column(Modifier.weight(1f)) {
                 val route=transfer?.let{tr->s.accounts.find{it.id==e.accountId}?.name.orEmpty()+" → "+s.accounts.find{it.id==tr.toAccountId}?.name.orEmpty()}
                 YText(e.merchant.ifBlank{route?:entryKindName(kind)},if(journal)15 else if(objects)12 else 13,weight=if(objects)androidx.compose.ui.text.font.FontWeight.Medium else androidx.compose.ui.text.font.FontWeight.Normal,lineHeightMultiplier=if(journal)22f/15 else if(objects)17f/12 else 19f/13,cssLineBox=true)

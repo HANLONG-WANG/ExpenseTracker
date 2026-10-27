@@ -5,7 +5,7 @@ async page => {
   await page.goto(`http://127.0.0.1:4173/design/app.html?theme=${theme}`);
   await page.evaluate(({theme,language})=>{
    book().language=language;render();
-   const d={total:650,refund:0,rs:[300,200,100,50].map((amount,i)=>({amount,date:'2026-10-14',merchant:'记账 '+i})),categories:[{id:'food',name:['餐饮','餐饮'],amount:600,count:3,icon:'wallet'},{id:'daily',name:['日用','日用'],amount:50,count:1,icon:'wallet'}],merchants:[]};
+   const d={total:650,refund:0,rs:[300,200,100,50].map((amount,i)=>({amount,date:'2026-10-14',merchant:'记账 '+i})),categories:[{id:'food',name:['餐饮','餐饮'],amount:600,count:3,icon:'category'},{id:'daily',name:['日用','日用'],amount:50,count:1,icon:'category'}],merchants:[]};
    document.getElementById('content').innerHTML=analysisDesign[theme](d);
   },{theme,language});
   await page.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important}'});

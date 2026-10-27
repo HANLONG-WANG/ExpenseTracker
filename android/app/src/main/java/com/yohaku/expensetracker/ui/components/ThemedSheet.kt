@@ -17,6 +17,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
@@ -26,6 +28,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
 import androidx.core.view.WindowCompat
 import com.yohaku.expensetracker.ui.theme.*
+
+/** Where the scrolled sheet body is visible, for content that must stay pinned while the body scrolls. */
+internal class SheetViewport(val scroll:ScrollState){var top by mutableFloatStateOf(0f);var bottom by mutableFloatStateOf(Float.POSITIVE_INFINITY)}
+internal val LocalSheetViewport=staticCompositionLocalOf<SheetViewport?>{null}
+/** CSS position:sticky inside YSheet: pins below the stuck title (top) or to the sheet bottom. */
+internal fun Modifier.sheetSticky(top:Boolean)=composed {
+    val viewport=LocalSheetViewport.current ?: return@composed this
+    var contentY by remember{mutableFloatStateOf(Float.NaN)}
+    var height by remember{mutableFloatStateOf(0f)}
+    onGloballyPositioned{contentY=it.positionInRoot().y+viewport.scroll.value;height=it.size.height.toFloat()}.zIndex(3f).graphicsLayer{
+        if(!contentY.isNaN()){val y=contentY-viewport.scroll.value;translationY=if(top)(viewport.top-y).coerceAtLeast(0f) else (viewport.bottom-y-height).coerceAtMost(0f)}
+    }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable fun YSheet(title:String,onClose:()->Unit,scrollState:ScrollState=rememberScrollState(),content:@Composable ColumnScope.()->Unit) {
@@ -42,6 +57,7 @@ import com.yohaku.expensetracker.ui.theme.*
     val closeLabel=word("关闭","閉じる")
     val scroll=scrollState
     var headerHeight by remember{mutableIntStateOf(0)}
+    val viewport=remember(scroll){SheetViewport(scroll)}
     val focusScroll=remember{object:BringIntoViewSpec{
         override fun calculateScrollDistance(offset:Float,size:Float,containerSize:Float):Float =
             super.calculateScrollDistance(offset-headerHeight,size,(containerSize-headerHeight).coerceAtLeast(0f))
@@ -70,7 +86,7 @@ import com.yohaku.expensetracker.ui.theme.*
                 if(!objects)drawLine(if(journal)Color(0xffd5c7a7) else t.ink,Offset(0f,border.dp.toPx()/2),Offset(size.width,border.dp.toPx()/2),border.dp.toPx())
             }.then(if(objects)Modifier.border(1.dp,Color(0xffe5d2b4),shape) else Modifier).padding(start=(left+if(objects)1 else 0).dp,end=(right+if(objects)1 else 0).dp,top=(border+if(objects)12 else if(journal)18 else 20).dp)) {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides focusScroll) {
-                    Column(Modifier.fillMaxWidth().weight(1f,fill=false).verticalScroll(scroll).testTag("sheet-scroll")) {
+                    Column(Modifier.fillMaxWidth().weight(1f,fill=false).onGloballyPositioned{val b=it.boundsInRoot();viewport.top=b.top+headerHeight;viewport.bottom=b.bottom}.verticalScroll(scroll).testTag("sheet-scroll")) {
                         Box(Modifier.align(Alignment.CenterHorizontally).padding(bottom=14.dp).size(if(objects)31.dp else 35.dp,if(objects)5.dp else if(journal)3.dp else 2.dp).testTag("sheet-grip").then(if(journal)Modifier.rotate(-2f) else Modifier).background(if(objects)Color(0xffd7bea0) else if(journal)Color(0xff99aaa5) else t.ink,if(objects)RoundedCornerShape(6.dp) else RoundedCornerShape(0.dp)))
                         val headerLine=if(objects)Color(0xffdbc29f) else if(journal)t.line else t.ink
                         Column(Modifier.fillMaxWidth().zIndex(4f).graphicsLayer{translationY=(scroll.value-gripExtent).coerceAtLeast(0f)}.padding(bottom=if(journal)17.dp else if(objects)15.dp else 20.dp)) {
@@ -83,7 +99,7 @@ import com.yohaku.expensetracker.ui.theme.*
                         }
                         Column(Modifier.fillMaxWidth().padding(bottom=if(journal)27.dp else 30.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
                             SheetCaption()
-                            Column(Modifier.fillMaxWidth().testTag("sheet-body-content").padding(top=if(objects)14.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(15.dp)){content()}
+                            Column(Modifier.fillMaxWidth().testTag("sheet-body-content").padding(top=if(objects)14.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(15.dp)){CompositionLocalProvider(LocalSheetViewport provides viewport){content()}}
                             SheetColophon()
                         }
                     }

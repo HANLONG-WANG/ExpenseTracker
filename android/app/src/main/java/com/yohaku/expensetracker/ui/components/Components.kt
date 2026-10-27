@@ -116,7 +116,7 @@ import java.time.YearMonth
     }
 }
 /** Final field label metrics; ink marks belong to journal text/date fields only. */
-@Composable private fun FieldLabel(label:String,modifier:Modifier=Modifier,inkMark:Boolean=false,compactNumber:Boolean=false){
+@Composable internal fun FieldLabel(label:String,modifier:Modifier=Modifier,inkMark:Boolean=false,compactNumber:Boolean=false){
     val t=LocalYohaku.current
     val size=if(compactNumber)if(t.id=="journal")11 else 9 else when(t.id){"journal"->13;"objects"->11;else->9}
     val line=if(compactNumber)size*1.8f else when(t.id){"journal"->19f;"objects"->16f;else->13f}
@@ -229,12 +229,15 @@ import java.time.YearMonth
         }
     }
 }
-@Composable fun YIcon(name:String,modifier:Modifier=Modifier,tint:Color=LocalYohaku.current.ink,stroke:Float=1.6f) {
-    val data=iconPaths[name] ?: iconPaths.getValue("wallet")
+@Composable fun YIcon(name:String,modifier:Modifier=Modifier,tint:Color=LocalYohaku.current.ink,stroke:Float=1.6f) =
+    YPathIcon(iconPaths[name] ?: iconPaths.getValue("wallet"),modifier,tint,stroke)
+/** Stroked 24-grid path data; parsed once per glyph so long icon grids scroll without reparsing. */
+@Composable fun YPathIcon(data:List<String>,modifier:Modifier=Modifier,tint:Color=LocalYohaku.current.ink,stroke:Float=1.6f) {
+    val paths=remember(data){data.map(PathParser::createPathFromPathData)}
     Canvas(modifier.size(22.dp)) {
         drawIntoCanvas{c->val native=c.nativeCanvas;native.save();native.scale(size.width/24f,size.height/24f)
             val paint=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply{color=tint.toArgb();style=android.graphics.Paint.Style.STROKE;strokeWidth=stroke;strokeCap=android.graphics.Paint.Cap.ROUND;strokeJoin=android.graphics.Paint.Join.ROUND}
-            data.forEach{d->native.drawPath(PathParser.createPathFromPathData(d),paint)};native.restore()
+            paths.forEach{native.drawPath(it,paint)};native.restore()
         }
     }
 }

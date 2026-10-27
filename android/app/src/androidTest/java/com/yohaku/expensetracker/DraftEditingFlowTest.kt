@@ -72,11 +72,14 @@ class DraftEditingFlowTest {
             val nameHeight=when(theme){"journal"->67f;"objects"->72f;else->69f}
             val parentHeight=if(fixed)when(theme){"journal"->56.797f;"objects"->53f;else->55f} else when(theme){"journal"->72f;"objects"->71f;else->69f}
             val nameTop=noteTop+noteHeight+16
-            val parentTop=nameTop+nameHeight+if(fixed)20 else 16
+            // capture-category-create/fixed-parent-reference.js; fixed fixture uses the auto-recommended tools-kitchen-2.
+            val iconTop=nameTop+nameHeight+16
+            val iconHeight=if(fixed)when(theme){"journal"->144.59375f;"objects"->149f;else->137f} else when(theme){"journal"->97.59375f;"objects"->95f;else->91f}
+            val parentTop=iconTop+iconHeight+if(fixed)20 else 16
             // The P23 management link is a formal extension below the unchanged source fields.
             val managementHeight=if(fixed)ui.onNodeWithTag("category-manage").getUnclippedBoundsInRoot().let{(it.bottom-it.top).value} else 0f
             val saveTop=parentTop+parentHeight+(if(fixed)35+16+managementHeight else 31f)
-            val expected=listOf(Triple("category-editor-intro",noteTop,noteHeight),Triple(if(ja)"field-group-カテゴリ名" else "field-group-分类名称",nameTop,nameHeight),Triple(if(fixed)"category-parent-fixed" else if(ja)"select-field-階層" else "select-field-分类层级",parentTop,parentHeight),Triple("category-editor-save",saveTop,when(theme){"journal"->50f;"objects"->52f;else->48f}))
+            val expected=listOf(Triple("category-editor-intro",noteTop,noteHeight),Triple(if(ja)"field-group-カテゴリ名" else "field-group-分类名称",nameTop,nameHeight),Triple("category-icon-field",iconTop,iconHeight),Triple(if(fixed)"category-parent-fixed" else if(ja)"select-field-階層" else "select-field-分类层级",parentTop,parentHeight),Triple("category-editor-save",saveTop,when(theme){"journal"->50f;"objects"->52f;else->48f}))
             for((tag,top,height) in expected){
                 val r=ui.onNodeWithTag(tag).getUnclippedBoundsInRoot()
                 csv.appendText("$theme,$language,$fixed,$tag,${(r.top-origin).value},${(r.bottom-r.top).value}\n")
@@ -882,7 +885,7 @@ class DraftEditingFlowTest {
             val rect=ui.onNodeWithTag("category-manage-parent-$root").fetchSemanticsNode().boundsInRoot
             val density=context.resources.displayMetrics.density
             sizes+="$theme,$language,${rect.width/density},${rect.height/density}"
-            if(context.resources.configuration.fontScale==1f)assertEquals(if(theme=="journal")94f else 87f,rect.height/density,1f)
+            if(context.resources.configuration.fontScale==1f)assertEquals(when(theme){"journal"->96f;"objects"->97f;else->87f},rect.height/density,1f)
             ui.onNodeWithTag("category-manage-parent-$root").performClick()
             ui.onNodeWithText(if(ja)"子カテゴリがあるため親カテゴリを保持。" else "已有子分类，保持为一级分类。").assertExists()
             ui.onNodeWithTag(nameTag).performTextReplacement("取消的用途")

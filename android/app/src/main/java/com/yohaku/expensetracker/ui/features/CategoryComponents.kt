@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import com.yohaku.expensetracker.domain.category.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
@@ -31,12 +32,12 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable internal fun CategoryChoice(name:String,onClick:()->Unit,modifier:Modifier=Modifier) {
+@Composable internal fun CategoryChoice(name:String,onClick:()->Unit,modifier:Modifier=Modifier,icon:String=DEFAULT_CATEGORY_ICON) {
     val t=LocalYohaku.current
     val frame=if(t.id=="objects")Modifier.background(Color(0xfffff9ea),RoundedCornerShape(11.dp)).padding(horizontal=11.dp,vertical=14.dp) else Modifier.padding(start=if(t.id=="magazine")0.dp else 12.dp,end=12.dp,top=16.dp,bottom=16.dp)
     Column(modifier.clickable(role=Role.Button,onClick=onClick)){
         Row(Modifier.fillMaxWidth().then(frame),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-            Box(Modifier.size(19.dp,if(t.id=="objects")24.dp else 23.dp),contentAlignment=Alignment.TopCenter){YIcon("wallet",Modifier.size(19.dp))}
+            CategoryIconBadge(icon,if(t.id=="magazine")CategoryBadge.ROW else CategoryBadge.SMALL)
             YText(name,when(t.id){"journal"->18;"objects"->13;else->14},Modifier.weight(1f),weight=FontWeight.Medium,lineHeightMultiplier=when(t.id){"journal"->26f/18;"objects"->19f/13;else->20f/14},cssLineBox=true)
             YText("↗",14,color=t.muted,lineHeightMultiplier=20f/14,cssLineBox=true)
         }
@@ -44,7 +45,7 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable internal fun CategoryGroup(name:String,index:Int,children:List<Pair<String,String>>,open:Boolean,onToggle:()->Unit,onParent:()->Unit,onChild:(String)->Unit,onAdd:()->Unit,id:String?=null) {
+@Composable internal fun CategoryGroup(name:String,index:Int,children:List<Pair<String,String>>,open:Boolean,onToggle:()->Unit,onParent:()->Unit,onChild:(String)->Unit,onAdd:()->Unit,id:String?=null,icon:String=DEFAULT_CATEGORY_ICON,iconOf:(String)->String={DEFAULT_CATEGORY_ICON}) {
     val t=LocalYohaku.current
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val frame=when(t.id){
@@ -58,7 +59,7 @@ import com.yohaku.expensetracker.ui.theme.*
             Row(Modifier.fillMaxWidth().testTag(if(children.isEmpty())"category-leaf-$id" else "category-group-trigger-$id").clickable(role=Role.Button,onClick=onToggle).padding(horizontal=if(t.id=="magazine")0.dp else if(narrow)10.dp else 14.dp,vertical=if(narrow)16.dp else 18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(narrow)7.dp else 10.dp)){
                 val numberFrame=if(t.id=="objects")Modifier.background(Color(0xffd7b994),RoundedCornerShape(5.dp)).padding(horizontal=6.dp,vertical=4.dp) else Modifier
                 YText((index+1).toString().padStart(2,'0'),if(t.id=="journal")14 else if(t.id=="objects")9 else 11,numberFrame,number=true,color=if(t.id=="journal")t.warm else t.muted,lineHeightMultiplier=if(t.id=="journal")20f/14 else if(t.id=="objects")13f/9 else 12f/11,cssLineBox=true)
-                YIcon("wallet",Modifier.size(20.dp))
+                CategoryIconBadge(icon)
                 YText(name,if(t.id=="journal")if(narrow)18 else 19 else if(narrow)14 else 15,Modifier.weight(1f),weight=FontWeight.Medium,lineHeightMultiplier=if(t.id=="journal")if(narrow)26f/18 else 27f/19 else if(narrow)20f/14 else 21f/15,cssLineBox=true)
                 if(children.isEmpty())YText("↗",14,color=t.muted,lineHeightMultiplier=20f/14,cssLineBox=true)
                 else {
@@ -81,8 +82,8 @@ import com.yohaku.expensetracker.ui.theme.*
                     }
                     if(t.id!="objects")Spacer(Modifier.height(8.dp))
                     if(t.id=="objects"&&!narrow)children.chunked(2).forEach{row->
-                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){row.forEach{(childId,label)->CategoryChoice(label,{onChild(childId)},Modifier.weight(1f).testTag("category-child-$childId"))};if(row.size==1)Spacer(Modifier.weight(1f))}
-                    } else children.forEach{(childId,label)->CategoryChoice(label,{onChild(childId)},Modifier.fillMaxWidth().testTag("category-child-$childId"))}
+                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){row.forEach{(childId,label)->CategoryChoice(label,{onChild(childId)},Modifier.weight(1f).testTag("category-child-$childId"),iconOf(childId))};if(row.size==1)Spacer(Modifier.weight(1f))}
+                    } else children.forEach{(childId,label)->CategoryChoice(label,{onChild(childId)},Modifier.fillMaxWidth().testTag("category-child-$childId"),iconOf(childId))}
                     CategoryAddChild(onAdd)
                 }
             }
@@ -91,7 +92,7 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable internal fun CategoryManageGroup(id:String,name:String,favorite:Boolean,children:List<Pair<String,String>>,onParent:()->Unit,onChild:(String)->Unit,onAdd:()->Unit,first:Boolean=false) {
+@Composable internal fun CategoryManageGroup(id:String,name:String,favorite:Boolean,children:List<Pair<String,String>>,onParent:()->Unit,onChild:(String)->Unit,onAdd:()->Unit,first:Boolean=false,icon:String=DEFAULT_CATEGORY_ICON,iconOf:(String)->String={DEFAULT_CATEGORY_ICON},inherits:(String)->Boolean={false}) {
     val t=LocalYohaku.current
     val frame=when(t.id){
         "journal"->Modifier.background(Color(0xfffff8e4)).drawBehind{drawRect(t.line,style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))}.padding(1.dp)
@@ -104,10 +105,10 @@ import com.yohaku.expensetracker.ui.theme.*
         Row(Modifier.fillMaxWidth().testTag("category-manage-parent-$id").clickable(role=Role.Button,onClick=onParent).padding(start=if(t.id=="magazine")0.dp else 16.dp,end=16.dp,top=20.dp,bottom=20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(10.dp)){
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
-                    YIcon("wallet",Modifier.size(22.dp))
+                    CategoryIconBadge(icon)
                     YText(name,if(t.id=="journal")20 else 15,Modifier.weight(1f),weight=FontWeight.Medium,lineHeightMultiplier=if(t.id=="journal")29f/20 else 22f/15)
                 }
-                YText(word("一级分类","親カテゴリ")+if(favorite)" · "+word("常用","よく使う") else "",10,Modifier.padding(start=32.dp),color=t.muted,lineHeightMultiplier=1.5f)
+                YText(word("一级分类","親カテゴリ")+if(favorite)" · "+word("常用","よく使う") else "",10,Modifier.padding(start=when(t.id){"journal"->41.dp;"objects"->42.dp;else->30.dp}),color=t.muted,lineHeightMultiplier=1.5f)
             }
             YText("↗",13,Modifier.width(12.dp),color=t.muted,lineHeightMultiplier=19f/13)
         }
@@ -116,7 +117,9 @@ import com.yohaku.expensetracker.ui.theme.*
             children.forEach{(id,label)->
                 Column(Modifier.fillMaxWidth().padding(bottom=if(t.id=="objects")7.dp else 0.dp).testTag("category-manage-child-$id").clickable(role=Role.Button){onChild(id)}){
                     Row(Modifier.fillMaxWidth().then(if(t.id=="objects")Modifier.background(Color(0xfffff7e8),RoundedCornerShape(9.dp)) else Modifier).padding(horizontal=if(t.id=="objects")12.dp else 0.dp,vertical=if(t.id=="objects")13.dp else 14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)){
-                        YText("↳ $label",if(t.id=="journal")17 else 12,Modifier.weight(1f),lineHeightMultiplier=if(t.id=="journal")25f/17 else 17f/12,cssLineBox=true)
+                        CategoryIconBadge(iconOf(id),CategoryBadge.SMALL)
+                        YText(label,if(t.id=="journal")17 else 12,Modifier.weight(1f),lineHeightMultiplier=if(t.id=="journal")25f/17 else 17f/12,cssLineBox=true)
+                        if(inherits(id))YText(word("沿用一级","親と同じ"),if(t.id=="journal")11 else 9,color=t.muted,lineHeightMultiplier=1.5f)
                         YText("↗",12,color=t.muted,number=true,lineHeightMultiplier=17f/12,cssLineBox=true)
                     }
                     if(t.id=="journal")CategoryRule(t.line,true)

@@ -1,6 +1,7 @@
 package com.yohaku.expensetracker
 
 import androidx.room.Room
+import com.yohaku.expensetracker.domain.category.CategoryIconChoice
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.db.*
@@ -22,6 +23,22 @@ class CategoryManagementStorageTest {
     private suspend fun snapshot(b:String)=r.snapshot(r.dao.book(b)!!).first()
     private suspend fun category(b:String,n:String,p:String?=null)=r.saveCategory(b,n,EntryKind.EXPENSE,p)
     private suspend fun budget(b:String,c:String,m:String,n:Long?){r.dao.putBudget(BudgetEntity(b,m,c,c,n))}
+    @Test fun categoryIconAutoPreservesEditsAndExplicitChoiceOverrides()=runBlocking {
+        val b=r.createBook("图标",Currency.JPY)
+        val root=category(b,"咖啡");assertEquals("coffee",r.dao.category(b,root)!!.icon)
+        val child=category(b,"咖啡",root);assertNull(r.dao.category(b,child)!!.icon)
+        val different=category(b,"猫咪",root);assertEquals("cat",r.dao.category(b,different)!!.icon)
+        r.saveCategory(b,"电车",EntryKind.EXPENSE,null,root)
+        assertEquals("coffee",r.dao.category(b,root)!!.icon)
+        r.saveCategory(b,"电车",EntryKind.EXPENSE,null,root,icon=CategoryIconChoice.Set(null))
+        assertNull(r.dao.category(b,root)!!.icon)
+        r.saveCategory(b,"猫咪",EntryKind.EXPENSE,null,root)
+        assertNull(r.dao.category(b,root)!!.icon)
+        r.saveCategory(b,"猫咪",EntryKind.EXPENSE,null,root,icon=CategoryIconChoice.Set("cat"))
+        r.toggleCategoryFavorite(b,root);assertEquals("cat",r.dao.category(b,root)!!.icon)
+        try {r.saveCategory(b,"猫咪",EntryKind.EXPENSE,null,root,icon=CategoryIconChoice.Set("unknown"));fail("unknown icon")}
+        catch(_:IllegalArgumentException){}
+    }
     @Test fun rootStopPreservesChildStateAndHistoryEditingWhileRejectingNewUse()=runBlocking {
         val b=r.createBook("停止",Currency.JPY);val root=category(b,"食事");val child=category(b,"コーヒー",root)
         val a=r.saveAccount(b,"現金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")

@@ -66,7 +66,7 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 /** Main figure is what is left when a limit exists, otherwise what was spent; the caption names both. */
-@Composable internal fun BudgetLimitRow(id:String,name:String,child:Boolean,spent:Long,limit:Long?,spentText:String,limitText:String,remaining:String,onEdit:()->Unit,modifier:Modifier=Modifier) {
+@Composable internal fun BudgetLimitRow(id:String,name:String,icon:String,child:Boolean,spent:Long,limit:Long?,spentText:String,limitText:String,remaining:String,onEdit:()->Unit,modifier:Modifier=Modifier) {
     val t=LocalYohaku.current
     val narrow=LocalConfiguration.current.screenWidthDp<=360
     val objects=t.id=="objects"
@@ -82,7 +82,7 @@ import com.yohaku.expensetracker.ui.theme.*
     Column(modifier.testTag("budget-category-$id").clickable(onClick=onEdit).then(frame),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         if(objects) {
             Box(Modifier.fillMaxWidth()) {
-                Box(Modifier.align(Alignment.TopEnd).offset(x=1.dp,y=(-4).dp).size(25.dp).background(t.soft,RoundedCornerShape(9.dp)),contentAlignment=Alignment.Center){YIcon("bag",Modifier.size(16.dp),t.accent)}
+                CategoryIconBadge(icon,CategoryBadge.SMALL,Modifier.align(Alignment.TopEnd).offset(x=1.dp,y=(-4).dp))
                 Column(Modifier.fillMaxWidth().padding(top=25.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     YText((if(child)"↳ "else "")+name,11,weight=FontWeight.Medium)
                     Row(verticalAlignment=Alignment.Bottom,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
@@ -95,8 +95,9 @@ import com.yohaku.expensetracker.ui.theme.*
             }
         }else {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(if(narrow)6.dp else 8.dp),verticalAlignment=Alignment.CenterVertically) {
-                Box(Modifier.width(28.dp),contentAlignment=Alignment.CenterStart){YIcon("bag",Modifier.size(19.dp),t.muted)}
-                YText((if(child)"↳ "else "")+name,if(t.id=="journal")15 else 12,Modifier.weight(1f),weight=if(t.id=="journal")FontWeight.Normal else FontWeight.Medium)
+                // Children step in under their parent instead of the old ↳ prefix.
+                Box(Modifier.padding(start=if(child)14.dp else 0.dp).width(if(t.id=="magazine")28.dp else 36.dp),contentAlignment=Alignment.CenterStart){CategoryIconBadge(icon,CategoryBadge.SMALL)}
+                YText(name,if(t.id=="journal")15 else 12,Modifier.weight(1f),weight=if(t.id=="journal")FontWeight.Normal else FontWeight.Medium)
                 Row(verticalAlignment=Alignment.Bottom,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
                     YText(mainLabel,if(t.id=="journal")11 else 9,Modifier.alignByBaseline(),color=t.muted)
                     YText(main,if(limit==null)(if(narrow)14 else 16) else if(narrow)17 else 20,Modifier.alignByBaseline(),number=true,color=mainColor)

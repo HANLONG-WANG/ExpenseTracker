@@ -12,6 +12,7 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
+import com.yohaku.expensetracker.domain.category.*
 import java.time.YearMonth
 
 @Composable internal fun MonthChooser(month:String,onMonth:(String)->Unit,previousTag:String="month-previous",nextTag:String="month-next",monthTag:String="month-current",previousEnabled:Boolean=true) {
@@ -84,7 +85,7 @@ import java.time.YearMonth
     val projections=ordered.associate{it.id to s.budgetProjection(month,it.id)}
     BudgetLimitList(ordered,ordered.map{projections.getValue(it.id).let{p->if(p.limitMinor==null)Money(p.currency,p.spentMinor).display()else p.remainingMinor?.let{n->Money(p.currency,n).display()}?:word("待补齐","未補足")}}) {category,modifier->
         val p=projections.getValue(category.id)
-        BudgetLimitRow(category.id,category.name,category.parentId!=null,p.spentMinor,p.limitMinor,Money(p.currency,p.spentMinor).display(),p.limitMinor?.let{Money(p.currency,it).display()}?:word("未设置","未設定"),p.remainingMinor?.let{Money(p.currency,it).display()}?:word("待补齐","未補足"),{openEditor(category.id)},modifier)
+        BudgetLimitRow(category.id,category.name,resolveCategoryIcon(category.id,s.categories),category.parentId!=null,p.spentMinor,p.limitMinor,Money(p.currency,p.spentMinor).display(),p.limitMinor?.let{Money(p.currency,it).display()}?:word("未设置","未設定"),p.remainingMinor?.let{Money(p.currency,it).display()}?:word("待补齐","未補足"),{openEditor(category.id)},modifier)
     }
     roots.forEach{root->
         val parentLimit=s.budgetLimit(month,root.id)

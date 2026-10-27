@@ -1,6 +1,7 @@
 package com.yohaku.expensetracker.data.repository
 
 import androidx.room.withTransaction
+import com.yohaku.expensetracker.domain.category.*
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.model.*
 import kotlinx.coroutines.flow.*
@@ -109,7 +110,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
         val account=AccountEntity(bookId,old?.id?:id(),name.trim(),type.name,currency.name,opening.minor,date,old?.active?:true)
         dao.putAccount(account);account.id
     }
-    suspend fun saveCategory(bookId:String,name:String,kind:EntryKind,parentId:String?,categoryId:String?=null,favorite:Boolean=false):String = db.withTransaction {
+    suspend fun saveCategory(bookId:String,name:String,kind:EntryKind,parentId:String?,categoryId:String?=null,favorite:Boolean=false,icon:CategoryIconChoice=CategoryIconChoice.Auto):String = db.withTransaction {
         require(dao.book(bookId)!=null)
         require(name.isNotBlank()){ "请输入名称 / 名前を入力してください" };require(kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))
         val parent=parentId?.let{dao.category(bookId,it) ?: error("父分类不存在 / 親カテゴリがありません")}
@@ -121,8 +122,17 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
             require(old.parentId==parentId && old.kind==kind.name){"已有分类层级调整需影响预览 / 階層変更には影響確認が必要です"}
         }
         require(oldCategory!=null||parent==null||categoryEnabled(bookId,parent.id)){"父分类已停用 / 親カテゴリは停止済みです"}
+        val savedIcon=when(icon) {
+            CategoryIconChoice.Auto->if(oldCategory!=null)oldCategory.icon else suggestCategoryIcons(name).firstOrNull()?.takeUnless {
+                parent!=null && it==resolveCategoryIcon(parent.id,listOf(parent))
+            }
+            is CategoryIconChoice.Set->{
+                require(icon.icon==null || categoryIconOf(icon.icon)!=null){"图标不存在 / アイコンがありません"}
+                icon.icon
+            }
+        }
         val savedId=categoryId?:id()
-        dao.putCategory(CategoryEntity(bookId,savedId,name.trim(),kind.name,parentId,favorite,oldCategory?.active?:true))
+        dao.putCategory(CategoryEntity(bookId,savedId,name.trim(),kind.name,parentId,favorite,oldCategory?.active?:true,savedIcon))
         savedId
     }
     suspend fun toggleCategoryFavorite(bookId:String,categoryId:String)=db.withTransaction {

@@ -26,7 +26,7 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 
 并列短操作使用 `YActionRow` 自适应排布：杂志/手账/小物分别沿用 8/10/12dp 间距，按钮保持各主题原有字形、边框和阴影；按自然宽度排列，空间不足时整项换行，主按钮占满所在行剩余宽度，次要链接靠右且垂直居中。长文案或不同层级操作仍纵排。
 
-- 空白设置、独立账本、两级支出/收入分类、现金/银行/交通IC/信用卡/贷款账户；期初债务不重复计收入/消费。
+- 空白设置、独立账本、两级支出/收入分类（可选分类图标）、现金/银行/交通IC/信用卡/贷款账户；期初债务不重复计收入/消费。
 - 全部流水的列表/日历切换：日历按月显示每日净支出（与月度消费同口径）、日均预算进度，点选日期查看当天流水并可直接记在这一天。
 - 收支、历史补录、原ID编辑/修订、按账本草稿及进程恢复。原币/账户币/统计币、预计与实际、部分/分次退款、同币转账/异币换汇、两端独立日期/在途及明确费用。
 - 自然月/分类预算、周期待办、确认或关联已有记录、活动预算/资金预留、多人互请；分析模块排序、分类/商户/活动筛选与下钻。
@@ -52,6 +52,20 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 一次 Room 事务保存整批、新分类、完整 event/settlement/posting/首个 revision 及对应设置。历史批次可查看记录、撤销整批到回收站，30 天内整组恢复；原始 CSV 不持久保存，只记文件名/SHA/批次统计。列、日期、收支、分类、账户等对应按账本+表头签名保存，并纳入完整备份。无多币种、转账或退款关联导入。
 
 `CsvParserTest` 覆盖通用解析；`YOHAKU_CSV_SAMPLE` 环境变量可指定仅本地读取的样本，默认不读取私人文件。`CsvImportRoundTripTest` 使用虚构 CSV 验证导入→撤销→恢复；传 `csvVisual=true` 可额外输出三主题中日文截图至应用外部目录 `csv-visual/`。29→30 验证见 `DatabaseUpgradeTest.version29AddsCsvTablesAndKeepsExistingLedger`。本轮已在原本运行的设备上通过这两项仪器验证，并检查320dp、字体1.3下三主题×中日文页面与确认弹层；未启动模拟器。真实样本仅在主机上做 JVM 解析统计，未放入设备或测试资源。
+
+## 分类图标
+
+分类编辑页新增「分类图标」：新建时按名称自动推荐，并列出其他推荐；手动选过后改名不再覆盖。「更换」打开选择弹层：分组 Tab（有名称推荐时多一个「★ 推荐」）、中/日/英文搜索、顶部预览，二级分类可改回沿用一级。Tab 栏和「使用这个图标」在弹层滚动时分别吸顶、吸底。图标显示于记账选分类、分类管理（二级行标注「沿用一级」）、全部流水、分类预算与小物主题的分析分类卡片；徽记由 `CategoryIconBadge` 按主题绘制。
+
+当前源码使用 Room v32：31→32 为分类新增可空 `icon`（Tabler id），并按名称回填。一级使用首个推荐；二级只有推荐与父级回填值不同时保存。显示解析依次使用有效的自身图标、父级图标、`category`。完整备份包含此字段，旧备份恢复走同一迁移。
+
+精选目录为 Tabler Icons 3.49.0 outline 的 450 个图标、10 组；MIT 原文见 `app/src/main/assets/licenses/Tabler-Icons-MIT.txt`。从仓库根目录重新生成 JS 与 Kotlin：
+
+```sh
+python3 -I android/tools/build-category-icons.py <tabler-package-dir> design/category-icon-catalog.js --kotlin android/app/src/main/java/com/yohaku/expensetracker/domain/category/CategoryIconCatalog.kt
+```
+
+Kotlin 每组存为独立字符串常量并懒解析，提供 `categoryIconGroups`、`categoryIconOf(id)` 与 `categoryIconGroupOf(iconId)`。推荐、搜索及继承解析见 `domain/category/CategoryIcons.kt`。`saveCategory` 的末尾参数 `CategoryIconChoice.Auto` 在新建时自动推荐、编辑时保留；`Set(id)` 指定图标，`Set(null)` 清空自有图标。CSV 新建分类沿用 Auto。
 
 ## 完整备份 / 恢复
 

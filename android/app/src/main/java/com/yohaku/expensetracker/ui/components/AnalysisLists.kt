@@ -15,7 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yohaku.expensetracker.ui.theme.*
 
-internal data class AnalysisListItem(val id:String,val name:String,val money:String,val count:Int,val percent:String="—",val icon:String="bag")
+internal data class AnalysisListItem(val id:String,val name:String,val money:String,val count:Int,val percent:String="—",val icon:String="bag",val categoryIcon:String?=null)
 
 @Composable internal fun AnalysisCategoryList(items:List<AnalysisListItem>,onOpen:((String)->Unit)?) {
     val t=LocalYohaku.current
@@ -40,7 +40,7 @@ internal data class AnalysisListItem(val id:String,val name:String,val money:Str
                 val index=items.indexOf(item);val top=if(narrow)23 else 24;val shape=RoundedCornerShape(9.dp,9.dp,24.dp,21.dp)
                 Box(Modifier.weight(1f).fillMaxHeight().testTag("analysis-category-${item.id}").then(if(onOpen!=null)Modifier.clickable(role=Role.Button){onOpen(item.id)}else Modifier).drawBehind{drawRoundRect(Color(0x2dc6aa80),Offset(0f,4.dp.toPx()),cornerRadius=CornerRadius(17.dp.toPx()))}.background(listOf(Color(0xffecd8b0),Color(0xffe4e8d4),Color(0xffe8d9c8))[index%3],shape).padding(start=if(narrow)12.dp else 16.dp,end=if(narrow)12.dp else 16.dp,top=top.dp,bottom=if(narrow)16.dp else 18.dp)) {
                     Box(Modifier.align(Alignment.TopCenter).offset(y=(-(top+5)).dp).fillMaxWidth(.52f).height(14.dp).background(Color(0xfffff8e6),RoundedCornerShape(5.dp)))
-                    Column(verticalArrangement=Arrangement.spacedBy(12.dp)){YIcon(item.icon,Modifier.size(23.dp),Color(0xffa88961));YText(item.name,13,weight=FontWeight.Medium);YText(item.money,if(narrow)20 else 22,number=true);YText("${item.percent} · ${item.count} "+word("笔","件"),9,color=t.muted)}
+                    Column(verticalArrangement=Arrangement.spacedBy(12.dp)){if(item.categoryIcon!=null)CategoryGlyph(item.categoryIcon,Modifier.size(23.dp),categoryIconTint(item.categoryIcon).second,1.7f) else YIcon(item.icon,Modifier.size(23.dp),Color(0xffa88961));YText(item.name,13,weight=FontWeight.Medium);YText(item.money,if(narrow)20 else 22,number=true);YText("${item.percent} · ${item.count} "+word("笔","件"),9,color=t.muted)}
                 }
             };if(row.size==1)Spacer(Modifier.weight(1f))}
         }}

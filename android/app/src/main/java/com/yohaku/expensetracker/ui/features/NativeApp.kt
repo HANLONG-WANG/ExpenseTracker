@@ -20,6 +20,7 @@ import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.domain.ledger.*
+import com.yohaku.expensetracker.domain.category.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import java.time.*
@@ -430,7 +431,7 @@ import kotlinx.serialization.encodeToString
             CategoryGroup(c.name,roots.indexOf(c),children.map{it.id to it.name},c.id in expanded,
                 {if(children.isEmpty()){onChange(d.copy(categoryId=c.id));onChoose()}else expanded=if(c.id in expanded)expanded-c.id else expanded+c.id},
                 {onChange(d.copy(categoryId=c.id));onChoose()},
-                {id->onChange(d.copy(categoryId=id));onChoose()},{onCreate(c.id)},id=c.id)
+                {id->onChange(d.copy(categoryId=id));onChoose()},{onCreate(c.id)},id=c.id,icon=resolveCategoryIcon(c.id,s.categories)){resolveCategoryIcon(it,s.categories)}
         }
     }
     if(search.isNotBlank()&&visibleRoots.isEmpty())YText(word("没有找到分类，可以新建自己的分类。","カテゴリがありません。自分で追加できます。"),12,Modifier.testTag("category-no-results"),color=t.muted)
@@ -531,7 +532,7 @@ import kotlinx.serialization.encodeToString
         if(roots.isEmpty())YEmpty(word("从自己的用途开始，尚无预建分类。","自分の使い道から。初期カテゴリはありません。"))
         else Column(Modifier.fillMaxWidth().padding(top=5.dp,bottom=17.dp),verticalArrangement=Arrangement.spacedBy(17.dp)){roots.forEach{root->
             CategoryManageGroup(root.id,root.name+(if(!root.active)word(" · 已停用","・停止中")else ""),root.favorite,s.categories.filter{it.parentId==root.id}.map{it.id to (it.name+(if(it.favorite)" ★" else "")+(if(!s.categoryEnabled(it.id))word(" · 已停用","・停止中")else ""))},{onEdit(root)},
-                {id->onEdit(s.categories.first{it.id==id})},{onCreate(root.id,kind)},first=root===roots.first())
+                {id->onEdit(s.categories.first{it.id==id})},{onCreate(root.id,kind)},first=root===roots.first(),icon=resolveCategoryIcon(root.id,s.categories),iconOf={resolveCategoryIcon(it,s.categories)}){id->s.categories.first{it.id==id}.icon.let{it==null||categoryIconOf(it)==null}}
         }}
         YButton(word("＋ 添加一级分类","＋ 親カテゴリを追加"),{onCreate(null,kind)},Modifier.testTag("category-kind-add-${kind.name}"),primary=true)
     }
@@ -544,12 +545,23 @@ import kotlinx.serialization.encodeToString
     var name by remember(original?.id){mutableStateOf(original?.name.orEmpty())}
     var parent by remember(original?.id,parentId){mutableStateOf(parentId)}
     var saving by remember(original?.id){mutableStateOf(false)}
+    var icon by remember(original?.id){mutableStateOf(original?.icon)}
+    var picked by remember(original?.id){mutableStateOf(original!=null)}
+    var picking by remember(original?.id){mutableStateOf(false)}
+    val parentCategory=s.categories.find{it.id==parent}
+    val parentIcon=parentCategory?.let{resolveCategoryIcon(it.id,s.categories)}
+    // A new category follows its name until the user picks; a child keeps only a suggestion that differs from its parent.
+    val chosen=if(picked)icon else suggestCategoryIcons(name).firstOrNull()?.takeIf{it!=parentIcon}
+    val shown=chosen?:parentIcon?:DEFAULT_CATEGORY_ICON
+    if(picking){CategoryIconSheet(name.trim(),shown,parentCategory?.name,{icon=it;picked=true;picking=false},{icon=null;picked=true;picking=false},{picking=false});return}
     YSheet(if(original==null)word("创建一级 / 二级分类","親・子カテゴリを作成") else word("编辑分类","カテゴリを編集"),onClose) {
         Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(16.dp)){
             Box(Modifier.padding(top=if(LocalYohaku.current.id=="objects")15.dp else 0.dp)){
                 YText(word("一级归纳用途，二级记录细节。最多两级，也可以只用一级。","親で用途をまとめ、子で詳しく記録。最大2階層、親だけでも使えます。"),11,Modifier.testTag("category-editor-intro"),color=LocalYohaku.current.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
             }
             YField(word("分类名称","カテゴリ名"),name,{name=it})
+            CategoryIconField(shown,when{chosen!=null&&picked->word("已自选","自分で選択");chosen!=null->word("按名称推荐","名前からおすすめ");parentCategory!=null->word("沿用一级「${parentCategory.name}」","親「${parentCategory.name}」と同じ");else->word("通用图标","標準アイコン")},
+                suggestCategoryIcons(name).filter{it!=shown}.take(5),{picking=true}){icon=it;picked=true}
             if(original==null)YSelect(word("分类层级","階層"),parent,listOf(null to word("无 · 创建为一级分类","なし・親カテゴリとして作成"))+s.categories.filter{s.categoryEnabled(it.id)&&it.kind==kind.name&&it.parentId==null}.map{it.id as String? to it.name},{parent=it},displayLabel=word("归属一级分类","親カテゴリ"))
             else Box(Modifier.padding(vertical=4.dp)){
                 SetupNote(if(s.categories.any{it.parentId==original.id})word("已有子分类，保持为一级分类。","子カテゴリがあるため親カテゴリを保持。") else word("归属一级分类","親カテゴリ")+" · "+(s.categories.firstOrNull{it.id==original.parentId}?.name?:word("无 · 一级分类","なし・親カテゴリ")),pageFlow=false,modifier=Modifier.testTag("category-parent-fixed"))
@@ -559,9 +571,9 @@ import kotlinx.serialization.encodeToString
                 YButton(if(onUse!=null)word("创建并使用","作成して使う") else word("保存分类","カテゴリを保存"),{
                     if(saving)return@YButton
                     saving=true
-                    val submittedName=name;val submittedParent=parent;val submittedFavorite=original?.favorite?:false
+                    val submittedName=name;val submittedParent=parent;val submittedFavorite=original?.favorite?:false;val submittedIcon=chosen
                     var savedId:String?=null
-                    vm.execute(onSuccess={if(onUse!=null)onUse(savedId!!) else onClose()},onComplete={saving=false}){savedId=vm.repository.saveCategory(s.book.id,submittedName,kind,submittedParent,original?.id,submittedFavorite)}
+                    vm.execute(onSuccess={if(onUse!=null)onUse(savedId!!) else onClose()},onComplete={saving=false}){savedId=vm.repository.saveCategory(s.book.id,submittedName,kind,submittedParent,original?.id,submittedFavorite,CategoryIconChoice.Set(submittedIcon))}
                 },Modifier.testTag("category-editor-save"),primary=true,enabled=!saving)
             }
         }

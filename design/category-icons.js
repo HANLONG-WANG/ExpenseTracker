@@ -1,5 +1,5 @@
-/* Category icon proposal. Loaded into app.html by category-icons.html after category-icon-catalog.js. */
-(()=>{
+/* Category glyphs and picker shared by the prototype and its comparison page. */
+const categoryIcons=(()=>{
 const ICONS=new Map(),GROUP_OF=new Map();
 CATEGORY_ICON_GROUPS.forEach(g=>g.icons.forEach(i=>{ICONS.set(i.id,i);GROUP_OF.set(i.id,g.id);}));
 const DEFAULT_ICON='category';
@@ -8,29 +8,12 @@ const DEFAULT_ICON='category';
 const defs=document.querySelector('.svg-defs defs'),NS='http://www.w3.org/2000/svg';
 ICONS.forEach(i=>{const s=document.createElementNS(NS,'symbol');s.id='i-ci-'+i.id;s.setAttribute('viewBox','0 0 24 24');i.paths.forEach(d=>{const p=document.createElementNS(NS,'path');p.setAttribute('d',d);s.appendChild(p);});defs.appendChild(s);});
 
-/* Own icon per category; null means "follow parent" (children) or the generic icon (roots). */
-const own={food:'tools-kitchen-2','food-out':'chef-hat','food-grocery':'basket','food-coffee':'coffee',shopping:'shopping-bag','shopping-daily':'toilet-paper','shopping-clothes':'shirt',transport:'train','transport-train':null,'transport-taxi':'car',housing:'home',other:null,work:'briefcase',salary:'cash-banknote',side:'coins'};
 const all=()=>[...book().categories,...(book().incomeCategories||[])];
 const find=id=>all().find(c=>c.id===id);
-const resolved=c=>own[c.id]||(c.parent&&own[c.parent])||DEFAULT_ICON;
-function syncIcons(){all().forEach(c=>{if(!(c.id in own))own[c.id]=null;c.icon='ci-'+resolved(c);});}
-book().incomeCategories=[{id:'work',name:'工作收入',ja:'仕事の収入',icon:''},{id:'salary',parent:'work',name:'工资',ja:'給与',icon:''},{id:'side',parent:'work',name:'副业',ja:'副業',icon:''}];
-syncIcons();
-
+const resolved=c=>[c?.icon,find(c?.parent)?.icon].find(id=>ICONS.has(id))||DEFAULT_ICON;
 const iconLabel=id=>{const i=ICONS.get(id);return i?t(i.zh,i.ja):'';};
 /* A dedicated tag keeps the prototype's generic span/i rules off the badge. */
-const badge=(id,extra='')=>`<y-ci class="ci ci-g-${GROUP_OF.get(id)} ${extra}">${icon('ci-'+id)}</y-ci>`;
-
-/* Every category icon the prototype renders gets this theme's badge, so all screens stay consistent. */
-function decorate(root){
- root.querySelectorAll('svg>use[href^="#i-ci-"]').forEach(u=>{
-  const svg=u.parentNode,parent=svg.parentNode;if(parent.classList.contains('ci'))return;
-  const id=u.getAttribute('href').slice(6),group='ci-g-'+GROUP_OF.get(id);
-  if(parent.classList.contains('tx-icon')){parent.classList.remove('food','train');parent.classList.add('ci-tx',group);return;}
-  const wrap=document.createElement('y-ci');wrap.className='ci '+group;parent.insertBefore(wrap,svg);wrap.appendChild(svg);
- });
-}
-new MutationObserver(()=>decorate(document.body)).observe(document.body,{childList:true,subtree:true});
+const badge=(id,extra='ci-row')=>`<y-ci class="ci ci-g-${GROUP_OF.get(id)} ${extra}">${icon('ci-'+id)}</y-ci>`;
 
 /* Suggest by name: zh/ja labels and keywords. */
 function suggest(name){
@@ -52,35 +35,31 @@ function searchIcons(q){
 let edit=null;
 function editorIconBlock(){
  const parent=edit.parent?find(edit.parent):null;
- const shown=edit.icon||(parent?resolved(parent):null)||suggest(edit.name)[0]||DEFAULT_ICON;
- const note=edit.icon?(edit.picked?t('已自选','自分で選択'):t('按名称推荐','名前からおすすめ')):parent?t(`沿用一级「${categoryName(parent)}」`,`親「${categoryName(parent)}」と同じ`):t('通用图标','標準アイコン');
+ const shown=chosen()||(parent?resolved(parent):null)||DEFAULT_ICON;
+ const note=chosen()?(edit.picked?t('已自选','自分で選択'):t('按名称推荐','名前からおすすめ')):parent?t(`沿用一级「${categoryName(parent)}」`,`親「${categoryName(parent)}」と同じ`):t('通用图标','標準アイコン');
  const tips=suggest(edit.name).filter(id=>id!==shown).slice(0,5);
  return `<div class="ci-field" data-ci-field><span class="ci-field-label">${t('分类图标','カテゴリのアイコン')}</span>
   <button type="button" class="ci-field-current" data-ci-open>${badge(shown,'ci-lg')}<span><strong>${esc(iconLabel(shown))}</strong><small>${note}</small></span><i>${t('更换','変更')} ↗</i></button>
   ${tips.length?`<div class="ci-suggest"><small>${t('按名称推荐','名前からおすすめ')}</small><div>${tips.map(id=>`<button type="button" data-ci-pick="${id}" aria-label="${esc(iconLabel(id))}">${badge(id)}</button>`).join('')}</div></div>`:''}</div>`;
 }
 function renderEditorIcon(){const box=document.querySelector('[data-ci-field]');if(box)box.outerHTML=editorIconBlock();}
-const originalEditor=categoryEditor;
-categoryEditor=(id='',parent='',capture=false,keep=false)=>{
- originalEditor(id,parent,capture);
+function chosen(){const parent=edit.parent?resolved(find(edit.parent)):null;return edit.picked?edit.icon:(suggest(edit.name)[0]===parent?null:suggest(edit.name)[0]||null);}
+function beginEditor(id,parent,capture,keep,income){
  const c=find(id);
- if(!keep)edit={id,capture,parent:c?.parent||parent||'',name:c?categoryName(c):'',icon:c?own[c.id]:null,picked:!!c};
- const form=document.getElementById('hierarchy-category-form'),name=form.querySelector('input[name=name]');
- if(keep)name.value=edit.name;
- name.closest('label').insertAdjacentHTML('afterend',editorIconBlock());
- const select=form.querySelector('select[name=parent]');if(select&&keep)select.value=edit.parent;
-};
+ if(!keep)edit={id,capture,income,parent:c?.parent||parent||'',name:c?categoryName(c):'',icon:c?.icon||null,picked:!!c};
+ return edit;
+}
 document.addEventListener('input',e=>{
- if(e.target.matches('#hierarchy-category-form input[name=name]')&&edit){edit.name=e.target.value;if(!edit.picked)edit.icon=suggest(edit.name)[0]||null;renderEditorIcon();}
+ if(e.target.matches('#hierarchy-category-form input[name=name]')&&edit){edit.name=e.target.value;renderEditorIcon();}
  if(e.target.matches('[data-ci-search]'))filterSheet(e.target.value);
 });
 document.addEventListener('change',e=>{if(e.target.matches('#hierarchy-category-form select[name=parent]')&&edit){edit.parent=e.target.value;renderEditorIcon();}});
 
 /* Icon sheet: one group per tab; the tab holding the current pick carries a dot. */
 let pending=null,activeTab=null;
-const cell=id=>`<button type="button" class="ci-cell${id===pending?' selected':''}" data-ci-cell="${id}" aria-label="${esc(iconLabel(id))}" aria-pressed="${id===pending}">${badge(id)}</button>`;
+const cell=id=>`<button type="button" class="ci-cell${id===pending?' selected':''}" data-ci-cell="${id}" aria-label="${esc(iconLabel(id))}" aria-pressed="${id===pending}">${badge(id,'ci-cell-badge')}</button>`;
 function iconSheet(){
- pending=edit.icon||(edit.parent&&own[edit.parent])||suggest(edit.name)[0]||DEFAULT_ICON;
+ pending=chosen()||(edit.parent&&resolved(find(edit.parent)))||DEFAULT_ICON;
  const tips=suggest(edit.name),parent=edit.parent?find(edit.parent):null;
  const tabs=[...(tips.length?[{id:'tips',zh:'推荐',ja:'おすすめ',icons:tips.map(id=>ICONS.get(id))}]:[]),...CATEGORY_ICON_GROUPS];
  activeTab=GROUP_OF.get(pending);
@@ -129,42 +108,28 @@ document.addEventListener('click',e=>{
  else if(el.matches('[data-ci-pick]')){edit.icon=el.dataset.ciPick;edit.picked=true;renderEditorIcon();}
  else if(el.matches('[data-ci-cell]')){pending=el.dataset.ciCell;document.querySelectorAll('[data-ci-cell]').forEach(b=>{const on=b.dataset.ciCell===pending;b.classList.toggle('selected',on);b.setAttribute('aria-pressed',on);});
   document.querySelector('.ci-preview .ci').outerHTML=badge(pending,'ci-xl');document.querySelector('[data-ci-name]').textContent=iconLabel(pending);markPickedTab();}
- else if(el.matches('[data-ci-use]')){edit.icon=pending;edit.picked=true;categoryEditor(edit.id,edit.parent,edit.capture,true);}
- else if(el.matches('[data-ci-inherit]')){edit.icon=null;edit.picked=true;categoryEditor(edit.id,edit.parent,edit.capture,true);}
- else if(el.matches('[data-ci-back]'))categoryEditor(edit.id,edit.parent,edit.capture,true);
+ else if(el.matches('[data-ci-use]')){edit.icon=pending;edit.picked=true;categoryEditor(edit.id,edit.parent,edit.capture,true,edit.income);}
+ else if(el.matches('[data-ci-inherit]')){edit.icon=null;edit.picked=true;categoryEditor(edit.id,edit.parent,edit.capture,true,edit.income);}
+ else if(el.matches('[data-ci-back]'))categoryEditor(edit.id,edit.parent,edit.capture,true,edit.income);
  else if(el.matches('[data-ci-tab]'))showTab(el.dataset.ciTab);
 },true);
 
-/* Saving keeps the prototype's own submit and then stores the chosen icon. */
-const submitBefore=experienceSubmit;
-experienceSubmit=form=>{
- if(form.id!=='hierarchy-category-form'||!edit)return submitBefore(form);
- const before=new Set(all().map(c=>c.id)),result=submitBefore(form);
- const saved=edit.id||all().find(c=>!before.has(c.id))?.id;
- if(saved)own[saved]=edit.icon;syncIcons();edit=null;render();
- return result;
-};
-
-/* Management list: children now carry their own icon too. */
-screens.categories=()=>{
- const group=(list)=>list.filter(c=>!c.parent).map(c=>`<section class="hierarchy-manage-group"><button data-action="edit-category" data-id="${c.id}" class="hierarchy-manage-parent">${icon(c.icon)}<strong>${esc(categoryName(c))}</strong><span>${t('一级分类','親カテゴリ')}${own[c.id]?'':' · '+t('通用图标','標準アイコン')}</span><i>↗</i></button><div class="hierarchy-manage-children">${list.filter(ch=>ch.parent===c.id).map(ch=>`<button data-action="edit-category" data-id="${ch.id}" class="ci-child-row">${icon(ch.icon)}<span>${esc(categoryName(ch))}${own[ch.id]?'':`<small>${t('沿用一级','親と同じ')}</small>`}</span><small>↗</small></button>`).join('')}${act('hierarchy-new',t('＋ 添加二级分类','＋ 子カテゴリを追加'),`data-parent="${c.id}"`,'hierarchy-add-child')}</div></section>`).join('');
- return experienceLead('categories',t('用途有层次，记录更清楚。','使い道を、親と子で整理。'),t('一级归纳，二级细分。每个分类都可以选择自己的图标。','親で集計、子で詳細。カテゴリごとにアイコンを選べます。'),'CATEGORIES / TWO LEVELS')+
-  section(t('支出分类','支出カテゴリ'),'')+`<div class="hierarchy-management">${group(book().categories)}</div>`+
-  section(t('收入分类','収入カテゴリ'),'')+`<div class="hierarchy-management">${group(book().incomeCategories)}</div>`;
-};
-const editAction=experienceAction;
-experienceAction=(name,el)=>{if(name==='edit-category'&&el.dataset.id){const c=find(el.dataset.id);categoryEditor(c.id,c.parent||'');return true;}return editAction(name,el);};
-
 /* States driven by category-icons.html. */
 window.categoryIconState=(state,language)=>{
- books.forEach(b=>b.language=language);lang=language;closeSheet();syncIcons();
+ books.forEach(b=>b.language=language);lang=language;closeSheet();
  if(state==='picker'){navigate('home');beginCategorySelection({type:'expense'});document.querySelectorAll('.hierarchy-group').forEach((g,i)=>{if(i<2)g.open=true;});}
  else if(state==='manage')navigate('categories');
  else if(state==='editor'){navigate('categories');categoryEditor('food-coffee','food');}
  else if(state==='create'){navigate('categories');categoryEditor('','');const n=document.querySelector('#hierarchy-category-form input[name=name]');n.value=t('猫咪','ネコ');n.dispatchEvent(new Event('input',{bubbles:true}));}
  else if(state==='sheet'){navigate('categories');categoryEditor('food-coffee','food');iconSheet();}
  else if(state==='ledger')navigate('ledger');
- else if(state==='analysis')navigate('analysis');
+ else if(state==='analysis'){analysisPreview=true;navigate('analysis');}
+ else if(state==='budget'){analysisTab='budget';navigate('analysis');}
  document.getElementById('content').scrollTop=0;
 };
+return {resolved,badge,suggest,beginEditor,editorIconBlock,chosen,find,iconLabel};
 })();
+
+function categoryBadge(c,size='row'){return categoryIcons.badge(categoryIcons.resolved(c),'ci-'+size);}
+function categoryGlyph(c,extra=''){const id=categoryIcons.resolved(c);return `<y-ci class="ci-glyph ci-g-${CATEGORY_ICON_GROUPS.find(g=>g.icons.some(i=>i.id===id)).id} ${extra}">${icon('ci-'+id)}</y-ci>`;}
+function categoryTransactionIcon(r){return ['expense','income'].includes(r.type)&&r.category?`<span class="tx-icon ci-tx ci-g-${CATEGORY_ICON_GROUPS.find(g=>g.icons.some(i=>i.id===categoryIcons.resolved(categoryIcons.find(r.category)))).id}">${categoryGlyph(categoryIcons.find(r.category))}</span>`:`<span class="tx-icon">${icon('wallet')}</span>`;}

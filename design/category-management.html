@@ -14,15 +14,14 @@ const frame=document.getElementById('reference');
 frame.onload=()=>frame.contentWindow.eval(`(()=>{
   const language=${JSON.stringify(language)},income=${JSON.stringify(income)};
   book().language=language;book().name=book().ja='生活';
-  book().categories=[{id:'food',name:['餐饮','餐饮'],icon:'wallet'},{id:'coffee',parent:'food',name:['咖啡','咖啡'],icon:'wallet'}];
-  book().incomeCategories=income==='empty'?[]:[{id:'work',name:'收入',icon:'wallet'},{id:'salary',parent:'work',name:'工资',icon:'wallet'}];
-  const groups=list=>list.filter(c=>!c.parent).map(c=>
-    '<section class="hierarchy-manage-group"><button class="hierarchy-manage-parent">'+icon('wallet')+'<strong>'+esc(categoryName(c))+'</strong><span>'+t('一级分类','親カテゴリ')+'</span><i>↗</i></button><div class="hierarchy-manage-children">'+
-    list.filter(ch=>ch.parent===c.id).map(ch=>'<button><span>↳ '+esc(categoryName(ch))+'</span><small>↗</small></button>').join('')+
-    act('hierarchy-new',t('＋ 添加二级分类','＋ 子カテゴリを追加'),'','hierarchy-add-child')+'</div></section>').join('')||empty(t('从自己的用途开始，尚无预建分类。','自分の使い道から。初期カテゴリはありません。'));
-  const part=(kind,title,list)=>'<div class="category-kind-block" data-kind="'+kind+'">'+section(title,'')+'<div class="hierarchy-management">'+groups(list)+'</div>'+act('new-category',t('＋ 添加一级分类','＋ 親カテゴリを追加'),'','full-button')+'</div>';
-  screens.categories=()=>experienceLead('categories',t('用途有层次，记录更清楚。','使い道を、親と子で整理。'),t('一级归纳，二级细分。直接记入一级的消费列为未细分。','親で集計、子で詳細。親への直接記録は内訳未分類。'),'CATEGORIES / TWO LEVELS')+
-    part('expense',t('支出分类','支出カテゴリ'),book().categories)+part('income',t('收入分类','収入カテゴリ'),book().incomeCategories)+
+  book().categories=[{id:'food',name:['餐饮','餐饮'],icon:'category'},{id:'coffee',parent:'food',name:['咖啡','咖啡'],icon:'category'}];
+  book().incomeCategories=income==='empty'?[]:[{id:'work',name:'收入',icon:'category'},{id:'salary',parent:'work',name:'工资',icon:'category'}];
+  // Keep this unchanged panel on its original reference styling; category badge changes only move it vertically.
+  document.body.dataset.categoryManagementReference='true';
+  const style=document.createElement('style');
+  style.textContent='.magazine[data-category-management-reference] .audit-favorites{margin:25px 0;padding:22px 0;border-top:2px solid var(--ink);border-bottom:1px solid var(--line)}';
+  document.head.appendChild(style);
+  screens.categories=()=>favoritesManagementBefore()+
     auditPanel('favorites',t('常用分类快捷入口','よく使うカテゴリのショートカット'),'<details class="entry-details"><summary>'+t('设置常用 / 一级或二级均可','よく使うカテゴリを設定・親も子も可')+'</summary>'+[...book().categories,...book().incomeCategories].map(c=>'<button class="audit-link" data-supplement-favorite>☆ '+esc(c.parent?categoryName([...book().categories,...book().incomeCategories].find(p=>p.id===c.parent))+' / '+categoryName(c):categoryName(c))+'</button>').join('')+'</details>');
   document.addEventListener('click',e=>{const button=e.target.closest('[data-supplement-favorite]');if(button)button.textContent=(button.textContent.startsWith('☆')?'★':'☆')+button.textContent.slice(1);});
   navigate('categories');
