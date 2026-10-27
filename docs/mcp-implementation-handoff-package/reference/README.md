@@ -58,7 +58,7 @@ Authorization: Bearer <deviceToken>
 
 MCP 同一认证端点提供 events/list、events/subscribe、events/unsubscribe。订阅按用户隔离，默认一天、最长七天，ChatGPT 在 refreshBefore 前续订。即使请求无限期订阅也授予有限有效期。回调先通过签名 challenge 验证；密钥轮换保留五分钟双签窗口。密钥仅保存在服务端 D1，不返回任务 API 或日志。
 
-当前回调仅允许三个明确的 OpenAI 主机：chatgpt.com、api.chatgpt.com、api.openai.com（HTTPS 默认端口，禁重定向）。这是一条窄范围主机白名单，不是支持任意 webhook 的 DNS 固定连接代理。若实际 ChatGPT 提供其他主机，订阅会明确失败，须先核实官方归属再修改白名单，不能直接开放任意地址。
+当前回调仅允许四个明确的 OpenAI 主机：chatgpt.com、api.chatgpt.com、api.openai.com、connectors.api.openai.com（HTTPS 默认端口，禁重定向）。请求使用 redirect: 'manual'，不跟随 Location；订阅验证拒绝非 2xx 响应，事件投递将 3xx 记为失败。这是一条窄范围主机白名单，不是支持任意 webhook 的 DNS 固定连接代理。若实际 ChatGPT 提供其他主机，订阅会明确失败，须先核实官方归属再修改白名单，不能直接开放任意地址。
 
 状态变更和通知入队在同一 D1 事务中提交。Worker 在成功的 /mcp 或 /api/v1 请求后用 waitUntil 投递，单轮约24秒；网络错误、408、429、5xx 最多三次指数退避，重试沿用 eventId，410 停用订阅。失败写入任务历史，需人工重新委托。中断的待投递记录保留，下次成功 API/MCP 请求会恢复；没有独立 Cron，因此完全无后续访问且 Worker 中断时不保证继续重试。2xx 只代表事件已接收，不代表分析完成。
 

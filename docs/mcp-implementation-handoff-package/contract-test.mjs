@@ -109,10 +109,10 @@ await test('MCP event subscription verifies signed callback, refreshes, and isol
  const sent=[];globalThis.fetch=async(url,init)=>{
    const body=JSON.parse(init.body);sent.push(body);
    const h=init.headers;const expected='v1,'+createHmac('sha256',Buffer.alloc(32,7)).update(`${h['webhook-id']}.${h['webhook-timestamp']}.${init.body}`).digest('base64');
-   assert.equal(h['webhook-signature'],expected);assert.equal(init.redirect,'error');
+   assert.equal(h['webhook-signature'],expected);assert.equal(init.redirect,'manual');
    return Response.json(body.type==='verification'?{challenge:body.challenge}:{});
  };
- const params={name:'analysis_task.submitted',arguments:{type:'general'},delivery:{mode:'webhook',url:'https://api.chatgpt.com/mcp-events/synthetic',secret}};
+ const params={name:'analysis_task.submitted',arguments:{type:'general'},delivery:{mode:'webhook',url:'https://connectors.api.openai.com/mcp-events/synthetic',secret}};
  assert.equal((await rpc('events/list')).body.result.events[0].name,params.name);
  assert.deepEqual((await rpc('server/discover')).body.result.capabilities.events,{});
  const subscription=(await rpc('events/subscribe',params)).body.result;assert(subscription.id);assert.equal(sent.length,1);
@@ -132,6 +132,11 @@ await test('MCP event subscription verifies signed callback, refreshes, and isol
  assert.equal(database.prepare('SELECT COUNT(*) n FROM mcp_deliveries').get().n,1);
  await rpc('events/unsubscribe',params);await rpc('events/unsubscribe',params);
  assert.equal(database.prepare('SELECT COUNT(*) n FROM mcp_subscriptions').get().n,0);
+ let redirectCalls=0;
+ globalThis.fetch=async(url,init)=>{redirectCalls++;assert.equal(init.redirect,'manual');return new Response(null,{status:302,headers:{Location:'https://example.com/redirected'}});};
+ const redirected=await rpc('events/subscribe',params);
+ assert.equal(redirected.body.error.code,-32015);assert.equal(redirectCalls,1);
+ assert.equal(database.prepare('SELECT COUNT(*) n FROM mcp_subscriptions').get().n,0);
 });
 await test('webhook retries preserve event ID; permanent failure is recorded',async()=>{
  const id='sub_retry',secret='whsec_'+Buffer.alloc(32,3).toString('base64');
@@ -142,6 +147,12 @@ await test('webhook retries preserve event ID; permanent failure is recorded',as
  database.prepare('INSERT INTO mcp_deliveries VALUES(?,?,?,?,?,?,?,?,?,?,?)').run('delivery_retry',id,pending.id,'alice',1,'evt_test',JSON.stringify(payload),'pending',0,0,null);
  const calls=[];globalThis.fetch=async(url,init)=>{calls.push(JSON.parse(init.body).eventId);return new Response('',{status:calls.length===1?503:200});};
  await eventService.deliverPending();assert.deepEqual(calls,['evt_test','evt_test']);
+ database.prepare("UPDATE mcp_deliveries SET state='pending',attempts=0,nextAttempt=0 WHERE id='delivery_retry'").run();
+ let redirectCalls=0;
+ globalThis.fetch=async(url,init)=>{redirectCalls++;assert.equal(init.redirect,'manual');return new Response(null,{status:307,headers:{Location:'https://example.com/redirected'}});};
+ await eventService.deliverPending();assert.equal(redirectCalls,1);
+ const redirected=database.prepare("SELECT state,lastError FROM mcp_deliveries WHERE id='delivery_retry'").get();
+ assert.equal(redirected.state,'failed');assert.equal(redirected.lastError,'webhook 307');
  database.prepare("UPDATE mcp_deliveries SET state='pending',attempts=0,nextAttempt=0 WHERE id='delivery_retry'").run();
  globalThis.fetch=async()=>new Response('',{status:410});await eventService.deliverPending();
  assert.equal(database.prepare("SELECT state FROM mcp_deliveries WHERE id='delivery_retry'").get().state,'failed');

@@ -19,7 +19,7 @@ const digest = async (value:string) => Array.from(new Uint8Array(await crypto.su
 
 // This integration only accepts OpenAI-operated callback hosts. No arbitrary
 // caller-controlled destinations, redirects, IP literals, or non-HTTPS ports.
-const callbackHosts = new Set(['chatgpt.com','api.chatgpt.com','api.openai.com']);
+const callbackHosts = new Set(['chatgpt.com','api.chatgpt.com','api.openai.com','connectors.api.openai.com']);
 function callbackUrl(raw:unknown) {
   let url:URL;
   try {url=new URL(String(raw));} catch {throw new EventError('无效回调地址');}
@@ -49,7 +49,8 @@ async function send(sub:any,id:string,payload:any) {
   const body=JSON.stringify(payload),timestamp=String(Math.floor(Date.now()/1000));
   const signatures=[await signature(sub.secret,id,timestamp,body)];
   if(sub.previousSecret&&sub.previousUntil>Date.now())signatures.push(await signature(sub.previousSecret,id,timestamp,body));
-  return fetch(callbackUrl(sub.url),{method:'POST',redirect:'error',signal:AbortSignal.timeout(5000),headers:{
+  // Never follow Location; callers reject non-2xx responses, including redirects.
+  return fetch(callbackUrl(sub.url),{method:'POST',redirect:'manual',signal:AbortSignal.timeout(5000),headers:{
     'Content-Type':'application/json','webhook-id':id,'webhook-timestamp':timestamp,
     'webhook-signature':signatures.join(' '),'X-MCP-Subscription-Id':sub.id,
   },body});
