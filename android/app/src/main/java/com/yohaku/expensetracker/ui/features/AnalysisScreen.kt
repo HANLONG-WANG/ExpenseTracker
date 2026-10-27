@@ -45,7 +45,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     var detail by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var comparisonPeriod by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     val filter=AnalysisFilter(start,end,category,merchant,activity)
-    val report=s.analysis(filter)
+    val report=remember(s,filter){s.analysis(filter)}
     val modules=vm.repository.analysisModules(s);val pinned=vm.repository.analysisPins(s)
     val ordered=modules.filter{it in pinned}+modules.filter{it !in pinned}
     val currency=Currency.valueOf(s.book.currency)
@@ -62,7 +62,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     when(tab) {
         "spend"->{
             // The period total is shown before any module is chosen; only the module emphasis is left to the user.
-            val provisional=report.events.any{event->s.settlements.any{it.eventId==event.id&&!it.confirmed}}
+            val provisional=report.events.any{event->s.settlementByEvent[event.id]?.confirmed==false}
             YLead(word("从你的重点，看日常。","自分の視点で、日々を見る。"),"$start — $end · ${report.events.size} "+word("笔记录 · 含独立活动实际消费","件の記録・独立シーンの実支出を含む"),"MONEY IN CONTEXT",Money(currency,report.total).display(),if(provisional)word("净消费含预计换算","純支出に仮換算を含む")else word("本位币净消费","基準通貨の純支出"),pageFlow=true)
             RecordFacts(listOf(word("原消费","元の支出") to Money(currency,report.gross).display(),word("已到账退款 · 归原消费期间","入金済み返金・元の購入期間へ") to Money(currency,report.refunds).display(),word("明确实际费用","確定した実際の手数料") to Money(currency,report.fees).display()))
             if(s.analysisPreferences==null||modules.isEmpty()) {
@@ -139,7 +139,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     if(values.isNotEmpty())AnalysisTrendChart(values.map{TrendPoint(it.key,it.amount,Money(currency,it.amount).display())},selected?.takeIf{key->values.any{it.key==key}}?:values.last().key,{key->selected=key;onDetail((if(mode=="month")"month:"else "day:")+key)})
 }
 @Composable private fun AnalysisComparisonView(s:BookSnapshot,filter:AnalysisFilter,today:LocalDate,currency:Currency,onDetail:((String,String)->Unit)?=null) {
-    val comparison=s.compareAnalysis(filter,today)
+    val comparison=remember(s,filter,today){s.compareAnalysis(filter,today)}
     Panel {
         YText(if(comparison.partialMonth)word("本月按相同已过天数比较","今月は同じ経過日数で比較")else if(filter.start.endsWith("-01")&&filter.end==YearMonth.parse(filter.start.take(7)).atEndOfMonth().toString())word("完整月份比较","月全体を比較")else word("相同长度期间比较","同じ長さの期間を比較"),17)
         YText(comparison.current.filter.start+" — "+comparison.current.filter.end,11,Modifier.testTag("comparison-current-period"))

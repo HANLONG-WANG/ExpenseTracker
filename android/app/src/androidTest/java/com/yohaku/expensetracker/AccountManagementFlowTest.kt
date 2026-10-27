@@ -68,18 +68,18 @@ class AccountManagementFlowTest {
                 prefs.select(b)
                 ui.waitUntil(10000){current()?.book?.id==b}
                 ui.runOnIdle{vm.navigate("accounts")}
-                tap("account-$a");tap("account-manage")
+                tap("account-$a");ui.revealOnPage("account-manage");tap("account-manage")
                 ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-account-operation").fetchSemanticsNodes().isNotEmpty()}
                 shot("$theme-$language-stop")
                 tap("confirm-account-operation")
                 ui.waitUntil(10000){current()?.accounts?.firstOrNull{it.id==a}?.active==false&&!vm.busy.value}
-                tap("account-manage");tap("account-delete-preview")
+                ui.revealOnPage("account-manage");tap("account-manage");tap("account-delete-preview")
                 ui.onNodeWithTag("confirm-account-operation").assertIsNotEnabled()
                 shot("$theme-$language-delete-blocked")
                 tap("account-operation-back");tap("confirm-account-operation")
                 ui.waitUntil(10000){current()?.accounts?.firstOrNull{it.id==a}?.active==true&&!vm.busy.value}
                 ui.runOnIdle{vm.navigate("accounts")}
-                tap("account-$empty");tap("account-manage");tap("account-delete-preview")
+                tap("account-$empty");ui.revealOnPage("account-manage");tap("account-manage");tap("account-delete-preview")
                 ui.onNodeWithTag("confirm-account-operation").assertIsEnabled()
                 shot("$theme-$language-delete-empty")
                 tap("confirm-account-operation")

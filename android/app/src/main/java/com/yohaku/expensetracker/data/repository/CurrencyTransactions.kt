@@ -16,7 +16,7 @@ data class SettlementConfirmation(val eventId:String,val revision:Int,val accoun
     val baseAmount:Money,val date:String,val source:String="manual",val rateDate:String=date)
 
 fun SettlementEntity.accountMoney()=Money(Currency.valueOf(accountCurrency),accountMinor)
-fun BookSnapshot.accountMoney(event:EventEntity)=settlements.find{it.eventId==event.id}?.accountMoney()?:Money(Currency.valueOf(event.currency),event.amountMinor)
+fun BookSnapshot.accountMoney(event:EventEntity)=settlementByEvent[event.id]?.accountMoney()?:Money(Currency.valueOf(event.currency),event.amountMinor)
 fun SettlementEntity.expectedMoney()=Money(Currency.valueOf(expectedAccountCurrency.ifBlank{accountCurrency}),expectedAccountMinor)
 
 data class SettlementImpact(val eventId:String,val revision:Int,val impact:EntryImpact)
@@ -24,21 +24,18 @@ data class SettlementImpact(val eventId:String,val revision:Int,val impact:Entry
 /** Net statistics follow the purchase month; a pending refund contributes nothing. */
 fun BookSnapshot.netExpense(event:EventEntity):Long {
     if(event.kind!=EntryKind.EXPENSE.name || event.deletedAt!=null)return 0
-    val refunds=settlements.filter{it.originalEventId==event.id&&it.confirmed}.map{it.eventId}.toSet()
-    return visibleEvents.filter{it.id in refunds}.fold(event.baseMinor){total,r->Math.subtractExact(total,r.baseMinor)}
+    return confirmedRefunds[event.id].orEmpty().fold(event.baseMinor){total,r->Math.subtractExact(total,r.baseMinor)}
 }
 /** Net spending per day in book currency on the monthExpense basis: refunds reduce their original day, confirmed components count on their own date. */
 fun BookSnapshot.dailyExpense(events:Collection<EventEntity>):Map<String,Long> {
-    val visible=visibleEvents.associateBy{it.id}
-    val refunds=settlements.filter{it.confirmed&&it.originalEventId!=null}.mapNotNull{s->visible[s.eventId]?.let{s.originalEventId!! to it.baseMinor}}.groupBy({it.first},{it.second})
     val expenses=events.filter{it.kind==EntryKind.EXPENSE.name&&it.deletedAt==null}
     val ids=expenses.map{it.id}.toSet()
     val days=HashMap<String,Long>()
-    expenses.forEach{e->days[e.date]=Math.addExact(days[e.date]?:0L,refunds[e.id].orEmpty().fold(e.baseMinor){total,r->Math.subtractExact(total,r)})}
+    expenses.forEach{e->days[e.date]=Math.addExact(days[e.date]?:0L,confirmedRefunds[e.id].orEmpty().fold(e.baseMinor){total,r->Math.subtractExact(total,r.baseMinor)})}
     expenseComponents.filter{it.confirmed&&it.eventId in ids}.forEach{c->days[c.date]=Math.addExact(days[c.date]?:0L,c.baseMinor)}
     return days
 }
-fun BookSnapshot.visibleComponents()=expenseComponents.filter{c->c.confirmed&&visibleEvents.any{it.id==c.eventId}}
+fun BookSnapshot.visibleComponents()=expenseComponents.filter{c->c.confirmed&&c.eventId in visibleById}
 fun BookSnapshot.monthExpense(month:String):Long {
     val consumption=visibleEvents.filter{it.date.startsWith(month)&&it.kind==EntryKind.EXPENSE.name}.fold(0L){total,e->Math.addExact(total,netExpense(e))}
     return visibleComponents().filter{it.date.startsWith(month)}.fold(consumption){total,c->Math.addExact(total,c.baseMinor)}

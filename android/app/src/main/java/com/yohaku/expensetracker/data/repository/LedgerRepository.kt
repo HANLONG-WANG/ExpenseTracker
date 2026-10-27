@@ -24,7 +24,18 @@ data class BookSnapshot(val book:BookEntity,val accounts:List<AccountEntity>,val
     val eventActivities:List<EventActivityEntity> = emptyList(),val recurrences:List<RecurrenceEntity> = emptyList(),val occurrences:List<OccurrenceEntity> = emptyList(),
     val activityBudgets:List<ActivityBudgetEntity> = emptyList(),val reserves:List<ActivityReserveEntity> = emptyList(),val reserveUses:List<ReserveUseEntity> = emptyList(),
     val friends:List<FriendEntity> = emptyList(),val participants:List<ActivityParticipantEntity> = emptyList(),val treats:List<TreatEntity> = emptyList(),val allocations:List<TreatAllocationEntity> = emptyList(),val analysisPreferences:AnalysisPreferencesEntity?=null,val merchants:List<MerchantEntity> = emptyList(),val merchantLocations:List<MerchantLocationEntity> = emptyList(),val eventMerchants:List<EventMerchantEntity> = emptyList(),val files:List<FileBlobEntity> = emptyList(),val attachments:List<AttachmentLinkEntity> = emptyList(),val stagedMedia:List<DraftMediaEntity> = emptyList(),val receipts:List<ReceiptEntity> = emptyList(),val receiptImages:List<ReceiptImageEntity> = emptyList(),val contracts:List<DebtContractEntity> = emptyList(),val repayments:List<FinancialRepaymentEntity> = emptyList(),val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val arrangements:List<FinancialArrangementEntity> = emptyList(),val billAdjustments:List<FinancialBillAdjustmentEntity> = emptyList(),val expectedIncomes:List<ExpectedIncomeEntity> = emptyList()) {
-    val visibleEvents get()=events.filter { it.deletedAt==null }
+    // Lookups are built once per snapshot; per-event scans over thousands of records made every screen quadratic.
+    val visibleEvents by lazy{events.filter{it.deletedAt==null}}
+    internal val visibleById by lazy{visibleEvents.associateBy{it.id}}
+    internal val settlementByEvent by lazy{settlements.associateBy{it.eventId}}
+    internal val transferByEvent by lazy{transfers.associateBy{it.eventId}}
+    internal val storedPostingsByEvent by lazy{storedPostings.groupBy{it.eventId}}
+    internal val categoryById by lazy{categories.associateBy{it.id}}
+    internal val activityByEvent by lazy{eventActivities.associate{it.eventId to it.activityId}}
+    internal val merchantByEvent by lazy{eventMerchants.associate{it.eventId to it.merchantId}}
+    internal val merchantsByName by lazy{merchants.groupBy{it.name}}
+    /** Visible refunds whose settlement is confirmed, keyed by the expense they return. */
+    internal val confirmedRefunds by lazy{settlements.filter{it.confirmed&&it.originalEventId!=null}.mapNotNull{st->visibleById[st.eventId]?.let{st.originalEventId!! to it}}.groupBy({it.first},{it.second})}
     fun balance(account:AccountEntity):Long=postings.filter{it.accountId==account.id}.fold(account.openingMinor){a,p->Math.addExact(a,p.deltaMinor)}
     fun removalImpact(eventId:String)=removalImpacts(eventId).first()
     fun restorationImpact(eventId:String)=restorationImpacts(eventId).first()
@@ -49,7 +60,7 @@ data class BookSnapshot(val book:BookEntity,val accounts:List<AccountEntity>,val
         }
     }
     fun entryAccounts(kind:EntryKind,preservedId:String?=null)=accounts.filter{(it.active||it.id==preservedId)&&(kind!=EntryKind.INCOME||!AccountType.valueOf(it.type).debt)}
-    fun path(id:String?):String { val c=categories.find{it.id==id} ?: return ""; return c.parentId?.let{p->categories.find{it.id==p}?.name?.plus(" / ")} .orEmpty()+c.name }
+    fun path(id:String?):String { val c=categoryById[id] ?: return ""; return c.parentId?.let{p->categoryById[p]?.name?.plus(" / ")} .orEmpty()+c.name }
 }
 class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val mediaRoot:java.io.File?=null) {
     internal val mediaWrites=kotlinx.coroutines.sync.Mutex()

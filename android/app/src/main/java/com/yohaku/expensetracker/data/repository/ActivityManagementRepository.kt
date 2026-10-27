@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.first
 import java.time.YearMonth
 
 /** Historical membership remains readable; deleted scenes contribute to daily spending. */
-fun BookSnapshot.currentActivityId(eventId:String):String?=eventActivities.find{it.eventId==eventId}?.activityId?.takeIf{id->activities.any{it.id==id&&it.deletedAt==null}}
+fun BookSnapshot.currentActivityId(eventId:String):String?=activityByEvent[eventId]?.takeIf{id->activities.any{it.id==id&&it.deletedAt==null}}
 val BookSnapshot.availableActivities get()=activities.filter{it.deletedAt==null}
 class ActivityDeletionReview internal constructor(internal val before:BookSnapshot,internal val after:BookSnapshot,val activity:ActivityEntity,
     val recordCount:Int,val treatCount:Int,val releasedMinor:Long,val cancelledCount:Int,val draftConverted:Boolean,

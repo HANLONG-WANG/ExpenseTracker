@@ -116,7 +116,7 @@ class DraftEditingFlowTest {
             assertEquals(event,saved.events.single().id);assertEquals(category,saved.events.single().categoryId)
             assertEquals(merchant,saved.events.single().merchant);assertEquals(300L,saved.events.single().amountMinor)
             assertEquals(9700L,saved.balance(saved.accounts.single()))
-            ui.runOnIdle{vm.navigate("ledger")};tap(merchant)
+            ui.runOnIdle{vm.navigate("ledger")};ui.revealOnPage(hasText(merchant)).performClick()
             ui.onNodeWithTag("record-fact-1").performScrollTo()
             ui.onNode(hasText("$parentName / $childName") and hasAnyAncestor(hasTestTag("record-fact-1"))).assertIsDisplayed()
             val r=ui.onNodeWithTag("record-fact-1").getUnclippedBoundsInRoot()
@@ -258,7 +258,7 @@ class DraftEditingFlowTest {
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("ledger")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             val before=snapshot(a).visibleEvents.single()
-            ui.onNodeWithTag("event-"+event).performScrollTo().performClick()
+            ui.revealOnPage("event-"+event).performClick()
             ui.waitUntil(10000){ui.onAllNodesWithTag("record-edit-button").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("record-edit-button").performScrollTo().performClick()
             ui.onNodeWithTag(if(language=="zh")"field-金额 · JPY" else "field-金額 · JPY").performTextReplacement("999")
@@ -271,7 +271,7 @@ class DraftEditingFlowTest {
             ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="detail"}
             assertEquals(before,snapshot(a).visibleEvents.single());assertNull(snapshot(a).draft)
             ui.onNodeWithText("×").performClick();ui.waitUntil(10000){vm.route.value=="ledger"}
-            ui.onNodeWithTag("event-"+event).performScrollTo().performClick()
+            ui.revealOnPage("event-"+event).performClick()
             ui.waitUntil(10000){ui.onAllNodesWithTag("record-edit-button").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("record-edit-button").performScrollTo().performClick()
             val amount=before.amountMinor+100
@@ -342,7 +342,7 @@ class DraftEditingFlowTest {
             ui.runOnIdle{vm.navigate("accounts")}
             ui.onNodeWithTag("account-"+account).performScrollTo().performClick()
             ui.waitUntil(10000){ui.onAllNodesWithText(if(language=="zh")"账户流水" else "口座の記録",substring=true).fetchSemanticsNodes().isNotEmpty()}
-            ui.onNodeWithTag("event-"+income).performScrollTo().assertIsDisplayed()
+            ui.revealOnPage("event-"+income).assertIsDisplayed()
             captureScreen("account-ledger","$theme-$language")
             assertEquals(3,snapshot(a).visibleEvents.size)
             assertEquals(9600L,snapshot(a).balance(snapshot(a).accounts.first{it.id==account}))
@@ -449,7 +449,7 @@ class DraftEditingFlowTest {
             ui.onNodeWithTag("event-"+second).assertDoesNotExist()
             tap("清除筛选")
             ui.onNodeWithTag("ledger-filters").performScrollTo().performClick()
-            ui.onNodeWithTag("event-"+event).performScrollTo().performClick()
+            ui.revealOnPage("event-"+event).performClick()
             waitFor("这一笔的详情")
             ui.onNodeWithText("×").performClick()
             ui.waitUntil(10000){vm.route.value=="ledger"}
@@ -621,7 +621,7 @@ class DraftEditingFlowTest {
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("ledger")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             for(id in listOf(income,historical)){
-                ui.onNodeWithTag("event-"+id).performScrollTo().performClick()
+                ui.revealOnPage("event-"+id).performClick()
                 tap(if(language=="ja")"ごみ箱に移動" else "移至回收站")
                 if(id==income){
                     ui.onNodeWithTag("impact-income").performScrollTo().onChildren().onLast().assertTextEquals("¥400 → ¥0")

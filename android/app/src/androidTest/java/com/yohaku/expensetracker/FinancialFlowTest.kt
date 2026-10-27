@@ -330,7 +330,7 @@ class FinancialFlowTest {
             assertEquals(7600L,snapshot.balance(snapshot.accounts.first{it.id==bank}));assertEquals(8000L,snapshot.balance(snapshot.accounts.first{it.id==loan}));assertEquals(8000L,snapshot.contractRemaining(contract));assertEquals(400L,snapshot.monthExpense("2026-10"));assertEquals(2,snapshot.events.size)
             assertNull(vm.error.value)
             ui.runOnIdle{vm.navigate("ledger")}
-            tapTag("event-${payment.eventId}")
+            ui.revealOnPage("event-${payment.eventId}");tapTag("event-${payment.eventId}")
             ui.waitUntil(10000){ui.onAllNodesWithTag("revision-history").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("revision-history").performScrollTo()
             shot("$theme-$language-repayment-history")

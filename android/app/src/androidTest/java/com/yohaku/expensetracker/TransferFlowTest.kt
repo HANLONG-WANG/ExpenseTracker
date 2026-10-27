@@ -311,10 +311,12 @@ class TransferFlowTest {
             }
             account(from)
             ui.onNodeWithText(text("在途资金 · 尚未计入收款余额","送金中・入金残高に未反映")).assertExists()
+            ui.revealOnPage("event-$first");ui.revealOnPage("event-$second")
             ui.onNodeWithTag("event-$second").assert(hasText("来源银行")).assert(hasText("−¥2,000")).assert(hasText("10.05 · "+text("转账","振替")))
             assertTrue(ui.onNodeWithTag("event-$second").getUnclippedBoundsInRoot().top<ui.onNodeWithTag("event-$first").getUnclippedBoundsInRoot().top)
             pageShot("source-transit",true)
             account(to)
+            ui.revealOnPage("event-$second");ui.revealOnPage("event-$first")
             ui.onNodeWithTag("event-$first").assert(hasText("目标人民币")).assert(hasText("+CN¥500.00")).assert(hasText("10.10 · "+text("转账","振替"))).assert(hasText(text("在途","送金中")))
             ui.onNodeWithTag("event-$second").assert(hasText("目标人民币")).assert(hasText("+CN¥100.00")).assert(hasText("10.06 · "+text("转账","振替")))
             assertTrue(ui.onNodeWithTag("event-$first").getUnclippedBoundsInRoot().top<ui.onNodeWithTag("event-$second").getUnclippedBoundsInRoot().top)

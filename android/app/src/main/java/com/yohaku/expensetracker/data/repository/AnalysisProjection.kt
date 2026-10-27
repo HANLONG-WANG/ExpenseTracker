@@ -18,8 +18,8 @@ data class AnalysisReport(val filter:AnalysisFilter,val facts:List<AnalysisFact>
     fun groups(key:(AnalysisFact)->String)=facts.groupBy(key).map{(id,values)->AnalysisGroup(id,values.fold(0L){s,f->Math.addExact(s,f.net)},values.map{it.event.id}.distinct().size)}.sortedByDescending{it.amount}
 }
 fun BookSnapshot.merchantKey(event:EventEntity):String {
-    eventMerchants.find{it.eventId==event.id}?.let{return "id:"+it.merchantId}
-    val matching=merchants.filter{it.name==event.merchant&&event.merchant.isNotBlank()}.singleOrNull()
+    merchantByEvent[event.id]?.let{return "id:"+it}
+    val matching=merchantsByName[event.merchant]?.takeIf{event.merchant.isNotBlank()}?.singleOrNull()
     return matching?.let{"id:"+it.id}?:"name:"+event.merchant
 }
 fun BookSnapshot.merchantLabel(key:String):String=if(key.startsWith("id:"))merchants.first{it.id==key.removePrefix("id:")}.name else key.removePrefix("name:")
@@ -27,12 +27,14 @@ fun BookSnapshot.analysis(filter:AnalysisFilter):AnalysisReport {
     require(LocalDate.parse(filter.start)<=LocalDate.parse(filter.end)){"开始日期不能晚于结束日期 / 開始日は終了日以前にしてください"}
     val ids=filter.categoryId?.let{id->setOf(id)+categories.filter{it.parentId==id}.map{it.id}}
     fun activity(e:EventEntity)=currentActivityId(e.id)
-    val expenses=visibleEvents.filter{it.kind==EntryKind.EXPENSE.name}.map{e->AnalysisFact(e,e.date,e.categoryId,merchantKey(e),activity(e),e.baseMinor,Math.subtractExact(e.baseMinor,netExpense(e)),0)}
-    val fees=visibleComponents().map{c->val e=visibleEvents.first{it.id==c.eventId};AnalysisFact(e,c.date,null,merchantKey(e),activity(e),0,0,c.baseMinor)}
-    val selected=(expenses+fees).filter{f->f.date in filter.start..filter.end&&(ids==null||f.categoryId in ids)&&(filter.merchantKey==null||f.merchantKey==filter.merchantKey)&&(filter.activityId==null||f.activityId.orEmpty()==filter.activityId)}
+    val period=filter.start..filter.end
+    // Date and category narrow the records before the per-record merchant and refund work.
+    val expenses=visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&it.date in period&&(ids==null||it.categoryId in ids)}.map{e->AnalysisFact(e,e.date,e.categoryId,merchantKey(e),activity(e),e.baseMinor,Math.subtractExact(e.baseMinor,netExpense(e)),0)}
+    val fees=if(ids!=null)emptyList() else visibleComponents().filter{it.date in period}.map{c->val e=visibleById.getValue(c.eventId);AnalysisFact(e,c.date,null,merchantKey(e),activity(e),0,0,c.baseMinor)}
+    val selected=(expenses+fees).filter{f->(filter.merchantKey==null||f.merchantKey==filter.merchantKey)&&(filter.activityId==null||f.activityId.orEmpty()==filter.activityId)}
     return AnalysisReport(filter,selected)
 }
-fun BookSnapshot.categoryGroups(report:AnalysisReport)=report.groups{f->f.categoryId?.let{id->categories.first{it.id==id}.parentId?:id}?:"FEES"}
+fun BookSnapshot.categoryGroups(report:AnalysisReport)=report.groups{f->f.categoryId?.let{id->categoryById.getValue(id).parentId?:id}?:"FEES"}
 fun BookSnapshot.categoryChildren(report:AnalysisReport,parentId:String)=report.facts.filter{f->f.categoryId==parentId||categories.any{it.id==f.categoryId&&it.parentId==parentId}}.groupBy{if(it.categoryId==parentId)"UNSPECIFIED"else it.categoryId!!}.map{(id,values)->AnalysisGroup(id,values.fold(0L){s,f->Math.addExact(s,f.net)},values.size)}.sortedByDescending{it.amount}
 fun BookSnapshot.confirmedRefunds(report:AnalysisReport):List<EventEntity> {
     val ids=report.facts.filter{it.gross>0}.map{it.event.id}.toSet()

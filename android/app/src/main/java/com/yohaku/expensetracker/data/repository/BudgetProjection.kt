@@ -10,7 +10,7 @@ data class BudgetProjection(val month:String,val currency:Currency,val limitMino
     val availableMinor get()=remainingMinor?.let{remaining->reserveMinor?.let{Math.subtractExact(remaining,it)}}
 }
 fun BookSnapshot.excludedFromMonthly(event:EventEntity):Boolean {
-    val activityId=eventActivities.find{it.eventId==event.id}?.activityId
+    val activityId=activityByEvent[event.id]
     return activities.any{it.id==activityId&&it.deletedAt==null&&it.excludeMonthly}
 }
 fun BookSnapshot.budgetLimit(month:String,categoryId:String?=null):Long? {
@@ -27,7 +27,7 @@ fun BookSnapshot.budgetProjection(month:String,categoryId:String?=null):BudgetPr
     val all=expenses.fold(0L){sum,e->Math.addExact(sum,netExpense(e))}+
         if(ids==null)visibleComponents().filter{it.date.startsWith(month)}.sumOf{it.baseMinor}else 0L
     val independent=expenses.filter{excludedFromMonthly(it)}.fold(0L){sum,e->Math.addExact(sum,netExpense(e))}+
-        if(ids==null)visibleComponents().filter{it.date.startsWith(month)&&visibleEvents.any{e->e.id==it.eventId&&excludedFromMonthly(e)}}.sumOf{it.baseMinor}else 0L
+        if(ids==null)visibleComponents().filter{it.date.startsWith(month)&&excludedFromMonthly(visibleById.getValue(it.eventId))}.sumOf{it.baseMinor}else 0L
     val pending=pendingOccurrences().filter{o->o.scheduledDate.startsWith(month)&&(ids==null||o.categoryId in ids)&&!activities.any{it.id==o.activityId&&it.deletedAt==null&&it.excludeMonthly}}
     val fixed=if(pending.any{it.baseMinor==null})null else pending.fold(0L){sum,o->Math.addExact(sum,o.baseMinor!!)}
     val activityReserve=if(categoryId!=null)0L else reserves.filter{r->r.date.startsWith(month)&&activities.any{it.id==r.activityId&&!it.excludeMonthly&&!it.ended}}.fold(0L){sum,r->

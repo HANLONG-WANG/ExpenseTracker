@@ -4,11 +4,11 @@ import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.model.*
 import java.math.RoundingMode
 
-fun BookSnapshot.activityExpenses(activityId:String)=visibleEvents.filter{e->e.kind==EntryKind.EXPENSE.name&&eventActivities.any{it.eventId==e.id&&it.activityId==activityId}}
+fun BookSnapshot.activityExpenses(activityId:String)=visibleEvents.filter{e->e.kind==EntryKind.EXPENSE.name&&activityByEvent[e.id]==activityId}
 fun BookSnapshot.activitySpent(activityId:String,categoryId:String?=null):Long {
     val ids=categoryId?.let{id->setOf(id)+categories.filter{it.parentId==id}.map{it.id}}
     val expense=activityExpenses(activityId).filter{ids==null||it.categoryId in ids}.fold(0L){sum,e->Math.addExact(sum,netExpense(e))}
-    return if(ids!=null)expense else visibleComponents().filter{c->eventActivities.any{it.eventId==c.eventId&&it.activityId==activityId}}.fold(expense){sum,c->Math.addExact(sum,c.baseMinor)}
+    return if(ids!=null)expense else visibleComponents().filter{c->activityByEvent[c.eventId]==activityId}.fold(expense){sum,c->Math.addExact(sum,c.baseMinor)}
 }
 fun BookSnapshot.reserveRemaining(reserve:ActivityReserveEntity,ignoringEventId:String?=null):Long {
     if(!reserve.active)return 0

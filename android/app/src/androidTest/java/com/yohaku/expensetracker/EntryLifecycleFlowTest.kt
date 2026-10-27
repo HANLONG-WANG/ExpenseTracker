@@ -66,7 +66,7 @@ class EntryLifecycleFlowTest {
                 val transfer=repo.saveMovement(b,EntryKind.TRANSFER,bank,cash,Money(Currency.JPY,500),Money(Currency.JPY,500),"2026-10-16")
                 prefs.select(b);ui.waitUntil(10000){current()?.book?.id==b}
                 ui.runOnIdle{vm.navigate("ledger")}
-                tap("event-$event");tap("record-trash-preview")
+                ui.revealOnPage("event-$event");tap("event-$event");tap("record-trash-preview")
                 ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-entry-lifecycle").fetchSemanticsNodes().isNotEmpty()}
                 shot("$theme-$language-trash");tap("confirm-entry-lifecycle")
                 ui.waitUntil(10000){current()?.visibleEvents?.size==1&&!vm.busy.value}
@@ -74,9 +74,9 @@ class EntryLifecycleFlowTest {
                 tap("restore-$event");shot("$theme-$language-restore");tap("confirm-entry-lifecycle")
                 ui.waitUntil(10000){current()?.visibleEvents?.size==3&&!vm.busy.value}
                 ui.runOnIdle{vm.navigate("ledger")}
-                tap("event-$transfer");tap("record-trash-preview");tap("confirm-entry-lifecycle")
+                ui.revealOnPage("event-$transfer");tap("event-$transfer");tap("record-trash-preview");tap("confirm-entry-lifecycle")
                 ui.waitUntil(10000){current()?.visibleEvents?.size==2&&!vm.busy.value}
-                tap("event-$event");tap("record-trash-preview");tap("confirm-entry-lifecycle")
+                ui.revealOnPage("event-$event");tap("event-$event");tap("record-trash-preview");tap("confirm-entry-lifecycle")
                 ui.waitUntil(10000){current()?.visibleEvents?.isEmpty()==true&&!vm.busy.value}
                 ui.runOnIdle{vm.navigate("trash")}
                 tap("purge-$event");shot("$theme-$language-purge");tap("confirm-entry-lifecycle")

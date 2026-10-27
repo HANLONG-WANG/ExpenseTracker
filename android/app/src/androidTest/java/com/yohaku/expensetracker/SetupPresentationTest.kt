@@ -124,9 +124,7 @@ class SetupPresentationTest {
             val account=AccountEntity("fixture","cash","现金","CASH","JPY",10000,"2026-10-01")
             val events=if(populated.value)listOf(EventEntity("fixture","record","EXPENSE","cash","food",300,"JPY",300,"2026-10-14","喫茶と余白","")) else emptyList()
             val snapshot=BookSnapshot(BookEntity("fixture","生活","JPY","2026-10-01"),listOf(account),listOf(CategoryEntity("fixture","food","餐饮","EXPENSE")),events,emptyList(),null)
-            Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(pageContentPadding()),verticalArrangement=Arrangement.spacedBy(15.dp)){
-                LedgerScreen(snapshot,{},{},onStartOn={},today=java.time.LocalDate.of(2026,10,14))
-            }
+            Box(Modifier.fillMaxSize().safeDrawingPadding()){LedgerScreen(snapshot,{},{},onStartOn={},today=java.time.LocalDate.of(2026,10,14))}
         }}
         var expanded=false
         for(index in 0 until source.length()){
@@ -138,12 +136,15 @@ class SetupPresentationTest {
             val tags=mapOf("heading" to "page-title-heading","actions" to "ledger-entry-actions","search" to "ledger-search","type" to if(l=="ja")"select-field-種類" else "select-field-类型","filters" to "ledger-filter-panel","records" to "transaction-list")
             val nodes=ref.getJSONArray("nodes")
             for(j in 0 until nodes.length()){
-                val expected=nodes.getJSONObject(j);val key=expected.getString("key");val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
+                val expected=nodes.getJSONObject(j);val key=expected.getString("key");val r=if(key=="records")ui.onAllNodes(transactionItem).unionBounds() else ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
                 // 2026-10-25 refinement groups the ledger by day; compare the original rows by removing the day headers,
                 // which replace the list's opening rule (magazine/journal) or add one 8dp card gap each (objects).
                 val headers=if(key!="records"||mode=="empty")emptyList() else ui.onAllNodes(SemanticsMatcher("ledger day header"){androidx.compose.ui.semantics.SemanticsProperties.TestTag in it.config&&it.config[androidx.compose.ui.semantics.SemanticsProperties.TestTag].startsWith("ledger-day-")}).fetchSemanticsNodes()
-                val dayHeaders=if(headers.isEmpty())0f else headers.sumOf{(it.boundsInRoot.height/i.targetContext.resources.displayMetrics.density).toDouble()}.toFloat()+(if(t=="objects")8f*headers.size else -1f)
-                val top=(r.top-origin).value;val height=(r.bottom-r.top).value-dayHeaders
+                val dayHeaders=if(headers.isEmpty())0f else headers.sumOf{(it.size.height/i.targetContext.resources.displayMetrics.density).toDouble()}.toFloat()+(if(t=="objects")8f*headers.size else -1f)
+                // 2026-10-26 adds the list/calendar tabs and their section gap below the entry actions.
+                val tabs=ui.onNodeWithTag("ledger-view-tabs").getUnclippedBoundsInRoot()
+                val tabShift=if(key in listOf("heading","actions"))0f else (tabs.bottom-tabs.top).value+15f
+                val top=(r.top-origin).value-tabShift;val height=(r.bottom-r.top).value-dayHeaders
                 csv.appendText("$t,$l,$mode,$key,$top,$height\n")
                 val expectedHeight=expected.getDouble("height")+if(key=="records"&&headers.isNotEmpty())magazineRules(t,-1f) else 0f
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
@@ -152,7 +153,7 @@ class SetupPresentationTest {
                 }
             }
             i.uiAutomation.takeScreenshot().let{bitmap->File(folder,"$t-$l-$mode.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
-            ui.onNodeWithTag("transaction-list").performScrollTo().assertIsDisplayed()
+            ui.onAllNodes(transactionItem).onLast().performScrollTo().assertIsDisplayed()
         }
         assertTrue(errors.joinToString("\n"),errors.isEmpty())
     }
@@ -169,9 +170,7 @@ class SetupPresentationTest {
             val events=if(populated.value)listOf(EventEntity("fixture","record","EXPENSE","cash","food",300,"JPY",300,"2026-10-14","喫茶と余白","")) else emptyList()
             val postings=if(populated.value)listOf(PostingEntity("fixture","posting","record","cash",-300,"JPY","2026-10-14")) else emptyList()
             val snapshot=BookSnapshot(BookEntity("fixture","生活","JPY","2026-10-01"),listOf(account),listOf(CategoryEntity("fixture","food","餐饮","EXPENSE")),events,postings,null)
-            Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(pageContentPadding()),verticalArrangement=Arrangement.spacedBy(15.dp)){
-                AccountDetail(snapshot,account,{selected="edit"},{selected=it.id})
-            }
+            Box(Modifier.fillMaxSize().safeDrawingPadding()){AccountDetail(snapshot,account,{selected="edit"},{selected=it.id})}
         }}
         for(index in 0 until source.length()){
             val ref=source.getJSONObject(index);val t=ref.getString("theme");val l=ref.getString("language");val hasRecords=ref.getBoolean("populated")
@@ -187,7 +186,7 @@ class SetupPresentationTest {
             }
             val nodes=ref.getJSONArray("nodes")
             for(j in 0 until nodes.length()){
-                val expected=nodes.getJSONObject(j);val key=expected.getString("key");val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
+                val expected=nodes.getJSONObject(j);val key=expected.getString("key");val r=if(key=="records")ui.onAllNodes(transactionItem).unionBounds() else ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
                 // B/C add the transfer action and actual-balance date note above the original editor.
                 val transfer=ui.onNodeWithTag("account-detail-transfer").getUnclippedBoundsInRoot()
                 val note=ui.onNodeWithText(if(l=="zh")"仅含截至今日已确认流水。未来已记流水在时间线中另列。" else "本日までの確定記録のみ。将来日付の記録は予定に別掲。",substring=true).getUnclippedBoundsInRoot()
@@ -668,4 +667,10 @@ class SetupPresentationTest {
 
 /** 2026-10-25 magazine rule hierarchy (design/themes/magazine-rules.css): lists draw no hairline after their last row,
  *  and blocks that lost a closing rule also lost the space kept around it. Frozen v55 sizes shift by exactly that much. */
+// Long record lists are lazy items; their union stands for the original single list node.
+private val transactionItem=SemanticsMatcher("transaction list item"){androidx.compose.ui.semantics.SemanticsProperties.TestTag in it.config&&it.config[androidx.compose.ui.semantics.SemanticsProperties.TestTag].startsWith("transaction-list-")}
+private fun SemanticsNodeInteractionCollection.unionBounds():androidx.compose.ui.unit.DpRect {
+    val bounds=(0 until fetchSemanticsNodes().size).map{get(it).getUnclippedBoundsInRoot()}
+    return androidx.compose.ui.unit.DpRect(bounds.minOf{it.left},bounds.minOf{it.top},bounds.maxOf{it.right},bounds.maxOf{it.bottom})
+}
 private fun magazineRules(theme:String,shift:Float)=if(theme=="magazine")shift else 0f

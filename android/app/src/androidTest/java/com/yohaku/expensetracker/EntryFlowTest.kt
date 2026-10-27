@@ -245,7 +245,7 @@ class EntryFlowTest {
             val original=initial.events.single()
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             ui.runOnIdle{vm.navigate("ledger")}
-            ui.onNodeWithTag("event-${original.id}").performScrollTo().performClick()
+            ui.revealOnPage("event-${original.id}").performClick()
             refundTap(text("记录退款","返金を記録"))
             refundField(text("商户退回原币金额","お店が返金した原通貨額")+" · USD","40.00")
             refundField(text("账户实际退款 / 待到账可填预计","口座の実返金額・未入金なら見込み")+" · JPY","5920")
@@ -279,7 +279,7 @@ class EntryFlowTest {
             assertEquals(15000L,pending.monthExpense("2026-09"))
             assertEquals(15000L,pending.balance(pending.accounts.single()))
             val refund=pending.visibleEvents.first{it.kind==EntryKind.REFUND.name}
-            ui.onNodeWithTag("event-${original.id}").performScrollTo().performClick()
+            ui.revealOnPage("event-${original.id}").performClick()
             val historyRow=ui.onNode(hasTestTag("event-${refund.id}") and hasAnyAncestor(hasTestTag("refund-history")))
             refundTarget(historyRow).assertTextContains("+¥5,920",substring=true).assertTextContains("US$40.00",substring=true).assertTextContains(text("待到账","未入金"),substring=true).assertTextContains("信用卡",substring=true)
             refundShot("$theme-$language-refund-history-pending",false)
@@ -292,7 +292,7 @@ class EntryFlowTest {
             assertEquals(9080L,actual.monthExpense("2026-09"))
             assertEquals(2,actual.visibleEvents.size)
             assertEquals(refund.id,actual.visibleEvents.first{it.kind==EntryKind.REFUND.name}.id)
-            ui.onNodeWithTag("event-${original.id}").performScrollTo().performClick()
+            ui.revealOnPage("event-${original.id}").performClick()
             val actualHistory=ui.onNode(hasTestTag("event-${refund.id}") and hasAnyAncestor(hasTestTag("refund-history")))
             refundTarget(actualHistory).assertTextContains(text("已到账","入金済"),substring=true).assertTextContains("+¥5,920",substring=true)
             refundShot("$theme-$language-refund-history-actual",false)
@@ -305,7 +305,7 @@ class EntryFlowTest {
             assertEquals(200L,complete.monthExpense("2026-09"))
             assertEquals(0L,complete.monthExpense("2026-10"))
             assertEquals(200L,complete.balance(complete.accounts.single()))
-            ui.onNodeWithTag("event-${original.id}").performScrollTo().performClick()
+            ui.revealOnPage("event-${original.id}").performClick()
             val rows=ui.onAllNodes(hasTestTag("event-${refund.id}") and hasAnyAncestor(hasTestTag("refund-history")))
             rows.assertCountEquals(1)
             refundTarget(rows[0])
@@ -328,7 +328,7 @@ class EntryFlowTest {
             val book=ids[0];val original=ids[1];val bank=ids[2];val card=ids[3]
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             ui.runOnIdle{vm.navigate("ledger")}
-            ui.onNodeWithTag("event-$original").performScrollTo().performClick()
+            ui.revealOnPage("event-$original").performClick()
             refundTap(text("记录退款","返金を記録"))
             refundTarget(ui.onNodeWithTag("select-trigger-"+text("实际退款到账账户","実際の返金口座"))).performClick()
             refundTap("返金銀行CNY")
@@ -366,7 +366,7 @@ class EntryFlowTest {
             val book=ids[0];val card=ids[1];val original=ids[2];val arrived=ids[3];val pending=ids[4]
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             ui.runOnIdle{vm.navigate("ledger")}
-            ui.onNodeWithTag("event-$arrived").performScrollTo().performClick()
+            ui.revealOnPage("event-$arrived").performClick()
             refundTarget(ui.onNodeWithTag("record-edit-button")).performClick()
             refundField(text("商户退回原币金额","お店が返金した原通貨額")+" · USD","35.00")
             refundField(text("账户实际退款 / 待到账可填预计","口座の実返金額・未入金なら見込み")+" · JPY","5180")
@@ -381,7 +381,7 @@ class EntryFlowTest {
             val edited=snapshot()
             assertEquals(3500L,edited.events.single{it.id==arrived}.amountMinor);assertEquals(3,edited.events.size)
             assertEquals(9820L,edited.monthExpense("2026-09"));assertEquals(9820L,edited.balance(edited.accounts.single{it.id==card}));assertEquals(0L,edited.monthExpense("2026-10"))
-            ui.onNodeWithTag("event-$original").performScrollTo().performClick()
+            ui.revealOnPage("event-$original").performClick()
             refundTap(text("移至回收站","ごみ箱に移動"))
             ui.onNodeWithTag("refund-lifecycle").assertExists()
             ui.onNodeWithText("2026-10-01 · US$35.00").assertExists();ui.onNodeWithText("2026-10-03 · US$20.00").assertExists()
@@ -407,7 +407,7 @@ class EntryFlowTest {
             assertEquals(9820L,restored.monthExpense("2026-09"));assertEquals(0L,restored.monthExpense("2026-10"));assertEquals(9820L,restored.balance(restored.accounts.single{it.id==card}))
             assertFalse(restored.settlements.single{it.eventId==pending}.confirmed)
             ui.runOnIdle{vm.navigate("ledger")}
-            ui.onNodeWithTag("event-$arrived").performScrollTo().performClick()
+            ui.revealOnPage("event-$arrived").performClick()
             refundTap(text("移至回收站","ごみ箱に移動"))
             ui.onNodeWithTag("refund-lifecycle").assertDoesNotExist()
             refundTap(text("确认移至回收站","ごみ箱へ移動"))

@@ -173,23 +173,31 @@ import kotlinx.serialization.encodeToString
             LaunchedEffect(baseRoute){if(baseRoute!="recurring")recurringInitialMonth=null}
             val contentScroll=rememberSaveable(baseRoute,book.id,saver=ScrollState.Saver){ScrollState(0)}
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                Column(Modifier.weight(1f).verticalScroll(contentScroll).testTag("page-scroll")) {
-                YAppHeader(book.name,{if(openEntry||financialDraft?.hasInput==true)sheet="books" else vm.navigate("books")},{if(openEntry){leaveTarget="settings";sheet="leave-entry"}else vm.navigate("settings")})
+                val chrome=PageChrome(
+                    {YAppHeader(book.name,{if(openEntry||financialDraft?.hasInput==true)sheet="books" else vm.navigate("books")},{if(openEntry){leaveTarget="settings";sheet="leave-entry"}else vm.navigate("settings")})},
+                    {
+                        PageEdition(if(baseRoute=="rules")if(snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.type==AccountType.LOAN.name)"loan"else"credit"else baseRoute)
+                        if(baseRoute !in listOf("home","analysis","life","accounts")) YBackBar(pageName(baseRoute,snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.name),{if(openEntry){leaveTarget="home";sheet="leave-entry"}else vm.back()})
+                    },
+                    {PageFootnote(baseRoute)})
+                val detailAccount=snapshot.accounts.find{it.id==selectedAccountId}
+                // Pages listing every record own a lazy list instead of the shared scrolling column.
+                if(baseRoute=="ledger")LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)},{requestEntry(date=it)},today,Modifier.weight(1f),chrome)
+                else if(baseRoute=="account-detail"&&detailAccount!=null)detailAccount.let{a->AccountDetail(snapshot,a,{editAccount=a;sheet="account"},{openRecord(it)},{requestEntry(EntryKind.TRANSFER,a.id)},{openFinancial(a.id)},today,{openRisk(a.id)},{managedAccountId=a.id},Modifier.weight(1f),chrome)}
+                else Column(Modifier.weight(1f).verticalScroll(contentScroll).testTag("page-scroll")) {
+                chrome.head()
                 Column(Modifier.padding(pageContentPadding()).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
-                    PageEdition(if(baseRoute=="rules")if(snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.type==AccountType.LOAN.name)"loan"else"credit"else baseRoute)
-                    if(baseRoute !in listOf("home","analysis","life","accounts")) YBackBar(pageName(baseRoute,snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.name),{if(openEntry){leaveTarget="home";sheet="leave-entry"}else vm.back()})
+                    chrome.top()
                     when(baseRoute) {
                         "home"->HomeScreen(snapshot,{vm.navigate(it)},{requestEntry()},{vm.resumeEntry(snapshot)},{openRecord(it)},{vm.navigate("budget")},today=today,onRecurring={recurringInitialMonth=null;vm.navigate("recurring")},financialContent={HomeFinancialOutlook(snapshot,vm,{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openTimelineItem(it)},{openAttention(it)},{vm.navigate("reminders")})})
                         "books"->BooksScreen(ready.overviews.filter{!it.book.archived&&it.book.deletedAt==null},book.id,{vm.selectBook(it)},{sheet="new-book"},{editBookId=it;sheet="rename-book"},{vm.navigate("book-management")})
                         "book-management"->BookManagementScreen(ready.overviews,book.id,vm,{sheet="new-book"})
                         "accounts"->AccountsScreen(snapshot,{editAccount=null;sheet="account"},{selectedAccountId=it.id;vm.navigate("account-detail")},vm.referenceRates,financialContent={AccountsFinancialOutlook(snapshot,vm,{requestEntry(EntryKind.TRANSFER)},{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openAttention(it)},{vm.navigate("reminders")})},today=today)
-                        "account-detail"->snapshot.accounts.find{it.id==selectedAccountId}?.let{a->AccountDetail(snapshot,a,{editAccount=a;sheet="account"},{openRecord(it)},{requestEntry(EntryKind.TRANSFER,a.id)},{openFinancial(a.id)},today,{openRisk(a.id)},{managedAccountId=a.id})}
                         "calendar"->PaymentCalendarScreen(snapshot,vm,{openTimelineItem(it)},{vm.navigate("forecast")})
                         "notification-settings"->NotificationSettingsScreen(snapshot,vm)
                         "reminders"->ImportantItemsScreen(snapshot,vm,{openTimelineItem(it)},{account,month->openFinancial(account,month)},{openRisk(it)},{openAttention(it)},{vm.navigate("forecast")})
                         "forecast"->FinancialForecastScreen(snapshot,vm,{openRecord(it)},{openFinancial(it)},{openRisk(it)},{openAttention(it)},{openTimelineItem(it)})
                         "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
-                        "ledger"->LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)},{requestEntry(date=it)},today)
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}})
                         "csv-import"->CsvImportScreen(snapshot,vm)
                         "backup"->BackupScreen()
@@ -208,7 +216,7 @@ import kotlinx.serialization.encodeToString
                         "friends"->FriendsScreen(snapshot,vm)
                         "life"->ActivityScreen(snapshot,vm,{id,friend->requestEntry(activityId=id,treatFriendId=friend)},{openRecord(it)})
                     }
-                    PageFootnote(baseRoute)
+                    chrome.foot()
                 }
                 }
                 YBottomNav(baseRoute,{p->if(openEntry){leaveTarget=p;sheet="leave-entry"}else vm.navigate(p)},{if(!openEntry)requestEntry()})
@@ -752,23 +760,27 @@ import kotlinx.serialization.encodeToString
     if(accountSheet&&s!=null)AccountEditor(s,vm,{accountSheet=false},s.accounts.find{it.id==originalAccountId},debtOnly=if(step==4)null else step==3)
 }
 
-@Composable internal fun AccountDetail(s:BookSnapshot,a:AccountEntity,onEdit:()->Unit,onEvent:(EventEntity)->Unit,onTransfer:()->Unit={},onFinancial:(()->Unit)?=null,today:LocalDate=LocalDate.now(),onRisk:(()->Unit)?=null,onManage:(()->Unit)?=null) {
-    val debt=AccountType.valueOf(a.type).debt
-    val amount=Money(Currency.valueOf(a.currency),if(debt)s.balance(a)else s.cashBalanceAt(a,today.toString())).display()
-    YLead(a.name,a.currency+" · "+if(AccountType.valueOf(a.type).debt)word("账户原币欠款","口座の元通貨借入残高") else word("账户原币余额","口座の元通貨残高"),"AVAILABLE BALANCE",amount,word("本位币参考","基準通貨参考")+" "+if(a.currency==s.book.currency)amount else "—",pageFlow=true)
-    if(!AccountType.valueOf(a.type).debt&&a.active)AccountTransferShortcut(onTransfer)
-    else if(onFinancial!=null)YButton(word("账单、计划与金融规则","請求・予定と金融条件"),onFinancial,Modifier.testTag("account-financial"),primary=true)
-    if(!debt&&onRisk!=null)YButton(word("核对未来资金安排","将来の資金予定を確認"),onRisk,Modifier.testTag("account-cash-risk"))
-    if(!debt)YText(today.toString()+" · "+word("仅含截至今日已确认流水。未来已记流水在时间线中另列。","本日までの確定記録のみ。将来日付の記録は予定に別掲。"),11)
-    Box(Modifier.padding(top=12.dp)){YButton(word("编辑账户","口座を編集"),onEdit,Modifier.fillMaxWidth().testTag("account-detail-edit"))}
-    val transit=s.inTransitTransfers().filter{t->t.toAccountId==a.id||s.visibleEvents.any{it.id==t.eventId&&it.accountId==a.id}}
-    if(transit.isNotEmpty())ThemeAuditPanel(word("在途资金 · 尚未计入收款余额","送金中・入金残高に未反映")) {
-        transit.forEach{t->YText(Money(Currency.valueOf(t.toCurrency),t.toMinor).display()+" · "+t.toDate,15,number=true)}
+@Composable internal fun AccountDetail(s:BookSnapshot,a:AccountEntity,onEdit:()->Unit,onEvent:(EventEntity)->Unit,onTransfer:()->Unit={},onFinancial:(()->Unit)?=null,today:LocalDate=LocalDate.now(),onRisk:(()->Unit)?=null,onManage:(()->Unit)?=null,modifier:Modifier=Modifier,chrome:PageChrome=PageChrome()) {
+    val entries=remember(s,a.id){s.visibleEvents.filter{e->e.accountId==a.id||s.storedPostingsByEvent[e.id].orEmpty().any{it.accountId==a.id}}}
+    val rows=rememberTransactionRows(s,entries,a.id,byDay=false)
+    LazyPage(chrome,s.book.id to a.id,modifier,top={
+        val debt=AccountType.valueOf(a.type).debt
+        val amount=Money(Currency.valueOf(a.currency),if(debt)s.balance(a)else s.cashBalanceAt(a,today.toString())).display()
+        YLead(a.name,a.currency+" · "+if(AccountType.valueOf(a.type).debt)word("账户原币欠款","口座の元通貨借入残高") else word("账户原币余额","口座の元通貨残高"),"AVAILABLE BALANCE",amount,word("本位币参考","基準通貨参考")+" "+if(a.currency==s.book.currency)amount else "—",pageFlow=true)
+        if(!AccountType.valueOf(a.type).debt&&a.active)AccountTransferShortcut(onTransfer)
+        else if(onFinancial!=null)YButton(word("账单、计划与金融规则","請求・予定と金融条件"),onFinancial,Modifier.testTag("account-financial"),primary=true)
+        if(!debt&&onRisk!=null)YButton(word("核对未来资金安排","将来の資金予定を確認"),onRisk,Modifier.testTag("account-cash-risk"))
+        if(!debt)YText(today.toString()+" · "+word("仅含截至今日已确认流水。未来已记流水在时间线中另列。","本日までの確定記録のみ。将来日付の記録は予定に別掲。"),11)
+        Box(Modifier.padding(top=12.dp)){YButton(word("编辑账户","口座を編集"),onEdit,Modifier.fillMaxWidth().testTag("account-detail-edit"))}
+        val transit=s.inTransitTransfers().filter{t->t.toAccountId==a.id||s.visibleEvents.any{it.id==t.eventId&&it.accountId==a.id}}
+        if(transit.isNotEmpty())ThemeAuditPanel(word("在途资金 · 尚未计入收款余额","送金中・入金残高に未反映")) {
+            transit.forEach{t->YText(Money(Currency.valueOf(t.toCurrency),t.toMinor).display()+" · "+t.toDate,15,number=true)}
+        }
+        ThemeSection(word("账户流水","口座の記録"),"RECENT")
+    }){
+        transactionItems(s,rows,onEvent,{YEmpty(word("还没有流水，余额来自期初状态。","記録はまだありません。残高は期首情報から。"))},accountId=a.id,startGap=15.dp)
+        onManage?.let{manage->item("account-manage"){Box(Modifier.padding(pageContentPadding()).padding(top=15.dp)){YButton(word("账户状态与停用","口座の状態・停止"),manage,Modifier.testTag("account-manage"))}}}
     }
-    ThemeSection(word("账户流水","口座の記録"),"RECENT")
-    val entries=s.visibleEvents.filter{e->e.accountId==a.id||s.storedPostings.any{it.eventId==e.id&&it.accountId==a.id}}
-    TransactionList(s,entries,onEvent,emptyContent={YEmpty(word("还没有流水，余额来自期初状态。","記録はまだありません。残高は期首情報から。"))},accountId=a.id)
-    onManage?.let{YButton(word("账户状态与停用","口座の状態・停止"),it,Modifier.testTag("account-manage"))}
 }
 
 @Composable internal fun entryKindName(kind:EntryKind)=when(kind){
