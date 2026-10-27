@@ -26,6 +26,8 @@ import com.yohaku.expensetracker.ui.theme.*
     val exportedReceiptIds=remember(exports,s.receipts,s.events) { exports.flatMap { FileProtocols.receiptBundle(it.manifestJson).records }.filter { record->
         s.receipts.any{it.id==record.receipt_id&&it.revision==record.receipt_revision}&&s.visibleEvents.any{it.id==record.record_id&&it.revision==record.record_revision}
     }.map{it.receipt_id}.toSet() }
+    val documents by remember(s.book.id){vm.repository.db.fileWorkflowDao().items(s.book.id)}.collectAsStateWithLifecycle(emptyList())
+    val incompleteIds=remember(documents){documents.filterNot{FileProtocols.json.decodeFromString<ReceiptItemsRecord>(it.recordJson).detailsComplete}.map{it.receiptId}.toSet()}
     val available=s.receipts.filter{r->s.visibleEvents.any{it.id==r.eventId}&&s.receiptImages.any{it.receiptId==r.id&&it.revision==r.revision}}
     val pending=available.filter{it.status!="SORTED"}.map{it.id}
     ReceiptInboxCover(pending.size)
@@ -43,7 +45,7 @@ import com.yohaku.expensetracker.ui.theme.*
         val event=s.visibleEvents.first{it.id==receipt.eventId}
         val images=s.entryReceiptImages(event.id)
         ReceiptInboxCard(receipt.id,index,event.merchant.ifBlank{word("这张小票","このレシート")},event.date+" · "+s.path(event.categoryId)+" · "+Money(Currency.valueOf(event.currency),event.amountMinor).display()+" · "+word("第${receipt.revision}版","第${receipt.revision}版"),
-            if(receipt.status=="SORTED")word("已整理","整理済み")else if(receipt.id in exportedReceiptIds)word("已交云端 · 待回填","クラウドへ送信済・取込待ち")else word("待整理","未整理"),receipt.status=="SORTED",images.size,{onRecord(event)},
+            if(receipt.status=="SORTED")if(receipt.id in incompleteIds)word("已整理 · 明细待确认","整理済・明細要確認")else word("已整理","整理済み")else if(receipt.id in exportedReceiptIds)word("已交云端 · 待回填","クラウドへ送信済・取込待ち")else word("待整理","未整理"),receipt.status=="SORTED",images.size,{onRecord(event)},
             selected=receipt.id in selected,onSelect=if(receipt.status!="SORTED"&&!busy)({selected=if(receipt.id in selected)selected-receipt.id else selected+receipt.id})else null) {
             images.forEachIndexed{imageIndex,file->ReceiptThumbnailFrame(file.id,imageIndex,{imagePreview=file.id}){MediaThumbnail(vm.repository,file,Modifier.fillMaxSize(),crop=true)}}
         }

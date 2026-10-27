@@ -35,5 +35,6 @@ fun openYohakuDatabase(context:Context,name:String="yohaku.db"):YohakuDatabase =
         MIGRATION_26_27,
         MIGRATION_27_28,
         MIGRATION_28_29,
-        MIGRATION_29_30
+        MIGRATION_29_30,
+        MIGRATION_30_31
     ).build()

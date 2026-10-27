@@ -155,7 +155,8 @@ suspend fun LedgerRepository.saveReceiptItems(bookId: String, preview: ReceiptBa
             fresh.file.bundle_id, FileProtocols.json.encodeToString(target.record),
             (target.existingItemsRevision ?: 0) + 1, clock.millis()))
         val receipt = dao.receipt(bookId, target.record.record_id)!!
-        dao.putReceipt(receipt.copy(status = if (target.addedImageIds.isEmpty() && target.totals.complete) "SORTED" else "UNSORTED"))
+        // Sorted means every current image has been through the cloud; incomplete details stay visible on the sorted receipt.
+        dao.putReceipt(receipt.copy(status = if (target.addedImageIds.isEmpty()) "SORTED" else "UNSORTED"))
     }
 }
 
@@ -177,10 +178,9 @@ suspend fun LedgerRepository.editReceiptItems(bookId: String, receiptId: String,
     val s = snapshot(book).first()
     val receipt = s.receipts.first { it.id == receiptId }
     val event = s.visibleEvents.firstOrNull { it.id == receipt.eventId } ?: error("原记账不存在 / 元の記録がありません")
-    val totals = receiptTotals(edited, FileMoney(event.currency, Money(Currency.valueOf(event.currency), event.amountMinor).decimal.toPlainString()))
     val currentImages = s.entryReceiptImages(event.id).map { it.id }.toSet()
     require(currentImages.containsAll(edited.image_ids)) { "来源图片已变化 / 元画像が変わりました" }
     db.fileWorkflowDao().putItems(existing.copy(recordJson = FileProtocols.json.encodeToString(edited),
         revision = existing.revision + 1, updatedAt = clock.millis()))
-    dao.putReceipt(receipt.copy(status = if (currentImages == edited.image_ids.toSet() && totals.complete) "SORTED" else "UNSORTED"))
+    dao.putReceipt(receipt.copy(status = if (currentImages == edited.image_ids.toSet()) "SORTED" else "UNSORTED"))
 }

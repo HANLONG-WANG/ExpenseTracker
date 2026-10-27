@@ -107,7 +107,9 @@ class FileWorkflowStorageTest {
         repo.saveReceiptItems(book, replacement, acceptReplacement = true)
         assertEquals(2, db.fileWorkflowDao().itemsForReceipt(book, receipt.id)!!.revision)
         val beforeEdit = repo.previewReceiptItems(book, raw)
-        repo.editReceiptItems(book, receipt.id, 2, record.copy(items = record.items.map { it.copy(name = "手工修改") }))
+        // Unresolved details remain visible on the item document; they do not keep the receipt in the inbox.
+        repo.editReceiptItems(book, receipt.id, 2, record.copy(complete = false, issues = listOf("数量看不清"), items = record.items.map { it.copy(name = "手工修改") }))
+        assertEquals("SORTED", snapshot().receipts.single().status)
         try { repo.saveReceiptItems(book, beforeEdit, acceptReplacement = true); fail("preview overwrote newer edit") } catch (_: IllegalArgumentException) { }
         assertEquals(3, db.fileWorkflowDao().itemsForReceipt(book, receipt.id)!!.revision)
         val edit = draft(event).copy(receiptFileIds = listOf(image.id)); repo.saveDraft(book, edit)

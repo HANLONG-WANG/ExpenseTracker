@@ -74,3 +74,12 @@ val MIGRATION_24_25=object:androidx.room.migration.Migration(24,25) {
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_statement_decisions_bookId_postingId ON statement_decisions(bookId,postingId)")
     }
 }
+
+/** Imported receipts used to stay unsorted while their details were incomplete; sorted now only means every current image was covered. */
+val MIGRATION_30_31 = object : androidx.room.migration.Migration(30, 31) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("""UPDATE receipts SET status='SORTED' WHERE status!='SORTED' AND EXISTS (SELECT 1 FROM receipt_item_documents d
+            WHERE d.bookId=receipts.bookId AND d.receiptId=receipts.id AND NOT EXISTS (SELECT 1 FROM receipt_images i
+            WHERE i.bookId=receipts.bookId AND i.receiptId=receipts.id AND i.revision=receipts.revision AND instr(d.recordJson,'"'||i.fileId||'"')=0))""")
+    }
+}
