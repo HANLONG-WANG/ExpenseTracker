@@ -1,3 +1,4 @@
+import {enqueueSubmission} from './mcp-events';
 import {env} from 'cloudflare:workers';
 import {TYPES,STATUS,validateResult} from './protocol';
 import {zipManifest,zipStream} from './zip';
@@ -44,7 +45,7 @@ export async function sourceContext(owner:string,t:any){const context=JSON.parse
 export async function changeStatus(owner:string,t:any,status:string,note:string){
  const allowed:Record<string,string[]>={uploading:['queued','archived'],queued:['analyzing','needs_info','archived'],analyzing:['needs_info','queued','archived'],needs_info:['queued','archived'],review:['analyzing','needs_info','archived'],ready:['analyzing','needs_info','archived'],archived:['queued']};assert(allowed[t.status]?.includes(status),'此状态不能直接切换',409);
  if(status==='queued'){const fs=await all('SELECT id FROM files WHERE taskId=? AND role=\'input\'',t.id);assert(fs.length>0,'请先上传原始资料');}
- if(status==='needs_info')assert(note.trim().length>0,'请填写需补充的资料');assert(note.length<=2000,'说明过长');const result=await sql('UPDATE tasks SET status=?,updatedAt=? WHERE id=? AND owner=? AND status=?',status,now(),t.id,owner,t.status).run();assert(result.meta.changes,'任务状态已变化，请刷新',409);await log(owner,t.id,STATUS[status]+(note?'：'+note:''));return detail(owner,t.id);
+ if(status==='needs_info')assert(note.trim().length>0,'请填写需补充的资料');assert(note.length<=2000,'说明过长');const stamp=now()+':'+crypto.randomUUID();const update=sql('UPDATE tasks SET status=?,updatedAt=? WHERE id=? AND owner=? AND status=? AND inputRevision=?',status,stamp,t.id,owner,t.status,t.inputRevision);const submission=status==='queued'&&['uploading','needs_info'].includes(t.status);const results=await db().batch(submission?[update,enqueueSubmission(t,stamp),sql('UPDATE tasks SET updatedAt=? WHERE id=? AND updatedAt=?',now(),t.id,stamp)]:[update,sql('UPDATE tasks SET updatedAt=? WHERE id=? AND updatedAt=?',now(),t.id,stamp)]);assert(results[0].meta.changes,'任务状态已变化，请刷新',409);await log(owner,t.id,STATUS[status]+(note?'：'+note:''));return detail(owner,t.id);
 }
 export async function submitResult(owner:string,t:any,b:any){
  assert(['analyzing','review','ready'].includes(t.status),'请先开始分析任务',409);assert(typeof b.content==='string'&&new TextEncoder().encode(b.content).length<=2_000_000,'结果文件需小于 2 MB');assert(Number.isInteger(b.inputRevision)&&b.inputRevision===t.inputRevision,'原始资料版本已变化，请重新分析',409);assert(typeof b.summary==='string'&&b.summary.length<=20000,'请填写 2 万字以内的分析说明');let data:any;try{data=JSON.parse(b.content.replace(/^\uFEFF/,''));}catch{assert(t.type==='general','结果必须是有效 JSON');}

@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "list_analysis_tasks",
-      "description": "列出当前用户的分析任务。网站不自动分析，需用户明确委托后处理。",
+      "description": "列出当前用户的分析任务。按用户当前委托或已建立的事件订阅处理；重复事件先读取任务状态，仅领取 queued 的当前资料版本。",
       "inputSchema": {
         "type": "object",
         "properties": {

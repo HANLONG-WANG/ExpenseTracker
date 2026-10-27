@@ -11,6 +11,8 @@ CREATE TABLE tasks(id TEXT PRIMARY KEY,owner TEXT,type TEXT,title TEXT,instructi
 CREATE TABLE files(id TEXT PRIMARY KEY,taskId TEXT,owner TEXT,role TEXT,name TEXT,mime TEXT,size INTEGER,sha256 TEXT,objectKey TEXT,createdAt TEXT,UNIQUE(taskId,role,name,sha256));
 CREATE TABLE results(id TEXT PRIMARY KEY,taskId TEXT,owner TEXT,version INTEGER,inputRevision INTEGER,fileId TEXT,summary TEXT,validation TEXT,state TEXT,createdAt TEXT,UNIQUE(taskId,version));
 CREATE TABLE events(id TEXT PRIMARY KEY,taskId TEXT,owner TEXT,message TEXT,createdAt TEXT);
+CREATE TABLE mcp_subscriptions(id TEXT PRIMARY KEY,owner TEXT,url TEXT,taskType TEXT,secret TEXT,previousSecret TEXT,previousUntil INTEGER,expiresAt INTEGER,verifiedAt INTEGER,active INTEGER);
+CREATE TABLE mcp_deliveries(id TEXT PRIMARY KEY,subscriptionId TEXT,taskId TEXT,owner TEXT,inputRevision INTEGER,eventId TEXT,payload TEXT,state TEXT,attempts INTEGER,nextAttempt INTEGER,lastError TEXT);
 CREATE TABLE devices(id TEXT PRIMARY KEY,owner TEXT,name TEXT,tokenHash TEXT,active INTEGER,createdAt TEXT,lastUsed TEXT);
 `);
 function statement(query,args=[]){return {bind(...args){return statement(query,args);},async all(){return {results:database.prepare(query).all(...args)};},async first(){return database.prepare(query).get(...args)||null;},async run(){const r=database.prepare(query).run(...args);return {meta:{changes:Number(r.changes)}};}};}
@@ -23,8 +25,11 @@ const moduleURL=text=>'data:text/javascript;base64,'+Buffer.from(stripTypeScript
 const protocol=moduleURL(readFileSync('lib/protocol.ts','utf8').replace(/import (\w+) from '([^']+)';/g,(_,name,path)=>`const ${name}=${readFileSync('lib/'+path,'utf8')};`));
 const zip=moduleURL(readFileSync('lib/zip.ts','utf8'));
 let source=readFileSync('lib/service.ts','utf8').replace("import {env} from 'cloudflare:workers';",'const env=globalThis.__env;').replace("'./protocol'",JSON.stringify(protocol)).replace("'./zip'",JSON.stringify(zip)).replace(/import (\w+) from '(\.\/formats\/[^']+)';/g,(_,name,path)=>`const ${name}=${readFileSync('lib/'+path,'utf8')};`);
+const eventModule=moduleURL(readFileSync('lib/mcp-events.ts','utf8').replace("import {env} from 'cloudflare:workers';",'const env=globalThis.__env;'));
+source=source.replace("'./mcp-events'",JSON.stringify(eventModule));
+const eventService=await import(eventModule);
 const service=moduleURL(source);
-const route=await import(moduleURL(readFileSync('app/mcp/route.ts','utf8').replace("import {env} from 'cloudflare:workers';",'const env=globalThis.__env;').replaceAll("'@/lib/service'",JSON.stringify(service)).replaceAll("'@/lib/protocol'",JSON.stringify(protocol))));
+const route=await import(moduleURL(readFileSync('app/mcp/route.ts','utf8').replace("import {env} from 'cloudflare:workers';",'const env=globalThis.__env;').replaceAll("'@/lib/mcp-events'",JSON.stringify(eventModule)).replaceAll("'@/lib/service'",JSON.stringify(service)).replaceAll("'@/lib/protocol'",JSON.stringify(protocol))));
 
 const svc=await import(service);
 const routeSource=readFileSync('app/mcp/route.ts','utf8');
@@ -97,5 +102,50 @@ await test('invalid receipt saved as review but cannot publish',async()=>{
 await test('invalid JSON and total request size fail outside tool envelope',async()=>{
  let r=await rpc('tools/list',{}, {raw:'{'});assert.equal(r.status,400);assert.equal(r.body.error.code,-32000);
  r=await rpc('tools/list',{}, {raw:' '.repeat(2500001)});assert.equal(r.status,413);
+});
+await test('MCP event subscription verifies signed callback, refreshes, and isolates owners',async()=>{
+ const {createHmac}=await import('node:crypto');
+ const secret='whsec_'+Buffer.alloc(32,7).toString('base64');
+ const sent=[];globalThis.fetch=async(url,init)=>{
+   const body=JSON.parse(init.body);sent.push(body);
+   const h=init.headers;const expected='v1,'+createHmac('sha256',Buffer.alloc(32,7)).update(`${h['webhook-id']}.${h['webhook-timestamp']}.${init.body}`).digest('base64');
+   assert.equal(h['webhook-signature'],expected);assert.equal(init.redirect,'error');
+   return Response.json(body.type==='verification'?{challenge:body.challenge}:{});
+ };
+ const params={name:'analysis_task.submitted',arguments:{type:'general'},delivery:{mode:'webhook',url:'https://api.chatgpt.com/mcp-events/synthetic',secret}};
+ assert.equal((await rpc('events/list')).body.result.events[0].name,params.name);
+ assert.deepEqual((await rpc('server/discover')).body.result.capabilities.events,{});
+ const subscription=(await rpc('events/subscribe',params)).body.result;assert(subscription.id);assert.equal(sent.length,1);
+ assert.equal((await rpc('events/subscribe',params)).body.result.id,subscription.id);assert.equal(sent.length,1);
+ await rpc('events/unsubscribe',params,{owner:'bob'});assert.equal(database.prepare('SELECT COUNT(*) n FROM mcp_subscriptions').get().n,1);
+ const bad=await rpc('events/subscribe',{...params,delivery:{...params.delivery,url:'https://127.0.0.1/secret'}});assert.equal(bad.body.error.code,-32015);
+ const pending=await svc.createTask('alice',{type:'general',title:'Event synthetic task'},'event-test');
+ const uploadBytes=new TextEncoder().encode('source');await svc.upload('alice',pending,new Request('https://desk.example/files?name=test.txt',{method:'POST',body:uploadBytes,headers:{'content-length':String(uploadBytes.length),'x-content-sha256':await sha(uploadBytes)}}));
+ assert.equal(database.prepare('SELECT COUNT(*) n FROM mcp_deliveries').get().n,0);
+ await svc.changeStatus('alice',await svc.task('alice',pending.id),'queued','');
+ assert.equal(database.prepare('SELECT COUNT(*) n FROM mcp_deliveries').get().n,1);
+ await eventService.deliverPending();assert.equal(sent[1].data.taskId,pending.id);assert.equal(sent[1].data.inputRevision,1);
+ assert.equal(database.prepare('SELECT state FROM mcp_deliveries').get().state,'delivered');
+ await eventService.deliverPending();assert.equal(sent.length,2);
+ await svc.changeStatus('alice',await svc.task('alice',pending.id),'analyzing','');
+ await svc.changeStatus('alice',await svc.task('alice',pending.id),'queued','');
+ assert.equal(database.prepare('SELECT COUNT(*) n FROM mcp_deliveries').get().n,1);
+ await rpc('events/unsubscribe',params);await rpc('events/unsubscribe',params);
+ assert.equal(database.prepare('SELECT COUNT(*) n FROM mcp_subscriptions').get().n,0);
+});
+await test('webhook retries preserve event ID; permanent failure is recorded',async()=>{
+ const id='sub_retry',secret='whsec_'+Buffer.alloc(32,3).toString('base64');
+ database.prepare('INSERT INTO mcp_subscriptions VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,'alice','https://api.chatgpt.com/mcp-events/synthetic','general',secret,null,0,Date.now()+60000,Date.now(),1);
+ const pending=await svc.createTask('alice',{type:'general',title:'Retry synthetic'},'retry-test');
+ database.prepare("UPDATE tasks SET status='queued',inputRevision=1 WHERE id=?").run(pending.id);
+ const payload={eventId:'evt_test',name:'analysis_task.submitted',timestamp:new Date().toISOString(),data:{taskId:pending.id,inputRevision:1,type:'general'},cursor:null};
+ database.prepare('INSERT INTO mcp_deliveries VALUES(?,?,?,?,?,?,?,?,?,?,?)').run('delivery_retry',id,pending.id,'alice',1,'evt_test',JSON.stringify(payload),'pending',0,0,null);
+ const calls=[];globalThis.fetch=async(url,init)=>{calls.push(JSON.parse(init.body).eventId);return new Response('',{status:calls.length===1?503:200});};
+ await eventService.deliverPending();assert.deepEqual(calls,['evt_test','evt_test']);
+ database.prepare("UPDATE mcp_deliveries SET state='pending',attempts=0,nextAttempt=0 WHERE id='delivery_retry'").run();
+ globalThis.fetch=async()=>new Response('',{status:410});await eventService.deliverPending();
+ assert.equal(database.prepare("SELECT state FROM mcp_deliveries WHERE id='delivery_retry'").get().state,'failed');
+ assert.equal(database.prepare('SELECT active FROM mcp_subscriptions WHERE id=?').get(id).active,0);
+ assert(database.prepare("SELECT message FROM events WHERE taskId=? AND message LIKE '自动通知%' ").get(pending.id));
 });
 console.log(`${count} contract checks passed; isolated SQLite/R2 only. Hosted gateway/OAuth not simulated.`);

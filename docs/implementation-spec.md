@@ -172,6 +172,7 @@
 - 资料先复制到内部目录、记录大小/SHA-256与任务、Idempotency-Key及原始创建体，再由WorkManager串行上传；重试复用同一份字节和同一键，上传回包丢失先查任务文件。提交确认后才登记小票导出批次（`recordSavedReceiptExport`）。待补资料任务可补充文件后再次提交。
 - 领取只选`ready`、非过期且`inputRevision`一致的结果，下载到临时文件核对大小与SHA-256后严格UTF-8解码，再走原有`previewStatement`/`previewReceiptItems`预览；保存时按任务锁定的账本/账户/批次校验。本地事务内同时写入业务资料、导入记录（站点+taskId+resultId+sha256）与imported回执；回执由WorkManager重试，绝不重新导入。实际保存失败才发failed，取消预览不发送。
 - 前台打开交接台时按需轮询（30秒），无推送、无后台同步。网页工作台由系统浏览器打开。
+- 云端工作台另提供 MCP Events：用户在 Work 建立持续订阅后，首次上传提交或补充资料提交可触发助手处理；此为服务端到 Work 的事件通知，不是手机推送。协议、投递重试边界与接入步骤见 `docs/mcp-implementation-handoff-package/reference/README.md`。手机仍需领取、预览并确认结果。
 
 ### 3.4 手动完整备份 / 恢复（formatVersion=1）
 
