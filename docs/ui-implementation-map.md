@@ -474,3 +474,11 @@ UI06流水日历补充（2026-10-26）：`LedgerCalendar.kt` 新增列表/日历
 
 
 CSV 迁入（2026-10-26）：设置「数据」新增 `settings-csv` → `csv-import`，`CsvImportScreen` 四步依次为文件/编码、列与收支、账户/分类、预览/逐行修正。沿用 `YLead/Panel/YSelect/YField/YToggle/YButton/YSheet`，完整中日文与各主题样式，20行问题分页、30行批次/回收站组内分页。新建账户复用 `AccountEditor`。确认文案明确生成正式账目、期初后改变余额、退款作普通收入，区别于银行流水核对。历史批次查看/撤销及整组回收恢复同现有主题组件；`CsvImportRoundTripTest` 的 `csvVisual=true` 可输出六种外观截图。本轮已在原本运行的设备上完成320dp/字体1.3的六种外观截图检查和导入撤销恢复测试，未启动新模拟器。
+
+
+UI05/UI15–UI19 信用卡功能补充（2026-10-28）：
+
+- `CreditLimitScreen` → 编辑额度条件 → 选择按付款日恢复 → 填自然日延迟 N；`LimitConfigFacts` 与 `FinancialRuleRecovery` 同时展示 N，老配置为0。
+- `FinancialRuleEditor` → 一次付 → 可选ボーナス期间1/2；`FinancialRuleDraft` 保存/复制版本，`FinancialRuleFacts` 用于审阅及历史。`CardPaymentFields` 增加ボーナス一括、指定月一括（YYYY-MM及可选费用），`CardPaymentFacts` 展示记录方式、付款月及采用版本。`FinancialArrangementEditor` → 新方式一次付 → 付款日期依据，填入首次付款日或生成逐期日期。
+- `FinancialAccountOverview` 本期「查看该月账单」附近、`FinancialStatements` 每个付款日分组 → 「まとめてリボ」 → `BatchRevolvingEditor`。仅有可转账单时显示；默认全选，可修改转换本金，复用余额池创建/重算入口及 `PoolPaymentComparisonFacts`。支持已确认未付款账单；事务内按消费日/创建顺序转换，末笔保留余额。保存后总览/账单显示整组撤销入口，余额池计划历史保留批次比较及撤销记录。退款仍从既有安排重核入口分配一次付/リボ归属。
+- Room 32→33 新增恢复延迟与事件付款月/费用，备份包含原数据库及计划历史。新增 `CreditCardOptionsTest`、`CreditCardOptionsStorageTest` 与 v32 升级用例；本轮仅执行 JVM 与编译验证，仪器及三主题中日文视觉待用户验证。

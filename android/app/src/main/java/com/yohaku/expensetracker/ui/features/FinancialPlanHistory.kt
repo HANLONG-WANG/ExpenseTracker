@@ -48,6 +48,10 @@ private sealed interface PlanHistoryRead {
                     YButton(word("查看当时各期","当時の各回を見る")+if(selected==r.version)" −"else" +",{selected=if(selected==r.version)null else r.version},Modifier.testTag("finance-plan-version-open-${r.version}"))
                     if(selected==r.version) {
                         if(r.reason in listOf("ARRANGEMENT_RECONCILED","RECONCILIATION_RECALCULATED"))a.plan.reconciliation()?.let{record->FinancialReconciliationHistory(record,currency,vm.repository.clock.zone)}
+                        a.batchArrangement?.let{batch->
+                            RecordFacts(listOf(word("原付款日","元の支払日") to batch.paymentDate,word("整组转换本金","グループの変更元金") to Money(currency,batch.arrangements.sumOf{it.principalMinor}).display()))
+                            ArrangementRows(word("办理时的新付款","手続き時の新しい支払"),batch.comparison.proposed,currency,batch.comparison.proposedRemainingPrincipalMinor)
+                        }
                         a.poolMerge?.let{proof->
                             val change=vm.repository.json.decodeFromString<FinancialArrangementInput>(proof.arrangement.inputJson)
                             val comparison=vm.repository.json.decodeFromString<FinancialArrangementComparison>(proof.arrangement.comparisonJson)
@@ -89,6 +93,8 @@ private sealed interface PlanHistoryRead {
 }
 
 @Composable private fun financialPlanReason(reason:String)=when(reason) {
+    "BATCH_REVOLVING"->word("まとめてリボ整组办理","まとめてリボ一括手続き")
+    "BATCH_REVOLVING_UNDONE"->word("まとめてリボ整组撤销","まとめてリボ一括取消")
     "POOL_MERGED"->word("并入共同付款池","共通支払プールに統合")
     "ARRANGEMENT_RECONCILED"->word("核对当前已办理义务","手続き済みの現在債務を確認")
     "RECONCILIATION_POOL"->word("并入来源重核后的共同付款","統合元データの再確認後の共同支払")

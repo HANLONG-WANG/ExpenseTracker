@@ -12,7 +12,7 @@ import java.time.LocalDate
 @Serializable data class FinancialPredictionInput(
     val accountId:String,val name:String,val mode:FinanceMode,val terms:FinancialScheduleTerms,
     val sourceEventId:String?=null,val openingPrincipalMinor:Long?=null,val paymentAccountId:String?=null,val planId:String?=null,
-    val currentArrangementConfirmed:Boolean=false,val facts:FinancialPredictionFacts?=null,val projections:List<FinancialPeriodProjection> = emptyList(),val pool:FinancialPoolInput?=null
+    val currentArrangementConfirmed:Boolean=false,val facts:FinancialPredictionFacts?=null,val projections:List<FinancialPeriodProjection> = emptyList(),val pool:FinancialPoolInput?=null,val additionalFeeUnknown:Boolean=false
 )
 class FinancialPredictionReview internal constructor(
     internal val before:FinancialReviewState,val input:FinancialPredictionInput,val plan:FinancialPlanEntity,
@@ -38,6 +38,7 @@ fun LedgerRepository.financialPredictionStale(s:BookSnapshot,finance:FinancialGr
     val arranged=finance.arrangements.any{it.targetPlanId==plan.id}
     if(!arranged&&plan.sourceEventId!=null){val source=s.visibleEvents.firstOrNull{it.id==plan.sourceEventId};if(source?.cardPaymentMode!=null&&source.cardPaymentMode!=plan.mode)return true;if(plan.origin=="CARD_ENTRY"&&plan.mode=="INSTALLMENT"&&source?.cardPaymentPeriods!=finance.bills.count{it.planId==plan.id&&it.active})return true}
     val input=plan.termsJson?.let{json.decodeFromString<FinancialPredictionInput>(it)}?:return false
+    if(input.additionalFeeUnknown&&finance.bills.any{it.planId==plan.id&&it.active&&!it.confirmed})return true
     val savedFacts=input.facts?:return true
     if(predictionFacts(s,finance,plan.id,input.sourceEventId,savedFacts.asOf)!=savedFacts)return true
     val today=LocalDate.now(clock).toString()
@@ -90,8 +91,17 @@ suspend fun LedgerRepository.previewFinancialPrediction(bookId:String,input:Fina
     prepareFinancialPrediction(financialReviewState(bookId),input)
 }
 
-internal fun LedgerRepository.prepareFinancialPrediction(state:FinancialReviewState,input:FinancialPredictionInput):FinancialPredictionReview {
-    if(input.pool!=null)return prepareFinancialPool(state,input)
+internal fun LedgerRepository.prepareFinancialPrediction(state:FinancialReviewState,requested:FinancialPredictionInput):FinancialPredictionReview {
+    if(requested.pool!=null)return prepareFinancialPool(state,requested)
+    val cardSource=state.ledger.visibleEvents.firstOrNull{it.id==requested.sourceEventId&&it.cardPaymentChoice in listOf("BONUS","DEFERRED")}?.takeIf{requested.mode==FinanceMode.SINGLE&&state.finance.arrangements.none{a->a.targetPlanId==requested.planId}}
+    val cardRule=cardSource?.let{state.finance.rules.cardRule(it.accountId,it.date,"SINGLE")}?.let{json.decodeFromString<FinancialRuleVersion>(it.json)}
+    val cardIssue=when {
+        cardSource==null->null
+        cardSource.cardPaymentChoice=="BONUS"&&(cardRule==null||bonusPaymentIssues(cardRule.bonusPayments).isNotEmpty()||bonusPaymentDate(LocalDate.parse(cardSource.date),cardRule.bonusPayments)==null)->"bonus.settings"
+        cardRule?.billing?.issues()?.isEmpty()!=true->"billing"
+        else->null
+    }
+    val input=if(cardSource!=null&&cardIssue==null)requested.copy(terms=requested.terms.copy(paymentDates=listOf(recordedSinglePaymentDate(cardSource,cardRule!!).toString()),additionalFees=cardSource.cardPaymentFeeMinor?.let{listOf(AdditionalPeriodFee(1,it))}.orEmpty()),additionalFeeUnknown=cardSource.cardPaymentChoice=="DEFERRED"&&cardSource.cardPaymentFeeMinor==null)else requested
     val bookId=state.ledger.book.id
     val account=requireNotNull(state.ledger.accounts.firstOrNull{it.id==input.accountId}){"账户不属于本账本 / 別の帳簿の口座です"}
     requireMode(account,input.mode)
@@ -123,14 +133,15 @@ internal fun LedgerRepository.prepareFinancialPrediction(state:FinancialReviewSt
     require(facts.retainedBills.all{it.number<=input.terms.paymentDates.size}){"重算范围须保留已确认、有付款关联或已过期的账期 / 再計算の範囲には確定・支払関連・期日経過の請求を含めてください"}
     val gross=if(incoming!=null)incoming.principalMinor else if(input.sourceEventId!=null)state.ledger.accountMoney(state.ledger.visibleEvents.first{it.id==input.sourceEventId}).minor else principal
     val baselineIssue=old?.let{arrangementBaselineIssue(state.ledger,state.finance,it)}
-    val result=if(baselineIssue!=null)Calculation.Incomplete(listOf(baselineIssue))
+    val result=if(cardIssue!=null)Calculation.Incomplete(listOf(cardIssue))
+        else if(baselineIssue!=null)Calculation.Incomplete(listOf(baselineIssue))
         else if(principal<0)Calculation.Incomplete(listOf("plan.noPrincipal"))
         else if(gross<=0)Calculation.Incomplete(listOf("plan.noPrincipal"))
         else if(incoming==null&&input.sourceEventId==null&&input.mode==FinanceMode.INSTALLMENT&&input.terms.remainingFeeMinor==null&&input.terms.overrides.size!=input.terms.paymentDates.size)Calculation.Incomplete(listOf("plan.remainingFees"))
         else reconciledSchedule(gross,input.mode,input.terms,versions,facts.retainedPeriods(),facts.principalFacts(),LocalDate.parse(facts.asOf))
     val periods=(result as? Calculation.Ready)?.value.orEmpty()
     val plan=FinancialPlanEntity(bookId,old?.id?:id(),account.id,input.name.trim(),input.mode.name,old?.origin?:if(input.sourceEventId==null)"OPENING"else"EVENT",
-        input.sourceEventId,account.currency,principal,result is Calculation.Ready&&(periods.lastOrNull()?.period?.remainingPrincipalMinor?:Math.subtractExact(gross,facts.principalFacts().filter{it.date<=input.terms.paymentDates.last()}.fold(0L){sum,p->Math.addExact(sum,p.principalMinor)}))==0L,old?.createdAt?:clock.millis(),
+        input.sourceEventId,account.currency,principal,(!input.additionalFeeUnknown||existing.all{it.confirmed}&&existing.isNotEmpty())&&result is Calculation.Ready&&(periods.lastOrNull()?.period?.remainingPrincipalMinor?:Math.subtractExact(gross,facts.principalFacts().filter{it.date<=input.terms.paymentDates.last()}.fold(0L){sum,p->Math.addExact(sum,p.principalMinor)}))==0L,old?.createdAt?:clock.millis(),
         if(old==null)1 else Math.addExact(old.revision,1),true,json.encodeToString(input.copy(planId=old?.id,facts=facts,projections=periods.map{FinancialPeriodProjection(it.period.number,it.period.date.toString(),it.period.principalMinor,it.period.feeMinor,it.basis)})),reconciliationJson=old?.reconciliationJson)
     val bills=periods.map{p->
         val previous=existing.firstOrNull{it.number==p.period.number}
@@ -141,7 +152,7 @@ internal fun LedgerRepository.prepareFinancialPrediction(state:FinancialReviewSt
                 basisJson=json.encodeToString(p.basis),revision=Math.addExact(kept.revision,1),active=true)
         }else FinancialBillEntity(bookId,previous?.id?:id(),plan.id,p.period.number,
             input.paymentAccountId?:versions.firstOrNull{it.rule.id==p.ruleId}?.rule?.billing?.paymentAccountId,
-            p.ruleId,p.period.date.toString(),p.period.principalMinor,p.period.feeMinor,p.period.totalMinor,json.encodeToString(p.basis),
+            p.ruleId,p.period.date.toString(),p.period.principalMinor,if(input.additionalFeeUnknown)null else p.period.feeMinor,p.period.totalMinor,json.encodeToString(p.basis.copy(additionalFeeUnknown=input.additionalFeeUnknown)),
             null,null,null,null,null,if(previous==null)1 else Math.addExact(previous.revision,1))
     }
     val withdrawn=existing.filter{result is Calculation.Ready&&it.active&&it.id !in retainedIds&&it.number !in bills.map{b->b.number}}.map{it.copy(active=false,revision=Math.addExact(it.revision,1))}

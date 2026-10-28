@@ -100,6 +100,7 @@ import com.yohaku.expensetracker.ui.theme.*
             key in setOf("payment","totalFee")->raw+" "+currency.name
             else->raw}
     })
+    rule.bonusPayments.forEachIndexed{i,w->RecordFacts(listOf(word("ボーナス期间 ${i+1}","ボーナス期間${i+1}") to "${w.startMonth}/${w.startDay}〜${w.endMonth}/${w.endDay} → ${w.paymentMonth}/${w.paymentDay}"))}
     rule.limitRecovery?.let{previous->
         RecordFacts(listOf(word("此版本曾填写的恢复条件","このバージョンの枠回復入力") to limitLabel(previous.name)))
         YText(word("此处保留原输入；实际额度预测采用“额度与恢复”的独立设置。","以前の入力記録です。実際の枠予測は「利用枠と回復」の個別設定を使用します。"),11,color=LocalYohaku.current.muted)

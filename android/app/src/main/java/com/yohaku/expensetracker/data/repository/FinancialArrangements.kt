@@ -16,7 +16,8 @@ import com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot
     val paymentAccountId:String?,val originalFeeTreatment:OriginalFeeTreatment?=null,val changeFeeMinor:Long?=null,val referenceRates:List<ReferenceRateSnapshot> = emptyList(),
     val clearingMoves:List<ArrangementClearingMove> = emptyList(),val poolSelection:PoolArrangementSelection?=null,
     val mergePoolId:String?=null,val mergeFeeDate:String?=null,val mergeFeeIncludedInRetained:Boolean=false,val loanLimitDeltaMinor:Long?=null,
-    val manualPeriods:List<KnownBillInput>?=null,val manualComplete:Boolean=false
+    val manualPeriods:List<KnownBillInput>?=null,val manualComplete:Boolean=false,
+    val transferPrincipalMinor:Long?=null,val undoGroupId:String?=null
 )
 /** Null period keeps this portion on its original bill; positive periods belong to the new plan. */
 @Serializable data class ArrangementClearingMove(val allocationId:String,val period:Int?,val principalMinor:Long,val interestMinor:Long,val feeMinor:Long,val poolBillId:String?=null)
@@ -95,7 +96,7 @@ suspend fun LedgerRepository.previewFinancialArrangement(bookId:String,input:Fin
     prepareFinancialArrangement(financialReviewState(bookId),input)
 }
 
-private fun LedgerRepository.prepareFinancialArrangement(state:FinancialReviewState,input:FinancialArrangementInput):FinancialArrangementReview {
+internal fun LedgerRepository.prepareFinancialArrangement(state:FinancialReviewState,input:FinancialArrangementInput):FinancialArrangementReview {
     val s=state.ledger;val f=state.finance
     val old=requireNotNull(f.plans.firstOrNull{it.id==input.planId&&it.active}){"请选择当前计划 / 適用中の予定を選択してください"}
     if(old.origin=="POOL")return preparePoolArrangement(state,input,old)
@@ -144,14 +145,19 @@ private fun LedgerRepository.prepareFinancialArrangement(state:FinancialReviewSt
     if(existing.any{s.billOutstanding(it).totalMinor<0||s.billOutstanding(it).principalMinor!!<0||s.billOutstanding(it).feeMinor!!<0})return incomplete("arrangement.originalBreakdown")
     val kept=input.clearingMoves.filter{it.period==null&&it.poolBillId==null}.groupBy{move->later.first{it.id==move.allocationId}.billId}
     val reserved=Math.addExact(retained.fold(0L){sum,b->Math.addExact(sum,atEffective.billOutstanding(b).principalMinor!!)},kept.values.flatten().sumOf{it.principalMinor})
-    val principal=Math.subtractExact(remaining,reserved)
+    val available=Math.subtractExact(remaining,reserved)
+    val principal=input.transferPrincipalMinor?:available
+    if(input.transferPrincipalMinor!=null) {
+        if(old.mode!="SINGLE"||input.mergePoolId==null||existing.size!=1||existing.single().date<maxOf(effective,LocalDate.now(clock).toString())||facts.repayments.isNotEmpty())return incomplete("arrangement.partialSingle")
+        if(principal<=0||principal>available||principal>atEffective.billOutstanding(existing.single()).principalMinor!!)return incomplete("arrangement.partialAmount")
+    }
     if(principal<=0)return incomplete("arrangement.noEligiblePrincipal")
     if(input.loanLimitDeltaMinor?.let{it < -principal||it>principal}==true)return incomplete("arrangement.limitDelta")
     val eligible=existing.filter{it.date>=input.terms.agreementDate}
     if(eligible.any{s.billOutstanding(it).totalMinor<0||s.billOutstanding(it).principalMinor!!<0||s.billOutstanding(it).feeMinor!!<0})return incomplete("arrangement.originalBreakdown")
-    val moved=eligible.fold(0L){sum,b->Math.addExact(sum,Math.subtractExact(atEffective.billOutstanding(b).principalMinor!!,kept[b.id].orEmpty().sumOf{it.principalMinor}))}
+    val moved=if(input.transferPrincipalMinor!=null)principal else eligible.fold(0L){sum,b->Math.addExact(sum,Math.subtractExact(atEffective.billOutstanding(b).principalMinor!!,kept[b.id].orEmpty().sumOf{it.principalMinor}))}
     if(moved>principal)return incomplete("arrangement.originalBreakdown")
-    val adjusted=eligible.map{bill->val due=atEffective.billOutstanding(bill);FinancialBillAdjustmentEntity(s.book.id,id(),arrangementId,bill.id,Math.subtractExact(due.principalMinor!!,kept[bill.id].orEmpty().sumOf{it.principalMinor}),if(input.originalFeeTreatment==OriginalFeeTreatment.CANCELLED_BY_PLATFORM)Math.subtractExact(due.feeMinor!!,kept[bill.id].orEmpty().sumOf{Math.addExact(it.interestMinor,it.feeMinor)})else 0)}
+    val adjusted=eligible.map{bill->val due=atEffective.billOutstanding(bill);FinancialBillAdjustmentEntity(s.book.id,id(),arrangementId,bill.id,if(input.transferPrincipalMinor!=null)principal else Math.subtractExact(due.principalMinor!!,kept[bill.id].orEmpty().sumOf{it.principalMinor}),if(input.originalFeeTreatment==OriginalFeeTreatment.CANCELLED_BY_PLATFORM&&input.transferPrincipalMinor==null)Math.subtractExact(due.feeMinor!!,kept[bill.id].orEmpty().sumOf{Math.addExact(it.interestMinor,it.feeMinor)})else 0)}
     if(adjusted.any{it.principalMinor<0||it.feeMinor<0})return incomplete("arrangement.clearingSplit")
     if(input.mergePoolId!=null) {
         if(input.manualPeriods!=null)return incomplete("arrangement.manualMerge")

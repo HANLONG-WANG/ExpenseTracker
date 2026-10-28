@@ -17,9 +17,9 @@ import java.time.*
 @Composable private fun financialAmount(c:Currency,n:Long?)=n?.let{Money(c,it).display()}?:word("未知","不明")
 @Composable private fun recordedPaymentLabel(s:BookSnapshot,e:EventEntity):String {
     val mode=e.cardPaymentMode?:s.contracts.firstOrNull{it.fundingEventId==e.id}?.mode
-    return if(mode==null)cardPaymentLabel(null)else financeLabel(mode)
+    return if(e.cardPaymentChoice in listOf("BONUS","DEFERRED"))cardPaymentLabel(e.cardPaymentChoice)+e.cardPaymentMonth?.let{" · "+it}.orEmpty()else if(mode==null)cardPaymentLabel(null)else financeLabel(mode)
 }
-@Composable internal fun FinancialAccountOverview(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,vm:AppViewModel,onStatement:(String)->Unit,onRepay:(String?)->Unit,onCompare:(String)->Unit,onRules:()->Unit,onPlan:()->Unit,onRecord:(EventEntity)->Unit,onMovements:()->Unit={},onFund:((String,String?)->Unit)?=null) {
+@Composable internal fun FinancialAccountOverview(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,vm:AppViewModel,onStatement:(String)->Unit,onRepay:(String?)->Unit,onCompare:(String)->Unit,onRules:()->Unit,onPlan:()->Unit,onRecord:(EventEntity)->Unit,onMovements:()->Unit={},onFund:((String,String?)->Unit)?=null,onBatchRevolving:(String)->Unit={}) {
     val date by vm.today.collectAsStateWithLifecycle();val today=date.toString();val c=Currency.valueOf(a.currency)
     val stale=f.plans.filter{vm.repository.financialPredictionStale(s,f,it)}.map{it.id}.toSet()
     val summary=s.financialAccountSummary(f,a.id,today,stale)
@@ -86,6 +86,7 @@ import java.time.*
         if(summary.next.isNotEmpty()) {
             YText(when{totals.predicted==0->word("平台已确认账单","返済先の確定請求");totals.confirmed==0->word("本地预测账单","ローカル予測");else->word("含已确认与本地预测","確定・予測を含みます")},12,color=LocalYohaku.current.accent)
             RecordFacts(listOf(word("待清偿本金","未返済元金") to financialAmount(c,totals.principalMinor),word("待清偿费用","未返済手数料") to financialAmount(c,totals.feeMinor),word("已付待确认","支払済み・確認待ち") to financialAmount(c,totals.pendingMinor),word("仍需备款","今後必要な資金") to financialAmount(c,totals.cashRequiredMinor)))
+            if(vm.repository.batchRevolvingCandidates(s,f,a.id,summary.nextDate!!).isNotEmpty())YButton(word("まとめてリボ","まとめてリボ"),{onBatchRevolving(summary.nextDate!!)},Modifier.testTag("finance-next-batch-revolving"))
             YButton(word("查看该月账单","該当月の明細を見る"),{onStatement(summary.nextDate!!.take(7))},Modifier.testTag("finance-next-statement"))
         }
         }
@@ -120,7 +121,7 @@ import java.time.*
     FinancialLoanModes(s,a,f,onPlan,onMovements)
 }
 
-@Composable internal fun FinancialStatements(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,vm:AppViewModel,month:String,onMonth:(String)->Unit,onBill:(String)->Unit,onPlan:()->Unit,onRecord:(EventEntity)->Unit) {
+@Composable internal fun FinancialStatements(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,vm:AppViewModel,month:String,onMonth:(String)->Unit,onBill:(String)->Unit,onPlan:()->Unit,onRecord:(EventEntity)->Unit,onBatchRevolving:(String)->Unit={}) {
     val today by vm.today.collectAsStateWithLifecycle();val c=Currency.valueOf(a.currency)
     val stale=f.plans.filter{vm.repository.financialPredictionStale(s,f,it)}.map{it.id}.toSet()
     val summary=s.financialAccountSummary(f,a.id,today.toString(),stale);val selected=YearMonth.parse(month)
@@ -140,6 +141,7 @@ import java.time.*
     }
     rows.groupBy{it.bill.date}.forEach{(date,bills)->
         ThemeSection(date,"PAYMENT DATE")
+        if(vm.repository.batchRevolvingCandidates(s,f,a.id,date).isNotEmpty())YButton(word("まとめてリボ","まとめてリボ"),{onBatchRevolving(date)},Modifier.testTag("statement-batch-revolving-$date"))
         bills.forEach{r->Panel(Modifier.testTag("statement-bill-${r.bill.id}")) {
             YText(r.plan.name,18);YText(financeLabel(r.plan.mode),12);FinancialBillFacts(r.bill,c)
             RecordFacts(listOf(word("实际清偿后剩余","実返済後の残額") to Money(c,r.outstanding.totalMinor).display(),word("已付待确认","支払済み・確認待ち") to financialAmount(c,r.pendingTotalMinor),word("扣款账户","引落口座") to (s.accounts.firstOrNull{it.id==r.bill.paymentAccountId}?.name?:word("未确定","未定"))))

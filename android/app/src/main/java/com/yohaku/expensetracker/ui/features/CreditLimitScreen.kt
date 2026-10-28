@@ -14,7 +14,7 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import java.time.*
 
-@Composable internal fun limitLabel(value:String?)=when(value) {
+@Composable internal fun limitLabel(value:String?,delayDays:Int=0)=when(value) {
     "TOTAL_ONLY"->word("共用总额度","総枠を共用")
     "SEPARATE_CAPS"->word("总额度与各子额度共同限制","総枠と個別枠で制限")
     "SHARED_SUBPOOL"->word("分期与リボ共用子额度","分割・リボの共通枠")
@@ -22,7 +22,7 @@ import java.time.*
     "PLATFORM_ONLY"->word("仅记录平台值，不做本地推算","返済先の値のみ記録")
     "TRANSACTION_DATE"->word("从交易日占用","取引日から使用")
     "ACCOUNT_POSTING_DATE"->word("从账户入账日占用","口座計上日から使用")
-    "PAYMENT_DATE"->word("按实际付款日预计恢复","実支払日に回復と予測")
+    "PAYMENT_DATE"->word("付款日后 ${delayDays} 天预计恢复","支払日の${delayDays}日後に回復と予測")
     "PLATFORM_CONFIRMATION"->word("平台确认清偿日预计恢复","返済先の確認日に回復と予測")
     "MANUAL"->word("逐笔确认额度恢复","枠回復を個別に確認")
     "TOTAL"->word("总额度","総枠")
@@ -122,7 +122,7 @@ import java.time.*
 }
 @Composable private fun LimitConfigFacts(c:CreditLimitConfigEntity) {
     RecordFacts(listOf(word("版本 / 生效日","版・適用日") to "v${c.version} · ${c.effectiveFrom}",word("占用基准日","基準日") to c.basisDate,word("时区","時間帯") to c.zoneId))
-    YText(limitLabel(c.usageBasis)+" · "+limitLabel(c.usageStart)+" · "+limitLabel(c.recovery),11)
+    YText(limitLabel(c.usageBasis)+" · "+limitLabel(c.usageStart)+" · "+limitLabel(c.recovery,c.recoveryDelayDays),11)
     c.sharing?.let{YText(limitLabel(it),12)}
     val currency=Currency.valueOf(c.currency)
     if(c.sharing=="SEPARATE_CAPS")RecordFacts(listOf(word("分期上限","分割上限") to limitMoney(currency,c.installmentMinor),word("リボ上限","リボ上限") to limitMoney(currency,c.revolvingMinor)))
@@ -178,6 +178,7 @@ import java.time.*
     // A new observation of usage is required; an old baseline is never silently advanced to today.
     var used by financialField("used"){""};var usedSplit by financialField("usedSplit"){""};var usedRevo by financialField("usedRevo"){""}
     var basisDate by financialField("basisDate"){today};var effective by financialField("effective"){today};var zone by financialField("zone"){old?.zoneId?:if(a.currency=="CNY")"Asia/Shanghai"else"Asia/Tokyo"}
+    var delay by financialField("recoveryDelayDays"){(old?.recoveryDelayDays?:0).toString()}
     var sharing by financialField("sharing"){old?.sharing};var recovery by financialField("recovery"){old?.recovery};var usage by financialField("usage"){old?.usageBasis};var start by financialField("start"){old?.usageStart}
     var owner by remember{mutableStateOf<Int?>(null)};var review by remember{mutableStateOf<CreditLimitReview?>(null)};var stale by remember{mutableStateOf(false)}
     val busy by vm.busy.collectAsStateWithLifecycle();val formScroll=rememberScrollState();val reviewScroll=rememberScrollState()
@@ -198,12 +199,13 @@ import java.time.*
             }
             YSelect(word("占用计算依据","使用額の計算根拠"),usage,listOf(null to word("未确定","未設定"))+CreditLimitUsageBasis.entries.map{it.name as String? to limitLabel(it.name)},{usage=it})
             YSelect(word("开始占用的时间","使用開始日"),start,listOf(null to word("未确定","未設定"))+CreditLimitUsageStart.entries.map{it.name as String? to limitLabel(it.name)},{start=it})
-            YSelect(word("本金归还后的额度恢复","元金返済後の枠回復"),recovery,listOf(null to word("未确定","未設定"))+LimitRecovery.entries.map{it.name as String? to limitLabel(it.name)},{recovery=it})
+            YSelect(word("本金归还后的额度恢复","元金返済後の枠回復"),recovery,listOf(null to word("未确定","未設定"))+LimitRecovery.entries.map{it.name as String? to limitLabel(it.name,delay.toIntOrNull()?:0)},{recovery=it})
+            if(recovery=="PAYMENT_DATE")YField(word("付款后第几天恢复（自然日，0 为当天）","支払後何日目に回復（暦日、0は当日）"),delay,{delay=it},numeric=true)
             YDateFields(listOf(word("占用基准日","使用額基準日") to basisDate,word("配置生效日","設定適用日") to effective),owner,{owner=it},{i,v->if(i==0)basisDate=v else effective=v})
             YField(word("时区","タイムゾーン"),zone,{zone=it})
             YText(word("贷款只预计循环额度本金；固定贷款不占用此循环额度。费用占用等特殊规则请选仅记录平台值。","ローンは循環枠の元金のみ予測し、固定ローンはこの枠を使用しません。手数料も枠を使用する等の条件は確認値のみを選択してください。"),11)
             fun amount(raw:String)=raw.takeIf{it.isNotBlank()}?.let{Money.parse(it,c).minor}
-            YButton(word("预览额度设置","利用枠設定を確認"),{vm.execute{review=vm.repository.previewCreditLimit(s.book.id,CreditLimitInput(a.id,amount(total),if(a.type==AccountType.CREDIT.name&&sharing=="SEPARATE_CAPS")amount(split)else null,if(a.type==AccountType.CREDIT.name&&sharing=="SEPARATE_CAPS")amount(revo)else null,sharing?.let{CreditLimitSharing.valueOf(it)},if(a.type==AccountType.CREDIT.name&&sharing=="SHARED_SUBPOOL")amount(combined)else null,effective,basisDate,amount(used),if(a.type==AccountType.CREDIT.name&&sharing!="TOTAL_ONLY")amount(usedSplit)else null,if(a.type==AccountType.CREDIT.name&&sharing!="TOTAL_ONLY")amount(usedRevo)else null,recovery?.let{LimitRecovery.valueOf(it)},usage?.let{CreditLimitUsageBasis.valueOf(it)},zone,start?.let{CreditLimitUsageStart.valueOf(it)}))}},Modifier.testTag("limit-preview"),primary=true,enabled=!busy)
+            YButton(word("预览额度设置","利用枠設定を確認"),{vm.execute{review=vm.repository.previewCreditLimit(s.book.id,CreditLimitInput(a.id,amount(total),if(a.type==AccountType.CREDIT.name&&sharing=="SEPARATE_CAPS")amount(split)else null,if(a.type==AccountType.CREDIT.name&&sharing=="SEPARATE_CAPS")amount(revo)else null,sharing?.let{CreditLimitSharing.valueOf(it)},if(a.type==AccountType.CREDIT.name&&sharing=="SHARED_SUBPOOL")amount(combined)else null,effective,basisDate,amount(used),if(a.type==AccountType.CREDIT.name&&sharing!="TOTAL_ONLY")amount(usedSplit)else null,if(a.type==AccountType.CREDIT.name&&sharing!="TOTAL_ONLY")amount(usedRevo)else null,recovery?.let{LimitRecovery.valueOf(it)},usage?.let{CreditLimitUsageBasis.valueOf(it)},zone,start?.let{CreditLimitUsageStart.valueOf(it)},if(recovery=="PAYMENT_DATE")delay.toIntOrNull()?:error("请输入恢复天数 / 回復日数を入力してください")else 0))}},Modifier.testTag("limit-preview"),primary=true,enabled=!busy)
         }
     }
 }

@@ -102,6 +102,6 @@ suspend fun LedgerRepository.commitEntryReview(bookId:String,review:LedgerChange
     val book=dao.book(bookId) ?: error("账本不存在 / 帳簿がありません")
     if(snapshot(book).first().reviewState()!=review.snapshot.reviewState())return@withTransaction null
     val e=review.change.event
-    if(review.change.cardRuleChecked&&db.financialDao().rules(bookId,e.accountId).cardRule(e.accountId,e.date,"REVOLVING")?.id!=e.cardPaymentRuleId)return@withTransaction null
+    if(review.change.cardRuleChecked&&db.financialDao().rules(bookId,e.accountId).cardRule(e.accountId,e.date,if(e.cardPaymentChoice in listOf("BONUS","DEFERRED"))"SINGLE"else"REVOLVING")?.id!=e.cardPaymentRuleId)return@withTransaction null
     writeChange(review.change,clearDraft=true)
 }

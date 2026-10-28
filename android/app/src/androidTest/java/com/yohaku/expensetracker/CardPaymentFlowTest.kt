@@ -94,7 +94,7 @@ class CardPaymentFlowTest {
             ui.runOnIdle{vm.startEntry(snapshot);vm.changeEntry(book,vm.entry.value!!.copy(accountId=card,categoryId=category));vm.navigate("entry")}
             textField(text("金额","金額")+" · JPY").performScrollTo().performTextReplacement("3000")
             tapTag("select-trigger-"+text("平台当前付款方式","現在の支払方法"))
-            ui.onNodeWithText(text("分期","分割払い")).performClick()
+            ui.onNodeWithText(text("分期","分割払い")).performScrollTo().performClick()
             val periods=textField(text("分期次数","分割回数"));periods.performScrollTo()
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")tapTag("field-"+text("分期次数","分割回数"))
             periods.performTextReplacement("3")

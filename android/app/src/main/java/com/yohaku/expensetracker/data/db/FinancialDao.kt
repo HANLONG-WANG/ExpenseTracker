@@ -11,6 +11,9 @@ interface FinancialDao {
     @Query("SELECT * FROM financial_drafts WHERE bookId=:bookId AND accountId IS :accountId ORDER BY updatedAt DESC") fun drafts(bookId:String,accountId:String?):Flow<List<FinancialDraftEntity>>
     @Query("DELETE FROM financial_drafts WHERE bookId=:bookId AND slot=:slot") suspend fun clearDraft(bookId:String,slot:String)
 
+    @Query("DELETE FROM financial_bill_adjustments WHERE bookId=:bookId AND arrangementId IN (:ids)") suspend fun deleteArrangementAdjustments(bookId:String,ids:List<String>)
+    @Query("DELETE FROM financial_arrangements WHERE bookId=:bookId AND id IN (:ids)") suspend fun deleteArrangements(bookId:String,ids:List<String>)
+
     @Insert suspend fun insertArrangement(arrangement:FinancialArrangementEntity)
     @Insert suspend fun insertBillAdjustments(adjustments:List<FinancialBillAdjustmentEntity>)
 

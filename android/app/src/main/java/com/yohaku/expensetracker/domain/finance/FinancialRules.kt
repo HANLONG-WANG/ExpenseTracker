@@ -128,7 +128,8 @@ import kotlinx.serialization.Serializable
     val limitRecovery: LimitRecovery? = null,
     val unsupportedReason: String? = null,
     val loanPrincipalRemainder: RemainderPlacement? = null,
-    val deadlines: List<ChangeDeadline> = emptyList()
+    val deadlines: List<ChangeDeadline> = emptyList(),
+    val bonusPayments: List<BonusPaymentWindow> = emptyList()
 ) {
     fun issues(): List<String> = buildList {
         if (runCatching { LocalDate.parse(effectiveFrom) }.isFailure) add("rule.effectiveFrom")
@@ -136,7 +137,7 @@ import kotlinx.serialization.Serializable
         if (deadlines.any { it.billId.isBlank() || it.changeType !in listOf(FinanceMode.INSTALLMENT,FinanceMode.REVOLVING) || runCatching { it.instant() }.isFailure } ||
             deadlines.map { it.billId to it.changeType }.distinct().size != deadlines.size) add("rule.deadlines")
         when (mode) {
-            FinanceMode.SINGLE -> addAll(billing?.issues() ?: listOf("billing"))
+            FinanceMode.SINGLE -> { addAll(billing?.issues() ?: listOf("billing"));addAll(bonusPaymentIssues(bonusPayments)) }
             FinanceMode.INSTALLMENT -> { addAll(billing?.issues() ?: listOf("billing")); addAll(installment?.issues() ?: listOf("installment")) }
             FinanceMode.REVOLVING -> { addAll(billing?.issues() ?: listOf("billing")); addAll(revolving?.issues() ?: listOf("revolving")); if(revolving!=null&&revolving.automatic==null)add("revolving.automatic") }
             FinanceMode.FIXED_LOAN -> {

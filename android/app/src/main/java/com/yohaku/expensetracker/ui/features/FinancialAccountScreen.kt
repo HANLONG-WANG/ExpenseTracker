@@ -24,6 +24,9 @@ import kotlinx.serialization.encodeToString
     var editMode by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var arrangementReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var arrangementPlan by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
+    var batchDate by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
+    var batchPoolReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
+    var undoBatch by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var poolTarget by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var poolBillReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var poolPaymentPlan by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
@@ -58,11 +61,11 @@ import kotlinx.serialization.encodeToString
         FinancialRuleEditor(s,account,mode,latest?.let{vm.repository.json.decodeFromString(it.json)},vm,{editMode=null},onLimits={openRuleLimits(mode.name)});return}
     if(tab=="overview") {
         FinancialDraftList(s,account,vm,{resumedDraft=vm.repository.json.encodeToString(it)})
-        FinancialAccountOverview(s,account,finance,vm,{month->statementMonth=month;tab="statement"},{bill->movementTarget=bill;movement=if(bill==null)"repay"else"repay-bill"},{arrangementPlan=it},{tab="rules"},{tab="plans"},onRecord,{tab="movements"},onFund)
+        FinancialAccountOverview(s,account,finance,vm,{month->statementMonth=month;tab="statement"},{bill->movementTarget=bill;movement=if(bill==null)"repay"else"repay-bill"},{arrangementPlan=it},{tab="rules"},{tab="plans"},onRecord,{tab="movements"},onFund,{batchDate=it})
         if(loanOverview)FinancialAccountTabs(tab,{tab=it;editMode=null})
         else FinancialAccountActions{tab=it;editMode=null}
     }else if(tab=="statement") {
-        FinancialStatements(s,account,finance,vm,statementMonth,{statementMonth=it},{confirming=it},{tab="plans"},onRecord)
+        FinancialStatements(s,account,finance,vm,statementMonth,{statementMonth=it},{confirming=it},{tab="plans"},onRecord,{batchDate=it})
     }else if(tab=="limits") {
         if(limitRuleReturn!=null)YButton(word("返回规则草稿","条件の下書きへ戻る"),{editMode=limitRuleReturn;limitRuleReturn=null;tab="rules"},Modifier.testTag("finance-return-rule"))
         CreditLimitSection(s,account,finance,vm)
@@ -173,7 +176,16 @@ import kotlinx.serialization.encodeToString
         if(context.kind=="POOL")poolBillReturn=context.targetId.orEmpty() else if(context.kind=="ARRANGEMENT_REVIEW")reconciliationReturn=context.targetId
         confirming=bill
     },{parent->reconciliationParents=listOfNotNull(context.targetId);resumedDraft=null;reconciliationPlan=parent})}
-    poolTarget?.let{id->FinancialPoolEditor(s,account,finance,finance.plans.firstOrNull{it.id==id},vm,{poolTarget=null;arrangementPlan=arrangementReturn;arrangementReturn=null;poolPaymentPlan=poolPaymentReturn;poolPaymentReturn=null},{bill->poolBillReturn=id;poolTarget=null;confirming=bill})}
+    if(account.type==AccountType.CREDIT.name&&tab in listOf("overview","statement")) {
+        val batches=finance.arrangements.filter{row->finance.plans.any{it.id==row.originalPlanId&&it.accountId==account.id}}.mapNotNull{row->vm.repository.json.decodeFromString<FinancialArrangementInput>(row.inputJson).undoGroupId?.let{it to row}}.groupBy({it.first},{it.second})
+        batches.forEach{(group,rows)->YButton(word("撤销まとめてリボ记录","まとめてリボの記録を取消")+" · "+rows.first().effectiveDate+" · "+Money(currency,rows.sumOf{it.principalMinor}).display(),{undoBatch=group},Modifier.testTag("batch-revolving-undo-$group"))}
+    }
+    undoBatch?.let{group->YSheet(word("整组撤销记录","グループの記録を取消"),{undoBatch=null}) {
+        YText(word("恢复本组转换前的一次付和余额池安排。这只撤销本地记录，不向卡公司申请取消。若已有后续付款或安排变化，需先核对。","この変更前の一括払いとプール予定に戻します。ローカル記録のみを取り消し、カード会社への取消申請は行いません。後続の支払・予定変更がある場合は確認が必要です。"),12)
+        YButton(word("确认整组撤销","グループ全体を取消"),{vm.execute(onSuccess={undoBatch=null}){vm.repository.undoBatchRevolving(s.book.id,group)}},Modifier.testTag("batch-revolving-undo-confirm"),primary=true,enabled=!busy)
+    }}
+    batchDate?.let{date->BatchRevolvingEditor(s,account,finance,date,vm,{batchDate=null},{id->batchPoolReturn=date;batchDate=null;poolTarget=id.orEmpty()})}
+    poolTarget?.let{id->FinancialPoolEditor(s,account,finance,finance.plans.firstOrNull{it.id==id},vm,{poolTarget=null;batchDate=batchPoolReturn;batchPoolReturn=null;arrangementPlan=arrangementReturn;arrangementReturn=null;poolPaymentPlan=poolPaymentReturn;poolPaymentReturn=null},{bill->poolBillReturn=id;poolTarget=null;confirming=bill})}
     poolPaymentPlan?.let{id->finance.plans.firstOrNull{it.id==id&&it.active&&it.origin=="POOL"}?.let{plan->FinancialPoolPaymentEditor(s,account,finance,plan,vm,{poolPaymentPlan=null},{poolPaymentReturn=id;poolPaymentPlan=null;poolTarget=id},{bill->poolPaymentReturn=id;poolPaymentPlan=null;confirming=bill})}}
     reconciliationPlan?.let{id->finance.plans.firstOrNull{it.id==id}?.let{plan->FinancialReconciliationEditor(s,account,finance,plan,vm,{reconciliationPlan=reconciliationParents.lastOrNull();reconciliationParents=reconciliationParents.dropLast(1)},{bill->reconciliationReturn=id;reconciliationPlan=null;confirming=bill},{parent->reconciliationParents=reconciliationParents+id;reconciliationPlan=parent})}}
     arrangementPlan?.let{id->finance.plans.firstOrNull{it.id==id}?.let{FinancialArrangementEditor(s,account,finance,it,vm,{arrangementPlan=null},{pool->arrangementReturn=id;arrangementPlan=null;poolTarget=pool},{bill->arrangementReturn=id;arrangementPlan=null;confirming=bill})}}
@@ -197,7 +209,7 @@ import kotlinx.serialization.encodeToString
     fun money(value:Long?)=value?.let{Money(currency,it).display()}
     YText(word("第${bill.number}期","第${bill.number}回")+" · "+bill.date,14)
     YText(if(bill.confirmed)word("平台已确认金额 · 尚非付款记录","返済先の確定金額・支払記録とは別")else word("规则预测","条件による予測"),11,color=LocalYohaku.current.accent)
-    RecordFacts(listOf(word("本金","元金") to (money(bill.principalMinor)?:word("未知","不明")),word("利息 / 费用","利息・手数料") to (money(bill.feeMinor)?:word("未知","不明")),word("合计","合計") to Money(currency,bill.totalMinor).display()))
+    RecordFacts(listOf(word("本金","元金") to (money(bill.principalMinor)?:word("未知","不明")),word("利息 / 费用","利息・手数料") to (money(bill.feeMinor)?:word("未知","不明")),word("合计","合計") to (if(!bill.confirmed&&bill.basisJson?.let{kotlinx.serialization.json.Json.decodeFromString<FinancialCalculationBasis>(it).additionalFeeUnknown}==true)word("手续费待补，合计未知","手数料未入力・合計不明")else Money(currency,bill.totalMinor).display())))
     if(bill.confirmed&&bill.predictedTotalMinor!=null)YText(word("原预测：","元の予測：")+money(bill.predictedTotalMinor)+" · "+bill.predictedDate,11,color=LocalYohaku.current.muted)
 }
 

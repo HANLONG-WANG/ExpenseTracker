@@ -31,7 +31,7 @@ import kotlinx.serialization.Serializable
             if(mode in listOf(FinanceMode.SINGLE,FinanceMode.INSTALLMENT,FinanceMode.REVOLVING))BillingRule(integer("closing"),boolean("closingIncluded"),integer("monthOffset"),integer("payday"),optional("bank"))else null,
             if(mode==FinanceMode.INSTALLMENT)installment else null,if(mode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE))revolving else null,
             if(mode==FinanceMode.FIXED_LOAN)choice("loanMethod")else null,if(mode==FinanceMode.FIXED_LOAN)interest else null,
-            choice("allocation"),null,optional("unsupported"),loanPrincipalRemainder=choice("principalRemainder"),deadlines=deadlines)
+            choice("allocation"),null,optional("unsupported"),loanPrincipalRemainder=choice("principalRemainder"),deadlines=deadlines,bonusPayments=if(mode==FinanceMode.SINGLE)(0..1).filter{get("bonus${it}Enabled")=="true"}.map{i->BonusPaymentWindow(integer("bonus${i}StartMonth")?:0,integer("bonus${i}StartDay")?:0,integer("bonus${i}EndMonth")?:0,integer("bonus${i}EndDay")?:0,integer("bonus${i}PaymentMonth")?:0,integer("bonus${i}PaymentDay")?:0)}else emptyList())
     }
 }
 
@@ -40,6 +40,7 @@ internal fun FinancialRuleVersion.toForm(currency:Currency):FinancialRuleDraft {
     fun put(key:String,value:Any?){if(value!=null)values[key]=value.toString()}
     fun amount(key:String,value:Long?)=put(key,value?.let{Money(currency,it).decimal.toPlainString()})
     billing?.let{put("closing",it.closingDay);put("closingIncluded",it.closingDayInCurrentBill);put("monthOffset",it.paymentMonthOffset);put("payday",it.paymentDay);put("bank",it.paymentAccountId)}
+    bonusPayments.forEachIndexed{i,w->put("bonus${i}Enabled",true);put("bonus${i}StartMonth",w.startMonth);put("bonus${i}StartDay",w.startDay);put("bonus${i}EndMonth",w.endMonth);put("bonus${i}EndDay",w.endDay);put("bonus${i}PaymentMonth",w.paymentMonth);put("bonus${i}PaymentDay",w.paymentDay)}
     val interest=revolving?.interest?:loanInterest
     interest?.let{put("apr",it.annualRate?.toBigDecimal()?.movePointRight(2)?.toPlainString());put("frequency",it.frequency);put("balance",it.balanceBasis)
         put("includeStart",it.includeStart);put("includeEnd",it.includeEnd);put("yearDays",it.yearDays);put("roundAt",it.rounding);put("rounding",it.roundingMode);put("first",it.firstCharge)}

@@ -24,7 +24,7 @@ data class ConfirmedSchedulePeriod(val number:Int,val principalMinor:Long?,val f
     val segments:List<InterestSegmentSnapshot> = emptyList(),val start:String?=null,val end:String?=null,
     val agreementDate:String?=null,val closingDate:String?=null,
     val forecastFrom:String?=null,val assumedPrincipalMinor:Long?=null,val principalFacts:List<SchedulePrincipalFact> = emptyList(),val principalAdditions:List<SchedulePrincipalAddition> = emptyList(),
-    val paymentSetting:RevolvingPaymentSetting?=null,val additionalFeeMinor:Long=0
+    val paymentSetting:RevolvingPaymentSetting?=null,val additionalFeeMinor:Long=0,val additionalFeeUnknown:Boolean=false
 )
 data class PredictedSchedulePeriod(val period:PaymentPeriod,val ruleId:String,val basis:FinancialCalculationBasis)
 

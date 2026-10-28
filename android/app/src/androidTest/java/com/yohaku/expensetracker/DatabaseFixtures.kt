@@ -37,6 +37,10 @@ internal fun restoreBookLifecycleFixture(db:SQLiteDatabase) {
 
 /** Strip only columns introduced after v27; earlier fixture-specific table shapes remain untouched. */
 internal fun restoreEntryLifecycleFixture(db:SQLiteDatabase) {
+    for((table,column) in listOf("events" to "cardPaymentMonth","credit_limit_configs" to "recoveryDelayDays")) {
+        val present=db.rawQuery("PRAGMA table_info(`$table`)",null).use{c->var found=false;while(c.moveToNext())if(c.getString(1)==column)found=true;found}
+        if(present)restoreFixtureTable(db,"room-v32-schema.json",table)
+    }
     for((table,column) in listOf("events" to "purgedAt","statement_decisions" to "invalidatedAt")) {
         val hasColumn=db.rawQuery("PRAGMA table_info(`$table`)",null).use{c->var found=false;while(c.moveToNext())if(c.getString(1)==column)found=true;found}
         if(hasColumn)restoreFixtureTable(db,"room-v27-schema.json",table)

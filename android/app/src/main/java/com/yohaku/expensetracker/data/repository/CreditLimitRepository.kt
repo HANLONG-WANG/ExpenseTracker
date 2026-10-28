@@ -10,7 +10,7 @@ import kotlinx.serialization.encodeToString
 import java.time.*
 
 @Serializable data class CreditLimitInput(val accountId:String,val totalMinor:Long?,val installmentMinor:Long?,val revolvingMinor:Long?,val sharing:CreditLimitSharing?,val combinedMinor:Long?,
-    val effectiveFrom:String,val basisDate:String,val usedTotalMinor:Long?,val usedInstallmentMinor:Long?,val usedRevolvingMinor:Long?,val recovery:LimitRecovery?,val usageBasis:CreditLimitUsageBasis?,val zoneId:String,val usageStart:CreditLimitUsageStart?=null)
+    val effectiveFrom:String,val basisDate:String,val usedTotalMinor:Long?,val usedInstallmentMinor:Long?,val usedRevolvingMinor:Long?,val recovery:LimitRecovery?,val usageBasis:CreditLimitUsageBasis?,val zoneId:String,val usageStart:CreditLimitUsageStart?=null,val recoveryDelayDays:Int=0)
 @Serializable data class CreditLimitGroupInput(val name:String,val currency:Currency,val totalMinor:Long?,val usedMinor:Long?,val basisDate:String,val accountIds:List<String>,val id:String?=null)
 data class CreditLimitRecoveryInput(val accountId:String,val eventId:String,val date:String,val principalMinor:Long,val installmentMinor:Long?,val revolvingMinor:Long?)
 @Serializable data class CreditLimitGroupArchive(val group:CreditLimitGroupEntity,val accountIds:List<String>)
@@ -23,15 +23,16 @@ private fun LedgerRepository.today(zone:String)=LocalDate.now(clock.withZone(Zon
 suspend fun LedgerRepository.previewCreditLimit(bookId:String,input:CreditLimitInput):CreditLimitReview=db.withTransaction {
     val state=financialReviewState(bookId);val a=state.account(input.accountId)
     checkAmounts(input.totalMinor,input.installmentMinor,input.revolvingMinor,input.combinedMinor,input.usedTotalMinor,input.usedInstallmentMinor,input.usedRevolvingMinor)
+    require(input.recoveryDelayDays>=0){"恢复天数必须大于等于0 / 回復日数は0以上にしてください"}
     val now=today(input.zoneId);require(LocalDate.parse(input.basisDate)<=LocalDate.parse(now)&&LocalDate.parse(input.effectiveFrom)<=LocalDate.parse(now))
     require(input.basisDate<=input.effectiveFrom){"占用基准不能晚于配置生效日 / 使用額基準日は条件適用日以前にしてください"}
     input.usedTotalMinor?.let{total->require(listOfNotNull(input.usedInstallmentMinor,input.usedRevolvingMinor).all{it<=total})}
     if(input.usedTotalMinor!=null&&input.usedInstallmentMinor!=null&&input.usedRevolvingMinor!=null)require(Math.addExact(input.usedInstallmentMinor,input.usedRevolvingMinor)<=input.usedTotalMinor){"分期与リボ占用合计不能超过总占用 / 分割・リボ使用額の合計は総使用額以内にしてください"}
     require(a.type==AccountType.CREDIT.name||input.installmentMinor==null&&input.revolvingMinor==null&&input.combinedMinor==null&&input.usedInstallmentMinor==null&&input.usedRevolvingMinor==null)
     val version=(state.limits.configs.filter{it.accountId==a.id}.maxOfOrNull{it.version}?:0)+1
-    val basis=creditLimitMovements(state.ledger,state.finance,state.limits,a.id,input.basisDate,input.recovery?.name,input.usageStart?.name)
+    val basis=creditLimitMovements(state.ledger,state.finance,state.limits,a.id,input.basisDate,input.recovery?.name,input.usageStart?.name,input.recoveryDelayDays)
     val c=CreditLimitConfigEntity(bookId,id(),a.id,version,input.effectiveFrom,a.currency,input.totalMinor,input.installmentMinor,input.revolvingMinor,input.sharing?.name,input.combinedMinor,
-        input.basisDate,input.usedTotalMinor,input.usedInstallmentMinor,input.usedRevolvingMinor,json.encodeToString(LimitAnchor(basis)),input.recovery?.name,input.usageBasis?.name,input.usageStart?.name,input.zoneId,clock.millis())
+        input.basisDate,input.usedTotalMinor,input.usedInstallmentMinor,input.usedRevolvingMinor,json.encodeToString(LimitAnchor(basis)),input.recovery?.name,input.usageBasis?.name,input.usageStart?.name,input.zoneId,clock.millis(),input.recoveryDelayDays)
     val next=state.limits.copy(configs=state.limits.configs+c)
     CreditLimitReview(state,c,null,emptyList(),null,null,accountCreditLimit(state.ledger,state.finance,next,a.id,now),null)
 }
@@ -45,7 +46,7 @@ suspend fun LedgerRepository.previewCreditLimitGroup(bookId:String,input:CreditL
     require(selected.all{it.currency==input.currency.name}){"共享额度只组合相同币种账户，不按参考汇率拼接 / 共通枠は同じ通貨の口座のみ指定してください"}
     require(state.limits.members.none{it.accountId in input.accountIds&&it.groupId!=old?.id}){"账户已属于另一共享额度池 / 別の共通枠に所属している口座があります"}
     val configs=selected.associate{it.id to state.limits.currentConfig(it.id,input.basisDate)?.id}
-    val movements=selected.associate{a->val config=state.limits.currentConfig(a.id,input.basisDate);a.id to creditLimitMovements(state.ledger,state.finance,state.limits,a.id,input.basisDate,config?.recovery,config?.usageStart)}
+    val movements=selected.associate{a->val config=state.limits.currentConfig(a.id,input.basisDate);a.id to creditLimitMovements(state.ledger,state.finance,state.limits,a.id,input.basisDate,config?.recovery,config?.usageStart,config?.recoveryDelayDays?:0)}
     val g=CreditLimitGroupEntity(bookId,old?.id?:id(),input.name.trim(),input.currency.name,input.totalMinor,input.usedMinor,input.basisDate,json.encodeToString(GroupLimitAnchor(configs,movements)),(old?.revision?:0)+1,clock.millis())
     val next=state.limits.copy(groups=state.limits.groups.filter{it.id!=g.id}+g,members=state.limits.members.filter{it.groupId!=g.id}+input.accountIds.map{CreditLimitGroupMemberEntity(bookId,it,g.id)})
     CreditLimitReview(state,null,g,input.accountIds,null,null,null,groupCreditLimit(state.ledger,state.finance,next,g.id,LocalDate.now(clock).toString()))
@@ -71,7 +72,7 @@ suspend fun LedgerRepository.previewCreditLimitRecovery(bookId:String,input:Cred
 }
 internal fun LedgerRepository.creditLimitObservationBasis(state:FinancialReviewState,accountId:String?,groupId:String?,date:String):String {
     val ids=accountId?.let{listOf(it)}?:state.limits.members.filter{it.groupId==groupId}.map{it.accountId}.sorted()
-    val data=ids.associateWith{id->val c=state.limits.currentConfig(id,date);listOf(c?.id,json.encodeToString(creditLimitMovements(state.ledger,state.finance,state.limits,id,date,c?.recovery,c?.usageStart)))}
+    val data=ids.associateWith{id->val c=state.limits.currentConfig(id,date);listOf(c?.id,json.encodeToString(creditLimitMovements(state.ledger,state.finance,state.limits,id,date,c?.recovery,c?.usageStart,c?.recoveryDelayDays?:0)))}
     return json.encodeToString(listOf(json.encodeToString(data),groupId?.let{id->state.limits.groups.first{it.id==id}.revision.toString()}))
 }
 suspend fun LedgerRepository.previewCreditLimitObservation(bookId:String,accountId:String?,groupId:String?,scope:String,availableMinor:Long,observedAt:String):CreditLimitReview=db.withTransaction {

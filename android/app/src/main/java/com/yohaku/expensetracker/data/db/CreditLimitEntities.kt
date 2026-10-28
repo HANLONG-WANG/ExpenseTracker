@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 data class CreditLimitConfigEntity(val bookId:String,val id:String,val accountId:String,val version:Int,val effectiveFrom:String,
     val currency:String,val totalMinor:Long?,val installmentMinor:Long?,val revolvingMinor:Long?,val sharing:String?,val combinedMinor:Long?,
     val basisDate:String,val usedTotalMinor:Long?,val usedInstallmentMinor:Long?,val usedRevolvingMinor:Long?,val basisJson:String,
-    val recovery:String?,val usageBasis:String?,val usageStart:String?,val zoneId:String,val createdAt:Long)
+    val recovery:String?,val usageBasis:String?,val usageStart:String?,val zoneId:String,val createdAt:Long,@ColumnInfo(defaultValue="0") val recoveryDelayDays:Int=0)
 
 @Serializable
 @Entity(tableName="credit_limit_groups",primaryKeys=["bookId","id"],foreignKeys=[ForeignKey(entity=BookEntity::class,parentColumns=["id"],childColumns=["bookId"])],indices=[Index("bookId")])

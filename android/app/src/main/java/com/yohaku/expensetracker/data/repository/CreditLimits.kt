@@ -92,7 +92,7 @@ fun limitPayments(s:BookSnapshot,f:FinancialGraph,accountId:String):List<LimitPa
     return result.sortedBy{it.eventId}
 }
 
-fun creditLimitMovements(s:BookSnapshot,f:FinancialGraph,l:CreditLimitGraph,accountId:String,asOf:String,policy:String?,usageStart:String?=null):List<LimitMovement> {
+fun creditLimitMovements(s:BookSnapshot,f:FinancialGraph,l:CreditLimitGraph,accountId:String,asOf:String,policy:String?,usageStart:String?=null,recoveryDelayDays:Int=0):List<LimitMovement> {
     val result=mutableListOf<LimitMovement>();val account=s.accounts.first{it.id==accountId}
     val live=s.visibleEvents.associateBy{it.id}
     for(p in s.storedPostings.filter{it.accountId==accountId&&it.deltaMinor>0&&it.eventId in live}) {
@@ -111,7 +111,7 @@ fun creditLimitMovements(s:BookSnapshot,f:FinancialGraph,l:CreditLimitGraph,acco
                 result+=LimitMovement("actual:${r.id}",r.date,if(valid)-r.principalMinor else null,if(valid)r.installmentMinor?.let{Math.negateExact(it)}else null,if(valid)r.revolvingMinor?.let{Math.negateExact(it)}else null,payment.eventId,if(valid)"ACTUAL_RECOVERY"else"RECOVERY_CHANGED")
             }
         }else {
-            val date=when(policy){LimitRecovery.PAYMENT_DATE.name->payment.date;LimitRecovery.PLATFORM_CONFIRMATION.name->if(payment.confirmed)payment.clearingDate else null;else->null}
+            val date=when(policy){LimitRecovery.PAYMENT_DATE.name->paymentRecoveryDate(LocalDate.parse(payment.date),recoveryDelayDays).toString();LimitRecovery.PLATFORM_CONFIRMATION.name->if(payment.confirmed)payment.clearingDate else null;else->null}
             if(date!=null&&date<=asOf)result+=LimitMovement("rule:${payment.eventId}",date,payment.principalMinor?.let{Math.negateExact(it)},payment.installmentMinor?.let{Math.negateExact(it)},payment.revolvingMinor?.let{Math.negateExact(it)},payment.eventId,"RULE_RECOVERY")
         }
     }
@@ -143,7 +143,7 @@ private fun constrained(a:LimitAmount,total:LimitAmount):LimitAmount=a.copy(avai
 fun accountCreditLimit(s:BookSnapshot,f:FinancialGraph,l:CreditLimitGraph,accountId:String,asOf:String):AccountCreditLimit {
     val config=l.currentConfig(accountId,asOf)
     if(config==null)return AccountCreditLimit(null,amount(null,null),amount(null,null),amount(null,null),listOf("limit.config"),null,null)
-    val movements=creditLimitMovements(s,f,l,accountId,asOf,config.recovery,config.usageStart)
+    val movements=creditLimitMovements(s,f,l,accountId,asOf,config.recovery,config.usageStart,config.recoveryDelayDays)
     val anchor=Json.decodeFromString<LimitAnchor>(config.basisJson)
     val change=delta(anchor.movements,movements,config.basisDate)
     val issues=change.issues.filterNot{it=="limit.unknownMode"&&(config.sharing==CreditLimitSharing.TOTAL_ONLY.name||s.accounts.first{a->a.id==accountId}.type==AccountType.LOAN.name)}.toMutableList()
@@ -174,7 +174,7 @@ fun groupCreditLimit(s:BookSnapshot,f:FinancialGraph,l:CreditLimitGraph,groupId:
     for(id in members) {
         val config=l.currentConfig(id,asOf)
         if(config?.id!=anchor.configs[id]||config?.usageBasis!=CreditLimitUsageBasis.PRINCIPAL_ONLY.name||config.recovery==null||config.usageStart==null){issues+="limit.groupChanged";change=null;continue}
-        val d=delta(anchor.movements[id].orEmpty(),creditLimitMovements(s,f,l,id,asOf,config.recovery,config.usageStart),group.basisDate)
+        val d=delta(anchor.movements[id].orEmpty(),creditLimitMovements(s,f,l,id,asOf,config.recovery,config.usageStart,config.recoveryDelayDays),group.basisDate)
         issues+=d.issues.filterNot{it=="limit.unknownMode"};change=change?.let{n->d.total?.let{addExact(n,it)}}
     }
     val used=if(issues.any{it=="limit.groupChanged"})null else plus(group.usedMinor,change)

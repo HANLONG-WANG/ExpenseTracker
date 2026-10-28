@@ -40,6 +40,8 @@ import java.time.*
     var count by financialField("count"){""}
     var firstPeriod by financialField("firstPeriod"){"1"}
     var firstDate by financialField("firstDate"){finance.bills.filter{it.planId==old.id&&it.active&&it.date>=today}.minOfOrNull{it.date}?:LocalDate.parse(today).plusMonths(1).toString()}
+    var singleDateBasis by financialField("singleDateBasis"){"RULE"}
+    var singleMonth by financialField("singleMonth"){""}
     var firstEnd by financialField("firstEnd"){today}
     var bank by financialField("bank"){finance.bills.firstOrNull{it.planId==old.id&&it.active}?.paymentAccountId}
     var treatment by financialField<String?>("treatment"){null}
@@ -93,6 +95,21 @@ import java.time.*
                 val r=finance.rules.filter{it.accountId==account.id&&it.mode==m&&it.effectiveFrom<=effective}.maxWithOrNull(compareBy<FinancialRuleEntity>{it.effectiveFrom}.thenBy{it.version})?.let{vm.repository.json.decodeFromString<FinancialRuleVersion>(it.json)}
                 if(r?.billing?.issues()?.isEmpty()==true){val d=billingDates(LocalDate.parse(effective),r.billing);firstDate=d.paymentDate.toString();firstEnd=d.closingDate.toString()}
             })
+            if(account.type==AccountType.CREDIT.name&&selected==FinanceMode.SINGLE) {
+                YSelect(word("付款日期依据","支払日の決め方"),singleDateBasis,listOf("RULE" to word("按规则下一期","条件による次回"),"BONUS" to word("ボーナス一括","ボーナス一括"),"DEFERRED" to word("指定月","指定月")),{singleDateBasis=it;clearRows()})
+                if(singleDateBasis=="DEFERRED")YField(word("付款月（YYYY-MM）","支払月（YYYY-MM）"),singleMonth,{singleMonth=it;clearRows()})
+                YButton(word("按所选依据填入首次付款日","選択した条件で初回支払日を設定"),{vm.execute{
+                    val basisDate=if(singleDateBasis=="BONUS")s.visibleEvents.firstOrNull{it.id==old.sourceEventId}?.date?:effective else effective
+                    val r=finance.rules.filter{it.accountId==account.id&&it.mode=="SINGLE"&&it.effectiveFrom<=basisDate}.maxWithOrNull(compareBy<FinancialRuleEntity>{it.effectiveFrom}.thenBy{it.version})?.let{vm.repository.json.decodeFromString<FinancialRuleVersion>(it.json)}
+                    require(r?.billing?.issues()?.isEmpty()==true){"需补齐一次付规则 / 一括払い条件の補完が必要です"}
+                    val date=LocalDate.parse(basisDate)
+                    firstDate=when(singleDateBasis){
+                        "BONUS"->requireNotNull(bonusPaymentDate(date,r.bonusPayments)){"需补齐ボーナス払い设置 / ボーナス払い設定の補完が必要です"}
+                        "DEFERRED"->deferredPaymentDate(date,YearMonth.parse(singleMonth),r.billing!!)
+                        else->billingDates(date,r.billing!!).paymentDate
+                    }.toString();clearRows()
+                }},enabled=!busy)
+            }
             val dates=mutableListOf(word("变更生效日","変更適用日") to effective)
             if(destinationPool==null) {
                 YToggle(word("手动录入平台新方案","返済先の新プランを手入力"),manual,{manual=it},Modifier.testTag("arrangement-manual"))
@@ -150,6 +167,12 @@ import java.time.*
                 val n=if(selected==FinanceMode.SINGLE)1 else count.toIntOrNull()?:error("请填写有效期数 / 有効な回数を入力してください")
                 require(n in 1..1200)
                 val rule=finance.rules.filter{it.accountId==account.id&&it.mode==mode&&it.effectiveFrom<=effective}.maxWithOrNull(compareBy<FinancialRuleEntity>{it.effectiveFrom}.thenBy{it.version})?.let{vm.repository.json.decodeFromString<FinancialRuleVersion>(it.json)}
+                if(account.type==AccountType.CREDIT.name&&selected==FinanceMode.SINGLE&&!manual&&singleDateBasis!="RULE") {
+                    val basisDate=if(singleDateBasis=="BONUS")s.visibleEvents.firstOrNull{it.id==old.sourceEventId}?.date?:effective else effective
+                    val singleRule=finance.rules.cardRule(account.id,basisDate,"SINGLE")?.let{vm.repository.json.decodeFromString<FinancialRuleVersion>(it.json)}
+                    require(singleRule?.billing?.issues()?.isEmpty()==true){"需补齐一次付规则 / 一括払い条件の補完が必要です"}
+                    firstDate=if(singleDateBasis=="BONUS")requireNotNull(bonusPaymentDate(LocalDate.parse(basisDate),singleRule.bonusPayments)){"需补齐ボーナス払い设置 / ボーナス払い設定の補完が必要です"}.toString()else deferredPaymentDate(LocalDate.parse(effective),YearMonth.parse(singleMonth),singleRule.billing!!).toString()
+                }
                 val end=LocalDate.parse(firstEnd);val payment=LocalDate.parse(firstDate);val start=LocalDate.parse(effective)
                 encoded=vm.repository.json.encodeToString(List(n){i->val previous=end.plusMonths(i-1L);val interest=rule?.revolving?.interest
                     val nextStart=if(i==0)start else if(interest?.frequency==ChargeFrequency.MONTHLY||interest?.includeStart==true&&interest.includeEnd==true)previous.plusDays(1)else if(interest?.includeStart==false&&interest.includeEnd==false)previous.minusDays(1)else previous

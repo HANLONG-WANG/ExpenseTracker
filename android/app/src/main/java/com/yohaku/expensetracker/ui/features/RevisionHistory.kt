@@ -62,8 +62,10 @@ private sealed interface HistoryRead{
                 val oldAttachments=change.beforeDetails?.attachmentIds.orEmpty();val newAttachments=change.afterDetails?.attachmentIds.orEmpty()
                 if(oldAttachments!=newAttachments)field(word("附件列表 / 顺序","添付一覧・順序"),oldAttachments.size.toString(),newAttachments.size.toString())
                 if(change.beforeDetails?.receiptRevision!=change.afterDetails?.receiptRevision)field(word("小票原图修订","レシート原画像の版"),change.beforeDetails?.receiptRevision?.toString().orEmpty(),change.afterDetails?.receiptRevision?.toString().orEmpty())
-                if(b.cardPaymentChoice!=a.cardPaymentChoice||b.cardPaymentMode!=a.cardPaymentMode||b.cardPaymentPeriods!=a.cardPaymentPeriods) {
+                if(b.cardPaymentChoice!=a.cardPaymentChoice||b.cardPaymentMode!=a.cardPaymentMode||b.cardPaymentPeriods!=a.cardPaymentPeriods||b.cardPaymentMonth!=a.cardPaymentMonth||b.cardPaymentFeeMinor!=a.cardPaymentFeeMinor) {
                     field(word("记录的付款方式","記録した支払方法"),cardPaymentLabel(b.cardPaymentChoice),cardPaymentLabel(a.cardPaymentChoice))
+                    field(word("付款月","支払月"),b.cardPaymentMonth.orEmpty(),a.cardPaymentMonth.orEmpty())
+                    field(word("手续费（最小货币单位）","手数料（最小通貨単位）"),b.cardPaymentFeeMinor?.toString().orEmpty(),a.cardPaymentFeeMinor?.toString().orEmpty())
                     field(word("采用的方式","適用した方式"),cardPaymentLabel(b.cardPaymentMode),cardPaymentLabel(a.cardPaymentMode))
                     field(word("分期次数","分割回数"),b.cardPaymentPeriods?.toString().orEmpty(),a.cardPaymentPeriods?.toString().orEmpty())
                 }

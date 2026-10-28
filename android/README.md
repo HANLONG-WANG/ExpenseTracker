@@ -6,7 +6,7 @@
 
 - [正式APK 0.5.0](artifacts/yohaku-release-0.5.0.apk) · [SHA-256](artifacts/yohaku-release-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker`，固定正式签名。
 - [开发APK 0.5.0](artifacts/yohaku-dev-0.5.0.apk) · [SHA-256](artifacts/yohaku-dev-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker.dev`，沿用阶段A–D开发证书。
-- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v30（新增 CSV 批次、记录关联与对应设置表，迁移29→30）。三主题、中日文按账本保存。
+- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v33（信用卡恢复延迟、指定付款月/费用，迁移32→33）。三主题、中日文按账本保存。
 - 开发包可覆盖原开发版本。正式包独立安装，与开发包并存，不自动转移开发包资料。覆盖升级不要先卸载；卸载或清除应用存储会删除账本与内部附件。提供手动本地完整备份/恢复，系统云备份仍关闭。
 - 当前仅专用API36模拟器验证，用户实机未连接。精简实机检查、密钥位置和完整安装升级说明见[发行说明](RELEASE.md)。
 
@@ -53,11 +53,23 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 
 `CsvParserTest` 覆盖通用解析；`YOHAKU_CSV_SAMPLE` 环境变量可指定仅本地读取的样本，默认不读取私人文件。`CsvImportRoundTripTest` 使用虚构 CSV 验证导入→撤销→恢复；传 `csvVisual=true` 可额外输出三主题中日文截图至应用外部目录 `csv-visual/`。29→30 验证见 `DatabaseUpgradeTest.version29AddsCsvTablesAndKeepsExistingLedger`。本轮已在原本运行的设备上通过这两项仪器验证，并检查320dp、字体1.3下三主题×中日文页面与确认弹层；未启动模拟器。真实样本仅在主机上做 JVM 解析统计，未放入设备或测试资源。
 
+## 信用卡付款与额度
+
+- 「额度与恢复」→ 编辑额度条件 → 按付款日恢复，可设置 N 个自然日（默认0），付款日后第 N 天预计恢复；实际恢复记录优先。
+- 一次付规则可选两段不重叠的ボーナス利用期间及付款月日，随版本保存。记账选择「ボーナス一括」自动计算，缺设置或期间不匹配会提示补齐；「指定月一次付」填 YYYY-MM，不早于正常付款月份，按该月规则还款日支付。手续费未知留空、免费填0，已知费用加入单期；未知时合计与备款待补。两者仍是 SINGLE/CARD_ENTRY，不新增金融模式。
+- 「调整付款方案」选择一次付后，可按规则下一期、ボーナス或指定月生成首次付款日。
+- 信用卡总览本期及月账单的付款日分组 → 「まとめてリボ」：选择未付款且未逾期的一次付账单（包括已确认），填写不超过所选本金的转换金额，按消费日和创建顺序分配，最后一笔可部分转入既有リボ池。原费用和未转本金保留原日；办理费沿用并池条件，只计一次，未确认费用不能提交。无池时进入既有建池表单。
+- 批次在一个事务内保存，并在总览/月账单提供整组撤销。保存前后快照与同一 `undoGroupId` 保留于现有安排输入/计划历史；后续付款或安排已变化时不能直接撤销。退款归属沿用安排重核，不另建账务机制。
+
+Room 32→33 新增 `credit_limit_configs.recoveryDelayDays INTEGER NOT NULL DEFAULT 0`、`events.cardPaymentMonth TEXT`、`events.cardPaymentFeeMinor INTEGER`（后两项默认NULL）。ボーナス规则和批次追溯保存在现有版本JSON中。完整备份仍为原数据库归档，`BACKUP_SCHEMA_VERSION` 跟随33，旧备份通过相同迁移升级；旧记录不会被设成新的付款方式。
+
+必要验证：`CreditCardOptionsTest`（日期、费用、额度恢复和分配守恒），`CreditCardOptionsStorageTest`（单期保存、已确认部分转换、事务回滚/整组撤销），`DatabaseUpgradeTest.version32KeepsLimitRecoveryOnPaymentDay`（老配置延迟0）。本次仪器测试仅编译，未执行；三主题中日文视觉检查交由用户完成。
+
 ## 分类图标
 
 分类编辑页新增「分类图标」：新建时按名称自动推荐，并列出其他推荐；手动选过后改名不再覆盖。「更换」打开选择弹层：分组 Tab（有名称推荐时多一个「★ 推荐」）、中/日/英文搜索、顶部预览，二级分类可改回沿用一级。Tab 栏和「使用这个图标」在弹层滚动时分别吸顶、吸底。图标显示于记账选分类、分类管理（二级行标注「沿用一级」）、全部流水、分类预算与小物主题的分析分类卡片；徽记由 `CategoryIconBadge` 按主题绘制。
 
-当前源码使用 Room v32：31→32 为分类新增可空 `icon`（Tabler id），并按名称回填。一级使用首个推荐；二级只有推荐与父级回填值不同时保存。显示解析依次使用有效的自身图标、父级图标、`category`。完整备份包含此字段，旧备份恢复走同一迁移。
+Room 31→32 为分类新增可空 `icon`（Tabler id），并按名称回填。一级使用首个推荐；二级只有推荐与父级回填值不同时保存。显示解析依次使用有效的自身图标、父级图标、`category`。完整备份包含此字段，旧备份恢复走同一迁移。
 
 精选目录为 Tabler Icons 3.49.0 outline 的 450 个图标、10 组；MIT 原文见 `app/src/main/assets/licenses/Tabler-Icons-MIT.txt`。从仓库根目录重新生成 JS 与 Kotlin：
 

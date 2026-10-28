@@ -48,7 +48,7 @@ data class EntryDraft(
     val referenceExpectedAccountMinor:Long?=null,val referenceExpectedBaseMinor:Long?=null,
     val referenceRates:List<com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot> = emptyList(),
     val occurrenceLinkEventId:String?=null,
-    val cardPaymentChoice:String?=null,val cardPaymentPeriods:String="",val cardPaymentRecheck:Boolean=false
+    val cardPaymentChoice:String?=null,val cardPaymentPeriods:String="",val cardPaymentRecheck:Boolean=false,val cardPaymentMonth:String="",val cardPaymentFee:String=""
 )
 
 @Serializable

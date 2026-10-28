@@ -364,7 +364,7 @@ import kotlinx.serialization.encodeToString
     }
     if(e.cardPaymentChoice!=null) {
         val finance by vm.financialState.collectAsStateWithLifecycle()
-        CardPaymentFacts(e,finance?.takeIf{it.book.id==s.book.id}?.rules?.firstOrNull{it.id==e.cardPaymentRuleId})
+        CardPaymentFacts(e,finance?.takeIf{it.book.id==s.book.id}?.rules?.firstOrNull{it.id==e.cardPaymentRuleId},s.accounts.first{it.id==e.accountId}.currency)
     }
     StoredReferenceRates(s.settlements.firstOrNull{it.eventId==e.id}?.referenceRatesJson)
     if(e.currency!=s.book.currency&&e.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name,EntryKind.REFUND.name))YText(word("本位币统计：","基準通貨集計：")+Money(Currency.valueOf(s.book.currency),e.baseMinor).display(),12,number=true)

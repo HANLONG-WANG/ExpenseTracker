@@ -102,7 +102,7 @@ import java.time.LocalDate
                 require(n in 1..1200){"请输入1至1200期 / 1〜1200回を入力してください"}
                 val start=LocalDate.parse(if(source=="EVENT")event?.date?:error("请选择来源记录 / 対象の記録を選択してください")else agreement)
                 val selectedRule=finance.rules.filter{it.accountId==account.id&&it.mode==mode&&it.effectiveFrom<=start.toString()}.maxWithOrNull(compareBy<FinancialRuleEntity>{it.effectiveFrom}.thenBy{it.version})?.let{vm.repository.json.decodeFromString<FinancialRuleVersion>(it.json)}
-                val payment=if(activeMode==FinanceMode.SINGLE&&selectedRule?.billing?.issues()?.isEmpty()==true)billingDates(start,selectedRule.billing).paymentDate else LocalDate.parse(firstDate)
+                val payment=if(activeMode==FinanceMode.SINGLE&&selectedRule?.billing?.issues()?.isEmpty()==true)event?.takeIf{it.cardPaymentChoice in listOf("BONUS","DEFERRED")}?.let{recordedSinglePaymentDate(it,selectedRule)}?:billingDates(start,selectedRule.billing).paymentDate else LocalDate.parse(firstDate)
                 val end=LocalDate.parse(firstEnd)
                 val interest=selectedRule?.revolving?.interest
                 encoded=vm.repository.json.encodeToString(List(n){i->val previous=end.plusMonths(i-1L)

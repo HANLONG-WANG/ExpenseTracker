@@ -73,6 +73,20 @@ import java.time.LocalDate
             YSelect(word("扣款账户","引落口座"),draft["bank"],listOf("" to word("未填写","未入力"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id to (it.name+" · "+it.currency)},{change("bank",it);trial=null})
             YText(word("31日遇短月按月末。未配置营业日历时，本期实际扣款日期需手动确认。","31日がない月は月末です。営業日カレンダー未設定の場合、当期の引落日は手動確認してください。"),11,color=LocalYohaku.current.muted)
         }
+        if(mode==FinanceMode.SINGLE)FinanceFormSection(word("ボーナス払い（可选，最多两段）","ボーナス払い（任意・最大2区分）")) {
+            (0..1).forEach{i->
+                YToggle(word("启用期间 ${i+1}","期間${i+1}を使用"),draft["bonus${i}Enabled"]=="true",{change("bonus${i}Enabled",it.toString())})
+                if(draft["bonus${i}Enabled"]=="true")listOf(
+                    ("StartMonth" to word("利用起始月","利用開始月")) to ("StartDay" to word("利用起始日","利用開始日")),
+                    ("EndMonth" to word("利用结束月","利用終了月")) to ("EndDay" to word("利用结束日","利用終了日")),
+                    ("PaymentMonth" to word("付款月","支払月")) to ("PaymentDay" to word("付款日","支払日"))
+                ).forEach{(month,day)->Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                    RuleText(draft,"bonus$i${month.first}",month.second,{k,v->change(k,v);trial=null},Modifier.weight(1f),true)
+                    RuleText(draft,"bonus$i${day.first}",day.second,{k,v->change(k,v);trial=null},Modifier.weight(1f),true)
+                }}
+            }
+            YText(word("按消费日期所在的利用期间，在期间结束后的付款月日扣款；付款日遇短月按月末。","利用日が属する期間の終了後、指定の支払月日に引き落とします。短い月は月末です。"),11,color=LocalYohaku.current.muted)
+        }
         if(mode==FinanceMode.INSTALLMENT)FinanceFormSection(word("分期手续费","分割手数料")) {
             RuleText(draft,"periods",word("支持期数，逗号分隔","対応回数・カンマ区切り"),{k,v->change(k,v);trial=null})
             RuleChoice(draft,"feeMethod",word("分期计算方式","分割計算方式"),InstallmentFeeMethod.entries.map{it.name},{k,v->change(k,v);trial=null})
@@ -170,7 +184,7 @@ import java.time.LocalDate
         if(limits==null)YText(word("正在读取当前额度设置…","現在の枠設定を読込中…"),12)
         else if(config==null)YText(word("尚未配置额度，利用可能额保持未知。","枠は未設定のため、利用可能額は不明です。"),12,Modifier.testTag("finance-rule-recovery-unset"))
         else {
-            YText(limitLabel(config.recovery),12,Modifier.testTag("finance-rule-recovery-current"))
+            YText(limitLabel(config.recovery,config.recoveryDelayDays),12,Modifier.testTag("finance-rule-recovery-current"))
             RecordFacts(listOf(word("额度版本 / 生效日","枠バージョン・適用日") to (config.version.toString()+" · "+config.effectiveFrom)))
         }
         if(previous.isNotBlank()) {

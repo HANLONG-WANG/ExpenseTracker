@@ -45,6 +45,7 @@ interface YohakuDao {
     @Query("SELECT * FROM events WHERE bookId=:bookId AND purgedAt IS NULL ORDER BY date DESC,rowid DESC") fun events(bookId:String):Flow<List<EventEntity>>
     @Query("SELECT * FROM events WHERE bookId=:bookId AND id=:id AND purgedAt IS NULL") suspend fun event(bookId:String,id:String):EventEntity?
     @Query("SELECT COUNT(*) FROM events WHERE bookId=:bookId AND purgedAt IS NULL") suspend fun eventCount(bookId:String):Int
+    @Query("SELECT id FROM events WHERE bookId=:bookId ORDER BY createdAt,rowid") suspend fun eventCreationOrder(bookId:String):List<String>
     @Upsert suspend fun putEvent(event:EventEntity)
     @Query("DELETE FROM postings WHERE bookId=:bookId AND eventId=:eventId") suspend fun clearPostings(bookId:String,eventId:String)
     @Insert suspend fun putPostings(postings:List<PostingEntity>)
@@ -128,7 +129,7 @@ interface YohakuDao {
     @Upsert suspend fun putDraft(draft:DraftEntity)
     @Query("DELETE FROM drafts WHERE bookId=:bookId") suspend fun clearDraft(bookId:String)
 }
-const val DATABASE_VERSION=32
+const val DATABASE_VERSION=33
 
 @Database(entities=[CsvBatchEntity::class,CsvBatchEventEntity::class,CsvProfileEntity::class,CloudTaskEntity::class,CloudTransferEntity::class,CloudImportEntity::class,CloudAckEntity::class,BookEntity::class,AccountEntity::class,CategoryEntity::class,EventEntity::class,PostingEntity::class,RevisionEntity::class,DraftEntity::class,FileBlobEntity::class,AttachmentLinkEntity::class,SettlementEntity::class,TransferEntity::class,ExpenseComponentEntity::class,BudgetEntity::class,ActivityEntity::class,BookFeaturesEntity::class,EventActivityEntity::class,RecurrenceEntity::class,OccurrenceEntity::class,ActivityBudgetEntity::class,ActivityReserveEntity::class,ReserveUseEntity::class,FriendEntity::class,ActivityParticipantEntity::class,TreatEntity::class,TreatAllocationEntity::class,AnalysisPreferencesEntity::class,MerchantEntity::class,MerchantLocationEntity::class,EventMerchantEntity::class,DraftMediaEntity::class,ReceiptEntity::class,ReceiptImageEntity::class,FinancialRuleEntity::class,FinancialPlanEntity::class,FinancialBillEntity::class,FinancialRuleValidationEntity::class,DebtContractEntity::class,FinancialRepaymentEntity::class,FinancialRepaymentAllocationEntity::class,FinancialContractPlanEntity::class,FinancialPlanRevisionEntity::class,FinancialArrangementEntity::class,FinancialBillAdjustmentEntity::class,ExpectedIncomeEntity::class,CreditLimitConfigEntity::class,CreditLimitGroupEntity::class,CreditLimitGroupMemberEntity::class,CreditLimitGroupRevisionEntity::class,CreditLimitRecoveryEntity::class,CreditLimitObservationEntity::class,FinancialDraftEntity::class,StatementBatchEntity::class,ReceiptExportEntity::class,ReceiptItemDocumentEntity::class,StatementDecisionEntity::class],version=DATABASE_VERSION,exportSchema=true)
 abstract class YohakuDatabase:RoomDatabase() {
