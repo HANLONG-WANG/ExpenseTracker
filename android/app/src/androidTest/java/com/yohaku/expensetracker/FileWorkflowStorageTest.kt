@@ -140,9 +140,9 @@ class FileWorkflowStorageTest {
                 it.execSQL("DROP TABLE statement_batches"); it.execSQL("DROP TABLE receipt_exports"); it.execSQL("DROP TABLE receipt_item_documents")
                 val schema = JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v23-schema.json").bufferedReader().readText()).getJSONObject("database")
                 it.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42", arrayOf(schema.getString("identityHash")))
-                restoreBookLifecycleFixture(it);it.version = 23
+                restoreFixtureDatabase(it,23)
             }
-            disk = Room.databaseBuilder(context, YohakuDatabase::class.java, name).addMigrations(MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28).build()
+            disk = Room.databaseBuilder(context, YohakuDatabase::class.java, name).addMigrations(*ALL_MIGRATIONS).build()
             repository = LedgerRepository(disk)
             assertEquals(5000L, repository.snapshot(repository.dao.book(b)!!).first().balance(repository.dao.account(b, a)!!))
             val file = statement().copy(book_id = b, account_id = a)

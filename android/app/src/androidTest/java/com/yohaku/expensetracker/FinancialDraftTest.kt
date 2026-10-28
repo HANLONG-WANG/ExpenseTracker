@@ -30,9 +30,9 @@ class FinancialDraftTest {
             try {
                 old.execSQL("DROP TABLE financial_drafts")
                 val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v20-schema.json").bufferedReader().readText()).getJSONObject("database")
-                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));restoreFixtureTable(old,"room-v20-schema.json","financial_plans");restoreBookLifecycleFixture(old);old.version=20
+                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));restoreFixtureDatabase(old,20)
             }finally{old.close()}
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28).build();r=LedgerRepository(db)
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(*ALL_MIGRATIONS).build();r=LedgerRepository(db)
             val repay=FinancialDraftContext("REPAY",a);val borrow=FinancialDraftContext("BORROW",a)
             r.storeFinancialDraft(repay,b,"{\"paid\":\"12.\",\"principal\":\"\",\"confirmed\":false}","basis1")
             r.storeFinancialDraft(borrow,b,"{\"name\":\"未完了\"}","basis1")

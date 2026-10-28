@@ -20,29 +20,22 @@ internal fun restoreFixtureTable(db:SQLiteDatabase,asset:String,name:String) {
     db.execSQL("DROP TABLE fixture_backup")
 }
 
-internal fun dropCreditLimitFixtureTables(db:SQLiteDatabase) {
-    restoreFixtureTable(db,"room-v18-schema.json","events")
-    restoreFixtureTable(db,"room-v18-schema.json","financial_plans")
-    listOf("credit_limit_group_members","credit_limit_group_revisions","credit_limit_recoveries","credit_limit_observations","credit_limit_configs","credit_limit_groups").forEach{db.execSQL("DROP TABLE `$it`")}
-}
-
-/** Current fixtures downgraded to v25 or earlier must also restore the old book columns. */
-internal fun restoreBookLifecycleFixture(db:SQLiteDatabase) {
-    restoreEntryLifecycleFixture(db)
-    val hasLifecycle=db.rawQuery("PRAGMA table_info(books)",null).use{c->var found=false;while(c.moveToNext())if(c.getString(1)=="archived")found=true;found}
-    if(hasLifecycle)restoreFixtureTable(db,"room-v25-schema.json","books")
-    val hasActivityDeletion=db.rawQuery("PRAGMA table_info(activities)",null).use{c->var found=false;while(c.moveToNext())if(c.getString(1)=="deletedAt")found=true;found}
-    if(hasActivityDeletion)restoreFixtureTable(db,"room-v25-schema.json","activities")
-}
-
-/** Strip only columns introduced after v27; earlier fixture-specific table shapes remain untouched. */
-internal fun restoreEntryLifecycleFixture(db:SQLiteDatabase) {
-    for((table,column) in listOf("events" to "cardPaymentMonth","credit_limit_configs" to "recoveryDelayDays")) {
-        val present=db.rawQuery("PRAGMA table_info(`$table`)",null).use{c->var found=false;while(c.moveToNext())if(c.getString(1)==column)found=true;found}
-        if(present)restoreFixtureTable(db,"room-v32-schema.json",table)
+/** Rebuild every table at an exported old version, keeping data in shared columns, so later migrations all apply. */
+internal fun restoreFixtureDatabase(db:SQLiteDatabase,version:Int) {
+    val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v$version-schema.json").bufferedReader().readText()).getJSONObject("database")
+    val entities=schema.getJSONArray("entities").let{a->(0 until a.length()).map{a.getJSONObject(it)}}
+    val existing=db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('room_master_table','android_metadata')",null).use{c->buildList{while(c.moveToNext())add(c.getString(0))}}
+    (existing-entities.map{it.getString("tableName")}.toSet()).forEach{db.execSQL("DROP TABLE `$it`")}
+    for(table in entities) {
+        val name=table.getString("tableName")
+        val fields=table.getJSONArray("fields").let{a->(0 until a.length()).map{a.getJSONObject(it).getString("columnName")}}
+        val present=db.rawQuery("PRAGMA table_info(`$name`)",null).use{c->buildSet{while(c.moveToNext())add(c.getString(1))}}
+        val columns=fields.filter{it in present}.joinToString(","){"`$it`"}
+        if(present.isNotEmpty()){db.execSQL("CREATE TEMP TABLE fixture_backup AS SELECT $columns FROM `$name`");db.execSQL("DROP TABLE `$name`")}
+        db.execSQL(table.getString("createSql").replace("\${TABLE_NAME}",name))
+        table.optJSONArray("indices")?.let{a->(0 until a.length()).forEach{db.execSQL(a.getJSONObject(it).getString("createSql").replace("\${TABLE_NAME}",name))}}
+        if(present.isNotEmpty()){db.execSQL("INSERT INTO `$name` ($columns) SELECT $columns FROM fixture_backup");db.execSQL("DROP TABLE fixture_backup")}
     }
-    for((table,column) in listOf("events" to "purgedAt","statement_decisions" to "invalidatedAt")) {
-        val hasColumn=db.rawQuery("PRAGMA table_info(`$table`)",null).use{c->var found=false;while(c.moveToNext())if(c.getString(1)==column)found=true;found}
-        if(hasColumn)restoreFixtureTable(db,"room-v27-schema.json",table)
-    }
+    db.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")))
+    db.version=version
 }

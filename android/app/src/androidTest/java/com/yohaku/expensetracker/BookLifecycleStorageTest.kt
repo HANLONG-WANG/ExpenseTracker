@@ -149,11 +149,10 @@ class BookLifecycleStorageTest {
             val a=seed("移行前");val original=snapshot(a.book)
             db.close()
             SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE).use{old->
-                restoreBookLifecycleFixture(old)
                 val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v25-schema.json").bufferedReader().readText()).getJSONObject("database")
-                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));old.version=25
+                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));restoreFixtureDatabase(old,25)
             }
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_25_26,MIGRATION_26_27,MIGRATION_27_28).build();repo=LedgerRepository(db,clock,root)
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(*ALL_MIGRATIONS).build();repo=LedgerRepository(db,clock,root)
             assertEquals(original,snapshot(a.book))
             assertFalse(repo.dao.book(a.book)!!.archived);assertNull(repo.dao.book(a.book)!!.deletedAt)
             assertTrue(a.files.all{repo.mediaFile(it).readBytes().size==3})

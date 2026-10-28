@@ -132,6 +132,8 @@ JDK17、AGP9.3.3、Gradle Wrapper9.5.1、Compose BOM2026.09.00。SDK由`local.pr
 # 如需 release / lint，也分别单独执行并加 --max-workers=2。
 ```
 
+数据库迁移只登记在 `data/db/YohakuDatabase.kt` 的 `ALL_MIGRATIONS`，正式打开（`openYohakuDatabase`）和测试都引用它，不再各自列出。升级测试先写入数据，再调用 `restoreFixtureDatabase(db,N)`：它按 `androidTest/assets/room-vN-schema.json` 把所有表还原成 vN 结构，并设置版本号。要以某个新版本作为升级起点时，把 `app/schemas/.../N.json` 复制成对应的 asset。
+
 仪器测试需要实际兼容设备。真实权限/GPS、IME、跨进程、闹钟/重启、网络服务不能无前置地整类混跑，默认跳过不算通过。专项方法/参数见各测试源码和[阶段E记录](verification/phase-e-status.md)；历史进程/IME依据见A/B/C记录。独立`media-verifier`模块仅提供系统DocumentsProvider和跨UID只读验证，需单独安装，绝不打入产品APK，完成后卸载`com.yohaku.verification`。
 
 专用模拟器`emulator-5580`：标准1170×2532/density480/fontScale1（390dp），窄屏960×2078/density480/fontScale1.3（320dp）。测试后恢复原尺寸/字体/网络/权限等配置。字体许可及数值字形适配见[字体迁移记录](verification/font-migration.md)。

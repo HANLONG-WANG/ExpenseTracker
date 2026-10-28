@@ -126,12 +126,11 @@ class ExpectedIncomeTest {
             val event=repo.saveEntry(b,EntryDraft(kind=EntryKind.INCOME,accountId=bank,categoryId=cat,amount="450",date="2026-10-15"))
             db.close();val old=SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE)
             try {
-                dropCreditLimitFixtureTables(old)
                 old.execSQL("DROP TABLE expected_incomes")
                 val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v16-schema.json").bufferedReader().readText()).getJSONObject("database")
-                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));restoreFixtureTable(old,"room-v16-schema.json","settlements");old.execSQL("DROP TABLE IF EXISTS financial_drafts");restoreBookLifecycleFixture(old);old.version=16
+                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));old.execSQL("DROP TABLE IF EXISTS financial_drafts");restoreFixtureDatabase(old,16)
             }finally{old.close()}
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_16_17,MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28).build()
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(*ALL_MIGRATIONS).build()
             val s=LedgerRepository(db,clock).snapshot(db.dao().book(b)!!).first()
             assertEquals(event,s.events.single().id);assertEquals(1450L,s.balance(s.accounts.single()));assertTrue(s.expectedIncomes.isEmpty())
         }finally{db.close();context.deleteDatabase(name)}

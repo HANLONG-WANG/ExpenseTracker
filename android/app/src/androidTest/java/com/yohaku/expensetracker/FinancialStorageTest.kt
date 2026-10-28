@@ -138,9 +138,9 @@ class FinancialStorageTest {
             old.execSQL("INSERT INTO categories VALUES ('b','c','餐饮','EXPENSE',NULL,0,1)")
             old.execSQL("INSERT INTO events (bookId,id,kind,accountId,categoryId,amountMinor,currency,baseMinor,date,merchant,note,historicalIncluded,revision) VALUES ('b','e','EXPENSE','a','c',500,'JPY',500,'2026-10-13','店','',0,1)")
             old.execSQL("INSERT INTO postings VALUES ('b','p','e','a',-500,'JPY','2026-10-13',1)")
-            old.execSQL("DROP TABLE IF EXISTS financial_drafts");restoreBookLifecycleFixture(old);old.version=11
+            old.execSQL("DROP TABLE IF EXISTS financial_drafts");restoreFixtureDatabase(old,11)
         }finally{old.close()}
-        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_11_12,MIGRATION_12_13,MIGRATION_13_14,MIGRATION_14_15,MIGRATION_15_16,MIGRATION_16_17,MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28).build()
+        val db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(*ALL_MIGRATIONS).build()
         try {
             val repo=LedgerRepository(db,clock)
             val snapshot=repo.snapshot(repo.dao.book("b")!!).first()

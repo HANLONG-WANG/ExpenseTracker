@@ -89,9 +89,9 @@ class StatementReviewStorageTest {
             SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE).use{old->
                 old.execSQL("DROP TABLE statement_decisions")
                 val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v24-schema.json").bufferedReader().readText()).getJSONObject("database")
-                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));restoreBookLifecycleFixture(old);old.version=24
+                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));restoreFixtureDatabase(old,24)
             }
-            disk=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28).build();r=LedgerRepository(disk)
+            disk=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(*ALL_MIGRATIONS).build();r=LedgerRepository(disk)
             assertEquals(original,disk.fileWorkflowDao().statement(b,source.file_id)!!.originalJson)
             val posting=r.snapshot(r.dao.book(b)!!).first().reconciliationPostings().single()
             r.acceptStatementDifference(r.previewStatementDifference(b,source.file_id,source.rows.single().row_id,posting.postingId,"原文保留"))

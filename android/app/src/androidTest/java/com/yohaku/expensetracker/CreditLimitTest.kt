@@ -151,8 +151,8 @@ class CreditLimitTest {
             var repo=LedgerRepository(db,clock);val b=repo.createBook("移行",Currency.JPY)
             val a=repo.saveAccount(b,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,4000),"2026-10-01")
             db.close();val old=SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE)
-            try{dropCreditLimitFixtureTables(old);val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v18-schema.json").bufferedReader().readText()).getJSONObject("database");old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));old.execSQL("DROP TABLE IF EXISTS financial_drafts");restoreBookLifecycleFixture(old);old.version=18}finally{old.close()}
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,com.yohaku.expensetracker.data.db.MIGRATION_23_24,com.yohaku.expensetracker.data.db.MIGRATION_24_25,com.yohaku.expensetracker.data.db.MIGRATION_25_26,com.yohaku.expensetracker.data.db.MIGRATION_26_27,com.yohaku.expensetracker.data.db.MIGRATION_27_28).build();repo=LedgerRepository(db,clock)
+            try{val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v18-schema.json").bufferedReader().readText()).getJSONObject("database");old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));old.execSQL("DROP TABLE IF EXISTS financial_drafts");restoreFixtureDatabase(old,18)}finally{old.close()}
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(*ALL_MIGRATIONS).build();repo=LedgerRepository(db,clock)
             assertTrue(db.creditLimitDao().graph(b).first()!!.configs.isEmpty())
             repo.commitCreditLimit(repo.previewCreditLimit(b,config(a,4000)))
             repo.commitCreditLimit(repo.previewCreditLimitObservation(b,a,null,"TOTAL",6100,clock.instant().toString()))

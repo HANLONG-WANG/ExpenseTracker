@@ -150,11 +150,10 @@ class EntryLifecycleStorageTest {
         try {
             seed();val event=r.saveEntry(book,draft());val before=snapshot();db.close()
             SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE).use{old->
-                restoreEntryLifecycleFixture(old)
                 val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v27-schema.json").bufferedReader().readText()).getJSONObject("database")
-                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));old.version=27
+                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));restoreFixtureDatabase(old,27)
             }
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_27_28).build();r=LedgerRepository(db,clock,root)
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(*ALL_MIGRATIONS).build();r=LedgerRepository(db,clock,root)
             assertEquals(before,snapshot());assertNull(r.dao.event(book,event)!!.purgedAt)
         }finally{db.close();context.deleteDatabase(name)}
     }

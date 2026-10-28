@@ -90,12 +90,11 @@ class ActivityManagementStorageTest {
         try {
             val x=seed();val before=snapshot(x.b);db.close()
             SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE).use{old->
-                restoreEntryLifecycleFixture(old)
-                restoreFixtureTable(old,"room-v26-schema.json","activities")
+                
                 val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("room-v26-schema.json").bufferedReader().readText()).getJSONObject("database")
-                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));old.version=26
+                old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")));restoreFixtureDatabase(old,26)
             }
-            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(MIGRATION_26_27,MIGRATION_27_28).build();r=LedgerRepository(db,clock,root)
+            db=Room.databaseBuilder(context,YohakuDatabase::class.java,name).addMigrations(*ALL_MIGRATIONS).build();r=LedgerRepository(db,clock,root)
             assertEquals(before,snapshot(x.b));assertNull(r.dao.activity(x.b,x.activity)!!.deletedAt)
         }finally{db.close();context.deleteDatabase(name)}
     }
