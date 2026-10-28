@@ -1,4 +1,6 @@
+<!-- Receipt with a yen mark; everything stays inside the 66dp adaptive-icon safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#355b43" android:pathData="M29,27h50v54h-50z"/>
-    <path android:fillColor="@android:color/transparent" android:strokeColor="#fffef8" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M40,66C34,45 47,38 67,40C69,58 61,70 45,66M39,71L60,47"/>
+    <path android:fillColor="#fffef8" android:pathData="M38,28h32a2,2 0 0,1 2,2V78l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3l-3,-3l-3,3V30a2,2 0 0,1 2,-2z"/>
+    <path android:strokeColor="#355b43" android:strokeWidth="3.2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M47,35L54,44L61,35M54,44V57M48,47H60M48,52H60"/>
+    <path android:strokeColor="#9fb5a5" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M42,64H66M42,69H58"/>
 </vector>
