@@ -35,7 +35,7 @@ class ReadFailureUiTest {
         // Fault is confined to this disposable database, before any UI subscription.
         db.openHelper.writableDatabase.execSQL("DROP TABLE books")
         val prefs=AppPreferences(context);runBlocking{prefs.clearSetup()}
-        vm=AppViewModel(LedgerRepository(db),prefs)
+        vm=AppViewModel(LedgerRepository(db),prefs, testReferenceRates(prefs))
         ui.setContent{NativeApp(vm)}
         ui.waitUntil(10000){vm.state.value is AppState.Failure}
         ui.onNodeWithText("无法读取账本").assertIsDisplayed()
@@ -57,7 +57,7 @@ class ReadFailureUiTest {
         val before=runBlocking{repo.snapshot(repo.dao.book(bookId)!!).first()}
         // Rename preserves rows and relationships; only this disposable DB is affected.
         db.openHelper.writableDatabase.execSQL("ALTER TABLE books RENAME TO temporarily_unavailable_books")
-        vm=AppViewModel(repo,prefs);ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock));ui.setContent{NativeApp(vm)}
         ui.waitUntil(10000){vm.state.value is AppState.Failure}
         ui.onNodeWithTag("read-error-details").assertDoesNotExist()
         ui.onNodeWithText("展开错误详情").performScrollTo().performClick()
@@ -86,7 +86,7 @@ class ReadFailureUiTest {
         val prefs=AppPreferences(context,storage)
         val saved=SetupDraft(step=1,name="途中の帳簿",budget="68000",theme="journal",language="ja")
         runBlocking{prefs.saveSetup(saved)}
-        vm=AppViewModel(LedgerRepository(db),prefs);ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(LedgerRepository(db),prefs, testReferenceRates(prefs));ui.setContent{NativeApp(vm)}
         ui.waitUntil(10000){vm.setupDraft.value==saved}
         ui.onNodeWithTag("field-帳簿名").performScrollTo().assertTextEquals("途中の帳簿")
         runBlocking{storage.edit{it[stringPreferencesKey("first_setup")]="{invalid json"}}

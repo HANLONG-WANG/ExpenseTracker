@@ -31,7 +31,7 @@ class FinancialDraftEditorsTest {
     @Test fun everyFinancialEditorRestoresItsOwnUnfinishedInputAndDiscardDoesNotChangeFormalFacts() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
-        val repo=LedgerRepository(db);val vm=AppViewModel(repo,AppPreferences(context))
+        val repo=LedgerRepository(db);val vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
         try {
             val (s,f,l)=runBlocking {
                 val b=repo.createBook("下書きの全フォーム",Currency.JPY,"journal","ja")

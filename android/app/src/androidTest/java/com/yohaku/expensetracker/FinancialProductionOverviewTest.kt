@@ -9,6 +9,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.repository.*
+import java.time.Instant
 import com.yohaku.expensetracker.domain.finance.*
 import com.yohaku.expensetracker.domain.model.*
 import kotlinx.coroutines.flow.first
@@ -27,8 +28,8 @@ class FinancialProductionOverviewTest {
     private var book:String?=null
     private var previous:String?=null
     private val additionalBooks=mutableListOf<String>()
-    @Before fun rememberSelection(){previous=runBlocking{app.preferences.activeBook.first()}}
-    @After fun cleanFixture(){runBlocking {
+    @Before fun rememberSelection(){DeviceClock.fixedInstant=Instant.parse("2026-10-16T03:00:00Z");previous=runBlocking{app.preferences.activeBook.first()}}
+    @After fun cleanFixture(){DeviceClock.fixedInstant=null;runBlocking {
         previous?.let{app.preferences.select(it)}
         (listOfNotNull(book)+additionalBooks).forEach{id->repo.db.withTransaction {
             for(table in listOf("financial_plan_revisions","financial_bills","financial_plans","financial_rules","credit_limit_configs","expected_incomes","budgets","financial_drafts","occurrences","recurrences","categories","accounts"))repo.db.openHelper.writableDatabase.execSQL("DELETE FROM $table WHERE bookId=?",arrayOf(id))
@@ -52,6 +53,7 @@ class FinancialProductionOverviewTest {
         ui.waitForIdle()
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
         val file=File(app.getExternalFilesDir(null),"phase-c-production-overview/$name.png");file.parentFile!!.mkdirs()
@@ -81,8 +83,7 @@ class FinancialProductionOverviewTest {
         val (b,bank,card,loan,plan)=ids;val first=ids[5]
         val facts=runBlocking{repo.snapshot(repo.dao.book(b)!!).first()}
         val savedBills=runBlocking{repo.db.financialDao().bills(b,plan)}
-        for(theme in listOf("magazine","journal","objects").filter{args.getString("theme")?.let{v->v==it}?:true})
-        for(language in listOf("zh","ja").filter{args.getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialProductionOverviewTest)) {
             runBlocking{repo.updateAppearance(b,theme,language);app.preferences.select(b)}
             ActivityScenario.launch(MainActivity::class.java).use {
                 tap("nav-accounts");tap("account-$card");tap("account-financial")
@@ -200,8 +201,7 @@ class FinancialProductionOverviewTest {
         val (b,bank,card,plan)=ids
         val original=runBlocking{repo.snapshot(repo.dao.book(b)!!).first()}
         val bills=runBlocking{repo.db.financialDao().bills(b,plan)}
-        for(theme in listOf("magazine","journal","objects").filter{args.getString("theme")?.let{v->v==it}?:true})
-        for(language in listOf("zh","ja").filter{args.getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialProductionOverviewTest)) {
             runBlocking{repo.updateAppearance(b,theme,language);app.preferences.select(b)}
             ActivityScenario.launch(MainActivity::class.java).use {
                 tap("nav-accounts");tap("accounts-forecast")
@@ -262,8 +262,7 @@ class FinancialProductionOverviewTest {
             InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
             ui.waitUntil(10000){ui.onAllNodesWithTag("important-payment-bill:$bill").fetchSemanticsNodes().isNotEmpty()}
         }
-        for(theme in listOf("magazine","journal","objects").filter{args.getString("theme")?.let{v->v==it}?:true})
-        for(language in listOf("zh","ja").filter{args.getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialProductionOverviewTest)) {
             runBlocking{if(repo.dao.occurrence(b,occurrence)!!.status=="CANCELLED")repo.restoreOccurrence(b,occurrence);repo.updateAppearance(b,theme,language);app.preferences.select(b)}
             ActivityScenario.launch(MainActivity::class.java).use {
                 tap("home-important")

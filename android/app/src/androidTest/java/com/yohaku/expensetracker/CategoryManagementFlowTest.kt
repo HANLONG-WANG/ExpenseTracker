@@ -36,6 +36,7 @@ class CategoryManagementFlowTest {
         ui.waitForIdle();node.performClick();ui.waitForIdle()
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         val identity=ui.onNodeWithTag("category-operation-name").getUnclippedBoundsInRoot()
         val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot()
@@ -49,6 +50,7 @@ class CategoryManagementFlowTest {
         image.recycle()
     }
     private fun pageShot(name:String,focus:String) {
+        if (!visualEnabled()) return
         // Bring the expanded shelf above the bottom navigation before capturing.
         ui.onNodeWithTag(focus).performScrollTo();ui.onRoot().performTouchInput{swipeUp(startY=centerY,endY=centerY-height*.25f,durationMillis=900)}
         ui.waitForIdle()
@@ -65,11 +67,11 @@ class CategoryManagementFlowTest {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
         val path=File(context.cacheDir,"category-ui-${UUID.randomUUID()}.preferences_pb")
         val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
-        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs)
+        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
         fun current()=(vm.state.value as? AppState.Ready)?.snapshot
         try {
             ui.setContent{NativeApp(vm)}
-            for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+            for((theme,language) in testLooks(this@CategoryManagementFlowTest)) {
                 fun label(zh:String,ja:String)=if(language=="ja")ja else zh
                 val b=repo.createBook("生活 / 暮らし",Currency.JPY,theme,language)
                 repo.dao.putBook(repo.dao.book(b)!!.copy(initialized=true))

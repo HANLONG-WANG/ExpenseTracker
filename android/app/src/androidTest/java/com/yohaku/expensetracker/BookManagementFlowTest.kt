@@ -36,6 +36,7 @@ class BookManagementFlowTest {
         ui.waitForIdle();node.performClick();ui.waitForIdle()
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         instrumentation.uiAutomation.waitForIdle(350,5000)
@@ -51,10 +52,10 @@ class BookManagementFlowTest {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
         val path=File(context.cacheDir,"book-ui-${UUID.randomUUID()}.preferences_pb")
         val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
-        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs)
+        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
         try {
             ui.setContent{NativeApp(vm)}
-            for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+            for((theme,language) in testLooks(this@BookManagementFlowTest)) {
                 val b=repo.createBook("生活 / 暮らし",Currency.JPY,theme,language)
                 repo.dao.putBook(repo.dao.book(b)!!.copy(initialized=true))
                 val a=repo.saveAccount(b,"現金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
@@ -109,7 +110,7 @@ class BookManagementFlowTest {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
         val path=File(context.cacheDir,"book-empty-${UUID.randomUUID()}.preferences_pb")
         val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
-        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs)
+        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
         try {
             val keep=repo.createBook("保留 / 保持",Currency.JPY)
             repo.dao.putBook(repo.dao.book(keep)!!.copy(initialized=true));prefs.select(keep)
@@ -117,7 +118,7 @@ class BookManagementFlowTest {
             val category=repo.saveCategory(keep,"生活",EntryKind.EXPENSE,null)
             val event=repo.saveEntry(keep,EntryDraft(accountId=bank,categoryId=category,amount="500",date="2026-10-16"))
             ui.setContent{NativeApp(vm)}
-            for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+            for((theme,language) in testLooks(this@BookManagementFlowTest)) {
                 repo.updateAppearance(keep,theme,language)
                 val trash=(1..2).map {n->
                     val b=repo.createBook("回收$n / 回収$n",Currency.JPY,theme,language)

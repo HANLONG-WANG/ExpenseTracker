@@ -36,6 +36,7 @@ class ActivityManagementFlowTest {
         ui.waitForIdle();node.performClick();ui.waitForIdle()
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         instrumentation.uiAutomation.waitForIdle(350,5000)
@@ -51,11 +52,11 @@ class ActivityManagementFlowTest {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
         val path=File(context.cacheDir,"activity-ui-${UUID.randomUUID()}.preferences_pb")
         val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
-        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs)
+        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
         fun current()=(vm.state.value as? AppState.Ready)?.snapshot
         try {
             ui.setContent{NativeApp(vm)}
-            for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+            for((theme,language) in testLooks(this@ActivityManagementFlowTest)) {
                 val b=repo.createBook("生活 / 暮らし",Currency.JPY,theme,language)
                 repo.dao.putBook(repo.dao.book(b)!!.copy(initialized=true))
                 val a=repo.saveAccount(b,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,20000),"2026-10-01")

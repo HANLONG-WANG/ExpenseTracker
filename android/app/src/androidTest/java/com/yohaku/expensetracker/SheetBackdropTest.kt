@@ -24,6 +24,7 @@ import kotlin.math.abs
 class SheetBackdropTest{
     @get:Rule val ui=createComposeRule()
     @Test fun sheetsUseOnlyTheirOwnDesignBackdropAndDismissNormally(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val open=mutableStateOf(false)
         val i=InstrumentationRegistry.getInstrumentation();val density=i.targetContext.resources.displayMetrics.density
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -34,7 +35,7 @@ class SheetBackdropTest{
             Box(Modifier.fillMaxSize().testTag("sheet-host"))
             if(open.value)YSheet(word("账户与期初信息","口座・期首情報"),{open.value=false}){Box(Modifier.height(700.dp))}
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SheetBackdropTest)){
             ui.runOnIdle{open.value=false;theme.value=t;language.value=l};ui.waitForIdle();Thread.sleep(350)
             val host=ui.onNodeWithTag("sheet-host").getUnclippedBoundsInRoot()
             val x=((host.right.value-2)*density).toInt();val y=(32*density).toInt()
@@ -69,6 +70,7 @@ class SheetBackdropTest{
         }
     }
     @Test fun longSheetsScrollGripAwayAndPinTitleLikeHtml(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val open=mutableStateOf(false)
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -78,7 +80,7 @@ class SheetBackdropTest{
             Box(Modifier.fillMaxSize())
             if(open.value)YSheet(word("账户与期初信息","口座・期首情報"),{open.value=false}){Box(Modifier.height(1200.dp))}
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SheetBackdropTest)){
             ui.runOnIdle{theme.value=t;language.value=l;open.value=true};ui.waitForIdle()
             ui.onNodeWithTag("sheet-scroll").performScrollToNode(hasTestTag("sheet-colophon"))
             val shell=ui.onNodeWithTag("theme-sheet").getUnclippedBoundsInRoot()

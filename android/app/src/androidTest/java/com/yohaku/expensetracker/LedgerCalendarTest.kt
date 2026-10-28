@@ -31,10 +31,11 @@ class LedgerCalendarTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-26T03:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         val file=File(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null),"ledger-calendar/$name.png");file.parentFile!!.mkdirs()
         file.outputStream().use{ui.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it)}
@@ -42,7 +43,7 @@ class LedgerCalendarTest {
 
     @Test fun calendarShowsDailyNetSpendingAndOpensTheChosenDay() {
         val amounts=mapOf(1 to 1280,2 to 2620,3 to 12800,5 to 980,6 to 2350,7 to 1640,9 to 1980,10 to 15400,11 to 3200,12 to 760,13 to 1890,14 to 300,15 to 2480,16 to 2720,17 to 4850,18 to 2100,19 to 1150,21 to 3480,22 to 1920,23 to 2300,25 to 2750,26 to 1210)
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@LedgerCalendarTest)) {
             val book=runBlocking {
                 val book=repo.createBook("日常 $theme $language",Currency.JPY,startDate="2026-09-01",budgetMinor=120000,theme=theme,language=language)
                 repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))

@@ -24,6 +24,7 @@ class SetupPresentationTest {
     @get:Rule val ui=createComposeRule()
     @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     @Test fun homePageMatchesSourceThroughDailyPanel(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val populated=mutableStateOf(true)
         val i=InstrumentationRegistry.getInstrumentation()
         val source=org.json.JSONArray(i.context.assets.open("home-page-measurements.json").bufferedReader().use{it.readText()})
@@ -42,6 +43,7 @@ class SetupPresentationTest {
         }}
         for(index in 0 until source.length()){
             val ref=source.getJSONObject(index);val t=ref.getString("theme");val l=ref.getString("language");val mode=ref.getString("mode")
+            if ((t to l) !in testLooks(this@SetupPresentationTest)) continue
             ui.runOnIdle{theme.value=t;language.value=l;populated.value=mode=="budget"}
             val cover=if(mode=="budget")"home-cover" else "lead-cover"
             ui.onNodeWithTag(cover).performScrollTo();val origin=ui.onNodeWithTag(cover).getUnclippedBoundsInRoot().top
@@ -73,6 +75,7 @@ class SetupPresentationTest {
         assertTrue(errors.joinToString("\n"),errors.isEmpty())
     }
     @Test fun booksPageMatchesSourceThroughDetailsPanel(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh")
         val i=InstrumentationRegistry.getInstrumentation()
         val source=org.json.JSONArray(i.context.assets.open("books-page-measurements.json").bufferedReader().use{it.readText()})
@@ -88,6 +91,7 @@ class SetupPresentationTest {
         }}
         for(index in 0 until source.length()){
             val ref=source.getJSONObject(index);val t=ref.getString("theme");val l=ref.getString("language")
+            if ((t to l) !in testLooks(this@SetupPresentationTest)) continue
             ui.runOnIdle{theme.value=t;language.value=l}
             ui.onNodeWithTag("page-title-heading").performScrollTo()
             val origin=ui.onNodeWithTag("page-title-heading").getUnclippedBoundsInRoot().top
@@ -113,6 +117,7 @@ class SetupPresentationTest {
         assertTrue(errors.joinToString("\n"),errors.isEmpty())
     }
     @Test fun ledgerPageMatchesSourceThroughFilteredList(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val populated=mutableStateOf(true)
         val i=InstrumentationRegistry.getInstrumentation()
         val source=org.json.JSONArray(i.context.assets.open("ledger-page-measurements.json").bufferedReader().use{it.readText()})
@@ -129,6 +134,7 @@ class SetupPresentationTest {
         var expanded=false
         for(index in 0 until source.length()){
             val ref=source.getJSONObject(index);val t=ref.getString("theme");val l=ref.getString("language");val mode=ref.getString("mode")
+            if ((t to l) !in testLooks(this@SetupPresentationTest)) continue
             ui.runOnIdle{theme.value=t;language.value=l;populated.value=mode!="empty"}
             if(expanded!=(mode=="expanded")){ui.onNodeWithTag("ledger-filters").performScrollTo().performClick();expanded=mode=="expanded"}
             ui.onNodeWithTag("page-title-heading").performScrollTo()
@@ -158,6 +164,7 @@ class SetupPresentationTest {
         assertTrue(errors.joinToString("\n"),errors.isEmpty())
     }
     @Test fun accountDetailBodyMatchesSourceAndActionsRemainReachable(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val populated=mutableStateOf(false);var selected=""
         val i=InstrumentationRegistry.getInstrumentation()
         val source=org.json.JSONArray(i.context.assets.open("account-detail-measurements.json").bufferedReader().use{it.readText()})
@@ -174,6 +181,7 @@ class SetupPresentationTest {
         }}
         for(index in 0 until source.length()){
             val ref=source.getJSONObject(index);val t=ref.getString("theme");val l=ref.getString("language");val hasRecords=ref.getBoolean("populated")
+            if ((t to l) !in testLooks(this@SetupPresentationTest)) continue
             ui.runOnIdle{theme.value=t;language.value=l;populated.value=hasRecords}
             ui.onNodeWithTag("lead-cover").performScrollTo()
             val origin=ui.onNodeWithTag("lead-cover").getUnclippedBoundsInRoot().top
@@ -204,6 +212,7 @@ class SetupPresentationTest {
         assertTrue(errors.joinToString("\n"),errors.isEmpty())
     }
     @Test fun accountsPageMatchesSourceFromLeadThroughAdd(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val mode=mutableStateOf("funds")
         val i=InstrumentationRegistry.getInstrumentation()
         val source=org.json.JSONArray(i.context.assets.open("accounts-page-measurements.json").bufferedReader().use{it.readText()})
@@ -220,6 +229,7 @@ class SetupPresentationTest {
         }}
         for(index in 0 until source.length()){
             val ref=source.getJSONObject(index);val t=ref.getString("theme");val l=ref.getString("language");val m=ref.getString("mode")
+            if ((t to l) !in testLooks(this@SetupPresentationTest)) continue
             ui.runOnIdle{theme.value=t;language.value=l;mode.value=m}
             ui.onNodeWithTag("lead-cover").performScrollTo()
             val origin=ui.onNodeWithTag("lead-cover").getUnclippedBoundsInRoot().top
@@ -255,6 +265,7 @@ class SetupPresentationTest {
         assertTrue(errors.joinToString("\n"),errors.isEmpty())
     }
     @Test fun categoryManagementPageMatchesGroupedDesign(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val income=mutableStateOf(true)
         val i=InstrumentationRegistry.getInstrumentation()
         val source=org.json.JSONArray(i.context.assets.open("category-page-measurements.json").bufferedReader().use{it.readText()})
@@ -271,6 +282,7 @@ class SetupPresentationTest {
         }}
         for(index in 0 until source.length()){
             val ref=source.getJSONObject(index);val t=ref.getString("theme");val l=ref.getString("language");val populated=ref.getString("income")=="populated"
+            if ((t to l) !in testLooks(this@SetupPresentationTest)) continue
             ui.runOnIdle{theme.value=t;language.value=l;income.value=populated}
             ui.onNodeWithTag("lead-cover").performScrollTo()
             val origin=ui.onNodeWithTag("lead-cover").getUnclippedBoundsInRoot().top
@@ -303,6 +315,7 @@ class SetupPresentationTest {
         assertTrue(errors.joinToString("\n"),errors.isEmpty())
     }
     @Test fun categoryManagementRowsMatchSourceForOneAndTwoChildren(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val count=mutableIntStateOf(1);var chosen=""
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -311,7 +324,7 @@ class SetupPresentationTest {
         ui.setContent{YohakuTheme(theme.value,language.value){Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal=if(theme.value=="objects")23.dp else 25.dp)){
             CategoryManageGroup("food","餐饮",false,(0 until count.intValue).map{"child$it" to "咖啡"},{chosen="parent"},{chosen=it},{chosen="add"},first=true)
         }}}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja"))for(n in 1..2){
+        for((t,l) in testLooks(this@SetupPresentationTest))for(n in 1..2){
             ui.runOnIdle{theme.value=t;language.value=l;count.intValue=n}
             ui.onNodeWithTag("category-manage-group-food").performScrollTo()
             val origin=ui.onNodeWithTag("category-manage-group-food").getUnclippedBoundsInRoot().top
@@ -338,6 +351,7 @@ class SetupPresentationTest {
         }
     }
     @Test fun categoryFavoritesUseOriginalDisclosureRowsAndParentChildSelection(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val favorites=mutableStateOf(setOf<String>())
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -350,7 +364,7 @@ class SetupPresentationTest {
                 CategoryFavorites(snapshot){c->favorites.value=if(c.id in favorites.value)favorites.value-c.id else favorites.value+c.id}
             }
         }}}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SetupPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l;favorites.value=emptySet()}
             ui.onNodeWithTag("category-favorites-toggle").performScrollTo().performClick()
             val details=ui.onNodeWithTag("category-favorites-details").getUnclippedBoundsInRoot()
@@ -375,6 +389,7 @@ class SetupPresentationTest {
         }
     }
     @Test fun entryFormMatchesSourceFromSelectedCategoryThroughSave(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh")
         val i=InstrumentationRegistry.getInstrumentation()
         val source=org.json.JSONArray(i.context.assets.open("entry-page-measurements.json").bufferedReader().use{it.readText()})
@@ -391,6 +406,7 @@ class SetupPresentationTest {
         }}}
         for(index in 0 until source.length()){
             val ref=source.getJSONObject(index);val t=ref.getString("theme");val l=ref.getString("language");val expanded=ref.getBoolean("expanded")
+            if ((t to l) !in testLooks(this@SetupPresentationTest)) continue
             ui.runOnIdle{theme.value=t;language.value=l}
             val noteField=if(l=="zh")"field-备注" else "field-メモ"
             if(ui.onAllNodesWithTag(noteField).fetchSemanticsNodes().isNotEmpty()!=expanded)ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
@@ -420,6 +436,7 @@ class SetupPresentationTest {
         assertTrue(errors.joinToString("\n"),errors.isEmpty())
     }
     @Test fun historicalOpeningExplanationMatchesSourceAndToggleState(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val included=mutableStateOf(false)
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -430,7 +447,7 @@ class SetupPresentationTest {
                 HistoricalOpeningToggle("2026-10-12",included.value){included.value=it}
             }
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SetupPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l;included.value=false}
             val label=if(l=="zh")"历史补录：已包含在期初余额" else "履歴追加：期首残高に含まれる"
             val node=ui.onNodeWithTag("toggle-$label").performScrollTo()
@@ -444,6 +461,7 @@ class SetupPresentationTest {
         }
     }
     @Test fun expandedCategoryRowsMatchSourceAndAllChoicesRemainReachable(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");var chosen=""
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -454,7 +472,7 @@ class SetupPresentationTest {
                 CategoryGroup("餐饮",0,listOf("coffee" to "咖啡"),true,{}, {chosen="parent"},{chosen=it},{chosen="add"},id="fixture")
             }
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SetupPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l}
             ui.onNodeWithTag("category-group-fixture").performScrollTo()
             // Remeasured from capture-category-group-reference.js with the integrated category badges.
@@ -472,6 +490,7 @@ class SetupPresentationTest {
         }
     }
     @Test fun categoryCoversMatchOriginalCompositionsAndCaptions(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh")
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -486,7 +505,7 @@ class SetupPresentationTest {
                 CategoryStepFooter()
             }
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SetupPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l}
             ui.onNodeWithTag("category-cover").performScrollTo()
             val cover=ui.onNodeWithTag("category-cover").getUnclippedBoundsInRoot()
@@ -506,6 +525,7 @@ class SetupPresentationTest {
         }
     }
     @Test fun recordDetailCoreMatchesFrozenSourceAndEditRemainsReachable(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");var edited=0
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -519,7 +539,7 @@ class SetupPresentationTest {
                 RecordDetailCore(snapshot,event){edited++}
             }
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SetupPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l}
             ui.onNodeWithTag("record-cover").performScrollTo()
             val core=ui.onNodeWithTag("record-detail-core").getUnclippedBoundsInRoot()
@@ -541,6 +561,7 @@ class SetupPresentationTest {
         }
     }
     @Test fun impactRowsMatchSupplementaryDesignWithoutWritingRecords(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh")
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -555,7 +576,7 @@ class SetupPresentationTest {
                 EntryImpactPreview(snapshot,event,impact,"2026-10")
             }
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SetupPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l}
             val heights=listOf("impact-balance-cash","impact-expense","impact-budget").map{tag->
                 val r=ui.onNodeWithTag(tag).getUnclippedBoundsInRoot();(r.bottom-r.top).value
@@ -569,6 +590,7 @@ class SetupPresentationTest {
         }
     }
     @Test fun fundingCardsAndGroupedListsMatchSourceInBothLanguages(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val selected=mutableStateOf<String?>(null)
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -583,7 +605,7 @@ class SetupPresentationTest {
                 AccountsScreen(snapshot,{},{selected.value=it.id})
             }
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SetupPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l;selected.value=null}
             ui.onNodeWithTag("account-cash").performScrollTo().assertIsDisplayed()
             val first=ui.onNodeWithTag("account-cash").getUnclippedBoundsInRoot()
@@ -604,6 +626,7 @@ class SetupPresentationTest {
         }
     }
     @Test fun fixedCurrencyBlockMatchesSourceInBothLanguages(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh")
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -612,7 +635,7 @@ class SetupPresentationTest {
         ui.setContent{YohakuTheme(theme.value,language.value){Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal=if(theme.value=="objects")23.dp else 25.dp)){
             AccountCurrencyFixed("JPY")
         }}}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SetupPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l}
             val block=ui.onNodeWithTag("account-currency-fixed").getUnclippedBoundsInRoot()
             val tops=if(t=="objects")listOf(0f,18f,42f,85f) else listOf(0f,16f,40f,if(t=="journal")83f else 75f)
@@ -630,6 +653,7 @@ class SetupPresentationTest {
         }
     }
     @Test fun reviewAndNoteMatchSourceAndAccountRemainsEditable(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");var edited:String?=null
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -645,7 +669,7 @@ class SetupPresentationTest {
                 SetupNote(word("新账本没有预建分类，也不复制其他账本的账户和记录。","新しい帳簿はカテゴリ未作成。他の口座・記録はコピーしません。"))
             }
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@SetupPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l;edited=null}
             ui.onNodeWithTag("setup-review").performScrollTo()
             val review=ui.onNodeWithTag("setup-review").getUnclippedBoundsInRoot()

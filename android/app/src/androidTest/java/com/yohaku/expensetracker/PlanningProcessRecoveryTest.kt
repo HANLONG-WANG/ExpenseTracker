@@ -36,7 +36,7 @@ class PlanningProcessRecoveryTest {
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("planningRecovery")=="true")
         db=Room.databaseBuilder(context,YohakuDatabase::class.java,"phase-b-planning-process.db").build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,prefs)
+        vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
     }
     @After fun close(){if(::vm.isInitialized)vm.viewModelScope.cancel();if(::db.isInitialized)db.close()}
     private suspend fun snapshot(book:String)=repo.snapshot(repo.dao.book(book)!!).first()
@@ -59,7 +59,7 @@ class PlanningProcessRecoveryTest {
         assertFalse("Keep an unfinished recovery check",marker.exists())
         val data=JSONObject().put("previous",prefs.activeBook.first()?:"").put("seedPid",Process.myPid()).put("pid",Process.myPid())
         val all=JSONArray()
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@PlanningProcessRecoveryTest)){
             val book=repo.createBook("进程恢复 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01",budgetMinor=100000)
             repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
             val account=repo.saveAccount(book,"支払銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,50000),"2026-10-01")

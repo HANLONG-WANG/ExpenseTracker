@@ -19,6 +19,7 @@ import java.io.File
 class SectionHeadingTest{
     @get:Rule val ui=createComposeRule()
     @Test fun headingsKeepEachThemesOriginalStructureAndCollapsedMargins(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val link=mutableStateOf(false);val gap=mutableIntStateOf(15);var clicked=0
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
@@ -31,7 +32,7 @@ class SectionHeadingTest{
                 Box(Modifier.fillMaxWidth().height(20.dp).testTag("after-section"))
             }
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja"))for(action in listOf(false,true))for(pageGap in listOf(15,18)){
+        for((t,l) in testLooks(this@SectionHeadingTest))for(action in listOf(false,true))for(pageGap in listOf(15,18)){
             ui.runOnIdle{theme.value=t;language.value=l;link.value=action;gap.intValue=pageGap}
             val before=ui.onNodeWithTag("before-section").getUnclippedBoundsInRoot()
             val heading=ui.onNodeWithTag("section-heading").getUnclippedBoundsInRoot()

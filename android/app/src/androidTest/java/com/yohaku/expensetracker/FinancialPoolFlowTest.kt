@@ -33,7 +33,7 @@ class FinancialPoolFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context))
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
@@ -68,6 +68,7 @@ class FinancialPoolFlowTest {
         return ui.onNode(if(ancestor==null)matcher else matcher and hasAnyAncestor(hasTestTag(ancestor)))
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -80,7 +81,7 @@ class FinancialPoolFlowTest {
         }
     }
     @Test fun pooledAccountAdoptionPreviewAndNewSpendingKeepOneCourseInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialPoolFlowTest)) {
             val loan=InstrumentationRegistry.getArguments().getString("loan")=="true"
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val (book,card,source)=runBlocking {

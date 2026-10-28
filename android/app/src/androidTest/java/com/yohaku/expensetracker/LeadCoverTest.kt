@@ -21,6 +21,7 @@ import java.io.File
 class LeadCoverTest {
     @get:Rule val ui=createComposeRule()
     @Test fun leadStatesUseThemeFontsAndMeasuredLineBoxes(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val kind=mutableStateOf("setup")
         ui.setContent{YohakuTheme(theme.value,language.value){
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(pageContentPadding()).verticalScroll(rememberScrollState())){
@@ -36,7 +37,7 @@ class LeadCoverTest {
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
         val folder=File(i.targetContext.filesDir,"verification/lead$suffix").also{it.mkdirs()}
         val rows=mutableListOf<String>()
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja"))for(k in listOf("setup","balance","welcome")){
+        for((t,l) in testLooks(this@LeadCoverTest))for(k in listOf("setup","balance","welcome")){
             ui.runOnIdle{theme.value=t;language.value=l;kind.value=k}
             ui.waitForIdle()
             ui.onNodeWithTag("lead-title").assertExists()
@@ -51,6 +52,6 @@ class LeadCoverTest {
             val screenshot=i.uiAutomation.takeScreenshot()
             File(folder,"$t-$l-$k.png").outputStream().use{screenshot.compress(Bitmap.CompressFormat.PNG,100,it)};screenshot.recycle()
         }
-        File(folder,"dimensions.csv").writeText(rows.joinToString("\n"))
+        if (visualEnabled()) File(folder,"dimensions.csv").writeText(rows.joinToString("\n"))
     }
 }

@@ -68,6 +68,7 @@ class ReferenceRateFlowTest {
         return ui.onNode(if(ancestor==null)matcher else matcher and hasAnyAncestor(hasTestTag(ancestor)))
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -80,7 +81,7 @@ class ReferenceRateFlowTest {
         }
     }
     @Test fun referenceRefreshNeverOverwritesActualAmountsAndStoredEvidenceInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@ReferenceRateFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             quoted="0.04";offline=false
             runBlocking{rates.store.saveReferenceRateCache(com.yohaku.expensetracker.domain.currency.ReferenceRateCache())}
@@ -128,13 +129,13 @@ class ReferenceRateFlowTest {
             ui.waitUntil(10000){ui.onAllNodesWithText("≈ ¥99,875").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithText("≈ ¥99,875").performScrollTo()
             ui.onNodeWithTag("page-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,900f)}
-            ui.waitUntil(5000){vm.notice.value==null};ui.waitForIdle()
+            if (visualEnabled()) ui.waitUntil(5000){vm.notice.value==null};ui.waitForIdle()
             shot("$theme-$language-rate-assets")
             assertNull(vm.error.value)
         }
     }
     @Test fun foreignExpenseKeepsManualAmountAndHistoricalRateWhenReferenceRefreshes() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@ReferenceRateFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             quoted="25";offline=false
             runBlocking{rates.store.saveReferenceRateCache(com.yohaku.expensetracker.domain.currency.ReferenceRateCache())}
@@ -180,8 +181,7 @@ class ReferenceRateFlowTest {
 
     @Test fun settingsQueryUsesSelectedCurrenciesAndDateWhileAutomaticOffStillAllowsRefresh() {
         val args=InstrumentationRegistry.getArguments()
-        for(theme in listOf("magazine","journal","objects").filter{args.getString("theme")?.let{v->v==it}?:true})
-        for(language in listOf("zh","ja").filter{args.getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@ReferenceRateFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             ui.runOnIdle{vm.navigate("home")};ui.waitForIdle()
             val book=runBlocking {

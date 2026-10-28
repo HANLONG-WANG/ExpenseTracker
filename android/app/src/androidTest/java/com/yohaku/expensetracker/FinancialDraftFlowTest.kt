@@ -36,7 +36,7 @@ class FinancialDraftFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         if(InstrumentationRegistry.getArguments().getString("processPhase")!="read")context.deleteDatabase("financial-draft-ui.db");db=Room.databaseBuilder(context,YohakuDatabase::class.java,"financial-draft-ui.db").build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context))
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
         ui.setContent{if(mounted)key(epoch){NativeApp(vm)}}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();if(InstrumentationRegistry.getArguments().getString("processPhase")!="write")InstrumentationRegistry.getInstrumentation().targetContext.deleteDatabase("financial-draft-ui.db")}
@@ -65,6 +65,7 @@ class FinancialDraftFlowTest {
         return ui.onNode(if(ancestor==null)matcher else matcher and hasAnyAncestor(hasTestTag(ancestor)))
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -82,11 +83,11 @@ class FinancialDraftFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.databaseBuilder(context,YohakuDatabase::class.java,"financial-draft-ui.db").build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context))
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
         ui.runOnIdle{epoch++;mounted=true}
     }
     @Test fun closedAndReopenedBorrowingDraftSurvivesDatabaseAndViewModelRestartAndClearsOnlyAfterSaving() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialDraftFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val (book,loan,bank)=runBlocking {
                 val b=repo.createBook("草稿 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")

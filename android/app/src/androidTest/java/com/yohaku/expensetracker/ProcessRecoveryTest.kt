@@ -34,7 +34,7 @@ class ProcessRecoveryTest {
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("processRecovery")=="true")
         db=Room.databaseBuilder(context,YohakuDatabase::class.java,"phase-a-process-check.db").build()
         repo=LedgerRepository(db)
-        vm=AppViewModel(repo,prefs)
+        vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
     }
     @After fun close(){if(::vm.isInitialized)vm.viewModelScope.cancel();if(::db.isInitialized)db.close()}
     private fun waitFor(text:String){ui.waitUntil(10000){ui.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}}

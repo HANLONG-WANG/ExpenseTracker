@@ -48,7 +48,7 @@ class DraftEditingFlowTest {
             event=repo.saveEntry(a,EntryDraft(accountId=account,categoryId=category,amount="300",merchant="喫茶と余白"))
             prefs.select(a)
         }
-        vm=AppViewModel(repo,prefs);ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock));ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun waitFor(text:String){ui.waitUntil(10000){ui.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}}
@@ -58,9 +58,9 @@ class DraftEditingFlowTest {
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
         val folder=java.io.File(i.targetContext.filesDir,"verification/category-create$suffix").also{it.mkdirs()}
-        val csv=java.io.File(folder,"dimensions.csv").also{it.writeText("theme,language,fixed,tag,top,height\n")}
+        val csv=java.io.File(folder,"dimensions.csv").also{if (visualEnabled()) it.writeText("theme,language,fixed,tag,top,height\n")}
         val root=snapshot(a).categories.first{it.id==category}.parentId!!
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja"))for(fixed in listOf(false,true)){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest))for(fixed in listOf(false,true)){
             val ja=language=="ja"
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("categories")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
@@ -82,7 +82,7 @@ class DraftEditingFlowTest {
             val expected=listOf(Triple("category-editor-intro",noteTop,noteHeight),Triple(if(ja)"field-group-カテゴリ名" else "field-group-分类名称",nameTop,nameHeight),Triple("category-icon-field",iconTop,iconHeight),Triple(if(fixed)"category-parent-fixed" else if(ja)"select-field-階層" else "select-field-分类层级",parentTop,parentHeight),Triple("category-editor-save",saveTop,when(theme){"journal"->50f;"objects"->52f;else->48f}))
             for((tag,top,height) in expected){
                 val r=ui.onNodeWithTag(tag).getUnclippedBoundsInRoot()
-                csv.appendText("$theme,$language,$fixed,$tag,${(r.top-origin).value},${(r.bottom-r.top).value}\n")
+                if (visualEnabled()) csv.appendText("$theme,$language,$fixed,$tag,${(r.top-origin).value},${(r.bottom-r.top).value}\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     assertEquals("Original category create top $theme/$language/$tag",top,(r.top-origin).value,1f)
                     assertEquals("Original category create height $theme/$language/$tag",height,(r.bottom-r.top).value,1f)
@@ -103,7 +103,7 @@ class DraftEditingFlowTest {
             repo.saveCategory(a,parentName,EntryKind.EXPENSE,null,root)
             repo.saveCategory(a,childName,EntryKind.EXPENSE,root,category,true)
         }
-        for(theme in listOf("magazine","journal","objects")){
+        for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             ui.runOnIdle{vm.appearance(a,theme=theme,language="ja")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language=="ja"}==true}
             ui.runOnIdle{vm.editEntry(snapshot(a),snapshot(a).events.single())}
@@ -159,7 +159,7 @@ class DraftEditingFlowTest {
     }
 
     @Test fun yenQuickEntrySavesSameRecordAndIsAbsentForIncome(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             val before=snapshot(a);ui.runOnIdle{vm.editEntry(before,before.events.single())}
@@ -257,7 +257,7 @@ class DraftEditingFlowTest {
         ui.onNodeWithText("×").performClick();ui.waitUntil(10000){vm.route.value=="home"}
     }
     @Test fun inlineEditCancelReturnsToOriginalDetailAndSaveRevisesSameId(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("ledger")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             val before=snapshot(a).visibleEvents.single()
@@ -286,28 +286,13 @@ class DraftEditingFlowTest {
             assertEquals(10000-amount,saved.balance(saved.accounts.single()))
         }
     }
-    @Test fun recordDetailUsesThemedSheetAndReturnsToSourcePage() {
-        for(theme in listOf("magazine","journal","objects")) {
-            ui.runOnIdle{vm.appearance(a,theme=theme)}
-            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
-            tap("喫茶と余白")
-            waitFor("这一笔的详情")
-            ui.onNodeWithTag("record-cover").assertIsDisplayed()
-            assertEquals("detail",vm.route.value)
-            captureScreen("record-detail",theme)
-            ui.onNodeWithText("×").performClick()
-            ui.waitUntil(10000){vm.route.value=="home"}
-            ui.onAllNodesWithTag("record-cover").assertCountEquals(0)
-            assertEquals(9700L,snapshot(a).balance(snapshot(a).accounts.single()))
-        }
-    }
     @Test fun homeFundsKeepCurrenciesSeparateAndDebtIsNotCash(){
         runBlocking{
             repo.saveAccount(a,"人民币账户",AccountType.BANK,Currency.CNY,Money(Currency.CNY,10000),"2026-10-01")
             repo.saveAccount(a,"信用卡",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,3000),"2026-10-01")
             repo.saveAccount(b,"借款",AccountType.LOAN,Currency.CNY,Money(Currency.CNY,50000),"2026-10-01")
         }
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.selectBook(a)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==a}
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language)}
@@ -332,7 +317,7 @@ class DraftEditingFlowTest {
             repo.saveEntry(a,EntryDraft(kind=EntryKind.INCOME,accountId=account,categoryId=category,amount="400",merchant="income-only"))
         }
         val expense=runBlocking{repo.saveEntry(a,EntryDraft(accountId=account,categoryId=category,amount="500",merchant="new-expense"))}
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("home")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             ui.onNodeWithTag("event-"+income).assertDoesNotExist()
@@ -353,7 +338,7 @@ class DraftEditingFlowTest {
     }
     @Test fun longPagesScrollHeaderAwayKeepNavigationFixedAndReachSettings(){
         runBlocking{repeat(5){repo.saveAccount(a,"口座 $it",AccountType.BANK,Currency.JPY,Money(Currency.JPY,1000),"2026-10-01")}}
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("accounts")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             val header=ui.onNodeWithTag("app-header").performScrollTo().getUnclippedBoundsInRoot()
@@ -375,7 +360,7 @@ class DraftEditingFlowTest {
             repo.saveAccount(a,"人民币账户",AccountType.BANK,Currency.CNY,Money(Currency.CNY,10000),"2026-10-01")
             repo.saveAccount(a,"信用卡",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,3000),"2026-10-01")
         }
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)) {
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("accounts")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             waitFor(if(language=="zh")"持有的资金 · 按原币" else "手元の資金・元通貨別")
@@ -392,7 +377,7 @@ class DraftEditingFlowTest {
         assertEquals(9700L,snapshot(a).balance(snapshot(a).accounts.first{it.id==account}))
     }
     @Test fun ledgerEntryActionsRespectExistingDraftAndRequestedKind(){
-        for(theme in listOf("magazine","journal","objects")){
+        for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             runBlocking{repo.saveDraft(a,EntryDraft(kind=EntryKind.EXPENSE,accountId=account,categoryId=category,amount="777"))}
             ui.runOnIdle{vm.appearance(a,theme=theme,language="zh");vm.navigate("ledger")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.let{it.book.theme==theme&&it.draft?.amount=="777"}==true}
@@ -428,7 +413,7 @@ class DraftEditingFlowTest {
             val root=repo.dao.category(a,category)!!.parentId!!
             repo.saveEntry(a,EntryDraft(accountId=account,categoryId=root,amount="500",merchant="食材店",note="每周采购"))
         }
-        for(theme in listOf("magazine","journal","objects")){
+        for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             ui.runOnIdle{vm.appearance(a,theme=theme);vm.navigate("ledger")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
             waitFor("日常的每一笔。")
@@ -465,7 +450,7 @@ class DraftEditingFlowTest {
         val root=snapshot(a).categories.first{it.id==category}.parentId!!
         val other=runBlocking{repo.saveCategory(a,"交通",EntryKind.EXPENSE,null)}
         runBlocking{repo.saveCategory(a,"電車",EntryKind.EXPENSE,other)}
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.startEntry(snapshot(a))}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             ui.onNodeWithTag("category-group-trigger-$root").performScrollTo().performClick()
@@ -495,7 +480,7 @@ class DraftEditingFlowTest {
             repo.saveCategory(a,child.name,EntryKind.EXPENSE,child.parentId,child.id,true)
             child.parentId!!
         }
-        for(theme in listOf("magazine","journal","objects")){
+        for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             ui.runOnIdle{vm.appearance(a,theme=theme)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
             ui.runOnIdle{vm.startEntry(snapshot(a))}
@@ -521,7 +506,7 @@ class DraftEditingFlowTest {
     @Test fun entryReselectKeepsAmountAccountAndOriginalIdInAllThemes() {
         val before=snapshot(a)
         val root=before.categories.first{it.id==category}.parentId!!
-        for(theme in listOf("magazine","journal","objects")){
+        for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             ui.runOnIdle{vm.appearance(a,theme=theme)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
             ui.runOnIdle{vm.editEntry(before,before.events.single())}
@@ -548,7 +533,7 @@ class DraftEditingFlowTest {
             repo.updateBook(repo.dao.book(a)!!.copy(budgetMinor=5000))
             repo.saveAccount(a,"信用卡",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,4000),"2026-10-01")
         }
-        for(theme in listOf("magazine","journal","objects")){
+        for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             val ja=theme!="magazine"
             ui.runOnIdle{vm.appearance(a,theme=theme,language=if(ja)"ja" else "zh")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
@@ -580,39 +565,6 @@ class DraftEditingFlowTest {
             ui.runOnIdle{vm.navigate("home")}
         }
     }
-    @Test fun deletingAndRestoringThroughTrashKeepsOriginalIdAndBalance() {
-        runBlocking{repo.updateBook(repo.dao.book(a)!!.copy(budgetMinor=10000))}
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
-            val ja=language=="ja"
-            ui.runOnIdle{vm.appearance(a,theme=theme,language=language)}
-            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
-            tap("喫茶と余白")
-            tap(if(ja)"ごみ箱に移動" else "移至回收站")
-            ui.onNodeWithTag("impact-budget").performScrollTo().onChildren().onLast().assertTextEquals("¥9,700 → ¥10,000")
-            captureScreen("delete-impact","$theme-$language")
-            tap(if(ja)"ごみ箱へ移動" else "确认移至回收站")
-            ui.waitUntil(10000){snapshot(a).visibleEvents.isEmpty()&&vm.route.value=="ledger"}
-            assertEquals(10000L,snapshot(a).balance(snapshot(a).accounts.single()))
-            ui.onNodeWithTag("header-settings").performScrollTo().performClick()
-            tap(if(ja)"ごみ箱 · 30日" else "回收站 · 30天")
-            waitFor(if(ja)"記録を復元" else "恢复原记录")
-            ui.onNodeWithTag("trash-"+event).assertExists()
-            ui.onNodeWithTag("restore-"+event).performScrollTo().performClick()
-            ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-entry-lifecycle").fetchSemanticsNodes().isNotEmpty()}
-            ui.onNodeWithTag("impact-balance-"+account).performScrollTo().onChildren().onLast().assertTextEquals("¥10,000 → ¥9,700")
-            ui.onNodeWithTag("impact-budget").performScrollTo().onChildren().onLast().assertTextEquals("¥10,000 → ¥9,700")
-            captureScreen("trash","$theme-$language")
-            ui.onNodeWithTag("confirm-entry-lifecycle").performScrollTo().performClick()
-            ui.waitUntil(10000){snapshot(a).visibleEvents.size==1}
-            val restored=snapshot(a)
-            assertEquals(event,restored.visibleEvents.single().id)
-            assertEquals(1,restored.visibleEvents.single().revision)
-            assertEquals(9700L,restored.balance(restored.accounts.single()))
-            assertNull(restored.removalImpact(event).remainingBudget(java.time.YearMonth.now(repo.clock).minusMonths(1).toString(),10000))
-            assertNull(restored.removalImpact(event).remainingBudget(java.time.YearMonth.now(repo.clock).toString(),null))
-            ui.runOnIdle{vm.navigate("home")}
-        }
-    }
     @Test fun incomeAndOpeningIncludedRemovalShowTheirActualBudgetEffects(){
         val income=runBlocking{
             repo.updateBook(repo.dao.book(a)!!.copy(budgetMinor=10000))
@@ -620,7 +572,7 @@ class DraftEditingFlowTest {
             repo.saveEntry(a,EntryDraft(kind=EntryKind.INCOME,accountId=account,categoryId=c,amount="400",merchant="income-preview"))
         }
         val historical=runBlocking{repo.saveEntry(a,EntryDraft(accountId=account,categoryId=category,amount="250",date="2026-10-01",merchant="opening-included",historicalIncluded=true))}
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("ledger")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             for(id in listOf(income,historical)){
@@ -649,9 +601,10 @@ class DraftEditingFlowTest {
         val metrics=instrumentation.targetContext.resources.displayMetrics
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
         val folder=java.io.File(instrumentation.targetContext.filesDir,"verification/settings$suffix").also{it.mkdirs()}
-        val dimensions=java.io.File(folder,"dimensions.csv").also{it.writeText("theme,language,option,width,height\n")}
-        val pageDimensions=java.io.File(folder,"page-dimensions.csv").also{it.writeText("theme,language,component,x,y,width,height\n")}
+        val dimensions=java.io.File(folder,"dimensions.csv").also{if (visualEnabled()) it.writeText("theme,language,option,width,height\n")}
+        val pageDimensions=java.io.File(folder,"page-dimensions.csv").also{if (visualEnabled()) it.writeText("theme,language,component,x,y,width,height\n")}
         fun measureOptions(theme:String,language:String){
+            if (!visualEnabled()) return
             ui.onNodeWithTag("page-edition").performScrollTo()
             val start=ui.onNodeWithTag("page-edition").getUnclippedBoundsInRoot().top.value
             for(tag in listOf("page-back","page-title","page-title-heading","settings-theme-panel")){
@@ -760,7 +713,7 @@ class DraftEditingFlowTest {
         assertEquals(9500L,saved.balance(saved.accounts.single()))
     }
     @Test fun accountOpeningEditPreviewCancelAndSaveKeepLedgerIntact() {
-        for(theme in listOf("magazine","journal","objects")){
+        for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             runBlocking{repo.saveAccount(a,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01",account)}
             ui.runOnIdle{vm.appearance(a,theme=theme);vm.navigate("accounts")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
@@ -798,7 +751,7 @@ class DraftEditingFlowTest {
         }
     }
     @Test fun navigationUsesOriginalColumnRatioAndSelectedState() {
-        for(theme in listOf("magazine","journal","objects")){
+        for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             ui.runOnIdle{vm.appearance(a,theme=theme);vm.navigate("home")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
             ui.onNodeWithTag("nav-home").assertIsSelected()
@@ -821,58 +774,10 @@ class DraftEditingFlowTest {
             ui.waitUntil(10000){vm.entry.value==null}
         }
     }
-    @Test fun themedAnalysisTotalsAndDrilldownCountEachExpenseOnce(){
-        val dimensions=mutableListOf<String>()
-        val root=snapshot(a).categories.first{it.id==category}.parentId!!
-        val other=runBlocking{
-            val child=repo.saveCategory(a,"食材",EntryKind.EXPENSE,root)
-            val other=repo.saveCategory(a,"日用",EntryKind.EXPENSE,null)
-            val income=repo.saveCategory(a,"収入",EntryKind.INCOME,null)
-            repo.saveEntry(a,EntryDraft(accountId=account,categoryId=child,amount="200",merchant="市场"))
-            repo.saveEntry(a,EntryDraft(accountId=account,categoryId=root,amount="100",merchant="未细分消费"))
-            repo.saveEntry(a,EntryDraft(accountId=account,categoryId=other,amount="50",merchant="日用品"))
-            repo.saveEntry(a,EntryDraft(kind=EntryKind.INCOME,accountId=account,categoryId=income,amount="400",merchant="收入"))
-            repo.saveEntry(a,EntryDraft(accountId=account,categoryId=other,amount="600",date=java.time.LocalDate.now().minusMonths(1).withDayOfMonth(1).toString(),merchant="上月消费"))
-            repo.saveAnalysisPreferences(a,listOf(AnalysisModule.CATEGORIES),emptySet())
-            other
-        }
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
-            ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("analysis")}
-            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
-            ui.onNodeWithTag("lead-amount").performScrollTo().assertIsDisplayed()
-            ui.onNodeWithTag("lead-amount").assertTextEquals(if(theme=="journal")"¥650 ↗" else "¥650")
-            val totalBounds=ui.onNodeWithTag("lead-amount").fetchSemanticsNode().boundsInRoot
-            val totalDensity=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-            dimensions+="$theme,$language,total,${totalBounds.width/totalDensity},${totalBounds.height/totalDensity}"
-            captureScreen("basic-analysis","$theme-$language-top")
-            ui.onNodeWithTag("analysis-category-$other").performScrollTo().assertIsDisplayed()
-            ui.onNodeWithText("¥50").assertExists()
-            captureScreen("basic-analysis","$theme-$language-categories")
-            ui.onNodeWithTag("analysis-category-$root").performScrollTo()
-            val context=InstrumentationRegistry.getInstrumentation().targetContext
-            val bounds=ui.onNodeWithTag("analysis-category-$root").fetchSemanticsNode().boundsInRoot
-            val density=context.resources.displayMetrics.density
-            dimensions+="$theme,$language,${bounds.width/density},${bounds.height/density}"
-            ui.onNodeWithTag("analysis-category-$root").performClick()
-            ui.onAllNodesWithText("餐饮").onLast().assertExists()
-            ui.onNodeWithText(if(language=="zh")"未细分 · 直接记入一级" else "内訳未分類・親への直接記録").performScrollTo().assertIsDisplayed()
-            ui.onAllNodesWithText("¥100").onFirst().assertExists()
-            ui.onAllNodesWithText("¥200").onFirst().assertExists()
-            captureScreen("basic-analysis","$theme-$language-detail")
-            tap("喫茶と余白")
-            waitFor(if(language=="zh")"这一笔的详情" else "この一筆の詳細")
-            ui.onNodeWithText("×").performClick()
-            ui.waitUntil(10000){vm.route.value=="analysis"}
-            assertEquals(6,snapshot(a).events.size)
-            assertEquals(9150L,snapshot(a).balance(snapshot(a).accounts.single()))
-        }
-        val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
-        java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir,"verification/basic-analysis$suffix/dimensions.csv").writeText(dimensions.joinToString("\n"))
-    }
     @Test fun categoryManagementEditsFavoritesAndCreatesSeparateIncomeWithoutChangingLedger(){
         val sizes=mutableListOf<String>()
         val root=snapshot(a).categories.first{it.id==category}.parentId!!
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             val ja=language=="ja"
             val variant="$theme-$language"
             ui.runOnIdle{vm.appearance(a,theme=theme,language=if(ja)"ja" else "zh");vm.navigate("categories")}
@@ -931,10 +836,10 @@ class DraftEditingFlowTest {
             captureScreen("category-management",variant)
         }
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
-        java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir,"verification/category-management$suffix/dimensions.csv").writeText(sizes.joinToString("\n"))
+        if (visualEnabled()) java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir,"verification/category-management$suffix/dimensions.csv").writeText(sizes.joinToString("\n"))
     }
     @Test fun bookMetadataCancelSaveAndEmptyCurrencyChangeStayIsolated(){
-        for(theme in listOf("magazine","journal","objects")){
+        for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             val ja=theme=="journal"
             ui.runOnIdle{vm.appearance(a,theme=theme,language=if(ja)"ja" else "zh");vm.navigate("settings")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
@@ -985,7 +890,7 @@ class DraftEditingFlowTest {
         val measurements=mutableListOf("theme,language,viewportBefore,viewportWithIme,saveBottom")
         val fieldSizes=mutableListOf("theme,language,field,width,height")
         val resources=InstrumentationRegistry.getInstrumentation().targetContext.resources
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.editEntry(snapshot(a),snapshot(a).visibleEvents.single())}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true&&vm.entry.value!=null}
             for((label,expectedHeight) in listOf(
@@ -1049,12 +954,12 @@ class DraftEditingFlowTest {
         }
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
         val folder=java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir,"verification/entry-keyboard$suffix").also{it.mkdirs()}
-        java.io.File(folder,"dimensions.csv").writeText(measurements.joinToString("\n")+"\n")
-        java.io.File(folder,"field-dimensions.csv").writeText(fieldSizes.joinToString("\n")+"\n")
+        if (visualEnabled()) java.io.File(folder,"dimensions.csv").writeText(measurements.joinToString("\n")+"\n")
+        if (visualEnabled()) java.io.File(folder,"field-dimensions.csv").writeText(fieldSizes.joinToString("\n")+"\n")
     }
 
     @Test fun notesDisclosureKeepsInputAcrossCollapseLanguageAndSave() {
-        for(theme in listOf("magazine","journal","objects")){
+        for(theme in testLooks(this@DraftEditingFlowTest).map { it.first }.distinct()){
             ui.runOnIdle{vm.appearance(a,theme=theme,language="zh");vm.editEntry(snapshot(a),snapshot(a).events.single())}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme&&vm.entry.value!=null}
             if(ui.onAllNodesWithTag("field-备注").fetchSemanticsNodes().isEmpty())ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
@@ -1081,33 +986,8 @@ class DraftEditingFlowTest {
         }
     }
 
-    @Test fun homeCoverShowsSameBudgetInAllThemesAndLanguages() {
-        runBlocking{repo.updateBook(repo.dao.book(a)!!.copy(budgetMinor=10000))}
-        val sizes=mutableListOf<String>()
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
-            ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("home")}
-            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
-            ui.onNodeWithTag("home-cover").performScrollTo().assertIsDisplayed()
-            ui.onAllNodesWithText("9,700").onFirst().assertExists()
-            captureScreen("home-cover","$theme-$language")
-            val bounds=ui.onNodeWithTag("home-cover").fetchSemanticsNode().boundsInRoot
-            val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-            sizes+="$theme,$language,${bounds.width/density},${bounds.height/density}"
-            if(theme=="magazine")listOf("cover-caption","cover-title","cover-grid","cover-aside","cover-main-money","cover-footer","cover-footer-text","cover-prefix","cover-value","cover-available").forEach{tag->
-                val rect=ui.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
-                sizes+="$theme,$language,$tag,${rect.top/density},${rect.width/density},${rect.height/density}"
-                if(tag in listOf("cover-prefix","cover-value","cover-available"))ui.onNodeWithTag(tag).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult){get->
-                    val text=mutableListOf<androidx.compose.ui.text.TextLayoutResult>();get(text)
-                    sizes+="$theme,$language,$tag-baseline,${text.single().firstBaseline/density},${text.single().size.height/density}"
-                }
-            }
-            assertEquals(10000L,snapshot(a).book.budgetMinor)
-            assertEquals(300L,snapshot(a).events.single().baseMinor)
-        }
-        val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
-        java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir,"verification/home-cover$suffix/dimensions.csv").writeText(sizes.joinToString("\n"))
-    }
     private fun captureScreen(path:String,name:String) {
+        if (!visualEnabled()) return
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-"+it}.orEmpty()
         val folder=java.io.File(instrumentation.targetContext.filesDir,"verification/"+path+suffix).also{it.mkdirs()}
@@ -1149,7 +1029,7 @@ class DraftEditingFlowTest {
         val before=snapshot(a).events.single()
         val changedDate=java.time.LocalDate.parse(before.date).minusDays(1).toString()
         runBlocking{repo.saveEntry(a,EntryDraft(id=event,accountId=account,categoryId=category,amount="680",date=changedDate,merchant="新商户",note="新的备注"))}
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("home")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             tap("新商户")
@@ -1187,7 +1067,7 @@ class DraftEditingFlowTest {
     }
     @Test fun booksPageShowsRealCountsAndOwnCurrencyAndEditsOtherBook(){
         runBlocking{repo.updateBook(repo.dao.book(a)!!.copy(budgetMinor=52500));repo.updateBook(repo.dao.book(b)!!.copy(budgetMinor=12345))}
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")){
+        for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("home")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.id==a&&it.theme==theme&&it.language==language}==true}
             ui.onNodeWithTag("header-book").performScrollTo().performClick()
@@ -1200,8 +1080,8 @@ class DraftEditingFlowTest {
             val density=instrumentation.targetContext.resources.displayMetrics.density
             val bounds=ui.onNodeWithTag("book-choice-$a").fetchSemanticsNode().boundsInRoot
             java.io.File(folder,"dimensions.csv").let{file->
-                if(theme=="magazine"&&language=="zh")file.writeText("theme,language,width,height\n")
-                file.appendText("$theme,$language,${bounds.width/density},${bounds.height/density}\n")
+                if(visualEnabled() && theme=="magazine"&&language=="zh")file.writeText("theme,language,width,height\n")
+                if (visualEnabled()) file.appendText("$theme,$language,${bounds.width/density},${bounds.height/density}\n")
             }
             ui.onNodeWithText("1 "+if(language=="zh")"个账户 · 月预算 ¥52,500" else "口座 · 月予算 ¥52,500").assertExists()
             ui.onNodeWithTag("book-choice-$b").performScrollTo().assertIsNotSelected()

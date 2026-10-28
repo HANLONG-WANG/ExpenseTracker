@@ -32,7 +32,7 @@ class ActivityFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tap(text:String) {
@@ -40,6 +40,7 @@ class ActivityFlowTest {
         ui.onNodeWithText(text).performScrollTo().performClick()
     }
     private fun shot(name:String,sheet:Boolean,cover:Boolean=false,reset:Boolean=true) {
+        if (!visualEnabled()) return
         if(reset)ui.onNodeWithTag(if(sheet)"sheet-scroll"else"page-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-100000f)}
         if(cover)ui.onNodeWithTag("activity-cover").performScrollTo()
         ui.waitForIdle()
@@ -67,7 +68,7 @@ class ActivityFlowTest {
         androidx.core.view.ViewCompat.getRootWindowInsets(view)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true
     }
     @Test fun activitiesModeReserveAndOtherPayerInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@ActivityFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val values=runBlocking {
                 val book=repo.createBook("活動 $theme $language",Currency.JPY,startDate="2026-10-01",budgetMinor=100000,theme=theme,language=language)
@@ -145,7 +146,7 @@ class ActivityFlowTest {
         }
     }
     @Test fun friendShortcutsPreselectSecondFriendProtectDraftAndSaveOnlyOnce() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@ActivityFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("快捷 $theme $language",Currency.JPY,startDate="2026-09-01",theme=theme,language=language)

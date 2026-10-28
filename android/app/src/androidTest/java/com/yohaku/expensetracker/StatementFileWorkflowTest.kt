@@ -39,7 +39,7 @@ class StatementFileWorkflowTest {
         val context=instrumentation.targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-16T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();folders.forEach{shell("rm -r /sdcard/Download/$it")}}
     private fun shell(command:String):ByteArray=ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use{it.readBytes()}
@@ -87,6 +87,7 @@ class StatementFileWorkflowTest {
         ui.waitForIdle();node.performClick()
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle();instrumentation.uiAutomation.waitForIdle(400,5000)
         val bitmap=instrumentation.uiAutomation.takeScreenshot()
         val file=File(instrumentation.targetContext.getExternalFilesDir(null),"phase-d-statements-${if(instrumentation.targetContext.resources.configuration.screenWidthDp<=360)"narrow"else"standard"}/$name.png").apply{parentFile!!.mkdirs()}
@@ -94,9 +95,7 @@ class StatementFileWorkflowTest {
     }
 
     @Test fun savedStatementManualDifferenceSupplementAndDuplicateAcrossThemesAndLanguages() {
-        val themes=listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{wanted->it==wanted}?:true}
-        val languages=listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{wanted->it==wanted}?:true}
-        for(theme in themes)for(language in languages) {
+        for((theme,language) in testLooks(this@StatementFileWorkflowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val book=runBlocking {
                 val b=repo.createBook("银行核对 $theme $language",Currency.JPY,theme=theme,language=language)

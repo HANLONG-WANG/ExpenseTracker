@@ -119,8 +119,10 @@ class SystemHandoffTest {
             withTimeout(10000){while(textNode(automation.rootInActiveWindow,s.getString("expectedText"))==null)delay(100)}
         }finally{ready.delete()}
         assertEquals("Opening a notification must not create an entry",s.getInt("visibleCount"),app.repository.snapshot(app.repository.dao.book(s.getString("book"))!!).first().visibleEvents.size)
+        if (visualEnabled()) {
         automation.waitForIdle(350,5000)
         val image=automation.takeScreenshot();File(app.getExternalFilesDir(null),"phase-e-system-notification-${s.optString("targetCase","recurring")}-click.png").outputStream().use{image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()
+        }
     }
     @Test fun verifyPersistentPlanAfterRealSystemEvent()=runBlocking {
         val s=state();val b=s.getString("book")

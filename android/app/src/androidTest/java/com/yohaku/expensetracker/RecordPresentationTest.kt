@@ -19,6 +19,7 @@ import java.io.File
 class RecordPresentationTest{
     @get:Rule val ui=createComposeRule()
     @Test fun recordCoverAndFactsKeepThemeAndLanguage(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh")
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val density=instrumentation.targetContext.resources.displayMetrics.density
@@ -31,7 +32,7 @@ class RecordPresentationTest{
                 RecordFacts(listOf(word("账户","口座") to "随身现金",word("分类","カテゴリ") to "餐饮 / 咖啡",word("备注","メモ") to "午后咖啡 / 午後のコーヒー"))
             }
         }}
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")){
+        for((t,l) in testLooks(this@RecordPresentationTest)){
             ui.runOnIdle{theme.value=t;language.value=l}
             ui.onNodeWithText("¥300").performScrollTo().assertIsDisplayed()
             for(tag in listOf("record-cover","record-fact-0","record-fact-1","record-fact-2")){

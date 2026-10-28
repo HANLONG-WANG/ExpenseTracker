@@ -132,6 +132,112 @@ JDK17、AGP9.3.3、Gradle Wrapper9.5.1、Compose BOM2026.09.00。SDK由`local.pr
 # 如需 release / lint，也分别单独执行并加 --max-workers=2。
 ```
 
+### 三层测试
+
+以下命令在 `android` 目录执行，每条完成后再启动下一条。日常外观矩阵按测试类完整名称的 JVM `String.hashCode()` 确定性选择一组（三主题 × 中日文）；不同类分散覆盖。`looks=all` 恢复六组，显式 `theme` / `language` 返回所有匹配组合，优先于默认抽取。原本固定语言的专项保留该语言；测试主题/语言切换本身的动作不缩减。金融模式等业务循环不缩减。
+
+1. **每次改动**：单元测试 + 默认参数下相关的数据/逻辑类和模块流程类。跨模块修改可跑默认全量。默认成功路径不写截图、bounds JSON 或尺寸 CSV，失败取证仍保留。
+
+```sh
+./gradlew :app:testDebugUnitTest --max-workers=2
+# 示例数据/逻辑白名单；按改动模块增补。
+./gradlew :app:connectedDebugAndroidTest --max-workers=2 \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.DatabaseUpgradeTest,com.yohaku.expensetracker.CurrencyTransactionsTest,com.yohaku.expensetracker.TransferTransactionsTest
+# 示例：分析模块流程（默认单外观）
+./gradlew :app:connectedDebugAndroidTest --max-workers=2 \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.AnalysisFlowTest
+# 默认全量：业务/存储，单外观；视觉、系统前置和性能专项显示 skipped。
+./gradlew :app:connectedDebugAndroidTest --max-workers=2
+```
+
+2. **改了 UI**：相关流程类加 `looks=all` 和 `visual=true`，完成后查看截图；公共控件改动加 `ThemeControlsTest` 和相关 Presentation 类。
+
+```sh
+./gradlew :app:connectedDebugAndroidTest --max-workers=2 \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.AnalysisFlowTest \
+  -Pandroid.testInstrumentationRunnerArguments.looks=all \
+  -Pandroid.testInstrumentationRunnerArguments.visual=true
+# 只定位 journal / ja 时可显式筛选：
+./gradlew :app:connectedDebugAndroidTest --max-workers=2 \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.AnalysisFlowTest \
+  -Pandroid.testInstrumentationRunnerArguments.theme=journal \
+  -Pandroid.testInstrumentationRunnerArguments.language=ja \
+  -Pandroid.testInstrumentationRunnerArguments.visual=true
+```
+
+3. **发版前或大改后**：先跑默认全量，再跑十个纯视觉类的完整矩阵；系统和性能专项按各自前提、逐方法运行。`system=true` 不会自动授予权限、提供 GPS、安装 SAF provider，或编排进程恢复。
+
+```sh
+./gradlew :app:connectedDebugAndroidTest --max-workers=2
+visual_classes=com.yohaku.expensetracker.BackupVisualTest,com.yohaku.expensetracker.IntroPresentationTest,com.yohaku.expensetracker.LeadCoverTest,com.yohaku.expensetracker.NumberFontTest,com.yohaku.expensetracker.RecordPresentationTest,com.yohaku.expensetracker.SectionHeadingTest,com.yohaku.expensetracker.SetupPresentationTest,com.yohaku.expensetracker.SheetBackdropTest,com.yohaku.expensetracker.ThemePaperTest,com.yohaku.expensetracker.SystemWindowThemeTest
+./gradlew :app:connectedDebugAndroidTest --max-workers=2 \
+  "-Pandroid.testInstrumentationRunnerArguments.class=$visual_classes" \
+  -Pandroid.testInstrumentationRunnerArguments.visual=true \
+  -Pandroid.testInstrumentationRunnerArguments.looks=all
+# 前提：外部已撤销定位权限；其他 GPS/通知状态分别准备、逐方法执行。
+./gradlew :app:connectedDebugAndroidTest --max-workers=2 \
+  '-Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.ForegroundLocationSystemTest#deniedPermissionIsExplicit' \
+  -Pandroid.testInstrumentationRunnerArguments.system=true
+./gradlew :app:connectedDebugAndroidTest --max-workers=2 \
+  '-Pandroid.testInstrumentationRunnerArguments.class=com.yohaku.expensetracker.LargeLedgerTest,com.yohaku.expensetracker.MediaStorageTest#strictPerFileLimitStreamsAndLeavesNoPartialBlobOrDraftReference' \
+  -Pandroid.testInstrumentationRunnerArguments.perf=true
+```
+
+已安装 debug app 与 androidTest APK 时，同样可用 AndroidJUnitRunner 直接运行（下面只用于手动设备验证，不代替 JVM 测试）：
+
+```sh
+adb shell am instrument -w -r \
+  -e class com.yohaku.expensetracker.CurrencyTransactionsTest,com.yohaku.expensetracker.AnalysisFlowTest \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r -e class com.yohaku.expensetracker.AnalysisFlowTest \
+  -e looks all -e visual true \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+# 默认全量及视觉套件；visual_classes 使用上面的完整定义。
+adb shell am instrument -w -r com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r -e class "$visual_classes" -e looks all -e visual true \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r \
+  -e class 'com.yohaku.expensetracker.ForegroundLocationSystemTest#deniedPermissionIsExplicit' -e system true \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r \
+  -e class 'com.yohaku.expensetracker.LargeLedgerTest,com.yohaku.expensetracker.MediaStorageTest#strictPerFileLimitStreamsAndLeavesNoPartialBlobOrDraftReference' -e perf true \
+  com.yohaku.expensetracker.dev.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+截图仍在各测试约定的 `files/verification/...` 或 external-files `phase-...` 目录；`RegressionFailureArtifacts` 的失败截图与语义树不受 `visual` 控制。`ThemeControlsTest` 默认保留点击、输入、禁用和选择状态断言，精确尺寸及截图只在视觉模式验证。`SetupFlowTest` 保留四步完成、导航和不生成记录的行为，已移除 HTML 坐标锚点比对；`SetupPresentationTest` 的视觉基线断言保留。
+
+### 自定义仪器参数
+
+布尔参数只接受字符串 `true` 为开启；未给参数保持原默认。`class` 是 Runner 自带的类/方法白名单，可用逗号组合，不是项目自定义参数。
+
+| 参数 | 含义 |
+| --- | --- |
+| `looks=all` | 全部六组外观；不传时每类确定性单外观。 |
+| `theme=magazine/journal/objects`、`language=zh/ja` | 显式筛选所有匹配组合，可与 `looks=all` 同用；主题/语言切换场景仍执行自身的切换动作。 |
+| `visual=true` | 成功路径截图、bounds/尺寸输出；运行十个纯视觉类和混合类中的视觉断言。单独开启仍按默认外观抽取。 |
+| `system=true` | `ForegroundLocationSystemTest`、`ReminderSystemTest`、`MediaFlowTest` 的真实 SAF/跨 UID 方法、`LocationEntryFlowTest` 的真实权限/GPS 方法。必须按各方法准备外部状态。 |
+| `perf=true` | `LargeLedgerTest` 和 `MediaStorageTest#strictPerFileLimitStreamsAndLeavesNoPartialBlobOrDraftReference`（100MB）。 |
+| `captureSuffix` | `verification` 截图/尺寸目录的后缀，用于区分屏宽、字体等配置。 |
+| `networkSmoke=true` | `ReferenceRateStorageTest` 的真实汇率服务冒烟；普通 VM 测试注入离线 transport（固定测试汇率 1），保留原偏好存储和时钟。 |
+| `processRecovery=true`、`phaseBRecovery=true`、`planningRecovery=true`、`managementRecovery=true` | 各同名进程恢复类；仍需按源码分次运行 prepare / verify，保留原门控，不由 `system` 代替。 |
+| `processPhase=write/read` | `FinancialDraftFlowTest` 真实进程草稿恢复的写入/重启后读取阶段。 |
+| `systemHandoff=true` | `SystemHandoffTest` 外部编排的闹钟、Worker、通知点击、重启/时区专项，门控保持原样。 |
+| `targetCase=recurring/deadline/repayment/budget/funds`、`targetZone` | 系统交接通知目标（默认 recurring）与时区切换目标（默认 UTC）。 |
+| `realKeyboard=true` | DraftEditing / Setup 的真实键盘专项。 |
+| `realIme=true`、`phaseBKeyboard=true` | 相应金融/转账等流程、活动/商户流程的真实 IME 分支；需实际键盘状态。 |
+| `systemMode` | SystemWindowTheme 的外部系统模式标签（默认 unspecified），不自动修改设备配置。 |
+| `notificationPermission=true` | ReminderSettings 的真实通知权限对话框专项，先在外部撤销权限。 |
+| `reminderStates=granted/denied` | ReminderSettings 的真实权限状态与持久化计划专项，按参数准备权限。 |
+| `csvVisual=true` | CSV 导入测试的展示分支；写截图仍须同时给 `visual=true`。 |
+| `estimatedLayout=true`、`largeLayout=true` | BudgetRecurrence 的估算金额布局及大字体布局分支。 |
+| `modeCase` | FinancialRuleModes 的单业务模式筛选：SINGLE / INSTALLMENT / REVOLVING / CREDIT_LINE / EQUAL_PRINCIPAL / ANNUITY / INTEREST_ONLY / MANUAL / SPECIAL；未给时保留九模式。 |
+| `loan=true`、`tiers=true` | 金融池相关流程的贷款账户分支、池付款档位分支。 |
+| `splitFees=true`、`unknown=true` | FinancialRetroactive 的拆分费用分支、FinancialProductionOverview 的未知账单分支。 |
+| `refund=true`、`merged=true`、`poolSource=true`、`unallocated=true`、`retained=true`、`waive=true`、`futureFee=true` | FinancialReconciliation 的退款、合并、池来源、未分配、保留、豁免和未来费用场景。 |
+| `resolve=true`、`cancelParentFee=true`、`resume=true` | FinancialReconciliationChain 的补齐、取消上游费用和恢复草稿分支。 |
+
+既有专项参数仍可单独触发对应专项，新增 `system` 不取代它们；视觉类需要额外给 `visual=true`。纯快照计算现位于 JVM 的 `AnalysisProjectionCalculationTest`、`ExpectedIncomeProjectionTest`、`ImportantItemsTest`，Room 关联、偏好/跨账本约束、到账事务和预览不落库仍由仪器测试负责。
+
 数据库迁移只登记在 `data/db/YohakuDatabase.kt` 的 `ALL_MIGRATIONS`，正式打开（`openYohakuDatabase`）和测试都引用它，不再各自列出。升级测试先写入数据，再调用 `restoreFixtureDatabase(db,N)`：它按 `androidTest/assets/room-vN-schema.json` 把所有表还原成 vN 结构，并设置版本号。要以某个新版本作为升级起点时，把 `app/schemas/.../N.json` 复制成对应的 asset。
 
 仪器测试需要实际兼容设备。真实权限/GPS、IME、跨进程、闹钟/重启、网络服务不能无前置地整类混跑，默认跳过不算通过。专项方法/参数见各测试源码和[阶段E记录](verification/phase-e-status.md)；历史进程/IME依据见A/B/C记录。独立`media-verifier`模块仅提供系统DocumentsProvider和跨UID只读验证，需单独安装，绝不打入产品APK，完成后卸载`com.yohaku.verification`。

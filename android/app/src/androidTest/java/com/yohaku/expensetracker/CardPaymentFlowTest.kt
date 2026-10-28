@@ -33,7 +33,7 @@ class CardPaymentFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context))
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
@@ -62,6 +62,7 @@ class CardPaymentFlowTest {
         return ui.onNode(if(ancestor==null)matcher else matcher and hasAnyAncestor(hasTestTag(ancestor)))
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -74,7 +75,7 @@ class CardPaymentFlowTest {
         }
     }
     @Test fun cardPaymentEntryOverviewAndDebitMonthStatementsInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@CardPaymentFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val (book,card,category)=runBlocking {
                 val b=repo.createBook("支払月 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")
@@ -118,7 +119,7 @@ class CardPaymentFlowTest {
             tapTag("account-$card");tapTag("account-financial")
             ui.waitUntil(10000){ui.onAllNodesWithTag("finance-overview-next").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("finance-overview-amount").assertTextEquals("¥1,020")
-            ui.onNodeWithTag("finance-overview-next").performScrollTo();ui.waitUntil(5000){vm.notice.value==null};shot("$theme-$language-card-overview")
+            ui.onNodeWithTag("finance-overview-next").performScrollTo();if (visualEnabled()) ui.waitUntil(5000){vm.notice.value==null};shot("$theme-$language-card-overview")
             ui.onNodeWithTag("finance-pending-$pending").assertExists()
             ui.onNode(hasText("¥520") and hasAnyAncestor(hasTestTag("finance-overview-next"))).assertExists()
             tapTag("finance-unplanned-open")

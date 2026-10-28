@@ -27,12 +27,13 @@ class LargeLedgerTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-26T03:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
 
     /** About three years of fictional history imported from CSV, the size that made the ledger crash. */
     @Test fun threeThousandImportedRecordsStayUsable() {
+        org.junit.Assume.assumeTrue("Requires perf=true", testOption("perf"))
         val expense=listOf("食費","交通費","日用品","外食","娯楽","衣服","医療","通信","家賃","水道光熱","交際費","書籍","美容","旅行","家具","雑費")
         val income=listOf("給料","臨時収入","退款","送金")
         val random=java.util.Random(7)

@@ -36,7 +36,7 @@ class ReceiptWorkbenchFlowTest {
         root=File(context.filesDir,"receipt-workbench-test").apply{mkdirs()}
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC),root)
-        vm=AppViewModel(repo,AppPreferences(context));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();root.deleteRecursively()}
     private fun picture(label:String):ByteArray {
@@ -45,7 +45,9 @@ class ReceiptWorkbenchFlowTest {
         for(y in 45..170 step 20)canvas.drawLine(10f,y.toFloat(),110f,y.toFloat(),paint)
         return ByteArrayOutputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it);bitmap.recycle();it.toByteArray()}
     }
-    private fun shot(name:String,windows:Int=1){ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().size==windows};ui.waitForIdle();val auto=InstrumentationRegistry.getInstrumentation().uiAutomation;auto.waitForIdle(400,5000);val bitmap=auto.takeScreenshot();val context=InstrumentationRegistry.getInstrumentation().targetContext;val file=File(context.getExternalFilesDir(null),"phase-b-p13-workbench/$name.png");file.parentFile!!.mkdirs();file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
+    private fun shot(name:String,windows:Int=1){
+        if (!visualEnabled()) return
+        ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().size==windows};ui.waitForIdle();val auto=InstrumentationRegistry.getInstrumentation().uiAutomation;auto.waitForIdle(400,5000);val bitmap=auto.takeScreenshot();val context=InstrumentationRegistry.getInstrumentation().targetContext;val file=File(context.getExternalFilesDir(null),"phase-b-p13-workbench/$name.png");file.parentFile!!.mkdirs();file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
     private fun clearHeader(node:SemanticsNodeInteraction):SemanticsNodeInteraction {
         ui.waitUntil(10000){!vm.busy.value};node.performScrollTo();ui.waitForIdle()
         val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
@@ -59,7 +61,7 @@ class ReceiptWorkbenchFlowTest {
         ui.waitForIdle();return node
     }
     @Test fun coverTabsOriginalImagesAndRecordLinksUseOnlyTheCurrentRevisionInEveryThemeAndLanguage(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@ReceiptWorkbenchFlowTest)) {
             val ids=runBlocking {
                 val book=repo.createBook("レシート $theme $language",Currency.JPY,startDate="2026-10-01",theme=theme,language=language)
                 repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
@@ -127,7 +129,7 @@ class ReceiptWorkbenchFlowTest {
         }
     }
     @Test fun mediaEditOrderingRemovalCancellationAndSaveKeepTheOriginalRecordAndFiles(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@ReceiptWorkbenchFlowTest)) {
             val ids=runBlocking {
                 val book=repo.createBook("添付 $theme $language",Currency.JPY,startDate="2026-10-01",theme=theme,language=language)
                 repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))

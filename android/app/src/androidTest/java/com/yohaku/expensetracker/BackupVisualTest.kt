@@ -24,6 +24,7 @@ import java.io.File
 class BackupVisualTest {
     @get:Rule val ui=createComposeRule()
     @Test fun capturePageAndConfirmationInSixAppearances() {
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         var theme by mutableStateOf("magazine")
         var language by mutableStateOf("zh")
         var confirming by mutableStateOf(false)
@@ -41,12 +42,13 @@ class BackupVisualTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val directory=File(context.getExternalFilesDir(null),"backup-visual").apply{mkdirs()}
         fun capture(tag:String,name:String) {
+            if (!visualEnabled()) return
             ui.onNodeWithTag(tag).captureToImage().asAndroidBitmap().let{bitmap->
                 File(directory,name).outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
                 bitmap.recycle()
             }
         }
-        for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")) {
+        for((t,l) in testLooks(this@BackupVisualTest)) {
             ui.runOnIdle{theme=t;language=l;confirming=false}
             ui.onNodeWithTag("backup-export").performScrollTo().assertIsDisplayed()
             capture("backup-page","$t-$l-page.png")

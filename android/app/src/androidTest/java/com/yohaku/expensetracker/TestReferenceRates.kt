@@ -12,3 +12,8 @@ internal class TestReferenceRateStore:ReferenceRateStore {
     override suspend fun automaticReferenceRatesEnabled()=automaticReferenceRates.value
     override suspend fun setAutomaticReferenceRates(enabled:Boolean){automaticReferenceRates.value=enabled}
 }
+
+/** Ordinary UI tests never contact the public rates service. */
+internal fun testReferenceRates(store:ReferenceRateStore, clock:java.time.Clock=DeviceClock()) = ReferenceRates(store, ReferenceRateTransport { base, quote, date ->
+    """{"base":"${base.name}","quote":"${quote.name}","date":"$date","rate":1}"""
+}, clock)

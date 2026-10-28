@@ -37,7 +37,7 @@ class MediaFlowTest {
         val context=instrumentation.targetContext
         root=File(File(context.filesDir,"attachments"),"ui-media-"+java.util.UUID.randomUUID()).apply{mkdirs()}
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db,mediaRoot=root)
-        vm=AppViewModel(repo,AppPreferences(context));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();root.deleteRecursively()}
     private fun nodes(root:AccessibilityNodeInfo?):List<AccessibilityNodeInfo> = if(root==null)emptyList()else listOf(root)+(0 until root.childCount).flatMap{nodes(root.getChild(it))}
@@ -111,12 +111,14 @@ class MediaFlowTest {
     }
     private fun closePreview()=ui.onNode(hasTestTag("sheet-close") and hasAnyAncestor(hasAnyDescendant(hasTestTag("media-preview-meta")))).performClick()
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         val scroll=ui.onNode(hasTestTag("sheet-scroll") and hasAnyDescendant(hasTestTag("media-preview-meta")))
         scroll.performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-100000f)};ui.waitForIdle()
         val file=File(instrumentation.targetContext.getExternalFilesDir(null),"phase-b-p13/$name.png");file.parentFile!!.mkdirs()
         file.outputStream().use{ui.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it)}
     }
     private fun externalShot(name:String) {
+        if (!visualEnabled()) return
         ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().size==3}
         ui.onNode(hasTestTag("sheet-scroll") and hasAnyDescendant(hasTestTag("media-preview-meta"))).performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-100000f)}
         ui.waitForIdle();instrumentation.uiAutomation.waitForIdle(400,5000)
@@ -124,7 +126,8 @@ class MediaFlowTest {
         file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
     }
     @Test fun actualDocumentsImagesAudioAndSeparateUidReadOnlyViewer() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{wanted->it==wanted}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{wanted->it==wanted}?:true}) {
+        org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))
+        for((theme,language) in testLooks(this@MediaFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             println("Media combination: $theme $language")
             val book=runBlocking {

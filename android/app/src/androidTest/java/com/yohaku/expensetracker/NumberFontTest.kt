@@ -25,6 +25,7 @@ class NumberFontTest{
     @get:Rule val ui=createComposeRule()
     private data class Sample(val text:String,val size:Int,val spacing:Float)
     @Test fun magazineNumbersUseLicensedFontWithoutChangingAmounts(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val samples=listOf(Sample("¥86,180",49,-2f),Sample("¥650",45,0f),Sample("¥9,700",23,-1f),Sample("CN¥12,345.67",21,0f),Sample("US$1,280.50",21,0f),Sample("−¥8,600",21,0f),Sample("0123456789",30,0f),Sample("¥999,999,999",23,-1f))
         val metrics=mutableMapOf<Int,String>()
         val instrumentation=InstrumentationRegistry.getInstrumentation()
@@ -45,7 +46,7 @@ class NumberFontTest{
         ui.waitForIdle()
         assertEquals(samples.size,metrics.size)
         assertTrue(metrics.values.all{it.endsWith(",1")})
-        File(folder,"dimensions.csv").writeText("sample,size,spacing,advance,height,baseline,lines,layoutWidth\n"+samples.indices.joinToString("\n"){i->metrics.getValue(i)+","+ui.onNodeWithTag("number-$i").fetchSemanticsNode().boundsInRoot.width/density}+"\n")
+        if (visualEnabled()) File(folder,"dimensions.csv").writeText("sample,size,spacing,advance,height,baseline,lines,layoutWidth\n"+samples.indices.joinToString("\n"){i->metrics.getValue(i)+","+ui.onNodeWithTag("number-$i").fetchSemanticsNode().boundsInRoot.width/density}+"\n")
         ui.onNodeWithTag("number-0").performScrollTo()
         instrumentation.uiAutomation.takeScreenshot().let{bitmap->
             File(folder,"magazine-number-samples.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()

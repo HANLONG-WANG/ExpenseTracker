@@ -31,7 +31,7 @@ class MerchantFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tap(text:String){ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(hasText(text) and hasClickAction()).fetchSemanticsNodes().isNotEmpty()};ui.onNode(hasText(text) and hasClickAction()).performScrollTo().performClick()}
@@ -50,13 +50,14 @@ class MerchantFlowTest {
     }
     private fun imeVisible()=android.view.inspector.WindowInspector.getGlobalWindowViews().any{view->androidx.core.view.ViewCompat.getRootWindowInsets(view)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}
     private fun shot(name:String){
+        if (!visualEnabled()) return
         ui.waitForIdle();val automation=InstrumentationRegistry.getInstrumentation().uiAutomation;automation.waitForIdle(100,5000)
         val bitmap=automation.takeScreenshot();val context=InstrumentationRegistry.getInstrumentation().targetContext
         val file=File(context.getExternalFilesDir(null),"phase-b-p12-merchants/$name.png");file.parentFile!!.mkdirs()
         file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
     }
     @Test fun legacyHistoryLocationsAndMerchantShortcutKeepOriginalFactsAndProtectDrafts(){
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{requested->it==requested}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{requested->it==requested}?:true}) {
+        for((theme,language) in testLooks(this@MerchantFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("お店 $theme $language",Currency.JPY,startDate="2026-10-01",theme=theme,language=language)

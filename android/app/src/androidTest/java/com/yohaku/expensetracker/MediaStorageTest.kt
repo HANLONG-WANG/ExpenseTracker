@@ -110,6 +110,7 @@ class MediaStorageTest {
         assertTrue(snapshot().events.isEmpty());assertTrue(snapshot().attachments.isEmpty());assertTrue(snapshot().receiptImages.isEmpty());assertTrue(snapshot().files.isEmpty());assertFalse(repo.mediaFile(image).exists())
     }
     @Test fun strictPerFileLimitStreamsAndLeavesNoPartialBlobOrDraftReference()=runBlocking {
+        org.junit.Assume.assumeTrue("Requires perf=true", testOption("perf"))
         val d=draft();repo.saveDraft(book,d)
         try {
             repo.importMedia(book,d.mediaSession,"too-large.bin","application/octet-stream") {

@@ -22,6 +22,7 @@ import kotlin.math.max
 class ThemePaperTest {
     @get:Rule val ui=createComposeRule()
     @Test fun themeSurfacesMatchTheActualHtmlLayers(){
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine")
         val i=InstrumentationRegistry.getInstrumentation()
         val width=i.targetContext.resources.configuration.screenWidthDp
@@ -32,7 +33,7 @@ class ThemePaperTest {
         ui.setContent{Column(Modifier.fillMaxSize().safeDrawingPadding()){
             Box(Modifier.fillMaxWidth().height(120.dp).testTag("paper-fixture")){YohakuTheme(theme.value,"zh") {}}
         }}
-        for(t in listOf("magazine","journal","objects")){
+        for(t in testLooks(this@ThemePaperTest).map { it.first }.distinct()){
             ui.runOnIdle{theme.value=t}
             val actual=ui.onNodeWithTag("paper-fixture").captureToImage().asAndroidBitmap()
             val expected=i.context.assets.open("theme-paper-$t-$width.png").use{BitmapFactory.decodeStream(it)}

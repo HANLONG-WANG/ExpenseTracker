@@ -30,10 +30,11 @@ class HomePlanningFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun shot(name:String,anchor:String="home-cover"){
+        if (!visualEnabled()) return
         ui.onNodeWithTag(anchor).performScrollTo();ui.waitForIdle()
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val file=File(context.getExternalFilesDir(null),"phase-b-home-planning/$name.png");file.parentFile!!.mkdirs()
@@ -42,7 +43,7 @@ class HomePlanningFlowTest {
         file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
     }
     @Test fun allowanceUsesReservesExcludedScenesUnknownAmountsAndActualConfirmation(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@HomePlanningFlowTest)) {
             val ids=runBlocking {
                 val book=repo.createBook("首页 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01",budgetMinor=100000)
                 repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))

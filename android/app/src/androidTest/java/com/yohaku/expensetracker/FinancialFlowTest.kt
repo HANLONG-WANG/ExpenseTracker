@@ -33,7 +33,7 @@ class FinancialFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context))
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
@@ -62,6 +62,7 @@ class FinancialFlowTest {
         return ui.onNode(if(ancestor==null)matcher else matcher and hasAnyAncestor(hasTestTag(ancestor)))
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -74,7 +75,7 @@ class FinancialFlowTest {
         }
     }
     @Test fun compareAndRecordAnAppliedArrangementWithoutCreatingCashInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val b=repo.createBook("支払変更 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")
@@ -163,7 +164,7 @@ class FinancialFlowTest {
     }
 
     @Test fun repaymentPreviewCommitsLinkedPredictionsAndKeepsVersionHistoryInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val b=repo.createBook("連動 $theme $language",Currency.JPY,theme,language,startDate="2026-09-01")
@@ -226,7 +227,7 @@ class FinancialFlowTest {
     }
 
     @Test fun actualClearingRecalculatesFuturePeriodsInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val b=repo.createBook("再計算 $theme $language",Currency.JPY,theme,language,startDate="2026-09-01")
@@ -275,7 +276,7 @@ class FinancialFlowTest {
     }
 
     @Test fun actualBorrowingAndPendingPartialRepaymentInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val (book,bank,loan)=runBlocking {
                 val b=repo.createBook("借還 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")
@@ -342,7 +343,7 @@ class FinancialFlowTest {
         }
     }
     @Test fun rulesAndKnownPlansSaveCancelAndCorrectWithoutCreatingPaymentsInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val (book,bank,card)=runBlocking {
                 val b=repo.createBook("金融 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")
@@ -467,7 +468,7 @@ class FinancialFlowTest {
     }
 
     @Test fun predictionFromPurchaseCreatesBillsAndConfirmsRulesInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@FinancialFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val b=repo.createBook("予測 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")

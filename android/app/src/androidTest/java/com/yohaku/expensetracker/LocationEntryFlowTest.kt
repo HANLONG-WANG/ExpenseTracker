@@ -48,6 +48,7 @@ class LocationEntryFlowTest {
         ui.waitForIdle();return node
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         instrumentation.uiAutomation.waitForIdle(350,5000)
@@ -57,11 +58,13 @@ class LocationEntryFlowTest {
     }
     @Test fun uniqueLocationFillsAllAppearancesButManualChangesAndOldEntriesWin()=runBlocking {
         val app=InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as YohakuApplication
+        // The merchant page checks the real runtime permission before asking the injected source; do not rely on earlier tests granting it.
+        listOf(android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION).forEach{InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(app.packageName,it)}
         val db=Room.inMemoryDatabaseBuilder(app,YohakuDatabase::class.java).build()
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
         val path=File(app.cacheDir,"location-ui-${UUID.randomUUID()}.preferences_pb")
         val prefs=AppPreferences(app,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
-        val repo=LedgerRepository(db);val source=ControlledLocation();val vm=AppViewModel(repo,prefs,locationSource=source)
+        val repo=LedgerRepository(db);val source=ControlledLocation();val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock),locationSource=source)
         try {
             val b=repo.createBook("位置 / 場所",Currency.JPY)
             repo.dao.putBook(repo.dao.book(b)!!.copy(initialized=true))
@@ -73,7 +76,7 @@ class LocationEntryFlowTest {
             ui.setContent{NativeApp(vm)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==b}
             fun draft()=EntryDraft(categoryId=c,accountId=a,amount="500",merchant="")
-            for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+            for((theme,language) in testLooks(this@LocationEntryFlowTest)) {
                 repo.updateAppearance(b,theme,language)
                 ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
                 ui.runOnIdle{vm.changeEntry(b,draft());vm.navigate("entry")}
@@ -156,6 +159,7 @@ class LocationEntryFlowTest {
         }finally {vm.viewModelScope.cancel();scope.cancel();db.close();path.delete()}
     }
     @Test fun userEnablesPermissionAndAndroidGpsFillsThenSavesTheOriginalName()=runBlocking {
+        org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val app=instrumentation.targetContext.applicationContext as YohakuApplication
         val db=Room.inMemoryDatabaseBuilder(app,YohakuDatabase::class.java).build()
@@ -163,7 +167,7 @@ class LocationEntryFlowTest {
         val path=File(app.cacheDir,"location-real-${UUID.randomUUID()}.preferences_pb")
         val prefs=AppPreferences(app,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
         val repo=LedgerRepository(db)
-        val vm=AppViewModel(repo,prefs,locationSource=ForegroundLocation(app))
+        val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock),locationSource=ForegroundLocation(app))
         val automation=instrumentation.uiAutomation
         val info=automation.serviceInfo;val originalFlags=info.flags
         try {

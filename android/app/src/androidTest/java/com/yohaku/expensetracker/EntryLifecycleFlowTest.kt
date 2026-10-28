@@ -36,6 +36,7 @@ class EntryLifecycleFlowTest {
         ui.waitForIdle();node.performClick();ui.waitForIdle()
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         instrumentation.uiAutomation.waitForIdle(350,5000)
@@ -51,12 +52,12 @@ class EntryLifecycleFlowTest {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
         val path=File(context.cacheDir,"entry-ui-${UUID.randomUUID()}.preferences_pb")
         val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
-        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs)
+        val repo=LedgerRepository(db,java.time.Clock.fixed(java.time.Instant.parse("2026-10-16T00:00:00Z"),java.time.ZoneOffset.UTC));val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
         fun current()=(vm.state.value as? AppState.Ready)?.snapshot
         try {
             ui.setContent{NativeApp(vm)}
-            for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
-                val b=repo.createBook("生活 / 暮らし",Currency.JPY,theme,language)
+            for((theme,language) in testLooks(this@EntryLifecycleFlowTest)) {
+                val b=repo.createBook("生活 / 暮らし",Currency.JPY,theme,language,budgetMinor=10000)
                 repo.dao.putBook(repo.dao.book(b)!!.copy(initialized=true))
                 val bank=repo.saveAccount(b,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
                 val cash=repo.saveAccount(b,"現金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
@@ -65,14 +66,32 @@ class EntryLifecycleFlowTest {
                 repo.saveRefund(b,RefundInput(event,Money(Currency.JPY,200),bank,Money(Currency.JPY,200),Money(Currency.JPY,200),"2026-10-15",true))
                 val transfer=repo.saveMovement(b,EntryKind.TRANSFER,bank,cash,Money(Currency.JPY,500),Money(Currency.JPY,500),"2026-10-16")
                 prefs.select(b);ui.waitUntil(10000){current()?.book?.id==b}
+                ui.runOnIdle{vm.navigate("home")}
+                ui.revealOnPage("event-$event");tap("event-$event")
+                ui.onNodeWithTag("record-cover").assertIsDisplayed()
+                assertEquals("detail",vm.route.value)
+                ui.onNodeWithText("×").performClick()
+                ui.waitUntil(10000){vm.route.value=="home"}
+                ui.onAllNodesWithTag("record-cover").assertCountEquals(0)
+                assertEquals(8700L,current()!!.balance(current()!!.accounts.first{it.id==bank}))
                 ui.runOnIdle{vm.navigate("ledger")}
                 ui.revealOnPage("event-$event");tap("event-$event");tap("record-trash-preview")
                 ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-entry-lifecycle").fetchSemanticsNodes().isNotEmpty()}
+                ui.onNodeWithTag("impact-budget").performScrollTo().onChildren().onLast().assertTextEquals("¥9,200 → ¥10,000")
                 shot("$theme-$language-trash");tap("confirm-entry-lifecycle")
                 ui.waitUntil(10000){current()?.visibleEvents?.size==1&&!vm.busy.value}
+                assertEquals(9500L,current()!!.balance(current()!!.accounts.first{it.id==bank}))
                 ui.runOnIdle{vm.navigate("trash")}
-                tap("restore-$event");shot("$theme-$language-restore");tap("confirm-entry-lifecycle")
+                tap("restore-$event")
+                ui.onNodeWithTag("impact-balance-$bank").performScrollTo().onChildren().onLast().assertTextEquals("¥9,500 → ¥8,700")
+                ui.onNodeWithTag("impact-budget").performScrollTo().onChildren().onLast().assertTextEquals("¥10,000 → ¥9,200")
+                shot("$theme-$language-restore");tap("confirm-entry-lifecycle")
                 ui.waitUntil(10000){current()?.visibleEvents?.size==3&&!vm.busy.value}
+                val restored=current()!!
+                assertEquals(1,restored.visibleEvents.first{it.id==event}.revision)
+                assertEquals(8700L,restored.balance(restored.accounts.first{it.id==bank}))
+                assertNull(restored.removalImpact(event).remainingBudget(java.time.YearMonth.now(repo.clock).minusMonths(1).toString(),10000))
+                assertNull(restored.removalImpact(event).remainingBudget(java.time.YearMonth.now(repo.clock).toString(),null))
                 ui.runOnIdle{vm.navigate("ledger")}
                 ui.revealOnPage("event-$transfer");tap("event-$transfer");tap("record-trash-preview");tap("confirm-entry-lifecycle")
                 ui.waitUntil(10000){current()?.visibleEvents?.size==2&&!vm.busy.value}

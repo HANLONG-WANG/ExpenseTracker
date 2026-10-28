@@ -180,8 +180,8 @@ import java.time.format.DateTimeFormatter
                         ok=commitFinancialDraft(session){vm.repository.commitArrangementReconciliation(r,confirmed)}!=null
                     }},Modifier.testTag("reconciliation-save"),primary=true,enabled=!busy&&confirmed)
                 }
-                YButton(word("返回修改","修正に戻る"),{review=null},Modifier.testTag("reconciliation-back"),enabled=!busy)
-                }
+            }
+            YButton(word("返回修改","修正に戻る"),{review=null},Modifier.testTag("reconciliation-back"),enabled=!busy)
         }
     }
 }

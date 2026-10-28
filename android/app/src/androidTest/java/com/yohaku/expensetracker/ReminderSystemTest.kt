@@ -51,6 +51,7 @@ class ReminderSystemTest {
         }
     }
     @Test fun actualDeliveryModificationCancellationAndPersistentDedup()=runBlocking {
+        org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))
         fixture{repo,prefs,coordinator,a,b->
             assertTrue("Run with POST_NOTIFICATIONS granted",coordinator.allowed())
             coordinator.rebuild(true)
@@ -60,12 +61,14 @@ class ReminderSystemTest {
             val extras=notifications.first{it.tag=="book:$a"}.notification.extras
             val text=extras.getCharSequence("android.bigText")?.toString()?:extras.getCharSequenceArray("android.textLines")!!.joinToString()
             assertTrue(text.startsWith("JPY ¥1,200"));assertFalse(text.contains("Beta"))
+            if (visualEnabled()) {
             val automation=InstrumentationRegistry.getInstrumentation().uiAutomation
             automation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
             automation.waitForIdle(350,5000)
             val image=automation.takeScreenshot()
             File(app.getExternalFilesDir(null),"phase-e-system-notification-amounts.png").outputStream().use{image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};image.recycle()
             automation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            }
             val sent=prefs.reminderDelivery()
             assertEquals(2,sent.sent.size)
             // New coordinator instance reads persistent delivery state, rather than an in-memory flag.
@@ -86,6 +89,7 @@ class ReminderSystemTest {
         }
     }
     @Test fun deniedPermissionRetainsFactsAndPendingDelivery()=runBlocking {
+        org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))
         fixture{repo,prefs,coordinator,a,b->
             assertFalse("Run with POST_NOTIFICATIONS denied",coordinator.allowed())
             coordinator.rebuild(true)
@@ -97,6 +101,7 @@ class ReminderSystemTest {
         }
     }
     @Test fun archiveKeepsRealNotificationsTrashCancelsAndRestoreRebuildsFutureSlots()=runBlocking {
+        org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))
         fixture{repo,prefs,coordinator,a,b->
             assertTrue("Run with POST_NOTIFICATIONS granted",coordinator.allowed())
             prefs.saveReminderSettings(a,ReminderPreferences(enabled=true,recurringDays=listOf(1,0),time="00:00"))
@@ -119,6 +124,7 @@ class ReminderSystemTest {
     }
 
     @Test fun deletingActivityWithdrawsItsRealReminderAndKeepsTheOtherBookNotification()=runBlocking {
+        org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))
         fixture{repo,_,coordinator,a,b->
             assertTrue("Run with POST_NOTIFICATIONS granted",coordinator.allowed())
             repo.setActivityMode(a,true)

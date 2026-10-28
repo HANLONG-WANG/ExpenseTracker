@@ -15,8 +15,10 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ForegroundLocationSystemTest {
     private lateinit var activity:ActivityScenario<MainActivity>
-    @Before fun foreground(){activity=ActivityScenario.launch(MainActivity::class.java)}
-    @After fun close(){activity.close()}
+    @Before fun foreground(){
+        org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))
+        activity=ActivityScenario.launch(MainActivity::class.java)}
+    @After fun close(){if(::activity.isInitialized)activity.close()}
     private val source=ForegroundLocation(InstrumentationRegistry.getInstrumentation().targetContext)
     @Test fun deniedPermissionIsExplicit()=runBlocking {
         try {source.currentFix();fail("Expected denied permission")}

@@ -44,7 +44,7 @@ class ManagementProcessRecoveryTest {
         db=Room.databaseBuilder(context,YohakuDatabase::class.java,database).build()
         scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
         prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={preferenceFile}))
-        repo=LedgerRepository(db,mediaRoot=media);vm=AppViewModel(repo,prefs)
+        repo=LedgerRepository(db,mediaRoot=media);vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
     }
     @After fun close() {
         if(::vm.isInitialized)vm.viewModelScope.cancel()
@@ -64,6 +64,7 @@ class ManagementProcessRecoveryTest {
         node.performClick();ui.waitForIdle()
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         instrumentation.uiAutomation.waitForIdle(350,5000)
         val file=File(context.getExternalFilesDir(null),"phase-e-management-recovery/$name.png");file.parentFile!!.mkdirs()
         val image=instrumentation.uiAutomation.takeScreenshot();file.outputStream().use{image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()

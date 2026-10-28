@@ -28,7 +28,7 @@ class EntryFlowTest {
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
-    @Before fun setup(){val context=InstrumentationRegistry.getInstrumentation().targetContext;db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db);vm=AppViewModel(repo,AppPreferences(context));ui.setContent{NativeApp(vm)}}
+    @Before fun setup(){val context=InstrumentationRegistry.getInstrumentation().targetContext;db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db);vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}}
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun waitFor(text:String){ui.waitUntil(10000){ui.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}}
     private fun tap(text:String){waitFor(text);ui.onNodeWithText(text).performScrollTo().performClick()}
@@ -141,7 +141,7 @@ class EntryFlowTest {
         }
     }
     @Test fun foreignEntryEditsKeepOriginalAndAccountAmountsAcrossThemesAndLanguages() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@EntryFlowTest)) {
             val pair=runBlocking {
                 val book=repo.createBook("外币 $theme $language",Currency.JPY,theme,language)
                 repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
@@ -220,6 +220,7 @@ class EntryFlowTest {
         if(InstrumentationRegistry.getArguments().getString("realIme")=="true")ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
     }
     private fun refundShot(name:String,reset:Boolean=true) {
+        if (!visualEnabled()) return
         if(reset)ui.onNodeWithTag("sheet-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-100000f)}
         ui.waitForIdle()
         val root=InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null)!!
@@ -229,7 +230,7 @@ class EntryFlowTest {
         val screen=automation.takeScreenshot();File(file.parentFile,"$name-screen.png").outputStream().use{screen.compress(Bitmap.CompressFormat.PNG,100,it)};screen.recycle()
     }
     @Test fun pendingRefundActualConfirmationAndRemainingRefundAcrossThemesAndLanguages() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{wanted->it==wanted}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{wanted->it==wanted}?:true}) {
+        for((theme,language) in testLooks(this@EntryFlowTest)) {
             val ja=language=="ja"
             fun text(zh:String,jp:String)=if(ja)jp else zh
             val initial=runBlocking {
@@ -314,7 +315,7 @@ class EntryFlowTest {
     }
 
     @Test fun refundToAnotherCurrencyKeepsOriginalAccountAndStatisticalAmountsSeparate(){
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{wanted->it==wanted}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{wanted->it==wanted}?:true}) {
+        for((theme,language) in testLooks(this@EntryFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("三通貨 $theme $language",Currency.JPY,theme,language)
@@ -352,7 +353,7 @@ class EntryFlowTest {
     }
 
     @Test fun refundEditAndOriginalRemovalPreviewRestoreTheirSameGroup(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@EntryFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("退款关联 $theme $language",Currency.JPY,theme,language);repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
@@ -395,9 +396,11 @@ class EntryFlowTest {
             ui.onNodeWithTag("trash-$original").assertExists();ui.onNodeWithTag("trash-$arrived").assertDoesNotExist();ui.onNodeWithTag("trash-$pending").assertDoesNotExist()
             ui.onNodeWithText(text("同时恢复关联退款","関連する返金も復元")).assertExists()
             ui.onNodeWithTag("restore-$original").performScrollTo()
+            if (visualEnabled()) {
             val context=InstrumentationRegistry.getInstrumentation().targetContext
             val file=File(context.getExternalFilesDir(null),"phase-b-p08/$theme-$language-lifecycle-trash-screen.png")
             val auto=InstrumentationRegistry.getInstrumentation().uiAutomation;auto.waitForIdle(300,5000);val image=auto.takeScreenshot();file.outputStream().use{image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()
+            }
             ui.onNodeWithTag("restore-$original").performClick()
             ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-entry-lifecycle").fetchSemanticsNodes().isNotEmpty()}
             refundTarget(ui.onNodeWithTag("confirm-entry-lifecycle")).performClick()

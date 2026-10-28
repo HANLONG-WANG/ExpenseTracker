@@ -33,7 +33,7 @@ class CreditLimitFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context))
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
@@ -62,6 +62,7 @@ class CreditLimitFlowTest {
         return ui.onNode(if(ancestor==null)matcher else matcher and hasAnyAncestor(hasTestTag(ancestor)))
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -74,7 +75,7 @@ class CreditLimitFlowTest {
         }
     }
     @Test fun limitsObservationsAndSharedPoolSaveWithoutCashInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{v->v==it}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{v->v==it}?:true}) {
+        for((theme,language) in testLooks(this@CreditLimitFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val (book,card,other)=runBlocking {
                 val b=repo.createBook("利用枠 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")

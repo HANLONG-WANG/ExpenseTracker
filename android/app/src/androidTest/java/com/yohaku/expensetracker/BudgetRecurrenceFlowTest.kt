@@ -34,7 +34,7 @@ class BudgetRecurrenceFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context));restoration=StateRestorationTester(ui);restoration.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));restoration=StateRestorationTester(ui);restoration.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tap(text:String) {
@@ -42,8 +42,9 @@ class BudgetRecurrenceFlowTest {
         ui.onNodeWithText(text).performScrollTo().performClick()
     }
     private fun shot(name:String,sheet:Boolean,reset:Boolean=true) {
+        if (!visualEnabled()) return
         if(reset)ui.onNodeWithTag(if(sheet)"sheet-scroll"else"page-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-100000f)}
-        if(name.endsWith("-budget")||name.endsWith("-category-limits"))ui.waitUntil(10000){vm.notice.value==null}
+        if(name.endsWith("-budget")||name.endsWith("-category-limits"))if (visualEnabled()) ui.waitUntil(10000){vm.notice.value==null}
         ui.waitForIdle()
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val file=File(context.getExternalFilesDir(null),"phase-b-p10/$name.png");file.parentFile!!.mkdirs()
@@ -56,7 +57,7 @@ class BudgetRecurrenceFlowTest {
         }
     }
     @Test fun homeAndRecurringOverviewUseTheSameBudgetAndFutureTasks() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val book=runBlocking {
                 val book=repo.createBook("日常 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01",budgetMinor=100000)
@@ -122,7 +123,7 @@ class BudgetRecurrenceFlowTest {
             }else assertEquals(35f,(adjust.top-equation.bottom).value,1f)
             assertEquals(23f,(independent.top-adjust.bottom).value,1f)
         }
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("分类预算 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01",budgetMinor=200000)
@@ -189,7 +190,7 @@ class BudgetRecurrenceFlowTest {
         }
     }
     @Test fun estimatedSettlementReleasesOnlyTheOriginalOccurrenceReserve() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val (book,occurrence)=runBlocking {
                 val book=repo.createBook("预计入账 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01",budgetMinor=100000)
@@ -238,7 +239,7 @@ class BudgetRecurrenceFlowTest {
         }
     }
     @Test fun paymentFormDirectExistingLinkKeepsDraftOnCancelAndClearsOnConfirm() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val (book,occurrence,event)=runBlocking {
                 val book=repo.createBook("关联 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01",budgetMinor=100000)
@@ -283,7 +284,7 @@ class BudgetRecurrenceFlowTest {
         }
     }
     @Test fun scheduledAndActualPaymentContextAndFooterInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val (book,occurrence)=runBlocking {
                 val book=repo.createBook("付款 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01",budgetMinor=100000)
@@ -326,7 +327,7 @@ class BudgetRecurrenceFlowTest {
         }
     }
     @Test fun budgetRuleConfirmationAndExistingRecordLinkInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{wanted->it==wanted}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{wanted->it==wanted}?:true}) {
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val values=runBlocking {
                 val book=repo.createBook("日常 $theme $language",Currency.JPY,startDate="2026-10-01",budgetMinor=100000,theme=theme,language=language)
@@ -468,7 +469,7 @@ class BudgetRecurrenceFlowTest {
         ui.waitForIdle();return node
     }
     @Test fun recurringKnownUnknownPaidAndCancelledCardsKeepPaymentFactsWhenEditingAnInactiveRule(){
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{wanted->it==wanted}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{wanted->it==wanted}?:true}) {
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("周期 $theme $language",Currency.JPY,startDate="2026-10-01",budgetMinor=100000,theme=theme,language=language)
@@ -512,13 +513,13 @@ class BudgetRecurrenceFlowTest {
             assertEquals(95000L,after.budgetProjection("2026-10").availableMinor)
             ui.runOnIdle{vm.navigate("home");vm.navigate("recurring")}
             ui.onNodeWithTag("occurrence-status-$paid").assertTextEquals(text("已记账","記録済み"))
-            ui.waitUntil(10000){vm.notice.value==null}
+            if (visualEnabled()) ui.waitUntil(10000){vm.notice.value==null}
             ui.onNodeWithTag("occurrence-$paid").performScrollTo();shot("$theme-$language-recurring-paid",false,false)
         }
     }
 
     @Test fun unknownRuleBecomesConfirmedWithoutAutomaticPaymentAndKeepsItsEndDate(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val book=runBlocking {
                 val id=repo.createBook("未定规则 $theme $language",Currency.JPY,startDate="2026-10-01",budgetMinor=50000,theme=theme,language=language)
@@ -566,7 +567,7 @@ class BudgetRecurrenceFlowTest {
     }
 
     @Test fun stoppedRuleReactivatesPendingTasksButKeepsPaidAndUserCancelledStates(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("再启用 $theme $language",Currency.JPY,startDate="2026-10-01",budgetMinor=100000,theme=theme,language=language);repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))

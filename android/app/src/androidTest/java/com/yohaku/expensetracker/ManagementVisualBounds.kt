@@ -8,6 +8,7 @@ import java.io.File
 
 /** Measured native layout evidence alongside screenshots, in density-independent pixels. */
 internal fun writeManagementVisualBounds(ui:ComposeContentTestRule,imageFile:File) {
+    if (!visualEnabled()) return
     val result=JSONObject()
     for(tag in listOf("theme-sheet","sheet-title","sheet-header","sheet-body-content","record-facts","record-fact-0","record-fact-1")) {
         val matches=ui.onAllNodes(if(tag=="theme-sheet")hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag("theme-sheet")))

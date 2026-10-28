@@ -60,59 +60,18 @@ class ExpectedIncomeTest {
         }finally{db.close();context.deleteDatabase(name)}
     }
 
-    @Test fun cashTimelineDeduplicatesFuturePostingsBillsReservesAndPendingClearing()=runBlocking {
+    @Test fun timelinePreviewDoesNotPersistOccurrences()=runBlocking {
         val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         try {
             val repo=LedgerRepository(db,clock);val b=repo.createBook("資金",Currency.JPY,startDate="2026-10-01")
             val bank=repo.saveAccount(b,"引落",AccountType.BANK,Currency.JPY,Money(Currency.JPY,1000),"2026-10-01")
-            repo.saveAccount(b,"他口座",AccountType.BANK,Currency.JPY,Money(Currency.JPY,100000),"2026-10-01")
-            val card=repo.saveAccount(b,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,800),"2026-10-01")
             val cat=repo.saveCategory(b,"費用",EntryKind.EXPENSE,null)
-            val plan=repo.commitManualFinancialPlan(repo.previewManualFinancialPlan(b,ManualFinancialPlanInput(card,"カード支払",FinanceMode.SINGLE,listOf(KnownBillInput("2026-10-20",800,800,0,bank)),principalMinor=800,opening=true)))!!
-            val bill=db.financialDao().bills(b,plan).single()
-            repo.saveEntry(b,EntryDraft(accountId=bank,categoryId=cat,amount="100",date="2026-10-17"))
-            val recurrence=repo.saveRecurrence(b,RecurrenceInput("固定費",bank,cat,Money(Currency.JPY,400),Money(Currency.JPY,400),false,RecurrenceFrequency.MONTHLY,"2026-10-18",null))
+            repo.saveRecurrence(b,RecurrenceInput("固定費",bank,cat,Money(Currency.JPY,400),Money(Currency.JPY,400),false,RecurrenceFrequency.MONTHLY,"2026-10-18",null))
             repo.ensureOccurrences(b,"2026-10")
-            repo.setActivityMode(b,true)
-            val activity=repo.saveActivity(b,"シーン","2026-10-01","2026-10-31",null)
-            val occurrence=repo.dao.occurrences(b).first{it.recurrenceId==recurrence}
-            // A reserve for the same fixed payment is not an additional cash outflow.
-            val linkedOccurrence=occurrence.copy(activityId=activity);repo.dao.putOccurrence(linkedOccurrence)
-            repo.commitReserve(repo.previewReserve(b,ReserveInput(activity,"固定費の確保","2026-10-18",Money(Currency.JPY,300),bank,Money(Currency.JPY,300),occurrence.id)))
-            repo.commitExpectedIncome(repo.previewExpectedIncome(b,ExpectedIncomeInput("入金見込み",Money(Currency.JPY,500),"2026-10-19",bank)))
-            var s=repo.snapshot(repo.dao.book(b)!!).first();var f=db.financialDao().graph(b).first()!!
-            var timeline=s.cashTimeline(f,LocalDate.parse("2026-10-15"),LocalDate.parse("2026-10-31"))
-            assertEquals(1000L,timeline.openings.first{it.account.id==bank}.actualMinor)
-            assertEquals(3,timeline.steps.count{it.item.kind!="EXPECTED_INCOME"})
-            var payment=timeline.steps.single{it.item.id=="bill:${bill.id}"}
-            assertEquals(-300L,payment.baselineAfterMinor);assertEquals(200L,payment.includingIncomeAfterMinor)
-            val risk=timeline.accountRisks().first{it.opening.account.id==bank}
-            assertEquals(0L,risk.currentGapMinor);assertEquals(300L,risk.maximumGapMinor);assertEquals(0L,risk.includingIncomeGapMinor)
-            assertEquals("2026-10-20",risk.firstRiskDate)
-            assertEquals(0L,timeline.accountRisks().first{it.opening.account.id!=bank}.maximumGapMinor)
-            val stopped=s.copy(accounts=s.accounts.map{if(it.id==bank)it.copy(active=false)else it}).cashTimeline(f,LocalDate.parse("2026-10-15"),LocalDate.parse("2026-10-31"))
-            assertEquals("PAYMENT_ACCOUNT_INACTIVE",stopped.steps.single{it.item.id=="bill:${bill.id}"}.item.issue)
-            assertNull(stopped.accountRisks().first{it.opening.account.id==bank}.maximumGapMinor)
-            // Already debited cash awaiting platform clearing must not be requested a second time.
-            repo.commitFinancialLedger(repo.previewRepayment(b,FinancialRepaymentInput(bank,card,Money(Currency.JPY,300),"2026-10-15",Money(Currency.JPY,300),Money(Currency.JPY,300),Money(Currency.JPY,0),Money(Currency.JPY,0),platformConfirmed=false,allocations=listOf(RepaymentAllocationInput(bill.id,null,300,0,0)))))
-            s=repo.snapshot(repo.dao.book(b)!!).first();f=db.financialDao().graph(b).first()!!
-            timeline=s.cashTimeline(f,LocalDate.parse("2026-10-15"),LocalDate.parse("2026-10-31"))
-            payment=timeline.steps.single{it.item.id=="bill:${bill.id}"}
-            assertEquals(-500L,payment.item.accountDeltaMinor);assertEquals(-300L,payment.baselineAfterMinor);assertEquals(800L,s.billOutstanding(bill).totalMinor)
-            val unknownClearing=s.copy(repaymentAllocations=s.repaymentAllocations.map{it.copy(principalMinor=null)}).cashTimeline(f,LocalDate.parse("2026-10-15"),LocalDate.parse("2026-10-31"))
-            assertNull(unknownClearing.steps.last().baselineAfterMinor);assertEquals("PENDING_CLEARING_AMOUNT",unknownClearing.steps.last().item.issue)
-            val income=s.expectedIncomes.single()
-            val unknown=s.copy(expectedIncomes=listOf(income.copy(currency="CNY",accountMinor=null))).cashTimeline(f,LocalDate.parse("2026-10-15"),LocalDate.parse("2026-10-31"))
-            assertNull(unknown.steps.last().includingIncomeAfterMinor);assertEquals(-300L,unknown.steps.last().baselineAfterMinor)
-            val stored=repo.dao.occurrences(b)
-            val longer=s.cashTimeline(f,LocalDate.parse("2026-10-15"),LocalDate.parse("2026-12-31"))
+            val s=repo.snapshot(repo.dao.book(b)!!).first();val stored=repo.dao.occurrences(b)
+            val longer=s.cashTimeline(db.financialDao().graph(b).first(),LocalDate.parse("2026-10-15"),LocalDate.parse("2026-12-31"))
             assertEquals(3,longer.steps.count{it.item.kind=="RECURRENCE"})
-            assertEquals(stored,repo.dao.occurrences(b)) // A longer preview must not materialize or post anything.
-            repo.ensureOccurrences(b,"2026-11")
-            val november=repo.dao.occurrences(b).single{it.scheduledDate=="2026-11-18"}
-            repo.cancelOccurrence(b,november.id)
-            s=repo.snapshot(repo.dao.book(b)!!).first()
-            assertEquals(2,s.cashTimeline(f,LocalDate.parse("2026-10-15"),LocalDate.parse("2026-12-31")).steps.count{it.item.kind=="RECURRENCE"})
+            assertEquals(stored,repo.dao.occurrences(b));assertTrue(repo.snapshot(repo.dao.book(b)!!).first().events.isEmpty())
         }finally{db.close()}
     }
 

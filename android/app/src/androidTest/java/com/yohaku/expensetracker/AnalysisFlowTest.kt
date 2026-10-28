@@ -35,7 +35,7 @@ class AnalysisFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC))
-        vm=AppViewModel(repo,AppPreferences(context));restoration=StateRestorationTester(ui);restoration.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));restoration=StateRestorationTester(ui);restoration.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tap(text:String) {
@@ -55,6 +55,7 @@ class AnalysisFlowTest {
         target.performClick()
     }
     private fun shot(name:String,sheet:Boolean,reset:Boolean=true) {
+        if (!visualEnabled()) return
         if(reset)ui.onNodeWithTag(if(sheet)"sheet-scroll"else"page-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-100000f)}
         ui.waitForIdle()
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -66,7 +67,7 @@ class AnalysisFlowTest {
         File(file.parentFile,"$name-screen.png").outputStream().use{screen.compress(Bitmap.CompressFormat.PNG,100,it)};screen.recycle()
     }
     @Test fun chooseOrderPinDrillIntoRefundsAndSaveMerchantLocationInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{requested->it==requested}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{requested->it==requested}?:true}) {
+        for((theme,language) in testLooks(this@AnalysisFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val values=runBlocking {
                 val book=repo.createBook("分析 $theme $language",Currency.JPY,startDate="2026-09-01",theme=theme,language=language)
@@ -78,6 +79,9 @@ class AnalysisFlowTest {
                 val purchase=repo.saveEntry(book,EntryDraft(accountId=account,categoryId=child,amount="5000",date="2026-10-02",merchant="喫茶店",merchantId=merchant))
                 repo.saveEntry(book,EntryDraft(accountId=account,categoryId=parent,amount="2000",date="2026-10-01",merchant="日常"))
                 repo.saveRefund(book,RefundInput(purchase,Money(Currency.JPY,1000),account,Money(Currency.JPY,1000),Money(Currency.JPY,1000),"2026-11-02",true))
+                val income=repo.saveCategory(book,"収入",EntryKind.INCOME,null)
+                repo.saveEntry(book,EntryDraft(kind=EntryKind.INCOME,accountId=account,categoryId=income,amount="400",date="2026-10-03"))
+                repo.saveEntry(book,EntryDraft(accountId=account,categoryId=parent,amount="600",date="2026-09-01",merchant="上月消费"))
                 vm.preferences.select(book);Triple(book,parent,merchant)
             }
             val (book,parent,merchant)=values
@@ -153,6 +157,7 @@ class AnalysisFlowTest {
             shot("$theme-$language-categories-module",false,false)
             ui.onNodeWithTag("analysis-category-$parent").performScrollTo().performClick()
             ui.onNodeWithTag("analysis-detail-net").assertTextEquals("¥6,000")
+            ui.onNodeWithText(text("未细分 · 直接记入一级","内訳未分類・親への直接記録")).performScrollTo().assertIsDisplayed()
             sheetTap("analysis-child-UNSPECIFIED")
             ui.onNodeWithTag("analysis-detail-net").assertTextEquals("¥2,000")
             shot("$theme-$language-category-unspecified",true)
@@ -173,14 +178,19 @@ class AnalysisFlowTest {
             ui.waitUntil(10000){ui.onAllNodesWithText(text("已到账退款 · 按原消费归属","入金済み返金・元の支出に帰属"),substring=true).fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithText(text("已到账退款 · 按原消费归属","入金済み返金・元の支出に帰属"),substring=true).performScrollTo().assertExists()
             shot("$theme-$language-category",true)
+            val purchase=selected.events.single{it.merchant=="喫茶店"&&it.kind=="EXPENSE"}
+            ui.onNodeWithTag("event-${purchase.id}").performScrollTo().performClick()
+            ui.onNodeWithTag("record-cover").assertIsDisplayed()
+            assertEquals("detail",vm.route.value)
             ui.onNodeWithTag("sheet-close").performClick()
+            ui.waitUntil(10000){vm.route.value=="analysis"}
             ui.onNodeWithTag("analysis-filter").performScrollTo().performClick()
             ui.onNodeWithTag("select-trigger-"+text("商户","お店")).performScrollTo().performClick()
             val merchantIndex=selected.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name||it.kind==EntryKind.TRANSFER.name}.map{selected.merchantKey(it)}.distinct().indexOf("id:"+merchant)+1
             ui.onNodeWithTag("select-option-"+text("商户","お店")+"-$merchantIndex").performScrollTo().performClick()
             ui.onNodeWithTag("analysis-filter-apply").performScrollTo().performClick()
             ui.waitUntil(10000){ui.onAllNodesWithText("¥4,000").fetchSemanticsNodes().size>=2&&!vm.busy.value}
-            assertEquals(3,runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}.events.size)
+            assertEquals(5,runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}.events.size)
             ui.runOnIdle{vm.navigate("merchants")}
             ui.onNodeWithTag("merchant-open-$merchant").performScrollTo().performClick()
             tap(text("＋ 添加地点","＋ 場所を追加"))
@@ -190,12 +200,12 @@ class AnalysisFlowTest {
             tap(text("保存地点","場所を保存"))
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.size==1&&!vm.busy.value}
             val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
-            assertEquals(3,after.events.size);assertEquals(194000L,after.balance(after.accounts.single()));assertEquals(6000L,after.analysis(AnalysisFilter("2026-10-01","2026-10-31")).total)
+            assertEquals(5,after.events.size);assertEquals(193800L,after.balance(after.accounts.single()));assertEquals(6000L,after.analysis(AnalysisFilter("2026-10-01","2026-10-31")).total)
             assertEquals(merchant,after.merchantCandidates(35.0,139.0).single().merchant.id)
         }
     }
     @Test fun activityCardsSeparateWholeSceneBudgetFromFilteredNetAndIncludeIndependentExpenses() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@AnalysisFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("活動分析 $theme $language",Currency.JPY,startDate="2026-09-01",budgetMinor=100000,theme=theme,language=language)
@@ -245,7 +255,7 @@ class AnalysisFlowTest {
     }
 
     @Test fun planningTabsShowBudgetReservesTransitAndMaterializeNewFilterMonthsWithoutPosting() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@AnalysisFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("予定分析 $theme $language",Currency.JPY,startDate="2026-10-01",budgetMinor=100000,theme=theme,language=language)
@@ -323,7 +333,7 @@ class AnalysisFlowTest {
     }
 
     @Test fun comparisonDrillsUseEqualProgressPeriodsAndRecoverTheSelectedPeriod() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@AnalysisFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("比較 $theme $language",Currency.JPY,startDate="2026-09-01",theme=theme,language=language)
@@ -374,7 +384,7 @@ class AnalysisFlowTest {
     }
 
     @Test fun historicalFiltersCancelSafelyRecoverAndDriveEveryModulePreviewWithoutSavingPreferences() {
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@AnalysisFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("期間プレビュー $theme $language",Currency.JPY,startDate="2026-09-01",theme=theme,language=language)

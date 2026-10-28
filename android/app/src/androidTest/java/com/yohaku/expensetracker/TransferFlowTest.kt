@@ -31,7 +31,7 @@ class TransferFlowTest {
     @Before fun open() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
-        repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC));vm=AppViewModel(repo,AppPreferences(context),ReferenceRates(TestReferenceRateStore().apply{automaticReferenceRates.value=false},clock=repo.clock))
+        repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC));vm=AppViewModel(repo,AppPreferences(context),testReferenceRates(TestReferenceRateStore().apply{automaticReferenceRates.value=false},repo.clock))
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
@@ -61,6 +61,7 @@ class TransferFlowTest {
         target(ui.onNodeWithContentDescription(date)).performClick()
     }
     private fun shot(name:String,reset:Boolean=true) {
+        if (!visualEnabled()) return
         if(reset)ui.onNodeWithTag("sheet-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-100000f)};ui.waitForIdle()
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val file=File(context.getExternalFilesDir(null),"phase-b-p09/$name.png");file.parentFile!!.mkdirs()
@@ -69,7 +70,7 @@ class TransferFlowTest {
         File(file.parentFile,"$name-screen.png").outputStream().use{screen.compress(Bitmap.CompressFormat.PNG,100,it)};screen.recycle()
     }
     @Test fun accountShortcutTransitConfirmationAndOriginalIdEditInEveryThemeAndLanguage() {
-        for(theme in listOf("magazine","journal","objects").filter{InstrumentationRegistry.getArguments().getString("theme")?.let{wanted->it==wanted}?:true})for(language in listOf("zh","ja").filter{InstrumentationRegistry.getArguments().getString("language")?.let{wanted->it==wanted}?:true}) {
+        for((theme,language) in testLooks(this@TransferFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val setup=runBlocking {
                 val book=repo.createBook("换汇 $theme $language",Currency.JPY,theme,language)
@@ -136,7 +137,7 @@ class TransferFlowTest {
             assertEquals(0L,transit.balance(transit.accounts.first{it.id==target}))
             assertEquals(1,transit.inTransitTransfers().size)
             val event=transit.visibleEvents.single()
-            ui.onNodeWithTag("event-${event.id}").performScrollTo().performClick()
+            ui.revealOnPage("event-${event.id}").performClick()
             ui.onNodeWithTag("record-edit-button").performScrollTo().performClick()
             ui.waitUntil(10000){ui.onAllNodesWithTag("transfer-form").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("select-trigger-$stateLabel").performScrollTo().performClick()
@@ -148,7 +149,7 @@ class TransferFlowTest {
             ui.onNodeWithText(text("转账变化预览","振替の変化を確認")).assertExists()
             ui.onNodeWithText("人民币 · CN¥1,440.00").assertExists()
             ui.onNodeWithText("CN¥1,462.50").assertExists()
-            ui.onNodeWithText("¥30,000").assertExists()
+            ui.onNode(hasText("¥30,000") and hasAnyAncestor(hasTestTag("theme-sheet"))).assertExists()
             shot("$theme-$language-transfer-actual-review")
             tap(text("确认并保存","確認して保存"))
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
@@ -161,12 +162,12 @@ class TransferFlowTest {
             assertEquals(750L,actual.monthExpense(actual.expenseComponents.single().date.take(7)))
             ui.runOnIdle{vm.navigate("accounts")}
             ui.onNodeWithTag("account-$target").performScrollTo().performClick()
-            ui.onNodeWithTag("event-${event.id}").assertExists()
+            ui.revealOnPage("event-${event.id}").assertExists()
             ui.onNodeWithText("+CN¥1,440.00").assertExists()
         }
     }
     @Test fun missingRecipientDoesNotInferCurrencyOrAmountBeforeThePairIsKnown(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@TransferFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val book=runBlocking {
                 val id=repo.createBook("未選択 $theme $language",Currency.JPY,theme,language);repo.updateBook(repo.dao.book(id)!!.copy(initialized=true))
@@ -190,7 +191,7 @@ class TransferFlowTest {
         }
     }
     @Test fun sameCurrencyTransfersKeepSeparateDatesAndCountIncludedOrSeparateFeesOnce(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@TransferFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("振替 $theme $language",Currency.JPY,theme,language);repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
@@ -235,7 +236,7 @@ class TransferFlowTest {
     }
 
     @Test fun plannedArrivalFirstAndRepeatedConfirmationKeepOneEventAndArrivalFee(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@TransferFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val ids=runBlocking {
                 val book=repo.createBook("先到账 $theme $language",Currency.JPY,theme,language);repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
@@ -287,7 +288,7 @@ class TransferFlowTest {
     }
 
     @Test fun accountHistoryUsesItsOwnNameAmountsDatesAndArrivalOrder(){
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@TransferFlowTest)) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             lateinit var firstDraft:EntryDraft
             val ids=runBlocking {
@@ -303,6 +304,7 @@ class TransferFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             fun account(id:String){ui.runOnIdle{vm.navigate("accounts")};ui.onNodeWithTag("account-$id").performScrollTo().performClick();ui.waitForIdle()}
             fun pageShot(name:String,top:Boolean=false){
+                if (!visualEnabled()) return
                 if(top)ui.onNodeWithTag("page-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-100000f)}
                 ui.waitForIdle();val context=InstrumentationRegistry.getInstrumentation().targetContext
                 val file=File(context.getExternalFilesDir(null),"phase-b-p09/$theme-$language-account-history-$name.png");file.parentFile!!.mkdirs()

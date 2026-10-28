@@ -37,7 +37,7 @@ class PhaseBProcessRecoveryTest {
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("phaseBRecovery")=="true")
         db=Room.databaseBuilder(context,YohakuDatabase::class.java,"phase-b-process-check.db").build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC),mediaRoot)
-        vm=AppViewModel(repo,prefs)
+        vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
     }
     @After fun close(){if(::vm.isInitialized)vm.viewModelScope.cancel();if(::db.isInitialized)db.close()}
     private fun tap(text:String) {

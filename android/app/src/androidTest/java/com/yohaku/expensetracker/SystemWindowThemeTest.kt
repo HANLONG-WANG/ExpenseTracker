@@ -35,16 +35,18 @@ class SystemWindowThemeTest {
         assertTrue("Light paper requires dark navigation icons",bars.isAppearanceLightNavigationBars)
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle();val automation=InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.waitForIdle(300,5000);val bitmap=automation.takeScreenshot()
         val file=File(ui.activity.getExternalFilesDir(null),"phase-b-system-windows/$name.png");file.parentFile!!.mkdirs()
         file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
     }
     @Test fun productionActivityAndThemedDialogKeepReadableIconsAfterRecreationAndImeResize() {
+        org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val mode=InstrumentationRegistry.getArguments().getString("systemMode")?:"unspecified"
         ui.activityRule.scenario.recreate()
         ui.runOnIdle{check(ui.activity.window)}
-        for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+        for((theme,language) in testLooks(this@SystemWindowThemeTest)) {
             sheetWindow=null
             // Exercise the production Activity's window and the actual shared theme/dialog components.
             // This local scene does not seed or edit any user book, preferences or ledger data.

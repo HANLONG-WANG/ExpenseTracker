@@ -33,7 +33,7 @@ class FinancialRuleModesFlowTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         repo=LedgerRepository(db,Clock.fixed(Instant.parse("2026-10-15T00:00:00Z"),ZoneId.of("Asia/Tokyo")))
-        vm=AppViewModel(repo,AppPreferences(context))
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock))
         ui.setContent{NativeApp(vm)}
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
@@ -62,6 +62,7 @@ class FinancialRuleModesFlowTest {
         return ui.onNode(if(ancestor==null)matcher else matcher and hasAnyAncestor(hasTestTag(ancestor)))
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         ui.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -77,8 +78,7 @@ class FinancialRuleModesFlowTest {
     @Test fun configureAllModesAndFixedLoanMethodsWithoutChangingKnownFacts() {
         val args=InstrumentationRegistry.getArguments()
         val cases=listOf("SINGLE","INSTALLMENT","REVOLVING","CREDIT_LINE","EQUAL_PRINCIPAL","ANNUITY","INTEREST_ONLY","MANUAL","SPECIAL")
-        for(theme in listOf("magazine","journal","objects").filter{args.getString("theme")?.let{v->v==it}?:true})
-        for(language in listOf("zh","ja").filter{args.getString("language")?.let{v->v==it}?:true})
+        for((theme,language) in testLooks(this@FinancialRuleModesFlowTest))
         for(case in cases.filter{args.getString("modeCase")?.let{v->v==it}?:true}) {
             fun text(zh:String,ja:String)=if(language=="ja")ja else zh
             val mode=when(case){"EQUAL_PRINCIPAL","ANNUITY","INTEREST_ONLY","MANUAL"->FinanceMode.FIXED_LOAN;"SPECIAL"->FinanceMode.CREDIT_LINE;else->FinanceMode.valueOf(case)}

@@ -54,7 +54,7 @@ class CsvImportRoundTripTest {
                 val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
                 val path=File(context.cacheDir,"csv-ui-${java.util.UUID.randomUUID()}.preferences_pb")
                 val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
-                val vm=AppViewModel(repo,prefs)
+                val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
                 val model=CsvImportViewModel(repo,book)
                 val snapshot=repo.snapshot(repo.dao.book(book)!!).first()
                 var theme by mutableStateOf("magazine");var language by mutableStateOf("zh")
@@ -68,11 +68,12 @@ class CsvImportRoundTripTest {
                     }}
                     val folder=File(context.getExternalFilesDir(null),"csv-visual").apply{mkdirs()}
                     fun capture(tag:String,name:String) {
+                        if (!visualEnabled()) return
                         ui.onNodeWithTag(tag).captureToImage().asAndroidBitmap().let{bitmap->
                             File(folder,name).outputStream().use{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
                         }
                     }
-                    for(t in listOf("magazine","journal","objects"))for(l in listOf("zh","ja")) {
+                    for((t,l) in testLooks(this@CsvImportRoundTripTest)) {
                         for(step in 0..3) {
                             ui.runOnIdle{theme=t;language=l;model.state.value=fixture.copy(step=step)}
                             if(step in 1..2)ui.onNodeWithText(if(step==1)if(l=="ja")"次へ"else"下一步" else if(l=="ja")"プレビューを作成"else"生成预览").performScrollTo().assertIsDisplayed()

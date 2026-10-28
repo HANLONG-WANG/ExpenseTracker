@@ -30,6 +30,7 @@ class CategoryIconFlowTest {
         ui.onNodeWithTag(tag).performScrollTo();ui.waitForIdle();ui.onNodeWithTag(tag).performClick();ui.waitForIdle()
     }
     private fun shot(name:String) {
+        if (!visualEnabled()) return
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         ui.waitForIdle();instrumentation.uiAutomation.waitForIdle(350,5000)
         val width=instrumentation.targetContext.resources.configuration.screenWidthDp
@@ -43,11 +44,11 @@ class CategoryIconFlowTest {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
         val path=File(context.cacheDir,"category-icon-${UUID.randomUUID()}.preferences_pb")
         val prefs=AppPreferences(context,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
-        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs)
+        val repo=LedgerRepository(db);val vm=AppViewModel(repo,prefs, testReferenceRates(prefs,repo.clock))
         fun current()=(vm.state.value as? AppState.Ready)?.snapshot
         try {
             ui.setContent{NativeApp(vm)}
-            for(theme in listOf("magazine","journal","objects"))for(language in listOf("zh","ja")) {
+            for((theme,language) in testLooks(this@CategoryIconFlowTest)) {
                 val b=repo.createBook("生活",Currency.JPY,theme,language)
                 repo.dao.putBook(repo.dao.book(b)!!.copy(initialized=true))
                 val a=repo.saveAccount(b,"現金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,50000),"2026-10-01")
