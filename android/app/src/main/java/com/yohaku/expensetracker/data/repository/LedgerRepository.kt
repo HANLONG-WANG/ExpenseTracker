@@ -121,7 +121,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
             val old=dao.category(bookId,categoryId) ?: error("分类不存在 / カテゴリがありません")
             require(old.parentId==parentId && old.kind==kind.name){"已有分类层级调整需影响预览 / 階層変更には影響確認が必要です"}
         }
-        require(oldCategory!=null||parent==null||categoryEnabled(bookId,parent.id)){"父分类已停用 / 親カテゴリは停止済みです"}
+        require(oldCategory!=null||parent==null||categoryEnabled(bookId,parent.id)){"父分类已归档 / 親カテゴリはアーカイブ済みです"}
         val savedIcon=when(icon) {
             CategoryIconChoice.Auto->if(oldCategory!=null)oldCategory.icon else suggestCategoryIcons(name).firstOrNull()?.takeUnless {
                 parent!=null && it==resolveCategoryIcon(parent.id,listOf(parent))

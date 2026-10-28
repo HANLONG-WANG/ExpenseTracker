@@ -18,7 +18,7 @@ suspend fun LedgerRepository.saveRecurrence(bookId:String,input:RecurrenceInput)
     val old=input.id?.let{dao.recurrence(bookId,it)?:error("周期规则不存在 / 定期ルールがありません")}
     val account=dao.account(bookId,input.accountId)?:error("账户不属于本账本 / 別の帳簿の口座です")
     val category=dao.category(bookId,input.categoryId)?:error("分类不属于本账本 / 別の帳簿のカテゴリです")
-    require((account.active||old?.accountId==account.id)&&account.type!=AccountType.LOAN.name&&(categoryEnabled(bookId,category.id)||old?.categoryId==category.id)&&category.kind==EntryKind.EXPENSE.name){"请选择启用的支出分类和消费付款账户 / 有効な支出カテゴリと支払口座を選択してください"}
+    require((account.active||old?.accountId==account.id)&&account.type!=AccountType.LOAN.name&&(categoryEnabled(bookId,category.id)||old?.categoryId==category.id)&&category.kind==EntryKind.EXPENSE.name){"请选择未归档的支出分类和可用的消费付款账户 / アーカイブされていない支出カテゴリと有効な支払口座を選択してください"}
     require(input.amount==null||input.amount.currency.name==account.currency&&input.amount.minor>0){"金额应大于零，未知请留空 / 金額は0より大きく、不明なら空欄にしてください"}
     val base=if(input.amount==null)null else if(account.currency==book.currency)input.amount else input.baseAmount
     require(base==null||base.currency.name==book.currency&&base.minor>0){"本位币预留应大于零，未知请留空 / 基準通貨の確保額は0より大きく、不明なら空欄にしてください"}

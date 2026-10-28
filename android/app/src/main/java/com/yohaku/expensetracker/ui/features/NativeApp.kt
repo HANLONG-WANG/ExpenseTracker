@@ -199,7 +199,8 @@ import kotlinx.serialization.encodeToString
                         "reminders"->ImportantItemsScreen(snapshot,vm,{openTimelineItem(it)},{account,month->openFinancial(account,month)},{openRisk(it)},{openAttention(it)},{vm.navigate("forecast")})
                         "forecast"->FinancialForecastScreen(snapshot,vm,{openRecord(it)},{openFinancial(it)},{openRisk(it)},{openAttention(it)},{openTimelineItem(it)})
                         "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
-                        "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}})
+                        "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}},
+                            {c->vm.execute{if(vm.repository.commitCategoryOperation(vm.repository.previewCategoryOperation(book.id,c.id,CategoryOperation.UNARCHIVE)))vm.reminders?.rebuildSafely(false)}})
                         "csv-import"->CsvImportScreen(snapshot,vm)
                         "backup"->BackupScreen()
                         "appearance"->AppearanceScreen(snapshot,{vm.appearance(book.id,theme=it)})
@@ -524,17 +525,18 @@ import kotlinx.serialization.encodeToString
     }
 }
 
-@Composable internal fun CategoryManagement(s:BookSnapshot,onCreate:(String?,EntryKind)->Unit,onEdit:(CategoryEntity)->Unit,onFavorite:(CategoryEntity)->Unit) {
+@Composable internal fun CategoryManagement(s:BookSnapshot,onCreate:(String?,EntryKind)->Unit,onEdit:(CategoryEntity)->Unit,onFavorite:(CategoryEntity)->Unit,onRestore:(CategoryEntity)->Unit) {
     YLead(word("用途有层次，记录更清楚。","使い道を、親と子で整理。"),word("一级归纳，二级细分。直接记入一级的消费列为未细分。","親で集計、子で詳細。親への直接記録は内訳未分類。"),"CATEGORIES / TWO LEVELS",pageFlow=true)
     listOf(EntryKind.EXPENSE,EntryKind.INCOME).forEachIndexed{index,kind->
         ThemeSection(if(kind==EntryKind.EXPENSE)word("支出分类","支出カテゴリ") else word("收入分类","収入カテゴリ"),previousBottomPadding=if(index==0)10 else 0)
-        val roots=s.categories.filter{it.kind==kind.name&&it.parentId==null}
-        if(roots.isEmpty())YEmpty(word("从自己的用途开始，尚无预建分类。","自分の使い道から。初期カテゴリはありません。"))
+        val roots=s.categories.filter{it.kind==kind.name&&it.parentId==null&&it.active}
+        if(roots.isEmpty()&&s.categories.none{it.kind==kind.name})YEmpty(word("从自己的用途开始，尚无预建分类。","自分の使い道から。初期カテゴリはありません。"))
         else Column(Modifier.fillMaxWidth().padding(top=5.dp,bottom=17.dp),verticalArrangement=Arrangement.spacedBy(17.dp)){roots.forEach{root->
-            CategoryManageGroup(root.id,root.name+(if(!root.active)word(" · 已停用","・停止中")else ""),root.favorite,s.categories.filter{it.parentId==root.id}.map{it.id to (it.name+(if(it.favorite)" ★" else "")+(if(!s.categoryEnabled(it.id))word(" · 已停用","・停止中")else ""))},{onEdit(root)},
+            CategoryManageGroup(root.id,root.name,root.favorite,s.categories.filter{it.parentId==root.id&&it.active}.map{it.id to (it.name+(if(it.favorite)" ★" else ""))},{onEdit(root)},
                 {id->onEdit(s.categories.first{it.id==id})},{onCreate(root.id,kind)},first=root===roots.first(),icon=resolveCategoryIcon(root.id,s.categories),iconOf={resolveCategoryIcon(it,s.categories)}){id->s.categories.first{it.id==id}.icon.let{it==null||categoryIconOf(it)==null}}
         }}
         YButton(word("＋ 添加一级分类","＋ 親カテゴリを追加"),{onCreate(null,kind)},Modifier.testTag("category-kind-add-${kind.name}"),primary=true)
+        CategoryArchiveShelf(s,kind,onEdit,onRestore)
     }
     CategoryFavorites(s,onFavorite)
 }
@@ -566,7 +568,7 @@ import kotlinx.serialization.encodeToString
             else Box(Modifier.padding(vertical=4.dp)){
                 SetupNote(if(s.categories.any{it.parentId==original.id})word("已有子分类，保持为一级分类。","子カテゴリがあるため親カテゴリを保持。") else word("归属一级分类","親カテゴリ")+" · "+(s.categories.firstOrNull{it.id==original.parentId}?.name?:word("无 · 一级分类","なし・親カテゴリ")),pageFlow=false,modifier=Modifier.testTag("category-parent-fixed"))
             }
-            if(original!=null)YLink(word("分类状态与归属管理","カテゴリの状態・分類を管理"),{managing=true},Modifier.testTag("category-manage"))
+            if(original!=null)YLink(if(original.active)word("归档、调整归属或删除","アーカイブ・親の変更・削除") else word("取消归档、调整归属或删除","アーカイブ解除・親の変更・削除"),{managing=true},Modifier.testTag("category-manage"))
             Box(Modifier.padding(top=15.dp)){
                 YButton(if(onUse!=null)word("创建并使用","作成して使う") else word("保存分类","カテゴリを保存"),{
                     if(saving)return@YButton

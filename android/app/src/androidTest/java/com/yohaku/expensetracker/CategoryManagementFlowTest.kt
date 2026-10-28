@@ -48,7 +48,18 @@ class CategoryManagementFlowTest {
         file.outputStream().use{image.compress(Bitmap.CompressFormat.PNG,100,it)}
         image.recycle()
     }
-    @Test fun stopResumeMoveAndMergeAcrossAppearances()=runBlocking {
+    private fun pageShot(name:String,focus:String) {
+        // Bring the expanded shelf above the bottom navigation before capturing.
+        ui.onNodeWithTag(focus).performScrollTo();ui.onRoot().performTouchInput{swipeUp(startY=centerY,endY=centerY-height*.25f,durationMillis=900)}
+        ui.waitForIdle()
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        instrumentation.uiAutomation.waitForIdle(350,5000)
+        val file=File(instrumentation.targetContext.getExternalFilesDir(null),"phase-e-category-management/$name.png");file.parentFile!!.mkdirs()
+        val image=instrumentation.uiAutomation.takeScreenshot()
+        file.outputStream().use{image.compress(Bitmap.CompressFormat.PNG,100,it)}
+        image.recycle()
+    }
+    @Test fun archiveRestoreMoveAndMergeAcrossAppearances()=runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
@@ -73,7 +84,14 @@ class CategoryManagementFlowTest {
                 tap("category-manage-parent-$parent");tap("category-manage");tap("category-operation-preview")
                 shot("$theme-$language-stop");tap("confirm-category-operation")
                 ui.waitUntil(10000){current()?.categories?.firstOrNull{it.id==parent}?.active==false&&!vm.busy.value}
-                tap("category-manage-parent-$parent");tap("category-manage");tap("category-operation-preview");tap("confirm-category-operation")
+                tap("category-archive-toggle-EXPENSE");ui.onNodeWithTag("category-archived-child-$child").assertExists();pageShot("$theme-$language-archive-group","category-archived-child-$child")
+                tap("category-restore-$parent")
+                ui.waitUntil(10000){current()?.categoryEnabled(child)==true&&!vm.busy.value}
+                tap("category-manage-child-$child");tap("category-manage");tap("category-operation-preview");tap("confirm-category-operation")
+                ui.waitUntil(10000){current()?.categories?.firstOrNull{it.id==child}?.active==false&&!vm.busy.value}
+                ui.onAllNodesWithTag("category-manage-child-$child").assertCountEquals(0)
+                tap("category-archive-toggle-EXPENSE");pageShot("$theme-$language-archive-shelf","category-restore-$child")
+                tap("category-restore-$child")
                 ui.waitUntil(10000){current()?.categoryEnabled(child)==true&&!vm.busy.value}
                 tap("category-manage-child-$child");tap("category-manage")
                 tap("select-trigger-"+label("操作","操作"));ui.onNodeWithText(label("调整父级，保留分类ID","親を変更し、カテゴリIDを保持")).performClick()

@@ -11,7 +11,7 @@ import java.time.YearMonth
 fun BookSnapshot.categoryEnabled(id:String):Boolean=categories.firstOrNull{it.id==id}?.let{it.active&&(it.parentId==null||categories.any{p->p.id==it.parentId&&p.active})}==true
 internal suspend fun LedgerRepository.categoryEnabled(bookId:String,id:String):Boolean=dao.category(bookId,id)?.let{it.active&&(it.parentId==null||dao.category(bookId,it.parentId)?.active==true)}==true
 
-enum class CategoryOperation { DEACTIVATE,ACTIVATE,REPARENT,MERGE_DELETE,DELETE_EMPTY }
+enum class CategoryOperation { ARCHIVE,UNARCHIVE,REPARENT,MERGE_DELETE,DELETE_EMPTY }
 enum class CategoryBudgetPolicy { KEEP_TARGET,COMBINE }
 data class CategoryProjectionChange(val categoryId:String,val month:String,val before:BudgetProjection,val after:BudgetProjection)
 class CategoryOperationReview internal constructor(internal val before:BookSnapshot,internal val after:BookSnapshot,
@@ -37,17 +37,17 @@ suspend fun LedgerRepository.previewCategoryOperation(bookId:String,categoryId:S
     var nextDrafts=drafts
     var next=s
     when(operation) {
-        CategoryOperation.DEACTIVATE->{require(c.active);next=s.copy(categories=s.categories.map{if(it.id==c.id)it.copy(active=false)else it})}
-        CategoryOperation.ACTIVATE->{require(!c.active);next=s.copy(categories=s.categories.map{if(it.id==c.id)it.copy(active=true)else it})}
+        CategoryOperation.ARCHIVE->{require(c.active);next=s.copy(categories=s.categories.map{if(it.id==c.id)it.copy(active=false)else it})}
+        CategoryOperation.UNARCHIVE->{require(!c.active);next=s.copy(categories=s.categories.map{if(it.id==c.id)it.copy(active=true)else it})}
         CategoryOperation.REPARENT->{
-            require(target==null||target.id!=c.id&&target.parentId==null&&target.kind==c.kind&&s.categoryEnabled(target.id)){"请选择启用的同用途一级分类 / 同じ用途の有効な親カテゴリを選択してください"}
+            require(target==null||target.id!=c.id&&target.parentId==null&&target.kind==c.kind&&s.categoryEnabled(target.id)){"请选择未归档的同用途一级分类 / アーカイブされていない同じ用途の親カテゴリを選択してください"}
             require(target==null||children.isEmpty()){"已有子分类，请先调整子分类或合并整组 / 子カテゴリを先に移動するか、グループ全体を統合してください"}
             require(c.parentId!=targetId)
             next=s.copy(categories=s.categories.map{if(it.id==c.id)it.copy(parentId=targetId)else it})
         }
         CategoryOperation.DELETE_EMPTY->{if(!deletionBlocked)next=s.copy(categories=s.categories.filter{it.id !in ids})}
         CategoryOperation.MERGE_DELETE->{
-            require(target!=null&&target.id !in ids&&target.kind==c.kind&&s.categoryEnabled(target.id)){"请选择本账本同用途的启用分类，不能迁入待删除组 / 削除対象外の同じ用途の有効なカテゴリを選択してください"}
+            require(target!=null&&target.id !in ids&&target.kind==c.kind&&s.categoryEnabled(target.id)){"请选择本账本同用途的未归档分类，不能迁入待删除组 / 削除対象外で、アーカイブされていない同じ用途のカテゴリを選択してください"}
             fun cap(month:String):Long? {
                 val source=s.budgetLimit(month,c.id)?:sumCaps(children.map{s.budgetLimit(month,it.id)})
                 val destination=s.budgetLimit(month,target.id)
@@ -80,7 +80,7 @@ suspend fun LedgerRepository.previewCategoryOperation(bookId:String,categoryId:S
 suspend fun LedgerRepository.commitCategoryOperation(review:CategoryOperationReview):Boolean=db.withTransaction {
     val b=review.category.bookId
     if(snapshot(requireNotNull(dao.book(b))).first()!=review.before||db.financialDao().bookDrafts(b)!=review.draftRows)return@withTransaction false
-    require(review.operation!=CategoryOperation.DELETE_EMPTY||!review.deletionBlocked){"仍有记录、预算、计划或草稿引用，请停用或明确迁移 / 記録・予算・予定・下書きの参照があります。停止または統合してください"}
+    require(review.operation!=CategoryOperation.DELETE_EMPTY||!review.deletionBlocked){"仍有记录、预算、计划或草稿引用，请归档或明确迁移 / 記録・予算・予定・下書きの参照があります。アーカイブまたは統合してください"}
     val before=review.before;val next=review.after
     next.categories.filter{it!=before.categories.find{c->c.id==it.id}}.forEach{dao.putCategory(it)}
     next.events.filter{it!=before.events.find{e->e.id==it.id}}.forEach{e->

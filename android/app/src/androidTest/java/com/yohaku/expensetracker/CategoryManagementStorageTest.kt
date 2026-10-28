@@ -43,12 +43,12 @@ class CategoryManagementStorageTest {
         val b=r.createBook("停止",Currency.JPY);val root=category(b,"食事");val child=category(b,"コーヒー",root)
         val a=r.saveAccount(b,"現金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
         val d=EntryDraft(accountId=a,categoryId=child,amount="500",date="2026-10-16");val event=r.saveEntry(b,d)
-        assertTrue(r.commitCategoryOperation(r.previewCategoryOperation(b,root,CategoryOperation.DEACTIVATE)))
+        assertTrue(r.commitCategoryOperation(r.previewCategoryOperation(b,root,CategoryOperation.ARCHIVE)))
         assertFalse(snapshot(b).categoryEnabled(child));assertTrue(r.dao.category(b,child)!!.active)
         r.saveCategory(b,"食費",EntryKind.EXPENSE,null,root);assertFalse(r.dao.category(b,root)!!.active)
         try{r.saveEntry(b,d);fail("stopped parent")}catch(_:IllegalArgumentException){}
         assertEquals(event,r.saveEntry(b,d.copy(id=event,amount="600")))
-        assertTrue(r.commitCategoryOperation(r.previewCategoryOperation(b,root,CategoryOperation.ACTIVATE)))
+        assertTrue(r.commitCategoryOperation(r.previewCategoryOperation(b,root,CategoryOperation.UNARCHIVE)))
         assertTrue(snapshot(b).categoryEnabled(child));assertEquals(9400L,snapshot(b).balance(snapshot(b).accounts.single()))
     }
     @Test fun reparentPreviewReprojectsHistoryAndBudgetWithoutChangingIdsOrMoney()=runBlocking {

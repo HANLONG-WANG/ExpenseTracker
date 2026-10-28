@@ -266,7 +266,7 @@ class SetupPresentationTest {
             val categories=listOf(CategoryEntity("fixture","food","餐饮","EXPENSE",icon="category"),CategoryEntity("fixture","coffee","咖啡","EXPENSE","food",icon="category"))+if(income.value)listOf(CategoryEntity("fixture","work","收入","INCOME",icon="category"),CategoryEntity("fixture","salary","工资","INCOME","work",icon="category")) else emptyList()
             val snapshot=BookSnapshot(BookEntity("fixture","生活","JPY","2026-10-01"),emptyList(),categories,emptyList(),emptyList(),null)
             Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(pageContentPadding()),verticalArrangement=Arrangement.spacedBy(15.dp)){
-                CategoryManagement(snapshot,{_,_->},{},{})
+                CategoryManagement(snapshot,{_,_->},{},{},{})
             }
         }}
         for(index in 0 until source.length()){
