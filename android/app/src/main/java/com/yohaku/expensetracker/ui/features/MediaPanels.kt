@@ -6,6 +6,8 @@ import android.content.Intent
 import android.graphics.ImageDecoder
 import android.media.MediaPlayer
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import java.io.File
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.shadow
@@ -68,10 +70,32 @@ import kotlinx.coroutines.withContext
             }
         }}
     }
-    MaterialUpload(word("添加小票图片","レシート画像を追加"),"media-add-receipts",!busy&&preserveOriginal!=null){receipts.launch(Unit)}
+    val camera=LocalReceiptCamera.current
+    Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+        MaterialUpload(word("选择图片","画像を選ぶ"),"media-add-receipts",!busy&&preserveOriginal!=null,Modifier.weight(1f)){receipts.launch(Unit)}
+        if(camera!=null)MaterialUpload(word("拍照","撮影する"),"media-take-receipt",!busy&&preserveOriginal!=null,Modifier.weight(1f),{YIcon("camera",Modifier.size(18.dp),if(LocalYohaku.current.id=="objects")Color(0xffae815a)else LocalYohaku.current.accent)}){camera(s.book.id,d.mediaSession)}
+    }
     YText(word("小票独立于普通附件，保存的小票图片不会被修改，不自动识别或新增消费。","レシートは添付と分け、保存済みのレシート画像は変更しません。自動認識や支出の追加は行いません。"),11,color=LocalYohaku.current.muted)
     d.id?.let { ReceiptProducts(s,it,vm) }
     preview?.let{id->s.files.find{it.id==id}?.let{file->MediaPreview(vm.repository,file,{preview=null},if(id in d.receiptFileIds)d.receiptFileIds.mapNotNull{key->s.files.find{it.id==key}}else d.attachmentIds.mapNotNull{key->s.files.find{it.id==key}})}}
+}
+/** Launches the default camera for one receipt photo; provided at app level so a result still lands in the stored draft after process recreation. */
+internal val LocalReceiptCamera=staticCompositionLocalOf<((bookId:String,session:String)->Unit)?>{null}
+@Composable internal fun rememberReceiptCamera(vm:AppViewModel):(String,String)->Unit {
+    val context=LocalContext.current
+    var pending by rememberSaveable{mutableStateOf<String?>(null)}
+    fun uri(file:File)=FileProvider.getUriForFile(context,context.packageName+".files",file)
+    val launcher=rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()){taken->
+        val (book,session,path)=pending?.split("\n")?:return@rememberLauncherForActivityResult
+        pending=null;val file=File(path)
+        if(taken&&file.length()>0)vm.importFiles(context,book,listOf(uri(file)),true,session){file.delete()}else file.delete()
+    }
+    return {book,session->
+        val dir=File(context.cacheDir,"camera");dir.deleteRecursively();dir.mkdirs()
+        val file=File(dir,"IMG_"+java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))+".jpg")
+        pending=listOf(book,session,file.path).joinToString("\n")
+        try{launcher.launch(uri(file))}catch(_:ActivityNotFoundException){pending=null;vm.error.value="没有可用的相机应用 / 使えるカメラアプリがありません"}
+    }
 }
 @Composable private fun MediaFileRow(repository:LedgerRepository,file:FileBlobEntity,onPreview:()->Unit,onRemove:(()->Unit)?=null) {
     val thumbnail:(@Composable ()->Unit)?=if(file.mime.startsWith("image/"))({MediaThumbnail(repository,file,Modifier.fillMaxSize(),crop=true)})else null

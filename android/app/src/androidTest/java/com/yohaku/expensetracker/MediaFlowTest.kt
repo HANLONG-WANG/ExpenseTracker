@@ -37,7 +37,21 @@ class MediaFlowTest {
         val context=instrumentation.targetContext
         root=File(File(context.filesDir,"attachments"),"ui-media-"+java.util.UUID.randomUUID()).apply{mkdirs()}
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db,mediaRoot=root)
-        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{NativeApp(vm)}
+        vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{
+            var camera:((String,String)->Unit)?=null
+            androidx.compose.runtime.CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides cameraOwner){camera=rememberReceiptCamera(vm)}
+            androidx.compose.runtime.CompositionLocalProvider(LocalReceiptCamera provides camera){NativeApp(vm)}
+        }
+    }
+    /** Stands in for the camera app: writes [cameraPhoto] into the EXTRA_OUTPUT uri, or cancels when null. */
+    private var cameraPhoto:ByteArray?=null
+    private val cameraOwner=object:androidx.activity.result.ActivityResultRegistryOwner {
+        override val activityResultRegistry=object:androidx.activity.result.ActivityResultRegistry() {
+            override fun <I,O> onLaunch(requestCode:Int,contract:androidx.activity.result.contract.ActivityResultContract<I,O>,input:I,options:androidx.core.app.ActivityOptionsCompat?) {
+                val photo=cameraPhoto;if(photo!=null)instrumentation.targetContext.contentResolver.openOutputStream(input as android.net.Uri)!!.use{it.write(photo)}
+                dispatchResult(requestCode,photo!=null)
+            }
+        }
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();root.deleteRecursively()}
     private fun nodes(root:AccessibilityNodeInfo?):List<AccessibilityNodeInfo> = if(root==null)emptyList()else listOf(root)+(0 until root.childCount).flatMap{nodes(root.getChild(it))}
@@ -200,6 +214,38 @@ class MediaFlowTest {
                 ui.runOnIdle{vm.leaveEntry(book,false,"home")};ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             }
         }finally{runBlocking{vm.preferences.setPhotoSaveOriginal(previous)};listOf("photo.png","broken.png","missing.txt").forEach{File(context.filesDir,"attachments/ui-source-$it").delete()}}
+    }
+    @Test fun cameraCapturesOneReceiptThroughImportAndRemovesTemporaryFile() {
+        val context=instrumentation.targetContext;val cache=File(context.cacheDir,"camera")
+        cameraPhoto=java.io.ByteArrayOutputStream().also{out->Bitmap.createBitmap(2400,4800,Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.WHITE);compress(Bitmap.CompressFormat.JPEG,95,out);recycle()}}.toByteArray()
+        for((theme,language) in testLooks(this@MediaFlowTest)) {
+            val book=runBlocking {
+                val id=repo.createBook("拍照 $theme $language",Currency.JPY,theme,language);repo.updateBook(repo.dao.book(id)!!.copy(initialized=true))
+                repo.saveAccount(id,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01");repo.saveCategory(id,"生活",EntryKind.EXPENSE,null);vm.preferences.select(id);id
+            }
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value&&vm.photoSaveOriginal.value!=null}
+            val snapshot=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+            ui.runOnIdle{vm.startEntry(snapshot);vm.changeEntry(book,vm.entry.value!!.copy(categoryId=snapshot.categories.first().id));vm.navigate("entry")}
+            ui.waitUntil(10000){!vm.busy.value}
+            ui.runOnIdle{vm.setMediaImportOption(vm.entry.value!!.mediaSession,false)}
+            ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick()
+            ui.waitUntil(15000){!vm.busy.value&&vm.entry.value?.receiptFileIds?.size==1}
+            val stored=runBlocking{repo.dao.file(book,vm.entry.value!!.receiptFileIds.single())!!}
+            assertEquals("image/jpeg",stored.mime);assertTrue(stored.originalName.matches(Regex("IMG_\\d{8}_\\d{6}\\.jpg")))
+            val size=android.graphics.BitmapFactory.Options().apply{inJustDecodeBounds=true}.also{android.graphics.BitmapFactory.decodeFile(repo.mediaFile(stored).path,it)}
+            assertEquals(2000,minOf(size.outWidth,size.outHeight))
+            assertTrue(cache.listFiles().isNullOrEmpty())
+            if(visualEnabled()) {
+                ui.onNodeWithTag("media-take-receipt").performScrollTo();ui.waitForIdle()
+                val bitmap=instrumentation.uiAutomation.takeScreenshot();val folder=File(context.filesDir,"verification/media-import").apply{mkdirs()}
+                File(folder,"$theme-$language-camera.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+            }
+            val photo=cameraPhoto;cameraPhoto=null
+            ui.onNodeWithTag("media-take-receipt").performScrollTo().performClick();ui.waitForIdle()
+            assertEquals(1,vm.entry.value!!.receiptFileIds.size);assertTrue(cache.listFiles().isNullOrEmpty())
+            cameraPhoto=photo
+            ui.runOnIdle{vm.leaveEntry(book,false,"home")};ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+        }
     }
     @Test fun actualDocumentsImagesAudioAndSeparateUidReadOnlyViewer() {
         org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))

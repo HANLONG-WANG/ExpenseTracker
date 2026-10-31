@@ -163,7 +163,7 @@
 
 - 数据存在应用私有的本地Room/SQLite库；一次保存的账目、资金变动、费用和关联在同一事务内完成，失败不留下半筆。
 - 核对外部流水、小票商品与正式账目是不同数据表/对象；核对资料永远不能因导入变成正式记录。
-- 表单附件与小票入口使用 `ACTION_GET_CONTENT` + `CATEGORY_OPENABLE` + `EXTRA_ALLOW_MULTIPLE=true`，分别为 `*/*` / `image/*`，每次经 `Intent.createChooser` 打开应用选择窗口；解析 clipData 或单个 data，立即复制临时授权 URI。云端分析台选择器保持不变。
+- 表单附件与小票入口使用 `ACTION_GET_CONTENT` + `CATEGORY_OPENABLE` + `EXTRA_ALLOW_MULTIPLE=true`，分别为 `*/*` / `image/*`，每次经 `Intent.createChooser` 打开应用选择窗口；解析 clipData 或单个 data，立即复制临时授权 URI。小票另有拍照入口：`ActivityResultContracts.TakePicture` 调起系统默认相机（不经 chooser），每次一张，输出到 FileProvider 授权的 `cache/camera/` 临时文件，不声明 `CAMERA` 权限；拍成功且文件非空时按小票导入（遵循本次表单的保存方式），完成或取消后删除临时文件；无相机应用时提示。待处理请求保存在 saved state 并在 Activity 级接收结果，进程被回收后写入已保存草稿的同一媒体会话。云端分析台选择器保持不变。
 - 导入时可按全局“照片保存方式”设置优化（默认节省空间），也可在本次表单切换原样保存。节省空间模式下，所有 MIME 为 `image/*` 的图片都重新编码，不按截图、PNG、GIF 等格式豁免：小票短边 ≤ 2000px、JPEG 质量90；图片附件长边 ≤ 2560px、JPEG 质量85；等比缩小且不放大，EXIF 方向烘焙到像素，输出 sRGB SDR，去掉 gainmap，透明区域合成白底，不保留 EXIF/XMP、GPS、机型或动态视频。优化后 MIME 为 `image/jpeg`、扩展名 `.jpg`；原样保存及非图片保持字节不变。源文件完整读入后若格式不支持或损坏而无法解码，原样保存并提示数量；读取、写入或数据库失败不走回退。
 - 在 `mediaWrites` 锁内流式写临时文件并计算源字节大小/SHA，保持严格小于100,000,000字节；ImageDecoder 在头部回调使用 `setTargetSize` 直接解到目标尺寸、软件分配器和 sRGB。编码输出重新计算实际 size/checksum，再由每文件独立事务写 blob/草稿引用；失败清理临时和未提交文件，取消正常传播。无去重、历史重写或数据库迁移。
 - 全局 DataStore `photo_save_original` 默认 false，备份偏好 `photoSaveOriginal` 缺省 false；表单按 mediaSession 保留本次选项，批次开始固定选项，切换仅影响后续导入。串行处理，每文件独立失败，进度为当前序号/总数，结束 notice 汇总成功数、优化失败原样保存数、失败数及首个原因。

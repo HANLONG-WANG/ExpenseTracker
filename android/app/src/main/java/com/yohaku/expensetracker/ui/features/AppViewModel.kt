@@ -306,9 +306,9 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         entry.value=entry.value!!.copy(settlementConfirmed=true)
         persistDraft(snapshot.book.id)
     }
-    fun importFiles(context:android.content.Context,bookId:String,uris:List<android.net.Uri>,receipt:Boolean) {
-        if(uris.isEmpty())return
-        val session=entry.value?.mediaSession?:return
+    /** [session] is passed explicitly when a camera result arrives after process recreation; the stored draft keeps the same session. */
+    fun importFiles(context:android.content.Context,bookId:String,uris:List<android.net.Uri>,receipt:Boolean,session:String?=entry.value?.mediaSession,onFinish:()->Unit={}) {
+        if(uris.isEmpty()||session==null){onFinish();return}
         val selected=mediaImportOption.value?.takeIf{it.session==session}?.preserveOriginal?:photoSaveOriginal.value
         execute {
             val preserveOriginal=selected?:preferences.photoSaveOriginal.first()
@@ -329,7 +329,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
                     val ja=listOfNotNull("$success 件を取り込みました",fallback.takeIf{it>0}?.let{"$it 枚は最適化できず、そのまま保存しました"},firstFailure?.let{"失敗 $failed 件：${it.substringAfter(" / ",it)}"}).joinToString("。")
                     notice.value=AppNotice(++noticeSequence,bookId,zh,ja)
                 }
-            }finally{mediaImportProgress.value=null}
+            }finally{mediaImportProgress.value=null;onFinish()}
         }
     }
     private fun entrySaved(bookId:String,d:EntryDraft) {

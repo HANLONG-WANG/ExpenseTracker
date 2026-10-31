@@ -58,7 +58,7 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 
 ## 照片与附件导入（2026-10-31 源码更新）
 
-表单的两个添加入口每次弹出应用选择窗口（GET_CONTENT + OPENABLE + 多选 + chooser），立即复制临时 URI。云端分析台的选择器不变。
+表单的两个添加入口每次弹出应用选择窗口（GET_CONTENT + OPENABLE + 多选 + chooser），立即复制临时 URI。小票另有“拍照”：`TakePicture` 调起系统默认相机，一次一张，写入 `cache/camera/IMG_yyyyMMdd_HHmmss.jpg`（FileProvider 授权，不声明 CAMERA 权限），之后按小票导入并删除临时文件。启动器挂在 `MainActivity`（`LocalReceiptCamera`），待处理的账本/表单会话/路径存于 saved state，拍照期间进程被回收也能导入已保存草稿。云端分析台的选择器不变。
 
 导入时可按全局“照片保存方式”设置优化（默认节省空间），也可在本次表单切换原样保存。节省空间模式下，所有 MIME 为 `image/*` 的图片都重新编码，不按截图、PNG、GIF 等格式豁免：小票短边 ≤ 2000px、JPEG 质量90；图片附件长边 ≤ 2560px、JPEG 质量85；等比缩小且不放大，EXIF 方向烘焙到像素，输出 sRGB SDR，去掉 gainmap，透明区域合成白底，不保留 EXIF/XMP、GPS、机型或动态视频。优化后 MIME 为 `image/jpeg`、扩展名 `.jpg`；原样保存及非图片保持字节不变。源文件完整读入后若格式不支持或损坏而无法解码，原样保存并提示数量；读取、写入或数据库失败不走回退。
 

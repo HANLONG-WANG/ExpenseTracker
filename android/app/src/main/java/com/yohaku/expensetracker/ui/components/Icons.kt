@@ -1,6 +1,7 @@
 package com.yohaku.expensetracker.ui.components
 internal val iconPaths=mapOf(
     "file" to listOf("M6 3h8l4 4v14H6ZM14 3v5h4M9 12h6m-6 4h6"),
+    "camera" to listOf("M3 8h4l2-3h6l2 3h4v12H3Z","M12 10a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7"),
     "paperclip" to listOf("m8 14 7-7a3 3 0 0 1 4 4L9 21a5 5 0 0 1-7-7L13 3a4 4 0 0 1 6 6L9 19"),
     "audio" to listOf("M5 9v6m4-11v16m4-13v10m4-14v18m4-12v6"),
     "home" to listOf("m3 10 9-7 9 7v10H3Z","M9 20v-7h6v7"),
