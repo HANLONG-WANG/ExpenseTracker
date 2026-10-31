@@ -3,7 +3,7 @@ package com.yohaku.expensetracker.ui.features
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Intent
-import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.media.MediaPlayer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -88,12 +88,15 @@ import kotlinx.coroutines.withContext
     ReceiptProducts(s,event.id,vm)
     preview?.let{id->s.files.find{it.id==id}?.let{MediaPreview(vm.repository,it,{preview=null},if(receipts.any{f->f.id==id})receipts else attachments)}}
 }
-private suspend fun decodeMedia(repository:LedgerRepository,file:FileBlobEntity,maxSize:Int):android.graphics.Bitmap=withContext(Dispatchers.IO) {
+/** Stored bytes stay original; ImageDecoder applies the camera's EXIF orientation, which BitmapFactory ignores. */
+internal suspend fun decodeMedia(repository:LedgerRepository,file:FileBlobEntity,maxSize:Int):android.graphics.Bitmap=withContext(Dispatchers.IO) {
     val path=repository.mediaFile(file);check(path.isFile){"附件文件缺失 / 添付ファイルがありません"}
-    val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeFile(path.path,bounds)
-    check(bounds.outWidth>0&&bounds.outHeight>0){"无法解码这张图片 / この画像を読み込めません"}
-    var sample=1;while(bounds.outWidth/sample>maxSize||bounds.outHeight/sample>maxSize)sample*=2
-    BitmapFactory.decodeFile(path.path,BitmapFactory.Options().apply{inSampleSize=sample})?:error("无法解码这张图片 / この画像を読み込めません")
+    try {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(path)){decoder,info,_->
+            var sample=1;while(info.size.width/sample>maxSize||info.size.height/sample>maxSize)sample*=2
+            decoder.setTargetSampleSize(sample);decoder.allocator=ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+    }catch(_:java.io.IOException){error("无法解码这张图片 / この画像を読み込めません")}
 }
 @Composable internal fun MediaThumbnail(repository:LedgerRepository,file:FileBlobEntity,modifier:Modifier=Modifier.fillMaxWidth().heightIn(max=180.dp),crop:Boolean=false) {
     var failure by remember(file.id){mutableStateOf<String?>(null)}

@@ -62,6 +62,18 @@ class MediaStorageTest {
         repo.saveEntry(book,editSecond);repo.collectUnusedMedia()
         assertTrue(repo.mediaFile(picture).isFile);assertTrue(snapshot().entryAttachments(secondEvent).isEmpty());assertEquals(listOf(picture.id),snapshot().entryReceiptImages(secondEvent).map{it.id})
     }
+    @Test fun cameraOrientationIsAppliedToReceiptsAndAttachmentsWithoutRewritingBytes()=runBlocking {
+        val source=File(root,"camera.jpg")
+        android.graphics.Bitmap.createBitmap(40,20,android.graphics.Bitmap.Config.ARGB_8888).apply{source.outputStream().use{compress(android.graphics.Bitmap.CompressFormat.JPEG,90,it)};recycle()}
+        android.media.ExifInterface(source.path).apply{setAttribute(android.media.ExifInterface.TAG_ORIENTATION,android.media.ExifInterface.ORIENTATION_ROTATE_90.toString());saveAttributes()}
+        val d=draft();repo.saveDraft(book,d)
+        for(receipt in listOf(true,false)) {
+            val blob=repo.importMedia(book,d.mediaSession,"camera.jpg","image/jpeg",receipt){source.inputStream()}
+            assertArrayEquals(source.readBytes(),repo.mediaFile(blob).readBytes())
+            val bitmap=com.yohaku.expensetracker.ui.features.decodeMedia(repo,blob,2048)
+            assertEquals(20,bitmap.width);assertEquals(40,bitmap.height)
+        }
+    }
     @Test fun receiptOrderRevisionsSoftDeleteAndMediaCommitAreAtomic()=runBlocking {
         val d=draft();repo.saveDraft(book,d)
         val first=repo.importMedia(book,d.mediaSession,"1.png","image/png",true){byteArrayOf(1).inputStream()}
