@@ -46,7 +46,7 @@ class BackupRoundTripTest {
             repo.dao.putAttachments(listOf(AttachmentLinkEntity(book,"link",event.id,blob.id)))
             repo.dao.putReceipt(ReceiptEntity(book,"receipt",event.id,1))
             repo.dao.putReceiptImages(listOf(ReceiptImageEntity(book,"receipt",1,0,blob.id)))
-            prefs.select(book);prefs.setAutomaticReferenceRates(false);prefs.setForegroundLocation(book,true)
+            prefs.select(book);prefs.setPhotoSaveOriginal(true);prefs.setAutomaticReferenceRates(false);prefs.setForegroundLocation(book,true)
             prefs.saveReminderSettings(book,ReminderPreferences(enabled=true,time="10:15"))
             val expectedPrefs=prefs.backup()
             val expected=repo.snapshot(repo.dao.book(book)!!).first()
@@ -58,7 +58,7 @@ class BackupRoundTripTest {
             repo.createBook("Only after backup",Currency.USD)
             repo.dao.putEvent(event.copy(note="Changed"))
             original.writeText("Changed image")
-            prefs.setAutomaticReferenceRates(true);prefs.saveReminderSettings(book,ReminderPreferences(time="12:30"))
+            prefs.setPhotoSaveOriginal(false);prefs.setAutomaticReferenceRates(true);prefs.saveReminderSettings(book,ReminderPreferences(time="12:30"))
             val stage=File(root,"import")
             val manifest=archive.inputStream().use{BackupArchive.extract(it,stage,BACKUP_SCHEMA_VERSION)}
             assertEquals(setOf(book,other),manifest.books.map{it.id}.toSet())

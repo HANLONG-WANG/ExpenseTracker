@@ -61,7 +61,7 @@ private sealed interface HistoryRead{
                 if(b.historicalIncluded!=a.historicalIncluded)field(word("期初包含","期首に含む"),if(b.historicalIncluded)word("已包含","含む") else word("不包含","含まない"),if(a.historicalIncluded)word("已包含","含む") else word("不包含","含まない"))
                 val oldAttachments=change.beforeDetails?.attachmentIds.orEmpty();val newAttachments=change.afterDetails?.attachmentIds.orEmpty()
                 if(oldAttachments!=newAttachments)field(word("附件列表 / 顺序","添付一覧・順序"),oldAttachments.size.toString(),newAttachments.size.toString())
-                if(change.beforeDetails?.receiptRevision!=change.afterDetails?.receiptRevision)field(word("小票原图修订","レシート原画像の版"),change.beforeDetails?.receiptRevision?.toString().orEmpty(),change.afterDetails?.receiptRevision?.toString().orEmpty())
+                if(change.beforeDetails?.receiptRevision!=change.afterDetails?.receiptRevision)field(word("小票图片修订","レシート画像の版"),change.beforeDetails?.receiptRevision?.toString().orEmpty(),change.afterDetails?.receiptRevision?.toString().orEmpty())
                 if(b.cardPaymentChoice!=a.cardPaymentChoice||b.cardPaymentMode!=a.cardPaymentMode||b.cardPaymentPeriods!=a.cardPaymentPeriods||b.cardPaymentMonth!=a.cardPaymentMonth||b.cardPaymentFeeMinor!=a.cardPaymentFeeMinor) {
                     field(word("记录的付款方式","記録した支払方法"),cardPaymentLabel(b.cardPaymentChoice),cardPaymentLabel(a.cardPaymentChoice))
                     field(word("付款月","支払月"),b.cardPaymentMonth.orEmpty(),a.cardPaymentMonth.orEmpty())

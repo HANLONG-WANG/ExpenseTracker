@@ -117,12 +117,12 @@ object FileProtocols {
             val p = "$.records[$i]"
             id("$p.record_id", record.record_id); id("$p.receipt_id", record.receipt_id)
             revisions(p, record.record_revision, record.receipt_revision); currency("$p.currency", record.currency)
-            check("$p.image_ids", record.image_ids.isNotEmpty(), "需要来源图片 / 元画像が必要です")
+            check("$p.image_ids", record.image_ids.isNotEmpty(), "需要来源图片 / 画像が必要です")
             ids("$p.image_ids", record.image_ids); unique("$p.items.item_id", record.items.map { it.item_id })
             record.items.forEachIndexed { j, item ->
                 val q = "$p.items[$j]"
                 id("$q.item_id", item.item_id); ids("$q.image_ids", item.image_ids)
-                check("$q.image_ids", record.image_ids.containsAll(item.image_ids), "商品来源图片不属于小票 / 商品の元画像がレシートに属していません")
+                check("$q.image_ids", record.image_ids.containsAll(item.image_ids), "商品来源图片不属于小票 / 商品の画像がレシートに属していません")
                 item.quantity?.let { number("$q.quantity", it) }; item.unit_price?.let { number("$q.unit_price", it) }
                 item.line_amount?.let { money(q, FileMoney(record.currency, it)) }
             }
@@ -144,16 +144,16 @@ object FileProtocols {
             id("$p.record_id", record.record_id); id("$p.receipt_id", record.receipt_id)
             revisions(p, record.record_revision, record.receipt_revision); date("$p.date", record.date)
             money("$p.original", record.original); record.settlement?.let { money("$p.settlement", it) }
-            check("$p.images", record.images.isNotEmpty(), "没有原图 / 元画像がありません")
+            check("$p.images", record.images.isNotEmpty(), "没有图片 / 画像がありません")
             unique("$p.images.image_id", record.images.map { it.image_id })
             check("$p.images.position", record.images.map { it.position } == record.images.indices.toList(), "图序须从0连续排列 / 画像順は0から連続させてください")
             record.images.forEachIndexed { j, image ->
                 val q = "$p.images[$j]"
                 id("$q.image_id", image.image_id)
-                check("$q.path", image.path == "images/${record.receipt_id}/${image.image_id}", "原图路径无效 / 元画像パスが無効です")
+                check("$q.path", image.path == "images/${record.receipt_id}/${image.image_id}", "图片路径无效 / 画像パスが無効です")
                 check("$q.sha256", Regex("[0-9a-f]{64}").matches(image.sha256), "SHA-256无效 / SHA-256が無効です")
                 check("$q.mime_type", image.mime_type.startsWith("image/"), "需要图片类型 / 画像形式が必要です")
-                check("$q.size_bytes", image.size_bytes > 0, "原图大小无效 / 元画像サイズが無効です")
+                check("$q.size_bytes", image.size_bytes > 0, "图片大小无效 / 画像サイズが無効です")
             }
         }
     } }

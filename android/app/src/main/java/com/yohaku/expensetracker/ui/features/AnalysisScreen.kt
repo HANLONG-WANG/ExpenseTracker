@@ -103,7 +103,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
     FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
         YLink(word("商户资料与保存地点","お店の情報と保存した場所"),{vm.navigate("merchants")},arrow=true)
         YLink(word("朋友名册","友達の名簿"),{vm.navigate("friends")},arrow=true)
-        YLink(word("小票原图工作台","レシート原画像の一覧"),{vm.navigate("receipts")},arrow=true)
+        YLink(word("小票图片工作台","レシート画像の一覧"),{vm.navigate("receipts")},arrow=true)
     }
     if(editor)AnalysisPreferenceEditor(s,vm,initialModule,filter,today,{editor=false;initialModule=null})
     if(filtering)AnalysisFilterEditor(s,filter,vm,{filtering=false},{value->start=value.start;end=value.end;category=value.categoryId;merchant=value.merchantKey;activity=value.activityId;filtering=false})

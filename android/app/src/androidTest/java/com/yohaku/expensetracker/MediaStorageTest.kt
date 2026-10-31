@@ -68,10 +68,57 @@ class MediaStorageTest {
         android.media.ExifInterface(source.path).apply{setAttribute(android.media.ExifInterface.TAG_ORIENTATION,android.media.ExifInterface.ORIENTATION_ROTATE_90.toString());saveAttributes()}
         val d=draft();repo.saveDraft(book,d)
         for(receipt in listOf(true,false)) {
-            val blob=repo.importMedia(book,d.mediaSession,"camera.jpg","image/jpeg",receipt){source.inputStream()}
+            val blob=repo.importMedia(book,d.mediaSession,"camera.jpg","image/jpeg",receipt,preserveOriginal=true){source.inputStream()}
             assertArrayEquals(source.readBytes(),repo.mediaFile(blob).readBytes())
             val bitmap=com.yohaku.expensetracker.ui.features.decodeMedia(repo,blob,2048)
             assertEquals(20,bitmap.width);assertEquals(40,bitmap.height)
+        }
+    }
+    @Test fun optimizedPhotosBakeOrientationStripMetadataAndHashStoredJpeg()=runBlocking {
+        val source=File(root,"camera-large.jpg")
+        android.graphics.Bitmap.createBitmap(4200,3000,android.graphics.Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.BLUE);source.outputStream().use{compress(android.graphics.Bitmap.CompressFormat.JPEG,92,it)};recycle()}
+        android.media.ExifInterface(source.path).apply{
+            setAttribute(android.media.ExifInterface.TAG_ORIENTATION,android.media.ExifInterface.ORIENTATION_ROTATE_90.toString())
+            setAttribute(android.media.ExifInterface.TAG_GPS_LATITUDE,"35/1,30/1,0/1");setAttribute(android.media.ExifInterface.TAG_GPS_LATITUDE_REF,"N")
+            setAttribute(android.media.ExifInterface.TAG_GPS_LONGITUDE,"139/1,30/1,0/1");setAttribute(android.media.ExifInterface.TAG_GPS_LONGITUDE_REF,"E");saveAttributes()
+        }
+        val d=draft();repo.saveDraft(book,d)
+        for(receipt in listOf(true,false)) {
+            val result=repo.importMediaResult(book,d.mediaSession,"camera-large.JPG","image/jpeg",receipt){source.inputStream()};val blob=result.blob
+            assertFalse(result.optimizationFailed);assertEquals("image/jpeg",blob.mime);assertEquals("camera-large.jpg",blob.originalName)
+            val file=repo.mediaFile(blob);val bitmap=android.graphics.BitmapFactory.decodeFile(file.path)
+            val expected=optimizedPhotoSize(3000,4200,receipt)
+            assertEquals(expected.width,bitmap.width);assertEquals(expected.height,bitmap.height);bitmap.recycle()
+            val exif=android.media.ExifInterface(file.path)
+            assertNull(exif.getAttribute(android.media.ExifInterface.TAG_GPS_LATITUDE));assertNull(exif.getAttribute(android.media.ExifInterface.TAG_GPS_LONGITUDE));assertEquals(android.media.ExifInterface.ORIENTATION_UNDEFINED,exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION,android.media.ExifInterface.ORIENTATION_UNDEFINED))
+            assertEquals(file.length(),blob.size);assertEquals(MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString(""){"%02x".format(it)},blob.checksum)
+            val preview=com.yohaku.expensetracker.ui.features.decodeMedia(repo,blob,512);val previewSize=scaledPhotoSize(expected.width,expected.height,512)
+            assertEquals(previewSize.width,preview.width);assertEquals(previewSize.height,preview.height);preview.recycle()
+        }
+        val original=repo.importMedia(book,d.mediaSession,"camera-large.JPG","image/jpeg",preserveOriginal=true){source.inputStream()}
+        assertArrayEquals(source.readBytes(),repo.mediaFile(original).readBytes())
+    }
+    @Test fun transparentImagesUseWhiteAndNonImagesOrUndecodableImagesKeepBytes()=runBlocking {
+        val d=draft();repo.saveDraft(book,d)
+        val png=ByteArrayOutputStream().also{out->android.graphics.Bitmap.createBitmap(32,32,android.graphics.Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.TRANSPARENT);compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);recycle()}}.toByteArray()
+        val white=repo.importMediaResult(book,d.mediaSession,"transparent.png","image/png"){png.inputStream()}
+        assertFalse(white.optimizationFailed);assertEquals("image/jpeg",white.blob.mime)
+        val bitmap=android.graphics.BitmapFactory.decodeFile(repo.mediaFile(white.blob).path);assertEquals(android.graphics.Color.WHITE,bitmap.getPixel(16,16));bitmap.recycle()
+        for(mime in listOf("application/pdf","image/png")) {
+            val bytes=byteArrayOf(1,2,3,4);val result=repo.importMediaResult(book,d.mediaSession,"source.bin",mime){bytes.inputStream()}
+            assertEquals(mime=="image/png",result.optimizationFailed);assertEquals(mime,result.blob.mime);assertEquals("source.bin",result.blob.originalName)
+            assertArrayEquals(bytes,repo.mediaFile(result.blob).readBytes())
+        }
+        assertTrue(root.walkTopDown().none{it.name.endsWith(".part")})
+    }
+    @Test fun readFailureAndCancellationLeaveNoPartialFilesOrReferences()=runBlocking {
+        val d=draft();repo.saveDraft(book,d)
+        for(cancel in listOf(false,true)) {
+            try {
+                repo.importMediaResult(book,d.mediaSession,"broken.png","image/png"){object:InputStream(){override fun read():Int=if(cancel)throw kotlinx.coroutines.CancellationException("cancel")else throw IOException("read failed")}}
+                fail("Import should fail")
+            }catch(e:Exception){if(cancel)assertTrue(e is kotlinx.coroutines.CancellationException)else assertTrue(e is IOException)}
+            assertTrue(snapshot().files.isEmpty());assertTrue(stored().attachmentIds.isEmpty());assertTrue(root.walkTopDown().none{it.isFile})
         }
     }
     @Test fun receiptOrderRevisionsSoftDeleteAndMediaCommitAreAtomic()=runBlocking {

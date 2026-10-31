@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
@@ -20,8 +21,10 @@ import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
-@Composable internal fun SettingsScreen(s:BookSnapshot,onAppearance:()->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={},onReceipts:()->Unit={},onBackup:()->Unit={},onCsv:()->Unit={},onMerchants:()->Unit={}) {
+@Composable internal fun SettingsScreen(s:BookSnapshot,onAppearance:()->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={},onReceipts:()->Unit={},onBackup:()->Unit={},onCsv:()->Unit={},onMerchants:()->Unit={},vm:AppViewModel) {
     val t=LocalYohaku.current
+    var showPhotoStorage by remember { mutableStateOf(false) }
+    val photoOriginal by vm.photoSaveOriginal.collectAsStateWithLifecycle()
     YTitle(word("让它，像你的生活。","自分らしい、暮らしに。"),"SETTINGS",pageFlow=true)
     SettingsGroup(word("外观与语言","外観と言語")) {
         SettingsRow(word("外观主题","テーマ"),onAppearance,"settings-appearance",value=themeName(s.book.theme))
@@ -43,6 +46,7 @@ import com.yohaku.expensetracker.ui.theme.*
         SettingsRow(word("云端分析交接台","クラウド分析デスク"),onCloud,"settings-cloud",last=true)
     }
     SettingsGroup(word("数据","データ")) {
+        SettingsRow(word("照片保存方式","写真の保存方法"),{showPhotoStorage=true},"settings-photo-storage",value=if(photoOriginal==true)word("原样保存","そのまま保存")else word("节省空间","省容量"))
         SettingsRow(word("备份与恢复","バックアップと復元"),onBackup,"settings-backup")
         SettingsRow(word("从 CSV 导入","CSV から移行"),onCsv,"settings-csv",last=true)
     }
@@ -50,6 +54,11 @@ import com.yohaku.expensetracker.ui.theme.*
         SettingsRow(word("回收站 · 30天","ごみ箱 · 30日"),onTrash,last=true)
     }
     YText("余量 / ヨハク / YOHAKU",12,color=t.muted)
+    if(showPhotoStorage)YSheet(word("照片保存方式","写真の保存方法"),{showPhotoStorage=false}) {
+        YText(word("所有账本共用；作为新表单的默认值，导入时仍可切换。","全帳簿共通の新しいフォームの初期設定です。取り込み時にも切り替えられます。"),12,color=t.muted)
+        listOf(false,true).forEach{original->YButton(word(if(original)"原样保存"else"节省空间",if(original)"そのまま保存"else"省容量"),{vm.execute{vm.preferences.setPhotoSaveOriginal(original)}},Modifier.fillMaxWidth().testTag("photo-storage-$original"),primary=photoOriginal==original,enabled=photoOriginal!=null)}
+        YText(word("节省空间：小票短边最多2000像素，图片附件长边最多2560像素，保存为 JPEG；透明区域变白，动态内容和拍摄信息不保留。","省容量：レシートは短辺2000px、画像添付は長辺2560px以内のJPEGに保存。透明部分は白くなり、動きや撮影情報は保持しません。"),11,color=t.muted)
+    }
 }
 
 @Composable internal fun AppearanceScreen(s:BookSnapshot,onTheme:(String)->Unit) {

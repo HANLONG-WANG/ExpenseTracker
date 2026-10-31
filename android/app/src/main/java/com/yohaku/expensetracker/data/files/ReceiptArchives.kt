@@ -42,7 +42,7 @@ fun writeReceiptArchives(bundleId: String, bookId: String, sources: List<Receipt
                 zip.putNextEntry(ZipEntry("manifest.json"))
                 zip.write(manifestJson.toByteArray(Charsets.UTF_8)); zip.closeEntry()
                 entries.forEach { source -> source.record.images.forEach { image ->
-                    val original = source.originals[image.image_id] ?: error("原图不存在 / 元画像がありません: ${image.image_id}")
+                    val original = source.originals[image.image_id] ?: error("图片不存在 / 画像がありません: ${image.image_id}")
                     val hash = MessageDigest.getInstance("SHA-256")
                     var size = 0L
                     zip.putNextEntry(ZipEntry(image.path))
@@ -58,7 +58,7 @@ fun writeReceiptArchives(bundleId: String, bookId: String, sources: List<Receipt
                     }
                     zip.closeEntry()
                     check(size == image.size_bytes && hash.digest().joinToString("") { "%02x".format(it) } == image.sha256) {
-                        "原图已变化，请重新导出 / 元画像が変わりました。再出力してください: ${image.image_id}"
+                        "图片已变化，请重新导出 / 画像が変わりました。再出力してください: ${image.image_id}"
                     }
                 } }
             }

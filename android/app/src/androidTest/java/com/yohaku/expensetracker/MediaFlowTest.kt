@@ -125,6 +125,82 @@ class MediaFlowTest {
         val bitmap=instrumentation.uiAutomation.takeScreenshot();val file=File(instrumentation.targetContext.getExternalFilesDir(null),"phase-b-p13-external/$name.png");file.parentFile!!.mkdirs()
         file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
     }
+    @Test fun chooserAlwaysWrapsGetContentAndParsesMultipleOrSingleUris() {
+        val context=instrumentation.targetContext
+        val first=android.net.Uri.parse("content://test/one");val second=android.net.Uri.parse("content://test/two")
+        for(mime in listOf("image/*","*/*")) {
+            val contract=MediaPickerContract(mime,"选择应用 / アプリを選択")
+            val chooser=contract.createIntent(context,Unit)
+            assertEquals(android.content.Intent.ACTION_CHOOSER,chooser.action)
+            @Suppress("DEPRECATION") val request=chooser.getParcelableExtra<android.content.Intent>(android.content.Intent.EXTRA_INTENT)!!
+            assertEquals(android.content.Intent.ACTION_GET_CONTENT,request.action);assertEquals(mime,request.type)
+            assertTrue(request.hasCategory(android.content.Intent.CATEGORY_OPENABLE));assertTrue(request.getBooleanExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE,false))
+            val multiple=android.content.Intent().apply{clipData=android.content.ClipData.newRawUri("one",first).apply{addItem(android.content.ClipData.Item(second))}}
+            assertEquals(listOf(first,second),contract.parseResult(android.app.Activity.RESULT_OK,multiple))
+            assertEquals(listOf(first),contract.parseResult(android.app.Activity.RESULT_OK,android.content.Intent().setData(first)))
+            assertTrue(contract.parseResult(android.app.Activity.RESULT_CANCELED,multiple).isEmpty())
+        }
+    }
+    @Test fun photoDefaultToggleProgressAndBatchSummaryAcrossThemes() {
+        val context=instrumentation.targetContext
+        val previous=runBlocking{vm.preferences.photoSaveOriginal.first()}
+        fun source(name:String,mime:String,bytes:ByteArray):android.net.Uri {
+            val file=File(context.filesDir,"attachments/ui-source-$name").apply{writeBytes(bytes)}
+            return androidx.core.content.FileProvider.getUriForFile(context,context.packageName+".files",file,name).buildUpon().appendQueryParameter("mime",mime).build()
+        }
+        val png=java.io.ByteArrayOutputStream().also{out->Bitmap.createBitmap(40,20,Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.GREEN);compress(Bitmap.CompressFormat.PNG,100,out);recycle()}}.toByteArray()
+        try {
+            for((theme,language) in testLooks(this@MediaFlowTest)) {
+                runBlocking{vm.preferences.setPhotoSaveOriginal(false)}
+                val book=runBlocking {
+                    val id=repo.createBook("照片 $theme $language",Currency.JPY,theme,language);repo.updateBook(repo.dao.book(id)!!.copy(initialized=true))
+                    repo.saveAccount(id,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01");repo.saveCategory(id,"生活",EntryKind.EXPENSE,null);vm.preferences.select(id);id
+                }
+                ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value&&vm.photoSaveOriginal.value==false}
+                ui.runOnIdle{vm.navigate("settings")}
+                ui.onNodeWithTag("settings-photo-storage").performScrollTo().performClick()
+                ui.onNodeWithTag("photo-storage-true").performScrollTo().performClick()
+                ui.waitUntil(10000){vm.photoSaveOriginal.value==true&&!vm.busy.value}
+                if(visualEnabled()) {
+                    ui.waitForIdle();android.os.SystemClock.sleep(350) // Compose idleness does not wait for the dialog window fade.
+                    val bitmap=instrumentation.uiAutomation.takeScreenshot();val folder=File(context.filesDir,"verification/media-import").apply{mkdirs()}
+                    File(folder,"$theme-$language-setting.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+                }
+                ui.onNodeWithTag("sheet-close").performClick()
+                val snapshot=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+                ui.runOnIdle{vm.startEntry(snapshot);vm.changeEntry(book,vm.entry.value!!.copy(categoryId=snapshot.categories.first().id));vm.navigate("entry")}
+                val toggle=ui.onNodeWithTag("media-preserve-original")
+                toggle.performScrollTo().assertIsOn()
+                ui.waitUntil(10000){!vm.busy.value}
+                val image=source("photo.png","image/png",png)
+                ui.runOnIdle{vm.importFiles(context,book,listOf(image),true)}
+                ui.waitUntil(10000){!vm.busy.value&&vm.entry.value?.receiptFileIds?.size==1}
+                val original=runBlocking{repo.dao.file(book,vm.entry.value!!.receiptFileIds.single())!!}
+                assertArrayEquals(png,repo.mediaFile(original).readBytes())
+                toggle.performScrollTo().performClick().assertIsOff()
+                assertTrue(runBlocking{vm.preferences.photoSaveOriginal.first()})
+                val bad=source("broken.png","image/png",byteArrayOf(1,2,3))
+                val missing=source("missing.txt","text/plain",byteArrayOf(0));File(context.filesDir,"attachments/ui-source-missing.txt").delete()
+                runBlocking{repo.mediaWrites.lock()}
+                try {
+                    ui.runOnIdle{vm.importFiles(context,book,listOf(image,missing,bad,image),false)}
+                    ui.waitUntil(10000){vm.mediaImportProgress.value?.current==1}
+                    ui.onNodeWithTag("media-import-progress").performScrollTo().assertTextEquals(if(language=="ja")"取り込み中 1/4"else"正在导入 1/4")
+                    if(visualEnabled()) {
+                        val bitmap=instrumentation.uiAutomation.takeScreenshot();val folder=File(context.filesDir,"verification/media-import").apply{mkdirs()}
+                        File(folder,"$theme-$language-progress.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+                    }
+                }finally{repo.mediaWrites.unlock()}
+                ui.waitUntil(15000){!vm.busy.value&&vm.entry.value?.attachmentIds?.size==3}
+                val files=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}.files.filter{it.id in vm.entry.value!!.attachmentIds}
+                assertEquals(2,files.count{it.mime=="image/jpeg"});assertEquals(1,files.count{it.mime=="image/png"})
+                val notice=vm.notice.value!!;assertTrue(notice.zh.contains("已导入 3 个文件"));assertTrue(notice.zh.contains("1 张图片无法优化"));assertTrue(notice.zh.contains("失败 1 个"))
+                ui.onNodeWithText(if(language=="ja")notice.ja else notice.zh).assertExists()
+                assertNull(vm.mediaImportProgress.value)
+                ui.runOnIdle{vm.leaveEntry(book,false,"home")};ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+            }
+        }finally{runBlocking{vm.preferences.setPhotoSaveOriginal(previous)};listOf("photo.png","broken.png","missing.txt").forEach{File(context.filesDir,"attachments/ui-source-$it").delete()}}
+    }
     @Test fun actualDocumentsImagesAudioAndSeparateUidReadOnlyViewer() {
         org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))
         for((theme,language) in testLooks(this@MediaFlowTest)) {
@@ -152,7 +228,7 @@ class MediaFlowTest {
             val saved=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(1,saved.events.size);assertEquals(9000L,saved.balance(saved.accounts.single()));assertEquals(5,saved.entryAttachments(saved.events.single().id).size);assertEquals(2,saved.entryReceiptImages(saved.events.single().id).size)
             ui.runOnIdle{vm.editEntry(saved,saved.events.single())}
-            val image=saved.files.first{it.id in d.attachmentIds&&it.mime=="image/png"}
+            val image=saved.files.first{it.id in d.attachmentIds&&it.originalName.startsWith("receipt-1.")}
             openFile(image.id)
             ui.waitUntil(10000){ui.onAllNodesWithTag("media-image").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("media-image").performTouchInput{pinch(center,center+androidx.compose.ui.geometry.Offset(5f,5f),center-androidx.compose.ui.geometry.Offset(70f,70f),center+androidx.compose.ui.geometry.Offset(70f,70f))}

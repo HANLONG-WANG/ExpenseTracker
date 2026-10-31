@@ -28,7 +28,7 @@ import java.time.YearMonth
         if(value==null)YText(word("正在核对记录与关联…","記録と関連を確認中…"),12)else {
             if(refreshed)YText(word("资料已变化，请重新确认当前影响。","情報が変わりました。現在の影響を再確認してください。"),12)
             value.event?.let{e->YText(e.merchant.ifBlank{s.path(e.categoryId).ifBlank{entryKindName(EntryKind.valueOf(e.kind))}},18)}
-            RecordFacts(listOf(word("关联组记录数","関連する記録数") to value.events.size.toString(),word("关联附件 / 原图","関連する添付・原画像") to value.fileCount.toString(),word("核对资料 / 金融计划","照合資料・金融プラン") to "${value.statementCount} / ${value.planCount}",word("编辑本组的草稿","対象の編集下書き") to value.draftCount.toString()),audit=true)
+            RecordFacts(listOf(word("关联组记录数","関連する記録数") to value.events.size.toString(),word("关联附件 / 图片","関連する添付・画像") to value.fileCount.toString(),word("核对资料 / 金融计划","照合資料・金融プラン") to "${value.statementCount} / ${value.planCount}",word("编辑本组的草稿","対象の編集下書き") to value.draftCount.toString()),audit=true)
             if(value.events.size>1) {
                 var eventPage by remember(value){mutableIntStateOf(0)}
                 value.events.drop(eventPage*30).take(30).forEach{e->YText(e.date+" · "+entryKindName(EntryKind.valueOf(e.kind))+" · "+Money(Currency.valueOf(e.currency),e.amountMinor).display(),12)}

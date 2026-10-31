@@ -6,7 +6,6 @@ import android.content.Intent
 import android.graphics.ImageDecoder
 import android.media.MediaPlayer
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.shadow
@@ -31,6 +30,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
+import com.yohaku.expensetracker.domain.model.scaledPhotoSize
 import com.yohaku.expensetracker.domain.model.EntryDraft
 import com.yohaku.expensetracker.domain.model.Money
 import com.yohaku.expensetracker.domain.model.Currency
@@ -43,15 +43,23 @@ import kotlinx.coroutines.withContext
 @Composable internal fun EntryMediaPanel(s:BookSnapshot,d:EntryDraft,vm:AppViewModel) {
     val context=LocalContext.current
     val busy by vm.busy.collectAsStateWithLifecycle()
-    val attachments=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->vm.importFiles(context,s.book.id,uris,false)}
-    val receipts=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->vm.importFiles(context,s.book.id,uris,true)}
+    val defaultOriginal by vm.photoSaveOriginal.collectAsStateWithLifecycle()
+    val option by vm.mediaImportOption.collectAsStateWithLifecycle()
+    val progress by vm.mediaImportProgress.collectAsStateWithLifecycle()
+    val preserveOriginal=option?.takeIf{it.session==d.mediaSession}?.preserveOriginal?:defaultOriginal
+    LaunchedEffect(d.mediaSession,defaultOriginal){if(option?.session!=d.mediaSession)defaultOriginal?.let{vm.setMediaImportOption(d.mediaSession,it)}}
+    val attachments=rememberLauncherForActivityResult(MediaPickerContract("*/*","选择附件应用 / 添付ファイルを選ぶアプリ")){uris->vm.importFiles(context,s.book.id,uris,false)}
+    val receipts=rememberLauncherForActivityResult(MediaPickerContract("image/*","选择小票图片应用 / レシート画像を選ぶアプリ")){uris->vm.importFiles(context,s.book.id,uris,true)}
     var preview by rememberSaveable(d.mediaSession){mutableStateOf<String?>(null)}
     ThemeSection(word("普通附件","添付ファイル"),"ATTACHMENTS")
+    if(preserveOriginal!=null)YToggle(word("原样保存（不压缩）","そのまま保存（圧縮なし）"),preserveOriginal,{vm.setMediaImportOption(d.mediaSession,it)},Modifier.testTag("media-preserve-original"))
+    YText(word("关闭时，之后导入的图片会节省空间保存；已保存的文件不变。","オフにすると、これから取り込む画像を省容量で保存します。保存済みファイルは変わりません。"),11,color=LocalYohaku.current.muted)
+    progress?.takeIf{it.session==d.mediaSession}?.let{YText(word("正在导入 ${it.current}/${it.total}","取り込み中 ${it.current}/${it.total}"),12,Modifier.testTag("media-import-progress"))}
     if(d.attachmentIds.isNotEmpty())Column(verticalArrangement=Arrangement.spacedBy(9.dp)) {
         d.attachmentIds.forEach{id->s.files.find{it.id==id}?.let{file->MediaFileRow(vm.repository,file,{preview=id},{vm.changeEntry(s.book.id,d.copy(attachmentIds=d.attachmentIds-id))})}}
     }
-    MaterialUpload(word("添加文件 / 每个小于100 MB","ファイル追加・各100 MB未満"),"media-add-attachments",!busy){attachments.launch(arrayOf("*/*"))}
-    ThemeSection(word("小票原图","レシートの原画像"),"ORIGINAL RECEIPTS")
+    MaterialUpload(word("添加文件 / 每个小于100 MB","ファイル追加・各100 MB未満"),"media-add-attachments",!busy&&preserveOriginal!=null){attachments.launch(Unit)}
+    ThemeSection(word("小票图片","レシート画像"),"RECEIPT IMAGES")
     MaterialReceiptStrip(d.receiptFileIds.size,null) {
         d.receiptFileIds.forEachIndexed{index,id->s.files.find{it.id==id}?.let{file->
             fun move(to:Int){val values=d.receiptFileIds.toMutableList();values[index]=values[to];values[to]=id;vm.changeEntry(s.book.id,d.copy(receiptFileIds=values))}
@@ -60,8 +68,8 @@ import kotlinx.coroutines.withContext
             }
         }}
     }
-    MaterialUpload(word("添加小票图片","レシート画像を追加"),"media-add-receipts",!busy){receipts.launch(arrayOf("image/*"))}
-    YText(word("小票独立于普通附件，原图保留，不自动识别或新增消费。","レシートは添付と分け、原画像を保存します。自動認識や支出の追加は行いません。"),11,color=LocalYohaku.current.muted)
+    MaterialUpload(word("添加小票图片","レシート画像を追加"),"media-add-receipts",!busy&&preserveOriginal!=null){receipts.launch(Unit)}
+    YText(word("小票独立于普通附件，保存的小票图片不会被修改，不自动识别或新增消费。","レシートは添付と分け、保存済みのレシート画像は変更しません。自動認識や支出の追加は行いません。"),11,color=LocalYohaku.current.muted)
     d.id?.let { ReceiptProducts(s,it,vm) }
     preview?.let{id->s.files.find{it.id==id}?.let{file->MediaPreview(vm.repository,file,{preview=null},if(id in d.receiptFileIds)d.receiptFileIds.mapNotNull{key->s.files.find{it.id==key}}else d.attachmentIds.mapNotNull{key->s.files.find{it.id==key}})}}
 }
@@ -88,13 +96,12 @@ import kotlinx.coroutines.withContext
     ReceiptProducts(s,event.id,vm)
     preview?.let{id->s.files.find{it.id==id}?.let{MediaPreview(vm.repository,it,{preview=null},if(receipts.any{f->f.id==id})receipts else attachments)}}
 }
-/** Stored bytes stay original; ImageDecoder applies the camera's EXIF orientation, which BitmapFactory ignores. */
 internal suspend fun decodeMedia(repository:LedgerRepository,file:FileBlobEntity,maxSize:Int):android.graphics.Bitmap=withContext(Dispatchers.IO) {
     val path=repository.mediaFile(file);check(path.isFile){"附件文件缺失 / 添付ファイルがありません"}
     try {
         ImageDecoder.decodeBitmap(ImageDecoder.createSource(path)){decoder,info,_->
-            var sample=1;while(info.size.width/sample>maxSize||info.size.height/sample>maxSize)sample*=2
-            decoder.setTargetSampleSize(sample);decoder.allocator=ImageDecoder.ALLOCATOR_SOFTWARE
+            val size=scaledPhotoSize(info.size.width,info.size.height,maxSize)
+            decoder.setTargetSize(size.width,size.height);decoder.allocator=ImageDecoder.ALLOCATOR_SOFTWARE
         }
     }catch(_:java.io.IOException){error("无法解码这张图片 / この画像を読み込めません")}
 }
@@ -121,7 +128,7 @@ internal suspend fun decodeMedia(repository:LedgerRepository,file:FileBlobEntity
     var bitmap by remember(file.id){mutableStateOf<android.graphics.Bitmap?>(null)}
     var scale by remember(file.id){mutableFloatStateOf(1f)}
     var x by remember(file.id){mutableFloatStateOf(0f)};var y by remember(file.id){mutableFloatStateOf(0f)}
-    LaunchedEffect(file.id){if(file.mime.startsWith("image/"))try{bitmap=decodeMedia(repository,file,2048)}catch(e:kotlinx.coroutines.CancellationException){throw e}catch(e:Exception){failure=e.message}}
+    LaunchedEffect(file.id){if(file.mime.startsWith("image/"))try{bitmap=decodeMedia(repository,file,4096)}catch(e:kotlinx.coroutines.CancellationException){throw e}catch(e:Exception){failure=e.message}}
     fun external() {
         try {
             val physical=repository.mediaFile(file);check(physical.isFile){"附件文件缺失 / 添付ファイルがありません"}
@@ -143,7 +150,7 @@ internal suspend fun decodeMedia(repository:LedgerRepository,file:FileBlobEntity
                     val t=LocalYohaku.current
                     val paper=when(t.id){"journal"->Modifier.shadow(5.dp);"objects"->Modifier.shadow(3.dp).border(5.dp,Color(0xfffffaf0));else->Modifier}
                     Image(it.asImageBitmap(),file.originalName,Modifier.width(width).height(width/ratio).then(paper).testTag("media-image").semantics{stateDescription="${(scale*100).toInt()}%"}.pointerInput(file.id){detectTransformGestures{_,pan,zoom,_->scale=(scale*zoom).coerceIn(1f,6f);x+=pan.x;y+=pan.y}}.graphicsLayer(scaleX=scale,scaleY=scale,translationX=x,translationY=y),contentScale=ContentScale.Fit)
-                }}?:if(failure==null)YText(word("正在读取原图…","原画像を読み込み中…"),12)else Unit
+                }}?:if(failure==null)YText(word("正在读取图片…","画像を読み込み中…"),12)else Unit
             }
             file.mime.startsWith("audio/")->AudioPreview(repository,file,{failure=it})
             else->ExternalFileCover(file.originalName,file.size.toString()+word(" 字节 · "," バイト・")+file.mime)

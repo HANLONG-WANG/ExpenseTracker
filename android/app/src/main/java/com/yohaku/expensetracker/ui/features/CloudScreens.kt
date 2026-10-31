@@ -53,7 +53,7 @@ import kotlinx.coroutines.delay
         val id=supplementFor
         if(id!=null&&uris.isNotEmpty())vm.execute(onSuccess={supplementFor=null;notice="已补充资料，正在重新提交 / 資料を追加しました。再提出しています"}){cloud.addSupplement(id,uris)}
     }
-    YTitle(word("资料出门，账目留家。","資料は外へ、帳簿は手元に。"),"CLOUD DESK",word("把小票原图或银行资料交给云端整理，结果回来后仍在本机预览确认。","レシート原画像や銀行資料をクラウドで整理し、結果は端末で確認してから保存します。"),icon="file",pageFlow=true)
+    YTitle(word("资料出门，账目留家。","資料は外へ、帳簿は手元に。"),"CLOUD DESK",word("把小票图片或银行资料交给云端整理，结果回来后仍在本机预览确认。","レシート画像や銀行資料をクラウドで整理し、結果は端末で確認してから保存します。"),icon="file",pageFlow=true)
     CloudConnectionCard(connection,busy,onImport={connect=true},onTest={vm.execute(onSuccess={notice="连接正常 / 接続できました"}){cloud.testConnection()}},
         onOpen={connection?.let{context.startActivity(Intent(Intent.ACTION_VIEW,it.origin.toUri()))}},onUnbind={unbind=true})
     notice?.let{YText(localized(it),12,Modifier.testTag("cloud-notice"),color=LocalYohaku.current.accent)}
@@ -411,12 +411,12 @@ private fun CloudPhase.step()=when(this) {
     var title by rememberSaveable(s.book.id){mutableStateOf("")}
     var note by rememberSaveable(s.book.id){mutableStateOf("")}
     val defaultTitle=word("${java.time.LocalDate.now()} 小票整理 · ${selected.size} 组","${java.time.LocalDate.now()} レシート整理・${selected.size} 組")
-    CloudHandoffStrip(word("交给云端整理","クラウドで整理"),if(ready)word("所选小票的原图按原字节上传，提交确认后标记为已交云端。结果回来仍需本机预览。","選んだレシートの原画像をそのまま送信し、提出確認後に送信済みとして記録します。結果は端末で確認します。")else word("小票由云端分析台整理。先连接分析台，再上传所选小票。","レシートはクラウド分析デスクで整理します。先に接続してから、選んだレシートを送信します。"),"receipt-cloud-handoff") {
+    CloudHandoffStrip(word("交给云端整理","クラウドで整理"),if(ready)word("所选小票图片按已保存的字节上传，提交确认后标记为已交云端。结果回来仍需本机预览。","選んだレシート画像をそのまま送信し、提出確認後に送信済みとして記録します。結果は端末で確認します。")else word("小票由云端分析台整理。先连接分析台，再上传所选小票。","レシートはクラウド分析デスクで整理します。先に接続してから、選んだレシートを送信します。"),"receipt-cloud-handoff") {
         if(ready)YButton(word("上传所选小票 ↗","選択したレシートを送信 ↗"),{title=defaultTitle;open=true},Modifier.fillMaxWidth().testTag("receipt-cloud-upload"),primary=true,enabled=!busy&&selected.isNotEmpty())
         else YButton(word("连接云端分析台","クラウド分析デスクに接続"),{vm.navigate("cloud")},Modifier.fillMaxWidth().testTag("receipt-cloud-connect"),primary=true)
     }
     if(open)YSheet(word("确认交给云端","クラウドへ渡す内容"),{if(!busy)open=false}) {
-        ReceiptHandoffSummary("YOHAKU / CLOUD RECEIPTS",word("${selected.size} 组小票，原图不压缩。","${selected.size} 組のレシート。原画像は圧縮しません。"),word("单张小票的原图超过上传上限时无法提交，请先减少该小票的图片。","1枚のレシートの原画像が上限を超えると送信できません。画像を減らしてください。"))
+        ReceiptHandoffSummary("YOHAKU / CLOUD RECEIPTS",word("${selected.size} 组小票，保存的图片不再压缩。","${selected.size} 組のレシート。保存済み画像は再圧縮しません。"),word("单张小票的图片超过上传上限时无法提交，请先减少该小票的图片。","1枚のレシート画像が上限を超えると送信できません。画像を減らしてください。"))
         YField(word("任务名称","タスク名"),title,{title=it.take(150)},Modifier.testTag("receipt-cloud-title"))
         YField(word("补充说明（可选）","補足（任意）"),note,{note=it},Modifier.testTag("receipt-cloud-note"),multiline=true)
         YActionRow {

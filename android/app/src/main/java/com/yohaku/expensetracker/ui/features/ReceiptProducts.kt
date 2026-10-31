@@ -106,7 +106,7 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
         if(event.revision!=record.record_revision||receipt.revision!=record.receipt_revision)YText(word("原记账或图片在整理后已变化，请核对现有明细。","整理後に元記録・画像が変わっています。既存明細を確認してください。"),11,color=LocalYohaku.current.warm)
         ReceiptItemRows(record,totals.knownItems)
         ReceiptTotalLines(record,totals)
-        if(s.entryReceiptImages(eventId).any{it.id !in record.image_ids})YText(word("还有新增原图未整理。","追加された原画像が未整理です。"),11,color=LocalYohaku.current.warm)
+        if(s.entryReceiptImages(eventId).any{it.id !in record.image_ids})YText(word("还有新增图片未整理。","追加された画像が未整理です。"),11,color=LocalYohaku.current.warm)
         YButton(word("编辑商品明细","商品明細を編集"),{editor=true},Modifier.testTag("receipt-edit-items"))
     }
     if(editor)ReceiptItemEditor(s,document,record,vm,{editor=false})

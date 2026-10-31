@@ -1,6 +1,7 @@
 ExpenseTracker MCP 实现交接包 1.1  2026-10-27
 
 mcp-implementation-handoff.docx 保留为 2026-10-20 的 v1.0 历史说明；当前事件扩展以本说明及 reference/README.md 为准。
+照片保存约定于2026-10-31同步至 reference/lib/formats/README.md：默认在手机导入时优化，也可原样保存；分析与备份使用已保存字节，ZIP打包不再转码，sha256/size为实际入包字节。业务 JSON 结构不变。
 本包面向开发者实现 MCP 服务或兼容适配器，现有服务已经有六个工具。
 当前 Sites 协议标识 2026-07-28 不表示适用于所有外部 MCP Host。
 

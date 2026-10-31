@@ -19,6 +19,8 @@ sealed interface AppState {
     data class Failure(val message:String):AppState
 }
 data class PendingEntrySave(val review:LedgerChangeReview,val needsReview:Boolean)
+data class MediaImportProgress(val session:String,val current:Int,val total:Int)
+data class MediaImportOption(val session:String,val preserveOriginal:Boolean)
 data class AppNotice(val id:Long,val bookId:String,val zh:String,val ja:String)
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModel(val repository:LedgerRepository,val preferences:AppPreferences,val referenceRates:ReferenceRates=ReferenceRates(preferences,clock=repository.clock),val reminders:com.yohaku.expensetracker.platform.ReminderCoordinator?=null,val locationSource:com.yohaku.expensetracker.platform.CurrentLocationSource?=null,val cloud:com.yohaku.expensetracker.data.cloud.CloudRepository?=null):ViewModel() {
@@ -41,6 +43,10 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     val reviewRefreshed=MutableStateFlow(false)
     val entryReturnRoute=MutableStateFlow("home")
     val busy=MutableStateFlow(false)
+    val photoSaveOriginal=preferences.photoSaveOriginal.map<Boolean,Boolean?>{it}.stateIn(viewModelScope,SharingStarted.Eagerly,null)
+    val mediaImportOption=MutableStateFlow<MediaImportOption?>(null)
+    val mediaImportProgress=MutableStateFlow<MediaImportProgress?>(null)
+    fun setMediaImportOption(session:String,preserveOriginal:Boolean){mediaImportOption.value=MediaImportOption(session,preserveOriginal)}
     private var savingEntry=false
     private var entryBaseline:EntryDraft?=null
     val negativeBalanceReview=MutableStateFlow<PendingEntrySave?>(null)
@@ -301,16 +307,29 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         persistDraft(snapshot.book.id)
     }
     fun importFiles(context:android.content.Context,bookId:String,uris:List<android.net.Uri>,receipt:Boolean) {
+        if(uris.isEmpty())return
         val session=entry.value?.mediaSession?:return
-        execute(onSuccess={}) {
-            for(uri in uris) {
-                val imported=repository.importUri(context,bookId,session,uri,receipt)
-                val latest=withContext(Dispatchers.Main){entry.value?.takeIf{it.mediaSession==session}?.let{current->
-                    val next=if(receipt)current.copy(receiptFileIds=(current.receiptFileIds+imported.id).distinct())else current.copy(attachmentIds=(current.attachmentIds+imported.id).distinct())
-                    entry.value=next;next
-                }}
-                latest?.let{repository.saveDraft(bookId,it)}
-            }
+        val selected=mediaImportOption.value?.takeIf{it.session==session}?.preserveOriginal?:photoSaveOriginal.value
+        execute {
+            val preserveOriginal=selected?:preferences.photoSaveOriginal.first()
+            var success=0;var fallback=0;var failed=0;var firstFailure:String?=null
+            try {
+                uris.forEachIndexed{index,uri->
+                    currentCoroutineContext().ensureActive();mediaImportProgress.value=MediaImportProgress(session,index+1,uris.size)
+                    try {
+                        val result=repository.importUri(context,bookId,session,uri,receipt,preserveOriginal);val imported=result.blob
+                        success++;if(result.optimizationFailed)fallback++
+                        withContext(Dispatchers.Main){entry.value?.takeIf{it.mediaSession==session}?.let{current->
+                            entry.value=if(receipt)current.copy(receiptFileIds=(current.receiptFileIds+imported.id).distinct())else current.copy(attachmentIds=(current.attachmentIds+imported.id).distinct())
+                        }}
+                    }catch(e:CancellationException){throw e}catch(e:Exception){failed++;if(firstFailure==null)firstFailure=e.message?:"无法导入文件 / ファイルを取り込めません"}
+                }
+                withContext(Dispatchers.Main){
+                    val zh=listOfNotNull("已导入 $success 个文件",fallback.takeIf{it>0}?.let{"$it 张图片无法优化，已原样保存"},firstFailure?.let{"失败 $failed 个：${it.substringBefore(" / ")}"}).joinToString("；")
+                    val ja=listOfNotNull("$success 件を取り込みました",fallback.takeIf{it>0}?.let{"$it 枚は最適化できず、そのまま保存しました"},firstFailure?.let{"失敗 $failed 件：${it.substringAfter(" / ",it)}"}).joinToString("。")
+                    notice.value=AppNotice(++noticeSequence,bookId,zh,ja)
+                }
+            }finally{mediaImportProgress.value=null}
         }
     }
     private fun entrySaved(bookId:String,d:EntryDraft) {

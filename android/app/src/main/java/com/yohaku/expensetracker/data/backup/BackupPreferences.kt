@@ -13,7 +13,8 @@ import kotlinx.serialization.Serializable
     val reminderDelivery:ReminderDeliveryState=ReminderDeliveryState(),
     val foregroundLocationBooks:Set<String> = emptySet(),
     val activeBook:String?=null,
-    val setupDraft:SetupDraft?=null
+    val setupDraft:SetupDraft?=null,
+    val photoSaveOriginal:Boolean=false
 ) {
     fun validate(){reminderSettings.values.forEach{it.validate()}}
 }

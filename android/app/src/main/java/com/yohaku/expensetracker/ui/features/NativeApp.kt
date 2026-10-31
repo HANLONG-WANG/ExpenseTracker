@@ -207,7 +207,7 @@ import kotlinx.serialization.encodeToString
                         "csv-import"->CsvImportScreen(snapshot,vm)
                         "backup"->BackupScreen()
                         "appearance"->AppearanceScreen(snapshot,{vm.appearance(book.id,theme=it)})
-                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")},{vm.navigate("backup")},{vm.navigate("csv-import")},{vm.navigate("merchants")})
+                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")},{vm.navigate("backup")},{vm.navigate("csv-import")},{vm.navigate("merchants")},vm=vm)
                         "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "cloud"->key(book.id){CloudScreen(snapshot,vm)}
@@ -823,6 +823,6 @@ import kotlinx.serialization.encodeToString
     "cloud"->word("云端分析","クラウド分析")
     "reference-rates"->word("参考汇率","参考レート");"trash"->word("回收站","ごみ箱")
     "budget"->word("预算","予算");"recurring"->word("周期账单","定期支払")
-    "receipts"->word("小票原图","レシート原本");"merchants"->word("商户与地点","お店と場所")
+    "receipts"->word("小票图片","レシート画像");"merchants"->word("商户与地点","お店と場所")
     "friends"->word("朋友名册","友人リスト");else->""
 }

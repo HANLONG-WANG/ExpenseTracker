@@ -77,7 +77,7 @@ internal class BackupViewModel(private val app:YohakuApplication):AndroidViewMod
 
 @Composable internal fun BackupContent(state:BackupUiState,onExport:()->Unit,onOpen:()->Unit,onDismiss:()->Unit,onRestore:()->Unit) {
     val t=LocalYohaku.current
-    YLead(word("把日常，好好留下。","日々の記録を、大切に。"),word("整份保存全部账本、附件原图与用户设置，换手机后也能继续。","すべての帳簿・添付原本・設定をまとめて保存。新しい端末でも続けられます。"),"BACKUP & RESTORE",pageFlow=true)
+    YLead(word("把日常，好好留下。","日々の記録を、大切に。"),word("整份保存全部账本、已保存的附件与用户设置，换手机后也能继续。","すべての帳簿・保存済み添付・設定をまとめて保存。新しい端末でも続けられます。"),"BACKUP & RESTORE",pageFlow=true)
     Panel {
         YText(word("导出完整备份","完全バックアップを書き出す"),18)
         YText(word("备份文件不加密，请保存在你信任的位置。不自动备份，也不进行云同步。","ファイルは暗号化されません。信頼できる場所に保存してください。自動バックアップ・クラウド同期は行いません。"),12,color=t.muted)

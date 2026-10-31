@@ -6,10 +6,10 @@
 | --- | --- | --- |
 | `yohaku.import-identifiers` | [schema](import-identifiers.v1.schema.json) | 应用随云端流水任务附带的当前账本及账户标识，供转换时引用 |
 | `yohaku.statement` | [schema](statement.v1.schema.json) | 独立银行/信用卡核对资料，不产生正式账目 |
-| `yohaku.receipt-bundle` | [schema](receipt-bundle.v1.schema.json) | 原图ZIP中的 `manifest.json` |
+| `yohaku.receipt-bundle` | [schema](receipt-bundle.v1.schema.json) | 小票图片ZIP中的 `manifest.json` |
 | `yohaku.receipt-items` | [schema](receipt-items.v1.schema.json) | 回填已有小票商品，不改交易金额 |
 
-每种完整示例在 [examples](examples/)；示例UUID只用于说明，不能替代用户实际ID。bundle示例的校验值与大小是占位示意，不能作为真实ZIP。实际打包必须计算原图字节的SHA-256和大小。
+每种完整示例在 [examples](examples/)；示例UUID只用于说明，不能替代用户实际ID。bundle示例的校验值与大小是占位示意，不能作为真实ZIP。实际打包必须计算小票图片字节的SHA-256和大小。
 
 ## 共通字段与约束
 
@@ -34,13 +34,17 @@ JSON Schema检查结构/类型；应用还检查唯一性、日期区间、语�
 
 预览取消不写入。确认导入只写独立核对资料并保留原文件。用户补记必须选择类型，进入普通表单并主动保存；外币实际确认另作影响预览。删除核对资料不删手工账目。
 
-## 原图ZIP与商品转换
+## 小票图片ZIP与商品转换
 
-ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 原图，无普通附件。每张图含image_id、从0连续的position、path、原字节sha256（小写64位）、mime_type与size_bytes。不要解压路径穿越或绝对路径。多包保持同一bundle_id，用part/parts（1起）关联；每张小票及其图片完整放在同一包，不跨包拆一张小票。
+导入时可按全局“照片保存方式”设置优化（默认节省空间），也可在本次表单切换原样保存。节省空间模式下，所有 MIME 为 `image/*` 的图片都重新编码，不按截图、PNG、GIF 等格式豁免：小票短边 ≤ 2000px、JPEG 质量90；图片附件长边 ≤ 2560px、JPEG 质量85；等比缩小且不放大，EXIF 方向烘焙到像素，输出 sRGB SDR，去掉 gainmap，透明区域合成白底，不保留 EXIF/XMP、GPS、机型或动态视频。优化后 MIME 为 `image/jpeg`、扩展名 `.jpg`；原样保存及非图片保持字节不变。源文件完整读入后若格式不支持或损坏而无法解码，原样保存并提示数量；读取、写入或数据库失败不走回退。
 
-清单每条包括record_id、receipt_id、record_revision、receipt_revision、原交易date、merchant（未知可null）、original货币及可选settlement。原币金额与账户实际金额分开。仅用户选中的未整理小票打包上传，原图不压缩、不改写。提交后仍待回填，不意味着已整理。
+上传打包与备份使用已保存的图片字节，打包时不再转码；ZIP 中 `sha256` / `size_bytes` 是实际入包字节的校验值与大小，MIME 也对应保存后的文件。
 
-助手读取清单和原图，返回 `yohaku.receipt-items` JSON，原样复制bundle_id/book_id及每张小票的record_id/receipt_id/两个修订号。每条 `currency` 取原交易币种，`image_ids` 列出本次识别的原图ID。不得把信用卡换算金额当商品原币总额。
+ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 小票图片，无普通附件。每张图含image_id、从0连续的position、path、实际入包字节sha256（小写64位）、mime_type与size_bytes。不要解压路径穿越或绝对路径。多包保持同一bundle_id，用part/parts（1起）关联；每张小票及其图片完整放在同一包，不跨包拆一张小票。
+
+清单每条包括record_id、receipt_id、record_revision、receipt_revision、原交易date、merchant（未知可null）、original货币及可选settlement。原币金额与账户实际金额分开。仅用户选中的未整理小票打包上传，打包时不再压缩或改写已保存的图片。提交后仍待回填，不意味着已整理。
+
+助手读取清单和小票图片，返回 `yohaku.receipt-items` JSON，原样复制bundle_id/book_id及每张小票的record_id/receipt_id/两个修订号。每条 `currency` 取原交易币种，`image_ids` 列出本次识别的小票图片ID。不得把信用卡换算金额当商品原币总额。
 
 每个item包含稳定item_id、image_ids、uncertain_fields；name/quantity/unit/unit_price/line_amount/note可未知。数量如 `"0.5"`；行金额按原币精度。商品图必须属于本条image_ids。`uncertain_fields` 用字段名说明不确定信息，`note` 保留具体问题。无法看清时不要猜名称、数量或金额。
 

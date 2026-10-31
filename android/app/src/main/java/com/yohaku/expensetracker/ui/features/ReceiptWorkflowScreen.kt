@@ -33,7 +33,7 @@ import com.yohaku.expensetracker.ui.theme.*
     ReceiptInboxCover(pending.size)
     ReceiptWorkflow()
     YLink(word("应用不识别小票 · 查看整理说明","認識機能なし・整理の説明"),{showNote=!showNote})
-    if(showNote)YText(word("所选原图交给云端分析台整理，结果回来后在本机预览并保存商品明细。原图只在你上传时离开本机。","選んだ原画像をクラウド分析デスクで整理し、結果を端末で確認して商品明細を保存。原画像は送信したときだけ端末の外へ出ます。"),11,color=LocalYohaku.current.muted)
+    if(showNote)YText(word("所选图片交给云端分析台整理，结果回来后在本机预览并保存商品明细。图片只在你上传时离开本机。","選んだ画像をクラウド分析デスクで整理し、結果を端末で確認して商品明細を保存。画像は送信したときだけ端末の外へ出ます。"),11,color=LocalYohaku.current.muted)
     ReceiptInboxTabs(tab){tab=it}
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
         YLink(word("全选待整理","未整理を全選択"),{selected=if(pending.all{it in selected})emptyList()else pending},Modifier.testTag("receipt-select-all"))
@@ -85,7 +85,7 @@ import com.yohaku.expensetracker.ui.theme.*
             ReceiptItemRows(target.record,target.totals.knownItems)
             ReceiptTotalLines(target.record,target.totals)
             if(target.staleExport)YText(word("导出后原记录或小票已变化；请核对旧修订。","出力後に元記録・レシートが変わっています。旧リビジョンを確認してください。"),12,color=LocalYohaku.current.warm)
-            if(target.addedImageIds.isNotEmpty())YText(word("另有 ${target.addedImageIds.size} 张原图未覆盖，保存后仍待整理。","ほかに ${target.addedImageIds.size} 枚の未処理画像があり、保存後も未整理です。"),11,color=LocalYohaku.current.warm)
+            if(target.addedImageIds.isNotEmpty())YText(word("另有 ${target.addedImageIds.size} 张图片未覆盖，保存后仍待整理。","ほかに ${target.addedImageIds.size} 枚の未処理画像があり、保存後も未整理です。"),11,color=LocalYohaku.current.warm)
             if(target.existingItemsRevision!=null)YText(word("已有商品：保存将替换，不重复追加。","明細あり：保存時に置換し、重複追加しません。"),11)
         } }
         YButton(word("确认保存商品明细","商品明細の保存を確認"),{if(needsStale||needsReplacement)confirming=true else onSave(false,false)},Modifier.fillMaxWidth().testTag("receipt-confirm-import"),primary=true,enabled=!busy)

@@ -69,7 +69,7 @@ import java.time.format.DateTimeFormatter
 
 @Composable private fun BookScopeFacts(scope:BookScope) {
     RecordFacts(listOf(word("账户","口座") to scope.accounts.toString(),word("记录（含回收记录）","記録（ごみ箱を含む）") to scope.records.toString(),
-        word("附件与小票原图","添付・レシート原画像") to scope.files.toString(),word("金融计划 / 核对资料","金融プラン・照合資料") to "${scope.financialPlans} / ${scope.statements}"),audit=true)
+        word("附件与小票图片","添付・レシート画像") to scope.files.toString(),word("金融计划 / 核对资料","金融プラン・照合資料") to "${scope.financialPlans} / ${scope.statements}"),audit=true)
 }
 @Composable internal fun BookOperationConfirmation(vm:AppViewModel) {
     val review by vm.bookOperationReview.collectAsStateWithLifecycle()

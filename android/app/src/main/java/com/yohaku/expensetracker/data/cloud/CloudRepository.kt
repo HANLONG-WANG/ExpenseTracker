@@ -186,7 +186,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         }) { operation,directory ->
             val parts=writeReceiptArchives(bundleId,bookId,ledger.receiptArchiveSources(bookId,receiptIds),directory,95_000_000)
             require(parts.all { it.length() in 1 until CLOUD_FILE_LIMIT }) {
-                "单张小票的原图超过上传限制，请减少该小票的图片 / 1枚のレシートの元画像がアップロード上限を超えています。画像を減らしてください"
+                "单张小票的图片超过上传限制，请减少该小票的图片 / 1枚のレシートの画像がアップロード上限を超えています。画像を減らしてください"
             }
             parts.mapIndexed { index,part ->
                 val name="yohaku-receipts-$bundleId-${index+1}-of-${parts.size}.zip"

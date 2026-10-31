@@ -83,7 +83,7 @@ suspend fun LedgerRepository.receiptArchiveSources(bookId: String, receiptIds: S
         require(receipt.status != "SORTED") { "只能导出未整理小票 / 未整理レシートのみ出力できます" }
         val event = s.visibleEvents.firstOrNull { it.id == receipt.eventId } ?: error("原记账不存在 / 元の記録がありません")
         val files = s.entryReceiptImages(event.id)
-        require(files.isNotEmpty()) { "小票没有原图 / レシートに元画像がありません" }
+        require(files.isNotEmpty()) { "小票没有图片 / レシートに画像がありません" }
         val images = files.mapIndexed { i, file -> ReceiptBundleImage(file.id, i,
             "images/${receipt.id}/${file.id}", file.checksum, file.mime, file.size) }
         val settlement = s.settlements.find { it.eventId == event.id }
@@ -131,7 +131,7 @@ suspend fun LedgerRepository.previewReceiptItems(bookId: String, originalJson: S
         val currentImages = s.entryReceiptImages(event.id).map { it.id }.toSet()
         val exportedImages = exported.images.map { it.image_id }.toSet()
         require(record.image_ids.all { it in exportedImages && it in currentImages }) {
-            "来源图片与原小票不符 / 元画像がレシートに一致しません"
+            "来源图片与原小票不符 / 画像がレシートに一致しません"
         }
         val existing = db.fileWorkflowDao().itemsForReceipt(bookId, receipt.id)
         require(record.currency==event.currency){"商品与原消费币种不同 / 商品と元の支出の通貨が異なります"}
@@ -179,7 +179,7 @@ suspend fun LedgerRepository.editReceiptItems(bookId: String, receiptId: String,
     val receipt = s.receipts.first { it.id == receiptId }
     val event = s.visibleEvents.firstOrNull { it.id == receipt.eventId } ?: error("原记账不存在 / 元の記録がありません")
     val currentImages = s.entryReceiptImages(event.id).map { it.id }.toSet()
-    require(currentImages.containsAll(edited.image_ids)) { "来源图片已变化 / 元画像が変わりました" }
+    require(currentImages.containsAll(edited.image_ids)) { "来源图片已变化 / 画像が変わりました" }
     db.fileWorkflowDao().putItems(existing.copy(recordJson = FileProtocols.json.encodeToString(edited),
         revision = existing.revision + 1, updatedAt = clock.millis()))
     dao.putReceipt(receipt.copy(status = if (currentImages == edited.image_ids.toSet()) "SORTED" else "UNSORTED"))

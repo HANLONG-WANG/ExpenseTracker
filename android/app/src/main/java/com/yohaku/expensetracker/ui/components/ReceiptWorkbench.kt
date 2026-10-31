@@ -81,7 +81,7 @@ import com.yohaku.expensetracker.ui.theme.*
             Column(Modifier.fillMaxWidth().testTag("receipt-record-$id").clickable(role=Role.Button,onClick=onRecord).padding(top=10.dp,bottom=4.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {YText(name,if(journal)22 else 18);YText(metadata,if(journal)11 else 9,color=t.muted,lineHeightMultiplier=1.8f)}
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(5.dp),horizontalArrangement=Arrangement.spacedBy(17.dp),content=images)
             Column(Modifier.fillMaxWidth().drawBehind{drawLine(t.line,Offset.Zero,Offset(size.width,0f),1.dp.toPx(),pathEffect=if(journal||objects)PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))else null)}.padding(top=if(objects)15.dp else 13.dp)) {
-                YText("$count "+word("张原图","枚の原画像"),if(journal)11 else 9,color=t.muted)
+                YText("$count "+word("张图片","枚の画像"),if(journal)11 else 9,color=t.muted)
                 YButton(word("查看原记账","元の記録を見る"),onRecord,Modifier.testTag("receipt-open-$id"))
             }
         }

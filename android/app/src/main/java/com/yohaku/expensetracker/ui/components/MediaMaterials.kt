@@ -65,7 +65,7 @@ private fun Modifier.dashed(color:Color)=drawBehind{drawRect(color,style=Stroke(
         Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                 YText(word("小票 · $count 张","レシート・$count 枚"),10,Modifier.weight(1f))
-                YText(revision?.let{word("第${it}版 · 待整理","第${it}版・未整理")}?:word("原图 · 待整理","原画像・未整理"),8,color=t.warm)
+                YText(revision?.let{word("第${it}版 · 待整理","第${it}版・未整理")}?:word("图片 · 待整理","画像・未整理"),8,color=t.warm)
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start=8.dp,end=8.dp,top=14.dp,bottom=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.Top,content=content)
         }
@@ -75,7 +75,7 @@ private fun Modifier.dashed(color:Color)=drawBehind{drawRect(color,style=Stroke(
     val t=LocalYohaku.current
     Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)) {
         Box(Modifier.size(67.dp,99.dp).rotate(if(t.id=="journal")if(index%2==0)-3f else 3f else if(t.id=="objects")if(index%2==0)-4f else 5f else 0f).shadow(if(t.id=="magazine")0.dp else 3.dp,clip=false).background(Color.White).border(1.dp,t.line)) {
-            Box(Modifier.fillMaxSize().testTag("media-receipt-$id").clickable(role=Role.Button,onClickLabel=word("预览原图","原画像を見る"),onClick=onOpen)) {image()}
+            Box(Modifier.fillMaxSize().testTag("media-receipt-$id").clickable(role=Role.Button,onClickLabel=word("预览图片","画像を見る"),onClick=onOpen)) {image()}
             YText("${index+1}",10,Modifier.align(Alignment.BottomEnd).padding(5.dp).background(t.surface).padding(horizontal=5.dp,vertical=2.dp),number=true)
             onRemove?.let{MaterialRemove(Modifier.align(Alignment.TopEnd).offset(x=8.dp,y=(-8).dp),"media-receipt-remove-$id",word("移除这张图片","この画像を削除"),it)}
         }

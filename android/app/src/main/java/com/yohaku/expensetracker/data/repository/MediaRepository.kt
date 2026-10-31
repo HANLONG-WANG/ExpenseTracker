@@ -1,11 +1,17 @@
 package com.yohaku.expensetracker.data.repository
 
 import android.content.Context
+import android.graphics.*
+import android.os.Build
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.room.withTransaction
 import com.yohaku.expensetracker.data.db.*
-import com.yohaku.expensetracker.domain.model.EntryDraft
+import com.yohaku.expensetracker.domain.model.*
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import java.io.IOException
+import java.security.DigestOutputStream
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.InputStream
@@ -23,33 +29,60 @@ fun BookSnapshot.entryReceiptImages(eventId:String):List<FileBlobEntity> {
     val receipt=receipts.find{it.eventId==eventId}?:return emptyList()
     return receiptImages.filter{it.receiptId==receipt.id&&it.revision==receipt.revision}.sortedBy{it.position}.map{image->files.first{it.id==image.fileId}}
 }
-/** Copy one source at a time; reported metadata never substitutes for the byte count. */
-suspend fun LedgerRepository.importMedia(bookId:String,session:String,name:String,mime:String,receipt:Boolean=false,open:()->InputStream):FileBlobEntity = mediaWrites.withLock {
+data class MediaImportResult(val blob:FileBlobEntity,val optimizationFailed:Boolean=false)
+suspend fun LedgerRepository.importMedia(bookId:String,session:String,name:String,mime:String,receipt:Boolean=false,preserveOriginal:Boolean=false,open:()->InputStream):FileBlobEntity = importMediaResult(bookId,session,name,mime,receipt,preserveOriginal,open).blob
+suspend fun LedgerRepository.importMediaResult(bookId:String,session:String,name:String,mime:String,receipt:Boolean=false,preserveOriginal:Boolean=false,open:()->InputStream):MediaImportResult = mediaWrites.withLock {
     require(dao.book(bookId)!=null)
     val draft=dao.storedDraft(bookId)?.let{json.decodeFromString<EntryDraft>(it.json)}?:error("请先打开记账表单 / 記録フォームを開いてください")
     require(draft.mediaSession==session){"表单已变化，请重新选择文件 / フォームが変わりました。ファイルを選び直してください"}
     require(!receipt||mime.startsWith("image/")){"小票请选择图片 / レシートは画像を選択してください"}
     val fileId=id();val relative="$bookId/$fileId";val root=mediaRoot?:error("文件目录未配置 / 保存先がありません")
-    val target=File(root,relative);target.parentFile!!.mkdirs();val partial=File(target.path+".part")
-    var bytes=0L;val digest=MessageDigest.getInstance("SHA-256")
+    val target=File(root,relative);target.parentFile!!.mkdirs();val partial=File(target.path+".part");val jpeg=File(target.path+".jpg.part")
+    var bytes=0L;val digest=MessageDigest.getInstance("SHA-256");var committed=false
     try {
-        open().use{input->partial.outputStream().use{output->val buffer=ByteArray(65536);while(true){val count=input.read(buffer);if(count<0)break;if(count==0)continue;bytes=Math.addExact(bytes,count.toLong());require(bytes<MEDIA_FILE_LIMIT){"每个文件必须小于100 MB / 各ファイルは100 MB未満にしてください"};digest.update(buffer,0,count);output.write(buffer,0,count)}}}
-        check(partial.renameTo(target)){"无法完成文件保存 / ファイルを保存できません"}
-        val blob=FileBlobEntity(bookId,fileId,relative,name.ifBlank{"file"},mime.ifBlank{"application/octet-stream"},bytes,digest.digest().joinToString(""){"%02x".format(it)})
+        val coroutine=currentCoroutineContext()
+        open().use{input->partial.outputStream().use{output->val buffer=ByteArray(65536);while(true){coroutine.ensureActive();val count=input.read(buffer);if(count<0)break;if(count==0)continue;bytes=Math.addExact(bytes,count.toLong());require(bytes<MEDIA_FILE_LIMIT){"每个文件必须小于100 MB / 各ファイルは100 MB未満にしてください"};digest.update(buffer,0,count);output.write(buffer,0,count)}}}
+        var stored=partial;var storedName=name.ifBlank{"file"};var storedMime=mime.ifBlank{"application/octet-stream"};var optimizationFailed=false
+        if(!preserveOriginal&&mime.startsWith("image/")) {
+            val bitmap=decodePhotoForStorage(partial,receipt)
+            if(bitmap==null)optimizationFailed=true else {
+                try { coroutine.ensureActive();digest.reset();DigestOutputStream(jpeg.outputStream(),digest).use{check(bitmap.compress(Bitmap.CompressFormat.JPEG,if(receipt)90 else 85,it)){"无法保存优化图片 / 最適化した画像を保存できません"}} }finally{bitmap.recycle()}
+                bytes=jpeg.length();require(bytes<MEDIA_FILE_LIMIT){"每个文件必须小于100 MB / 各ファイルは100 MB未満にしてください"}
+                stored=jpeg;storedName=jpegFileName(storedName);storedMime="image/jpeg"
+            }
+        }
+        coroutine.ensureActive()
+        check(stored.renameTo(target)){"无法完成文件保存 / ファイルを保存できません"}
+        val blob=FileBlobEntity(bookId,fileId,relative,storedName,storedMime,bytes,digest.digest().joinToString(""){"%02x".format(it)})
         db.withTransaction {
             val current=dao.storedDraft(bookId)?.let{json.decodeFromString<EntryDraft>(it.json)}
             require(current?.mediaSession==session){"表单已关闭 / フォームが閉じられました"}
             dao.putFile(blob);dao.stageMedia(DraftMediaEntity(bookId,fileId,session))
             saveDraft(bookId,if(receipt)current.copy(mediaInitialized=true,receiptFileIds=current.receiptFileIds+fileId)else current.copy(mediaInitialized=true,attachmentIds=current.attachmentIds+fileId))
         }
-        blob
-    }catch(e:Exception){partial.delete();target.delete();throw e}
+        committed=true;MediaImportResult(blob,optimizationFailed)
+    }finally{partial.delete();jpeg.delete();if(!committed)target.delete()}
 }
-suspend fun LedgerRepository.importUri(context:Context,bookId:String,session:String,uri:Uri,receipt:Boolean):FileBlobEntity {
+private fun decodePhotoForStorage(file:File,receipt:Boolean):Bitmap? {
+    val decoded=try {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(file)){decoder,info,_->
+            val size=optimizedPhotoSize(info.size.width,info.size.height,receipt)
+            decoder.setTargetSize(size.width,size.height);decoder.allocator=ImageDecoder.ALLOCATOR_SOFTWARE;decoder.setTargetColorSpace(ColorSpace.get(ColorSpace.Named.SRGB))
+        }
+    }catch(e:ImageDecoder.DecodeException){if(e.error==ImageDecoder.DecodeException.SOURCE_EXCEPTION)throw e;return null}catch(_:IOException){return null}
+    if(Build.VERSION.SDK_INT>=34)decoded.setGainmap(null)
+    if(!decoded.hasAlpha())return decoded
+    try {
+        val opaque=Bitmap.createBitmap(decoded.width,decoded.height,Bitmap.Config.ARGB_8888)
+        Canvas(opaque).apply{drawColor(Color.WHITE);drawBitmap(decoded,0f,0f,null)};opaque.setHasAlpha(false)
+        return opaque
+    }finally{decoded.recycle()}
+}
+suspend fun LedgerRepository.importUri(context:Context,bookId:String,session:String,uri:Uri,receipt:Boolean,preserveOriginal:Boolean=false):MediaImportResult {
     var name=uri.lastPathSegment.orEmpty()
     context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use{cursor->if(cursor.moveToFirst())name=cursor.getString(0).orEmpty()}
     val mime=context.contentResolver.getType(uri)?:"application/octet-stream"
-    return importMedia(bookId,session,name,mime,receipt){context.contentResolver.openInputStream(uri)?:error("无法读取所选文件 / 選択したファイルを読み込めません")}
+    return importMediaResult(bookId,session,name,mime,receipt,preserveOriginal){context.contentResolver.openInputStream(uri)?:error("无法读取所选文件 / 選択したファイルを読み込めません")}
 }
 data class PreparedMedia(val session:String,val attachments:List<String>,val receiptImages:List<String>)
 internal suspend fun LedgerRepository.withMedia(change:PreparedLedgerChange,draft:EntryDraft):PreparedLedgerChange {
