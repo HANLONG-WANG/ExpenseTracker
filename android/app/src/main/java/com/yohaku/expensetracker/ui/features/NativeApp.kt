@@ -35,6 +35,7 @@ import kotlinx.serialization.encodeToString
     val entryReturnRoute by vm.entryReturnRoute.collectAsStateWithLifecycle()
     val draft by vm.entry.collectAsStateWithLifecycle()
     val financialDraft by vm.activeFinancialDraft.collectAsStateWithLifecycle()
+    val negativeBalanceReview by vm.negativeBalanceReview.collectAsStateWithLifecycle()
     val entryReview by vm.entryReview.collectAsStateWithLifecycle()
     val occurrenceLinkReview by vm.occurrenceLinkReview.collectAsStateWithLifecycle()
     val occurrenceLinkRefreshed by vm.occurrenceLinkRefreshed.collectAsStateWithLifecycle()
@@ -107,12 +108,10 @@ import kotlinx.serialization.encodeToString
             fun openRecord(event:EventEntity){selectedEventId=event.id;detailReturnRoute=baseRoute;vm.navigate("detail")}
             fun startRequestedEntry(current:BookSnapshot) {
                 val kind=EntryKind.valueOf(requestedEntryKind)
-                if(kind==EntryKind.TRANSFER)vm.startTransfer(current,requestedTransferAccount)
+                if(kind==EntryKind.TRANSFER)vm.startTransfer(current,requestedTransferAccount,requestedDestination)
                 else vm.startEntry(current,kind,requestedActivity,requestedTreatFriend,requestedMerchant)
                 requestedDate?.let{date->vm.entry.value?.let{d->vm.changeEntry(book.id,d.copy(date=date,settlementDate=if(d.settlementDate==d.date)date else d.settlementDate))}}
-                if(requestedTransferAccount!=null||requestedDestination!=null)vm.entry.value?.let{d->
-                    vm.changeEntry(book.id,d.copy(accountId=requestedTransferAccount?:d.accountId,toAccountId=requestedDestination?:d.toAccountId))
-                }
+                vm.markEntryBaseline()
             }
             fun requestEntry(kind:EntryKind=EntryKind.EXPENSE,fromAccountId:String?=null,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null,toAccountId:String?=null,date:String?=null){
                 requestedDate=date;requestedMerchant=merchantId;requestedTreatFriend=treatFriendId;requestedActivity=activityId;requestedEntryKind=kind.name;requestedTransferAccount=fromAccountId;requestedDestination=toAccountId;requestedOccurrence=null
@@ -163,22 +162,26 @@ import kotlinx.serialization.encodeToString
                     vm.reminderBook.value=null;vm.reminderTarget.value=null
                 }
             }
+            fun requestLeave(target:String=entryReturnRoute,switchBook:String?=null) {
+                if(vm.entryHasManualInput()){if(switchBook!=null){switchTarget=switchBook;sheet="switch-entry"}else{leaveTarget=target;sheet="leave-entry"}}
+                else vm.leaveEntry(book.id,false,if(target=="new-book"||switchBook!=null)"home"else target){if(switchBook!=null)vm.selectBook(switchBook);sheet=if(target=="new-book")"new-book"else null}
+            }
             fun requestOccurrence(occurrence:OccurrenceEntity) {
                 requestedDate=null;requestedMerchant=null;requestedTreatFriend=null;requestedActivity=null;requestedEntryKind=EntryKind.EXPENSE.name;requestedTransferAccount=null;requestedDestination=null;requestedOccurrence=occurrence.id
                 if(snapshot.draft!=null)sheet="existing-draft"else vm.startOccurrence(snapshot,occurrence)
             }
             LaunchedEffect(book.id,YearMonth.from(today).toString(),snapshot.recurrences){vm.materializeMonth(book.id,YearMonth.from(today).toString())}
             BackHandler(enabled=occurrenceLinkReview!=null || entryReview!=null || sheet!=null || route !in listOf("home","analysis","life","accounts")) {
-                if(occurrenceLinkReview!=null)vm.occurrenceLinkReview.value=null else if(entryReview!=null)vm.dismissEntryReview() else if(sheet!=null)sheet=null else if(openEntry){leaveTarget=entryReturnRoute;sheet="leave-entry"} else vm.back()
+                if(negativeBalanceReview!=null)vm.dismissNegativeBalance() else if(occurrenceLinkReview!=null)vm.occurrenceLinkReview.value=null else if(entryReview!=null)vm.dismissEntryReview() else if(sheet!=null)sheet=null else if(openEntry){requestLeave()} else vm.back()
             }
             LaunchedEffect(baseRoute){if(baseRoute!="recurring")recurringInitialMonth=null}
             val contentScroll=rememberSaveable(baseRoute,book.id,saver=ScrollState.Saver){ScrollState(0)}
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 val chrome=PageChrome(
-                    {YAppHeader(book.name,{if(openEntry||financialDraft?.hasInput==true)sheet="books" else vm.navigate("books")},{if(openEntry){leaveTarget="settings";sheet="leave-entry"}else vm.navigate("settings")})},
+                    {YAppHeader(book.name,{if(openEntry||financialDraft?.hasInput==true)sheet="books" else vm.navigate("books")},{if(openEntry){requestLeave("settings")}else vm.navigate("settings")})},
                     {
                         PageEdition(if(baseRoute=="rules")if(snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.type==AccountType.LOAN.name)"loan"else"credit"else baseRoute)
-                        if(baseRoute !in listOf("home","analysis","life","accounts")) YBackBar(pageName(baseRoute,snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.name),{if(openEntry){leaveTarget="home";sheet="leave-entry"}else vm.back()})
+                        if(baseRoute !in listOf("home","analysis","life","accounts")) YBackBar(pageName(baseRoute,snapshot.accounts.firstOrNull{it.id==selectedAccountId}?.name),{if(openEntry){requestLeave("home")}else vm.back()})
                     },
                     {PageFootnote(baseRoute)})
                 val detailAccount=snapshot.accounts.find{it.id==selectedAccountId}
@@ -204,7 +207,7 @@ import kotlinx.serialization.encodeToString
                         "csv-import"->CsvImportScreen(snapshot,vm)
                         "backup"->BackupScreen()
                         "appearance"->AppearanceScreen(snapshot,{vm.appearance(book.id,theme=it)})
-                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")},{vm.navigate("backup")},{vm.navigate("csv-import")})
+                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")},{vm.navigate("backup")},{vm.navigate("csv-import")},{vm.navigate("merchants")})
                         "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "cloud"->key(book.id){CloudScreen(snapshot,vm)}
@@ -221,19 +224,19 @@ import kotlinx.serialization.encodeToString
                     chrome.foot()
                 }
                 }
-                YBottomNav(baseRoute,{p->if(openEntry){leaveTarget=p;sheet="leave-entry"}else vm.navigate(p)},{if(!openEntry)requestEntry()})
+                YBottomNav(baseRoute,{p->if(openEntry){requestLeave(p)}else vm.navigate(p)},{if(!openEntry)requestEntry()})
             }
             if(route=="detail"&&sheet==null&&entryReview==null)selectedEvent?.let{event->
                 YSheet(word("这一笔的详情","この一筆の詳細"),{vm.back()}){Detail(snapshot,event,{if(event.kind in listOf(EntryKind.BORROWING.name,EntryKind.REPAYMENT.name))sheet="finance-edit" else if(snapshot.draft!=null){pendingRecordAction="edit";sheet="record-existing-draft"}else vm.editEntry(snapshot,event)},{sheet="delete"},vm,
                     onRefund={if(snapshot.draft!=null)sheet="refund-existing-draft"else vm.startRefund(snapshot,event)},
                     onConfirm={if(snapshot.draft!=null){pendingRecordAction="confirm";sheet="record-existing-draft"}else vm.confirmActual(snapshot,event)},onRecord={selectedEventId=it.id})}
             }
-            if(openEntry&&sheet==null&&entryReview==null&&occurrenceLinkReview==null) {
+            if(openEntry&&sheet==null&&entryReview==null&&negativeBalanceReview==null&&occurrenceLinkReview==null) {
                 val activeDraft=draft!!
                 val fromCurrency=snapshot.accounts.find{it.id==activeDraft.accountId}?.currency
                 val toCurrency=snapshot.accounts.find{it.id==activeDraft.toAccountId}?.currency
                 val transferTitle=if(fromCurrency!=null&&toCurrency!=null&&fromCurrency==toCurrency)word("账户转账","口座振替")else word("换汇与转账","両替と振替")
-                YSheet(if(activeDraft.kind==EntryKind.TRANSFER)transferTitle else if(activeDraft.kind==EntryKind.REFUND)word("退款 · 原币与实际到账","返金・原通貨と実入金") else if(route=="category-picker")word("先选一个分类","まずカテゴリを選ぶ") else if(draft?.id!=null)word("编辑这笔记录","この記録を編集") else if(activeDraft.occurrenceId!=null)word("确认周期账单","定期支払を確認") else word("记一笔","一筆を記録"),{leaveTarget=entryReturnRoute;sheet="leave-entry"}){
+                YSheet(if(activeDraft.kind==EntryKind.TRANSFER)transferTitle else if(activeDraft.kind==EntryKind.REFUND)word("退款 · 原币与实际到账","返金・原通貨と実入金") else if(route=="category-picker")word("先选一个分类","まずカテゴリを選ぶ") else if(draft?.id!=null)word("编辑这笔记录","この記録を編集") else if(activeDraft.occurrenceId!=null)word("确认周期账单","定期支払を確認") else word("记一笔","一筆を記録"),{requestLeave()}){
                     if(activeDraft.kind==EntryKind.TRANSFER)TransferForm(snapshot,activeDraft,vm,busy,{editAccount=null;sheet="account"},{vm.leaveEntry(book.id,false,entryReturnRoute)})
                     else if(activeDraft.kind==EntryKind.REFUND)RefundForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},busy,{vm.leaveEntry(book.id,false,entryReturnRoute)},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
                     else if(route=="category-picker")CategoryPicker(vm,snapshot,activeDraft,{vm.changeEntry(book.id,it)},{categoryParent=it;categoryKind=activeDraft.kind;editCategory=null;sheet="category"},{vm.navigate("entry")})
@@ -244,6 +247,7 @@ import kotlinx.serialization.encodeToString
                 }
             }
             managedAccountId?.let{id->snapshot.accounts.firstOrNull{it.id==id}?.let{account->AccountManagementSheet(account,vm,{managedAccountId=null},{vm.navigate("accounts")})}}
+            negativeBalanceReview?.let{NegativeBalanceSheet(it.review.negativeBalanceChanges(),busy,{vm.confirmNegativeBalance(book.id)},{vm.dismissNegativeBalance()})}
             entryReview?.let{EntryReviewSheet(it,reviewRefreshed,busy,{vm.confirmEntryReview(book.id)},{vm.dismissEntryReview()})}
             occurrenceLinkReview?.takeIf{it.occurrence.bookId==book.id}?.let{r->
                 OccurrenceLinkReviewSheet(r,occurrenceLinkRefreshed,busy,openEntry,{vm.occurrenceLinkReview.value=null},{vm.confirmOccurrenceLink()})
@@ -299,8 +303,8 @@ import kotlinx.serialization.encodeToString
                 "category"->CategoryEditor(snapshot,categoryKind,categoryParent,editCategory,vm,{sheet=null},
                     onUse=if(openEntry&&route=="category-picker"&&editCategory==null){id->vm.entry.value?.let{vm.changeEntry(book.id,it.copy(categoryId=id));vm.navigate("entry")};sheet=null} else null)
                 "books"->YSheet(word("切换账本","帳簿を切替"),{sheet=null}) {
-                    ready.books.filter{!it.archived&&it.deletedAt==null}.forEach{b->YButton(b.name+(if(b.id==book.id)" ✓" else ""),{if(b.id==book.id)sheet=null else if(openEntry){switchTarget=b.id;sheet="switch-entry"}else if(financialDraft?.hasInput==true){switchTarget=b.id;sheet="switch-financial"}else{vm.selectBook(b.id);sheet=null}},Modifier.fillMaxWidth())}
-                    YButton(word("＋ 创建独立账本","＋ 独立した帳簿を作成"),{if(openEntry){leaveTarget="new-book";sheet="leave-entry"}else sheet="new-book"},primary=true)
+                    ready.books.filter{!it.archived&&it.deletedAt==null}.forEach{b->YButton(b.name+(if(b.id==book.id)" ✓" else ""),{if(b.id==book.id)sheet=null else if(openEntry){requestLeave(switchBook=b.id)}else if(financialDraft?.hasInput==true){switchTarget=b.id;sheet="switch-financial"}else{vm.selectBook(b.id);sheet=null}},Modifier.fillMaxWidth())}
+                    YButton(word("＋ 创建独立账本","＋ 独立した帳簿を作成"),{if(openEntry){requestLeave("new-book")}else sheet="new-book"},primary=true)
                 }
                 "existing-draft"->YSheet(word("还有一笔草稿","下書きが残っています"),{sheet=null}) {
                     YButton(word("继续这笔草稿","下書きを続ける"),{vm.resumeEntry(snapshot);sheet=null},primary=true)
@@ -313,7 +317,7 @@ import kotlinx.serialization.encodeToString
                     YButton(word("保留草稿并返回","下書きを残して戻る"),{vm.leaveEntry(book.id,true,if(leaveTarget=="new-book")"home" else leaveTarget){sheet=if(leaveTarget=="new-book")"new-book" else null}},primary=true)
                     YActionRow {
                         YButton(word("放弃修改","変更を破棄"),{vm.leaveEntry(book.id,false,if(leaveTarget=="new-book")"home" else leaveTarget){sheet=if(leaveTarget=="new-book")"new-book" else null}})
-                        YLink(word("继续编辑","編集を続ける"),{sheet=null})
+                        YButton(word("继续编辑","編集を続ける"),{sheet=null})
                     }
                 }
                 "switch-financial"->financialDraft?.let{session->YSheet(word("切换前保存草稿？","切替前に下書きを残しますか？"),{sheet=null}) {
@@ -321,7 +325,7 @@ import kotlinx.serialization.encodeToString
                     YButton(word("保留草稿并切换","下書きを残して切替"),{vm.execute(onSuccess={session.close();vm.navigate("home");sheet=null}){session.flush();vm.preferences.select(target)}},Modifier.testTag("financial-draft-switch-keep"),primary=true,enabled=!busy)
                     YActionRow {
                         YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.execute(onSuccess={session.close();vm.navigate("home");sheet=null}){session.discard();vm.preferences.select(target)}},Modifier.testTag("financial-draft-switch-discard"),enabled=!busy)
-                        YLink(word("继续编辑","編集を続ける"),{sheet=null},Modifier.testTag("financial-draft-switch-continue"))
+                        YButton(word("继续编辑","編集を続ける"),{sheet=null},Modifier.testTag("financial-draft-switch-continue"))
                     }
                 }}
                 "switch-entry"->YSheet(word("切换前保存草稿？","切替前に下書きを残しますか？"),{sheet=null}) {
@@ -329,10 +333,10 @@ import kotlinx.serialization.encodeToString
                     YButton(word("保留草稿并切换","下書きを残して切替"),{val d=draft!!;vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.saveDraft(book.id,d);vm.preferences.select(target)}},primary=true)
                     YActionRow {
                         YButton(word("放弃草稿并切换","下書きを破棄して切替"),{vm.execute({vm.entry.value=null;vm.navigate("home");sheet=null}){vm.repository.clearDraft(book.id);vm.preferences.select(target)}})
-                        YLink(word("继续编辑","編集を続ける"),{sheet=null})
+                        YButton(word("继续编辑","編集を続ける"),{sheet=null})
                     }
                 }
-                "delete"->selectedEvent?.takeIf{it.deletedAt==null}?.let{event->EntryLifecycleSheet(snapshot,vm,event.id,EntryLifecycleOperation.TRASH,{sheet=null},{sheet=null;vm.navigate("ledger")})}
+                "delete"->selectedEvent?.takeIf{it.deletedAt==null}?.let{event->EntryLifecycleSheet(snapshot,vm,event.id,EntryLifecycleOperation.TRASH,{sheet=null},{sheet=null;vm.replaceRoute("ledger")})}
 
             }
         }
@@ -408,7 +412,7 @@ import kotlinx.serialization.encodeToString
 @Composable private fun CategoryPicker(vm:AppViewModel,s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onCreate:(String?)->Unit,onChoose:()->Unit) {
     val t=LocalYohaku.current
     CategoryCover()
-    CategoryKindTabs(d.kind){kind->val eligible=s.entryAccounts(kind);onChange(d.copy(kind=kind,categoryId=null,accountId=eligible.find{it.id==d.accountId}?.id?:eligible.firstOrNull()?.id))}
+    if(d.id==null&&d.occurrenceId==null&&d.kind!=EntryKind.REFUND)CategoryKindTabs(d.kind){vm.switchEntryKind(s,it)}
     CategorySectionCaption()
     var search by rememberSaveable(s.book.id,d.kind){mutableStateOf("")}
     var expanded by rememberSaveable(s.book.id,d.kind){mutableStateOf(s.categories.find{it.id==d.categoryId}?.let{listOf(it.parentId?:it.id)} ?: emptyList())}
@@ -504,8 +508,8 @@ import kotlinx.serialization.encodeToString
             }
         }
         if(d.kind==EntryKind.EXPENSE)locationContent()
-        if(d.kind==EntryKind.EXPENSE&&s.merchants.any{it.active})YSelect(word("已保存的商户 / 可手动填写","保存済みのお店・手入力可"),d.merchantId,listOf(null to word("手动填写","手入力"))+s.merchants.filter{it.active||it.id==d.merchantId}.map{it.id as String? to it.name},{id->onChange(d.copy(merchantId=id,merchant=id?.let{s.merchants.first{it.id==id}.name}?:d.merchant,merchantManuallyEdited=true))})
-        YField(if(d.kind==EntryKind.INCOME)word("名称 / 说明","名称 / 内容") else word("商户 / 买了什么","お店 / 買ったもの"),d.merchant,{onChange(d.copy(merchant=it,merchantId=null,merchantManuallyEdited=true))})
+        if(d.kind==EntryKind.EXPENSE)EntryMerchantInput(s,d,onChange)
+        else YField(word("名称 / 说明","名称 / 内容"),d.merchant,{onChange(d.copy(merchant=it,merchantId=null,merchantManuallyEdited=true))})
         var activeDate by remember{mutableStateOf<Int?>(null)}
         YDateFields(listOf((if(confirmingOccurrence)word("实际付款日期","実際の支払日")else word("日期","日付")) to d.date)+if(foreign)listOf(word("实际 / 预计入账日期","実際・予定計上日") to d.settlementDate)else emptyList(),activeDate,{activeDate=it},{index,date->
             onChange(if(index==0)d.copy(date=date,settlementDate=if(d.settlementDate==d.date)date else d.settlementDate)else d.copy(settlementDate=date))
@@ -781,8 +785,8 @@ import kotlinx.serialization.encodeToString
         val debt=AccountType.valueOf(a.type).debt
         val amount=Money(Currency.valueOf(a.currency),if(debt)s.balance(a)else s.cashBalanceAt(a,today.toString())).display()
         YLead(a.name,a.currency+" · "+if(AccountType.valueOf(a.type).debt)word("账户原币欠款","口座の元通貨借入残高") else word("账户原币余额","口座の元通貨残高"),"AVAILABLE BALANCE",amount,word("本位币参考","基準通貨参考")+" "+if(a.currency==s.book.currency)amount else "—",pageFlow=true)
-        if(!AccountType.valueOf(a.type).debt&&a.active)AccountTransferShortcut(onTransfer)
-        else if(onFinancial!=null)YButton(word("账单、计划与金融规则","請求・予定と金融条件"),onFinancial,Modifier.testTag("account-financial"),primary=true)
+        if(a.type!=AccountType.LOAN.name&&a.active)AccountTransferShortcut(onTransfer)
+        if(debt&&onFinancial!=null)YButton(word("账单、计划与金融规则","請求・予定と金融条件"),onFinancial,Modifier.testTag("account-financial"),primary=true)
         if(!debt&&onRisk!=null)YButton(word("核对未来资金安排","将来の資金予定を確認"),onRisk,Modifier.testTag("account-cash-risk"))
         if(!debt)YText(today.toString()+" · "+word("仅含截至今日已确认流水。未来已记流水在时间线中另列。","本日までの確定記録のみ。将来日付の記録は予定に別掲。"),11)
         Box(Modifier.padding(top=12.dp)){YButton(word("编辑账户","口座を編集"),onEdit,Modifier.fillMaxWidth().testTag("account-detail-edit"))}

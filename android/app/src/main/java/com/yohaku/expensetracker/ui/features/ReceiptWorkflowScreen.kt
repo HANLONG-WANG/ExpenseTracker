@@ -65,7 +65,7 @@ import com.yohaku.expensetracker.ui.theme.*
             YButton(if(needsReplacement)word("替换并保存","置換して保存")else word("确认保存旧修订结果","旧リビジョンの結果を保存"),{onSave(needsStale,needsReplacement)},Modifier.fillMaxWidth().testTag("receipt-confirm-replacement"),primary=true,enabled=!busy)
             YActionRow {
                 YButton(word("取消，重新选择","取消・選び直す"),onReselect,Modifier.testTag("receipt-cancel-replacement"),enabled=!busy)
-                YLink(word("返回预览","プレビューに戻る"),{confirming=false},Modifier.testTag("receipt-back-to-preview"))
+                YButton(word("返回预览","プレビューに戻る"),{confirming=false},Modifier.testTag("receipt-back-to-preview"))
             }
         }
         return

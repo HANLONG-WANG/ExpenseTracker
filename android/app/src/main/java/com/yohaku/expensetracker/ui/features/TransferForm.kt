@@ -14,8 +14,8 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun TransferForm(s:BookSnapshot,d:EntryDraft,vm:AppViewModel,busy:Boolean,onAccount:()->Unit,onCancel:()->Unit) {
-    val eligible=s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}
-    val from=eligible.find{it.id==d.accountId};val to=eligible.find{it.id==d.toAccountId}
+    val eligible=s.transferSources();val targets=s.transferTargets()
+    val from=eligible.find{it.id==d.accountId};val to=targets.find{it.id==d.toAccountId}
     val source=Currency.valueOf(from?.currency?:s.book.currency);val target=Currency.valueOf(to?.currency?:s.book.currency)
     val different=source!=target
     val knownPair=from!=null&&to!=null
@@ -27,6 +27,7 @@ import com.yohaku.expensetracker.ui.theme.*
         var value=d
         vm.execute(onSuccess={change(value)}){value=estimateTransfer(d,source,target,direction)}
     }
+    if(d.id==null&&d.occurrenceId==null)CategoryKindTabs(d.kind){vm.switchEntryKind(s,it)}
     TransferPair(from?.currency?:"—",to?.currency?:"—")
     Column(Modifier.fillMaxWidth().testTag("transfer-form"),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         YSelect(word("转出账户","出金口座"),d.accountId,eligible.map{it.id as String? to it.name},{id->
@@ -37,12 +38,13 @@ import com.yohaku.expensetracker.ui.theme.*
                 toAccountId=if(id==d.toAccountId)null else d.toAccountId,toAmount=if(id==d.toAccountId)""else d.toAmount,toConfirmed=if(id==d.toAccountId)false else d.toConfirmed)
                 else d.copy(accountId=id,toAccountId=if(id==d.toAccountId)null else d.toAccountId,toAmount=if(id==d.toAccountId)""else d.toAmount,toConfirmed=if(id==d.toAccountId)false else d.toConfirmed))
         })
-        YSelect(word("转入账户","入金口座"),d.toAccountId,eligible.filter{it.id!=from?.id}.map{it.id as String? to it.name},{id->
+        YSelect(word("转入账户","入金口座"),d.toAccountId,targets.filter{it.id!=from?.id}.map{it.id as String? to it.name},{id->
             val account=eligible.first{it.id==id};val currencyChanged=account.currency!=to?.currency
             change(if(currencyChanged)d.copy(toAccountId=id,toAmount="",manualRate="",rateSource="manual",referenceExpectedFromMinor=null,referenceExpectedToMinor=null,referenceExpectedAccountMinor=null,referenceExpectedBaseMinor=null,referenceRates=emptyList(),toConfirmed=false,
                 feeCurrency=preservedFeeCurrency,feeAccountAmount=if(d.feePosition==TransferFeePosition.DEDUCTED_TO)""else d.feeAccountAmount,feeBaseAmount=if(d.feePosition==TransferFeePosition.DEDUCTED_TO)""else d.feeBaseAmount)else d.copy(toAccountId=id))
         })
-        if(eligible.size<2)YButton(word("添加资金账户","資金口座を追加"),onAccount,primary=true)
+        if(targets.isEmpty()||eligible.size<2)YButton(word("添加资金账户","資金口座を追加"),onAccount,primary=true)
+        if(from?.type==AccountType.CREDIT.name){YText(word("从信用卡充值：计入该卡账单，不计消费","カードからチャージ：カードの請求に計上し、支出には含めません"),11,color=LocalYohaku.current.muted);CardPaymentFields(d,::change)}
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             YField(word("实际扣款总额","実際の出金総額")+" · "+(from?.currency?:"—"),d.amount,{if(knownPair)vm.changeTransferAmount(s.book.id,d.copy(amount=it),source,target,"TO")else change(d.copy(amount=it))},Modifier.weight(1f),numeric=true,compactNumber=true,
                 displayLabel=(if(d.fromConfirmed)word("实际扣款总额","実際の出金総額")else word("预计扣款总额","出金総額の見込み"))+" · "+(from?.currency?:"—"))

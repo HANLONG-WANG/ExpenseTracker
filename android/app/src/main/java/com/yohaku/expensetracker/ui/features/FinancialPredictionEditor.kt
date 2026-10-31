@@ -75,7 +75,7 @@ import java.time.LocalDate
             YSelect(word("本金来源","元金の対象"),source,listOf("OPENING" to word("期初已有欠款","期首の既存残高"),"EVENT" to word("已有消费 / 借入","既存の支出・借入")),{source=it;clearRows()},Modifier.testTag("prediction-source"))
         }else YText(financeLabel(mode)+" · "+word("重算保留来源及已确认账单","再計算でも対象と確定請求を保持"),12)
         if(source=="EVENT") {
-            if(old==null)YSelect(word("关联记录","関連する記録"),eventId,listOf(null to word("请选择","選択してください"))+s.visibleEvents.filter{e->e.accountId==account.id&&!e.historicalIncluded&&e.kind==if(account.type==AccountType.CREDIT.name)EntryKind.EXPENSE.name else EntryKind.BORROWING.name}.filter{e->finance.plans.none{it.active&&it.sourceEventId==e.id}}.map{e->e.id as String? to (e.date+" · "+e.merchant+" · "+s.accountMoney(e).display())},{id->eventId=id;eventId?.let{e->agreement=s.events.first{it.id==e}.date;suggestDates(agreement,mode)};clearRows()})
+            if(old==null)YSelect(word("关联记录","関連する記録"),eventId,listOf(null to word("请选择","選択してください"))+s.visibleEvents.filter{e->e.accountId==account.id&&!e.historicalIncluded&&e.isFinancialSource(account)}.filter{e->finance.plans.none{it.active&&it.sourceEventId==e.id}}.map{e->e.id as String? to (e.date+" · "+e.merchant+" · "+s.accountMoney(e).display())},{id->eventId=id;eventId?.let{e->agreement=s.events.first{it.id==e}.date;suggestDates(agreement,mode)};clearRows()})
             else YText(event?.let{it.date+" · "+it.merchant+" · "+s.accountMoney(it).display()}?:word("原记录已删除，请先检查来源。","元の記録が削除されています。対象を確認してください。"),12)
             YText(word("预览使用账户币金额；退回本账户的实际退款同时计入。","予測は口座通貨の金額を使用し、この口座への実返金を反映します。"),11)
         }else YField(word("这份计划的已有本金","このプランの既存元金")+" · "+currency.name,principal,{principal=it;clearRows()},numeric=true)

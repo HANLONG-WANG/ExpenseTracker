@@ -109,7 +109,8 @@ import java.time.LocalDate
         add(null to word("请选择类型","種類を選択"))
         if(row.direction=="out") {
             add(EntryKind.EXPENSE.name to word("消费支出","消費支出"))
-            if(!debt){add(EntryKind.TRANSFER.name to word("账户转账 / 换汇","口座振替・両替"));add(EntryKind.REPAYMENT.name to word("偿还信用卡 / 借款","カード・借入返済"))}
+            if(account.type!=AccountType.LOAN.name)add(EntryKind.TRANSFER.name to word("账户转账 / 换汇","口座振替・両替"))
+            if(!debt)add(EntryKind.REPAYMENT.name to word("偿还信用卡 / 借款","カード・借入返済"))
             if(account.type==AccountType.LOAN.name)add(EntryKind.BORROWING.name to word("借入，非收入","借入・収入ではありません"))
         }else {
             if(!debt){add(EntryKind.INCOME.name to word("实际收入","実際の収入"));add(EntryKind.TRANSFER.name to word("账户转账 / 换汇","口座振替・両替"))}

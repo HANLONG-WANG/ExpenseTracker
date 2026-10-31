@@ -89,6 +89,16 @@ class LocationEntryFlowTest {
                 assertFalse(vm.entry.value!!.merchantManuallyEdited)
                 visible("entry-location")
                 shot("$theme-$language")
+                val today=java.time.LocalDate.now(repo.clock).toString();val yesterday=java.time.LocalDate.now(repo.clock).minusDays(1).toString()
+                ui.runOnIdle{vm.changeEntry(b,vm.entry.value!!.copy(date=yesterday))}
+                ui.onNodeWithTag("entry-location-historical").assertExists();ui.onNodeWithTag("entry-location").assertDoesNotExist()
+                assertNull(vm.entry.value!!.merchantId);assertEquals("",vm.entry.value!!.merchant);assertTrue(source.requests.tryReceive().isFailure)
+                val candidates=(vm.state.value as AppState.Ready).snapshot!!.merchantCandidates(35.0,139.0,10.0)
+                ui.runOnIdle{vm.offerLocatedMerchant(b,vm.entry.value!!.mediaSession,candidates)};assertNull(vm.entry.value!!.merchantId)
+                visible("entry-location-historical");shot("$theme-$language-historical")
+                ui.runOnIdle{vm.changeEntry(b,vm.entry.value!!.copy(date=today))}
+                nextRequest(source).complete(LocationFix(35.0,139.0,10.0));ui.waitUntil(10000){vm.entry.value?.merchantId==merchant}
+                ui.runOnIdle{vm.changeEntry(b,vm.entry.value!!.copy(merchantManuallyEdited=true,date=yesterday))};assertEquals(merchant,vm.entry.value!!.merchantId)
                 ui.runOnIdle{vm.changeEntry(b,draft())}
                 nextRequest(source).completeExceptionally(LocationException(LocationFailure.PERMISSION))
                 ui.waitUntil(10000){ui.onAllNodes(hasTestTag("foreground-location-status") and hasText(if(language=="ja")"未許可"else"未授权",substring=true)).fetchSemanticsNodes().isNotEmpty()}

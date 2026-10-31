@@ -93,7 +93,9 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
 
 @Composable internal fun EntryLocation(s:BookSnapshot,d:EntryDraft,vm:AppViewModel,onChange:(EntryDraft)->Unit) {
     val books by vm.preferences.foregroundLocationBooks.collectAsStateWithLifecycle(initialValue=emptySet())
-    val enabled=s.book.id in books
+    val today by vm.today.collectAsStateWithLifecycle()
+    val currentDate=d.date==today.toString()
+    val enabled=s.book.id in books&&currentDate
     val request=rememberLocationRequest(vm,s.book.id+"/"+d.mediaSession);val locate=rememberLocationAction(request)
     LifecycleResumeEffect(enabled,d.mediaSession) {
         if(enabled&&d.id==null)request.request()
@@ -103,9 +105,10 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
     val candidates=remember(read,s.merchants,s.merchantLocations) {
         (read as? LocationRead.Ready)?.fix?.let{s.merchantCandidates(it.latitude,it.longitude,it.accuracyMeters)}.orEmpty()
     }
-    LaunchedEffect(read,candidates,d.mediaSession) {
+    LaunchedEffect(read,candidates,d.mediaSession,enabled,d.date) {
         if(enabled&&read is LocationRead.Ready)vm.offerLocatedMerchant(s.book.id,d.mediaSession,candidates)
     }
+    if(!currentDate){YText(word("补录非今天的记录，不使用当前位置匹配商户","今日以外の記録では現在地でお店を照合しません"),11,Modifier.testTag("entry-location-historical"),color=LocalYohaku.current.muted);return}
     LocationCandidatesPanel(Modifier.testTag("entry-location")) {
         if(enabled) {
             LocationStatus(read)

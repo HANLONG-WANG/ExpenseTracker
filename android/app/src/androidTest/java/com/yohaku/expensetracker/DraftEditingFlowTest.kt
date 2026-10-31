@@ -183,6 +183,20 @@ class DraftEditingFlowTest {
             ui.waitUntil(10000){vm.entry.value==null}
         }
     }
+    @Test fun untouchedDraftAndUnchangedEditLeaveWithoutPrompt() {
+        ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==a}
+        ui.runOnIdle{vm.startEntry(snapshot(a));vm.changeEntry(a,vm.entry.value!!.copy(categoryId=category));vm.navigate("entry")}
+        ui.onNodeWithText("×").performClick();ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+        ui.onNodeWithText("这笔还未保存").assertDoesNotExist()
+        tap("喫茶と余白");tap("↺ 编辑记录")
+        ui.onNodeWithText("×").performClick();ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="detail"&&!vm.busy.value}
+        assertEquals(1,snapshot(a).events.single().revision)
+        ui.onNodeWithText("×").performClick()
+        ui.runOnIdle{vm.startEntry(snapshot(a));vm.changeEntry(a,vm.entry.value!!.copy(amount="100"))}
+        ui.onNodeWithTag("header-settings").performScrollTo().performClick();ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="settings"&&!vm.busy.value}
+        ui.runOnIdle{vm.startTransfer(snapshot(a))}
+        ui.onNodeWithText("×").performClick();ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="settings"&&!vm.busy.value}
+    }
     @Test fun editSurvivesThemeAndLanguageSwitchAndCancelKeepsOriginal() {
         tap("喫茶と余白")
         tap("↺ 编辑记录")
@@ -224,6 +238,7 @@ class DraftEditingFlowTest {
         ui.onNodeWithTag("field-金额 · JPY").performTextInput("777")
         ui.onNodeWithTag("header-book").performScrollTo().performClick()
         tap("別の生活")
+        captureScreen("draft-switch-prompt","default")
         tap("继续编辑")
         ui.onNodeWithTag("field-金额 · JPY").assertTextEquals("777")
         ui.onNodeWithTag("header-book").performScrollTo().performClick()
@@ -312,6 +327,7 @@ class DraftEditingFlowTest {
         }
     }
     @Test fun homeRecentExpensesAndAccountLedgerUseGroupedOriginalRows(){
+        val extras=runBlocking{(1..4).map{repo.saveEntry(a,EntryDraft(accountId=account,categoryId=category,amount="100",merchant="extra-$it"))}}
         val income=runBlocking{
             val category=repo.saveCategory(a,"収入",EntryKind.INCOME,null)
             repo.saveEntry(a,EntryDraft(kind=EntryKind.INCOME,accountId=account,categoryId=category,amount="400",merchant="income-only"))
@@ -322,7 +338,8 @@ class DraftEditingFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
             ui.onNodeWithTag("event-"+income).assertDoesNotExist()
             val first=ui.onNodeWithTag("event-"+expense).performScrollTo().getUnclippedBoundsInRoot()
-            val second=ui.onNodeWithTag("event-"+event).getUnclippedBoundsInRoot()
+            val second=ui.onNodeWithTag("event-"+extras.last()).getUnclippedBoundsInRoot()
+            ui.onNodeWithTag("event-"+event).assertDoesNotExist();extras.forEach{ui.onNodeWithTag("event-"+it).assertExists()}
             assertEquals("Original row gap $theme/$language",if(theme=="objects")8f else 0f,(second.top-first.bottom).value,1f)
             ui.onNodeWithTag("event-"+expense).performClick()
             waitFor(if(language=="zh")"这一笔的详情" else "この一筆の詳細")
@@ -332,8 +349,8 @@ class DraftEditingFlowTest {
             ui.waitUntil(10000){ui.onAllNodesWithText(if(language=="zh")"账户流水" else "口座の記録",substring=true).fetchSemanticsNodes().isNotEmpty()}
             ui.revealOnPage("event-"+income).assertIsDisplayed()
             captureScreen("account-ledger","$theme-$language")
-            assertEquals(3,snapshot(a).visibleEvents.size)
-            assertEquals(9600L,snapshot(a).balance(snapshot(a).accounts.first{it.id==account}))
+            assertEquals(7,snapshot(a).visibleEvents.size)
+            assertEquals(9200L,snapshot(a).balance(snapshot(a).accounts.first{it.id==account}))
         }
     }
     @Test fun longPagesScrollHeaderAwayKeepNavigationFixedAndReachSettings(){

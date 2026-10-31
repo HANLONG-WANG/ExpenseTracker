@@ -48,8 +48,7 @@ import java.time.LocalDate
         YSelect(word("支付 / 借款模式","支払・借入方式"),mode,modes.map{it.name to financeLabel(it.name)},{mode=it},Modifier.testTag("finance-plan-mode"))
         YSelect(word("计划来源","プランの対象"),origin,listOf("MANUAL" to word("手动已知安排","手動の既知予定"),"OPENING" to word("期初已有欠款","期首の既存残高"),"EVENT" to word("关联已有消费 / 借入","既存の支出・借入に関連付け")),{origin=it},Modifier.testTag("finance-plan-origin"))
         if(origin=="EVENT") {
-            val kind=if(account.type==AccountType.CREDIT.name)EntryKind.EXPENSE else EntryKind.BORROWING
-            YSelect(word("已有记录","既存の記録"),sourceEvent,listOf(null to word("请选择","選択してください"))+s.visibleEvents.filter{it.accountId==account.id&&it.kind==kind.name}.map{it.id as String? to (it.date+" · "+it.merchant+" · "+Money(Currency.valueOf(it.currency),it.amountMinor).display())},{sourceEvent=it},Modifier.testTag("finance-plan-source"))
+            YSelect(word("已有记录","既存の記録"),sourceEvent,listOf(null to word("请选择","選択してください"))+s.visibleEvents.filter{it.isFinancialSource(account)}.map{it.id as String? to (it.date+" · "+it.merchant+" · "+Money(Currency.valueOf(it.currency),it.amountMinor).display())},{sourceEvent=it},Modifier.testTag("finance-plan-source"))
         }
         YField(word("计划本金 / 不明可留空","プラン元金・不明なら空欄")+" · "+currency.name,principal,{principal=it},Modifier.testTag("finance-plan-principal"),numeric=true)
         YToggle(word("已知完整逐期计划","全回の予定が判明している"),complete,{complete=it},Modifier.testTag("finance-plan-complete"))

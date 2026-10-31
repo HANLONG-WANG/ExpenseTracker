@@ -68,7 +68,7 @@ private fun FinancialReviewState.sourcePrincipal(input:FinancialPredictionInput,
     }
     input.sourceEventId?.let{eventId->
         val event=requireNotNull(ledger.visibleEvents.firstOrNull{it.id==eventId&&it.accountId==account.id}){"请选择本账户仍有效的记录 / この口座の有効な記録を選択してください"}
-        require(event.kind==if(account.type==AccountType.CREDIT.name)EntryKind.EXPENSE.name else EntryKind.BORROWING.name)
+        require(event.isFinancialSource(account))
         require(input.terms.agreementDate==event.date){"消费日期已变化，请重新打开计划 / 利用日が変わりました。プランを開き直してください"}
         require(!event.historicalIncluded){"该记录已包含于期初，请使用期初欠款计划 / この記録は期首に含まれています。期首残高のプランを使用してください"}
         val settlement=ledger.settlements.firstOrNull{it.eventId==event.id}

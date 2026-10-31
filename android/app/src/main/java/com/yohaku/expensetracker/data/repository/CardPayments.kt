@@ -13,7 +13,7 @@ internal fun List<FinancialRuleEntity>.cardRule(accountId:String,date:String,mod
     .maxWithOrNull(compareBy<FinancialRuleEntity>{it.effectiveFrom}.thenBy{it.version})
 internal fun retainCardPayment(old:EventEntity?,draft:EntryDraft)=old!=null&&!draft.cardPaymentRecheck&&old.accountId==draft.accountId&&old.date==draft.date&&old.cardPaymentChoice==draft.cardPaymentChoice
 internal suspend fun LedgerRepository.cardPayment(event:EventEntity,draft:EntryDraft,old:EventEntity?,account:AccountEntity):EventEntity {
-    if(event.kind!=EntryKind.EXPENSE.name||account.type!=AccountType.CREDIT.name)return event
+    if(event.kind !in listOf(EntryKind.EXPENSE.name,EntryKind.TRANSFER.name)||account.type!=AccountType.CREDIT.name)return event
     val choice=draft.cardPaymentChoice?.let{CardPaymentChoice.valueOf(it)}?:return event
     val periods=if(choice==CardPaymentChoice.INSTALLMENT)draft.cardPaymentPeriods.toIntOrNull()?.also{require(it>0){"分期次数须大于0 / 分割回数は0より大きくしてください"}} else null
     if(choice==CardPaymentChoice.INSTALLMENT)require(periods!=null){"请填写分期次数 / 分割回数を入力してください"}
@@ -46,7 +46,7 @@ internal fun recordedSinglePaymentDate(event:EventEntity,rule:FinancialRuleVersi
 
 /** A local obligation only; writing it never creates money, income or a second purchase. */
 internal suspend fun LedgerRepository.refreshCardEntryPrediction(event:EventEntity) {
-    if(event.kind!=EntryKind.EXPENSE.name)return
+    if(event.kind !in listOf(EntryKind.EXPENSE.name,EntryKind.TRANSFER.name))return
     var state=financialReviewState(event.bookId)
     val account=state.ledger.accounts.first{it.id==event.accountId}
     val existing=state.finance.plans.filter{it.active&&it.sourceEventId==event.id}

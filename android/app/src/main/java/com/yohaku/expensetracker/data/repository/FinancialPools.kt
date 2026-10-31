@@ -211,7 +211,7 @@ internal suspend fun LedgerRepository.writeFinancialPoolAdoption(review:Financia
     }
 }
 internal suspend fun LedgerRepository.refreshFinancialPools(change:PreparedLedgerChange) {
-    if(change.event.kind !in listOf(EntryKind.EXPENSE.name,EntryKind.REFUND.name))return
+    if(change.event.kind !in listOf(EntryKind.EXPENSE.name,EntryKind.TRANSFER.name,EntryKind.REFUND.name))return
     val accountIds=listOfNotNull(change.event.accountId,change.before?.accountId,change.settlement.originalEventId?.let{dao.event(change.event.bookId,it)?.accountId}).toSet()
     val candidates=accountIds.flatMap{db.financialDao().plans(change.event.bookId,it)}.filter{it.active&&it.origin=="POOL"}
     for(p in candidates) {

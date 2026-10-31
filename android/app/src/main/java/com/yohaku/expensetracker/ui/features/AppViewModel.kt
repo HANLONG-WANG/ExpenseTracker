@@ -18,6 +18,7 @@ sealed interface AppState {
     data class Ready(val books:List<BookEntity>,val snapshot:BookSnapshot?,val firstSetup:SetupDraft?=null,val overviews:List<BookOverview> = emptyList()):AppState
     data class Failure(val message:String):AppState
 }
+data class PendingEntrySave(val review:LedgerChangeReview,val needsReview:Boolean)
 data class AppNotice(val id:Long,val bookId:String,val zh:String,val ja:String)
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModel(val repository:LedgerRepository,val preferences:AppPreferences,val referenceRates:ReferenceRates=ReferenceRates(preferences,clock=repository.clock),val reminders:com.yohaku.expensetracker.platform.ReminderCoordinator?=null,val locationSource:com.yohaku.expensetracker.platform.CurrentLocationSource?=null,val cloud:com.yohaku.expensetracker.data.cloud.CloudRepository?=null):ViewModel() {
@@ -41,12 +42,18 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     val entryReturnRoute=MutableStateFlow("home")
     val busy=MutableStateFlow(false)
     private var savingEntry=false
+    private var entryBaseline:EntryDraft?=null
+    val negativeBalanceReview=MutableStateFlow<PendingEntrySave?>(null)
+    fun entryHasManualInput()=entry.value?.hasManualInput(entryBaseline)==true
+    fun markEntryBaseline(){entryBaseline=entry.value}
+    private fun openDraft(bookId:String){persistDraft(bookId);markEntryBaseline()}
     private val backStack=mutableListOf<String>()
     fun navigate(page:String) {
         if(page==route.value)return
         if(page in listOf("home","analysis","life","accounts"))backStack.clear() else backStack.add(route.value)
         route.value=page
     }
+    fun replaceRoute(page:String){route.value=page}
     fun back(){route.value=if(backStack.isEmpty())"home" else backStack.removeAt(backStack.lastIndex)}
     val state=combine(readRequests,today){_,date->date}.flatMapLatest{date->
         combine(repository.dao.bookOverviews(java.time.YearMonth.from(date).toString()),preferences.activeBook,preferences.setupDraft){overviews,id,first->Triple(overviews,overviews.map{it.book}.let{books->books.find{it.id==id&&it.deletedAt==null} ?: books.firstOrNull{!it.archived&&it.deletedAt==null}},first).also{selectedBookMetadata.value=it.second}}
@@ -124,7 +131,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun leaveEntry(bookId:String,keep:Boolean,target:String="home",onDone:()->Unit={}) {
         val draft=entry.value
         execute({
-            entry.value=null
+            entry.value=null;entryBaseline=null;negativeBalanceReview.value=null;entryReview.value=null;reviewRefreshed.value=false
             val previous=backStack.indexOfLast{it==target}
             if(previous>=0)while(backStack.size>previous)backStack.removeAt(backStack.lastIndex) else backStack.clear()
             route.value=target;onDone();if(!keep)execute{repository.collectUnusedMedia()}
@@ -140,10 +147,11 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val today=LocalDate.now(repository.clock)
         val date=scene?.let{today.coerceIn(LocalDate.parse(it.startDate),LocalDate.parse(it.endDate))}?:today
         val merchant=merchantId?.let{id->snapshot.merchants.first{it.id==id&&it.active}}
-        entry.value=EntryDraft(merchant=merchant?.name.orEmpty(),merchantId=merchant?.id,kind=kind,date=date.toString(),accountId=snapshot.entryAccounts(kind).firstOrNull()?.id,activityId=sceneId,treatEnabled=treatFriendId!=null,treatFriends=listOfNotNull(treatFriendId))
-        navigate("category-picker");persistDraft(snapshot.book.id)
+        entry.value=EntryDraft(merchant=merchant?.name.orEmpty(),merchantId=merchant?.id,kind=kind,date=date.toString(),accountId=snapshot.defaultEntryAccount(kind),activityId=sceneId,treatEnabled=treatFriendId!=null,treatFriends=listOfNotNull(treatFriendId))
+        entry.value=snapshot.withRememberedCardPayment(entry.value!!)
+        navigate("category-picker");openDraft(snapshot.book.id)
     }
-    fun resumeEntry(snapshot:BookSnapshot) { entryReturnRoute.value=route.value;entry.value=snapshot.draft;route.value=if(snapshot.draft?.categoryId==null&&snapshot.draft?.kind!=EntryKind.TRANSFER)"category-picker" else "entry";persistDraft(snapshot.book.id) }
+    fun resumeEntry(snapshot:BookSnapshot) { entryBaseline=null;entryReturnRoute.value=route.value;entry.value=snapshot.draft;route.value=if(snapshot.draft?.categoryId==null&&snapshot.draft?.kind!=EntryKind.TRANSFER)"category-picker" else "entry";persistDraft(snapshot.book.id) }
     fun editEntry(snapshot:BookSnapshot,event:EventEntity) {
         if(event.kind==EntryKind.TRANSFER.name){editTransfer(snapshot,event);return}
         entryReturnRoute.value=route.value
@@ -155,18 +163,32 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
             baseAmount=Money(Currency.valueOf(snapshot.book.currency),event.baseMinor).decimal.toPlainString(),date=event.date,cardPaymentChoice=event.cardPaymentChoice,cardPaymentPeriods=event.cardPaymentPeriods?.toString().orEmpty(),cardPaymentMonth=event.cardPaymentMonth.orEmpty(),cardPaymentFee=event.cardPaymentFeeMinor?.let{Money(Currency.valueOf(snapshot.accounts.first{a->a.id==event.accountId}.currency),it).decimal.toPlainString()}.orEmpty(),merchant=event.merchant,merchantId=snapshot.eventMerchants.find{it.eventId==event.id}?.merchantId,note=event.note,historicalIncluded=event.historicalIncluded,originalCurrency=Currency.valueOf(event.currency),
             accountAmount=settlement?.let{Money(Currency.valueOf(it.accountCurrency),it.accountMinor).decimal.toPlainString()}.orEmpty(),
             settlementConfirmed=settlement?.confirmed?:true,settlementDate=settlement?.settlementDate?:event.date,rateSource=settlement?.rateSource?:"manual",rateDate=settlement?.rateDate?:event.date,originalEventId=settlement?.originalEventId,manualRate=settlement?.manualRate.orEmpty(),referenceRates=settlement?.referenceRatesJson?.let{repository.json.decodeFromString(it)}?:emptyList(),activityId=snapshot.eventActivities.find{it.eventId==event.id}?.activityId,occurrenceId=snapshot.occurrences.firstOrNull{it.eventId==event.id&&it.status in listOf("PENDING","COMPLETED")}?.id)
-        navigate("entry");persistDraft(snapshot.book.id)
+        navigate("entry");openDraft(snapshot.book.id)
     }
     fun offerLocatedMerchant(bookId:String,session:String,candidates:List<MerchantCandidate>) {
         val d=entry.value?:return
         val current=(state.value as? AppState.Ready)?.snapshot?.takeIf{it.book.id==bookId}?:return
         val candidate=candidates.singleOrNull()?.takeIf{it.trustworthy}?:return
-        if(d.mediaSession!=session||d.id!=null||d.kind!=EntryKind.EXPENSE||d.merchantManuallyEdited||d.merchant.isNotBlank()||d.merchantId!=null)return
+        if(d.mediaSession!=session||d.id!=null||d.kind!=EntryKind.EXPENSE||d.date!=LocalDate.now(repository.clock).toString()||d.merchantManuallyEdited||d.merchant.isNotBlank()||d.merchantId!=null)return
         val merchant=current.merchants.firstOrNull{it.bookId==bookId&&it.id==candidate.merchant.id&&it.active}?:return
         if(current.merchantLocations.none{it==candidate.location})return
-        changeEntry(bookId,d.copy(merchantId=merchant.id,merchant=merchant.name))
+        changeEntry(bookId,d.copy(merchantId=merchant.id,merchant=merchant.name,merchantLocated=true))
     }
-    fun changeEntry(bookId:String,draft:EntryDraft) {if(savingEntry)return;entry.value=draft;persistDraft(bookId)}
+    fun changeEntry(bookId:String,draft:EntryDraft) {
+        if(savingEntry)return
+        val snapshot=(state.value as? AppState.Ready)?.snapshot?.takeIf{it.book.id==bookId}
+        var next=if(entry.value?.accountId!=draft.accountId&&snapshot!=null)snapshot.withRememberedCardPayment(draft)else draft
+        if(next.date!=LocalDate.now(repository.clock).toString()&&next.merchantLocated&&!next.merchantManuallyEdited)next=next.copy(merchant="",merchantId=null,merchantLocated=false)
+        negativeBalanceReview.value=null;entry.value=next;persistDraft(bookId)
+    }
+    fun switchEntryKind(snapshot:BookSnapshot,kind:EntryKind) {
+        if(savingEntry)return
+        val current=entry.value?:return
+        if(current.id!=null||current.occurrenceId!=null||current.kind==EntryKind.REFUND||current.kind==kind)return
+        val next=if(kind==EntryKind.TRANSFER)snapshot.newTransferDraft(current.date)else snapshot.withRememberedCardPayment(EntryDraft(kind=kind,date=current.date,accountId=snapshot.defaultEntryAccount(kind),activityId=if(kind==EntryKind.EXPENSE)snapshot.features?.takeIf{it.activityMode}?.activeActivityId else null))
+        entry.value=next.copy(note=current.note,mediaSession=current.mediaSession,mediaInitialized=current.mediaInitialized,attachmentIds=current.attachmentIds,receiptFileIds=current.receiptFileIds)
+        route.value=if(kind==EntryKind.TRANSFER)"entry"else"category-picker";openDraft(snapshot.book.id)
+    }
     fun persistDraft(bookId:String) {
         val original=entry.value?:return
         val snapshot=(state.value as? AppState.Ready)?.snapshot?.takeIf{it.book.id==bookId}
@@ -215,7 +237,8 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
             amount=occurrence.amountMinor?.let{Money(Currency.valueOf(occurrence.currency),it).decimal.toPlainString()}.orEmpty(),
             baseAmount=occurrence.baseMinor?.let{Money(Currency.valueOf(snapshot.book.currency),it).decimal.toPlainString()}.orEmpty(),
             date=LocalDate.now(repository.clock).toString(),merchant=occurrence.name)
-        navigate("entry");persistDraft(snapshot.book.id)
+        entry.value=snapshot.withRememberedCardPayment(entry.value!!)
+        navigate("entry");openDraft(snapshot.book.id)
     }
     fun changeTransferAmount(bookId:String,d:EntryDraft,from:Currency,to:Currency,direction:String) {
         val confirmed=if(direction=="TO")d.toConfirmed else d.fromConfirmed
@@ -227,13 +250,10 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         // Incomplete numeric input leaves the unconfirmed counterpart unknown, never an old estimate.
         changeEntry(bookId,estimated)
     }
-    fun startTransfer(snapshot:BookSnapshot,fromId:String?=null) {
-        val eligible=snapshot.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}
-        val from=eligible.find{it.id==fromId}?:eligible.firstOrNull()
+    fun startTransfer(snapshot:BookSnapshot,fromId:String?=null,toAccountId:String?=null) {
         entryReturnRoute.value=route.value
-        entry.value=EntryDraft(kind=EntryKind.TRANSFER,accountId=from?.id,toAccountId=eligible.firstOrNull{it.id!=from?.id}?.id,
-            date=LocalDate.now(repository.clock).toString(),merchant="")
-        navigate("entry");persistDraft(snapshot.book.id)
+        entry.value=snapshot.newTransferDraft(LocalDate.now(repository.clock).toString(),fromId,toAccountId)
+        navigate("entry");openDraft(snapshot.book.id)
     }
     private fun editTransfer(snapshot:BookSnapshot,event:EventEntity) {
         entryReturnRoute.value=route.value
@@ -248,7 +268,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         entry.value=EntryDraft(reserveId=use?.reserveId,reserveAmount=use?.let{Money(Currency.valueOf(snapshot.book.currency),it.amountMinor).decimal.toPlainString()}.orEmpty(),treatEnabled=treat!=null,treatFriends=snapshot.allocations.filter{it.treatId==treat?.id}.mapNotNull{it.friendId},treatMode=treat?.let{TreatSplitMode.valueOf(it.mode)}?:TreatSplitMode.EQUAL,treatWeights=treat?.let{repository.json.decodeFromString<Map<String,String>>(it.weightsJson)}?:emptyMap(),id=event.id,kind=EntryKind.TRANSFER,accountId=event.accountId,toAccountId=toAccountId,
             amount=Money(Currency.valueOf(event.currency),event.amountMinor).decimal.toPlainString(),
             toAmount=Money(Currency.valueOf(toCurrency),transfer?.toMinor?:toPosting?.deltaMinor?:0).decimal.toPlainString(),
-            date=event.date,toDate=transfer?.toDate?:toPosting?.date?:event.date,
+            cardPaymentChoice=event.cardPaymentChoice,cardPaymentPeriods=event.cardPaymentPeriods?.toString().orEmpty(),cardPaymentMonth=event.cardPaymentMonth.orEmpty(),cardPaymentFee=event.cardPaymentFeeMinor?.let{Money(Currency.valueOf(event.currency),it).decimal.toPlainString()}.orEmpty(),date=event.date,toDate=transfer?.toDate?:toPosting?.date?:event.date,
             fromConfirmed=transfer?.fromConfirmed?:sourcePosting?.confirmed?:false,toConfirmed=transfer?.toConfirmed?:toPosting?.confirmed?:false,
             merchant=event.merchant,merchantId=snapshot.eventMerchants.find{it.eventId==event.id}?.merchantId,note=event.note,rateSource=snapshot.settlements.firstOrNull{it.eventId==event.id}?.rateSource?:"manual",referenceRates=snapshot.settlements.firstOrNull{it.eventId==event.id}?.referenceRatesJson?.let{repository.json.decodeFromString(it)}?:emptyList(),manualRate=transfer?.manualRate.orEmpty(),rateDate=transfer?.rateDate?:event.date,
             feeAmount=component?.let{Money(Currency.valueOf(it.originalCurrency),it.originalMinor).decimal.toPlainString()}.orEmpty(),
@@ -257,7 +277,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
             feeBaseAmount=component?.let{Money(Currency.valueOf(snapshot.book.currency),it.baseMinor).decimal.toPlainString()}.orEmpty(),
             feePosition=component?.let{TransferFeePosition.valueOf(it.position)}?:TransferFeePosition.INCLUDED_FROM,
             feeAccountId=component?.accountId,feeDate=component?.date?:event.date,feeConfirmed=component?.confirmed?:false)
-        navigate("entry");persistDraft(snapshot.book.id)
+        navigate("entry");openDraft(snapshot.book.id)
     }
     fun startRefund(snapshot:BookSnapshot,original:EventEntity) {
         val settlement=snapshot.settlements.find{it.eventId==original.id}
@@ -273,7 +293,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
             accountAmount=Money(Currency.valueOf(account.currency),proportion(settlement?.accountMinor?:original.amountMinor)).decimal.toPlainString(),
             baseAmount=Money(Currency.valueOf(snapshot.book.currency),proportion(original.baseMinor)).decimal.toPlainString(),
             date=LocalDate.now(repository.clock).toString(),merchant=original.merchant)
-        navigate("entry");persistDraft(snapshot.book.id)
+        navigate("entry");openDraft(snapshot.book.id)
     }
     fun confirmActual(snapshot:BookSnapshot,event:EventEntity) {
         editEntry(snapshot,event)
@@ -294,7 +314,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         }
     }
     private fun entrySaved(bookId:String,d:EntryDraft) {
-        entryReview.value=null;reviewRefreshed.value=false
+        negativeBalanceReview.value=null;entryBaseline=null;entryReview.value=null;reviewRefreshed.value=false
         entry.value=null;backStack.clear();route.value=if(entryReturnRoute.value=="statements")"statements"else"ledger"
         execute{repository.collectUnusedMedia()}
         notice.value=AppNotice(++noticeSequence,bookId,if(d.id==null)"记录已保存" else "修改已保存到原条目",if(d.id==null)"記録を保存しました" else "元の記録に変更を保存")
@@ -306,14 +326,30 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         savingEntry=true
         var saved=false
         var review:LedgerChangeReview?=null
-        execute(onSuccess={if(saved)entrySaved(bookId,d)else {entryReview.value=review;reviewRefreshed.value=false}},onComplete={savingEntry=false}) {
+        var negative:PendingEntrySave?=null
+        execute(onSuccess={if(saved)entrySaved(bookId,d)else {negativeBalanceReview.value=negative;entryReview.value=review;reviewRefreshed.value=false}},onComplete={savingEntry=false}) {
             val old=d.id?.let{repository.dao.event(bookId,it)}
             val account=repository.dao.account(bookId,d.accountId?:"")
             val linked=old?.let{repository.dao.refunds(bookId,it.id)}.orEmpty()
             val settlement=old?.let{repository.dao.settlement(bookId,it.id)}
             val needsReview=d.occurrenceId!=null || d.activityId!=null || d.kind in listOf(EntryKind.REFUND,EntryKind.TRANSFER) || old!=null&&(old.currency!=account?.currency || account?.currency!=repository.dao.book(bookId)?.currency || linked.isNotEmpty() || settlement?.confirmed==false || repository.dao.eventActivity(bookId,old.id)!=null)
-            if(needsReview)review=repository.previewEntry(bookId,d)else {repository.saveEntry(bookId,d);saved=true}
+            val prepared=repository.previewEntry(bookId,d)
+            if(prepared.negativeBalanceChanges().isNotEmpty())negative=PendingEntrySave(prepared,needsReview)
+            else if(needsReview)review=prepared else {
+                saved=repository.commitEntryReview(bookId,prepared)!=null
+                if(!saved){val fresh=repository.previewEntry(bookId,d);if(fresh.negativeBalanceChanges().isNotEmpty())negative=PendingEntrySave(fresh,false)else review=fresh}
+            }
         }
+    }
+    fun dismissNegativeBalance(){if(!savingEntry)negativeBalanceReview.value=null}
+    fun confirmNegativeBalance(bookId:String) {
+        val pending=negativeBalanceReview.value?:return
+        if(savingEntry)return
+        if(pending.needsReview){negativeBalanceReview.value=null;entryReview.value=pending.review;reviewRefreshed.value=false;return}
+        val d=entry.value?:return
+        savingEntry=true
+        var saved=false;var stale=false
+        execute(onSuccess={negativeBalanceReview.value=null;if(saved)entrySaved(bookId,d)},onComplete={savingEntry=false;if(stale)saveEntry(bookId)}){saved=repository.commitEntryReview(bookId,pending.review)!=null;stale=!saved}
     }
     fun confirmEntryReview(bookId:String) {
         if(savingEntry)return
@@ -322,7 +358,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         savingEntry=true
         var saved=false
         var refreshed:LedgerChangeReview?=null
-        execute(onSuccess={if(saved)entrySaved(bookId,d)else {entryReview.value=refreshed;reviewRefreshed.value=true}},onComplete={savingEntry=false}) {
+        execute(onSuccess={if(saved)entrySaved(bookId,d)else {entryReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isEmpty()};negativeBalanceReview.value=refreshed?.takeIf{it.negativeBalanceChanges().isNotEmpty()}?.let{PendingEntrySave(it,true)};reviewRefreshed.value=true}},onComplete={savingEntry=false}) {
             saved=repository.commitEntryReview(bookId,review)!=null
             if(!saved)refreshed=repository.previewEntry(bookId,d)
         }

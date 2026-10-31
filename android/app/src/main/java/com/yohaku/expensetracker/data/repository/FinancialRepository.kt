@@ -109,7 +109,7 @@ suspend fun LedgerRepository.previewManualFinancialPlan(bookId:String,input:Manu
     require(!input.opening||input.sourceEventId==null)
     input.sourceEventId?.let{eventId->
         val event=state.ledger.visibleEvents.firstOrNull{it.id==eventId}
-        require(event!=null&&event.accountId==account.id&&event.kind==(if(account.type==AccountType.CREDIT.name)EntryKind.EXPENSE.name else EntryKind.BORROWING.name)){"请选择本账户的消费或借入记录 / この口座の支出・借入記録を選択してください"}
+        require(event!=null&&event.accountId==account.id&&event.isFinancialSource(account)){"请选择本账户的消费或借入记录 / この口座の支出・借入記録を選択してください"}
         require(state.finance.plans.none{it.active&&it.sourceEventId==eventId}){"该记录已有计划 / この記録には既にプランがあります"}
     }
     input.sourceEventId?.let{source->state.finance.contracts.firstOrNull{it.fundingEventId==source}?.let{contract->

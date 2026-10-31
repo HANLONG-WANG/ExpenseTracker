@@ -1,7 +1,7 @@
 package com.yohaku.expensetracker.ui.features
 
 import com.yohaku.expensetracker.data.files.StatementRow
-import com.yohaku.expensetracker.data.repository.BookSnapshot
+import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import kotlinx.serialization.Serializable
 
@@ -37,8 +37,8 @@ internal fun AppViewModel.startStatementSupplement(s:BookSnapshot,seed:Statement
                 rateSource="statement",rateDate=seed.postedDate,note=row.summary,merchant=original?.merchant.orEmpty())
         }
         EntryKind.TRANSFER -> {
-            require(account in funds)
             val outgoing=row.direction=="out"
+            require(if(outgoing)account in s.transferSources()else account in funds){"转出可选资金账户或信用卡，转入须为资金账户 / 出金は資金口座・カード、入金は資金口座を選択してください"}
             EntryDraft(kind=EntryKind.TRANSFER,accountId=if(outgoing)account.id else null,
                 toAccountId=if(outgoing)null else account.id,amount=if(outgoing)row.settlement.amount else "",
                 toAmount=if(outgoing)""else row.settlement.amount,date=seed.postedDate,toDate=seed.postedDate,
@@ -47,9 +47,9 @@ internal fun AppViewModel.startStatementSupplement(s:BookSnapshot,seed:Statement
         else->error("请选择对应金融表单 / 対応する金融フォームを選択してください")
     }
     entryReturnRoute.value=route.value
-    entry.value=d
+    entry.value=s.withRememberedCardPayment(d)
     navigate(if(d.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))"category-picker"else "entry")
-    persistDraft(s.book.id)
+    persistDraft(s.book.id);markEntryBaseline()
 }
 
 @Serializable

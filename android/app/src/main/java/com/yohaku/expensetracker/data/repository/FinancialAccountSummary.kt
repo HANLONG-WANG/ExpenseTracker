@@ -28,7 +28,7 @@ fun BookSnapshot.financialAccountSummary(finance:FinancialGraph,accountId:String
     }.sortedWith(compareBy<FinancialStatementRow>{it.bill.date}.thenBy{it.plan.name}.thenBy{it.bill.number})
     val sources=plans.mapNotNull{it.sourceEventId}.toSet()+plans.filter{it.origin=="POOL"}.flatMap{poolInput(it)?.facts?.sources.orEmpty().mapNotNull{source->source.eventId}}
 
-    val unplanned=visibleEvents.filter{it.accountId==accountId&&it.kind in listOf(EntryKind.EXPENSE.name,EntryKind.BORROWING.name)&&!it.historicalIncluded&&it.id !in sources&&financialSourcePrincipal(it.id,accountId)?.minor?.let{n->n>0}==true}
+    val unplanned=visibleEvents.filter{it.accountId==accountId&&it.isFinancialSource(accounts.first{a->a.id==accountId})&&!it.historicalIncluded&&it.id !in sources&&financialSourcePrincipal(it.id,accountId)?.minor?.let{n->n>0}==true}
     val opening=finance.plans.filter{it.accountId==accountId&&it.origin=="OPENING"&&(it.active||finance.arrangements.any{a->a.originalPlanId==it.id})&&finance.arrangements.none{a->a.targetPlanId==it.id}}.map{it.principalMinor}.knownTotal()
     val poolOpening=plans.filter{it.origin=="POOL"}.mapNotNull{poolInput(it)?.openingMinor}.fold(0L,::addExact)
     val unassigned=opening?.let{subtractExact(account.openingMinor,addExact(it,poolOpening))}

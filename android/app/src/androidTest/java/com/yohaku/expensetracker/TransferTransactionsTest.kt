@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.finance.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import org.junit.*
@@ -20,7 +21,7 @@ class TransferTransactionsTest {
     private lateinit var source:String
     @Before fun open()=runBlocking {
         db=Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext,YohakuDatabase::class.java).build()
-        repo=LedgerRepository(db);book=repo.createBook("换汇",Currency.JPY)
+        repo=LedgerRepository(db,java.time.Clock.fixed(java.time.Instant.parse("2026-10-20T00:00:00Z"),java.time.ZoneOffset.UTC));book=repo.createBook("换汇",Currency.JPY)
         source=repo.saveAccount(book,"银行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,100000),"2026-09-01")
     }
     @After fun close(){db.close()}
@@ -81,5 +82,42 @@ class TransferTransactionsTest {
         val after=repo.json.decodeFromString<LedgerDetails>(revision.afterDetailsJson!!)
         assertEquals(750L,before.components.single().amountMinor);assertTrue(after.components.isEmpty())
         assertEquals(2,snapshot().postings.size)
+    }
+    @Test fun creditTopUpIncreasesDebtPredictsFullSourceAndUsesCreditLimit()=runBlocking<Unit> {
+        val card=repo.saveAccount(book,"信用卡",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,0),"2026-09-01")
+        val ic=repo.saveAccount(book,"交通卡",AccountType.IC,Currency.JPY,Money(Currency.JPY,0),"2026-09-01")
+        val rule=FinancialRuleVersion("",book,card,FinanceMode.SINGLE,"2026-09-01","Asia/Tokyo",BillingRule(31,true,1,10,source))
+        repo.commitFinancialRule(repo.previewFinancialRule(book,card,rule))
+        val limit=CreditLimitInput(card,10000,null,null,CreditLimitSharing.TOTAL_ONLY,null,"2026-10-01","2026-10-01",0,null,null,LimitRecovery.PAYMENT_DATE,CreditLimitUsageBasis.PRINCIPAL_ONLY,"Asia/Tokyo",CreditLimitUsageStart.TRANSACTION_DATE)
+        assertTrue(repo.commitCreditLimit(repo.previewCreditLimit(book,limit)))
+        val d=EntryDraft(kind=EntryKind.TRANSFER,accountId=card,toAccountId=ic,amount="2100",toAmount="2000",date="2026-10-20",fromConfirmed=true,toConfirmed=true,feeAmount="100",cardPaymentChoice="SINGLE")
+        val id=save(d);val s=snapshot();val finance=db.financialDao().graph(book).first()!!
+        assertEquals(2100L,balance(card));assertEquals(2000L,balance(ic));assertEquals(100000L,balance(source))
+        assertEquals(2100L,s.postings.single{it.accountId==card}.deltaMinor);assertEquals(100L,s.monthExpense("2026-10"))
+        val plan=finance.plans.single{it.sourceEventId==id&&it.active};assertEquals("CARD_ENTRY",plan.origin);assertEquals(2100L,plan.principalMinor)
+        assertEquals(2100L,finance.bills.single{it.planId==plan.id&&it.active}.principalMinor)
+        assertEquals(2100L,accountCreditLimit(s,finance,db.creditLimitDao().graph(book).first()!!,card,"2026-10-20").total.usedMinor)
+        assertEquals("out",s.reconciliationPostings().single{it.accountId==card}.direction)
+        val timeline=s.cashTimeline(finance,java.time.LocalDate.parse("2026-10-20"),java.time.LocalDate.parse("2026-11-30"))
+        assertTrue(timeline.steps.any{it.item.kind=="BILL"&&it.item.accountId==source&&it.item.accountDeltaMinor==-2100L})
+        save(d.copy(id=id,amount="3100",toAmount="3000"))
+        val updated=db.financialDao().graph(book).first()!!;assertEquals(3100L,updated.plans.single{it.active&&it.sourceEventId==id}.principalMinor)
+        val loan=repo.saveAccount(book,"贷款",AccountType.LOAN,Currency.JPY,Money(Currency.JPY,0),"2026-09-01")
+        assertThrows(IllegalArgumentException::class.java){runBlocking{repo.previewEntry(book,d.copy(accountId=loan))}}
+        assertThrows(IllegalArgumentException::class.java){runBlocking{repo.previewEntry(book,d.copy(accountId=source,toAccountId=card))}}
+    }
+    @Test fun editedSaveTimeDrivesAccountMemoryAndReviewUsesNetBalanceChange()=runBlocking<Unit> {
+        val other=repo.saveAccount(book,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,0),"2026-09-01")
+        val category=repo.saveCategory(book,"餐饮",EntryKind.EXPENSE,null)
+        val first=EntryDraft(accountId=other,categoryId=category,amount="100",date="2026-10-01")
+        val id=repo.saveEntry(book,first)
+        repo.saveEntry(book,first.copy(accountId=source,date="2026-10-20"))
+        val later=LedgerRepository(db,java.time.Clock.fixed(java.time.Instant.parse("2026-10-21T00:00:00Z"),java.time.ZoneOffset.UTC))
+        later.saveEntry(book,first.copy(id=id,amount="200"))
+        assertEquals(other,snapshot().defaultEntryAccount(EntryKind.EXPENSE))
+        val decreasing=repo.previewEntry(book,first.copy(id=id,amount="300")).negativeBalanceChanges().single()
+        assertEquals(-200L,decreasing.before);assertEquals(-300L,decreasing.after)
+        assertTrue(repo.previewEntry(book,first.copy(id=id,amount="50")).negativeBalanceChanges().isEmpty())
+        assertTrue(snapshot().eventSaveTimes.getValue(id)>repo.clock.millis())
     }
 }

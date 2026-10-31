@@ -74,13 +74,14 @@ class EntryLifecycleFlowTest {
                 ui.waitUntil(10000){vm.route.value=="home"}
                 ui.onAllNodesWithTag("record-cover").assertCountEquals(0)
                 assertEquals(8700L,current()!!.balance(current()!!.accounts.first{it.id==bank}))
-                ui.runOnIdle{vm.navigate("ledger")}
+                ui.runOnIdle{vm.navigate("home")}
                 ui.revealOnPage("event-$event");tap("event-$event");tap("record-trash-preview")
                 ui.waitUntil(10000){ui.onAllNodesWithTag("confirm-entry-lifecycle").fetchSemanticsNodes().isNotEmpty()}
                 ui.onNodeWithTag("impact-budget").performScrollTo().onChildren().onLast().assertTextEquals("¥9,200 → ¥10,000")
                 shot("$theme-$language-trash");tap("confirm-entry-lifecycle")
                 ui.waitUntil(10000){current()?.visibleEvents?.size==1&&!vm.busy.value}
                 assertEquals(9500L,current()!!.balance(current()!!.accounts.first{it.id==bank}))
+                assertEquals("ledger",vm.route.value);ui.runOnIdle{vm.back()};assertEquals("home",vm.route.value);ui.onNodeWithTag("record-cover").assertDoesNotExist()
                 ui.runOnIdle{vm.navigate("trash")}
                 tap("restore-$event")
                 ui.onNodeWithTag("impact-balance-$bank").performScrollTo().onChildren().onLast().assertTextEquals("¥9,500 → ¥8,700")

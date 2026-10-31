@@ -73,6 +73,7 @@ class ThemeControlsTest {
             ui.onNodeWithTag("category-kind-EXPENSE").assertIsSelected()
             ui.onNodeWithTag("category-kind-INCOME").performClick().assertIsSelected()
             assertEquals(EntryKind.INCOME,kind.value)
+            ui.onNodeWithTag("category-kind-TRANSFER").performClick().assertIsSelected();assertEquals(EntryKind.TRANSFER,kind.value)
             ui.onNodeWithTag("category-kind-EXPENSE").performClick().assertIsSelected()
         }
     }
@@ -218,6 +219,9 @@ class ThemeControlsTest {
             ui.runOnIdle{brand.value=false;header.value=true}
             capture(id+"-header")
             ui.onNodeWithTag("header-book").assertIsDisplayed()
+            val headerBounds=ui.onNodeWithTag("app-header").fetchSemanticsNode().boundsInRoot
+            val bookBounds=ui.onNodeWithTag("header-book").fetchSemanticsNode().boundsInRoot
+            assertEquals(headerBounds.center.x,bookBounds.center.x,1f)
             ui.onNodeWithTag("header-settings").assertIsDisplayed()
             ui.runOnIdle{header.value=false}
             ui.onNodeWithTag("date-field-0").performScrollTo().performClick()
@@ -268,6 +272,7 @@ class ThemeControlsTest {
                 YButton("保存记录 / 記録を保存",{clicks.value++},Modifier.testTag("primary-button"),primary=true)
                 YButton("取消 / 取り消す",{},Modifier.fillMaxWidth().testTag("outline-button"))
                 YButton("保存中 / 保存中",{clicks.value++},Modifier.testTag("disabled-button"),primary=true,enabled=false)
+                YActionRow{YButton("放弃修改",{});YButton("继续编辑",{})}
             }
         }}
         for(t in testLooks(this@ThemeControlsTest).map { it.first }.distinct()){

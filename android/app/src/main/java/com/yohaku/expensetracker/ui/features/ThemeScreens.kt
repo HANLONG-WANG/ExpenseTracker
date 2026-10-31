@@ -101,7 +101,7 @@ import java.time.YearMonth
             YLink(word("确认 / 管理周期账单","定期支払を確認・管理"),onRecurring,arrow=true)
         }
         ThemeSection(word("最近的几笔","最近の記録"),"DAILY NOTES",word("全部流水","すべて"),{navigate("ledger")},pageGap=15)
-        val recentExpenses=s.visibleEvents.filter{it.kind=="EXPENSE"}.take(3)
+        val recentExpenses=s.visibleEvents.filter{it.kind=="EXPENSE"}.take(5)
         TransactionList(s,recentExpenses,onEvent,emptyContent={YEmpty(word("分类由你创建，记第一笔就开始。","カテゴリは自分で作成。最初の一筆から。"),onAdd,word("记一笔","記録"))})
         ThemeSection(word("钱够不够，还要看账户。","支払いは、口座残高も。"),"REAL FUNDS",pageGap=15)
         Box(Modifier.padding(top=3.dp)){HomeCashNote(Currency.entries.mapNotNull{c->val accounts=s.accounts.filter{it.currency==c.name&&!AccountType.valueOf(it.type).debt};if(accounts.isEmpty())null else Money(c,accounts.sumOf{s.cashBalanceAt(it,today.toString())}).display()},{navigate("accounts")})}
