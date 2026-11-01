@@ -23,7 +23,7 @@ import com.yohaku.expensetracker.ui.theme.*
             val currency=Currency.valueOf(value.months.first().first.currency.name)
             fun money(n:Long)=Money(currency,n).display()
             if(refreshed)YText(word("资料已变化，请按当前影响重新确认。","情報が変わりました。現在の影響を再確認してください。"),12)
-            RecordFacts(listOf(word("保留消费（含回收）","保持する支出（ごみ箱を含む）") to value.recordCount.toString(),word("保留互请历史","保持するごちそう履歴") to value.treatCount.toString(),word("解除未用预留","未使用の確保を解除") to money(value.releasedMinor),word("停止周期规则 / 未完成安排","停止する定期ルール・未完了予定") to "${value.before.recurrences.count{it.activityId==a.id&&it.active}} / ${value.cancelledCount}"),audit=true)
+            RecordFacts(listOf(word("保留消费（含回收）","保持する支出（ごみ箱を含む）") to value.recordCount.toString(),word("转为日常的模板","日常に変更するテンプレート") to value.templateCount.toString(),word("保留互请历史","保持するごちそう履歴") to value.treatCount.toString(),word("解除未用预留","未使用の確保を解除") to money(value.releasedMinor),word("停止周期规则 / 未完成安排","停止する定期ルール・未完了予定") to "${value.before.recurrences.count{it.activityId==a.id&&it.active}} / ${value.cancelledCount}"),audit=true)
             YText(word("从活动列表和新记录选择中移除；已有消费回归日常，各历史月份重新计入月预算。消费、账户资金、附件和原记录ID保留，不转移互请到其他活动。","通常のシーン一覧と新規選択から除外。既存の支出は日常に戻し、各月の予算へ再計上します。支出・口座資金・添付・元の記録IDを保持し、ごちそうを他のシーンへ移しません。"),12)
             if(value.draftConverted)YText(word("未保存的新记录草稿将改为日常，移除活动、预留、周期和互请选择，其他输入保留。","未保存の新規下書きを日常に変更し、シーン・確保・定期予定・ごちそうの選択を解除。他の入力は保持します。"),12)
             value.months.forEach{(before,after)->

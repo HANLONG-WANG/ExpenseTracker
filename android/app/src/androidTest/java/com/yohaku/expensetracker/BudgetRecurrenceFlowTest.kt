@@ -25,7 +25,8 @@ import java.time.*
 
 @RunWith(AndroidJUnit4::class)
 class BudgetRecurrenceFlowTest {
-    @get:Rule val ui=createComposeRule()
+    @get:Rule(order=0) val ui=createComposeRule()
+    @get:Rule(order=1) val failureArtifacts=RegressionFailureArtifacts(ui)
     private lateinit var db:YohakuDatabase
     private lateinit var repo:LedgerRepository
     private lateinit var vm:AppViewModel
@@ -54,6 +55,76 @@ class BudgetRecurrenceFlowTest {
             automation.waitForIdle(100,5000)
             val screen=automation.takeScreenshot()
             File(file.parentFile,"$name-screen.png").outputStream().use{screen.compress(Bitmap.CompressFormat.PNG,100,it)};screen.recycle()
+        }
+    }
+    @Test fun oneTapConfirmationPreservesDraftAndTemplatesOpenAtAmount() {
+        for((theme,language) in testLooks(this@BudgetRecurrenceFlowTest)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            val (book,occurrence,template)=runBlocking {
+                val book=repo.createBook("Presets $theme $language",Currency.JPY,theme,language,startDate="2026-10-01",budgetMinor=100000)
+                repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+                val account=repo.saveAccount(book,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,50000),"2026-10-01")
+                val category=repo.saveCategory(book,"生活",EntryKind.EXPENSE,null)
+                val merchant=repo.saveMerchant(book,"お店")
+                repo.saveRecurrence(book,RecurrenceInput("月額",account,category,Money(Currency.JPY,2000),null,false,RecurrenceFrequency.MONTHLY,"2026-10-01",merchant="お店",merchantId=merchant,note="定期"))
+                val template=repo.saveTemplate(book,TemplateInput("水",EntryKind.EXPENSE,category,account,Currency.JPY,merchant="お店",merchantId=merchant,note="いつもの"))
+                repo.saveTemplate(book,TemplateInput("バス",EntryKind.EXPENSE,category,account,Currency.JPY,amountMinor=220))
+                repo.saveDraft(book,EntryDraft(accountId=account,categoryId=category,amount="777",merchant="未保存"))
+                vm.preferences.select(book)
+                Triple(book,repo.snapshot(repo.dao.book(book)!!).first().pendingOccurrences().single(),template)
+            }
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.navigate("recurring")}
+            ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").performScrollTo().performClick()
+            ui.waitUntil(10000){vm.occurrenceConfirmation.value?.review!=null}
+            assertNull(vm.entry.value)
+            assertEquals("2026-10-01",vm.occurrenceConfirmation.value!!.draft.date)
+            ui.onNodeWithTag("occurrence-confirmation").assert(hasAnyDescendant(hasText(if(theme=="objects")"10/01" else "2026-10-01")))
+            shot("$theme-$language-recurring-one-tap",true)
+            // A changed source must refresh the preview before the user can commit it.
+            runBlocking{repo.dao.putAccount(repo.dao.account(book,occurrence.accountId)!!.copy(name="銀行 更新"))}
+            sheetTarget(ui.onNodeWithTag("occurrence-confirm-save")).performClick()
+            ui.waitUntil(10000){vm.occurrenceConfirmation.value?.let{it.refreshed&&it.review!=null}==true&&!vm.busy.value}
+            assertEquals(0,runBlocking{repo.snapshot(repo.dao.book(book)!!).first().events.size})
+            sheetTarget(ui.onNodeWithTag("occurrence-confirm-save")).performClick()
+            ui.waitUntil(10000){vm.occurrenceConfirmation.value==null&&!vm.busy.value}
+            assertEquals("recurring",vm.route.value)
+            val paid=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+            assertEquals("2026-10-01",paid.events.single().date);assertEquals("お店",paid.events.single().merchant);assertEquals("定期",paid.events.single().note)
+            assertEquals("COMPLETED",paid.occurrences.single().status);assertEquals(0L,paid.budgetProjection("2026-10").reserveMinor)
+            assertEquals("777",paid.draft!!.amount)
+            runBlocking{repo.clearDraft(book)}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.draft==null}
+            ui.runOnIdle{vm.navigate("home")}
+            ui.onNodeWithTag("home-shortcuts").performScrollTo()
+            shot("$theme-$language-home-templates",false,false)
+            ui.onNodeWithTag("home-shortcuts").performScrollTo()
+            ui.waitForIdle()
+            ui.onNodeWithTag("use-template-$template").performClick()
+            ui.waitUntil(10000){vm.entry.value?.merchant=="お店"&&!vm.busy.value}
+            ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY").assertIsFocused()
+            assertFalse(vm.entryHasManualInput())
+            ui.onNodeWithTag("sheet-close").performClick()
+            ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.draft==null}
+            assertEquals("home",vm.route.value)
+            ui.onNodeWithTag("home-shortcuts").performScrollTo()
+            ui.waitForIdle()
+            ui.onNodeWithTag("use-template-$template").performClick()
+            ui.waitUntil(10000){vm.entry.value!=null&&!vm.busy.value}
+            sheetTarget(ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY")).performTextReplacement("150")
+            shot("$theme-$language-template-entry",true)
+            ui.onNodeWithTag("entry-save-template").performScrollTo()
+            shot("$theme-$language-template-entry-footer",true,false)
+            sheetTarget(ui.onNodeWithTag("entry-save-button")).performClick()
+            ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+            val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+            val entry=after.events.single{it.id!=paid.events.single().id}
+            assertEquals(150L,entry.amountMinor);assertEquals("2026-10-14",entry.date);assertEquals("いつもの",entry.note)
+            assertEquals(occurrence.accountId,entry.accountId);assertEquals(occurrence.categoryId,entry.categoryId)
+            assertEquals(after.templates.single{it.id==template}.merchantId,after.eventMerchants.single{it.eventId==entry.id}.merchantId)
+            ui.runOnIdle{vm.navigate("templates")}
+            ui.onNodeWithTag("template-$template").assertExists()
+            shot("$theme-$language-template-management",false)
         }
     }
     @Test fun homeAndRecurringOverviewUseTheSameBudgetAndFutureTasks() {
@@ -203,6 +274,7 @@ class BudgetRecurrenceFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("recurring")}
             ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").performScrollTo().performClick()
+            sheetTarget(ui.onNodeWithTag("occurrence-confirm-edit")).performClick()
             val original=text("消费 / 收付原币","取引の原通貨")
             sheetTarget(ui.onNodeWithTag("select-trigger-$original")).performClick()
             sheetTarget(ui.onNodeWithTag("select-option-$original-${Currency.entries.indexOf(Currency.USD)}")).performClick()
@@ -254,6 +326,7 @@ class BudgetRecurrenceFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("recurring")}
             ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").performScrollTo().performClick()
+            sheetTarget(ui.onNodeWithTag("occurrence-confirm-edit")).performClick()
             ui.waitUntil(10000){vm.entry.value?.occurrenceId==occurrence.id}
             val amount=ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY")
             amount.performScrollTo().performClick().performTextReplacement("2300")
@@ -299,6 +372,7 @@ class BudgetRecurrenceFlowTest {
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("recurring")}
             ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").performScrollTo().performClick()
+            sheetTarget(ui.onNodeWithTag("occurrence-confirm-edit")).performClick()
             ui.waitUntil(10000){vm.entry.value?.occurrenceId==occurrence.id}
             ui.onNodeWithTag("occurrence-payment-context").assert(hasAnyDescendant(hasText("2026-10-01")))
             ui.onNodeWithTag("occurrence-payment-context").assert(hasAnyDescendant(hasText("¥2,000")))
@@ -307,7 +381,7 @@ class BudgetRecurrenceFlowTest {
             amount.performScrollTo().performClick().performTextReplacement("2300")
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
             ui.onNodeWithText(text("实际付款日期","実際の支払日")).performScrollTo().assertExists()
-            assertEquals("2026-10-14",vm.entry.value!!.date)
+            assertEquals("2026-10-01",vm.entry.value!!.date)
             ui.onNodeWithTag("entry-save-button").performScrollTo()
             ui.onNodeWithTag("occurrence-payment-note").assertExists()
             shot("$theme-$language-recurring-payment-footer",true,false)
@@ -320,7 +394,7 @@ class BudgetRecurrenceFlowTest {
             tap(text("确认并保存","確認して保存"))
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
-            assertEquals(1,after.events.size);assertEquals("2026-10-14",after.events.single().date)
+            assertEquals(1,after.events.size);assertEquals("2026-10-01",after.events.single().date)
             assertEquals(47700L,after.balance(after.accounts.single()));assertEquals(0L,after.budgetProjection("2026-10").reserveMinor)
             assertEquals(occurrence.id,after.occurrences.single().id);assertEquals(2000L,after.occurrences.single().amountMinor)
             assertEquals("COMPLETED",after.occurrences.single().status)
@@ -382,6 +456,7 @@ class BudgetRecurrenceFlowTest {
             ui.onNodeWithTag("occurrence-${occurrence.id}").performScrollTo()
             shot("$theme-$language-recurring-card",false,false)
             ui.onNodeWithTag("confirm-occurrence-${occurrence.id}").performScrollTo().performClick()
+            sheetTarget(ui.onNodeWithTag("occurrence-confirm-edit")).performClick()
             ui.waitUntil(10000){vm.entry.value?.occurrenceId==occurrence.id}
             ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY").performScrollTo().performTextReplacement("21000")
             tap(text("确认付款并解除预留","支払を確認して予定を解除"))

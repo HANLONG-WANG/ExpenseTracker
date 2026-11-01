@@ -18,6 +18,7 @@ sealed interface AppState {
     data class Ready(val books:List<BookEntity>,val snapshot:BookSnapshot?,val firstSetup:SetupDraft?=null,val overviews:List<BookOverview> = emptyList()):AppState
     data class Failure(val message:String):AppState
 }
+data class OccurrenceConfirmation(val bookId:String,val occurrenceId:String,val draft:EntryDraft,val foreignCurrency:Boolean,val review:LedgerChangeReview?=null,val issue:String?=null,val refreshed:Boolean=false,val confirmingNegative:Boolean=false)
 data class PendingEntrySave(val review:LedgerChangeReview,val needsReview:Boolean)
 data class MediaImportProgress(val session:String,val current:Int,val total:Int)
 data class MediaImportOption(val session:String,val preserveOriginal:Boolean)
@@ -39,6 +40,9 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     internal val activeFinancialDraft=MutableStateFlow<FinancialDraftSession?>(null)
     internal val financialDraftSessions=java.util.concurrent.ConcurrentHashMap<String,FinancialDraftSession>()
     val entry=MutableStateFlow<EntryDraft?>(null)
+    val occurrenceConfirmation=MutableStateFlow<OccurrenceConfirmation?>(null)
+    val amountFocusSession=MutableStateFlow<String?>(null)
+    private var occurrencePreviewJob:Job?=null
     val entryReview=MutableStateFlow<LedgerChangeReview?>(null)
     val reviewRefreshed=MutableStateFlow(false)
     val entryReturnRoute=MutableStateFlow("home")
@@ -237,13 +241,60 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
             if(!saved){occurrenceLinkReview.value=repository.previewOccurrenceLink(review.occurrence.bookId,review.occurrence.id,review.event.id);occurrenceLinkRefreshed.value=true}
         }
     }
-    fun startOccurrence(snapshot:BookSnapshot,occurrence:OccurrenceEntity) {
+    fun startTemplate(snapshot:BookSnapshot,template:EntryTemplateEntity) {
         entryReturnRoute.value=route.value
-        entry.value=EntryDraft(kind=EntryKind.EXPENSE,categoryId=occurrence.categoryId,accountId=occurrence.accountId,occurrenceId=occurrence.id,activityId=occurrence.activityId,
-            amount=occurrence.amountMinor?.let{Money(Currency.valueOf(occurrence.currency),it).decimal.toPlainString()}.orEmpty(),
-            baseAmount=occurrence.baseMinor?.let{Money(Currency.valueOf(snapshot.book.currency),it).decimal.toPlainString()}.orEmpty(),
-            date=LocalDate.now(repository.clock).toString(),merchant=occurrence.name)
-        entry.value=snapshot.withRememberedCardPayment(entry.value!!)
+        entry.value=snapshot.templateDraft(template,LocalDate.now(repository.clock).toString())
+        amountFocusSession.value=entry.value!!.mediaSession
+        navigate("entry");openDraft(snapshot.book.id)
+    }
+    fun previewOccurrence(snapshot:BookSnapshot,occurrence:OccurrenceEntity) {
+        val draft=snapshot.occurrenceDraft(occurrence,snapshot.recurrences.first{it.id==occurrence.recurrenceId})
+        occurrenceConfirmation.value=OccurrenceConfirmation(snapshot.book.id,occurrence.id,draft,occurrence.currency!=snapshot.book.currency)
+        refreshOccurrencePreview()
+    }
+    fun changeOccurrenceAmount(amount:String) {
+        val current=occurrenceConfirmation.value?:return
+        if(savingEntry)return
+        // An edited foreign amount invalidates the rule's base-currency estimate.
+        occurrenceConfirmation.value=current.copy(draft=current.draft.copy(amount=amount,baseAmount=if(current.foreignCurrency)""else current.draft.baseAmount),review=null,issue=null,confirmingNegative=false)
+        refreshOccurrencePreview()
+    }
+    private fun refreshOccurrencePreview() {
+        occurrencePreviewJob?.cancel()
+        val current=occurrenceConfirmation.value?:return
+        occurrencePreviewJob=viewModelScope.launch {
+            delay(150)
+            try {
+                require(!current.foreignCurrency||current.draft.baseAmount.isNotBlank()){"请在完整表单中填写本位币金额 / フォームで基準通貨額を入力してください"}
+                require(current.draft.cardPaymentChoice!="DEFERRED"){"指定月付款需要逐笔填写付款月与手续费，请修改后再记 / 指定月払いは支払月と手数料の入力が必要です。編集して記録してください"}
+                val review=withContext(Dispatchers.IO){repository.previewEntry(current.bookId,current.draft)}
+                if(occurrenceConfirmation.value==current)occurrenceConfirmation.value=current.copy(review=review,issue=null)
+            }catch(e:CancellationException){throw e}
+            catch(e:Exception){if(occurrenceConfirmation.value==current)occurrenceConfirmation.value=current.copy(review=null,issue=e.message?:"无法预览，请修改后再记 / プレビューできません。編集して記録してください")}
+        }
+    }
+    fun dismissOccurrenceConfirmation() {if(!savingEntry){occurrencePreviewJob?.cancel();occurrenceConfirmation.value=null}}
+    fun dismissOccurrenceNegative() {if(!savingEntry)occurrenceConfirmation.value=occurrenceConfirmation.value?.copy(confirmingNegative=false)}
+    fun confirmOccurrence(negativeAccepted:Boolean=false) {
+        if(savingEntry)return
+        val current=occurrenceConfirmation.value?:return
+        val review=current.review?:return
+        if(!negativeAccepted&&review.negativeBalanceChanges().isNotEmpty()) {
+            occurrenceConfirmation.value=current.copy(confirmingNegative=true);return
+        }
+        savingEntry=true
+        var saved=false
+        execute(onSuccess={
+            if(saved){occurrenceConfirmation.value=null;notice.value=AppNotice(++noticeSequence,current.bookId,"记录已保存","記録を保存しました")}
+            else {occurrenceConfirmation.value=current.copy(review=null,refreshed=true,confirmingNegative=false);refreshOccurrencePreview()}
+        },onComplete={savingEntry=false}) {
+            saved=repository.commitEntryReview(current.bookId,review,clearDraft=false)!=null
+        }
+    }
+    fun startOccurrence(snapshot:BookSnapshot,occurrence:OccurrenceEntity,amount:String?=null,baseAmount:String?=null) {
+        entryReturnRoute.value=route.value
+        val initial=snapshot.occurrenceDraft(occurrence,snapshot.recurrences.first{it.id==occurrence.recurrenceId})
+        entry.value=initial.copy(amount=amount?:initial.amount,baseAmount=baseAmount?:initial.baseAmount)
         navigate("entry");openDraft(snapshot.book.id)
     }
     fun changeTransferAmount(bookId:String,d:EntryDraft,from:Currency,to:Currency,direction:String) {

@@ -37,6 +37,7 @@ import com.yohaku.expensetracker.ui.theme.*
                     word("期初信息","期首情報") to (a.openingDate+" · "+Money(currency,a.openingMinor).display()),
                     word("未清偿的已知账单","既知の未返済請求") to Money(currency,value.knownOutstandingMinor).display(),
                     word("未来一年待处理付款","今後1年の未完了支払") to value.pendingCount.toString(),
+                    word("记账模板引用","記録テンプレートの参照") to (value.usage.references["entry_templates"]?:0).toString(),
                     word("历史记录（含回收）","履歴（ごみ箱を含む）") to value.recordCount.toString(),
                     word("核对资料 / 草稿引用","照合資料・下書き参照") to "${value.usage.references["statement_batches"]?:0} / ${value.usage.draftKeys.size}"
                 ),audit=true)

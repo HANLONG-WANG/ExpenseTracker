@@ -16,6 +16,41 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DatabaseUpgradeTest {
+    @Test fun version33RestoresThroughBackupDatabaseWithFixedPaymentDefaults()=runBlocking {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val name="upgrade-presets-33-34.db";context.deleteDatabase(name)
+        val old=SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name),null)
+        try {
+            val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("com.yohaku.expensetracker.data.db.YohakuDatabase/33.json").bufferedReader().readText()).getJSONObject("database")
+            val entities=schema.getJSONArray("entities")
+            for(i in 0 until entities.length()) {
+                val entity=entities.getJSONObject(i);val table=entity.getString("tableName")
+                old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}",table))
+                val indices=entity.optJSONArray("indices")
+                for(j in 0 until (indices?.length()?:0))old.execSQL(indices!!.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}",table))
+            }
+            val queries=schema.getJSONArray("setupQueries")
+            for(i in 0 until queries.length())old.execSQL(queries.getString(i))
+            old.execSQL("INSERT INTO books (id,name,currency,startDate,theme,language,initialized,budgetMinor,setupStep,archived,deletedAt) VALUES ('b','Existing','JPY','2026-01-01','journal','ja',1,10000,4,0,NULL)")
+            old.execSQL("INSERT INTO accounts (bookId,id,name,type,currency,openingMinor,openingDate,active) VALUES ('b','bank','銀行','BANK','JPY',50000,'2026-01-01',1)")
+            old.execSQL("INSERT INTO categories (bookId,id,name,kind,parentId,favorite,active,icon) VALUES ('b','food','食費','EXPENSE',NULL,0,1,NULL)")
+            old.execSQL("INSERT INTO recurrences (bookId,id,name,accountId,categoryId,currency,amountMinor,baseMinor,estimated,frequency,anchorDate,endDate,active,activityId) VALUES ('b','r','家賃','bank','food','JPY',2000,2000,0,'MONTHLY','2026-10-01',NULL,1,NULL)")
+            old.version=33
+        }finally{old.close()}
+        val db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        try {
+            val repo=LedgerRepository(db)
+            val book=db.dao().book("b")!!;val s=repo.snapshot(book).first();val rule=s.recurrences.single()
+            assertEquals(DATABASE_VERSION,db.openHelper.readableDatabase.version);assertEquals("Existing",book.name)
+            assertEquals(50000L,s.accounts.single().openingMinor);assertEquals(2000L,rule.amountMinor)
+            assertEquals("",rule.merchant);assertEquals("",rule.note);assertNull(rule.merchantId);assertNull(rule.cardPaymentChoice);assertNull(rule.cardPaymentPeriods)
+            assertTrue(s.templates.isEmpty())
+            db.dao().putTemplate(EntryTemplateEntity("b","t","水","EXPENSE","food","bank","JPY",createdAt=1))
+            assertEquals("t",db.dao().templates("b").single().id)
+            db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
+        }finally{db.close();context.deleteDatabase(name)}
+    }
+
     @Test fun version32KeepsLimitRecoveryOnPaymentDay()=runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val name="upgrade-credit-options-32-33.db";context.deleteDatabase(name)
@@ -26,10 +61,10 @@ class DatabaseUpgradeTest {
             db.creditLimitDao().insertConfig(CreditLimitConfigEntity(book,"limit",card,1,"2026-01-01","JPY",10000,null,null,"TOTAL_ONLY",null,"2026-01-01",0,null,null,"{\"movements\":[]}","PAYMENT_DATE","PRINCIPAL_ONLY","TRANSACTION_DATE","Asia/Tokyo",0))
             db.close()
             val old=SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE)
-            try {restoreFixtureTable(old,"room-v32-schema.json","events");restoreFixtureTable(old,"room-v32-schema.json","credit_limit_configs");old.version=32}finally{old.close()}
+            try {old.execSQL("DROP TABLE entry_templates");restoreFixtureTable(old,"room-v32-schema.json","recurrences");restoreFixtureTable(old,"room-v32-schema.json","events");restoreFixtureTable(old,"room-v32-schema.json","credit_limit_configs");old.version=32}finally{old.close()}
             db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
             val config=db.creditLimitDao().graph(book).first()!!.configs.single()
-            assertEquals(33,db.openHelper.readableDatabase.version);assertEquals(0,config.recoveryDelayDays);assertEquals("PAYMENT_DATE",config.recovery)
+            assertEquals(DATABASE_VERSION,db.openHelper.readableDatabase.version);assertEquals(0,config.recoveryDelayDays);assertEquals("PAYMENT_DATE",config.recovery)
             db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
         }finally{db.close();context.deleteDatabase(name)}
     }

@@ -11,7 +11,9 @@ fun BookSnapshot.currentActivityId(eventId:String):String?=activityByEvent[event
 val BookSnapshot.availableActivities get()=activities.filter{it.deletedAt==null}
 class ActivityDeletionReview internal constructor(internal val before:BookSnapshot,internal val after:BookSnapshot,val activity:ActivityEntity,
     val recordCount:Int,val treatCount:Int,val releasedMinor:Long,val cancelledCount:Int,val draftConverted:Boolean,
-    val months:List<Pair<BudgetProjection,BudgetProjection>>,val categoryBudgets:List<CategoryProjectionChange>)
+    val months:List<Pair<BudgetProjection,BudgetProjection>>,val categoryBudgets:List<CategoryProjectionChange>) {
+    val templateCount get()=before.templates.count{it.activityId==activity.id}
+}
 
 suspend fun LedgerRepository.previewActivityDeletion(bookId:String,activityId:String):ActivityDeletionReview=db.withTransaction {
     val s=snapshot(requireNotNull(dao.book(bookId))).first()
@@ -20,6 +22,7 @@ suspend fun LedgerRepository.previewActivityDeletion(bookId:String,activityId:St
     val pendingIds=s.pendingOccurrences().filter{it.activityId==a.id}.map{it.id}.toSet()
     val converted=s.draft?.let{it.id==null&&it.activityId==a.id}==true
     val next=s.copy(activities=s.activities.map{if(it.id==a.id)it.copy(deletedAt=clock.millis())else it},
+        templates=s.templates.map{if(it.activityId==a.id)it.copy(activityId=null)else it},
         recurrences=s.recurrences.map{if(it.activityId==a.id)it.copy(active=false)else it},
         occurrences=s.occurrences.map{if(it.activityId==a.id&&(it.id in pendingIds||it.status=="WITHDRAWN"))it.copy(status="CANCELLED")else it},
         reserves=s.reserves.map{if(it.activityId==a.id)it.copy(active=false)else it},
@@ -38,6 +41,7 @@ suspend fun LedgerRepository.commitActivityDeletion(review:ActivityDeletionRevie
     if(snapshot(requireNotNull(dao.book(b))).first()!=review.before)return@withTransaction false
     val old=review.before;val next=review.after
     dao.putActivity(next.activities.first{it.id==review.activity.id})
+    next.templates.filter{it!=old.templates.find{t->t.id==it.id}}.forEach{dao.putTemplate(it)}
     next.recurrences.filter{it!=old.recurrences.find{r->r.id==it.id}}.forEach{dao.putRecurrence(it)}
     next.occurrences.filter{it!=old.occurrences.find{o->o.id==it.id}}.forEach{dao.putOccurrence(it)}
     next.reserves.filter{it!=old.reserves.find{r->r.id==it.id}}.forEach{dao.putReserve(it)}

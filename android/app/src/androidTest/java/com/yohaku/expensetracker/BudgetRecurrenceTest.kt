@@ -30,6 +30,29 @@ class BudgetRecurrenceTest {
     @After fun close(){db.close()}
     private suspend fun snapshot()=repo.snapshot(repo.dao.book(book)!!).first()
     private suspend fun rule(amount:Long?=20000)=repo.saveRecurrence(book,RecurrenceInput("房租",account,parent,amount?.let{Money(Currency.JPY,it)},null,amount==null,RecurrenceFrequency.MONTHLY,"2026-10-20"))
+    @Test fun templatePersistenceFollowsCategoryMergeAndReferenceLifecycle()=runBlocking {
+        val input=TemplateInput("水",EntryKind.EXPENSE,parent,account,Currency.JPY,cardPaymentChoice="SINGLE")
+        val first=repo.saveTemplate(book,input);val second=repo.saveTemplate(book,input.copy(name="公交",amountMinor=200))
+        assertNull(snapshot().templates.first().cardPaymentChoice) // Non-card accounts clear payment settings.
+        repo.moveTemplate(book,second,-1);assertEquals(listOf(second,first),snapshot().templates.map{it.id})
+        repo.saveTemplate(book,input.copy(id=first,name="饮水"));assertEquals("饮水",snapshot().templates.last().name)
+        val target=repo.saveCategory(book,"日常",EntryKind.EXPENSE,null)
+        val merge=repo.previewCategoryOperation(book,parent,CategoryOperation.MERGE_DELETE,target)
+        assertEquals(2,merge.templateCount);assertTrue(repo.commitCategoryOperation(merge))
+        assertTrue(snapshot().templates.all{it.categoryId==target})
+        assertTrue(repo.previewCategoryOperation(book,target,CategoryOperation.DELETE_EMPTY).deletionBlocked)
+        assertEquals(2,repo.accountUsage(book,account).references["entry_templates"])
+        assertTrue(repo.commitAccountOperation(repo.previewAccountOperation(book,account,AccountOperation.DEACTIVATE)))
+        assertNotNull(snapshot().templateIssue(snapshot().templates.first()))
+        assertTrue(repo.commitAccountOperation(repo.previewAccountOperation(book,account,AccountOperation.ACTIVATE)))
+        repo.setActivityMode(book,true)
+        val activity=repo.saveActivity(book,"旅行","2026-10-01","2026-10-31",null,false)
+        repo.saveTemplate(book,input.copy(id=first,categoryId=target,activityId=activity))
+        val deletion=repo.previewActivityDeletion(book,activity)
+        assertEquals(1,deletion.templateCount);assertTrue(repo.commitActivityDeletion(deletion))
+        assertNull(snapshot().templates.first{it.id==first}.activityId)
+        repo.deleteTemplate(book,second);assertEquals(listOf(first),snapshot().templates.map{it.id})
+    }
     @Test fun budgetActivityExclusionAndPaymentReplaceReservationInsteadOfDoubleCounting()=runBlocking {
         val child=repo.saveCategory(book,"咖啡",EntryKind.EXPENSE,parent)
         repo.saveEntry(book,EntryDraft(accountId=account,categoryId=parent,amount="10000",date="2026-10-02"))

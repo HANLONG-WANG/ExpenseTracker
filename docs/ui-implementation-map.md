@@ -62,7 +62,7 @@
 | UI17 | 分期/リボ试算及已办理变更 | 原新方案逐期比较、本期减少/未来压力/总费用/缺口；试算不修改正式计划 | `forms.js`、`views.js` | P15,P17 |
 | UI18 | 网贷 `loan`、借入、合同 | 固定/循环、逐笔本金/净到账/预扣费、既有债务、逐期手动/计算计划 | `experience.js`、`completion.js` | P16 |
 | UI19 | 还款、部分/提前/结清 | 本金费用组成、额度恢复状态、直接跨币种实付/实收、未确认清偿、此前换汇关联 | `forms.js`、`completion.js` | P17 |
-| UI20 | 周期账单、预计收入、付款日历 `recurring/calendar` | 周周/月/年生成候选；确认或关联既有记录；解除预留；逐期付款安排与月份切换 | `views.js`、`forms.js`、`experience.js`、`completion.js` | P10,P18 |
+| UI20 | 周期账单、预计收入、付款日历 `recurring/calendar` | 周周/月/年生成候选；规则固定商户/备注/付款方式，到期预览后一键确认或关联既有记录；解除预留；逐期付款安排与月份切换 | `views.js`、`forms.js`、`experience.js`、`completion.js` | P10,P18 |
 | UI21 | 导入 `import`、核对 `reconcile/fx-check` | 云端转换入口（替代原稿文件选择）/范围/币种/疑点预览、1:1匹配、差异、选择类型补记、实际换算确认、仅确认差异 | `views.js`、`forms.js`、`experience.js`、`completion.js` | P19 |
 | UI22 | 普通附件、图片/音频/外部打开 | 多文件、<100MB、内部复制、原名类型大小；图片预览/播放条/外部程序、错误状态 | `capture.js`、`completion.js`、`capture.css` | P13 |
 | UI23 | 小票工作台 `receipt-inbox`、导出/回填/商品编辑 | 多张原图、筛选/多选、交给云端（原稿ZIP导出/手动导入已移除，回填只经云端领取）、独立JSON关联、差异/替换/旧版本、未知商品字段 | `capture.js`、`experience.js`、`completion.js` | P20 |

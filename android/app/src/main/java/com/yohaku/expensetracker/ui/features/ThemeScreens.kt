@@ -10,6 +10,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
+import com.yohaku.expensetracker.data.db.EntryTemplateEntity
 import com.yohaku.expensetracker.data.db.EventEntity
 import com.yohaku.expensetracker.data.repository.cashBalanceAt
 import com.yohaku.expensetracker.data.repository.BookSnapshot
@@ -67,7 +68,7 @@ import java.time.YearMonth
         }
     }
 }
-@Composable internal fun HomeScreen(s:BookSnapshot,navigate:(String)->Unit,onAdd:()->Unit,onResume:()->Unit,onEvent:(EventEntity)->Unit,onBudget:()->Unit,today:LocalDate=LocalDate.now(),onRecurring:()->Unit={},financialContent:@Composable ()->Unit={}) {
+@Composable internal fun HomeScreen(s:BookSnapshot,navigate:(String)->Unit,onAdd:()->Unit,onResume:()->Unit,onEvent:(EventEntity)->Unit,onBudget:()->Unit,today:LocalDate=LocalDate.now(),onRecurring:()->Unit={},onTemplate:(EntryTemplateEntity)->Unit={},financialContent:@Composable ()->Unit={}) {
     val t=LocalYohaku.current
     val month=YearMonth.from(today)
     val currency=Currency.valueOf(s.book.currency)
@@ -88,8 +89,10 @@ import java.time.YearMonth
             HomeDailyStats(days,projection.availableMinor?.let{Money(currency,it.coerceAtLeast(0)/days).display()} ?: "—",Money(currency,(entries.filter{it.date==today.toString()&&it.kind=="EXPENSE"}.sumOf{s.netExpense(it)}+s.visibleComponents().filter{it.date==today.toString()}.sumOf{it.baseMinor})).display())
             if(s.draft!=null)HomeResumeDraft(onResume)
         }
+        HomeTemplates(s,onTemplate,{navigate("templates")})
         FlowRow(Modifier.fillMaxWidth().testTag("home-shortcuts"),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
             YLink(word("预算与分类限额","予算とカテゴリの上限"),onBudget,arrow=true)
+            if(s.templates.isEmpty())YLink(word("添加记账模板","記録テンプレートを追加"),{navigate("templates")},Modifier.testTag("home-add-template"),arrow=true)
             if(s.recurrences.isEmpty())YLink(word("添加周期账单","定期支払を追加"),onRecurring,arrow=true)
             else if(projection.pendingCount==0)YLink(word("周期账单与历史","定期支払と履歴"),onRecurring,arrow=true)
         }

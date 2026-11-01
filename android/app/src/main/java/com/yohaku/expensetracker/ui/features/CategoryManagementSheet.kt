@@ -52,7 +52,7 @@ import com.yohaku.expensetracker.ui.theme.*
             YText(operationName(value.operation),14)
             if(value.operation==CategoryOperation.DELETE_EMPTY)YText(if(value.deletionBlocked)word("仍有记录、预算、计划或草稿引用，请归档或明确迁移。","記録・予算・予定・下書きの参照があります。アーカイブまたは統合してください。")else word("确认后永久删除本分类及无引用子分类，无法恢复。","このカテゴリと参照のない子カテゴリを完全に削除し、復元できません。"),12)
             if(refreshed)YText(word("资料已变化，请重新确认当前影响。","情報が変わりました。現在の影響を再確認してください。"),12)
-            RecordFacts(listOf(word("记录（含回收）","記録（ごみ箱を含む）") to value.recordCount.toString(),word("周期规则 / 安排","定期ルール・予定") to "${value.recurrenceCount} / ${value.occurrenceCount}",word("草稿","下書き") to value.draftCount.toString(),word("来源分类数","対象カテゴリ数") to value.sourceIds.size.toString()),audit=true)
+            RecordFacts(listOf(word("记录（含回收）","記録（ごみ箱を含む）") to value.recordCount.toString(),word("周期规则 / 安排","定期ルール・予定") to "${value.recurrenceCount} / ${value.occurrenceCount}",word("记账模板","記録テンプレート") to value.templateCount.toString(),word("草稿","下書き") to value.draftCount.toString(),word("来源分类数","対象カテゴリ数") to value.sourceIds.size.toString()),audit=true)
             YText(word("账户资金、消费总额及月份不变；分类汇总按新归属计算。","口座資金・支出総額・計上月は変わりません。カテゴリ集計は新しい分類に従います。"),12)
             value.projections.forEach{p->
                 YText("${p.month} · ${s.path(p.categoryId)}",12)

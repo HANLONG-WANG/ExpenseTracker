@@ -19,6 +19,7 @@ class CategoryOperationReview internal constructor(internal val before:BookSnaps
     val category:CategoryEntity,val operation:CategoryOperation,val targetId:String?,val budgetPolicy:CategoryBudgetPolicy,
     val sourceIds:Set<String>,val recordCount:Int,val recurrenceCount:Int,val occurrenceCount:Int,val draftCount:Int,
     val projections:List<CategoryProjectionChange>,val deletionBlocked:Boolean) {
+    val templateCount get()=before.templates.count{it.categoryId in sourceIds}
     val budgetChanges get()=before.budgets.filter{it!=after.budgets.find{n->n.month==it.month&&n.scope==it.scope}} to after.budgets.filter{it!=before.budgets.find{n->n.month==it.month&&n.scope==it.scope}}
     val activityBudgetChanges get()=before.activityBudgets.filter{it !in after.activityBudgets} to after.activityBudgets.filter{it !in before.activityBudgets}
 }
@@ -66,7 +67,7 @@ suspend fun LedgerRepository.previewCategoryOperation(bookId:String,categoryId:S
                 if(fields["category"]?.jsonPrimitive?.contentOrNull in ids)row.copy(valuesJson=JsonObject(fields+("category" to JsonPrimitive(target.id))).toString())else row
             }
             next=s.copy(categories=s.categories.filter{it.id !in ids},events=s.events.map{if(it.categoryId in ids)it.copy(categoryId=target.id,revision=it.revision+1)else it},
-                budgets=budgets,activityBudgets=activityBudgets,recurrences=s.recurrences.map{if(it.categoryId in ids)it.copy(categoryId=target.id)else it},
+                templates=s.templates.remapTemplateCategories(ids,target.id),budgets=budgets,activityBudgets=activityBudgets,recurrences=s.recurrences.map{if(it.categoryId in ids)it.copy(categoryId=target.id)else it},
                 occurrences=s.occurrences.map{if(it.categoryId in ids)it.copy(categoryId=target.id)else it},draft=s.draft?.let{if(it.categoryId in ids)it.copy(categoryId=target.id)else it})
         }
     }
@@ -86,6 +87,7 @@ suspend fun LedgerRepository.commitCategoryOperation(review:CategoryOperationRev
     next.events.filter{it!=before.events.find{e->e.id==it.id}}.forEach{e->
         dao.putEvent(e);dao.putRevision(RevisionEntity(b,id(),e.id,e.revision,clock.millis(),json.encodeToString(before.events.first{it.id==e.id}),json.encodeToString(e)))
     }
+    next.templates.filter{it!=before.templates.find{t->t.id==it.id}}.forEach{dao.putTemplate(it)}
     next.recurrences.filter{it!=before.recurrences.find{r->r.id==it.id}}.forEach{dao.putRecurrence(it)}
     next.occurrences.filter{it!=before.occurrences.find{o->o.id==it.id}}.forEach{dao.putOccurrence(it)}
     review.nextDraftRows.filter{it !in review.draftRows}.forEach{db.financialDao().putDraft(it)}

@@ -88,6 +88,12 @@
 
 ## 2. 正式文件协议
 
+
+### 1.7 周期规则固定内容与记账模板（2026-11-01）
+
+- `RecurrenceEntity` 新增 merchant/merchantId/note/cardPaymentChoice/cardPaymentPeriods；`fixedCardPayment` 统一校验：非信用卡清空，不接受 DEFERRED，INSTALLMENT 须期数>0。`occurrenceDraft` 生成 date=scheduledDate、`merchantManuallyEdited=true` 的草稿；规则没设付款方式时用 `withRememberedCardPayment`。
+- 一键确认用 `AppViewModel.occurrenceConfirmation`：`previewEntry` → `commitEntryReview(clearDraft=false)`，不动用户草稿；提交时快照变化返回 null，则重新预览并标记 refreshed；负余额沿用 `negativeBalanceChanges`。「修改后再记」用同一草稿进入原表单（`startOccurrence`）。
+- `entry_templates`（book/account/category/activity 外键）。`validateTemplate` 和记账一样检查分类启用与类型、`entryAccounts(kind)`、币种、商户和活动；`templateIssue` 返回失效原因，`templateDraft` 拒绝失效模板。`startTemplate` 打开预填表单并建立基线，`amountFocusSession` 只聚焦一次金额框。分类合并在 `previewCategoryOperation` 中迁移模板，活动删除清空 activityId，账户/分类删除时模板算作引用。
 ### 2.1 共通规则
 
 - 统一 UTF-8 JSON，首版版本号1；不同用途使用不同 `kind`。正式协议与 HTML 示例区分，不把示例账本/账户ID当真实ID。

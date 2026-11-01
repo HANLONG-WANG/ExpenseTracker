@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.ScrollState
 import androidx.compose.ui.*
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.testTag
@@ -36,6 +37,8 @@ import kotlinx.serialization.encodeToString
     val draft by vm.entry.collectAsStateWithLifecycle()
     val financialDraft by vm.activeFinancialDraft.collectAsStateWithLifecycle()
     val negativeBalanceReview by vm.negativeBalanceReview.collectAsStateWithLifecycle()
+    val occurrenceConfirmation by vm.occurrenceConfirmation.collectAsStateWithLifecycle()
+    val amountFocusSession by vm.amountFocusSession.collectAsStateWithLifecycle()
     val entryReview by vm.entryReview.collectAsStateWithLifecycle()
     val occurrenceLinkReview by vm.occurrenceLinkReview.collectAsStateWithLifecycle()
     val occurrenceLinkRefreshed by vm.occurrenceLinkRefreshed.collectAsStateWithLifecycle()
@@ -57,6 +60,9 @@ import kotlinx.serialization.encodeToString
     var requestedTreatFriend by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedMerchant by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedDate by rememberSaveable{mutableStateOf<String?>(null)}
+    var requestedOccurrenceAmount by rememberSaveable{mutableStateOf<String?>(null)}
+    var requestedOccurrenceBase by rememberSaveable{mutableStateOf<String?>(null)}
+    var requestedTemplate by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedOccurrence by rememberSaveable{mutableStateOf<String?>(null)}
     var requestedTransferAccount by rememberSaveable{mutableStateOf<String?>(null)}
     var detailReturnRoute by rememberSaveable{mutableStateOf("home")}
@@ -107,6 +113,7 @@ import kotlinx.serialization.encodeToString
             var managedAccountId by rememberSaveable(book.id){mutableStateOf<String?>(null)}
             fun openRecord(event:EventEntity){selectedEventId=event.id;detailReturnRoute=baseRoute;vm.navigate("detail")}
             fun startRequestedEntry(current:BookSnapshot) {
+                requestedTemplate?.let{id->vm.startTemplate(current,current.templates.first{it.id==id});return}
                 val kind=EntryKind.valueOf(requestedEntryKind)
                 if(kind==EntryKind.TRANSFER)vm.startTransfer(current,requestedTransferAccount,requestedDestination)
                 else vm.startEntry(current,kind,requestedActivity,requestedTreatFriend,requestedMerchant)
@@ -114,7 +121,7 @@ import kotlinx.serialization.encodeToString
                 vm.markEntryBaseline()
             }
             fun requestEntry(kind:EntryKind=EntryKind.EXPENSE,fromAccountId:String?=null,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null,toAccountId:String?=null,date:String?=null){
-                requestedDate=date;requestedMerchant=merchantId;requestedTreatFriend=treatFriendId;requestedActivity=activityId;requestedEntryKind=kind.name;requestedTransferAccount=fromAccountId;requestedDestination=toAccountId;requestedOccurrence=null
+                requestedTemplate=null;requestedDate=date;requestedMerchant=merchantId;requestedTreatFriend=treatFriendId;requestedActivity=activityId;requestedEntryKind=kind.name;requestedTransferAccount=fromAccountId;requestedDestination=toAccountId;requestedOccurrence=null
                 if(snapshot.draft!=null)sheet="existing-draft"else startRequestedEntry(snapshot)
             }
             fun startStatementRequest() {
@@ -166,13 +173,14 @@ import kotlinx.serialization.encodeToString
                 if(vm.entryHasManualInput()){if(switchBook!=null){switchTarget=switchBook;sheet="switch-entry"}else{leaveTarget=target;sheet="leave-entry"}}
                 else vm.leaveEntry(book.id,false,if(target=="new-book"||switchBook!=null)"home"else target){if(switchBook!=null)vm.selectBook(switchBook);sheet=if(target=="new-book")"new-book"else null}
             }
-            fun requestOccurrence(occurrence:OccurrenceEntity) {
-                requestedDate=null;requestedMerchant=null;requestedTreatFriend=null;requestedActivity=null;requestedEntryKind=EntryKind.EXPENSE.name;requestedTransferAccount=null;requestedDestination=null;requestedOccurrence=occurrence.id
-                if(snapshot.draft!=null)sheet="existing-draft"else vm.startOccurrence(snapshot,occurrence)
+            fun requestOccurrence(occurrence:OccurrenceEntity,amount:String,baseAmount:String) {
+                requestedOccurrenceAmount=amount;requestedOccurrenceBase=baseAmount
+                requestedTemplate=null;requestedDate=null;requestedMerchant=null;requestedTreatFriend=null;requestedActivity=null;requestedEntryKind=EntryKind.EXPENSE.name;requestedTransferAccount=null;requestedDestination=null;requestedOccurrence=occurrence.id
+                if(snapshot.draft!=null)sheet="existing-draft"else vm.startOccurrence(snapshot,occurrence,amount,baseAmount)
             }
             LaunchedEffect(book.id,YearMonth.from(today).toString(),snapshot.recurrences){vm.materializeMonth(book.id,YearMonth.from(today).toString())}
-            BackHandler(enabled=occurrenceLinkReview!=null || entryReview!=null || sheet!=null || route !in listOf("home","analysis","life","accounts")) {
-                if(negativeBalanceReview!=null)vm.dismissNegativeBalance() else if(occurrenceLinkReview!=null)vm.occurrenceLinkReview.value=null else if(entryReview!=null)vm.dismissEntryReview() else if(sheet!=null)sheet=null else if(openEntry){requestLeave()} else vm.back()
+            BackHandler(enabled=occurrenceConfirmation!=null || occurrenceLinkReview!=null || entryReview!=null || sheet!=null || route !in listOf("home","analysis","life","accounts")) {
+                if(occurrenceConfirmation!=null){if(occurrenceConfirmation!!.confirmingNegative)vm.dismissOccurrenceNegative()else vm.dismissOccurrenceConfirmation()} else if(negativeBalanceReview!=null)vm.dismissNegativeBalance() else if(occurrenceLinkReview!=null)vm.occurrenceLinkReview.value=null else if(entryReview!=null)vm.dismissEntryReview() else if(sheet!=null)sheet=null else if(openEntry){requestLeave()} else vm.back()
             }
             LaunchedEffect(baseRoute){if(baseRoute!="recurring")recurringInitialMonth=null}
             val contentScroll=rememberSaveable(baseRoute,book.id,saver=ScrollState.Saver){ScrollState(0)}
@@ -193,7 +201,7 @@ import kotlinx.serialization.encodeToString
                 Column(Modifier.padding(pageContentPadding()).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
                     chrome.top()
                     when(baseRoute) {
-                        "home"->HomeScreen(snapshot,{vm.navigate(it)},{requestEntry()},{vm.resumeEntry(snapshot)},{openRecord(it)},{vm.navigate("budget")},today=today,onRecurring={recurringInitialMonth=null;vm.navigate("recurring")},financialContent={HomeFinancialOutlook(snapshot,vm,{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openTimelineItem(it)},{openAttention(it)},{vm.navigate("reminders")})})
+                        "home"->HomeScreen(snapshot,{vm.navigate(it)},{requestEntry()},{vm.resumeEntry(snapshot)},{openRecord(it)},{vm.navigate("budget")},today=today,onRecurring={recurringInitialMonth=null;vm.navigate("recurring")},onTemplate={t->requestedTemplate=t.id;requestedOccurrence=null;if(snapshot.draft!=null)sheet="existing-draft"else vm.startTemplate(snapshot,t)},financialContent={HomeFinancialOutlook(snapshot,vm,{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openTimelineItem(it)},{openAttention(it)},{vm.navigate("reminders")})})
                         "books"->BooksScreen(ready.overviews.filter{!it.book.archived&&it.book.deletedAt==null},book.id,{vm.selectBook(it)},{sheet="new-book"},{editBookId=it;sheet="rename-book"},{vm.navigate("book-management")})
                         "book-management"->BookManagementScreen(ready.overviews,book.id,vm,{sheet="new-book"})
                         "accounts"->AccountsScreen(snapshot,{editAccount=null;sheet="account"},{selectedAccountId=it.id;vm.navigate("account-detail")},vm.referenceRates,financialContent={AccountsFinancialOutlook(snapshot,vm,{requestEntry(EntryKind.TRANSFER)},{vm.navigate("calendar")},{vm.navigate("forecast")},{openRisk(it)},{openAttention(it)},{vm.navigate("reminders")})},today=today)
@@ -207,16 +215,17 @@ import kotlinx.serialization.encodeToString
                         "csv-import"->CsvImportScreen(snapshot,vm)
                         "backup"->BackupScreen()
                         "appearance"->AppearanceScreen(snapshot,{vm.appearance(book.id,theme=it)})
-                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")},{vm.navigate("backup")},{vm.navigate("csv-import")},{vm.navigate("merchants")},vm=vm)
+                        "settings"->SettingsScreen(snapshot,{vm.navigate("appearance")},{vm.appearance(book.id,language=if(book.language=="zh")"ja" else "zh")},{vm.navigate("categories")},{vm.navigate("books")},{vm.navigate("trash")},{editBookId=book.id;sheet="rename-book"},{vm.navigate("reference-rates")},{vm.navigate("statements")},{vm.navigate("notification-settings")},{vm.navigate("cloud")},{vm.navigate("receipts")},{vm.navigate("backup")},{vm.navigate("csv-import")},{vm.navigate("merchants")},onTemplates={vm.navigate("templates")},vm=vm)
                         "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "cloud"->key(book.id){CloudScreen(snapshot,vm)}
                         "reference-rates"->ReferenceRatesScreen(vm)
                         "trash"->TrashScreen(snapshot,vm)
                         "budget"->BudgetScreen(snapshot,vm,{vm.navigate("recurring")},{vm.navigate("categories")})
-                        "recurring"->RecurringScreen(snapshot,vm,{requestOccurrence(it)},{openRecord(it)},{vm.navigate("accounts")},{vm.navigate("categories")},recurringInitialMonth)
+                        "recurring"->RecurringScreen(snapshot,vm,{vm.previewOccurrence(snapshot,it)},{openRecord(it)},{vm.navigate("accounts")},{vm.navigate("categories")},recurringInitialMonth)
                         "analysis"->AnalysisScreen(snapshot,vm,{openRecord(it)},{vm.navigate("categories")},{id->selectedAccountId=id;financialInitialTab="plans";financialInitialMonth=null;vm.navigate("rules")})
                         "receipts"->ReceiptsScreen(snapshot,vm,{openRecord(it)})
+                        "templates"->TemplatesScreen(snapshot,vm)
                         "merchants"->MerchantsScreen(snapshot,vm,{openRecord(it)},{requestEntry(merchantId=it)})
                         "friends"->FriendsScreen(snapshot,vm)
                         "life"->ActivityScreen(snapshot,vm,{id,friend->requestEntry(activityId=id,treatFriendId=friend)},{openRecord(it)})
@@ -243,9 +252,13 @@ import kotlinx.serialization.encodeToString
                     else EntryForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},{editAccount=null;sheet="account"},{vm.navigate("category-picker")},busy,{
                         if(entryReturnRoute!="detail"){selectedEventId=activeDraft.id;detailReturnRoute=entryReturnRoute}
                         vm.leaveEntry(book.id,false,entryReturnRoute){if(entryReturnRoute!="detail")vm.navigate("detail")}
-                    },referenceService=vm.referenceRates,onPreviewExisting={eventId->vm.previewOccurrenceLink(book.id,activeDraft.occurrenceId!!,eventId)},onRate={sheet="manual-rate"},locationContent={EntryLocation(snapshot,activeDraft,vm){vm.changeEntry(book.id,it)}},onExitActivity={vm.execute{vm.repository.setActivityMode(book.id,true)};vm.changeEntry(book.id,activeDraft.copy(activityId=null,reserveId=null,reserveAmount="",treatEnabled=false,treatFriends=emptyList(),treatWeights=emptyMap()))},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
+                    },focusAmount=amountFocusSession==activeDraft.mediaSession,onAmountFocused={vm.amountFocusSession.value=null},onSaveTemplate={sheet="save-template"},referenceService=vm.referenceRates,onPreviewExisting={eventId->vm.previewOccurrenceLink(book.id,activeDraft.occurrenceId!!,eventId)},onRate={sheet="manual-rate"},locationContent={EntryLocation(snapshot,activeDraft,vm){vm.changeEntry(book.id,it)}},onExitActivity={vm.execute{vm.repository.setActivityMode(book.id,true)};vm.changeEntry(book.id,activeDraft.copy(activityId=null,reserveId=null,reserveAmount="",treatEnabled=false,treatFriends=emptyList(),treatWeights=emptyMap()))},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
                 }
             }
+            occurrenceConfirmation?.takeIf{it.bookId==book.id}?.let{c->OccurrenceConfirmationSheet(snapshot,c,vm){
+                vm.dismissOccurrenceConfirmation()
+                if(vm.occurrenceConfirmation.value==null)requestOccurrence(snapshot.occurrences.first{it.id==c.occurrenceId},c.draft.amount,c.draft.baseAmount)
+            }}
             managedAccountId?.let{id->snapshot.accounts.firstOrNull{it.id==id}?.let{account->AccountManagementSheet(account,vm,{managedAccountId=null},{vm.navigate("accounts")})}}
             negativeBalanceReview?.let{NegativeBalanceSheet(it.review.negativeBalanceChanges(),busy,{vm.confirmNegativeBalance(book.id)},{vm.dismissNegativeBalance()})}
             entryReview?.let{EntryReviewSheet(it,reviewRefreshed,busy,{vm.confirmEntryReview(book.id)},{vm.dismissEntryReview()})}
@@ -306,9 +319,10 @@ import kotlinx.serialization.encodeToString
                     ready.books.filter{!it.archived&&it.deletedAt==null}.forEach{b->YButton(b.name+(if(b.id==book.id)" ✓" else ""),{if(b.id==book.id)sheet=null else if(openEntry){requestLeave(switchBook=b.id)}else if(financialDraft?.hasInput==true){switchTarget=b.id;sheet="switch-financial"}else{vm.selectBook(b.id);sheet=null}},Modifier.fillMaxWidth())}
                     YButton(word("＋ 创建独立账本","＋ 独立した帳簿を作成"),{if(openEntry){requestLeave("new-book")}else sheet="new-book"},primary=true)
                 }
+                "save-template"->draft?.let{SaveTemplateSheet(snapshot,it,vm){sheet=null}}
                 "existing-draft"->YSheet(word("还有一笔草稿","下書きが残っています"),{sheet=null}) {
                     YButton(word("继续这笔草稿","下書きを続ける"),{vm.resumeEntry(snapshot);sheet=null},primary=true)
-                    YButton(word("放弃草稿，记新的一笔","下書きを破棄して新しく記録"),{vm.execute({if(requestedOccurrence!=null)vm.startOccurrence(snapshot,snapshot.occurrences.first{it.id==requestedOccurrence})else startRequestedEntry(snapshot.copy(draft=null));sheet=null}){vm.repository.clearDraft(book.id)}})
+                    YButton(word("放弃草稿，记新的一笔","下書きを破棄して新しく記録"),{vm.execute({if(requestedOccurrence!=null)vm.startOccurrence(snapshot,snapshot.occurrences.first{it.id==requestedOccurrence},requestedOccurrenceAmount,requestedOccurrenceBase)else startRequestedEntry(snapshot.copy(draft=null));sheet=null}){vm.repository.clearDraft(book.id)}})
                 }
                 "new-book"->BookEditor(null,book,vm,{sheet=null})
                 "rename-book"->(ready.books.find{it.id==editBookId} ?: book).let{editing->BookEditor(editing,book,vm,{sheet=null},hasRecords=ready.overviews.firstOrNull{it.book.id==editing.id}?.let{it.recordCount>0||it.planningCount>0} ?: snapshot.events.isNotEmpty(),monthlyBudgetMinor=ready.overviews.firstOrNull{it.book.id==editing.id}?.monthlyBudgetMinor)}
@@ -445,7 +459,7 @@ import kotlinx.serialization.encodeToString
     CategoryStepFooter()
 }
 
-@Composable internal fun EntryForm(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onSave:()->Unit,onAccount:()->Unit,onCategory:()->Unit,busy:Boolean,onCancelEdit:()->Unit,onRate:()->Unit={},onPreviewExisting:(String)->Unit={},onExitActivity:()->Unit={},referenceService:ReferenceRates?=null,mediaContent:@Composable ()->Unit={},locationContent:@Composable ()->Unit={}) {
+@Composable internal fun EntryForm(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onSave:()->Unit,onAccount:()->Unit,onCategory:()->Unit,busy:Boolean,onCancelEdit:()->Unit,onRate:()->Unit={},onPreviewExisting:(String)->Unit={},onExitActivity:()->Unit={},referenceService:ReferenceRates?=null,mediaContent:@Composable ()->Unit={},locationContent:@Composable ()->Unit={},focusAmount:Boolean=false,onAmountFocused:()->Unit={},onSaveTemplate:()->Unit={}) {
     val t=LocalYohaku.current;val eligible=s.entryAccounts(d.kind,d.accountId.takeIf{d.id!=null});val a=eligible.find{it.id==d.accountId};val currency=a?.currency ?: s.book.currency
     val foreign=d.originalCurrency!=null&&d.originalCurrency.name!=currency
     val occurrence=s.occurrences.find{it.id==d.occurrenceId}
@@ -457,6 +471,8 @@ import kotlinx.serialization.encodeToString
         val next=if(foreign)d.copy(accountAmount=value,referenceAccountLinked=false)else d.copy(amount=value)
         onChange(next.copy(baseAmount=if(clearBase)""else d.baseAmount))
     }
+    val amountFocus=remember{androidx.compose.ui.focus.FocusRequester()}
+    LaunchedEffect(focusAmount){if(focusAmount){withFrameNanos{};amountFocus.requestFocus();onAmountFocused()}}
     EntrySummary(s.book.name,s.path(d.categoryId),d.id!=null,onCategory)
     if(confirmingOccurrence) {
         ThemeAuditPanel(occurrence!!.name,Modifier.testTag("occurrence-payment-context")) {
@@ -468,7 +484,7 @@ import kotlinx.serialization.encodeToString
     }
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         Column(Modifier.fillMaxWidth().padding(bottom=4.dp)){
-            YField(word("金额","金額")+" · "+currency,accountText,{changeAccountAmount(it)},numeric=true,emphasizeAmount=true,amountSymbol=Currency.valueOf(currency).symbol.takeLast(1),displayLabel=(if(confirmingOccurrence&&d.settlementConfirmed)word("实际支付金额","実際の支払額")else if(!d.settlementConfirmed)word("预计入账金额","計上見込額")else if(foreign||currency!=s.book.currency)word("账户实际入账金额","口座の実際の計上額")else word("金额","金額"))+" · "+currency)
+            YField(word("金额","金額")+" · "+currency,accountText,{changeAccountAmount(it)},Modifier.focusRequester(amountFocus).testTag("entry-amount"),numeric=true,emphasizeAmount=true,amountSymbol=Currency.valueOf(currency).symbol.takeLast(1),displayLabel=(if(confirmingOccurrence&&d.settlementConfirmed)word("实际支付金额","実際の支払額")else if(!d.settlementConfirmed)word("预计入账金额","計上見込額")else if(foreign||currency!=s.book.currency)word("账户实际入账金额","口座の実際の計上額")else word("金额","金額"))+" · "+currency)
             EntryCurrencyControls(d,currency,onChange)
             if(foreign&&referenceService!=null)ReferenceRatePanel(referenceService,d.originalCurrency!!,Currency.valueOf(currency),d.referenceQueryDate?:d.date,
                 enabled=!d.settlementConfirmed,autoKey=d.amount+"/"+d.accountAmount+"/"+d.settlementConfirmed,
@@ -526,6 +542,7 @@ import kotlinx.serialization.encodeToString
             YText(if(existingId==null&&!d.settlementConfirmed)word("这笔消费按预计入账金额计入预算，保存后解除原周期预留，避免双算。账户实际金额仍待确认；已记过时请选择已有流水。","この支出は計上見込額で予算に含め、保存後に元の定期予定を解除して二重計算を防ぎます。口座の実額は確認待ちです。記録済みなら既存記録を選んでください。")else if(existingId==null)word("已手动记过时请选择对应流水，避免重复记账。实际确认后解除这次预留。","手動記録済みなら関連する記録を選択。重複せず、実際の確認後に予定を解除します。")else word("采用所选已有支出的金额和日期，不使用本表单输入，也不新增记录或附件；确认后解除这次预留。","選択した既存支出の金額・日付を使用します。このフォームの入力や添付は追加せず、確認後に予定を解除します。"),11,Modifier.testTag("occurrence-payment-note"),color=t.muted)
         }
         Box(Modifier.padding(top=25.dp)){EntrySaveArea(d.id!=null,busy,existingId!=null||a!=null,{existingId?.let(onPreviewExisting)?:onSave()},onCancelEdit,if(existingId!=null)word("预览关联已有支出","既存支出との関連を確認")else if(confirmingOccurrence&&!d.settlementConfirmed)word("记录消费并解除预留","支出を記録して予定を解除")else if(confirmingOccurrence)word("确认付款并解除预留","支払を確認して予定を解除")else null)}
+        if(d.id==null&&d.occurrenceId==null&&d.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))Box(Modifier.fillMaxWidth().padding(top=14.dp),contentAlignment=Alignment.Center){YLink(word("把这笔存为模板","この記録をテンプレートに保存"),onSaveTemplate,Modifier.testTag("entry-save-template"))}
     }
 }
 
@@ -823,6 +840,7 @@ import kotlinx.serialization.encodeToString
     "cloud"->word("云端分析","クラウド分析")
     "reference-rates"->word("参考汇率","参考レート");"trash"->word("回收站","ごみ箱")
     "budget"->word("预算","予算");"recurring"->word("周期账单","定期支払")
+    "templates"->word("记账模板","記録テンプレート")
     "receipts"->word("小票图片","レシート画像");"merchants"->word("商户与地点","お店と場所")
     "friends"->word("朋友名册","友人リスト");else->""
 }

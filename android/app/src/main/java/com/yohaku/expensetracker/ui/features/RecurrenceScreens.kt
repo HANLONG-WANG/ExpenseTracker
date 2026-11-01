@@ -100,6 +100,7 @@ import java.time.YearMonth
     var estimated by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.estimated?:true)}
     var active by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.active?:true)}
     var activity by rememberSaveable(s.book.id,original?.id){mutableStateOf(original?.activityId)}
+    var fixed by remember(original?.id){mutableStateOf(EntryDraft(merchant=original?.merchant.orEmpty(),merchantId=original?.merchantId,note=original?.note.orEmpty(),cardPaymentChoice=original?.cardPaymentChoice,cardPaymentPeriods=original?.cardPaymentPeriods?.toString().orEmpty()))}
     var owner by remember{mutableStateOf<Int?>(null)}
     val account=accounts.find{it.id==accountId}
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -111,9 +112,12 @@ import java.time.YearMonth
             YDateFields(listOf(word("首次安排日期","最初の予定日") to date)+if(endEnabled)listOf(word("结束日期","終了日") to end)else emptyList(),owner,{owner=it},{index,value->if(index==0)date=value else end=value})
             YSelect(word("频率","頻度"),frequency,listOf(RecurrenceFrequency.MONTHLY,RecurrenceFrequency.WEEKLY,RecurrenceFrequency.YEARLY).map{it.name to frequencyName(it)},{frequency=it})
             YSelect(word("付款账户","支払口座"),accountId,accounts.map{it.id as String? to it.name},{id->
-                val next=accounts.first{it.id==id};if(next.currency!=account?.currency){amount="";base="";estimated=true};accountId=id
+                val next=accounts.first{it.id==id};if(next.currency!=account?.currency){amount="";base="";estimated=true};accountId=id;fixed=fixed.clearCardPayment()
             })
             YSelect(word("分类","カテゴリ"),categoryId,categories.map{it.id as String? to s.path(it.id)},{categoryId=it})
+            EntryMerchantInput(s,fixed){fixed=it}
+            YField(word("备注","メモ"),fixed.note,{fixed=fixed.copy(note=it)},Modifier.testTag("recurrence-note"),multiline=true)
+            if(account?.type==AccountType.CREDIT.name)FixedPaymentFields(fixed){fixed=it}
             if(amount.isBlank())YText(word("金额未定，预留金额仍未知；填写后可选择预计或已确认金额。","金額未定のため確保額は不明です。入力後に見込み・確定を選べます。"),11,Modifier.testTag("recurrence-unknown-amount"),color=LocalYohaku.current.muted)
             else YToggle(word("金额为预计","金額は見込み"),estimated,{estimated=it})
             YToggle(word("设置结束日期","終了日を設定"),endEnabled,{owner=null;endEnabled=it})
@@ -123,13 +127,13 @@ import java.time.YearMonth
             YButton(word("保存周期规则","定期ルールを保存"),{
                 val capturedName=name;val capturedAccount=accountId;val capturedCategory=categoryId;val capturedAmount=amount;val capturedBase=base
                 val capturedFrequency=frequency;val capturedDate=date;val capturedEnd=if(endEnabled)end else null
-                val capturedEstimated=estimated;val capturedActive=active;val capturedActivity=activity
+                val capturedFixed=fixed;val capturedEstimated=estimated;val capturedActive=active;val capturedActivity=activity
                 vm.execute(onSuccess=onClose) {
                     val selected=accounts.firstOrNull{it.id==capturedAccount}?:error("请选择付款账户 / 支払口座を選択してください")
                     val value=capturedAmount.takeIf{it.isNotBlank()}?.let{Money.parse(it,Currency.valueOf(selected.currency))}
                     val baseValue=capturedBase.takeIf{it.isNotBlank()}?.let{Money.parse(it,Currency.valueOf(s.book.currency))}
                     vm.repository.saveRecurrence(s.book.id,RecurrenceInput(capturedName,selected.id,capturedCategory?:error("请选择分类 / カテゴリを選択してください"),value,baseValue,
-                        capturedEstimated,RecurrenceFrequency.valueOf(capturedFrequency),capturedDate,capturedEnd,original?.id,capturedActive,capturedActivity))
+                        capturedEstimated,RecurrenceFrequency.valueOf(capturedFrequency),capturedDate,capturedEnd,original?.id,capturedActive,capturedActivity,capturedFixed.merchant,capturedFixed.merchantId,capturedFixed.note,capturedFixed.cardPaymentChoice,capturedFixed.cardPaymentPeriods.toIntOrNull()))
                 }
             },Modifier.testTag("recurrence-save"),primary=true,enabled=!busy)
         }
@@ -158,5 +162,33 @@ import java.time.YearMonth
         YText(word("只建立关联并解除对应预留，不新增支出，不再次扣账户余额。","関連と予定解除のみ。支出の追加や口座残高の再控除はしません。"),11,color=LocalYohaku.current.muted)
         YButton(word("确认关联已有记录","既存記録との関連を確定"),onConfirm,primary=true,enabled=!busy)
         YLink(if(returnToForm)word("返回付款表单","支払フォームに戻る")else word("返回选择","選択に戻る"),onDismiss)
+    }
+}
+
+@Composable internal fun OccurrenceConfirmationSheet(s:BookSnapshot,c:OccurrenceConfirmation,vm:AppViewModel,onEdit:()->Unit) {
+    val o=s.occurrences.first{it.id==c.occurrenceId}
+    val d=c.draft
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    val account=s.accounts.first{it.id==d.accountId}
+    if(c.confirmingNegative&&c.review!=null) {
+        NegativeBalanceSheet(c.review.negativeBalanceChanges(),busy,{vm.confirmOccurrence(negativeAccepted=true)},{vm.dismissOccurrenceNegative()})
+        return
+    }
+    YSheet(word("确认周期账单","定期支払を確認"),{vm.dismissOccurrenceConfirmation()}) {
+        val amount=runCatching{Money.parse(d.amount,Currency.valueOf(account.currency)).display()}.getOrNull()
+        ThemeAuditPanel(o.name,Modifier.testTag("occurrence-confirmation")) {
+            ScheduledBillHero(amount?:word("金额未定","金額未定"),amount!=null,d.date,if(o.amountMinor==null)word("金额未定","金額未定")else if(o.estimated)word("预计金额","予定金額")else word("金额已确认","金額確定"))
+            RecordFacts(listOf(word("付款账户","支払口座") to account.name)+
+                (if(account.type==AccountType.CREDIT.name)listOf(word("付款方式","支払方法") to (cardPaymentLabel(d.cardPaymentChoice)+if(d.cardPaymentChoice=="INSTALLMENT")" · ${d.cardPaymentPeriods}"else ""))else emptyList())+
+                listOf(word("分类","カテゴリ") to s.path(d.categoryId),word("商户","お店") to d.merchant)+
+                (if(d.note.isNotBlank())listOf(word("备注","メモ") to d.note)else emptyList()),audit=true)
+        }
+        if(o.estimated||o.amountMinor==null)YField(word("本次金额","今回の金額")+" · "+account.currency,d.amount,vm::changeOccurrenceAmount,Modifier.testTag("occurrence-confirm-amount"),numeric=true)
+        if(c.refreshed)YText(word("资料已变化，请确认重新计算结果。","情報が変わりました。再計算した結果を確認してください。"),12,Modifier.testTag("occurrence-confirm-refreshed"),color=LocalYohaku.current.warm)
+        c.issue?.let{YText(localizedRepositoryMessage(it),12,Modifier.testTag("occurrence-confirm-issue"),color=LocalYohaku.current.warm)}
+        c.review?.let{review->review.impacts.forEach{EntryImpactPreview(review.snapshot,review.change.event,it,YearMonth.from(vm.today.value).toString())}}
+        if(c.review==null&&c.issue==null)YText(word("正在计算影响…","影響を計算中…"),12)
+        YButton(word("确认记账","記録を確定"),{vm.confirmOccurrence()},Modifier.testTag("occurrence-confirm-save"),primary=true,enabled=!busy&&c.review!=null)
+        YLink(word("修改后再记","編集して記録"),onEdit,Modifier.testTag("occurrence-confirm-edit"))
     }
 }

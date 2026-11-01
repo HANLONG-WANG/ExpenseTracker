@@ -21,7 +21,7 @@ import com.yohaku.expensetracker.data.repository.BookSnapshot
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
-@Composable internal fun SettingsScreen(s:BookSnapshot,onAppearance:()->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={},onReceipts:()->Unit={},onBackup:()->Unit={},onCsv:()->Unit={},onMerchants:()->Unit={},vm:AppViewModel) {
+@Composable internal fun SettingsScreen(s:BookSnapshot,onAppearance:()->Unit,onLanguage:()->Unit,onCategories:()->Unit,onBooks:()->Unit,onTrash:()->Unit,onRename:()->Unit,onRates:()->Unit={},onStatements:()->Unit={},onReminders:()->Unit={},onCloud:()->Unit={},onReceipts:()->Unit={},onBackup:()->Unit={},onCsv:()->Unit={},onMerchants:()->Unit={},onTemplates:()->Unit={},vm:AppViewModel) {
     val t=LocalYohaku.current
     var showPhotoStorage by remember { mutableStateOf(false) }
     val photoOriginal by vm.photoSaveOriginal.collectAsStateWithLifecycle()
@@ -34,6 +34,7 @@ import com.yohaku.expensetracker.ui.theme.*
         SettingsRow(word("独立账本管理","独立した帳簿"),onBooks)
         SettingsRow(word("账本名称与资料","帳簿情報"),onRename)
         SettingsRow(word("两级分类管理","カテゴリ管理"),onCategories)
+        SettingsRow(word("记账模板","記録テンプレート"),onTemplates,"settings-templates")
         SettingsRow(word("商户与地点","お店と場所"),onMerchants,"settings-merchants",last=true)
     }
     SettingsGroup(word("提醒与汇率","通知とレート")) {

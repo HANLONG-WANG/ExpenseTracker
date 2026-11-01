@@ -112,7 +112,8 @@ data class EventActivityEntity(val bookId:String,val eventId:String,val activity
     ForeignKey(entity=ActivityEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","activityId"])
 ],indices=[Index(value=["bookId","accountId"]),Index(value=["bookId","categoryId"]),Index(value=["bookId","activityId"])])
 data class RecurrenceEntity(val bookId:String,val id:String,val name:String,val accountId:String,val categoryId:String,val currency:String,
-    val amountMinor:Long?,val baseMinor:Long?,val estimated:Boolean,val frequency:String,val anchorDate:String,val endDate:String?,val active:Boolean=true,val activityId:String?=null)
+    val amountMinor:Long?,val baseMinor:Long?,val estimated:Boolean,val frequency:String,val anchorDate:String,val endDate:String?,val active:Boolean=true,val activityId:String?=null,
+    @ColumnInfo(defaultValue="''") val merchant:String="",val merchantId:String?=null,@ColumnInfo(defaultValue="''") val note:String="",val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null)
 
 @Entity(tableName="occurrences",primaryKeys=["bookId","id"],foreignKeys=[
     ForeignKey(entity=RecurrenceEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","recurrenceId"]),
