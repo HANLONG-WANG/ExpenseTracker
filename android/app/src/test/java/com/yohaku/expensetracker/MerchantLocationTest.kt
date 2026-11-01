@@ -2,6 +2,7 @@ package com.yohaku.expensetracker
 
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
+import com.yohaku.expensetracker.domain.model.*
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -33,5 +34,29 @@ class MerchantLocationTest {
         assertEquals(1,candidates.size)
         assertEquals("far",candidates.single().location.id)
         assertTrue(candidates.single().trustworthy)
+    }
+    @Test fun onlyTodaysNewUnlinkedNamedExpensesKeepCapturedPlace() {
+        val today="2026-11-01"
+        val draft=EntryDraft(categoryId="c",date=today,merchant=" 新店 ",capturedPlace=CapturedPlace(35.0,139.0,12.0))
+        assertEquals(EventPlaceEntity("b","e",35.0,139.0,12.0),draft.placeForNewEntry("b","e",today))
+        listOf(draft.copy(id="existing"),draft.copy(kind=EntryKind.INCOME),draft.copy(merchantId="m"),
+            draft.copy(merchant="  "),draft.copy(date="2026-10-31"),draft.copy(capturedPlace=null)).forEach {
+            assertNull(it.placeForNewEntry("b","e",today))
+        }
+        val empty=EntryDraft(categoryId="c",date=today)
+        assertFalse(empty.copy(capturedPlace=draft.capturedPlace).hasManualInput(empty))
+    }
+    @Test fun clustersUseNewestAnchorAndMostAccurateCoordinates() {
+        val dates=listOf("2026-11-03","2026-11-02","2026-11-01")
+        val events=dates.mapIndexed{i,date->EventEntity("b","e$i","EXPENSE","a",null,100,"JPY",100,date," 新店 ","")}
+        val points=listOf(EventPlaceEntity("b","e0",35.0,139.0,40.0),
+            EventPlaceEntity("b","e1",35.00045,139.0,5.0),EventPlaceEntity("b","e2",35.0027,139.0,10.0))
+        val s=snapshot().copy(events=events,eventPlaces=points)
+        val clusters=s.recordedPlaces("新店")
+        assertEquals(2,clusters.size)
+        assertEquals(2,clusters[0].count);assertEquals("2026-11-03",clusters[0].latestDate)
+        assertEquals(35.00045,clusters[0].latitude,0.0);assertEquals(139.0,clusters[0].longitude,0.0)
+        assertEquals(1,clusters[1].count)
+        assertEquals(1,s.copy(eventMerchants=listOf(EventMerchantEntity("b","e0","m"),EventMerchantEntity("b","e1","m"))).recordedPlaces("新店").size)
     }
 }

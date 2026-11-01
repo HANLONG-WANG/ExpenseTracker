@@ -31,7 +31,7 @@ fun BookSnapshot.withRememberedCardPayment(d:EntryDraft):EntryDraft {
 fun EntryDraft.hasManualInput(baseline:EntryDraft?):Boolean {
     if(kind!=EntryKind.TRANSFER&&categoryId==null)return false
     if(baseline==null)return true
-    fun EntryDraft.comparable()=copy(categoryId=null,merchant=if(merchantManuallyEdited)merchant else "",merchantId=if(merchantManuallyEdited)merchantId else null,merchantLocated=false)
+    fun EntryDraft.comparable()=copy(capturedPlace=null,categoryId=null,merchant=if(merchantManuallyEdited)merchant else "",merchantId=if(merchantManuallyEdited)merchantId else null,merchantLocated=false)
     return comparable()!=baseline.comparable()
 }
 fun AccountBalanceChange.needsNegativeBalanceConfirmation()=!AccountType.valueOf(account.type).debt&&after<0&&after<before

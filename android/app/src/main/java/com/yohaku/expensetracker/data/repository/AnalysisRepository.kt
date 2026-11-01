@@ -40,9 +40,7 @@ fun BookSnapshot.merchantCandidates(latitude:Double,longitude:Double,accuracyMet
     return merchantLocations.filter{it.bookId==book.id}.mapNotNull{location->
         val merchant=merchants.find{it.bookId==book.id&&it.id==location.merchantId&&it.active}?:return@mapNotNull null
         val lat=location.latitude?:return@mapNotNull null;val lon=location.longitude!!
-        val dLat=Math.toRadians(lat-latitude);val dLon=Math.toRadians(lon-longitude)
-        val a=sin(dLat/2).pow(2)+cos(Math.toRadians(latitude))*cos(Math.toRadians(lat))*sin(dLon/2).pow(2)
-        val distance=6371000.0*2*atan2(sqrt(a),sqrt((1-a).coerceAtLeast(0.0)))
+        val distance=distanceMeters(latitude,longitude,lat,lon)
         if(distance<=location.radiusMeters+accuracyMeters)MerchantCandidate(merchant,location,distance,accuracyMeters)else null
     }.sortedWith(compareByDescending<MerchantCandidate>{it.trustworthy}.thenBy{it.distanceMeters}).distinctBy{it.merchant.id}
 }

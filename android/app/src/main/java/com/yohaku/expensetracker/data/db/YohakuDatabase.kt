@@ -107,6 +107,11 @@ interface YohakuDao {
     @Upsert suspend fun putMerchantLocation(location:MerchantLocationEntity)
     @Query("SELECT * FROM merchant_locations WHERE bookId=:bookId AND id=:id") suspend fun merchantLocation(bookId:String,id:String):MerchantLocationEntity?
     @Query("DELETE FROM merchant_locations WHERE bookId=:bookId AND id=:id") suspend fun removeMerchantLocation(bookId:String,id:String)
+    @Upsert suspend fun putEventPlace(place:EventPlaceEntity)
+    @Query("DELETE FROM event_places WHERE bookId=:bookId AND eventId=:eventId") suspend fun clearEventPlace(bookId:String,eventId:String)
+    @Query("""SELECT e.* FROM events e WHERE e.bookId=:bookId AND e.kind='EXPENSE'
+        AND NOT EXISTS (SELECT 1 FROM event_merchants m WHERE m.bookId=e.bookId AND m.eventId=e.id)""")
+    suspend fun unlinkedExpenses(bookId:String):List<EventEntity>
     @Upsert suspend fun putEventMerchant(link:EventMerchantEntity)
     @Query("DELETE FROM event_merchants WHERE bookId=:bookId AND eventId=:eventId") suspend fun clearEventMerchant(bookId:String,eventId:String)
     @Query("SELECT * FROM event_merchants WHERE bookId=:bookId AND eventId=:eventId") suspend fun eventMerchant(bookId:String,eventId:String):EventMerchantEntity?
@@ -132,9 +137,9 @@ interface YohakuDao {
     @Upsert suspend fun putDraft(draft:DraftEntity)
     @Query("DELETE FROM drafts WHERE bookId=:bookId") suspend fun clearDraft(bookId:String)
 }
-const val DATABASE_VERSION=34
+const val DATABASE_VERSION=35
 
-@Database(entities=[CsvBatchEntity::class,CsvBatchEventEntity::class,CsvProfileEntity::class,CloudTaskEntity::class,CloudTransferEntity::class,CloudImportEntity::class,CloudAckEntity::class,BookEntity::class,AccountEntity::class,CategoryEntity::class,EventEntity::class,PostingEntity::class,RevisionEntity::class,DraftEntity::class,FileBlobEntity::class,AttachmentLinkEntity::class,SettlementEntity::class,TransferEntity::class,ExpenseComponentEntity::class,BudgetEntity::class,ActivityEntity::class,BookFeaturesEntity::class,EventActivityEntity::class,RecurrenceEntity::class,EntryTemplateEntity::class,OccurrenceEntity::class,ActivityBudgetEntity::class,ActivityReserveEntity::class,ReserveUseEntity::class,FriendEntity::class,ActivityParticipantEntity::class,TreatEntity::class,TreatAllocationEntity::class,AnalysisPreferencesEntity::class,MerchantEntity::class,MerchantLocationEntity::class,EventMerchantEntity::class,DraftMediaEntity::class,ReceiptEntity::class,ReceiptImageEntity::class,FinancialRuleEntity::class,FinancialPlanEntity::class,FinancialBillEntity::class,FinancialRuleValidationEntity::class,DebtContractEntity::class,FinancialRepaymentEntity::class,FinancialRepaymentAllocationEntity::class,FinancialContractPlanEntity::class,FinancialPlanRevisionEntity::class,FinancialArrangementEntity::class,FinancialBillAdjustmentEntity::class,ExpectedIncomeEntity::class,CreditLimitConfigEntity::class,CreditLimitGroupEntity::class,CreditLimitGroupMemberEntity::class,CreditLimitGroupRevisionEntity::class,CreditLimitRecoveryEntity::class,CreditLimitObservationEntity::class,FinancialDraftEntity::class,StatementBatchEntity::class,ReceiptExportEntity::class,ReceiptItemDocumentEntity::class,StatementDecisionEntity::class],version=DATABASE_VERSION,exportSchema=true)
+@Database(entities=[CsvBatchEntity::class,CsvBatchEventEntity::class,CsvProfileEntity::class,CloudTaskEntity::class,CloudTransferEntity::class,CloudImportEntity::class,CloudAckEntity::class,BookEntity::class,AccountEntity::class,CategoryEntity::class,EventEntity::class,PostingEntity::class,RevisionEntity::class,DraftEntity::class,FileBlobEntity::class,AttachmentLinkEntity::class,SettlementEntity::class,TransferEntity::class,ExpenseComponentEntity::class,BudgetEntity::class,ActivityEntity::class,BookFeaturesEntity::class,EventActivityEntity::class,RecurrenceEntity::class,EntryTemplateEntity::class,OccurrenceEntity::class,ActivityBudgetEntity::class,ActivityReserveEntity::class,ReserveUseEntity::class,FriendEntity::class,ActivityParticipantEntity::class,TreatEntity::class,TreatAllocationEntity::class,AnalysisPreferencesEntity::class,MerchantEntity::class,MerchantLocationEntity::class,EventMerchantEntity::class,EventPlaceEntity::class,DraftMediaEntity::class,ReceiptEntity::class,ReceiptImageEntity::class,FinancialRuleEntity::class,FinancialPlanEntity::class,FinancialBillEntity::class,FinancialRuleValidationEntity::class,DebtContractEntity::class,FinancialRepaymentEntity::class,FinancialRepaymentAllocationEntity::class,FinancialContractPlanEntity::class,FinancialPlanRevisionEntity::class,FinancialArrangementEntity::class,FinancialBillAdjustmentEntity::class,ExpectedIncomeEntity::class,CreditLimitConfigEntity::class,CreditLimitGroupEntity::class,CreditLimitGroupMemberEntity::class,CreditLimitGroupRevisionEntity::class,CreditLimitRecoveryEntity::class,CreditLimitObservationEntity::class,FinancialDraftEntity::class,StatementBatchEntity::class,ReceiptExportEntity::class,ReceiptItemDocumentEntity::class,StatementDecisionEntity::class],version=DATABASE_VERSION,exportSchema=true)
 abstract class YohakuDatabase:RoomDatabase() {
     abstract fun csvImportDao():CsvImportDao
     abstract fun cloudDao():CloudDao; abstract fun dao():YohakuDao; abstract fun financialDao():FinancialDao; abstract fun creditLimitDao():CreditLimitDao; abstract fun fileWorkflowDao():FileWorkflowDao }
@@ -175,6 +180,7 @@ data class BookGraph(
     @Relation(parentColumn="id",entityColumn="bookId") val merchants:List<MerchantEntity>,
     @Relation(parentColumn="id",entityColumn="bookId") val merchantLocations:List<MerchantLocationEntity>,
     @Relation(parentColumn="id",entityColumn="bookId") val eventMerchants:List<EventMerchantEntity>,
+    @Relation(parentColumn="id",entityColumn="bookId") val eventPlaces:List<EventPlaceEntity>,
     @Relation(parentColumn="id",entityColumn="bookId") val files:List<FileBlobEntity>,
     @Relation(parentColumn="id",entityColumn="bookId") val attachments:List<AttachmentLinkEntity>,
     @Relation(parentColumn="id",entityColumn="bookId") val stagedMedia:List<DraftMediaEntity>,
@@ -436,7 +442,7 @@ val MIGRATION_22_23 = object : androidx.room.migration.Migration(22,23) {
 /** The only migration chain; production and tests open databases through it. */
 val ALL_MIGRATIONS:Array<androidx.room.migration.Migration> = arrayOf(
     MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,MIGRATION_9_10,MIGRATION_10_11,MIGRATION_11_12,MIGRATION_12_13,MIGRATION_13_14,MIGRATION_14_15,MIGRATION_15_16,MIGRATION_16_17,
-    MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,MIGRATION_23_24,MIGRATION_24_25,MIGRATION_25_26,MIGRATION_26_27,MIGRATION_27_28,MIGRATION_28_29,MIGRATION_29_30,MIGRATION_30_31,MIGRATION_31_32,MIGRATION_32_33,MIGRATION_33_34
+    MIGRATION_17_18,MIGRATION_18_19,MIGRATION_19_20,MIGRATION_20_21,MIGRATION_21_22,MIGRATION_22_23,MIGRATION_23_24,MIGRATION_24_25,MIGRATION_25_26,MIGRATION_26_27,MIGRATION_27_28,MIGRATION_28_29,MIGRATION_29_30,MIGRATION_30_31,MIGRATION_31_32,MIGRATION_32_33,MIGRATION_33_34,MIGRATION_34_35
 )
 
 data class EventSaveTime(val eventId:String,val timestamp:Long)

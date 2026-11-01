@@ -197,3 +197,6 @@ data class ReceiptEntity(val bookId:String,val id:String,val eventId:String,val 
     ForeignKey(entity=FileBlobEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","fileId"])
 ],indices=[Index(value=["bookId","fileId"])])
 data class ReceiptImageEntity(val bookId:String,val receiptId:String,val revision:Int,val position:Int,val fileId:String)
+
+@Entity(tableName="event_places",primaryKeys=["bookId","eventId"],foreignKeys=[ForeignKey(entity=EventEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","eventId"],onDelete=ForeignKey.CASCADE)])
+data class EventPlaceEntity(val bookId:String,val eventId:String,val latitude:Double,val longitude:Double,val accuracyMeters:Double)

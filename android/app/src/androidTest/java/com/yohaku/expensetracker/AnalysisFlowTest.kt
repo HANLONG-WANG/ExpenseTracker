@@ -193,12 +193,8 @@ class AnalysisFlowTest {
             assertEquals(5,runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}.events.size)
             ui.runOnIdle{vm.navigate("merchants")}
             ui.onNodeWithTag("merchant-open-$merchant").performScrollTo().performClick()
-            tap(text("＋ 添加地点","＋ 場所を追加"))
-            ui.onNodeWithTag("field-"+text("地点名称","場所の名前")).performScrollTo().performTextReplacement("入口")
-            ui.onNodeWithTag("field-"+text("纬度 / 可留空","緯度・空欄可")).performScrollTo().performTextReplacement("35.0")
-            ui.onNodeWithTag("field-"+text("经度 / 可留空","経度・空欄可")).performScrollTo().performTextReplacement("139.0")
-            tap(text("保存地点","場所を保存"))
-            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.size==1&&!vm.busy.value}
+            runBlocking{repo.saveMerchantLocation(book,merchant,"入口",35.0,139.0)}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.size==1}
             val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(5,after.events.size);assertEquals(193800L,after.balance(after.accounts.single()));assertEquals(6000L,after.analysis(AnalysisFilter("2026-10-01","2026-10-31")).total)
             assertEquals(merchant,after.merchantCandidates(35.0,139.0).single().merchant.id)

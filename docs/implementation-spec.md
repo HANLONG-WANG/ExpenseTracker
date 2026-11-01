@@ -94,7 +94,13 @@
 - `RecurrenceEntity` 新增 merchant/merchantId/note/cardPaymentChoice/cardPaymentPeriods；`fixedCardPayment` 统一校验：非信用卡清空，不接受 DEFERRED，INSTALLMENT 须期数>0。`occurrenceDraft` 生成 date=scheduledDate、`merchantManuallyEdited=true` 的草稿；规则没设付款方式时用 `withRememberedCardPayment`。
 - 一键确认用 `AppViewModel.occurrenceConfirmation`：`previewEntry` → `commitEntryReview(clearDraft=false)`，不动用户草稿；提交时快照变化返回 null，则重新预览并标记 refreshed；负余额沿用 `negativeBalanceChanges`。「修改后再记」用同一草稿进入原表单（`startOccurrence`）。
 - `entry_templates`（book/account/category/activity 外键）。`validateTemplate` 和记账一样检查分类启用与类型、`entryAccounts(kind)`、币种、商户和活动；`templateIssue` 返回失效原因，`templateDraft` 拒绝失效模板。`startTemplate` 打开预填表单并建立基线，`amountFocusSession` 只聚焦一次金额框。分类合并在 `previewCategoryOperation` 中迁移模板，活动删除清空 activityId，账户/分类删除时模板算作引用。
-### 2.1 共通规则
+### 1.8 新商户记账位置与地图选点（2026-11-01）
+
+- `EntryDraft.capturedPlace`（纬度/经度/精度）：`EntryLocation` 定位成功且为今天的新建支出时写入；`changeEntry` 在日期非今天或非支出时清空；`hasManualInput` 忽略它。
+- `placeForNewEntry`：新建、支出、`merchantId==null`、商户非空、日期为今天且有暂存定位时，`PreparedLedgerChange.eventPlace` 在同一事务写入 `event_places`。保存时关联了已保存商户则删除该记录的位置；永久清理沿用级联表清理。
+- `recordedPlaces(name)`：未关联商户且商户文字（trim）相同的支出，按日期从新到旧，以簇首点100米内贪心合并；坐标取精度最好的点。`saveMerchantWithLocations` 在一个事务里保存商户和地点；新建商户时删除所有同名未关联支出的位置。距离统一用 `distanceMeters`（haversine）。
+- `PlacePicker`：`AndroidView(MapView)`，转发生命周期；中心图钉、半径圈为 Compose 叠加层（像素半径 = 米 / `getMetersPerPixelAtLatitude`），相机停下回调中心坐标；MapView 在按下时请求父级不拦截，防止外层滚动抢走拖动。`applyPlaceTheme` 在 Liberty 样式加载后按图层 id 重设颜色、隐藏 3D 建筑和道路编号、文字只用 `name`。`YohakuApplication` 初始化 MapLibre，用 OkHttp 拦截器设置专用 User-Agent。
+
 
 - 统一 UTF-8 JSON，首版版本号1；不同用途使用不同 `kind`。正式协议与 HTML 示例区分，不把示例账本/账户ID当真实ID。
 - 货币采用 `{ "currency": "JPY", "amount": "15230" }` 这样的明确结构，金额为十进制字符串；CNY/USD规范为两位小数。交易资金方向单列，实际金额通常为正数。
@@ -223,7 +229,7 @@
 - 使用Compose基础布局/输入/手势和自定义绘制实现三套独立组件；保持可访问性语义、焦点和足够触控区域，不把整个界面画成不可读不可点击的一张图。
 - 本地业务数据Room/SQLite；必要非金融偏好使用DataStore；金额/汇率/费用算法使用BigDecimal等十进制类型。
 - 单安卓工程，内部按数据、计算、导入、主题、功能页面划分清晰边界；先不建立大量Gradle子模块、后台服务或服务器。
-- 核心记账、账本、预算、分析、金融计划、核对、小票附件全部离线可用；只有参考汇率与用户主动发起的云端分析交接需要网络，定位/通知/系统文件/外部打开按安卓能力启用。
+- 核心记账、账本、预算、分析、金融计划、核对、小票附件全部离线可用；只有参考汇率、用户主动发起的云端分析交接和地点编辑的地图底图（OpenFreeMap）需要网络，定位/通知/系统文件/外部打开按安卓能力启用。
 - 本地重要提醒按既定提前天数，默认当地上午9点，可修改；日期安排按账户/规则时区换算。采用AlarmManager的适当时间窗口，后台整理用WorkManager，不依赖常驻进程，不把后台任务当精确秒级计时器。首版不新增临截止精确闹钟需求。
 - 请求通知/位置权限只在用户启用相应功能时；记账位置使用前台权限，不追踪后台出行；拒绝后手动记账和应用内待办可用。重启、时区变化、记录修改后重建尚未完成的提醒；不会一次补发多条过期提醒。
 - 以安装APK在用户手机测试，先直接交付签名一致的测试包；正式包与测试资料区分。无需先上应用商店；正式数据不得混入演示初始化。

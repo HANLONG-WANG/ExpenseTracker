@@ -55,7 +55,7 @@
 | UI10 | 未来风险 `forecast` | 预算与扣款账户分开；已确定/预计/资料不足；不含/含预计收入；逐日安排及处理入口 | `experience.js`、`completion.js` | P18 |
 | UI11 | 生活、活动 `life/activity` | 活动列表、总/分类预算、跨月排除、主动预留/使用/释放、参与者、消费与互请入口 | `views.js`、`experience.js`、`completion.js` | P11 |
 | UI12 | 活动内互请、朋友详情 `friend` | 本人付款整单只记一次；别人请我不扣余额；金额/比例份额；仅我与各人；活动结束历史修正 | `views.js`、`experience.js`、`completion.js` | P11 |
-| UI13 | 商户与定位 `merchants` | 商户原文/保存地点；定位中/未授权/无候选/自动带入；手改优先，管理停用 | `views.js`、`forms.js`、`completion.js` | P12,P22,P23 |
+| UI13 | 商户与定位 `merchants` | 商户原文/保存地点；定位中/未授权/无候选/自动带入；手改优先，管理停用；新商户记账位置带入「原名」存商户；地图选点（2026-11-01，三主题底图/图钉/外框） | `views.js`、`forms.js`、`completion.js` | P12,P22,P23 |
 | UI14 | 账户总览 `accounts`、资金账户 `bank` | 现金/银行/交通IC/信用卡/网贷，原币资金与负债分开；快捷转账图标；交易/期初/停用 | `experience.js`、`views.js` | P05,P09,P23 |
 | UI15 | 信用卡 `credit` | 总览、逐月账单、本金费用、计划、历史消费归属、已确认/预计、总/子额度、付款账户与期限 | `views.js`、`completion.js`、`themes.js` | P15,P17 |
 | UI16 | 金融规则 `rules` | 一次付/分期/リボ/贷款字段，规则版本/生效日、缺项、验算；无机构预设 | `views.js`、`forms.js`、`completion.js` | P14,P15,P16 |

@@ -10,6 +10,11 @@ class YohakuApplication:android.app.Application() {
     override fun onCreate() {
         super.onCreate()
         if(getProcessName()!=packageName)return
+        org.maplibre.android.MapLibre.getInstance(this)
+        val version=packageManager.getPackageInfo(packageName,0).versionName
+        org.maplibre.android.module.http.HttpRequestUtil.setOkHttpClient(okhttp3.OkHttpClient.Builder()
+            .addInterceptor { chain -> chain.proceed(chain.request().newBuilder()
+                .header("User-Agent","Yohaku/$version (Android; com.yohaku.expensetracker)").build()) }.build())
         com.yohaku.expensetracker.data.backup.RestoreFiles.recoverOnStartup(this)
         // The default ContentProvider initializer runs BEFORE Application.onCreate. Delay it so no
         // surviving worker can open Room while an interrupted restore is being rolled back.

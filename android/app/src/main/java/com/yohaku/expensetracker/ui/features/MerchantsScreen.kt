@@ -61,32 +61,59 @@ import com.yohaku.expensetracker.ui.theme.*
     editing?.let{id->MerchantEditor(s,s.merchants.find{it.id==id},newName,vm,{editing=null})}
     locationFor?.let{id->LocationEditor(s,id,s.merchantLocations.find{it.id==locationId},vm,{locationFor=null;locationId=null})}
 }
+private data class RecordedPlaceChoice(val keep:Boolean=true,val name:String,val latitude:Double,val longitude:Double,val radius:String="100")
+
 @Composable private fun MerchantEditor(s:BookSnapshot,old:MerchantEntity?,initialName:String,vm:AppViewModel,onDismiss:()->Unit) {
     var name by rememberSaveable{mutableStateOf(old?.name?:initialName)}
     var note by rememberSaveable{mutableStateOf(old?.note.orEmpty())}
     var active by rememberSaveable{mutableStateOf(old?.active?:true)}
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val places=remember(s.events,s.eventPlaces,s.eventMerchants,name,old){if(old==null)s.recordedPlaces(name)else emptyList()}
+    val defaults=places.map{p->RecordedPlaceChoice(name=word("${p.latestDate.substring(5).replace('-','/')} 记账处","${p.latestDate.substring(5).replace('-','/')} の記録場所"),latitude=p.latitude,longitude=p.longitude)}
+    val choices=remember(name.trim(),places){mutableStateListOf<RecordedPlaceChoice>().apply{addAll(defaults)}}
+    var adjusting by remember(name.trim(),places){mutableStateOf<Int?>(null)}
     YSheet(word("商户资料","お店の情報"),onDismiss) {
         YField(word("商户原名","お店の元の名前"),name,{name=it})
         YField(word("备注","メモ"),note,{note=it},multiline=true)
         YToggle(word("启用候选选择","選択候補として有効"),active,{active=it})
-        YButton(word("保存商户资料","お店の情報を保存"),{vm.execute(onSuccess=onDismiss){vm.repository.saveMerchant(s.book.id,name,note,old?.id,active)}},Modifier.testTag("merchant-save"),primary=true,enabled=!busy)
+        if(places.isNotEmpty()) {
+            ThemeSection(word("记账时的位置","記録したときの場所"),"RECORDED PLACES")
+            places.forEachIndexed{index,place->
+                val choice=choices[index]
+                Panel(Modifier.testTag("recorded-place-$index")) {
+                    YToggle(word("保留地点","場所を保存"),choice.keep,{choices[index]=choices[index].copy(keep=it)})
+                    YField(word("地点名称","場所の名前"),choice.name,{choices[index]=choices[index].copy(name=it)})
+                    YText(word("记了 ${place.count} 次","${place.count} 回記録"),11)
+                    YLink(word("在地图上调整","地図で調整"),{adjusting=index})
+                }
+            }
+        }
+        YButton(word("保存商户资料","お店の情報を保存"),{vm.execute(onSuccess=onDismiss){
+            vm.repository.saveMerchantWithLocations(s.book.id,name,note,old?.id,active,choices.filter{it.keep}.map{
+                MerchantPlaceInput(it.name,it.latitude,it.longitude,it.radius.toIntOrNull()?:error("匹配半径请输入整数 / 選択範囲は整数で入力してください"))
+            })
+        }},Modifier.testTag("merchant-save"),primary=true,enabled=!busy)
+    }
+    adjusting?.let{index->
+        val choice=choices[index]
+        YSheet(word("调整地点","場所を調整"),{adjusting=null}) {
+            PlacePicker(vm,choice.latitude,choice.longitude,choice.radius,{choices[index]=choices[index].copy(radius=it)}){lat,lon->choices[index]=choices[index].copy(latitude=lat,longitude=lon)}
+            YButton(word("完成","完了"),{adjusting=null},primary=true)
+        }
     }
 }
 @Composable private fun LocationEditor(s:BookSnapshot,merchantId:String,old:MerchantLocationEntity?,vm:AppViewModel,onDismiss:()->Unit) {
     var name by rememberSaveable{mutableStateOf(old?.name.orEmpty())}
-    var latitude by rememberSaveable{mutableStateOf(old?.latitude?.toString().orEmpty())}
-    var longitude by rememberSaveable{mutableStateOf(old?.longitude?.toString().orEmpty())}
+    var latitude by rememberSaveable{mutableStateOf(old?.latitude)}
+    var longitude by rememberSaveable{mutableStateOf(old?.longitude)}
     var radius by rememberSaveable{mutableStateOf((old?.radiusMeters?:100).toString())}
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(word("保存商户地点","お店の場所を保存"),onDismiss) {
         YField(word("地点名称","場所の名前"),name,{name=it})
-        CapturePlaceLocation(vm){fix->latitude=fix.latitude.toString();longitude=fix.longitude.toString()}
-        YField(word("纬度 / 可留空","緯度・空欄可"),latitude,{latitude=it})
-        YField(word("经度 / 可留空","経度・空欄可"),longitude,{longitude=it})
-        YField(word("匹配半径 / 米","選択範囲・メートル"),radius,{radius=it},numeric=true)
-        YText(word("坐标来自你确认的地点；没有坐标时只保存名称。","確認した場所の座標を入力。座標がなければ名前だけ保存します。"),11,color=LocalYohaku.current.muted)
-        YButton(word("保存地点","場所を保存"),{vm.execute(onSuccess=onDismiss){vm.repository.saveMerchantLocation(s.book.id,merchantId,name,latitude.takeIf{it.isNotBlank()}?.let{it.toDoubleOrNull()?:error("纬度请输入数字 / 緯度は数値で入力してください")},longitude.takeIf{it.isNotBlank()}?.let{it.toDoubleOrNull()?:error("经度请输入数字 / 経度は数値で入力してください")},radius.toIntOrNull()?:error("匹配半径请输入整数 / 選択範囲は整数で入力してください"),old?.id)}},Modifier.testTag("merchant-location-save"),primary=true,enabled=!busy)
+        PlacePicker(vm,latitude,longitude,radius,{radius=it}){lat,lon->latitude=lat;longitude=lon}
+        YButton(word("保存地点","場所を保存"),{vm.execute(onSuccess=onDismiss){
+            vm.repository.saveMerchantLocation(s.book.id,merchantId,name,requireNotNull(latitude),requireNotNull(longitude),radius.toIntOrNull()?:error("匹配半径请输入整数 / 選択範囲は整数で入力してください"),old?.id)
+        }},Modifier.testTag("merchant-location-save"),primary=true,enabled=!busy&&latitude!=null&&longitude!=null)
     }
 }
 

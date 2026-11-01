@@ -67,6 +67,7 @@ class MerchantFlowTest {
                 val event=repo.saveEntry(book,EntryDraft(accountId=account,categoryId=category,amount="1200",date="2026-10-02",merchant="原名店"))
                 val refund=repo.saveRefund(book,RefundInput(event,Money(Currency.JPY,100),account,Money(Currency.JPY,100),Money(Currency.JPY,100),"2026-10-03",true))
                 val merchant=repo.saveMerchant(book,"原名店")
+                repo.saveMerchantLocation(book,merchant,"入口",35.66130,139.66790)
                 vm.preferences.select(book);listOf(book,account,category,event,refund,merchant)
             }
             val book=ids[0];val account=ids[1];val category=ids[2];val event=ids[3];val refund=ids[4];val merchant=ids[5]
@@ -77,26 +78,37 @@ class MerchantFlowTest {
             ui.onNodeWithTag("merchant-open-$merchant").performClick()
             ui.onNodeWithTag("event-$event").assertExists()
             assertEquals(1,ui.onAllNodesWithTag("event-$refund").fetchSemanticsNodes().size)
-            tap(text("＋ 添加地点","＋ 場所を追加"))
+            tap(text("编辑地点","場所を編集"))
             val keyboard=InstrumentationRegistry.getArguments().getString("phaseBKeyboard")=="true"
             val name=clearHeader(ui.onNodeWithTag("field-"+text("地点名称","場所の名前")))
             if(keyboard){name.performTouchInput{click()};ui.waitUntil(10000){imeVisible()}}
             name.performTextReplacement("北门")
-            ui.onNodeWithTag("field-"+text("纬度 / 可留空","緯度・空欄可")).performScrollTo().performTextReplacement("35.0")
-            clearHeader(ui.onNodeWithTag("merchant-location-save")).performClick()
-            ui.waitUntil(10000){vm.error.value!=null&&!vm.busy.value}
-            ui.onNodeWithText(text("经纬度请同时填写","緯度・経度を両方入力してください")).assertExists()
-            assertTrue((vm.state.value as AppState.Ready).snapshot!!.merchantLocations.isEmpty())
-            tap(text("知道了","確認"))
-            ui.onNodeWithTag("field-"+text("经度 / 可留空","経度・空欄可")).performScrollTo().performTextReplacement("139.0")
+            ui.onNodeWithTag("place-picker-map").assertExists()
+            // The map sits in a scrolling sheet; a drag must move the map, not the sheet.
+            fun pin()=ui.onNodeWithTag("place-picker-center").fetchSemanticsNode().config[PlacePickerCoordinates]
+            ui.waitUntil(10000){kotlin.math.abs(pin().first-35.66130)<0.0005}
+            val before=pin();ui.onNodeWithTag("place-picker-map").performScrollTo();ui.waitForIdle()
+            // A real system touch: the map is a native View, so drive it through the input pipeline.
+            val box=ui.onNodeWithTag("place-picker-map").fetchSemanticsNode().let{it.positionOnScreen to it.size}
+            val x=(box.first.x+box.second.width/2).toInt();val y=(box.first.y+box.second.height/2).toInt()
+            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("input swipe $x $y ${x-90} ${y+60} 500").close()
+            ui.waitUntil(10000){pin()!=before}
+            if(visualEnabled()) {
+                ui.runOnUiThread{android.view.inspector.WindowInspector.getGlobalWindowViews().forEach{androidx.core.view.ViewCompat.getWindowInsetsController(it)?.hide(androidx.core.view.WindowInsetsCompat.Type.ime())}}
+                ui.waitUntil(5000){!imeVisible()};Thread.sleep(6000)
+                ui.onNodeWithTag("place-picker-locate").performScrollTo();shot("$theme-$language-place-picker")
+            }
+            ui.onNodeWithTag("field-"+text("纬度 / 可留空","緯度・空欄可")).assertDoesNotExist()
+            ui.waitUntil(10000){ui.onAllNodes(hasTestTag("merchant-location-save") and isEnabled()).fetchSemanticsNodes().isNotEmpty()}
             if(keyboard)ui.waitUntil(10000){imeVisible()}
             val save=clearHeader(ui.onNodeWithTag("merchant-location-save"))
             if(keyboard){assertTrue(save.getUnclippedBoundsInRoot().bottom<=ui.onNodeWithTag("sheet-scroll").getUnclippedBoundsInRoot().bottom);shot("$theme-$language-location-keyboard");save.performTouchInput{click()}}else save.performClick()
-            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.size==1&&!vm.busy.value}
-            tap(text("＋ 添加地点","＋ 場所を追加"))
-            ui.onNodeWithTag("field-"+text("地点名称","場所の名前")).performScrollTo().performTextReplacement("只保存名字")
-            clearHeader(ui.onNodeWithTag("merchant-location-save")).performClick()
-            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.size==2&&!vm.busy.value}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.any{it.name=="北门"}==true&&!vm.busy.value}
+            val savedPlace=runBlocking{repo.snapshot(repo.dao.book(book)!!).first().merchantLocations.single()}
+            assertNotNull(savedPlace.latitude);assertNotNull(savedPlace.longitude)
+            // Legacy name-only places remain readable; new UI saves always include a map center.
+            runBlocking{repo.saveMerchantLocation(book,merchant,"只保存名字",null,null)}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchantLocations?.size==2}
             val old=EntryDraft(accountId=account,categoryId=category,amount="77",merchant="旧草稿",date="2026-10-14")
             runBlocking{repo.saveDraft(book,old)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.draft?.mediaSession==old.mediaSession}
@@ -132,7 +144,7 @@ class MerchantFlowTest {
             assertEquals("原名店",after.events.first{it.id==event}.merchant)
             assertEquals(1,after.eventMerchants.size);assertEquals(merchant,after.eventMerchants.single().merchantId)
             assertTrue(after.events.filter{it.kind==EntryKind.EXPENSE.name}.all{it.merchant=="原名店"})
-            assertEquals(2,after.merchantLocations.size);assertEquals(merchant,after.merchantCandidates(35.0,139.0).single().merchant.id)
+            assertEquals(2,after.merchantLocations.size);assertEquals(merchant,after.merchantCandidates(35.66130,139.66790).single().merchant.id)
             assertNull(after.merchantLocations.first{it.name=="只保存名字"}.latitude)
         }
     }

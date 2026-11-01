@@ -168,6 +168,63 @@ class LocationEntryFlowTest {
             assertEquals("過去の原名",repo.dao.event(b,existing)!!.merchant)
         }finally {vm.viewModelScope.cancel();scope.cancel();db.close();path.delete()}
     }
+    @Test fun newMerchantKeepsCapturedLocationUntilSavedFromOriginalName()=runBlocking {
+        val app=InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as YohakuApplication
+        val db=Room.inMemoryDatabaseBuilder(app,YohakuDatabase::class.java).build()
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+        val path=File(app.cacheDir,"recorded-place-${UUID.randomUUID()}.preferences_pb")
+        val prefs=AppPreferences(app,PreferenceDataStoreFactory.create(scope=scope,produceFile={path}))
+        val repo=LedgerRepository(db);val source=ControlledLocation()
+        val vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock),locationSource=source)
+        try {
+            val b=repo.createBook("位置",Currency.JPY,language="zh")
+            repo.dao.putBook(repo.dao.book(b)!!.copy(initialized=true))
+            val a=repo.saveAccount(b,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
+            val c=repo.saveCategory(b,"食事",EntryKind.EXPENSE,null)
+            prefs.select(b);prefs.setForegroundLocation(b,true)
+            ui.setContent{NativeApp(vm)}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==b}
+            ui.runOnIdle {
+                vm.startEntry((vm.state.value as AppState.Ready).snapshot!!)
+                vm.changeEntry(b,vm.entry.value!!.copy(categoryId=c));vm.navigate("entry")
+            }
+            nextRequest(source).complete(LocationFix(35.0,139.0,8.0))
+            ui.waitUntil(10000){vm.entry.value?.capturedPlace!=null}
+            assertFalse(vm.entryHasManualInput())
+            ui.runOnIdle {
+                vm.changeEntry(b,vm.entry.value!!.copy(accountId=a,amount="500",merchant="新店",merchantManuallyEdited=true))
+                vm.saveEntry(b)
+            }
+            ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+            val saved=repo.snapshot(repo.dao.book(b)!!).first()
+            assertTrue(saved.merchants.isEmpty());assertEquals(35.0,saved.eventPlaces.single().latitude,0.0)
+            ui.runOnIdle{vm.navigate("merchants")}
+            ui.onNode(hasText("新店") and hasClickAction()).performScrollTo().performClick()
+            ui.onNodeWithText("记账时的位置").assertExists()
+            ui.onNodeWithTag("recorded-place-0").assertExists()
+            ui.onNodeWithText("记了 1 次").assertExists()
+            ui.onNodeWithTag("recorded-place-0").performScrollTo();shot("recorded-place")
+            visible("merchant-save").performClick()
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.merchants?.size==1&&!vm.busy.value}
+            val result=repo.snapshot(repo.dao.book(b)!!).first()
+            assertTrue(result.eventPlaces.isEmpty())
+            assertEquals(35.0,result.merchantLocations.single().latitude!!,0.0)
+            assertEquals(139.0,result.merchantLocations.single().longitude!!,0.0)
+            assertEquals(100,result.merchantLocations.single().radiusMeters)
+            // A failed place write must roll back both the merchant and the cleanup.
+            val second=repo.saveEntry(b,EntryDraft(accountId=a,categoryId=c,amount="100",merchant="別店",capturedPlace=CapturedPlace(36.0,140.0,5.0)))
+            try {
+                repo.saveMerchantWithLocations(b,"別店",places=listOf(MerchantPlaceInput("",36.0,140.0)))
+                fail("Expected invalid place name")
+            }catch(expected:IllegalArgumentException) { }
+            val rolledBack=repo.snapshot(repo.dao.book(b)!!).first()
+            assertFalse(rolledBack.merchants.any{it.name=="別店"})
+            assertEquals(second,rolledBack.eventPlaces.single().eventId)
+            repo.saveMerchantWithLocations(b,"別店")
+            assertTrue(repo.snapshot(repo.dao.book(b)!!).first().eventPlaces.isEmpty())
+        }finally{vm.viewModelScope.cancel();scope.cancel();db.close();path.delete()}
+    }
+
     @Test fun userEnablesPermissionAndAndroidGpsFillsThenSavesTheOriginalName()=runBlocking {
         org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))
         val instrumentation=InstrumentationRegistry.getInstrumentation()
@@ -216,10 +273,10 @@ class LocationEntryFlowTest {
             ui.onNodeWithTag("merchant-open-$merchant").performScrollTo().performClick()
             ui.onNode(hasText("＋ 場所を追加") and hasClickAction()).performScrollTo().performClick()
             visible("field-場所の名前").performTextReplacement("GPS保存場所")
-            visible("place-use-location").performClick()
+            visible("place-picker-locate").performClick()
             ui.waitUntil(25000){
-                val field=ui.onAllNodesWithTag("field-緯度・空欄可").fetchSemanticsNodes().firstOrNull()
-                field?.config?.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.EditableText){androidx.compose.ui.text.AnnotatedString("")}?.text?.toDoubleOrNull()?.let{kotlin.math.abs(it-35.0)<0.001}==true
+                ui.onAllNodesWithTag("place-picker-center").fetchSemanticsNodes().firstOrNull()
+                    ?.config?.getOrElse(PlacePickerCoordinates){0.0 to 0.0}?.let{kotlin.math.abs(it.first-35.0)<0.001}==true
             }
             ui.onNodeWithTag("field-選択範囲・メートル").assertTextEquals("100")
             visible("merchant-location-save").performClick()

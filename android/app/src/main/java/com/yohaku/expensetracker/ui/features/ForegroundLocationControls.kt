@@ -70,9 +70,9 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
 @Composable private fun LocationStatus(state:LocationRead) {
     val context=LocalContext.current
     val text=when(state) {
-        LocationRead.Idle->word("仅在此页面获取当前位置，不记录轨迹。","この画面でのみ現在地を取得。移動履歴は保存しません。")
+        LocationRead.Idle->word("今天新记的未保存商户支出会暂存位置；保存为商户后删除。","今日の新規支出で未保存のお店の位置を一時保存。お店を保存すると削除します。")
         LocationRead.Locating->word("正在定位，仍可手动填写并保存。","現在地を取得中。手入力・保存もできます。")
-        is LocationRead.Ready->word("定位精度约 ${state.fix.accuracyMeters.toInt()} 米，仅比较本账本保存地点。","位置精度は約${state.fix.accuracyMeters.toInt()}m。この帳簿の保存場所のみ照合。")
+        is LocationRead.Ready->word("定位精度约 ${state.fix.accuracyMeters.toInt()} 米，用于匹配本账本保存地点。","位置精度は約${state.fix.accuracyMeters.toInt()}m。この帳簿の保存場所と照合します。")
         is LocationRead.Failure->when(state.reason) {
             LocationFailure.PERMISSION->word("位置未授权，可继续手动输入。","位置は未許可。手入力で続けられます。")
             LocationFailure.SYSTEM_OFF->word("系统位置已关闭，可开启后重试或手动输入。","端末の位置情報はオフ。オンにして再試行、または手入力できます。")
@@ -106,7 +106,14 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
         (read as? LocationRead.Ready)?.fix?.let{s.merchantCandidates(it.latitude,it.longitude,it.accuracyMeters)}.orEmpty()
     }
     LaunchedEffect(read,candidates,d.mediaSession,enabled,d.date) {
-        if(enabled&&read is LocationRead.Ready)vm.offerLocatedMerchant(s.book.id,d.mediaSession,candidates)
+        if(enabled&&read is LocationRead.Ready) {
+            val current=vm.entry.value
+            if(current!=null&&current.mediaSession==d.mediaSession&&current.id==null&&current.kind==com.yohaku.expensetracker.domain.model.EntryKind.EXPENSE&&current.date==today.toString()) {
+                val fix=read.fix
+                vm.changeEntry(s.book.id,current.copy(capturedPlace=com.yohaku.expensetracker.domain.model.CapturedPlace(fix.latitude,fix.longitude,fix.accuracyMeters)))
+            }
+            vm.offerLocatedMerchant(s.book.id,d.mediaSession,candidates)
+        }
     }
     if(!currentDate){YText(word("补录非今天的记录，不使用当前位置匹配商户","今日以外の記録では現在地でお店を照合しません"),11,Modifier.testTag("entry-location-historical"),color=LocalYohaku.current.muted);return}
     LocationCandidatesPanel(Modifier.testTag("entry-location")) {
@@ -154,10 +161,11 @@ internal class LocationRequest(private val source:CurrentLocationSource,private 
     }
 }
 
-@Composable internal fun CapturePlaceLocation(vm:AppViewModel,onFix:(LocationFix)->Unit) {
+@Composable internal fun CapturePlaceLocation(vm:AppViewModel,autoLocate:Boolean=false,onFix:(LocationFix)->Unit) {
     val request=rememberLocationRequest(vm);val locate=rememberLocationAction(request)
     val read=request.state
     LaunchedEffect(read){(read as? LocationRead.Ready)?.let{onFix(it.fix)}}
-    YLink(word("使用当前位置","現在地を使う"),locate,Modifier.testTag("place-use-location"))
-    LocationStatus(read)
+    LaunchedEffect(Unit){if(autoLocate)locate()}
+    YLink(word("回到当前位置","現在地に戻る"),locate,Modifier.testTag("place-picker-locate"))
+    if(read !is LocationRead.Idle&&read !is LocationRead.Ready)LocationStatus(read)
 }

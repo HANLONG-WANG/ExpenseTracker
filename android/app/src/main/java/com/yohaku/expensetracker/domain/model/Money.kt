@@ -30,7 +30,7 @@ data class EntryDraft(
     val id: String? = null, val kind: EntryKind = EntryKind.EXPENSE,
     val categoryId: String? = null, val accountId: String? = null,
     val amount: String = "", val baseAmount: String = "", val date: String = java.time.LocalDate.now().toString(),
-    val merchant: String = "", val merchantId:String?=null,val merchantManuallyEdited:Boolean=false,val merchantLocated:Boolean=false,val note: String = "", val historicalIncluded: Boolean = false,
+    val capturedPlace:CapturedPlace?=null, val merchant: String = "", val merchantId:String?=null,val merchantManuallyEdited:Boolean=false,val merchantLocated:Boolean=false,val note: String = "", val historicalIncluded: Boolean = false,
     val originalCurrency: Currency? = null, val accountAmount: String = "",
     val settlementConfirmed: Boolean = true, val settlementDate: String = date,
     val rateSource: String = "manual", val rateDate: String = date,
@@ -59,3 +59,6 @@ enum class RecurrenceFrequency { WEEKLY, MONTHLY, YEARLY }
 
 @Serializable
 enum class TreatSplitMode { EQUAL, AMOUNTS, PERCENT }
+
+@kotlinx.serialization.Serializable
+data class CapturedPlace(val latitude:Double,val longitude:Double,val accuracyMeters:Double)

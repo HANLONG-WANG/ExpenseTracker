@@ -36,6 +36,8 @@ android {
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
+            // Ship 64-bit ARM only; debug keeps every ABI so the x86_64 emulator can run tests.
+            ndk { abiFilters += "arm64-v8a" }
         }
     }
     buildFeatures { compose = true }
@@ -58,6 +60,8 @@ dependencies {
     ksp(libs.room.compiler)
     implementation(libs.datastore)
     implementation(libs.work)
+    implementation(libs.maplibre)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.serialization)
     implementation("androidx.core:core-ktx:1.18.0")
     testImplementation("junit:junit:4.13.2")
