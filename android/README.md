@@ -6,7 +6,7 @@
 
 - [正式APK 0.5.0](artifacts/yohaku-release-0.5.0.apk) · [SHA-256](artifacts/yohaku-release-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker`，固定正式签名。
 - [开发APK 0.5.0](artifacts/yohaku-dev-0.5.0.apk) · [SHA-256](artifacts/yohaku-dev-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker.dev`，沿用阶段A–D开发证书。
-- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v36（云端办理 `command_plans`/`command_effects` 与任务 purpose，迁移35→36）。三主题、中日文按账本保存。
+- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v37（云端办理撤销关联与时间，迁移36→37；35→36的方案/效果队列及任务 purpose 保留）。三主题、中日文按账本保存。
 - 开发包可覆盖原开发版本。正式包独立安装，与开发包并存，不自动转移开发包资料。覆盖升级不要先卸载；卸载或清除应用存储会删除账本与内部附件。提供手动本地完整备份/恢复，系统云备份仍关闭。
 - 当前仅专用API36模拟器验证，用户实机未连接。精简实机检查、密钥位置和完整安装升级说明见[发行说明](RELEASE.md)。
 
@@ -295,18 +295,20 @@ adb shell am instrument -w -r \
 专用模拟器`emulator-5580`：标准1170×2532/density480/fontScale1（390dp），窄屏960×2078/density480/fontScale1.3（320dp）。测试后恢复原尺寸/字体/网络/权限等配置。字体许可及数值字形适配见[字体迁移记录](verification/font-migration.md)。
 
 
-## 云端办理（阶段 1）
+## 云端办理（阶段 1–2）
 
-云端分析交接台新增办理提交、预览和历史。`general + purpose=command` 自动附带协议/能力/账本结构，记录按用户选择范围附带；网站不改。命令 v1 为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`（仅批量分类）。所有步骤本机试运行后回滚，确认重跑比较，原子提交及去重；事实只能由用户勾选。详见[实现规格 3.3](../docs/implementation-spec.md#33-云端办理command-plan-v1阶段-1)和[阶段记录](../docs/plans/cloud-command-stage-1.md)。
+云端分析交接台新增办理提交、预览和历史。`general + purpose=command` 自动附带协议/能力/账本结构，记录按用户选择范围附带；网站不改。命令 v1 为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`（仅批量分类）。所有步骤本机试运行后回滚，确认重跑比较，原子提交及去重；事实只能由用户勾选。详见[实现规格 3.3](../docs/implementation-spec.md)和[阶段 2 记录](../docs/plans/cloud-command-stage-2.md)。
 
-必要测试（Gradle 须串行）：
+阶段 2 增加本机整批撤销：账户/分类/已有预测恢复原快照；本方案新建且无修改、无外部引用的账户、额度/规则版本、预测和从属/修订行整体移除。原分类为空也可恢复为空。执行后相关对象变化阻止整批撤销，原执行与去重记录保留。后续命令按[适配器检查表](../docs/plans/cloud-command-adapter-checklist.md)验收。
+
+必要测试（Gradle 须串行；本实现任务沙箱不运行，由验收方执行）：
 
 - JVM：`CommandProtocolTest`（严格解析、digest、引用、边界、数量和助手不得代勾）；`CommandConfirmationTest`（结构化语义比较、规则内嵌JSON的ID映射、差异路径）；`CommandRiskTest`（具体风险提示和必要的负余额确认）；回归 `FinancialRuleDraftTest`、`CreditCardOptionsTest`、`EntryPresetsTest`。
-- 仪器：`CommandExecutionTest`（接收固定结果、信用卡→规则→预测、20笔分类、相关/无关变更、缺项、失败/协程取消、提交后重启与双重去重）；`DatabaseUpgradeTest.version35AddsCommandTablesAndPreservesExistingCloudTask`（35→36及旧任务 purpose 默认值）。
+- 仪器：`CommandExecutionTest`（接收固定结果、信用卡→规则→预测、20笔分类、相关/无关变更、缺项、失败/协程取消、提交后重启与双重去重）；`DatabaseUpgradeTest.version36AddsUndoIdentityAndPreservesExecutedPlan`（36→37，执行记录/去重保留与撤销关联；原35→36用例继续保留）。阶段2相关流程为信用卡含额度整批撤销、20笔分类恢复、原分类为空恢复、已有账户新增规则/预测重算恢复、外部记录/JSON草稿引用及账单确认阻止；保留 `undoChecksAllTargetsAndRechecksAtConfirmation` 和账户编辑恢复用例；不新增边界/性能专项。
 - 性能：`CommandExecutionTest.fiveHundredCategoryChangesOn3700RecordsReportPreviewAndConfirmTimes` 默认运行，不需要性能开关；Logcat 标签 `CommandStage1` 输出 `previewMs`、`confirmMs`，验收各≤5000ms，测试不作时间断言。夹具导入不计时，解析/试运行/回滚、模型持久化及正式重跑/比较/提交均在相应计时内。
-- UI：`CommandFlowTest.submitReceiveReviewCheckConfirmAndHistory`，默认按 `TestLooks` 单外观；视觉检查使用 `looks=all visual=true`，覆盖三主题×中日文，截图 `cloud-command-stage-1/*-submit.png`、`*-preview.png`、`*-checks.png`、`*-history.png`。固定云端结果通过生产接收入口注入，不触网；上传任务与附件内容仍走生产准备流程。真实网站往返另行实测。
+- UI：`CommandFlowTest.submitReceiveReviewCheckConfirmAndHistory` 与 `undoPreviewConfirmAndHistory`，默认按 `TestLooks` 单外观；视觉检查使用 `looks=all visual=true`，覆盖三主题×中日文，截图 `cloud-command-stage-1/*-submit.png`、`*-preview.png`、`*-checks.png`、`*-history.png`；撤销流程新增 `*-undo-preview.png`、`*-undo-history.png`；信用卡链路增加 `*-card-undo-preview.png`（将移除清单）和 `*-card-undo-history.png`，须逐张查看。固定云端结果通过生产接收入口注入，不触网；上传任务与附件内容仍走生产准备流程。真实网站往返另行实测。
 - 下沉回归可运行现有 `FinancialPredictionTest`、`CreditCardOptionsStorageTest`；候选日期及表单交互的完整外观矩阵仅在此次大改验收需要时运行相关流程，不扩展到全系统/性能专项。
 
-数据库新 schema 在 `app/schemas/.../36.json`，`sourceSets.androidTest.assets` 已读取该目录；35→36升级用已导出的35.json作真实起点。旧备份通过同一 `ALL_MIGRATIONS` 升级，办理去重记录不级联删除。
+数据库新 schema 在 `app/schemas/.../37.json`，`sourceSets.androidTest.assets` 已读取该目录；36→37升级用已导出的36.json作真实起点，旧执行记录不伪造撤销快照。旧备份通过同一 `ALL_MIGRATIONS` 升级，办理去重记录不级联删除。
 
-验收结果见[阶段 1 记录](../docs/plans/cloud-command-stage-1.md)。
+验收记录：[阶段 1](../docs/plans/cloud-command-stage-1.md)、[阶段 2](../docs/plans/cloud-command-stage-2.md)。

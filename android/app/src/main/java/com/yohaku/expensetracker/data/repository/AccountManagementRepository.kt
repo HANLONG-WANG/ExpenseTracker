@@ -11,13 +11,24 @@ data class AccountUsage(val references:Map<String,Int>,val draftKeys:List<String
     val inUse get()=references.isNotEmpty()||draftKeys.isNotEmpty()
 }
 
-/** Derive reference roles from the app's composite foreign keys, including historical and pending rows. */
-internal fun LedgerRepository.scopedReferenceCounts(bookId:String,parentTable:String,id:String):Map<String,Int> {
+/** Shared FK inventory for account usage and command undo. Composite keys stay grouped. */
+internal data class ScopedForeignKey(val table:String,val parent:String,val columns:Map<String,String>)
+internal fun LedgerRepository.scopedForeignKeys():List<ScopedForeignKey> {
     val sql=db.openHelper.readableDatabase
     val tables=sql.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").use{c->buildList{while(c.moveToNext())add(c.getString(0))}}
+    return tables.flatMap{table->
+        val groups=linkedMapOf<Int,Pair<String,MutableMap<String,String>>>()
+        sql.query("PRAGMA foreign_key_list(`$table`)").use{c->while(c.moveToNext()) {
+            groups.getOrPut(c.getInt(0)){c.getString(2) to linkedMapOf()}.second[c.getString(3)]=c.getString(4)
+        }}
+        groups.values.map{(parent,columns)->ScopedForeignKey(table,parent,columns)}
+    }
+}
+internal fun LedgerRepository.scopedReferenceCounts(bookId:String,parentTable:String,id:String):Map<String,Int> {
+    val sql=db.openHelper.readableDatabase
     return buildMap {
-        for(table in tables) {
-            val columns=sql.query("PRAGMA foreign_key_list(`$table`)").use{c->buildList{while(c.moveToNext())if(c.getString(2)==parentTable&&c.getString(4)=="id")add(c.getString(3))}}.distinct()
+        for((table,keys) in scopedForeignKeys().filter{it.parent==parentTable}.groupBy{it.table}) {
+            val columns=keys.flatMap{it.columns.filterValues{column->column=="id"}.keys}.distinct()
             if(columns.isEmpty())continue
             val count=sql.query("SELECT COUNT(*) FROM `$table` WHERE bookId=? AND ("+columns.joinToString(" OR "){"`$it`=?"}+")",(listOf(bookId)+columns.map{id}).toTypedArray()).use{c->c.moveToFirst();c.getInt(0)}
             if(count>0)put(table,count)

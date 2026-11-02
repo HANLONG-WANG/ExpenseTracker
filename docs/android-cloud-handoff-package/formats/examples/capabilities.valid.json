@@ -263,7 +263,8 @@
         "openingDate": "2026-11-01"
       },
       "mode": "transactional",
-      "unavailable": "Reject the batch; incomplete predictions display missing fields."
+      "unavailable": "Reject the batch; incomplete predictions display missing fields.",
+      "undo": "Local batch undo restores existing account fields. Accounts and credit-limit versions created by this execution are removed with recorded dependent rows only if unchanged and free of references outside the batch."
     },
     {
       "name": "financialRule.addVersion",
@@ -1036,7 +1037,8 @@
         }
       },
       "mode": "transactional",
-      "unavailable": "Reject the batch; incomplete predictions display missing fields."
+      "unavailable": "Reject the batch; incomplete predictions display missing fields.",
+      "undo": "Local batch undo removes the version created by this execution, including on an existing account, only if unchanged and without external FK/JSON/draft references."
     },
     {
       "name": "financialPrediction.save",
@@ -1421,7 +1423,8 @@
         }
       },
       "mode": "transactional",
-      "unavailable": "Reject the batch; incomplete predictions display missing fields."
+      "unavailable": "Reject the batch; incomplete predictions display missing fields.",
+      "undo": "Local batch undo removes owned new plans, bills and revision rows; recalculation of an existing plan restores its exact recorded pre-batch plan and bill values. Any changed object or external reference blocks the whole undo."
     },
     {
       "name": "entry.update",
@@ -1643,7 +1646,8 @@
         }
       },
       "mode": "transactional",
-      "unavailable": "Reject the batch; incomplete predictions display missing fields."
+      "unavailable": "Reject the batch; incomplete predictions display missing fields.",
+      "undo": "Local batch undo restores every original category, including a persisted null or archived category, while retaining entry audit revisions. Full event revisions and related facts must still match execution."
     }
   ],
   "forbidden": [

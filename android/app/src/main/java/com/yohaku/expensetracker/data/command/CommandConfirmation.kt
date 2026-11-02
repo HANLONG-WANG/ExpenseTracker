@@ -23,7 +23,7 @@ object CommandConfirmationComparator {
     private fun semanticModel(m:ConfirmationModel)=encoded(m).jsonObject.let{root->JsonObject(root+mapOf(
         "steps" to JsonArray(m.steps.map{s->encoded(s).jsonObject.let{value->JsonObject(value+("requirements" to JsonArray(s.requirements.map{r->
             buildJsonObject{put("stepId",r.stepId);put("kind",r.kind.name);put("conditionDigest",r.conditionDigest)}
-        })))}}))) }
+        }))+("undo" to buildJsonObject{put("available",s.undo.available)}))}}))) }
 }
 
 internal class CommandIdentityMap {
@@ -46,7 +46,7 @@ internal fun commandObjectFacts(value:JsonElement,ignore:Set<String> = emptySet(
 /** FinancialRuleEntity stores its definition in lowercase `json`, unlike termsJson/basisJson. */
 internal fun commandRuleFacts(value:JsonElement)=commandObjectFacts(value,setOf("createdAt"),setOf("json"))
 
-internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val context:ExecutionContext) {
+internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val context:ExecutionContext,val undoRecord:UndoRecord?=null) {
     private val outputs=mutableMapOf<Pair<String,String>,String>()
     private val identities=CommandIdentityMap()
     private var cachedState:FinancialReviewState?=null

@@ -2,6 +2,7 @@ package com.yohaku.expensetracker.data.command
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.*
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.Base64
@@ -23,3 +24,11 @@ internal fun readCommandJson(stored:String):String {
     return GZIPInputStream(ByteArrayInputStream(Base64.getDecoder().decode(document.data))).bufferedReader(Charsets.UTF_8).use{it.readText()}
 }
 internal inline fun <reified T> readCommandDocument(stored:String):T=commandJson.decodeFromString(readCommandJson(stored))
+
+/** v36 fixtures/early records may be raw execution JSON. Only this trusted execution column accepts
+ * that representation: plan text still must be wrapped and cannot impersonate a storage envelope. */
+internal fun readCommandExecution(stored:String):CommandExecutionRecord {
+    val root=commandJson.parseToJsonElement(stored).jsonObject
+    return if("encoding" in root||"data" in root)readCommandDocument<CommandExecutionRecord>(stored)
+    else commandJson.decodeFromJsonElement<CommandExecutionRecord>(root)
+}

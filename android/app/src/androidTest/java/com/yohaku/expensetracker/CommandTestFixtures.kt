@@ -26,3 +26,8 @@ internal fun commandClaim(plan:CommandPlan,resultId:String="result-1",version:In
     return CloudClaim(localId,plan.book_id,"general","task-1",resultId,version,sha256(text),File("unused-test-claim"),text,null,emptyList(),"command")
 }
 internal fun commandChecks(model:ConfirmationModel)=model.requirements.filter{it.kind!=ConfirmationKind.INFORMATION}.map{it.key}.toSet()
+
+internal fun CommandPlan.withCommandCreditLimit():CommandPlan {
+    val limit=commandJson.parseToJsonElement("""{"totalMinor":100000,"installmentMinor":null,"revolvingMinor":null,"sharing":"TOTAL_ONLY","combinedMinor":null,"effectiveFrom":"2026-11-01","basisDate":"2026-11-01","usedTotalMinor":30000,"usedInstallmentMinor":null,"usedRevolvingMinor":null,"recovery":"PAYMENT_DATE","usageBasis":"PRINCIPAL_ONLY","zoneId":"Asia/Tokyo","usageStart":"TRANSACTION_DATE","recoveryDelayDays":0}""")
+    return copy(steps=steps.mapIndexed{index,step->if(index==0)step.copy(input=JsonObject(step.input+("creditLimit" to limit)))else step})
+}

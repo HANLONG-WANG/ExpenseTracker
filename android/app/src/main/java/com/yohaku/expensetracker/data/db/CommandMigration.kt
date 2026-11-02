@@ -10,3 +10,11 @@ val MIGRATION_35_36=object:androidx.room.migration.Migration(35,36) {
         db.execSQL("CREATE INDEX IF NOT EXISTS index_command_effects_planId ON command_effects(planId)")
     }
 }
+
+val MIGRATION_36_37=object:androidx.room.migration.Migration(36,37) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE command_plans ADD COLUMN undoOf TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE command_plans ADD COLUMN undoneAt INTEGER DEFAULT NULL")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_command_plans_undoOf ON command_plans(undoOf)")
+    }
+}

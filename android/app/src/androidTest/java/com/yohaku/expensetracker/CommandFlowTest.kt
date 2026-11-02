@@ -103,7 +103,7 @@ class CommandFlowTest {
                 val transfers=db.cloudDao().transfers(task.localId)
                 assertEquals(setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-ledger-context-v1.json"),transfers.map{it.name}.toSet())
                 val exported=commandJson.decodeFromString<LedgerContextExport>(File(transfers.single{it.name=="yohaku-ledger-context-v1.json"}.path).readText())
-                val plan=commandCardPlan(book,bank,cloud.commands.registry.catalogDigest,exported.contextDigest)
+                val plan=commandCardPlan(book,bank,cloud.commands.registry.catalogDigest,exported.contextDigest).withCommandCreditLimit()
                 val claim=commandClaim(plan,localId=task.localId)
                 val remote=CloudTask(claim.taskId,"general","ready",1,listOf(CloudFile("result-file","result","result.json",claim.text.toByteArray().size.toLong(),claim.sha256)),
                     listOf(CloudResult(claim.resultId,1,1,"result-file","ready",false,CloudValidation(emptyList(),emptyList()))),emptyList())
@@ -137,6 +137,59 @@ class CommandFlowTest {
             ui.runOnIdle{vm.navigate("command-history")}
             ui.waitUntil(10000){ui.onAllNodesWithTag("command-open-${row.planId}").fetchSemanticsNodes().isNotEmpty()}
             shot("$theme-$language-history")
+            tap("command-undo-${row.planId}")
+            ui.waitUntil(20000){!vm.busy.value&&ui.onAllNodesWithTag("command-undo-removals").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("command-undo-removals").performScrollTo()
+            shot("$theme-$language-card-undo-preview")
+            tap("command-confirm")
+            ui.waitUntil(15000){!vm.busy.value}
+            runBlocking<Unit>{assertEquals("UNDONE",cloud.commands.plan(row.planId).status);assertTrue(db.financialDao().graph(book).first()!!.plans.isEmpty())}
+            ui.runOnIdle{vm.navigate("command-history")}
+            ui.waitUntil(10000){ui.onAllNodes(hasText(if(language=="ja")"取消済み"else"已撤销") and hasAnyAncestor(hasTestTag("history-${row.planId}"))).fetchSemanticsNodes().size==1}
+            ui.onNodeWithTag("history-${row.planId}").performScrollTo()
+            shot("$theme-$language-card-undo-history")
         }
     }
+    @Test fun undoPreviewConfirmAndHistory() {
+        for((theme,language) in testLooks(this)) {
+            val (book,row)=runBlocking {
+                val b=r.createBook("撤销 $theme $language",Currency.JPY,theme,language,startDate="2026-11-01")
+                r.updateBook(r.dao.book(b)!!.copy(initialized=true))
+                val bank=r.saveAccount(b,"生活口座",AccountType.BANK,Currency.JPY,Money(Currency.JPY,100000),"2026-11-01")
+                val old=r.saveCategory(b,"日常 / 日々",EntryKind.EXPENSE,null)
+                val next=r.saveCategory(b,"咖啡 / コーヒー",EntryKind.EXPENSE,null)
+                repeat(20){r.saveEntry(b,EntryDraft(accountId=bank,categoryId=old,amount="500",date="2026-11-01",merchant="珈琲店 $it"))}
+                val plan=commandCardPlan(b,bank,cloud.commands.registry.catalogDigest,r.commandExports(b,RecordScope()).context.contextDigest).copy(
+                    message=if(language=="ja")"コーヒーの記録をまとめて分類"else"批量调整咖啡记录分类",
+                    steps=listOf(CommandStep("recat","entry.update",1,encoded(EntryUpdateInput(EntryTargets(select=EntrySelector(category=old)),EntryCategorySet(next))).jsonObject)))
+                val received=cloud.commands.receive(commandClaim(plan,"undo-$theme-$language",localId="undo-$theme-$language"),"https://example.test",plan.context_digest)
+                val model=cloud.commands.preview(received.planId);cloud.commands.confirm(received.planId,commandChecks(model))
+                vm.preferences.select(b);b to received
+            }
+            ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.openCommandPlan(row.planId)}
+            tap("command-undo-${row.planId}")
+            ui.waitUntil(20000){!vm.busy.value&&vm.commandPlanId.value!=row.planId&&ui.onAllNodesWithTag("command-step-undo_recat_0").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithText(if(language=="ja")"取消前に、もう一度確認。"else"撤销前，再核对一次。").performScrollTo()
+            shot("$theme-$language-undo-preview")
+            tap("command-confirm")
+            ui.waitUntil(15000){!vm.busy.value}
+            runBlocking<Unit> {
+                val original=cloud.commands.plan(row.planId)
+                assertEquals("UNDONE",original.status);assertNotNull(original.undoneAt)
+                assertEquals("EXECUTED",cloud.commands.plan(vm.commandPlanId.value!!).status)
+                assertEquals(20,r.snapshot(r.dao.book(book)!!).first().events.count{event->
+                    r.dao.category(book,event.categoryId!!)!!.name=="日常 / 日々"
+                })
+            }
+            ui.runOnIdle{vm.navigate("command-history")}
+            ui.waitUntil(10000){ui.onAllNodesWithTag("history-${row.planId}").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("history-${row.planId}").performScrollTo()
+            ui.onNode(hasText(if(language=="ja")"取消済み"else"已撤销") and hasAnyAncestor(hasTestTag("history-${row.planId}"))).assertExists()
+            ui.onNodeWithText(if(language=="ja")"「コーヒーの記録をまとめて分類」を取り消す"else"撤销「批量调整咖啡记录分类」").assertExists()
+            ui.onNodeWithTag("command-undo-${row.planId}").assertDoesNotExist()
+            shot("$theme-$language-undo-history")
+        }
+    }
+
 }

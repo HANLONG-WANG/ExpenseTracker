@@ -19,7 +19,11 @@ class CommandProtocolTest {
         assertTrue(parse(plan(emptyList()).copy(message="请补充基准日",questions=listOf("日期？"))).steps.isEmpty())
         assertEquals(registry.catalogDigest,registry.export().getValue("catalogDigest").jsonPrimitive.content)
     }
-    @Test fun unknownCommandRejectsWholePlan(){reject(plan(listOf(card,rule.copy(command="sql.execute"))))}
+    @Test fun unknownCommandRejectsWholePlan(){
+        reject(plan(listOf(card,rule.copy(command="sql.execute"))))
+        reject(plan(listOf(card.copy(command="local.restoreExecution",input=buildJsonObject{}))))
+        assertTrue(registry.capabilities.none{it.name.startsWith("local.")})
+    }
     @Test fun unknownProtocolVersionRejectsWholePlan(){reject(plan().copy(version=2))}
     @Test fun unknownCommandVersionRejectsWholePlan(){reject(plan(listOf(card.copy(command_version=2))))}
     @Test fun catalogDigestMismatchRejectsWholePlan(){reject(plan().copy(catalog_digest="f".repeat(64)))}

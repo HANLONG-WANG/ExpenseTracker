@@ -8,7 +8,7 @@ import java.util.UUID
 
 @Serializable data class CommandCapability(val name:String,val version:Int,val inputSchema:JsonObject,val outputs:Map<String,String>,
     val defaults:String,val prerequisites:String,val confirmationTypes:List<ConfirmationKind>,val comparisonFields:List<String>,
-    val description:String,val example:JsonObject,val mode:String="transactional",val unavailable:String="Reject the whole batch; incomplete predictions remain a non-executable preview.")
+    val description:String,val example:JsonObject,val undo:String,val mode:String="transactional",val unavailable:String="Reject the whole batch; incomplete predictions remain a non-executable preview.")
 
 class CommandRegistry {
     val forbidden=listOf("backup.restore","cloud.credentials","cloud.device.manage","entry.purge","book.purge","trash.empty","trash.purgeExpired","any.permanentDelete")

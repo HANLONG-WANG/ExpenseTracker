@@ -16,6 +16,47 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DatabaseUpgradeTest {
+
+    @Test fun version36AddsUndoIdentityAndPreservesExecutedPlan()=runBlocking<Unit> {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val name="upgrade-command-36-37.db";context.deleteDatabase(name)
+        val old=SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name),null)
+        val execution="""{"outputs":{},"generatedIds":{}}"""
+        try {
+            val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("com.yohaku.expensetracker.data.db.YohakuDatabase/36.json").bufferedReader().readText()).getJSONObject("database")
+            val entities=schema.getJSONArray("entities")
+            for(i in 0 until entities.length()) {
+                val entity=entities.getJSONObject(i);val table=entity.getString("tableName")
+                old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}",table))
+                val indices=entity.optJSONArray("indices")
+                for(j in 0 until (indices?.length()?:0))old.execSQL(indices!!.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}",table))
+            }
+            val queries=schema.getJSONArray("setupQueries")
+            for(i in 0 until queries.length())old.execSQL(queries.getString(i))
+            old.execSQL("INSERT INTO command_plans (planId,bookId,localId,origin,taskId,resultId,resultVersion,sha256,sourceKey,planJson,contextDigest,status,checksJson,createdAt,executedAt,executionJson) VALUES ('p','b','local','https://example.test','task','result',1,'sha','source','{}','digest','EXECUTED','[]',1,2,?)",arrayOf(execution))
+            old.execSQL("INSERT INTO cloud_imports (importKey,localId,taskId,resultId,resultVersion,sha256,localRef,importedAt) VALUES ('source','local','task','result',1,'sha','p',2)")
+            old.version=36
+        }finally{old.close()}
+        val db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        try {
+            assertEquals(DATABASE_VERSION,db.openHelper.readableDatabase.version)
+            val row=db.commandDao().plan("p")!!
+            assertEquals("EXECUTED",row.status);assertEquals(2L,row.executedAt);assertEquals(execution,row.executionJson)
+            assertNull(row.undoOf);assertNull(row.undoneAt);assertNotNull(db.cloudDao().imported("source"))
+            val commands=com.yohaku.expensetracker.data.command.CommandRepository(LedgerRepository(db))
+            assertFalse(commands.undoAvailability(row).available)
+            val compressed=row.copy(executionJson=com.yohaku.expensetracker.data.command.storeCommandJson(execution))
+            assertFalse(commands.undoAvailability(compressed).available)
+            assertEquals(com.yohaku.expensetracker.data.command.readCommandExecution(execution),
+                com.yohaku.expensetracker.data.command.readCommandExecution(compressed.executionJson!!))
+            val inverse=row.copy(planId="undo",sourceKey="local-undo:p",status="PENDING",undoOf="p",executedAt=null)
+            db.commandDao().insert(inverse);assertEquals(inverse,db.commandDao().undoFor("p"))
+            db.commandDao().update(row.copy(status="UNDONE",undoneAt=3))
+            assertEquals(3L,db.commandDao().plan("p")!!.undoneAt)
+            db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
+        }finally{db.close();context.deleteDatabase(name)}
+    }
+
     @Test fun version35AddsCommandTablesAndPreservesExistingCloudTask()=runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val name="upgrade-command-35-36.db";context.deleteDatabase(name)

@@ -53,7 +53,8 @@ class CommandExecutionTest {
     private suspend fun snapshot(book:String)=r.snapshot(r.dao.book(book)!!).first()
 
     @Test fun cardRulePredictionRunsLocallyThenCommitsWithDurableReceiptAndDeduplicates()=runBlocking<Unit> {
-        val (book,bank)=setup();val input=fixture(book,bank);val row=receive(input)
+        val (book,bank)=setup();val input=fixture(book,bank).withCommandCreditLimit();val row=receive(input)
+        val originalRows=CommandUndoJournal(r,book).snapshot()
         val before=snapshot(book);val model=commands.preview(row.planId)
         assertEquals(before,snapshot(book));assertEquals(3,model.steps.size);assertTrue(model.executable)
         assertNull("Repeated previews must differ only in generated identities",CommandConfirmationComparator.firstDifference(model,commands.preview(row.planId)))
@@ -80,6 +81,80 @@ class CommandExecutionTest {
         commands.receive(commandClaim(input),"https://example.test",input.context_digest)
         commands.receive(commandClaim(input.copy(message="第二个结果版本"),"result-2",2),"https://example.test",input.context_digest)
         assertEquals(after,snapshot(book));assertEquals(2,db.cloudDao().pendingAcks().size)
+        assertTrue(model.steps.all{it.undo.available})
+        assertTrue(commands.undoAvailability(commands.plan(row.planId)).available)
+        val inverse=commands.prepareUndo(row.planId);val undo=commands.preview(inverse.planId)
+        assertTrue(undo.executable)
+        assertEquals(setOf("accounts","financial_rules","financial_plans","financial_bills","financial_plan_revisions","credit_limit_configs"),undo.removals.map{it.table}.toSet())
+        assertEquals(after,snapshot(book)) // removing owned rows during trial must roll back too
+        commands.confirm(inverse.planId,commandChecks(undo))
+        assertEquals(before,snapshot(book));assertEquals(originalRows,CommandUndoJournal(r,book).snapshot())
+        assertTrue(r.scopedReferenceCounts(book,"accounts",card.id).isEmpty())
+        db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
+        assertEquals("UNDONE",commands.plan(row.planId).status);assertNotNull(db.cloudDao().imported(row.sourceKey))
+        assertThrows(IllegalStateException::class.java){runBlocking<Unit>{commands.prepareUndo(row.planId)}}
+        assertThrows(IllegalStateException::class.java){runBlocking<Unit>{commands.confirm(row.planId,emptySet())}}
+
+    }
+
+
+    @Test fun newCardCannotBeRemovedWhileExternalRecordsOrJsonDraftsReferToIt()=runBlocking<Unit> {
+        val (book,bank)=setup();val row=receive(fixture(book,bank).withCommandCreditLimit())
+        val forward=commands.preview(row.planId);commands.confirm(row.planId,commandChecks(forward))
+        val card=snapshot(book).accounts.single{it.type=="CREDIT"}
+        val inverse=commands.prepareUndo(row.planId);val preview=commands.preview(inverse.planId)
+        r.saveDraft(book,EntryDraft(accountId=card.id,note="方案以外的草稿"))
+        assertThrows(CommandRepreviewRequired::class.java){runBlocking<Unit>{commands.confirm(inverse.planId,commandChecks(preview))}}
+        val draftConflict=commands.preview(inverse.planId)
+        assertFalse(draftConflict.executable)
+        assertTrue(draftConflict.conflicts.any{it.key==card.id&&it.reference?.table=="drafts"&&it.field=="json.accountId"})
+        r.clearDraft(book)
+        val category=r.saveCategory(book,"购物",EntryKind.EXPENSE,null)
+        val event=r.saveEntry(book,EntryDraft(accountId=card.id,categoryId=category,amount="500",date="2026-11-02",merchant="后来购物"))
+        val after=snapshot(book);val finance=CommandUndoJournal(r,book).snapshot()
+        val blocked=commands.preview(inverse.planId)
+        assertFalse(blocked.executable)
+        assertTrue(blocked.conflicts.any{it.key==card.id&&it.reference?.let{ref->ref.table=="events"&&ref.key.contains(event)&&ref.name.contains("后来购物")}==true})
+        assertThrows(IllegalStateException::class.java){runBlocking<Unit>{commands.confirm(inverse.planId,emptySet())}}
+        assertEquals(after,snapshot(book));assertEquals(finance,CommandUndoJournal(r,book).snapshot())
+        val forecast=readCommandExecution(commands.plan(row.planId).executionJson!!).outputs.getValue("forecast").getValue("prediction")
+        val bill=db.financialDao().graph(book).first()!!.bills.first{it.planId==forecast}
+        assertTrue(r.commitFinancialBillConfirmation(r.previewFinancialBillConfirmation(book,bill.id,KnownBillInput(bill.date,31000,30000,1000,bank))))
+        val billConflict=commands.preview(inverse.planId)
+        assertTrue(billConflict.conflicts.any{it.key==bill.id&&it.field=="confirmedTotalMinor"&&it.current==JsonPrimitive(31000)})
+    }
+
+    @Test fun existingAccountRuleAndPredictionRecalculationRestoreExactSnapshots()=runBlocking<Unit> {
+        val (book,bank)=setup();val initial=receive(fixture(book,bank).withCommandCreditLimit())
+        val first=commands.preview(initial.planId);commands.confirm(initial.planId,commandChecks(first))
+        val graph=db.financialDao().graph(book).first()!!;val card=snapshot(book).accounts.single{it.type=="CREDIT"}
+        val base=fixture(book,bank)
+        val rule=base.steps[1].copy(input=JsonObject(base.steps[1].input+("account" to JsonPrimitive(card.id))))
+        val prediction=base.steps[2].copy(input=JsonObject(base.steps[2].input+mapOf("account" to JsonPrimitive(card.id),"plan" to JsonPrimitive(graph.plans.single().id),
+            "terms" to commandJson.parseToJsonElement("""{"agreementDate":"2026-11-01","paymentDates":["2026-12-12"]}"""))))
+        val input=base.copy(steps=listOf(rule,prediction))
+        val before=CommandUndoJournal(r,book).snapshot()
+        val row=commands.receive(commandClaim(input,"recalculate-result"),"https://example.test",input.context_digest)
+        val preview=commands.preview(row.planId);commands.confirm(row.planId,commandChecks(preview))
+        val inverse=commands.prepareUndo(row.planId);val undo=commands.preview(inverse.planId)
+        assertTrue(undo.executable);assertTrue(undo.removals.any{it.table=="financial_rules"})
+        assertTrue(undo.removals.none{it.table in setOf("accounts","financial_plans")})
+        commands.confirm(inverse.planId,commandChecks(undo))
+        assertEquals(before,CommandUndoJournal(r,book).snapshot())
+        assertEquals(graph,db.financialDao().graph(book).first())
+    }
+
+    @Test fun categoryUndoRestoresPersistedUncategorizedState()=runBlocking<Unit> {
+        val (book,bank)=setup();val category=r.saveCategory(book,"分类",EntryKind.EXPENSE,null)
+        val id=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="500",date="2026-11-01"))
+        // The persisted schema permits a historical expense without a category, although the editor
+        // requires one on a new save. Seed that pre-existing state, not a new cloud capability.
+        r.dao.putEvent(snapshot(book).events.single().copy(categoryId=null))
+        val input=fixture(book,bank).copy(steps=listOf(CommandStep("recat","entry.update",1,encoded(EntryUpdateInput(EntryTargets(ids=listOf(id)),EntryCategorySet(category))).jsonObject)))
+        val row=receive(input);val preview=commands.preview(row.planId);commands.confirm(row.planId,commandChecks(preview))
+        val inverse=commands.prepareUndo(row.planId);val undo=commands.preview(inverse.planId)
+        assertTrue(undo.executable);commands.confirm(inverse.planId,commandChecks(undo))
+        assertNull(snapshot(book).events.single().categoryId)
     }
 
     @Test fun categoryBatchFreezesTwentyTargetsAndPreservesSettlementAndOtherFacts()=runBlocking<Unit> {
@@ -98,6 +173,69 @@ class CommandExecutionTest {
         assertTrue(after.events.all{it.categoryId==next&&it.revision==2})
         assertEquals(before.settlements,after.settlements);assertEquals(before.storedPostings,after.storedPostings)
         assertEquals(before.events.map{it.amountMinor},after.events.map{it.amountMinor})
+        val inverse=commands.prepareUndo(row.planId);val undo=commands.preview(inverse.planId)
+        assertTrue(undo.executable);assertEquals(after,snapshot(book))
+        assertEquals(20,undo.net.count{it.type=="entry"&&it.before!=it.after})
+        commands.confirm(inverse.planId,commandChecks(undo))
+        val restored=snapshot(book)
+        assertEquals(before.events.sortedBy{it.id},restored.events.map{it.copy(revision=1)}.sortedBy{it.id})
+        assertEquals(before.accounts,restored.accounts);assertEquals(before.settlements,restored.settlements)
+        assertEquals(before.storedPostings,restored.storedPostings)
+        assertEquals(before.budgetProjection("2026-11",old),restored.budgetProjection("2026-11",old))
+        assertEquals("UNDONE",commands.plan(row.planId).status);assertEquals(clock.millis(),commands.plan(row.planId).undoneAt)
+        assertNotNull(commands.plan(row.planId).executionJson);assertNotNull(commands.plan(inverse.planId).executionJson)
+        assertNotNull(db.cloudDao().imported(row.sourceKey))
+        assertEquals(1,db.cloudDao().pendingAcks().size) // local undo sends no cloud receipt
+        assertThrows(IllegalStateException::class.java){runBlocking<Unit>{commands.prepareUndo(row.planId)}}
+        assertThrows(IllegalStateException::class.java){runBlocking<Unit>{commands.prepareUndo(inverse.planId)}}
+        assertThrows(IllegalStateException::class.java){runBlocking<Unit>{commands.confirm(row.planId,emptySet())}}
+        commands.confirm(inverse.planId,emptySet()) // retry is idempotent, never writes again
+        val receivedAgain=commands.receive(commandClaim(plan,"after-undo-result",2),"https://example.test",plan.context_digest)
+        assertEquals("UNDONE",receivedAgain.status);assertEquals(restored,snapshot(book))
+    }
+
+
+    @Test fun undoChecksAllTargetsAndRechecksAtConfirmation()=runBlocking<Unit> {
+        val (book,bank)=setup();val old=r.saveCategory(book,"餐饮",EntryKind.EXPENSE,null);val next=r.saveCategory(book,"咖啡",EntryKind.EXPENSE,null)
+        repeat(20){r.saveEntry(book,EntryDraft(accountId=bank,categoryId=old,amount="500",date="2026-11-01",merchant="店 $it"))}
+        val before=snapshot(book)
+        val input=fixture(book,bank).copy(steps=listOf(CommandStep("recat","entry.update",1,encoded(EntryUpdateInput(EntryTargets(ids=before.events.map{it.id}),EntryCategorySet(next))).jsonObject)))
+        val row=receive(input);val preview=commands.preview(row.planId);commands.confirm(row.planId,commandChecks(preview))
+        val inverse=commands.prepareUndo(row.planId);val undo=commands.preview(inverse.planId)
+        val changed=snapshot(book).events.first()
+        // A normal save changes the note and revision after the undo preview.
+        r.saveEntry(book,EntryDraft(id=changed.id,accountId=bank,categoryId=next,amount="500",date=changed.date,merchant=changed.merchant,note="后来修改"))
+        val afterEdit=snapshot(book)
+        assertThrows(CommandRepreviewRequired::class.java){runBlocking<Unit>{commands.confirm(inverse.planId,commandChecks(undo))}}
+        val blocked=commands.preview(inverse.planId)
+        assertFalse(blocked.executable)
+        assertTrue(blocked.conflicts.any{it.key==changed.id&&it.field=="note"&&it.current==JsonPrimitive("后来修改")})
+        assertTrue(blocked.conflicts.any{it.key==changed.id&&it.field=="revision"})
+        assertThrows(IllegalStateException::class.java){runBlocking<Unit>{commands.confirm(inverse.planId,emptySet())}}
+        assertEquals(afterEdit,snapshot(book));assertTrue(afterEdit.events.all{it.categoryId==next})
+
+        val accountPlan=fixture(book,bank).copy(steps=listOf(fixture(book,bank).steps.first()))
+        val accountRow=commands.receive(commandClaim(accountPlan,"account-result"),"https://example.test",accountPlan.context_digest)
+        val accountPreview=commands.preview(accountRow.planId);commands.confirm(accountRow.planId,commandChecks(accountPreview))
+        val card=snapshot(book).accounts.single{it.type=="CREDIT"}
+        r.saveAccount(book,"后来改名",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,card.openingMinor),card.openingDate,card.id)
+        val accountUndo=commands.prepareUndo(accountRow.planId);val accountBlocked=commands.preview(accountUndo.planId)
+        assertFalse(accountBlocked.executable)
+        assertTrue(accountBlocked.conflicts.any{it.key==card.id&&it.field=="name"&&it.current==JsonPrimitive("后来改名")})
+        assertEquals("EXECUTED",commands.plan(accountRow.planId).status)
+    }
+
+    @Test fun unusedAccountCreationAndAccountEditUseExistingOperationsToUndo()=runBlocking<Unit> {
+        val (book,bank)=setup();val before=snapshot(book)
+        val original=fixture(book,bank)
+        val edit=CommandStep("edit","account.save",1,encoded(AccountCommandInput("新的名称","JPY",80000,"2026-11-01",JsonPrimitive(bank),"BANK")).jsonObject)
+        val input=original.copy(steps=listOf(edit,original.steps.first()))
+        val row=receive(input);val preview=commands.preview(row.planId);commands.confirm(row.planId,commandChecks(preview))
+        val inverse=commands.prepareUndo(row.planId);val undo=commands.preview(inverse.planId)
+        assertTrue(undo.executable);assertTrue(undo.net.any{it.type=="account"&&it.after==JsonNull})
+        commands.confirm(inverse.planId,commandChecks(undo))
+        assertEquals(before.accounts,snapshot(book).accounts);assertEquals(before.events,snapshot(book).events)
+        assertEquals("UNDONE",commands.plan(row.planId).status)
     }
 
     @Test fun relatedChangeRequiresNewPreviewButUnrelatedAccountNameDoesNot()=runBlocking<Unit> {
@@ -143,7 +281,7 @@ class CommandExecutionTest {
         assertEquals(before,snapshot(book));assertEquals("PENDING",commands.plan(cancelRow.planId).status)
     }
 
-    @Test fun fiveHundredCategoryChangesOn3700RecordsReportPreviewAndConfirmTimes()=runBlocking {
+    @Test fun fiveHundredCategoryChangesOn3700RecordsReportPreviewAndConfirmTimes()=runBlocking<Unit> {
         val (book,bank)=setup()
         val rows=(0 until 3700).map{i->"支出,${LocalDate.of(2023,8,17).plusDays(i*1167L/3700)},餐饮,${100+i%5000},架空の店 ${i%300}"}
         val bytes=("账簿,日期,类别,金额,备注\n"+rows.joinToString("\n")).toByteArray()

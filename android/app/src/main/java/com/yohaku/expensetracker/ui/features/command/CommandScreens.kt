@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.command.*
@@ -28,6 +29,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable internal fun CommandEntry(vm:AppViewModel,connected:Boolean) {
     CloudHandoffStrip(word("云端办理","クラウド手続き"),word("说出需求，收到方案后在本机试运行，由你核对并确认。","要望を伝え、届いたプランを端末で試算。確認してから確定します。"),"command-entry") {
@@ -87,12 +91,14 @@ import java.time.LocalDate
 @Composable internal fun CommandHistoryScreen(s:BookSnapshot,vm:AppViewModel) {
     val commands=vm.cloud?.commands?:return
     val history by remember(s.book.id){commands.history(s.book.id)}.collectAsStateWithLifecycle(emptyList())
-    CommandHeading(word("每份方案，都有来处。","プランの歩みを残す。"),word("预览、执行与拒绝都保存在本机。","確認・実行・拒否の履歴は端末に保存します。"),"03","HISTORY")
+    CommandHeading(word("每份方案，都有来处。","プランの歩みを残す。"),word("预览、执行、拒绝与撤销都保存在本机。","確認・実行・拒否・取消の履歴は端末に保存します。"),"03","HISTORY")
     if(history.isEmpty())YEmpty(word("还没有收到办理方案。","まだ手続きプランは届いていません。"))
     history.forEachIndexed{index,row->CommandCard(index+1,commandStatus(row.status),"history-${row.planId}",history=true) {
         val plan=remember(row.planJson){runCatching{readCommandDocument<CommandPlan>(row.planJson)}.getOrNull()}
-        YText(plan?.message?.take(180)?.ifBlank{word("办理方案","手続きプラン")}?:word("无法识别的方案","読み取れないプラン"),14)
-        YText(word("${plan?.steps?.size?:0} 个步骤 · 结果版本 ${row.resultVersion}","${plan?.steps?.size?:0} ステップ・結果バージョン ${row.resultVersion}"),11,color=LocalYohaku.current.muted)
+        YText(if(row.undoOf!=null)undoTitle(history.firstOrNull{it.planId==row.undoOf})else plan?.message?.take(180)?.ifBlank{word("办理方案","手続きプラン")}?:word("无法识别的方案","読み取れないプラン"),14)
+        YText(if(row.undoOf!=null)word("本机撤销 · ${plan?.steps?.size?:0} 个步骤","端末での取消・${plan?.steps?.size?:0} ステップ")else word("${plan?.steps?.size?:0} 个步骤 · 结果版本 ${row.resultVersion}","${plan?.steps?.size?:0} ステップ・結果バージョン ${row.resultVersion}"),11,color=LocalYohaku.current.muted)
+        row.undoneAt?.let{YText(word("撤销时间：","取消日時：")+commandTime(it),12,number=true)}
+        if(row.status=="EXECUTED"&&row.undoOf==null)CommandUndoEntry(row,vm)
         row.error?.let{YText(localizedCommand(it),11,color=LocalYohaku.current.warm)}
         YLink(word("查看方案","プランを見る"),{vm.openCommandPlan(row.planId)},Modifier.testTag("command-open-${row.planId}"))
     }}
@@ -108,15 +114,51 @@ import java.time.LocalDate
     var checks by remember(model){mutableStateOf<Set<String>>(emptySet())}
     var details by remember(model){mutableStateOf<List<ObjectEffect>?>(null)}
     LaunchedEffect(planId) {planId?.let{id->vm.execute{val p=commands.plan(id);if(p.status=="PENDING"&&p.confirmationJson==null)commands.preview(id)}}}
-    CommandHeading(word("先试运行，再决定。","試算してから、決める。"),if(row?.status=="EXECUTED")word("方案已在本机执行；回执由云端队列发送。","プランは端末で実行済み。受領通知は送信キューで処理します。")else word("账本尚未改变；下列数字来自本机。","帳簿はまだ変わりません。数値は端末で試算します。"),"02","REVIEW")
+    val title=when {
+        row?.undoOf!=null&&row.status=="EXECUTED"->word("整批撤销已完成。","一括取消が完了しました。")
+        row?.undoOf!=null->word("撤销前，再核对一次。","取消前に、もう一度確認。")
+        else->word("先试运行，再决定。","試算してから、決める。")
+    }
+    val description=when {
+        row?.status=="UNDONE"||row?.undoOf!=null&&row.status=="EXECUTED"->word("已整批撤销，原执行记录继续保留。","一括取消済みです。元の実行履歴は保持します。")
+        row?.undoOf!=null->word("由本机执行记录生成；下列变更将恢复原方案执行前的业务状态。","端末の実行履歴から作成。以下の変更で元のプラン実行前の状態に戻します。")
+        row?.status=="EXECUTED"->word("方案已在本机执行；回执由云端队列发送。","プランは端末で実行済み。受領通知は送信キューで処理します。")
+        else->word("账本尚未改变；下列数字来自本机。","帳簿はまだ変わりません。数値は端末で試算します。")
+    }
+    CommandHeading(title,description,"02",if(row?.undoOf!=null)"UNDO"else"REVIEW")
     if(row==null){YText(word("正在读取方案…","プランを読み込み中…"),13);return}
     val plan=remember(row.planJson){runCatching{readCommandDocument<CommandPlan>(row.planJson)}.getOrNull()}
     Panel {
         YText(commandStatus(row.status),12,color=LocalYohaku.current.accent)
-        plan?.let{YText(it.message,15,lineHeightMultiplier=1.7f);it.questions.forEach{q->YText("• $q",13)}}
+        row.undoneAt?.let{YText(word("撤销时间：","取消日時：")+commandTime(it),12,number=true)}
+        if(row.undoOf!=null)YText(undoTitle(history.firstOrNull{it.planId==row.undoOf}),15)
+        plan?.let{if(it.message.isNotBlank())YText(it.message,15,lineHeightMultiplier=1.7f);it.questions.forEach{q->YText("• $q",13)}}
         row.error?.let{YText(localizedCommand(it),13,color=LocalYohaku.current.warm)}
     }
+    if(row.status=="EXECUTED"&&row.undoOf==null)CommandUndoEntry(row,vm)
     if(model!=null) {
+        if(model.conflicts.isNotEmpty())CommandCard(null,word("整批撤销已阻止","一括取消を停止しました"),"command-undo-conflicts") {
+            YText(word("以下对象与执行后状态不一致；没有进行任何撤销。请核对后重新预览。","次の対象が実行直後の状態と一致しません。取消は一切行っていません。確認してから再プレビューしてください。"),13)
+            model.conflicts.forEach{conflict->
+                val label=model.removals.firstOrNull{it.key==conflict.key}?.name?:when(conflict.type){"account","accounts","accountUsage"->s.accounts.firstOrNull{it.id==conflict.key}?.name;"entry","entryDetails"->s.events.firstOrNull{it.id==conflict.key}?.let{"${it.date} · ${it.merchant}"};else->null}
+                YText(label?:conflict.reference?.targetName?:resolveName(conflict.key,s,model),12)
+                if(conflict.reference!=null) {
+                    val ref=conflict.reference
+                    YText(word("方案外引用：","プラン外からの参照：")+undoObjectType(ref.table)+" · "+ref.name,12,color=LocalYohaku.current.warm)
+                    YText(commandConflictField(conflict.field),11)
+                }else {
+                    YText(commandConflictField(conflict.field),12,color=LocalYohaku.current.warm)
+                    YText(word("执行后：","実行直後：")+commandConflictValue(conflict.expected,conflict,s,model),11)
+                    YText(word("现在：","現在：")+commandConflictValue(conflict.current,conflict,s,model),12)
+                }
+            }
+        }
+        if(model.removals.isNotEmpty())CommandCard(null,word("将移除","削除するもの"),"command-undo-removals") {
+            YText(word("以下对象均由原方案新建；只在未被修改且没有方案外引用时整批移除，包括本方案生成的从属行和修订。","以下は元のプランで作成されたものです。変更やプラン外からの参照がない場合のみ、付随データ・履歴とまとめて削除します。"),12)
+            model.removals.forEach{removed->
+                YText(undoObjectType(removed.table)+" · "+removed.name+(removed.number?.let{" · #$it"}?:""),13,Modifier.testTag("command-remove-${removed.key}"))
+            }
+        }
         Panel(Modifier.testTag("command-context")) {
             YText(word("试算口径","試算の基準"),15)
             YText("${model.context.asOfDate} · ${model.context.zoneId}\n→ ${model.context.throughDate}",12,number=true)
@@ -132,7 +174,7 @@ import java.time.LocalDate
             if(step.objects.isNotEmpty())YLink(word("逐项查看前后与连带影响","変更前後と関連する影響を見る"),{details=step.objects},Modifier.testTag("command-details-${step.stepId}"))
         }}
         Panel(Modifier.testTag("command-net")) {
-            YText(if(model.executable)word("最终净影响","最終的な変化")else word("已试运行步骤的净影响 · 方案待补充","試算済みステップの変化・情報の補完待ち"),18)
+            YText(if(model.conflicts.isNotEmpty())word("原定恢复内容（未执行）","復元予定の内容（未実行）")else if(model.executable)word("最终净影响","最終的な変化")else word("已试运行步骤的净影响 · 方案待补充","試算済みステップの変化・情報の補完待ち"),18)
             val changed=model.net.filter{it.before!=it.after}
             YText(word("${changed.count{it.type=="entry"}} 笔记录 · ${changed.count{it.type=="account"}} 个账户 · ${changed.count{it.type=="bill"}} 个账期发生变化","記録 ${changed.count{it.type=="entry"}} 件・口座 ${changed.count{it.type=="account"}} 件・請求 ${changed.count{it.type=="bill"}} 回が変わります"),12)
             changed.filter{it.type in setOf("balance","budget","creditLimit","bill")&&commandSummaryChanged(it)}.take(6).forEach{EffectSummary(it,s,model)}
@@ -154,8 +196,17 @@ import java.time.LocalDate
             YText(word("需要补充或核对","補完・確認が必要"),16)
             otherUnknown.forEach{YText(commandIssue(it),12)}
         }
-        CloudHandoffStrip(word("执行边界","実行の範囲"),word("所有步骤在本机一起成功或一起回滚。本方案没有提交后执行或需要系统操作的步骤；不代表在银行或金融平台办理。执行后暂不支持整批撤销。","すべてのステップを端末でまとめて保存し、失敗時は全体を戻します。保存後の追加処理・システム操作はありません。銀行・返済先での手続きを行うものではありません。実行後の一括取消には対応していません。"),"command-boundary") {}
-        if(row.status=="EXECUTED") {
+        CloudHandoffStrip(word("执行边界","実行の範囲"),word("所有步骤在本机一起成功或一起回滚。本方案没有提交后执行或需要系统操作的步骤；不代表在银行或金融平台办理。","すべてのステップを端末でまとめて保存し、失敗時は全体を戻します。保存後の追加処理・システム操作はありません。銀行・返済先での手続きを行うものではありません。"),"command-boundary") {
+            if(row.status=="UNDONE")YText(word("此方案已撤销，不能再次撤销或执行。","このプランは取消済みのため、再度の取消・実行はできません。"),12)
+            else if(row.undoOf!=null)YText(word("仅在所有对象仍与原执行后的状态一致时整批撤销；撤销操作不能再次撤销。","すべての対象が元の実行直後と一致する場合のみ一括取消します。取消操作を再び取り消すことはできません。"),12)
+            else {
+                val savedAvailability=if(row.status=="EXECUTED")commands.undoAvailability(row)else null
+                YText(if(savedAvailability?.available?:model.steps.all{it.undo.available})word("本方案可整批撤销；执行后再有修改将阻止撤销。","このプランは一括取消できます。実行後に対象が変わると取消を停止します。")else word("本方案不可整批撤销","このプランは一括取消できません"),14)
+                if(savedAvailability?.available==false)YText(if(LocalLanguage.current=="ja")savedAvailability.ja else savedAvailability.zh,12)
+                else model.steps.forEachIndexed{index,step->YText(word("步骤 ${index+1}：","ステップ ${index+1}：")+(if(LocalLanguage.current=="ja")step.undo.ja else step.undo.zh),12)}
+            }
+        }
+        if(row.status in listOf("EXECUTED","UNDONE")) {
             val saved=remember(row.checksJson){commandJson.decodeFromString<List<String>>(row.checksJson).toSet()}
             Panel {
                 YText(word("执行时的确认","実行時の確認"),16)
@@ -168,9 +219,9 @@ import java.time.LocalDate
         if(row.status=="PENDING") {
             model.requirements.filter{it.kind!=ConfirmationKind.INFORMATION}.forEachIndexed{index,requirement->
                 val stepNumber=model.steps.indexOfFirst{it.stepId==requirement.stepId}+1
-                YToggle(word("步骤 $stepNumber · ","ステップ $stepNumber・")+(if(LocalLanguage.current=="ja")requirement.ja else requirement.zh),requirement.key in checks,{checked->checks=if(checked)checks+requirement.key else checks-requirement.key},Modifier.testTag("command-check-$index"))
+                YToggle(word("步骤 $stepNumber · ","ステップ ${stepNumber}・")+(if(LocalLanguage.current=="ja")requirement.ja else requirement.zh),requirement.key in checks,{checked->checks=if(checked)checks+requirement.key else checks-requirement.key},Modifier.testTag("command-check-$index"))
             }
-            YButton(if(model.steps.isEmpty())word("确认收阅","受け取りを確認")else word("确认执行整份方案","プラン全体を確定"),{vm.execute{commands.confirm(row.planId,checks)}},Modifier.fillMaxWidth().testTag("command-confirm"),primary=true,
+            YButton(if(row.undoOf!=null)word("确认整批撤销","一括取消を確定")else if(model.steps.isEmpty())word("确认收阅","受け取りを確認")else word("确认执行整份方案","プラン全体を確定"),{vm.execute{commands.confirm(row.planId,checks)}},Modifier.fillMaxWidth().testTag("command-confirm"),primary=true,
                 enabled=!busy&&model.executable&&model.requirements.filter{it.kind!=ConfirmationKind.INFORMATION}.all{it.key in checks})
         }
     }
@@ -180,6 +231,35 @@ import java.time.LocalDate
     }
     details?.let{effects->CommandEffectsSheet(effects,s,model!!){details=null}}
 }
+
+@Composable private fun CommandUndoEntry(row:CommandPlanEntity,vm:AppViewModel) {
+    val commands=vm.cloud!!.commands
+    val availability=remember(row){commands.undoAvailability(row)}
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    CommandCard(null,word("整批撤销","一括取消"),"command-undo-availability-${row.planId}") {
+        YText(if(LocalLanguage.current=="ja")availability.ja else availability.zh,12,color=LocalYohaku.current.muted)
+        if(availability.available)YButton(word("撤销","取り消す"),{
+            vm.execute{val inverse=commands.prepareUndo(row.planId);commands.preview(inverse.planId);vm.openCommandPlan(inverse.planId)}
+        },Modifier.testTag("command-undo-${row.planId}"),enabled=!busy)
+    }
+}
+@Composable private fun undoTitle(original:CommandPlanEntity?):String {
+    val message=remember(original?.planJson){original?.let{readCommandDocument<CommandPlan>(it.planJson).message}.orEmpty()}
+    val title=localizedCommand(message).lineSequence().firstOrNull{it.isNotBlank()}?.trim()?.trimStart('#')?.trim()?.take(100)?.takeIf{it.isNotEmpty()}?:word("办理方案","手続きプラン")
+    return word("撤销「${title}」","「${title}」を取り消す")
+}
+@Composable private fun undoObjectType(table:String)=when(table) {
+    "accounts"->word("账户","口座");"financial_rules"->word("规则版本","条件バージョン");"financial_plans"->word("预测计划","予測プラン");"financial_bills"->word("账期","請求期間");"financial_plan_revisions"->word("预测修订","予測の履歴");"credit_limit_configs"->word("额度配置版本","利用枠のバージョン")
+    "events","revisions"->word("记录及修订","記録・更新履歴");"drafts","financial_drafts"->word("草稿","下書き");"postings"->word("入账","計上");else->word("关联资料","関連情報")
+}
+private fun commandTime(value:Long)=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(Instant.ofEpochMilli(value).atZone(ZoneId.systemDefault()))
+@Composable private fun commandConflictValue(value:JsonElement,conflict:UndoConflict,s:BookSnapshot,model:ConfirmationModel):String {
+    if(value==JsonNull)return word("不存在 / 无值","存在しない／値なし")
+    if(value !is JsonPrimitive)return value.toString()
+    val currency=s.accounts.firstOrNull{it.id==conflict.key}?.currency?:s.events.firstOrNull{it.id==conflict.key}?.currency?:s.book.currency
+    return fieldValue(value to null,conflict.field.substringAfterLast('.'),currency,s,model)
+}
+@Composable private fun commandConflictField(field:String)=field.split('.').map{fieldName(it)}.joinToString(" / ")
 
 @Composable private fun CommandHeading(title:String,description:String,number:String,edition:String) {
     val t=LocalYohaku.current
@@ -198,26 +278,31 @@ import java.time.LocalDate
     }
 }
 
-@Composable private fun CommandCard(number:Int,title:String,tag:String,history:Boolean=false,content:@Composable ColumnScope.()->Unit) {
+@Composable private fun CommandCard(number:Int?,title:String,tag:String,history:Boolean=false,content:@Composable ColumnScope.()->Unit) {
     val t=LocalYohaku.current
     when(t.id) {
         "magazine"->Row(Modifier.fillMaxWidth().testTag(tag).drawBehind{drawLine(t.ink,Offset.Zero,Offset(size.width,0f),1.dp.toPx())}.padding(top=14.dp),horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-            YText(number.toString().padStart(2,'0'),30,number=true,color=t.accent)
+            YText(number?.toString()?.padStart(2,'0')?:"↶",30,number=true,color=t.accent)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(10.dp)){YText(title,18);content()}
         }
-        "journal"->Panel(Modifier.testTag(tag).rotate(if(number%2==0).3f else -.3f)) {
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){YText("✳ $title",19);YText("#$number",12,number=true,color=t.warm)}
+        "journal"->Panel(Modifier.testTag(tag).rotate(if(number!=null&&number%2==0).3f else -.3f)) {
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                    YText("✳",19,Modifier.clearAndSetSemantics{});YText(title,19)
+                }
+                YText(number?.let{"#$it"}?:word("本机","端末"),12,number=number!=null,color=t.warm)
+            }
             Column(Modifier.padding(start=12.dp).drawBehind{drawLine(t.warm.copy(alpha=.4f),Offset.Zero,Offset(0f,size.height),1.dp.toPx())}.padding(start=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp),content=content)
         }
         else->Panel(Modifier.testTag(tag)) {
-            Box(Modifier.background(t.accent.copy(alpha=.12f),RoundedCornerShape(18.dp)).padding(horizontal=12.dp,vertical=5.dp)){YText(if(history)word("方案 $number","プラン $number")else word("步骤 $number","ステップ $number"),10,color=t.accent)}
+            Box(Modifier.background(t.accent.copy(alpha=.12f),RoundedCornerShape(18.dp)).padding(horizontal=12.dp,vertical=5.dp)){YText(if(number==null)word("本机撤销","端末で取消")else if(history)word("方案 $number","プラン $number")else word("步骤 $number","ステップ $number"),10,color=t.accent)}
             YText(title,19)
             content()
         }
     }
 }
-@Composable private fun commandName(name:String)=when(name){"account.save"->word("账户与期初信息","口座と期首情報");"financialRule.addVersion"->word("新增金融规则版本","金融条件のバージョン追加");"financialPrediction.save"->word("建立或重算预测","予測の作成・再計算");"entry.update"->word("批量修改分类","カテゴリをまとめて変更");else->name}
-@Composable private fun commandStatus(status:String)=when(status){"PENDING"->word("待预览 / 确认","確認待ち");"EXECUTED"->word("已执行","実行済み");"REJECTED"->word("已拒绝","拒否済み");else->word("失败","失敗")}
+@Composable private fun commandName(name:String)=when(name){"account.save"->word("账户与期初信息","口座と期首情報");"financialRule.addVersion"->word("新增金融规则版本","金融条件のバージョン追加");"financialPrediction.save"->word("建立或重算预测","予測の作成・再計算");"entry.update","local.entry.restoreCategory"->word("批量修改分类","カテゴリをまとめて変更");"local.restoreExecution"->word("恢复原值并移除新建对象","元の値に戻し、新規作成した対象を削除");"local.account.deleteUnused"->word("撤销新建的未使用账户","未使用口座の作成を取消");else->name}
+@Composable private fun commandStatus(status:String)=when(status){"PENDING"->word("待预览 / 确认","確認待ち");"EXECUTED"->word("已执行","実行済み");"UNDONE"->word("已撤销","取消済み");"REJECTED"->word("已拒绝","拒否済み");else->word("失败","失敗")}
 @Composable internal fun localizedCommand(text:String)=if(LocalLanguage.current=="ja")text.substringAfter(" / ",text)else text.substringBefore(" / ")
 @Composable internal fun commandIssue(text:String)=when(text){"prediction.firstPeriodNumber"->word("缺少原合同起始期数","元の契約の開始回数が不足しています");"prediction.cannotSettle"->word("当前还款金额无法覆盖费用，不能生成可清偿预测","現在の支払額では手数料を賄えず、返済可能な予測を作成できません");"prediction.dates"->word("缺少付款日期或计息区间","支払日または計算期間が不足しています");"prediction.openingPrincipal"->word("缺少期初本金或来源记录","期首元金または対象記録が不足しています");"previousStep.incomplete"->word("前一步资料不足，此步骤尚未试运行","前のステップの情報不足により、まだ試算できません");else->when {
     text.startsWith("limit.")->limitLabel(text)

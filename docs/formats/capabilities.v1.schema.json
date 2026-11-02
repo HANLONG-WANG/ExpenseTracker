@@ -76,6 +76,9 @@
           },
           "unavailable": {
             "type": "string"
+          },
+          "undo": {
+            "type": "string"
           }
         },
         "required": [
@@ -90,7 +93,8 @@
           "description",
           "example",
           "mode",
-          "unavailable"
+          "unavailable",
+          "undo"
         ]
       }
     },

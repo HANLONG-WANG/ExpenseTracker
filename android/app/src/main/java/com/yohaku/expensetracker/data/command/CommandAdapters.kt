@@ -11,6 +11,7 @@ internal interface CommandAdapter {
     fun validate(input:JsonObject)
     suspend fun normalize(input:JsonObject,run:CommandRun):JsonObject=input
     suspend fun execute(step:CommandStep,run:CommandRun):StepEffect
+    suspend fun inverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState):UndoPreparation
 }
 internal fun capability(name:String,schema:JsonObject,outputs:Map<String,String>,defaults:String,description:String,example:String,
     facts:Boolean=false)=CommandCapability(name,1,schema,outputs,defaults,
@@ -27,10 +28,17 @@ internal fun capability(name:String,schema:JsonObject,outputs:Map<String,String>
         "financialPrediction.save"->listOf("source and opening principal","plan before/after and retained/withdrawn periods","per-period date, principal, fees, payment account, rule basis and confirmation state","repayment/refund fact revisions","absolute balances, limits, cash and budget forecast","user fact condition bound to this step")
         else->listOf("fixed IDs and all identifying event facts","settlement, media and other retained relations","old/new categories and hierarchy","category/month budget absolute values and risk","save ordering and remembered-default semantics","related balances, limits and forecast","every intermediate step, even when later reverted")
     },
-    description,commandJson.parseToJsonElement(example).jsonObject)
+    description,commandJson.parseToJsonElement(example).jsonObject,undo=when(name) {
+        "account.save"->"Local batch undo restores existing account fields. Accounts and credit-limit versions created by this execution are removed with recorded dependent rows only if unchanged and free of references outside the batch."
+        "entry.update"->"Local batch undo restores every original category, including a persisted null or archived category, while retaining entry audit revisions. Full event revisions and related facts must still match execution."
+        "financialRule.addVersion"->"Local batch undo removes the version created by this execution, including on an existing account, only if unchanged and without external FK/JSON/draft references."
+        "financialPrediction.save"->"Local batch undo removes owned new plans, bills and revision rows; recalculation of an existing plan restores its exact recorded pre-batch plan and bill values. Any changed object or external reference blocks the whole undo."
+        else->"Local inverse; cannot itself be undone."
+    })
 internal fun requirement(step:String,kind:ConfirmationKind,condition:JsonElement,zh:String,ja:String)=ConfirmationRequirement(step,kind,digest(condition),zh,ja)
 
 internal class AccountCommandAdapter:CommandAdapter {
+    override suspend fun inverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState)=UndoPreparation(accountUndo)
     override val capability=capability("account.save",accountSchema,mapOf("account" to "account"),"type=CREDIT; omitted creditLimit preserves existing settings; opening amount/date are required.",
         "Create/edit account and opening debt. Optional creditLimit covers total/installment/revolving/shared sublimits, usage anchor, recovery policy/delay, usage start and timezone. Payment modes/bonus windows are financialRule.addVersion.",
         """{"name":"カード","currency":"JPY","openingMinor":30000,"openingDate":"2026-11-01"}""")
@@ -51,6 +59,7 @@ internal class AccountCommandAdapter:CommandAdapter {
 }
 
 internal class RuleCommandAdapter:CommandAdapter {
+    override suspend fun inverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState)=UndoPreparation(ruleUndo)
     override val capability=capability("financialRule.addVersion",ruleSchema,mapOf("rule" to "rule"),"Absent financial values remain unknown; no institution-name inference. Payment account may be a typed reference.",
         "Append a rule version: SINGLE (billing and bonus windows), INSTALLMENT (fees, remainder), REVOLVING (interest, tiers, automatic mode), loan modes. Existing confirmed bills are preserved.",
         """{"account":{"ref":"card","output":"account"},"rule":{"mode":"SINGLE","effectiveFrom":"2026-11-01","zoneId":"Asia/Tokyo"}}""")
@@ -68,6 +77,7 @@ internal class RuleCommandAdapter:CommandAdapter {
 }
 
 internal class PredictionCommandAdapter:CommandAdapter {
+    override suspend fun inverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState)=UndoPreparation(predictionUndo)
     override val capability=capability("financialPrediction.save",predictionSchema,mapOf("prediction" to "prediction"),"No assumed principal or dates. terms or explicit candidates required. Existing plan preserves confirmed periods. User fact cannot be supplied in input.",
         "Create or recalculate a rule-based prediction for opening debt or a recorded expense. Incomplete calculation lists missing information and blocks the entire batch.",
         """{"account":{"ref":"card","output":"account"},"name":"期初欠款","mode":"SINGLE","openingPrincipalMinor":30000,"terms":{"agreementDate":"2026-11-01","paymentDates":["2026-12-10"]}}""",facts=true)
@@ -105,6 +115,7 @@ internal class PredictionCommandAdapter:CommandAdapter {
 }
 
 internal class EntryUpdateCommandAdapter:CommandAdapter {
+    override suspend fun inverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState)=entryInverse(step,run,before,after)
     override val capability=capability("entry.update",descriptorSchema(EntryUpdateInput.serializer().descriptor),emptyMap(),"Only set.category is supported. IDs/select are exclusive. Selectors are frozen on first preview; no new matches during confirm.",
         "Batch category change for 1–5000 live expense/income records. Retains amounts, settlements, media, card payment choices and financial facts.",
         """{"targets":{"select":{"merchant_contains":"星巴克","kind":"EXPENSE"}},"set":{"category":"category-id"}}""")

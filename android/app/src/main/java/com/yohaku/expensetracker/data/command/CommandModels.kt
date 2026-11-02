@@ -29,14 +29,14 @@ internal fun canonical(value:JsonElement):JsonElement=when(value) {
 @Serializable data class CommandRisk(val code:String,val subject:String,val currency:String?=null,val minor:Long?=null,
     val date:String?=null,val detail:String?=null,val requiresConfirmation:Boolean=false)
 @Serializable data class StepEffect(val stepId:String,val command:String,val targets:List<String>,val objects:List<ObjectEffect>,
-    val requirements:List<ConfirmationRequirement> = emptyList(),val missing:List<String> = emptyList(),val mode:String="transactional",val risks:List<CommandRisk> = emptyList())
+    val requirements:List<ConfirmationRequirement> = emptyList(),val missing:List<String> = emptyList(),val mode:String="transactional",val risks:List<CommandRisk> = emptyList(),val undo:UndoAvailability = UndoAvailability(false,"旧执行记录没有撤销资料","以前の実行履歴には取消情報がありません"))
 @Serializable data class ConfirmationModel(val context:ExecutionContext,val steps:List<StepEffect>,val net:List<ObjectEffect>,
-    val basis:String="confirmed-ledger; account-currency debt; category-budget; forecast-estimates",val unknown:List<String> = emptyList()) {
+    val basis:String="confirmed-ledger; account-currency debt; category-budget; forecast-estimates",val unknown:List<String> = emptyList(),val conflicts:List<UndoConflict> = emptyList(),val removals:List<UndoRemoval> = emptyList()) {
     val requirements:List<ConfirmationRequirement> get()=steps.flatMap{it.requirements}
-    val executable:Boolean get()=steps.none{it.missing.isNotEmpty()}
+    val executable:Boolean get()=conflicts.isEmpty()&&steps.none{it.missing.isNotEmpty()}
 }
 @Serializable data class NormalizedPlan(val steps:List<CommandStep>)
-@Serializable data class CommandExecutionRecord(val outputs:Map<String,Map<String,String>>,val generatedIds:Map<String,String>)
+@Serializable data class CommandExecutionRecord(val outputs:Map<String,Map<String,String>>,val generatedIds:Map<String,String>,val undo:UndoRecord?=null)
 
 @Serializable data class AccountCommandInput(val name:String,val currency:String,val openingMinor:Long,val openingDate:String,
     val account:JsonElement?=null,val type:String="CREDIT",val creditLimit:JsonObject?=null)
@@ -52,3 +52,16 @@ internal fun canonical(value:JsonElement):JsonElement=when(value) {
 @Serializable data class EntryCategorySet(val category:String)
 @Serializable data class EntryUpdateInput(val targets:EntryTargets,val set:EntryCategorySet)
 @Serializable data class RecordScope(val mode:String="none",val from:String?=null,val through:String?=null,val account:String?=null)
+
+@Serializable data class UndoAvailability(val available:Boolean,val zh:String,val ja:String)
+@Serializable data class UndoConflict(val type:String,val key:String,val field:String,val expected:JsonElement,val current:JsonElement,val reference:UndoReference?=null)
+@Serializable data class UndoGuard(val type:String,val key:String,val after:JsonElement)
+@Serializable data class UndoRecord(val steps:List<CommandStep>,val guards:List<UndoGuard>,val effects:List<ObjectEffect>,val rows:List<UndoRowChange> = emptyList(),val removals:List<UndoRemoval> = emptyList(),val version:Int=1)
+internal data class UndoPreparation(val availability:UndoAvailability,val steps:List<CommandStep> = emptyList(),val guards:List<UndoGuard> = emptyList())
+
+/** Row keys and raw snapshots are local execution evidence, never cloud inputs. Null before means
+ * this transaction created the row; only those rows may be removed by local.restoreExecution. */
+@Serializable data class UndoRowChange(val table:String,val key:JsonObject,val before:JsonObject?,val after:JsonObject)
+@Serializable data class UndoRemoval(val table:String,val key:String,val name:String,val number:Int?=null)
+@Serializable data class UndoReference(val table:String,val key:String,val name:String,val targetName:String)
+@Serializable internal data class RestoreCategoryInput(val ids:List<String>,val category:String?)
