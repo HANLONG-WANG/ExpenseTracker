@@ -33,7 +33,7 @@ private fun followupCapability(name:String,schema:JsonObject,defaults:String,pre
 internal class PreferenceAdapter(private val key:String):CommandAdapter {
     override val capability=when(key) {
         "activeBook"->followupCapability("book.select",patchSchema(descriptorSchema(SwitchBookInput.serializer().descriptor),mapOf("book" to referenceSchema("book"))),"book required; may reference a preceding book.create output. No other writes are redirected to that book.","Target book exists, not trashed; archived books may be opened just like local book management; current selection compared.","Select current book only after the entire transaction commits; does not submit/discard any entry draft.","""{"book":"book-id"}""")
-        "reminders"->followupCapability("preferences.reminders",descriptorSchema(ReminderPreferences.serializer().descriptor),"Full replacement: enabled=false; all five kinds=true; repaymentDays=[7,1], deadlineDays=[3,1], recurringDays=[1], time=09:00. Omitted fields use these defaults.","Valid local time and nonempty day lists with 0..365; existing book.","Save all reminder preferences; enabling also queues a phone notification-permission step. No cloud grant of system permissions. If permission is missing, this step includes irreversible interactive permission handling and blocks whole-batch undo.","""{"enabled":true,"time":"08:30"}""")
+        "reminders"->followupCapability("preferences.reminders",descriptorSchema(ReminderPreferences.serializer().descriptor),"Full replacement: enabled=false; all five important kinds=true; monthlyReview=true independently of enabled; repaymentDays=[7,1], deadlineDays=[3,1], recurringDays=[1], time=09:00. Omitted fields use these defaults.","Valid local time and nonempty day lists with 0..365; existing book.","Save all reminder preferences; enabling also queues a phone notification-permission step. No cloud grant of system permissions. If permission is missing, this step includes irreversible interactive permission handling and blocks whole-batch undo.","""{"enabled":true,"time":"08:30"}""")
         "photoOriginal"->followupCapability("preferences.photoStorage",descriptorSchema(PhotoInput.serializer().descriptor),"original required; true=preserve source, false=space-saving. Applies to all books; existing photos unchanged.","Preference before value must still match at application time.","Set the photo storage default shared by all books.","""{"original":true}""")
         else->followupCapability(if(key=="location")"preferences.location"else"preferences.automaticRates",descriptorSchema(EnabledInput.serializer().descriptor),"enabled required; no default. location scoped to this book; automatic rates global.","Existing book; local-only foreground location, never background tracking.",if(key=="location")"Save location matching preference; enabling also queues a phone permission step, no permission is granted by the plan. If permission is missing, interactive permission handling blocks whole-batch undo."else"Set automatic public reference-rate retrieval. Does not invent a rate or trigger a transaction-local network request.","""{"enabled":true}""")
     }
@@ -55,7 +55,7 @@ internal class PreferenceAdapter(private val key:String):CommandAdapter {
                 val facts=commandLedgerRow("books",encoded(book).jsonObject);objects+=ObjectEffect("book",run.semantic(JsonPrimitive(id)).jsonPrimitive.content,run.semantic(facts),run.semantic(facts))
             }
         }
-        if(key=="location"&&after==JsonPrimitive(true)||key=="reminders"&&after.jsonObject["enabled"]==JsonPrimitive(true)) {
+        if(key=="location"&&after==JsonPrimitive(true)||key=="reminders"&&(after.jsonObject["enabled"]==JsonPrimitive(true)||after.jsonObject["monthlyReview"]==JsonPrimitive(true))) {
             val permission=if(key=="location")"LOCATION"else"NOTIFICATIONS"
             if(permission !in run.grantedPermissions) {
                 run.queue(step,"PERMISSION",buildJsonObject{put("permission",permission)},mode="interactive",suffix="permission")
@@ -77,7 +77,8 @@ internal class RestorePreferenceAdapter:CommandAdapter {
     override fun validate(input:JsonObject){commandJson.decodeFromJsonElement<RestorePreferenceInput>(input)}
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
         check(step in requireNotNull(run.undoRecord).steps)
-        val v=commandJson.decodeFromJsonElement<RestorePreferenceInput>(step.input)
+        val saved=commandJson.decodeFromJsonElement<RestorePreferenceInput>(step.input)
+        val v=saved.copy(before=completeCommandPreference(saved.key,saved.before),after=completeCommandPreference(saved.key,saved.after))
         check(run.preferenceValues.getValue(v.key)==v.before)
         run.queue(step,"PREFERENCE",buildJsonObject{put("key",v.key)},v.before,v.after)
         run.preferenceValues[v.key]=v.after
@@ -91,7 +92,7 @@ internal class AttachSourceAdapter:CommandAdapter {
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
         val v=commandJson.decodeFromJsonElement<AttachmentInput>(step.input);val entry=run.resolve(v.entry)
         val event=run.state().ledger.visibleEvents.single{it.id==entry}
-        val task=requireNotNull(run.ledger.db.cloudDao().task(run.localId));require(task.bookId==run.bookId&&task.purpose=="command")
+        val task=requireNotNull(run.ledger.db.cloudDao().task(run.localId));require(task.bookId==run.bookId&&task.purpose in setOf("command","monthly-review"))
         val source=run.ledger.db.cloudDao().transfers(run.localId).single{it.name==v.sourceName}
         require(source.fileId!=null&&source.uploadedAt!=null){"源文件尚未上传到本任务 / 元ファイルはまだこのタスクへ送信されていません"}
         require(java.io.File(source.path).name=="source-${source.position}"){"只能引用本任务上传的源文件 / このタスクの元ファイルのみ参照できます"}

@@ -56,6 +56,7 @@ import java.time.ZoneId
     var deadline by rememberSaveable(s.book.id){mutableStateOf(saved.deadline)}
     var recurring by rememberSaveable(s.book.id){mutableStateOf(saved.recurring)}
     var budget by rememberSaveable(s.book.id){mutableStateOf(saved.budget)}
+    var monthlyReview by rememberSaveable(s.book.id){mutableStateOf(saved.monthlyReview)}
     var funds by rememberSaveable(s.book.id){mutableStateOf(saved.funds)}
     var repaymentDays by rememberSaveable(s.book.id){mutableStateOf(saved.repaymentDays.joinToString(","))}
     var deadlineDays by rememberSaveable(s.book.id){mutableStateOf(saved.deadlineDays.joinToString(","))}
@@ -64,6 +65,7 @@ import java.time.ZoneId
     var validation by remember{mutableStateOf<String?>(null)}
     YLead(word("只在重要的时候，提醒你。","大事なときだけ、お知らせ。"),word("金额直接显示。不提供应用锁，也不每天催你记账。","金額を表示。アプリロック・毎日の記録通知はありません。"),"ONLY WHAT MATTERS",pageFlow=true)
     Column(Modifier.fillMaxWidth()) {
+        NotificationPreferenceToggle(word("每月评语提醒（每月1日，独立开启）","月の振り返り通知（毎月1日・独立設定）"),monthlyReview,{monthlyReview=it},Modifier.testTag("reminder-monthly-review"),monthly=true)
         NotificationPreferenceToggle(word("开启本账本的重要提醒","この帳簿の重要な通知を有効にする"),enabled,{enabled=it},Modifier.testTag("reminder-enabled"))
         NotificationPreferenceToggle(word("信用卡 / 借款还款","カード・借入の返済"),repayment,{repayment=it})
         NotificationPreferenceToggle(word("还款方式变更截止","支払方法の変更締切"),deadline,{deadline=it})
@@ -76,16 +78,16 @@ import java.time.ZoneId
         YField("deadline-days",deadlineDays,{deadlineDays=it},displayLabel=word("变更截止提前天数","変更締切の何日前"))
         YField("recurring-days",recurringDays,{recurringDays=it},displayLabel=word("周期账单提前天数","定期支払の何日前"))
         YField("reminder-time",time,{time=it},displayLabel=word("提醒时间 / HH:mm","通知時刻 / HH:mm"))
-        YText(word("已完成事项取消后续提醒；同一缺口不每日重复。系统可能因省电而延迟通知，应用内事项始终可查看。","完了後は通知を取消。同じ不足を毎日通知しません。省電力により配信が遅れる場合も、アプリ内では確認できます。"),11)
+        YText(word("月度评语只提醒，由你核对上传内容后提交，不会自动上传。关闭重要提醒不影响独立的月评开关。已完成事项取消后续提醒；同一缺口不每日重复。系统可能因省电而延迟通知，应用内事项始终可查看。","月の振り返りは内容を確認して手動で送信します。自動送信は行いません。重要通知を無効にしても月の振り返り設定は独立です。完了後は通知を取消。同じ不足を毎日通知しません。省電力により配信が遅れる場合も、アプリ内では確認できます。"),11)
     }
     validation?.let{YText(it,12)}
     val validationMessage=word("请核对提前天数（0–365，以逗号分隔）和时间（HH:mm）。","何日前（0〜365、カンマ区切り）と時刻（HH:mm）を確認してください。")
     YButton(word("保存提醒偏好","通知設定を保存"),{
         try {
             fun days(raw:String)=raw.replace('，',',').split(',').map{it.trim().toInt()}.distinct().sortedDescending()
-            val value=ReminderPreferences(enabled,repayment,deadline,recurring,budget,funds,days(repaymentDays),days(deadlineDays),days(recurringDays),time.trim())
+            val value=ReminderPreferences(enabled,repayment,deadline,recurring,budget,funds,days(repaymentDays),days(deadlineDays),days(recurringDays),time.trim(),monthlyReview)
             value.validate();validation=null;focus.clearFocus();keyboard?.hide()
-            vm.execute(onSuccess={if(value.enabled&&!allowed&&Build.VERSION.SDK_INT>=33)permission.launch(Manifest.permission.POST_NOTIFICATIONS)}) {
+            vm.execute(onSuccess={if((value.enabled||value.monthlyReview)&&!allowed&&Build.VERSION.SDK_INT>=33)permission.launch(Manifest.permission.POST_NOTIFICATIONS)}) {
                 vm.preferences.saveReminderSettings(s.book.id,value);vm.reminders?.rebuildSafely(false)
             }
         }catch(e:Exception){validation=validationMessage}
@@ -102,12 +104,12 @@ import java.time.ZoneId
         ThemeSection(word("当前提醒计划","現在の通知予定"),"SCHEDULE")
         val rows=plan.filter{it.item.bookId==s.book.id}
         if(rows.isEmpty())YEmpty(word("当前没有待调度通知","現在、配信予定はありません"))
-        rows.forEach{row->YText(Instant.ofEpochMilli(row.at).atZone(row.item.zoneId?.let(ZoneId::of)?:ZoneId.systemDefault()).toString()+" · "+row.item.title+" · "+outlookAmount(row.item.currency,row.item.amountMinor,row.item.estimated),11,Modifier.testTag("reminder-plan-row"))}
+        rows.forEach{row->YText(Instant.ofEpochMilli(row.at).atZone(row.item.zoneId?.let(ZoneId::of)?:ZoneId.systemDefault()).toString()+" · "+row.item.title+(if(row.item.kind=="MONTHLY_REVIEW")""else" · "+outlookAmount(row.item.currency,row.item.amountMinor,row.item.estimated)),11,Modifier.testTag("reminder-plan-row"))}
     }
 }
 
 /** Frozen UI24 experience switches: each theme owns its row, caption and switch shape. */
-@Composable private fun NotificationPreferenceToggle(label:String,value:Boolean,onChange:(Boolean)->Unit,modifier:Modifier=Modifier) {
+@Composable private fun NotificationPreferenceToggle(label:String,value:Boolean,onChange:(Boolean)->Unit,modifier:Modifier=Modifier,monthly:Boolean=false) {
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
     val narrow=androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp<=360
@@ -120,7 +122,7 @@ import java.time.ZoneId
         Column(Modifier.weight(1f)) {
             YText(label,if(narrow)12 else if(journal)16 else 13,weight=if(journal)FontWeight.Normal else FontWeight.Medium,lineHeightMultiplier=if(narrow)1.5f else if(journal)24f/16 else 19f/13,cssLineBox=true)
             Spacer(Modifier.height(7.dp))
-            YText(word("只提醒未完成事项；风险首次出现或明显加重才推送。","未完了のみ。リスクは初回・悪化時に通知。"),if(narrow)10 else if(journal)11 else 9,color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
+            YText(if(monthly)word("每月1日提醒上月，已提交的月份不再提醒；点击后核对并手动上传。","毎月1日に前月分を通知。送信済みの月は通知せず、タップして内容を確認・送信します。")else word("只提醒未完成事项；风险首次出现或明显加重才推送。","未完了のみ。リスクは初回・悪化時に通知。"),if(narrow)10 else if(journal)11 else 9,color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
         }
         when(t.id) {
             "journal"->Box(Modifier.size(25.dp).rotate(-3f).background(Color(0xfffff7e2),RoundedCornerShape(1.dp)).border(1.dp,t.accent,RoundedCornerShape(1.dp)),contentAlignment=Alignment.Center) {

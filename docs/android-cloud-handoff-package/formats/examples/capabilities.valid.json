@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "26c46ee5e7f9b2434ac8a428354b6849ca14c30ea0f9315db75b31b5e8df761d",
+    "catalogDigest": "65c7f7f99daa0afe62f5b9dd72260659b967daffdeeccb5e2e136cb79576db74",
     "commands": [
         {
             "comparisonFields": [
@@ -1431,6 +1431,39 @@
             "prerequisites": "Active debt account; known opening principal within unallocated opening debt, or a live source event. Explicit dates and original first period for non-SINGLE modes. Recalculation retains source, mode and protected bills.",
             "unavailable": "Reject the whole batch; incomplete predictions remain a non-executable preview.",
             "undo": "Local batch undo removes owned new plans, bills and revision rows; recalculation of an existing plan restores its exact recorded pre-batch plan and bill values. Any changed object or external reference blocks the whole undo.",
+            "version": 1
+        },
+        {
+            "comparisonFields": [
+                "book identity and complete original/new plan text; absence versus existing row"
+            ],
+            "confirmationTypes": [
+                "INFORMATION"
+            ],
+            "defaults": "text required, exact full replacement; empty string clears content without deleting its row. No null/default inference.",
+            "description": "Save the current book's natural-language monthly plan. One reusable plan per book; submissions retain their own immutable plan snapshot.",
+            "example": {
+                "text": "每月餐饮控制在三万日元内，优先储蓄。"
+            },
+            "inputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                    "text": {
+                        "maxLength": 20000,
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "text"
+                ],
+                "type": "object"
+            },
+            "mode": "transactional",
+            "name": "book.monthlyPlan.save",
+            "outputs": {},
+            "prerequisites": "Current task book exists, initialized and not archived; text <= 20000 characters. Same validation as local editor.",
+            "unavailable": "Reject the whole batch; incomplete predictions remain a non-executable preview.",
+            "undo": "Restore the exact original text/row from the execution snapshot. Any subsequent edit blocks the entire undo; an execution-owned new row may be removed only by local undo.",
             "version": 1
         },
         {
@@ -15273,7 +15306,7 @@
             "confirmationTypes": [
                 "INFORMATION"
             ],
-            "defaults": "Full replacement: enabled=false; all five kinds=true; repaymentDays=[7,1], deadlineDays=[3,1], recurringDays=[1], time=09:00. Omitted fields use these defaults.",
+            "defaults": "Full replacement: enabled=false; all five important kinds=true; monthlyReview=true independently of enabled; repaymentDays=[7,1], deadlineDays=[3,1], recurringDays=[1], time=09:00. Omitted fields use these defaults.",
             "description": "Save all reminder preferences; enabling also queues a phone notification-permission step. No cloud grant of system permissions. If permission is missing, this step includes irreversible interactive permission handling and blocks whole-batch undo.",
             "example": {
                 "enabled": true,
@@ -15298,6 +15331,9 @@
                         "type": "boolean"
                     },
                     "funds": {
+                        "type": "boolean"
+                    },
+                    "monthlyReview": {
                         "type": "boolean"
                     },
                     "recurring": {

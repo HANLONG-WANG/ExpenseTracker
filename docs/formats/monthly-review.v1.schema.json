@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yohaku.example/formats/monthly-review.v1.schema.json",
+  "title": "Yohaku monthly review upload v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "yohaku.monthly-review"
+    },
+    "version": {
+      "const": 1
+    },
+    "book_id": {
+      "type": "string"
+    },
+    "month": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+    },
+    "currency": {
+      "enum": [
+        "JPY",
+        "CNY",
+        "USD"
+      ]
+    },
+    "monthlyPlan": {
+      "type": "string"
+    },
+    "incomeMinor": {
+      "type": "integer"
+    },
+    "expenseMinor": {
+      "type": "integer"
+    },
+    "categories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "INCOME",
+              "EXPENSE",
+              "COMPONENT"
+            ]
+          },
+          "amountMinor": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "amountMinor"
+        ]
+      }
+    },
+    "budgets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "categoryId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "limitMinor": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "spentMinor": {
+            "type": "integer"
+          },
+          "remainingMinor": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "categoryId",
+          "name",
+          "limitMinor",
+          "spentMinor",
+          "remainingMinor"
+        ]
+      }
+    },
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "currency": {
+            "enum": [
+              "JPY",
+              "CNY",
+              "USD"
+            ]
+          },
+          "openingDate": {
+            "type": "string"
+          },
+          "beforeMinor": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "afterMinor": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "changeMinor": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "currency",
+          "openingDate",
+          "beforeMinor",
+          "afterMinor",
+          "changeMinor"
+        ]
+      }
+    },
+    "provisionalExpenseCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "basis": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "book_id",
+    "month",
+    "currency",
+    "monthlyPlan",
+    "incomeMinor",
+    "expenseMinor",
+    "categories",
+    "budgets",
+    "accounts",
+    "provisionalExpenseCount",
+    "basis"
+  ]
+}

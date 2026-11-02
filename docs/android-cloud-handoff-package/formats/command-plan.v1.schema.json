@@ -139,6 +139,31 @@
               "command_version",
               "input"
             ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+              },
+              "command": {
+                "const": "book.monthlyPlan.save"
+              },
+              "command_version": {
+                "const": 1
+              },
+              "input": {
+                "$ref": "#/$defs/book.monthlyPlan.save"
+              }
+            },
+            "required": [
+              "id",
+              "command",
+              "command_version",
+              "input"
+            ]
           }
         ]
       }
@@ -1645,6 +1670,19 @@
       "required": [
         "targets",
         "set"
+      ]
+    },
+    "book.monthlyPlan.save": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "text"
       ]
     }
   }

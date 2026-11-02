@@ -13,7 +13,7 @@ import java.util.UUID
 class CommandRegistry {
     val forbidden=permanentAlternatives.keys.toList()
     internal val adapters:List<CommandAdapter> = listOf(AccountCommandAdapter(),RuleCommandAdapter(),PredictionCommandAdapter(),
-        BookAdapter("create"),BookAdapter("update"),BookAdapter("completeSetup"),BookAdapter("lifecycle"),
+        MonthlyPlanAdapter(),BookAdapter("create"),BookAdapter("update"),BookAdapter("completeSetup"),BookAdapter("lifecycle"),
         ActiveAdapter("account"),CategoryAdapter("save"),CategoryAdapter("setFavorite"),CategoryAdapter("lifecycle"),CategoryAdapter("reparent"),
         ContactAdapter("merchant"),ContactAdapter("merchantLocation"),ContactAdapter("friend"),ActiveAdapter("merchant"),ActiveAdapter("friend"),
         EntryWriteAdapter("create"),EntryWriteAdapter("update"),EntryWriteAdapter("confirmActual"),EntryLifecycleAdapter(),

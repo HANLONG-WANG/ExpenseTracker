@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.backup.*
+import com.yohaku.expensetracker.data.command.*
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
@@ -48,6 +49,9 @@ class BackupRoundTripTest {
             repo.dao.putReceiptImages(listOf(ReceiptImageEntity(book,"receipt",1,0,blob.id)))
             prefs.select(book);prefs.setPhotoSaveOriginal(true);prefs.setAutomaticReferenceRates(false);prefs.setForegroundLocation(book,true)
             prefs.saveReminderSettings(book,ReminderPreferences(enabled=true,time="10:15"))
+            val monthlyPlan=MonthlyPlanEntity(book,"月の計画を原文のまま保存")
+            val monthlyReview=MonthlyReviewEntity(book,"2026-10","monthly-task","{\"plan\":\"snapshot\"}",1)
+            db.monthlyDao().savePlan(monthlyPlan);db.monthlyDao().insert(monthlyReview)
             val expectedPrefs=prefs.backup()
             val expected=repo.snapshot(repo.dao.book(book)!!).first()
             val expectedBooks=repo.books.first()
@@ -57,6 +61,7 @@ class BackupRoundTripTest {
             repo.updateBook(repo.dao.book(book)!!.copy(name="Changed"))
             repo.createBook("Only after backup",Currency.USD)
             repo.dao.putEvent(event.copy(note="Changed"))
+            db.monthlyDao().savePlan(monthlyPlan.copy(text="Changed"));db.monthlyDao().update(monthlyReview.copy(planId="Changed"))
             original.writeText("Changed image")
             prefs.setPhotoSaveOriginal(false);prefs.setAutomaticReferenceRates(true);prefs.saveReminderSettings(book,ReminderPreferences(time="12:30"))
             val stage=File(root,"import")
@@ -73,6 +78,7 @@ class BackupRoundTripTest {
             assertEquals(expectedPrefs,prefs.backup())
             assertEquals(blob.checksum,BackupArchive.sha256(repo.mediaFile(blob)))
             assertNotNull(BitmapFactory.decodeFile(repo.mediaFile(blob).path))
+            assertEquals(monthlyPlan,db.monthlyDao().plan(book));assertEquals(monthlyReview,db.monthlyDao().review(book,"2026-10"))
             assertFalse(layout.journal.exists())
         }finally{db.close();scope.coroutineContext[Job]!!.cancelAndJoin();root.deleteRecursively()}
     }

@@ -35,7 +35,13 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
         require(sha256(claim.text)==claim.sha256){"方案校验值不符 / プランのチェックサムが一致しません"}
         val key=importKey(origin,claim.taskId,claim.resultId,claim.sha256)
         dao.source(key)?.let{return it}
-        val parsed=try{registry.parse(claim.text,claim.bookId,expectedContextDigest)}catch(e:Exception){
+        val parsed=try{registry.parse(claim.text,claim.bookId,expectedContextDigest).also{plan->
+            if(claim.purpose=="monthly-review") {
+                val submission=requireNotNull(db.monthlyDao().submission(claim.localId)){"月评提交快照不存在 / 月の振り返りの送信内容がありません"}
+                require(submission.planId==null||submission.planId==plan.plan_id){"本月评语已保存，请在历史查看原评语 / この月のコメントは保存済みです。履歴をご確認ください"}
+                require(submission.bookId==claim.bookId&&plan.message.isNotBlank()){"评语不能为空 / コメントが必要です"}
+            }
+        }}catch(e:Exception){
             val failed=CommandPlanEntity("invalid:$key",claim.bookId,claim.localId,origin,claim.taskId,claim.resultId,claim.resultVersion,claim.sha256,key,
                 storeCommandJson(claim.text),expectedContextDigest,status="FAILED",error=e.message,createdAt=ledger.clock.millis())
             db.withTransaction {if(dao.source(key)==null)dao.insert(failed);db.cloudDao().insertAck(CloudAckEntity(claim.localId,claim.resultId,"failed",claim.taskId,ledger.clock.millis()))}
@@ -44,11 +50,19 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
         val row=db.withTransaction {
             val existing=dao.source(key)?:dao.plan(parsed.plan_id)
             if(existing!=null) {
+                if(claim.purpose=="monthly-review")require(existing.localId==claim.localId){"此方案已属于另一个任务 / このプランは別のタスクに属しています"}
                 require(existing.bookId==claim.bookId){"方案ID已被另一账本使用 / プランIDは別の帳簿で使用済みです"}
-                if(existing.status in listOf("EXECUTED","UNDONE"))recordReceipt(existing.copy(localId=claim.localId,origin=origin,taskId=claim.taskId,resultId=claim.resultId,resultVersion=claim.resultVersion,sha256=claim.sha256,sourceKey=key))
+                if(existing.status in listOf("ANSWER","EXECUTED","UNDONE")||claim.purpose=="monthly-review")recordReceipt(existing.copy(localId=claim.localId,origin=origin,taskId=claim.taskId,resultId=claim.resultId,resultVersion=claim.resultVersion,sha256=claim.sha256,sourceKey=key))
                 existing
             }else CommandPlanEntity(parsed.plan_id,claim.bookId,claim.localId,origin,claim.taskId,claim.resultId,claim.resultVersion,claim.sha256,key,
-                storeCommandJson(claim.text),expectedContextDigest,createdAt=ledger.clock.millis()).also{dao.insert(it)}
+                storeCommandJson(claim.text),expectedContextDigest,status=if(parsed.steps.isEmpty())"ANSWER"else"PENDING",createdAt=ledger.clock.millis()).also{new->
+                dao.insert(new)
+                if(claim.purpose=="monthly-review") {
+                    val submission=requireNotNull(db.monthlyDao().submission(claim.localId))
+                    db.monthlyDao().update(submission.copy(planId=new.planId))
+                }
+                if(new.status=="ANSWER"||claim.purpose=="monthly-review")recordReceipt(new)
+            }
         }
         enqueueAcks();return row
     }
@@ -97,6 +111,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
     suspend fun preview(id:String):ConfirmationModel {
         val row=plan(id);check(row.status in listOf("PENDING","FAILED")){"方案已处理 / プランは処理済みです"}
         val parsed=try{parseStored(row)}catch(e:Exception){fail(row,e);throw e}
+        require(row.undoOf!=null||parsed.steps.isNotEmpty()){"回答无需执行 / 回答は実行不要です"}
         // Fetch public reference rates before entering any database transaction.
         val rates=referenceSnapshot(parsed)
         val date=LocalDate.now(ledger.clock)
@@ -181,7 +196,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
         if(record!=null) {
             val conflicts=run.undoConflicts(record)
             if(conflicts.isNotEmpty())return Triple(NormalizedPlan(plan.steps),ConfirmationModel(context,emptyList(),
-                record.effects.filter{it.type in setOf("preference","analysisPreference","statementAssociation","statementRow","receiptProducts","attachment","csvBatch","drafts","entryDraft","book","account","category","merchant","merchantLocation","friend","template","entry","rule","prediction","bill","activity","reserve","recurrence","occurrence","expectedIncome","treat","budgetSetting","ruleValidation","contract","contractBalance","repayment","repaymentAllocation","contractPlan","arrangement","arrangementReconciliation","poolPaymentChange","billAdjustment","creditLimitConfig","creditLimitGroup","creditLimitGroupSetting","creditLimitMember","creditLimitRecovery","creditLimitObservation","financialDraft")&&it.before!=it.after}.map{it.copy(before=it.after,after=it.before)},
+                record.effects.filter{it.type in setOf("monthlyPlan","preference","analysisPreference","statementAssociation","statementRow","receiptProducts","attachment","csvBatch","drafts","entryDraft","book","account","category","merchant","merchantLocation","friend","template","entry","rule","prediction","bill","activity","reserve","recurrence","occurrence","expectedIncome","treat","budgetSetting","ruleValidation","contract","contractBalance","repayment","repaymentAllocation","contractPlan","arrangement","arrangementReconciliation","poolPaymentChange","billAdjustment","creditLimitConfig","creditLimitGroup","creditLimitGroupSetting","creditLimitMember","creditLimitRecovery","creditLimitObservation","financialDraft")&&it.before!=it.after}.map{it.copy(before=it.after,after=it.before)},
                 conflicts=conflicts,removals=record.removals),run.executionRecord())
         }
         val journal=CommandUndoJournal(ledger,plan.book_id)
@@ -278,7 +293,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
             val current=plan(row.planId)
             if(current.status !in listOf("EXECUTED","UNDONE")) {
                 dao.update(current.copy(status="FAILED",error=error.message,checksJson="[]"))
-                if(row.undoOf==null)db.cloudDao().insertAck(CloudAckEntity(row.localId,row.resultId,"failed",row.taskId,ledger.clock.millis()))
+                if(row.undoOf==null&&db.monthlyDao().submission(row.localId)?.planId!=row.planId)db.cloudDao().insertAck(CloudAckEntity(row.localId,row.resultId,"failed",row.taskId,ledger.clock.millis()))
             }
         }
         enqueueAcks()

@@ -6,7 +6,7 @@
 
 - [正式APK 0.5.0](artifacts/yohaku-release-0.5.0.apk) · [SHA-256](artifacts/yohaku-release-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker`，固定正式签名。
 - [开发APK 0.5.0](artifacts/yohaku-dev-0.5.0.apk) · [SHA-256](artifacts/yohaku-dev-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker.dev`，沿用阶段A–D开发证书。
-- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v37（云端办理撤销关联与时间，迁移36→37；35→36的方案/效果队列及任务 purpose 保留）。三主题、中日文按账本保存。
+- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v38（月计划和月评历史，迁移37→38；此前方案/效果队列、撤销关联及任务 purpose 保留）。三主题、中日文按账本保存。
 - 开发包可覆盖原开发版本。正式包独立安装，与开发包并存，不自动转移开发包资料。覆盖升级不要先卸载；卸载或清除应用存储会删除账本与内部附件。提供手动本地完整备份/恢复，系统云备份仍关闭。
 - 当前仅专用API36模拟器验证，用户实机未连接。精简实机检查、密钥位置和完整安装升级说明见[发行说明](RELEASE.md)。
 
@@ -305,13 +305,13 @@ adb shell am instrument -w -r \
 专用模拟器`emulator-5580`：标准1170×2532/density480/fontScale1（390dp），窄屏960×2078/density480/fontScale1.3（320dp）。测试后恢复原尺寸/字体/网络/权限等配置。字体许可及数值字形适配见[字体迁移记录](verification/font-migration.md)。
 
 
-## 云端办理（阶段 1–5）
+## 云端办理（阶段 1–7）
 
 云端分析交接台新增办理提交、预览和历史。`general + purpose=command` 自动附带协议/能力/账本结构，记录按用户选择范围附带；日期范围另含该范围的他人请客记录及分摊，提交页单列数量，未选记录和账户范围不附此类事实；网站不改。命令 v1 为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`（扩展到普通记录完整字段）；阶段3覆盖基础账本、账户启停、分类、商户/地点/朋友、四类普通记录及模板，完整清单见[阶段3记录](../docs/plans/cloud-command-stage-3.md)。阶段4新增预算、活动、预留/参与人/请客、周期规则/实例/支付草稿协调及预计收入共23个v1命令，见[阶段4记录](../docs/plans/cloud-command-stage-4.md)。阶段5新增金融与额度21个v1命令及完整金融撤销，见[阶段5记录](../docs/plans/cloud-command-stage-5.md)。所有步骤本机试运行后回滚，确认重跑比较，原子提交及去重；事实只能由用户勾选。详见[实现规格 3.3](../docs/implementation-spec.md)和[阶段 2 记录](../docs/plans/cloud-command-stage-2.md)。
 
 阶段 2 增加本机整批撤销：账户/分类/已有预测恢复原快照；本方案新建且无修改、无外部引用的账户、额度/规则版本、预测和从属/修订行整体移除。原分类为空也可恢复为空。执行后相关对象变化阻止整批撤销，原执行与去重记录保留。后续命令按[适配器检查表](../docs/plans/cloud-command-adapter-checklist.md)验收。
 
-阶段5能力样例已由用户通过生成入口同步。第1轮返工只修复执行比较/序列化与展示，不改能力/schema，**无需再次生成样例**；后续注册能力变化时使用下列 `CommandCapabilitiesTest` 生成入口同步两份样例和真实 catalogDigest。
+阶段7新增月计划命令和月评提醒偏好，能力清单已变化。**需要用户使用下列 `CommandCapabilitiesTest` 生成入口重新生成两份样例和真实 catalogDigest**；本轮未手写能力样例。
 
 必要测试（Gradle 须串行；本实现任务不运行，由验收方执行）：
 
@@ -332,3 +332,21 @@ adb shell am instrument -w -r \
 
 
 云端办理阶段6第1轮返工：持久草稿消费效果恢复 `drafts` 类型，原 `CommandPlanningExecutionTest.recurrencePaymentCancellationAndBatchLinkConsumeOnlyMatchingDraft` 断言不变。`CommandFlowTest.followupPreviewAndStatusAcrossLooks` 增加序号+业务标题、草稿真实字段/待补提示断言及 `*-followup-draft.png`；`*-followup-status.png` 截图前必须验证完成、等待操作、失败可重试和重试按钮完整同屏。仍使用 `looks=all visual=true`，截图目录不变。本轮未运行Gradle；用户首轮生成的能力样例保持原字节，本轮注册能力未改，无需再次生成。返工原因和取舍见[阶段6记录](../docs/plans/cloud-command-stage-6.md)。
+
+
+### 阶段7：月计划、月评与问答（已验收）
+
+预算页附近可编辑每账本一份自然语言月计划，云端命令为 `book.monthlyPlan.save`；支持原文预览、执行及快照撤销。通知设置新增默认开启的月评独立开关，每月1日提醒上月；已提交则不再提醒，点击预填提交页，用户确认后才上传。提醒沿用系统权限、时刻和持久去重，不自动上传。重要事项开关不控制独立月评开关；`preferences.reminders` 新字段 monthlyReview 可同步办理。
+
+提交附件为协议、能力、账本结构与月度汇总（收入/净消费、分类、预算执行、账户变化、月计划）；初次不附逐笔记录或文件。`purpose=monthly-review`，message为评语，steps为可选建议，仍需用户主动预览确认。领取即保存评语，不执行也保留；历史按账本/月显示原计划及建议执行/撤销状态，可手动提交已结束月份。普通无步骤回答直接显示并保存历史，不出现执行确认。
+
+Room 37→38新增 monthly_plans/monthly_reviews，完整备份自动包含，旧备份迁移后可用。月评历史快照压缩保存；Room 38导出schema需由用户编译生成。功能/格式/检查表与取舍见[阶段7记录](../docs/plans/cloud-command-stage-7.md)。
+
+本轮必要测试（全部待用户串行执行；未运行Gradle/模拟器）：
+
+- `MonthlyCommandTest`：月计划原文预览→执行→撤销及真实冲突；小账本汇总、仅回答/仅评语/带建议的月评、历史隔离与快照、建议执行撤销。
+- `ReminderSystemTest.monthlyReviewUsesFirstDayPreviousMonthAndPersistedDedup`：默认参数可跑，无需system=true，检查时钟、上月、去重、关闭和已提交抑制；`ReminderSettingsFlowTest` 增加默认开关/关闭保存断言。
+- `DatabaseUpgradeTest.version37AddsMonthlyPlanAndReviewWithoutChangingExistingRows` 和 `BackupRoundTripTest`；回归原 `CommandWorkflowExecutionTest` 可逆提醒偏好组合。
+- `CommandFlowTest.monthlyPlanSubmissionReviewHistoryAndAnswerAcrossLooks`：`looks=all visual=true`，逐张查看三主题×中日文 `cloud-command-stage-1/*-monthly-plan.png`、`*-monthly-submit.png`、`*-monthly-review.png`、`*-monthly-history.png`、`*-answer.png`。
+
+先用已有生成入口重新生成能力样例，再跑单元/相关仪器测试。真实网站、实际通知点击与系统权限需设备实测；本轮静态核对不代表编译或视觉通过。

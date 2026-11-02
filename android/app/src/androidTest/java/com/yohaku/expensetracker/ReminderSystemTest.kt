@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yohaku.expensetracker.data.db.*
+import com.yohaku.expensetracker.data.command.monthlyReviewBundle
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.domain.reminders.*
@@ -50,6 +51,45 @@ class ReminderSystemTest {
             app.reminders.rebuildSafely(false)
         }
     }
+    @Test fun monthlyReviewUsesFirstDayPreviousMonthAndPersistedDedup()=runBlocking<Unit> {
+        val db=Room.inMemoryDatabaseBuilder(app,YohakuDatabase::class.java).build()
+        val storeScope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+        val file=File(app.cacheDir,"monthly-reminder-${UUID.randomUUID()}.preferences_pb")
+        val prefs=AppPreferences(app,PreferenceDataStoreFactory.create(scope=storeScope,produceFile={file}))
+        val zone=ZoneId.systemDefault()
+        var time=LocalDate.of(2026,11,1).atTime(8,0).atZone(zone).toInstant()
+        val clock=object:Clock(){override fun getZone()=zone;override fun withZone(zone:ZoneId):Clock=Clock.fixed(time,zone);override fun instant()=time}
+        val repo=LedgerRepository(db,clock)
+        val coordinator=ReminderCoordinator(app,repo,prefs)
+        try {
+            val book=repo.createBook("月评",Currency.JPY,startDate="2026-10-01")
+            repo.updateBook(repo.dao.book(book)!!.copy(initialized=true))
+            coordinator.rebuild(false)
+            val slot=coordinator.plan.value.single{it.item.kind=="MONTHLY_REVIEW"}
+            assertEquals("2026-10",slot.item.targetMonth);assertEquals("2026-11-01",slot.item.date)
+            assertEquals(LocalDate.of(2026,11,1).atTime(9,0).atZone(zone).toInstant().toEpochMilli(),slot.at)
+            val items=repo.reminderItems(prefs)
+            assertTrue(planReminders(items,emptyMap(),ReminderDeliveryState(),time,zone).due.isEmpty())
+            time=time.plusSeconds(7200)
+            val due=planReminders(items,emptyMap(),ReminderDeliveryState(),time,zone).due
+            assertEquals(1,due.count{it.item.kind=="MONTHLY_REVIEW"})
+            prefs.saveReminderRuntime(recordReminderDelivery(ReminderDeliveryState(),due,time,zone),emptyList())
+            ReminderCoordinator(app,repo,prefs).rebuild(false)
+            coordinator.rebuild(false);assertTrue(coordinator.plan.value.none{it.item.kind=="MONTHLY_REVIEW"})
+            // A fresh state still never catches up the monthly notification on day 2.
+            time=LocalDate.of(2026,11,2).atTime(10,0).atZone(zone).toInstant()
+            assertTrue(planReminders(repo.reminderItems(prefs),emptyMap(),ReminderDeliveryState(),time,zone).slots.none{it.item.kind=="MONTHLY_REVIEW"})
+            time=LocalDate.of(2026,12,1).atTime(10,0).atZone(zone).toInstant()
+            coordinator.rebuild(false);assertEquals("2026-11",coordinator.plan.value.single{it.item.kind=="MONTHLY_REVIEW"}.item.targetMonth)
+            prefs.saveReminderSettings(book,ReminderPreferences(monthlyReview=false))
+            coordinator.rebuild(false);assertTrue(coordinator.plan.value.none{it.item.kind=="MONTHLY_REVIEW"})
+            prefs.saveReminderSettings(book,ReminderPreferences())
+            val snapshot=repo.monthlyReviewBundle(book,"2026-11")
+            db.monthlyDao().insert(com.yohaku.expensetracker.data.command.MonthlyReviewEntity(book,"2026-11","submitted",repo.json.encodeToString(com.yohaku.expensetracker.data.command.MonthlyReviewBundle.serializer(),snapshot),time.toEpochMilli()))
+            coordinator.rebuild(false);assertTrue(repo.reminderItems(prefs).none{it.kind=="MONTHLY_REVIEW"});assertTrue(coordinator.plan.value.none{it.item.kind=="MONTHLY_REVIEW"})
+        }finally{storeScope.cancel();db.close();file.delete();app.reminders.rebuildSafely(false)}
+    }
+
     @Test fun actualDeliveryModificationCancellationAndPersistentDedup()=runBlocking {
         org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))
         fixture{repo,prefs,coordinator,a,b->

@@ -127,7 +127,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         return buildJsonObject { put("type",type); put("title",title.trim()); put("instructions",instructions); put("context",context) }.toString()
     }
     private suspend fun prepare(bookId:String,type:String,title:String,instructions:String,accountId:String?=null,
-        bundleId:String?=null,taskContext:JsonObject,purpose:String="analysis", files:suspend (String,File)->List<CloudTransferEntity>):String = withContext(Dispatchers.IO) {
+        bundleId:String?=null,taskContext:JsonObject,purpose:String="analysis",monthly:MonthlyReviewBundle?=null, files:suspend (String,File)->List<CloudTransferEntity>):String = withContext(Dispatchers.IO) {
         val config=credentials()
         check(ledger.dao.book(bookId)!=null) { "账本不存在 / 帳簿がありません" }
         createBody(type,title,instructions,taskContext)
@@ -140,9 +140,11 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
             val request=createBody(type,title,instructions,if(type=="receipt") JsonObject(taskContext + ("parts" to JsonPrimitive(transfers.size))) else taskContext)
             val timestamp=now()
             db.withTransaction {
+                monthly?.let{check(db.monthlyDao().review(bookId,it.summary.month)==null){"本月已经提交，请查看或重试原任务 / この月は送信済みです。元のタスクを確認・再試行してください"}}
                 dao.insertTask(CloudTaskEntity(localId,bookId,type,title.trim(),accountId,bundleId,config.baseUrl,
                     localId,request,createdAt=timestamp,updatedAt=timestamp,purpose=purpose))
                 dao.insertTransfers(transfers)
+                monthly?.let{db.monthlyDao().insert(MonthlyReviewEntity(bookId,it.summary.month,localId,storeCommandJson(cloudJson.encodeToString(it)),timestamp))}
             }
             persisted=true
             enqueue(localId); localId
@@ -202,16 +204,19 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         prepare(bookId,"general",title,"请分析所附资料，以UTF-8文本返回结果。\n$note",taskContext=buildJsonObject { put("book_id",bookId) }) {
             localId,directory -> copySources(localId,directory,sources)
         }
-    suspend fun prepareCommandTask(bookId:String,sources:List<Uri>,title:String,request:String,bundle:CommandExportBundle):String {
+    suspend fun prepareCommandTask(bookId:String,sources:List<Uri>,title:String,request:String,bundle:CommandExportBundle,monthly:MonthlyReviewBundle?=null):String {
         require(bundle.context.book_id==bookId&&bundle.records?.book_id?.let{it==bookId}!=false)
+        monthly?.let{require(it.context==bundle.context&&it.summary.book_id==bookId&&bundle.records==null&&sources.isEmpty());require(java.time.YearMonth.parse(it.summary.month)<java.time.YearMonth.now(ledger.clock))}
+        val purpose=if(monthly==null)"command"else"monthly-review"
         val instructions=request+"\n按附件 yohaku-command-protocol-v1.md 的约定，只返回一份 yohaku.command-plan v1 JSON。"
         return prepare(bookId,"general",title,instructions,taskContext=buildJsonObject{
-            put("book_id",bookId);put("yohaku_protocol","yohaku.command-task");put("protocol_version",1);put("purpose","command")
+            put("book_id",bookId);put("yohaku_protocol","yohaku.command-task");put("protocol_version",1);put("purpose",purpose);monthly?.let{put("month",it.summary.month)}
             put("context_digest",bundle.context.contextDigest)
-        },purpose="command") {localId,directory->
+        },purpose=purpose,monthly=monthly) {localId,directory->
             val texts=linkedMapOf("yohaku-command-protocol-v1.md" to context.assets.open("yohaku-command-protocol-v1.md").bufferedReader(Charsets.UTF_8).use{it.readText()},
                 "yohaku-capabilities-v1.json" to commands.registry.export().toString(),
                 "yohaku-ledger-context-v1.json" to cloudJson.encodeToString(bundle.context))
+            monthly?.let{texts["yohaku-monthly-review-v1.json"]=cloudJson.encodeToString(it.summary)}
             bundle.records?.let{texts["yohaku-records-v1.json"]=cloudJson.encodeToString(it)}
             val generated=texts.entries.mapIndexed{index,(name,text)->
                 val file=File(directory,name);file.writeText(text,Charsets.UTF_8)
@@ -223,7 +228,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
     }
     suspend fun receiveCommand(claim:CloudClaim):CommandPlanEntity=locked(claim.localId) {
         val task=validateClaim(claim,"general",allowImported=true)
-        require(task.purpose=="command")
+        require(task.purpose in setOf("command","monthly-review"))
         val digest=cloudJson.parseToJsonElement(task.requestJson).jsonObject.getValue("context").jsonObject.getValue("context_digest").jsonPrimitive.content
         commands.receive(claim,task.origin,digest)
     }
@@ -322,7 +327,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         val remote=refreshUnlocked(localId); val task=row(localId)
         val result=remote.claimableResult() ?: error("暂无可领取结果 / 受け取れる結果がありません")
         val metadata=remote.files.firstOrNull { it.id==result.fileId && it.role=="result" } ?: error("结果文件资料缺失 / 結果ファイル情報がありません")
-        check(task.purpose=="command"||dao.imported(importKey(task.origin,remote.id,result.id,metadata.sha256))==null) { "结果已导入 / 結果は取込済みです" }
+        check(task.purpose in setOf("command","monthly-review")||dao.imported(importKey(task.origin,remote.id,result.id,metadata.sha256))==null) { "结果已导入 / 結果は取込済みです" }
         if(task.type=="receipt")registerSubmitted(localId,remote)
         val directory=File(root,localId); check(directory.isDirectory || directory.mkdirs())
         val dest=File.createTempFile("result-", ".txt",directory)
@@ -393,7 +398,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         check(task.taskId==null) { "已创建的云任务不能本地丢弃 / 作成済みのクラウドタスクは破棄できません" }
         val directory=File(root,localId)
         check(!directory.exists() || directory.deleteRecursively()) { "无法清理任务文件 / タスクファイルを削除できません" }
-        dao.deleteTask(localId)
+        db.withTransaction {db.monthlyDao().discardUnsubmitted(localId);dao.deleteTask(localId)}
     }
     internal suspend fun resumePending() {
         commands.followups.resume()

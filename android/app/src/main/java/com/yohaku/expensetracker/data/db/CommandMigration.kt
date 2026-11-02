@@ -18,3 +18,11 @@ val MIGRATION_36_37=object:androidx.room.migration.Migration(36,37) {
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_command_plans_undoOf ON command_plans(undoOf)")
     }
 }
+
+val MIGRATION_37_38=object:androidx.room.migration.Migration(37,38) {
+    override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS monthly_plans (bookId TEXT NOT NULL PRIMARY KEY, text TEXT NOT NULL, FOREIGN KEY(bookId) REFERENCES books(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS monthly_reviews (bookId TEXT NOT NULL, month TEXT NOT NULL, localId TEXT NOT NULL, snapshotJson TEXT NOT NULL, submittedAt INTEGER NOT NULL, planId TEXT, PRIMARY KEY(bookId,month), FOREIGN KEY(bookId) REFERENCES books(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_monthly_reviews_localId ON monthly_reviews(localId)")
+    }
+}

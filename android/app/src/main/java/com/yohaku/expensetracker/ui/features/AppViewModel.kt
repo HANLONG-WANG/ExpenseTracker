@@ -350,6 +350,8 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     }
     fun dismissEntryReview(){if(!savingEntry){entryReview.value=null;reviewRefreshed.value=false}}
     val commandPlanId=kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val monthlyReviewMonth=MutableStateFlow<String?>(null)
+    fun openMonthlyReview(month:String){monthlyReviewMonth.value=month;navigate("monthly-submit")}
     fun openCommandPlan(id:String){commandPlanId.value=id;navigate("command-preview")}
     fun saveEntry(bookId:String) {
         if(savingEntry)return

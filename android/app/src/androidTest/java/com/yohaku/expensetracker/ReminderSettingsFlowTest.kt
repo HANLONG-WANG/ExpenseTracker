@@ -40,6 +40,7 @@ class ReminderSettingsFlowTest {
             ui.setContent{NativeApp(vm)}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book}
             ui.runOnIdle{vm.navigate("notification-settings")}
+            ui.onNodeWithTag("reminder-monthly-review").performScrollTo().assertIsOn().performClick()
             var minute=15
             for((theme,language) in testLooks(this@ReminderSettingsFlowTest)) {
                 repo.updateAppearance(book,theme,language)
@@ -51,6 +52,7 @@ class ReminderSettingsFlowTest {
                 ui.waitUntil(10000){!vm.busy.value&&runBlocking{prefs.reminderSettings.first()[book]?.time==savedTime}}
                 assertEquals(savedTime,prefs.reminderSettings.first()[book]!!.time)
                 assertFalse(prefs.reminderSettings.first()[book]!!.enabled)
+                assertFalse(prefs.reminderSettings.first()[book]!!.monthlyReview)
                 try {
                     ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().none{view->view.isShown&&view.hasWindowFocus()&&androidx.core.view.ViewCompat.getRootWindowInsets(view)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
                 }catch(e:Throwable) {

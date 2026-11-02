@@ -10,7 +10,7 @@ import kotlinx.serialization.json.*
  * Book creation also records its initial budget; no subsequent command may target that book. */
 internal class CommandUndoJournal(private val ledger:LedgerRepository,private val bookId:String) {
     private val sql=ledger.db.openHelper.writableDatabase
-    private val deleteOrder=listOf("receipt_item_documents","csv_batch_events","csv_batches","analysis_preferences","receipt_images","receipts","attachment_links","draft_media","drafts","revisions","treat_allocations","reserve_uses","event_merchants","event_places","event_activities",
+    private val deleteOrder=listOf("monthly_plans","receipt_item_documents","csv_batch_events","csv_batches","analysis_preferences","receipt_images","receipts","attachment_links","draft_media","drafts","revisions","treat_allocations","reserve_uses","event_merchants","event_places","event_activities",
         "financial_drafts","credit_limit_observations","credit_limit_recoveries","credit_limit_group_revisions","credit_limit_group_members","credit_limit_groups",
         "financial_rule_validations","financial_plan_revisions","financial_bill_adjustments","financial_repayment_allocations","financial_contract_plans","financial_arrangements",
         "financial_repayments","debt_contracts","financial_bills","financial_plans","financial_rules","credit_limit_configs",
@@ -74,6 +74,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
     }
     private fun name(row:JsonObject,names:Map<String,String>):String {
         fun text(key:String)=row[key]?.jsonPrimitive?.contentOrNull?.takeIf{it.isNotBlank()}
+        if("text" in row)return "月度计划 / 月の計画"
         if(text("modulesJson")!=null)return "分析设置 / 分析設定 · "+names[text("bookId")].orEmpty()
         text("receiptId")?.let{id->names[id]?.let{return it}}
         text("fileName")?.let{return it}
@@ -99,7 +100,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
     }
     // A batch can touch thousands of instances. Load relationship tables once per final-state
     // guard pass, not once per instance; CommandRun invalidates this cache on a state refresh.
-    private val relationRows by lazy {tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"}.associate{it.name to readRows(it.name)}}
+    private val relationRows by lazy {tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"&&it.name!="monthly_reviews"}.associate{it.name to readRows(it.name)}}
     fun planningRelations(type:String,id:String):JsonObject {
         val fields=when(type) {
             "activity"->setOf("activityId","activeActivityId")
@@ -117,7 +118,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
             is JsonPrimitive->value.isString&&value.content==id
             else->false
         }
-        for(t in tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"}) {
+        for(t in tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"&&it.name!="monthly_reviews"}) {
             val columns=t.columns.filter{it in fields}
             val jsonColumns=t.columns.filter{it.endsWith("Json")||it=="json"}
             if(columns.isEmpty()&&jsonColumns.isEmpty())continue
@@ -216,7 +217,9 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
                     else->Unit
                 }
             }
-            for(column in table.columns.filter(::jsonColumn)) {
+            // Monthly upload snapshots are historical copies, not live references to ledger objects.
+            // Keep their actual book FK above, so undoing book creation cannot erase later history.
+            for(column in table.columns.filter{jsonColumn(it)&&table.name!="monthly_reviews"}) {
                 val raw=row[column]?.jsonPrimitive?.contentOrNull?:continue
                 if(raw.trimStart().let{it.startsWith("{")||it.startsWith("[")})scan(commandJson.parseToJsonElement(raw),column)
             }

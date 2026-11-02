@@ -13,6 +13,10 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 
 private val Context.preferences by preferencesDataStore("app")
+// Stage-6 queued effects and undo snapshots predate this field; decode its documented default.
+internal fun completeCommandPreference(key:String,value:JsonElement):JsonElement=
+    if(key=="reminders"&&value is JsonObject&&"monthlyReview" !in value)JsonObject(value+("monthlyReview" to JsonPrimitive(true)))else value
+
 class AppPreferences(private val context: Context,private val storage:DataStore<Preferences> = context.preferences):ReferenceRateStore {
     private val photoOriginalKey=booleanPreferencesKey("photo_save_original")
     val photoSaveOriginal=storage.data.map{it[photoOriginalKey]?:false}.distinctUntilChanged()
@@ -88,7 +92,7 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
         storage.edit { p->
             val receipts=p[commandReceipts]?:emptySet()
             if(effectId !in receipts) {
-                require(commandValue(p,bookId,key)==before){"偏好在确认后已变化，请恢复预览中的原值后重试 / 確定後に設定が変わりました。元の値に戻して再試行してください"}
+                require(commandValue(p,bookId,key)==completeCommandPreference(key,before)){"偏好在确认后已变化，请恢复预览中的原值后重试 / 確定後に設定が変わりました。元の値に戻して再試行してください"}
                 when(key) {
                     "activeBook"->if(after==JsonNull)p.remove(active)else p[active]=after.jsonPrimitive.content
                     "automaticRates"->p[automaticRates]=after.jsonPrimitive.boolean

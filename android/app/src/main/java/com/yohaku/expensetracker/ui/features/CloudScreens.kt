@@ -68,7 +68,7 @@ import kotlinx.coroutines.delay
             onClaim={var result:CloudClaim?=null;var commandId:String?=null
                 vm.execute(onSuccess={commandId?.let{vm.openCommandPlan(it)}?:run{claim=result}}){
                     val received=cloud.claim(view.task.localId)
-                    if(received.purpose=="command")commandId=cloud.receiveCommand(received).planId else result=received
+                    if(received.purpose in setOf("command","monthly-review"))commandId=cloud.receiveCommand(received).planId else result=received
                 }},
             onSupplement={supplementFor=view.task.localId;supplement.launch(arrayOf("*/*"))},
             onDiscard={vm.execute{cloud.discard(view.task.localId)}})

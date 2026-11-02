@@ -164,6 +164,7 @@ import kotlinx.serialization.encodeToString
                     vm.entry.value=null;sheet=null;vm.navigate("reminders")
                     when(target?.kind) {
                         "REPAYMENT","DEADLINE"->target.targetAccountId?.takeIf{id->snapshot.accounts.any{it.id==id}}?.let{openFinancial(it,target.targetMonth?:target.date.take(7))}
+                        "MONTHLY_REVIEW"->target.targetMonth?.let{vm.openMonthlyReview(it)}
                         "RECURRING"->{recurringInitialMonth=target.date.take(7);vm.navigate("recurring")}
                         "BUDGET"->vm.navigate("forecast")
                         "FUNDS"->target.targetAccountId?.takeIf{id->snapshot.accounts.any{it.id==id}}?.let{openRisk(it)}
@@ -226,6 +227,9 @@ import kotlinx.serialization.encodeToString
                         "statements"->key(book.id){StatementsScreen(snapshot,vm,{openRecord(it)},{requestStatement(it)},{event,account,row,date->requestStatementActual(event,account,row,date)},{openFinancial(it)})}
                         "statement-import"->key(book.id){StatementImportScreen(snapshot,vm)}
                         "cloud"->key(book.id){CloudScreen(snapshot,vm)}
+                        "monthly-plan"->key(book.id){MonthlyPlanScreen(snapshot,vm)}
+                        "monthly-submit"->key(book.id){MonthlySubmitScreen(snapshot,vm)}
+                        "monthly-history"->key(book.id){MonthlyHistoryScreen(snapshot,vm)}
                         "command-submit"->key(book.id){CommandSubmitScreen(snapshot,vm)}
                         "command-history"->key(book.id){CommandHistoryScreen(snapshot,vm)}
                         "command-preview"->key(book.id){CommandPreviewScreen(snapshot,vm)}
@@ -848,6 +852,7 @@ import kotlinx.serialization.encodeToString
     "categories"->word("分类管理","カテゴリ管理");"settings"->word("设置","設定")
     "statements"->word("流水核对","明細の照合");"statement-import"->word("导入流水","明細の取込")
     "cloud"->word("云端分析","クラウド分析")
+    "monthly-plan"->word("月度计划","月の計画");"monthly-submit"->word("提交月度评语","振り返りを送信");"monthly-history"->word("月度评语历史","月の振り返り履歴")
     "command-submit"->word("云端办理","クラウド手続き");"command-history"->word("方案历史","プラン履歴");"command-preview"->word("方案预览","プランの確認")
     "reference-rates"->word("参考汇率","参考レート");"trash"->word("回收站","ごみ箱")
     "budget"->word("预算","予算");"recurring"->word("周期账单","定期支払")

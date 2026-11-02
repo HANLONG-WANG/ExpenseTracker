@@ -160,7 +160,7 @@ private suspend fun LedgerRepository.requireBatchRestorationReferences(bookId:St
     val tables=sql.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").use{c->buildList{while(c.moveToNext())add(c.getString(0))}}
     // Inventory foreign keys too, so new child tables are not silently outside this guard.
     val incoming=scopedForeignKeys().filter{it.parent in setOf("financial_arrangements","financial_bill_adjustments","financial_plans")}.groupBy{it.table}
-    for(table in tables.filter{!it.startsWith("command_")&&!it.startsWith("cloud_")&&it !in setOf("financial_plan_revisions","credit_limit_group_revisions","revisions")}) {
+    for(table in tables.filter{!it.startsWith("command_")&&!it.startsWith("cloud_")&&it !in setOf("monthly_reviews","financial_plan_revisions","credit_limit_group_revisions","revisions")}) {
         val columns=sql.query("PRAGMA table_info(`$table`)").use{c->buildList{while(c.moveToNext())add(c.getString(1))}}
         if("bookId" !in columns)continue
         val fields=columns.filter{it.endsWith("Id")||it.endsWith("Json")||it in setOf("json","sourceProof","slot")||incoming[table].orEmpty().any{fk->it in fk.columns}}

@@ -11,6 +11,11 @@ suspend fun LedgerRepository.reminderItems(preferences:AppPreferences):List<Remi
     val today=LocalDate.now(clock);val through=today.plusDays(366)
     val rates=preferences.referenceRateCache().rates
     for(book in books.first().filter{it.initialized&&it.deletedAt==null}) {
+        val month=java.time.YearMonth.from(today)
+        val reviewMonth=month.minusMonths(1).toString()
+        if(reviewMonth>=book.startDate.take(7)&&!book.archived&&db.monthlyDao().review(book.id,reviewMonth)==null)
+            result+=ReminderItem(book.id,"monthly-review:$reviewMonth","MONTHLY_REVIEW",month.atDay(1).toString(),book.currency,null,
+                if(book.language=="ja")"${reviewMonth}の振り返りを送信"else"提交${reviewMonth}月度评语",targetMonth=reviewMonth)
         val state=financialReviewState(book.id);val s=state.ledger;val f=state.finance
         val stale=f.plans.filter{financialPredictionStale(s,f,it)}.map{it.id}.toSet()
         val timeline=s.cashTimeline(f,today,through,stale,rates)

@@ -6,13 +6,13 @@ import java.time.*
 @Serializable data class ReminderPreferences(
     val enabled:Boolean=false,val repayment:Boolean=true,val deadline:Boolean=true,val recurring:Boolean=true,
     val budget:Boolean=true,val funds:Boolean=true,val repaymentDays:List<Int> = listOf(7,1),
-    val deadlineDays:List<Int> = listOf(3,1),val recurringDays:List<Int> = listOf(1),val time:String="09:00"
+    val deadlineDays:List<Int> = listOf(3,1),val recurringDays:List<Int> = listOf(1),val time:String="09:00",val monthlyReview:Boolean=true
 ) {
     fun validate() {
         LocalTime.parse(time)
         require(listOf(repaymentDays,deadlineDays,recurringDays).all{it.isNotEmpty()&&it.size<=10&&it.all{n->n in 0..365}}){"提前天数请输入0–365的整数，以逗号分隔 / 0〜365日前をカンマ区切りで指定してください"}
     }
-    fun allows(kind:String)=enabled&&when(kind){"REPAYMENT"->repayment;"DEADLINE"->deadline;"RECURRING"->recurring;"BUDGET"->budget;"FUNDS"->funds;else->false}
+    fun allows(kind:String)=if(kind=="MONTHLY_REVIEW")monthlyReview else enabled&&when(kind){"REPAYMENT"->repayment;"DEADLINE"->deadline;"RECURRING"->recurring;"BUDGET"->budget;"FUNDS"->funds;else->false}
 }
 
 /** Amounts are always in the item's currency. No sums across currencies or books. */
@@ -60,7 +60,7 @@ fun planReminders(items:List<ReminderItem>,preferences:Map<String,ReminderPrefer
             }
         } else {
             if(item.deadlineInstant?.let{it<=now.toEpochMilli()}==true)continue
-            val days=when(item.kind){"REPAYMENT"->prefs.repaymentDays;"DEADLINE"->prefs.deadlineDays;else->prefs.recurringDays}
+            val days=when(item.kind){"MONTHLY_REVIEW"->listOf(0);"REPAYMENT"->prefs.repaymentDays;"DEADLINE"->prefs.deadlineDays;else->prefs.recurringDays}
             for(day in days.distinct()) {
                 val reminderDate=date.minusDays(day.toLong())
                 if(reminderDate<today)continue

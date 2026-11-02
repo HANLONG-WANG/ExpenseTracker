@@ -36,6 +36,7 @@ import java.time.format.DateTimeFormatter
 @Composable internal fun CommandEntry(vm:AppViewModel,connected:Boolean) {
     CloudHandoffStrip(word("云端办理","クラウド手続き"),word("说出需求，收到方案后在本机试运行，由你核对并确认。","要望を伝え、届いたプランを端末で試算。確認してから確定します。"),"command-entry") {
         YButton(word("提出办理需求","手続きを依頼"),{vm.navigate("command-submit")},Modifier.fillMaxWidth().testTag("command-new"),primary=true,enabled=connected)
+        YLink(word("月度评语与历史","月の振り返り・履歴"),{vm.navigate("monthly-history")},Modifier.testTag("command-monthly-history"))
         YLink(word("方案历史","プランの履歴"),{vm.navigate("command-history")},Modifier.testTag("command-history"))
     }
 }
@@ -75,7 +76,7 @@ import java.time.format.DateTimeFormatter
         if(mode=="dates")YDateFields(listOf(word("从","開始") to from,word("至","終了") to through),dateOwner,{dateOwner=it},{i,v->if(i==0)from=v else through=v})
         if(mode=="account")YSelect(word("账户","口座"),account,s.accounts.map{it.id as String? to it.name},{account=it},Modifier.testTag("command-record-account"))
     }
-    CloudHandoffStrip(word("将上传的内容","送信する内容"),word("协议说明、能力清单和本账本结构总会附带。结构含账户余额、分类、商户与地点、朋友、模板、预算、周期、金融规则和计划、额度及活动资料、可办理偏好和 CSV 批次摘要。","プロトコル、対応機能一覧、帳簿の構成を必ず添付します。構成には口座残高・カテゴリ・お店と場所・友人・テンプレート・予算・定期予定・金融条件とプラン・利用枠・シーン・対応する設定・CSVバッチの概要が含まれます。"),"command-upload-summary") {
+    CloudHandoffStrip(word("将上传的内容","送信する内容"),word("协议说明、能力清单和本账本结构总会附带。结构含账户余额、分类、商户与地点、朋友、模板、预算、周期、金融规则和计划、额度及活动资料、可办理偏好、CSV 批次摘要和月计划。","プロトコル、対応機能一覧、帳簿の構成を必ず添付します。構成には口座残高・カテゴリ・お店と場所・友人・テンプレート・予算・定期予定・金融条件とプラン・利用枠・シーン・対応する設定・CSVバッチの概要・月の計画が含まれます。"),"command-upload-summary") {
         val entryCount=bundle?.records?.records?.size?:0
         val treatCount=bundle?.records?.activityTreats?.size?:0
         YText(word("结构项目 ${bundle?.context?.items?.size?:0} 项 · 具体记录 $entryCount 笔 · 他人请客 $treatCount 笔 · 所选文件 ${files.size} 份","構成 ${bundle?.context?.items?.size?:0} 件・記録 $entryCount 件・友達のごちそう $treatCount 件・選択ファイル ${files.size} 個"),13)
@@ -99,12 +100,12 @@ import java.time.format.DateTimeFormatter
     history.forEachIndexed{index,row->CommandCard(index+1,commandStatus(row.status),"history-${row.planId}",history=true) {
         val plan=remember(row.planJson){runCatching{readCommandDocument<CommandPlan>(row.planJson)}.getOrNull()}
         YText(if(row.undoOf!=null)undoTitle(history.firstOrNull{it.planId==row.undoOf})else plan?.message?.take(180)?.ifBlank{word("办理方案","手続きプラン")}?:word("无法识别的方案","読み取れないプラン"),14)
-        YText(if(row.undoOf!=null)word("本机撤销 · ${plan?.steps?.size?:0} 个步骤","端末での取消・${plan?.steps?.size?:0} ステップ")else word("${plan?.steps?.size?:0} 个步骤 · 结果版本 ${row.resultVersion}","${plan?.steps?.size?:0} ステップ・結果バージョン ${row.resultVersion}"),11,color=LocalYohaku.current.muted)
+        YText(if(row.undoOf!=null)word("本机撤销 · ${plan?.steps?.size?:0} 个步骤","端末での取消・${plan?.steps?.size?:0} ステップ")else if(plan?.steps?.isEmpty()==true)word("文字回答","テキスト回答")else word("${plan?.steps?.size?:0} 个步骤 · 结果版本 ${row.resultVersion}","${plan?.steps?.size?:0} ステップ・結果バージョン ${row.resultVersion}"),11,color=LocalYohaku.current.muted)
         row.undoneAt?.let{YText(word("撤销时间：","取消日時：")+commandTime(it),12,number=true)}
         if(row.status in listOf("EXECUTED","UNDONE"))CommandFollowups(row.planId,vm)
         if(row.status=="EXECUTED"&&row.undoOf==null)CommandUndoEntry(row,vm)
         row.error?.let{YText(localizedCommand(it),11,color=LocalYohaku.current.warm)}
-        YLink(word("查看方案","プランを見る"),{vm.openCommandPlan(row.planId)},Modifier.testTag("command-open-${row.planId}"))
+        YLink(if(plan?.steps?.isEmpty()==true)word("查看回答","回答を見る")else word("查看方案","プランを見る"),{vm.openCommandPlan(row.planId)},Modifier.testTag("command-open-${row.planId}"))
     }}
 }
 
@@ -113,18 +114,25 @@ import java.time.format.DateTimeFormatter
     val planId by vm.commandPlanId.collectAsStateWithLifecycle()
     val observedRow by remember(planId){commands.observePlan(planId.orEmpty())}.collectAsStateWithLifecycle(null)
     val row=observedRow
+    val monthly by remember(planId){vm.repository.db.monthlyDao().forPlan(planId.orEmpty())}.collectAsStateWithLifecycle(null)
+    val parsedPlan=remember(row?.planJson){row?.let{runCatching{readCommandDocument<CommandPlan>(it.planJson)}.getOrNull()}}
+    val answer=row?.undoOf==null&&parsedPlan?.steps?.isEmpty()==true
     val original by remember(row?.undoOf){commands.observePlan(row?.undoOf.orEmpty())}.collectAsStateWithLifecycle(null)
     val busy by vm.busy.collectAsStateWithLifecycle()
     val model=remember(row?.confirmationJson){row?.let{commands.confirmation(it)}}
     var checks by remember(model){mutableStateOf<Set<String>>(emptySet())}
     var details by remember(model){mutableStateOf<List<ObjectEffect>?>(null)}
-    LaunchedEffect(planId) {planId?.let{id->vm.execute{val p=commands.plan(id);if(p.status=="PENDING"&&p.confirmationJson==null)commands.preview(id)}}}
+    LaunchedEffect(planId) {planId?.let{id->vm.execute{val p=commands.plan(id);if(p.status=="PENDING"&&p.confirmationJson==null&&(p.undoOf!=null||readCommandDocument<CommandPlan>(p.planJson).steps.isNotEmpty())&&vm.repository.db.monthlyDao().submission(p.localId)==null)commands.preview(id)}}}
     val title=when {
+        monthly!=null->word("这个月，留下了什么？","今月、どんな一歩を残した？")
+        answer->word("助手的回答。","アシスタントからの回答。")
         row?.undoOf!=null&&row.status=="EXECUTED"->word("数据库撤销已提交。","データベースの取消を保存しました。")
         row?.undoOf!=null->word("撤销前，再核对一次。","取消前に、もう一度確認。")
         else->word("先试运行，再决定。","試算してから、決める。")
     }
     val description=when {
+        monthly!=null->word("评语已保存。你可以选择预览建议，不执行也会保留评语。","コメントを保存しました。提案の確認・実行は任意です。実行しなくてもコメントは残ります。")
+        answer->word("回答已保存在历史，无需确认执行。","回答は履歴に保存済みです。実行の確認は不要です。")
         row?.status=="UNDONE"||row?.undoOf!=null&&row.status=="EXECUTED"->word("数据库恢复已提交；原执行记录保留，后续恢复见撤销方案状态。","データベースの復元は保存済みです。元の履歴は保持し、後続の復元は取消プランの状態で確認できます。")
         row?.undoOf!=null->word("由本机执行记录生成；下列变更将恢复原方案执行前的业务状态。","端末の実行履歴から作成。以下の変更で元のプラン実行前の状態に戻します。")
         row?.status=="EXECUTED"->word("数据库步骤已提交；后续步骤见下方状态，回执由队列发送。","データベースの処理は保存済みです。後続の状態は下に表示し、受領通知はキューで送信します。")
@@ -138,16 +146,25 @@ import java.time.format.DateTimeFormatter
         YText(commandStatus(row.status),12,color=LocalYohaku.current.accent)
         row.undoneAt?.let{YText(word("撤销时间：","取消日時：")+commandTime(it),12,number=true)}
         if(row.undoOf!=null)YText(undoTitle(original),15)
-        plan?.let{if(it.message.isNotBlank())YText(it.message,15,lineHeightMultiplier=1.7f);it.questions.forEach{q->YText("• $q",13)}}
+        if(monthly==null)plan?.let{if(it.message.isNotBlank())YText(it.message,15,lineHeightMultiplier=1.7f);it.questions.forEach{q->YText("• $q",13)}}
         row.error?.let{YText(localizedCommand(it),13,color=LocalYohaku.current.warm)}
     }
+    if(monthly!=null)MonthlyPanel(word("月度评语","月の振り返り"),"monthly-review") {
+        plan?.let{YText(it.message,15,lineHeightMultiplier=1.7f);it.questions.forEach{q->YText("• $q",13)}}
+        val saved=remember(monthly?.snapshotJson){monthly?.let{readCommandDocument<MonthlyReviewBundle>(it.snapshotJson)}}
+        saved?.let{YText(it.summary.month,14);YText(word("当时的月计划：","送信時の計画：")+it.summary.monthlyPlan,13)}
+        YText(monthlySuggestionStatus(row,plan),12)
+        plan?.steps?.forEachIndexed{index,step->YText(commandStepName(index+1,step.command),13)}
+        if(plan?.steps?.isNotEmpty()==true&&model==null&&row.status in listOf("PENDING","FAILED"))YButton(word("预览建议步骤","提案の手順を確認"),{vm.execute{commands.preview(row.planId)}},Modifier.testTag("monthly-preview-suggestions"),primary=true,enabled=!busy)
+    }
+    if(answer){Box(Modifier.testTag("command-answer")){YText(word("已保存到历史","履歴に保存済み"),12)};return}
     CommandResultCopy(row,vm)
     if(row.status=="EXECUTED"&&row.undoOf==null)CommandUndoEntry(row,vm)
     if(model!=null) {
         if(model.conflicts.isNotEmpty())CommandCard(null,word("整批撤销已阻止","一括取消を停止しました"),"command-undo-conflicts") {
             YText(word("以下对象与执行后状态不一致；没有进行任何撤销。请核对后重新预览。","次の対象が実行直後の状態と一致しません。取消は一切行っていません。確認してから再プレビューしてください。"),13)
             model.conflicts.forEach{conflict->
-                val label=model.removals.firstOrNull{it.key==conflict.key}?.name?:when(conflict.type){"account","accounts","accountUsage"->s.accounts.firstOrNull{it.id==conflict.key}?.name;"entry","entryDetails"->s.events.firstOrNull{it.id==conflict.key}?.let{"${it.date} · ${it.merchant}"};else->null}
+                val label=model.removals.firstOrNull{it.key==conflict.key}?.name?:when(conflict.type){"monthly_plans","monthlyPlan"->word("月度计划","月の計画");"account","accounts","accountUsage"->s.accounts.firstOrNull{it.id==conflict.key}?.name;"entry","entryDetails"->s.events.firstOrNull{it.id==conflict.key}?.let{"${it.date} · ${it.merchant}"};else->null}
                 YText(label?:conflict.reference?.targetName?:resolveName(conflict.key,s,model),12)
                 if(conflict.reference!=null) {
                     val ref=conflict.reference
@@ -262,7 +279,7 @@ import java.time.format.DateTimeFormatter
     "activities"->word("本方案新建的活动","このプランで作成したシーン");"activity_reserves"->word("本方案新建的预留","このプランで作成した確保");"recurrences"->word("本方案新建的周期规则","このプランで作成した定期ルール");"occurrences"->word("本方案生成的周期实例","このプランで作成した定期予定");"expected_incomes"->word("本方案新建的预计收入","このプランで作成した収入予定");"treats"->word("本方案新建的请客记录","このプランで作成したごちそう記録");"activity_budgets"->word("本方案设置的活动分类预算","このプランで設定したシーンのカテゴリ予算");"activity_participants"->word("本方案新增的活动参与关系","このプランで追加したシーンの参加関係");"book_features"->word("本方案新增的活动模式设置","このプランで追加したシーンモード設定");"treat_allocations"->word("本方案产生的请客份额","このプランによるごちそうの取り分");"reserve_uses"->word("本方案产生的预留使用关系","このプランによる確保の使用関係");"draft_media"->word("草稿暂存附件关系","下書きの添付関係");
     "books"->word("账本","帳簿");"categories"->word("分类","カテゴリ");"merchants"->word("商户","お店");"merchant_locations"->word("保存地点","保存した場所");"friends"->word("朋友","友達");"entry_templates"->word("记账模板","記録テンプレート");"budgets"->word("预算设置","予算設定");"settlements"->word("结算","決済");"transfers"->word("转账","振替");"expense_components"->word("手续费","手数料");"event_places"->word("记录地点","記録の場所");
     "financial_rule_validations"->word("本方案新增的规则核验记录","このプランで追加した条件の検証記録");"debt_contracts"->word("本方案新增的借款合同","このプランで追加した借入契約");"financial_repayments"->word("本方案新增的还款清偿资料","このプランで追加した返済確定の情報");"financial_repayment_allocations"->word("本方案新增的还款分配关系","このプランで追加した返済の充当関係");"financial_contract_plans"->word("本方案新增的合同与计划关联","このプランで追加した契約とプランの関連");"financial_arrangements"->word("本方案新增的已办理安排记录","このプランで追加した手続き済み予定の記録");"financial_bill_adjustments"->word("本方案新增的账期义务调整","このプランで追加した請求債務の調整");"credit_limit_groups"->word("本方案新增的共享额度组","このプランで追加した共通利用枠");"credit_limit_group_members"->word("本方案新增的共享额度成员关系","このプランで追加した共通利用枠の所属関係");"credit_limit_group_revisions"->word("本方案新增的共享额度修订","このプランで追加した共通利用枠の更新履歴");"credit_limit_recoveries"->word("本方案新增的额度恢复确认","このプランで追加した利用枠回復の確認");"credit_limit_observations"->word("本方案新增的可用额度观测","このプランで追加した利用可能枠の確認");
-    "accounts"->word("账户","口座");"financial_rules"->word("规则版本","条件バージョン");"financial_plans"->word("预测计划","予測プラン");"financial_bills"->word("账期","請求期間");"financial_plan_revisions"->word("预测修订","予測の履歴");"credit_limit_configs"->word("额度配置版本","利用枠のバージョン")
+    "monthly_plans"->word("月度计划","月の計画");"accounts"->word("账户","口座");"financial_rules"->word("规则版本","条件バージョン");"financial_plans"->word("预测计划","予測プラン");"financial_bills"->word("账期","請求期間");"financial_plan_revisions"->word("预测修订","予測の履歴");"credit_limit_configs"->word("额度配置版本","利用枠のバージョン")
     "events"->word("记录","記録");"revisions"->word("本方案产生的记录修订","このプランによる記録の更新履歴");"drafts","financial_drafts"->word("草稿","下書き");"postings"->word("入账","計上");else->word("关联资料","関連情報")
 }
 private fun commandTime(value:Long)=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(Instant.ofEpochMilli(value).atZone(ZoneId.systemDefault()))
@@ -322,7 +339,7 @@ private fun commandTime(value:Long)=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:m
     val title=commandStepTitle(number,command)
     return word(title.first,title.second)
 }
-@Composable private fun commandStatus(status:String)=when(status){"PENDING"->word("待预览 / 确认","確認待ち");"EXECUTED"->word("已执行","実行済み");"UNDONE"->word("已撤销","取消済み");"REJECTED"->word("已拒绝","拒否済み");else->word("失败","失敗")}
+@Composable private fun commandStatus(status:String)=when(status){"ANSWER"->word("回答已保存","回答保存済み");"PENDING"->word("待预览 / 确认","確認待ち");"EXECUTED"->word("已执行","実行済み");"UNDONE"->word("已撤销","取消済み");"REJECTED"->word("已拒绝","拒否済み");else->word("失败","失敗")}
 @Composable internal fun localizedCommand(text:String)=if(LocalLanguage.current=="ja")text.substringAfter(" / ",text)else text.substringBefore(" / ")
 @Composable internal fun commandIssue(text:String)=when(text){"prediction.firstPeriodNumber"->word("缺少原合同起始期数","元の契約の開始回数が不足しています");"prediction.cannotSettle"->word("当前还款金额无法覆盖费用，不能生成可清偿预测","現在の支払額では手数料を賄えず、返済可能な予測を作成できません");"prediction.dates"->word("缺少付款日期或计息区间","支払日または計算期間が不足しています");"prediction.openingPrincipal"->word("缺少期初本金或来源记录","期首元金または対象記録が不足しています");"previousStep.incomplete"->word("前一步资料不足，此步骤尚未试运行","前のステップの情報不足により、まだ試算できません");else->when {
     text.startsWith("limit.")->limitLabel(text)

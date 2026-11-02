@@ -118,7 +118,7 @@ class CommandWorkflowExecutionTest {
         val row=receive(book,listOf(
             step("draftCategory","entryDraft.reclassify","""{"sourceCategory":"$category","category":"$destination"}"""),
             step("analysis","preferences.analysis","""{"modules":["TREND","CATEGORIES"],"pinned":["TREND"]}"""),
-            step("reminders","preferences.reminders","""{"enabled":false,"time":"08:30","repaymentDays":[3,1],"budget":false}"""),
+            step("reminders","preferences.reminders","""{"enabled":false,"monthlyReview":false,"time":"08:30","repaymentDays":[3,1],"budget":false}"""),
             step("rates","preferences.automaticRates","""{"enabled":false}"""),
             step("location","preferences.location","""{"enabled":false}"""),
             step("photos","preferences.photoStorage","""{"original":true}"""),
@@ -134,6 +134,11 @@ class CommandWorkflowExecutionTest {
         assertTrue(runCatching{commands.confirm(inverse.planId,commandChecks(blocked))}.isFailure)
         prefs.setPhotoSaveOriginal(true);undo(row)
         assertEquals(before,prefs.commandValues(book));assertEquals(journal,CommandUndoJournal(r,book).snapshot())
+        // An already queued v37 preference has no monthlyReview field. Upgrade uses its default.
+        val legacyBefore=JsonObject(before.getValue("reminders").jsonObject.filterKeys{it!="monthlyReview"})
+        val legacyAfter=JsonObject(legacyBefore+("enabled" to JsonPrimitive(false)))
+        prefs.applyCommandPreference("legacy-reminders",book,"reminders",legacyBefore,legacyAfter)
+        assertFalse(prefs.reminderSettings.first()[book]!!.enabled);assertTrue(prefs.reminderSettings.first()[book]!!.monthlyReview)
     }
     @Test fun csvBatchTrashRetainsLaterEditsAndUndoRestoresExactRows()=runBlocking<Unit> {
         val (book,account,category)=setup()

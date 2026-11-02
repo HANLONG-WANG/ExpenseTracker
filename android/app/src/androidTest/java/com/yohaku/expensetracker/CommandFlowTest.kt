@@ -77,6 +77,77 @@ class CommandFlowTest {
         val file=File(context.getExternalFilesDir(null),"cloud-command-stage-1/$name.png");file.parentFile!!.mkdirs()
         file.outputStream().use{ui.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it)}
     }
+    @Test fun monthlyPlanSubmissionReviewHistoryAndAnswerAcrossLooks() {
+        for((theme,language) in testLooks(this)) {
+            val ja=language=="ja"
+            val original=if(ja)"食費は月3万円以内。先に貯蓄を確保する。"else"每月餐饮控制在三万日元内，先储蓄再消费。"
+            val book=runBlocking {
+                val b=r.createBook(if(ja)"日々の暮らし"else"日常生活",Currency.JPY,theme,language,startDate="2026-09-01",budgetMinor=10000)
+                r.updateBook(r.dao.book(b)!!.copy(initialized=true))
+                val a=r.saveAccount(b,if(ja)"生活口座"else"生活账户",AccountType.BANK,Currency.JPY,Money(Currency.JPY,20000),"2026-09-01")
+                val expense=r.saveCategory(b,if(ja)"食事"else"餐饮",EntryKind.EXPENSE,null)
+                val income=r.saveCategory(b,if(ja)"給与"else"工资",EntryKind.INCOME,null)
+                r.saveEntry(b,EntryDraft(kind=EntryKind.EXPENSE,accountId=a,categoryId=expense,amount="1200",date="2026-10-10"))
+                r.saveEntry(b,EntryDraft(kind=EntryKind.INCOME,accountId=a,categoryId=income,amount="5000",date="2026-10-20"))
+                vm.preferences.select(b);b
+            }
+            ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.navigate("budget")};tap("budget-monthly-plan")
+            ui.waitUntil(15000){ui.onAllNodesWithTag("monthly-plan-text").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("monthly-plan-text"))).performScrollTo().performTextReplacement(original)
+            androidx.test.espresso.Espresso.closeSoftKeyboard();ui.waitForIdle()
+            ui.onNodeWithTag("monthly-plan").performScrollTo();shot("$theme-$language-monthly-plan")
+            tap("monthly-plan-save");ui.waitUntil(15000){vm.route.value=="budget"&&!vm.busy.value}
+            assertEquals(original,runBlocking{db.monthlyDao().plan(book)!!.text})
+            tap("budget-monthly-history");tap("monthly-history-submit")
+            ui.waitUntil(15000){ui.onAllNodes(hasTestTag("monthly-submit-confirm") and isEnabled()).fetchSemanticsNodes().isNotEmpty()}
+            // The notification route must select the same book/month and show the same prefilled page.
+            val reminder=com.yohaku.expensetracker.domain.reminders.ReminderItem(book,"monthly-review:2026-10","MONTHLY_REVIEW","2026-11-01","JPY",null,"月评 / 振り返り",targetMonth="2026-10")
+            ui.runOnIdle{vm.navigate("home");vm.openReminderBook(book,commandJson.encodeToString(reminder))}
+            ui.waitUntil(15000){!vm.busy.value&&vm.route.value=="monthly-submit"&&ui.onAllNodes(hasTestTag("monthly-submit-confirm") and isEnabled()).fetchSemanticsNodes().isNotEmpty()}
+            assertEquals("2026-10",vm.monthlyReviewMonth.value)
+            ui.onNodeWithTag("monthly-submit").performScrollTo();shot("$theme-$language-monthly-submit")
+            tap("monthly-submit-confirm");ui.waitUntil(15000){vm.route.value=="monthly-history"&&!vm.busy.value}
+            val row=runBlocking {
+                val task=cloud.tasks(book).first().single().task
+                taskDirectories+=File(context.filesDir,"cloud/${task.localId}")
+                assertEquals("monthly-review",task.purpose)
+                val taskContext=cloudJson.parseToJsonElement(task.requestJson).jsonObject.getValue("context").jsonObject
+                assertEquals("2026-10",taskContext.getValue("month").jsonPrimitive.content)
+                val transfers=db.cloudDao().transfers(task.localId)
+                assertEquals(setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-ledger-context-v1.json","yohaku-monthly-review-v1.json"),transfers.map{it.name}.toSet())
+                val summary=commandJson.decodeFromString<MonthlySummary>(File(transfers.single{it.name=="yohaku-monthly-review-v1.json"}.path).readText())
+                assertEquals(original,summary.monthlyPlan);assertEquals(1200L,summary.expenseMinor)
+                val message=if(ja)"収入に対して支出を抑えられました。先に貯蓄を確保する計画を続けましょう。必要なら翌月の予算を調整できます。"else"本月消费低于收入，也在预算以内。可以继续先储蓄再消费；如有需要，可调整下个月的预算。"
+                val plan=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),book,cloud.commands.registry.catalogDigest,taskContext.getValue("context_digest").jsonPrimitive.content,message,steps=listOf(CommandStep("budget","budget.save",1,commandJson.parseToJsonElement("""{"month":"2026-11","amount":{"currency":"JPY","minor":12000}}""").jsonObject)))
+                val claim=commandClaim(plan,localId=task.localId).copy(purpose="monthly-review")
+                val remote=CloudTask(claim.taskId,"general","ready",1,listOf(CloudFile("result-file","result","result.json",claim.text.toByteArray().size.toLong(),claim.sha256)),listOf(CloudResult(claim.resultId,1,1,"result-file","ready",false,CloudValidation(emptyList(),emptyList()))),emptyList())
+                db.cloudDao().updateTask(task.copy(taskId=claim.taskId,remoteStatus="ready",stage="SUBMITTED",inputRevision=1,remoteJson=cloudJson.encodeToString(remote)))
+                cloud.receiveCommand(claim)
+            }
+            tap("monthly-review-open-2026-10")
+            ui.waitUntil(15000){!vm.busy.value&&ui.onAllNodesWithTag("monthly-review").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("command-confirm").assertDoesNotExist()
+            ui.onNodeWithTag("monthly-review").performScrollTo();shot("$theme-$language-monthly-review")
+            tap("monthly-preview-suggestions")
+            ui.waitUntil(15000){!vm.busy.value&&ui.onAllNodesWithTag("command-step-budget").fetchSemanticsNodes().isNotEmpty()}
+            tap("command-confirm");ui.waitUntil(15000){!vm.busy.value&&runBlocking{cloud.commands.plan(row.planId).status=="EXECUTED"}}
+            ui.runOnIdle{vm.navigate("monthly-history")}
+            ui.waitUntil(15000){ui.onAllNodesWithTag("monthly-history-2026-10").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("monthly-history-2026-10").performScrollTo();shot("$theme-$language-monthly-history")
+            val answer=runBlocking {
+                val p=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),book,cloud.commands.registry.catalogDigest,r.commandExports(book,RecordScope()).context.contextDigest,if(ja)"10月の純支出は1,200円です。収入5,000円から差し引くと3,800円残ります。"else"10月净消费为1,200日元。收入5,000日元，收支结余为3,800日元。",steps=emptyList())
+                cloud.commands.receive(commandClaim(p,resultId="answer-$theme-$language"),"https://example.test",p.context_digest)
+            }
+            ui.runOnIdle{vm.openCommandPlan(answer.planId)}
+            ui.waitUntil(15000){!vm.busy.value&&ui.onAllNodesWithTag("command-answer").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("command-confirm").assertDoesNotExist();ui.onNodeWithTag("command-repreview").assertDoesNotExist()
+            ui.onNodeWithTag("command-answer").performScrollTo();shot("$theme-$language-answer")
+            ui.runOnIdle{vm.navigate("command-history")};tap("command-open-${answer.planId}")
+            ui.waitUntil(15000){ui.onAllNodesWithTag("command-answer").fetchSemanticsNodes().isNotEmpty()}
+        }
+    }
+
     @Test fun submitReceiveReviewCheckConfirmAndHistory() {
         for((theme,language) in testLooks(this)) {
             val (book,bank)=runBlocking {

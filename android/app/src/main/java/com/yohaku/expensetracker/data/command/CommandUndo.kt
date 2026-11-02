@@ -56,7 +56,7 @@ internal fun undoDifferences(type:String,key:String,expected:JsonElement,current
     compare(expected,current,"")
 }
 internal suspend fun CommandRun.undoConflicts(record:UndoRecord):List<UndoConflict> = buildList {
-    for(guard in record.guards)addAll(undoDifferences(guard.type,guard.key,guard.after,undoValue(guard.type,guard.key)))
+    for(guard in record.guards)addAll(undoDifferences(guard.type,guard.key,if(guard.type=="preference")completeCommandPreference(guard.key,guard.after)else guard.after,undoValue(guard.type,guard.key)))
     if(record.version in 2..3)addAll(CommandUndoJournal(ledger,bookId).conflicts(record))
 }
 

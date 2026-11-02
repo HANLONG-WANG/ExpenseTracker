@@ -17,6 +17,39 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class DatabaseUpgradeTest {
 
+    @Test fun version37AddsMonthlyPlanAndReviewWithoutChangingExistingRows()=runBlocking<Unit> {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val name="upgrade-monthly-37-38.db";context.deleteDatabase(name)
+        val old=SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name),null)
+        try {
+            val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("com.yohaku.expensetracker.data.db.YohakuDatabase/37.json").bufferedReader().readText()).getJSONObject("database")
+            val entities=schema.getJSONArray("entities")
+            for(i in 0 until entities.length()) {
+                val entity=entities.getJSONObject(i);val table=entity.getString("tableName")
+                old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}",table))
+                val indices=entity.optJSONArray("indices")
+                for(j in 0 until (indices?.length()?:0))old.execSQL(indices!!.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}",table))
+            }
+            val queries=schema.getJSONArray("setupQueries")
+            for(i in 0 until queries.length())old.execSQL(queries.getString(i))
+            old.execSQL("INSERT INTO books (id,name,currency,startDate,theme,language,initialized,budgetMinor,setupStep,archived,deletedAt) VALUES ('monthly-book','Existing','JPY','2026-01-01','journal','ja',1,50000,4,0,NULL)")
+            old.execSQL("INSERT INTO command_plans (planId,bookId,localId,origin,taskId,resultId,resultVersion,sha256,sourceKey,planJson,contextDigest,status,checksJson,createdAt) VALUES ('p','monthly-book','local','https://example.test','task','result',1,'sha','source','{}','digest','PENDING','[]',1)")
+            old.version=37
+        }finally{old.close()}
+        val db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        try {
+            assertEquals(DATABASE_VERSION,db.openHelper.readableDatabase.version)
+            assertEquals("Existing",db.dao().book("monthly-book")!!.name);assertEquals(50000L,db.dao().book("monthly-book")!!.budgetMinor)
+            assertEquals("PENDING",db.commandDao().plan("p")!!.status)
+            assertNull(db.monthlyDao().plan("monthly-book"));assertTrue(db.monthlyDao().history("monthly-book").first().isEmpty())
+            val plan=com.yohaku.expensetracker.data.command.MonthlyPlanEntity("monthly-book","原文を保存")
+            val review=com.yohaku.expensetracker.data.command.MonthlyReviewEntity("monthly-book","2026-10","submission","{}",2,"p")
+            db.monthlyDao().savePlan(plan);db.monthlyDao().insert(review)
+            assertEquals(plan,db.monthlyDao().plan("monthly-book"));assertEquals(review,db.monthlyDao().review("monthly-book","2026-10"))
+            db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
+        }finally{db.close();context.deleteDatabase(name)}
+    }
+
     @Test fun version36AddsUndoIdentityAndPreservesExecutedPlan()=runBlocking<Unit> {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val name="upgrade-command-36-37.db";context.deleteDatabase(name)

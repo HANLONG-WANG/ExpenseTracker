@@ -508,3 +508,12 @@ UI05/UI15–UI19 信用卡功能补充（2026-10-28）：
 
 
 阶段6第1轮返工（已复验）：持久草稿效果保留 `drafts`，交互提案为 `entryDraft`，UI兼容两者；业务名称抽为 `data/command/CommandBusinessNames.kt`，撤销说明与状态使用方案原序号+业务名称。`CommandDraftPreview.kt` 直接显示金额/账户/分类/日期/备注/文件意图及“待你补完”。执行后详情先显示紧凑后续状态总览并定位到它，完整错误及操作说明进入主题YSheet，重试按钮留在总览。`CommandFlowTest` 补 `*-followup-draft.png`，状态截图前检查完成/等待操作/失败可重试及重试按钮完整同屏。未产生新截图或回填验收通过。
+
+
+### 云端办理阶段7：月计划、月评与问答（已验收）
+
+- 预算页的“月计划与评语”连接 `monthly-plan` 编辑及 `monthly-history`；交接台也能进入历史。历史月份选择到已结束月份，可在提醒关闭时手动发起；`monthly-submit` 由手动入口或提醒预填账本/月，展示收入、净消费、月预算、原计划及上传分类/预算/账户/结构范围，下方逐项查看。
+- `MonthlyScreens.kt` 为月计划/提交/历史/评语建立各主题独立版式：杂志为粗线栏头、竖向色条与编辑栏；手账为横线纸、斜手写标题与旁注；小物为圆角资料卡与文件图标。主题内字段、按钮、月份选择沿用对应设计，中日文齐全。
+- `NotificationSettingsScreen` 增加默认开启、独立于重要提醒的月评开关，沿用三主题各自的分隔/手写勾/开关形状，并明确说明每月1日提醒上月、手动核对后上传。通知点击由 NativeApp 跳转对应月评提交页；权限说明及实际提醒计划沿用原页。
+- CommandPreviewScreen 月评先显示评语、原计划与建议业务名称；“预览建议步骤”后才展示已有完整方案预览。月评保存不依赖执行，历史显示未执行/执行/拒绝/已撤销。纯文字回答沿用各主题标题和正文版式，直接显示并保存历史，无确认/重试运行按钮。
+- `CommandFlowTest.monthlyPlanSubmissionReviewHistoryAndAnswerAcrossLooks` 增加五类截图：`cloud-command-stage-1/*-monthly-plan.png`、`*-monthly-submit.png`、`*-monthly-review.png`、`*-monthly-history.png`、`*-answer.png`。需要 `looks=all visual=true` 并查看三主题中日文；本轮按要求未运行Gradle/模拟器，没有新截图或视觉验收结论。
