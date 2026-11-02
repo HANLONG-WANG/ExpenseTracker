@@ -71,7 +71,7 @@
 | UI26 | 新增管理状态 | 回收站、影响预览、永久删除、归档/迁移分类、账本归档、修改记录、规则验证结果 | 现有 sheet/panel/menu 主题样式；`lifecycle.html`补充阶段A影响预览；其余新增设计 | P07,P14,P23 |
 | UI28 | 云端分析交接台 `cloud`、小票/流水云端入口 | 连接配置导入确认/测试/解除、任务列表五段进度、待补资料补充、结果领取后进入原有流水/小票预览、通用结果另存；三主题各自的刊头/信封邮戳/行李吊牌与轨道 | 无HTML稿；按`docs/android-cloud-handoff-package/`契约新增原生设计，组件沿用UI21/UI23主题语汇 | 云端交接 |
 | UI29 | 云端办理提交 `command-submit` | 需求、截图/文件、记录范围及将上传的结构/记录/文件摘要；复用交接入口与上传队列 | `ui/features/command/CommandScreens.kt`；杂志编号分栏、手账手记纸面、小物收纳头 | 阶段1已验收；阶段2见撤销流程 |
-| UI30 | 云端办理预览 `command-preview`、逐项核对弹层 | 本机回滚试运行、助手说明、逐步中间效果、净影响/口径/未知项、事实与风险勾选、整批确认/拒绝、变化重预览；撤销预览、原方案标题、将移除对象清单、逐步可撤销性及冲突字段/当前值/外部引用对象；细项分页 | `CommandScreens.kt`、`CommandEffectViews.kt`；主题卡片与 `YSheet` | 阶段1已验收；阶段2 `CommandFlowTest.undoPreviewConfirmAndHistory`，`looks=all visual=true` |
+| UI30 | 云端办理预览 `command-preview`、逐项核对弹层 | 本机回滚试运行、助手说明、逐步中间效果、净影响/口径/未知项、事实与风险勾选、整批确认/拒绝、变化重预览；撤销预览、原方案标题、将移除对象清单、逐步可撤销性及冲突字段/当前值/外部引用对象；细项分页；阶段3新增账本/分类/商户地点/朋友/各类记录/模板的业务名称与字段、撤销移除类型 | `CommandScreens.kt`、`CommandEffectViews.kt`；主题卡片与 `YSheet` | 阶段1已验收；阶段2已验收；阶段3 `CommandFlowTest.ledgerCombinationPreviewAcrossLooks`，`looks=all visual=true`，`*-ledger-preview.png`，待用户视觉验收 |
 | UI31 | 云端办理历史 `command-history` | 待预览、已执行、已拒绝、失败、已撤销及时间；撤销入口/不可撤销原因；保留原执行与独立撤销记录 | 同上；杂志行号目录、手账条目、小物标签卡 | 阶段1已验收；阶段2见撤销流程 |
 | UI27 | 通用控件与状态 | 各主题独立下拉/日期时间/按钮/开关/选择框/Toast/确认/加载/空/错误/未授权/未保存；单个全宽日历 | `themes.js`、`theme-system.css`、各补充CSS | P03，各功能任务 |
 

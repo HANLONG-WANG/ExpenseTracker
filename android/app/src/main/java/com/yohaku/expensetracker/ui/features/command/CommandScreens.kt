@@ -249,13 +249,14 @@ import java.time.format.DateTimeFormatter
     return word("撤销「${title}」","「${title}」を取り消す")
 }
 @Composable private fun undoObjectType(table:String)=when(table) {
+    "books"->word("账本","帳簿");"categories"->word("分类","カテゴリ");"merchants"->word("商户","お店");"merchant_locations"->word("保存地点","保存した場所");"friends"->word("朋友","友達");"entry_templates"->word("记账模板","記録テンプレート");"budgets"->word("预算设置","予算設定");"settlements"->word("结算","決済");"transfers"->word("转账","振替");"expense_components"->word("手续费","手数料");"event_places"->word("记录地点","記録の場所");
     "accounts"->word("账户","口座");"financial_rules"->word("规则版本","条件バージョン");"financial_plans"->word("预测计划","予測プラン");"financial_bills"->word("账期","請求期間");"financial_plan_revisions"->word("预测修订","予測の履歴");"credit_limit_configs"->word("额度配置版本","利用枠のバージョン")
-    "events","revisions"->word("记录及修订","記録・更新履歴");"drafts","financial_drafts"->word("草稿","下書き");"postings"->word("入账","計上");else->word("关联资料","関連情報")
+    "events"->word("记录","記録");"revisions"->word("本方案产生的记录修订","このプランによる記録の更新履歴");"drafts","financial_drafts"->word("草稿","下書き");"postings"->word("入账","計上");else->word("关联资料","関連情報")
 }
 private fun commandTime(value:Long)=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(Instant.ofEpochMilli(value).atZone(ZoneId.systemDefault()))
 @Composable private fun commandConflictValue(value:JsonElement,conflict:UndoConflict,s:BookSnapshot,model:ConfirmationModel):String {
     if(value==JsonNull)return word("不存在 / 无值","存在しない／値なし")
-    if(value !is JsonPrimitive)return value.toString()
+    if(value !is JsonPrimitive)return word("关联内容已变化","関連する内容が変わりました")
     val currency=s.accounts.firstOrNull{it.id==conflict.key}?.currency?:s.events.firstOrNull{it.id==conflict.key}?.currency?:s.book.currency
     return fieldValue(value to null,conflict.field.substringAfterLast('.'),currency,s,model)
 }
@@ -301,7 +302,7 @@ private fun commandTime(value:Long)=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:m
         }
     }
 }
-@Composable private fun commandName(name:String)=when(name){"account.save"->word("账户与期初信息","口座と期首情報");"financialRule.addVersion"->word("新增金融规则版本","金融条件のバージョン追加");"financialPrediction.save"->word("建立或重算预测","予測の作成・再計算");"entry.update","local.entry.restoreCategory"->word("批量修改分类","カテゴリをまとめて変更");"local.restoreExecution"->word("恢复原值并移除新建对象","元の値に戻し、新規作成した対象を削除");"local.account.deleteUnused"->word("撤销新建的未使用账户","未使用口座の作成を取消");else->name}
+@Composable private fun commandName(name:String)=when(name){"account.save"->word("账户与期初信息","口座と期首情報");"financialRule.addVersion"->word("新增金融规则版本","金融条件のバージョン追加");"financialPrediction.save"->word("建立或重算预测","予測の作成・再計算");"local.entry.restoreCategory"->word("恢复原分类","元のカテゴリに戻す");"entry.update"->word("批量编辑记录","記録をまとめて編集");"entry.create"->word("新建记录","記録を作成");"entry.confirmActual"->word("确认实际金额","実額を確定");"entry.lifecycle"->word("记录回收站","記録のごみ箱");"local.restoreExecution"->word("恢复原值并移除新建对象","元の値に戻し、新規作成した対象を削除");"local.account.deleteUnused"->word("撤销新建的未使用账户","未使用口座の作成を取消");"book.create"->word("新建账本","帳簿を作成");"book.update"->word("账本设置","帳簿の設定");"book.completeSetup"->word("完成账本设置","帳簿の設定を完了");"book.lifecycle"->word("账本状态","帳簿の状態");"account.setActive"->word("账户启停","口座の有効・停止");"category.save"->word("保存分类","カテゴリを保存");"category.setFavorite"->word("分类收藏","カテゴリのお気に入り");"category.lifecycle"->word("分类归档","カテゴリのアーカイブ");"category.reparent"->word("分类层级","カテゴリの階層");"merchant.save"->word("保存商户","お店を保存");"merchantLocation.save"->word("保存地点","場所を保存");"merchant.setActive"->word("商户启停","お店の有効・停止");"friend.save"->word("保存朋友","友達を保存");"friend.setActive"->word("朋友启停","友達の有効・停止");"template.save"->word("保存模板","テンプレートを保存");"template.move"->word("模板排序","テンプレートの並べ替え");"template.createEntry"->word("新建记录","記録を作成");else->word("账本操作","帳簿の操作")}
 @Composable private fun commandStatus(status:String)=when(status){"PENDING"->word("待预览 / 确认","確認待ち");"EXECUTED"->word("已执行","実行済み");"UNDONE"->word("已撤销","取消済み");"REJECTED"->word("已拒绝","拒否済み");else->word("失败","失敗")}
 @Composable internal fun localizedCommand(text:String)=if(LocalLanguage.current=="ja")text.substringAfter(" / ",text)else text.substringBefore(" / ")
 @Composable internal fun commandIssue(text:String)=when(text){"prediction.firstPeriodNumber"->word("缺少原合同起始期数","元の契約の開始回数が不足しています");"prediction.cannotSettle"->word("当前还款金额无法覆盖费用，不能生成可清偿预测","現在の支払額では手数料を賄えず、返済可能な予測を作成できません");"prediction.dates"->word("缺少付款日期或计息区间","支払日または計算期間が不足しています");"prediction.openingPrincipal"->word("缺少期初本金或来源记录","期首元金または対象記録が不足しています");"previousStep.incomplete"->word("前一步资料不足，此步骤尚未试运行","前のステップの情報不足により、まだ試算できません");else->when {

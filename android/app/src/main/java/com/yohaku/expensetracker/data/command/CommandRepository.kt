@@ -165,7 +165,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
             val availability=undoAvailability(original)
             check(availability.available){"${availability.zh} / ${availability.ja}"}
             requireNotNull(readCommandExecution(requireNotNull(original.executionJson)).undo).also {
-                check(it.version in 1..2&&plan.steps==it.steps)
+                check(it.version in 1..3&&plan.steps==it.steps)
             }
         }
         val run=CommandRun(ledger,plan.book_id,context,record);val steps=mutableListOf<CommandStep>();val effects=mutableListOf<StepEffect>()
@@ -173,18 +173,25 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
         if(record!=null) {
             val conflicts=run.undoConflicts(record)
             if(conflicts.isNotEmpty())return Triple(NormalizedPlan(plan.steps),ConfirmationModel(context,emptyList(),
-                record.effects.filter{it.type in setOf("account","entry","rule","prediction","bill")&&it.before!=it.after}.map{it.copy(before=it.after,after=it.before)},
+                record.effects.filter{it.type in setOf("book","account","category","merchant","merchantLocation","friend","template","entry","rule","prediction","bill")&&it.before!=it.after}.map{it.copy(before=it.after,after=it.before)},
                 conflicts=conflicts,removals=record.removals),run.executionRecord())
         }
-        val journal=if(record==null&&plan.steps.any{it.command in setOf("account.save","financialRule.addVersion","financialPrediction.save")})CommandUndoJournal(ledger,plan.book_id)else null
-        val beforeRows=journal?.snapshot()
+        val journal=CommandUndoJournal(ledger,plan.book_id)
+        val beforeRows=journal.snapshot()
+        val touchedRows=mutableListOf<UndoRowChange>()
         for((index,step) in plan.steps.withIndex()) {
             currentCoroutineContext().ensureActive()
             val adapter=if(undoOf!=null)registry.undoAdapter(step.command)else registry.adapter(step.command)
             val normalized=step.copy(input=fixed?.steps?.get(index)?.input?:adapter.normalize(step.input,run))
             steps+=normalized
             val before=run.state()
-            val effect=adapter.execute(normalized,run)
+            val stepRows=journal.snapshot()
+            val rawEffect=adapter.execute(normalized,run)
+            val afterStepRows=journal.snapshot()
+            val stepChanges=journal.changes(stepRows,after=afterStepRows)
+            touchedRows+=stepChanges
+            val referenceBasis=journal.referenceBasis(adapter.capability.inputSchema,normalized.input,run,stepRows,afterStepRows)
+            val effect=run.finishLedgerEffect(normalized,rawEffect,stepChanges,referenceBasis)
             val inverse=if(undoOf!=null)UndoPreparation(UndoAvailability(false,"撤销操作不能再次撤销。","取消操作を再び取り消すことはできません。"))
                 else if(effect.missing.isNotEmpty())UndoPreparation(UndoAvailability(false,"资料不足，尚不能确定逆操作。","情報不足のため取消方法を確定できません。"))
                 else adapter.inverse(normalized,run,before,run.state())
@@ -206,13 +213,24 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
         val execution=run.executionRecord()
         val guards=inverses.flatMap{it.guards}.distinctBy{it.type to it.key}.map{it.copy(after=run.undoValue(it.type,it.key))}
         val actualEffects=commandJson.decodeFromJsonElement<List<ObjectEffect>>(actualCommandValues(encoded(netEffects(effects)),execution.generatedIds))
-        val rows=if(journal!=null)journal.changes(requireNotNull(beforeRows))else emptyList()
+        val rows=if(record==null)journal.changes(beforeRows,touchedRows)else emptyList()
         val accountGuards=rows.filter{it.table=="accounts"&&it.before!=null}.map{row->
             val id=row.after.getValue("id").jsonPrimitive.content
             UndoGuard("accountUsage",id,run.undoValue("accountUsage",id))
         }
+        val entryGuards=rows.filter{it.table=="events"&&it.before!=null}.flatMap{row->val id=row.after.getValue("id").jsonPrimitive.content
+            listOf(UndoGuard("entry",id,run.undoValue("entry",id)),UndoGuard("entryDetails",id,run.undoValue("entryDetails",id)),UndoGuard("entryPlace",id,run.undoValue("entryPlace",id)),UndoGuard("entryAssociations",id,run.undoValue("entryAssociations",id)))}
+        val structureGuards=rows.filter{it.before!=null}.mapNotNull{row->
+            val type=when {
+                row.table=="categories"&&row.before?.get("parentId")!=row.after["parentId"]->"categoryChildren"
+                row.table=="books"&&row.before?.get("currency")!=row.after["currency"]->"bookUsage"
+                else->null
+            }?:return@mapNotNull null
+            val id=row.after.getValue("id").jsonPrimitive.content
+            UndoGuard(type,id,run.undoValue(type,id))
+        }
         val inverseSteps=(if(rows.isEmpty())emptyList()else listOf(CommandStep("restore_objects","local.restoreExecution",1,buildJsonObject{})))+inverses.asReversed().flatMap{it.steps}
-        val undo=if(undoOf==null)UndoRecord(inverseSteps,guards+accountGuards,actualEffects,rows,journal?.removals(rows).orEmpty(),version=2)else null
+        val undo=if(undoOf==null)UndoRecord(inverseSteps,guards+accountGuards+entryGuards+structureGuards,actualEffects,rows,journal.removals(rows),version=3)else null
         return Triple(NormalizedPlan(steps),ConfirmationModel(context,effects,netEffects(effects),unknown=unknown,removals=record?.removals.orEmpty()),execution.copy(undo=undo))
     }
     private suspend fun recordReceipt(row:CommandPlanEntity) {

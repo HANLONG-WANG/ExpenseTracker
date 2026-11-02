@@ -3,6 +3,7 @@ package com.yohaku.expensetracker.data.command
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.AccountType
 import kotlinx.serialization.json.*
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 
 /** Equality is over typed facts, never rendered prose. Timestamps/revisions are handled by each
@@ -30,9 +31,14 @@ internal class CommandIdentityMap {
     private val values=mutableMapOf<String,String>()
     fun register(id:String,step:String,role:String,businessKey:String=""){values[id]="@$step/$role/$businessKey"}
     fun name(id:String)=values[id]?:id
+    fun contains(id:String)=id in values
     fun actualIds():Map<String,String> = values.entries.associate{it.value to it.key}
     fun normalize(value:JsonElement):JsonElement=when(value) {
-        is JsonObject->JsonObject(value.mapKeys{name(it.key)}.mapValues{normalize(it.value)})
+        is JsonObject->JsonObject(value.mapKeys{name(it.key)}.mapValues{(key,v)->
+            val nested=if((key.endsWith("Json")||key in setOf("json","encoded","sourceProof"))&&v is JsonPrimitive&&v.isString)commandJson.parseToJsonElement(v.content)else v
+            val decoded=if(key=="sourceProof"&&nested is JsonArray)JsonArray(nested.map{part->if(part is JsonPrimitive&&part.isString&&part.content.trimStart().let{it.startsWith("{")||it.startsWith("[")})commandJson.parseToJsonElement(part.content)else part})else nested
+            normalize(decoded)
+        })
         is JsonArray->JsonArray(value.map(::normalize))
         is JsonPrimitive->if(value.isString)values[value.content]?.let(::JsonPrimitive)?:value else value
         else->value
@@ -50,15 +56,25 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
     private val outputs=mutableMapOf<Pair<String,String>,String>()
     private val identities=CommandIdentityMap()
     private var cachedState:FinancialReviewState?=null
+    private var cachedStatements:List<com.yohaku.expensetracker.data.db.StatementDecisionEntity>?=null
+    suspend fun statementDecisions():List<com.yohaku.expensetracker.data.db.StatementDecisionEntity> {
+        if(cachedStatements==null)cachedStatements=ledger.db.fileWorkflowDao().decisions(bookId).first()
+        return requireNotNull(cachedStatements)
+    }
     suspend fun state(refresh:Boolean=false):FinancialReviewState {
-        if(refresh||cachedState==null)cachedState=ledger.financialReviewState(bookId)
+        if(refresh||cachedState==null){cachedState=ledger.financialReviewState(bookId,includeTrashedBook=true);cachedStatements=null}
         return requireNotNull(cachedState)
     }
-    fun generated(id:String,step:String,role:String,key:String="") { identities.register(id,step,role,key) }
+    fun isGenerated(id:String)=identities.contains(id)
+    fun generated(id:String,step:String,role:String,key:String="") { if(!isGenerated(id))identities.register(id,step,role,key) }
     fun output(step:String,role:String,id:String,new:Boolean) {outputs[step to role]=id;if(new)generated(id,step,role)}
     fun resolve(value:JsonElement):String=if(value is JsonPrimitive) value.content else {
         val ref=commandJson.decodeFromJsonElement<CommandRef>(value)
         outputs[ref.ref to ref.output]?:error("引用步骤没有可用输出，请补充资料 / 参照先の出力がありません。情報を補ってください")
+    }
+    fun freezeTarget(id:String):JsonElement {
+        val output=outputs.entries.firstOrNull{it.value==id}
+        return if(output==null)JsonPrimitive(id)else encoded(CommandRef(output.key.first,output.key.second))
     }
     fun semantic(value:JsonElement)=identities.normalize(value)
     fun executionRecord()=CommandExecutionRecord(outputs.entries.groupBy{it.key.first}.mapValues{(_,entries)->entries.associate{it.key.second to it.value}},identities.actualIds())
@@ -86,14 +102,14 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         }
         for(e in s.events.filter{it.id in entries}) {
             // Event revision is an audit counter. Prediction facts separately carry business revisions.
-            add("entry",e.id,row(encoded(e),setOf("revision")))
+            add("entry",e.id,commandEventFacts(encoded(e)))
             add("entryDetails",e.id,encoded(s.entryDetails(e.id)))
             add("entryCategory",e.id,s.categories.firstOrNull{it.id==e.categoryId}?.let{encoded(it)}?:JsonNull)
         }
         if(entries.isNotEmpty()) {
             // Saved time drives remembered defaults: compare its ordering, not millisecond values.
             val order=s.events.filter{it.id in entries}.sortedWith(compareBy<com.yohaku.expensetracker.data.db.EventEntity>{s.eventSaveTimes[it.id]?:it.createdAt}.thenBy{it.createdAt}.thenBy{it.id}).map{it.id}
-            add("saveOrder",entries.sorted().joinToString(","),encoded(order))
+            add("saveOrder","entries",encoded(order))
             for(kind in s.events.filter{it.id in entries}.map{it.kind}.distinct()) {
                 val last=s.lastSavedEntry{it.kind==kind}
                 add("entryDefaults",kind,buildJsonObject{put("eventId",last?.id);put("accountId",last?.accountId);put("categoryId",last?.categoryId);put("cardPaymentChoice",last?.cardPaymentChoice);put("cardPaymentPeriods",last?.cardPaymentPeriods)})
@@ -103,7 +119,7 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         for(c in s.categories.filter{it.id in categoryIds})add("category",c.id,encoded(c))
         for(month in months)for(category in listOf<String?>(null)+categoryIds.sorted()) {
             val p=s.budgetProjection(month,category)
-            add("budget","$month:${category.orEmpty()}",buildJsonObject{
+            add("budget","$month:${category?.let(identities::name).orEmpty()}",buildJsonObject{
                 put("scope",category);put("projection",encoded(p));put("remainingMinor",p.remainingMinor);put("availableMinor",p.availableMinor)
                 put("overBudget",p.remainingMinor?.let{it<0});put("overAvailable",p.availableMinor?.let{it<0})
             })
@@ -118,7 +134,7 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         for(bill in f.bills.filter{it.planId in planIds})add("bill",bill.id,JsonObject(row(encoded(bill),setOf("revision","confirmedAt"))+mapOf(
             "confirmed" to JsonPrimitive(bill.confirmed),"currency" to JsonPrimitive(plans.first{it.id==bill.planId}.currency))))
         val stale=plans.filter{ledger.financialPredictionStale(s,f,it)}.map{it.id}.toSet()
-        val cash=s.cashTimeline(f,LocalDate.parse(context.asOfDate),LocalDate.parse(context.throughDate),stale,context.referenceRates)
+        val cash=s.cashTimeline(f,LocalDate.parse(context.asOfDate),LocalDate.parse(context.throughDate),stale,context.referenceRates,orderKey={item->item.id.substringBefore(':')+":"+identities.name(item.id.substringAfter(':'))})
         for(a in s.accounts.filter{it.id in allAccounts&&!AccountType.valueOf(it.type).debt}) {
             // Timeline item IDs contain generated IDs; sourceId + kind + date are the business key.
             val steps=cash.steps.filter{it.item.accountId==a.id}.map{step->
@@ -132,6 +148,16 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         return result
     }
     fun effect(step:CommandStep,before:FinancialReviewState,after:FinancialReviewState,accounts:Set<String>,entries:Set<String> = emptySet(),categories:Set<String> = emptySet(),months:Set<String> = emptySet(),unknown:List<String> = emptyList()):StepEffect {
+        // Register automatic children before calculating any ordered projection. New bill/posting
+        // UUIDs must not decide the within-day running cash balances on preview versus confirmation.
+        val oldPlans=before.finance.plans.map{it.id}.toSet()
+        after.finance.plans.filter{it.id !in oldPlans}.forEach{p->generated(p.id,step.id,"prediction",identities.name(p.accountId)+":"+(p.sourceEventId?.let(identities::name)?:p.name)+":"+p.mode)}
+        val oldBills=before.finance.bills.map{it.id}.toSet()
+        after.finance.bills.filter{it.id !in oldBills}.forEach{b->generated(b.id,step.id,"bill",identities.name(b.planId)+":"+b.number)}
+        val oldPostings=before.ledger.storedPostings.map{it.id}.toSet()
+        after.ledger.storedPostings.filter{it.id !in oldPostings}.forEach{p->generated(p.id,step.id,"posting",identities.name(p.eventId)+":"+identities.name(p.accountId)+":"+p.id.substringAfterLast(':'))}
+        val oldTreats=before.ledger.treats.map{it.id}.toSet()
+        after.ledger.treats.filter{it.id !in oldTreats}.forEach{t->generated(t.id,step.id,"treat",t.eventId?.let(identities::name)?:t.name)}
         val relatedPayments=(before.finance.bills+after.finance.bills).filter{bill->(before.finance.plans+after.finance.plans).any{it.id==bill.planId&&it.accountId in accounts}}.mapNotNull{it.paymentAccountId}
         val scope=accounts+relatedPayments
         val beforeValues=project(before,scope,entries,categories,months);val afterValues=project(after,scope,entries,categories,months)

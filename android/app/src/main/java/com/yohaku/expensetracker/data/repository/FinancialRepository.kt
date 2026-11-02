@@ -11,8 +11,8 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 internal data class FinancialReviewState(val ledger:BookSnapshot,val finance:FinancialGraph,val limits:CreditLimitGraph)
-internal suspend fun LedgerRepository.financialReviewState(bookId:String):FinancialReviewState {
-    val book=dao.book(bookId)?:error("账本不存在 / 帳簿がありません")
+internal suspend fun LedgerRepository.financialReviewState(bookId:String,includeTrashedBook:Boolean=false):FinancialReviewState {
+    val book=(if(includeTrashedBook)dao.storedBook(bookId)else dao.book(bookId))?:error("账本不存在 / 帳簿がありません")
     val graph=db.financialDao().graph(bookId).first()!!
     val limits=db.creditLimitDao().graph(bookId).first()!!
     return FinancialReviewState(snapshot(book).first().reviewState(),graph.copy(

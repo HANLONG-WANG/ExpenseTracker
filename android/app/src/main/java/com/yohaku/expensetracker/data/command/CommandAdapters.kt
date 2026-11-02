@@ -40,7 +40,7 @@ internal fun requirement(step:String,kind:ConfirmationKind,condition:JsonElement
 internal class AccountCommandAdapter:CommandAdapter {
     override suspend fun inverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState)=UndoPreparation(accountUndo)
     override val capability=capability("account.save",accountSchema,mapOf("account" to "account"),"type=CREDIT; omitted creditLimit preserves existing settings; opening amount/date are required.",
-        "Create/edit account and opening debt. Optional creditLimit covers total/installment/revolving/shared sublimits, usage anchor, recovery policy/delay, usage start and timezone. Payment modes/bonus windows are financialRule.addVersion.",
+        "Create/edit CASH, BANK, CREDIT, LOAN or IC accounts, opening balance/debt and opening date. Optional creditLimit covers total/installment/revolving/shared sublimits, usage anchor, recovery policy/delay, usage start and timezone. Payment modes/bonus windows are financialRule.addVersion.",
         """{"name":"カード","currency":"JPY","openingMinor":30000,"openingDate":"2026-11-01"}""")
     override fun validate(input:JsonObject) { val v=commandJson.decodeFromJsonElement<AccountCommandInput>(input);AccountType.valueOf(v.type);Currency.valueOf(v.currency);LocalDate.parse(v.openingDate) }
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
@@ -114,36 +114,11 @@ internal class PredictionCommandAdapter:CommandAdapter {
     }
 }
 
-internal class EntryUpdateCommandAdapter:CommandAdapter {
-    override suspend fun inverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState)=entryInverse(step,run,before,after)
-    override val capability=capability("entry.update",descriptorSchema(EntryUpdateInput.serializer().descriptor),emptyMap(),"Only set.category is supported. IDs/select are exclusive. Selectors are frozen on first preview; no new matches during confirm.",
-        "Batch category change for 1–5000 live expense/income records. Retains amounts, settlements, media, card payment choices and financial facts.",
-        """{"targets":{"select":{"merchant_contains":"星巴克","kind":"EXPENSE"}},"set":{"category":"category-id"}}""")
-    override fun validate(input:JsonObject) {
-        val v=commandJson.decodeFromJsonElement<EntryUpdateInput>(input)
-        require((v.targets.ids==null)!=(v.targets.select==null)){"目标须为ID列表或选择器 / ID一覧かセレクターを指定してください"}
-        v.targets.ids?.let{require(it.size in 1..5000&&it.distinct().size==it.size)}
-        v.targets.select?.let{validateSelector(it)}
-    }
-    override suspend fun normalize(input:JsonObject,run:CommandRun):JsonObject {
-        val v=commandJson.decodeFromJsonElement<EntryUpdateInput>(input)
-        val ids=v.targets.ids?:selectEntries(run.state().ledger,v.targets.select!!).map{it.id}
-        require(ids.size in 1..5000){"匹配记录须为1至5000笔，请调整范围 / 対象は1〜5000件にしてください"}
-        return encoded(v.copy(targets=EntryTargets(ids.sorted()))).jsonObject
-    }
-    override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
-        val v=commandJson.decodeFromJsonElement<EntryUpdateInput>(step.input);val before=run.state();val ids=v.targets.ids!!
-        val changes=prepareEntryCategories(before.ledger,ids,v.set.category)
-        run.ledger.writeEntryCategoriesInTransaction(changes)
-        return run.effect(step,before,run.state(refresh=true),changes.map{it.before.accountId}.toSet(),ids.toSet(),
-            (changes.mapNotNull{it.before.categoryId}+v.set.category).toSet(),changes.map{it.before.date.take(7)}.toSet())
-    }
-}
 internal fun validateSelector(s:EntrySelector) {
     s.from?.let{LocalDate.parse(it)};s.through?.let{LocalDate.parse(it)}
     require(s.from==null||s.through==null||s.from<=s.through)
     require(s.min_minor==null||s.max_minor==null||s.min_minor<=s.max_minor)
-    require(s.kind==null||s.kind in listOf("EXPENSE","INCOME"))
+    require(s.kind==null||s.kind in listOf("EXPENSE","INCOME","TRANSFER","REFUND"))
     require(s.min_minor==null&&s.max_minor==null||s.currency!=null){"金额选择器须指定币种 / 金額条件には通貨が必要です"}
     s.currency?.let{Currency.valueOf(it)}
 }

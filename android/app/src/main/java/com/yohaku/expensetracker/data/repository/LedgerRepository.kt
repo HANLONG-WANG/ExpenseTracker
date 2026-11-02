@@ -79,10 +79,10 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
     }
     fun id()=UUID.randomUUID().toString()
     suspend fun createBook(name:String,currency:Currency,theme:String="magazine",language:String="zh",startDate:String=LocalDate.now(clock).toString(),budgetMinor:Long?=null):String=db.withTransaction {
-        require(name.isNotBlank()){ "请输入名称 / 名前を入力してください" }; LocalDate.parse(startDate);require(budgetMinor==null||budgetMinor>=0); val id=id()
+        require(name.isNotBlank()){ "请输入名称 / 名前を入力してください" }; LocalDate.parse(startDate);require(budgetMinor==null||budgetMinor>=0);require(theme in listOf("magazine","journal","objects")&&language in listOf("zh","ja")); val id=id()
         dao.putBook(BookEntity(id,name.trim(),currency.name,startDate,theme,language,budgetMinor=budgetMinor));if(budgetMinor!=null)dao.putBudget(BudgetEntity(id,startDate.take(7),"",null,budgetMinor));id
     }
-    suspend fun updateBook(book:BookEntity) { require(book.name.isNotBlank()); db.withTransaction {
+    suspend fun updateBook(book:BookEntity) { require(book.name.isNotBlank());LocalDate.parse(book.startDate);require(book.budgetMinor==null||book.budgetMinor>=0); db.withTransaction {
         val old=dao.book(book.id) ?: error("账本不存在 / 帳簿がありません")
         require(old.currency==book.currency || dao.eventCount(book.id)==0){"已有记录，本位币不可更改 / 記録済みの基準通貨は変更できません"}
         if(old.currency!=book.currency)require(dao.recurrences(book.id).isEmpty()&&dao.activityCount(book.id)==0&&!db.financialDao().hasBookData(book.id)&&snapshot(old).first().expectedIncomes.isEmpty()){"已有周期、活动或金融资料，本位币不可直接改写 / 定期・シーン・金融情報の基準通貨は直接変更できません"}
@@ -144,7 +144,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
     suspend fun saveEntry(bookId:String,draft:EntryDraft):String=db.withTransaction {
         writeChange(withMedia(prepareEntry(bookId,draft),draft),clearDraft=true)
     }
-    internal suspend fun prepareEntry(bookId:String,draft:EntryDraft):PreparedLedgerChange {
+    internal suspend fun prepareEntry(bookId:String,draft:EntryDraft,preparedSnapshot:BookSnapshot?=null):PreparedLedgerChange {
         val b=dao.book(bookId) ?: error("账本不存在 / 帳簿がありません")
         require(draft.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))
         val old=draft.id?.let{dao.event(bookId,it) ?: error("原记录不存在 / 元の記録がありません")}
@@ -186,7 +186,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
             require(!activity.ended||draft.date in activity.startDate..activity.endDate){"结束活动只补录期间事实 / 終了済みシーンは期間内の事実のみ記録できます"}
             require(dao.features(bookId)?.activityMode==true||old?.let{dao.eventActivity(bookId,it.id)?.activityId}==draft.activityId||occurrence?.activityId==draft.activityId)
         }
-        val snapshot=if(draft.reserveId!=null||occurrence!=null)snapshot(b).first()else null
+        val snapshot=if(draft.reserveId!=null||occurrence!=null)preparedSnapshot?:snapshot(b).first()else null
         val reserveId=draft.reserveId?:occurrence?.let{o->snapshot!!.reserves.firstOrNull{it.occurrenceId==o.id&&it.active}?.id}
         val uses=reserveId?.let{rid->
             require(draft.kind==EntryKind.EXPENSE)

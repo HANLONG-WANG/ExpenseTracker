@@ -136,7 +136,14 @@ class CommandExecutionTest {
         val before=CommandUndoJournal(r,book).snapshot()
         val row=commands.receive(commandClaim(input,"recalculate-result"),"https://example.test",input.context_digest)
         val preview=commands.preview(row.planId);commands.confirm(row.planId,commandChecks(preview))
+        // This account/finance-only journal has the same rows as the accepted stage-2 format.
+        // Persist version 2 explicitly so this remains a compatibility test after v3 became default.
+        val executed=commands.plan(row.planId)
+        val execution=readCommandExecution(executed.executionJson!!)
+        val legacy=execution.copy(undo=requireNotNull(execution.undo).copy(version=2))
+        db.commandDao().update(executed.copy(executionJson=storeCommandJson(encoded(legacy).toString())))
         val inverse=commands.prepareUndo(row.planId);val undo=commands.preview(inverse.planId)
+        assertEquals(listOf("local.restoreExecution"),undo.steps.map{it.command})
         assertTrue(undo.executable);assertTrue(undo.removals.any{it.table=="financial_rules"})
         assertTrue(undo.removals.none{it.table in setOf("accounts","financial_plans")})
         commands.confirm(inverse.planId,commandChecks(undo))
@@ -152,9 +159,21 @@ class CommandExecutionTest {
         r.dao.putEvent(snapshot(book).events.single().copy(categoryId=null))
         val input=fixture(book,bank).copy(steps=listOf(CommandStep("recat","entry.update",1,encoded(EntryUpdateInput(EntryTargets(ids=listOf(id)),EntryCategorySet(category))).jsonObject)))
         val row=receive(input);val preview=commands.preview(row.planId);commands.confirm(row.planId,commandChecks(preview))
+        // Exact v2 category inverse shape from 92db7a6: per-category local steps and full guards,
+        // no owned event/revision rows. It must restore null and append an audit revision.
+        val after=snapshot(book)
+        val executed=commands.plan(row.planId)
+        val execution=readCommandExecution(executed.executionJson!!)
+        val legacy=execution.copy(undo=UndoRecord(
+            steps=listOf(CommandStep("undo_recat_0","local.entry.restoreCategory",1,encoded(RestoreCategoryInput(listOf(id),null)).jsonObject)),
+            guards=listOf(UndoGuard("entry",id,encoded(after.events.single())),UndoGuard("entryDetails",id,encoded(after.entryDetails(id)))),
+            effects=requireNotNull(execution.undo).effects,version=2))
+        db.commandDao().update(executed.copy(executionJson=storeCommandJson(encoded(legacy).toString())))
         val inverse=commands.prepareUndo(row.planId);val undo=commands.preview(inverse.planId)
+        assertEquals(listOf("local.entry.restoreCategory"),undo.steps.map{it.command})
         assertTrue(undo.executable);commands.confirm(inverse.planId,commandChecks(undo))
         assertNull(snapshot(book).events.single().categoryId)
+        assertEquals(after.events.single().revision+1,snapshot(book).events.single().revision)
     }
 
     @Test fun categoryBatchFreezesTwentyTargetsAndPreservesSettlementAndOtherFacts()=runBlocking<Unit> {

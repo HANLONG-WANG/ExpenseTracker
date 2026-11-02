@@ -70,6 +70,6 @@ ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 小票�
 | `yohaku.ledger-context` | [schema](ledger-context.v1.schema.json) | 专用结构导出，含生成时间、覆盖说明、contextDigest；不直接序列化数据库 Entity |
 | `yohaku.records` | [schema](records.v1.schema.json) | 用户选择日期范围或账户范围的未删除记录；按账户包含相关转账两端 |
 
-完整协议：[yohaku-command-protocol-v1.md](yohaku-command-protocol-v1.md)。应用源文本是 `android/app/src/main/assets/yohaku-command-protocol-v1.md`；此处及安卓交接包是同步副本。正常/错误样例位于 `examples/`：错误样例分别演示助手代填事实、无效执行模式、缺少 contextDigest、金额类型错误；另有批量分类正常样例。样例 digest 的64个0仅作占位，实际方案必须复制任务附件值，不能直接用于本机验收。
+完整协议：[yohaku-command-protocol-v1.md](yohaku-command-protocol-v1.md)。应用源文本是 `android/app/src/main/assets/yohaku-command-protocol-v1.md`；此处及安卓交接包是同步副本。正常/错误样例位于 `examples/`：错误样例分别演示助手代填事实、无效执行模式、缺少 contextDigest、金额类型错误；另有批量分类正常样例。方案样例 digest 的64个0仅作占位，实际方案必须复制任务附件值，不能直接用于本机验收。`capabilities.valid.json` 例外：由真实 `CommandRegistry().export()` 生成，保留真实 catalogDigest；JVM `CommandCapabilitiesTest` 校验本文件与交接包副本。更新时在 `android/` 运行 `./gradlew -Dyohaku.updateCapabilities=true :app:testDebugUnitTest --tests com.yohaku.expensetracker.data.command.CommandCapabilitiesTest`，不要手工维护能力内容。
 
 本阶段命令为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`，均为 v1 / transactional。金融规则使用领域字段及显式未知值；非一次付预测必须明确原合同起始期数。不完整规则允许保存；缺少可计算预测的资料时显示缺项并阻止整批执行。

@@ -49,8 +49,16 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
     val commands by lazy { CommandRepository(ledger,referenceSnapshot={plan->
         if(commandReferenceSnapshot!=null)commandReferenceSnapshot.invoke(plan)else {
             val currencies=(ledger.dao.accounts(plan.book_id).first().map{Currency.valueOf(it.currency)}+
-                listOf(Currency.valueOf(requireNotNull(ledger.dao.book(plan.book_id)).currency))+
-                plan.steps.filter{it.command=="account.save"}.map{Currency.valueOf(it.input.getValue("currency").jsonPrimitive.content)}).toSet()
+                listOf(Currency.valueOf(requireNotNull(ledger.dao.storedBook(plan.book_id)).currency))+
+                plan.steps.filter{it.command=="account.save"}.map{Currency.valueOf(it.input.getValue("currency").jsonPrimitive.content)}+
+                plan.steps.flatMap{step->
+                    fun currencies(value:JsonElement):List<Currency> = when(value){
+                        is JsonObject->value.flatMap{(key,v)->if(key=="currency"&&v is JsonPrimitive&&v.isString)listOf(Currency.valueOf(v.content))else currencies(v)}
+                        is JsonArray->value.flatMap{currencies(it)}
+                        else->emptyList()
+                    }
+                    currencies(step.input)
+                }).toSet()
             currencies.flatMap{from->currencies.filter{it!=from}.map{to->from to to}}
                 .mapNotNull{(from,to)->rateService.lookup(from,to).rate}
         }

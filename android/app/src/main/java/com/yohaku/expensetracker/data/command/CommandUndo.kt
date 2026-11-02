@@ -8,36 +8,34 @@ internal val accountUndo=UndoAvailability(true,"恢复原账户信息；本方�
 internal val ruleUndo=UndoAvailability(true,"移除本方案新增且未被修改、无方案外引用的规则版本。","このプランで追加し、変更やプラン外の参照がない条件バージョンを削除します。")
 internal val predictionUndo=UndoAvailability(true,"移除本方案新建的预测、账期和修订；重算已有预测时恢复执行前快照。","このプランで作成した予測・請求期間・履歴を削除します。既存の予測の再計算は、実行前の状態に戻します。")
 
-internal fun entryInverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState):UndoPreparation {
-    val ids=commandJson.decodeFromJsonElement<EntryUpdateInput>(step.input).targets.ids!!
-    val entries=ids.map{id->before.ledger.events.single{it.id==id}}
-    val inverse=entries.groupBy{it.categoryId}.entries.mapIndexed{index,(category,events)->
-        CommandStep("undo_${step.id}_$index","local.entry.restoreCategory",1,encoded(RestoreCategoryInput(events.map{it.id}.sorted(),category)).jsonObject)
-    }
-    val guards=ids.flatMap{id->listOf(UndoGuard("entry",id,encoded(after.ledger.events.single{it.id==id})),UndoGuard("entryDetails",id,encoded(after.ledger.entryDetails(id))))}
-    return UndoPreparation(UndoAvailability(true,"逐笔恢复执行前的分类，保留金额、关联资料和审计历史。","各記録のカテゴリを実行前に戻し、金額・関連情報・監査履歴を保持します。"),inverse,guards)
-}
-
-/** Only local persisted undo plans can resolve this adapter. It is never in the cloud registry. */
-internal class DeleteUnusedAccountAdapter:CommandAdapter {
-    override val capability=capability("local.account.deleteUnused",buildJsonObject{},emptyMap(),"","Local inverse of account creation.","{}")
-    override fun validate(input:JsonObject) {require(input.keys==setOf("account"));input.getValue("account").jsonPrimitive.content}
-    override suspend fun inverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState)=UndoPreparation(localUndoUnavailable)
-    override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
-        val id=step.input.getValue("account").jsonPrimitive.content
-        val before=run.state()
-        val review=run.ledger.previewAccountOperation(run.bookId,id,AccountOperation.DELETE)
-        check(run.ledger.commitAccountOperation(review)){"账户资料已变化 / 口座情報が変わりました"}
-        return run.effect(step,before,run.state(refresh=true),setOf(id))
-    }
-}
-
 internal suspend fun CommandRun.undoValue(type:String,key:String):JsonElement {
     val s=state().ledger
     return when(type) {
         "account"->s.accounts.firstOrNull{it.id==key}?.let{encoded(it)}?:JsonNull
         "entry"->s.events.firstOrNull{it.id==key}?.let{encoded(it)}?:JsonNull
+        "entryAssociations"->{
+            val original=s.settlements.firstOrNull{it.eventId==key}?.originalEventId
+            val source=original?:key
+            val refunds=s.settlements.filter{it.originalEventId==source}.map{it.eventId}.toSet()
+            val postings=s.storedPostings.filter{it.eventId==key}.map{it.id}.toSet()
+            val finance=state().finance
+            val plans=finance.plans.filter{it.sourceEventId in setOf(key,source)}
+            buildJsonObject {
+                put("original",s.events.firstOrNull{it.id==source}?.let{encoded(it)}?:JsonNull)
+                put("refunds",encoded(s.events.filter{it.id in refunds}.sortedBy{it.id}))
+                put("settlements",encoded(s.settlements.filter{it.eventId in refunds}.sortedBy{it.eventId}))
+                put("plans",encoded(plans.sortedBy{it.id}))
+                put("bills",encoded(finance.bills.filter{bill->plans.any{it.id==bill.planId}}.sortedBy{it.id}))
+                put("occurrences",encoded(s.occurrences.filter{it.eventId==key}.map{it.id to it.status}.sortedBy{it.first}))
+                put("statementDecisions",JsonArray(statementDecisions().filter{it.postingId in postings}.sortedWith(compareBy<com.yohaku.expensetracker.data.db.StatementDecisionEntity>{it.batchId}.thenBy{it.rowId}).map{row->buildJsonObject {
+                    put("bookId",row.bookId);put("batchId",row.batchId);put("rowId",row.rowId);put("postingId",row.postingId);put("postingJson",row.postingJson);put("note",row.note);put("updatedAt",row.updatedAt);put("invalidatedAt",row.invalidatedAt)
+                }}))
+            }
+        }
+        "entryPlace"->s.eventPlaces.firstOrNull{it.eventId==key}?.let{place->buildJsonObject{put("latitude",place.latitude);put("longitude",place.longitude);put("accuracyMeters",place.accuracyMeters)}}?:JsonNull
         "entryDetails"->if(s.events.any{it.id==key})encoded(s.entryDetails(key))else JsonNull
+        "categoryChildren"->encoded(s.categories.filter{it.parentId==key}.map{it.id}.sorted())
+        "bookUsage"->encoded(ledger.scopedReferenceCounts(key,"books",key))
         "accountUsage"->if(s.accounts.none{it.id==key})JsonNull else ledger.accountUsage(bookId,key).let{usage->
             buildJsonObject{put("references",encoded(usage.references));put("draftKeys",encoded(usage.draftKeys))}
         }
@@ -57,7 +55,7 @@ internal fun undoDifferences(type:String,key:String,expected:JsonElement,current
 }
 internal suspend fun CommandRun.undoConflicts(record:UndoRecord):List<UndoConflict> = buildList {
     for(guard in record.guards)addAll(undoDifferences(guard.type,guard.key,guard.after,undoValue(guard.type,guard.key)))
-    if(record.version==2)addAll(CommandUndoJournal(ledger,bookId).conflicts(record))
+    if(record.version in 2..3)addAll(CommandUndoJournal(ledger,bookId).conflicts(record))
 }
 
 internal class RestoreEntryCategoryAdapter:CommandAdapter {
@@ -82,12 +80,12 @@ internal class RestoreEntryCategoryAdapter:CommandAdapter {
     }
 }
 
-/** This resolver is deliberately separate from the cloud registry. */
+/** Persisted v2 category inverses use restoreCategory; v2/v3 row journals use restoreExecution.
+ * Stage 1 has no undo snapshot. Incomplete early v37 account-deletion records are rejected by
+ * undoAvailability before dispatch; no persisted inverse producer uses forward command aliases. */
 internal fun CommandRegistry.undoAdapter(name:String):CommandAdapter=when(name) {
     "local.restoreExecution"->RestoreExecutionAdapter()
     "local.entry.restoreCategory"->RestoreEntryCategoryAdapter()
-    "local.account.deleteUnused"->DeleteUnusedAccountAdapter() // v37 first-round local records
-    "account.save","entry.update"->adapter(name)
     else->error("未知本机撤销操作 / 未知の端末取消操作: $name")
 }
 

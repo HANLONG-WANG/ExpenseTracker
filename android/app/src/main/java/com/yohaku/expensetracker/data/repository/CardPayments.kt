@@ -45,9 +45,9 @@ internal fun recordedSinglePaymentDate(event:EventEntity,rule:FinancialRuleVersi
 }
 
 /** A local obligation only; writing it never creates money, income or a second purchase. */
-internal suspend fun LedgerRepository.refreshCardEntryPrediction(event:EventEntity) {
+internal suspend fun LedgerRepository.refreshCardEntryPrediction(event:EventEntity,stateProvider:(suspend ()->FinancialReviewState)? = null) {
     if(event.kind !in listOf(EntryKind.EXPENSE.name,EntryKind.TRANSFER.name))return
-    var state=financialReviewState(event.bookId)
+    var state=stateProvider?.invoke()?:financialReviewState(event.bookId)
     val account=state.ledger.accounts.first{it.id==event.accountId}
     val existing=state.finance.plans.filter{it.active&&it.sourceEventId==event.id}
     var old=existing.singleOrNull()
@@ -64,7 +64,7 @@ internal suspend fun LedgerRepository.refreshCardEntryPrediction(event:EventEnti
             val archived=bills.map{it.copy(active=false,revision=Math.addExact(it.revision,1))}
             db.financialDao().updatePlan(retired);archived.forEach{db.financialDao().updateBill(it)}
             archiveFinancialPlan(retired,archived,"SOURCE_PAYMENT_CORRECTED",event.id)
-            old=null;state=financialReviewState(event.bookId)
+            old=null;state=stateProvider?.invoke()?:financialReviewState(event.bookId)
         }
     }
     if(event.historicalIncluded||account.type!=AccountType.CREDIT.name||event.cardPaymentMode !in listOf("SINGLE","INSTALLMENT"))return

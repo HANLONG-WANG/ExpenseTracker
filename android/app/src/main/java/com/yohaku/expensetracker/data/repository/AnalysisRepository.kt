@@ -49,3 +49,8 @@ suspend fun LedgerRepository.setFriendActive(bookId:String,friendId:String,activ
     val old=dao.friend(bookId,friendId)?:error("朋友不属于本账本 / 別の帳簿の友達です")
     dao.putFriend(old.copy(active=active))
 }
+
+suspend fun LedgerRepository.removeMerchantLocation(bookId:String,id:String)=db.withTransaction {
+    requireNotNull(dao.merchantLocation(bookId,id)){"地点不存在 / 場所がありません"}
+    dao.removeMerchantLocation(bookId,id)
+}

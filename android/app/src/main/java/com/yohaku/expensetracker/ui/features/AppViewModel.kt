@@ -152,27 +152,14 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     fun startEntry(snapshot:BookSnapshot,kind:EntryKind=EntryKind.EXPENSE,activityId:String?=null,treatFriendId:String?=null,merchantId:String?=null) {
         if(kind==EntryKind.TRANSFER){startTransfer(snapshot);return}
         entryReturnRoute.value=route.value
-        val sceneId=if(kind==EntryKind.EXPENSE)activityId?:snapshot.features?.takeIf{it.activityMode}?.activeActivityId else null
-        val scene=snapshot.activities.find{it.id==sceneId}
-        val today=LocalDate.now(repository.clock)
-        val date=scene?.let{today.coerceIn(LocalDate.parse(it.startDate),LocalDate.parse(it.endDate))}?:today
-        val merchant=merchantId?.let{id->snapshot.merchants.first{it.id==id&&it.active}}
-        entry.value=EntryDraft(merchant=merchant?.name.orEmpty(),merchantId=merchant?.id,kind=kind,date=date.toString(),accountId=snapshot.defaultEntryAccount(kind),activityId=sceneId,treatEnabled=treatFriendId!=null,treatFriends=listOfNotNull(treatFriendId))
-        entry.value=snapshot.withRememberedCardPayment(entry.value!!)
+        entry.value=snapshot.newEntryDraft(kind,LocalDate.now(repository.clock).toString(),activityId,treatFriendId,merchantId)
         navigate("category-picker");openDraft(snapshot.book.id)
     }
     fun resumeEntry(snapshot:BookSnapshot) { entryBaseline=null;entryReturnRoute.value=route.value;entry.value=snapshot.draft;route.value=if(snapshot.draft?.categoryId==null&&snapshot.draft?.kind!=EntryKind.TRANSFER)"category-picker" else "entry";persistDraft(snapshot.book.id) }
     fun editEntry(snapshot:BookSnapshot,event:EventEntity) {
         if(event.kind==EntryKind.TRANSFER.name){editTransfer(snapshot,event);return}
         entryReturnRoute.value=route.value
-        val settlement=snapshot.settlements.find{it.eventId==event.id}
-        val treat=snapshot.treats.find{it.eventId==event.id}
-        val use=snapshot.reserveUses.firstOrNull{it.eventId==event.id}
-        entry.value=EntryDraft(reserveId=use?.reserveId,reserveAmount=use?.let{Money(Currency.valueOf(snapshot.book.currency),it.amountMinor).decimal.toPlainString()}.orEmpty(),treatEnabled=treat!=null,treatFriends=snapshot.allocations.filter{it.treatId==treat?.id}.mapNotNull{it.friendId},treatMode=treat?.let{TreatSplitMode.valueOf(it.mode)}?:TreatSplitMode.EQUAL,treatWeights=treat?.let{repository.json.decodeFromString<Map<String,String>>(it.weightsJson)}?:emptyMap(),id=event.id,kind=EntryKind.valueOf(event.kind),categoryId=event.categoryId,accountId=event.accountId,
-            amount=Money(Currency.valueOf(event.currency),event.amountMinor).decimal.toPlainString(),
-            baseAmount=Money(Currency.valueOf(snapshot.book.currency),event.baseMinor).decimal.toPlainString(),date=event.date,cardPaymentChoice=event.cardPaymentChoice,cardPaymentPeriods=event.cardPaymentPeriods?.toString().orEmpty(),cardPaymentMonth=event.cardPaymentMonth.orEmpty(),cardPaymentFee=event.cardPaymentFeeMinor?.let{Money(Currency.valueOf(snapshot.accounts.first{a->a.id==event.accountId}.currency),it).decimal.toPlainString()}.orEmpty(),merchant=event.merchant,merchantId=snapshot.eventMerchants.find{it.eventId==event.id}?.merchantId,note=event.note,historicalIncluded=event.historicalIncluded,originalCurrency=Currency.valueOf(event.currency),
-            accountAmount=settlement?.let{Money(Currency.valueOf(it.accountCurrency),it.accountMinor).decimal.toPlainString()}.orEmpty(),
-            settlementConfirmed=settlement?.confirmed?:true,settlementDate=settlement?.settlementDate?:event.date,rateSource=settlement?.rateSource?:"manual",rateDate=settlement?.rateDate?:event.date,originalEventId=settlement?.originalEventId,manualRate=settlement?.manualRate.orEmpty(),referenceRates=settlement?.referenceRatesJson?.let{repository.json.decodeFromString(it)}?:emptyList(),activityId=snapshot.eventActivities.find{it.eventId==event.id}?.activityId,occurrenceId=snapshot.occurrences.firstOrNull{it.eventId==event.id&&it.status in listOf("PENDING","COMPLETED")}?.id)
+        entry.value=snapshot.editingEntryDraft(event)
         navigate("entry");openDraft(snapshot.book.id)
     }
     fun offerLocatedMerchant(bookId:String,session:String,candidates:List<MerchantCandidate>) {
@@ -315,42 +302,13 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     }
     private fun editTransfer(snapshot:BookSnapshot,event:EventEntity) {
         entryReturnRoute.value=route.value
-        val transfer=snapshot.transfers.find{it.eventId==event.id}
-        val sourcePosting=snapshot.storedPostings.find{it.eventId==event.id&&it.accountId==event.accountId}
-        val toPosting=snapshot.storedPostings.find{it.eventId==event.id&&it.accountId!=event.accountId}
-        val toAccountId=transfer?.toAccountId?:toPosting?.accountId
-        val toCurrency=transfer?.toCurrency?:toPosting?.currency?:event.currency
-        val component=snapshot.expenseComponents.firstOrNull{it.eventId==event.id}
-        val treat=snapshot.treats.find{it.eventId==event.id}
-        val use=snapshot.reserveUses.firstOrNull{it.eventId==event.id}
-        entry.value=EntryDraft(reserveId=use?.reserveId,reserveAmount=use?.let{Money(Currency.valueOf(snapshot.book.currency),it.amountMinor).decimal.toPlainString()}.orEmpty(),treatEnabled=treat!=null,treatFriends=snapshot.allocations.filter{it.treatId==treat?.id}.mapNotNull{it.friendId},treatMode=treat?.let{TreatSplitMode.valueOf(it.mode)}?:TreatSplitMode.EQUAL,treatWeights=treat?.let{repository.json.decodeFromString<Map<String,String>>(it.weightsJson)}?:emptyMap(),id=event.id,kind=EntryKind.TRANSFER,accountId=event.accountId,toAccountId=toAccountId,
-            amount=Money(Currency.valueOf(event.currency),event.amountMinor).decimal.toPlainString(),
-            toAmount=Money(Currency.valueOf(toCurrency),transfer?.toMinor?:toPosting?.deltaMinor?:0).decimal.toPlainString(),
-            cardPaymentChoice=event.cardPaymentChoice,cardPaymentPeriods=event.cardPaymentPeriods?.toString().orEmpty(),cardPaymentMonth=event.cardPaymentMonth.orEmpty(),cardPaymentFee=event.cardPaymentFeeMinor?.let{Money(Currency.valueOf(event.currency),it).decimal.toPlainString()}.orEmpty(),date=event.date,toDate=transfer?.toDate?:toPosting?.date?:event.date,
-            fromConfirmed=transfer?.fromConfirmed?:sourcePosting?.confirmed?:false,toConfirmed=transfer?.toConfirmed?:toPosting?.confirmed?:false,
-            merchant=event.merchant,merchantId=snapshot.eventMerchants.find{it.eventId==event.id}?.merchantId,note=event.note,rateSource=snapshot.settlements.firstOrNull{it.eventId==event.id}?.rateSource?:"manual",referenceRates=snapshot.settlements.firstOrNull{it.eventId==event.id}?.referenceRatesJson?.let{repository.json.decodeFromString(it)}?:emptyList(),manualRate=transfer?.manualRate.orEmpty(),rateDate=transfer?.rateDate?:event.date,
-            feeAmount=component?.let{Money(Currency.valueOf(it.originalCurrency),it.originalMinor).decimal.toPlainString()}.orEmpty(),
-            feeCurrency=component?.let{Currency.valueOf(it.originalCurrency)},
-            feeAccountAmount=component?.let{Money(Currency.valueOf(it.currency),it.amountMinor).decimal.toPlainString()}.orEmpty(),
-            feeBaseAmount=component?.let{Money(Currency.valueOf(snapshot.book.currency),it.baseMinor).decimal.toPlainString()}.orEmpty(),
-            feePosition=component?.let{TransferFeePosition.valueOf(it.position)}?:TransferFeePosition.INCLUDED_FROM,
-            feeAccountId=component?.accountId,feeDate=component?.date?:event.date,feeConfirmed=component?.confirmed?:false)
+        entry.value=snapshot.editingEntryDraft(event)
         navigate("entry");openDraft(snapshot.book.id)
     }
     fun startRefund(snapshot:BookSnapshot,original:EventEntity) {
-        val settlement=snapshot.settlements.find{it.eventId==original.id}
-        val refundIds=snapshot.settlements.filter{it.originalEventId==original.id}.map{it.eventId}.toSet()
-        val remaining=original.amountMinor-snapshot.visibleEvents.filter{it.id in refundIds}.sumOf{it.amountMinor}
-        if(remaining<=0)return
-        val account=snapshot.accounts.first{it.id==original.accountId}
-        fun proportion(value:Long)=value.toBigDecimal().multiply(remaining.toBigDecimal()).divide(original.amountMinor.toBigDecimal(),0,java.math.RoundingMode.HALF_UP).longValueExact()
         entryReturnRoute.value=route.value
-        entry.value=EntryDraft(kind=EntryKind.REFUND,categoryId=original.categoryId,accountId=original.accountId,
-            originalEventId=original.id,originalCurrency=Currency.valueOf(original.currency),
-            amount=Money(Currency.valueOf(original.currency),remaining).decimal.toPlainString(),
-            accountAmount=Money(Currency.valueOf(account.currency),proportion(settlement?.accountMinor?:original.amountMinor)).decimal.toPlainString(),
-            baseAmount=Money(Currency.valueOf(snapshot.book.currency),proportion(original.baseMinor)).decimal.toPlainString(),
-            date=LocalDate.now(repository.clock).toString(),merchant=original.merchant)
+        if(snapshot.settlements.filter{it.originalEventId==original.id}.map{it.eventId}.let{ids->snapshot.visibleEvents.filter{it.id in ids}.sumOf{it.amountMinor}}>=original.amountMinor)return
+        entry.value=snapshot.refundDraft(original,LocalDate.now(repository.clock).toString())
         navigate("entry");openDraft(snapshot.book.id)
     }
     fun confirmActual(snapshot:BookSnapshot,event:EventEntity) {

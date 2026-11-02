@@ -14,7 +14,7 @@ data class LedgerChangeReview internal constructor(val snapshot:BookSnapshot,val
 @kotlinx.serialization.Serializable
 data class LedgerDetails(val settlement:SettlementEntity?=null,val transfer:TransferEntity?=null,val components:List<ExpenseComponentEntity> = emptyList(),val activityId:String?=null,val occurrenceId:String?=null,val reserveUses:List<ReserveUseEntity> = emptyList(),val treat:TreatEntity?=null,val allocations:List<TreatAllocationEntity> = emptyList(),val merchantId:String?=null,val attachmentIds:List<String> = emptyList(),val receiptRevision:Int?=null,val contract:DebtContractEntity?=null,val repayment:FinancialRepaymentEntity?=null,val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val postings:List<PostingEntity> = emptyList())
 
-internal suspend fun LedgerRepository.writeChange(change:PreparedLedgerChange,clearDraft:Boolean=false,refreshFinance:Boolean=true):String {
+internal suspend fun LedgerRepository.writeChange(change:PreparedLedgerChange,clearDraft:Boolean=false,refreshFinance:Boolean=true,savedAt:Long=clock.millis()):String {
     val e=change.event
     val beforeDetails=change.before?.let{LedgerDetails(dao.settlement(e.bookId,e.id),dao.transfer(e.bookId,e.id),dao.components(e.bookId,e.id),dao.eventActivity(e.bookId,e.id)?.activityId,dao.eventOccurrences(e.bookId,e.id).firstOrNull{it.status in listOf("PENDING","COMPLETED")}?.id,dao.reserveUses(e.bookId,e.id),dao.eventTreat(e.bookId,e.id),dao.eventTreat(e.bookId,e.id)?.let{t->dao.allocations(e.bookId,t.id)}.orEmpty(),dao.eventMerchant(e.bookId,e.id)?.merchantId,dao.attachments(e.bookId,e.id).map{a->a.fileId},dao.receipt(e.bookId,e.id)?.revision,contract=db.financialDao().fundingContract(e.bookId,e.id),repayment=db.financialDao().repayment(e.bookId,e.id),repaymentAllocations=db.financialDao().repaymentAllocations(e.bookId,e.id),postings=dao.eventPostings(e.bookId,e.id))}
     dao.putEvent(e)
@@ -54,7 +54,7 @@ internal suspend fun LedgerRepository.writeChange(change:PreparedLedgerChange,cl
         if(change.before!=null||e.cardPaymentChoice!=null)refreshCardEntryPrediction(e)
         refreshFinancialPools(change)
     }
-    dao.putRevision(RevisionEntity(e.bookId,id(),e.id,e.revision,clock.millis(),change.before?.let{json.encodeToString(it)},json.encodeToString(e),beforeDetails?.let{json.encodeToString(it)},json.encodeToString(LedgerDetails(change.settlement,change.transfer,change.components,change.activityId,change.occurrenceId,change.reserveUses,change.treat?.treat,change.treat?.allocations.orEmpty(),change.merchantId,dao.attachments(e.bookId,e.id).map{it.fileId},dao.receipt(e.bookId,e.id)?.revision,contract=change.contract,repayment=change.repayment,repaymentAllocations=change.repaymentAllocations,postings=change.postings))))
+    dao.putRevision(RevisionEntity(e.bookId,id(),e.id,e.revision,savedAt,change.before?.let{json.encodeToString(it)},json.encodeToString(e),beforeDetails?.let{json.encodeToString(it)},json.encodeToString(LedgerDetails(change.settlement,change.transfer,change.components,change.activityId,change.occurrenceId,change.reserveUses,change.treat?.treat,change.treat?.allocations.orEmpty(),change.merchantId,dao.attachments(e.bookId,e.id).map{it.fileId},dao.receipt(e.bookId,e.id)?.revision,contract=change.contract,repayment=change.repayment,repaymentAllocations=change.repaymentAllocations,postings=change.postings))))
     if(clearDraft)clearDraft(e.bookId)
     return e.id
 }
@@ -64,14 +64,7 @@ internal fun BookSnapshot.reviewState()=copy(book=book.copy(theme="",language=""
 suspend fun LedgerRepository.previewEntry(bookId:String,draft:EntryDraft):LedgerChangeReview=db.withTransaction {
     val book=dao.book(bookId) ?: error("账本不存在 / 帳簿がありません")
     val snapshot=snapshot(book).first()
-    val prepared=if(draft.kind==EntryKind.TRANSFER)prepareTransfer(bookId,draft)else if(draft.kind==EntryKind.REFUND) {
-        val original=snapshot.visibleEvents.firstOrNull{it.id==draft.originalEventId} ?: error("原消费不存在 / 元の支出がありません")
-        val account=snapshot.accounts.firstOrNull{it.id==draft.accountId} ?: error("请选择退款账户 / 返金先口座を選択してください")
-        val originalAmount=Money.parse(draft.amount,Currency.valueOf(original.currency))
-        val accountAmount=Money.parse(draft.accountAmount,Currency.valueOf(account.currency))
-        val base=if(account.currency==book.currency)accountAmount else Money.parse(draft.baseAmount,Currency.valueOf(book.currency))
-        prepareRefund(bookId,RefundInput(original.id,originalAmount,account.id,accountAmount,base,draft.date,draft.settlementConfirmed,draft.id,draft.note,draft.rateSource,draft.rateDate))
-    }else prepareEntry(bookId,draft)
+    val prepared=prepareEntryDraft(snapshot,draft)
     val change=withMedia(prepared,draft)
     val e=change.event
     val next=snapshot.copy(events=snapshot.events.filter{it.id!=e.id}+e,
@@ -106,4 +99,17 @@ suspend fun LedgerRepository.commitEntryReview(bookId:String,review:LedgerChange
     val e=review.change.event
     if(review.change.cardRuleChecked&&db.financialDao().rules(bookId,e.accountId).cardRule(e.accountId,e.date,if(e.cardPaymentChoice in listOf("BONUS","DEFERRED"))"SINGLE"else"REVOLVING")?.id!=e.cardPaymentRuleId)return@withTransaction null
     writeChange(review.change,clearDraft=clearDraft)
+}
+
+/** No full graph reads. Caller supplies the current batch snapshot and owns the transaction. */
+internal suspend fun LedgerRepository.prepareEntryDraft(snapshot:BookSnapshot,draft:EntryDraft):PreparedLedgerChange {
+    val book=snapshot.book;val bookId=book.id
+    return if(draft.kind==EntryKind.TRANSFER)prepareTransfer(bookId,draft)else if(draft.kind==EntryKind.REFUND) {
+        val original=snapshot.visibleEvents.firstOrNull{it.id==draft.originalEventId} ?: error("原消费不存在 / 元の支出がありません")
+        val account=snapshot.accounts.firstOrNull{it.id==draft.accountId} ?: error("请选择退款账户 / 返金先口座を選択してください")
+        val originalAmount=Money.parse(draft.amount,Currency.valueOf(original.currency))
+        val accountAmount=Money.parse(draft.accountAmount,Currency.valueOf(account.currency))
+        val base=if(account.currency==book.currency)accountAmount else Money.parse(draft.baseAmount,Currency.valueOf(book.currency))
+        prepareRefund(bookId,RefundInput(original.id,originalAmount,account.id,accountAmount,base,draft.date,draft.settlementConfirmed,draft.id,draft.note,draft.rateSource,draft.rateDate))
+    }else prepareEntry(bookId,draft,snapshot)
 }

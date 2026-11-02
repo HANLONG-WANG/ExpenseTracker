@@ -119,6 +119,12 @@
         "steps",
         "targets"
       ]
+    },
+    "forbiddenAlternatives": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
     }
   },
   "required": [
@@ -128,6 +134,7 @@
     "$defs",
     "commands",
     "forbidden",
-    "limits"
+    "limits",
+    "forbiddenAlternatives"
   ]
 }

@@ -20,7 +20,7 @@ import java.lang.Math.subtractExact
 fun BookSnapshot.cashBalanceAt(account:AccountEntity,date:String):Long = postings.filter{it.accountId==account.id&&it.date<=date}
     .fold(if(account.openingDate<=date)account.openingMinor else 0L){sum,p->addExact(sum,p.deltaMinor)}
 
-fun BookSnapshot.cashTimeline(finance:FinancialGraph?,asOf:LocalDate,through:LocalDate,stalePlanIds:Set<String> = emptySet(),referenceRates:List<ReferenceRateSnapshot> = emptyList()):CashTimeline {
+fun BookSnapshot.cashTimeline(finance:FinancialGraph?,asOf:LocalDate,through:LocalDate,stalePlanIds:Set<String> = emptySet(),referenceRates:List<ReferenceRateSnapshot> = emptyList(),orderKey:(CashTimelineItem)->String = {it.id}):CashTimeline {
     val today=asOf.toString();val end=through.toString()
     val funds=accounts.filter{!AccountType.valueOf(it.type).debt}
     val fundIds=funds.map{it.id}.toSet();val live=visibleEvents.associateBy{it.id}
@@ -75,7 +75,7 @@ fun BookSnapshot.cashTimeline(finance:FinancialGraph?,asOf:LocalDate,through:Loc
     val baseline=opening.associate{it.account.id to (it.actualMinor as Long?)}.toMutableMap()
     val including=baseline.toMutableMap()
     // Dates have no intra-day bank execution order. Debits precede credits conservatively.
-    val sorted=items.sortedWith(compareBy<CashTimelineItem>{it.date}.thenBy{if(it.incoming)1 else 0}.thenBy{it.id})
+    val sorted=items.sortedWith(compareBy<CashTimelineItem>{it.date}.thenBy{if(it.incoming)1 else 0}.thenBy(orderKey))
     val baseEstimated=mutableSetOf<String>();val includingEstimated=mutableSetOf<String>()
     val steps=sorted.map{item->
         if(item.accountId in fundIds) {

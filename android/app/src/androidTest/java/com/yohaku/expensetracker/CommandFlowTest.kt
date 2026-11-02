@@ -169,8 +169,12 @@ class CommandFlowTest {
             ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.openCommandPlan(row.planId)}
             tap("command-undo-${row.planId}")
-            ui.waitUntil(20000){!vm.busy.value&&vm.commandPlanId.value!=row.planId&&ui.onAllNodesWithTag("command-step-undo_recat_0").fetchSemanticsNodes().isNotEmpty()}
-            ui.onNodeWithText(if(language=="ja")"取消前に、もう一度確認。"else"撤销前，再核对一次。").performScrollTo()
+            ui.waitUntil(20000){!vm.busy.value&&vm.commandPlanId.value!=row.planId&&ui.onAllNodesWithTag("command-step-restore_objects").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("command-category-restoration").performScrollTo()
+            ui.onNodeWithText(if(language=="ja")"20 件のカテゴリを元に戻します"else"20 笔记录将恢复分类").assertIsDisplayed()
+            val inSummary=hasAnyAncestor(hasTestTag("command-category-restoration"))
+            ui.onAllNodes(hasText("珈琲店",substring=true) and inSummary).assertCountEquals(3)
+            ui.onAllNodes(hasText("咖啡 / コーヒー → 日常 / 日々") and inSummary).assertCountEquals(3)
             shot("$theme-$language-undo-preview")
             tap("command-confirm")
             ui.waitUntil(15000){!vm.busy.value}
@@ -189,6 +193,34 @@ class CommandFlowTest {
             ui.onNodeWithText(if(language=="ja")"「コーヒーの記録をまとめて分類」を取り消す"else"撤销「批量调整咖啡记录分类」").assertExists()
             ui.onNodeWithTag("command-undo-${row.planId}").assertDoesNotExist()
             shot("$theme-$language-undo-history")
+        }
+    }
+
+    @Test fun ledgerCombinationPreviewAcrossLooks() {
+        for((theme,language) in testLooks(this)) {
+            val row=runBlocking {
+                val book=r.createBook("日常の帳簿",Currency.JPY,theme,language,startDate="2026-11-01")
+                r.updateBook(r.dao.book(book)!!.copy(initialized=true))
+                val account=r.saveAccount(book,"钱包・お財布",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-11-01")
+                vm.preferences.select(book)
+                fun step(id:String,name:String,input:String)=CommandStep(id,name,1,commandJson.parseToJsonElement(input).jsonObject)
+                val plan=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),book,cloud.commands.registry.catalogDigest,r.commandExports(book,RecordScope()).context.contextDigest,
+                    message=if(language=="ja")"日常の記録をまとめて作成"else"整理日常账本",steps=listOf(
+                        step("category","category.save","""{"name":"午餐・ランチ","kind":"EXPENSE","favorite":true}"""),
+                        step("merchant","merchant.save","""{"name":"駅前カフェ","note":"车站旁・駅のそば"}"""),
+                        step("entry","entry.create","""{"account":"$account","category":{"ref":"category","output":"category"},"merchantId":{"ref":"merchant","output":"merchant"},"merchant":"駅前カフェ","amount":{"currency":"JPY","minor":900},"note":"午餐・ランチ"}""")))
+                cloud.commands.receive(commandClaim(plan),"https://example.test",plan.context_digest).also{cloud.commands.preview(it.planId)}
+            }
+            ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==row.bookId&&!vm.busy.value}
+            ui.runOnIdle{vm.openCommandPlan(row.planId)}
+            ui.waitUntil(15000){ui.onAllNodesWithTag("command-step-entry").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("command-step-entry").performScrollTo()
+            shot("$theme-$language-ledger-preview")
+            ui.onNodeWithTag("command-details-entry").performScrollTo().performClick()
+            ui.waitForIdle()
+            // The detail uses the same theme-specific RecordFacts layout and translated labels.
+            ui.onAllNodesWithText(if(language=="ja")"記録"else"记录",substring=true).onFirst().assertExists()
+            ui.runOnIdle{vm.navigate("home")}
         }
     }
 

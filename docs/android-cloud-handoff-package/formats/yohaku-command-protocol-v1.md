@@ -17,15 +17,15 @@
 
 ### 引用与金额
 
-已有对象用附件中的字符串 ID；步骤输出用 `{"ref":"card","output":"account"}`。引用只能出现在 schema 指定的有类型位置，只能指向前面的步骤，输出类型必须匹配。没有字符串插值；不能写 `$card.id`。本阶段输出：account.save → account；financialRule.addVersion → rule；financialPrediction.save → prediction；entry.update 无输出。
+已有对象用附件中的字符串 ID；步骤输出用 `{"ref":"card","output":"account"}`。引用只能出现在 schema 指定的有类型位置，只能指向前面的步骤，输出类型必须匹配。没有字符串插值；不能写 `$card.id`。输出：account.save → account；category.save → category；merchant.save → merchant；merchantLocation.save → merchantLocation；friend.save → friend；template.save → template；entry.create / template.createEntry → entry；book.create → book；financialRule.addVersion → rule；financialPrediction.save → prediction。其他命令没有输出。
 
 金额均为最小单位整数。account.save 明确给 currency；规则、额度、预测金额均采用其 account 的币种（该关联同时确定币种，禁止把人民币金额填入日元账户）。records 同时标明原币、账户币及账本币。百分比/汇率是十进制字符串：年率18%写 `"0.18"`。未知填 schema 允许的 null 或省略，不能填0冒充已知。
 
 ### 选择器（entry.update）
 
-`targets` 必须且只能提供 `ids` 或 `select`。`set` 本阶段只允许 `category`（已有分类 ID）。仅支出/收入可改分类，分类用途须一致且启用。
+`targets` 必须且只能提供 `ids` 或 `select`。`set` 为记录字段补丁：分类、账户、金额/结算、日期、商户、备注、期初已包含、转账两端/手续费、退款来源、付款选择、活动/周期/预留/互请关联等，精确字段见能力 schema。显式修改 occurrence 会用既有解除关联业务函数解除旧实例关联；不创建周期规则或新实例。省略保留原字段；切换到账/付款账户币种会使旧币种金额失效，需要补齐金额或明确换算。已有记录种类不可直接改写，不适用该种类的字段整批拒绝，退款的日期与入账日相同。显式 null 仅用于 schema/能力说明允许清空的可选字段。分类用途须一致且启用；只有支出/收入可改分类。`ids` 中的元素也可为前步 entry 输出引用。
 
-选择器支持 `from` / `through`（含起止日 YYYY-MM-DD）、`account`、`category`、`merchant_contains`、`note_contains`（忽略大小写的子串）、`kind`（EXPENSE/INCOME）、`min_minor` / `max_minor`（含边界）和 `currency`。金额条件必须提供 currency。多个条件取交集。空选择器意为所有未删除记录；可能含不支持的种类或超过数量上限，建议明确 kind 和范围。
+选择器支持 `from` / `through`（含起止日 YYYY-MM-DD）、`account`、`category`、`merchant_contains`、`note_contains`（忽略大小写的子串）、`kind`（EXPENSE/INCOME/TRANSFER/REFUND）、`min_minor` / `max_minor`（含边界）和 `currency`。金额条件必须提供 currency。多个条件取交集。空选择器意为所有未删除记录；可能含不支持的种类或超过数量上限，建议明确 kind 和范围。
 
 手机首次预览解析并固定 ID 集合；确认时不再次查询选择器，不会悄悄增加新匹配项。用户需核对匹配的记录，而不只看选择条件。
 
@@ -33,11 +33,40 @@
 
 - INFORMATION：信息提示，不需要额外勾选。
 - RISK：有具体内容的风险提示，例如账户负余额、额度超限、预测缺项；手机在步骤和汇总中显示对象、金额和缺项，最终执行按钮承担整体确认。只有现有界面要求单独确认的风险（如实际资金账户负余额加重）才需勾选具体说明，不为普通数值变化逐步添加“已看过”开关。
-- USER_FACT：用户事实声明，例如“这是金融平台当前采用的安排，日期和期初本金已核对”。只能由用户勾选，严禁在 input 放 `confirmed`、`currentArrangementConfirmed`、`user_fact` 或类似替代字段。你可以解释需要用户确认什么，不能替用户确认。
+- USER_FACT：用户事实声明，例如“这是金融平台当前采用的安排，日期和期初本金已核对”。只能由用户勾选，严禁在 input 放 `currentArrangementConfirmed`、`user_fact` 或类似替用户勾选的字段。记录的 settlementConfirmed / fromConfirmed / toConfirmed / feeConfirmed 是已知实际金额状态，属于记录业务字段；只有用户明确提供实际金额事实时才能设置，不能混同金融平台办理事实。你可以解释需要用户确认什么，不能替用户确认。
 
 预览显示中间步骤及最终净影响、余额/额度/预算的前后绝对值、逐期预测、资金走势、估算与未知项。引用中的新 ID 只代表关系，不要求你预测 UUID。确认会用固定日期、时区、预测区间和参考汇率重新试运行；相关事实变化会要求重新预览，旧勾选作废。
 
-本阶段全部命令 transactional：所有步骤一起成功或一起回滚。没有 post-commit / interactive 步骤。试运行不会改变账本。手机按来源结果身份和 plan_id 去重；改一份已执行方案的 result 版本或内容不会让相同 plan_id 再执行。需要新的办理意图时生成新 UUID，不以换 UUID 绕过去重重做已经完成的事情。本阶段尚无整批撤销。
+本阶段全部命令 transactional：所有步骤一起成功或一起回滚。没有 post-commit / interactive 步骤。试运行不会改变账本。手机按来源结果身份和 plan_id 去重；改一份已执行方案的 result 版本或内容不会让相同 plan_id 再执行。需要新的办理意图时生成新 UUID，不以换 UUID 绕过去重重做已经完成的事情。支持本机整批撤销，详见文末。
+
+## 基础账本命令（阶段 3）
+
+全部 command_version=1、transactional。各命令精确字段、默认值、前提、比较与撤销见能力清单。
+
+- `book.create`：name、currency、startDate 必填，theme 默认 magazine，language 默认 zh，budgetMinor 默认 null。只新建空白账本。**v1 中同一方案后续步骤只能写 plan.book_id，不能写这个新账本**；book 输出不能作为任何本阶段写入目标。要配置它，用户需切换到新账本后另提方案。
+- `book.update`：仅本账本。可补丁更新 name/currency/startDate/budgetMinor/theme/language；只有 budgetMinor 可用 null 清空。币种是否可变与本机界面相同：已有记录、周期、活动、金融、预计收入或已初始化预算等会阻止直接变更。`book.completeSetup`：step=0..4（默认4），complete=true 默认完成。
+- `book.lifecycle`：operation=ARCHIVE/UNARCHIVE/TRASH/RESTORE。省略 book 为本账本；可用**已有其他账本的字面 ID**，不能传新账本引用。当前任务默认只上传本账本结构；如要操作其他账本，必须由用户提供其明确 ID，不能猜测。回收站恢复期限由本机重查。切换当前账本偏好属于阶段6，不包含在这些操作中。
+- `account.save`：CASH/BANK/CREDIT/LOAN/IC 全部类型，名称、币种、期初金额与日期；已有类型不可改。`account.setActive` 使用 target 和 active 明确启停。账户没有回收站。
+- `category.save`：name、kind 必填；category 省略新建，parent 有类型引用/null根分类，favorite，icon。已有项省略 parent/favorite/icon 保留，新增默认为根分类/未收藏/自动图标；icon:null 清除手选图标。`category.setFavorite`、`category.lifecycle`（ARCHIVE/UNARCHIVE）、`category.reparent`（parent:null移为一级）复用本机校验与层级影响预览。
+- `merchant.save` 保存名称/备注，`merchantLocation.save` 保存或完整替换地点名称、坐标、半径（默认100米，坐标默认未知，须成对填写）；已有地点不能移到其他商户。先保存商户再用其输出保存地点。`merchant.setActive` 启停。`friend.save` 保存名称，`friend.setActive` 启停。保存已有对象保留启停状态；商户省略或 null 备注保留旧值。
+- `entry.create` 创建 EXPENSE/INCOME/TRANSFER/REFUND，缺省 kind=EXPENSE。账户/日期/活动/信用卡付款选择采用表单默认值，**不会猜分类和消费金额**。金额字段 amount/accountAmount/baseAmount/toAmount/feeAmount/feeAccountAmount/feeBaseAmount/reserveAmount/cardPaymentFee 使用 `{currency,minor}`。同币种精确复制；外币提供实际或预计金额及状态，或明确手填十进制 manualRate。`useReferenceRates=true` 可使用本机预览冻结的参考汇率与现有换算函数；不能覆盖实际金额，缺参考报价时整批失败，不填0。默认不自动套参考汇率。
+- 退款 originalEvent 必须指向原消费（支持前步引用），沿用剩余可退款金额与比例换算；指定部分退款时按指定原币金额换算，不能超过原消费。退款来源在编辑中不可替换，原分类/商户随原消费。转账默认两端待确认；未知费用留空/null。付款选择及指定月、费用、分期期数与普通表单同规则。
+- `entry.update` 批量字段补丁；`entry.confirmActual` 采用相同 targets/set，但必须明确至少一个实际确认标志为 true。账户负余额加重在预览中单独要求勾选，列明具体账户、币种和金额。记录缺必填项则整批失败；生成待补完草稿留到阶段6。
+- `entry.lifecycle`：entry 为已有ID/前步引用，operation=TRASH/RESTORE；原消费和关联退款按现有删除组一起处理；恢复会重查30天期限、原消费、退款上限及预留可用性。PURGE/EMPTY 禁止。
+- `template.save`：完整保存 name/kind/category/account/currency，以及可选固定金额、商户/备注、付款选择、活动；省略可选项恢复其默认空值，已有排序保留。`template.move`：template 和 direction=-1/+1，相邻移动，边缘保持。`template.createEntry`：template 与可选 set，调用普通记账准备，预览显示 `entry.create`；无金额或外币换算资料时需要在 set 补齐，不能生成待填草稿。模板内容也是确认依据。
+
+分类替代合并并非一条“隐藏删除”：先用 entry.update 改记录分类、template.save 改模板分类，再 category.lifecycle ARCHIVE。现有界面的物理合并还会迁移月/分类预算、活动预算、周期规则/实例、普通与金融草稿。本阶段不会暗中迁移这些引用，归档也不会抹除它们；用户需在对应界面调整。预算/周期迁移命令属阶段4，草稿协调按后续阶段补齐。需要这些迁移时在 message/questions 说明剩余工作，不声称已经完成完整合并。
+
+组合示例（替换实际 book_id/digest 后使用；以下为 steps）：
+
+```json
+[
+  {"id":"wallet","command":"account.save","command_version":1,"input":{"name":"钱包","type":"CASH","currency":"JPY","openingMinor":10000,"openingDate":"2026-11-01"}},
+  {"id":"food","command":"category.save","command_version":1,"input":{"name":"午餐","kind":"EXPENSE","favorite":true}},
+  {"id":"meal","command":"entry.create","command_version":1,"input":{"account":{"ref":"wallet","output":"account"},"category":{"ref":"food","output":"category"},"amount":{"currency":"JPY","minor":900},"note":"午餐"}},
+  {"id":"note","command":"entry.update","command_version":1,"input":{"targets":{"ids":[{"ref":"meal","output":"entry"}]},"set":{"note":"已核对午餐"}}}
+]
+```
 
 ## 信用卡字段在哪里
 
@@ -52,7 +81,7 @@
 
 ## 永久边界
 
-永远不能恢复备份、操作云端连接凭证/设备、永久删除任何记录/账本/其他对象、清空回收站或触发到期清理。此限制适用于任何命名和组合，不是可绕过的命令名黑名单。未来删除到回收站可开放；本阶段不支持。不能写入数据库、调用任意 Repository、运行 SQL/代码或发出网络请求。
+永远不能恢复备份、操作云端连接凭证/设备、永久删除任何记录/账本/其他对象、清空回收站或触发到期清理。此限制适用于任何命名和组合，不是可绕过的命令名黑名单。记录与账本可移入回收站/恢复；账本与分类可归档，账户、商户、朋友可停用。分类 MERGE_DELETE / DELETE_EMPTY、AccountOperation.DELETE、模板 deleteTemplate、地点 removeMerchantLocation 都是物理删除，禁止由云端执行。具体替代做法见能力清单 forbiddenAlternatives。不能写入数据库、调用任意 Repository、运行 SQL/代码或发出网络请求。
 
 ## 完整示例一：截图建信用卡 → 规则 → 期初预测
 
@@ -98,5 +127,5 @@
 
 能力清单的 `undo` 说明每个命令的逆操作或不可撤销原因，以本机预览的逐步判断为准。
 撤销只能由用户在手机上的执行历史发起，不是云端命令。不要返回 `local.*` 命令，也不要用新方案模拟永久删除；云端永久边界不变。
-撤销恢复原方案执行前的业务状态。本方案新建并登记在执行记录中的账户、规则版本、预测、账期、额度版本及从属/修订行，在未被修改且没有方案以外的外键、JSON或草稿引用时可整体移除；预览逐项列出“将移除”。给已有账户新增的规则版本也属于本方案新建对象。已有对象修改按原快照恢复；原记录的分类为空也可恢复为空。
+撤销恢复原方案执行前的业务状态。本方案新建并登记在执行记录中的账本、账户、分类、商户/地点、朋友、记录、模板、规则版本、预测、账期、额度版本及从属/修订行，在未被修改且没有方案以外的外键、JSON或草稿引用时可整体移除；预览逐项列出“将移除”。给已有账户新增的规则版本也属于本方案新建对象。已有对象修改按原快照恢复；原记录的分类为空也可恢复为空。
 任一对象已改变或被方案以外对象引用时，整批撤销被阻止；不能跳过冲突或部分恢复。执行与去重记录保留。缺少完整快照的旧执行记录不能撤销。

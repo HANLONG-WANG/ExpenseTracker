@@ -61,7 +61,7 @@ internal data class UndoPreparation(val availability:UndoAvailability,val steps:
 
 /** Row keys and raw snapshots are local execution evidence, never cloud inputs. Null before means
  * this transaction created the row; only those rows may be removed by local.restoreExecution. */
-@Serializable data class UndoRowChange(val table:String,val key:JsonObject,val before:JsonObject?,val after:JsonObject)
+@Serializable data class UndoRowChange(val table:String,val key:JsonObject,val before:JsonObject?,val after:JsonObject,val removed:Boolean=false)
 @Serializable data class UndoRemoval(val table:String,val key:String,val name:String,val number:Int?=null)
 @Serializable data class UndoReference(val table:String,val key:String,val name:String,val targetName:String)
 @Serializable internal data class RestoreCategoryInput(val ids:List<String>,val category:String?)

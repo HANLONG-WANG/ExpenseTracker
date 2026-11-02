@@ -210,12 +210,12 @@ internal suspend fun LedgerRepository.writeFinancialPoolAdoption(review:Financia
         archiveFinancialPlan(next,retired,"POOL_ADOPTED",facts=historyFacts)
     }
 }
-internal suspend fun LedgerRepository.refreshFinancialPools(change:PreparedLedgerChange) {
+internal suspend fun LedgerRepository.refreshFinancialPools(change:PreparedLedgerChange,stateProvider:(suspend ()->FinancialReviewState)? = null) {
     if(change.event.kind !in listOf(EntryKind.EXPENSE.name,EntryKind.TRANSFER.name,EntryKind.REFUND.name))return
     val accountIds=listOfNotNull(change.event.accountId,change.before?.accountId,change.settlement.originalEventId?.let{dao.event(change.event.bookId,it)?.accountId}).toSet()
     val candidates=accountIds.flatMap{db.financialDao().plans(change.event.bookId,it)}.filter{it.active&&it.origin=="POOL"}
     for(p in candidates) {
-        val state=financialReviewState(p.bookId)
+        val state=stateProvider?.invoke()?:financialReviewState(p.bookId)
         if(state.ledger.accounts.none{it.id==p.accountId&&it.active}||!financialPoolStale(state.ledger,state.finance,p))continue
         val input=json.decodeFromString<FinancialPredictionInput>(p.termsJson!!).copy(planId=p.id)
         val preview=prepareFinancialPool(state,input)

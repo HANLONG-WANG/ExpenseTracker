@@ -1,0 +1,71 @@
+{
+  "format": "yohaku.command-plan",
+  "version": 1,
+  "plan_id": "33333333-3333-4333-8333-333333333333",
+  "book_id": "book-1",
+  "catalog_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "context_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "message": "建立钱包和午餐分类，记账并核对备注；手机将预览后整批确认。",
+  "questions": [],
+  "steps": [
+    {
+      "id": "wallet",
+      "command": "account.save",
+      "command_version": 1,
+      "input": {
+        "name": "钱包",
+        "type": "CASH",
+        "currency": "JPY",
+        "openingMinor": 10000,
+        "openingDate": "2026-11-01"
+      }
+    },
+    {
+      "id": "food",
+      "command": "category.save",
+      "command_version": 1,
+      "input": {
+        "name": "午餐",
+        "kind": "EXPENSE",
+        "favorite": true
+      }
+    },
+    {
+      "id": "meal",
+      "command": "entry.create",
+      "command_version": 1,
+      "input": {
+        "account": {
+          "ref": "wallet",
+          "output": "account"
+        },
+        "category": {
+          "ref": "food",
+          "output": "category"
+        },
+        "amount": {
+          "currency": "JPY",
+          "minor": 900
+        }
+      }
+    },
+    {
+      "id": "note",
+      "command": "entry.update",
+      "command_version": 1,
+      "input": {
+        "targets": {
+          "ids": [
+            {
+              "ref": "meal",
+              "output": "entry"
+            }
+          ]
+        },
+        "set": {
+          "note": "已核对午餐"
+        }
+      }
+    }
+  ]
+}

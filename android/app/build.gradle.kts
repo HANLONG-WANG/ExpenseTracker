@@ -48,6 +48,15 @@ android {
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    // Gradle's -D properties are not automatically forwarded to the forked test JVM.
+    systemProperty("yohaku.updateCapabilities", providers.systemProperty("yohaku.updateCapabilities").orElse("false").get())
+    systemProperty("yohaku.repositoryRoot", rootProject.projectDir.parentFile.absolutePath)
+    inputs.files(
+        rootProject.file("../docs/formats/examples/capabilities.valid.json"),
+        rootProject.file("../docs/android-cloud-handoff-package/formats/examples/capabilities.valid.json")
+    ).withPropertyName("commandCapabilityExamples").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+}
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation("androidx.compose.ui:ui")

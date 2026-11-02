@@ -11,10 +11,15 @@ import java.util.UUID
     val description:String,val example:JsonObject,val undo:String,val mode:String="transactional",val unavailable:String="Reject the whole batch; incomplete predictions remain a non-executable preview.")
 
 class CommandRegistry {
-    val forbidden=listOf("backup.restore","cloud.credentials","cloud.device.manage","entry.purge","book.purge","trash.empty","trash.purgeExpired","any.permanentDelete")
-    internal val adapters:List<CommandAdapter> = listOf(AccountCommandAdapter(),RuleCommandAdapter(),PredictionCommandAdapter(),EntryUpdateCommandAdapter())
+    val forbidden=permanentAlternatives.keys.toList()
+    internal val adapters:List<CommandAdapter> = listOf(AccountCommandAdapter(),RuleCommandAdapter(),PredictionCommandAdapter(),
+        BookAdapter("create"),BookAdapter("update"),BookAdapter("completeSetup"),BookAdapter("lifecycle"),
+        ActiveAdapter("account"),CategoryAdapter("save"),CategoryAdapter("setFavorite"),CategoryAdapter("lifecycle"),CategoryAdapter("reparent"),
+        ContactAdapter("merchant"),ContactAdapter("merchantLocation"),ContactAdapter("friend"),ActiveAdapter("merchant"),ActiveAdapter("friend"),
+        EntryWriteAdapter("create"),EntryWriteAdapter("update"),EntryWriteAdapter("confirmActual"),EntryLifecycleAdapter(),
+        TemplateAdapter("save"),TemplateAdapter("move"),TemplateEntryAdapter())
     val capabilities:List<CommandCapability> get()=adapters.map{it.capability}
-    private val content get()=buildJsonObject{put("format","yohaku.capabilities");put("version",1);put("\$defs",buildJsonObject{put("stepReference",descriptorSchema(CommandRef.serializer().descriptor))});put("commands",encoded(capabilities));put("forbidden",encoded(forbidden));put("limits",buildJsonObject{put("steps",500);put("targets",5000)})}
+    private val content get()=buildJsonObject{put("format","yohaku.capabilities");put("version",1);put("\$defs",buildJsonObject{put("stepReference",descriptorSchema(CommandRef.serializer().descriptor))});put("commands",encoded(capabilities));put("forbidden",encoded(forbidden));put("forbiddenAlternatives",encoded(permanentAlternatives));put("limits",buildJsonObject{put("steps",500);put("targets",5000)})}
     val catalogDigest:String get()=digest(content)
     fun export():JsonObject=JsonObject(content+("catalogDigest" to JsonPrimitive(catalogDigest)))
     internal fun adapter(name:String)=adapters.singleOrNull{it.capability.name==name}?:error("不支持的命令 / 未対応のコマンド: $name")
@@ -30,7 +35,7 @@ class CommandRegistry {
         val prior=mutableMapOf<String,Map<String,String>>()
         for(step in plan.steps) {
             require(step.id.matches(Regex("[A-Za-z][A-Za-z0-9_-]{0,63}"))&&step.id !in prior){"步骤ID重复或无效 / ステップIDが重複または無効です"}
-            require(step.command !in forbidden){"永久边界内的操作不可办理 / 永久禁止の操作は実行できません"}
+            require(step.command !in forbidden){permanentAlternative(step.command)}
             val adapter=adapter(step.command)
             require(step.command_version==adapter.capability.version){"未知命令版本 / 未知のコマンドバージョン"}
             validateSchema(step.input,adapter.capability.inputSchema,step.id,prior)
