@@ -39,7 +39,7 @@ internal fun validateEntryValues(input:JsonObject) {
     require(v.estimateDirection==null||v.estimateDirection in listOf("TO","FROM"))
 }
 
-internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,old:EntryDraft?=null):EntryDraft {
+internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,old:EntryDraft?=null,allowIncomplete:Boolean=false):EntryDraft {
     val v=commandJson.decodeFromJsonElement<EntryValues>(input)
     val kind=v.kind?:old?.kind?:EntryKind.EXPENSE
     require(old?.id==null||kind==old.kind){"已有记录种类不可直接改写 / 既存の記録の種類は直接変更できません"}
@@ -69,7 +69,15 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
     input.filterKeys{it !in special}.forEach{(key,value)->put(key,if(value==JsonNull&&key=="cardPaymentMonth")JsonPrimitive("")else value)}
     if("date" in input&&d.id==null)for(key in listOf("settlementDate","toDate","feeDate","rateDate"))if(key !in input)put(key,JsonPrimitive(date))
     if("cardPaymentPeriods" in input)put("cardPaymentPeriods",JsonPrimitive(v.cardPaymentPeriods?.toString().orEmpty()))
-    val account=s.accounts.singleOrNull{it.id==fields["accountId"]?.jsonPrimitive?.contentOrNull}?:error("请选择本账本的账户 / この帳簿の口座を選択してください")
+    val selectedAccount=s.accounts.singleOrNull{it.id==fields["accountId"]?.jsonPrimitive?.contentOrNull}
+    if(allowIncomplete&&selectedAccount==null&&fields["accountId"]==JsonNull) {
+        // An empty ledger can still receive a draft. Only money with an explicit currency can be
+        // retained before choosing an account; account/base conversions need their target account.
+        require(input.keys.none{it in moneyFields-setOf("amount")||it in transferFields||it in setOf("treatShares","treatTail")}){"请先选择账户再填写换算或转账金额 / 換算・振替額を入力する前に口座を選択してください"}
+        v.amount?.let{put("amount",JsonPrimitive(it.decimal.toPlainString()));put("originalCurrency",JsonPrimitive(it.currency.name))}
+        return commandJson.decodeFromJsonElement(JsonObject(fields))
+    }
+    val account=selectedAccount?:error("请选择本账本的账户 / この帳簿の口座を選択してください")
     val accountCurrency=Currency.valueOf(account.currency);val bookCurrency=Currency.valueOf(s.book.currency)
     val targetCurrency=fields["toAccountId"]?.jsonPrimitive?.contentOrNull?.let{id->s.accounts.single{it.id==id}.currency}?.let(Currency::valueOf)
     val feeCurrency=when(v.feePosition?:d.feePosition){TransferFeePosition.INCLUDED_FROM->accountCurrency;TransferFeePosition.DEDUCTED_TO->targetCurrency;TransferFeePosition.SEPARATE->fields["feeAccountId"]?.jsonPrimitive?.contentOrNull?.let{id->Currency.valueOf(s.accounts.single{it.id==id}.currency)}}
@@ -104,6 +112,7 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
     if("cardPaymentPeriods" in input)d=d.copy(cardPaymentPeriods=v.cardPaymentPeriods?.toString().orEmpty())
     if("merchantId" in input&&v.merchantId!=null&&"merchant" !in input)d=d.copy(merchant=s.merchants.single{it.id==run.resolve(v.merchantId)}.name)
     if("merchant" in input&&"merchantId" !in input)d=s.merchantInput(d,requireNotNull(v.merchant))
+    if(allowIncomplete)return d
     // Same-currency amounts are exact. Foreign amounts require explicit settlement/base or an
     // explicit manual conversion; no assumed public rate and no inferred actual confirmation.
     val originalCurrency=d.originalCurrency?:accountCurrency
@@ -129,7 +138,7 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
 internal class EntryWriteAdapter(private val action:String):LedgerAdapter() {
     override val capability=ledgerCapability("entry.$action",if(action=="create")entryValueSchema else patchSchema(descriptorSchema(EntryEditInput.serializer().descriptor),mapOf("set" to entryValueSchema,"targets" to entryWriteTargetsSchema)),if(action=="create")mapOf("entry" to "entry")else emptyMap(),
         "Missing patch fields preserve the editor's full reconstructed values. New records use editor account/card/activity/date defaults; no amount/category is invented. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
-        "1–5000 fixed targets; category-only updates also accept explicitly identified trash records (preserve trash status); selectors and other edits remain live-only; expense/income/transfer/refund only. Existing domain validation covers category/account status, currency amounts, opening inclusion, refund ceilings/source, card payment choices, activity/reserve/participants. Incomplete entries reject the whole plan; no interactive draft in stage 3.",
+        "1–5000 fixed targets; category-only updates also accept explicitly identified trash records (preserve trash status); selectors and other edits remain live-only; expense/income/transfer/refund only. Existing domain validation covers category/account status, currency amounts, opening inclusion, refund ceilings/source, card payment choices, activity/reserve/participants. Incomplete entries reject the whole plan; use entry.prepareDraft for incomplete user input.",
         "Create or batch-edit all ordinary record and transfer/refund fields, preserving attachments. Uses the shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance. entry.confirmActual is an update requiring actual confirmation flags.",
         if(action=="create")"""{"kind":"EXPENSE","account":"account-id","category":"category-id","amount":{"currency":"JPY","minor":900}}"""else """{"targets":{"ids":["entry-id"]},"set":{"note":"已核对"}}""")
     override fun validate(input:JsonObject) {

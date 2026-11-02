@@ -41,6 +41,8 @@ class CommandConfirmationTest {
         assertFalse(error.message!!.contains("paymentDay"))
     }
     @Test fun ruleValidationHasASerializerAndRetainsItsBillRevisionAndUnknownBreakdown() {
+        val book=com.yohaku.expensetracker.data.db.BookEntity("book","名称","JPY","2026-11-01")
+        assertEquals(book,commandJson.decodeFromJsonElement<com.yohaku.expensetracker.data.db.BookEntity>(encoded(book)))
         val validation=FinancialRuleValidationEntity("book","validation","rule","bill",2,0,null,0,false,123)
         val raw=encoded(validation)
         assertEquals(validation,commandJson.decodeFromJsonElement<FinancialRuleValidationEntity>(raw))

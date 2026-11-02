@@ -52,7 +52,9 @@ internal fun commandObjectFacts(value:JsonElement,ignore:Set<String> = emptySet(
 /** FinancialRuleEntity stores its definition in lowercase `json`, unlike termsJson/basisJson. */
 internal fun commandRuleFacts(value:JsonElement)=commandObjectFacts(value,setOf("createdAt"),setOf("json"))
 
-internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val context:ExecutionContext,val undoRecord:UndoRecord?=null) {
+internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val context:ExecutionContext,val undoRecord:UndoRecord?=null,val planId:String="",val localId:String="",preferences:Map<String,JsonElement> = emptyMap(),val grantedPermissions:Set<String> = emptySet()) {
+    val preferenceValues=preferences.toMutableMap()
+    val followups=mutableListOf<CommandFollowup>()
     private val outputs=mutableMapOf<Pair<String,String>,String>()
     private val identities=CommandIdentityMap()
     private var cachedState:FinancialReviewState?=null
@@ -79,7 +81,7 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         return if(output==null)JsonPrimitive(id)else encoded(CommandRef(output.key.first,output.key.second))
     }
     fun semantic(value:JsonElement)=orderFinanceFacts(identities.normalize(value))
-    fun executionRecord()=CommandExecutionRecord(outputs.entries.groupBy{it.key.first}.mapValues{(_,entries)->entries.associate{it.key.second to it.value}},identities.actualIds())
+    fun executionRecord()=CommandExecutionRecord(outputs.entries.groupBy{it.key.first}.mapValues{(_,entries)->entries.associate{it.key.second to it.value}},identities.actualIds(),followups=followups.toList())
     private fun row(value:JsonElement,ignore:Set<String> = emptySet()):JsonObject=commandFinanceFacts(commandObjectFacts(value,ignore)).jsonObject
     private fun project(state:FinancialReviewState,accounts:Set<String>,entries:Set<String>,categories:Set<String>,months:Set<String>):Map<Pair<String,String>,JsonElement> {
         val s=state.ledger;val f=state.finance;val result=linkedMapOf<Pair<String,String>,JsonElement>()

@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
 import com.yohaku.expensetracker.domain.currency.ReferenceRateCache
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 
 private val Context.preferences by preferencesDataStore("app")
 class AppPreferences(private val context: Context,private val storage:DataStore<Preferences> = context.preferences):ReferenceRateStore {
@@ -67,6 +67,40 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
     suspend fun select(id: String) { storage.edit { it[active] = id } }
     suspend fun saveSetup(draft: SetupDraft) { storage.edit { it[setup] = json.encodeToString(draft) } }
     suspend fun clearSetup() { storage.edit { it.remove(setup) } }
+    // A preference write and its effect receipt must commit in the SAME DataStore edit. A Room
+    // completion marker alone would replay a preference after a crash and overwrite later edits.
+    private val commandReceipts=stringSetPreferencesKey("command_effect_receipts_v1")
+    private fun commandValue(p:Preferences,bookId:String,key:String):JsonElement=when(key) {
+        "activeBook"->p[active]?.let(::JsonPrimitive)?:JsonNull
+        "automaticRates"->JsonPrimitive(p[automaticRates]?:true)
+        "photoOriginal"->JsonPrimitive(p[photoOriginalKey]?:false)
+        "location"->JsonPrimitive(bookId in (p[locationBooksKey]?:emptySet()))
+        "reminders"->json.encodeToJsonElement(p[reminderSettingsKey]?.let{json.decodeFromString<Map<String,com.yohaku.expensetracker.domain.reminders.ReminderPreferences>>(it)}?.get(bookId)?:com.yohaku.expensetracker.domain.reminders.ReminderPreferences())
+        else->error("Unknown preference: $key")
+    }
+    suspend fun commandValues(bookId:String):Map<String,JsonElement> {
+        val p=storage.data.first()
+        return listOf("activeBook","automaticRates","photoOriginal","location","reminders").associateWith{commandValue(p,bookId,it)}
+    }
+    suspend fun commandPreferenceApplied(effectId:String)=effectId in (storage.data.first()[commandReceipts]?:emptySet())
+    suspend fun applyCommandPreference(effectId:String,bookId:String,key:String,before:JsonElement,after:JsonElement) {
+        if(key=="reminders")json.decodeFromJsonElement<com.yohaku.expensetracker.domain.reminders.ReminderPreferences>(after).validate()
+        storage.edit { p->
+            val receipts=p[commandReceipts]?:emptySet()
+            if(effectId !in receipts) {
+                require(commandValue(p,bookId,key)==before){"偏好在确认后已变化，请恢复预览中的原值后重试 / 確定後に設定が変わりました。元の値に戻して再試行してください"}
+                when(key) {
+                    "activeBook"->if(after==JsonNull)p.remove(active)else p[active]=after.jsonPrimitive.content
+                    "automaticRates"->p[automaticRates]=after.jsonPrimitive.boolean
+                    "photoOriginal"->p[photoOriginalKey]=after.jsonPrimitive.boolean
+                    "location"->{val books=p[locationBooksKey]?:emptySet();p[locationBooksKey]=if(after.jsonPrimitive.boolean)books+bookId else books-bookId}
+                    "reminders"->{val old=p[reminderSettingsKey]?.let{json.decodeFromString<Map<String,com.yohaku.expensetracker.domain.reminders.ReminderPreferences>>(it)}?:emptyMap();p[reminderSettingsKey]=json.encodeToString(old+(bookId to json.decodeFromJsonElement<com.yohaku.expensetracker.domain.reminders.ReminderPreferences>(after)))}
+                    else->error("Unknown preference: $key")
+                }
+                p[commandReceipts]=receipts+effectId
+            }
+        }
+    }
     suspend fun backup():com.yohaku.expensetracker.data.backup.BackupPreferences {
         val p=storage.data.first()
         return com.yohaku.expensetracker.data.backup.BackupPreferences(
@@ -74,13 +108,14 @@ class AppPreferences(private val context: Context,private val storage:DataStore<
             p[rateCache]?.let{json.decodeFromString<ReferenceRateCache>(it)}?:ReferenceRateCache(),
             p[reminderSettingsKey]?.let{json.decodeFromString(it)}?:emptyMap(),
             p[reminderDeliveryKey]?.let{json.decodeFromString(it)}?:com.yohaku.expensetracker.domain.reminders.ReminderDeliveryState(),
-            p[locationBooksKey]?:emptySet(),p[active],p[setup]?.let{json.decodeFromString<SetupDraft>(it)},p[photoOriginalKey]?:false
+            p[locationBooksKey]?:emptySet(),p[active],p[setup]?.let{json.decodeFromString<SetupDraft>(it)},p[photoOriginalKey]?:false,p[commandReceipts]?:emptySet()
         )
     }
     suspend fun restoreBackup(value:com.yohaku.expensetracker.data.backup.BackupPreferences) {
         value.validate()
         storage.edit { p ->
             p.clear()
+            p[commandReceipts]=value.commandEffectReceipts
             p[automaticRates]=value.automaticReferenceRates
             p[photoOriginalKey]=value.photoSaveOriginal
             p[rateCache]=json.encodeToString(value.referenceRates)

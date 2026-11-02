@@ -10,7 +10,7 @@ import kotlinx.serialization.json.*
  * Book creation also records its initial budget; no subsequent command may target that book. */
 internal class CommandUndoJournal(private val ledger:LedgerRepository,private val bookId:String) {
     private val sql=ledger.db.openHelper.writableDatabase
-    private val deleteOrder=listOf("receipt_images","receipts","attachment_links","draft_media","drafts","revisions","treat_allocations","reserve_uses","event_merchants","event_places","event_activities",
+    private val deleteOrder=listOf("receipt_item_documents","csv_batch_events","csv_batches","analysis_preferences","receipt_images","receipts","attachment_links","draft_media","drafts","revisions","treat_allocations","reserve_uses","event_merchants","event_places","event_activities",
         "financial_drafts","credit_limit_observations","credit_limit_recoveries","credit_limit_group_revisions","credit_limit_group_members","credit_limit_groups",
         "financial_rule_validations","financial_plan_revisions","financial_bill_adjustments","financial_repayment_allocations","financial_contract_plans","financial_arrangements",
         "financial_repayments","debt_contracts","financial_bills","financial_plans","financial_rules","credit_limit_configs",
@@ -74,6 +74,9 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
     }
     private fun name(row:JsonObject,names:Map<String,String>):String {
         fun text(key:String)=row[key]?.jsonPrimitive?.contentOrNull?.takeIf{it.isNotBlank()}
+        if(text("modulesJson")!=null)return "分析设置 / 分析設定 · "+names[text("bookId")].orEmpty()
+        text("receiptId")?.let{id->names[id]?.let{return it}}
+        text("fileName")?.let{return it}
         if(text("origin")=="POOL")return "余额池 / 残高プール · "+text("name").orEmpty()
         if(text("groupId")!=null&&text("accountId")!=null)return listOfNotNull(names[text("groupId")],names[text("accountId")]).joinToString(" · ")
         if(text("kind") in setOf("BORROWING","REPAYMENT"))return listOfNotNull(text("date"),if(text("kind")=="BORROWING")"借入 / 借入"else"还款 / 返済",text("currency")?.let{c->row["amountMinor"]?.jsonPrimitive?.longOrNull?.let{Money(Currency.valueOf(c),it).display()}},text("merchant")).joinToString(" · ")
@@ -91,7 +94,8 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
             ((named[row["planId"]?.jsonPrimitive?.content].orEmpty())+" · "+row.getValue("number").jsonPrimitive.content+"期 / 回 · "+(row["confirmedDate"]?.jsonPrimitive?.contentOrNull?:row["predictedDate"]?.jsonPrimitive?.contentOrNull).orEmpty())}
         val rules=readRows("financial_rules").associate{row->row.getValue("id").jsonPrimitive.content to
             (named[row["accountId"]?.jsonPrimitive?.content].orEmpty()+" · "+row.getValue("version").jsonPrimitive.content+"版 / 版")}
-        return named+entries+bills+rules
+        val receipts=readRows("receipts").associate{row->row.getValue("id").jsonPrimitive.content to (entries[row.getValue("eventId").jsonPrimitive.content]?:"小票 / レシート")}
+        return named+entries+bills+rules+receipts
     }
     // A batch can touch thousands of instances. Load relationship tables once per final-state
     // guard pass, not once per instance; CommandRun invalidates this cache on a state refresh.

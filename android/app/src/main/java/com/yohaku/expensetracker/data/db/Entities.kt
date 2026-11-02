@@ -3,6 +3,7 @@ package com.yohaku.expensetracker.data.db
 import androidx.room.*
 
 @Entity(tableName="books")
+@kotlinx.serialization.Serializable
 data class BookEntity(@PrimaryKey val id: String, val name: String, val currency: String, val startDate: String,
     val theme: String="magazine", val language: String="zh", val initialized: Boolean=false, val budgetMinor: Long?=null, @ColumnInfo(defaultValue="2") val setupStep: Int=2,
     @ColumnInfo(defaultValue="0") val archived:Boolean=false,@ColumnInfo(defaultValue="NULL") val deletedAt:Long?=null)

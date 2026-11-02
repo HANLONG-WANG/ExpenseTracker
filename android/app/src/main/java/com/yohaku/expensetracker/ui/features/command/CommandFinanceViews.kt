@@ -11,19 +11,6 @@ internal val financeObjectLabels=mapOf(
     "billAdjustment" to ("原账期义务调整" to "元の請求債務の調整"),"creditLimitConfig" to ("额度配置版本" to "利用枠設定の版"),"creditLimitGroupSetting" to ("共享额度组" to "共通利用枠"),
     "creditLimitMember" to ("共享额度成员" to "共通利用枠の所属口座"),"creditLimitRecovery" to ("额度恢复确认" to "利用枠回復の確認"),"creditLimitObservation" to ("平台可用额度观测" to "返済先の利用可能枠の確認"),"financialDraft" to ("金融表单草稿" to "金融フォームの下書き")
 )
-internal val financeCommandLabels=mapOf(
-    "financialRepaymentAllocation.resolve" to ("选择还款分配" to "返済充当を選択"),
-    "financialBill.resolve" to ("选择计划账期" to "プランの請求を選択"),"financialRule.validate" to ("核验规则与实际账单" to "条件と確定請求を照合"),
-    "financialManualPlan.save" to ("记录已知逐期计划" to "既知の各回予定を記録"),"financialBill.confirm" to ("核对平台账单" to "返済先の請求を確認"),
-    "financialPool.save" to ("建立、采纳或重算余额池" to "残高プールの作成・統合・再計算"),"financialArrangement.record" to ("记录已办理安排" to "手続き済みの予定を記録"),
-    "financialArrangement.reconcile" to ("重新核对已办理安排" to "手続き済み予定を再確認"),"financialPool.changePayment" to ("记录余额池月付款变更" to "残高プールの月払い変更を記録"),
-    "financialBatchRevolving.apply" to ("记录批量转循环" to "一括リボ変更を記録"),"financialBatchRevolving.undo" to ("撤销批量转循环" to "一括リボ変更を取消"),
-    "financialBorrowing.save" to ("记录借入与合同" to "借入と契約を記録"),"financialRepayment.save" to ("记录还款及待确认清偿" to "支払と未確定の返済を記録"),
-    "financialRepayment.confirm" to ("确认清偿与本金分配" to "返済と元金充当を確定"),"financialContract.linkPlan" to ("关联合同与计划" to "契約とプランを関連付け"),
-    "creditLimit.save" to ("设置额度与占用基准" to "利用枠と使用額基準を設定"),"creditLimitGroup.save" to ("保存共享额度组" to "共通利用枠を保存"),
-    "creditLimitRecovery.confirm" to ("确认平台恢复额度" to "返済先の利用枠回復を確認"),"creditLimitRecovery.void" to ("作废额度恢复确认" to "利用枠回復の確認を無効化"),
-    "creditLimitObservation.record" to ("记录平台可用额度" to "返済先の利用可能枠を記録"),"financialDraft.reclassify" to ("迁移金融草稿分类" to "金融下書きのカテゴリを移行")
-)
 internal val financeFieldLabels=mapOf(
     "paid" to ("实际付款" to "実際の支払"),"received" to ("实际到账／实收" to "実入金・受取額"),"principal" to ("本金" to "元金"),"interest" to ("利息" to "利息"),"fee" to ("费用" to "手数料"),"sourceFee" to ("付款端费用" to "出金側手数料"),"feeBase" to ("费用本位币金额" to "手数料の基準通貨額"),"sourceFeeBase" to ("付款端费用本位币金额" to "出金側手数料の基準通貨額"),
     "principalDifferenceMinor" to ("本金差额" to "元金の差額"),"feeDifferenceMinor" to ("费用差额" to "手数料の差額"),"totalDifferenceMinor" to ("账单合计差额" to "請求合計の差額"),"dateChanged" to ("付款日期不同" to "支払日の相違"),"billRevision" to ("核验所用账单版本" to "検証対象の請求版"),

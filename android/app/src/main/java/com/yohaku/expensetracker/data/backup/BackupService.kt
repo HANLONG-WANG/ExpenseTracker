@@ -18,13 +18,13 @@ import java.time.Instant
 import java.util.UUID
 
 class BackupService(private val context:Context,private val repository:LedgerRepository,private val preferences:AppPreferences) {
-    suspend fun export(output:java.io.OutputStream):BackupManifest=withContext(Dispatchers.IO) {
+    suspend fun export(output:java.io.OutputStream,completedCommandEffectId:String?=null):BackupManifest=withContext(Dispatchers.IO) {
         val stage=File(context.cacheDir,"backup-export-${UUID.randomUUID()}");check(stage.mkdirs())
         try {
             val database=File(stage,"database/yohaku.db");check(database.parentFile!!.mkdirs())
             // Media imports/cleanup use this same lock order: media lock, then Room transaction.
             repository.mediaWrites.withLock { repository.db.withTransaction {
-                exportSnapshotInTransaction(stage,database)
+                exportSnapshotInTransaction(stage,database,completedCommandEffectId)
             }}
             val books=SQLiteDatabase.openDatabase(database.path,null,SQLiteDatabase.OPEN_READONLY).use{db->
                 db.rawQuery("SELECT b.id,b.name,(SELECT COUNT(*) FROM events e WHERE e.bookId=b.id AND e.purgedAt IS NULL) FROM books b ORDER BY b.rowid",null).use{c->buildList{while(c.moveToNext())add(BackupBook(c.getString(0),c.getString(1),c.getLong(2)))}}
@@ -39,8 +39,13 @@ class BackupService(private val context:Context,private val repository:LedgerRep
         }finally{stage.deleteRecursively()}
     }
     /** Caller must hold repository.mediaWrites and be inside a transaction; staging files are not rollback-safe. */
-    internal suspend fun exportSnapshotInTransaction(stage:File,database:File) {
+    internal suspend fun exportSnapshotInTransaction(stage:File,database:File,completedCommandEffectId:String?=null) {
         snapshotDatabase(repository.db.openHelper.writableDatabase,database)
+        // Restoring a successfully written archive must not rerun the operation that exported it.
+        // Only the copied database is changed; live completion still waits for output verification.
+        if(completedCommandEffectId!=null)SQLiteDatabase.openDatabase(database.path,null,SQLiteDatabase.OPEN_READWRITE).use{copy->
+            copy.execSQL("UPDATE command_effects SET status='DONE' WHERE id=?",arrayOf(completedCommandEffectId))
+        }
         repository.mediaRoot?.takeIf{it.exists()}?.copyRecursively(File(stage,"attachments"),overwrite=false)
         File(stage,"preferences.json").writeText(BackupArchive.json.encodeToString(preferences.backup()))
     }

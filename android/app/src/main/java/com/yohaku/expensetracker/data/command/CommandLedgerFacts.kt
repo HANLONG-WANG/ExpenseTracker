@@ -1,6 +1,8 @@
 package com.yohaku.expensetracker.data.command
 
 import kotlinx.serialization.json.*
+import kotlinx.coroutines.flow.first
+import com.yohaku.expensetracker.data.files.FileProtocols
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -8,7 +10,7 @@ import java.time.ZoneOffset
  * rechecks the exact expiry timestamp on every execution. Deletion groups remain mapped identities. */
 internal fun commandEventFacts(value:JsonElement):JsonObject=commandLedgerRow("events",value.jsonObject)
 internal fun commandLedgerRow(table:String,value:JsonObject):JsonObject {
-    val audit=setOf("createdAt","timestamp","updatedAt")+if(table in setOf("events","financial_plans","financial_bills","treats","expected_incomes"))setOf("revision")else emptySet()
+    val audit=setOf("createdAt","timestamp","updatedAt")+if(table in setOf("events","financial_plans","financial_bills","treats","expected_incomes","receipt_item_documents"))setOf("revision")else emptySet()
     val booleans=setOf("platformConfirmed","exceptionAccepted","dateChanged","active","archived","initialized","favorite","historicalIncluded","confirmed","fromConfirmed","toConfirmed","complete","estimated","activityMode","ended","excludeMonthly")
     val projected=JsonObject(value.filterKeys{it !in audit}.mapValues{(key,v)->
         when {
@@ -21,6 +23,8 @@ internal fun commandLedgerRow(table:String,value:JsonObject):JsonObject {
     return if(table.startsWith("financial_")||table.startsWith("credit_limit_")||table=="debt_contracts")commandFinanceFacts(projected).jsonObject else projected
 }
 internal fun commandTableType(table:String)=when(table) {
+    // Persisted draft rows retain the stage-4 effect identity; entryDraft is a deferred creation.
+    "drafts"->"drafts";"receipt_item_documents"->"receiptProducts";"receipts"->"receipt";"receipt_images"->"receiptImage";"attachment_links"->"attachment";"statement_decisions"->"statementAssociation";"csv_batches"->"csvBatch";"csv_batch_events"->"csvEntry";"analysis_preferences"->"analysisPreference";
     "books"->"book";"accounts"->"account";"categories"->"category";"events"->"entry";"merchants"->"merchant";"merchant_locations"->"merchantLocation";"friends"->"friend";"entry_templates"->"template"
     "activities"->"activity";"activity_reserves"->"reserve";"activity_budgets"->"activityBudget";"activity_participants"->"activityParticipant";"book_features"->"activityMode";"recurrences"->"recurrence";"occurrences"->"occurrence";"treats"->"treat";"expected_incomes"->"expectedIncome"
     "financial_rule_validations"->"ruleValidation";"financial_arrangements"->"arrangement";"financial_bill_adjustments"->"billAdjustment";"debt_contracts"->"contract";"financial_repayments"->"repayment";"financial_repayment_allocations"->"repaymentAllocation";"financial_contract_plans"->"contractPlan";"financial_drafts"->"financialDraft";"credit_limit_configs"->"creditLimitConfig";"credit_limit_groups"->"creditLimitGroupSetting";"credit_limit_group_members"->"creditLimitMember";"credit_limit_recoveries"->"creditLimitRecovery";"credit_limit_observations"->"creditLimitObservation";
@@ -39,8 +43,10 @@ internal fun CommandRun.registerLedgerRows(step:String,rows:List<UndoRowChange>)
 }
 internal suspend fun CommandRun.ledgerRowEffects(rows:List<UndoRowChange>):List<ObjectEffect> {
     val snapshot=state();val s=snapshot.ledger
+    val statements=if(rows.any{it.table=="statement_decisions"})ledger.db.fileWorkflowDao().statements(bookId).first().associate{it.id to FileProtocols.statement(it.originalJson)}else emptyMap()
     fun facts(table:String,row:JsonObject):JsonElement {
         val value=commandLedgerRow(table,row).toMutableMap()
+        if(table=="statement_decisions")statements[row["batchId"]?.jsonPrimitive?.contentOrNull]?.rows?.firstOrNull{it.row_id==row["rowId"]?.jsonPrimitive?.contentOrNull}?.let{source->value["sourceDate"]=JsonPrimitive(source.date);value["sourceSummary"]=JsonPrimitive(source.summary)}
         if(table in setOf("budgets","activities","activity_budgets","activity_reserves","reserve_uses"))value["currency"]=JsonPrimitive(s.book.currency)
         if(table=="expected_incomes")row["accountId"]?.jsonPrimitive?.contentOrNull?.let{id->s.accounts.firstOrNull{it.id==id}?.let{value["accountCurrency"]=JsonPrimitive(it.currency)}}
         if(table.startsWith("financial_")||table.startsWith("credit_limit_")) {
@@ -75,7 +81,7 @@ internal suspend fun CommandRun.finishLedgerEffect(step:CommandStep,effect:StepE
     val keys=normalized.objects.map{it.type to it.key}.toSet()
     val objects=(normalized.objects+extra.filter{it.type to it.key !in keys}).sortedWith(compareBy<ObjectEffect>{it.type}.thenBy{it.key})
     val risks=commandRisks(objects)
-    val information=requirement(step.id,ConfirmationKind.INFORMATION,encoded(objects),"此步骤为方案中的中间状态；整批一起提交。","このステップは途中の状態です。全体をまとめて保存します。")
+    val information=requirement(step.id,ConfirmationKind.INFORMATION,encoded(objects),if(effect.mode=="transactional")"此步骤为方案中的中间状态；数据库步骤整批一起提交。"else"此步骤在数据库提交后继续执行，状态保存在本机历史。",if(effect.mode=="transactional")"このステップは途中の状態です。データベースの処理は全体をまとめて保存します。"else"データベースの保存後に続けて実行し、端末の履歴に状態を保持します。")
     val primary=ledgerRowEffects(rows).filter{it.type in setOf("book","category","merchant","merchantLocation","friend","template","budgetSetting","activity","activityMode","activityBudget","reserve","activityParticipant","treat","recurrence","occurrence","expectedIncome")}
     return normalized.copy(targets=normalized.targets.ifEmpty{primary.ifEmpty{extra}.map{it.key}.distinct()},objects=objects,requirements=listOf(information)+normalized.requirements.filter{it.kind==ConfirmationKind.USER_FACT}+commandRiskRequirements(step.id,objects,risks),risks=risks)
 }

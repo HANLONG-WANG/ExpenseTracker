@@ -121,6 +121,9 @@ class ReceiptWorkbenchFlowTest {
             ui.onNodeWithTag("receipt-card-$receipt").performScrollTo();shot("$theme-$language-current-revision")
             ui.onNodeWithTag("receipt-open-$receipt").performScrollTo().performClick()
             ui.onNodeWithTag("record-edit-button").assertExists()
+            ui.waitUntil(10000){ui.onAllNodesWithTag("receipt-edit-items").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("receipt-edit-items").performScrollTo().assertIsDisplayed()
+            shot("$theme-$language-first-product-entry",2)
             ui.onNodeWithTag("sheet-close").performClick()
             val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(listOf(second),after.entryReceiptImages(event).map{it.id})

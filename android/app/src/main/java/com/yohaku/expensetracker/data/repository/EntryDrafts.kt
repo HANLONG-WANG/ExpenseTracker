@@ -1,6 +1,7 @@
 package com.yohaku.expensetracker.data.repository
 
 import com.yohaku.expensetracker.data.db.*
+import androidx.room.withTransaction
 import com.yohaku.expensetracker.domain.model.*
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
@@ -63,4 +64,14 @@ fun BookSnapshot.newEntryDraft(kind:EntryKind,date:String,activityId:String?=nul
     val actualDate=scene?.let{day.coerceIn(LocalDate.parse(it.startDate),LocalDate.parse(it.endDate))}?:day
     val merchant=merchantId?.let{id->merchants.first{it.id==id&&it.active}}
     return withRememberedCardPayment(EntryDraft(merchant=merchant?.name.orEmpty(),merchantId=merchant?.id,kind=kind,date=actualDate.toString(),accountId=defaultEntryAccount(kind),activityId=sceneId,treatEnabled=treatFriendId!=null,treatFriends=listOfNotNull(treatFriendId)))
+}
+
+/** A category migration preserves every other saved field and the media session. */
+suspend fun LedgerRepository.reclassifyEntryDraft(bookId:String,sourceCategoryId:String,categoryId:String)=db.withTransaction {
+    val stored=requireNotNull(dao.storedDraft(bookId)){"没有待处理草稿 / 処理する下書きがありません"}
+    val draft=json.decodeFromString<EntryDraft>(stored.json)
+    require(draft.categoryId==sourceCategoryId&&draft.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME)){"草稿分类或种类已变化 / 下書きのカテゴリ・種類が変わりました"}
+    val category=requireNotNull(dao.category(bookId,categoryId))
+    validateEntryCategory(draft.kind.name,category,categoryEnabled(bookId,categoryId),draft.categoryId)
+    saveDraft(bookId,draft.copy(categoryId=categoryId))
 }

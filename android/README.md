@@ -184,6 +184,16 @@ JDK17、AGP9.3.3、Gradle Wrapper9.5.1、Compose BOM2026.09.00。SDK由`local.pr
 
 云端办理阶段 0 新增 `CommandSandboxTest`：验证外层事务中的业务写入可见性、嵌套回滚、失效通知和媒体锁顺序，并记录 3,700 笔账本上 50 步改分类试运行的耗时；整类默认运行，不需要 `perf=true`。结果见[阶段 0 记录](../docs/plans/cloud-command-stage-0.md)。
 
+云端办理阶段6（已验收）新增 `CommandWorkflowExecutionTest` 五项：流水/商品/源附件组合、附件失败重试和整批撤销；全部偏好及普通草稿分类组合/冲突/撤销；CSV批次回收保留后来编辑/撤销；偏好已写但完成标记未写的进程中断恢复；交互草稿一次创建且不提交。永久边界沿用已有集中遍历。Room仍v37，无新表迁移；BackupPreferences新增默认空效果凭据，原备份兼容。
+
+新增 `CommandFlowTest.followupPreviewAndStatusAcrossLooks`，须 `looks=all visual=true` 并查看三主题×中日文 `cloud-command-stage-1/*-followup-preview.png`、`*-followup-status.png`（提交后/本机操作标记，DONE/WAITING/失败可重试）。`ReceiptWorkbenchFlowTest.coverTabsOriginalImagesAndRecordLinksUseOnlyTheCurrentRevisionInEveryThemeAndLanguage` 已补 `phase-b-p13-workbench/*-first-product-entry.png`，检查小票首次手工填商品入口。SAF目录授权、同一目标中断恢复、系统权限和完整备份导出由设备实测；本次实现未运行Gradle/模拟器、未宣称编译/仪器/视觉验收通过。
+
+阶段6首次实现改变了注册表，**两份能力样例已由用户生成，返工不改其字节**。以后注册表改变时，在 android/ 串行执行既有生成入口，再跑单元与相关仪器流程：
+
+```sh
+./gradlew -Dyohaku.updateCapabilities=true :app:testDebugUnitTest --tests com.yohaku.expensetracker.data.command.CommandCapabilitiesTest
+```
+
 以下命令在 `android` 目录执行，每条完成后再启动下一条。日常外观矩阵按测试类完整名称的 JVM `String.hashCode()` 确定性选择一组（三主题 × 中日文）；不同类分散覆盖。`looks=all` 恢复六组，显式 `theme` / `language` 返回所有匹配组合，优先于默认抽取。原本固定语言的专项保留该语言；测试主题/语言切换本身的动作不缩减。金融模式等业务循环不缩减。
 
 1. **每次改动**：单元测试 + 默认参数下相关的数据/逻辑类和模块流程类。跨模块修改可跑默认全量。默认成功路径不写截图、bounds JSON 或尺寸 CSV，失败取证仍保留。
@@ -319,3 +329,6 @@ adb shell am instrument -w -r \
 数据库新 schema 在 `app/schemas/.../37.json`，`sourceSets.androidTest.assets` 已读取该目录；36→37升级用已导出的36.json作真实起点，旧执行记录不伪造撤销快照。旧备份通过同一 `ALL_MIGRATIONS` 升级，办理去重记录不级联删除。
 
 验收记录：[阶段 1](../docs/plans/cloud-command-stage-1.md)、[阶段 2](../docs/plans/cloud-command-stage-2.md)。
+
+
+云端办理阶段6第1轮返工：持久草稿消费效果恢复 `drafts` 类型，原 `CommandPlanningExecutionTest.recurrencePaymentCancellationAndBatchLinkConsumeOnlyMatchingDraft` 断言不变。`CommandFlowTest.followupPreviewAndStatusAcrossLooks` 增加序号+业务标题、草稿真实字段/待补提示断言及 `*-followup-draft.png`；`*-followup-status.png` 截图前必须验证完成、等待操作、失败可重试和重试按钮完整同屏。仍使用 `looks=all visual=true`，截图目录不变。本轮未运行Gradle；用户首轮生成的能力样例保持原字节，本轮注册能力未改，无需再次生成。返工原因和取舍见[阶段6记录](../docs/plans/cloud-command-stage-6.md)。

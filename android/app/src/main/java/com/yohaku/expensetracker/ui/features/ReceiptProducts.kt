@@ -96,9 +96,11 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
 @Composable internal fun ReceiptProducts(s:BookSnapshot,eventId:String,vm:AppViewModel) {
     val documents by remember(s.book.id){vm.repository.db.fileWorkflowDao().items(s.book.id)}.collectAsStateWithLifecycle(emptyList())
     val receipt=s.receipts.find{it.eventId==eventId}?:return
-    val document=documents.find{it.receiptId==receipt.id}?:return
-    val record=remember(document.recordJson){FileProtocols.json.decodeFromString<ReceiptItemsRecord>(document.recordJson)}
+    val document=documents.find{it.receiptId==receipt.id}
+    if(document==null&&s.entryReceiptImages(eventId).isEmpty())return
     val event=s.visibleEvents.find{it.id==eventId}?:return
+    val record=remember(document?.recordJson,receipt.revision,event.revision){document?.let{FileProtocols.json.decodeFromString<ReceiptItemsRecord>(it.recordJson)}
+        ?:ReceiptItemsRecord(event.id,receipt.id,event.revision,receipt.revision,event.currency,s.entryReceiptImages(event.id).map{it.id},emptyList(),emptyList(),false,emptyList())}
     var editor by rememberSaveable(receipt.id){mutableStateOf(false)}
     ThemeSection(word("买过的东西","買ったもの"),"RECEIPT ITEMS")
     val totals=receiptTotals(record,FileMoney(event.currency,Money(Currency.valueOf(event.currency),event.amountMinor).decimal.toPlainString()))
@@ -107,9 +109,9 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
         ReceiptItemRows(record,totals.knownItems)
         ReceiptTotalLines(record,totals)
         if(s.entryReceiptImages(eventId).any{it.id !in record.image_ids})YText(word("还有新增图片未整理。","追加された画像が未整理です。"),11,color=LocalYohaku.current.warm)
-        YButton(word("编辑商品明细","商品明細を編集"),{editor=true},Modifier.testTag("receipt-edit-items"))
+        YButton(if(document==null)word("手工填写商品明细","商品明細を手入力")else word("编辑商品明细","商品明細を編集"),{editor=true},Modifier.testTag("receipt-edit-items"))
     }
-    if(editor)ReceiptItemEditor(s,document,record,vm,{editor=false})
+    if(editor)ReceiptItemEditor(s,document?:ReceiptItemDocumentEntity(s.book.id,receipt.id,receipt.id,FileProtocols.json.encodeToString(record),0,0),record,vm,{editor=false})
 }
 
 @Composable private fun ReceiptItemEditor(s:BookSnapshot,document:ReceiptItemDocumentEntity,original:ReceiptItemsRecord,vm:AppViewModel,onClose:()->Unit) {
@@ -147,7 +149,7 @@ internal fun receiptCurrencyText(value:String,currency:String):String {
         YField(word("待确认说明（每行一项）","確認事項（1行1件）"),edited.issues.joinToString("\n"),{update(edited.copy(issues=it.lines().filter{line->line.isNotBlank()}))},multiline=true)
         YToggle(word("明细已补全","明細を補完済み"),edited.complete,{update(edited.copy(complete=it))})
         YActionRow {
-            YButton(word("保存商品明细","商品明細を保存"),{vm.execute(onSuccess=onClose){vm.repository.editReceiptItems(s.book.id,document.receiptId,baseRevision,edited)}},Modifier.testTag("receipt-save-item-edits"),primary=true,enabled=!busy)
+            YButton(word("保存商品明细","商品明細を保存"),{vm.execute(onSuccess=onClose){if(baseRevision==0)vm.repository.saveDirectReceiptItems(s.book.id,document.receiptId,null,edited)else vm.repository.editReceiptItems(s.book.id,document.receiptId,baseRevision,edited)}},Modifier.testTag("receipt-save-item-edits"),primary=true,enabled=!busy)
             YButton(word("取消修改","変更を取消"),onClose,enabled=!busy)
         }
     }

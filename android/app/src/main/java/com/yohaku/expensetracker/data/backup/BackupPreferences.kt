@@ -14,7 +14,8 @@ import kotlinx.serialization.Serializable
     val foregroundLocationBooks:Set<String> = emptySet(),
     val activeBook:String?=null,
     val setupDraft:SetupDraft?=null,
-    val photoSaveOriginal:Boolean=false
+    val photoSaveOriginal:Boolean=false,
+    val commandEffectReceipts:Set<String> = emptySet()
 ) {
     fun validate(){reminderSettings.values.forEach{it.validate()}}
 }

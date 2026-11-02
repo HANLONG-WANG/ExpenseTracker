@@ -71,7 +71,7 @@ class CsvImportViewModel(private val repo:LedgerRepository,private val bookId:St
     private suspend fun previewNow() {
         val old=state.value
         val preview=repo.csvPreview(bookId,requireNotNull(old.document),old.settings,old.edits)
-        repo.db.csvImportDao().putProfile(CsvProfileEntity(bookId,old.document.signature,repo.json.encodeToString(old.settings)))
+        repo.saveCsvProfile(bookId,old.document.signature,old.settings)
         state.value=state.value.copy(preview=preview)
     }
     fun edit(row:Int,edit:CsvEdit)=work {

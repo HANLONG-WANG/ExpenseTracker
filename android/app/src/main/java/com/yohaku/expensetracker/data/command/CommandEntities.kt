@@ -18,18 +18,16 @@ data class CommandEffectEntity(@PrimaryKey val id:String,val planId:String,val s
 
 @Dao interface CommandDao {
     @Query("SELECT * FROM command_plans WHERE bookId=:bookId ORDER BY createdAt DESC") fun history(bookId:String):Flow<List<CommandPlanEntity>>
+    @Query("SELECT * FROM command_plans WHERE planId=:id") fun observePlan(id:String):Flow<CommandPlanEntity?>
     @Query("SELECT * FROM command_plans WHERE planId=:id") suspend fun plan(id:String):CommandPlanEntity?
     @Query("SELECT * FROM command_plans WHERE sourceKey=:key") suspend fun source(key:String):CommandPlanEntity?
     @Query("SELECT * FROM command_plans WHERE undoOf=:id") suspend fun undoFor(id:String):CommandPlanEntity?
     @Insert suspend fun insert(plan:CommandPlanEntity)
     @Update suspend fun update(plan:CommandPlanEntity)
     @Insert suspend fun enqueue(effect:CommandEffectEntity)
-    @Query("SELECT * FROM command_effects WHERE status IN ('PENDING','RETRY')") suspend fun pendingEffects():List<CommandEffectEntity>
+    @Query("SELECT * FROM command_effects WHERE status IN ('PENDING','RUNNING') ORDER BY rowid") suspend fun pendingEffects():List<CommandEffectEntity>
+    @Query("SELECT * FROM command_effects WHERE planId=:planId ORDER BY rowid") fun effects(planId:String):Flow<List<CommandEffectEntity>>
+    @Query("SELECT * FROM command_effects WHERE planId=:planId ORDER BY rowid") suspend fun planEffects(planId:String):List<CommandEffectEntity>
+    @Query("SELECT * FROM command_effects WHERE id=:id") suspend fun effect(id:String):CommandEffectEntity?
     @Update suspend fun updateEffect(effect:CommandEffectEntity)
-}
-
-/** Stage 1 only registers transactional adapters. Durable queue contract for later workers. */
-class CommandEffectQueue(private val dao:CommandDao) {
-    suspend fun pending()=dao.pendingEffects()
-    suspend fun retry(effect:CommandEffectEntity,error:String)=dao.updateEffect(effect.copy(status="RETRY",attempts=effect.attempts+1,lastError=error))
 }

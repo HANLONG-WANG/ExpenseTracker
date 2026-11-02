@@ -21,7 +21,7 @@ class CommandRegistry {
         BudgetAdapter(),BudgetAdapter(true),ActivityAdapter("setMode"),ActivityAdapter("setCurrent"),ActivityAdapter("save"),ActivityAdapter("end"),ActivityAdapter("lifecycle"),
         ReserveAdapter(),ReserveAdapter(true),ParticipantAdapter(),TreatAdapter(),TreatAdapter(true),
         RecurrenceAdapter(),RecurrenceAdapter(true),OccurrenceAdapter("resolve"),OccurrenceAdapter("update"),OccurrenceAdapter("lifecycle"),OccurrenceAdapter("link"),OccurrenceAdapter("unlink"),OccurrenceAdapter("pay"),
-        ExpectedIncomeAdapter("save"),ExpectedIncomeAdapter("cancel"),ExpectedIncomeAdapter("arrive")) + financeCommandAdapters()
+        ExpectedIncomeAdapter("save"),ExpectedIncomeAdapter("cancel"),ExpectedIncomeAdapter("arrive")) + financeCommandAdapters() + fileCommandAdapters() + followupCommandAdapters()
     val capabilities:List<CommandCapability> get()=adapters.map{it.capability}
     private val content get()=buildJsonObject{put("format","yohaku.capabilities");put("version",1);put("\$defs",buildJsonObject{put("stepReference",descriptorSchema(CommandRef.serializer().descriptor))});put("commands",encoded(capabilities));put("forbidden",encoded(forbidden));put("forbiddenAlternatives",encoded(permanentAlternatives));put("limits",buildJsonObject{put("steps",500);put("targets",5000)})}
     val catalogDigest:String get()=digest(content)

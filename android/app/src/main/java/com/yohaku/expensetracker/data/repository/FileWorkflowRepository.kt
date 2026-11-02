@@ -184,3 +184,20 @@ suspend fun LedgerRepository.editReceiptItems(bookId: String, receiptId: String,
         revision = existing.revision + 1, updatedAt = clock.millis()))
     dao.putReceipt(receipt.copy(status = if (currentImages == edited.image_ids.toSet()) "SORTED" else "UNSORTED"))
 }
+
+/** Direct product entry, shared by the local editor and command adapter. No export bundle is needed:
+ * the current receipt/images are the source. Full replacement, guarded by the document revision. */
+suspend fun LedgerRepository.saveDirectReceiptItems(bookId:String,receiptId:String,expectedRevision:Int?,record:ReceiptItemsRecord)=db.withTransaction {
+    val existing=db.fileWorkflowDao().itemsForReceipt(bookId,receiptId)
+    require(existing?.revision==expectedRevision){"商品已变化，请重新预览 / 商品が変わりました。再確認してください"}
+    val event=requireNotNull(dao.event(bookId,record.record_id))
+    val receipt=requireNotNull(dao.receipt(bookId,event.id))
+    require(event.deletedAt==null&&event.purgedAt==null&&receipt.id==receiptId)
+    require(record.receipt_id==receipt.id&&record.record_revision==event.revision&&record.receipt_revision==receipt.revision&&record.currency==event.currency){"小票或记账已变化 / レシートまたは記録が変わりました"}
+    val images=dao.receiptImages(bookId,receipt.id,receipt.revision).map{it.fileId}.toSet()
+    require(record.image_ids.all{it in images}){"来源图片与原小票不符 / 画像がレシートに一致しません"}
+    val bundle=existing?.bundleId?:receipt.id
+    FileProtocols.receiptItems(FileProtocols.json.encodeToString(ReceiptItemsFile("yohaku.receipt-items",1,bundle,bookId,listOf(record))))
+    db.fileWorkflowDao().putItems(ReceiptItemDocumentEntity(bookId,receipt.id,bundle,FileProtocols.json.encodeToString(record),(existing?.revision?:0)+1,clock.millis()))
+    dao.putReceipt(receipt.copy(status=if(images==record.image_ids.toSet())"SORTED"else"UNSORTED"))
+}

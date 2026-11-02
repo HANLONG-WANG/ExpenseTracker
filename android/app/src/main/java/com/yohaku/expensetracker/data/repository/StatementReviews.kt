@@ -79,3 +79,9 @@ suspend fun LedgerRepository.clearStatementDecision(bookId:String,batchId:String
     require(dao.book(bookId)!=null)
     db.fileWorkflowDao().clearDecision(bookId,batchId,rowId)
 }
+
+/** Local-only permanent removal; deliberately not exposed by the command registry. */
+suspend fun LedgerRepository.deleteStatement(bookId:String,batchId:String)=db.withTransaction {
+    requireNotNull(db.fileWorkflowDao().statement(bookId,batchId))
+    db.fileWorkflowDao().deleteStatement(bookId,batchId)
+}

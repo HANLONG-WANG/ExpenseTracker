@@ -70,8 +70,8 @@
 | UI25 | 设置、外观、账本 `settings/appearance/books` | 主题/语言、账本创建编辑切换、归档恢复、本位币限制、资料管理（原稿文件格式帮助已随手动文件链路移除） | `views.js`、`experience.js`、`completion.js` | P05,P19,P23 |
 | UI26 | 新增管理状态 | 回收站、影响预览、永久删除、归档/迁移分类、账本归档、修改记录、规则验证结果 | 现有 sheet/panel/menu 主题样式；`lifecycle.html`补充阶段A影响预览；其余新增设计 | P07,P14,P23 |
 | UI28 | 云端分析交接台 `cloud`、小票/流水云端入口 | 连接配置导入确认/测试/解除、任务列表五段进度、待补资料补充、结果领取后进入原有流水/小票预览、通用结果另存；三主题各自的刊头/信封邮戳/行李吊牌与轨道 | 无HTML稿；按`docs/android-cloud-handoff-package/`契约新增原生设计，组件沿用UI21/UI23主题语汇 | 云端交接 |
-| UI29 | 云端办理提交 `command-submit` | 需求、截图/文件、记录范围及将上传的结构/记录/他人请客/文件摘要；复用交接入口与上传队列 | `ui/features/command/CommandScreens.kt`；杂志编号分栏、手账手记纸面、小物收纳头 | 阶段1已验收；阶段2见撤销流程 |
-| UI30 | 云端办理预览 `command-preview`、逐项核对弹层 | 本机回滚试运行、助手说明、逐步中间效果、净影响/口径/未知项、事实与风险勾选、整批确认/拒绝、变化重预览；撤销预览、原方案标题、将移除对象清单、逐步可撤销性及冲突字段/当前值/外部引用对象；细项分页；阶段3新增账本/分类/商户地点/朋友/各类记录/模板的业务名称与字段、撤销移除类型；阶段4预算/活动余量、预留/请客、规则/实例/预计收入；阶段5规则核验、手工计划、余额池/安排/重核、借贷合同/剩余本金/清偿分配、额度组/恢复/观测的名称、字段和金额前后值，具体事实勾选；账期标签显示所属账户和计划以区分同日同期期号 | `CommandScreens.kt`、`CommandEffectViews.kt`、`CommandFinanceViews.kt`；主题卡片与 `YSheet` | 阶段1已验收；阶段2已验收；阶段3已验收；阶段4已验收；阶段5已验收（`CommandFlowTest.financeCombinationPreviewAcrossLooks`，`looks=all visual=true`，`*-finance-preview.png`/`*-finance-pool.png`/`*-finance-net.png`） |
+| UI29 | 云端办理提交 `command-submit` | 需求、截图/文件、记录范围及将上传的结构/偏好/记录/他人请客/流水小票与CSV关联/文件摘要；复用交接入口与上传队列 | `ui/features/command/CommandScreens.kt`；杂志编号分栏、手账手记纸面、小物收纳头 | 阶段1已验收；阶段2见撤销流程 |
+| UI30 | 云端办理预览 `command-preview`、逐项核对弹层 | 本机回滚试运行、助手说明、逐步中间效果、净影响/口径/未知项、事实与风险勾选、整批确认/拒绝、变化重预览；撤销预览、原方案标题、将移除对象清单、逐步可撤销性及冲突字段/当前值/外部引用对象；细项分页；阶段3新增账本/分类/商户地点/朋友/各类记录/模板的业务名称与字段、撤销移除类型；阶段4预算/活动余量、预留/请客、规则/实例/预计收入；阶段5规则核验、手工计划、余额池/安排/重核、借贷合同/剩余本金/清偿分配、额度组/恢复/观测的名称、字段和金额前后值，具体事实勾选；账期标签显示所属账户和计划以区分同日同期期号 | `CommandScreens.kt`、`CommandEffectViews.kt`、`CommandFinanceViews.kt`；主题卡片与 `YSheet` | 阶段1已验收；阶段2已验收；阶段3已验收；阶段4已验收；阶段6已验收（`CommandFlowTest.followupPreviewAndStatusAcrossLooks`，`*-followup-preview.png`/`*-followup-status.png`/`*-followup-draft.png`）；阶段5已验收（`CommandFlowTest.financeCombinationPreviewAcrossLooks`，`looks=all visual=true`，`*-finance-preview.png`/`*-finance-pool.png`/`*-finance-net.png`） |
 | UI31 | 云端办理历史 `command-history` | 待预览、已执行、已拒绝、失败、已撤销及时间；撤销入口/不可撤销原因；保留原执行与独立撤销记录 | 同上；杂志行号目录、手账条目、小物标签卡 | 阶段1已验收；阶段2见撤销流程 |
 | UI27 | 通用控件与状态 | 各主题独立下拉/日期时间/按钮/开关/选择框/Toast/确认/加载/空/错误/未授权/未保存；单个全宽日历 | `themes.js`、`theme-system.css`、各补充CSS | P03，各功能任务 |
 
@@ -495,3 +495,16 @@ UI05/UI15–UI19 信用卡功能补充（2026-10-28）：
 - 当前源码的设备截图与视觉验收尚未运行。相关流程使用 `EntryExperienceFlowTest`、`LocationEntryFlowTest`、`DraftEditingFlowTest`、`EntryLifecycleFlowTest`、`ThemeControlsTest`，参数 `looks=all` + `visual=true`；前者截图位于 `files/verification/entry-experience/`。本次按用户要求不启动模拟器、不执行 connected 测试，历史截图不代表这些变更已通过视觉验收。
 
 阶段5金融草稿放弃已通过 `LedgerRepository.discardFinancialDraft` 下沉，金融UI仅保留DAO读取。云端账期 resolve 对应已有账期列表选择；草稿分类迁移对应既有预计收入草稿分类控件，无需另开本机页面。其余金融/额度命令均复用现有金融账户、安排、还款、额度与历史页面入口。
+
+
+### 云端办理阶段6：文件与后续步骤（已验收）
+
+- UI30/31复用三主题各自 CommandCard/Panel/YSheet：流水关联、商品/附件、CSV批次、分析/偏好前后值；每步标“提交后执行”或“需要你在本机操作”，并显示撤销说明。历史与详情逐项显示待执行、进行中、完成、失败可重试、等待用户操作；重试/打开草稿/申请权限/选择导出目录由本机按钮发起。小物的后续卡片使用“后续办理”标签，杂志用前进标记，手账沿用手记旁注线。
+- 切换账本后按方案ID继续观察原方案，保留详情/状态；撤销标题独立观察原方案，不依赖当前账本列表。
+- `CommandFollowupViews.kt` 与扩展的 `CommandEffectViews.kt` 提供中日文字段、照片保存/自动汇率等可读值；不把存储路径、内部ID或商品内部字段名当作业务文字。
+- `ReceiptProducts`：已有图片但尚无商品文档时可手工填写，再通过共用 saveDirectReceiptItems 保存；原已有商品编辑继续保留修订保护。方案详情新增“另存原始方案文件”，对应 command.exportResult；其他能力均有原设置/流水/CSV/普通记账/备份入口。
+- `StatementsScreen` / `CsvImportViewModel` 的最后两处DAO直写已下沉；保留的数据库访问均为读取/Flow。流水补记/实际金额预填由本机和命令共用 StatementEntryDrafts。
+- 待用户运行 `CommandFlowTest.followupPreviewAndStatusAcrossLooks`，参数 `looks=all visual=true`，查看六组 `cloud-command-stage-1/*-followup-preview.png`、`*-followup-status.png`（包括失败重试）。`ReceiptWorkbenchFlowTest.coverTabsOriginalImagesAndRecordLinksUseOnlyTheCurrentRevisionInEveryThemeAndLanguage` 增加 `phase-b-p13-workbench/*-first-product-entry.png` 检查首次商品录入入口；本轮没有运行模拟器或产生新截图。
+
+
+阶段6第1轮返工（已复验）：持久草稿效果保留 `drafts`，交互提案为 `entryDraft`，UI兼容两者；业务名称抽为 `data/command/CommandBusinessNames.kt`，撤销说明与状态使用方案原序号+业务名称。`CommandDraftPreview.kt` 直接显示金额/账户/分类/日期/备注/文件意图及“待你补完”。执行后详情先显示紧凑后续状态总览并定位到它，完整错误及操作说明进入主题YSheet，重试按钮留在总览。`CommandFlowTest` 补 `*-followup-draft.png`，状态截图前检查完成/等待操作/失败可重试及重试按钮完整同屏。未产生新截图或回填验收通过。

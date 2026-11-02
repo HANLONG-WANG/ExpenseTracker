@@ -11,6 +11,7 @@ internal val predictionUndo=UndoAvailability(true,"移除本方案新建的预�
 internal suspend fun CommandRun.undoValue(type:String,key:String):JsonElement {
     val s=state().ledger
     return when(type) {
+        "preference"->preferenceValues.getValue(key)
         "account"->s.accounts.firstOrNull{it.id==key}?.let{encoded(it)}?:JsonNull
         "entry"->s.events.firstOrNull{it.id==key}?.let{encoded(it)}?:JsonNull
         "entryAssociations"->{
@@ -85,6 +86,7 @@ internal class RestoreEntryCategoryAdapter:CommandAdapter {
  * Stage 1 has no undo snapshot. Incomplete early v37 account-deletion records are rejected by
  * undoAvailability before dispatch; no persisted inverse producer uses forward command aliases. */
 internal fun CommandRegistry.undoAdapter(name:String):CommandAdapter=when(name) {
+    "local.restorePreference"->RestorePreferenceAdapter()
     "local.restoreExecution"->RestoreExecutionAdapter()
     "local.entry.restoreCategory"->RestoreEntryCategoryAdapter()
     else->error("未知本机撤销操作 / 未知の端末取消操作: $name")

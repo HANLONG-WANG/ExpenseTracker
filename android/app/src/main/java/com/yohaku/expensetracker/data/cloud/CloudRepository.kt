@@ -62,7 +62,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
             currencies.flatMap{from->currencies.filter{it!=from}.map{to->from to to}}
                 .mapNotNull{(from,to)->rateService.lookup(from,to).rate}
         }
-    },enqueueAcks={scheduleAcknowledgements()}) }
+    },enqueueAcks={scheduleAcknowledgements()},preferences=AppPreferences(context),sourceRoot=File(context.filesDir,"cloud"),applicationContext=context.applicationContext) }
     private val db=ledger.db
     private val dao=db.cloudDao()
     private val locks=ConcurrentHashMap<String,Mutex>()
@@ -396,6 +396,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         dao.deleteTask(localId)
     }
     internal suspend fun resumePending() {
+        commands.followups.resume()
         store.credentials()
         if(connection.value?.let { it.bound && !it.needsReconnect } != true)return
         dao.unfinished().forEach { enqueue(it.localId) }

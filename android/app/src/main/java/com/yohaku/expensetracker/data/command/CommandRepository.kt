@@ -18,10 +18,15 @@ class CommandRepreviewRequired(val differencePath:String?=null):IllegalStateExce
 
 /** No network/file work inside the media lock/transaction. Cloud receipt recovery uses cloud_acks. */
 class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry=CommandRegistry(),
-    private val referenceSnapshot:suspend (CommandPlan)->List<ReferenceRateSnapshot> = {emptyList()},private val enqueueAcks:()->Unit={}) {
+    private val referenceSnapshot:suspend (CommandPlan)->List<ReferenceRateSnapshot> = {emptyList()},private val enqueueAcks:()->Unit={},
+    internal val preferences:AppPreferences?=null,sourceRoot:java.io.File?=null,
+    private val applicationContext:android.content.Context?=null,afterEffectWrite:(suspend (CommandEffectEntity)->Unit)?=null) {
     private val db=ledger.db
     private val dao=db.commandDao()
+    val followups=CommandFollowupCoordinator(this,sourceRoot,applicationContext,afterEffectWrite)
+    fun effects(planId:String)=dao.effects(planId)
     fun history(bookId:String)=dao.history(bookId)
+    fun observePlan(id:String)=dao.observePlan(id)
     suspend fun plan(id:String)=requireNotNull(dao.plan(id))
     fun confirmation(row:CommandPlanEntity)=row.confirmationJson?.let{readCommandDocument<ConfirmationModel>(it)}
 
@@ -53,6 +58,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
         val original=plan(id)
         check(original.status=="EXECUTED"&&original.undoOf==null){"方案不可再次撤销 / このプランは再び取り消せません"}
         check(undoAvailability(original).available){undoAvailability(original).let{"${it.zh} / ${it.ja}"}}
+        check(dao.planEffects(id).all{it.status=="DONE"}){"请先完成或重试后续步骤 / 後続処理を完了・再試行してください"}
         dao.undoFor(id)?.let{existing->
             check(existing.status!="EXECUTED")
             val pending=existing.copy(status="PENDING",confirmationJson=null,normalizedJson=null,checksJson="[]",error=null)
@@ -72,9 +78,9 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
         if(saved==null||saved.version==1&&saved.steps.any{it.command=="local.account.deleteUnused"})
             return UndoAvailability(false,"旧执行记录没有完整的对象创建与引用快照，不能安全撤销。","以前の実行履歴には対象の作成・参照の完全な情報がなく、安全に取り消せません。")
         val model=confirmation(row)
-        val unavailable=model?.steps?.filter{!it.undo.available}.orEmpty()
+        val unavailable=model?.steps?.withIndex()?.filter{!it.value.undo.available}.orEmpty()
         if(unavailable.isNotEmpty())return UndoAvailability(false,
-            unavailable.joinToString("\n"){"步骤 ${it.stepId}：${it.undo.zh}"},unavailable.joinToString("\n"){"ステップ ${it.stepId}：${it.undo.ja}"})
+            unavailable.joinToString("\n"){"${commandStepTitle(it.index+1,it.value.command).first}：${it.value.undo.zh}"},unavailable.joinToString("\n"){"${commandStepTitle(it.index+1,it.value.command).second}：${it.value.undo.ja}"})
 
         return UndoAvailability(true,"可整批撤销；任何受影响对象发生变化都会阻止整批撤销。","一括取消が可能です。対象の変更がある場合は全体の取消を停止します。")
     }
@@ -116,7 +122,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
     }
     suspend fun confirm(id:String,checks:Set<String>):CommandPlanEntity {
         val row=plan(id)
-        if(row.status=="EXECUTED")return row
+        if(row.status=="EXECUTED"){followups.resume();return plan(id)}
         check(row.status=="PENDING")
         val preview=requireNotNull(confirmation(row)){"请先预览 / 先にプレビューしてください"}
         check(preview.executable){if(preview.conflicts.isNotEmpty())"存在撤销冲突，不能整批撤销 / 変更の競合があるため一括取消できません"else"资料不足，不能执行 / 情報不足のため実行できません"}
@@ -137,6 +143,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
                     if(LocalDate.now(ledger.clock).toString()!=preview.context.asOfDate)throw CommandRepreviewRequired("$.context.asOfDate")
                     if(ledger.clock.zone.id!=preview.context.zoneId)throw CommandRepreviewRequired("$.context.zoneId")
                     currentCoroutineContext().ensureActive()
+                    execution.followups.forEach{effect->dao.enqueue(CommandEffectEntity(effect.id,current.planId,effect.stepId,effect.mode,storeCommandJson(commandJson.encodeToString(effect))))}
                     val done=current.copy(status="EXECUTED",checksJson=commandJson.encodeToString(checks.sorted()),executedAt=ledger.clock.millis(),executionJson=storeCommandJson(commandJson.encodeToString(execution)),error=null)
                     dao.update(done)
                     if(done.undoOf==null)recordReceipt(done) else {
@@ -147,7 +154,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
                     done
                 }
             }
-            enqueueAcks();return result
+            enqueueAcks();followups.resume();return plan(result.planId)
         }catch(e:CancellationException){throw e}
         catch(e:CommandRepreviewRequired) {
             android.util.Log.d("CommandStage1","confirmation mismatch at ${e.differencePath}")
@@ -168,12 +175,13 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
                 check(it.version in 1..3&&plan.steps==it.steps)
             }
         }
-        val run=CommandRun(ledger,plan.book_id,context,record);val steps=mutableListOf<CommandStep>();val effects=mutableListOf<StepEffect>()
+        val source=this.plan(plan.plan_id)
+        val run=CommandRun(ledger,plan.book_id,context,record,plan.plan_id,source.localId,preferences?.commandValues(plan.book_id).orEmpty(),grantedPermissions());val steps=mutableListOf<CommandStep>();val effects=mutableListOf<StepEffect>()
         val inverses=mutableListOf<UndoPreparation>()
         if(record!=null) {
             val conflicts=run.undoConflicts(record)
             if(conflicts.isNotEmpty())return Triple(NormalizedPlan(plan.steps),ConfirmationModel(context,emptyList(),
-                record.effects.filter{it.type in setOf("book","account","category","merchant","merchantLocation","friend","template","entry","rule","prediction","bill","activity","reserve","recurrence","occurrence","expectedIncome","treat","budgetSetting","ruleValidation","contract","contractBalance","repayment","repaymentAllocation","contractPlan","arrangement","arrangementReconciliation","poolPaymentChange","billAdjustment","creditLimitConfig","creditLimitGroup","creditLimitGroupSetting","creditLimitMember","creditLimitRecovery","creditLimitObservation","financialDraft")&&it.before!=it.after}.map{it.copy(before=it.after,after=it.before)},
+                record.effects.filter{it.type in setOf("preference","analysisPreference","statementAssociation","statementRow","receiptProducts","attachment","csvBatch","drafts","entryDraft","book","account","category","merchant","merchantLocation","friend","template","entry","rule","prediction","bill","activity","reserve","recurrence","occurrence","expectedIncome","treat","budgetSetting","ruleValidation","contract","contractBalance","repayment","repaymentAllocation","contractPlan","arrangement","arrangementReconciliation","poolPaymentChange","billAdjustment","creditLimitConfig","creditLimitGroup","creditLimitGroupSetting","creditLimitMember","creditLimitRecovery","creditLimitObservation","financialDraft")&&it.before!=it.after}.map{it.copy(before=it.after,after=it.before)},
                 conflicts=conflicts,removals=record.removals),run.executionRecord())
         }
         val journal=CommandUndoJournal(ledger,plan.book_id)
@@ -210,7 +218,14 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
             else if(effect.type=="cashForecast")(effect.after as? JsonObject)?.get("periods")?.jsonArray.orEmpty().mapNotNull{it.jsonObject["item"]?.jsonObject?.get("issue")?.jsonPrimitive?.contentOrNull}
             else emptyList()
         }).distinct()
-        val execution=run.executionRecord()
+        // Deferred attachments protect the FINAL transactional entry, including later steps.
+        val finalState=run.state().ledger
+        val execution=run.executionRecord().let{record->record.copy(followups=record.followups.map{f->
+            if(f.kind=="PREFERENCE"&&f.input["key"]==JsonPrimitive("activeBook")&&f.after!=JsonNull)
+                requireNotNull(ledger.dao.book(f.after.jsonPrimitive.content)){"最终所选账本已不可用 / 最後に選択する帳簿が利用できません"}
+            if(f.kind in setOf("ATTACHMENT","DRAFT"))requireNotNull(ledger.dao.book(f.bookId)){"后续步骤所属账本已回收 / 後続処理の帳簿はごみ箱にあります"}
+            if(f.kind=="ATTACHMENT")f.copy(before=attachmentTarget(finalState,f.input.getValue("entryId").jsonPrimitive.content))else f
+        })}
         val guards=inverses.flatMap{it.guards}.distinctBy{it.type to it.key}.map{it.copy(after=run.undoValue(it.type,it.key))}
         val actualEffects=commandJson.decodeFromJsonElement<List<ObjectEffect>>(actualCommandValues(encoded(netEffects(effects)),execution.generatedIds))
         val rows=if(record==null)journal.changes(beforeRows,touchedRows)else emptyList()
@@ -241,9 +256,17 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
             val type="finance:"+row.table
             UndoGuard(type,id,run.undoValue(type,id))
         }
-        val inverseSteps=(if(rows.isEmpty())emptyList()else listOf(CommandStep("restore_objects","local.restoreExecution",1,buildJsonObject{})))+inverses.asReversed().flatMap{it.steps}
+        val inverseSteps=(if(rows.isEmpty())emptyList()else listOf(CommandStep("restore_objects","local.restoreExecution",1,buildJsonObject{})))+preferenceInverseSteps(inverses.asReversed().flatMap{it.steps})
         val undo=if(undoOf==null)UndoRecord(inverseSteps,guards+accountGuards+entryGuards+structureGuards+planningGuards+financeGuards,actualEffects,rows,journal.removals(rows),version=3)else null
         return Triple(NormalizedPlan(steps),ConfirmationModel(context,effects,netEffects(effects),unknown=unknown,removals=record?.removals.orEmpty()),execution.copy(undo=undo))
+    }
+    private fun grantedPermissions():Set<String> {
+        val context=applicationContext?:return emptySet()
+        fun granted(permission:String)=context.checkSelfPermission(permission)==android.content.pm.PackageManager.PERMISSION_GRANTED
+        return buildSet {
+            if(granted(android.Manifest.permission.ACCESS_COARSE_LOCATION)||granted(android.Manifest.permission.ACCESS_FINE_LOCATION))add("LOCATION")
+            if(android.os.Build.VERSION.SDK_INT<33||granted(android.Manifest.permission.POST_NOTIFICATIONS))add("NOTIFICATIONS")
+        }
     }
     private suspend fun recordReceipt(row:CommandPlanEntity) {
         val cloud=db.cloudDao()

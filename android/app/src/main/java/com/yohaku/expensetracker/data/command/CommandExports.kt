@@ -6,6 +6,8 @@ import com.yohaku.expensetracker.domain.finance.FinancialRuleVersion
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import java.time.LocalDate
+import kotlinx.coroutines.flow.first
+import com.yohaku.expensetracker.data.files.FileProtocols
 
 /** Explicit outbound DTOs. No Entity serializer, file path, draft/media payload or credentials. */
 @Serializable data class ContextItem(val id:String,val kind:String,val name:String,val values:JsonObject)
@@ -18,7 +20,7 @@ import java.time.LocalDate
     val settlementDate:String?=null,val originalEvent:String?=null,val toAccount:String?=null,val toMinor:Long?=null,val toCurrency:String?=null,
     val activity:String?=null,val merchantId:String?=null,val cardPaymentMode:String?=null,val cardPaymentRule:String?=null,val financial:JsonObject?=null)
 @Serializable data class RecordsExport(val format:String="yohaku.records",val version:Int=1,val book_id:String,val generatedAt:String,
-    val scope:RecordScope,val records:List<RecordExport>,val activityTreats:List<ContextItem> = emptyList())
+    val scope:RecordScope,val records:List<RecordExport>,val activityTreats:List<ContextItem> = emptyList(),val workflows:List<ContextItem> = emptyList())
 data class CommandExportBundle(val context:LedgerContextExport,val records:RecordsExport?)
 
 fun recordScopeSelector(scope:RecordScope):EntrySelector?=when(scope.mode) {
@@ -28,7 +30,7 @@ fun recordScopeSelector(scope:RecordScope):EntrySelector?=when(scope.mode) {
     else->error("记录范围无效 / 記録の範囲が無効です")
 }
 
-suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope):CommandExportBundle=db.withTransaction {
+suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope,preferences:AppPreferences?=null):CommandExportBundle=db.withTransaction {
     val state=financialReviewState(bookId);val s=state.ledger;val f=state.finance;val l=state.limits
     val originalBook=requireNotNull(dao.book(bookId))
     val items=mutableListOf<ContextItem>()
@@ -62,7 +64,10 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope):Com
     s.activities.forEach{a->add(a.id,"activity",a.name){put("startDate",a.startDate);put("endDate",a.endDate);put("budgetMinor",a.budgetMinor);put("excludeMonthly",a.excludeMonthly);put("ended",a.ended);put("trashed",a.deletedAt!=null);put("participants",encoded(s.participants.filter{it.activityId==a.id}.sortedBy{it.position}.map{it.friendId}))}}
     s.reserves.forEach{a->add(a.id,"reserve",a.name){put("currency",s.book.currency);put("occurrenceId",a.occurrenceId);put("remainingMinor",s.reserveRemaining(a));put("activityId",a.activityId);put("date",a.date);put("amountMinor",a.amountMinor);put("accountId",a.accountId);put("accountMinor",a.accountMinor);put("accountCurrency",a.accountCurrency);put("releasedMinor",a.releasedMinor);put("active",a.active)}}
     s.expectedIncomes.forEach{a->add(a.id,"expected_income",a.name){put("eventId",a.eventId);put("accountId",a.accountId);put("date",a.date);put("currency",a.currency);put("amountMinor",a.amountMinor);put("accountMinor",a.accountMinor);put("status",a.status)}}
-    val coverage=listOf("Book structure and user planning fields; no transaction records unless separately selected.","Monthly natural-language plans are not available in this app version.","Drafts, media bytes, credentials, internal file paths and deleted transaction records excluded. Other-paid activity treats are actual records: included only in the separately selected date-range records export, never automatically in structure or account-only scope.")
+    add(bookId,"analysis_preferences","分析模块与置顶 / 分析項目と固定表示"){put("modules",encoded(analysisModules(s).map{it.name}));put("pinned",encoded(analysisPins(s).map{it.name}.sorted()))}
+    preferences?.commandValues(bookId)?.forEach{(key,value)->add(key,"preference",key){put("value",value)}}
+    db.csvImportDao().batches(bookId).first().forEach{batch->add(batch.id,"csv_batch",batch.fileName){put("rowCount",batch.rowCount);put("importedCount",batch.importedCount);put("accountId",batch.accountId);put("trashed",batch.undoGroupId!=null)}}
+    val coverage=listOf("Book structure and user planning fields; no transaction records unless separately selected.","Analysis/settings and CSV batch metadata are included. Statement rows, receipt product documents/image metadata and CSV record links are included ONLY in the selected records scope; image bytes and paths are excluded.","Monthly natural-language plans are not available in this app version.","Drafts, media bytes, credentials, internal file paths and deleted transaction records excluded. Other-paid activity treats are actual records: included only in the separately selected date-range records export, never automatically in structure or account-only scope.")
     val generated=clock.instant().toString()
     val export=LedgerContextExport(book_id=bookId,generatedAt=generated,coverage=coverage,items=items.sortedWith(compareBy<ContextItem>{it.kind}.thenBy{it.id}),contextDigest="")
     val context=export.copy(contextDigest=digest(encoded(export).jsonObject.let{JsonObject(it.filterKeys{k->k!="contextDigest"})}))
@@ -80,7 +85,26 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope):Com
                 put("allocations",JsonArray(s.allocations.filter{it.treatId==t.id}.map{a->buildJsonObject{put("friendId",a.friendId);put("amountMinor",a.amountMinor);put("baseMinor",a.baseMinor)}}))
             })
         }else emptyList()
-        RecordsExport(book_id=bookId,generatedAt=generated,scope=scope,activityTreats=treats,records=selected.map{e->
+        val workflows=mutableListOf<ContextItem>()
+        val selectedIds=selected.map{it.id}.toSet()
+        db.fileWorkflowDao().statements(bookId).first().forEach{batch->
+            val file=FileProtocols.statement(batch.originalJson)
+            file.rows.filter{row->if(scope.mode=="account")file.account_id==scope.account else row.date>=requireNotNull(scope.from)&&row.date<=requireNotNull(scope.through)}.forEach{row->
+                workflows+=ContextItem(row.row_id,"statement_row",row.summary,buildJsonObject {
+                    put("batchId",batch.id);put("accountId",file.account_id);put("dateBasis",file.date_basis);put("date",row.date);put("direction",row.direction);put("settlement",encoded(row.settlement));put("original",row.original?.let{encoded(it)}?:JsonNull)
+                })
+            }
+        }
+        val products=db.fileWorkflowDao().items(bookId).first().associateBy{it.receiptId}
+        s.receipts.filter{it.eventId in selectedIds}.forEach{receipt->
+            workflows+=ContextItem(receipt.id,"receipt","小票 / レシート",buildJsonObject {
+                put("entryId",receipt.eventId);put("revision",receipt.revision);put("status",receipt.status)
+                put("images",JsonArray(s.entryReceiptImages(receipt.eventId).map{file->buildJsonObject{put("id",file.id);put("name",file.originalName);put("mime",file.mime);put("size",file.size)}}))
+                products[receipt.id]?.let{document->put("products",commandJson.parseToJsonElement(document.recordJson))}
+            })
+        }
+        db.csvImportDao().batches(bookId).first().forEach{batch->val ids=db.csvImportDao().events(bookId,batch.id).filter{it.id in selectedIds}.map{it.id};if(ids.isNotEmpty())workflows+=ContextItem(batch.id,"csv_batch_records",batch.fileName,buildJsonObject{put("entries",encoded(ids.sorted()))})}
+        RecordsExport(book_id=bookId,generatedAt=generated,scope=scope,activityTreats=treats,workflows=workflows.sortedWith(compareBy<ContextItem>{it.kind}.thenBy{it.id}),records=selected.map{e->
             val st=s.settlementByEvent[e.id];val transfer=s.transferByEvent[e.id]
             RecordExport(e.id,e.kind,e.date,e.accountId,e.categoryId,e.currency,e.amountMinor,e.baseMinor,e.merchant,e.note,e.revision,st?.accountMinor,st?.accountCurrency,st?.confirmed,e.historicalIncluded,e.cardPaymentChoice,e.cardPaymentPeriods,e.cardPaymentMonth,e.cardPaymentFeeMinor,
                 st?.settlementDate,st?.originalEventId,transfer?.toAccountId,transfer?.toMinor,transfer?.toCurrency,s.activityByEvent[e.id],s.merchantByEvent[e.id],e.cardPaymentMode,e.cardPaymentRuleId,

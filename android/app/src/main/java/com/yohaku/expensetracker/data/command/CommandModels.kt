@@ -36,7 +36,7 @@ internal fun canonical(value:JsonElement):JsonElement=when(value) {
     val executable:Boolean get()=conflicts.isEmpty()&&steps.none{it.missing.isNotEmpty()}
 }
 @Serializable data class NormalizedPlan(val steps:List<CommandStep>)
-@Serializable data class CommandExecutionRecord(val outputs:Map<String,Map<String,String>>,val generatedIds:Map<String,String>,val undo:UndoRecord?=null)
+@Serializable data class CommandExecutionRecord(val outputs:Map<String,Map<String,String>>,val generatedIds:Map<String,String>,val undo:UndoRecord?=null,val followups:List<CommandFollowup> = emptyList())
 
 @Serializable data class AccountCommandInput(val name:String,val currency:String,val openingMinor:Long,val openingDate:String,
     val account:JsonElement?=null,val type:String="CREDIT",val creditLimit:JsonObject?=null)

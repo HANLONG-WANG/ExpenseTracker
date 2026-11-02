@@ -294,4 +294,78 @@ class CommandFlowTest {
         }
     }
 
+    private fun alignCommandSection(tag:String) {
+        val section=ui.onNodeWithTag(tag)
+        section.performScrollTo();ui.waitForIdle()
+        val page=ui.onNodeWithTag("page-scroll")
+        val offset=section.getUnclippedBoundsInRoot().top.value-page.getUnclippedBoundsInRoot().top.value-8f
+        val density=context.resources.displayMetrics.density
+        page.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy){it(0f,offset*density)}
+        ui.waitForIdle()
+    }
+
+    @Test fun followupPreviewAndStatusAcrossLooks() {
+        for((theme,language) in testLooks(this)) {
+            val row=runBlocking {
+                val b=r.createBook("文件与偏好・ファイルと設定",Currency.JPY,theme,language,startDate="2026-11-01")
+                r.updateBook(r.dao.book(b)!!.copy(initialized=true))
+                val account=r.saveAccount(b,"银行・銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,100000),"2026-11-01")
+                val category=r.saveCategory(b,"日常・日々",EntryKind.EXPENSE,null)
+                val entry=r.saveEntry(b,EntryDraft(accountId=account,categoryId=category,amount="950",date="2026-11-02",merchant="超市・スーパー"))
+                vm.preferences.select(b);vm.preferences.setPhotoSaveOriginal(false)
+                val local=java.util.UUID.randomUUID().toString();val directory=File(context.filesDir,"cloud/$local").apply{mkdirs()};taskDirectories+=directory
+                db.cloudDao().insertTask(CloudTaskEntity(local,b,"general","文件",null,null,"https://example.test",local,"{}",createdAt=0,updatedAt=0,purpose="command"))
+                db.cloudDao().insertTransfers(listOf(CloudTransferEntity(local,0,"receipt.jpg",File(directory,"source-0").path,3,sha256("abc"),"image/jpeg",fileId="uploaded-source",uploadedAt=0)))
+                fun step(id:String,name:String,input:String)=CommandStep(id,name,1,commandJson.parseToJsonElement(input).jsonObject)
+                val plan=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),b,cloud.commands.registry.catalogDigest,r.commandExports(b,RecordScope(),vm.preferences).context.contextDigest,
+                    message=if(language=="ja")"写真の保存方法を変更し、補完する下書きと添付を用意します。"else"修改照片保存方式，准备待补完的草稿并附上源文件。",steps=listOf(
+                        step("photo","preferences.photoStorage","""{"original":true}"""),
+                        step("draft","entry.prepareDraft","""{"set":{"account":"$account","amount":{"currency":"JPY","minor":1200},"date":"2026-11-02","merchant":"超市・スーパー","note":"请补全分类・カテゴリを補完"}}"""),
+                        step("attach","attachment.attachSource","""{"entry":"$entry","sourceName":"receipt.jpg"}""")))
+                cloud.commands.receive(commandClaim(plan,localId=local),"https://example.test",plan.context_digest).also{cloud.commands.preview(it.planId)}
+            }
+            ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==row.bookId&&!vm.busy.value}
+            ui.runOnIdle{vm.openCommandPlan(row.planId)}
+            ui.waitUntil(15000){ui.onAllNodesWithTag("command-mode-draft").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("command-mode-photo").assertTextEquals(if(language=="ja")"保存後に実行"else"提交后执行")
+            ui.onNodeWithTag("command-mode-draft").assertTextEquals(if(language=="ja")"端末での操作が必要"else"需要你在本机操作")
+            alignCommandSection("command-step-photo")
+            ui.onNodeWithTag("command-mode-photo").assertIsDisplayed()
+            ui.onNodeWithTag("command-mode-draft").assertIsDisplayed()
+            shot("$theme-$language-followup-preview")
+            ui.onNodeWithTag("command-step-draft").assert(hasAnyDescendant(hasText(if(language=="ja")"下書きを1件作成し、ご自身で補完して保存"else"将生成 1 份草稿，待你补完后保存")))
+            ui.onNodeWithTag("command-draft-field-amount").assert(hasAnyDescendant(hasText(receiptCurrencyText("1200","JPY"))))
+            ui.onNodeWithTag("command-draft-field-account").assert(hasAnyDescendant(hasText("银行・銀行")))
+            ui.onNodeWithTag("command-draft-field-category").assert(hasAnyDescendant(hasText(if(language=="ja")"ご自身で補完"else"待你补完")))
+            ui.onNodeWithTag("command-draft-field-date").assert(hasAnyDescendant(hasText("2026-11-02")))
+            ui.onNodeWithTag("command-draft-field-note").assert(hasAnyDescendant(hasText("请补全分类・カテゴリを補完")))
+            // The sibling attachment belongs to an existing record, never to this new draft.
+            ui.onNodeWithTag("command-draft-field-files").assert(hasAnyDescendant(hasText(if(language=="ja")"未指定・タスクの元ファイルは自動添付しません"else"未指定；不会自动附上任务源文件")))
+            alignCommandSection("command-draft-preview-draft")
+            shot("$theme-$language-followup-draft")
+            tap("command-confirm")
+            ui.waitUntil(15000){!vm.busy.value&&ui.onAllNodesWithTag("command-followup-retry-attach").fetchSemanticsNodes().isNotEmpty()}
+            val effects=runBlocking{db.commandDao().planEffects(row.planId)}
+            assertEquals(listOf("DONE","WAITING","RETRY"),effects.map{it.status})
+            val undo=runBlocking{cloud.commands.undoAvailability(cloud.commands.plan(row.planId))}
+            assertTrue(undo.zh.contains("步骤 2 · 准备待补完的记账草稿"))
+            assertTrue(undo.ja.contains("ステップ 2 · 補完が必要な記録下書きを用意"))
+            assertFalse(undo.zh.contains("步骤 draft"));assertFalse(undo.ja.contains("ステップ draft"))
+            alignCommandSection("command-followup-status")
+            val states=listOf("photo-PREFERENCE","draft-DRAFT","attach-ATTACHMENT")
+            val labels=if(language=="ja")listOf("完了","操作をお待ちしています","失敗・再試行可能")else listOf("完成","等待你操作","失败，可重试")
+            for((state,label) in states.zip(labels))ui.onNodeWithTag("command-followup-state-$state").assertTextEquals(label).assertIsDisplayed()
+            ui.onNodeWithTag("command-followup-retry-attach").assertIsEnabled().assertIsDisplayed()
+            // Assert full visibility in one viewport BEFORE capturing; database status alone is insufficient.
+            val viewport=ui.onNodeWithTag("page-scroll").getUnclippedBoundsInRoot()
+            for(tag in states.map{"command-followup-state-$it"}+"command-followup-retry-attach") {
+                val bounds=ui.onNodeWithTag(tag).getUnclippedBoundsInRoot()
+                assertTrue("$theme/$language: $tag clipped above",bounds.top>=viewport.top)
+                assertTrue("$theme/$language: $tag clipped below",bounds.bottom<=viewport.bottom)
+            }
+            shot("$theme-$language-followup-status")
+            ui.runOnIdle{vm.navigate("home")}
+        }
+    }
+
 }

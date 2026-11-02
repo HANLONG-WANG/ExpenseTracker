@@ -96,3 +96,9 @@ suspend fun LedgerRepository.undoCsvBatch(bookId:String,batchId:String)=db.withT
     val group=trashEntrySet(bookId,events)
     db.csvImportDao().putBatch(batch.copy(undoGroupId=group))
 }
+
+/** Remember the explicit mapping chosen in the local CSV preview. */
+suspend fun LedgerRepository.saveCsvProfile(bookId:String,signature:String,settings:CsvSettings)=db.withTransaction {
+    requireNotNull(dao.book(bookId))
+    db.csvImportDao().putProfile(CsvProfileEntity(bookId,signature,json.encodeToString(settings)))
+}
