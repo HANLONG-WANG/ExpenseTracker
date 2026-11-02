@@ -4,7 +4,7 @@ import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.model.*
 import java.time.YearMonth
 
-data class BudgetProjection(val month:String,val currency:Currency,val limitMinor:Long?,val spentMinor:Long,val allExpenseMinor:Long,
+@kotlinx.serialization.Serializable data class BudgetProjection(val month:String,val currency:Currency,val limitMinor:Long?,val spentMinor:Long,val allExpenseMinor:Long,
     val independentMinor:Long,val reserveMinor:Long?,val pendingCount:Int,val fixedReserveMinor:Long?=reserveMinor,val activityReserveMinor:Long=0,val fundReserveMinor:Long=0) {
     val remainingMinor get()=limitMinor?.let{Math.subtractExact(it,spentMinor)}
     val availableMinor get()=remainingMinor?.let{remaining->reserveMinor?.let{Math.subtractExact(remaining,it)}}

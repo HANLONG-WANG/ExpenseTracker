@@ -16,6 +16,39 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DatabaseUpgradeTest {
+    @Test fun version35AddsCommandTablesAndPreservesExistingCloudTask()=runBlocking {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val name="upgrade-command-35-36.db";context.deleteDatabase(name)
+        val old=SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name),null)
+        try {
+            val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("com.yohaku.expensetracker.data.db.YohakuDatabase/35.json").bufferedReader().readText()).getJSONObject("database")
+            val entities=schema.getJSONArray("entities")
+            for(i in 0 until entities.length()) {
+                val entity=entities.getJSONObject(i);val table=entity.getString("tableName")
+                old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}",table))
+                val indices=entity.optJSONArray("indices")
+                for(j in 0 until (indices?.length()?:0))old.execSQL(indices!!.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}",table))
+            }
+            val queries=schema.getJSONArray("setupQueries")
+            for(i in 0 until queries.length())old.execSQL(queries.getString(i))
+            old.execSQL("INSERT INTO books (id,name,currency,startDate,theme,language,initialized,budgetMinor,setupStep,archived,deletedAt) VALUES ('b','Existing','JPY','2026-01-01','journal','ja',1,NULL,4,0,NULL)")
+            old.execSQL("INSERT INTO cloud_tasks (localId,bookId,type,title,accountId,bundleId,origin,idempotencyKey,requestJson,taskId,stage,remoteStatus,inputRevision,remoteJson,lastError,createdAt,updatedAt,attempts) VALUES ('task','b','general','Old',NULL,NULL,'https://example.test','key','{}',NULL,'PREPARED',NULL,NULL,NULL,NULL,1,1,0)")
+            old.version=35
+        }finally{old.close()}
+        val db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        try {
+            assertEquals(DATABASE_VERSION,db.openHelper.readableDatabase.version)
+            assertEquals("Existing",db.dao().book("b")!!.name)
+            assertEquals("analysis",db.cloudDao().task("task")!!.purpose)
+            assertTrue(db.commandDao().history("b").first().isEmpty())
+            val plan=com.yohaku.expensetracker.data.command.CommandPlanEntity("p","b","task","https://example.test","remote","result",1,"sha","source","{}","digest",createdAt=2)
+            db.commandDao().insert(plan);assertEquals(plan,db.commandDao().plan("p"))
+            val effect=com.yohaku.expensetracker.data.command.CommandEffectEntity("e","p","s","post-commit","{}")
+            db.commandDao().enqueue(effect);assertEquals(listOf(effect),db.commandDao().pendingEffects())
+            db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
+        }finally{db.close();context.deleteDatabase(name)}
+    }
+
     @Test fun versions33And34RestoreThroughBackupDatabaseWithExistingData()=runBlocking {
         for(version in listOf(33,34)) {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -66,7 +99,7 @@ class DatabaseUpgradeTest {
             db.creditLimitDao().insertConfig(CreditLimitConfigEntity(book,"limit",card,1,"2026-01-01","JPY",10000,null,null,"TOTAL_ONLY",null,"2026-01-01",0,null,null,"{\"movements\":[]}","PAYMENT_DATE","PRINCIPAL_ONLY","TRANSACTION_DATE","Asia/Tokyo",0))
             db.close()
             val old=SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE)
-            try {old.execSQL("DROP TABLE entry_templates");restoreFixtureTable(old,"room-v32-schema.json","recurrences");restoreFixtureTable(old,"room-v32-schema.json","events");restoreFixtureTable(old,"room-v32-schema.json","credit_limit_configs");old.version=32}finally{old.close()}
+            try {old.execSQL("DROP TABLE entry_templates");restoreFixtureTable(old,"room-v32-schema.json","recurrences");restoreFixtureTable(old,"room-v32-schema.json","events");restoreFixtureTable(old,"room-v32-schema.json","credit_limit_configs");restoreFixtureTable(old,"room-v32-schema.json","cloud_tasks");old.execSQL("DROP TABLE command_effects");old.execSQL("DROP TABLE command_plans");old.version=32}finally{old.close()}
             db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
             val config=db.creditLimitDao().graph(book).first()!!.configs.single()
             assertEquals(DATABASE_VERSION,db.openHelper.readableDatabase.version);assertEquals(0,config.recoveryDelayDays);assertEquals("PAYMENT_DATE",config.recovery)

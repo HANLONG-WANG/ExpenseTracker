@@ -152,7 +152,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
         require(a.active||old?.accountId==a.id){"请选择启用的付款账户 / 有効な支払口座を選択してください"}
         require(draft.kind!=EntryKind.INCOME||!AccountType.valueOf(a.type).debt){"收入请选择资金账户；还款或退款使用对应类型 / 収入は資金口座へ。返済・返金は専用の種類で記録してください"}
         val c=dao.category(bookId,draft.categoryId ?: error("请选择分类 / カテゴリを選択してください")) ?: error("分类不属于本账本 / 別の帳簿のカテゴリです")
-        require(c.kind==draft.kind.name && (categoryEnabled(bookId,c.id)||old?.categoryId==c.id))
+        validateEntryCategory(draft.kind.name,c,categoryEnabled(bookId,c.id),old?.categoryId)
         val amount=Money.parse(draft.amount,draft.originalCurrency ?: Currency.valueOf(a.currency)); require(amount.minor>0){"金额应大于零 / 金額は0より大きくしてください"}
         val accountAmount=if(amount.currency.name==a.currency)amount else Money.parse(draft.accountAmount,Currency.valueOf(a.currency))
         require(accountAmount.minor>0)

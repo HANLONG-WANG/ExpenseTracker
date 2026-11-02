@@ -1,0 +1,31 @@
+{
+  "format": "yohaku.command-plan",
+  "version": 1,
+  "plan_id": "22222222-2222-4222-8222-222222222222",
+  "book_id": "book-1",
+  "catalog_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "context_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "message": "只调整选定范围内的分类，金额、结算和附件保持原样。请核对手机列出的匹配记录及预算归属变化。",
+  "questions": [],
+  "steps": [
+    {
+      "id": "recat",
+      "command": "entry.update",
+      "command_version": 1,
+      "input": {
+        "targets": {
+          "select": {
+            "from": "2026-10-01",
+            "through": "2026-10-31",
+            "category": "food-old",
+            "merchant_contains": "星巴克",
+            "kind": "EXPENSE"
+          }
+        },
+        "set": {
+          "category": "coffee"
+        }
+      }
+    }
+  ]
+}

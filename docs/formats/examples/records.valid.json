@@ -1,0 +1,35 @@
+{
+  "format": "yohaku.records",
+  "version": 1,
+  "book_id": "book-1",
+  "generatedAt": "2026-11-02T00:00:00Z",
+  "scope": {
+    "mode": "dates",
+    "from": "2026-10-01",
+    "through": "2026-10-31",
+    "account": null
+  },
+  "records": [
+    {
+      "id": "record-1",
+      "kind": "EXPENSE",
+      "date": "2026-10-20",
+      "account": "bank-1",
+      "category": "food-old",
+      "currency": "JPY",
+      "amountMinor": 500,
+      "baseMinor": 500,
+      "merchant": "星巴克",
+      "note": "",
+      "revision": 1,
+      "accountMinor": 500,
+      "accountCurrency": "JPY",
+      "confirmed": true,
+      "historicalIncluded": false,
+      "cardPaymentChoice": null,
+      "cardPaymentPeriods": null,
+      "cardPaymentMonth": null,
+      "cardPaymentFeeMinor": null
+    }
+  ]
+}

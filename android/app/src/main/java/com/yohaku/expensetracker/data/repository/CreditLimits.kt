@@ -17,10 +17,10 @@ import java.lang.Math.subtractExact
 @Serializable data class LimitAnchor(val movements:List<LimitMovement>)
 @Serializable data class GroupLimitAnchor(val configs:Map<String,String?>,val movements:Map<String,List<LimitMovement>>)
 data class LimitPayment(val eventId:String,val accountId:String,val date:String,val clearingDate:String?,val principalMinor:Long?,val confirmed:Boolean,val installmentMinor:Long?,val revolvingMinor:Long?,val proof:String)
-data class LimitAmount(val capacityMinor:Long?,val usedMinor:Long?,val availableMinor:Long?,val excessMinor:Long?)
-data class AccountCreditLimit(val config:CreditLimitConfigEntity?,val total:LimitAmount,val installment:LimitAmount,val revolving:LimitAmount,
+@kotlinx.serialization.Serializable data class LimitAmount(val capacityMinor:Long?,val usedMinor:Long?,val availableMinor:Long?,val excessMinor:Long?)
+@kotlinx.serialization.Serializable data class AccountCreditLimit(val config:CreditLimitConfigEntity?,val total:LimitAmount,val installment:LimitAmount,val revolving:LimitAmount,
     val issues:List<String>,val groupId:String?,val effectiveTotalMinor:Long?)
-data class GroupCreditLimit(val group:CreditLimitGroupEntity,val total:LimitAmount,val issues:List<String>)
+@kotlinx.serialization.Serializable data class GroupCreditLimit(val group:CreditLimitGroupEntity,val total:LimitAmount,val issues:List<String>)
 
 fun CreditLimitGraph.currentConfig(accountId:String,date:String)=configs.filter{it.accountId==accountId&&it.effectiveFrom<=date}.maxWithOrNull(compareBy<CreditLimitConfigEntity>{it.effectiveFrom}.thenBy{it.version})
 private fun mode(s:BookSnapshot,f:FinancialGraph,accountId:String,eventId:String):String? {

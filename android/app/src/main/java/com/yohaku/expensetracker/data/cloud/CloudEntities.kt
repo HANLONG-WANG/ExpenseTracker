@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
 data class CloudTaskEntity(@PrimaryKey val localId:String, val bookId:String, val type:String, val title:String,
     val accountId:String?, val bundleId:String?, val origin:String, val idempotencyKey:String, val requestJson:String,
     val taskId:String?=null, val stage:String="PREPARED", val remoteStatus:String?=null, val inputRevision:Int?=null,
-    val remoteJson:String?=null, val lastError:String?=null, val createdAt:Long, val updatedAt:Long, val attempts:Int=0)
+    val remoteJson:String?=null, val lastError:String?=null, val createdAt:Long, val updatedAt:Long, val attempts:Int=0, @ColumnInfo(defaultValue="'analysis'") val purpose:String="analysis")
 
 @Entity(tableName="cloud_transfers", primaryKeys=["localId","position"], foreignKeys=[
     ForeignKey(entity=CloudTaskEntity::class,parentColumns=["localId"],childColumns=["localId"],onDelete=ForeignKey.CASCADE)])

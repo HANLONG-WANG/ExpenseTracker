@@ -10,6 +10,7 @@ data class BookEntity(@PrimaryKey val id: String, val name: String, val currency
 data class BookOverview(@Embedded val book:BookEntity,val accountCount:Int,val recordCount:Int,val monthlyBudgetMinor:Long?=book.budgetMinor,val planningCount:Int=0,val fileCount:Int=0,val financialPlanCount:Int=0,val statementCount:Int=0)
 
 @Entity(tableName="accounts", primaryKeys=["bookId","id"], foreignKeys=[ForeignKey(entity=BookEntity::class,parentColumns=["id"],childColumns=["bookId"])], indices=[Index("bookId")])
+@kotlinx.serialization.Serializable
 data class AccountEntity(val bookId: String, val id: String, val name: String, val type: String, val currency: String,
     val openingMinor: Long, val openingDate: String, val active: Boolean=true)
 
@@ -17,6 +18,7 @@ data class AccountEntity(val bookId: String, val id: String, val name: String, v
     ForeignKey(entity=BookEntity::class,parentColumns=["id"],childColumns=["bookId"]),
     ForeignKey(entity=CategoryEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","parentId"])
 ], indices=[Index("bookId"),Index(value=["bookId","parentId"])])
+@kotlinx.serialization.Serializable
 data class CategoryEntity(val bookId: String, val id: String, val name: String, val kind: String,
     val parentId: String?=null, val favorite: Boolean=false, val active: Boolean=true,
     @ColumnInfo(defaultValue="NULL") val icon: String?=null)

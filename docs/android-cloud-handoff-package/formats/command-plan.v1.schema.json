@@ -1,0 +1,1651 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yohaku.example/formats/command-plan.v1.schema.json",
+  "title": "Yohaku command-plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "yohaku.command-plan"
+    },
+    "version": {
+      "const": 1
+    },
+    "plan_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "book_id": {
+      "type": "string"
+    },
+    "catalog_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "context_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "message": {
+      "type": "string"
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+              },
+              "command": {
+                "const": "account.save"
+              },
+              "command_version": {
+                "const": 1
+              },
+              "input": {
+                "$ref": "#/$defs/account.save"
+              }
+            },
+            "required": [
+              "id",
+              "command",
+              "command_version",
+              "input"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+              },
+              "command": {
+                "const": "financialRule.addVersion"
+              },
+              "command_version": {
+                "const": 1
+              },
+              "input": {
+                "$ref": "#/$defs/financialRule.addVersion"
+              }
+            },
+            "required": [
+              "id",
+              "command",
+              "command_version",
+              "input"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+              },
+              "command": {
+                "const": "financialPrediction.save"
+              },
+              "command_version": {
+                "const": 1
+              },
+              "input": {
+                "$ref": "#/$defs/financialPrediction.save"
+              }
+            },
+            "required": [
+              "id",
+              "command",
+              "command_version",
+              "input"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+              },
+              "command": {
+                "const": "entry.update"
+              },
+              "command_version": {
+                "const": 1
+              },
+              "input": {
+                "$ref": "#/$defs/entry.update"
+              }
+            },
+            "required": [
+              "id",
+              "command",
+              "command_version",
+              "input"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "plan_id",
+    "book_id",
+    "catalog_digest",
+    "context_digest"
+  ],
+  "$defs": {
+    "stepReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "output"
+      ]
+    },
+    "account.save": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "openingMinor": {
+          "type": "integer"
+        },
+        "openingDate": {
+          "type": "string"
+        },
+        "account": {
+          "anyOf": [
+            {
+              "x-reference-type": "account",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "$ref": "#/$defs/stepReference"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "type": {
+          "type": "string"
+        },
+        "creditLimit": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "totalMinor": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "installmentMinor": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "revolvingMinor": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sharing": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "TOTAL_ONLY",
+                        "SEPARATE_CAPS",
+                        "SHARED_SUBPOOL"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "combinedMinor": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "effectiveFrom": {
+                  "type": "string"
+                },
+                "basisDate": {
+                  "type": "string"
+                },
+                "usedTotalMinor": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "usedInstallmentMinor": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "usedRevolvingMinor": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recovery": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "PAYMENT_DATE",
+                        "PLATFORM_CONFIRMATION",
+                        "MANUAL"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "usageBasis": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "PRINCIPAL_ONLY",
+                        "PLATFORM_ONLY"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "zoneId": {
+                  "type": "string"
+                },
+                "usageStart": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "TRANSACTION_DATE",
+                        "ACCOUNT_POSTING_DATE"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recoveryDelayDays": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "totalMinor",
+                "installmentMinor",
+                "revolvingMinor",
+                "sharing",
+                "combinedMinor",
+                "effectiveFrom",
+                "basisDate",
+                "usedTotalMinor",
+                "usedInstallmentMinor",
+                "usedRevolvingMinor",
+                "recovery",
+                "usageBasis",
+                "zoneId"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "currency",
+        "openingMinor",
+        "openingDate"
+      ]
+    },
+    "financialRule.addVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "x-reference-type": "account",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "$ref": "#/$defs/stepReference"
+            }
+          ]
+        },
+        "rule": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "SINGLE",
+                "INSTALLMENT",
+                "REVOLVING",
+                "FIXED_LOAN",
+                "CREDIT_LINE"
+              ]
+            },
+            "effectiveFrom": {
+              "type": "string"
+            },
+            "zoneId": {
+              "type": "string"
+            },
+            "billing": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "closingDay": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closingDayInCurrentBill": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "paymentMonthOffset": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "paymentDay": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "paymentAccountId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": []
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "installment": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "supportedPeriods": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    },
+                    "feeMethod": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "TOTAL_AMOUNT",
+                            "TOTAL_RATE",
+                            "PER_HUNDRED_TABLE"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "totalFeeMinor": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "totalRate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "feeTable": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "periods": {
+                            "type": "integer"
+                          },
+                          "feePerHundred": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "periods",
+                          "feePerHundred"
+                        ]
+                      }
+                    },
+                    "principalRemainder": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "FIRST",
+                            "LAST"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "feeRemainder": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "FIRST",
+                            "LAST"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "roundingMode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": []
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "revolving": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "interest": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "annualRate": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "frequency": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "DAILY",
+                                "MONTHLY"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "balanceBasis": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "EVENT_BALANCE",
+                                "OPENING_BALANCE"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "includeStart": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "includeEnd": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "yearDays": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rounding": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "EACH_DAY",
+                                "PERIOD_TOTAL"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "roundingMode": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "firstCharge": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "NORMAL",
+                                "WAIVED"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": []
+                    },
+                    "method": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "FIXED_PRINCIPAL",
+                            "TOTAL_PAYMENT",
+                            "BALANCE_TIERS"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "paymentMinor": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tiers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "upToMinor": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "paymentMinor": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "upToMinor",
+                          "paymentMinor"
+                        ]
+                      }
+                    },
+                    "tierPaymentIncludesFees": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "allocation": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "FEES_FIRST",
+                            "PRINCIPAL_FIRST"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "automatic": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tierBalanceDate": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "BILL_CLOSING",
+                            "PAYMENT_DATE"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": []
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "loanMethod": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "EQUAL_PRINCIPAL",
+                    "ANNUITY",
+                    "INTEREST_ONLY",
+                    "MANUAL"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "loanInterest": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "annualRate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "frequency": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "DAILY",
+                            "MONTHLY"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "balanceBasis": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "EVENT_BALANCE",
+                            "OPENING_BALANCE"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "includeStart": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "includeEnd": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "yearDays": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rounding": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "EACH_DAY",
+                            "PERIOD_TOTAL"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "roundingMode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "firstCharge": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "NORMAL",
+                            "WAIVED"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": []
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "allocation": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "FEES_FIRST",
+                    "PRINCIPAL_FIRST"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "limitRecovery": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "PAYMENT_DATE",
+                    "PLATFORM_CONFIRMATION",
+                    "MANUAL"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "unsupportedReason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "loanPrincipalRemainder": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "FIRST",
+                    "LAST"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "deadlines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "billId": {
+                    "type": "string"
+                  },
+                  "changeType": {
+                    "type": "string",
+                    "enum": [
+                      "SINGLE",
+                      "INSTALLMENT",
+                      "REVOLVING",
+                      "FIXED_LOAN",
+                      "CREDIT_LINE"
+                    ]
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "time": {
+                    "type": "string"
+                  },
+                  "zoneId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "billId",
+                  "changeType",
+                  "date",
+                  "time",
+                  "zoneId"
+                ]
+              }
+            },
+            "bonusPayments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "startMonth": {
+                    "type": "integer"
+                  },
+                  "startDay": {
+                    "type": "integer"
+                  },
+                  "endMonth": {
+                    "type": "integer"
+                  },
+                  "endDay": {
+                    "type": "integer"
+                  },
+                  "paymentMonth": {
+                    "type": "integer"
+                  },
+                  "paymentDay": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "startMonth",
+                  "startDay",
+                  "endMonth",
+                  "endDay",
+                  "paymentMonth",
+                  "paymentDay"
+                ]
+              }
+            }
+          },
+          "required": [
+            "mode",
+            "effectiveFrom",
+            "zoneId"
+          ]
+        },
+        "paymentAccount": {
+          "anyOf": [
+            {
+              "x-reference-type": "account",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "$ref": "#/$defs/stepReference"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "account",
+        "rule"
+      ]
+    },
+    "financialPrediction.save": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "x-reference-type": "account",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "$ref": "#/$defs/stepReference"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "SINGLE",
+            "INSTALLMENT",
+            "REVOLVING",
+            "FIXED_LOAN",
+            "CREDIT_LINE"
+          ]
+        },
+        "terms": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "agreementDate": {
+                  "type": "string"
+                },
+                "paymentDates": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "accrualWindows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "start": {
+                        "type": "string"
+                      },
+                      "end": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "start",
+                      "end"
+                    ]
+                  }
+                },
+                "overrides": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "number": {
+                        "type": "integer"
+                      },
+                      "principalMinor": {
+                        "type": "integer"
+                      },
+                      "feeMinor": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "number",
+                      "principalMinor",
+                      "feeMinor"
+                    ]
+                  }
+                },
+                "firstPeriodNumber": {
+                  "type": "integer"
+                },
+                "remainingFeeMinor": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "additionalFees": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "number": {
+                        "type": "integer"
+                      },
+                      "minor": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "number",
+                      "minor"
+                    ]
+                  }
+                },
+                "paymentSettings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "fromPaymentDate": {
+                        "type": "string"
+                      },
+                      "method": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "FIXED_PRINCIPAL",
+                              "TOTAL_PAYMENT",
+                              "BALANCE_TIERS"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "paymentMinor": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "tiers": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "upToMinor": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "paymentMinor": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "upToMinor",
+                            "paymentMinor"
+                          ]
+                        }
+                      },
+                      "tierPaymentIncludesFees": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "tierBalanceDate": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "BILL_CLOSING",
+                              "PAYMENT_DATE"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "fromPaymentDate",
+                      "method"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "agreementDate",
+                "paymentDates"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceEvent": {
+          "anyOf": [
+            {
+              "x-reference-type": "entry",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "$ref": "#/$defs/stepReference"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "openingPrincipalMinor": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "paymentAccount": {
+          "anyOf": [
+            {
+              "x-reference-type": "account",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "$ref": "#/$defs/stepReference"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "x-reference-type": "prediction",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "$ref": "#/$defs/stepReference"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidates": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "agreementDate": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "firstDate": {
+                  "type": "string"
+                },
+                "firstEnd": {
+                  "type": "string"
+                },
+                "firstPeriodNumber": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "remainingFeeMinor": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "agreementDate",
+                "count",
+                "firstDate",
+                "firstEnd"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "account",
+        "name",
+        "mode"
+      ]
+    },
+    "entry.update": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ids": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "select": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "from": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "through": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "account": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "category": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "merchant_contains": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "note_contains": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "min_minor": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "max_minor": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "currency": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": []
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [],
+          "oneOf": [
+            {
+              "required": [
+                "ids"
+              ],
+              "properties": {
+                "ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 5000,
+                  "uniqueItems": true
+                },
+                "select": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "required": [
+                "select"
+              ],
+              "properties": {
+                "select": {
+                  "type": "object"
+                },
+                "ids": {
+                  "type": "null"
+                }
+              }
+            }
+          ]
+        },
+        "set": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "category": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "category"
+          ]
+        }
+      },
+      "required": [
+        "targets",
+        "set"
+      ]
+    }
+  }
+}

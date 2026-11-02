@@ -391,6 +391,8 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         notice.value=AppNotice(++noticeSequence,bookId,if(d.id==null)"记录已保存" else "修改已保存到原条目",if(d.id==null)"記録を保存しました" else "元の記録に変更を保存")
     }
     fun dismissEntryReview(){if(!savingEntry){entryReview.value=null;reviewRefreshed.value=false}}
+    val commandPlanId=kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    fun openCommandPlan(id:String){commandPlanId.value=id;navigate("command-preview")}
     fun saveEntry(bookId:String) {
         if(savingEntry)return
         val d=entry.value ?: return
@@ -399,11 +401,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         var review:LedgerChangeReview?=null
         var negative:PendingEntrySave?=null
         execute(onSuccess={if(saved)entrySaved(bookId,d)else {negativeBalanceReview.value=negative;entryReview.value=review;reviewRefreshed.value=false}},onComplete={savingEntry=false}) {
-            val old=d.id?.let{repository.dao.event(bookId,it)}
-            val account=repository.dao.account(bookId,d.accountId?:"")
-            val linked=old?.let{repository.dao.refunds(bookId,it.id)}.orEmpty()
-            val settlement=old?.let{repository.dao.settlement(bookId,it.id)}
-            val needsReview=d.occurrenceId!=null || d.activityId!=null || d.kind in listOf(EntryKind.REFUND,EntryKind.TRANSFER) || old!=null&&(old.currency!=account?.currency || account?.currency!=repository.dao.book(bookId)?.currency || linked.isNotEmpty() || settlement?.confirmed==false || repository.dao.eventActivity(bookId,old.id)!=null)
+            val needsReview=repository.entryNeedsReview(bookId,d)
             val prepared=repository.previewEntry(bookId,d)
             if(prepared.negativeBalanceChanges().isNotEmpty())negative=PendingEntrySave(prepared,needsReview)
             else if(needsReview)review=prepared else {

@@ -55,7 +55,7 @@ fun CloudTask.claimableResult():CloudResult? = if (status != "ready") null else 
 
 data class CloudClaim(val localId:String, val bookId:String, val type:String, val taskId:String,
     val resultId:String, val resultVersion:Int, val sha256:String, val file:File, val text:String,
-    val summary:String?, val warnings:List<String>)
+    val summary:String?, val warnings:List<String>,val purpose:String="analysis")
 
 enum class CloudPhase { PREPARING, UPLOADING, SUBMITTED, QUEUED, ANALYZING, NEEDS_INFO, REVIEW, READY, IMPORTED, ARCHIVED, BLOCKED }
 

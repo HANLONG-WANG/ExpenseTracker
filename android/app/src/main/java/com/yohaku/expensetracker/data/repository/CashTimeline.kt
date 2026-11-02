@@ -9,12 +9,12 @@ import java.lang.Math.addExact
 import java.lang.Math.subtractExact
 
 /** Original currency is retained even when the debit-account conversion is not known. */
-data class CashTimelineItem(val id:String,val kind:String,val sourceId:String,val date:String,val name:String,
+@kotlinx.serialization.Serializable data class CashTimelineItem(val id:String,val kind:String,val sourceId:String,val date:String,val name:String,
     val accountId:String?,val currency:String,val amountMinor:Long?,val incoming:Boolean,
     val accountDeltaMinor:Long?,val estimated:Boolean=false,val issue:String?=null,val scheduledDate:String=date,val referenceRate:ReferenceRateSnapshot?=null)
-data class CashTimelineStep(val item:CashTimelineItem,val baselineAfterMinor:Long?,val includingIncomeAfterMinor:Long?,val baselineEstimated:Boolean=false,val includingEstimated:Boolean=false)
-data class CashAccountOpening(val account:AccountEntity,val actualMinor:Long)
-data class CashTimeline(val asOf:String,val through:String,val openings:List<CashAccountOpening>,val steps:List<CashTimelineStep>)
+@kotlinx.serialization.Serializable data class CashTimelineStep(val item:CashTimelineItem,val baselineAfterMinor:Long?,val includingIncomeAfterMinor:Long?,val baselineEstimated:Boolean=false,val includingEstimated:Boolean=false)
+@kotlinx.serialization.Serializable data class CashAccountOpening(val account:AccountEntity,val actualMinor:Long)
+@kotlinx.serialization.Serializable data class CashTimeline(val asOf:String,val through:String,val openings:List<CashAccountOpening>,val steps:List<CashTimelineStep>)
 
 /** Physical cash as of a date; confirmed future postings enter the timeline exactly once. */
 fun BookSnapshot.cashBalanceAt(account:AccountEntity,date:String):Long = postings.filter{it.accountId==account.id&&it.date<=date}

@@ -1,17 +1,17 @@
 # 余量正式文件协议 v1
 
-这四种 UTF-8 JSON 格式用于文件转换，不是备份或同步。银行文件与小票商品文件用途不同。应用不会OCR、连接金融机构或自动上传文件。将原始流水/小票包与本说明交给助手，助手可独立生成文件；用户须在应用预览后确认保存。
+下面前四种 UTF-8 JSON 格式用于文件转换，不是备份或同步。银行文件与小票商品文件用途不同。应用不会OCR、连接金融机构或自动上传文件；用户在应用内主动把原始资料交给已连接的云端分析台，分析台按本说明生成文件，返回后用户须在应用预览并确认保存。这些云端转换格式不提供本地导出或手动选文件导入入口；用户手动的本地完整备份/恢复另用 `.yohaku` ZIP / `yohaku.backup` v1（整份替换、不加密、不同步、不自动备份，系统云备份仍关闭），见[实现规格](../implementation-spec.md#34-手动完整备份--恢复formatversion1)。
 
 | kind | Schema | 用途 |
 | --- | --- | --- |
-| `yohaku.import-identifiers` | [schema](import-identifiers.v1.schema.json) | 应用导出的当前账本及账户标识，供转换时引用 |
+| `yohaku.import-identifiers` | [schema](import-identifiers.v1.schema.json) | 应用随云端流水任务附带的当前账本及账户标识，供转换时引用 |
 | `yohaku.statement` | [schema](statement.v1.schema.json) | 独立银行/信用卡核对资料，不产生正式账目 |
 | `yohaku.receipt-bundle` | [schema](receipt-bundle.v1.schema.json) | 小票图片ZIP中的 `manifest.json` |
 | `yohaku.receipt-items` | [schema](receipt-items.v1.schema.json) | 回填已有小票商品，不改交易金额 |
 
-每种完整示例在 [examples](examples/)；示例UUID只用于说明，不能替代用户实际ID。bundle示例的校验值与大小是占位示意，不能作为真实ZIP。实际导出必须计算小票图片字节的SHA-256和大小。
+每种完整示例在 [examples](examples/)；示例UUID只用于说明，不能替代用户实际ID。bundle示例的校验值与大小是占位示意，不能作为真实ZIP。实际打包必须计算小票图片字节的SHA-256和大小。
 
-## 共通字段与约束
+## 文件转换的共通字段与约束（前四种格式）
 
 `kind` 必须准确，`version` 必须是整数1；未知版本拒绝。兼容的额外字段可忽略，不能依赖额外字段产生业务效果。未知值使用 `null` 或省略可选字段，不能填0、空日期或猜测金额。所有ID均为规范36字符UUID（大小写可接受，但生成和交换时保持原ID文本）；账本、账户、交易、小票、图片ID只从应用提供的标识/清单复制。file_id、row_id、bundle_id、item_id由生成方分配稳定UUID，修正同一资料时保留ID；不要每次转换同一文件都换ID。
 
@@ -42,7 +42,7 @@ JSON Schema检查结构/类型；应用还检查唯一性、日期区间、语�
 
 ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 小票图片，无普通附件。每张图含image_id、从0连续的position、path、实际入包字节sha256（小写64位）、mime_type与size_bytes。不要解压路径穿越或绝对路径。多包保持同一bundle_id，用part/parts（1起）关联；每张小票及其图片完整放在同一包，不跨包拆一张小票。
 
-清单每条包括record_id、receipt_id、record_revision、receipt_revision、原交易date、merchant（未知可null）、original货币及可选settlement。原币金额与账户实际金额分开。仅用户选中的未整理小票导出，打包时不再压缩或改写已保存的图片。成功保存后仍待回填，导出不意味着已整理。
+清单每条包括record_id、receipt_id、record_revision、receipt_revision、原交易date、merchant（未知可null）、original货币及可选settlement。原币金额与账户实际金额分开。仅用户选中的未整理小票打包上传，打包时不再压缩或改写已保存的图片。提交后仍待回填，不意味着已整理。
 
 助手读取清单和小票图片，返回 `yohaku.receipt-items` JSON，原样复制bundle_id/book_id及每张小票的record_id/receipt_id/两个修订号。每条 `currency` 取原交易币种，`image_ids` 列出本次识别的小票图片ID。不得把信用卡换算金额当商品原币总额。
 
@@ -57,4 +57,19 @@ ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 小票�
 - `statement.invalid.json`：JPY小数、重复row_id、行日期越过区间。schema能发现精度错误，应用同时报告行ID与区间语义错误。
 - `receipt-items.invalid.json`：商品引用了不属于本条来源图片的ID，结构合法但语义拒绝。
 
-有效示例只证明文件格式；能否关联取决于当前账本真实数据及导出修订。
+有效示例只证明文件格式；能否关联取决于当前账本真实数据及打包修订。
+
+## 云端办理格式（阶段 1）
+
+以下四种使用 `format` 字段，采用最小单位整数金额（币种由字段或关联账户明确），**不采用上面的转换格式金额字符串与可忽略额外字段规则**。办理输入严格拒绝未知字段；命令、版本、引用、数量与 digest 还须由本机注册表进行语义校验。
+
+| format | Schema | 用途 |
+| --- | --- | --- |
+| `yohaku.command-plan` | [schema](command-plan.v1.schema.json) | 助手返回的办理方案；最多500步；有类型前向依赖；用户事实不可由助手填写 |
+| `yohaku.capabilities` | [schema](capabilities.v1.schema.json) | 本机注册表导出的能力清单、共享引用定义、永久边界及 catalogDigest |
+| `yohaku.ledger-context` | [schema](ledger-context.v1.schema.json) | 专用结构导出，含生成时间、覆盖说明、contextDigest；不直接序列化数据库 Entity |
+| `yohaku.records` | [schema](records.v1.schema.json) | 用户选择日期范围或账户范围的未删除记录；按账户包含相关转账两端 |
+
+完整协议：[yohaku-command-protocol-v1.md](yohaku-command-protocol-v1.md)。应用源文本是 `android/app/src/main/assets/yohaku-command-protocol-v1.md`；此处及安卓交接包是同步副本。正常/错误样例位于 `examples/`：错误样例分别演示助手代填事实、无效执行模式、缺少 contextDigest、金额类型错误；另有批量分类正常样例。样例 digest 的64个0仅作占位，实际方案必须复制任务附件值，不能直接用于本机验收。
+
+本阶段命令为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`，均为 v1 / transactional。金融规则使用领域字段及显式未知值；非一次付预测必须明确原合同起始期数。不完整规则允许保存；缺少可计算预测的资料时显示缺项并阻止整批执行。

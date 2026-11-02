@@ -1,0 +1,25 @@
+{
+  "format": "yohaku.ledger-context",
+  "version": 1,
+  "book_id": "book-1",
+  "generatedAt": "2026-11-02T00:00:00Z",
+  "coverage": [
+    "Structure only; monthly natural-language plans unavailable; records selected separately."
+  ],
+  "items": [
+    {
+      "id": "bank-1",
+      "kind": "account",
+      "name": "扣款账户",
+      "values": {
+        "type": "BANK",
+        "currency": "JPY",
+        "openingMinor": 100000,
+        "openingDate": "2026-11-01",
+        "balanceMinor": 100000,
+        "active": true
+      }
+    }
+  ],
+  "contextDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+}

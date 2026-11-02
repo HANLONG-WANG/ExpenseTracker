@@ -189,16 +189,32 @@
 - 金融草稿按账本、账户、表单种类和原编辑对象分别保存未完成文本、日期、选项和逐期输入；预计收入及到账草稿归属账本，目标资金账户仍可编辑。金融账户总览与预计收入区提供继续入口，支持明确放弃；资料已改变或原目标不可用时保留草稿并提示核对。恢复输入不恢复过期计算预览、办理确认或期限外接受勾选，正式提交前重新预览。正式保存与对应草稿清除同一事务完成，过期拒绝或失败保留草稿，不能产生两笔实际账目。
 - 正式应用升级采用数据库迁移，保留ID/关联/附件；迁移失败提示真实错误，不重建空数据库掩盖失败。
 - 账本与首次设置资料的读取采用统一加载/成功/失败状态。失败页按当前可知主题和语言提供重新读取与可展开错误详情；保留最后成功读取的外观信息，不静默清空库或用默认设置覆盖损坏资料。重试只重新查询，问题仍存在时继续显示真实失败。
-- 提供用户手动的本地完整备份/恢复（整份替换，不加密，不同步，不自动备份），不提供应用锁；云端分析交接（3.2）只按用户操作上传所选资料，不同步账本。明确关闭并排除Android应用数据云备份与可配置的数据迁移路径，不依赖一个manifest开关就声称控制了所有厂商迁移行为。正式验收检查实际配置。
+- 提供用户手动的本地完整备份/恢复（整份替换，不加密，不同步，不自动备份），不提供应用锁；云端分析交接（3.2）由用户主动提交；云端办理（3.3）自动附带账本结构，具体记录按用户选定范围附带，不做后台账本同步。明确关闭并排除Android应用数据云备份与可配置的数据迁移路径，不依赖一个manifest开关就声称控制了所有厂商迁移行为。正式验收检查实际配置。
 
 ### 3.2 云端分析交接
 
 - 契约见`docs/android-cloud-handoff-package/`（API v1）。设置→云端分析交接台导入网页生成的连接配置JSON（粘贴或选文件），显示站点与设备ID后确认；两项令牌整体以Android Keystore AES-GCM加密存于`noBackupFilesDir`，不进Room、日志或URL。每次请求带`OAI-Sites-Authorization`与`Authorization`两个头，不跟随重定向；401暂停队列并提示重新连接。正式包只接受HTTPS源，可调试包另允许`10.0.2.2/127.0.0.1/localhost`明文供本地模拟服务。
-- 小票：工作台所选未整理小票按已保存字节打包（目标95 MB分包，最终每包须<100 MB，单张超限拒绝提交）。流水：导入流水页唯一入口为选定目标账户与原始资料，并附当前账本`import-identifiers`；一个任务只对应一个账户，不提供手动选JSON导入。通用：任意文件，结果文本另存到用户所选目录，不套用导入器。
+- 小票：工作台所选未整理小票按已保存字节打包（目标95 MB分包，最终每包须<100 MB，单张超限拒绝提交）。流水：导入流水页唯一入口为选定目标账户与原始资料，并附当前账本`import-identifiers`；一个任务只对应一个账户，不提供手动选JSON导入。普通通用分析：任意文件，结果文本另存到用户所选目录，不套用导入器。`general` 类型另承载 `purpose=command` 的云端办理；此类结果进入办理方案校验与预览，不走通用文本另存。
 - 资料先复制到内部目录、记录大小/SHA-256与任务、Idempotency-Key及原始创建体，再由WorkManager串行上传；重试复用同一份字节和同一键，上传回包丢失先查任务文件。提交确认后才登记小票导出批次（`recordSavedReceiptExport`）。待补资料任务可补充文件后再次提交。
-- 领取只选`ready`、非过期且`inputRevision`一致的结果，下载到临时文件核对大小与SHA-256后严格UTF-8解码，再走原有`previewStatement`/`previewReceiptItems`预览；保存时按任务锁定的账本/账户/批次校验。本地事务内同时写入业务资料、导入记录（站点+taskId+resultId+sha256）与imported回执；回执由WorkManager重试，绝不重新导入。实际保存失败才发failed，取消预览不发送。
+- 领取只选`ready`、非过期且`inputRevision`一致的结果，下载到临时文件核对大小与SHA-256后严格UTF-8解码，小票/流水再走原有`previewStatement`/`previewReceiptItems`预览，办理任务进入`CommandRepository.receive → preview`；保存时按任务锁定的账本/账户/批次校验。本地事务内同时写入业务资料、导入记录（站点+taskId+resultId+sha256）与imported回执；回执由WorkManager重试，绝不重新导入。实际保存失败才发failed，取消预览不发送。
 - 前台打开交接台时按需轮询（30秒），无推送、无后台同步。网页工作台由系统浏览器打开。
 - 云端工作台另提供 MCP Events：用户在 Work 建立持续订阅后，首次上传提交或补充资料提交可触发助手处理；此为服务端到 Work 的事件通知，不是手机推送。协议、投递重试边界与接入步骤见 `docs/mcp-implementation-handoff-package/reference/README.md`。手机仍需领取、预览并确认结果。
+
+### 3.3 云端办理（command-plan v1，阶段 1）
+
+- 入口：云端分析交接台→云端办理→提交页。填写需求、选择截图/文件、选择具体记录不上传/日期范围/账户范围；提交前显示结构项目数、记录数、文件数及范围。始终附带协议说明、能力清单和账本结构；按账户范围包含该账户参与的转账两端。没有后台自动上传。
+- 网站保持不变，使用现有 `general`。context 包含 `book_id`、`yohaku_protocol=yohaku.command-task`、`protocol_version=1`、`purpose=command` 和本次结构 digest。instructions 为用户原话加固定协议引导，≤20000字符。任务附件及其原始字节由现有上传队列保存、重试；结果仍为≤2MB UTF-8。
+- 协议源 `android/app/src/main/assets/yohaku-command-protocol-v1.md`；四份 JSON Schema 与正常/错误样例在 `docs/formats/` 及安卓交接包。结构导出使用 `LedgerContextExport/ContextItem` 白名单模型，记录使用 `RecordExport`，不直接向云端序列化 Entity；不含凭证、内部路径、草稿、未选择的记录或媒体字节。月度自然语言计划尚未实现，coverage 明确注明。
+- 注册表生成本机能力清单及 `catalogDigest`，schema 从严格输入模型生成；结果不能替换 schema。领取时比较本机 catalog digest 和提交任务固定的 context digest（不是拿整个最新账本摘要做粗粒度失效判断）。未知协议/命令/版本/字段、引用类型错误或指向后续步骤、永久边界、超过500步/5000目标均拒绝整批。永久边界包括备份恢复、凭证/设备、任何永久删除、清空回收站、到期清理。
+- 命令 v1：`account.save` 保存账户及期初信息，可附本账户完整额度配置；`financialRule.addVersion` 追加规则版本，信用卡涵盖一次付/奖金月、分期、循环（复用领域模型也接受其现有贷款模式）；`financialPrediction.save` 建立/重算期初债务或已有来源记录的规则预测；`entry.update` 仅批量改分类。全部 transactional，无提交后操作或系统交互。额度共享组管理、其他命令及整批撤销按后续阶段实施。
+- 执行：事务外先取本次需要的币种对参考汇率，固定 `asOfDate`、时区和366日资金预测区间。全局 `mediaWrites → withTransaction`；顺序运行适配器，选择器首次解析后保存固定 ID 集合，通过独立内部信号整体回滚。信号只在最外层事务之外捕获，业务错误/协程取消不被当作正常预览。
+- 确认分 INFORMATION / RISK / USER_FACT。RISK 展示具体对象、金额和缺项，正常数值变化不产生逐步“已核对”开关；仅沿用现有独立确认策略（实际资金账户负余额加重）要求具体勾选，其余由最终执行按钮整体确认。事实只能由手机用户勾选，绑定步骤及条件摘要；新建预测要求确认当前已采用的安排、基准日及期初本金。输入中没有 `currentArrangementConfirmed` 等替用户勾选的字段。资料不足的规则明确标示未知；预测缺少日期、本金、原合同起始期数或算法所需信息时保留缺项，不可整批确认。
+- 确认时新事务重跑固定方案，比较结构化模型；新 ID 按步骤/输出角色/业务键替换为占位符。比较固定目标、关键识别事实、绝对前后值、余额/额度/预算与风险、预算及资金预测、逐期金额/日期/扣款账户/规则依据/确认状态、每步中间效果。忽略无业务含义的审计计数及生成时间，保留还款/退款事实 revision、额度组 revision；记录保存时间按排序和默认值语义比较。日期/时区变化单独要求重预览。确认文案不参与比较；相关变化使旧勾选失效。
+- 分类批处理从一次初始快照解析目标并准备全部变化，共用 `validateEntryCategory`；逐条只写 event 与 revision，不重读账本或重算无变化的金融来源。修订保留相同的完整关联资料前后快照，结束后一次读取状态并计算净影响。记账界面仍用相同分类校验；规则表单转换和预测候选日期/计息区间已下沉供界面、命令共用。
+- Room v36：35→36 增加 `cloud_tasks.purpose NOT NULL DEFAULT 'analysis'`、`command_plans`、`command_effects`，登记在 `ALL_MIGRATIONS`。方案保存原始/归一化 JSON、来源、确认模型、执行上下文、用户勾选、状态和执行时间；executionJson同时保留输出及占位符→实际ID映射。大段本地文档（原始方案、归一化方案、确认模型、执行映射）用版本化 gzip/base64 JSON封装保存，避免批量模型撑满Android CursorWindow；云端原始字节与协议不压缩。执行记录、来源去重记录和待发回执在同一业务事务提交；`plan_id` 及 `(origin,taskId,resultId,sha256)` 双重去重。队列表及重试接口为后续阶段预留，本阶段不会创建提交后效果。
+- 成功后沿用 `CloudAckWorker`；提交后进程中断由启动时 `resumePending` 重新调度待发回执，不重执行业务。历史支持待预览/已执行/已拒绝/失败；相同方案重复领取返回已有状态，换结果版本也不会重复执行。解析或试运行失败记录失败并排队 failed，用户拒绝不伪装为 imported。
+- 界面：`ui/features/command/`。杂志用大期号、边栏与细线；手账用手记标题、错落纸卡和旁注线；小物用图标收纳头、圆角容器与步骤标签。复用 YSheet/Panel/YButton/YToggle/RecordFacts，所有系统文案中日文；细项可分页查看，未知项不显示为零。
+- 验证由用户执行 Gradle/模拟器：`CommandProtocolTest`、`CommandConfirmationTest`、`CommandExecutionTest`、`CommandFlowTest` 和 `DatabaseUpgradeTest.version35AddsCommandTablesAndPreservesExistingCloudTask`。性能目标两阶段各≤5秒，测试仅 `Log.i("CommandStage1", ...)` 输出。三主题中日文截图需 `looks=all visual=true`，真实网站往返另由用户实测。本次未宣称编译、仪器或视觉验收通过。
 
 ### 3.4 手动完整备份 / 恢复（formatVersion=1）
 

@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.cloud.*
+import com.yohaku.expensetracker.ui.features.command.CommandEntry
 import com.yohaku.expensetracker.data.files.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.ui.components.*
@@ -57,13 +58,18 @@ import kotlinx.coroutines.delay
     CloudConnectionCard(connection,busy,onImport={connect=true},onTest={vm.execute(onSuccess={notice="连接正常 / 接続できました"}){cloud.testConnection()}},
         onOpen={connection?.let{context.startActivity(Intent(Intent.ACTION_VIEW,it.origin.toUri()))}},onUnbind={unbind=true})
     notice?.let{YText(localized(it),12,Modifier.testTag("cloud-notice"),color=LocalYohaku.current.accent)}
+    CommandEntry(vm,connection?.bound==true&&!busy)
     CloudSection(word("这本账的云端任务","この帳簿のクラウドタスク"),tasks.size)
     if(tasks.isEmpty())YEmpty(word("还没有交出去的资料。可以从小票工作台或流水导入页发起。","まだ渡した資料はありません。レシート整理や明細取込から始められます。"))
     tasks.forEachIndexed{index,view->
         CloudTaskCard(view,index,busy,
             onRetry={cloud.enqueue(view.task.localId);notice="已重新排队上传 / 再アップロードを予約しました"},
             onRefresh={vm.execute{cloud.refresh(view.task.localId)}},
-            onClaim={var result:CloudClaim?=null;vm.execute(onSuccess={claim=result}){result=cloud.claim(view.task.localId)}},
+            onClaim={var result:CloudClaim?=null;var commandId:String?=null
+                vm.execute(onSuccess={commandId?.let{vm.openCommandPlan(it)}?:run{claim=result}}){
+                    val received=cloud.claim(view.task.localId)
+                    if(received.purpose=="command")commandId=cloud.receiveCommand(received).planId else result=received
+                }},
             onSupplement={supplementFor=view.task.localId;supplement.launch(arrayOf("*/*"))},
             onDiscard={vm.execute{cloud.discard(view.task.localId)}})
     }

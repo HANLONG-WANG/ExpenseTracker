@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yohaku.example/formats/capabilities.v1.schema.json",
+  "title": "Yohaku capabilities v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "yohaku.capabilities"
+    },
+    "version": {
+      "const": 1
+    },
+    "catalogDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "$defs": {
+      "type": "object"
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "const": 1
+          },
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "defaults": {
+            "type": "string"
+          },
+          "prerequisites": {
+            "type": "string"
+          },
+          "confirmationTypes": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "INFORMATION",
+                "RISK",
+                "USER_FACT"
+              ]
+            }
+          },
+          "comparisonFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "example": {
+            "type": "object"
+          },
+          "mode": {
+            "enum": [
+              "transactional",
+              "post-commit",
+              "interactive"
+            ]
+          },
+          "unavailable": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "inputSchema",
+          "outputs",
+          "defaults",
+          "prerequisites",
+          "confirmationTypes",
+          "comparisonFields",
+          "description",
+          "example",
+          "mode",
+          "unavailable"
+        ]
+      }
+    },
+    "forbidden": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "steps": {
+          "const": 500
+        },
+        "targets": {
+          "const": 5000
+        }
+      },
+      "required": [
+        "steps",
+        "targets"
+      ]
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "catalogDigest",
+    "$defs",
+    "commands",
+    "forbidden",
+    "limits"
+  ]
+}

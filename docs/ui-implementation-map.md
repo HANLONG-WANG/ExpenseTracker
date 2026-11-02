@@ -70,6 +70,9 @@
 | UI25 | 设置、外观、账本 `settings/appearance/books` | 主题/语言、账本创建编辑切换、归档恢复、本位币限制、资料管理（原稿文件格式帮助已随手动文件链路移除） | `views.js`、`experience.js`、`completion.js` | P05,P19,P23 |
 | UI26 | 新增管理状态 | 回收站、影响预览、永久删除、归档/迁移分类、账本归档、修改记录、规则验证结果 | 现有 sheet/panel/menu 主题样式；`lifecycle.html`补充阶段A影响预览；其余新增设计 | P07,P14,P23 |
 | UI28 | 云端分析交接台 `cloud`、小票/流水云端入口 | 连接配置导入确认/测试/解除、任务列表五段进度、待补资料补充、结果领取后进入原有流水/小票预览、通用结果另存；三主题各自的刊头/信封邮戳/行李吊牌与轨道 | 无HTML稿；按`docs/android-cloud-handoff-package/`契约新增原生设计，组件沿用UI21/UI23主题语汇 | 云端交接 |
+| UI29 | 云端办理提交 `command-submit` | 需求、截图/文件、记录范围及将上传的结构/记录/文件摘要；复用交接入口与上传队列 | `ui/features/command/CommandScreens.kt`；杂志编号分栏、手账手记纸面、小物收纳头 | 云端办理阶段1，待设备视觉验收 |
+| UI30 | 云端办理预览 `command-preview`、逐项核对弹层 | 本机回滚试运行、助手说明、逐步中间效果、净影响/口径/未知项、事实与风险勾选、整批确认/拒绝、变化重预览；细项分页 | `CommandScreens.kt`、`CommandEffectViews.kt`；主题卡片与 `YSheet` | 云端办理阶段1，待 `CommandFlowTest looks=all visual=true` |
+| UI31 | 云端办理历史 `command-history` | 待预览、已执行、已拒绝、失败与详情；持久化方案与来源 | 同上；杂志行号目录、手账条目、小物标签卡 | 云端办理阶段1，待设备视觉验收 |
 | UI27 | 通用控件与状态 | 各主题独立下拉/日期时间/按钮/开关/选择框/Toast/确认/加载/空/错误/未授权/未保存；单个全宽日历 | `themes.js`、`theme-system.css`、各补充CSS | P03，各功能任务 |
 
 UI26新增管理概览/库页见`management.html`，正式管理弹层见`management-dialogs.js`，原生命周期影响预览见`lifecycle.html`。补充设计保留三主题并保存同数据基准，不重做已认可页面。新增数据管理入口不加入评审工具或开发专用菜单。

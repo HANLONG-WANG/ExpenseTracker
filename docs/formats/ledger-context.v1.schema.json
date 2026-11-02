@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yohaku.example/formats/ledger-context.v1.schema.json",
+  "title": "Yohaku ledger-context v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "yohaku.ledger-context"
+    },
+    "version": {
+      "const": 1
+    },
+    "book_id": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string"
+    },
+    "coverage": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "values": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "values"
+        ]
+      }
+    },
+    "contextDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "book_id",
+    "generatedAt",
+    "coverage",
+    "items",
+    "contextDigest"
+  ]
+}

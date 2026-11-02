@@ -1,4 +1,4 @@
-package com.yohaku.expensetracker.ui.features
+package com.yohaku.expensetracker.domain.finance
 
 import com.yohaku.expensetracker.domain.finance.*
 import com.yohaku.expensetracker.domain.model.Currency

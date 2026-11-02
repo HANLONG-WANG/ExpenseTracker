@@ -8,7 +8,7 @@ import java.time.YearMonth
 import java.time.temporal.ChronoUnit
 import java.math.RoundingMode
 
-data class BudgetPace(val sampleStart:String,val asOf:String,val sampleDays:Int,val remainingDays:Int,
+@kotlinx.serialization.Serializable data class BudgetPace(val sampleStart:String,val asOf:String,val sampleDays:Int,val remainingDays:Int,
     val actualSpentMinor:Long,val dailySampleMinor:Long,val futureDailyMinor:Long,val knownFutureMinor:Long?,val limitMinor:Long?) {
     val projectedMinor get()=knownFutureMinor?.let{Math.addExact(actualSpentMinor,Math.addExact(futureDailyMinor,it))}
     val lowConfidence get()=sampleDays<7

@@ -6,7 +6,7 @@
 
 - [正式APK 0.5.0](artifacts/yohaku-release-0.5.0.apk) · [SHA-256](artifacts/yohaku-release-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker`，固定正式签名。
 - [开发APK 0.5.0](artifacts/yohaku-dev-0.5.0.apk) · [SHA-256](artifacts/yohaku-dev-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker.dev`，沿用阶段A–D开发证书。
-- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v35（新商户记账位置 `event_places`，迁移34→35）。三主题、中日文按账本保存。
+- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v36（云端办理 `command_plans`/`command_effects` 与任务 purpose，迁移35→36）。三主题、中日文按账本保存。
 - 开发包可覆盖原开发版本。正式包独立安装，与开发包并存，不自动转移开发包资料。覆盖升级不要先卸载；卸载或清除应用存储会删除账本与内部附件。提供手动本地完整备份/恢复，系统云备份仍关闭。
 - 当前仅专用API36模拟器验证，用户实机未连接。精简实机检查、密钥位置和完整安装升级说明见[发行说明](RELEASE.md)。
 
@@ -41,7 +41,7 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 - 云端分析交接：导入网页生成的连接配置（Keystore加密），把所选小票图片ZIP或银行资料交给私人分析台；中断后按同一份内部文件整份重传（无断点续传）、领取结果核验大小/SHA后走原有预览确认，回执独立重试。
 - 整本归档/回收/恢复/永久清理；账户停用/启用/无引用删除；分类（含二级）归档/取消归档/改父级/明确迁移；活动删除影响与历史保留；记录关联组回收/恢复/永久清空及文件最后引用清理。
 
-提供用户手动的本地完整备份/恢复（整份替换、不加密、不自动备份）；没有账户登录、云同步或应用锁；云端交接只上传用户逐次选中的资料。未知金额保持未知，未确认清偿不假结清。产品包不含测试种子、评审入口或测试验证器。
+提供用户手动的本地完整备份/恢复（整份替换、不加密、不自动备份）；没有账户登录、云同步或应用锁；云端交接由用户逐次发起；办理任务会自动附带账本结构，具体记录按用户选择范围附带，并在提交前显示摘要。未知金额保持未知，未确认清偿不假结清。产品包不含测试种子、评审入口或测试验证器。
 
 ## 记账体验（2026-10-31 源码更新）
 
@@ -293,3 +293,20 @@ adb shell am instrument -w -r \
 仪器测试需要实际兼容设备。真实权限/GPS、IME、跨进程、闹钟/重启、网络服务不能无前置地整类混跑，默认跳过不算通过。专项方法/参数见各测试源码和[阶段E记录](verification/phase-e-status.md)；历史进程/IME依据见A/B/C记录。独立`media-verifier`模块仅提供系统DocumentsProvider和跨UID只读验证，需单独安装，绝不打入产品APK，完成后卸载`com.yohaku.verification`。
 
 专用模拟器`emulator-5580`：标准1170×2532/density480/fontScale1（390dp），窄屏960×2078/density480/fontScale1.3（320dp）。测试后恢复原尺寸/字体/网络/权限等配置。字体许可及数值字形适配见[字体迁移记录](verification/font-migration.md)。
+
+
+## 云端办理（阶段 1）
+
+云端分析交接台新增办理提交、预览和历史。`general + purpose=command` 自动附带协议/能力/账本结构，记录按用户选择范围附带；网站不改。命令 v1 为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`（仅批量分类）。所有步骤本机试运行后回滚，确认重跑比较，原子提交及去重；事实只能由用户勾选。详见[实现规格 3.3](../docs/implementation-spec.md#33-云端办理command-plan-v1阶段-1)和[阶段记录](../docs/plans/cloud-command-stage-1.md)。
+
+必要测试（Gradle 须串行）：
+
+- JVM：`CommandProtocolTest`（严格解析、digest、引用、边界、数量和助手不得代勾）；`CommandConfirmationTest`（结构化语义比较、规则内嵌JSON的ID映射、差异路径）；`CommandRiskTest`（具体风险提示和必要的负余额确认）；回归 `FinancialRuleDraftTest`、`CreditCardOptionsTest`、`EntryPresetsTest`。
+- 仪器：`CommandExecutionTest`（接收固定结果、信用卡→规则→预测、20笔分类、相关/无关变更、缺项、失败/协程取消、提交后重启与双重去重）；`DatabaseUpgradeTest.version35AddsCommandTablesAndPreservesExistingCloudTask`（35→36及旧任务 purpose 默认值）。
+- 性能：`CommandExecutionTest.fiveHundredCategoryChangesOn3700RecordsReportPreviewAndConfirmTimes` 默认运行，不需要性能开关；Logcat 标签 `CommandStage1` 输出 `previewMs`、`confirmMs`，验收各≤5000ms，测试不作时间断言。夹具导入不计时，解析/试运行/回滚、模型持久化及正式重跑/比较/提交均在相应计时内。
+- UI：`CommandFlowTest.submitReceiveReviewCheckConfirmAndHistory`，默认按 `TestLooks` 单外观；视觉检查使用 `looks=all visual=true`，覆盖三主题×中日文，截图 `cloud-command-stage-1/*-submit.png`、`*-preview.png`、`*-checks.png`、`*-history.png`。固定云端结果通过生产接收入口注入，不触网；上传任务与附件内容仍走生产准备流程。真实网站往返另行实测。
+- 下沉回归可运行现有 `FinancialPredictionTest`、`CreditCardOptionsStorageTest`；候选日期及表单交互的完整外观矩阵仅在此次大改验收需要时运行相关流程，不扩展到全系统/性能专项。
+
+数据库新 schema 在 `app/schemas/.../36.json`，`sourceSets.androidTest.assets` 已读取该目录；35→36升级用已导出的35.json作真实起点。旧备份通过同一 `ALL_MIGRATIONS` 升级，办理去重记录不级联删除。
+
+验收结果见[阶段 1 记录](../docs/plans/cloud-command-stage-1.md)。

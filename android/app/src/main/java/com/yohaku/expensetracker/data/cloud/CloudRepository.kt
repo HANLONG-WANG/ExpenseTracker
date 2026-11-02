@@ -6,6 +6,8 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.room.withTransaction
 import com.yohaku.expensetracker.data.files.*
+import com.yohaku.expensetracker.data.command.*
+import com.yohaku.expensetracker.domain.model.Currency
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.platform.CloudAckWorker
 import com.yohaku.expensetracker.platform.CloudTransferWorker
@@ -14,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -38,7 +41,20 @@ internal fun cloudRetryable(error:Exception):Boolean = when(error) {
 
 class CloudRepository(private val context:Context, private val ledger:LedgerRepository,
     private val store:CloudCredentials=CloudConnectionStore(context),
-    private val apiFactory:(CloudConnectionConfig)->CloudApi={ CloudApi(it.baseUrl,it) }) {
+    private val apiFactory:(CloudConnectionConfig)->CloudApi={ CloudApi(it.baseUrl,it) },
+    private val scheduleTransfer:(String)->Unit={CloudTransferWorker.enqueue(context,it)},
+    private val scheduleAcknowledgements:()->Unit={CloudAckWorker.enqueue(context)},
+    private val commandReferenceSnapshot:(suspend (CommandPlan)->List<com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot>)?=null) {
+    private val rateService by lazy { ReferenceRates(AppPreferences(context),clock=ledger.clock) }
+    val commands by lazy { CommandRepository(ledger,referenceSnapshot={plan->
+        if(commandReferenceSnapshot!=null)commandReferenceSnapshot.invoke(plan)else {
+            val currencies=(ledger.dao.accounts(plan.book_id).first().map{Currency.valueOf(it.currency)}+
+                listOf(Currency.valueOf(requireNotNull(ledger.dao.book(plan.book_id)).currency))+
+                plan.steps.filter{it.command=="account.save"}.map{Currency.valueOf(it.input.getValue("currency").jsonPrimitive.content)}).toSet()
+            currencies.flatMap{from->currencies.filter{it!=from}.map{to->from to to}}
+                .mapNotNull{(from,to)->rateService.lookup(from,to).rate}
+        }
+    },enqueueAcks={scheduleAcknowledgements()}) }
     private val db=ledger.db
     private val dao=db.cloudDao()
     private val locks=ConcurrentHashMap<String,Mutex>()
@@ -103,7 +119,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         return buildJsonObject { put("type",type); put("title",title.trim()); put("instructions",instructions); put("context",context) }.toString()
     }
     private suspend fun prepare(bookId:String,type:String,title:String,instructions:String,accountId:String?=null,
-        bundleId:String?=null,taskContext:JsonObject, files:suspend (String,File)->List<CloudTransferEntity>):String = withContext(Dispatchers.IO) {
+        bundleId:String?=null,taskContext:JsonObject,purpose:String="analysis", files:suspend (String,File)->List<CloudTransferEntity>):String = withContext(Dispatchers.IO) {
         val config=credentials()
         check(ledger.dao.book(bookId)!=null) { "账本不存在 / 帳簿がありません" }
         createBody(type,title,instructions,taskContext)
@@ -117,7 +133,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
             val timestamp=now()
             db.withTransaction {
                 dao.insertTask(CloudTaskEntity(localId,bookId,type,title.trim(),accountId,bundleId,config.baseUrl,
-                    localId,request,createdAt=timestamp,updatedAt=timestamp))
+                    localId,request,createdAt=timestamp,updatedAt=timestamp,purpose=purpose))
                 dao.insertTransfers(transfers)
             }
             persisted=true
@@ -178,6 +194,31 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         prepare(bookId,"general",title,"请分析所附资料，以UTF-8文本返回结果。\n$note",taskContext=buildJsonObject { put("book_id",bookId) }) {
             localId,directory -> copySources(localId,directory,sources)
         }
+    suspend fun prepareCommandTask(bookId:String,sources:List<Uri>,title:String,request:String,bundle:CommandExportBundle):String {
+        require(bundle.context.book_id==bookId&&bundle.records?.book_id?.let{it==bookId}!=false)
+        val instructions=request+"\n按附件 yohaku-command-protocol-v1.md 的约定，只返回一份 yohaku.command-plan v1 JSON。"
+        return prepare(bookId,"general",title,instructions,taskContext=buildJsonObject{
+            put("book_id",bookId);put("yohaku_protocol","yohaku.command-task");put("protocol_version",1);put("purpose","command")
+            put("context_digest",bundle.context.contextDigest)
+        },purpose="command") {localId,directory->
+            val texts=linkedMapOf("yohaku-command-protocol-v1.md" to context.assets.open("yohaku-command-protocol-v1.md").bufferedReader(Charsets.UTF_8).use{it.readText()},
+                "yohaku-capabilities-v1.json" to commands.registry.export().toString(),
+                "yohaku-ledger-context-v1.json" to cloudJson.encodeToString(bundle.context))
+            bundle.records?.let{texts["yohaku-records-v1.json"]=cloudJson.encodeToString(it)}
+            val generated=texts.entries.mapIndexed{index,(name,text)->
+                val file=File(directory,name);file.writeText(text,Charsets.UTF_8)
+                require(file.length()<CLOUD_FILE_LIMIT)
+                CloudTransferEntity(localId,index,name,file.path,file.length(),sha256(file),if(name.endsWith(".md"))"text/markdown"else"application/json")
+            }
+            generated+if(sources.isEmpty())emptyList()else copySources(localId,directory,sources,generated)
+        }
+    }
+    suspend fun receiveCommand(claim:CloudClaim):CommandPlanEntity=locked(claim.localId) {
+        val task=validateClaim(claim,"general",allowImported=true)
+        require(task.purpose=="command")
+        val digest=cloudJson.parseToJsonElement(task.requestJson).jsonObject.getValue("context").jsonObject.getValue("context_digest").jsonPrimitive.content
+        commands.receive(claim,task.origin,digest)
+    }
     suspend fun prepareReceiptTask(bookId:String,receiptIds:Set<String>,title:String,note:String):String {
         val bundleId=id()
         val instructions="返回一份 yohaku.receipt-items v1，原样复制 bundle_id、book_id、record_id、receipt_id、record_revision、receipt_revision 和图片ID，不得猜测。\n$note"
@@ -207,7 +248,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         } } catch(e:Exception) { additions.forEach { File(it.path).delete() }; throw e }
         enqueue(localId)
     }
-    fun enqueue(localId:String) { CloudTransferWorker.enqueue(context,localId) }
+    fun enqueue(localId:String) { scheduleTransfer(localId) }
     private suspend fun refreshUnlocked(localId:String):CloudTask {
         val task=row(localId); val taskId=task.taskId ?: error("任务尚未创建 / タスクは未作成です")
         val remote=authenticated(api(task)) { it.task(taskId) }; remember(localId,remote); return remote
@@ -273,7 +314,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         val remote=refreshUnlocked(localId); val task=row(localId)
         val result=remote.claimableResult() ?: error("暂无可领取结果 / 受け取れる結果がありません")
         val metadata=remote.files.firstOrNull { it.id==result.fileId && it.role=="result" } ?: error("结果文件资料缺失 / 結果ファイル情報がありません")
-        check(dao.imported(importKey(task.origin,remote.id,result.id,metadata.sha256))==null) { "结果已导入 / 結果は取込済みです" }
+        check(task.purpose=="command"||dao.imported(importKey(task.origin,remote.id,result.id,metadata.sha256))==null) { "结果已导入 / 結果は取込済みです" }
         if(task.type=="receipt")registerSubmitted(localId,remote)
         val directory=File(root,localId); check(directory.isDirectory || directory.mkdirs())
         val dest=File.createTempFile("result-", ".txt",directory)
@@ -289,10 +330,10 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
             val text=try { Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
                 .decode(ByteBuffer.wrap(dest.readBytes())).toString() }
                 catch(_:java.nio.charset.CharacterCodingException) { error("结果不是有效UTF-8文本 / 結果は有効なUTF-8テキストではありません") }
-            CloudClaim(localId,task.bookId,task.type,remote.id,result.id,result.version,metadata.sha256,dest,text,result.summary,result.validation.warnings)
+            CloudClaim(localId,task.bookId,task.type,remote.id,result.id,result.version,metadata.sha256,dest,text,result.summary,result.validation.warnings,task.purpose)
         } catch(e:Exception) { dest.delete(); throw e }
     }
-    private suspend fun validateClaim(claim:CloudClaim,type:String):CloudTaskEntity {
+    private suspend fun validateClaim(claim:CloudClaim,type:String,allowImported:Boolean=false):CloudTaskEntity {
         val task=row(claim.localId)
         require(task.bookId==claim.bookId && task.type==type && claim.type==type && task.taskId==claim.taskId) { "领取目标不一致 / 受取先が一致しません" }
         val remote=task.remoteJson?.let { cloudJson.decodeFromString<CloudTask>(it) }
@@ -300,7 +341,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         require(result!=null && remote.files.any { it.id==result.fileId && it.role=="result" && it.sha256==claim.sha256 }) { "领取结果关联不一致 / 受け取った結果の関連が一致しません" }
         val sha=MessageDigest.getInstance("SHA-256").digest(claim.text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
         require(sha==claim.sha256) { "领取内容已变化 / 受け取った内容が変わりました" }
-        check(dao.imported(importKey(task.origin,claim.taskId,claim.resultId,claim.sha256))==null) { "结果已导入 / 結果は取込済みです" }
+        check(allowImported||dao.imported(importKey(task.origin,claim.taskId,claim.resultId,claim.sha256))==null) { "结果已导入 / 結果は取込済みです" }
         return task
     }
     private suspend fun recordImport(task:CloudTaskEntity,claim:CloudClaim,localRef:String) {
@@ -315,7 +356,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
             val batchId=ledger.saveStatement(task.bookId,preview,acceptOverlap)
             recordImport(task,claim,batchId); batchId
         }
-        CloudAckWorker.enqueue(context); saved
+        scheduleAcknowledgements(); saved
     }
     suspend fun saveClaimedReceiptItems(claim:CloudClaim,preview:ReceiptBackfillPreview,acceptStale:Boolean,acceptReplacement:Boolean) = locked(claim.localId) {
         db.withTransaction {
@@ -324,12 +365,12 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
             ledger.saveReceiptItems(task.bookId,preview,acceptStale,acceptReplacement)
             recordImport(task,claim,checkNotNull(task.bundleId))
         }
-        CloudAckWorker.enqueue(context)
+        scheduleAcknowledgements()
     }
     suspend fun recordGeneralSaved(claim:CloudClaim,savedName:String) = locked(claim.localId) {
         require(savedName.isNotBlank()) { "保存名称不能为空 / 保存名を入力してください" }
         db.withTransaction { val task=validateClaim(claim,"general"); recordImport(task,claim,savedName) }
-        CloudAckWorker.enqueue(context)
+        scheduleAcknowledgements()
     }
     /** Caller reports an actual failed save attempt; cancelling a preview must not call this. */
     suspend fun reportFailed(claim:CloudClaim) = locked(claim.localId) {
@@ -337,7 +378,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
             validateClaim(claim,claim.type)
             dao.insertAck(CloudAckEntity(claim.localId,claim.resultId,"failed",claim.taskId,now()))
         }
-        CloudAckWorker.enqueue(context)
+        scheduleAcknowledgements()
     }
     suspend fun discard(localId:String) = locked(localId) {
         val task=row(localId)
@@ -350,7 +391,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         store.credentials()
         if(connection.value?.let { it.bound && !it.needsReconnect } != true)return
         dao.unfinished().forEach { enqueue(it.localId) }
-        if(dao.pendingAcks().isNotEmpty())CloudAckWorker.enqueue(context)
+        if(dao.pendingAcks().isNotEmpty())scheduleAcknowledgements()
     }
     internal suspend fun sendPendingAcks():Boolean {
         var retry=false

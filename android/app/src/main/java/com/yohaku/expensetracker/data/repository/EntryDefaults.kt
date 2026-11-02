@@ -39,3 +39,17 @@ fun LedgerChangeReview.negativeBalanceChanges()=impacts.flatMap{it.balances}.fil
 fun normalizedMerchantName(value:String)=Normalizer.normalize(value,Normalizer.Form.NFKC).trim().lowercase(Locale.ROOT)
 fun List<MerchantEntity>.matchingMerchants(query:String)=filter{it.active&&normalizedMerchantName(it.name).contains(normalizedMerchantName(query))}
 fun BookSnapshot.merchantInput(d:EntryDraft,value:String)=d.copy(merchant=value,merchantId=merchants.firstOrNull{it.active&&normalizedMerchantName(it.name)==normalizedMerchantName(value)}?.id,merchantManuallyEdited=true,merchantLocated=false)
+
+/** The editor and command adapters share this policy; risk acceptance remains separate. */
+suspend fun LedgerRepository.entryNeedsReview(bookId:String,d:EntryDraft):Boolean {
+    val old=d.id?.let{dao.event(bookId,it)}
+    val account=dao.account(bookId,d.accountId?:"")
+    val linked=old?.let{dao.refunds(bookId,it.id)}.orEmpty()
+    val settlement=old?.let{dao.settlement(bookId,it.id)}
+    return d.occurrenceId!=null || d.activityId!=null || d.kind in listOf(EntryKind.REFUND,EntryKind.TRANSFER) ||
+        old!=null&&(old.currency!=account?.currency || account?.currency!=dao.book(bookId)?.currency || linked.isNotEmpty() || settlement?.confirmed==false || dao.eventActivity(bookId,old.id)!=null)
+}
+
+internal fun validateEntryCategory(kind:String,category:CategoryEntity,enabled:Boolean,previous:String?) {
+    require(category.kind==kind&&(enabled||previous==category.id)){"分类用途不符或已归档 / カテゴリの用途が異なるかアーカイブ済みです"}
+}

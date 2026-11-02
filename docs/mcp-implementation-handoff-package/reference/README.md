@@ -30,7 +30,7 @@ Authorization: Bearer <deviceToken>
 5. GET `/api/v1/tasks/{id}/result` 只返回当前输入版本已发布结果，未就绪返回409。
 6. POST `/api/v1/tasks/{id}/ack`；JSON `{resultId,status:"imported"|"failed"}`；确认成功导入与仅下载分开记录。
 
-类型 `receipt` / `statement` / `general`。context 可包含 `manifest` 或 `identifiers`；也可以另行上传 JSON。小票 ZIP 内清单自动读取。分包必须属于同一账本和同一 bundle，原始文件不变。银行任务需上传原始流水和账户标识；未提供应用账目时，结果仅是流水转换，不代表已完成对账。
+类型 `receipt` / `statement` / `general`。context 可包含 `manifest` 或 `identifiers`；安卓云端办理使用 `general`，context 带 `purpose=command`、`yohaku_protocol=yohaku.command-task`、`protocol_version=1`，协议、能力与账本结构随附件提供；网站仍只接收结果文本，不直接执行命令。也可以另行上传 JSON。小票 ZIP 内清单自动读取。分包必须属于同一账本和同一 bundle，原始文件不变。银行任务需上传原始流水和账户标识；未提供应用账目时，结果仅是流水转换，不代表已完成对账。
 
 手机不能管理设备、接管分析或发布结果。Web UI 可保存源文件、分析包和任意历史结果；手机文件接口只开放当前可领取结果。后台不执行导入手机账目。
 
@@ -54,7 +54,7 @@ Authorization: Bearer <deviceToken>
 
 事件 `analysis_task.submitted` 支持按 `type`（receipt / statement / general）筛选，省略表示当前用户所有类型。仅在 uploading / needs_info 提交至 queued 时触发；助手退回队列、发布结果不触发。投递携带 taskId、inputRevision、type，原文件通过现有工具读取。重复事件应先读取任务，仅处理 queued 且资料版本一致的任务。
 
-发布后在插件页确认事件已被发现，必要时重新扫描。使用网页版 Work 或桌面 Work + Cloud，委托“持续监控余量分析交接台的新提交任务，读取资料，按余量协议分析、校验并发布；资料不足标记待补充”。网站部署不会替用户创建订阅。新订阅仅覆盖后续提交，不重放历史；现有待处理任务仍需单次委托。
+发布后在插件页确认事件已被发现，必要时重新扫描。使用网页版 Work 或桌面 Work + Cloud，委托“持续监控余量分析交接台的新提交任务，读取资料，按任务附件中的余量协议分析、校验并发布；若 purpose=command，读取 yohaku-command-protocol-v1.md、能力清单和账本结构，仅返回 command-plan v1 JSON，不替用户声明事实或声称已执行；资料不足标记待补充”。网站部署不会替用户创建订阅。新订阅仅覆盖后续提交，不重放历史；现有待处理任务仍需单次委托。
 
 MCP 同一认证端点提供 events/list、events/subscribe、events/unsubscribe。订阅按用户隔离，默认一天、最长七天，ChatGPT 在 refreshBefore 前续订。即使请求无限期订阅也授予有限有效期。回调先通过签名 challenge 验证；密钥轮换保留五分钟双签窗口。密钥仅保存在服务端 D1，不返回任务 API 或日志。
 
