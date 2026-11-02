@@ -184,6 +184,11 @@ import kotlinx.serialization.encodeToString
             }
             LaunchedEffect(baseRoute){if(baseRoute!="recurring")recurringInitialMonth=null}
             val contentScroll=rememberSaveable(baseRoute,book.id,saver=ScrollState.Saver){ScrollState(0)}
+            // The entry sheet leaves composition while a sub-sheet covers it or its draft waits on another page,
+            // so its place is kept per draft here: only a different draft starts from the top.
+            val entryScroll=rememberSaveable(saver=ScrollState.Saver){ScrollState(0)}
+            var entryScrollDraft by rememberSaveable{mutableStateOf<String?>(null)}
+            SideEffect{draft?.mediaSession?.takeIf{it!=entryScrollDraft}?.let{entryScrollDraft=it;entryScroll.dispatchRawDelta(-entryScroll.value.toFloat())}}
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 val chrome=PageChrome(
                     {YAppHeader(book.name,{if(openEntry||financialDraft?.hasInput==true)sheet="books" else vm.navigate("books")},{if(openEntry){requestLeave("settings")}else vm.navigate("settings")})},
@@ -245,7 +250,7 @@ import kotlinx.serialization.encodeToString
                 val fromCurrency=snapshot.accounts.find{it.id==activeDraft.accountId}?.currency
                 val toCurrency=snapshot.accounts.find{it.id==activeDraft.toAccountId}?.currency
                 val transferTitle=if(fromCurrency!=null&&toCurrency!=null&&fromCurrency==toCurrency)word("账户转账","口座振替")else word("换汇与转账","両替と振替")
-                YSheet(if(activeDraft.kind==EntryKind.TRANSFER)transferTitle else if(activeDraft.kind==EntryKind.REFUND)word("退款 · 原币与实际到账","返金・原通貨と実入金") else if(route=="category-picker")word("先选一个分类","まずカテゴリを選ぶ") else if(draft?.id!=null)word("编辑这笔记录","この記録を編集") else if(activeDraft.occurrenceId!=null)word("确认周期账单","定期支払を確認") else word("记一笔","一筆を記録"),{requestLeave()}){
+                YSheet(if(activeDraft.kind==EntryKind.TRANSFER)transferTitle else if(activeDraft.kind==EntryKind.REFUND)word("退款 · 原币与实际到账","返金・原通貨と実入金") else if(route=="category-picker")word("先选一个分类","まずカテゴリを選ぶ") else if(draft?.id!=null)word("编辑这笔记录","この記録を編集") else if(activeDraft.occurrenceId!=null)word("确认周期账单","定期支払を確認") else word("记一笔","一筆を記録"),{requestLeave()},if(route=="category-picker")rememberScrollState() else entryScroll){
                     if(activeDraft.kind==EntryKind.TRANSFER)TransferForm(snapshot,activeDraft,vm,busy,{editAccount=null;sheet="account"},{vm.leaveEntry(book.id,false,entryReturnRoute)})
                     else if(activeDraft.kind==EntryKind.REFUND)RefundForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},busy,{vm.leaveEntry(book.id,false,entryReturnRoute)},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
                     else if(route=="category-picker")CategoryPicker(vm,snapshot,activeDraft,{vm.changeEntry(book.id,it)},{categoryParent=it;categoryKind=activeDraft.kind;editCategory=null;sheet="category"},{vm.navigate("entry")})

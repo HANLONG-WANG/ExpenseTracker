@@ -58,6 +58,9 @@ internal fun Modifier.sheetSticky(top:Boolean)=composed {
     val scroll=scrollState
     var headerHeight by remember{mutableIntStateOf(0)}
     val viewport=remember(scroll){SheetViewport(scroll)}
+    // Only the sheet's own scroller offsets for the stuck title. Nested scrollers (a multiline field's text
+    // scroller, menus) must keep the platform spec, or they forward a cursor rect shifted by the title height.
+    val platformScroll=LocalBringIntoViewSpec.current
     val focusScroll=remember{object:BringIntoViewSpec{
         override fun calculateScrollDistance(offset:Float,size:Float,containerSize:Float):Float =
             super.calculateScrollDistance(offset-headerHeight,size,(containerSize-headerHeight).coerceAtLeast(0f))
@@ -99,7 +102,7 @@ internal fun Modifier.sheetSticky(top:Boolean)=composed {
                         }
                         Column(Modifier.fillMaxWidth().padding(bottom=if(journal)27.dp else 30.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
                             SheetCaption()
-                            Column(Modifier.fillMaxWidth().testTag("sheet-body-content").padding(top=if(objects)14.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(15.dp)){CompositionLocalProvider(LocalSheetViewport provides viewport){content()}}
+                            Column(Modifier.fillMaxWidth().testTag("sheet-body-content").padding(top=if(objects)14.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(15.dp)){CompositionLocalProvider(LocalSheetViewport provides viewport,LocalBringIntoViewSpec provides platformScroll){content()}}
                             SheetColophon()
                         }
                     }

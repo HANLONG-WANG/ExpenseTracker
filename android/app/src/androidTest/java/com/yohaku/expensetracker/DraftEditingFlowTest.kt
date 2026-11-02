@@ -1003,6 +1003,23 @@ class DraftEditingFlowTest {
         }
     }
 
+    /** The multiline note's own text scroller must not inherit the sheet's title-offset bring-into-view rule. */
+    @Test fun typingNotesKeepsSheetScrollPosition() {
+        ui.runOnIdle{vm.editEntry(snapshot(a),snapshot(a).events.single())}
+        ui.waitUntil(10000){vm.entry.value!=null}
+        if(ui.onAllNodesWithTag("field-备注").fetchSemanticsNodes().isEmpty())ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
+        val note=ui.onNodeWithTag("field-备注")
+        note.performScrollTo().performClick()
+        // The keyboard slides in after focus and may legitimately lift the field; measure once it has settled.
+        fun settledTop():Float{var last=Float.NaN;ui.waitUntil(10000){Thread.sleep(250);ui.waitForIdle();val now=note.getUnclippedBoundsInRoot().top.value;(now==last).also{last=now}};return last}
+        val top=settledTop()
+        for(text in listOf("咖","啡","店")){
+            note.performTextInput(text)
+            assertEquals("note moved after typing $text",top,settledTop(),1f)
+        }
+        ui.runOnIdle{vm.discardEntry(a)}
+    }
+
     private fun captureScreen(path:String,name:String) {
         if (!visualEnabled()) return
         val instrumentation=InstrumentationRegistry.getInstrumentation()
