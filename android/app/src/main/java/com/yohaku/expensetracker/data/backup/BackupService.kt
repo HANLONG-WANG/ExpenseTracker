@@ -24,9 +24,7 @@ class BackupService(private val context:Context,private val repository:LedgerRep
             val database=File(stage,"database/yohaku.db");check(database.parentFile!!.mkdirs())
             // Media imports/cleanup use this same lock order: media lock, then Room transaction.
             repository.mediaWrites.withLock { repository.db.withTransaction {
-                snapshotDatabase(repository.db.openHelper.writableDatabase,database)
-                repository.mediaRoot?.takeIf{it.exists()}?.copyRecursively(File(stage,"attachments"),overwrite=false)
-                File(stage,"preferences.json").writeText(BackupArchive.json.encodeToString(preferences.backup()))
+                exportSnapshotInTransaction(stage,database)
             }}
             val books=SQLiteDatabase.openDatabase(database.path,null,SQLiteDatabase.OPEN_READONLY).use{db->
                 db.rawQuery("SELECT b.id,b.name,(SELECT COUNT(*) FROM events e WHERE e.bookId=b.id AND e.purgedAt IS NULL) FROM books b ORDER BY b.rowid",null).use{c->buildList{while(c.moveToNext())add(BackupBook(c.getString(0),c.getString(1),c.getLong(2)))}}
@@ -39,6 +37,12 @@ class BackupService(private val context:Context,private val repository:LedgerRep
             BackupArchive.write(stage,manifest,output)
             manifest
         }finally{stage.deleteRecursively()}
+    }
+    /** Caller must hold repository.mediaWrites and be inside a transaction; staging files are not rollback-safe. */
+    internal suspend fun exportSnapshotInTransaction(stage:File,database:File) {
+        snapshotDatabase(repository.db.openHelper.writableDatabase,database)
+        repository.mediaRoot?.takeIf{it.exists()}?.copyRecursively(File(stage,"attachments"),overwrite=false)
+        File(stage,"preferences.json").writeText(BackupArchive.json.encodeToString(preferences.backup()))
     }
     suspend fun exportDocument(uri:Uri):Pair<String,Long> = withContext(Dispatchers.IO) {
         try {

@@ -30,8 +30,13 @@ suspend fun LedgerRepository.previewBookOperation(bookId:String,operation:BookOp
 
 /** The preview and commit compare the same visible scope; other books never participate. */
 suspend fun LedgerRepository.commitBookOperation(review:BookLifecycleReview):Boolean=mediaWrites.withLock { db.withTransaction {
-    val book=dao.storedBook(review.scope.book.id)?:return@withTransaction false
-    if(bookScope(book.id)!=review.scope)return@withTransaction false
+    commitBookOperationInTransaction(review)
+} }
+
+/** Caller must hold mediaWrites and be inside a database transaction. */
+internal suspend fun LedgerRepository.commitBookOperationInTransaction(review:BookLifecycleReview):Boolean {
+    val book=dao.storedBook(review.scope.book.id)?:return false
+    if(bookScope(book.id)!=review.scope)return false
     previewBookOperation(book.id,review.operation) // Recheck the recovery deadline at confirmation time.
     when(review.operation) {
         BookOperation.ARCHIVE->dao.putBook(book.copy(archived=true))
@@ -40,8 +45,8 @@ suspend fun LedgerRepository.commitBookOperation(review:BookLifecycleReview):Boo
         BookOperation.RESTORE->dao.putBook(book.copy(deletedAt=null))
         BookOperation.PURGE->purgeWholeBook(book.id)
     }
-    true
-} }
+    return true
+}
 
 /**
  * Remove every table's rows in the selected book in one transaction, including file-workflow and
@@ -64,7 +69,12 @@ suspend fun LedgerRepository.previewEmptyBookTrash():List<BookLifecycleReview> =
     dao.books().first().filter{it.deletedAt!=null}.map{previewBookOperation(it.id,BookOperation.PURGE)}
 }
 suspend fun LedgerRepository.commitEmptyBookTrash(reviews:List<BookLifecycleReview>):Boolean=mediaWrites.withLock { db.withTransaction {
-    if(previewEmptyBookTrash()!=reviews)return@withTransaction false
-    reviews.forEach{purgeWholeBook(it.scope.book.id)}
-    true
+    commitEmptyBookTrashInTransaction(reviews)
 } }
+
+/** Caller must hold mediaWrites and be inside a database transaction. */
+internal suspend fun LedgerRepository.commitEmptyBookTrashInTransaction(reviews:List<BookLifecycleReview>):Boolean {
+    if(previewEmptyBookTrash()!=reviews)return false
+    reviews.forEach{purgeWholeBook(it.scope.book.id)}
+    return true
+}

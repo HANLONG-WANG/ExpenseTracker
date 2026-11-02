@@ -64,6 +64,8 @@ data class BookSnapshot(val book:BookEntity,val accounts:List<AccountEntity>,val
     fun path(id:String?):String { val c=categoryById[id] ?: return ""; return c.parentId?.let{p->categoryById[p]?.name?.plus(" / ")} .orEmpty()+c.name }
 }
 class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val mediaRoot:java.io.File?=null) {
+    // Global order: mediaWrites -> database transaction. Inside a transaction that holds the lock,
+    // call the *InTransaction cores; this Mutex is not reentrant.
     internal val mediaWrites=kotlinx.coroutines.sync.Mutex()
     val dao=db.dao()
     val json=Json { encodeDefaults=true }

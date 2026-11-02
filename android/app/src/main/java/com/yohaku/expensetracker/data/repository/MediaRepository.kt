@@ -31,6 +31,7 @@ fun BookSnapshot.entryReceiptImages(eventId:String):List<FileBlobEntity> {
 }
 data class MediaImportResult(val blob:FileBlobEntity,val optimizationFailed:Boolean=false)
 suspend fun LedgerRepository.importMedia(bookId:String,session:String,name:String,mime:String,receipt:Boolean=false,preserveOriginal:Boolean=false,open:()->InputStream):FileBlobEntity = importMediaResult(bookId,session,name,mime,receipt,preserveOriginal,open).blob
+/** File workflow: call outside database transactions; file creation cannot be rolled back by Room. */
 suspend fun LedgerRepository.importMediaResult(bookId:String,session:String,name:String,mime:String,receipt:Boolean=false,preserveOriginal:Boolean=false,open:()->InputStream):MediaImportResult = mediaWrites.withLock {
     require(dao.book(bookId)!=null)
     val draft=dao.storedDraft(bookId)?.let{json.decodeFromString<EntryDraft>(it.json)}?:error("请先打开记账表单 / 記録フォームを開いてください")
@@ -55,13 +56,19 @@ suspend fun LedgerRepository.importMediaResult(bookId:String,session:String,name
         check(stored.renameTo(target)){"无法完成文件保存 / ファイルを保存できません"}
         val blob=FileBlobEntity(bookId,fileId,relative,storedName,storedMime,bytes,digest.digest().joinToString(""){"%02x".format(it)})
         db.withTransaction {
-            val current=dao.storedDraft(bookId)?.let{json.decodeFromString<EntryDraft>(it.json)}
-            require(current?.mediaSession==session){"表单已关闭 / フォームが閉じられました"}
-            dao.putFile(blob);dao.stageMedia(DraftMediaEntity(bookId,fileId,session))
-            saveDraft(bookId,if(receipt)current.copy(mediaInitialized=true,receiptFileIds=current.receiptFileIds+fileId)else current.copy(mediaInitialized=true,attachmentIds=current.attachmentIds+fileId))
+            commitImportedMediaInTransaction(blob,session,receipt)
         }
         committed=true;MediaImportResult(blob,optimizationFailed)
     }finally{partial.delete();jpeg.delete();if(!committed)target.delete()}
+}
+
+/** Caller must hold mediaWrites and be inside a transaction; it owns the prepared file's lifecycle. */
+internal suspend fun LedgerRepository.commitImportedMediaInTransaction(blob:FileBlobEntity,session:String,receipt:Boolean) {
+    val bookId=blob.bookId;val fileId=blob.id
+    val current=dao.storedDraft(bookId)?.let{json.decodeFromString<EntryDraft>(it.json)}
+    require(current?.mediaSession==session){"表单已关闭 / フォームが閉じられました"}
+    dao.putFile(blob);dao.stageMedia(DraftMediaEntity(bookId,fileId,session))
+    saveDraft(bookId,if(receipt)current.copy(mediaInitialized=true,receiptFileIds=current.receiptFileIds+fileId)else current.copy(mediaInitialized=true,attachmentIds=current.attachmentIds+fileId))
 }
 private fun decodePhotoForStorage(file:File,receipt:Boolean):Bitmap? {
     val decoded=try {
@@ -111,7 +118,12 @@ internal suspend fun LedgerRepository.writeMedia(bookId:String,eventId:String,me
 }
 /** A file is removed only after the database proves there is no event, receipt or draft reference. */
 suspend fun LedgerRepository.collectUnusedMedia()=mediaWrites.withLock { db.withTransaction {
-    if(mediaRoot==null)return@withTransaction
+    collectUnusedMediaInTransaction()
+} }
+
+/** Caller must hold mediaWrites and be inside a transaction. Physical deletion is not rollback-safe. */
+internal suspend fun LedgerRepository.collectUnusedMediaInTransaction() {
+    if(mediaRoot==null)return
     val files=dao.allFiles()
     val referencedPaths=files.filter{dao.fileReferenced(it.bookId,it.id)}.map{mediaFile(it).canonicalPath}.toSet()
     files.forEach{file->if(!dao.fileReferenced(file.bookId,file.id)) {
@@ -121,6 +133,4 @@ suspend fun LedgerRepository.collectUnusedMedia()=mediaWrites.withLock { db.with
     }}
     val known=dao.allFiles().map{mediaFile(it).canonicalPath}.toSet()
     mediaRoot.walkTopDown().filter{it.isFile&&it.canonicalPath !in known}.forEach{check(it.delete()){ "无法清理未完成的文件 / 未完了ファイルを削除できません" }}
-}
-
 }
