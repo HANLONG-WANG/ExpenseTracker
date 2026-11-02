@@ -18,7 +18,7 @@ import java.time.LocalDate
     val settlementDate:String?=null,val originalEvent:String?=null,val toAccount:String?=null,val toMinor:Long?=null,val toCurrency:String?=null,
     val activity:String?=null,val merchantId:String?=null,val cardPaymentMode:String?=null,val cardPaymentRule:String?=null)
 @Serializable data class RecordsExport(val format:String="yohaku.records",val version:Int=1,val book_id:String,val generatedAt:String,
-    val scope:RecordScope,val records:List<RecordExport>)
+    val scope:RecordScope,val records:List<RecordExport>,val activityTreats:List<ContextItem> = emptyList())
 data class CommandExportBundle(val context:LedgerContextExport,val records:RecordsExport?)
 
 fun recordScopeSelector(scope:RecordScope):EntrySelector?=when(scope.mode) {
@@ -40,8 +40,8 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope):Com
     s.merchantLocations.forEach{p->add(p.id,"place",p.name){put("merchantId",p.merchantId);put("latitude",p.latitude);put("longitude",p.longitude);put("radiusMeters",p.radiusMeters)}}
     s.friends.forEach{a->add(a.id,"friend",a.name){put("active",a.active)}}
     s.templates.forEach{t->add(t.id,"template",t.name){put("kind",t.kind);put("accountId",t.accountId);put("categoryId",t.categoryId);put("currency",t.currency);put("amountMinor",t.amountMinor);put("merchant",t.merchant);put("merchantId",t.merchantId);put("note",t.note);put("activityId",t.activityId);put("sortOrder",t.sortOrder);put("cardPaymentChoice",t.cardPaymentChoice);put("cardPaymentPeriods",t.cardPaymentPeriods)}}
-    s.budgets.forEach{b->add("${b.month}:${b.scope}","budget",b.month){put("categoryId",b.categoryId);put("currency",s.book.currency);put("amountMinor",b.amountMinor)}}
-    s.recurrences.forEach{r->add(r.id,"recurrence",r.name){put("accountId",r.accountId);put("categoryId",r.categoryId);put("currency",r.currency);put("amountMinor",r.amountMinor);put("baseMinor",r.baseMinor);put("estimated",r.estimated);put("frequency",r.frequency);put("anchorDate",r.anchorDate);put("endDate",r.endDate);put("active",r.active);put("activityId",r.activityId);put("merchant",r.merchant);put("note",r.note);put("cardPaymentChoice",r.cardPaymentChoice);put("cardPaymentPeriods",r.cardPaymentPeriods)}}
+    s.budgets.forEach{b->add("${b.month}:${b.scope}","budget",b.month){put("month",b.month);put("categoryId",b.categoryId);put("currency",s.book.currency);put("amountMinor",b.amountMinor)}}
+    s.recurrences.forEach{r->add(r.id,"recurrence",r.name){put("accountId",r.accountId);put("categoryId",r.categoryId);put("currency",r.currency);put("amountMinor",r.amountMinor);put("baseMinor",r.baseMinor);put("estimated",r.estimated);put("frequency",r.frequency);put("anchorDate",r.anchorDate);put("endDate",r.endDate);put("active",r.active);put("activityId",r.activityId);put("merchant",r.merchant);put("merchantId",r.merchantId);put("note",r.note);put("cardPaymentChoice",r.cardPaymentChoice);put("cardPaymentPeriods",r.cardPaymentPeriods)}}
     s.occurrences.forEach{o->add(o.id,"occurrence",o.name){put("recurrenceId",o.recurrenceId);put("scheduledDate",o.scheduledDate);put("accountId",o.accountId);put("categoryId",o.categoryId);put("currency",o.currency);put("amountMinor",o.amountMinor);put("baseMinor",o.baseMinor);put("estimated",o.estimated);put("status",o.status);put("eventId",o.eventId);put("activityId",o.activityId)}}
     f.rules.forEach{r->add(r.id,"financial_rule",r.mode){put("accountId",r.accountId);put("version",r.version);put("definition",encoded(json.decodeFromString<FinancialRuleVersion>(r.json)))}}
     f.plans.forEach{p->add(p.id,if(p.origin=="POOL")"balance_pool"else"financial_plan",p.name){put("accountId",p.accountId);put("mode",p.mode);put("origin",p.origin);put("sourceEventId",p.sourceEventId);put("currency",p.currency);put("principalMinor",p.principalMinor);put("complete",p.complete);put("active",p.active)
@@ -59,9 +59,9 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope):Com
     l.observations.forEach{v->add(v.id,"credit_limit_observation","可用额度观测 / 利用可能枠の確認"){put("accountId",v.accountId);put("groupId",v.groupId);put("scope",v.scope);put("availableMinor",v.availableMinor);put("observedAt",v.observedAt)}}
     s.activityBudgets.forEach{b->add("${b.activityId}:${b.categoryId}","activity_budget","活动分类预算 / シーンのカテゴリ予算"){put("activityId",b.activityId);put("categoryId",b.categoryId);put("currency",s.book.currency);put("amountMinor",b.amountMinor)}}
     s.activities.forEach{a->add(a.id,"activity",a.name){put("startDate",a.startDate);put("endDate",a.endDate);put("budgetMinor",a.budgetMinor);put("excludeMonthly",a.excludeMonthly);put("ended",a.ended);put("trashed",a.deletedAt!=null);put("participants",encoded(s.participants.filter{it.activityId==a.id}.sortedBy{it.position}.map{it.friendId}))}}
-    s.reserves.forEach{a->add(a.id,"reserve",a.name){put("activityId",a.activityId);put("date",a.date);put("amountMinor",a.amountMinor);put("accountId",a.accountId);put("accountMinor",a.accountMinor);put("accountCurrency",a.accountCurrency);put("releasedMinor",a.releasedMinor);put("active",a.active)}}
-    s.expectedIncomes.forEach{a->add(a.id,"expected_income",a.name){put("accountId",a.accountId);put("date",a.date);put("currency",a.currency);put("amountMinor",a.amountMinor);put("accountMinor",a.accountMinor);put("status",a.status)}}
-    val coverage=listOf("Book structure and user planning fields; no transaction records unless separately selected.","Monthly natural-language plans are not available in this app version.","Drafts, media bytes, credentials, internal file paths and deleted transaction records excluded.")
+    s.reserves.forEach{a->add(a.id,"reserve",a.name){put("currency",s.book.currency);put("occurrenceId",a.occurrenceId);put("remainingMinor",s.reserveRemaining(a));put("activityId",a.activityId);put("date",a.date);put("amountMinor",a.amountMinor);put("accountId",a.accountId);put("accountMinor",a.accountMinor);put("accountCurrency",a.accountCurrency);put("releasedMinor",a.releasedMinor);put("active",a.active)}}
+    s.expectedIncomes.forEach{a->add(a.id,"expected_income",a.name){put("eventId",a.eventId);put("accountId",a.accountId);put("date",a.date);put("currency",a.currency);put("amountMinor",a.amountMinor);put("accountMinor",a.accountMinor);put("status",a.status)}}
+    val coverage=listOf("Book structure and user planning fields; no transaction records unless separately selected.","Monthly natural-language plans are not available in this app version.","Drafts, media bytes, credentials, internal file paths and deleted transaction records excluded. Other-paid activity treats are actual records: included only in the separately selected date-range records export, never automatically in structure or account-only scope.")
     val generated=clock.instant().toString()
     val export=LedgerContextExport(book_id=bookId,generatedAt=generated,coverage=coverage,items=items.sortedWith(compareBy<ContextItem>{it.kind}.thenBy{it.id}),contextDigest="")
     val context=export.copy(contextDigest=digest(encoded(export).jsonObject.let{JsonObject(it.filterKeys{k->k!="contextDigest"})}))
@@ -70,7 +70,16 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope):Com
     val records=selector?.let{q->
         val related=(s.storedPostings.filter{it.accountId==scope.account}.map{it.eventId}+s.transfers.filter{it.toAccountId==scope.account}.map{it.eventId}+s.expenseComponents.filter{it.accountId==scope.account}.map{it.eventId}).toSet()
         val selected=if(scope.mode=="account")s.visibleEvents.filter{it.accountId==scope.account||it.id in related}else selectEntries(s,q)
-        RecordsExport(book_id=bookId,generatedAt=generated,scope=scope,records=selected.map{e->
+        // Other-paid treats are actual facts, not automatically uploaded book structure. They
+        // have no user payment account and are included only in an explicitly selected date range.
+        val treats=if(scope.mode=="dates")s.treats.filter{it.eventId==null&&it.deletedAt==null&&it.date>=requireNotNull(scope.from)&&it.date<=requireNotNull(scope.through)}.map{t->
+            ContextItem(t.id,"activityTreat",t.name,buildJsonObject {
+                put("activityId",t.activityId);put("payerFriendId",t.payerFriendId);put("date",t.date);put("currency",t.currency);put("amountMinor",t.amountMinor);put("baseMinor",t.baseMinor);put("mode",t.mode)
+                put("weights",json.parseToJsonElement(t.weightsJson))
+                put("allocations",JsonArray(s.allocations.filter{it.treatId==t.id}.map{a->buildJsonObject{put("friendId",a.friendId);put("amountMinor",a.amountMinor);put("baseMinor",a.baseMinor)}}))
+            })
+        }else emptyList()
+        RecordsExport(book_id=bookId,generatedAt=generated,scope=scope,activityTreats=treats,records=selected.map{e->
             val st=s.settlementByEvent[e.id];val transfer=s.transferByEvent[e.id]
             RecordExport(e.id,e.kind,e.date,e.accountId,e.categoryId,e.currency,e.amountMinor,e.baseMinor,e.merchant,e.note,e.revision,st?.accountMinor,st?.accountCurrency,st?.confirmed,e.historicalIncluded,e.cardPaymentChoice,e.cardPaymentPeriods,e.cardPaymentMonth,e.cardPaymentFeeMinor,
                 st?.settlementDate,st?.originalEventId,transfer?.toAccountId,transfer?.toMinor,transfer?.toCurrency,s.activityByEvent[e.id],s.merchantByEvent[e.id],e.cardPaymentMode,e.cardPaymentRuleId)

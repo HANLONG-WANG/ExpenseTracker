@@ -224,4 +224,41 @@ class CommandFlowTest {
         }
     }
 
+    @Test fun planningCombinationPreviewAcrossLooks() {
+        for((theme,language) in testLooks(this)) {
+            val row=runBlocking {
+                val b=r.createBook("旅行与日常・旅と日常",Currency.JPY,theme,language,startDate="2026-11-01")
+                r.updateBook(r.dao.book(b)!!.copy(initialized=true))
+                val a=r.saveAccount(b,"银行・銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,300000),"2026-11-01")
+                val c=r.saveCategory(b,"餐饮・食事",EntryKind.EXPENSE,null)
+                vm.preferences.select(b)
+                fun step(id:String,name:String,input:String)=CommandStep(id,name,1,commandJson.parseToJsonElement(input).jsonObject)
+                val p=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),b,cloud.commands.registry.catalogDigest,r.commandExports(b,RecordScope()).context.contextDigest,
+                    message=if(language=="ja")"月予算と京都旅行の確保、定期支払と入金予定を確認してください。"else"请核对月预算、京都旅行预留、周期支出与预计收入。",steps=listOf(
+                        step("month","budget.save","""{"month":"2026-11","amount":{"currency":"JPY","minor":120000}}"""),
+                        step("mode","activity.setMode","""{"enabled":true}"""),
+                        step("activity","activity.save","""{"name":"京都旅行","start":"2026-11-02","end":"2026-11-05","budget":{"currency":"JPY","minor":50000},"categoryBudgets":[{"category":"$c","amount":{"currency":"JPY","minor":20000}}]}"""),
+                        step("reserve","activityReserve.save","""{"activity":{"ref":"activity","output":"activity"},"name":"旅馆・宿泊","date":"2026-11-02","amount":{"currency":"JPY","minor":12000}}"""),
+                        step("friend","friend.save","""{"name":"小林"}"""),
+                        step("participant","activityParticipant.add","""{"activity":{"ref":"activity","output":"activity"},"friend":{"ref":"friend","output":"friend"}}"""),
+                        step("treat","activityTreat.save","""{"activity":{"ref":"activity","output":"activity"},"payer":{"ref":"friend","output":"friend"},"name":"晚餐・夕食","date":"2026-11-02","total":{"currency":"JPY","minor":6000},"base":{"currency":"JPY","minor":6000},"shares":[{"friend":null},{"friend":{"ref":"friend","output":"friend"}}]}"""),
+                        step("rule","recurrence.save","""{"name":"订阅・サブスク","account":"$a","category":"$c","frequency":"MONTHLY","anchorDate":"2026-11-02","amount":{"currency":"JPY","minor":1000}}"""),
+                        step("income","expectedIncome.save","""{"name":"工资・給与","amount":{"currency":"JPY","minor":250000},"date":"2026-11-25","account":"$a"}""")))
+                cloud.commands.receive(commandClaim(p),"https://example.test",p.context_digest).also{cloud.commands.preview(it.planId)}
+            }
+            ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==row.bookId&&!vm.busy.value}
+            ui.runOnIdle{vm.openCommandPlan(row.planId)}
+            ui.waitUntil(15000){ui.onAllNodesWithTag("command-step-reserve").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("command-step-mode").performScrollTo().assert(hasAnyDescendant(hasText(if(language=="ja")"いいえ → はい"else"否 → 是")))
+            shot("$theme-$language-planning-mode-preview")
+            ui.onNodeWithTag("command-step-reserve").performScrollTo()
+            ui.onAllNodesWithText(if(language=="ja")"シーンの残額"else"活动余量",substring=true).onFirst().assertExists()
+            shot("$theme-$language-planning-preview")
+            ui.onNodeWithTag("command-details-reserve").performScrollTo().performClick()
+            ui.waitForIdle()
+            ui.onAllNodesWithText(if(language=="ja")"確保額"else"预留",substring=true).onFirst().assertExists()
+            ui.runOnIdle{vm.navigate("home")}
+        }
+    }
+
 }

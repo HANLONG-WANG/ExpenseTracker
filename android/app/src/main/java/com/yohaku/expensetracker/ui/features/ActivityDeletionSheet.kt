@@ -37,7 +37,7 @@ import com.yohaku.expensetracker.ui.theme.*
                     RecordFacts(listOf(word("计入分类预算的消费","カテゴリ予算に含む支出") to "${money(change.before.spentMinor)} → ${money(change.after.spentMinor)}",word("分类额度","カテゴリ上限") to money(change.after.limitMinor!!)),audit=true)
                 }
             }
-            YText(word("删除无法撤销。原活动的消费和互请仍可从“已删除活动的历史”查看；此处不是还款或清偿。","削除は元に戻せません。「削除済みシーンの履歴」で元の支出とごちそうを確認できます。返済や清算の処理ではありません。"),12)
+            YText(word("原活动的消费和互请仍可从“已删除活动的历史”查看。恢复活动的显示不会自动重启周期和预留；此处不是还款或清偿。","「削除済みシーンの履歴」で元の支出とごちそうを確認できます。表示を復元しても定期予定や確保は自動再開しません。返済や清算の処理ではありません。"),12)
             YButton(word("确认删除活动","シーンを削除"),{
                 var saved=false
                 vm.execute(onSuccess={if(saved)onDeleted()}) {

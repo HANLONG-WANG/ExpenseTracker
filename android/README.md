@@ -295,22 +295,25 @@ adb shell am instrument -w -r \
 专用模拟器`emulator-5580`：标准1170×2532/density480/fontScale1（390dp），窄屏960×2078/density480/fontScale1.3（320dp）。测试后恢复原尺寸/字体/网络/权限等配置。字体许可及数值字形适配见[字体迁移记录](verification/font-migration.md)。
 
 
-## 云端办理（阶段 1–3）
+## 云端办理（阶段 1–4）
 
-云端分析交接台新增办理提交、预览和历史。`general + purpose=command` 自动附带协议/能力/账本结构，记录按用户选择范围附带；网站不改。命令 v1 为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`（扩展到普通记录完整字段）；阶段3覆盖基础账本、账户启停、分类、商户/地点/朋友、四类普通记录及模板，完整清单见[阶段3记录](../docs/plans/cloud-command-stage-3.md)。所有步骤本机试运行后回滚，确认重跑比较，原子提交及去重；事实只能由用户勾选。详见[实现规格 3.3](../docs/implementation-spec.md)和[阶段 2 记录](../docs/plans/cloud-command-stage-2.md)。
+云端分析交接台新增办理提交、预览和历史。`general + purpose=command` 自动附带协议/能力/账本结构，记录按用户选择范围附带；日期范围另含该范围的他人请客记录及分摊，提交页单列数量，未选记录和账户范围不附此类事实；网站不改。命令 v1 为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`（扩展到普通记录完整字段）；阶段3覆盖基础账本、账户启停、分类、商户/地点/朋友、四类普通记录及模板，完整清单见[阶段3记录](../docs/plans/cloud-command-stage-3.md)。阶段4新增预算、活动、预留/参与人/请客、周期规则/实例/支付草稿协调及预计收入共23个v1命令，见[阶段4记录](../docs/plans/cloud-command-stage-4.md)。所有步骤本机试运行后回滚，确认重跑比较，原子提交及去重；事实只能由用户勾选。详见[实现规格 3.3](../docs/implementation-spec.md)和[阶段 2 记录](../docs/plans/cloud-command-stage-2.md)。
 
 阶段 2 增加本机整批撤销：账户/分类/已有预测恢复原快照；本方案新建且无修改、无外部引用的账户、额度/规则版本、预测和从属/修订行整体移除。原分类为空也可恢复为空。执行后相关对象变化阻止整批撤销，原执行与去重记录保留。后续命令按[适配器检查表](../docs/plans/cloud-command-adapter-checklist.md)验收。
 
-必要测试（Gradle 须串行；本实现任务沙箱不运行，由验收方执行）：
+阶段4能力样例已由验收方运行生成命令更新，并通过 `CommandCapabilitiesTest`。第1轮返工未修改能力描述/schema，无需重新生成；后续注册能力变化时再使用下列生成命令。
+
+必要测试（Gradle 须串行；本实现任务不运行，由验收方执行）：
 
 - JVM：`CommandCapabilitiesTest` 规范化比较两处能力样例与真实 `CommandRegistry().export()`；不一致时失败。在 `android/` 运行 `./gradlew -Dyohaku.updateCapabilities=true :app:testDebugUnitTest --tests com.yohaku.expensetracker.data.command.CommandCapabilitiesTest` 可自动写回两份样例（省略开关仅校验）。`CommandProtocolTest`（严格解析、digest、引用、边界、数量和助手不得代勾）；`CommandConfirmationTest`（结构化语义比较、规则内嵌JSON的ID映射、差异路径）；`CommandRiskTest`（具体风险提示和必要的负余额确认）；回归 `FinancialRuleDraftTest`、`CreditCardOptionsTest`、`EntryPresetsTest`。
 - 仪器：`CommandExecutionTest`（接收固定结果、信用卡→规则→预测、20笔分类、相关/无关变更、缺项、失败/协程取消、提交后重启与双重去重）；`DatabaseUpgradeTest.version36AddsUndoIdentityAndPreservesExecutedPlan`（36→37，执行记录/去重保留与撤销关联；原35→36用例继续保留）。阶段2相关流程为信用卡含额度整批撤销、20笔分类恢复、原分类为空恢复、已有账户新增规则/预测重算恢复、外部记录/JSON草稿引用及账单确认阻止；保留 `undoChecksAllTargetsAndRechecksAtConfirmation` 和账户编辑恢复用例；不新增边界/性能专项。
 - 阶段3仪器：`CommandLedgerExecutionTest` 的六个领域组合（账本、账户/分类/3笔、商户地点朋友、转账退款/外币实际金额、模板记账、回收站恢复），均预览→执行→撤销；同类集中验证禁止操作整份拒绝。`batchFiveHundredNotesOnLargeLedgerLogsPerformance` 在3700笔上改500笔备注，用 `CommandStage3` 输出耗时，不断言。
+- 阶段4仪器：`CommandPlanningExecutionTest` 五组合覆盖预算、活动预留/请客/结束、周期支付/取消/批量关联及草稿恢复、预计收入关联/新增到账、分类迁移（包括回收站记录与历史实例）。均验证预览回滚→执行→精确撤销；另一个共用真实冲突用例。禁止操作继续集中在阶段3用例，不扩增边界矩阵。回归用现有 BudgetRecurrenceTest、ActivityTreatTest、ActivityManagementStorageTest、ExpectedIncomeTest 的相关流程。
 - 性能：`CommandExecutionTest.fiveHundredCategoryChangesOn3700RecordsReportPreviewAndConfirmTimes` 默认运行，不需要性能开关；Logcat 标签 `CommandStage1` 输出 `previewMs`、`confirmMs`，验收各≤5000ms，测试不作时间断言。夹具导入不计时，解析/试运行/回滚、模型持久化及正式重跑/比较/提交均在相应计时内。
-- UI：新增 `CommandFlowTest.ledgerCombinationPreviewAcrossLooks`，截图 `cloud-command-stage-1/*-ledger-preview.png`；使用 `looks=all visual=true` 后查看三主题×中日文。原有 `CommandFlowTest.submitReceiveReviewCheckConfirmAndHistory` 与 `undoPreviewConfirmAndHistory`，默认按 `TestLooks` 单外观；视觉检查使用 `looks=all visual=true`，覆盖三主题×中日文，截图 `cloud-command-stage-1/*-submit.png`、`*-preview.png`、`*-checks.png`、`*-history.png`；撤销流程新增 `*-undo-preview.png`、`*-undo-history.png`；信用卡链路增加 `*-card-undo-preview.png`（将移除清单）和 `*-card-undo-history.png`，须逐张查看。固定云端结果通过生产接收入口注入，不触网；上传任务与附件内容仍走生产准备流程。真实网站往返另行实测。
+- UI：阶段4新增 `CommandFlowTest.planningCombinationPreviewAcrossLooks`，截图 `cloud-command-stage-1/*-planning-preview.png`，必须 `looks=all visual=true` 并查看三主题×中日文。第1轮返工另有 `*-planning-mode-preview.png` 检查开关默认值。ActivityManagementFlowTest 原删除/历史流程增加本机恢复及 `phase-e-activity-management/*-restore.png`，待复验。阶段3 `CommandFlowTest.ledgerCombinationPreviewAcrossLooks`，截图 `cloud-command-stage-1/*-ledger-preview.png`；使用 `looks=all visual=true` 后查看三主题×中日文。原有 `CommandFlowTest.submitReceiveReviewCheckConfirmAndHistory` 与 `undoPreviewConfirmAndHistory`，默认按 `TestLooks` 单外观；视觉检查使用 `looks=all visual=true`，覆盖三主题×中日文，截图 `cloud-command-stage-1/*-submit.png`、`*-preview.png`、`*-checks.png`、`*-history.png`；撤销流程新增 `*-undo-preview.png`、`*-undo-history.png`；信用卡链路增加 `*-card-undo-preview.png`（将移除清单）和 `*-card-undo-history.png`，须逐张查看。固定云端结果通过生产接收入口注入，不触网；上传任务与附件内容仍走生产准备流程。真实网站往返另行实测。
 - 下沉回归可运行现有 `FinancialPredictionTest`、`CreditCardOptionsStorageTest`；候选日期及表单交互的完整外观矩阵仅在此次大改验收需要时运行相关流程，不扩展到全系统/性能专项。
 
-阶段3没有数据库迁移；执行文档版本3扩展行快照/关系行恢复，旧v1/v2兼容。新v3撤销恢复记录revision和保存次序，移除本次拥有的修订行；原办理/撤销/去重审计保留。
+阶段3–4没有数据库迁移；执行文档版本3扩展行快照/关系行恢复，旧v1/v2兼容。新v3撤销恢复记录revision和保存次序，移除本次拥有的修订行；原办理/撤销/去重审计保留。
 
 数据库新 schema 在 `app/schemas/.../37.json`，`sourceSets.androidTest.assets` 已读取该目录；36→37升级用已导出的36.json作真实起点，旧执行记录不伪造撤销快照。旧备份通过同一 `ALL_MIGRATIONS` 升级，办理去重记录不级联删除。
 

@@ -56,13 +56,15 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
     private val outputs=mutableMapOf<Pair<String,String>,String>()
     private val identities=CommandIdentityMap()
     private var cachedState:FinancialReviewState?=null
+    private var cachedGuardJournal:CommandUndoJournal?=null
+    fun guardJournal():CommandUndoJournal=cachedGuardJournal?:CommandUndoJournal(ledger,bookId).also{cachedGuardJournal=it}
     private var cachedStatements:List<com.yohaku.expensetracker.data.db.StatementDecisionEntity>?=null
     suspend fun statementDecisions():List<com.yohaku.expensetracker.data.db.StatementDecisionEntity> {
         if(cachedStatements==null)cachedStatements=ledger.db.fileWorkflowDao().decisions(bookId).first()
         return requireNotNull(cachedStatements)
     }
     suspend fun state(refresh:Boolean=false):FinancialReviewState {
-        if(refresh||cachedState==null){cachedState=ledger.financialReviewState(bookId,includeTrashedBook=true);cachedStatements=null}
+        if(refresh||cachedState==null){cachedState=ledger.financialReviewState(bookId,includeTrashedBook=true,preserveLedgerInputs=true);cachedStatements=null;cachedGuardJournal=null}
         return requireNotNull(cachedState)
     }
     fun isGenerated(id:String)=identities.contains(id)
@@ -150,6 +152,14 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
     fun effect(step:CommandStep,before:FinancialReviewState,after:FinancialReviewState,accounts:Set<String>,entries:Set<String> = emptySet(),categories:Set<String> = emptySet(),months:Set<String> = emptySet(),unknown:List<String> = emptyList()):StepEffect {
         // Register automatic children before calculating any ordered projection. New bill/posting
         // UUIDs must not decide the within-day running cash balances on preview versus confirmation.
+        val oldRecurrences=before.ledger.recurrences.map{it.id}.toSet()
+        after.ledger.recurrences.filter{it.id !in oldRecurrences}.forEach{generated(it.id,step.id,"recurrence",it.name)}
+        val oldOccurrences=before.ledger.occurrences.map{it.id}.toSet()
+        after.ledger.occurrences.filter{it.id !in oldOccurrences}.forEach{generated(it.id,step.id,"occurrence",identities.name(it.recurrenceId)+":"+it.scheduledDate)}
+        // Future materialized identities also derive from random rule IDs. Register their semantic
+        // scheduled-date identity before projecting either cash timeline or budget forecasts.
+        for(s in listOf(before.ledger,after.ledger).filter{s->s.recurrences.any{isGenerated(it.id)}})for(o in s.forecastOccurrences(LocalDate.parse(context.asOfDate),LocalDate.parse(context.throughDate)))
+            if(isGenerated(o.recurrenceId))generated(o.id,step.id,"occurrence",identities.name(o.recurrenceId)+":"+o.scheduledDate)
         val oldPlans=before.finance.plans.map{it.id}.toSet()
         after.finance.plans.filter{it.id !in oldPlans}.forEach{p->generated(p.id,step.id,"prediction",identities.name(p.accountId)+":"+(p.sourceEventId?.let(identities::name)?:p.name)+":"+p.mode)}
         val oldBills=before.finance.bills.map{it.id}.toSet()

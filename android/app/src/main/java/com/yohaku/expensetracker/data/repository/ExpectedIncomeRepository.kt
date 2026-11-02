@@ -63,7 +63,14 @@ suspend fun LedgerRepository.previewExpectedIncomeArrival(bookId:String,id:Strin
 suspend fun LedgerRepository.commitExpectedIncomeArrival(review:ExpectedIncomeArrivalReview):String?=db.withTransaction {
     val bookId=review.income.bookId
     if(snapshot(requireNotNull(dao.book(bookId))).first().reviewState()!=review.before.reviewState())return@withTransaction null
-    val eventId=review.entry?.let{writeChange(it.change)}?:review.existing!!.id
+    val eventId=review.entry?.let{
+        val savedAt=nextEntrySaveTime(review.before)
+        writeChange(it.change.withSaveTime(savedAt),savedAt=savedAt)
+    }?:review.existing!!.id
     dao.putExpectedIncome(review.income.copy(status="ARRIVED",eventId=eventId,revision=review.income.revision+1,updatedAt=clock.millis()))
     eventId
 }
+
+/** Defaults shared with the arrival editor. An expectation never supplies an actual amount. */
+fun BookSnapshot.expectedIncomeReceiptDraft(income:ExpectedIncomeEntity,date:String)=EntryDraft(
+    kind=EntryKind.INCOME,accountId=income.accountId,date=date,settlementDate=date,rateDate=date,note=income.name)

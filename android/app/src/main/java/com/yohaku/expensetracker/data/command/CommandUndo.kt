@@ -39,7 +39,8 @@ internal suspend fun CommandRun.undoValue(type:String,key:String):JsonElement {
         "accountUsage"->if(s.accounts.none{it.id==key})JsonNull else ledger.accountUsage(bookId,key).let{usage->
             buildJsonObject{put("references",encoded(usage.references));put("draftKeys",encoded(usage.draftKeys))}
         }
-        else->error("Unknown undo guard: $type")
+        "planningFile"->guardJournal().fileSnapshot(key)
+        else->if(type.startsWith("planning:"))guardJournal().planningRelations(type.substringAfter(':'),key)else error("Unknown undo guard: $type")
     }
 }
 internal fun undoDifferences(type:String,key:String,expected:JsonElement,current:JsonElement):List<UndoConflict> = buildList {

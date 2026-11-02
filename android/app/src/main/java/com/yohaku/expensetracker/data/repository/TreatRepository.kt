@@ -85,3 +85,10 @@ suspend fun LedgerRepository.removeOtherTreat(bookId:String,id:String)=db.withTr
     require(old.eventId==null){"本人付款请从原支出编辑或删除 / 自分の支払は元の支出を編集・削除してください"}
     dao.putTreat(old.copy(deletedAt=clock.millis(),revision=old.revision+1))
 }
+
+suspend fun LedgerRepository.restoreOtherTreat(bookId:String,id:String)=db.withTransaction {
+    val old=requireNotNull(dao.treat(bookId,id)){"互请记录不存在 / ごちそう記録がありません"}
+    require(old.eventId==null&&old.deletedAt!=null)
+    require(dao.activity(bookId,old.activityId)?.deletedAt==null)
+    dao.putTreat(old.copy(deletedAt=null,revision=old.revision+1))
+}

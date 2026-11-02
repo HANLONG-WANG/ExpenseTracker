@@ -51,10 +51,13 @@ import java.time.LocalDate
         if(s.features?.activityMode==true)YButton(word("＋ 创建活动","＋ シーンを作成"),{editing=""},primary=true)
         if(s.activities.any{it.deletedAt!=null}) {
             ThemeSection(word("已删除活动的历史","削除済みシーンの履歴"),"KEPT WITH THE ORIGINAL SCENE")
-            s.activities.filter{it.deletedAt!=null}.forEach{a->YLink(a.name,{selected=a.id},Modifier.testTag("deleted-activity-${a.id}"))}
+            s.activities.filter{it.deletedAt!=null}.forEach{a->YActionRow {
+                YLink(a.name,{selected=a.id},Modifier.testTag("deleted-activity-${a.id}"))
+                YButton(word("恢复","復元"),{vm.execute{vm.repository.restoreActivity(s.book.id,a.id)}},Modifier.testTag("restore-activity-${a.id}"),enabled=!busy,inline=true)
+            }}
         }
     }else if(activity.deletedAt!=null) {
-        YLink(word("返回全部活动","すべてのシーンへ"),{selected=null})
+        YLink(word("返回全部活动","すべてのシーンへ"),{selected=null},Modifier.testTag("deleted-activity-back"))
         YText(activity.name,20)
         YText(word("已删除 · 消费已计入日常，原活动互请保留。","削除済み・支出は日常に計上し、元のごちそうを保持。"),12)
         RecordFacts(listOf(word("原活动消费","元のシーンの支出") to money(s.activitySpent(activity.id))),audit=true)

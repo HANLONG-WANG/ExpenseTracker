@@ -218,7 +218,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     }
     fun confirmOccurrenceLink(onDone:()->Unit={}) {
         val review=occurrenceLinkReview.value?:return
-        val paymentDraft=entry.value?.takeIf{it.id==null&&it.occurrenceId==review.occurrence.id}
+        val paymentDraft=entry.value?.takeIf{it.isOccurrencePaymentDraft(review.occurrence.id)}
         var saved=false
         execute(onSuccess={if(saved){
             occurrenceLinkReview.value=null
@@ -236,7 +236,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         navigate("entry");openDraft(snapshot.book.id)
     }
     fun previewOccurrence(snapshot:BookSnapshot,occurrence:OccurrenceEntity) {
-        val draft=snapshot.occurrenceDraft(occurrence,snapshot.recurrences.first{it.id==occurrence.recurrenceId})
+        val draft=snapshot.occurrencePaymentDraft(occurrence)
         occurrenceConfirmation.value=OccurrenceConfirmation(snapshot.book.id,occurrence.id,draft,occurrence.currency!=snapshot.book.currency)
         refreshOccurrencePreview()
     }
@@ -244,7 +244,7 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         val current=occurrenceConfirmation.value?:return
         if(savingEntry)return
         // An edited foreign amount invalidates the rule's base-currency estimate.
-        occurrenceConfirmation.value=current.copy(draft=current.draft.copy(amount=amount,baseAmount=if(current.foreignCurrency)""else current.draft.baseAmount),review=null,issue=null,confirmingNegative=false)
+        occurrenceConfirmation.value=current.copy(draft=current.draft.withOccurrenceAmount(amount,current.foreignCurrency),review=null,issue=null,confirmingNegative=false)
         refreshOccurrencePreview()
     }
     private fun refreshOccurrencePreview() {
@@ -276,12 +276,12 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
             if(saved){occurrenceConfirmation.value=null;notice.value=AppNotice(++noticeSequence,current.bookId,"记录已保存","記録を保存しました")}
             else {occurrenceConfirmation.value=current.copy(review=null,refreshed=true,confirmingNegative=false);refreshOccurrencePreview()}
         },onComplete={savingEntry=false}) {
-            saved=repository.commitEntryReview(current.bookId,review,clearDraft=false)!=null
+            saved=repository.commitOccurrencePayment(current.bookId,review)!=null
         }
     }
     fun startOccurrence(snapshot:BookSnapshot,occurrence:OccurrenceEntity,amount:String?=null,baseAmount:String?=null) {
         entryReturnRoute.value=route.value
-        val initial=snapshot.occurrenceDraft(occurrence,snapshot.recurrences.first{it.id==occurrence.recurrenceId})
+        val initial=snapshot.occurrencePaymentDraft(occurrence)
         entry.value=initial.copy(amount=amount?:initial.amount,baseAmount=baseAmount?:initial.baseAmount)
         navigate("entry");openDraft(snapshot.book.id)
     }

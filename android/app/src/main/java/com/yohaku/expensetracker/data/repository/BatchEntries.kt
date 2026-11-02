@@ -5,6 +5,13 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 
+/** One save order for ordinary commits, scheduled payments, arrivals and command batches.
+ * Wall-clock milliseconds alone cannot order two saves in the same transaction. */
+internal fun LedgerRepository.nextEntrySaveTime(snapshot:BookSnapshot)=
+    maxOf(clock.millis(),snapshot.eventSaveTimes.values.maxOrNull()?:0L,snapshot.events.maxOfOrNull{it.createdAt}?:0L)+1L
+internal fun PreparedLedgerChange.withSaveTime(savedAt:Long)=
+    if(before==null)copy(event=event.copy(createdAt=savedAt))else this
+
 /** Batch preparation uses one ledger graph. Writes remain in the caller's atomic transaction.
  * Per-row authoritative lookups see earlier writes (refund ceilings/reserve use), without a graph
  * reload. Finance is refreshed after all source facts have been written, sharing that final graph. */
@@ -12,12 +19,12 @@ internal suspend fun LedgerRepository.writeEntryBatchInTransaction(initial:BookS
     require(drafts.size in 1..5000)
     var snapshot=initial
     val changes=mutableListOf<PreparedLedgerChange>()
-    val firstSavedAt=maxOf(clock.millis(),initial.eventSaveTimes.values.maxOrNull()?:0L,initial.events.maxOfOrNull{it.createdAt}?:0L)+1L
+    val firstSavedAt=nextEntrySaveTime(initial)
     for((index,draft) in drafts.withIndex()) {
         currentCoroutineContext().ensureActive()
         val prepared=prepareEntryDraft(snapshot,draft)
         val savedAt=Math.addExact(firstSavedAt,index.toLong())
-        val change=if(prepared.before==null)prepared.copy(event=prepared.event.copy(createdAt=savedAt))else prepared
+        val change=prepared.withSaveTime(savedAt)
         writeChange(change,clearDraft=false,refreshFinance=false,savedAt=savedAt)
         changes+=change
         // Only the reserve/default/refund facts needed by the next preparation are projected here.

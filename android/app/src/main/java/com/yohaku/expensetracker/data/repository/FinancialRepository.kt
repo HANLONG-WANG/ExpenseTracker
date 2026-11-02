@@ -11,11 +11,13 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 internal data class FinancialReviewState(val ledger:BookSnapshot,val finance:FinancialGraph,val limits:CreditLimitGraph)
-internal suspend fun LedgerRepository.financialReviewState(bookId:String,includeTrashedBook:Boolean=false):FinancialReviewState {
+internal suspend fun LedgerRepository.financialReviewState(bookId:String,includeTrashedBook:Boolean=false,preserveLedgerInputs:Boolean=false):FinancialReviewState {
     val book=(if(includeTrashedBook)dao.storedBook(bookId)else dao.book(bookId))?:error("账本不存在 / 帳簿がありません")
     val graph=db.financialDao().graph(bookId).first()!!
     val limits=db.creditLimitDao().graph(bookId).first()!!
-    return FinancialReviewState(snapshot(book).first().reviewState(),graph.copy(
+    val ledger=snapshot(book).first()
+    // Financial comparisons omit appearance/drafts; commands also need the original editable inputs.
+    return FinancialReviewState(if(preserveLedgerInputs)ledger else ledger.reviewState(),graph.copy(
         book=graph.book.copy(theme="",language=""),rules=graph.rules.sortedBy{it.id},plans=graph.plans.sortedBy{it.id},
         bills=graph.bills.sortedBy{it.id},validations=graph.validations.sortedBy{it.id},contracts=graph.contracts.sortedBy{it.id},repayments=graph.repayments.sortedBy{it.eventId},repaymentAllocations=graph.repaymentAllocations.sortedBy{it.id},contractPlans=graph.contractPlans.sortedBy{it.planId},arrangements=graph.arrangements.sortedBy{it.id},billAdjustments=graph.billAdjustments.sortedBy{it.id}),limits.copy(book=limits.book.copy(theme="",language=""),configs=limits.configs.sortedBy{it.id},groups=limits.groups.sortedBy{it.id},members=limits.members.sortedBy{it.accountId},recoveries=limits.recoveries.sortedBy{it.id},observations=limits.observations.sortedBy{it.id}))
 }

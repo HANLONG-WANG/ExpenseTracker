@@ -38,11 +38,11 @@ suspend fun LedgerRepository.saveRecurrence(bookId:String,input:RecurrenceInput)
     rule.id
 }
 /** Stable scheduled-date identity; materialization creates tasks only, never ledger events. */
-suspend fun LedgerRepository.ensureOccurrences(bookId:String,month:String)=db.withTransaction {
+suspend fun LedgerRepository.ensureOccurrences(bookId:String,month:String,recurrenceId:String?=null)=db.withTransaction {
     val period=YearMonth.parse(month)
     require(dao.book(bookId)!=null)
     val existing=dao.occurrences(bookId).associateBy{it.id}
-    dao.recurrences(bookId).forEach{rule->
+    dao.recurrences(bookId).filter{recurrenceId==null||it.id==recurrenceId}.forEach{rule->
         val dates=if(rule.active)recurrenceDates(LocalDate.parse(rule.anchorDate),rule.endDate?.let{LocalDate.parse(it)},RecurrenceFrequency.valueOf(rule.frequency),period).map{it.toString()}else emptyList()
         existing.values.filter{it.recurrenceId==rule.id&&it.scheduledDate.startsWith(month)&&it.status=="PENDING"&&it.scheduledDate !in dates}.forEach{dao.putOccurrence(it.copy(status="WITHDRAWN"))}
         dates.forEach{date->
@@ -90,23 +90,74 @@ fun BookSnapshot.pendingOccurrences()=occurrences.filter{o->o.status in listOf("
 
 data class OccurrenceLinkReview(val snapshot:BookSnapshot,val occurrence:OccurrenceEntity,val event:EventEntity,val before:BudgetProjection,val after:BudgetProjection)
 suspend fun LedgerRepository.previewOccurrenceLink(bookId:String,occurrenceId:String,eventId:String):OccurrenceLinkReview=db.withTransaction {
-    val book=dao.book(bookId)?:error("账本不存在 / 帳簿がありません")
-    val occurrence=dao.occurrence(bookId,occurrenceId)?:error("周期实例不存在 / 定期予定がありません")
-    val event=dao.event(bookId,eventId)?:error("支出不存在 / 支出がありません")
+    val snapshot=snapshot(dao.book(bookId)?:error("账本不存在 / 帳簿がありません")).first()
+    prepareOccurrenceLink(snapshot,occurrenceId,eventId)
+}
+
+/** One shared preparation for the screen and batch commands; no per-item ledger reload. */
+internal fun prepareOccurrenceLink(snapshot:BookSnapshot,occurrenceId:String,eventId:String):OccurrenceLinkReview {
+    val occurrence=snapshot.occurrences.firstOrNull{it.id==occurrenceId}?:error("周期实例不存在 / 定期予定がありません")
+    val event=snapshot.events.firstOrNull{it.id==eventId}?:error("支出不存在 / 支出がありません")
     require(event.kind==EntryKind.EXPENSE.name&&event.deletedAt==null)
     require(occurrence.status=="PENDING"||occurrence.status=="COMPLETED"&&occurrence.eventId==eventId){"周期实例已完成或取消 / 定期予定は完了・取消済みです"}
-    require(dao.eventOccurrences(bookId,eventId).none{it.id!=occurrenceId&&it.status=="COMPLETED"}){"支出已关联其他周期实例 / 他の定期予定に関連済みです"}
-    val snapshot=snapshot(book).first()
+    require(snapshot.occurrences.none{it.eventId==eventId&&it.id!=occurrenceId&&it.status=="COMPLETED"}){"支出已关联其他周期实例 / 他の定期予定に関連済みです"}
     val next=snapshot.copy(occurrences=snapshot.occurrences.map{if(it.id==occurrence.id)it.copy(status="COMPLETED",eventId=event.id)else it})
     val month=occurrence.scheduledDate.take(7)
-    OccurrenceLinkReview(snapshot,occurrence,event,snapshot.budgetProjection(month),next.budgetProjection(month))
+    return OccurrenceLinkReview(snapshot,occurrence,event,snapshot.budgetProjection(month),next.budgetProjection(month))
+}
+fun EntryDraft?.isOccurrencePaymentDraft(occurrenceId:String)=this?.let{it.id==null&&it.occurrenceId==occurrenceId}==true
+fun BookSnapshot.occurrencePaymentDraft(occurrence:OccurrenceEntity,resumeStored:Boolean=false):EntryDraft =
+    draft?.takeIf{resumeStored&&it.isOccurrencePaymentDraft(occurrence.id)}?:occurrenceDraft(occurrence,recurrences.first{it.id==occurrence.recurrenceId})
+fun EntryDraft.withOccurrenceAmount(amount:String,foreignCurrency:Boolean)=copy(amount=amount,baseAmount=if(foreignCurrency)""else baseAmount)
+
+/** Only the matching payment draft is consumed; another open draft is never discarded. */
+internal suspend fun LedgerRepository.consumeOccurrencePaymentDraft(bookId:String,occurrenceId:String) {
+    val draft=dao.storedDraft(bookId)?.let{json.decodeFromString<EntryDraft>(it.json)}
+    if(draft.isOccurrencePaymentDraft(occurrenceId))clearDraft(bookId)
 }
 suspend fun LedgerRepository.commitOccurrenceLink(review:OccurrenceLinkReview,discardPaymentDraft:Boolean=false):Boolean=db.withTransaction {
     val book=dao.book(review.occurrence.bookId)?:error("账本不存在 / 帳簿がありません")
     if(snapshot(book).first().reviewState()!=review.snapshot.reviewState())return@withTransaction false
     dao.putOccurrence(review.occurrence.copy(status="COMPLETED",eventId=review.event.id))
-    if(discardPaymentDraft)clearDraft(book.id)
+    if(discardPaymentDraft)consumeOccurrencePaymentDraft(book.id,review.occurrence.id)
     true
+}
+internal suspend fun LedgerRepository.linkOccurrenceBatch(bookId:String,links:List<Pair<String,String>>)=db.withTransaction {
+    require(links.isNotEmpty()&&links.map{it.first}.distinct().size==links.size)
+    var snapshot=snapshot(requireNotNull(dao.book(bookId))).first()
+    val changes=links.map{(occurrence,event)->
+        val review=prepareOccurrenceLink(snapshot,occurrence,event)
+        val updated=review.occurrence.copy(status="COMPLETED",eventId=review.event.id)
+        snapshot=snapshot.copy(occurrences=snapshot.occurrences.map{if(it.id==updated.id)updated else it})
+        updated
+    }
+    changes.forEach{dao.putOccurrence(it);consumeOccurrencePaymentDraft(bookId,it.id)}
+}
+
+/** Shared payment commit for the quick confirmation and command path. Full-form saves use the
+ * same entry review writer; media/network cleanup remains outside the database transaction. */
+suspend fun LedgerRepository.commitOccurrencePayment(bookId:String,review:LedgerChangeReview,discardPaymentDraft:Boolean=false):String?=db.withTransaction {
+    val occurrence=requireNotNull(review.change.occurrenceId)
+    val id=commitEntryReview(bookId,review,clearDraft=false)?:return@withTransaction null
+    if(discardPaymentDraft)consumeOccurrencePaymentDraft(bookId,occurrence)
+    id
+}
+
+fun RecurrenceEntity.editInput()=RecurrenceInput(name,accountId,categoryId,
+    amountMinor?.let{Money(Currency.valueOf(currency),it)},null,estimated,RecurrenceFrequency.valueOf(frequency),anchorDate,endDate,id,active,activityId,merchant,merchantId,note,cardPaymentChoice,cardPaymentPeriods)
+suspend fun LedgerRepository.setRecurrenceActive(bookId:String,id:String,active:Boolean)=db.withTransaction {
+    val rule=requireNotNull(dao.recurrence(bookId,id)){"周期规则不存在 / 定期ルールがありません"}
+    val book=requireNotNull(dao.book(bookId))
+    saveRecurrence(bookId,rule.editInput().copy(active=active,baseAmount=rule.baseMinor?.let{Money(Currency.valueOf(book.currency),it)}))
+}
+/** Category migration also covers cancelled/completed history; payment facts are not rewritten. */
+suspend fun LedgerRepository.updateOccurrenceCategories(bookId:String,ids:List<String>,categoryId:String)=db.withTransaction {
+    require(ids.isNotEmpty()&&ids.distinct().size==ids.size)
+    val category=requireNotNull(dao.category(bookId,categoryId))
+    require(category.kind==EntryKind.EXPENSE.name&&categoryEnabled(bookId,categoryId)){"请选择启用的支出分类 / 有効な支出カテゴリを選択してください"}
+    val all=dao.occurrences(bookId).associateBy{it.id}
+    val next=ids.map{requireNotNull(all[it]){"周期实例不存在 / 定期予定がありません"}.copy(categoryId=categoryId)}
+    next.forEach{dao.putOccurrence(it)}
 }
 
 /** Forecast missing future tasks without writing them or reviving cancelled/completed tasks. */

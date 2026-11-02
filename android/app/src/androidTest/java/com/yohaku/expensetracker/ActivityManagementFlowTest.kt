@@ -46,7 +46,7 @@ class ActivityManagementFlowTest {
         file.outputStream().use{image.compress(Bitmap.CompressFormat.PNG,100,it)}
         image.recycle()
     }
-    @Test fun deletionPreviewAndOriginalHistoryAcrossAppearances()=runBlocking {
+    @Test fun deletionPreviewAndOriginalHistoryAcrossAppearances()=runBlocking<Unit> {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
@@ -82,6 +82,12 @@ class ActivityManagementFlowTest {
                 assertEquals(2,current()!!.events.size);assertEquals(11000L,current()!!.balance(current()!!.accounts.single()))
                 assertEquals(6000L,current()!!.budgetProjection("2026-10").spentMinor);assertEquals(3000L,current()!!.friendBalances(act).single().iGive)
                 ui.onAllNodesWithTag("activity-delete-preview").assertCountEquals(0)
+                tap("deleted-activity-back")
+                ui.onNodeWithTag("restore-activity-$act").performScrollTo();shot("$theme-$language-restore")
+                tap("restore-activity-$act")
+                ui.waitUntil(10000){current()?.availableActivities?.any{it.id==act}==true&&!vm.busy.value}
+                assertEquals(0L,current()!!.activityHeld(act)) // Restoring visibility does not reactivate released reserves.
+                ui.onAllNodesWithTag("deleted-activity-$act").assertCountEquals(0)
                 assertNull(vm.error.value)
             }
         }finally{vm.viewModelScope.cancel();scope.cancel();db.close();path.delete()}

@@ -98,7 +98,8 @@ suspend fun LedgerRepository.commitEntryReview(bookId:String,review:LedgerChange
     if(snapshot(book).first().reviewState()!=review.snapshot.reviewState())return@withTransaction null
     val e=review.change.event
     if(review.change.cardRuleChecked&&db.financialDao().rules(bookId,e.accountId).cardRule(e.accountId,e.date,if(e.cardPaymentChoice in listOf("BONUS","DEFERRED"))"SINGLE"else"REVOLVING")?.id!=e.cardPaymentRuleId)return@withTransaction null
-    writeChange(review.change,clearDraft=clearDraft)
+    val savedAt=nextEntrySaveTime(review.snapshot)
+    writeChange(review.change.withSaveTime(savedAt),clearDraft=clearDraft,savedAt=savedAt)
 }
 
 /** No full graph reads. Caller supplies the current batch snapshot and owns the transaction. */

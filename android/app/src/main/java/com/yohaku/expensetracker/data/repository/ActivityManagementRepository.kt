@@ -49,3 +49,11 @@ suspend fun LedgerRepository.commitActivityDeletion(review:ActivityDeletionRevie
     if(next.draft!=old.draft)next.draft?.let{saveDraft(b,it)}
     true
 }
+
+/** Restore visibility only. Released reservations, stopped rules and converted templates/drafts
+ * remain as reviewed at deletion; command undo is the operation that restores all original rows. */
+suspend fun LedgerRepository.restoreActivity(bookId:String,activityId:String)=db.withTransaction {
+    val activity=requireNotNull(dao.activity(bookId,activityId)){"活动不存在 / シーンがありません"}
+    require(activity.deletedAt!=null){"活动未在回收站 / シーンはごみ箱にありません"}
+    dao.putActivity(activity.copy(deletedAt=null))
+}

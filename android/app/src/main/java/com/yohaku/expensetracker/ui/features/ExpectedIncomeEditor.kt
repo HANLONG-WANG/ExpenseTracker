@@ -93,7 +93,7 @@ import kotlinx.serialization.encodeToString
                 YSelect(word("收入分类","収入カテゴリ"),category,listOf(null to word("请选择","選択してください"))+s.categories.filter{s.categoryEnabled(it.id)&&it.kind==EntryKind.INCOME.name}.map{it.id as String? to s.path(it.id)},{category=it})
                 YLink(word("管理收入分类","収入カテゴリを管理"),{onClose();vm.navigate("categories")})
             }
-            YButton(word("预览到账影响","入金の影響を確認"),{vm.execute{receipt=vm.repository.previewExpectedIncomeArrival(s.book.id,old.id,if(existingMode)null else EntryDraft(kind=EntryKind.INCOME,accountId=old.accountId,categoryId=category,amount=actualAmount,baseAmount=baseAmount,date=actualDate,settlementDate=actualDate,rateDate=actualDate,note=old.name),if(existingMode)existingId?:error("请选择已有收入 / 既存の収入を選択してください")else null)}},Modifier.testTag("expected-arrival-preview"),primary=true,enabled=!busy)
+            YButton(word("预览到账影响","入金の影響を確認"),{vm.execute{receipt=vm.repository.previewExpectedIncomeArrival(s.book.id,old.id,if(existingMode)null else s.expectedIncomeReceiptDraft(old,actualDate).copy(categoryId=category,amount=actualAmount,baseAmount=baseAmount),if(existingMode)existingId?:error("请选择已有收入 / 既存の収入を選択してください")else null)}},Modifier.testTag("expected-arrival-preview"),primary=true,enabled=!busy)
         }
     }
 }

@@ -95,7 +95,7 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
         require(v.date==null||v.date==v.settlementDate){"退款日期与入账日期须一致 / 返金日と計上日は同じ日付にしてください"}
         d=d.copy(date=requireNotNull(v.settlementDate))
     }
-    if(old?.id!=null&&s.accounts.single{it.id==old.accountId}.currency!=account.currency) {
+    if(old?.accountId!=null&&s.accounts.single{it.id==old.accountId}.currency!=account.currency) {
         if("accountAmount" !in input)d=d.copy(accountAmount="")
         if("baseAmount" !in input)d=d.copy(baseAmount="")
     }
@@ -129,7 +129,7 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
 internal class EntryWriteAdapter(private val action:String):LedgerAdapter() {
     override val capability=ledgerCapability("entry.$action",if(action=="create")entryValueSchema else patchSchema(descriptorSchema(EntryEditInput.serializer().descriptor),mapOf("set" to entryValueSchema,"targets" to entryWriteTargetsSchema)),if(action=="create")mapOf("entry" to "entry")else emptyMap(),
         "Missing patch fields preserve the editor's full reconstructed values. New records use editor account/card/activity/date defaults; no amount/category is invented. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
-        "1–5000 fixed live targets; expense/income/transfer/refund only. Existing domain validation covers category/account status, currency amounts, opening inclusion, refund ceilings/source, card payment choices, activity/reserve/participants. Incomplete entries reject the whole plan; no interactive draft in stage 3.",
+        "1–5000 fixed targets; category-only updates also accept explicitly identified trash records (preserve trash status); selectors and other edits remain live-only; expense/income/transfer/refund only. Existing domain validation covers category/account status, currency amounts, opening inclusion, refund ceilings/source, card payment choices, activity/reserve/participants. Incomplete entries reject the whole plan; no interactive draft in stage 3.",
         "Create or batch-edit all ordinary record and transfer/refund fields, preserving attachments. Uses the shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance. entry.confirmActual is an update requiring actual confirmation flags.",
         if(action=="create")"""{"kind":"EXPENSE","account":"account-id","category":"category-id","amount":{"currency":"JPY","minor":900}}"""else """{"targets":{"ids":["entry-id"]},"set":{"note":"已核对"}}""")
     override fun validate(input:JsonObject) {
@@ -150,7 +150,7 @@ internal class EntryWriteAdapter(private val action:String):LedgerAdapter() {
             if(v.set.keys.all{it in setOf("category","note")}) {
                 val category=v.set["category"]?.let(run::resolve)
                 val changes=requireNotNull(v.targets.ids).map{run.resolve(it)}.map{id->
-                    val old=s.visibleEvents.single{it.id==id}
+                    val old=(if(v.set.keys==setOf("category"))s.events.filter{it.purgedAt==null}else s.visibleEvents).single{it.id==id}
                     require(old.kind in listOf("EXPENSE","INCOME","TRANSFER","REFUND")){"借入和还款需对应金融命令 / 借入・返済は専用の金融コマンドを使ってください"}
                     if(category!=null)validateEntryCategory(old.kind,s.categories.single{it.id==category},s.categoryEnabled(category),old.categoryId)
                     PreparedCategoryChange(old,old.copy(categoryId=category?:old.categoryId,note=v.set["note"]?.jsonPrimitive?.content?:old.note,revision=Math.addExact(old.revision,1)),s.entryDetails(id))

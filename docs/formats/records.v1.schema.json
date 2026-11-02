@@ -292,6 +292,34 @@
           "cardPaymentFeeMinor"
         ]
       }
+    },
+    "activityTreats": {
+      "type": "array",
+      "description": "Other-paid activity treats in the explicitly selected date range only; excludes deleted treats and account-only scope.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "const": "activityTreat"
+          },
+          "name": {
+            "type": "string"
+          },
+          "values": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "values"
+        ]
+      }
     }
   },
   "required": [

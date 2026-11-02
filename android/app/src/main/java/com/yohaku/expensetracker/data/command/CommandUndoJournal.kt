@@ -10,10 +10,10 @@ import kotlinx.serialization.json.*
  * Book creation also records its initial budget; no subsequent command may target that book. */
 internal class CommandUndoJournal(private val ledger:LedgerRepository,private val bookId:String) {
     private val sql=ledger.db.openHelper.writableDatabase
-    private val deleteOrder=listOf("revisions","treat_allocations","reserve_uses","event_merchants","event_places","event_activities",
+    private val deleteOrder=listOf("receipt_images","receipts","attachment_links","draft_media","drafts","revisions","treat_allocations","reserve_uses","event_merchants","event_places","event_activities",
         "financial_plan_revisions","financial_bills","financial_plans","financial_rules","credit_limit_configs",
-        "statement_decisions","occurrences","treats","expense_components","transfers","settlements","postings","events",
-        "entry_templates","merchant_locations","merchants","friends","budgets","categories","accounts","books")
+        "statement_decisions","expected_incomes","activity_reserves","occurrences","treats","expense_components","transfers","settlements","postings","events",
+        "entry_templates","activity_budgets","activity_participants","book_features","recurrences","activities","merchant_locations","merchants","friends","budgets","categories","accounts","books")
     private data class Table(val name:String,val columns:List<String>,val primary:List<String>)
     private val tables by lazy {
         sql.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").use{c->buildList{while(c.moveToNext())add(c.getString(0))}}.map{name->
@@ -72,16 +72,61 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
     }
     private fun name(row:JsonObject,names:Map<String,String>):String {
         fun text(key:String)=row[key]?.jsonPrimitive?.contentOrNull?.takeIf{it.isNotBlank()}
+        if(text("scheduledDate")!=null)return listOfNotNull(text("name"),text("scheduledDate")).joinToString(" · ")
+        if(text("month")!=null)return text("month")+" · "+(text("categoryId")?.let{names[it]}?:"月预算 / 月予算")
         return text("name")?:text("title")?:text("originalName")
             ?:text("merchant")?.let{listOfNotNull(text("date"),it).joinToString(" · ")}
-            ?:listOf("planId","accountId","eventId").firstNotNullOfOrNull{field->text(field)?.let{names[it]}}
+            ?:listOf("activityId","reserveId","treatId","recurrenceId","friendId","planId","accountId","eventId").firstNotNullOfOrNull{field->text(field)?.let{names[it]}}
             ?:text("slot")?.let{"草稿 / 下書き"}?:text("date")?:"关联资料 / 関連情報"
     }
     private fun names():Map<String,String> {
-        val named=(listOf("accounts","categories","merchants","merchant_locations","friends","entry_templates","financial_plans").flatMap{readRows(it)}+readRows("books","1=1",emptyArray())).associate{it.getValue("id").jsonPrimitive.content to it.getValue("name").jsonPrimitive.content}
+        val named=(listOf("accounts","categories","merchants","merchant_locations","friends","entry_templates","financial_plans","activities","activity_reserves","recurrences","occurrences","treats","expected_incomes").flatMap{readRows(it)}+readRows("books","1=1",emptyArray())).associate{it.getValue("id").jsonPrimitive.content to it.getValue("name").jsonPrimitive.content}
         val entries=readRows("events").associate{row->row.getValue("id").jsonPrimitive.content to listOfNotNull(row["date"]?.jsonPrimitive?.contentOrNull,row["merchant"]?.jsonPrimitive?.contentOrNull?.takeIf{it.isNotBlank()},row["note"]?.jsonPrimitive?.contentOrNull?.takeIf{it.isNotBlank()}).joinToString(" · ")}
         return named+entries
     }
+    // A batch can touch thousands of instances. Load relationship tables once per final-state
+    // guard pass, not once per instance; CommandRun invalidates this cache on a state refresh.
+    private val relationRows by lazy {tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"}.associate{it.name to readRows(it.name)}}
+    fun planningRelations(type:String,id:String):JsonObject {
+        val fields=when(type) {
+            "activity"->setOf("activityId","activeActivityId")
+            "recurrence"->setOf("recurrenceId")
+            "occurrence"->setOf("occurrenceId")
+            "reserve"->setOf("reserveId")
+            "treat"->setOf("treatId")
+            "expectedIncome"->setOf("targetId")
+            else->error("Unknown planning guard: $type")
+        }
+        val related=linkedMapOf<String,List<JsonObject>>()
+        fun mentions(value:JsonElement):Boolean=when(value) {
+            is JsonObject->value.any{(k,v)->k==id||mentions(v)}
+            is JsonArray->value.any(::mentions)
+            is JsonPrimitive->value.isString&&value.content==id
+            else->false
+        }
+        for(t in tables.values.filter{"bookId" in it.columns&&!it.name.startsWith("command_")&&!it.name.startsWith("cloud_")&&it.name!="revisions"}) {
+            val columns=t.columns.filter{it in fields}
+            val jsonColumns=t.columns.filter{it.endsWith("Json")||it=="json"}
+            if(columns.isEmpty()&&jsonColumns.isEmpty())continue
+            val rows=relationRows.getValue(t.name).filter{row->columns.any{row[it]==JsonPrimitive(id)}||jsonColumns.any{c->
+                row[c]?.jsonPrimitive?.contentOrNull?.let{raw->mentions(commandJson.parseToJsonElement(raw))}==true
+            }}
+            if(rows.isNotEmpty())related[t.name]=rows
+        }
+        // Include outgoing payment links too: occurrences/expected incomes hold eventId on their
+        // own row, so looking only for incoming FKs would miss later edits to an existing receipt.
+        val ownTable=when(type){"activity"->"activities";"recurrence"->"recurrences";"occurrence"->"occurrences";"reserve"->"activity_reserves";"treat"->"treats";else->"expected_incomes"}
+        val own=relationRows.getValue(ownTable).filter{it["id"]==JsonPrimitive(id)}
+        related[ownTable]=(related[ownTable].orEmpty()+own).distinct()
+        if(type=="occurrence")related["recurrences"]=relationRows.getValue("recurrences").filter{rule->own.any{it["recurrenceId"]==rule["id"]}}
+        val eventIds=related.values.flatten().mapNotNull{it["eventId"]?.jsonPrimitive?.contentOrNull}.toSet()
+        val treatIds=related["treats"].orEmpty().map{it.getValue("id").jsonPrimitive.content}.toSet()
+        if(eventIds.isNotEmpty())for(t in listOf("events","settlements","postings","transfers","expense_components","event_places","event_merchants","reserve_uses","event_activities","attachment_links","receipts"))
+            related[t]=(related[t].orEmpty()+relationRows.getValue(t).filter{(it[if(t=="events")"id"else"eventId"]?.jsonPrimitive?.contentOrNull) in eventIds}).distinct()
+        if(treatIds.isNotEmpty())related["treat_allocations"]=relationRows.getValue("treat_allocations").filter{it["treatId"]?.jsonPrimitive?.contentOrNull in treatIds}
+        return JsonObject(related.toSortedMap().mapValues{(_,rows)->JsonArray(rows.sortedBy{canonical(it).toString()})})
+    }
+    fun fileSnapshot(id:String):JsonElement=readRows("file_blobs","bookId=? AND id=?",arrayOf(bookId,id)).singleOrNull()?:JsonNull
     fun removals(changes:List<UndoRowChange>):List<UndoRemoval> {
         val names=names()
         return changes.filter{it.before==null&&!it.removed}.map{change->UndoRemoval(change.table,objectKey(change.table,change.after),name(change.after,names),
@@ -195,6 +240,8 @@ internal class RestoreExecutionAdapter:CommandAdapter {
         val after=run.state(refresh=true)
         val ids=run.undoRecord.rows.filter{it.table=="events"}.map{it.after.getValue("id").jsonPrimitive.content}.toSet()
         val events=(before.ledger.events+after.ledger.events).filter{it.id in ids}
-        return run.effect(step,before,after,accounts,ids,events.mapNotNull{it.categoryId}.toSet(),events.map{it.date.take(7)}.toSet())
+        return if(run.undoRecord.rows.any{it.table in setOf("budgets","activities","activity_budgets","activity_reserves","recurrences","occurrences","expected_incomes","treats","book_features")})
+            planningEffect(step,run,before,run.undoRecord.rows.filter{it.table=="budgets"}.map{it.after.getValue("month").jsonPrimitive.content}.toSet())
+        else run.effect(step,before,after,accounts,ids,events.mapNotNull{it.categoryId}.toSet(),events.map{it.date.take(7)}.toSet())
     }
 }

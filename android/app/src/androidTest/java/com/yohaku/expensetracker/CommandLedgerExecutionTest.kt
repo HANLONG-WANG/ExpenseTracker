@@ -136,7 +136,10 @@ class CommandLedgerExecutionTest {
             step("forbidden","category.lifecycle","""{"category":"unused","operation":"MERGE_DELETE"}"""),
             step("forbidden","category.lifecycle","""{"category":"unused","operation":"DELETE_EMPTY"}"""),
             step("forbidden","book.lifecycle","""{"operation":"PURGE"}"""),
-            step("forbidden","entry.lifecycle","""{"entry":"unused","operation":"EMPTY"}"""))
+            step("forbidden","entry.lifecycle","""{"entry":"unused","operation":"EMPTY"}"""),
+            step("forbidden","activity.lifecycle","""{"activity":"unused","operation":"PURGE"}"""),
+            step("forbidden","activityTreat.lifecycle","""{"treat":"unused","operation":"PURGE"}"""),
+            step("forbidden","occurrence.lifecycle","""{"occurrence":"unused","operation":"DELETE"}"""))
         for(bad in forbidden) {
             val row=receive(book,listOf(step("before","account.save","""{"account":"$bank","name":"不可保存","type":"BANK","currency":"JPY","openingMinor":100000,"openingDate":"2026-11-01"}"""),bad))
             assertEquals(bad.command,"FAILED",row.status);assertTrue(row.error.orEmpty().contains(" / "));assertEquals(original,snapshot(book))
