@@ -34,7 +34,11 @@ class CommandProtocolTest {
     @Test fun permanentBoundaryRejectsWholePlan(){reject(plan(listOf(card.copy(command="trash.empty"))))}
     @Test fun countLimitRejectsWholePlan(){reject(plan((1..501).map{card.copy(id="card$it")}))}
     @Test fun targetLimitRejectsWholePlan(){reject(plan(listOf(CommandStep("recat","entry.update",1,encoded(EntryUpdateInput(EntryTargets((1..5001).map{"e$it"}),EntryCategorySet("coffee"))).jsonObject))))}
-    @Test fun assistantCannotFillUserFactOrUnknownFields(){reject(plan(listOf(card,CommandStep("predict","financialPrediction.save",1,input("""{"account":{"ref":"card","output":"account"},"name":"P","mode":"SINGLE","currentArrangementConfirmed":true}""")))))}
+    @Test fun assistantCannotFillUserFactOrUnknownFields(){
+        reject(plan(listOf(card,CommandStep("predict","financialPrediction.save",1,input("""{"account":{"ref":"card","output":"account"},"name":"P","mode":"SINGLE","currentArrangementConfirmed":true}""")))))
+        val repayment=input("""{"sourceAccountId":"bank","debtAccountId":"card","paid":{"currency":"JPY","minor":1000},"date":"2026-11-02","platformConfirmed":true}""")
+        for(command in listOf("financialRepayment.save","financialRepayment.confirm"))reject(plan(listOf(CommandStep("paid",command,1,repayment))))
+    }
     @Test fun selectorsCannotMixIdsOrUseUnqualifiedAmounts(){
         reject(plan(listOf(CommandStep("recat","entry.update",1,input("""{"targets":{"ids":["e"],"select":{"kind":"EXPENSE"}},"set":{"category":"coffee"}}""")))))
         reject(plan(listOf(CommandStep("recat","entry.update",1,input("""{"targets":{"select":{"min_minor":500}},"set":{"category":"coffee"}}""")))))

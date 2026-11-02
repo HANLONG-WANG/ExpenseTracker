@@ -79,7 +79,7 @@ suspend fun LedgerRepository.effectiveFinancialRule(bookId:String,accountId:Stri
 @kotlinx.serialization.Serializable data class KnownBillInput(
     val date:String,val totalMinor:Long,val principalMinor:Long?=null,val feeMinor:Long?=null,val paymentAccountId:String?=null
 )
-data class ManualFinancialPlanInput(
+@kotlinx.serialization.Serializable data class ManualFinancialPlanInput(
     val accountId:String,val name:String,val mode:FinanceMode,val periods:List<KnownBillInput>,
     val principalMinor:Long?=null,val complete:Boolean=false,val opening:Boolean=false,val sourceEventId:String?=null
 )

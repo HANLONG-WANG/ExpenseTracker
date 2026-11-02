@@ -53,6 +53,7 @@ data class FinancialBillEntity(
     ForeignKey(entity=FinancialRuleEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","ruleVersionId"]),
     ForeignKey(entity=FinancialBillEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","billId"])
 ],indices=[Index(value=["bookId","ruleVersionId"]),Index(value=["bookId","billId"])])
+@kotlinx.serialization.Serializable
 data class FinancialRuleValidationEntity(
     val bookId:String,val id:String,val ruleVersionId:String,val billId:String,val billRevision:Int,
     val principalDifferenceMinor:Long?,val feeDifferenceMinor:Long?,val totalDifferenceMinor:Long,

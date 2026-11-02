@@ -16,7 +16,7 @@ import java.time.LocalDate
     val accountMinor:Long?,val accountCurrency:String?,val confirmed:Boolean?,val historicalIncluded:Boolean,
     val cardPaymentChoice:String?,val cardPaymentPeriods:Int?,val cardPaymentMonth:String?,val cardPaymentFeeMinor:Long?,
     val settlementDate:String?=null,val originalEvent:String?=null,val toAccount:String?=null,val toMinor:Long?=null,val toCurrency:String?=null,
-    val activity:String?=null,val merchantId:String?=null,val cardPaymentMode:String?=null,val cardPaymentRule:String?=null)
+    val activity:String?=null,val merchantId:String?=null,val cardPaymentMode:String?=null,val cardPaymentRule:String?=null,val financial:JsonObject?=null)
 @Serializable data class RecordsExport(val format:String="yohaku.records",val version:Int=1,val book_id:String,val generatedAt:String,
     val scope:RecordScope,val records:List<RecordExport>,val activityTreats:List<ContextItem> = emptyList())
 data class CommandExportBundle(val context:LedgerContextExport,val records:RecordsExport?)
@@ -51,8 +51,9 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope):Com
     }}
     f.bills.forEach{b->add(b.id,"financial_bill","${b.number}"){put("planId",b.planId);put("number",b.number);put("date",b.date);put("principalMinor",b.principalMinor);put("feeMinor",b.feeMinor);put("totalMinor",b.totalMinor);put("paymentAccountId",b.paymentAccountId);put("ruleId",b.ruleVersionId);put("confirmed",b.confirmed);put("active",b.active)}}
     f.validations.forEach{v->add(v.id,"rule_validation","规则核验 / 条件の検証"){put("ruleId",v.ruleVersionId);put("billId",v.billId);put("billRevision",v.billRevision);put("principalDifferenceMinor",v.principalDifferenceMinor);put("feeDifferenceMinor",v.feeDifferenceMinor);put("totalDifferenceMinor",v.totalDifferenceMinor);put("dateChanged",v.dateChanged);put("checkedAt",v.checkedAt)}}
-    f.contracts.forEach{c->add(c.id,"debt_contract",c.name){put("accountId",c.accountId);put("mode",c.mode);put("currency",c.currency);put("principalMinor",c.principalMinor);put("date",c.date);put("fundingEventId",c.fundingEventId);put("fundingAccountId",c.fundingAccountId);put("receivedMinor",c.receivedMinor);put("withheldFeeMinor",c.withheldFeeMinor);put("separateFeeMinor",c.separateFeeMinor);put("separateFeeAccountId",c.separateFeeAccountId)}}
-    f.arrangements.forEach{a->add(a.id,"financial_arrangement","已办理安排 / 手続き済みの予定"){put("originalPlanId",a.originalPlanId);put("targetPlanId",a.targetPlanId);put("effectiveDate",a.effectiveDate);put("appliedAt",a.appliedAt);put("principalMinor",a.principalMinor);put("changeFeeMinor",a.changeFeeMinor);put("feeTreatment",a.feeTreatment)}}
+    f.contracts.forEach{c->add(c.id,"debt_contract",c.name){put("accountId",c.accountId);put("mode",c.mode);put("currency",c.currency);put("principalMinor",c.principalMinor);put("remainingPrincipalMinor",s.contractRemaining(c));put("date",c.date);put("fundingEventId",c.fundingEventId);put("fundingAccountId",c.fundingAccountId);put("receivedMinor",c.receivedMinor);put("withheldFeeMinor",c.withheldFeeMinor);put("separateFeeMinor",c.separateFeeMinor);put("separateFeeAccountId",c.separateFeeAccountId)}}
+    f.arrangements.forEach{a->add(a.id,"financial_arrangement","已办理安排 / 手続き済みの予定"){put("originalPlanId",a.originalPlanId);put("targetPlanId",a.targetPlanId);put("effectiveDate",a.effectiveDate);put("appliedAt",a.appliedAt);put("principalMinor",a.principalMinor);put("changeFeeMinor",a.changeFeeMinor);put("feeTreatment",a.feeTreatment);put("undoGroupId",json.decodeFromString<FinancialArrangementInput>(a.inputJson).undoGroupId)}}
+    f.contractPlans.forEach{link->add(link.planId,"contract_plan","合同计划关联 / 契約とプランの関連"){put("planId",link.planId);put("contractId",link.contractId)}}
     l.configs.forEach{c->add(c.id,"credit_limit","${c.version}"){put("accountId",c.accountId);put("version",c.version);put("currency",c.currency);put("effectiveFrom",c.effectiveFrom);put("totalMinor",c.totalMinor);put("installmentMinor",c.installmentMinor);put("revolvingMinor",c.revolvingMinor);put("sharing",c.sharing);put("combinedMinor",c.combinedMinor);put("basisDate",c.basisDate);put("usedTotalMinor",c.usedTotalMinor);put("usedInstallmentMinor",c.usedInstallmentMinor);put("usedRevolvingMinor",c.usedRevolvingMinor);put("recovery",c.recovery);put("recoveryDelayDays",c.recoveryDelayDays);put("usageBasis",c.usageBasis);put("usageStart",c.usageStart);put("zoneId",c.zoneId)}}
     l.groups.forEach{g->add(g.id,"credit_limit_group",g.name){put("currency",g.currency);put("totalMinor",g.totalMinor);put("usedMinor",g.usedMinor);put("basisDate",g.basisDate);put("accounts",encoded(l.members.filter{it.groupId==g.id}.map{it.accountId}))}}
     l.recoveries.forEach{v->add(v.id,"credit_limit_recovery","额度恢复确认 / 利用枠回復の確認"){put("accountId",v.accountId);put("eventId",v.eventId);put("date",v.date);put("principalMinor",v.principalMinor);put("installmentMinor",v.installmentMinor);put("revolvingMinor",v.revolvingMinor);put("voided",v.voidedAt!=null)}}
@@ -82,7 +83,14 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope):Com
         RecordsExport(book_id=bookId,generatedAt=generated,scope=scope,activityTreats=treats,records=selected.map{e->
             val st=s.settlementByEvent[e.id];val transfer=s.transferByEvent[e.id]
             RecordExport(e.id,e.kind,e.date,e.accountId,e.categoryId,e.currency,e.amountMinor,e.baseMinor,e.merchant,e.note,e.revision,st?.accountMinor,st?.accountCurrency,st?.confirmed,e.historicalIncluded,e.cardPaymentChoice,e.cardPaymentPeriods,e.cardPaymentMonth,e.cardPaymentFeeMinor,
-                st?.settlementDate,st?.originalEventId,transfer?.toAccountId,transfer?.toMinor,transfer?.toCurrency,s.activityByEvent[e.id],s.merchantByEvent[e.id],e.cardPaymentMode,e.cardPaymentRuleId)
+                st?.settlementDate,st?.originalEventId,transfer?.toAccountId,transfer?.toMinor,transfer?.toCurrency,s.activityByEvent[e.id],s.merchantByEvent[e.id],e.cardPaymentMode,e.cardPaymentRuleId,
+                s.repayments.firstOrNull{it.eventId==e.id}?.let{repayment->buildJsonObject {
+                    put("debtAccountId",repayment.debtAccountId);put("currency",s.accounts.first{it.id==repayment.debtAccountId}.currency)
+                    put("receivedMinor",repayment.receivedMinor);put("principalMinor",repayment.principalMinor);put("interestMinor",repayment.interestMinor);put("feeMinor",repayment.feeMinor);put("feeBaseMinor",repayment.feeBaseMinor)
+                    put("clearingDate",repayment.clearingDate);put("platformConfirmed",repayment.platformConfirmed);put("paymentType",repayment.paymentType);put("linkedTransferEventId",repayment.linkedTransferEventId)
+                    put("sourceFeeMinor",repayment.sourceFeeMinor);put("sourceFeeBaseMinor",repayment.sourceFeeBaseMinor)
+                    put("allocations",JsonArray(s.repaymentAllocations.filter{it.eventId==e.id}.map{a->buildJsonObject{put("id",a.id);put("billId",a.billId);put("contractId",a.contractId);put("principalMinor",a.principalMinor);put("interestMinor",a.interestMinor);put("feeMinor",a.feeMinor)}}))
+                }}?:s.contracts.firstOrNull{it.fundingEventId==e.id}?.let{c->buildJsonObject{put("contractId",c.id)}})
         })
     }
     CommandExportBundle(context,records)

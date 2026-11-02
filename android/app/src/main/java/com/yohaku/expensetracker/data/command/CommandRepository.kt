@@ -173,7 +173,7 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
         if(record!=null) {
             val conflicts=run.undoConflicts(record)
             if(conflicts.isNotEmpty())return Triple(NormalizedPlan(plan.steps),ConfirmationModel(context,emptyList(),
-                record.effects.filter{it.type in setOf("book","account","category","merchant","merchantLocation","friend","template","entry","rule","prediction","bill","activity","reserve","recurrence","occurrence","expectedIncome","treat","budgetSetting")&&it.before!=it.after}.map{it.copy(before=it.after,after=it.before)},
+                record.effects.filter{it.type in setOf("book","account","category","merchant","merchantLocation","friend","template","entry","rule","prediction","bill","activity","reserve","recurrence","occurrence","expectedIncome","treat","budgetSetting","ruleValidation","contract","contractBalance","repayment","repaymentAllocation","contractPlan","arrangement","arrangementReconciliation","poolPaymentChange","billAdjustment","creditLimitConfig","creditLimitGroup","creditLimitGroupSetting","creditLimitMember","creditLimitRecovery","creditLimitObservation","financialDraft")&&it.before!=it.after}.map{it.copy(before=it.after,after=it.before)},
                 conflicts=conflicts,removals=record.removals),run.executionRecord())
         }
         val journal=CommandUndoJournal(ledger,plan.book_id)
@@ -236,8 +236,13 @@ class CommandRepository(val ledger:LedgerRepository,val registry:CommandRegistry
             val id=row.after.getValue("fileId").jsonPrimitive.content
             UndoGuard("planningFile",id,run.undoValue("planningFile",id))
         }
+        val financeGuards=rows.filter{it.before!=null&&it.table in setOf("financial_rules","financial_plans","financial_bills","financial_arrangements","financial_repayments","financial_repayment_allocations","debt_contracts","credit_limit_configs","credit_limit_groups","credit_limit_recoveries","credit_limit_observations")}.map{row->
+            val id=(row.after["id"]?:row.after.getValue("eventId")).jsonPrimitive.content
+            val type="finance:"+row.table
+            UndoGuard(type,id,run.undoValue(type,id))
+        }
         val inverseSteps=(if(rows.isEmpty())emptyList()else listOf(CommandStep("restore_objects","local.restoreExecution",1,buildJsonObject{})))+inverses.asReversed().flatMap{it.steps}
-        val undo=if(undoOf==null)UndoRecord(inverseSteps,guards+accountGuards+entryGuards+structureGuards+planningGuards,actualEffects,rows,journal.removals(rows),version=3)else null
+        val undo=if(undoOf==null)UndoRecord(inverseSteps,guards+accountGuards+entryGuards+structureGuards+planningGuards+financeGuards,actualEffects,rows,journal.removals(rows),version=3)else null
         return Triple(NormalizedPlan(steps),ConfirmationModel(context,effects,netEffects(effects),unknown=unknown,removals=record?.removals.orEmpty()),execution.copy(undo=undo))
     }
     private suspend fun recordReceipt(row:CommandPlanEntity) {

@@ -9,8 +9,8 @@ import java.time.ZoneOffset
 internal fun commandEventFacts(value:JsonElement):JsonObject=commandLedgerRow("events",value.jsonObject)
 internal fun commandLedgerRow(table:String,value:JsonObject):JsonObject {
     val audit=setOf("createdAt","timestamp","updatedAt")+if(table in setOf("events","financial_plans","financial_bills","treats","expected_incomes"))setOf("revision")else emptySet()
-    val booleans=setOf("active","archived","initialized","favorite","historicalIncluded","confirmed","fromConfirmed","toConfirmed","complete","estimated","activityMode","ended","excludeMonthly")
-    return JsonObject(value.filterKeys{it !in audit}.mapValues{(key,v)->
+    val booleans=setOf("platformConfirmed","exceptionAccepted","dateChanged","active","archived","initialized","favorite","historicalIncluded","confirmed","fromConfirmed","toConfirmed","complete","estimated","activityMode","ended","excludeMonthly")
+    val projected=JsonObject(value.filterKeys{it !in audit}.mapValues{(key,v)->
         when {
             key in setOf("deletedAt","invalidatedAt")&&v!=JsonNull->JsonPrimitive(Instant.ofEpochMilli(v.jsonPrimitive.long).atZone(ZoneOffset.UTC).toLocalDate().toString())
             key in booleans&&v is JsonPrimitive&&!v.isString&&v.longOrNull!=null->JsonPrimitive(v.long!=0L)
@@ -18,10 +18,12 @@ internal fun commandLedgerRow(table:String,value:JsonObject):JsonObject {
             else->v
         }
     })
+    return if(table.startsWith("financial_")||table.startsWith("credit_limit_")||table=="debt_contracts")commandFinanceFacts(projected).jsonObject else projected
 }
 internal fun commandTableType(table:String)=when(table) {
     "books"->"book";"accounts"->"account";"categories"->"category";"events"->"entry";"merchants"->"merchant";"merchant_locations"->"merchantLocation";"friends"->"friend";"entry_templates"->"template"
     "activities"->"activity";"activity_reserves"->"reserve";"activity_budgets"->"activityBudget";"activity_participants"->"activityParticipant";"book_features"->"activityMode";"recurrences"->"recurrence";"occurrences"->"occurrence";"treats"->"treat";"expected_incomes"->"expectedIncome"
+    "financial_rule_validations"->"ruleValidation";"financial_arrangements"->"arrangement";"financial_bill_adjustments"->"billAdjustment";"debt_contracts"->"contract";"financial_repayments"->"repayment";"financial_repayment_allocations"->"repaymentAllocation";"financial_contract_plans"->"contractPlan";"financial_drafts"->"financialDraft";"credit_limit_configs"->"creditLimitConfig";"credit_limit_groups"->"creditLimitGroupSetting";"credit_limit_group_members"->"creditLimitMember";"credit_limit_recoveries"->"creditLimitRecovery";"credit_limit_observations"->"creditLimitObservation";
     "financial_rules"->"rule";"financial_plans"->"prediction";"financial_bills"->"bill";"budgets"->"budgetSetting"
     else->table
 }
@@ -36,11 +38,20 @@ internal fun CommandRun.registerLedgerRows(step:String,rows:List<UndoRowChange>)
     rows.filter{it.table=="events"}.mapNotNull{it.after["deletionGroupId"]?.jsonPrimitive?.contentOrNull}.distinct().forEachIndexed{i,id->if(rows.none{it.before?.get("deletionGroupId")==JsonPrimitive(id)})generated(id,step,"trashGroup",i.toString())}
 }
 internal suspend fun CommandRun.ledgerRowEffects(rows:List<UndoRowChange>):List<ObjectEffect> {
-    val s=state().ledger
+    val snapshot=state();val s=snapshot.ledger
     fun facts(table:String,row:JsonObject):JsonElement {
         val value=commandLedgerRow(table,row).toMutableMap()
         if(table in setOf("budgets","activities","activity_budgets","activity_reserves","reserve_uses"))value["currency"]=JsonPrimitive(s.book.currency)
         if(table=="expected_incomes")row["accountId"]?.jsonPrimitive?.contentOrNull?.let{id->s.accounts.firstOrNull{it.id==id}?.let{value["accountCurrency"]=JsonPrimitive(it.currency)}}
+        if(table.startsWith("financial_")||table.startsWith("credit_limit_")) {
+            val account=(row["accountId"]?:row["debtAccountId"])?.jsonPrimitive?.contentOrNull
+            val plan=row["planId"]?.jsonPrimitive?.contentOrNull
+            val bill=row["billId"]?.jsonPrimitive?.contentOrNull
+            val f=snapshot.finance
+            val accountId=account?:f.plans.firstOrNull{it.id==plan||f.bills.any{b->b.id==bill&&b.planId==it.id}}?.accountId
+                ?:row["eventId"]?.jsonPrimitive?.contentOrNull?.let{id->f.repayments.firstOrNull{it.eventId==id}?.debtAccountId}
+            s.accounts.firstOrNull{it.id==accountId}?.let{value["currency"]=JsonPrimitive(it.currency)}
+        }
         return semantic(JsonObject(value))
     }
     // Compare/display effective settings even when their optional storage row does not exist.
@@ -49,7 +60,7 @@ internal suspend fun CommandRun.ledgerRowEffects(rows:List<UndoRowChange>):List<
         "book_features"->buildJsonObject{put("bookId",bookId);put("activityMode",false);put("activeActivityId",JsonNull)}
         else->JsonNull
     }
-    return rows.filter{it.table !in setOf("revisions","financial_plan_revisions")}.map { row->
+    return rows.filter{it.table !in setOf("revisions","financial_plan_revisions","credit_limit_group_revisions")}.map { row->
     val key=row.after["id"]?.jsonPrimitive?.contentOrNull?:row.after["eventId"]?.jsonPrimitive?.contentOrNull
         ?:canonical(semantic(row.key)).toString()
     ObjectEffect(commandTableType(row.table),semantic(JsonPrimitive(key)).jsonPrimitive.content,

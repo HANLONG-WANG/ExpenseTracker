@@ -224,6 +224,39 @@ class CommandFlowTest {
         }
     }
 
+    @Test fun financeCombinationPreviewAcrossLooks() {
+        for((theme,language) in testLooks(this)) {
+            val row=runBlocking {
+                val b=r.createBook("金融组合・金融プラン",Currency.JPY,theme,language,startDate="2026-11-01")
+                r.updateBook(r.dao.book(b)!!.copy(initialized=true))
+                val bank=r.saveAccount(b,"银行・銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,300000),"2026-11-01")
+                vm.preferences.select(b)
+                val p=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),b,cloud.commands.registry.catalogDigest,r.commandExports(b,RecordScope()).context.contextDigest,
+                    message=if(language=="ja")"2枚のカードの分割と残高プールを確認してください。返済先で確認した事実だけをチェックしてください。"else"请核对两张卡的分期和余额池，只勾选你已在平台核实的事实。",steps=commandFinanceSteps(bank))
+                cloud.commands.receive(commandClaim(p,resultId=p.plan_id,localId=p.plan_id),"https://example.test",p.context_digest).also{cloud.commands.preview(it.planId)}
+            }
+            ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==row.bookId&&!vm.busy.value}
+            ui.runOnIdle{vm.openCommandPlan(row.planId)}
+            ui.waitUntil(15000){ui.onAllNodesWithTag("command-step-pool").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("command-confirm").performScrollTo().assertIsNotEnabled()
+            ui.onNodeWithTag("command-check-0").performScrollTo().assertIsDisplayed()
+            // Screenshot intentionally includes the concrete account/amount/date declarations.
+            shot("$theme-$language-finance-preview")
+            tap("command-check-0");ui.onNodeWithTag("command-confirm").performScrollTo().assertIsNotEnabled()
+            tap("command-check-1");ui.onNodeWithTag("command-confirm").performScrollTo().assertIsEnabled()
+            val firstPeriod=if(language=="ja")"第1回"else"第1期"
+            val splitBill="分期卡・分割カード · 两期分期・2回分割 · ${firstPeriod} · 2026-12-10"
+            val poolBill="循环卡・リボカード · 共同余额池・共通残高プール · ${firstPeriod} · 2026-12-10"
+            ui.onNodeWithTag("command-step-pool").performScrollTo()
+            ui.onNode(hasText(poolBill,substring=true) and hasAnyAncestor(hasTestTag("command-step-pool"))).assertIsDisplayed()
+            shot("$theme-$language-finance-pool")
+            for(label in listOf(splitBill,poolBill))ui.onAllNodes(hasText(label,substring=true) and hasAnyAncestor(hasTestTag("command-net"))).assertCountEquals(1)
+            ui.onNode(hasText(splitBill,substring=true) and hasAnyAncestor(hasTestTag("command-net"))).performScrollTo()
+            shot("$theme-$language-finance-net")
+            ui.runOnIdle{vm.navigate("home")}
+        }
+    }
+
     @Test fun planningCombinationPreviewAcrossLooks() {
         for((theme,language) in testLooks(this)) {
             val row=runBlocking {

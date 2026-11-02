@@ -3,6 +3,10 @@ package com.yohaku.expensetracker.data.command
 import kotlinx.serialization.json.*
 import kotlinx.serialization.encodeToString
 import com.yohaku.expensetracker.data.db.FinancialRuleEntity
+import com.yohaku.expensetracker.data.db.FinancialRuleValidationEntity
+import com.yohaku.expensetracker.data.repository.ArrangementMoneyRow
+import com.yohaku.expensetracker.data.repository.FinancialArrangementComparison
+import com.yohaku.expensetracker.data.repository.PoolPaymentChange
 import com.yohaku.expensetracker.domain.finance.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -35,6 +39,56 @@ class CommandConfirmationTest {
         assertEquals("$.steps[0].objects[0].after.json.billing.paymentDay",CommandConfirmationComparator.firstDifference(preview,changed))
         val error=CommandRepreviewRequired("$.steps[0].objects[0].after.json.billing.paymentDay")
         assertFalse(error.message!!.contains("paymentDay"))
+    }
+    @Test fun ruleValidationHasASerializerAndRetainsItsBillRevisionAndUnknownBreakdown() {
+        val validation=FinancialRuleValidationEntity("book","validation","rule","bill",2,0,null,0,false,123)
+        val raw=encoded(validation)
+        assertEquals(validation,commandJson.decodeFromJsonElement<FinancialRuleValidationEntity>(raw))
+        val facts=commandFinanceFacts(raw).jsonObject
+        assertEquals(JsonPrimitive(2),facts["billRevision"])
+        assertEquals(JsonNull,facts["feeDifferenceMinor"])
+        assertFalse("checkedAt" in facts)
+    }
+    @Test fun arrangementComparisonRowsIgnoreUuidReadOrderButRetainEveryPaymentFact() {
+        fun facts(suffix:String,reverse:Boolean,ordered:Boolean=true):JsonObject {
+            val first=ArrangementMoneyRow("2026-12-10",5000,0,5000,"bank-$suffix")
+            val rows=listOf(first,first,first.copy(date="2027-01-10",principalMinor=4000,totalMinor=4000))
+            val comparison=FinancialArrangementComparison(if(reverse)rows.reversed()else rows,
+                if(reverse)rows else rows.reversed(),"2026-12-10",0,0,0,0,0,0)
+            val change=PoolPaymentChange("change-$suffix","2026-11-02",RevolvingPaymentSetting("2026-12-10",PaymentMethod.FIXED_PRINCIPAL,5000),0,null,false,"2026-11-02T00:00:00Z",comparison=comparison)
+            val value=buildJsonObject {
+                put("createdAt",if(reverse)200 else 100)
+                put("comparisonJson",encoded(comparison).toString())
+                put("termsJson",buildJsonObject{put("pool",buildJsonObject{put("paymentChanges",encoded(listOf(change)))})}.toString())
+                put("inputJson",buildJsonObject{put("undoGroupId","batch-$suffix")}.toString())
+            }
+            val ids=CommandIdentityMap().apply {
+                register("bank-$suffix","bank","account")
+                register("change-$suffix","payment","poolPaymentChange","pool:2026-11-02:0")
+                register("batch-$suffix","convert","batch")
+            }
+            val normalized=ids.normalize(commandFinanceFacts(value))
+            return (if(ordered)orderFinanceFacts(normalized)else normalized).jsonObject
+        }
+        val preview=facts("trial",false);val confirmation=facts("commit",true)
+        fun m(value:JsonObject)=model(ObjectEffect("poolPaymentChange","change",JsonNull,value))
+        assertEquals("$.steps[0].objects[0].after.comparisonJson.original[0].date",
+            CommandConfirmationComparator.firstDifference(m(facts("trial",false,false)),m(facts("commit",true,false))))
+        assertNull(CommandConfirmationComparator.firstDifference(m(preview),m(confirmation)))
+        val comparison=confirmation.getValue("comparisonJson").jsonObject
+        val rows=comparison.getValue("original").jsonArray
+        assertEquals(3,rows.size);assertEquals(2,rows.count{it.jsonObject["date"]==JsonPrimitive("2026-12-10")})
+        for((field,value) in mapOf("date" to JsonPrimitive("2026-12-11"),"principalMinor" to JsonPrimitive(4999),
+            "feeMinor" to JsonPrimitive(1),"totalMinor" to JsonPrimitive(5001),"paymentAccountId" to JsonPrimitive("other-bank"))) {
+            val changedRows=JsonArray(listOf(JsonObject(rows.first().jsonObject+(field to value)))+rows.drop(1))
+            val changed=JsonObject(confirmation+("comparisonJson" to JsonObject(comparison+("original" to changedRows))))
+            assertFalse(field,CommandConfirmationComparator.same(m(preview),m(orderFinanceFacts(changed).jsonObject)))
+        }
+        // An actual appliedAt is a business fact, not the discarded createdAt audit instant.
+        val changedDate=commandJson.parseToJsonElement(confirmation.toString().replace("2026-11-02T00:00:00Z","2026-11-01T00:00:00Z")).jsonObject
+        assertFalse(CommandConfirmationComparator.same(m(preview),m(changedDate)))
+        val sequence=j("""{"original":[2,1],"paymentDates":["2027-01-10","2026-12-10"]}""")
+        assertEquals(sequence,orderFinanceFacts(sequence))
     }
     @Test fun fixedTargetsAndIdentifyingFactsAreCompared() {
         val a=model(objectEffect("entry","""{"merchant":"Coffee","amountMinor":500}""","""{"merchant":"Coffee","amountMinor":500}"""))

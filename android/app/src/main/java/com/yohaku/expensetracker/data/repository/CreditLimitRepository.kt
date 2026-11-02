@@ -12,7 +12,7 @@ import java.time.*
 @Serializable data class CreditLimitInput(val accountId:String,val totalMinor:Long?,val installmentMinor:Long?,val revolvingMinor:Long?,val sharing:CreditLimitSharing?,val combinedMinor:Long?,
     val effectiveFrom:String,val basisDate:String,val usedTotalMinor:Long?,val usedInstallmentMinor:Long?,val usedRevolvingMinor:Long?,val recovery:LimitRecovery?,val usageBasis:CreditLimitUsageBasis?,val zoneId:String,val usageStart:CreditLimitUsageStart?=null,val recoveryDelayDays:Int=0)
 @Serializable data class CreditLimitGroupInput(val name:String,val currency:Currency,val totalMinor:Long?,val usedMinor:Long?,val basisDate:String,val accountIds:List<String>,val id:String?=null)
-data class CreditLimitRecoveryInput(val accountId:String,val eventId:String,val date:String,val principalMinor:Long,val installmentMinor:Long?,val revolvingMinor:Long?)
+@Serializable data class CreditLimitRecoveryInput(val accountId:String,val eventId:String,val date:String,val principalMinor:Long,val installmentMinor:Long?,val revolvingMinor:Long?)
 @Serializable data class CreditLimitGroupArchive(val group:CreditLimitGroupEntity,val accountIds:List<String>)
 class CreditLimitReview internal constructor(internal val before:FinancialReviewState,val config:CreditLimitConfigEntity?,val group:CreditLimitGroupEntity?,val members:List<String>,val recovery:CreditLimitRecoveryEntity?,val observation:CreditLimitObservationEntity?,val estimate:AccountCreditLimit?,val groupEstimate:GroupCreditLimit?)
 

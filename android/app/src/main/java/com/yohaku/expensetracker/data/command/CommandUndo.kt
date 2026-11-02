@@ -40,7 +40,7 @@ internal suspend fun CommandRun.undoValue(type:String,key:String):JsonElement {
             buildJsonObject{put("references",encoded(usage.references));put("draftKeys",encoded(usage.draftKeys))}
         }
         "planningFile"->guardJournal().fileSnapshot(key)
-        else->if(type.startsWith("planning:"))guardJournal().planningRelations(type.substringAfter(':'),key)else error("Unknown undo guard: $type")
+        else->if(type.startsWith("finance:"))guardJournal().financeRelations(type.substringAfter(':'),key)else if(type.startsWith("planning:"))guardJournal().planningRelations(type.substringAfter(':'),key)else error("Unknown undo guard: $type")
     }
 }
 internal fun undoDifferences(type:String,key:String,expected:JsonElement,current:JsonElement):List<UndoConflict> = buildList {

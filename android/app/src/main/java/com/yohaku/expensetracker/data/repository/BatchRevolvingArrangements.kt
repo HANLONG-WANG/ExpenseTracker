@@ -6,13 +6,14 @@ import com.yohaku.expensetracker.domain.finance.*
 import com.yohaku.expensetracker.domain.model.AccountType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 
 @Serializable data class BatchRevolvingInput(val accountId:String,val paymentDate:String,val planIds:List<String>,val principalMinor:Long,
     val poolId:String,val effectiveDate:String,val feeMinor:Long?,val mergeFeeDate:String?=null,val mergeFeeIncludedInRetained:Boolean=false)
 @Serializable data class BatchArrangementArchive(val undoGroupId:String,val paymentDate:String,val before:List<FinancialPlanArchive>,
-    val afterPlans:List<FinancialPlanEntity>,val afterBills:List<FinancialBillEntity>,val arrangements:List<FinancialArrangementEntity>,val comparison:FinancialArrangementComparison,val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList())
+    val afterPlans:List<FinancialPlanEntity>,val afterBills:List<FinancialBillEntity>,val arrangements:List<FinancialArrangementEntity>,val comparison:FinancialArrangementComparison,val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val billAdjustments:List<FinancialBillAdjustmentEntity>?=null)
 class BatchRevolvingReview internal constructor(internal val before:FinancialReviewState,val input:BatchRevolvingInput,
     val transfers:List<SinglePaymentTransfer>,val reviews:List<FinancialArrangementReview>,val comparison:FinancialArrangementComparison?,val calculation:Calculation<Unit>)
 
@@ -106,7 +107,7 @@ suspend fun LedgerRepository.commitBatchRevolving(review:BatchRevolvingReview,ap
     dao.updatePlan(pool)
     val afterPlans=state.finance.plans.filter{it.id in planIds||it.id in targets}.map{if(it.id==pool.id)pool else it}
     val afterBills=state.finance.bills.filter{it.planId in planIds}
-    val archive=BatchArrangementArchive(group,review.input.paymentDate,before,afterPlans,afterBills,state.finance.arrangements.filter{it.targetPlanId in targets},review.comparison!!,state.ledger.repaymentAllocations.filter{it.billId in afterBills.map{b->b.id}})
+    val archive=BatchArrangementArchive(group,review.input.paymentDate,before,afterPlans,afterBills,state.finance.arrangements.filter{it.targetPlanId in targets},review.comparison!!,state.ledger.repaymentAllocations.filter{it.billId in afterBills.map{b->b.id}},state.finance.billAdjustments.filter{a->state.finance.arrangements.any{it.id==a.arrangementId&&it.targetPlanId in targets}})
     archiveFinancialPlan(pool,afterBills.filter{it.planId==pool.id},"BATCH_REVOLVING",batchArrangement=archive)
     group
 }
@@ -121,6 +122,7 @@ suspend fun LedgerRepository.undoBatchRevolving(bookId:String,undoGroupId:String
     require(archive.afterPlans.all{p->f.plans.first{it.id==p.id}==p}&&archive.afterBills.all{b->f.bills.first{it.id==b.id}==b}&&
         f.bills.none{it.planId in affected&&it.id !in billIds}&&state.ledger.repaymentAllocations.filter{it.billId in billIds}.toSet()==archive.repaymentAllocations.toSet()&&
         !financialPoolStale(state.ledger,f,f.plans.first{it.id==poolId})&&arrangements.toSet()==archive.arrangements.toSet()){"此组之后已有付款或安排变化，不能直接撤销，请核对当前方案 / この後に支払・予定の変更があります。直接取り消せないため現在のプランを確認してください"}
+    requireBatchRestorationReferences(bookId,archive,state)
     dao.deleteArrangementAdjustments(bookId,arrangements.map{it.id});dao.deleteArrangements(bookId,arrangements.map{it.id})
     val originals=archive.before.associateBy{it.plan.id}
     for(current in archive.afterPlans) {
@@ -131,5 +133,50 @@ suspend fun LedgerRepository.undoBatchRevolving(bookId:String,undoGroupId:String
         val bills=f.bills.filter{it.planId==current.id}.map{bill->previous[bill.id]?.let{if(it==bill)bill else it.copy(revision=bill.revision+1)}?:bill.copy(active=false,revision=bill.revision+1)}
         bills.filter{b->f.bills.first{it.id==b.id}!=b}.forEach{dao.updateBill(it)}
         archiveFinancialPlan(restored,bills,"BATCH_REVOLVING_UNDONE",batchArrangement=archive.takeIf{current.id==poolId})
+    }
+}
+
+/** Batch undo only removes its own arrangement relationships. Later JSON evidence/drafts and
+ * logical links must be checked as well as the original plan/bill equality guards. */
+private suspend fun LedgerRepository.requireBatchRestorationReferences(bookId:String,archive:BatchArrangementArchive,state:FinancialReviewState) {
+    val arrangements=archive.arrangements.map{it.id}.toSet()
+    val newPlans=archive.afterPlans.map{it.id}.toSet()-archive.before.map{it.plan.id}.toSet()
+    val affectedPlans=archive.afterPlans.map{it.id}.toSet()
+    val currentAdjustments=state.finance.billAdjustments.filter{it.arrangementId in arrangements}
+    // Older archives retain these exact rows in each original plan's post-arrangement facts.
+    val expectedAdjustments=archive.billAdjustments?:archive.afterPlans.flatMap{p->
+        db.financialDao().planRevision(bookId,p.id,p.revision)?.let{json.decodeFromString<FinancialPlanArchive>(it.json).facts?.billAdjustments}.orEmpty()
+    }.filter{it.arrangementId in arrangements}.distinctBy{it.id}
+    require(currentAdjustments.toSet()==expectedAdjustments.toSet()) {"此组账期调整已有变化，不能撤销 / このグループの請求調整が変更済みで、取消できません"}
+    val adjustments=currentAdjustments.map{it.id}.toSet()
+    val targets=arrangements+newPlans+adjustments
+    fun references(v:JsonElement):Boolean=when(v) {
+        is JsonObject->v.any{(k,x)->k in targets||references(x)}
+        is JsonArray->v.any(::references)
+        is JsonPrimitive->v.isString&&(financialReferenceIds(v.content).any{it in targets}||v.content.trimStart().let{it.startsWith("{")||it.startsWith("[")}&&runCatching{json.parseToJsonElement(v.content)}.getOrNull()?.let(::references)==true)
+        else->false
+    }
+    val sql=db.openHelper.writableDatabase
+    val tables=sql.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").use{c->buildList{while(c.moveToNext())add(c.getString(0))}}
+    // Inventory foreign keys too, so new child tables are not silently outside this guard.
+    val incoming=scopedForeignKeys().filter{it.parent in setOf("financial_arrangements","financial_bill_adjustments","financial_plans")}.groupBy{it.table}
+    for(table in tables.filter{!it.startsWith("command_")&&!it.startsWith("cloud_")&&it !in setOf("financial_plan_revisions","credit_limit_group_revisions","revisions")}) {
+        val columns=sql.query("PRAGMA table_info(`$table`)").use{c->buildList{while(c.moveToNext())add(c.getString(1))}}
+        if("bookId" !in columns)continue
+        val fields=columns.filter{it.endsWith("Id")||it.endsWith("Json")||it in setOf("json","sourceProof","slot")||incoming[table].orEmpty().any{fk->it in fk.columns}}
+        if(fields.isEmpty())continue
+        sql.query("SELECT * FROM `$table` WHERE bookId=?",arrayOf(bookId)).use{c->while(c.moveToNext()) {
+            fun text(field:String)=c.getColumnIndex(field).takeIf{it>=0}?.let{if(c.isNull(it))null else c.getString(it)}
+            val internal=when(table) {
+                "financial_arrangements"->text("id") in arrangements
+                "financial_bill_adjustments"->text("arrangementId") in arrangements
+                "financial_plans"->text("id") in affectedPlans
+                "financial_bills"->text("planId") in affectedPlans
+                else->false
+            }
+            if(!internal)require(fields.none{field->text(field)?.let{raw->references(JsonPrimitive(raw))}==true}) {
+                "此组有后续还款、对账或草稿引用，不能撤销 / このグループには後続の返済・再確認・下書きからの参照があり、取消できません"
+            }
+        }}
     }
 }

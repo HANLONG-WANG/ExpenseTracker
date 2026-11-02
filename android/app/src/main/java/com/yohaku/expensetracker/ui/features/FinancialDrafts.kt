@@ -61,7 +61,7 @@ internal class FinancialDraftSession(val vm:AppViewModel,val bookId:String,val c
         vm.repository.commitFinancialDraft(bookId,context.slot(),action).also{if(it!=null){consumed=true;generation++;vm.financialDraftSessions.remove(key,this)}}
     }
     suspend fun discard()=writes.withLock {
-        vm.repository.db.financialDao().clearDraft(bookId,context.slot());consumed=true;generation++;vm.financialDraftSessions.remove(key,this)
+        vm.repository.discardFinancialDraft(bookId,context.slot());consumed=true;generation++;vm.financialDraftSessions.remove(key,this)
     }
 }
 
@@ -81,7 +81,7 @@ internal class FinancialDraftSession(val vm:AppViewModel,val bookId:String,val c
 internal suspend fun commitFinancialDraft(session:FinancialDraftSession,action:suspend()->String?):String?=session.commit(action)
 internal suspend fun discardFinancialDraft(vm:AppViewModel,bookId:String,context:FinancialDraftContext) {
     val session=vm.financialDraftSessions[bookId+"/"+context.slot()]
-    if(session!=null)session.discard()else vm.repository.db.financialDao().clearDraft(bookId,context.slot())
+    if(session!=null)session.discard()else vm.repository.discardFinancialDraft(bookId,context.slot())
 }
 
 private sealed interface DraftRead {

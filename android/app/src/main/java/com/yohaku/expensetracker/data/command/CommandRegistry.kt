@@ -21,7 +21,7 @@ class CommandRegistry {
         BudgetAdapter(),BudgetAdapter(true),ActivityAdapter("setMode"),ActivityAdapter("setCurrent"),ActivityAdapter("save"),ActivityAdapter("end"),ActivityAdapter("lifecycle"),
         ReserveAdapter(),ReserveAdapter(true),ParticipantAdapter(),TreatAdapter(),TreatAdapter(true),
         RecurrenceAdapter(),RecurrenceAdapter(true),OccurrenceAdapter("resolve"),OccurrenceAdapter("update"),OccurrenceAdapter("lifecycle"),OccurrenceAdapter("link"),OccurrenceAdapter("unlink"),OccurrenceAdapter("pay"),
-        ExpectedIncomeAdapter("save"),ExpectedIncomeAdapter("cancel"),ExpectedIncomeAdapter("arrive"))
+        ExpectedIncomeAdapter("save"),ExpectedIncomeAdapter("cancel"),ExpectedIncomeAdapter("arrive")) + financeCommandAdapters()
     val capabilities:List<CommandCapability> get()=adapters.map{it.capability}
     private val content get()=buildJsonObject{put("format","yohaku.capabilities");put("version",1);put("\$defs",buildJsonObject{put("stepReference",descriptorSchema(CommandRef.serializer().descriptor))});put("commands",encoded(capabilities));put("forbidden",encoded(forbidden));put("forbiddenAlternatives",encoded(permanentAlternatives));put("limits",buildJsonObject{put("steps",500);put("targets",5000)})}
     val catalogDigest:String get()=digest(content)
@@ -55,7 +55,7 @@ internal val accountSchema:JsonObject get()=patchSchema(descriptorSchema(Account
     "creditLimit" to nullableSchema(withoutFields(descriptorSchema(CreditLimitInput.serializer().descriptor),setOf("accountId")))))
 internal val ruleSchema:JsonObject get()=patchSchema(descriptorSchema(RuleCommandInput.serializer().descriptor),mapOf(
     "account" to referenceSchema("account"),"paymentAccount" to nullableSchema(referenceSchema("account")),
-    "rule" to withoutFields(descriptorSchema(FinancialRuleVersion.serializer().descriptor),setOf("id","bookId","accountId"))))
+    "rule" to financeReferences(withoutFields(descriptorSchema(FinancialRuleVersion.serializer().descriptor),setOf("id","bookId","accountId")))))
 internal val predictionSchema:JsonObject get()=patchSchema(descriptorSchema(PredictionCommandInput.serializer().descriptor),mapOf(
     "account" to referenceSchema("account"),"paymentAccount" to nullableSchema(referenceSchema("account")),
     "sourceEvent" to nullableSchema(referenceSchema("entry")),"plan" to nullableSchema(referenceSchema("prediction"))))

@@ -78,9 +78,9 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         val output=outputs.entries.firstOrNull{it.value==id}
         return if(output==null)JsonPrimitive(id)else encoded(CommandRef(output.key.first,output.key.second))
     }
-    fun semantic(value:JsonElement)=identities.normalize(value)
+    fun semantic(value:JsonElement)=orderFinanceFacts(identities.normalize(value))
     fun executionRecord()=CommandExecutionRecord(outputs.entries.groupBy{it.key.first}.mapValues{(_,entries)->entries.associate{it.key.second to it.value}},identities.actualIds())
-    private fun row(value:JsonElement,ignore:Set<String> = emptySet()):JsonObject=commandObjectFacts(value,ignore)
+    private fun row(value:JsonElement,ignore:Set<String> = emptySet()):JsonObject=commandFinanceFacts(commandObjectFacts(value,ignore)).jsonObject
     private fun project(state:FinancialReviewState,accounts:Set<String>,entries:Set<String>,categories:Set<String>,months:Set<String>):Map<Pair<String,String>,JsonElement> {
         val s=state.ledger;val f=state.finance;val result=linkedMapOf<Pair<String,String>,JsonElement>()
         fun add(type:String,id:String,value:JsonElement){result[type to id]=value}
@@ -94,18 +94,18 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
             })
             if(AccountType.valueOf(a.type).debt) {
                 val limit=accountCreditLimit(s,f,state.limits,a.id,context.asOfDate)
-                val value=encoded(limit).jsonObject
+                val value=commandFinanceFacts(encoded(limit)).jsonObject
                 add("creditLimit",a.id,JsonObject(value+mapOf("currency" to JsonPrimitive(a.currency),"config" to (limit.config?.let{row(encoded(it),setOf("createdAt"))}?:JsonNull))))
                 limit.groupId?.let{groupId->
                     val group=groupCreditLimit(s,f,state.limits,groupId,context.asOfDate)
-                    add("creditLimitGroup",groupId,JsonObject(encoded(group).jsonObject+mapOf("currency" to JsonPrimitive(group.group.currency),"group" to row(encoded(group.group),setOf("createdAt")))))
+                    add("creditLimitGroup",groupId,JsonObject(commandFinanceFacts(encoded(group)).jsonObject+mapOf("currency" to JsonPrimitive(group.group.currency),"group" to row(encoded(group.group),setOf("createdAt")))))
                 }
             }
         }
         for(e in s.events.filter{it.id in entries}) {
             // Event revision is an audit counter. Prediction facts separately carry business revisions.
             add("entry",e.id,commandEventFacts(encoded(e)))
-            add("entryDetails",e.id,encoded(s.entryDetails(e.id)))
+            add("entryDetails",e.id,encoded(s.entryDetails(e.id)).let{if(e.kind in setOf("BORROWING","REPAYMENT"))commandFinanceFacts(it)else it})
             add("entryCategory",e.id,s.categories.firstOrNull{it.id==e.categoryId}?.let{encoded(it)}?:JsonNull)
         }
         if(entries.isNotEmpty()) {
@@ -130,11 +130,25 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         val plans=f.plans.filter{it.accountId in accounts}
         for(plan in plans) {
             add("prediction",plan.id,row(encoded(plan),setOf("createdAt","revision")))
-            add("predictionFacts",plan.id,JsonObject(encoded(predictionFacts(s,f,plan.id,plan.sourceEventId,context.asOfDate)).jsonObject+("currency" to JsonPrimitive(plan.currency))))
+            plan.reconciliation()?.let{r->add("arrangementReconciliation",r.id,JsonObject(row(encoded(r))+mapOf("planId" to JsonPrimitive(plan.id),"currency" to JsonPrimitive(plan.currency))))}
+            poolInput(plan)?.paymentChanges.orEmpty().forEach{c->add("poolPaymentChange",c.id,JsonObject(row(encoded(c))+mapOf("planId" to JsonPrimitive(plan.id),"currency" to JsonPrimitive(plan.currency))))}
+            add("predictionFacts",plan.id,JsonObject(commandFinanceFacts(encoded(predictionFacts(s,f,plan.id,plan.sourceEventId,context.asOfDate))).jsonObject+("currency" to JsonPrimitive(plan.currency))))
         }
         val planIds=plans.map{it.id}.toSet()
         for(bill in f.bills.filter{it.planId in planIds})add("bill",bill.id,JsonObject(row(encoded(bill),setOf("revision","confirmedAt"))+mapOf(
             "confirmed" to JsonPrimitive(bill.confirmed),"currency" to JsonPrimitive(plans.first{it.id==bill.planId}.currency))))
+        for(v in f.validations.filter{v->f.rules.any{it.id==v.ruleVersionId&&it.accountId in accounts}})add("ruleValidation",v.id,JsonObject(row(encoded(v))+("currency" to JsonPrimitive(s.accounts.first{a->f.rules.any{it.id==v.ruleVersionId&&it.accountId==a.id}}.currency))))
+        for(c in f.contracts.filter{it.accountId in accounts}) {
+            add("contract",c.id,row(encoded(c)))
+            add("contractBalance",c.id,buildJsonObject{put("name",c.name);put("currency",c.currency);put("principalMinor",c.principalMinor);put("remainingMinor",s.contractRemaining(c))})
+        }
+        for(r in f.repayments.filter{it.debtAccountId in accounts})add("repayment",r.eventId,JsonObject(row(encoded(r))+("currency" to JsonPrimitive(s.accounts.first{it.id==r.debtAccountId}.currency))))
+        val repaymentIds=f.repayments.filter{it.debtAccountId in accounts}.map{it.eventId}.toSet()
+        for(a in f.repaymentAllocations.filter{it.eventId in repaymentIds})add("repaymentAllocation",a.id,JsonObject(row(encoded(a))+("currency" to JsonPrimitive(s.accounts.first{it.id==f.repayments.first{r->r.eventId==a.eventId}.debtAccountId}.currency))))
+        for(a in f.arrangements.filter{it.originalPlanId in planIds||it.targetPlanId in planIds})add("arrangement",a.id,JsonObject(row(encoded(a))+("currency" to JsonPrimitive(f.plans.first{it.id==a.originalPlanId}.currency))))
+        for(a in f.billAdjustments.filter{a->f.bills.any{it.id==a.billId&&it.planId in planIds}})add("billAdjustment",a.id,JsonObject(row(encoded(a))+("currency" to JsonPrimitive(f.plans.first{p->f.bills.any{it.id==a.billId&&it.planId==p.id}}.currency))))
+        for(r in state.limits.recoveries.filter{it.accountId in accounts})add("creditLimitRecovery",r.id,JsonObject(row(encoded(r))+("currency" to JsonPrimitive(s.accounts.first{it.id==r.accountId}.currency))))
+        for(o in state.limits.observations.filter{it.accountId in accounts||state.limits.members.any{m->m.accountId in accounts&&m.groupId==it.groupId}})add("creditLimitObservation",o.id,JsonObject(row(encoded(o))+("currency" to JsonPrimitive(s.accounts.firstOrNull{it.id==o.accountId}?.currency?:state.limits.groups.first{it.id==o.groupId}.currency))))
         val stale=plans.filter{ledger.financialPredictionStale(s,f,it)}.map{it.id}.toSet()
         val cash=s.cashTimeline(f,LocalDate.parse(context.asOfDate),LocalDate.parse(context.throughDate),stale,context.referenceRates,orderKey={item->item.id.substringBefore(':')+":"+identities.name(item.id.substringAfter(':'))})
         for(a in s.accounts.filter{it.id in allAccounts&&!AccountType.valueOf(it.type).debt}) {
@@ -150,6 +164,7 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         return result
     }
     fun effect(step:CommandStep,before:FinancialReviewState,after:FinancialReviewState,accounts:Set<String>,entries:Set<String> = emptySet(),categories:Set<String> = emptySet(),months:Set<String> = emptySet(),unknown:List<String> = emptyList()):StepEffect {
+        registerFinanceIdentities(step.id,before,after)
         // Register automatic children before calculating any ordered projection. New bill/posting
         // UUIDs must not decide the within-day running cash balances on preview versus confirmation.
         val oldRecurrences=before.ledger.recurrences.map{it.id}.toSet()

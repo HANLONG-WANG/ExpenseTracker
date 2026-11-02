@@ -189,7 +189,7 @@ private fun LedgerRepository.prepareRepaymentAllocations(state:FinancialReviewSt
 suspend fun LedgerRepository.commitFinancialLedger(review:FinancialLedgerReview):String?=db.withTransaction {
     if(financialReviewState(review.before.ledger.book.id)!=review.before)return@withTransaction null
     for(impact in review.planImpacts)archiveExistingPlan(impact.original,impact.originalBills,predictionFacts(review.before.ledger,review.before.finance,impact.original.id,impact.original.sourceEventId,LocalDate.now(clock).toString()))
-    val saved=review.change?.let{writeChange(it)}?:run{db.financialDao().putContract(review.contract!!);review.contract.id}
+    val saved=review.change?.let{val savedAt=nextEntrySaveTime(review.before.ledger);writeChange(it.withSaveTime(savedAt),savedAt=savedAt)}?:run{db.financialDao().putContract(review.contract!!);review.contract.id}
     writeFinancialPlanImpacts(review,review.change?.event?.id)
     saved
 }

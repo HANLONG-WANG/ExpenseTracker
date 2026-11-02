@@ -17,7 +17,7 @@
 
 ### 引用与金额
 
-已有对象用附件中的字符串 ID；步骤输出用 `{"ref":"card","output":"account"}`。引用只能出现在 schema 指定的有类型位置，只能指向前面的步骤，输出类型必须匹配。没有字符串插值；不能写 `$card.id`。输出：account.save → account；category.save → category；merchant.save → merchant；merchantLocation.save → merchantLocation；friend.save → friend；template.save → template；entry.create / template.createEntry → entry；book.create → book；financialRule.addVersion → rule；financialPrediction.save → prediction；activity.save → activity；activityReserve.save → reserve；activityTreat.save → treat；recurrence.save → recurrence；occurrence.resolve → occurrence；occurrence.pay / expectedIncome.arrive → entry；expectedIncome.save → expectedIncome。其他命令没有输出。
+已有对象用附件中的字符串 ID；步骤输出用 `{"ref":"card","output":"account"}`。引用只能出现在 schema 指定的有类型位置，只能指向前面的步骤，输出类型必须匹配。没有字符串插值；不能写 `$card.id`。输出：account.save → account；category.save → category；merchant.save → merchant；merchantLocation.save → merchantLocation；friend.save → friend；template.save → template；entry.create / template.createEntry → entry；book.create → book；financialRule.addVersion → rule；financialPrediction.save → prediction；activity.save → activity；activityReserve.save → reserve；activityTreat.save → treat；recurrence.save → recurrence；occurrence.resolve → occurrence；occurrence.pay / expectedIncome.arrive → entry；expectedIncome.save → expectedIncome。阶段5金融/额度命令的输出见下文及能力清单；未声明输出的命令不能被引用。
 
 金额均为最小单位整数。account.save 明确给 currency；规则、额度、预测金额均采用其 account 的币种（该关联同时确定币种，禁止把人民币金额填入日元账户）。records 同时标明原币、账户币及账本币。百分比/汇率是十进制字符串：年率18%写 `"0.18"`。未知填 schema 允许的 null 或省略，不能填0冒充已知。
 
@@ -55,7 +55,7 @@
 - `entry.lifecycle`：entry 为已有ID/前步引用，operation=TRASH/RESTORE；原消费和关联退款按现有删除组一起处理；恢复会重查30天期限、原消费、退款上限及预留可用性。PURGE/EMPTY 禁止。
 - `template.save`：完整保存 name/kind/category/account/currency，以及可选固定金额、商户/备注、付款选择、活动；省略可选项恢复其默认空值，已有排序保留。`template.move`：template 和 direction=-1/+1，相邻移动，边缘保持。`template.createEntry`：template 与可选 set，调用普通记账准备，预览显示 `entry.create`；无金额或外币换算资料时需要在 set 补齐，不能生成待填草稿。模板内容也是确认依据。
 
-分类替代合并不是隐藏删除：entry.update 批量改记录分类、template.save 改模板，budget.save 明确目标各生效月额度并把原分类每个生效月设为 amount:null，activity.save 全量替换 categoryBudgets，recurrence.save 改规则，再 occurrence.update 改完成/取消等历史实例的分类，最后 category.lifecycle ARCHIVE。金额如何合并需明确给出，不能自行相加。原分类预算的空值历史行仍保留，不能宣称物理移除了所有引用。普通/金融草稿仍归阶段5–6，由本机处理；在 message/questions 写明剩余草稿工作。
+分类替代合并不是隐藏删除：entry.update 批量改记录分类、template.save 改模板，budget.save 明确目标各生效月额度并把原分类每个生效月设为 amount:null，activity.save 全量替换 categoryBudgets，recurrence.save 改规则，再 occurrence.update 改完成/取消等历史实例的分类，最后 category.lifecycle ARCHIVE。金额如何合并需明确给出，不能自行相加。原分类预算的空值历史行仍保留，不能宣称物理移除了所有引用。金融草稿分类用 financialDraft.reclassify；普通草稿仍归阶段6，由本机处理；在 message/questions 写明剩余草稿工作。
 
 组合示例（替换实际 book_id/digest 后使用；以下为 steps）：
 
@@ -83,7 +83,7 @@
 - `occurrence.resolve` 用 recurrence 引用和 date 选择确定实例；必要时物化该规则所在月份，输出 occurrence。新规则后的实例操作先用它，不能推测实例UUID。
 - `occurrence.update` 指定 occurrences 列表及 category 批量调整历史/待付实例分类；不代替实际记录分类更新。`occurrence.lifecycle` CANCEL/RESTORE；恢复要求规则启用且仍安排该日。`occurrence.link` 的 links 为 occurrence/entry 对，一次准备后关联已有支出，不能重复完成另一实例；`occurrence.unlink` 保留原记录并解除关联。
 - `occurrence.pay` 给 occurrence 和可选 set 记录补丁。有匹配的已存支付草稿时复用其输入与本地附件，否则采用手机同一支付表单默认值；再应用 set，走普通记账确认与支付草稿协调。只消费匹配草稿，其前后内容及附件关系参与确认/撤销，不新增云端文件操作。草稿已选择关联已有记录时，应明确使用 occurrence.link。金额/换算资料不足则整批失败。不能改 kind 或 occurrence；关联已有付款请用 occurrence.link。
-- `expectedIncome.save`：name/amount/date/account，income 省略新建；外币 accountAmount 省略/null 为未知，useReferenceRates=true 才选本次冻结的本机参考报价。`expectedIncome.cancel` 仅取消未到账安排。`expectedIncome.arrive` 的 income 必填，entry（已有实际收入）与 set（新建实际收入字段）二选一；新增必须给实际 amount/category，不从预计金额猜实际金额。入账记录须同账户、已确认、非期初、非未来且未关联其他预计项；不重复增加余额，原预计金额保留。金融编辑草稿协调仍归阶段5–6。
+- `expectedIncome.save`：name/amount/date/account，income 省略新建；外币 accountAmount 省略/null 为未知，useReferenceRates=true 才选本次冻结的本机参考报价。`expectedIncome.cancel` 仅取消未到账安排。`expectedIncome.arrive` 的 income 必填，entry（已有实际收入）与 set（新建实际收入字段）二选一；新增必须给实际 amount/category，不从预计金额猜实际金额。入账记录须同账户、已确认、非期初、非未来且未关联其他预计项；不重复增加余额，原预计金额保留。金融草稿放弃已下沉到业务层；这些命令不消费未明确提交的金融表单草稿，草稿分类可用 financialDraft.reclassify 迁移。
 
 例如新建规则后记录支付，steps 可用（替换已有账户/分类ID）：
 
@@ -109,6 +109,27 @@
 ## 永久边界
 
 永远不能恢复备份、操作云端连接凭证/设备、永久删除任何记录/账本/其他对象、清空回收站或触发到期清理。此限制适用于任何命名和组合，不是可绕过的命令名黑名单。记录与账本可移入回收站/恢复；账本与分类可归档，账户、商户、朋友可停用。分类 MERGE_DELETE / DELETE_EMPTY、AccountOperation.DELETE、模板 deleteTemplate、地点 removeMerchantLocation 都是物理删除，禁止由云端执行。预算物理删行/清表、活动永久删除、预留/参与历史/请客物理删除、周期规则/实例及预计收入物理删除同样禁止。预算设 null、活动和他人请客软删除/恢复、规则停用、实例取消/恢复、预计收入取消允许。活动分类预算、请客份额等从属关系的完整对象编辑不是独立删除命令，仍保存完整撤销快照。具体替代做法见能力清单 forbiddenAlternatives。不能写入数据库、调用任意 Repository、运行 SQL/代码或发出网络请求。
+
+## 金融与额度命令（阶段 5）
+
+以下均为 v1 / transactional。精确输入和可用示例以本机生成能力清单为准，不能自行补造规则、费率、本金、日期、费用或平台已办理事实。
+
+- `financialRule.addVersion` 覆盖全部信用卡/贷款模式与还款方法；`financialRule.validate` 根据同一期预测和实际确认账单生成核验结果，不接受云端指定“核验通过”。
+- `financialManualPlan.save` 记录完整或部分已知逐期安排；`financialPrediction.save` 新建/重算规则预测。二者输出 `prediction`。新建的手工安排和规则预测需手机事实声明。`financialBill.resolve` 输入 planId（可前步 prediction 引用）及 number，输出 `bill`；`financialBill.confirm` 保存实际账单并要求用户核对，仍输出 bill；核验命令输出 validation。
+- `financialPool.save` 建立、采纳已有安排、对账或重算余额池，输出 prediction。明确 openingMinor、sourceDate 和 terms；不猜期初范围，未分配还款按 `unallocatedShares:[{eventId,minor}]` 指定（eventId 支持类型引用）；adoptedFees 明确采纳安排的费用归属。旧池付款变更历史自动保留，不能借重算抹除。
+- `financialArrangement.record` 的 `input` 使用完整安排业务字段，支持分期/循环、手工逐期、池转出、并池、原费用处理、清偿分配迁移和贷款额度影响；外层 `appliedAt` 是用户提供的实际办理时刻。输出 prediction、arrangement。`financialArrangement.reconcile` 重核来源、退款、清偿、原保留账期及池证据，输出 prediction；poolUnallocatedShares 是已有付款 ID 到整数的映射。资料缺失或冲突整批失败。
+- `financialPool.changePayment` 使用 `{input:{planId,effectiveDate,setting,feeMinor,...},appliedAt}`，记录已办理的共同月付款变更，输出 prediction。
+- `financialBatchRevolving.apply` 使用 `{input:{accountId,paymentDate,planIds,principalMinor,poolId,effectiveDate,feeMinor,...},appliedAt}`。planIds 是固定目标集合，输出 `batch`（revolvingBatch）；`financialBatchRevolving.undo` 输入 undoGroupId，可引用前步 batch，恢复一次既有批量转循环操作。
+- **上述已办理/重核/观测的事实只能在手机勾选。** 输入禁止 `platformConfirmed`、`currentArrangementConfirmed`、`exceptionAccepted`、`user_fact` 等代替用户声明的布尔值。若实际办理时刻超过规则期限，手机另要求“平台已接受期限外办理”的事实声明。referenceRates、内部 facts/projections/undoGroupId（安排内部字段）不由云端填写。
+- `financialBorrowing.save` 创建/编辑真实借入或期初合同，输出 contract；真实借入另输出 entry，期初合同没有 entry，不能引用该不存在的输出。借入本金、到账资金和手续费使用专用语义，**不能伪装为普通转账**。`financialContract.linkPlan` 关联同来源、同方式的合同与计划，余额池不绑定单一合同。
+- `financialRepayment.save` 记录实际支付和待平台确认的清偿；`financialRepayment.confirm` 记录经手机用户核对的清偿事实，必须明确实收、本金、利息、费用和清偿日期。二者输出 entry，完整支持账期/合同 allocations、PARTIAL/EARLY/SETTLEMENT 和 linkedTransferEventId；`financialRepaymentAllocation.resolve` 用 eventId 和 billId/contractId 唯一选择分配，输出 allocation，可供后步 clearingMoves 引用；已知为零必须写0，未知不能当零。结构附件不是全部还款记录；所选 records 的可选 financial 字段提供本金/费用/清偿状态及分配 ID，缺少所需记录时先要求补充。
+- `creditLimit.save` 追加额度配置版本（输出 config）；`creditLimitGroup.save` 完整保存组与成员（输出 group）；省略 id 新建，null 额度/占用仍未知。已知占用基准需要用户核对具体金额和日期，account.save 内嵌额度配置使用相同事实声明。
+- `creditLimitRecovery.confirm` 记录用户核对的平台实际恢复额度（输出 recovery）；不重复产生还款；`creditLimitRecovery.void` 作废误记恢复并保留历史。`creditLimitObservation.record` 记录平台显示的可用额度（输出 observation），只能指定一个账户或组，时刻不得未来，共享组仅 TOTAL，必须手机 USER_FACT。
+- `financialDraft.reclassify` 用 sourceCategoryId/categoryId 迁移金融表单草稿分类；首次预览固定匹配 slots，确认不扩大。只改 EXPECTED 表单的收入分类，其他输入和原依据保留。金融草稿内容不自动上传；普通记账草稿仍属阶段6，其他金融表单没有分类字段。
+
+金融永久边界：独立删除规则/核验、计划/账期/修订、合同/还款/分配/合同关联、安排/账期调整、额度配置/组/成员/修订/恢复/观测、放弃金融草稿，均在 forbidden 中列出替代做法。通常用追加版本、重新核对、完整编辑、作废恢复或记录回收站处理。
+
+**批量转循环撤销是允许的例外语义：有完整历史的关系恢复。** 只移除该操作自己生成且未修改、无后续外部引用的安排/调整行，完整历史保留在计划修订中；现有计划/账期/付款/池依据检查及新增调整/外键/JSON/草稿检查全部通过才恢复。它不授权独立删除用户金融数据。正常编辑替换分配/成员关系、成功提交消费匹配草稿同样必须作为完整业务操作执行并保留精确撤销证据。
 
 ## 完整示例一：截图建信用卡 → 规则 → 期初预测
 
@@ -154,5 +175,5 @@
 
 能力清单的 `undo` 说明每个命令的逆操作或不可撤销原因，以本机预览的逐步判断为准。
 撤销只能由用户在手机上的执行历史发起，不是云端命令。不要返回 `local.*` 命令，也不要用新方案模拟永久删除；云端永久边界不变。
-撤销恢复原方案执行前的业务状态。本方案新建并登记在执行记录中的账本、账户、分类、商户/地点、朋友、记录、模板、规则版本、预测、账期、额度版本及从属/修订行，在未被修改且没有方案以外的外键、JSON或草稿引用时可整体移除；预览逐项列出“将移除”。给已有账户新增的规则版本也属于本方案新建对象。已有对象修改按原快照恢复；原记录的分类为空也可恢复为空。
+撤销恢复原方案执行前的业务状态。本方案新建并登记在执行记录中的账本、账户、分类、商户/地点、朋友、记录、模板、规则版本、预测、账期、合同、还款分配、已办理安排、额度版本/组/恢复/观测及从属/修订行，在未被修改且没有方案以外的外键、JSON或草稿引用时可整体移除；预览逐项列出“将移除”。给已有账户新增的规则版本也属于本方案新建对象。已有对象修改按原快照恢复；原记录的分类为空也可恢复为空。
 任一对象已改变或被方案以外对象引用时，整批撤销被阻止；不能跳过冲突或部分恢复。执行与去重记录保留。缺少完整快照的旧执行记录不能撤销。

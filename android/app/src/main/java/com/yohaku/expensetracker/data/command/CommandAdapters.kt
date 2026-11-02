@@ -41,32 +41,36 @@ internal class AccountCommandAdapter:CommandAdapter {
     override suspend fun inverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState)=UndoPreparation(accountUndo)
     override val capability=capability("account.save",accountSchema,mapOf("account" to "account"),"type=CREDIT; omitted creditLimit preserves existing settings; opening amount/date are required.",
         "Create/edit CASH, BANK, CREDIT, LOAN or IC accounts, opening balance/debt and opening date. Optional creditLimit covers total/installment/revolving/shared sublimits, usage anchor, recovery policy/delay, usage start and timezone. Payment modes/bonus windows are financialRule.addVersion.",
-        """{"name":"カード","currency":"JPY","openingMinor":30000,"openingDate":"2026-11-01"}""")
+        """{"name":"カード","currency":"JPY","openingMinor":30000,"openingDate":"2026-11-01"}""",facts=true)
     override fun validate(input:JsonObject) { val v=commandJson.decodeFromJsonElement<AccountCommandInput>(input);AccountType.valueOf(v.type);Currency.valueOf(v.currency);LocalDate.parse(v.openingDate) }
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
         val v=commandJson.decodeFromJsonElement<AccountCommandInput>(step.input);val r=run.ledger
         val old=v.account?.let{run.resolve(it)}
         val before=run.state();val account=r.saveAccount(run.bookId,v.name,AccountType.valueOf(v.type),Currency.valueOf(v.currency),Money(Currency.valueOf(v.currency),v.openingMinor),v.openingDate,old)
         run.output(step.id,"account",account,old==null)
+        var savedLimit:CreditLimitInput?=null
         v.creditLimit?.let{raw->
             val input=commandJson.decodeFromJsonElement<CreditLimitInput>(JsonObject(raw+("accountId" to JsonPrimitive(account))))
+            savedLimit=input
             val review=r.previewCreditLimit(run.bookId,input)
             review.config?.let{run.generated(it.id,step.id,"creditLimit",it.version.toString())}
             check(r.commitCreditLimit(review)){"额度资料已变化 / 利用枠情報が変わりました"}
         }
-        return run.effect(step,before,run.state(refresh=true),setOf(account))
+        val effect=run.effect(step,before,run.state(refresh=true),setOf(account))
+        return savedLimit?.let{financeUsageFact(step,run,effect,it)}?:effect
     }
 }
 
 internal class RuleCommandAdapter:CommandAdapter {
     override suspend fun inverse(step:CommandStep,run:CommandRun,before:FinancialReviewState,after:FinancialReviewState)=UndoPreparation(ruleUndo)
-    override val capability=capability("financialRule.addVersion",ruleSchema,mapOf("rule" to "rule"),"Absent financial values remain unknown; no institution-name inference. Payment account may be a typed reference.",
-        "Append a rule version: SINGLE (billing and bonus windows), INSTALLMENT (fees, remainder), REVOLVING (interest, tiers, automatic mode), loan modes. Existing confirmed bills are preserved.",
+    override val capability=capability("financialRule.addVersion",ruleSchema,mapOf("rule" to "rule"),"Absent financial values remain unknown; no institution-name inference. Payment account and deadline bill IDs accept typed earlier-step references, including nested billing.paymentAccountId/deadlines.billId.",
+        "Append a rule version: SINGLE (billing and bonus windows), INSTALLMENT (fees, remainder), REVOLVING (interest, tiers, automatic mode), FIXED_LOAN/CREDIT_LINE, all loan methods (EQUAL_PRINCIPAL/ANNUITY/INTEREST_ONLY/MANUAL) and revolving methods (FIXED_PRINCIPAL/TOTAL_PAYMENT/BALANCE_TIERS). Existing confirmed bills are preserved.",
         """{"account":{"ref":"card","output":"account"},"rule":{"mode":"SINGLE","effectiveFrom":"2026-11-01","zoneId":"Asia/Tokyo"}}""")
     override fun validate(input:JsonObject) { commandJson.decodeFromJsonElement<RuleCommandInput>(input) }
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
         val v=commandJson.decodeFromJsonElement<RuleCommandInput>(step.input);val account=run.resolve(v.account)
-        var fields=JsonObject(v.rule+mapOf("id" to JsonPrimitive(""),"bookId" to JsonPrimitive(run.bookId),"accountId" to JsonPrimitive(account)))
+        val resolvedRule=financeInput(ruleSchema.getValue("properties").jsonObject.getValue("rule").jsonObject,v.rule,run::resolve).jsonObject
+        var fields=JsonObject(resolvedRule+mapOf("id" to JsonPrimitive(""),"bookId" to JsonPrimitive(run.bookId),"accountId" to JsonPrimitive(account)))
         v.paymentAccount?.let{payment->fields=JsonObject(fields+("billing" to JsonObject((fields["billing"] as? JsonObject).orEmpty()+("paymentAccountId" to JsonPrimitive(run.resolve(payment))))))}
         val rule=commandJson.decodeFromJsonElement<FinancialRuleVersion>(fields)
         val before=run.state();val review=run.ledger.previewFinancialRule(run.bookId,account,rule)
@@ -108,9 +112,8 @@ internal class PredictionCommandAdapter:CommandAdapter {
         review.bills.filter{bill->before.finance.bills.none{it.id==bill.id}}.forEach{run.generated(it.id,step.id,"bill",it.number.toString())}
         checkNotNull(run.ledger.commitFinancialPrediction(review)){"预测资料已变化 / 予測情報が変わりました"}
         val effect=run.effect(step,before,run.state(refresh=true),setOf(account))
-        return if(plan!=null)effect else effect.copy(requirements=effect.requirements+requirement(step.id,ConfirmationKind.USER_FACT,encoded(effect.objects),
-            if(event==null)"我确认这是金融平台当前采用的安排，日期和期初本金已经核对。"else"我确认这是金融平台当前采用的安排，来源记录和日期已经核对。",
-            if(event==null)"返済先で現在適用中のプランであり、日付と期首元金を確認しました。"else"返済先で現在適用中のプランであり、対象記録と日付を確認しました。"))
+        return if(plan!=null)effect else financeFact(step,run,effect,encoded(v),account,review.originalPrincipalMinor,terms.agreementDate,
+            "这是平台当前安排，来源或期初本金、逐期日期和金额均已核对。","返済先の現在の予定で、対象・期首元金・各回の日付と金額を確認しました。")
     }
 }
 

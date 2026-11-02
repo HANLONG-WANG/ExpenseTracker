@@ -268,6 +268,145 @@
                 "type": "null"
               }
             ]
+          },
+          "financial": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "contractId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "debtAccountId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "currency": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "clearingDate": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "linkedTransferEventId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "paymentType": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "receivedMinor": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "principalMinor": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "interestMinor": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "feeMinor": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "feeBaseMinor": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "sourceFeeMinor": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "sourceFeeBaseMinor": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "platformConfirmed": {
+                    "type": "boolean"
+                  },
+                  "allocations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "billId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "contractId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "principalMinor": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "interestMinor": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "feeMinor": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         "required": [

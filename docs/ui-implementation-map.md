@@ -71,7 +71,7 @@
 | UI26 | 新增管理状态 | 回收站、影响预览、永久删除、归档/迁移分类、账本归档、修改记录、规则验证结果 | 现有 sheet/panel/menu 主题样式；`lifecycle.html`补充阶段A影响预览；其余新增设计 | P07,P14,P23 |
 | UI28 | 云端分析交接台 `cloud`、小票/流水云端入口 | 连接配置导入确认/测试/解除、任务列表五段进度、待补资料补充、结果领取后进入原有流水/小票预览、通用结果另存；三主题各自的刊头/信封邮戳/行李吊牌与轨道 | 无HTML稿；按`docs/android-cloud-handoff-package/`契约新增原生设计，组件沿用UI21/UI23主题语汇 | 云端交接 |
 | UI29 | 云端办理提交 `command-submit` | 需求、截图/文件、记录范围及将上传的结构/记录/他人请客/文件摘要；复用交接入口与上传队列 | `ui/features/command/CommandScreens.kt`；杂志编号分栏、手账手记纸面、小物收纳头 | 阶段1已验收；阶段2见撤销流程 |
-| UI30 | 云端办理预览 `command-preview`、逐项核对弹层 | 本机回滚试运行、助手说明、逐步中间效果、净影响/口径/未知项、事实与风险勾选、整批确认/拒绝、变化重预览；撤销预览、原方案标题、将移除对象清单、逐步可撤销性及冲突字段/当前值/外部引用对象；细项分页；阶段3新增账本/分类/商户地点/朋友/各类记录/模板的业务名称与字段、撤销移除类型；阶段4预算/活动余量、预留/请客、规则/实例/预计收入的名称、字段和金额前后值 | `CommandScreens.kt`、`CommandEffectViews.kt`；主题卡片与 `YSheet` | 阶段1已验收；阶段2已验收；阶段3已验收；阶段4 `CommandFlowTest.planningCombinationPreviewAcrossLooks`，`looks=all visual=true`，`*-planning-preview.png`，待用户视觉验收 |
+| UI30 | 云端办理预览 `command-preview`、逐项核对弹层 | 本机回滚试运行、助手说明、逐步中间效果、净影响/口径/未知项、事实与风险勾选、整批确认/拒绝、变化重预览；撤销预览、原方案标题、将移除对象清单、逐步可撤销性及冲突字段/当前值/外部引用对象；细项分页；阶段3新增账本/分类/商户地点/朋友/各类记录/模板的业务名称与字段、撤销移除类型；阶段4预算/活动余量、预留/请客、规则/实例/预计收入；阶段5规则核验、手工计划、余额池/安排/重核、借贷合同/剩余本金/清偿分配、额度组/恢复/观测的名称、字段和金额前后值，具体事实勾选；账期标签显示所属账户和计划以区分同日同期期号 | `CommandScreens.kt`、`CommandEffectViews.kt`、`CommandFinanceViews.kt`；主题卡片与 `YSheet` | 阶段1已验收；阶段2已验收；阶段3已验收；阶段4已验收；阶段5已验收（`CommandFlowTest.financeCombinationPreviewAcrossLooks`，`looks=all visual=true`，`*-finance-preview.png`/`*-finance-pool.png`/`*-finance-net.png`） |
 | UI31 | 云端办理历史 `command-history` | 待预览、已执行、已拒绝、失败、已撤销及时间；撤销入口/不可撤销原因；保留原执行与独立撤销记录 | 同上；杂志行号目录、手账条目、小物标签卡 | 阶段1已验收；阶段2见撤销流程 |
 | UI27 | 通用控件与状态 | 各主题独立下拉/日期时间/按钮/开关/选择框/Toast/确认/加载/空/错误/未授权/未保存；单个全宽日历 | `themes.js`、`theme-system.css`、各补充CSS | P03，各功能任务 |
 
@@ -493,3 +493,5 @@ UI05/UI15–UI19 信用卡功能补充（2026-10-28）：
 - UI05/13：`EntryMerchantInput.kt` 提供联想/可搜索一览/选中清除，候选出现或 IME 高度变化时以 `BringIntoViewRequester` 连同下方 12dp 余量滚入可视区，复用各主题 `LocatedMerchantChip` 的杂志细线、手账虚线、小物圆角与阴影；设置增加商户与地点入口。历史日期显示不使用当前位置的说明。
 - UI05/06：`NegativeBalanceSheet.kt` 复用三主题 YSheet/ThemeAuditPanel/YActionRow，列出前后余额；详情回收替换路由。首页改为最近5笔支出。
 - 当前源码的设备截图与视觉验收尚未运行。相关流程使用 `EntryExperienceFlowTest`、`LocationEntryFlowTest`、`DraftEditingFlowTest`、`EntryLifecycleFlowTest`、`ThemeControlsTest`，参数 `looks=all` + `visual=true`；前者截图位于 `files/verification/entry-experience/`。本次按用户要求不启动模拟器、不执行 connected 测试，历史截图不代表这些变更已通过视觉验收。
+
+阶段5金融草稿放弃已通过 `LedgerRepository.discardFinancialDraft` 下沉，金融UI仅保留DAO读取。云端账期 resolve 对应已有账期列表选择；草稿分类迁移对应既有预计收入草稿分类控件，无需另开本机页面。其余金融/额度命令均复用现有金融账户、安排、还款、额度与历史页面入口。

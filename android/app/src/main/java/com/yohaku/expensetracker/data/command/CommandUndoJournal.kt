@@ -11,7 +11,9 @@ import kotlinx.serialization.json.*
 internal class CommandUndoJournal(private val ledger:LedgerRepository,private val bookId:String) {
     private val sql=ledger.db.openHelper.writableDatabase
     private val deleteOrder=listOf("receipt_images","receipts","attachment_links","draft_media","drafts","revisions","treat_allocations","reserve_uses","event_merchants","event_places","event_activities",
-        "financial_plan_revisions","financial_bills","financial_plans","financial_rules","credit_limit_configs",
+        "financial_drafts","credit_limit_observations","credit_limit_recoveries","credit_limit_group_revisions","credit_limit_group_members","credit_limit_groups",
+        "financial_rule_validations","financial_plan_revisions","financial_bill_adjustments","financial_repayment_allocations","financial_contract_plans","financial_arrangements",
+        "financial_repayments","debt_contracts","financial_bills","financial_plans","financial_rules","credit_limit_configs",
         "statement_decisions","expected_incomes","activity_reserves","occurrences","treats","expense_components","transfers","settlements","postings","events",
         "entry_templates","activity_budgets","activity_participants","book_features","recurrences","activities","merchant_locations","merchants","friends","budgets","categories","accounts","books")
     private data class Table(val name:String,val columns:List<String>,val primary:List<String>)
@@ -64,7 +66,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         collect(schema,input)
         return (before.keys+after.keys).mapNotNull{id->
             val (table,row)=after[id]?:before.getValue(id)
-            val type=commandTableType(table)
+            val type=if(table=="credit_limit_groups")"creditLimitGroup"else commandTableType(table)
             val objectId=row["id"]?.jsonPrimitive?.contentOrNull?:return@mapNotNull null
             if((type to objectId) !in references)null
             else UndoRowChange(table,key(table,row),before[id]?.second,row,removed=id !in after)
@@ -72,17 +74,24 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
     }
     private fun name(row:JsonObject,names:Map<String,String>):String {
         fun text(key:String)=row[key]?.jsonPrimitive?.contentOrNull?.takeIf{it.isNotBlank()}
+        if(text("origin")=="POOL")return "余额池 / 残高プール · "+text("name").orEmpty()
+        if(text("groupId")!=null&&text("accountId")!=null)return listOfNotNull(names[text("groupId")],names[text("accountId")]).joinToString(" · ")
+        if(text("kind") in setOf("BORROWING","REPAYMENT"))return listOfNotNull(text("date"),if(text("kind")=="BORROWING")"借入 / 借入"else"还款 / 返済",text("currency")?.let{c->row["amountMinor"]?.jsonPrimitive?.longOrNull?.let{Money(Currency.valueOf(c),it).display()}},text("merchant")).joinToString(" · ")
         if(text("scheduledDate")!=null)return listOfNotNull(text("name"),text("scheduledDate")).joinToString(" · ")
         if(text("month")!=null)return text("month")+" · "+(text("categoryId")?.let{names[it]}?:"月预算 / 月予算")
         return text("name")?:text("title")?:text("originalName")
             ?:text("merchant")?.let{listOfNotNull(text("date"),it).joinToString(" · ")}
-            ?:listOf("activityId","reserveId","treatId","recurrenceId","friendId","planId","accountId","eventId").firstNotNullOfOrNull{field->text(field)?.let{names[it]}}
+            ?:listOf("activityId","reserveId","treatId","recurrenceId","friendId","planId","originalPlanId","targetPlanId","contractId","billId","ruleVersionId","groupId","accountId","eventId").firstNotNullOfOrNull{field->text(field)?.let{names[it]}}
             ?:text("slot")?.let{"草稿 / 下書き"}?:text("date")?:"关联资料 / 関連情報"
     }
     private fun names():Map<String,String> {
-        val named=(listOf("accounts","categories","merchants","merchant_locations","friends","entry_templates","financial_plans","activities","activity_reserves","recurrences","occurrences","treats","expected_incomes").flatMap{readRows(it)}+readRows("books","1=1",emptyArray())).associate{it.getValue("id").jsonPrimitive.content to it.getValue("name").jsonPrimitive.content}
-        val entries=readRows("events").associate{row->row.getValue("id").jsonPrimitive.content to listOfNotNull(row["date"]?.jsonPrimitive?.contentOrNull,row["merchant"]?.jsonPrimitive?.contentOrNull?.takeIf{it.isNotBlank()},row["note"]?.jsonPrimitive?.contentOrNull?.takeIf{it.isNotBlank()}).joinToString(" · ")}
-        return named+entries
+        val named=(listOf("debt_contracts","credit_limit_groups","accounts","categories","merchants","merchant_locations","friends","entry_templates","financial_plans","activities","activity_reserves","recurrences","occurrences","treats","expected_incomes").flatMap{readRows(it)}+readRows("books","1=1",emptyArray())).associate{it.getValue("id").jsonPrimitive.content to it.getValue("name").jsonPrimitive.content}
+        val entries=readRows("events").associate{row->row.getValue("id").jsonPrimitive.content to if(row["kind"]?.jsonPrimitive?.content in setOf("BORROWING","REPAYMENT"))name(row,named)else listOfNotNull(row["date"]?.jsonPrimitive?.contentOrNull,row["merchant"]?.jsonPrimitive?.contentOrNull?.takeIf{it.isNotBlank()},row["note"]?.jsonPrimitive?.contentOrNull?.takeIf{it.isNotBlank()}).joinToString(" · ")}
+        val bills=readRows("financial_bills").associate{row->row.getValue("id").jsonPrimitive.content to
+            ((named[row["planId"]?.jsonPrimitive?.content].orEmpty())+" · "+row.getValue("number").jsonPrimitive.content+"期 / 回 · "+(row["confirmedDate"]?.jsonPrimitive?.contentOrNull?:row["predictedDate"]?.jsonPrimitive?.contentOrNull).orEmpty())}
+        val rules=readRows("financial_rules").associate{row->row.getValue("id").jsonPrimitive.content to
+            (named[row["accountId"]?.jsonPrimitive?.content].orEmpty()+" · "+row.getValue("version").jsonPrimitive.content+"版 / 版")}
+        return named+entries+bills+rules
     }
     // A batch can touch thousands of instances. Load relationship tables once per final-state
     // guard pass, not once per instance; CommandRun invalidates this cache on a state refresh.
@@ -125,6 +134,23 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
             related[t]=(related[t].orEmpty()+relationRows.getValue(t).filter{(it[if(t=="events")"id"else"eventId"]?.jsonPrimitive?.contentOrNull) in eventIds}).distinct()
         if(treatIds.isNotEmpty())related["treat_allocations"]=relationRows.getValue("treat_allocations").filter{it["treatId"]?.jsonPrimitive?.contentOrNull in treatIds}
         return JsonObject(related.toSortedMap().mapValues{(_,rows)->JsonArray(rows.sortedBy{canonical(it).toString()})})
+    }
+    /** Full incoming references plus outgoing source rows protect already-existing financial
+     * objects, not only newly-owned rows. Raw values are for undo conflicts, never comparison. */
+    fun financeRelations(table:String,id:String):JsonObject {
+        fun mentions(v:JsonElement):Boolean=when(v) {
+            is JsonObject->v.any{(k,x)->k==id||mentions(x)}
+            is JsonArray->v.any(::mentions)
+            is JsonPrimitive->v.isString&&(id in financialReferenceIds(v.content)||v.content.trimStart().let{it.startsWith("{")||it.startsWith("[")}&&runCatching{commandJson.parseToJsonElement(v.content)}.getOrNull()?.let(::mentions)==true)
+            else->false
+        }
+        val own=relationRows.getValue(table).filter{it["id"]==JsonPrimitive(id)||table=="financial_repayments"&&it["eventId"]==JsonPrimitive(id)}
+        val outgoing=own.flatMap{row->row.filterKeys{it.endsWith("Id")&&it!="bookId"}.values.mapNotNull{it.jsonPrimitive.contentOrNull}}.toSet()
+        return JsonObject(relationRows.filterKeys{it !in setOf("financial_plan_revisions","credit_limit_group_revisions")}.mapValues{(_,rows)->JsonArray(rows.filter{row->
+            row in own||row["id"]?.jsonPrimitive?.contentOrNull in outgoing||row.any{(key,value)->
+                (key.endsWith("Id")&&key!="bookId"||key.endsWith("Json")||key in setOf("json","sourceProof","slot"))&&mentions(value)
+            }
+        }.sortedBy{canonical(it).toString()})}.filterValues{it.isNotEmpty()})
     }
     fun fileSnapshot(id:String):JsonElement=readRows("file_blobs","bookId=? AND id=?",arrayOf(bookId,id)).singleOrNull()?:JsonNull
     fun removals(changes:List<UndoRowChange>):List<UndoRemoval> {
@@ -182,7 +208,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
                         val nested=path.substringAfterLast('.') in setOf("basisJson","sourceProof")&&v is JsonPrimitive&&v.isString&&v.content.trimStart().let{it.startsWith("{")||it.startsWith("[")}
                         scan(if(nested)commandJson.parseToJsonElement(v.jsonPrimitive.content)else v,"$path.$i")
                     }
-                    is JsonPrimitive->if(value.isString)byId[value.content]?.let{found(it,path)}
+                    is JsonPrimitive->if(value.isString)financialReferenceIds(value.content).forEach{id->byId[id]?.let{found(it,path)}}
                     else->Unit
                 }
             }

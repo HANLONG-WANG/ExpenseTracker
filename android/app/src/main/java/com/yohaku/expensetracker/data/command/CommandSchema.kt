@@ -56,9 +56,10 @@ internal fun validateSchema(value:JsonElement,schema:JsonObject,path:String,prio
         "object"->{
             require(value is JsonObject){path}
             val properties=schema["properties"]?.jsonObject.orEmpty()
-            require(value.keys.all{it in properties}){"未知输入字段 / 未知の入力項目: $path"}
+            val additional=schema["additionalProperties"] as? JsonObject
+            require(value.keys.all{it in properties||additional!=null}){"未知输入字段 / 未知の入力項目: $path"}
             require(schema["required"]?.jsonArray.orEmpty().all{it.jsonPrimitive.content in value}){"缺少输入字段 / 入力項目が不足しています: $path"}
-            value.forEach{(k,v)->validateSchema(v,properties.getValue(k).jsonObject,"$path.$k",prior)}
+            value.forEach{(k,v)->validateSchema(v,(properties[k]?.jsonObject?:requireNotNull(additional)),"$path.$k",prior)}
         }
         "array"->{require(value is JsonArray);value.forEachIndexed{i,v->validateSchema(v,schema.getValue("items").jsonObject,"$path[$i]",prior)}}
         "string"->{require(value is JsonPrimitive&&value.isString);require(schema["minLength"]==null||value.content.length>=schema.getValue("minLength").jsonPrimitive.int)}
