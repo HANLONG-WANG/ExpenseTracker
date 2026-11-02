@@ -34,10 +34,14 @@ internal fun referenceSchema(type:String)=buildJsonObject {
     put("x-reference-type",type)
     put("anyOf",JsonArray(listOf(buildJsonObject{put("type","string");put("minLength",1)},buildJsonObject{put("\$ref","#/\$defs/stepReference")})))
 }
+internal fun enumSchema(vararg values:String)=buildJsonObject{put("type","string");put("enum",encoded(values.toList()))}
 internal fun nullableSchema(schema:JsonObject)=buildJsonObject{put("anyOf",JsonArray(listOf(schema,buildJsonObject{put("type","null")})))}
 
 /** Never uses a schema supplied by a cloud result. Also validates references at their typed slots. */
 internal fun validateSchema(value:JsonElement,schema:JsonObject,path:String,prior:Map<String,Map<String,String>>) {
+    schema["oneOf"]?.jsonArray?.let{choices->
+        require(choices.count{runCatching{validateSchema(value,it.jsonObject,path,prior)}.isSuccess}==1){"必须且只能选择一种输入形式 / 入力形式は必ず1つだけ選んでください: $path"}
+    }
     schema["\$ref"]?.jsonPrimitive?.content?.let{ref->
         require(ref=="#/\$defs/stepReference")
         validateSchema(value,descriptorSchema(CommandRef.serializer().descriptor),path,prior);return
@@ -61,11 +65,16 @@ internal fun validateSchema(value:JsonElement,schema:JsonObject,path:String,prio
             require(schema["required"]?.jsonArray.orEmpty().all{it.jsonPrimitive.content in value}){"缺少输入字段 / 入力項目が不足しています: $path"}
             value.forEach{(k,v)->validateSchema(v,(properties[k]?.jsonObject?:requireNotNull(additional)),"$path.$k",prior)}
         }
-        "array"->{require(value is JsonArray);value.forEachIndexed{i,v->validateSchema(v,schema.getValue("items").jsonObject,"$path[$i]",prior)}}
+        "array"->{
+            require(value is JsonArray)
+            require(schema["minItems"]?.jsonPrimitive?.int?.let{value.size>=it}!=false&&schema["maxItems"]?.jsonPrimitive?.int?.let{value.size<=it}!=false){"目标数量超出允许范围 / 対象件数が許可範囲外です: $path"}
+            require(schema["uniqueItems"]!=JsonPrimitive(true)||value.distinct().size==value.size){"目标不能重复 / 対象は重複できません: $path"}
+            value.forEachIndexed{i,v->validateSchema(v,schema.getValue("items").jsonObject,"$path[$i]",prior)}
+        }
         "string"->{require(value is JsonPrimitive&&value.isString);require(schema["minLength"]==null||value.content.length>=schema.getValue("minLength").jsonPrimitive.int)}
         "boolean"->require(value is JsonPrimitive&&!value.isString&&value.booleanOrNull!=null)
         "integer"->require(value is JsonPrimitive&&!value.isString&&value.longOrNull!=null)
         "number"->require(value is JsonPrimitive&&!value.isString&&value.doubleOrNull!=null)
     }
-    schema["enum"]?.let{require(value in it.jsonArray)}
+    schema["enum"]?.let{require(value in it.jsonArray){"不支持的选项，请查看能力清单中的允许值及禁止操作替代 / 未対応の選択肢です。対応機能一覧の許可値と禁止操作の代替を確認してください: $path"}}
 }

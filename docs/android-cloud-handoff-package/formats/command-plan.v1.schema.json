@@ -230,7 +230,14 @@
           ]
         },
         "type": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "CASH",
+            "BANK",
+            "CREDIT",
+            "LOAN",
+            "IC"
+          ]
         },
         "creditLimit": {
           "anyOf": [

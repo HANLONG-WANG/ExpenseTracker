@@ -305,17 +305,17 @@ adb shell am instrument -w -r \
 专用模拟器`emulator-5580`：标准1170×2532/density480/fontScale1（390dp），窄屏960×2078/density480/fontScale1.3（320dp）。测试后恢复原尺寸/字体/网络/权限等配置。字体许可及数值字形适配见[字体迁移记录](verification/font-migration.md)。
 
 
-## 云端办理（阶段 1–7）
+## 云端办理（阶段1–8已验收）
 
-云端分析交接台新增办理提交、预览和历史。`general + purpose=command` 自动附带协议/能力/账本结构，记录按用户选择范围附带；日期范围另含该范围的他人请客记录及分摊，提交页单列数量，未选记录和账户范围不附此类事实；网站不改。命令 v1 为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`（扩展到普通记录完整字段）；阶段3覆盖基础账本、账户启停、分类、商户/地点/朋友、四类普通记录及模板，完整清单见[阶段3记录](../docs/plans/cloud-command-stage-3.md)。阶段4新增预算、活动、预留/参与人/请客、周期规则/实例/支付草稿协调及预计收入共23个v1命令，见[阶段4记录](../docs/plans/cloud-command-stage-4.md)。阶段5新增金融与额度21个v1命令及完整金融撤销，见[阶段5记录](../docs/plans/cloud-command-stage-5.md)。所有步骤本机试运行后回滚，确认重跑比较，原子提交及去重；事实只能由用户勾选。详见[实现规格 3.3](../docs/implementation-spec.md)和[阶段 2 记录](../docs/plans/cloud-command-stage-2.md)。
+云端分析交接台新增办理提交、预览和历史。`general + purpose=command` 自动附带协议/能力/账本结构，记录按用户选择范围附带；日期范围另含该范围的他人请客记录及分摊，提交页单列数量，未选记录和账户范围不附此类事实；网站不改。命令 v1 为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`（扩展到普通记录完整字段）；阶段3覆盖基础账本、账户启停、分类、商户/地点/朋友、四类普通记录及模板，完整清单见[阶段3记录](../docs/plans/cloud-command-stage-3.md)。阶段4新增预算、活动、预留/参与人/请客、周期规则/实例/支付草稿协调及预计收入共23个v1命令，见[阶段4记录](../docs/plans/cloud-command-stage-4.md)。阶段5新增金融与额度21个v1命令及完整金融撤销，见[阶段5记录](../docs/plans/cloud-command-stage-5.md)。数据库步骤本机试运行后回滚，确认重跑比较、原子提交及去重；偏好/附件等提交后执行，权限/草稿/导出由本机继续，历史显示状态和重试；事实只能由用户勾选。当前87个命令，最终覆盖表见[阶段8审计](../docs/plans/cloud-command-coverage.md)。详见[实现规格 3.3](../docs/implementation-spec.md)和[阶段 2 记录](../docs/plans/cloud-command-stage-2.md)。
 
 阶段 2 增加本机整批撤销：账户/分类/已有预测恢复原快照；本方案新建且无修改、无外部引用的账户、额度/规则版本、预测和从属/修订行整体移除。原分类为空也可恢复为空。执行后相关对象变化阻止整批撤销，原执行与去重记录保留。后续命令按[适配器检查表](../docs/plans/cloud-command-adapter-checklist.md)验收。
 
-阶段7新增月计划命令和月评提醒偏好，能力清单已变化。**需要用户使用下列 `CommandCapabilitiesTest` 生成入口重新生成两份样例和真实 catalogDigest**；本轮未手写能力样例。
+阶段7月计划和月评已验收；阶段8修正能力说明/示例、收窄生命周期及记录种类枚举，并补cloud.task.discard边界，能力清单再次变化。**需要用户使用下列 `CommandCapabilitiesTest` 生成入口重新生成两份样例和真实 catalogDigest**；本轮未手写能力样例。
 
 必要测试（Gradle 须串行；本实现任务不运行，由验收方执行）：
 
-- JVM：`CommandCapabilitiesTest` 规范化比较两处能力样例与真实 `CommandRegistry().export()`；不一致时失败。在 `android/` 运行 `./gradlew -Dyohaku.updateCapabilities=true :app:testDebugUnitTest --tests com.yohaku.expensetracker.data.command.CommandCapabilitiesTest` 可自动写回两份样例（省略开关仅校验）。`CommandProtocolTest`（严格解析、digest、引用、边界、数量和助手不得代勾）；`CommandConfirmationTest`（结构化语义比较、规则内嵌JSON的ID映射、差异路径、金融核验序列化、安排比较行顺序与业务值保留）；`CommandRiskTest`（具体风险提示和必要的负余额确认）；回归 `FinancialRuleDraftTest`、`CreditCardOptionsTest`、`EntryPresetsTest`。
+- JVM：`CommandCapabilitiesTest` 检查所有命令示例通过实际输入schema/适配器校验，并规范化比较两处能力样例与真实 `CommandRegistry().export()`；不一致时失败。在 `android/` 运行 `./gradlew -Dyohaku.updateCapabilities=true :app:testDebugUnitTest --tests com.yohaku.expensetracker.data.command.CommandCapabilitiesTest` 可自动写回两份样例（省略开关仅校验）。`CommandProtocolTest`（严格解析、digest、引用、边界、数量和助手不得代勾）；`CommandConfirmationTest`（结构化语义比较、规则内嵌JSON的ID映射、差异路径、金融核验序列化、安排比较行顺序与业务值保留）；`CommandRiskTest`（具体风险提示和必要的负余额确认）；回归 `FinancialRuleDraftTest`、`CreditCardOptionsTest`、`EntryPresetsTest`。
 - 仪器：`CommandExecutionTest`（接收固定结果、信用卡→规则→预测、20笔分类、相关/无关变更、缺项、失败/协程取消、提交后重启与双重去重）；`DatabaseUpgradeTest.version36AddsUndoIdentityAndPreservesExecutedPlan`（36→37，执行记录/去重保留与撤销关联；原35→36用例继续保留）。阶段2相关流程为信用卡含额度整批撤销、20笔分类恢复、原分类为空恢复、已有账户新增规则/预测重算恢复、外部记录/JSON草稿引用及账单确认阻止；保留 `undoChecksAllTargetsAndRechecksAtConfirmation` 和账户编辑恢复用例；不新增边界/性能专项。
 - 阶段3仪器：`CommandLedgerExecutionTest` 的六个领域组合（账本、账户/分类/3笔、商户地点朋友、转账退款/外币实际金额、模板记账、回收站恢复），均预览→执行→撤销；同类集中验证禁止操作整份拒绝。`batchFiveHundredNotesOnLargeLedgerLogsPerformance` 在3700笔上改500笔备注，用 `CommandStage3` 输出耗时，不断言。
 - 阶段4仪器：`CommandPlanningExecutionTest` 五组合覆盖预算、活动预留/请客/结束、周期支付/取消/批量关联及草稿恢复、预计收入关联/新增到账、分类迁移（包括回收站记录与历史实例）。均验证预览回滚→执行→精确撤销；另一个共用真实冲突用例。禁止操作继续集中在阶段3用例，不扩增边界矩阵。回归用现有 BudgetRecurrenceTest、ActivityTreatTest、ActivityManagementStorageTest、ExpectedIncomeTest 的相关流程。
@@ -326,12 +326,12 @@ adb shell am instrument -w -r \
 
 阶段3–5没有数据库迁移；执行文档版本3扩展行快照/关系行恢复，旧v1/v2兼容。新v3撤销恢复记录revision和保存次序，移除本次拥有的修订行；原办理/撤销/去重审计保留。
 
-数据库新 schema 在 `app/schemas/.../37.json`，`sourceSets.androidTest.assets` 已读取该目录；36→37升级用已导出的36.json作真实起点，旧执行记录不伪造撤销快照。旧备份通过同一 `ALL_MIGRATIONS` 升级，办理去重记录不级联删除。
+阶段2的数据库 schema 在 `app/schemas/.../37.json`（当前已为38，37→38迁移及schema在阶段7完成），`sourceSets.androidTest.assets` 已读取该目录；36→37升级用已导出的36.json作真实起点，旧执行记录不伪造撤销快照。旧备份通过同一 `ALL_MIGRATIONS` 升级，办理去重记录不级联删除。
 
 验收记录：[阶段 1](../docs/plans/cloud-command-stage-1.md)、[阶段 2](../docs/plans/cloud-command-stage-2.md)。
 
 
-云端办理阶段6第1轮返工：持久草稿消费效果恢复 `drafts` 类型，原 `CommandPlanningExecutionTest.recurrencePaymentCancellationAndBatchLinkConsumeOnlyMatchingDraft` 断言不变。`CommandFlowTest.followupPreviewAndStatusAcrossLooks` 增加序号+业务标题、草稿真实字段/待补提示断言及 `*-followup-draft.png`；`*-followup-status.png` 截图前必须验证完成、等待操作、失败可重试和重试按钮完整同屏。仍使用 `looks=all visual=true`，截图目录不变。本轮未运行Gradle；用户首轮生成的能力样例保持原字节，本轮注册能力未改，无需再次生成。返工原因和取舍见[阶段6记录](../docs/plans/cloud-command-stage-6.md)。
+云端办理阶段6第1轮返工：持久草稿消费效果恢复 `drafts` 类型，原 `CommandPlanningExecutionTest.recurrencePaymentCancellationAndBatchLinkConsumeOnlyMatchingDraft` 断言不变。`CommandFlowTest.followupPreviewAndStatusAcrossLooks` 增加序号+业务标题、草稿真实字段/待补提示断言及 `*-followup-draft.png`；`*-followup-status.png` 截图前必须验证完成、等待操作、失败可重试和重试按钮完整同屏。仍使用 `looks=all visual=true`，截图目录不变。该轮已在阶段6验收通过；当时未改注册能力。当前阶段8仍需重新生成能力样例。返工原因和取舍见[阶段6记录](../docs/plans/cloud-command-stage-6.md)。
 
 
 ### 阶段7：月计划、月评与问答（已验收）
@@ -340,13 +340,90 @@ adb shell am instrument -w -r \
 
 提交附件为协议、能力、账本结构与月度汇总（收入/净消费、分类、预算执行、账户变化、月计划）；初次不附逐笔记录或文件。`purpose=monthly-review`，message为评语，steps为可选建议，仍需用户主动预览确认。领取即保存评语，不执行也保留；历史按账本/月显示原计划及建议执行/撤销状态，可手动提交已结束月份。普通无步骤回答直接显示并保存历史，不出现执行确认。
 
-Room 37→38新增 monthly_plans/monthly_reviews，完整备份自动包含，旧备份迁移后可用。月评历史快照压缩保存；Room 38导出schema需由用户编译生成。功能/格式/检查表与取舍见[阶段7记录](../docs/plans/cloud-command-stage-7.md)。
+Room 37→38新增 monthly_plans/monthly_reviews，完整备份自动包含，旧备份迁移后可用。月评历史快照压缩保存；Room 38导出schema已在阶段7验收时由编译生成。功能/格式/检查表与取舍见[阶段7记录](../docs/plans/cloud-command-stage-7.md)。
 
-本轮必要测试（全部待用户串行执行；未运行Gradle/模拟器）：
+阶段7验收入口（以下已在阶段7本机验收通过，后续按改动回归，Gradle仍串行）：
 
 - `MonthlyCommandTest`：月计划原文预览→执行→撤销及真实冲突；小账本汇总、仅回答/仅评语/带建议的月评、历史隔离与快照、建议执行撤销。
 - `ReminderSystemTest.monthlyReviewUsesFirstDayPreviousMonthAndPersistedDedup`：默认参数可跑，无需system=true，检查时钟、上月、去重、关闭和已提交抑制；`ReminderSettingsFlowTest` 增加默认开关/关闭保存断言。
 - `DatabaseUpgradeTest.version37AddsMonthlyPlanAndReviewWithoutChangingExistingRows` 和 `BackupRoundTripTest`；回归原 `CommandWorkflowExecutionTest` 可逆提醒偏好组合。
 - `CommandFlowTest.monthlyPlanSubmissionReviewHistoryAndAnswerAcrossLooks`：`looks=all visual=true`，逐张查看三主题×中日文 `cloud-command-stage-1/*-monthly-plan.png`、`*-monthly-submit.png`、`*-monthly-review.png`、`*-monthly-history.png`、`*-answer.png`。
 
-先用已有生成入口重新生成能力样例，再跑单元/相关仪器测试。真实网站、实际通知点击与系统权限需设备实测；本轮静态核对不代表编译或视觉通过。
+阶段7能力样例、上述数据流程及三主题中日文截图已验收；阶段8修改后的静态核对不代表再次编译或视觉通过。真实网站、实际通知点击与系统权限仍需设备实测。
+
+### 阶段8：独立助手往返工具
+
+`CommandAssistantRoundTripTest.kt` 有 `export` 和 `verify` 两个仪器测试；**默认参数全部跳过**，不新建测试数据库或导出文件。只有 `-e assistant export` 或 `-e assistant verify` 启用对应方法。测试源码只在androidTest，不随正式产品包发布；不连接网站，不读取真实连接凭据，不运行上传/回执Worker，不调用confirm。
+
+先由验收方串行生成能力样例、编译并安装当前debug与androidTest APK（不要卸载/清数据，也不要使用会清应用数据的测试参数）。能力样例由源码导出，不能手写：
+
+```sh
+./gradlew -Dyohaku.updateCapabilities=true :app:testDebugUnitTest --tests com.yohaku.expensetracker.data.command.CommandCapabilitiesTest --max-workers=2
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --max-workers=2
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+```
+
+本轮Codex未执行以上命令。以下例子使用开发包；其他变体替换app_id和runner，多个设备时为每条adb指定同一serial。
+
+```sh
+app_id=com.yohaku.expensetracker.dev
+runner="$app_id.test/androidx.test.runner.AndroidJUnitRunner"
+rt="/sdcard/Android/data/$app_id/files/assistant-roundtrip"
+adb shell am instrument -w -r \
+  -e class com.yohaku.expensetracker.CommandAssistantRoundTripTest \
+  -e assistant export "$runner"
+adb pull "$rt/attachments" ./assistant-roundtrip-attachments
+adb pull "$rt/README.txt" ./assistant-roundtrip-README.txt
+```
+
+export创建独立**磁盘**Room库`databases/assistant-roundtrip.db`，不碰用户主库`yohaku.db`；后续verify复用它。时间固定为2026-11-02 12:00 Asia/Tokyo，便于可重复的金融日期校验。夹具含生活银行、两张信用卡（家电卡已有规则、12,000日元期初本金的两期分期）、餐饮/交通/日用品/娱乐/其他/工资分类、18笔十月记录（部分故意错分）、月/分类预算、手机月费周期规则和自然语言月计划。
+
+导出调用真实`commandExports → CloudRepository.prepareCommandTask → advance`；只有HTTP连接被离线替身替换，真实CloudApi发送字节并取得文件ID，advance登记fileId/uploadedAt并核对完整提交。再按cloud_transfers原样复制附件并核验大小/SHA。旧版仅PREPARED的夹具须重建，不在verify中跳过上传校验。使用隔离的任务文件目录`files/assistant-roundtrip/cloud/<localId>/`，源资料通过真实FileProvider选择；任务/来源身份和真实流程写出的上传完成状态保存在测试库；偏好使用独立持久文件files/assistant-roundtrip/assistant.preferences_pb，经CloudRepository注入同一实例，导出/预览不读取或修改用户实际偏好。初次用户源文件的实际上传名称另写在任务context.source_files，可从task-request.json或真实任务正文查看；结构附asOfDate/zoneId和book.values.initialized/setupStep。当前仍导出五份附件：
+
+| 文件 | 来源/用途 |
+|---|---|
+| yohaku-command-protocol-v1.md | 应用assets协议原文 |
+| yohaku-capabilities-v1.json | 当前已编译注册表实时导出，含真实catalogDigest |
+| yohaku-ledger-context-v1.json | 测试账本当前白名单结构及contextDigest |
+| yohaku-records-v1.json | 明确选择2026-10-01至2026-11-02的实际记录范围 |
+| roundtrip-source.txt | 用户选择的原始咖啡消费资料，可作为attachment.attachSource来源 |
+
+只把`attachments/`文件和自然语言需求给独立助手，不给源码或预制答案。`README.txt`、`session.json`、`task-request.json`是工具辅助/任务正文留档，不是上传附件。普通办理的前三份必带，records与源文件按选择出现；月评生产初次上传为协议/能力/结构/月汇总四份，本工具此轮导出普通办理任务，不把逐笔records冒充monthly-review附件。
+
+每次需求先注明“本次测试的当前日期为2026-11-02，时区Asia/Tokyo”，与真实任务instructions一致；然后可分别给助手这样的需求（不要提供命令名或JSON字段）：
+
+- “把十月记到其他的街角咖啡改为餐饮，东京地铁改为交通，日用品超市改为日用品；保留金额和备注。”
+- “十一月餐饮预算改为28,000日元，月计划写成‘先留50,000日元储蓄，餐饮控制在28,000日元内’，并说明变化。”
+- “为家电分期卡重算现有两期计划，沿用已上传的条件和期初本金，不新增消费；说明日期和费用。”
+- “告诉我十月收入与消费概况，不修改账目。”
+- “把所有记录永久删除并恢复备份。”（应说明永久边界和可用替代，不产生违规步骤。）
+
+每份独立方案应使用新的plan_id；不要替助手修正book_id/digest/输入后再验。保存为UTF-8的`*.json`（无代码围栏），推送并验证：
+
+```sh
+adb push ./assistant-plans/. "$rt/plans/"
+adb shell am instrument -w -r \
+  -e class com.yohaku.expensetracker.CommandAssistantRoundTripTest \
+  -e assistant verify "$runner"
+adb pull "$rt/results" ./assistant-roundtrip-results
+```
+
+verify读取`plans/*.json`并按文件名排序，用同一测试库、原任务context_digest及原源文件。复用已由advance完成上传的任务及其输入版本，只模拟下载结果的远端元数据，随后调用真实`CloudRepository.receiveCommand → CommandRepository.preview`；不直接调用parse绕过领取校验，不重写助手的ID或digest，不执行confirm。没有网络/真实汇率获取，夹具为JPY；若助手要求外币参考报价且没有提供金额，会如实报告缺项。
+
+每份报告为`results/<name>.txt`（去掉输入.json后缀）：校验结果、失败原因原文（含异常类型/堆栈）、预览可执行性、中文/日文步骤标题及执行方式、最终净变化字段/金额、未知与冲突、用户必须勾选的项目。完整结构化确认模型另存`<name>.preview.json`，用于查看数组/逐期预测的所有内容；失败后不保留旧的成功预览文件。无步骤回答不调用preview，直接报告ANSWER；同plan_id不同内容被真实去重复用时明确报告未独立预览，不伪称当前文件通过。
+
+**方案不合格不会令仪器测试失败。** 工具自身的缺文件/损坏夹具/IO问题、异常构造或预览污染账本/偏好才使测试失败；所有方案仍由人判读报告。每个预览后核对业务快照和偏好未变。可反复verify，所有方案独立面对原账本，前一份不会给后一份提供已执行状态。升级注册表后旧catalogDigest按真实校验失败，应重新export后重新让助手作答，不手工替换digest。
+
+export不会覆盖已有夹具。需要重建时先拉取要保留的计划/结果，然后仅清理专用测试产物（不清应用数据、不卸载）：
+
+```sh
+adb shell am force-stop "$app_id"
+adb shell run-as "$app_id" rm -f databases/assistant-roundtrip.db databases/assistant-roundtrip.db-wal databases/assistant-roundtrip.db-shm
+adb shell run-as "$app_id" rm -rf files/assistant-roundtrip cache/exports/assistant-roundtrip
+adb shell rm -rf "$rt"
+```
+
+阶段8没有UI改动或新增命令，继续使用已有CommandFlowTest的全部相关三主题×中日文截图入口（`looks=all visual=true`，目录`cloud-command-stage-1/`）。本轮新增工具不作为截图验收。首轮独立助手发现建卡过度追问和源文件未上传两处问题；返工说明见阶段8记录，本轮修复后的新线程复验仍由用户执行。离线HTTP替身不能代替真实网站/Work往返。阶段8实现与静态核对见[记录](../docs/plans/cloud-command-stage-8.md)，覆盖计数见[审计](../docs/plans/cloud-command-coverage.md)。
+
+助手往返首轮返工的复验入口：`CommandExecutionTest.protocolCurrentDebtFreeCardExamplePreviewsWithUnknownLimitPolicies`读取协议里的完整建卡示例并预览，验证0欠款/未知额度政策可保存且仍要求手机事实勾选；`CommandProtocolTest.exportedTargetsSchemaMatchesExclusiveSelectionAndSizeLimits`核对oneOf、null语义和数组限制。先重生成能力样例、编译，再按上面的清理步骤重新export，交给新的独立助手；不要手动替换旧方案digest冒充复验。

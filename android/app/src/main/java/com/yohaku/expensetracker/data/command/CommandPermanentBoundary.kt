@@ -4,6 +4,7 @@ internal val permanentAlternatives=linkedMapOf(
     "backup.restore" to "请在手机备份设置中操作 / 端末のバックアップ設定で操作してください",
     "cloud.credentials" to "请在手机连接设置中操作 / 端末の接続設定で操作してください",
     "cloud.device.manage" to "请在手机设备管理中操作 / 端末のデバイス管理で操作してください",
+    "cloud.task.discard" to "在手机交接台明确放弃尚未提交的任务；云端方案不能删除任务、暂存资料或月评提交占位 / 未送信のタスクは端末の受け渡し画面で明示的に破棄してください。クラウドのプランからタスク・一時資料・月の振り返りの送信枠は削除できません",
     "category.mergeDelete" to "用 entry.update 批量改分类、template.save、budget.save（目标设额，原分类各生效月设 null）、activity.save 的 categoryBudgets、recurrence.save 和 occurrence.update 迁移，再 category.lifecycle ARCHIVE；预算空值历史行保留，金融草稿用 financialDraft.reclassify；普通草稿用 entryDraft.reclassify / entry.update・template.save・budget.save（移行先を設定、元の各適用月をnull）・activity.save の categoryBudgets・recurrence.save・occurrence.update で移行後、category.lifecycle ARCHIVE。空の予算履歴は保持。金融下書きは financialDraft.reclassify、通常の下書きは entryDraft.reclassify を使用してください",
     "category.deleteEmpty" to "改用 category.lifecycle ARCHIVE / category.lifecycle ARCHIVE を使ってください",
     "account.delete" to "改用 account.setActive false；账户无回收站 / account.setActive false を使ってください。口座にはごみ箱がありません",

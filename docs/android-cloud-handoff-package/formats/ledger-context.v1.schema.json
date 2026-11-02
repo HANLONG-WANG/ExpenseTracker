@@ -53,6 +53,29 @@
     "contextDigest": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$"
+    },
+    "asOfDate": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Task reference date in zoneId; new exports always set it, older snapshots may omit it."
+    },
+    "zoneId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "IANA timezone of the task reference date."
     }
   },
   "required": [

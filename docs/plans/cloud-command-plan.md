@@ -1,6 +1,6 @@
 # 云端办理：开发计划
 
-更新：2026-11-02。状态：用户已批准；阶段 0 已验收通过；阶段 1 已验收通过（见[阶段 1 记录](cloud-command-stage-1.md)）；阶段 2 已验收通过（见[阶段 2 记录](cloud-command-stage-2.md)）；阶段 3 已验收通过（见[阶段 3 记录](cloud-command-stage-3.md)）；阶段 4 已验收通过（见[阶段 4 记录](cloud-command-stage-4.md)）；阶段 5 已验收通过（见[阶段 5 记录](cloud-command-stage-5.md)）；阶段 6 已验收通过（见[阶段 6 记录](cloud-command-stage-6.md)）；阶段 7 已验收通过（见[阶段 7 记录](cloud-command-stage-7.md)）。
+更新：2026-11-03。状态：用户已批准；阶段 0 已验收通过；阶段 1 已验收通过（见[阶段 1 记录](cloud-command-stage-1.md)）；阶段 2 已验收通过（见[阶段 2 记录](cloud-command-stage-2.md)）；阶段 3 已验收通过（见[阶段 3 记录](cloud-command-stage-3.md)）；阶段 4 已验收通过（见[阶段 4 记录](cloud-command-stage-4.md)）；阶段 5 已验收通过（见[阶段 5 记录](cloud-command-stage-5.md)）；阶段 6 已验收通过（见[阶段 6 记录](cloud-command-stage-6.md)）；阶段 7 已验收通过（见[阶段 7 记录](cloud-command-stage-7.md)）；**阶段 8 已验收通过，计划全部完成**（见[覆盖表](cloud-command-coverage.md)与[阶段 8 记录](cloud-command-stage-8.md)）。
 
 目标：用户在手机上用自然语言（可附截图、文件）描述需求，提交给云端工作台；助手返回一份结构化方案；手机在本机试运行并展示预览，用户确认后原子执行。最终覆盖应用内**所有用户操作**（永久边界除外），并提供月度计划评语和整批撤销。
 
@@ -174,7 +174,7 @@
 ### 阶段 8：全覆盖审计与总验收
 
 - 审计：列出全部写入路径（Repository 写入函数、ViewModel 动作、界面直接写数据库的地方），逐一对应到命令或永久边界，输出覆盖表；有遗漏就补上。
-- 协议说明和能力清单的最终校对：说明能让一个只看附件的助手正确写出方案。用 Codex 扮演助手，只给它附件和几条自然语言需求，检查它生成的方案能否通过本机校验并产生预期预览。
+- 协议说明和能力清单的最终校对：说明能让一个只看附件的助手正确写出方案。由用户另派不了解实现的独立助手，只给附件和几条自然语言需求；CommandAssistantRoundTripTest 的 assistant=export 导出真实附件/持久测试库，assistant=verify 按 receive→preview 输出结果，不 confirm。检查方案能否通过本机校验并产生预期预览。
 - 文档：更新 `docs/implementation-spec.md`（新增"云端办理"章节，修改 3.2 中"只上传所选资料"等过时表述）、`docs/product-design.md`、`docs/ui-implementation-map.md`、`docs/android-cloud-handoff-package/`、`docs/mcp-implementation-handoff-package/reference/README.md`（给 Work 订阅的委托语补充办理任务）、`android/README.md`。
 - **验收**：覆盖表没有遗漏；相关单元测试和仪器测试通过；`looks=all visual=true` 跑新页面截图并检查；真实网站往返列为用户实测项。
 

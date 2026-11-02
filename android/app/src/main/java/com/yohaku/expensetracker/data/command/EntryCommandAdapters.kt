@@ -26,6 +26,7 @@ import kotlinx.serialization.json.*
 @Serializable internal data class TemplateEntryInput(val template:JsonElement,val set:JsonObject=buildJsonObject{})
 
 internal val entryValueSchema:JsonObject get()=patchSchema(descriptorSchema(EntryValues.serializer().descriptor),buildMap {
+    put("kind",enumSchema("EXPENSE","INCOME","TRANSFER","REFUND"))
     for((field,type) in mapOf("account" to "account","category" to "category","merchantId" to "merchant","originalEvent" to "entry","toAccount" to "account","feeAccount" to "account","activity" to "activity","occurrence" to "occurrence","reserve" to "reserve","treatTail" to "friend"))put(field,nullableSchema(referenceSchema(type)))
     put("treatShares",nullableSchema(buildJsonObject{put("type","array");put("items",patchSchema(descriptorSchema(EntryShare.serializer().descriptor),mapOf("friend" to nullableSchema(referenceSchema("friend")))))}))
 })
@@ -137,10 +138,10 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
 
 internal class EntryWriteAdapter(private val action:String):LedgerAdapter() {
     override val capability=ledgerCapability("entry.$action",if(action=="create")entryValueSchema else patchSchema(descriptorSchema(EntryEditInput.serializer().descriptor),mapOf("set" to entryValueSchema,"targets" to entryWriteTargetsSchema)),if(action=="create")mapOf("entry" to "entry")else emptyMap(),
-        "Missing patch fields preserve the editor's full reconstructed values. New records use editor account/card/activity/date defaults; no amount/category is invented. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
-        "1–5000 fixed targets; category-only updates also accept explicitly identified trash records (preserve trash status); selectors and other edits remain live-only; expense/income/transfer/refund only. Existing domain validation covers category/account status, currency amounts, opening inclusion, refund ceilings/source, card payment choices, activity/reserve/participants. Incomplete entries reject the whole plan; use entry.prepareDraft for incomplete user input.",
-        "Create or batch-edit all ordinary record and transfer/refund fields, preserving attachments. Uses the shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance. entry.confirmActual is an update requiring actual confirmation flags.",
-        if(action=="create")"""{"kind":"EXPENSE","account":"account-id","category":"category-id","amount":{"currency":"JPY","minor":900}}"""else """{"targets":{"ids":["entry-id"]},"set":{"note":"已核对"}}""")
+        "Missing patch fields preserve the editor's full reconstructed values. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
+        (if(action=="create")"Create one new record; no targets field. "else"1–5000 fixed targets. ")+"For edits, category-only updates also accept explicitly identified trash records (preserve trash status); selectors and other edits remain live-only; expense/income/transfer/refund only. Existing domain validation covers category/account status, currency amounts, opening inclusion, refund ceilings/source, card payment choices, activity/reserve/participants. Incomplete entries reject the whole plan; use entry.prepareDraft for incomplete user input.",
+        (when(action){"create"->"Create one ordinary expense/income/transfer/refund; no existing record is edited.";"confirmActual"->"Confirm actual amounts on fixed existing records; set must explicitly set at least one of settlementConfirmed/fromConfirmed/toConfirmed/feeConfirmed to true, with the actual amount/date for that side.";else->"Batch-edit fixed existing ordinary records using a field patch; omitted fields and attachments are preserved."})+" Uses shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance.",
+        when(action){"create"->"""{"kind":"EXPENSE","account":"account-id","category":"category-id","amount":{"currency":"JPY","minor":900}}""";"confirmActual"->"""{"targets":{"ids":["entry-id"]},"set":{"accountAmount":{"currency":"JPY","minor":900},"settlementDate":"2026-11-02","settlementConfirmed":true}}""";else->"""{"targets":{"ids":["entry-id"]},"set":{"note":"已核对"}}"""})
     override fun validate(input:JsonObject) {
         if(action=="create")validateEntryValues(input)else {val v=commandJson.decodeFromJsonElement<EntryEditInput>(input);validateTargets(v.targets);validateEntryValues(v.set)
             if(action=="confirmActual")require(v.set["settlementConfirmed"]==JsonPrimitive(true)||v.set["fromConfirmed"]==JsonPrimitive(true)||v.set["toConfirmed"]==JsonPrimitive(true)||v.set["feeConfirmed"]==JsonPrimitive(true)){"请明确要确认的实际金额端 / 確定する実額の側を指定してください"}}
@@ -191,7 +192,7 @@ internal fun validateTargets(targets:EntryWriteTargets) {
 }
 
 internal class EntryLifecycleAdapter:LedgerAdapter() {
-    override val capability=ledgerCapability("entry.lifecycle",patchSchema(descriptorSchema(EntryLifecycleInput.serializer().descriptor),mapOf("entry" to referenceSchema("entry"))),defaults="entry and operation required; no default. Only TRASH or RESTORE.",prerequisites="Existing record in this book; same linked-refund grouping, 30-day recovery deadline, refund ceiling and reserve checks as editor.",description="Move a record (including linked refunds) to trash or restore it. Shows balance/budget/forecast and statement/occurrence consequences. PURGE/EMPTY are forbidden; use trash/restore.",example="""{"entry":"entry-id","operation":"TRASH"}""")
+    override val capability=ledgerCapability("entry.lifecycle",patchSchema(descriptorSchema(EntryLifecycleInput.serializer().descriptor),mapOf("entry" to referenceSchema("entry"),"operation" to enumSchema("TRASH","RESTORE"))),defaults="entry and operation required; no default. Only TRASH or RESTORE.",prerequisites="Existing record in this book; same linked-refund grouping, 30-day recovery deadline, refund ceiling and reserve checks as editor.",description="Move a record (including linked refunds) to trash or restore it. Shows balance/budget/forecast and statement/occurrence consequences. PURGE/EMPTY are forbidden; use trash/restore.",example="""{"entry":"entry-id","operation":"TRASH"}""")
     override fun validate(input:JsonObject){val v=commandJson.decodeFromJsonElement<EntryLifecycleInput>(input);require(v.operation in listOf(EntryLifecycleOperation.TRASH,EntryLifecycleOperation.RESTORE)){permanentAlternative(if(v.operation==EntryLifecycleOperation.EMPTY)"entry.emptyTrash"else"entry.purge")}}
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
         val v=commandJson.decodeFromJsonElement<EntryLifecycleInput>(step.input);val before=run.state()
@@ -218,4 +219,14 @@ internal class TemplateEntryAdapter:LedgerAdapter() {
     }
 }
 
-internal val entryWriteTargetsSchema:JsonObject get()=patchSchema(descriptorSchema(EntryWriteTargets.serializer().descriptor),mapOf("ids" to nullableSchema(buildJsonObject{put("type","array");put("items",referenceSchema("entry"))})))
+internal val entryWriteTargetsSchema:JsonObject get() {
+    val ids=buildJsonObject{put("type","array");put("items",referenceSchema("entry"));put("minItems",1);put("maxItems",5000);put("uniqueItems",true)}
+    val select=descriptorSchema(EntrySelector.serializer().descriptor)
+    val absent=buildJsonObject{put("type","null")}
+    val base=patchSchema(descriptorSchema(EntryWriteTargets.serializer().descriptor),mapOf("ids" to nullableSchema(ids)))
+    // Match the domain's null semantics: the unused alternative may be absent or explicit null.
+    return JsonObject(base+("oneOf" to JsonArray(listOf(
+        objectSchema(mapOf("ids" to ids,"select" to absent),listOf("ids")),
+        objectSchema(mapOf("ids" to absent,"select" to select),listOf("select"))
+    ))))
+}

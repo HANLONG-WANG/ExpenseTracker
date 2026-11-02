@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.data.command
 
+import com.yohaku.expensetracker.domain.model.AccountType
 import com.yohaku.expensetracker.domain.finance.FinancialRuleVersion
 import com.yohaku.expensetracker.data.repository.CreditLimitInput
 import kotlinx.serialization.Serializable
@@ -8,7 +9,7 @@ import java.util.UUID
 
 @Serializable data class CommandCapability(val name:String,val version:Int,val inputSchema:JsonObject,val outputs:Map<String,String>,
     val defaults:String,val prerequisites:String,val confirmationTypes:List<ConfirmationKind>,val comparisonFields:List<String>,
-    val description:String,val example:JsonObject,val undo:String,val mode:String="transactional",val unavailable:String="Reject the whole batch; incomplete predictions remain a non-executable preview.")
+    val description:String,val example:JsonObject,val undo:String,val mode:String="transactional",val unavailable:String="Reject the whole batch if this command's input or prerequisites fail; no step is skipped.")
 
 class CommandRegistry {
     val forbidden=permanentAlternatives.keys.toList()
@@ -52,6 +53,7 @@ class CommandRegistry {
 
 internal val accountSchema:JsonObject get()=patchSchema(descriptorSchema(AccountCommandInput.serializer().descriptor),mapOf(
     "account" to nullableSchema(referenceSchema("account")),
+    "type" to enumSchema(*AccountType.entries.map{it.name}.toTypedArray()),
     "creditLimit" to nullableSchema(withoutFields(descriptorSchema(CreditLimitInput.serializer().descriptor),setOf("accountId")))))
 internal val ruleSchema:JsonObject get()=patchSchema(descriptorSchema(RuleCommandInput.serializer().descriptor),mapOf(
     "account" to referenceSchema("account"),"paymentAccount" to nullableSchema(referenceSchema("account")),

@@ -32,6 +32,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipFile
 
 internal class CloudBlockedException(message:String):IllegalStateException(message)
+// Reserve even optional generated names, so a user source cannot masquerade as a monthly summary.
+private val commandGeneratedNames=setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-ledger-context-v1.json","yohaku-records-v1.json","yohaku-monthly-review-v1.json")
 
 internal fun cloudRetryable(error:Exception):Boolean = when(error) {
     is CloudHttpException -> error.status == 429 || error.status >= 500
@@ -44,8 +46,9 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
     private val apiFactory:(CloudConnectionConfig)->CloudApi={ CloudApi(it.baseUrl,it) },
     private val scheduleTransfer:(String)->Unit={CloudTransferWorker.enqueue(context,it)},
     private val scheduleAcknowledgements:()->Unit={CloudAckWorker.enqueue(context)},
-    private val commandReferenceSnapshot:(suspend (CommandPlan)->List<com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot>)?=null) {
-    private val rateService by lazy { ReferenceRates(AppPreferences(context),clock=ledger.clock) }
+    private val commandReferenceSnapshot:(suspend (CommandPlan)->List<com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot>)?=null,
+    private val commandPreferences:AppPreferences=AppPreferences(context)) {
+    private val rateService by lazy { ReferenceRates(commandPreferences,clock=ledger.clock) }
     val commands by lazy { CommandRepository(ledger,referenceSnapshot={plan->
         if(commandReferenceSnapshot!=null)commandReferenceSnapshot.invoke(plan)else {
             val currencies=(ledger.dao.accounts(plan.book_id).first().map{Currency.valueOf(it.currency)}+
@@ -62,7 +65,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
             currencies.flatMap{from->currencies.filter{it!=from}.map{to->from to to}}
                 .mapNotNull{(from,to)->rateService.lookup(from,to).rate}
         }
-    },enqueueAcks={scheduleAcknowledgements()},preferences=AppPreferences(context),sourceRoot=File(context.filesDir,"cloud"),applicationContext=context.applicationContext) }
+    },enqueueAcks={scheduleAcknowledgements()},preferences=commandPreferences,sourceRoot=File(context.filesDir,"cloud"),applicationContext=context.applicationContext) }
     private val db=ledger.db
     private val dao=db.cloudDao()
     private val locks=ConcurrentHashMap<String,Mutex>()
@@ -137,7 +140,13 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         try {
             val transfers=files(localId,directory)
             require(transfers.size in 1..200) { "每个任务需要1至200份文件 / タスクには1～200個のファイルが必要です" }
-            val request=createBody(type,title,instructions,if(type=="receipt") JsonObject(taskContext + ("parts" to JsonPrimitive(transfers.size))) else taskContext)
+            val uploadContext=when {
+                type=="receipt"->JsonObject(taskContext+("parts" to JsonPrimitive(transfers.size)))
+                purpose in setOf("command","monthly-review")->JsonObject(taskContext+("source_files" to JsonArray(
+                    transfers.filter{File(it.path).name=="source-${it.position}"}.map{JsonPrimitive(it.name)})))
+                else->taskContext
+            }
+            val request=createBody(type,title,instructions,uploadContext)
             val timestamp=now()
             db.withTransaction {
                 monthly?.let{check(db.monthlyDao().review(bookId,it.summary.month)==null){"本月已经提交，请查看或重试原任务 / この月は送信済みです。元のタスクを確認・再試行してください"}}
@@ -156,9 +165,9 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         while(name in used || name in setOf(".","..")) { val start="${prefix++.toString().padStart(2,'0')}-"; name=start+base.take(180-start.length) }
         used+=name; return name
     }
-    private fun copySources(localId:String,directory:File,sources:List<Uri>,existing:List<CloudTransferEntity> = emptyList(),supplement:Boolean=false):List<CloudTransferEntity> {
+    private fun copySources(localId:String,directory:File,sources:List<Uri>,existing:List<CloudTransferEntity> = emptyList(),supplement:Boolean=false,reservedNames:Set<String> = emptySet()):List<CloudTransferEntity> {
         require(sources.isNotEmpty() && sources.size+existing.size<=200) { "请选择文件，每任务最多200份 / ファイルを選択してください。1タスク200個までです" }
-        val used=existing.map { it.name }.toMutableSet()
+        val used=(existing.map { it.name }+reservedNames).toMutableSet()
         val outputs=mutableListOf<CloudTransferEntity>()
         try {
             sources.forEach { uri ->
@@ -223,7 +232,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
                 require(file.length()<CLOUD_FILE_LIMIT)
                 CloudTransferEntity(localId,index,name,file.path,file.length(),sha256(file),if(name.endsWith(".md"))"text/markdown"else"application/json")
             }
-            generated+if(sources.isEmpty())emptyList()else copySources(localId,directory,sources,generated)
+            generated+if(sources.isEmpty())emptyList()else copySources(localId,directory,sources,generated,reservedNames=commandGeneratedNames)
         }
     }
     suspend fun receiveCommand(claim:CloudClaim):CommandPlanEntity=locked(claim.localId) {
@@ -255,7 +264,8 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         refreshUnlocked(localId)
         val task=row(localId)
         check(task.remoteStatus=="needs_info") { "仅待补资料任务可补充文件 / 追加資料待ちのタスクのみ追加できます" }
-        val additions=copySources(localId,File(root,localId),sources,dao.transfers(localId),true)
+        val additions=copySources(localId,File(root,localId),sources,dao.transfers(localId),true,
+            reservedNames=if(task.purpose in setOf("command","monthly-review"))commandGeneratedNames else emptySet())
         try { db.withTransaction {
             dao.insertTransfers(additions); dao.updateTask(task.copy(stage="UPLOADING",lastError=null,updatedAt=now()))
         } } catch(e:Exception) { additions.forEach { File(it.path).delete() }; throw e }

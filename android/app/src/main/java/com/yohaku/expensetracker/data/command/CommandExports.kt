@@ -5,14 +5,14 @@ import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.finance.FinancialRuleVersion
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
-import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 import com.yohaku.expensetracker.data.files.FileProtocols
 
 /** Explicit outbound DTOs. No Entity serializer, file path, draft/media payload or credentials. */
 @Serializable data class ContextItem(val id:String,val kind:String,val name:String,val values:JsonObject)
 @Serializable data class LedgerContextExport(val format:String="yohaku.ledger-context",val version:Int=1,val book_id:String,
-    val generatedAt:String,val coverage:List<String>,val items:List<ContextItem>,val contextDigest:String)
+    val generatedAt:String,val coverage:List<String>,val items:List<ContextItem>,val contextDigest:String,
+    val asOfDate:String?=null,val zoneId:String?=null)
 @Serializable data class RecordExport(val id:String,val kind:String,val date:String,val account:String,val category:String?,
     val currency:String,val amountMinor:Long,val baseMinor:Long,val merchant:String,val note:String,val revision:Int,
     val accountMinor:Long?,val accountCurrency:String?,val confirmed:Boolean?,val historicalIncluded:Boolean,
@@ -35,7 +35,7 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope,pref
     val originalBook=requireNotNull(dao.book(bookId))
     val items=mutableListOf<ContextItem>()
     fun add(id:String,kind:String,name:String,fields:JsonObjectBuilder.()->Unit){items+=ContextItem(id,kind,name,buildJsonObject(fields))}
-    add(s.book.id,"book",s.book.name){put("currency",s.book.currency);put("theme",originalBook.theme);put("language",originalBook.language);put("startDate",s.book.startDate);put("budgetMinor",s.book.budgetMinor);put("archived",s.book.archived);put("activityMode",s.features?.activityMode?:false);put("activeActivityId",s.features?.activeActivityId)}
+    add(s.book.id,"book",s.book.name){put("currency",s.book.currency);put("theme",originalBook.theme);put("language",originalBook.language);put("startDate",s.book.startDate);put("budgetMinor",s.book.budgetMinor);put("archived",s.book.archived);put("initialized",originalBook.initialized);put("setupStep",originalBook.setupStep);put("activityMode",s.features?.activityMode?:false);put("activeActivityId",s.features?.activeActivityId)}
     s.accounts.forEach{a->add(a.id,"account",a.name){put("type",a.type);put("currency",a.currency);put("openingMinor",a.openingMinor);put("openingDate",a.openingDate);put("balanceMinor",s.balance(a));put("active",a.active)}}
     s.categories.forEach{c->add(c.id,"category",s.path(c.id)){put("kind",c.kind);put("parentId",c.parentId);put("active",c.active);put("favorite",c.favorite);put("icon",c.icon)}}
     s.merchants.forEach{m->add(m.id,"merchant",m.name){put("note",m.note);put("active",m.active)}}
@@ -68,9 +68,9 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope,pref
     preferences?.commandValues(bookId)?.forEach{(key,value)->add(key,"preference",key){put("value",value)}}
     db.csvImportDao().batches(bookId).first().forEach{batch->add(batch.id,"csv_batch",batch.fileName){put("rowCount",batch.rowCount);put("importedCount",batch.importedCount);put("accountId",batch.accountId);put("trashed",batch.undoGroupId!=null)}}
     db.monthlyDao().plan(bookId)?.let{plan->add(bookId,"monthly_plan","月度计划 / 月の計画"){put("text",plan.text)}}
-    val coverage=listOf("Book structure and user planning fields; no transaction records unless separately selected.","Analysis/settings and CSV batch metadata are included. Statement rows, receipt product documents/image metadata and CSV record links are included ONLY in the selected records scope; image bytes and paths are excluded.","The current natural-language monthly plan is included; monthly review history is excluded.","Drafts, media bytes, credentials, internal file paths and deleted transaction records excluded. Other-paid activity treats are actual records: included only in the separately selected date-range records export, never automatically in structure or account-only scope.")
-    val generated=clock.instant().toString()
-    val export=LedgerContextExport(book_id=bookId,generatedAt=generated,coverage=coverage,items=items.sortedWith(compareBy<ContextItem>{it.kind}.thenBy{it.id}),contextDigest="")
+    val coverage=listOf("Book structure and user planning fields; no transaction records unless separately selected.","Analysis/settings and CSV batch metadata are included. Statement rows, receipt product documents/image metadata and CSV record links are included ONLY in the selected records scope; image bytes and paths are excluded.","The current natural-language monthly plan is included; monthly review history is excluded. Book initialized/setupStep are exported for command prerequisites.","A date-range records export filters each record by its own date, without adding out-of-range original expenses/refunds or all expense components. Do not equate the selected records sum with final monthly net spending; use the monthly-review summary for that accounting basis.","Drafts, media bytes, credentials, internal file paths and deleted transaction records excluded. Other-paid activity treats are actual records: included only in the separately selected date-range records export, never automatically in structure or account-only scope.")
+    val instant=clock.instant();val generated=instant.toString()
+    val export=LedgerContextExport(book_id=bookId,generatedAt=generated,coverage=coverage,items=items.sortedWith(compareBy<ContextItem>{it.kind}.thenBy{it.id}),contextDigest="",asOfDate=instant.atZone(clock.zone).toLocalDate().toString(),zoneId=clock.zone.id)
     val context=export.copy(contextDigest=digest(encoded(export).jsonObject.let{JsonObject(it.filterKeys{k->k!="contextDigest"})}))
     val selector=recordScopeSelector(scope)
     if(scope.mode=="account")require(s.accounts.any{it.id==scope.account})

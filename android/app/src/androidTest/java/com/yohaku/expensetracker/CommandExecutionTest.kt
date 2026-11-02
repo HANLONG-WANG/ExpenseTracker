@@ -52,6 +52,25 @@ class CommandExecutionTest {
     private suspend fun fixture(book:String,bank:String)=commandCardPlan(book,bank,commands.registry.catalogDigest,r.commandExports(book,RecordScope()).context.contextDigest)
     private suspend fun snapshot(book:String)=r.snapshot(r.dao.book(book)!!).first()
 
+    @Test fun protocolCurrentDebtFreeCardExamplePreviewsWithUnknownLimitPolicies()=runBlocking<Unit> {
+        val (book,bank)=setup()
+        val exported=r.commandExports(book,RecordScope()).context
+        assertEquals("2026-11-02",exported.asOfDate);assertEquals("Asia/Tokyo",exported.zoneId)
+        assertEquals(JsonPrimitive(false),exported.items.single{it.kind=="book"}.values["initialized"])
+        val protocol=context.assets.open("yohaku-command-protocol-v1.md").bufferedReader().use{it.readText()}
+        val raw=protocol.substringAfter("## 完整示例：新信用卡、额度与当前还款规则").substringAfter("```json").substringBefore("```")
+        val example=commandJson.decodeFromString<CommandPlan>(raw)
+        val plan=example.copy(plan_id=UUID.randomUUID().toString(),book_id=book,catalog_digest=commands.registry.catalogDigest,context_digest=exported.contextDigest,
+            steps=example.steps.map{step->if(step.command=="financialRule.addVersion")step.copy(input=JsonObject(step.input+("paymentAccount" to JsonPrimitive(bank))))else step})
+        val before=CommandUndoJournal(r,book).snapshot()
+        val row=receive(plan);assertEquals(row.error,"PENDING",row.status)
+        val model=commands.preview(row.planId)
+        assertEquals(2,model.steps.size);assertTrue(model.steps.flatMap{it.missing}.toString(),model.executable)
+        assertTrue(model.requirements.any{it.kind==ConfirmationKind.USER_FACT&&it.stepId=="card"})
+        assertTrue(model.steps.none{it.command=="financialPrediction.save"})
+        assertEquals(before,CommandUndoJournal(r,book).snapshot())
+    }
+
     @Test fun cardRulePredictionRunsLocallyThenCommitsWithDurableReceiptAndDeduplicates()=runBlocking<Unit> {
         val (book,bank)=setup();val input=fixture(book,bank).withCommandCreditLimit();val row=receive(input)
         val originalRows=CommandUndoJournal(r,book).snapshot()

@@ -59,13 +59,13 @@ ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 小票�
 
 有效示例只证明文件格式；能否关联取决于当前账本真实数据及打包修订。
 
-## 云端办理格式（阶段 1）
+## 云端办理格式（v1，阶段8最终校对）
 
-以下四种使用 `format` 字段，采用最小单位整数金额（币种由字段或关联账户明确），**不采用上面的转换格式金额字符串与可忽略额外字段规则**。办理输入严格拒绝未知字段；命令、版本、引用、数量与 digest 还须由本机注册表进行语义校验。
+以下五种使用 `format` 字段，采用最小单位整数金额（币种由字段或关联账户明确），**不采用上面的转换格式金额字符串与可忽略额外字段规则**。办理输入严格拒绝未知字段；命令、版本、引用、数量与 digest 还须由本机注册表进行语义校验。
 
 | format | Schema | 用途 |
 | --- | --- | --- |
-| `yohaku.command-plan` | [schema](command-plan.v1.schema.json) | 助手返回的办理方案；最多500步；有类型前向依赖；用户事实不可由助手填写 |
+| `yohaku.command-plan` | [schema](command-plan.v1.schema.json) | 助手返回的办理方案；最多500步；只能引用前序步骤的有类型依赖；用户事实不可由助手填写 |
 | `yohaku.capabilities` | [schema](capabilities.v1.schema.json) | 本机注册表导出的能力清单、共享引用定义、永久边界及 catalogDigest |
 | `yohaku.ledger-context` | [schema](ledger-context.v1.schema.json) | 专用结构导出，含生成时间、覆盖说明、contextDigest；不直接序列化数据库 Entity |
 | `yohaku.monthly-review` | [schema](monthly-review.v1.schema.json) | 手动确认提交的月度汇总、月计划快照；结果仍为 command-plan，评语在 message、建议在 steps |
@@ -73,6 +73,8 @@ ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 小票�
 
 完整协议：[yohaku-command-protocol-v1.md](yohaku-command-protocol-v1.md)。应用源文本是 `android/app/src/main/assets/yohaku-command-protocol-v1.md`；此处及安卓交接包是同步副本。正常/错误样例位于 `examples/`：错误样例分别演示助手代填事实、无效执行模式、缺少 contextDigest、金额类型错误；另有批量分类正常样例。方案样例 digest 的64个0仅作占位，实际方案必须复制任务附件值，不能直接用于本机验收。`capabilities.valid.json` 例外：由真实 `CommandRegistry().export()` 生成，保留真实 catalogDigest；JVM `CommandCapabilitiesTest` 校验本文件与交接包副本。更新时在 `android/` 运行 `./gradlew -Dyohaku.updateCapabilities=true :app:testDebugUnitTest --tests com.yohaku.expensetracker.data.command.CommandCapabilitiesTest`，不要手工维护能力内容。
 
-本阶段命令为 `account.save`、`financialRule.addVersion`、`financialPrediction.save`、`entry.update`，均为 v1 / transactional。金融规则使用领域字段及显式未知值；非一次付预测必须明确原合同起始期数。不完整规则允许保存；缺少可计算预测的资料时显示缺项并阻止整批执行。
+当前87个命令覆盖账本、记录、规划、金融/额度、文件/偏好及月计划，执行方式有transactional、post-commit和interactive；全部以本次任务能力附件为准，不能只依据早期四命令样例。金融规则使用领域字段及显式未知值；非一次付预测必须明确原合同起始期数。不完整规则允许保存；缺少可计算预测的资料时显示缺项并阻止整批执行。
 
-阶段7新增 `book.monthlyPlan.save` 与提醒偏好 monthlyReview。静态 command-plan schema 保留代表性命令定义；完整命令与最新 schema 始终以任务能力附件为准。能力样例本次未手写，需使用上述生成入口重新生成。
+静态 command-plan schema 保留代表性命令定义；完整命令与最新 schema 始终以任务能力附件为准。月评评语写message、建议写steps，不能新增review或代填USER_FACT；无步骤回答仍须正确book_id及两个digest。普通办理实际必带协议/能力/结构，按选择另附records/源文件；月评初次为协议/能力/结构/月汇总四份。阶段8修正实际确认示例、枚举、过时说明并补任务放弃边界，能力样例未手写，需用上述入口重新生成；该测试还检查所有命令示例能通过自身输入校验。
+
+助手往返首轮修订：结构导出增加可兼容旧快照的asOfDate/zoneId，book.values补initialized/setupStep；任务context.source_files标明初次用户源文件名称，非新增附件。协议集中说明合理推断/日期/额度可空值及完整建卡示例、月计划即时更新和日期范围未补跨范围退款的限制。entry.update.targets导出oneOf和ids的minItems/maxItems/uniqueItems，本机解释同一约束。能力复用说明按各命令区分，需验收方再次生成能力样例。

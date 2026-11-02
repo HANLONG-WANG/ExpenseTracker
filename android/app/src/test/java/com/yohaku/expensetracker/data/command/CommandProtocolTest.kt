@@ -43,4 +43,21 @@ class CommandProtocolTest {
         reject(plan(listOf(CommandStep("recat","entry.update",1,input("""{"targets":{"ids":["e"],"select":{"kind":"EXPENSE"}},"set":{"category":"coffee"}}""")))))
         reject(plan(listOf(CommandStep("recat","entry.update",1,input("""{"targets":{"select":{"min_minor":500}},"set":{"category":"coffee"}}""")))))
     }
+    @Test fun exportedTargetsSchemaMatchesExclusiveSelectionAndSizeLimits() {
+        val examples=listOf(
+            """{"ids":["entry"]}""" to true,
+            """{"ids":["entry"],"select":null}""" to true,
+            """{"ids":null,"select":{"kind":"EXPENSE"}}""" to true,
+            """{"select":{}}""" to true,
+            "{}" to false,
+            """{"ids":["entry"],"select":{}}""" to false,
+            """{"ids":[]}""" to false,
+            """{"ids":["entry","entry"]}""" to false,
+            encoded(EntryWriteTargets(ids=(1..5001).map{JsonPrimitive("entry-$it")})).toString() to false)
+        for((raw,valid) in examples) {
+            val value=input(raw)
+            assertEquals(raw,valid,runCatching{validateSchema(value,entryWriteTargetsSchema,"targets",emptyMap())}.isSuccess)
+            assertEquals(raw,valid,runCatching{validateTargets(commandJson.decodeFromJsonElement<EntryWriteTargets>(value))}.isSuccess)
+        }
+    }
 }

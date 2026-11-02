@@ -1,6 +1,6 @@
 # 余量：HTML → 安卓 UI 实现与验收对照
 
-更新：2026-10-16。状态：阶段A–C P01–P18涉及范围已实施、对照并交付APK。阶段C当前结论见文末C32与[阶段C状态](../android/verification/phase-c-status.md)；UI24本轮仅含重要事项基础，系统通知/设置按P21继续，UI01–UI27其余后续业务仍按阶段D/E完成。历史待验说明保留当时状态。
+更新：2026-11-03。当前：云端办理阶段1–8已验收，阶段8为审计/协议/工具，未改UI；当前覆盖见文末与[审计表](plans/cloud-command-coverage.md)。历史状态：阶段A–C P01–P18涉及范围已实施、对照并交付APK。阶段C当前结论见文末C32与[阶段C状态](../android/verification/phase-c-status.md)；UI24本轮仅含重要事项基础，系统通知/设置按P21继续，UI01–UI27其余后续业务仍按阶段D/E完成。历史待验说明保留当时状态。
 
 ## 1. 基准与优先级
 
@@ -507,7 +507,7 @@ UI05/UI15–UI19 信用卡功能补充（2026-10-28）：
 - 待用户运行 `CommandFlowTest.followupPreviewAndStatusAcrossLooks`，参数 `looks=all visual=true`，查看六组 `cloud-command-stage-1/*-followup-preview.png`、`*-followup-status.png`（包括失败重试）。`ReceiptWorkbenchFlowTest.coverTabsOriginalImagesAndRecordLinksUseOnlyTheCurrentRevisionInEveryThemeAndLanguage` 增加 `phase-b-p13-workbench/*-first-product-entry.png` 检查首次商品录入入口；本轮没有运行模拟器或产生新截图。
 
 
-阶段6第1轮返工（已复验）：持久草稿效果保留 `drafts`，交互提案为 `entryDraft`，UI兼容两者；业务名称抽为 `data/command/CommandBusinessNames.kt`，撤销说明与状态使用方案原序号+业务名称。`CommandDraftPreview.kt` 直接显示金额/账户/分类/日期/备注/文件意图及“待你补完”。执行后详情先显示紧凑后续状态总览并定位到它，完整错误及操作说明进入主题YSheet，重试按钮留在总览。`CommandFlowTest` 补 `*-followup-draft.png`，状态截图前检查完成/等待操作/失败可重试及重试按钮完整同屏。未产生新截图或回填验收通过。
+阶段6第1轮返工（已复验）：持久草稿效果保留 `drafts`，交互提案为 `entryDraft`，UI兼容两者；业务名称抽为 `data/command/CommandBusinessNames.kt`，撤销说明与状态使用方案原序号+业务名称。`CommandDraftPreview.kt` 直接显示金额/账户/分类/日期/备注/文件意图及“待你补完”。执行后详情先显示紧凑后续状态总览并定位到它，完整错误及操作说明进入主题YSheet，重试按钮留在总览。`CommandFlowTest` 补 `*-followup-draft.png`，状态截图前检查完成/等待操作/失败可重试及重试按钮完整同屏。返工后的三主题中日文截图已在阶段6验收中查看通过；本阶段8不重复生成截图。
 
 
 ### 云端办理阶段7：月计划、月评与问答（已验收）
@@ -517,3 +517,11 @@ UI05/UI15–UI19 信用卡功能补充（2026-10-28）：
 - `NotificationSettingsScreen` 增加默认开启、独立于重要提醒的月评开关，沿用三主题各自的分隔/手写勾/开关形状，并明确说明每月1日提醒上月、手动核对后上传。通知点击由 NativeApp 跳转对应月评提交页；权限说明及实际提醒计划沿用原页。
 - CommandPreviewScreen 月评先显示评语、原计划与建议业务名称；“预览建议步骤”后才展示已有完整方案预览。月评保存不依赖执行，历史显示未执行/执行/拒绝/已撤销。纯文字回答沿用各主题标题和正文版式，直接显示并保存历史，无确认/重试运行按钮。
 - `CommandFlowTest.monthlyPlanSubmissionReviewHistoryAndAnswerAcrossLooks` 增加五类截图：`cloud-command-stage-1/*-monthly-plan.png`、`*-monthly-submit.png`、`*-monthly-review.png`、`*-monthly-history.png`、`*-answer.png`。需要 `looks=all visual=true` 并查看三主题中日文；本轮按要求未运行Gradle/模拟器，没有新截图或视觉验收结论。
+
+### 云端办理阶段8：全覆盖审计与独立助手工具（已验收）
+
+覆盖表逐项对应Repository/三个ViewModel/偏好/云端与执行器写入路径；UI直接DAO写入为0。当前87个命令沿用UI29–UI34的原生预览、回答/月评和历史，新增cloud.task.discard永久边界，修正能力schema/示例/协议说明；没有新增命令、页面、控件或效果类型，本轮无新增视觉截图要求。
+
+CommandAssistantRoundTripTest使用磁盘测试库、真实任务准备/advance上传完成（离线HTTP替身）与receiveCommand→preview，结果写外部files/assistant-roundtrip；默认跳过，只有assistant=export或verify启用。文本报告与完整确认模型用于外部助手方案核验，不是UI截图，也不执行confirm。用法见[Android README](../android/README.md)。
+
+总验收沿用CommandFlowTest的submitReceiveReviewCheckConfirmAndHistory、undoPreviewConfirmAndHistory、ledgerCombinationPreviewAcrossLooks、planningCombinationPreviewAcrossLooks、financeCombinationPreviewAcrossLooks、followupPreviewAndStatusAcrossLooks、monthlyPlanSubmissionReviewHistoryAndAnswerAcrossLooks；looks=all visual=true覆盖杂志/手账/小物×中文/日文，截图在cloud-command-stage-1/。阶段1–7截图已有验收，本轮未运行Gradle/模拟器；真实网站往返仍由用户实测。

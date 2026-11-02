@@ -59,6 +59,9 @@ internal fun financeInput(schema:JsonObject,input:JsonElement,resolve:(JsonEleme
     val openingMinor:Long,val sourceDate:PoolSourceDate,val paymentAccountId:String?=null,val planId:String?=null,
     val adoptExisting:Boolean=false,val unallocatedShares:List<FinancePoolShare> = emptyList(),val adoptedFees:List<PoolAdoptedFee> = emptyList())
 
+/** Outbound guidance shared by standalone limit configuration and account.save.creditLimit. */
+internal const val creditLimitInputGuide="Credit-limit object is a full version: required nullable fields must be present, not omitted. totalMinor is the known total capacity; installmentMinor/revolvingMinor are separate sublimits, combinedMinor is the shared subpool cap, sharing is TOTAL_ONLY/SEPARATE_CAPS/SHARED_SUBPOOL; use null for unspecified caps/sharing, never infer them from the total. usedTotalMinor/usedInstallmentMinor/usedRevolvingMinor are usage at basisDate, not balances computed by the assistant; unknown=null, explicit no debt/no occupancy permits 0 for all three, subject to phone USER_FACT. For current/now statements, effectiveFrom and basisDate may both use task asOfDate, with assumptions in message; basisDate<=effectiveFrom<=phone today. recovery is PAYMENT_DATE/PLATFORM_CONFIRMATION/MANUAL or null unknown; usageBasis is PRINCIPAL_ONLY/PLATFORM_ONLY or null unknown; usageStart is TRANSACTION_DATE/ACCOUNT_POSTING_DATE or null (default); zoneId is explicit; recoveryDelayDays defaults to 0 and only applies to PAYMENT_DATE. Unknown policies are valid saved configuration: automatic available-limit estimates remain unknown unless usageBasis=PRINCIPAL_ONLY and recovery/usageStart are known. They do not block creating the account, saving the stated total limit or saving a billing rule. Do not invent bank-specific recovery/usage policies just to produce a numeric estimate."
+
 private val financeUndoText="Restore complete recorded pre-batch rows, including contracts, allocations, arrangements, drafts and limit history; remove only unchanged execution-owned rows without external references. Any conflict blocks the entire batch."
 private val financeCompare=listOf("all before/after domain rows and fixed referenced identities","per-period dates, principal, fees, payment account, rule basis, confirmed/predicted status","source, repayment/refund revisions, contract remaining principal, pool sources and allocations","credit-limit configuration, group revision/members, recovery and observation evidence, absolute available amounts","cash and budget forecast, saved-entry ordering","generated IDs in nested evidence mapped by step/role/business key; audit instants ignored","USER_FACT digest binds the resolved input and complete effect, never display text")
 private fun <T> financeAdapter(name:String,serializer:KSerializer<T>,outputs:Map<String,String> = emptyMap(),
@@ -168,7 +171,7 @@ internal fun financeCommandAdapters():List<CommandAdapter> = listOf(
         financeFact(step,run,financeEffect(step,run,before,rows),encoded(v),account,v.bill.totalMinor,v.bill.date,"这是平台账单的实际日期和金额。","返済先の請求の実際の日付・金額です。")
     },
     financeAdapter("financialPool.save",FinancePoolSave.serializer(),mapOf("prediction" to "prediction"),
-        "Required openingMinor/sourceDate/terms; no invented principal. planId omitted/null creates, adoptExisting=false, shares/fees=[]; references supported in each share. Existing payment changes are retained.",
+        "Required openingMinor/sourceDate/terms; no invented principal. planId omitted/null creates, adoptExisting=false, unallocatedShares/adoptedFees=[]; references supported in each share. Existing payment changes are retained.",
         "Active compatible revolving/credit-line account, complete rule inputs, ordered dates and available opening/source principal. Adoption and unallocated payment shares obey poolFacts and reconciliation checks.",
         "Create, adopt existing arrangements into, reconcile or recalculate the account balance pool. Uses previewFinancialPool/commitFinancialPrediction; no fake transfer.",
         """{"accountId":"card-id","name":"循环余额池","mode":"REVOLVING","openingMinor":10000,"sourceDate":"TRANSACTION","terms":{"agreementDate":"2026-11-02","paymentDates":["2026-12-10"],"accrualWindows":[{"start":"2026-11-02","end":"2026-12-09"}],"firstPeriodNumber":1}}""",fact=true) {step,run,v->
@@ -193,7 +196,7 @@ internal fun financeCommandAdapters():List<CommandAdapter> = listOf(
         val before=run.state();val rows=financeRows(run);run.ledger.voidCreditLimitRecovery(run.bookId,v.recoveryId);financeEffect(step,run,before,rows)
     },
     financeAdapter("creditLimitObservation.record",FinanceObservation.serializer(),mapOf("observation" to "creditLimitObservation"),
-        "Exactly one of accountId/groupId; scope and availableMinor/observedAt required. Explicit UTC instant; null is not zero. No cloud fact boolean.",
+        "Exactly one of accountId/groupId; scope (TOTAL/INSTALLMENT/REVOLVING) and availableMinor/observedAt required. Explicit UTC instant; null is not zero. No cloud fact boolean.",
         "Existing active debt account or group; TOTAL/INSTALLMENT/REVOLVING, group only TOTAL; nonnegative value; observedAt cannot be future. Source/config/group revision recorded.",
         "Record the available amount seen on the financial platform. Only the phone user can attest this observation.",
         """{"accountId":"card-id","scope":"TOTAL","availableMinor":80000,"observedAt":"2026-11-02T00:00:00Z"}""",fact=true) {step,run,v->
@@ -211,7 +214,7 @@ internal fun financeCommandAdapters():List<CommandAdapter> = listOf(
     },
     financeAdapter("financialDraft.reclassify",FinanceDraftCategory.serializer(),defaults="sourceCategoryId/categoryId required. slots omitted selects matching financial draft categories at first preview and freezes exact slots; explicit slots must match source category. Other inputs and original basis preserved.",
         prerequisites="Existing EXPECTED financial drafts; active INCOME destination category in this book. Confirm never expands the frozen draft set; changed source category rejects.",
-        description="Migrate expected-income form draft categories without deleting drafts. Other financial forms have no category; ordinary entry drafts remain stage 6. Existing phone form category controls provide the same edit.",example="""{"sourceCategoryId":"old-income-category-id","categoryId":"income-category-id"}""",
+        description="Migrate expected-income form draft categories without deleting drafts. Other financial forms have no category; ordinary entry drafts use entryDraft.reclassify. Existing phone form category controls provide the same edit.",example="""{"sourceCategoryId":"old-income-category-id","categoryId":"income-category-id"}""",
         normalizeInput={input,run->
             if(input["slots"]!=null&&input["slots"]!=JsonNull)input else {
                 val source=run.resolve(input.getValue("sourceCategoryId"))
@@ -306,8 +309,8 @@ private fun repaymentAdapter(cleared:Boolean)=financeAdapter(if(cleared)"financi
         if(cleared)financeFact(step,run,effect,encoded(v),v.debtAccountId,v.principal?.minor,requireNotNull(v.clearingDate),"平台已确认清偿；实收、本金、利息、费用和分配对象均已核对。","返済先が返済を確定済みで、受取額・元金・利息・手数料・充当先を確認しました。")else effect
     }
 private fun limitConfigAdapter()=financeAdapter("creditLimit.save",CreditLimitInput.serializer(),mapOf("config" to "creditLimitConfig"),
-    "Full version: all nullable capacities/usage/recovery/sharing/basis fields must be explicitly supplied as known value or null. usageStart=null, recoveryDelayDays=0. No institution-name inference; known usage anchors require a phone USER_FACT.",
-    "Active debt account; nonnegative amounts; basisDate<=effectiveFrom<=today in explicit zone; sublimits consistent; loans cannot set card-only sublimits.",
+    creditLimitInputGuide,
+    "Active debt account; nonnegative amounts; basisDate<=effectiveFrom<=today in explicit zone; sublimits consistent; loans cannot set card-only sublimits. Unknown nullable policies are saveable and do not require an empty plan; known zero usage still needs the phone fact check.",
     "Append a credit-limit configuration and usage anchor, covering all capacities, sharing modes, recovery policies and usage-date rules.",
     """{"accountId":"card-id","totalMinor":100000,"installmentMinor":null,"revolvingMinor":null,"sharing":"TOTAL_ONLY","combinedMinor":null,"effectiveFrom":"2026-11-02","basisDate":"2026-11-02","usedTotalMinor":10000,"usedInstallmentMinor":null,"usedRevolvingMinor":null,"recovery":null,"usageBasis":"PRINCIPAL_ONLY","zoneId":"Asia/Tokyo"}""",fact=true) {step,run,v->
         val before=run.state();val rows=financeRows(run);val review=run.ledger.previewCreditLimit(run.bookId,v);check(run.ledger.commitCreditLimit(review))
