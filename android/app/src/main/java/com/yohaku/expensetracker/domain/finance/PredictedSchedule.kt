@@ -1,19 +1,21 @@
 package com.yohaku.expensetracker.domain.finance
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
+import com.yohaku.expensetracker.domain.model.SchemaFormat
 import java.time.LocalDate
 import kotlinx.serialization.Serializable
 
-@Serializable data class AccrualWindow(val start:String,val end:String)
-@Serializable data class AdditionalPeriodFee(val number:Int,val minor:Long)
-@Serializable data class RevolvingPaymentSetting(val fromPaymentDate:String,val method:PaymentMethod?,val paymentMinor:Long?=null,
+@Serializable data class AccrualWindow(@SchemaFormat("date") val start:String,@SchemaFormat("date") val end:String)
+@Serializable data class AdditionalPeriodFee(@SchemaRange(minimum=1) val number:Int,@SchemaRange(minimum=0) val minor:Long)
+@Serializable data class RevolvingPaymentSetting(val fromPaymentDate:String,val method:PaymentMethod?,@SchemaRange(minimum=1,condition="FIXED_PRINCIPAL or TOTAL_PAYMENT calculation; other methods ignore this amount.") val paymentMinor:Long?=null,
     val tiers:List<PaymentTier> = emptyList(),val tierPaymentIncludesFees:Boolean?=null,val tierBalanceDate:TierBalanceDate?=null) {
     fun apply(rule:RevolvingRule)=rule.copy(method=method,paymentMinor=paymentMinor,tiers=tiers,tierPaymentIncludesFees=tierPaymentIncludesFees,tierBalanceDate=tierBalanceDate)
 }
 internal fun FinancialScheduleTerms.paymentSetting(date:String)=paymentSettings.sortedBy{it.fromPaymentDate}.lastOrNull{it.fromPaymentDate<=date}
 internal fun FinancialScheduleTerms.paymentRule(date:String,base:RevolvingRule)=paymentSetting(date)?.apply(base)?:base
 @Serializable data class FinancialScheduleTerms(
-    val agreementDate:String,val paymentDates:List<String>,val accrualWindows:List<AccrualWindow> = emptyList(),
-    val overrides:List<PeriodOverride> = emptyList(),val firstPeriodNumber:Int=1,val remainingFeeMinor:Long?=null,
+    @SchemaFormat("date") val agreementDate:String,@SchemaFormat("date",items=true) val paymentDates:List<String>,val accrualWindows:List<AccrualWindow> = emptyList(),
+    val overrides:List<PeriodOverride> = emptyList(),@SchemaRange(minimum=1) val firstPeriodNumber:Int=1,@SchemaRange(minimum=0,condition="When used to override the installment total fee; ignored by other modes.") val remainingFeeMinor:Long?=null,
     val additionalFees:List<AdditionalPeriodFee> = emptyList(),val paymentSettings:List<RevolvingPaymentSetting> = emptyList()
 )
 data class EffectiveFinancialRule(val version:Int,val rule:FinancialRuleVersion)

@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.data.command
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
+import com.yohaku.expensetracker.domain.model.SchemaFormat
 import com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot
 import com.yohaku.expensetracker.domain.finance.*
 import kotlinx.serialization.Serializable
@@ -38,15 +40,15 @@ internal fun canonical(value:JsonElement):JsonElement=when(value) {
 @Serializable data class NormalizedPlan(val steps:List<CommandStep>)
 @Serializable data class CommandExecutionRecord(val outputs:Map<String,Map<String,String>>,val generatedIds:Map<String,String>,val undo:UndoRecord?=null,val followups:List<CommandFollowup> = emptyList())
 
-@Serializable data class AccountCommandInput(val name:String,val currency:String,val openingMinor:Long,val openingDate:String,
+@Serializable data class AccountCommandInput(val name:String,val currency:String,val openingMinor:Long,@SchemaFormat("date") val openingDate:String,
     val account:JsonElement?=null,val type:String="CREDIT",val creditLimit:JsonObject?=null)
 @Serializable data class RuleCommandInput(val account:JsonElement,val rule:JsonObject,val paymentAccount:JsonElement?=null)
 @Serializable data class PredictionCommandInput(val account:JsonElement,val name:String,val mode:FinanceMode,
-    val terms:FinancialScheduleTerms?=null,val sourceEvent:JsonElement?=null,val openingPrincipalMinor:Long?=null,
+    val terms:FinancialScheduleTerms?=null,val sourceEvent:JsonElement?=null,@SchemaRange(minimum=1,condition="Opening source with no sourceEvent or arrangement overriding the principal; otherwise derived from source.") val openingPrincipalMinor:Long?=null,
     val paymentAccount:JsonElement?=null,val plan:JsonElement?=null,val candidates:PredictionCandidateInput?=null)
-@Serializable data class PredictionCandidateInput(val agreementDate:String,val count:Int,val firstDate:String,val firstEnd:String,
-    val firstPeriodNumber:Int?=null,val remainingFeeMinor:Long?=null)
-@Serializable data class EntrySelector(val from:String?=null,val through:String?=null,val account:String?=null,val category:String?=null,
+@Serializable data class PredictionCandidateInput(@SchemaFormat("date") val agreementDate:String,@SchemaRange(minimum=1,maximum=1200) val count:Int,@SchemaFormat("date") val firstDate:String,@SchemaFormat("date") val firstEnd:String,
+    @SchemaRange(minimum=1) val firstPeriodNumber:Int?=null,@SchemaRange(minimum=0,condition="When used to override the installment total fee; ignored by other modes.") val remainingFeeMinor:Long?=null)
+@Serializable data class EntrySelector(@SchemaFormat("date") val from:String?=null,@SchemaFormat("date") val through:String?=null,val account:String?=null,val category:String?=null,
     val merchant_contains:String?=null,val note_contains:String?=null,val kind:String?=null,val min_minor:Long?=null,val max_minor:Long?=null,val currency:String?=null)
 @Serializable data class EntryTargets(val ids:List<String>?=null,val select:EntrySelector?=null)
 @Serializable data class EntryCategorySet(val category:String)

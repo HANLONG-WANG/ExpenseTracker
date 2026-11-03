@@ -1,12 +1,14 @@
 package com.yohaku.expensetracker.domain.reminders
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
+import com.yohaku.expensetracker.domain.model.SchemaFormat
 import kotlinx.serialization.Serializable
 import java.time.*
 
 @Serializable data class ReminderPreferences(
     val enabled:Boolean=false,val repayment:Boolean=true,val deadline:Boolean=true,val recurring:Boolean=true,
-    val budget:Boolean=true,val funds:Boolean=true,val repaymentDays:List<Int> = listOf(7,1),
-    val deadlineDays:List<Int> = listOf(3,1),val recurringDays:List<Int> = listOf(1),val time:String="09:00",val monthlyReview:Boolean=true
+    val budget:Boolean=true,val funds:Boolean=true,@SchemaRange(minimum=0,maximum=365,items=true) val repaymentDays:List<Int> = listOf(7,1),
+    @SchemaRange(minimum=0,maximum=365,items=true) val deadlineDays:List<Int> = listOf(3,1),@SchemaRange(minimum=0,maximum=365,items=true) val recurringDays:List<Int> = listOf(1),@SchemaFormat("local-time") val time:String="09:00",val monthlyReview:Boolean=true
 ) {
     fun validate() {
         LocalTime.parse(time)

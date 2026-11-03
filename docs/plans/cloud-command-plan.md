@@ -193,3 +193,12 @@
 - 阶段 0 任一行为与预期不同（读不到前序写入、回滚泄露、锁问题无法统一）：暂停，回到架构讨论。
 - 某类操作无法放进"预览后执行"的模型：标为 `interactive`，和用户确认处理方式，不悄悄缩减范围。
 - 下沉界面编排时，发现会改变现有界面行为：先停下来说明。
+
+
+### 阶段后续改进
+
+日期、月份、时刻/时区及本机已强制的固定整数范围通过输入字段的 `@SerialInfo` 注解与共用 schema helper 导出；本机解释相同关键字，报错包含中日文和字段路径。没有硬校验、依赖当前账本或只影响规则完整性的字段不擅自增加硬规则，逐项审计见 [schema 审计](cloud-command-schema-audit.md)。
+
+`CommandRegistry.planSchema()` 从 v1 序列化模型和全部87条能力生成 draft 2020-12 完整方案 schema，作为 `yohaku-command-plan-v1.schema.json` 随每个普通办理/月评任务上传。普通办理必带协议/能力/方案schema/结构四份，月评初次再加月汇总共五份；records 和用户源文件仍按原选择规则提供。catalogDigest 的计算方式不变，不另加方案schema摘要。
+
+`CommandCapabilitiesTest` 用同一个 `-Dyohaku.updateCapabilities=true` 开关生成并校验两份能力样例和两份 `command-plan.v1.schema.json`；本次不手写生成产物，由验收方运行更新命令。协议三份逐字同步；结构校验通过后仍需手机预览及确认。本轮没有UI修改。验收：生成样例后JVM单元测试121项通过（1项按设计跳过）；仪器测试命令执行50项、CommandFlowTest 7项、往返export通过，导出六份附件含方案schema；用标准 jsonschema（Draft 2020-12）检查生成的schema有效，阶段8第2轮6份助手方案均通过结构校验，错误日期被拒。

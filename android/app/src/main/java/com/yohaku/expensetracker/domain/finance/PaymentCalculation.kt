@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.domain.finance
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.math.BigInteger
@@ -19,7 +20,7 @@ data class PaymentPeriod(
 ) { val totalMinor: Long get() = Math.addExact(principalMinor, feeMinor) }
 
 @kotlinx.serialization.Serializable
-data class PeriodOverride(val number: Int, val principalMinor: Long, val feeMinor: Long)
+data class PeriodOverride(@SchemaRange(minimum=1) val number: Int, @SchemaRange(minimum=0) val principalMinor: Long, @SchemaRange(minimum=0) val feeMinor: Long)
 
 private fun split(total: Long, count: Int, remainder: RemainderPlacement): List<Long> {
     val part = total / count

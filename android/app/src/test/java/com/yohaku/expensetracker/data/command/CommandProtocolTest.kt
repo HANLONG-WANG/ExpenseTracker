@@ -60,4 +60,38 @@ class CommandProtocolTest {
             assertEquals(raw,valid,runCatching{validateTargets(commandJson.decodeFromJsonElement<EntryWriteTargets>(value))}.isSuccess)
         }
     }
+    @Test fun dateMonthAndRangeConstraintsRejectWithFieldPaths() {
+        val cases=listOf(
+            Triple("account.save",card.input+mapOf("openingDate" to JsonPrimitive("2026/11/01")),"check.openingDate"),
+            Triple("account.save",card.input+mapOf("openingDate" to JsonPrimitive("2026-02-30")),"check.openingDate"),
+            Triple("budget.save",input("""{"month":"2026-13","amount":null}"""),"check.month"),
+            Triple("book.completeSetup",input("""{"step":5}"""),"check.step"),
+            Triple("financialPrediction.save",input("""{"account":"card","name":"P","mode":"SINGLE","candidates":{"agreementDate":"2026-11-01","count":0,"firstDate":"2026-12-10","firstEnd":"2026-12-01"}}"""),"check.candidates.count"),
+            Triple("statement.supplement",input("""{"batch":"batch","row":"row","occurredDate":"2026-02-30","postedDate":"2026-11-01"}"""),"check.occurredDate"),
+            Triple("preferences.reminders",input("""{"repaymentDays":[366]}"""),"check.repaymentDays[0]")
+        )
+        for((command,values,path) in cases) {
+            val error=assertThrows(IllegalArgumentException::class.java){parse(plan(listOf(CommandStep("check",command,1,JsonObject(values)))))}
+            assertTrue(error.message.orEmpty(),error.message.orEmpty().contains(path))
+        }
+        // Nullable fields keep their constraints in the non-null branch, including nested inputs.
+        val properties=registry.capabilities.single{it.name=="book.update"}.inputSchema.getValue("properties").jsonObject
+        val date=properties.getValue("startDate").jsonObject.getValue("anyOf").jsonArray.first().jsonObject
+        assertEquals(JsonPrimitive("date"),date["format"])
+        validateSchema(JsonNull,properties.getValue("startDate").jsonObject,"startDate",emptyMap())
+        // Rule readiness is not a save-time rejection: preserve the existing incomplete-rule path.
+        val incomplete=JsonObject(rule.input+("rule" to JsonObject(rule.input.getValue("rule").jsonObject+("billing" to input("""{"closingDay":32}""")))))
+        assertEquals(2,parse(plan(listOf(card,rule.copy(input=incomplete)))).steps.size)
+    }
+    @Test fun generatedEnvelopeMatchesStrictParsingAndDefaults() {
+        val schema=registry.planSchema()
+        val minimal=JsonObject(encoded(plan(emptyList())).jsonObject-setOf("message","questions","steps"))
+        validateSchema(minimal,schema,"plan",emptyMap(),schema.getValue("\$defs").jsonObject)
+        assertTrue(registry.parse(minimal.toString(),"book",context).steps.isEmpty())
+        val unknown=JsonObject(minimal+("review" to JsonPrimitive("unexpected")))
+        assertThrows(Exception::class.java){registry.parse(unknown.toString(),"book",context)}
+        assertThrows(Exception::class.java){validateSchema(unknown,schema,"plan",emptyMap())}
+        assertEquals(registry.export().getValue("limits").jsonObject.getValue("steps"),schema.getValue("properties").jsonObject.getValue("steps").jsonObject.getValue("maxItems"))
+    }
+
 }

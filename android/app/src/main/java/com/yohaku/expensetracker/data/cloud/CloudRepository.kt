@@ -33,7 +33,7 @@ import java.util.zip.ZipFile
 
 internal class CloudBlockedException(message:String):IllegalStateException(message)
 // Reserve even optional generated names, so a user source cannot masquerade as a monthly summary.
-private val commandGeneratedNames=setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-ledger-context-v1.json","yohaku-records-v1.json","yohaku-monthly-review-v1.json")
+private val commandGeneratedNames=setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-command-plan-v1.schema.json","yohaku-ledger-context-v1.json","yohaku-records-v1.json","yohaku-monthly-review-v1.json")
 
 internal fun cloudRetryable(error:Exception):Boolean = when(error) {
     is CloudHttpException -> error.status == 429 || error.status >= 500
@@ -224,6 +224,7 @@ class CloudRepository(private val context:Context, private val ledger:LedgerRepo
         },purpose=purpose,monthly=monthly) {localId,directory->
             val texts=linkedMapOf("yohaku-command-protocol-v1.md" to context.assets.open("yohaku-command-protocol-v1.md").bufferedReader(Charsets.UTF_8).use{it.readText()},
                 "yohaku-capabilities-v1.json" to commands.registry.export().toString(),
+                "yohaku-command-plan-v1.schema.json" to commands.registry.planSchema().toString(),
                 "yohaku-ledger-context-v1.json" to cloudJson.encodeToString(bundle.context))
             monthly?.let{texts["yohaku-monthly-review-v1.json"]=cloudJson.encodeToString(it.summary)}
             bundle.records?.let{texts["yohaku-records-v1.json"]=cloudJson.encodeToString(it)}

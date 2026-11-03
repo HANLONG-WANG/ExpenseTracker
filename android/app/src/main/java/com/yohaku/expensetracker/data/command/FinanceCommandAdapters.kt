@@ -46,17 +46,17 @@ internal fun financeInput(schema:JsonObject,input:JsonElement,resolve:(JsonEleme
 
 @Serializable internal data class FinanceAllocationResolve(val eventId:String,val billId:String?=null,val contractId:String?=null)
 @Serializable internal data class FinanceBillTarget(val billId:String)
-@Serializable internal data class FinanceBillResolve(val planId:String,val number:Int)
+@Serializable internal data class FinanceBillResolve(val planId:String,@SchemaRange(minimum=1) val number:Int)
 @Serializable internal data class FinanceBillConfirm(val billId:String,val bill:KnownBillInput)
 @Serializable internal data class FinanceContractLink(val contractId:String,val planId:String)
-@Serializable internal data class FinanceApplied<T>(val input:T,val appliedAt:String)
+@Serializable internal data class FinanceApplied<T>(val input:T,@SchemaFormat("instant") val appliedAt:String)
 @Serializable internal data class FinanceBatchUndo(val undoGroupId:String)
 @Serializable internal data class FinanceRecoveryVoid(val recoveryId:String)
-@Serializable internal data class FinanceObservation(val scope:String,val availableMinor:Long,val observedAt:String,val accountId:String?=null,val groupId:String?=null)
+@Serializable internal data class FinanceObservation(val scope:String,@SchemaRange(minimum=0) val availableMinor:Long,@SchemaFormat("instant") val observedAt:String,val accountId:String?=null,val groupId:String?=null)
 @Serializable internal data class FinanceDraftCategory(val sourceCategoryId:String,val categoryId:String,val slots:List<String>?=null)
-@Serializable internal data class FinancePoolShare(val eventId:String,val minor:Long)
+@Serializable internal data class FinancePoolShare(val eventId:String,@SchemaRange(minimum=0,condition="Matched repayment share in the selected pool; unused entries do not acquire a new rejection rule.") val minor:Long)
 @Serializable internal data class FinancePoolSave(val accountId:String,val name:String,val mode:FinanceMode,val terms:FinancialScheduleTerms,
-    val openingMinor:Long,val sourceDate:PoolSourceDate,val paymentAccountId:String?=null,val planId:String?=null,
+    @SchemaRange(minimum=0) val openingMinor:Long,val sourceDate:PoolSourceDate,val paymentAccountId:String?=null,val planId:String?=null,
     val adoptExisting:Boolean=false,val unallocatedShares:List<FinancePoolShare> = emptyList(),val adoptedFees:List<PoolAdoptedFee> = emptyList())
 
 /** Outbound guidance shared by standalone limit configuration and account.save.creditLimit. */
@@ -260,13 +260,13 @@ private fun reconciliationAdapter()=financeAdapter("financialArrangement.reconci
         run.output(step.id,"prediction",checkNotNull(run.ledger.commitArrangementReconciliation(review,true)),false)
         financeFact(step,run,financeEffect(step,run,before,rows),encoded(v),review.original.accountId,v.principalMinor,v.effectiveDate,"当前来源本金、退款和清偿归属已与平台重新核对。","現在の対象元金・返金・返済充当の帰属を返済先と再確認しました。")
     }
-private fun integerMapSchema()=buildJsonObject{put("type","object");put("additionalProperties",buildJsonObject{put("type","integer")});put("properties",buildJsonObject{});put("required",JsonArray(emptyList()))}
+private fun integerMapSchema()=buildJsonObject{put("type","object");put("additionalProperties",localConstraintSchema(buildJsonObject{put("type","integer")},"Matched repayment share in the selected pool; also bounded by the unallocated principal.",rangeSchema(0)));put("properties",buildJsonObject{});put("required",JsonArray(emptyList()))}
 private fun poolPaymentAdapter()=financeAdapter("financialPool.changePayment",FinanceApplied.serializer(PoolPaymentChangeInput.serializer()),mapOf("prediction" to "prediction"),
     "Explicit setting/effectiveDate/feeMinor/appliedAt; feeMinor null unknown. feeDate=null, feeIncludedInRetained=false; rates supplied by phone execution context.",
     "Active pool with valid unchanged source facts; complete calculation; nonfuture appliedAt; phone must attest platform acceptance including any configured deadline exception.",
     "Record an applied common monthly pool payment change and its fee; preserves the existing pool source/adoption history.",
     """{"input":{"planId":"pool-id","effectiveDate":"2026-11-02","setting":{"fromPaymentDate":"2026-12-10","method":"FIXED_PRINCIPAL","paymentMinor":10000},"feeMinor":0},"appliedAt":"2026-11-02T00:00:00Z"}""",fact=true,
-    schemaPatch=mapOf("input" to financeReferences(withoutFields(descriptorSchema(PoolPaymentChangeInput.serializer().descriptor),setOf("referenceRates"))))) {step,run,v->
+    schemaPatch=mapOf("input" to financeReferences(withoutFields(patchSchema(descriptorSchema(PoolPaymentChangeInput.serializer().descriptor),mapOf("setting" to patchSchema(descriptorSchema(RevolvingPaymentSetting.serializer().descriptor),mapOf("fromPaymentDate" to dateSchema())))),setOf("referenceRates"))))) {step,run,v->
         val before=run.state();val rows=financeRows(run);val review=run.ledger.previewPoolPaymentChange(run.bookId,v.input.copy(referenceRates=run.context.referenceRates));requireReady(review.calculation)
         val exception=review.deadlines.any{Instant.parse(v.appliedAt)>it.instant()}
         val id=checkNotNull(run.ledger.commitPoolPaymentChange(review,v.appliedAt,true,exception));run.output(step.id,"prediction",id,false)

@@ -315,7 +315,7 @@ adb shell am instrument -w -r \
 
 必要测试（Gradle 须串行；本实现任务不运行，由验收方执行）：
 
-- JVM：`CommandCapabilitiesTest` 检查所有命令示例通过实际输入schema/适配器校验，并规范化比较两处能力样例与真实 `CommandRegistry().export()`；不一致时失败。在 `android/` 运行 `./gradlew -Dyohaku.updateCapabilities=true :app:testDebugUnitTest --tests com.yohaku.expensetracker.data.command.CommandCapabilitiesTest` 可自动写回两份样例（省略开关仅校验）。`CommandProtocolTest`（严格解析、digest、引用、边界、数量和助手不得代勾）；`CommandConfirmationTest`（结构化语义比较、规则内嵌JSON的ID映射、差异路径、金融核验序列化、安排比较行顺序与业务值保留）；`CommandRiskTest`（具体风险提示和必要的负余额确认）；回归 `FinancialRuleDraftTest`、`CreditCardOptionsTest`、`EntryPresetsTest`。
+- JVM：`CommandCapabilitiesTest` 检查所有命令示例通过实际输入schema/适配器校验，并规范化比较两处能力样例与真实 `CommandRegistry().export()`；不一致时失败。在 `android/` 运行 `./gradlew -Dyohaku.updateCapabilities=true :app:testDebugUnitTest --tests com.yohaku.expensetracker.data.command.CommandCapabilitiesTest` 可自动写回两份能力样例和两份完整方案schema（省略开关仅校验）。`CommandProtocolTest`（严格解析、digest、引用、边界、数量和助手不得代勾）；`CommandConfirmationTest`（结构化语义比较、规则内嵌JSON的ID映射、差异路径、金融核验序列化、安排比较行顺序与业务值保留）；`CommandRiskTest`（具体风险提示和必要的负余额确认）；回归 `FinancialRuleDraftTest`、`CreditCardOptionsTest`、`EntryPresetsTest`。
 - 仪器：`CommandExecutionTest`（接收固定结果、信用卡→规则→预测、20笔分类、相关/无关变更、缺项、失败/协程取消、提交后重启与双重去重）；`DatabaseUpgradeTest.version36AddsUndoIdentityAndPreservesExecutedPlan`（36→37，执行记录/去重保留与撤销关联；原35→36用例继续保留）。阶段2相关流程为信用卡含额度整批撤销、20笔分类恢复、原分类为空恢复、已有账户新增规则/预测重算恢复、外部记录/JSON草稿引用及账单确认阻止；保留 `undoChecksAllTargetsAndRechecksAtConfirmation` 和账户编辑恢复用例；不新增边界/性能专项。
 - 阶段3仪器：`CommandLedgerExecutionTest` 的六个领域组合（账本、账户/分类/3笔、商户地点朋友、转账退款/外币实际金额、模板记账、回收站恢复），均预览→执行→撤销；同类集中验证禁止操作整份拒绝。`batchFiveHundredNotesOnLargeLedgerLogsPerformance` 在3700笔上改500笔备注，用 `CommandStage3` 输出耗时，不断言。
 - 阶段4仪器：`CommandPlanningExecutionTest` 五组合覆盖预算、活动预留/请客/结束、周期支付/取消/批量关联及草稿恢复、预计收入关联/新增到账、分类迁移（包括回收站记录与历史实例）。均验证预览回滚→执行→精确撤销；另一个共用真实冲突用例。禁止操作继续集中在阶段3用例，不扩增边界矩阵。回归用现有 BudgetRecurrenceTest、ActivityTreatTest、ActivityManagementStorageTest、ExpectedIncomeTest 的相关流程。
@@ -379,17 +379,18 @@ adb pull "$rt/README.txt" ./assistant-roundtrip-README.txt
 
 export创建独立**磁盘**Room库`databases/assistant-roundtrip.db`，不碰用户主库`yohaku.db`；后续verify复用它。时间固定为2026-11-02 12:00 Asia/Tokyo，便于可重复的金融日期校验。夹具含生活银行、两张信用卡（家电卡已有规则、12,000日元期初本金的两期分期）、餐饮/交通/日用品/娱乐/其他/工资分类、18笔十月记录（部分故意错分）、月/分类预算、手机月费周期规则和自然语言月计划。
 
-导出调用真实`commandExports → CloudRepository.prepareCommandTask → advance`；只有HTTP连接被离线替身替换，真实CloudApi发送字节并取得文件ID，advance登记fileId/uploadedAt并核对完整提交。再按cloud_transfers原样复制附件并核验大小/SHA。旧版仅PREPARED的夹具须重建，不在verify中跳过上传校验。使用隔离的任务文件目录`files/assistant-roundtrip/cloud/<localId>/`，源资料通过真实FileProvider选择；任务/来源身份和真实流程写出的上传完成状态保存在测试库；偏好使用独立持久文件files/assistant-roundtrip/assistant.preferences_pb，经CloudRepository注入同一实例，导出/预览不读取或修改用户实际偏好。初次用户源文件的实际上传名称另写在任务context.source_files，可从task-request.json或真实任务正文查看；结构附asOfDate/zoneId和book.values.initialized/setupStep。当前仍导出五份附件：
+导出调用真实`commandExports → CloudRepository.prepareCommandTask → advance`；只有HTTP连接被离线替身替换，真实CloudApi发送字节并取得文件ID，advance登记fileId/uploadedAt并核对完整提交。再按cloud_transfers原样复制附件并核验大小/SHA。旧版仅PREPARED的夹具须重建，不在verify中跳过上传校验。使用隔离的任务文件目录`files/assistant-roundtrip/cloud/<localId>/`，源资料通过真实FileProvider选择；任务/来源身份和真实流程写出的上传完成状态保存在测试库；偏好使用独立持久文件files/assistant-roundtrip/assistant.preferences_pb，经CloudRepository注入同一实例，导出/预览不读取或修改用户实际偏好。初次用户源文件的实际上传名称另写在任务context.source_files，可从task-request.json或真实任务正文查看；结构附asOfDate/zoneId和book.values.initialized/setupStep。当前导出六份附件：
 
 | 文件 | 来源/用途 |
 |---|---|
 | yohaku-command-protocol-v1.md | 应用assets协议原文 |
 | yohaku-capabilities-v1.json | 当前已编译注册表实时导出，含真实catalogDigest |
+| yohaku-command-plan-v1.schema.json | 同一注册表生成的完整方案schema，含全部命令与顶层约束 |
 | yohaku-ledger-context-v1.json | 测试账本当前白名单结构及contextDigest |
 | yohaku-records-v1.json | 明确选择2026-10-01至2026-11-02的实际记录范围 |
 | roundtrip-source.txt | 用户选择的原始咖啡消费资料，可作为attachment.attachSource来源 |
 
-只把`attachments/`文件和自然语言需求给独立助手，不给源码或预制答案。`README.txt`、`session.json`、`task-request.json`是工具辅助/任务正文留档，不是上传附件。普通办理的前三份必带，records与源文件按选择出现；月评生产初次上传为协议/能力/结构/月汇总四份，本工具此轮导出普通办理任务，不把逐笔records冒充monthly-review附件。
+只把`attachments/`文件和自然语言需求给独立助手，不给源码或预制答案。`README.txt`、`session.json`、`task-request.json`是工具辅助/任务正文留档，不是上传附件。普通办理的前四份必带，records与源文件按选择出现；月评生产初次上传为协议/能力/方案schema/结构/月汇总五份，本工具此轮导出普通办理任务，不把逐笔records冒充monthly-review附件。
 
 每次需求先注明“本次测试的当前日期为2026-11-02，时区Asia/Tokyo”，与真实任务instructions一致；然后可分别给助手这样的需求（不要提供命令名或JSON字段）：
 

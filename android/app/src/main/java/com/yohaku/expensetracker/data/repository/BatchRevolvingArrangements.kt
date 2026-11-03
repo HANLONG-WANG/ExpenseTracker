@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.data.repository
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
+import com.yohaku.expensetracker.domain.model.SchemaFormat
 import androidx.room.withTransaction
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.finance.*
@@ -10,8 +12,8 @@ import kotlinx.serialization.json.*
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 
-@Serializable data class BatchRevolvingInput(val accountId:String,val paymentDate:String,val planIds:List<String>,val principalMinor:Long,
-    val poolId:String,val effectiveDate:String,val feeMinor:Long?,val mergeFeeDate:String?=null,val mergeFeeIncludedInRetained:Boolean=false)
+@Serializable data class BatchRevolvingInput(val accountId:String,@SchemaFormat("date") val paymentDate:String,val planIds:List<String>,@SchemaRange(minimum=1) val principalMinor:Long,
+    val poolId:String,@SchemaFormat("date") val effectiveDate:String,@SchemaRange(minimum=0) val feeMinor:Long?,val mergeFeeDate:String?=null,val mergeFeeIncludedInRetained:Boolean=false)
 @Serializable data class BatchArrangementArchive(val undoGroupId:String,val paymentDate:String,val before:List<FinancialPlanArchive>,
     val afterPlans:List<FinancialPlanEntity>,val afterBills:List<FinancialBillEntity>,val arrangements:List<FinancialArrangementEntity>,val comparison:FinancialArrangementComparison,val repaymentAllocations:List<FinancialRepaymentAllocationEntity> = emptyList(),val billAdjustments:List<FinancialBillAdjustmentEntity>?=null)
 class BatchRevolvingReview internal constructor(internal val before:FinancialReviewState,val input:BatchRevolvingInput,

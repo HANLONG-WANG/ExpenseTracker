@@ -210,8 +210,8 @@
 
 | 任务 | 实际附件集合 | 结果处理 |
 |---|---|---|
-| 普通办理/问答 purpose=command | 必带 yohaku-command-protocol-v1.md、yohaku-capabilities-v1.json、yohaku-ledger-context-v1.json；选了记录范围再附 yohaku-records-v1.json；最后附用户所选源文件 | 有步骤进入预览；无步骤保存ANSWER并展示message/questions，无执行按钮 |
-| 月评 purpose=monthly-review | 初次必带上述三份及 yohaku-monthly-review-v1.json；不附逐笔records或源文件 | 非空message为评语；可选steps是建议，需用户主动预览确认 |
+| 普通办理/问答 purpose=command | 必带 yohaku-command-protocol-v1.md、yohaku-capabilities-v1.json、yohaku-command-plan-v1.schema.json、yohaku-ledger-context-v1.json；选了记录范围再附 yohaku-records-v1.json；最后附用户所选源文件 | 有步骤进入预览；无步骤保存ANSWER并展示message/questions，无执行按钮 |
+| 月评 purpose=monthly-review | 初次必带上述四份及 yohaku-monthly-review-v1.json；不附逐笔records或源文件 | 非空message为评语；可选steps是建议，需用户主动预览确认 |
 
 用户在待补充页明确追加的文件另走原补充流程。任务context.source_files列出初次提交的用户源文件实际名称，来自复制后的transfers，名称冲突已消歧；后续补充以当前任务input列表为准，不改写原幂等创建请求。源文件按实际上传名称保留原字节；自动生成附件不属于可附到记录的sourceName。结构用LedgerContextExport/ContextItem白名单，不直接序列化Entity：账本、账户余额、分类、联系人/地点、模板、预算、周期、金融规则/计划/余额池/额度、活动/预留/预计收入、允许偏好、CSV批次摘要与当前月计划。不包含草稿、凭据、内部路径、全量交易或月评历史。
 

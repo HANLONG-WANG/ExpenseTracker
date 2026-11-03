@@ -1,9 +1,10 @@
 package com.yohaku.expensetracker.data.repository
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
 import com.yohaku.expensetracker.data.db.*
 import kotlinx.serialization.Serializable
 
-@Serializable data class PoolAdoptedFee(val arrangementId:String,val date:String,val includedInRetained:Boolean=false,val waivedMinor:Long=0)
+@Serializable data class PoolAdoptedFee(val arrangementId:String,val date:String,val includedInRetained:Boolean=false,@SchemaRange(minimum=0,condition="Adopted arrangement with changeFeeMinor > 0; also bounded by that actual fee.") val waivedMinor:Long=0)
 
 internal fun FinancialGraph.adoptedArrangements(accountId:String,mode:String,adoptExisting:Boolean)=currentArrangements.filter{change->
     val target=plans.first{it.id==change.targetPlanId}

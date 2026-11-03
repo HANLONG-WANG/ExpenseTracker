@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.data.repository
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
+import com.yohaku.expensetracker.domain.model.SchemaFormat
 import androidx.room.withTransaction
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.finance.*
@@ -9,8 +11,8 @@ import kotlinx.serialization.encodeToString
 import java.time.*
 import java.lang.Math.subtractExact
 
-@Serializable data class PoolPaymentChangeInput(val planId:String,val effectiveDate:String,val setting:RevolvingPaymentSetting,
-    val feeMinor:Long?,val feeDate:String?=null,val feeIncludedInRetained:Boolean=false,val referenceRates:List<ReferenceRateSnapshot> = emptyList())
+@Serializable data class PoolPaymentChangeInput(val planId:String,@SchemaFormat("date") val effectiveDate:String,val setting:RevolvingPaymentSetting,
+    @SchemaRange(minimum=0) val feeMinor:Long?,val feeDate:String?=null,val feeIncludedInRetained:Boolean=false,val referenceRates:List<ReferenceRateSnapshot> = emptyList())
 @Serializable data class PoolPaymentChange(val id:String,val effectiveDate:String,val setting:RevolvingPaymentSetting,
     val feeMinor:Long,val feeDate:String?,val feeIncludedInRetained:Boolean,val appliedAt:String,val exceptionAccepted:Boolean=false,
     val comparison:FinancialArrangementComparison?=null)

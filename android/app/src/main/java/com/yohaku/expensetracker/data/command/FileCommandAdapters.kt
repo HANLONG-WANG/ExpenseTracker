@@ -13,10 +13,10 @@ import kotlinx.serialization.json.*
 @Serializable internal data class CsvUndoInput(val batch:String,val targets:List<String>?=null)
 @Serializable internal data class AnalysisInput(val modules:List<String>,val pinned:List<String> = emptyList())
 @Serializable internal data class ReceiptProductInput(val name:String?=null,val quantity:String?=null,val unit:String?=null,
-    val unitPrice:Money?=null,val unitPriceDecimal:String?=null,val amount:Money?=null,val note:String?=null,val imageIds:List<String>?=null,val uncertainFields:List<String> = emptyList())
-@Serializable internal data class ReceiptAdjustmentInput(val type:String,val amount:Money,val includedInItems:Boolean,val note:String?=null)
+    @SchemaRange(minimum=0,property="minor") val unitPrice:Money?=null,val unitPriceDecimal:String?=null,@SchemaRange(minimum=0,property="minor") val amount:Money?=null,val note:String?=null,val imageIds:List<String>?=null,val uncertainFields:List<String> = emptyList())
+@Serializable internal data class ReceiptAdjustmentInput(val type:String,@SchemaRange(minimum=0,property="minor") val amount:Money,val includedInItems:Boolean,val note:String?=null)
 @Serializable internal data class ReceiptProductsInput(val receipt:String,val items:List<ReceiptProductInput>,val imageIds:List<String>?=null,
-    val adjustments:List<ReceiptAdjustmentInput> = emptyList(),val total:Money?=null,val complete:Boolean=false,val issues:List<String> = emptyList())
+    val adjustments:List<ReceiptAdjustmentInput> = emptyList(),@SchemaRange(minimum=0,property="minor") val total:Money?=null,val complete:Boolean=false,val issues:List<String> = emptyList())
 
 internal class StatementAdapter(private val action:String):LedgerAdapter() {
     private val fields=when(action){"accept"->setOf("batch","row","entry","note");"unlink"->setOf("batch","row");"supplement"->setOf("batch","row","kind","occurredDate","postedDate","originalEvent","set");else->setOf("batch","row","entry","postedDate","set")}
@@ -24,7 +24,7 @@ internal class StatementAdapter(private val action:String):LedgerAdapter() {
         if("entry" in fields)put("entry",referenceSchema("entry"))
         if("originalEvent" in fields)put("originalEvent",nullableSchema(referenceSchema("entry")))
         if("set" in fields)put("set",if(action=="confirmActual")withoutFields(entryValueSchema,entryValueSchema.getValue("properties").jsonObject.keys-setOf("baseAmount"))else entryValueSchema)
-        for(date in listOf("occurredDate","postedDate"))if(date in fields)put(date,buildJsonObject{put("type","string")})
+        for(date in listOf("occurredDate","postedDate"))if(date in fields)put(date,dateSchema())
         if("kind" in fields)put("kind",buildJsonObject{put("type","string");put("enum",encoded(listOf("EXPENSE","INCOME","TRANSFER","REFUND")))})
     }).let{base->JsonObject(base+("required" to encoded(when(action){"accept"->listOf("batch","row","entry");"supplement"->listOf("batch","row","occurredDate","postedDate");"confirmActual"->listOf("batch","row","entry","postedDate");else->listOf("batch","row")})))}
     override val capability=ledgerCapability("statement.$action",schema,

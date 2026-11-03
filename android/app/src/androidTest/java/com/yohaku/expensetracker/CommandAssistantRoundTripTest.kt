@@ -130,7 +130,7 @@ class CommandAssistantRoundTripTest {
             service.advance(localId)
             val transfers=db.cloudDao().transfers(localId)
             check(transfers.all{it.fileId!=null&&it.uploadedAt!=null}){"真实上传流程未登记完成"}
-            assertEquals(setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-ledger-context-v1.json","yohaku-records-v1.json","roundtrip-source.txt"),transfers.map{it.name}.toSet())
+            assertEquals(setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-command-plan-v1.schema.json","yohaku-ledger-context-v1.json","yohaku-records-v1.json","roundtrip-source.txt"),transfers.map{it.name}.toSet())
             val attachments=File(root,"attachments");check(attachments.mkdirs())
             for(transfer in transfers) {
                 val file=File(transfer.path)
@@ -157,13 +157,14 @@ class CommandAssistantRoundTripTest {
                 appendLine()
                 val descriptions=mapOf("yohaku-command-protocol-v1.md" to "结果格式、引用、确认和永久边界",
                     "yohaku-capabilities-v1.json" to "当前注册表完整命令、schema、示例及catalogDigest",
+                    "yohaku-command-plan-v1.schema.json" to "从当前注册表生成的完整方案JSON Schema（全部命令及顶层结构）",
                     "yohaku-ledger-context-v1.json" to "白名单账本结构及contextDigest",
                     "yohaku-records-v1.json" to "用户选择2026-10-01至2026-11-02的实际记录",
                     "roundtrip-source.txt" to "用户明确选择的原始消费凭据；文件名可用于attachment.attachSource")
                 transfers.forEach{appendLine("attachments/${it.name}：${descriptions.getValue(it.name)}；${it.size} bytes；SHA-256 ${it.sha256}")}
                 appendLine()
                 appendLine("README.txt、session.json、task-request.json、plans/、results/均为工具辅助文件，不是上传附件。task-request.json只是实际任务正文的留档。")
-                appendLine("普通办理的三份自动附件必带，records和源文件按选择附带；月评实际初次上传为协议+能力+结构+月汇总四份，不附逐笔或源文件。本夹具导出普通办理任务。")
+                appendLine("普通办理的四份自动附件必带，records和源文件按选择附带；月评实际初次上传为协议+能力+方案schema+结构+月汇总五份，不附逐笔或源文件。本夹具导出普通办理任务。")
                 appendLine("每份返回JSON用不同plan_id，保存为plans/*.json，运行 -e assistant verify。不得改写book_id或两个digest。")
                 appendLine("verify只领取和预览；报告在results/<文件名去掉.json>.txt，完整确认模型在对应.preview.json；不执行确认。")
                 appendLine("重复verify复用同一夹具；同一plan_id的不同内容会按真实去重规则返回原方案，并在报告中标明。重新导出步骤见android/README.md。")

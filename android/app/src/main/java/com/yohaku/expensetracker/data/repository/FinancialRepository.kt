@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.data.repository
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
+import com.yohaku.expensetracker.domain.model.SchemaFormat
 import androidx.room.withTransaction
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.finance.*
@@ -77,11 +79,11 @@ suspend fun LedgerRepository.effectiveFinancialRule(bookId:String,accountId:Stri
 
 /** Partial known schedules are useful even when total debt or its breakdown is unknown. */
 @kotlinx.serialization.Serializable data class KnownBillInput(
-    val date:String,val totalMinor:Long,val principalMinor:Long?=null,val feeMinor:Long?=null,val paymentAccountId:String?=null
+    @SchemaFormat("date") val date:String,@SchemaRange(minimum=0) val totalMinor:Long,@SchemaRange(minimum=0) val principalMinor:Long?=null,@SchemaRange(minimum=0) val feeMinor:Long?=null,val paymentAccountId:String?=null
 )
 @kotlinx.serialization.Serializable data class ManualFinancialPlanInput(
     val accountId:String,val name:String,val mode:FinanceMode,val periods:List<KnownBillInput>,
-    val principalMinor:Long?=null,val complete:Boolean=false,val opening:Boolean=false,val sourceEventId:String?=null
+    @SchemaRange(minimum=1) val principalMinor:Long?=null,val complete:Boolean=false,val opening:Boolean=false,val sourceEventId:String?=null
 )
 class ManualFinancialPlanReview internal constructor(
     internal val before:FinancialReviewState,val plan:FinancialPlanEntity,val bills:List<FinancialBillEntity>

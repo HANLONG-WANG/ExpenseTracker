@@ -115,7 +115,8 @@ class CommandFlowTest {
                 val taskContext=cloudJson.parseToJsonElement(task.requestJson).jsonObject.getValue("context").jsonObject
                 assertEquals("2026-10",taskContext.getValue("month").jsonPrimitive.content)
                 val transfers=db.cloudDao().transfers(task.localId)
-                assertEquals(setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-ledger-context-v1.json","yohaku-monthly-review-v1.json"),transfers.map{it.name}.toSet())
+                assertEquals(setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-command-plan-v1.schema.json","yohaku-ledger-context-v1.json","yohaku-monthly-review-v1.json"),transfers.map{it.name}.toSet())
+                assertEquals(cloud.commands.registry.planSchema(),commandJson.parseToJsonElement(File(transfers.single{it.name=="yohaku-command-plan-v1.schema.json"}.path).readText()))
                 val summary=commandJson.decodeFromString<MonthlySummary>(File(transfers.single{it.name=="yohaku-monthly-review-v1.json"}.path).readText())
                 assertEquals(original,summary.monthlyPlan);assertEquals(1200L,summary.expenseMinor)
                 val message=if(ja)"収入に対して支出を抑えられました。先に貯蓄を確保する計画を続けましょう。必要なら翌月の予算を調整できます。"else"本月消费低于收入，也在预算以内。可以继续先储蓄再消费；如有需要，可调整下个月的预算。"
@@ -172,7 +173,8 @@ class CommandFlowTest {
                 taskDirectories+=File(context.filesDir,"cloud/${task.localId}")
                 assertEquals("general",task.type);assertEquals("command",task.purpose)
                 val transfers=db.cloudDao().transfers(task.localId)
-                assertEquals(setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-ledger-context-v1.json"),transfers.map{it.name}.toSet())
+                assertEquals(setOf("yohaku-command-protocol-v1.md","yohaku-capabilities-v1.json","yohaku-command-plan-v1.schema.json","yohaku-ledger-context-v1.json"),transfers.map{it.name}.toSet())
+                assertEquals(cloud.commands.registry.planSchema(),commandJson.parseToJsonElement(File(transfers.single{it.name=="yohaku-command-plan-v1.schema.json"}.path).readText()))
                 val exported=commandJson.decodeFromString<LedgerContextExport>(File(transfers.single{it.name=="yohaku-ledger-context-v1.json"}.path).readText())
                 val plan=commandCardPlan(book,bank,cloud.commands.registry.catalogDigest,exported.contextDigest).withCommandCreditLimit()
                 val claim=commandClaim(plan,localId=task.localId)

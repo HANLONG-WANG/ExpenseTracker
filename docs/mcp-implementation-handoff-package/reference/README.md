@@ -30,7 +30,7 @@ Authorization: Bearer <deviceToken>
 5. GET `/api/v1/tasks/{id}/result` 只返回当前输入版本已发布结果，未就绪返回409。
 6. POST `/api/v1/tasks/{id}/ack`；JSON `{resultId,status:"imported"|"failed"}`；确认成功导入与仅下载分开记录。
 
-类型 `receipt` / `statement` / `general`。context 可包含 `manifest` 或 `identifiers`；安卓云端办理使用 `general`，context 带 `purpose=command|monthly-review`、`yohaku_protocol=yohaku.command-task`、`protocol_version=1`，协议、能力与账本结构随附件提供；月评另带 month 和月汇总附件。办理每任务必带协议、能力、结构，records及源文件按用户选择；月评初次只有协议、能力、结构、月汇总四份。网站仍只接收结果文本，不直接执行命令。也可以另行上传 JSON。小票 ZIP 内清单自动读取。分包必须属于同一账本和同一 bundle，原始文件不变。银行任务需上传原始流水和账户标识；未提供应用账目时，结果仅是流水转换，不代表已完成对账。
+类型 `receipt` / `statement` / `general`。context 可包含 `manifest` 或 `identifiers`；安卓云端办理使用 `general`，context 带 `purpose=command|monthly-review`、`yohaku_protocol=yohaku.command-task`、`protocol_version=1`，协议、能力、完整方案schema与账本结构随附件提供；月评另带 month 和月汇总附件。办理每任务必带协议、能力、方案schema、结构四份，records及源文件按用户选择；月评初次只有协议、能力、方案schema、结构、月汇总五份。网站仍只接收结果文本，不直接执行命令。也可以另行上传 JSON。小票 ZIP 内清单自动读取。分包必须属于同一账本和同一 bundle，原始文件不变。银行任务需上传原始流水和账户标识；未提供应用账目时，结果仅是流水转换，不代表已完成对账。
 
 手机不能管理设备、接管分析或发布结果。Web UI 可保存源文件、分析包和任意历史结果；手机文件接口只开放当前可领取结果。后台不执行导入手机账目。
 

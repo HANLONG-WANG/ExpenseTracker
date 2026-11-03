@@ -1,5 +1,6 @@
 package com.yohaku.expensetracker.data.repository
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.finance.*
 import kotlinx.serialization.Serializable
@@ -8,8 +9,8 @@ import java.time.LocalDate
 import java.lang.Math.addExact
 import java.lang.Math.subtractExact
 
-@Serializable data class PoolBillTransfer(val billId:String,val principalMinor:Long,val cancelledFeeMinor:Long?=null)
-@Serializable data class PoolArrangementSelection(val bills:List<PoolBillTransfer>,val unbilledPrincipalMinor:Long=0)
+@Serializable data class PoolBillTransfer(val billId:String,@SchemaRange(minimum=0,condition="Only for an arrangement whose original plan is a POOL; ignored otherwise.") val principalMinor:Long,@SchemaRange(minimum=0,condition="Only for an arrangement whose original plan is a POOL; ignored otherwise.") val cancelledFeeMinor:Long?=null)
+@Serializable data class PoolArrangementSelection(val bills:List<PoolBillTransfer>,@SchemaRange(minimum=0,condition="Only for an arrangement whose original plan is a POOL; ignored otherwise.") val unbilledPrincipalMinor:Long=0)
 @Serializable data class PoolArrangementBaseline(val poolId:String,val openingMinor:Long,val accountOpeningMinor:Long,val sourceDate:PoolSourceDate,
     val sources:List<PoolSourceFact>,val payments:List<PoolPaymentFact>,val selectedBills:List<FinancialBillEntity>)
 

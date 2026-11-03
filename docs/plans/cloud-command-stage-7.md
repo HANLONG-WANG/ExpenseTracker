@@ -30,7 +30,7 @@
 
 ## 上传与结果格式
 
-初次上传四份：协议 Markdown、注册表 capabilities、ledger-context、`yohaku-monthly-review-v1.json`。不附逐笔 records、图片或其他文件。用户后续在交接台明确追加的资料仍走原补充流程。
+初次上传五份（阶段后续改进已增加方案schema）：协议 Markdown、注册表 capabilities、yohaku-command-plan-v1.schema.json、ledger-context、`yohaku-monthly-review-v1.json`。不附逐笔 records、图片或其他文件。用户后续在交接台明确追加的资料仍走原补充流程。
 
 context：`book_id`、`yohaku_protocol=yohaku.command-task`、`protocol_version=1`、`purpose=monthly-review`、`context_digest`、`month=YYYY-MM`。全部结构使用原白名单 DTO，额外有 `monthly_plan.values.text`；不上传 Entity、草稿、凭据或月评历史。
 

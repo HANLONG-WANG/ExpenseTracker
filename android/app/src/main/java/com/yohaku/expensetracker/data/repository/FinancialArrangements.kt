@@ -13,14 +13,14 @@ import com.yohaku.expensetracker.domain.currency.ReferenceRateSnapshot
 @Serializable enum class OriginalFeeTreatment { RETAIN, CANCELLED_BY_PLATFORM }
 @Serializable data class FinancialArrangementInput(
     val planId:String,val name:String,val mode:FinanceMode,val terms:FinancialScheduleTerms,
-    val paymentAccountId:String?,val originalFeeTreatment:OriginalFeeTreatment?=null,val changeFeeMinor:Long?=null,val referenceRates:List<ReferenceRateSnapshot> = emptyList(),
+    val paymentAccountId:String?,val originalFeeTreatment:OriginalFeeTreatment?=null,@SchemaRange(minimum=0) val changeFeeMinor:Long?=null,val referenceRates:List<ReferenceRateSnapshot> = emptyList(),
     val clearingMoves:List<ArrangementClearingMove> = emptyList(),val poolSelection:PoolArrangementSelection?=null,
     val mergePoolId:String?=null,val mergeFeeDate:String?=null,val mergeFeeIncludedInRetained:Boolean=false,val loanLimitDeltaMinor:Long?=null,
     val manualPeriods:List<KnownBillInput>?=null,val manualComplete:Boolean=false,
-    val transferPrincipalMinor:Long?=null,val undoGroupId:String?=null
+    @SchemaRange(minimum=1,condition="Only for the non-POOL partial transfer path; also bounded by available principal.") val transferPrincipalMinor:Long?=null,val undoGroupId:String?=null
 )
 /** Null period keeps this portion on its original bill; positive periods belong to the new plan. */
-@Serializable data class ArrangementClearingMove(val allocationId:String,val period:Int?,val principalMinor:Long,val interestMinor:Long,val feeMinor:Long,val poolBillId:String?=null)
+@Serializable data class ArrangementClearingMove(val allocationId:String,@SchemaRange(minimum=1) val period:Int?,@SchemaRange(minimum=0) val principalMinor:Long,@SchemaRange(minimum=0) val interestMinor:Long,@SchemaRange(minimum=0) val feeMinor:Long,val poolBillId:String?=null)
 data class ArrangementClearingChange(val original:FinancialRepaymentAllocationEntity,val replacements:List<FinancialRepaymentAllocationEntity>)
 @Serializable data class ArrangementClearingProof(val eventId:String,val date:String,val principalMinor:Long)
 @Serializable data class FinancialArrangementBaseline(

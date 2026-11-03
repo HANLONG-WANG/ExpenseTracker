@@ -9,10 +9,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import java.time.*
 
-@Serializable data class CreditLimitInput(val accountId:String,val totalMinor:Long?,val installmentMinor:Long?,val revolvingMinor:Long?,val sharing:CreditLimitSharing?,val combinedMinor:Long?,
-    val effectiveFrom:String,val basisDate:String,val usedTotalMinor:Long?,val usedInstallmentMinor:Long?,val usedRevolvingMinor:Long?,val recovery:LimitRecovery?,val usageBasis:CreditLimitUsageBasis?,val zoneId:String,val usageStart:CreditLimitUsageStart?=null,val recoveryDelayDays:Int=0)
-@Serializable data class CreditLimitGroupInput(val name:String,val currency:Currency,val totalMinor:Long?,val usedMinor:Long?,val basisDate:String,val accountIds:List<String>,val id:String?=null)
-@Serializable data class CreditLimitRecoveryInput(val accountId:String,val eventId:String,val date:String,val principalMinor:Long,val installmentMinor:Long?,val revolvingMinor:Long?)
+@Serializable data class CreditLimitInput(val accountId:String,@SchemaRange(minimum=0) val totalMinor:Long?,@SchemaRange(minimum=0) val installmentMinor:Long?,@SchemaRange(minimum=0) val revolvingMinor:Long?,val sharing:CreditLimitSharing?,@SchemaRange(minimum=0) val combinedMinor:Long?,
+    @SchemaFormat("date") val effectiveFrom:String,@SchemaFormat("date") val basisDate:String,@SchemaRange(minimum=0) val usedTotalMinor:Long?,@SchemaRange(minimum=0) val usedInstallmentMinor:Long?,@SchemaRange(minimum=0) val usedRevolvingMinor:Long?,val recovery:LimitRecovery?,val usageBasis:CreditLimitUsageBasis?,@SchemaFormat("zone-id") val zoneId:String,val usageStart:CreditLimitUsageStart?=null,@SchemaRange(minimum=0) val recoveryDelayDays:Int=0)
+@Serializable data class CreditLimitGroupInput(val name:String,val currency:Currency,@SchemaRange(minimum=0) val totalMinor:Long?,@SchemaRange(minimum=0) val usedMinor:Long?,@SchemaFormat("date") val basisDate:String,val accountIds:List<String>,val id:String?=null)
+@Serializable data class CreditLimitRecoveryInput(val accountId:String,val eventId:String,@SchemaFormat("date") val date:String,@SchemaRange(minimum=1) val principalMinor:Long,@SchemaRange(minimum=0) val installmentMinor:Long?,@SchemaRange(minimum=0) val revolvingMinor:Long?)
 @Serializable data class CreditLimitGroupArchive(val group:CreditLimitGroupEntity,val accountIds:List<String>)
 class CreditLimitReview internal constructor(internal val before:FinancialReviewState,val config:CreditLimitConfigEntity?,val group:CreditLimitGroupEntity?,val members:List<String>,val recovery:CreditLimitRecoveryEntity?,val observation:CreditLimitObservationEntity?,val estimate:AccountCreditLimit?,val groupEstimate:GroupCreditLimit?)
 

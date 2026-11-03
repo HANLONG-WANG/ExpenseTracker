@@ -6,19 +6,21 @@ import com.yohaku.expensetracker.domain.model.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
+private const val entryPostingConstraint="When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
+
 /** Patch fields only: missing preserves, null clears only an explicitly nullable association/option.
  * Money is always minor units plus currency; editor decimal strings never cross the protocol. */
 @Serializable internal data class EntryValues(
     val useReferenceRates:Boolean=false,val kind:EntryKind?=null,val account:JsonElement?=null,val category:JsonElement?=null,
-    val amount:Money?=null,val accountAmount:Money?=null,val baseAmount:Money?=null,val date:String?=null,
+    @SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val amount:Money?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val accountAmount:Money?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val baseAmount:Money?=null,@SchemaFormat("date") val date:String?=null,
     val merchant:String?=null,val merchantId:JsonElement?=null,val note:String?=null,val historicalIncluded:Boolean?=null,
-    val settlementConfirmed:Boolean?=null,val settlementDate:String?=null,val rateSource:String?=null,val rateDate:String?=null,val manualRate:String?=null,
-    val originalEvent:JsonElement?=null,val toAccount:JsonElement?=null,val toAmount:Money?=null,val toDate:String?=null,
-    val fromConfirmed:Boolean?=null,val toConfirmed:Boolean?=null,val feeAmount:Money?=null,val feeAccountAmount:Money?=null,val feeBaseAmount:Money?=null,
+    val settlementConfirmed:Boolean?=null,@SchemaFormat("date") val settlementDate:String?=null,val rateSource:String?=null,@SchemaFormat("date") val rateDate:String?=null,val manualRate:String?=null,
+    val originalEvent:JsonElement?=null,val toAccount:JsonElement?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val toAmount:Money?=null,@SchemaFormat("date") val toDate:String?=null,
+    val fromConfirmed:Boolean?=null,val toConfirmed:Boolean?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val feeAmount:Money?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val feeAccountAmount:Money?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val feeBaseAmount:Money?=null,
     val feePosition:TransferFeePosition?=null,val feeAccount:JsonElement?=null,val feeDate:String?=null,val feeConfirmed:Boolean?=null,val estimateDirection:String?=null,
-    val activity:JsonElement?=null,val occurrence:JsonElement?=null,val reserve:JsonElement?=null,val reserveAmount:Money?=null,
+    val activity:JsonElement?=null,val occurrence:JsonElement?=null,val reserve:JsonElement?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val reserveAmount:Money?=null,
     val treatEnabled:Boolean?=null,val treatMode:TreatSplitMode?=null,val treatShares:List<EntryShare>?=null,val treatTail:JsonElement?=null,
-    val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null,val cardPaymentRecheck:Boolean?=null,val cardPaymentMonth:String?=null,val cardPaymentFee:Money?=null)
+    val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null,val cardPaymentRecheck:Boolean?=null,val cardPaymentMonth:String?=null,@SchemaRange(minimum=0,property="minor",condition="Effective CREDIT DEFERRED payment; ignored for other payment choices and incomplete drafts.") val cardPaymentFee:Money?=null)
 @Serializable internal data class EntryShare(val friend:JsonElement?=null,val minor:Long?=null,val percent:String?=null)
 @Serializable internal data class EntryWriteTargets(val ids:List<JsonElement>?=null,val select:EntrySelector?=null)
 @Serializable internal data class EntryEditInput(val targets:EntryWriteTargets,val set:JsonObject)
@@ -27,6 +29,9 @@ import kotlinx.serialization.json.*
 
 internal val entryValueSchema:JsonObject get()=patchSchema(descriptorSchema(EntryValues.serializer().descriptor),buildMap {
     put("kind",enumSchema("EXPENSE","INCOME","TRANSFER","REFUND"))
+    put("feeDate",localConstraintSchema(nullableSchema(buildJsonObject{put("type","string")}),"Effective TRANSFER with a supplied fee and SEPARATE feePosition; ignored for INCLUDED_FROM/DEDUCTED_TO or no fee.",dateSchema()))
+    put("cardPaymentMonth",localConstraintSchema(nullableSchema(buildJsonObject{put("type","string")}),"Effective EXPENSE/TRANSFER on a CREDIT account with DEFERRED payment; ignored otherwise. Null clears the field; an effective deferred payment still needs a month.",monthSchema()))
+    put("cardPaymentPeriods",localConstraintSchema(nullableSchema(buildJsonObject{put("type","integer")}),"Effective EXPENSE/TRANSFER on a CREDIT account with INSTALLMENT payment; ignored otherwise. Drafts may remain incomplete.",rangeSchema(1)))
     for((field,type) in mapOf("account" to "account","category" to "category","merchantId" to "merchant","originalEvent" to "entry","toAccount" to "account","feeAccount" to "account","activity" to "activity","occurrence" to "occurrence","reserve" to "reserve","treatTail" to "friend"))put(field,nullableSchema(referenceSchema(type)))
     put("treatShares",nullableSchema(buildJsonObject{put("type","array");put("items",patchSchema(descriptorSchema(EntryShare.serializer().descriptor),mapOf("friend" to nullableSchema(referenceSchema("friend")))))}))
 })

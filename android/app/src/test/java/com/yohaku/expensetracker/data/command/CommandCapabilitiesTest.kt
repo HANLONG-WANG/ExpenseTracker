@@ -11,6 +11,13 @@ class CommandCapabilitiesTest {
         val registry=CommandRegistry()
         // Examples are input fragments. Supply only the typed prior outputs they explicitly
         // reference; real object existence and domain prerequisites belong to device preview.
+        val schema=registry.planSchema()
+        val definitions=schema.getValue("\$defs").jsonObject
+        val branches=schema.getValue("properties").jsonObject.getValue("steps").jsonObject.getValue("items").jsonObject.getValue("oneOf").jsonArray
+        assertEquals(87,registry.capabilities.size)
+        assertEquals(registry.capabilities.map{it.name}.toSet()+"stepReference",definitions.keys)
+        assertEquals(registry.capabilities.map{it.name}.toSet(),branches.map{it.jsonObject.getValue("properties").jsonObject.getValue("command").jsonObject.getValue("const").jsonPrimitive.content}.toSet())
+        assertEquals(87,branches.size)
         val outputTypes=registry.capabilities.flatMap{it.outputs.entries}.groupBy({it.key},{it.value})
         for(adapter in registry.adapters) {
             val capability=adapter.capability
@@ -28,7 +35,10 @@ class CommandCapabilitiesTest {
             }
             try {
                 references(capability.example)
-                validateSchema(capability.example,capability.inputSchema,capability.name,prior)
+                assertEquals(capability.inputSchema,definitions.getValue(capability.name))
+                val plan=CommandPlan("yohaku.command-plan",1,"11111111-1111-4111-8111-111111111111","book",registry.catalogDigest,"0".repeat(64),
+                    steps=listOf(CommandStep("example",capability.name,capability.version,capability.example)))
+                validateSchema(encoded(plan),schema,"plan",prior,definitions)
                 adapter.validate(capability.example)
             } catch(error:Exception) {
                 throw AssertionError("能力示例不能通过本机输入校验：${capability.name}",error)
@@ -38,21 +48,20 @@ class CommandCapabilitiesTest {
 
     @Test fun examplesMatchRegistryExport() {
         val root=File(System.getProperty("yohaku.repositoryRoot")?:"../..").canonicalFile
-        val files=listOf(
-            File(root,"docs/formats/examples/capabilities.valid.json"),
-            File(root,"docs/android-cloud-handoff-package/formats/examples/capabilities.valid.json"))
-        val actual=canonical(CommandRegistry().export())
+        val registry=CommandRegistry()
+        val artifacts=mapOf("examples/capabilities.valid.json" to canonical(registry.export()),"command-plan.v1.schema.json" to canonical(registry.planSchema()))
         val regenerate="在 android/ 运行 ./gradlew -Dyohaku.updateCapabilities=true :app:testDebugUnitTest --tests com.yohaku.expensetracker.data.command.CommandCapabilitiesTest"
-        if(java.lang.Boolean.getBoolean("yohaku.updateCapabilities")) {
-            val rendered=Json { prettyPrint=true }.encodeToString(JsonElement.serializer(),actual)+"\n"
-            files.forEach{it.writeText(rendered)}
-        }
-        for(file in files) {
-            assertTrue("缺少能力样例 ${file.path}。$regenerate",file.isFile)
-            val saved=canonical(Json.parseToJsonElement(file.readText()))
-            // Object key order/whitespace may differ; array order, schemas, examples, prose and the
-            // real catalogDigest must all match. Neither copy can silently drift from the registry.
-            assertEquals("能力样例与真实导出不一致：${file.path}。$regenerate",actual,saved)
+        for((name,actual) in artifacts) {
+            val files=listOf(File(root,"docs/formats/$name"),File(root,"docs/android-cloud-handoff-package/formats/$name"))
+            if(java.lang.Boolean.getBoolean("yohaku.updateCapabilities")) {
+                val rendered=Json { prettyPrint=true }.encodeToString(JsonElement.serializer(),actual)+"\n"
+                files.forEach{it.writeText(rendered)}
+            }
+            for(file in files) {
+                assertTrue("缺少生成文件 ${file.path}。$regenerate",file.isFile)
+                val saved=canonical(Json.parseToJsonElement(file.readText()))
+                assertEquals("生成文件与真实注册表不一致：${file.path}。$regenerate",actual,saved)
+            }
         }
     }
 }

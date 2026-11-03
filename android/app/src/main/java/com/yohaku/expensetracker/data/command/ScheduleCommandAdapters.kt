@@ -7,13 +7,14 @@ import kotlinx.serialization.json.*
 import java.time.LocalDate
 
 @Serializable internal data class RecurrenceSaveCommand(val name:String,val account:JsonElement,val category:JsonElement,
-    val frequency:RecurrenceFrequency,val anchorDate:String,val amount:Money?=null,val baseAmount:Money?=null,val estimated:Boolean=true,
-    val endDate:String?=null,val active:Boolean=true,val activity:JsonElement?=null,val merchant:String="",val merchantId:JsonElement?=null,
+    val frequency:RecurrenceFrequency,@SchemaFormat("date") val anchorDate:String,@SchemaRange(minimum=1,property="minor") val amount:Money?=null,@SchemaRange(minimum=1,property="minor",condition="Only when amount is known and account currency differs from book currency; otherwise derived or ignored.") val baseAmount:Money?=null,val estimated:Boolean=true,
+    @SchemaFormat("date") val endDate:String?=null,val active:Boolean=true,val activity:JsonElement?=null,val merchant:String="",val merchantId:JsonElement?=null,
     val note:String="",val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null,val recurrence:JsonElement?=null)
 @Serializable internal data class RecurrenceActiveCommand(val recurrence:JsonElement,val active:Boolean)
 internal class RecurrenceAdapter(private val active:Boolean=false):LedgerAdapter() {
     override val capability=planningCapability(if(active)"recurrence.setActive"else"recurrence.save",patchSchema(if(active)descriptorSchema(RecurrenceActiveCommand.serializer().descriptor)else descriptorSchema(RecurrenceSaveCommand.serializer().descriptor),buildMap {
         put("recurrence",if(active)referenceSchema("recurrence")else nullableSchema(referenceSchema("recurrence")))
+        if(!active)put("cardPaymentPeriods",localConstraintSchema(nullableSchema(buildJsonObject{put("type","integer")}),"Selected account is CREDIT and cardPaymentChoice is INSTALLMENT; ignored otherwise.",rangeSchema(1)))
         if(!active){put("account",referenceSchema("account"));put("category",referenceSchema("category"));put("activity",nullableSchema(referenceSchema("activity")));put("merchantId",nullableSchema(referenceSchema("merchant")))}
     }),if(active)emptyMap()else mapOf("recurrence" to "recurrence"),
         if(active)"recurrence/active required; preserves all other rule values."else"Full replacement: recurrence omitted/null creates; amount/baseAmount=null unknown, estimated/active=true; optional end/activity/merchant ID/payment fields null, merchant/note empty. Same-currency base derives from amount; foreign base stays unknown unless provided.",
@@ -31,7 +32,7 @@ internal class RecurrenceAdapter(private val active:Boolean=false):LedgerAdapter
     }
 }
 
-@Serializable internal data class OccurrenceResolveCommand(val recurrence:JsonElement,val date:String)
+@Serializable internal data class OccurrenceResolveCommand(val recurrence:JsonElement,@SchemaFormat("date") val date:String)
 @Serializable internal data class OccurrenceTargetCommand(val occurrence:JsonElement)
 @Serializable internal data class OccurrenceLifecycleCommand(val occurrence:JsonElement,val operation:String)
 @Serializable internal data class OccurrenceCategoryCommand(val occurrences:List<JsonElement>,val category:JsonElement)
@@ -87,8 +88,8 @@ internal class OccurrenceAdapter(private val action:String):LedgerAdapter() {
     }
 }
 
-@Serializable internal data class ExpectedSaveCommand(val name:String,val amount:Money,val date:String,val account:JsonElement,
-    val accountAmount:Money?=null,val income:JsonElement?=null,val useReferenceRates:Boolean=false)
+@Serializable internal data class ExpectedSaveCommand(val name:String,@SchemaRange(minimum=1,property="minor") val amount:Money,@SchemaFormat("date") val date:String,val account:JsonElement,
+    @SchemaRange(minimum=1,property="minor") val accountAmount:Money?=null,val income:JsonElement?=null,val useReferenceRates:Boolean=false)
 @Serializable internal data class ExpectedTargetCommand(val income:JsonElement)
 @Serializable internal data class ExpectedArrivalCommand(val income:JsonElement,val entry:JsonElement?=null,val set:JsonObject?=null)
 internal class ExpectedIncomeAdapter(private val action:String):LedgerAdapter() {

@@ -50,8 +50,8 @@
 
 | 任务 | 初次实际上传 |
 |---|---|
-| command（含问答） | 协议MD、当前注册表能力JSON、当前账本结构JSON必带；用户选范围时附records；选定截图/文件按实际上传名和原字节附带 |
-| monthly-review | 协议、能力、当前结构、月汇总四份；初次无records及源文件 |
+| command（含问答） | 协议MD、当前注册表能力JSON、完整方案schema、当前账本结构JSON必带；用户选范围时附records；选定截图/文件按实际上传名和原字节附带 |
+| monthly-review | 协议、能力、完整方案schema、当前结构、月汇总五份（含阶段后续新增schema）；初次无records及源文件 |
 | 原receipt/statement/general analysis | 保留原小票ZIP、银行原件+标识、通用所选文件契约；不是所有general都变成办理 |
 
 源文件先由真实copySources复制到source-N，随后任务和transfers持久化，重试使用同一字节。附件名称冲突沿用uniqueName；attachment.attachSource只能指本任务的用户源文件，不含自动生成文件。结构包括规划/余额/偏好/当前月计划，不包含所有交易、草稿、路径、凭据或月评历史。所选records.workflows只有同范围资料与图片元数据，不自动附图片字节。后续明确补资料仍由原用户入口发起。

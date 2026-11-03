@@ -24,9 +24,9 @@ internal abstract class LedgerAdapter:CommandAdapter {
     }
 }
 
-@Serializable internal data class BookCreateInput(val name:String,val currency:Currency,val startDate:String,val theme:String="magazine",val language:String="zh",val budgetMinor:Long?=null)
-@Serializable internal data class BookPatch(val name:String?=null,val currency:Currency?=null,val startDate:String?=null,val theme:String?=null,val language:String?=null,val budgetMinor:Long?=null)
-@Serializable internal data class BookSetupInput(val step:Int=4,val complete:Boolean=true)
+@Serializable internal data class BookCreateInput(val name:String,val currency:Currency,@SchemaFormat("date") val startDate:String,val theme:String="magazine",val language:String="zh",@SchemaRange(minimum=0) val budgetMinor:Long?=null)
+@Serializable internal data class BookPatch(val name:String?=null,val currency:Currency?=null,@SchemaFormat("date") val startDate:String?=null,val theme:String?=null,val language:String?=null,@SchemaRange(minimum=0) val budgetMinor:Long?=null)
+@Serializable internal data class BookSetupInput(@SchemaRange(minimum=0,maximum=4) val step:Int=4,val complete:Boolean=true)
 @Serializable internal data class BookLifecycleInput(val operation:BookOperation,val book:String?=null)
 internal class BookAdapter(private val action:String):LedgerAdapter() {
     override val capability=ledgerCapability("book.$action",when(action){"create"->descriptorSchema(BookCreateInput.serializer().descriptor);"update"->descriptorSchema(BookPatch.serializer().descriptor);"completeSetup"->descriptorSchema(BookSetupInput.serializer().descriptor);else->patchSchema(descriptorSchema(BookLifecycleInput.serializer().descriptor),mapOf("operation" to enumSchema("ARCHIVE","UNARCHIVE","TRASH","RESTORE")))},
@@ -106,7 +106,7 @@ internal class CategoryAdapter(private val action:String):LedgerAdapter() {
 }
 
 @Serializable internal data class MerchantSaveInput(val name:String,val merchant:JsonElement?=null,val note:String?=null)
-@Serializable internal data class LocationSaveInput(val merchant:JsonElement,val name:String,val location:JsonElement?=null,val latitude:Double?=null,val longitude:Double?=null,val radiusMeters:Int=100)
+@Serializable internal data class LocationSaveInput(val merchant:JsonElement,val name:String,val location:JsonElement?=null,val latitude:Double?=null,val longitude:Double?=null,@SchemaRange(minimum=1) val radiusMeters:Int=100)
 @Serializable internal data class FriendSaveInput(val name:String,val friend:JsonElement?=null)
 internal class ContactAdapter(private val type:String):LedgerAdapter() {
     override val capability=ledgerCapability("$type.save",patchSchema(when(type){"merchant"->descriptorSchema(MerchantSaveInput.serializer().descriptor);"merchantLocation"->descriptorSchema(LocationSaveInput.serializer().descriptor);else->descriptorSchema(FriendSaveInput.serializer().descriptor)},when(type){"merchantLocation"->mapOf("merchant" to referenceSchema("merchant"),"location" to nullableSchema(referenceSchema("merchantLocation")));else->mapOf(type to nullableSchema(referenceSchema(type)))}),mapOf(type to type),
@@ -127,11 +127,13 @@ internal class ContactAdapter(private val type:String):LedgerAdapter() {
 }
 
 @Serializable internal data class TemplateSaveInput(val name:String,val kind:EntryKind,val category:JsonElement,val account:JsonElement,val currency:Currency,
-    val amountMinor:Long?=null,val merchant:String="",val merchantId:JsonElement?=null,val note:String="",val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null,val activity:JsonElement?=null,val template:JsonElement?=null)
+    @SchemaRange(minimum=1) val amountMinor:Long?=null,val merchant:String="",val merchantId:JsonElement?=null,val note:String="",val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null,val activity:JsonElement?=null,val template:JsonElement?=null)
 @Serializable internal data class TemplateMoveInput(val template:JsonElement,val direction:Int)
 internal class TemplateAdapter(private val action:String):LedgerAdapter() {
     override val capability=ledgerCapability("template.$action",patchSchema(if(action=="save")descriptorSchema(TemplateSaveInput.serializer().descriptor)else descriptorSchema(TemplateMoveInput.serializer().descriptor),buildMap {
         put("template",if(action=="save")nullableSchema(referenceSchema("template"))else referenceSchema("template"))
+        if(action=="save")put("cardPaymentPeriods",localConstraintSchema(nullableSchema(buildJsonObject{put("type","integer")}),"Selected account is CREDIT and cardPaymentChoice is INSTALLMENT; ignored otherwise.",rangeSchema(1)))
+        if(action=="move")put("direction",JsonObject(rangeSchema(-1,1)+("enum" to encoded(listOf(-1,1)))))
         if(action=="save"){put("category",referenceSchema("category"));put("account",referenceSchema("account"));put("merchantId",nullableSchema(referenceSchema("merchant")));put("activity",nullableSchema(referenceSchema("activity")))}
     }),if(action=="save")mapOf("template" to "template")else emptyMap(),
         if(action=="save")"Complete replacement: omitted template creates; optional amount=null, merchant/note empty, associations/payment choice=null; existing sort position preserved."else"template/direction required; direction=-1/+1 moves one position, edge position remains unchanged.",

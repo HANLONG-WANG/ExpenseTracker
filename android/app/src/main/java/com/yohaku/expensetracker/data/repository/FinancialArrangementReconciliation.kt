@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.data.repository
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
+import com.yohaku.expensetracker.domain.model.SchemaFormat
 import androidx.room.withTransaction
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.domain.finance.*
@@ -10,13 +12,13 @@ import java.time.LocalDate
 import java.lang.Math.addExact
 import java.lang.Math.subtractExact
 
-@Serializable data class ReconciledBillObligation(val billId:String,val principalMinor:Long?,val feeMinor:Long?)
-@Serializable data class ReconciledRefundBill(val billId:String,val principalMinor:Long)
-@Serializable data class ReconciledRefundShare(val eventId:String,val targetMinor:Long,val bills:List<ReconciledRefundBill> = emptyList())
-@Serializable data class ReconciledClearingMove(val allocationId:String,val billId:String?,val principalMinor:Long,val interestMinor:Long,val feeMinor:Long)
-@Serializable data class ArrangementReconciliationInput(val planId:String,val effectiveDate:String,val principalMinor:Long?,
+@Serializable data class ReconciledBillObligation(val billId:String,@SchemaRange(minimum=0) val principalMinor:Long?,@SchemaRange(minimum=0) val feeMinor:Long?)
+@Serializable data class ReconciledRefundBill(val billId:String,@SchemaRange(minimum=0) val principalMinor:Long)
+@Serializable data class ReconciledRefundShare(val eventId:String,@SchemaRange(minimum=0) val targetMinor:Long,val bills:List<ReconciledRefundBill> = emptyList())
+@Serializable data class ReconciledClearingMove(val allocationId:String,val billId:String?,@SchemaRange(minimum=0) val principalMinor:Long,@SchemaRange(minimum=0) val interestMinor:Long,@SchemaRange(minimum=0) val feeMinor:Long)
+@Serializable data class ArrangementReconciliationInput(val planId:String,@SchemaFormat("date") val effectiveDate:String,@SchemaRange(minimum=0) val principalMinor:Long?,
     val bills:List<ReconciledBillObligation>,val refunds:List<ReconciledRefundShare>,val clearingMoves:List<ReconciledClearingMove> = emptyList(),
-    val openingSourceMinor:Long?=null,val manualComplete:Boolean?=null,val note:String="",val loanLimitDeltaMinor:Long?=null,val poolSourceDate:PoolSourceDate?=null,val poolUnallocatedShares:Map<String,Long>?=null)
+    @SchemaRange(minimum=0) val openingSourceMinor:Long?=null,val manualComplete:Boolean?=null,val note:String="",val loanLimitDeltaMinor:Long?=null,val poolSourceDate:PoolSourceDate?=null,val poolUnallocatedShares:Map<String,Long>?=null)
 @Serializable data class ReconciliationSourceProof(val sourceId:String?,val exists:Boolean,val grossMinor:Long?,val date:String,val openingMinor:Long,
     val contractPrincipalMinor:Long?=null,val contractMode:String?=null)
 @Serializable data class ScopedArrangementRefund(val fact:PredictionRefundFact,val targetMinor:Long,val bills:List<ReconciledRefundBill>)

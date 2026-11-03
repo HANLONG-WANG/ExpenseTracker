@@ -1,11 +1,12 @@
 package com.yohaku.expensetracker.domain.finance
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
 import kotlinx.serialization.Serializable
 import java.time.LocalDate
 import java.time.MonthDay
 import java.time.YearMonth
 
-@Serializable data class BonusPaymentWindow(val startMonth:Int,val startDay:Int,val endMonth:Int,val endDay:Int,val paymentMonth:Int,val paymentDay:Int) {
+@Serializable data class BonusPaymentWindow(@SchemaRange(minimum=1,maximum=12,condition="Bonus date calculation; saving incomplete rules remains allowed. Start/end month-day pairs must also exist.") val startMonth:Int,@SchemaRange(minimum=1,maximum=31,condition="Bonus date calculation; saving incomplete rules remains allowed. Start/end month-day pairs must also exist.") val startDay:Int,@SchemaRange(minimum=1,maximum=12,condition="Bonus date calculation; saving incomplete rules remains allowed. Start/end month-day pairs must also exist.") val endMonth:Int,@SchemaRange(minimum=1,maximum=31,condition="Bonus date calculation; saving incomplete rules remains allowed. Start/end month-day pairs must also exist.") val endDay:Int,@SchemaRange(minimum=1,maximum=12,condition="Bonus date calculation; saving incomplete rules remains allowed. Start/end month-day pairs must also exist.") val paymentMonth:Int,@SchemaRange(minimum=1,maximum=31,condition="Bonus date calculation; saving incomplete rules remains allowed. Start/end month-day pairs must also exist.") val paymentDay:Int) {
     fun valid()=runCatching { MonthDay.of(startMonth,startDay);MonthDay.of(endMonth,endDay);paymentMonth in 1..12&&paymentDay in 1..31 }.getOrDefault(false)
     fun contains(day:MonthDay):Boolean {
         val start=MonthDay.of(startMonth,startDay);val end=MonthDay.of(endMonth,endDay)

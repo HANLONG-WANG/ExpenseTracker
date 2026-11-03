@@ -1,5 +1,7 @@
 package com.yohaku.expensetracker.domain.finance
 
+import com.yohaku.expensetracker.domain.model.SchemaRange
+import com.yohaku.expensetracker.domain.model.SchemaFormat
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
@@ -27,7 +29,7 @@ import kotlinx.serialization.Serializable
     val balanceBasis: BalanceBasis? = null,
     val includeStart: Boolean? = null,
     val includeEnd: Boolean? = null,
-    val yearDays: Int? = null,
+    @SchemaRange(minimum=1,condition="DAILY interest calculation; ignored for MONTHLY. Saving an incomplete rule remains allowed.") val yearDays: Int? = null,
     val rounding: ChargeRounding? = null,
     val roundingMode: String? = null,
     val firstCharge: FirstCharge? = null
@@ -48,11 +50,11 @@ import kotlinx.serialization.Serializable
     }
 }
 
-@Serializable data class PaymentTier(val upToMinor: Long?, val paymentMinor: Long)
+@Serializable data class PaymentTier(@SchemaRange(minimum=1,condition="BALANCE_TIERS calculation; final upToMinor is null. Saving an incomplete rule remains allowed.") val upToMinor: Long?, @SchemaRange(minimum=1,condition="BALANCE_TIERS calculation; final upToMinor is null. Saving an incomplete rule remains allowed.") val paymentMinor: Long)
 @Serializable data class RevolvingRule(
     val interest: InterestRule = InterestRule(),
     val method: PaymentMethod? = null,
-    val paymentMinor: Long? = null,
+    @SchemaRange(minimum=1,condition="FIXED_PRINCIPAL or TOTAL_PAYMENT calculation; saving an incomplete rule remains allowed.") val paymentMinor: Long? = null,
     val tiers: List<PaymentTier> = emptyList(),
     val tierPaymentIncludesFees: Boolean? = null,
     val allocation: AllocationOrder? = null,
@@ -73,12 +75,12 @@ import kotlinx.serialization.Serializable
     }
 }
 
-@Serializable data class InstallmentFee(val periods: Int, val feePerHundred: String)
+@Serializable data class InstallmentFee(@SchemaRange(minimum=1,condition="PER_HUNDRED_TABLE installment calculation; saving an incomplete rule remains allowed.") val periods: Int, val feePerHundred: String)
 @Serializable enum class InstallmentFeeMethod { TOTAL_AMOUNT, TOTAL_RATE, PER_HUNDRED_TABLE }
 @Serializable data class InstallmentRule(
-    val supportedPeriods: List<Int> = emptyList(),
+    @SchemaRange(minimum=1,items=true,condition="Installment calculation; saving an incomplete rule remains allowed.") val supportedPeriods: List<Int> = emptyList(),
     val feeMethod: InstallmentFeeMethod? = null,
-    val totalFeeMinor: Long? = null,
+    @SchemaRange(minimum=0,condition="TOTAL_AMOUNT installment calculation; saving an incomplete rule remains allowed.") val totalFeeMinor: Long? = null,
     val totalRate: String? = null,
     val feeTable: List<InstallmentFee> = emptyList(),
     val principalRemainder: RemainderPlacement? = null,
@@ -101,8 +103,8 @@ import kotlinx.serialization.Serializable
 }
 
 @Serializable data class BillingRule(
-    val closingDay: Int? = null, val closingDayInCurrentBill: Boolean? = null,
-    val paymentMonthOffset: Int? = null, val paymentDay: Int? = null,
+    @SchemaRange(minimum=1,maximum=31,condition="Billing calculation requires these bounds; saving an incomplete rule remains allowed.") val closingDay: Int? = null, val closingDayInCurrentBill: Boolean? = null,
+    @SchemaRange(minimum=0,condition="Billing calculation requires these bounds; saving an incomplete rule remains allowed.") val paymentMonthOffset: Int? = null, @SchemaRange(minimum=1,maximum=31,condition="Billing calculation requires these bounds; saving an incomplete rule remains allowed.") val paymentDay: Int? = null,
     val paymentAccountId: String? = null
 ) {
     fun issues(): List<String> = buildList {
@@ -117,7 +119,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class FinancialRuleVersion(
     val id: String, val bookId: String, val accountId: String, val mode: FinanceMode,
-    val effectiveFrom: String, val zoneId: String,
+    @SchemaFormat("date") val effectiveFrom: String, @SchemaFormat("zone-id") val zoneId: String,
     val billing: BillingRule? = null,
     val installment: InstallmentRule? = null,
     val revolving: RevolvingRule? = null,
@@ -152,7 +154,7 @@ import kotlinx.serialization.Serializable
 }
 
 /** Deadline belongs to a bill and a change type, with an explicit financial timezone. */
-@Serializable data class ChangeDeadline(val billId: String, val changeType: FinanceMode, val date: String, val time: String, val zoneId: String) {
+@Serializable data class ChangeDeadline(val billId: String, val changeType: FinanceMode, @SchemaFormat("date") val date: String, @SchemaFormat("local-time") val time: String, @SchemaFormat("zone-id") val zoneId: String) {
     fun instant() = LocalDate.parse(date).atTime(LocalTime.parse(time)).atZone(ZoneId.of(zoneId)).toInstant()
 }
 

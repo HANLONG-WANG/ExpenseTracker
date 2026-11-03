@@ -61,8 +61,8 @@ internal suspend fun planningEffect(step:CommandStep,run:CommandRun,before:Finan
     return effect.copy(objects=effect.objects+activities)
 }
 
-@Serializable internal data class BudgetSaveCommand(val month:String,val amount:Money?,val category:JsonElement?=null)
-@Serializable internal data class BookBudgetCommand(val month:String,val amount:Money?,val name:String?=null,val currency:Currency?=null,val startDate:String?=null)
+@Serializable internal data class BudgetSaveCommand(@SchemaFormat("year-month") val month:String,@SchemaRange(minimum=0,property="minor") val amount:Money?,val category:JsonElement?=null)
+@Serializable internal data class BookBudgetCommand(@SchemaFormat("year-month") val month:String,@SchemaRange(minimum=0,property="minor") val amount:Money?,val name:String?=null,val currency:Currency?=null,@SchemaFormat("date") val startDate:String?=null)
 internal class BudgetAdapter(private val book:Boolean=false):LedgerAdapter() {
     override val capability=planningCapability(if(book)"budget.saveBook"else"budget.save",
         if(book)descriptorSchema(BookBudgetCommand.serializer().descriptor)else patchSchema(descriptorSchema(BudgetSaveCommand.serializer().descriptor),mapOf("category" to nullableSchema(referenceSchema("category")))),
@@ -91,8 +91,8 @@ internal class BudgetAdapter(private val book:Boolean=false):LedgerAdapter() {
 @Serializable internal data class ActivityCurrentCommand(val activity:JsonElement?)
 @Serializable internal data class ActivityTargetCommand(val activity:JsonElement)
 @Serializable internal data class ActivityLifecycleCommand(val activity:JsonElement,val operation:String)
-@Serializable internal data class ActivityBudgetCommand(val category:JsonElement,val amount:Money)
-@Serializable internal data class ActivitySaveCommand(val name:String,val start:String,val end:String,val budget:Money?=null,
+@Serializable internal data class ActivityBudgetCommand(val category:JsonElement,@SchemaRange(minimum=0,property="minor") val amount:Money)
+@Serializable internal data class ActivitySaveCommand(val name:String,@SchemaFormat("date") val start:String,@SchemaFormat("date") val end:String,@SchemaRange(minimum=0,property="minor") val budget:Money?=null,
     val categoryBudgets:List<ActivityBudgetCommand> = emptyList(),val excludeMonthly:Boolean=false,val ended:Boolean=false,val activity:JsonElement?=null)
 internal class ActivityAdapter(private val action:String):LedgerAdapter() {
     override val capability=planningCapability("activity.$action",when(action) {
@@ -128,9 +128,9 @@ internal class ActivityAdapter(private val action:String):LedgerAdapter() {
     }
 }
 
-@Serializable internal data class ReserveSaveCommand(val activity:JsonElement,val name:String,val date:String,val amount:Money,
-    val account:JsonElement?=null,val accountAmount:Money?=null,val occurrence:JsonElement?=null,val reserve:JsonElement?=null)
-@Serializable internal data class ReserveReleaseCommand(val reserve:JsonElement,val amount:Money)
+@Serializable internal data class ReserveSaveCommand(val activity:JsonElement,val name:String,@SchemaFormat("date") val date:String,@SchemaRange(minimum=1,property="minor") val amount:Money,
+    val account:JsonElement?=null,@SchemaRange(minimum=1,property="minor",condition="Only when account is supplied; otherwise ignored.") val accountAmount:Money?=null,val occurrence:JsonElement?=null,val reserve:JsonElement?=null)
+@Serializable internal data class ReserveReleaseCommand(val reserve:JsonElement,@SchemaRange(minimum=1,property="minor") val amount:Money)
 internal class ReserveAdapter(private val release:Boolean=false):LedgerAdapter() {
     override val capability=planningCapability(if(release)"activityReserve.release"else"activityReserve.save",patchSchema(if(release)descriptorSchema(ReserveReleaseCommand.serializer().descriptor)else descriptorSchema(ReserveSaveCommand.serializer().descriptor),buildMap {
         put("reserve",if(release)referenceSchema("reserve")else nullableSchema(referenceSchema("reserve")))
@@ -158,7 +158,7 @@ internal class ParticipantAdapter:LedgerAdapter() {
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {val before=run.state();val v=commandJson.decodeFromJsonElement<ParticipantCommand>(step.input);run.ledger.addParticipant(run.bookId,run.resolve(v.activity),run.resolve(v.friend));return planningEffect(step,run,before)}
 }
 
-@Serializable internal data class TreatSaveCommand(val activity:JsonElement,val payer:JsonElement,val total:Money,val base:Money,val date:String,val name:String,
+@Serializable internal data class TreatSaveCommand(val activity:JsonElement,val payer:JsonElement,@SchemaRange(minimum=1,property="minor") val total:Money,@SchemaRange(minimum=1,property="minor") val base:Money,@SchemaFormat("date") val date:String,val name:String,
     val shares:List<EntryShare>,val mode:TreatSplitMode=TreatSplitMode.EQUAL,val tail:JsonElement?=null,val treat:JsonElement?=null)
 @Serializable internal data class TreatLifecycleCommand(val treat:JsonElement,val operation:String)
 internal class TreatAdapter(private val lifecycle:Boolean=false):LedgerAdapter() {
