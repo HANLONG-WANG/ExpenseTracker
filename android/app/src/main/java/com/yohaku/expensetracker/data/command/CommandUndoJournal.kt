@@ -4,6 +4,7 @@ import android.database.Cursor
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import kotlinx.serialization.json.*
+import kotlinx.serialization.encodeToString
 
 /** Transaction-local ownership journal. Only changed rows in the declared write set are
  * restorable. Deleted relationship rows retain both identity and their exact pre-batch snapshot.
@@ -163,8 +164,34 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         return changes.filter{it.before==null&&!it.removed}.map{change->UndoRemoval(change.table,objectKey(change.table,change.after),name(change.after,names),
             (change.after["number"]?:change.after["version"])?.jsonPrimitive?.intOrNull)}
     }
+    // Local merchant deletion detaches live references without rewriting historical journals.
+    // Apply the same projection to conflict expectations and restored rows; all other fields
+    // still participate in exact conflict checks.
+    private val availableMerchants by lazy {readRows("merchants").map{it.getValue("id").jsonPrimitive.content}.toSet()}
+    private fun restorableRow(table:String,row:JsonObject):JsonObject? {
+        if(table in setOf("event_merchants","entry_templates","recurrences")) {
+            val merchant=row["merchantId"]?.jsonPrimitive?.contentOrNull
+            if(merchant!=null&&merchant !in availableMerchants)
+                return if(table=="event_merchants")null else JsonObject(row+("merchantId" to JsonNull))
+        }
+        if(table=="drafts") {
+            val draft=ledger.json.decodeFromString<EntryDraft>(row.getValue("json").jsonPrimitive.content)
+            if(draft.merchantId!=null&&draft.merchantId !in availableMerchants)
+                return JsonObject(row+("json" to JsonPrimitive(ledger.json.encodeToString(draft.withoutMerchantLink()))))
+        }
+        return row
+    }
+    fun restorableGuard(guard:UndoGuard):JsonElement {
+        val expected=guard.after
+        if(guard.type=="entryDetails"&&expected is JsonObject)return restorableRow("entry_templates",expected)!!
+        if((guard.type.startsWith("planning:")||guard.type.startsWith("finance:"))&&expected is JsonObject) {
+            val rows=expected.mapValues{(table,value)->JsonArray(value.jsonArray.mapNotNull{restorableRow(table,it.jsonObject)})}
+            return JsonObject(if(guard.type.startsWith("finance:"))rows.filterValues{it.isNotEmpty()}else rows)
+        }
+        return expected
+    }
     fun conflicts(record:UndoRecord):List<UndoConflict> = record.rows.flatMap{change->
-        undoDifferences(change.table,objectKey(change.table,change.after),if(change.removed)JsonNull else change.after,read(change)?:JsonNull)
+        undoDifferences(change.table,objectKey(change.table,change.after),if(change.removed)JsonNull else restorableRow(change.table,change.after)?:JsonNull,read(change)?:JsonNull)
     }+record.rows.filter{it.table in setOf("books","events")&&it.before?.get("deletedAt")==JsonNull&&it.after["deletedAt"]!=JsonNull&&it.after["deletedAt"]?.jsonPrimitive?.longOrNull?.let{time->time<=ledger.clock.millis()-recoveryDuration.toMillis()}==true}.map{change->
         UndoConflict(change.table,objectKey(change.table,change.after),"recoveryDeadline",JsonPrimitive("可恢复 / 復元可能"),JsonPrimitive("已超过恢复期限 / 復元期限切れ"))
     }+references(record.rows,allowRecorded=true)
@@ -235,7 +262,7 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         val rows=record.rows
         for(change in rows) {
             check(change.table in deleteOrder&&change.key==key(change.table,change.after)&&(change.table=="books"||change.after["bookId"]==JsonPrimitive(bookId)||change.table=="budgets"&&rows.any{it.table=="books"&&it.before==null&&it.after["id"]==change.after["bookId"]}))
-            check(read(change)==if(change.removed)null else change.after)
+            check(read(change)==if(change.removed)null else restorableRow(change.table,change.after))
         }
         val accounts=rows.flatMap{row->listOfNotNull(
             if(row.table=="accounts")row.after["id"]?.jsonPrimitive?.content else null,
@@ -245,8 +272,12 @@ internal class CommandUndoJournal(private val ledger:LedgerRepository,private va
         // restored; the final FK check is mandatory. No broad cascade deletion is used.
         sql.execSQL("PRAGMA defer_foreign_keys=ON")
         for(change in rows.filter{it.before!=null}.sortedByDescending{deleteOrder.indexOf(it.table)}) {
-            val before=requireNotNull(change.before)
-            if(change.removed)sql.execSQL("INSERT INTO `${change.table}` ("+before.keys.joinToString{ "`$it`" }+") VALUES ("+before.keys.joinToString{ "?" }+")",values(before))
+            val before=restorableRow(change.table,requireNotNull(change.before))
+            if(before==null) {
+                sql.execSQL("DELETE FROM `${change.table}` WHERE "+clause(change.key),values(change.key))
+                continue
+            }
+            if(read(change)==null)sql.execSQL("INSERT INTO `${change.table}` ("+before.keys.joinToString{ "`$it`" }+") VALUES ("+before.keys.joinToString{ "?" }+")",values(before))
             else sql.execSQL("UPDATE `${change.table}` SET "+before.keys.joinToString{ "`$it`=?" }+" WHERE "+clause(change.key),arrayOf(*values(before),*values(change.key)))
             check(read(change)==before)
         }

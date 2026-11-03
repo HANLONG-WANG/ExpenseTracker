@@ -13,6 +13,7 @@ internal val permanentAlternatives=linkedMapOf(
     "book.purge" to "改用 book.lifecycle ARCHIVE/TRASH/RESTORE / book.lifecycle ARCHIVE・TRASH・RESTORE を使ってください",
     "book.emptyTrash" to "保留在账本回收站或用 book.lifecycle RESTORE / 帳簿のごみ箱に保持、または book.lifecycle RESTORE を使ってください",
     "template.delete" to "用 template.save 修改或 template.move 调整排序；模板没有回收站 / template.save で編集、または template.move で並べ替えてください。テンプレートにごみ箱はありません",
+    "merchant.delete" to "改用 merchant.setActive false 停用商户 / merchant.setActive false でお店を停止してください",
     "merchantLocation.remove" to "用 merchantLocation.save 调整地点，或 merchant.setActive false 停用商户 / merchantLocation.save で場所を編集、または merchant.setActive false でお店を停止してください",
     "budget.delete" to "用 budget.save amount=null 清空额度，保留历史行 / budget.save amount=null で上限を解除し、履歴行を保持してください",
     "budget.clearAllRows" to "逐月/分类用 budget.save amount=null；不能调用物理清表 / 各月・カテゴリを budget.save amount=null で解除し、行を一括削除しないでください",

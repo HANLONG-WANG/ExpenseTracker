@@ -22,7 +22,7 @@ fun BookSnapshot.merchantKey(event:EventEntity):String {
     val matching=merchantsByName[event.merchant]?.takeIf{event.merchant.isNotBlank()}?.singleOrNull()
     return matching?.let{"id:"+it.id}?:"name:"+event.merchant
 }
-fun BookSnapshot.merchantLabel(key:String):String=if(key.startsWith("id:"))merchants.first{it.id==key.removePrefix("id:")}.name else key.removePrefix("name:")
+fun BookSnapshot.merchantLabel(key:String):String=if(key.startsWith("id:"))merchants.firstOrNull{it.id==key.removePrefix("id:")}?.name.orEmpty() else key.removePrefix("name:")
 fun BookSnapshot.analysis(filter:AnalysisFilter):AnalysisReport {
     require(LocalDate.parse(filter.start)<=LocalDate.parse(filter.end)){"开始日期不能晚于结束日期 / 開始日は終了日以前にしてください"}
     val ids=filter.categoryId?.let{id->setOf(id)+categories.filter{it.parentId==id}.map{it.id}}

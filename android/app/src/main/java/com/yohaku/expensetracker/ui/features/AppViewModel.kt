@@ -65,11 +65,15 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
     }
     fun replaceRoute(page:String){route.value=page}
     fun back(){route.value=if(backStack.isEmpty())"home" else backStack.removeAt(backStack.lastIndex)}
-    val state=combine(readRequests,today){_,date->date}.flatMapLatest{date->
+    // Loading appears only initially and for an explicit retry. A subscription restarted after the app returns
+    // from the background (camera, another app) keeps the last state, so open sheets and page positions stay composed.
+    private var servedReadRequest=0L
+    val state=combine(readRequests,today){request,date->request to date}.flatMapLatest{(request,date)->
+        val retry=request!=servedReadRequest;servedReadRequest=request
         combine(repository.dao.bookOverviews(java.time.YearMonth.from(date).toString()),preferences.activeBook,preferences.setupDraft){overviews,id,first->Triple(overviews,overviews.map{it.book}.let{books->books.find{it.id==id&&it.deletedAt==null} ?: books.firstOrNull{!it.archived&&it.deletedAt==null}},first).also{selectedBookMetadata.value=it.second}}
         .flatMapLatest{(overviews,book,first)-> val books=overviews.map{it.book};if(book==null)flowOf<AppState>(AppState.Ready(books,null,first,overviews)) else repository.snapshot(book).map{AppState.Ready(books,it,first,overviews)}}
         .catch{emit(AppState.Failure(it.message ?: "数据库读取失败 / データ読込失敗"))}
-        .onStart{emit(AppState.Loading)}
+        .onStart{if(retry)emit(AppState.Loading)}
     }
         .stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),AppState.Loading)
     val financialState=state.map{(it as? AppState.Ready)?.snapshot?.book?.id}.distinctUntilChanged()

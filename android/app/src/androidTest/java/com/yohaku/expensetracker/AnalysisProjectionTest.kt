@@ -70,6 +70,39 @@ class AnalysisProjectionTest {
         val review=repo.previewEntry(book,EntryDraft(id=event,accountId=account,categoryId=parent,amount="1000",date="2026-10-01",merchant="手动填写"))
         assertNotNull(repo.commitEntryReview(book,review));assertTrue(snapshot().eventMerchants.isEmpty())
     }
+    @Test fun deletingMerchantDetachesLiveReferencesAndPreservesRecordedNames()=runBlocking {
+        val shop=repo.saveMerchant(book,"原名")
+        repo.saveMerchantLocation(book,shop,"入口",35.0,139.0)
+        val event=expense("100","2026-10-01",merchant="记录原名",merchantId=shop)
+        val trashed=expense("200","2026-10-02",merchant="回收站原名",merchantId=shop)
+        repo.deleteEntry(book,trashed)
+        val template=repo.saveTemplate(book,TemplateInput("常用",EntryKind.EXPENSE,parent,account,Currency.JPY,merchant="模板原名",merchantId=shop))
+        val rule=repo.saveRecurrence(book,RecurrenceInput("每月",account,parent,Money(Currency.JPY,100),null,false,RecurrenceFrequency.MONTHLY,"2026-10-01",merchant="周期原名",merchantId=shop))
+        val draft=EntryDraft(accountId=account,categoryId=parent,merchant="草稿原名",merchantId=shop,merchantLocated=true)
+        repo.saveDraft(book,draft)
+        val before=snapshot()
+        val other=repo.createBook("別",Currency.JPY)
+        try{repo.deleteMerchant(other,shop);fail("Cross-book deletion accepted")}catch(_:IllegalArgumentException){}
+        assertEquals(before,snapshot())
+
+        repo.deleteMerchant(book,shop)
+        val after=snapshot()
+        assertTrue(after.merchants.isEmpty());assertTrue(after.merchantLocations.isEmpty());assertTrue(after.eventMerchants.isEmpty())
+        assertEquals(before.events,after.events)
+        assertEquals("记录原名",after.events.single{it.id==event}.merchant)
+        assertEquals("回收站原名",after.events.single{it.id==trashed}.merchant)
+        assertEquals(before.templates.single().copy(merchantId=null),after.templates.single{it.id==template})
+        assertEquals(before.recurrences.single().copy(merchantId=null),after.recurrences.single{it.id==rule})
+        assertEquals(draft.copy(merchantId=null,merchantLocated=false),after.draft)
+        assertEquals("",after.merchantLabel("id:$shop"))
+        // A queued old form save must not reintroduce a dangling draft reference.
+        repo.saveDraft(book,draft)
+        assertEquals(after.draft,snapshot().draft)
+        repo.restoreEntry(book,trashed)
+        assertNull(repo.dao.event(book,trashed)!!.deletedAt)
+        assertEquals("回收站原名",repo.dao.event(book,trashed)!!.merchant)
+        assertTrue(snapshot().eventMerchants.isEmpty())
+    }
     @Test fun savedLocationsReturnMultipleOwnedCandidatesAndCannotCrossBooks()=runBlocking {
         val first=repo.saveMerchant(book,"お店A");val second=repo.saveMerchant(book,"お店B")
         repo.saveMerchantLocation(book,first,"入口",35.0,139.0)

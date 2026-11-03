@@ -146,6 +146,20 @@ class MerchantFlowTest {
             assertTrue(after.events.filter{it.kind==EntryKind.EXPENSE.name}.all{it.merchant=="原名店"})
             assertEquals(2,after.merchantLocations.size);assertEquals(merchant,after.merchantCandidates(35.66130,139.66790).single().merchant.id)
             assertNull(after.merchantLocations.first{it.name=="只保存名字"}.latitude)
+            val editingDraft=after.editingEntryDraft(after.events.first{it.id!=event&&it.kind==EntryKind.EXPENSE.name})
+            ui.runOnIdle{vm.entry.value=editingDraft}
+            ui.onNodeWithTag("merchant-delete").performScrollTo().performClick()
+            ui.onNodeWithText(text("关联的 1 条记录会保留原来的商户文字，只是不再关联这个商户。","関連する 1 件の記録には元のお店名を残し、このお店との関連付けだけを解除します。")).assertExists()
+            shot("$theme-$language-delete-confirm")
+            clearHeader(ui.onNodeWithTag("merchant-delete-confirm")).assertIsEnabled().performClick()
+            ui.waitUntil(10000){!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.merchants?.isEmpty()==true}
+            ui.onNodeWithTag("merchant-card-$merchant").assertDoesNotExist()
+            ui.onNodeWithTag("merchant-add").assertExists()
+            ui.onNodeWithTag("merchant-delete-confirm").assertDoesNotExist()
+            assertNull(vm.entry.value!!.merchantId);assertEquals(editingDraft.merchant,vm.entry.value!!.merchant)
+            shot("$theme-$language-deleted-list")
+            ui.runOnIdle{vm.entry.value=null}
+
         }
     }
 }

@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "575ae67f1aa2e0da6f56eb5103ffec57b303db3c5944ccb676cda58a12ccc1a7",
+    "catalogDigest": "3e256c00765923e4837adcc2c08d61993715c972ec0cfaadc8100fff03b7db56",
     "commands": [
         {
             "comparisonFields": [
@@ -20327,6 +20327,7 @@
         "book.purge",
         "book.emptyTrash",
         "template.delete",
+        "merchant.delete",
         "merchantLocation.remove",
         "budget.delete",
         "budget.clearAllRows",
@@ -20421,6 +20422,7 @@
         "financialRule.delete": "用 financialRule.addVersion 追加规则版本，保留原规则 / financialRule.addVersion で条件の版を追加し、元の条件を保持してください",
         "financialRuleValidation.delete": "保留核验历史，修正账单后重新 financialRule.validate / 検証履歴を保持し、請求修正後に financialRule.validate を実行してください",
         "media.collectUnused": "媒体清理由既有本机维护策略处理，不由方案触发 / メディア消去は既存の端末メンテナンスに任せ、プランからは実行しないでください",
+        "merchant.delete": "改用 merchant.setActive false 停用商户 / merchant.setActive false でお店を停止してください",
         "merchantLocation.remove": "用 merchantLocation.save 调整地点，或 merchant.setActive false 停用商户 / merchantLocation.save で場所を編集、または merchant.setActive false でお店を停止してください",
         "occurrence.delete": "用 occurrence.lifecycle CANCEL/RESTORE / occurrence.lifecycle CANCEL・RESTORE を使ってください",
         "preferences.reset": "逐项设置允许的偏好，不重置凭据、设备或恢复设置 / 許可された設定を個別に変更し、認証情報・端末・復元設定はリセットしないでください",

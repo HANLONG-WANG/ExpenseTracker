@@ -219,7 +219,9 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
     }
     suspend fun saveDraft(bookId:String,draft:EntryDraft)=db.withTransaction {
         dao.storedDraft(bookId)?.let{stored->val old=json.decodeFromString<EntryDraft>(stored.json);if(old.mediaSession!=draft.mediaSession)dao.clearStagedMedia(bookId,old.mediaSession)}
-        dao.putDraft(DraftEntity(bookId,json.encodeToString(draft),clock.millis()))
+        // A queued save may still carry a merchant removed since the form was opened.
+        val current=if(draft.merchantId!=null&&dao.merchant(bookId,draft.merchantId)==null)draft.withoutMerchantLink()else draft
+        dao.putDraft(DraftEntity(bookId,json.encodeToString(current),clock.millis()))
     }
     suspend fun clearDraft(bookId:String)=db.withTransaction {
         dao.storedDraft(bookId)?.let{stored->dao.clearStagedMedia(bookId,json.decodeFromString<EntryDraft>(stored.json).mediaSession)}

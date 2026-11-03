@@ -52,6 +52,35 @@ class CommandExecutionTest {
     private suspend fun fixture(book:String,bank:String)=commandCardPlan(book,bank,commands.registry.catalogDigest,r.commandExports(book,RecordScope()).context.contextDigest)
     private suspend fun snapshot(book:String)=r.snapshot(r.dao.book(book)!!).first()
 
+    @Test fun undoEntryEditAfterMerchantDeletionKeepsTextWithoutRestoringMissingLink()=runBlocking<Unit> {
+        // Both an unchanged link removed locally and an old link present only in the undo journal.
+        for(unlink in listOf(false,true)) {
+            val (book,bank)=setup()
+            val category=r.saveCategory(book,"支出",EntryKind.EXPENSE,null)
+            val merchant=r.saveMerchant(book,"原店名")
+            val event=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=category,amount="500",date="2026-11-01",merchant="记录原名",merchantId=merchant))
+            val original=snapshot(book).events.single()
+            val patch=buildJsonObject {
+                put("amount",buildJsonObject{put("currency","JPY");put("minor",700)})
+                if(unlink)put("merchantId",JsonNull)
+            }
+            val input=buildJsonObject {
+                put("targets",buildJsonObject{put("ids",JsonArray(listOf(JsonPrimitive(event))))})
+                put("set",patch)
+            }
+            val row=receive(fixture(book,bank).copy(steps=listOf(CommandStep("edit","entry.update",1,input))))
+            val preview=commands.preview(row.planId);assertTrue(preview.executable)
+            commands.confirm(row.planId,commandChecks(preview))
+            r.deleteMerchant(book,merchant)
+            val inverse=commands.prepareUndo(row.planId);val undo=commands.preview(inverse.planId)
+            assertTrue(undo.conflicts.toString(),undo.executable)
+            commands.confirm(inverse.planId,commandChecks(undo))
+            assertEquals(original,snapshot(book).events.single())
+            assertTrue(snapshot(book).eventMerchants.isEmpty())
+            assertNull(r.dao.merchant(book,merchant))
+        }
+    }
+
     @Test fun protocolCurrentDebtFreeCardExamplePreviewsWithUnknownLimitPolicies()=runBlocking<Unit> {
         val (book,bank)=setup()
         val exported=r.commandExports(book,RecordScope()).context

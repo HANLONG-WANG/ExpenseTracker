@@ -2,6 +2,7 @@ package com.yohaku.expensetracker.data.repository
 
 import androidx.room.withTransaction
 import com.yohaku.expensetracker.data.db.*
+import com.yohaku.expensetracker.domain.model.EntryDraft
 import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.flow.first
 import kotlin.math.*
@@ -54,3 +55,19 @@ suspend fun LedgerRepository.removeMerchantLocation(bookId:String,id:String)=db.
     requireNotNull(dao.merchantLocation(bookId,id)){"地点不存在 / 場所がありません"}
     dao.removeMerchantLocation(bookId,id)
 }
+
+/** Keep recorded names and audit snapshots; only live references belong to saved merchant data. */
+suspend fun LedgerRepository.deleteMerchant(bookId:String,merchantId:String)=db.withTransaction {
+    requireNotNull(dao.merchant(bookId,merchantId)){"商户不属于本账本 / 別の帳簿のお店です"}
+    dao.deleteMerchantLocations(bookId,merchantId)
+    dao.deleteMerchantLinks(bookId,merchantId)
+    dao.clearTemplateMerchant(bookId,merchantId)
+    dao.clearRecurrenceMerchant(bookId,merchantId)
+    dao.storedDraft(bookId)?.let{stored->
+        val draft=json.decodeFromString<EntryDraft>(stored.json)
+        if(draft.merchantId==merchantId)dao.putDraft(stored.copy(json=json.encodeToString(draft.withoutMerchantLink())))
+    }
+    dao.deleteMerchant(bookId,merchantId)
+}
+
+internal fun EntryDraft.withoutMerchantLink()=copy(merchantId=null,merchantLocated=false)

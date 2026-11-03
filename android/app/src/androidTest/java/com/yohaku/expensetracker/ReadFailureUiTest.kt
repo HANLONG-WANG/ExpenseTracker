@@ -101,4 +101,20 @@ class ReadFailureUiTest {
         ui.onNodeWithTag("field-月予算・後から設定可").performScrollTo().assertTextEquals("68000")
         assertTrue(runBlocking{vm.repository.books.first()}.isEmpty())
     }
+    /** Camera or another app stops collection past the 5 s sharing timeout; resuming must not fall back to startup (which drops open sheets and scroll). */
+    @Test fun resumedSubscriptionKeepsReadyStateInsteadOfStartup(){
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
+        val repo=LedgerRepository(db);val prefs=AppPreferences(context)
+        val bookId=runBlocking{prefs.clearSetup();val id=repo.createBook("后台返回",Currency.JPY);repo.updateBook(repo.dao.book(id)!!.copy(initialized=true));prefs.select(id);id}
+        vm=AppViewModel(repo,prefs,testReferenceRates(prefs,repo.clock))
+        runBlocking {
+            withTimeout(10000){vm.state.first{(it as? AppState.Ready)?.snapshot?.book?.id==bookId}}
+            delay(5500)
+            val seen=mutableListOf<AppState>()
+            val collector=launch(Dispatchers.Default){vm.state.collect{seen+=it}}
+            delay(1500);collector.cancelAndJoin()
+            assertTrue(seen.isNotEmpty());assertTrue(seen.toString(),seen.none{it==AppState.Loading})
+        }
+    }
 }

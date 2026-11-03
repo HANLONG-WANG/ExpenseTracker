@@ -2,7 +2,7 @@
 
 审计日期：2026-11-03。基线：阶段7 `5216585`。状态：阶段8已验收（2026-11-03 本机编译与设备测试）。
 
-共 **240 条写入路径**：命令 **109**、永久边界 **39**、内部编排 **92**。注册表仍为 **87 个命令**；本阶段补 `cloud.task.discard` 显式边界（forbidden共58项），未增加新命令或UI。未发现未下沉的UI DAO写入。
+共 **241 条写入路径**：命令 **109**、永久边界 **40**、内部编排 **92**。注册表仍为 **87 个命令**；已登记 `cloud.task.discard`，并补充本机 `merchant.delete` 永久边界（forbidden共59项），未增加云端命令。未发现未下沉的UI DAO写入。
 
 ## 口径与复查方法
 
@@ -47,6 +47,7 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 | [EventPlaces.kt:36](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/EventPlaces.kt#L36) `saveMerchantWithLocations` | 命令 → merchant.save + merchantLocation.save | 地点逐个保存；新商户消费地点候选清理是关联编辑内部维护，不提供清表操作。 |
 | [AnalysisRepository.kt:22](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AnalysisRepository.kt#L22) `saveMerchantLocation` | 命令 → merchantLocation.save | 复用同一业务保存/提交；命令保存完整前后值并沿用本机校验。 |
 | [AnalysisRepository.kt:53](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AnalysisRepository.kt#L53) `removeMerchantLocation` | 边界 → merchantLocation.remove | 保存地点物理移除；可编辑地点或停用商户。 |
+| [AnalysisRepository.kt](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AnalysisRepository.kt) `deleteMerchant` | 边界 → merchant.delete | 本机物理删除商户及保存地点、记录关联；模板/周期/草稿解除引用，历史文字保留。云端改用 merchant.setActive false。 |
 | [TreatRepository.kt:18](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/TreatRepository.kt#L18) `saveFriend` | 命令 → friend.save | 复用同一业务保存/提交；命令保存完整前后值并沿用本机校验。 |
 | [AnalysisRepository.kt:48](../../android/app/src/main/java/com/yohaku/expensetracker/data/repository/AnalysisRepository.kt#L48) `setFriendActive` | 命令 → friend.setActive | 复用同一业务保存/提交；命令保存完整前后值并沿用本机校验。 |
 
@@ -318,4 +319,4 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 
 ## 助手往返首轮返工补充
 
-写入路径及240条分类口径不变。CloudRepository.prepare新增初次source_files名称清单，copySources保留五个自动生成名称避免混淆，仍为已有任务编排路径；工具export改调真实advance完成上传，未开放附件校验例外。CommandExports补任务日期/时区及账本初始化白名单字段，是既有只读导出，不新增账本写入。能力/协议允许按用户陈述和约定推断并列假设，未放松USER_FACT、永久边界或实际执行前提。反馈逐项处理见[阶段8记录](cloud-command-stage-8.md)。
+该阶段写入路径及240条分类口径不变（本机商户删除增量加入后为上表241条）。CloudRepository.prepare新增初次source_files名称清单，copySources保留五个自动生成名称避免混淆，仍为已有任务编排路径；工具export改调真实advance完成上传，未开放附件校验例外。CommandExports补任务日期/时区及账本初始化白名单字段，是既有只读导出，不新增账本写入。能力/协议允许按用户陈述和约定推断并列假设，未放松USER_FACT、永久边界或实际执行前提。反馈逐项处理见[阶段8记录](cloud-command-stage-8.md)。

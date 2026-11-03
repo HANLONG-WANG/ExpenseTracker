@@ -62,7 +62,7 @@ fun BookSnapshot.newEntryDraft(kind:EntryKind,date:String,activityId:String?=nul
     val scene=activities.find{it.id==sceneId}
     val day=LocalDate.parse(date)
     val actualDate=scene?.let{day.coerceIn(LocalDate.parse(it.startDate),LocalDate.parse(it.endDate))}?:day
-    val merchant=merchantId?.let{id->merchants.first{it.id==id&&it.active}}
+    val merchant=merchantId?.let{id->merchants.firstOrNull{it.id==id&&it.active}}
     return withRememberedCardPayment(EntryDraft(merchant=merchant?.name.orEmpty(),merchantId=merchant?.id,kind=kind,date=actualDate.toString(),accountId=defaultEntryAccount(kind),activityId=sceneId,treatEnabled=treatFriendId!=null,treatFriends=listOfNotNull(treatFriendId)))
 }
 

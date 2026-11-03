@@ -18,6 +18,8 @@ import com.yohaku.expensetracker.ui.theme.*
     var editing by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var newName by rememberSaveable(s.book.id){mutableStateOf("")}
     var selected by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
+    var deleting by rememberSaveable(s.book.id){mutableStateOf(false)}
+    val busy by vm.busy.collectAsStateWithLifecycle()
     var locationFor by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     var locationId by rememberSaveable(s.book.id){mutableStateOf<String?>(null)}
     YTitle(word("常去的地方，留下原名。","いつものお店を、元の名前で。"),"PLACES OF EVERYDAY LIFE",pageFlow=true)
@@ -38,6 +40,17 @@ import com.yohaku.expensetracker.ui.theme.*
             YText(merchant.note.ifBlank{word("暂无备注","メモなし")},13)
             YButton(word("编辑原名与备注","元の名前・メモを編集"),{editing=merchant.id})
             YText(word("原记录的商户文字保留，资料修改不重写历史事实。","元の記録のお店名は保持し、情報の編集で書き換えません。"),11,color=LocalYohaku.current.muted)
+        }
+        YLink(word("删除商户","お店を削除"),{deleting=true},Modifier.testTag("merchant-delete"))
+        if(deleting)YSheet(word("删除商户","お店を削除"),{deleting=false}) {
+            val count=s.eventMerchants.count{it.merchantId==merchant.id}
+            YText(word("删除「${merchant.name}」后，保存地点也会一起删除。此操作不能撤销。","「${merchant.name}」を削除すると、保存した場所も削除されます。この操作は取り消せません。"),13)
+            if(count>0)YText(word("关联的 $count 条记录会保留原来的商户文字，只是不再关联这个商户。","関連する ${count} 件の記録には元のお店名を残し、このお店との関連付けだけを解除します。"),13)
+            YText(word("如果只是暂时不想在候选中出现，可以在商户资料中停用。","一時的に候補に表示したくない場合は、お店の情報から停止できます。"),13)
+            YButton(word("确认删除商户","お店の削除を確定"),{vm.execute(onSuccess={
+                vm.entry.value?.takeIf{it.merchantId==merchant.id}?.let{vm.entry.value=it.withoutMerchantLink()}
+                deleting=false;selected=null
+            }){vm.repository.deleteMerchant(s.book.id,merchant.id)}},Modifier.testTag("merchant-delete-confirm"),primary=true,enabled=!busy)
         }
         ThemeSection(word("保存地点","保存した場所"),"SAVED PLACES")
         s.merchantLocations.filter{it.merchantId==merchant.id}.forEach{l->Panel {

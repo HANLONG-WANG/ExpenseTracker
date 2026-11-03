@@ -103,6 +103,11 @@ interface YohakuDao {
     @Insert suspend fun putAllocations(allocations:List<TreatAllocationEntity>)
     @Query("SELECT * FROM treat_allocations WHERE bookId=:bookId AND treatId=:treatId") suspend fun allocations(bookId:String,treatId:String):List<TreatAllocationEntity>
     @Upsert suspend fun putAnalysisPreferences(preferences:AnalysisPreferencesEntity)
+    @Query("DELETE FROM merchants WHERE bookId=:bookId AND id=:merchantId") suspend fun deleteMerchant(bookId:String,merchantId:String)
+    @Query("DELETE FROM merchant_locations WHERE bookId=:bookId AND merchantId=:merchantId") suspend fun deleteMerchantLocations(bookId:String,merchantId:String)
+    @Query("DELETE FROM event_merchants WHERE bookId=:bookId AND merchantId=:merchantId") suspend fun deleteMerchantLinks(bookId:String,merchantId:String)
+    @Query("UPDATE entry_templates SET merchantId=NULL WHERE bookId=:bookId AND merchantId=:merchantId") suspend fun clearTemplateMerchant(bookId:String,merchantId:String)
+    @Query("UPDATE recurrences SET merchantId=NULL WHERE bookId=:bookId AND merchantId=:merchantId") suspend fun clearRecurrenceMerchant(bookId:String,merchantId:String)
     @Upsert suspend fun putMerchant(merchant:MerchantEntity)
     @Query("SELECT * FROM merchants WHERE bookId=:bookId AND id=:id") suspend fun merchant(bookId:String,id:String):MerchantEntity?
     @Upsert suspend fun putMerchantLocation(location:MerchantLocationEntity)
