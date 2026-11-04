@@ -13,7 +13,7 @@ import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun FinancialLedgerPlanImpacts(r:FinancialLedgerReview) {
     r.repaymentInput?.let{input->
-        val unallocated=r.after.unallocatedRepaymentPrincipal(input.debtAccountId)
+        val unallocated=r.unallocatedPrincipalMinor
         if(unallocated>0)YText(word("本账户已确认但尚未分配到具体义务的本金：","この口座の確定済み・個別債務に未充当の元金：")+Money(Currency.valueOf(r.after.accounts.first{it.id==input.debtAccountId}.currency),unallocated).display(),12,color=LocalYohaku.current.warm)
     }
     if(r.planImpacts.isEmpty())return
@@ -59,6 +59,7 @@ import com.yohaku.expensetracker.ui.theme.*
 }
 
 @Composable private fun planImpactIssue(issue:FinancialPlanImpactIssue)=when(issue) {
+    FinancialPlanImpactIssue.POOL_OPENING_CHANGED->word("账户期初日期或金额已变化；本次记录可正常保存，保留原预测，请核对并重算账户余额池。","口座の期首日・金額が変わっています。今回の記録は保存でき、元の予測を保持します。口座プールを確認・再計算してください。")
     FinancialPlanImpactIssue.RETAINED_POOL->word("原账单已纳入账户余额池，保留原金额并通过余额池更新未来预测。","元の請求は口座プールに統合済みです。元の金額を保持し、プールで将来の予測を更新します。")
     FinancialPlanImpactIssue.RETAINED_ARRANGEMENT->word("这是已办理变更后保留的义务，按原账单及实际分配核对。","手続き済み変更後に保持する債務です。元の請求・実充当で確認します。")
     FinancialPlanImpactIssue.MANUAL->word("这是手动已知计划。本次保存实际分配与版本快照，逐期平台金额由用户明确核对。","既知の手動予定です。実充当と版の記録を保存し、各回の返済先金額は明示的に確認します。")

@@ -116,7 +116,7 @@ import kotlinx.serialization.encodeToString
             YText(e.date,14);FinancialRepaymentFacts(s,e,p)
             YButton(word("核对 / 编辑还款","返済を確認・編集"),{movementTarget=e.id;movement="repay-edit"},Modifier.testTag("finance-edit-repayment-${e.id}"),enabled=!busy)
         }}
-        val unallocated=s.unallocatedRepaymentPrincipal(account.id)
+        val unallocated=s.repaymentPrincipalNeedingAllocation(finance,account.id,finance.plans.filter{vm.repository.financialPredictionStale(s,finance,it)}.map{it.id}.toSet())
         if(unallocated!=0L)YText(word("尚未分配到具体义务的已清偿本金：","個別債務への未充当返済元金：")+Money(currency,unallocated).display(),12,color=LocalYohaku.current.warm)
     }else {
         val plans=finance.plans.filter{it.accountId==account.id&&it.active}

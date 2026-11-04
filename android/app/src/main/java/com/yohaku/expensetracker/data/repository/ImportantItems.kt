@@ -10,7 +10,7 @@ data class FinancialDeadline(val accountId:String,val accountName:String,val cur
 
 /** Payment already recorded but awaiting clearing remains an obligation, even with no more cash needed. */
 fun BookSnapshot.importantPayments(f:FinancialGraph,timeline:CashTimeline):List<ImportantPayment> = timeline.steps
-    .map{it.item}.filter{it.kind in listOf("BILL","RECURRENCE")}.map{item->
+    .map{it.item}.filter{it.kind in listOf("BILL","RECURRENCE","CARD_RECURRENCE")}.map{item->
         val bill=if(item.kind=="BILL")f.bills.first{it.id==item.id.removePrefix("bill:")}else null
         val outstanding=bill?.let{billOutstanding(it).totalMinor}?:item.amountMinor
         ImportantPayment(item,outstanding,bill?.confirmed==true)

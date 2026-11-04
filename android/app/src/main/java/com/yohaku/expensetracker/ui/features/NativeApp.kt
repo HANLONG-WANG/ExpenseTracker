@@ -146,6 +146,11 @@ import kotlinx.serialization.encodeToString
                 sheet=null
                 when(item.kind) {
                     "BILL"->openFinancial(item.sourceId,item.scheduledDate.take(7))
+                    "CARD_RECURRENCE"->when(item.issue) {
+                        "CARD_PAYMENT_CHOICE_REQUIRED","CARD_INSTALLMENT_PERIODS_UNSUPPORTED","UNKNOWN_AMOUNT"->{recurringInitialMonth=item.scheduledDate.take(7);vm.navigate("recurring")}
+                        "CARD_AUTOMATIC_RULE_INCOMPLETE","CARD_SINGLE_RULE_INCOMPLETE","CARD_BONUS_RULE_INCOMPLETE","CARD_INSTALLMENT_RULE_INCOMPLETE","CARD_PAYMENT_ACCOUNT_REQUIRED","CARD_PAYMENT_ACCOUNT_INACTIVE"->{openFinancial(item.sourceId);financialInitialTab="rules"}
+                        else->openFinancial(item.sourceId)
+                    }
                     "RECURRENCE"->{recurringInitialMonth=item.scheduledDate.take(7);vm.navigate("recurring")}
                     "RESERVE"->{vm.openActivity.value=item.sourceId;vm.navigate("life")}
                     "ACTUAL","TRANSFER","RECORD"->snapshot.visibleEvents.firstOrNull{it.id==item.sourceId}?.let{openRecord(it)}
@@ -155,7 +160,7 @@ import kotlinx.serialization.encodeToString
             }
             fun openAttention(item:com.yohaku.expensetracker.data.repository.FinancialAttention) {
                 if(item.kind=="ACCOUNT")openFinancial(item.sourceId)
-                else openTimelineItem(com.yohaku.expensetracker.data.repository.CashTimelineItem(item.id,item.kind,item.sourceId,today.toString(),"",item.accountId,book.currency,null,false,null))
+                else openTimelineItem(com.yohaku.expensetracker.data.repository.CashTimelineItem(item.id,item.kind,item.sourceId,today.toString(),"",item.accountId,book.currency,null,false,null,issue=item.reason))
             }
             fun openRisk(id:String){riskAccountId=id;sheet="cash-risk"}
             LaunchedEffect(book.id,reminderBook) {

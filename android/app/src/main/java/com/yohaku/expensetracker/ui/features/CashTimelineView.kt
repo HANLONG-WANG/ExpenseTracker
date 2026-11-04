@@ -48,7 +48,7 @@ import java.time.LocalDate
                     item.issue?.let{YText(cashIssue(it),12,color=LocalYohaku.current.warm)}
                     if(onTimelineItem!=null)YLink(word("查看并处理安排","予定を確認・対応"),{onTimelineItem(item)},Modifier.testTag("cash-open-${item.id}"))
                     else when(item.kind) {
-                        "BILL"->YLink(word("查看账单与调整方案","請求・支払方法を見る"),{onFinancial(item.sourceId)},Modifier.testTag("cash-open-${item.id}"))
+                        "BILL","CARD_RECURRENCE"->YLink(word("查看账单与调整方案","請求・支払方法を見る"),{onFinancial(item.sourceId)},Modifier.testTag("cash-open-${item.id}"))
                         "RECURRENCE"->YLink(word("查看周期账单","定期支払を見る"),onRecurring)
                         "RESERVE"->YLink(word("查看活动预留","シーンの確保を見る"),{onActivity(item.sourceId)})
                         "ACTUAL","TRANSFER"->s.visibleEvents.firstOrNull{it.id==item.sourceId}?.let{e->YLink(word("查看实际记录","実際の記録を見る"),{onRecord(e)})}
@@ -60,6 +60,15 @@ import java.time.LocalDate
     }
 }
 @Composable internal fun cashIssue(code:String)=when(code) {
+    "CARD_PAYMENT_CHOICE_REQUIRED"->word("周期付款尚未指定信用卡付款方式，请编辑周期规则。","定期支払のカード支払方法が未指定です。定期ルールを編集してください。")
+    "CARD_AUTOMATIC_RULE_INCOMPLETE"->word("自动リボ设置未补齐，请核对消费日期有效的卡规则。","自動リボ設定が未補完です。利用日に有効なカード条件を確認してください。")
+    "CARD_SINGLE_RULE_INCOMPLETE"->word("一次付规则未补齐，请核对締め日和扣款日。","一括払い条件が未補完です。締め日と引落日を確認してください。")
+    "CARD_BONUS_RULE_INCOMPLETE"->word("ボーナス払い规则未补齐，请核对适用期间和付款日期。","ボーナス払い条件が未補完です。利用期間と支払日を確認してください。")
+    "CARD_INSTALLMENT_RULE_INCOMPLETE"->word("分期规则未补齐，请核对期数、费用和付款日期。","分割払い条件が未補完です。回数・手数料・支払日を確認してください。")
+    "CARD_INSTALLMENT_PERIODS_UNSUPPORTED"->word("周期付款的分期回数未填写或不受卡规则支持，请核对分期规则及周期付款。","定期支払の分割回数が未指定またはカード条件の対象外です。分割条件と定期支払を確認してください。")
+    "CARD_PAYMENT_ACCOUNT_REQUIRED"->word("卡规则未指定有效资金扣款账户，请补齐扣款账户。","カード条件に有効な資金引落口座がありません。引落口座を設定してください。")
+    "CARD_PAYMENT_ACCOUNT_INACTIVE"->word("卡规则的扣款账户已停用，请重新指定扣款账户。","カード条件の引落口座が停止中です。引落口座を指定し直してください。")
+    "CARD_ACCOUNT_INACTIVE"->word("信用卡账户已停用，请核对账户及周期付款。","カード口座が停止中です。口座と定期支払を確認してください。")
     "PAYMENT_ACCOUNT_INACTIVE"->word("所选资金账户已停用，请重新确认实际收付款账户。","選択した資金口座は停止中です。実際の入出金口座を再確認してください。")
     "INCOME_RECEIPT_CHANGED"->word("关联的实际收入已删除或改变，请核对到账。","関連する実収入が削除・変更されています。入金を確認してください。")
     "REFERENCE_CONVERSION"->word("账户金额使用参考估算；换汇/付款费用尚未确认，不代表实际足额或已到账。","口座金額は参考見積もりです。両替・支払手数料は未確定で、実際の充足・入金済みを意味しません。")

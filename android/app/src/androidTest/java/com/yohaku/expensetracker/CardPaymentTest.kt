@@ -121,4 +121,35 @@ class CardPaymentTest {
             assertEquals(3,v.repo.dao.event(v.book,saved)!!.cardPaymentPeriods);assertEquals(2,v.snapshot().events.size);assertEquals(3,db.financialDao().graph(v.book).first()!!.bills.size)
         }finally{db.close();context.deleteDatabase(name)}
     }
+    @Test fun recurringForecastIsReplacedByMatchingRecordedCardBills()=runBlocking {
+        for(choice in listOf("SINGLE","INSTALLMENT","BONUS")) {
+            val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
+            try {
+                val v=setup(db);val r=v.repo
+                val single=rule(v,FinanceMode.SINGLE).copy(billing=BillingRule(15,true,1,10,v.bank),bonusPayments=listOf(BonusPaymentWindow(12,1,12,31,3,10)))
+                r.commitFinancialRule(r.previewFinancialRule(v.book,v.card,single))
+                val recurrence=r.saveRecurrence(v.book,RecurrenceInput("Galaxy Care",v.card,v.category,Money(Currency.JPY,1091),null,false,RecurrenceFrequency.MONTHLY,"2026-12-01",endDate="2026-12-01",cardPaymentChoice=choice,cardPaymentPeriods=if(choice=="INSTALLMENT")3 else null))
+                r.ensureOccurrences(v.book,"2026-12")
+                val s=v.snapshot();val f=db.financialDao().graph(v.book).first()!!
+                val forecast=s.cashTimeline(f,LocalDate.now(clock),LocalDate.parse("2027-04-30")).steps.map{it.item}
+                val occurrence=s.occurrences.single{it.recurrenceId==recurrence}
+                // The purchase itself is reminded on its own date; the bank-debit forecast is not a reminder.
+                r.dao.putBook(r.dao.book(v.book)!!.copy(initialized=true))
+                val file=java.io.File(context.cacheDir,"card-reminder-${java.util.UUID.randomUUID()}.preferences_pb")
+                val prefs=AppPreferences(context,androidx.datastore.preferences.core.PreferenceDataStoreFactory.create(scope=kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.IO),produceFile={file}))
+                val reminders=r.reminderItems(prefs).filter{it.bookId==v.book&&it.kind=="RECURRING"}
+                assertEquals(listOf("occurrence:${occurrence.id}" to occurrence.scheduledDate),reminders.map{it.key to it.date})
+                file.delete()
+                val event=r.saveEntry(v.book,s.occurrenceDraft(occurrence,s.recurrences.single{it.id==recurrence}))
+                val after=v.snapshot();val next=db.financialDao().graph(v.book).first()!!
+                val plan=next.plans.single{it.sourceEventId==event&&it.origin=="CARD_ENTRY"}
+                val bills=next.bills.filter{it.planId==plan.id}.sortedBy{it.number}
+                assertEquals(forecast.map{it.date},bills.map{it.date})
+                assertEquals(forecast.map{it.amountMinor},bills.map{it.totalMinor})
+                assertEquals(forecast.map{it.accountId},bills.map{it.paymentAccountId})
+                val actual=after.cashTimeline(next,LocalDate.now(clock),LocalDate.parse("2027-04-30")).steps.map{it.item}
+                assertTrue(actual.all{it.kind=="BILL"});assertEquals(forecast.map{it.accountDeltaMinor},actual.map{it.accountDeltaMinor})
+            }finally{db.close()}
+        }
+    }
 }

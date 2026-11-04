@@ -34,6 +34,10 @@ fun BookSnapshot.cashTimeline(finance:FinancialGraph?,asOf:LocalDate,through:Loc
     val pending=copy(occurrences=forecastOccurrences(asOf,through)).pendingOccurrences()
     for(o in pending) {
         val a=accounts.first{it.id==o.accountId}
+        if(a.type==AccountType.CREDIT.name) {
+            cardRecurrenceForecast(o,finance,asOf,referenceRates).forEach(::add)
+            continue
+        }
         add(CashTimelineItem("occurrence:${o.id}","RECURRENCE",o.id,o.scheduledDate,o.name,o.accountId,o.currency,o.amountMinor,false,
             o.amountMinor?.takeIf{a.id in fundIds&&a.active&&a.currency==o.currency}?.let{Math.negateExact(it)},o.estimated,
             when{a.id !in fundIds->"DEBT_PAYMENT_UNSCHEDULED";!a.active->"PAYMENT_ACCOUNT_INACTIVE";o.amountMinor==null->"UNKNOWN_AMOUNT";a.currency!=o.currency->"UNKNOWN_CONVERSION";else->null}))

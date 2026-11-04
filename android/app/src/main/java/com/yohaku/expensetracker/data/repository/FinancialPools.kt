@@ -157,15 +157,21 @@ internal fun LedgerRepository.financialPoolStale(s:BookSnapshot,f:FinancialGraph
     return input.pool?.facts!=poolFacts(s,f,input)
 }
 
+internal fun FinancialPredictionInput.poolOpeningChanged(account:AccountEntity):Boolean =
+    terms.agreementDate!=account.openingDate||pool?.facts?.let{it.openingDate!=account.openingDate||it.accountOpeningMinor!=account.openingMinor}==true
+
+internal const val POOL_OPENING_CHANGED_MESSAGE="账户期初日期或金额已变化，请先核对并重算账户余额池 / 口座の期首日・金額が変わっています。口座プールを先に確認・再計算してください"
+
 internal fun LedgerRepository.prepareFinancialPool(state:FinancialReviewState,input:FinancialPredictionInput,allowPaymentChange:Boolean=false):FinancialPredictionReview {
-    val s=state.ledger;val f=state.finance;val a=s.accounts.first{it.id==input.accountId};val pool=requireNotNull(input.pool)
-    require(a.active&&input.mode==if(a.type==AccountType.CREDIT.name)FinanceMode.REVOLVING else FinanceMode.CREDIT_LINE)
-    require(AccountType.valueOf(a.type).debt&&input.name.isNotBlank()&&input.sourceEventId==null)
-    require(input.terms.agreementDate==a.openingDate&&input.terms.paymentDates.isNotEmpty()&&input.terms.accrualWindows.size==input.terms.paymentDates.size)
-    require(input.terms.firstPeriodNumber>0)
-    require(input.terms.paymentDates.zipWithNext().all{(x,y)->x<y})
+    val s=state.ledger;val f=state.finance;val a=s.accounts.first{it.id==input.accountId};val pool=requireNotNull(input.pool){"请补齐余额池定义 / 残高プールの定義を補完してください"}
+    require(a.active&&input.mode==if(a.type==AccountType.CREDIT.name)FinanceMode.REVOLVING else FinanceMode.CREDIT_LINE){"请选择启用的循环债务账户 / 有効な循環債務口座を選択してください"}
+    require(AccountType.valueOf(a.type).debt&&input.name.isNotBlank()&&input.sourceEventId==null){"余额池须指定债务账户和名称，不可指定单笔来源 / プールには債務口座と名前を指定し、個別の記録は指定しないでください"}
+    require(!input.poolOpeningChanged(a)){POOL_OPENING_CHANGED_MESSAGE}
+    require(input.terms.paymentDates.isNotEmpty()&&input.terms.accrualWindows.size==input.terms.paymentDates.size){"请补齐余额池付款日期和计息区间 / プールの支払日と利息計算期間を補完してください"}
+    require(input.terms.firstPeriodNumber>0){"起始期数须大于0 / 開始回数は0より大きくしてください"}
+    require(input.terms.paymentDates.zipWithNext().all{(x,y)->x<y}){"付款日期须依次递增 / 支払日は昇順にしてください"}
     require(f.plans.none{it.active&&it.origin=="POOL"&&it.accountId==a.id&&it.id!=input.planId}){"本账户已有余额池，请打开原计划 / この口座には残高プールがあります。既存の予定を開いてください"}
-    val old=input.planId?.let{id->requireNotNull(f.plans.firstOrNull{it.id==id&&it.accountId==a.id&&it.origin=="POOL"})}
+    val old=input.planId?.let{id->requireNotNull(f.plans.firstOrNull{it.id==id&&it.accountId==a.id&&it.origin=="POOL"}){"余额池不存在，请重新打开账户计划 / 残高プールがありません。口座の予定を開き直してください"}}
     require(allowPaymentChange||pool.paymentChanges==(old?.let{poolInput(it)?.paymentChanges}.orEmpty())){"月付款变更需要独立记录已办理 / 月支払の変更は手続き済みとして別途記録してください"}
     val members=f.plans.filter{it.accountId==a.id&&it.mode==input.mode.name&&it.active&&it.id!=old?.id}
     require(members.isEmpty()||pool.adoptExisting){"请确认归并已有循环计划，保留已确认/有付款关联/逾期账单 / 既存の循環予定を統合し、確定・支払関連・期限経過の請求を保持することを確認してください"}
@@ -218,6 +224,7 @@ internal suspend fun LedgerRepository.refreshFinancialPools(change:PreparedLedge
         val state=stateProvider?.invoke()?:financialReviewState(p.bookId)
         if(state.ledger.accounts.none{it.id==p.accountId&&it.active}||!financialPoolStale(state.ledger,state.finance,p))continue
         val input=json.decodeFromString<FinancialPredictionInput>(p.termsJson!!).copy(planId=p.id)
+        if(input.poolOpeningChanged(state.ledger.accounts.first{it.id==p.accountId}))continue
         val preview=prepareFinancialPool(state,input)
         if(preview.calculation is Calculation.Ready)writeFinancialPrediction(preview,"POOL_UPDATED",change.event.id)
     }

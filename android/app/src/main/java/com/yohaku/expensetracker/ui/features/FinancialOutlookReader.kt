@@ -25,7 +25,7 @@ internal sealed interface FinancialOutlookRead {
                 val state=vm.repository.financialReviewState(s.book.id)
                 val stale=state.finance.plans.filter{vm.repository.financialPredictionStale(state.ledger,state.finance,it)}.map{it.id}.toSet()
                 val timeline=state.ledger.cashTimeline(state.finance,today,maxOf(today,through),stale,rates)
-                FinancialOutlookRead.Ready(timeline,state.ledger.budgetPace(today,state.finance,rates),timeline.accountRisks(),state.ledger.financialAttention(state.finance,today.toString(),timeline),state.ledger.importantPayments(state.finance,timeline),state.ledger.financialDeadlines(state.finance,today.toString(),maxOf(today,through).toString()))
+                FinancialOutlookRead.Ready(timeline,state.ledger.budgetPace(today,state.finance,rates),timeline.accountRisks(),state.ledger.financialAttention(state.finance,today.toString(),timeline,stale),state.ledger.importantPayments(state.finance,timeline),state.ledger.financialDeadlines(state.finance,today.toString(),maxOf(today,through).toString()))
             }
             value=read(vm.referenceRates.store.referenceRateCache().rates)
             finance?.takeIf{it.book.id==s.book.id}?.let{f->

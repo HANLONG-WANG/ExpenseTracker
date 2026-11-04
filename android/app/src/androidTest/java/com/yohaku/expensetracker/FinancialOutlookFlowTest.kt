@@ -160,6 +160,46 @@ class FinancialOutlookFlowTest {
             assertNull(vm.error.value)
         }
     }
+    @Test fun cardRecurringPaymentsForecastBankDebitsAndNameMissingRulesInEveryThemeAndLanguage() {
+        for((theme,language) in testLooks(this@FinancialOutlookFlowTest)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            val (book,bank,items)=runBlocking {
+                val b=repo.createBook("カード周期 $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")
+                repo.updateBook(repo.dao.book(b)!!.copy(initialized=true))
+                val bank=repo.saveAccount(b,"ゆうちょ",AccountType.BANK,Currency.JPY,Money(Currency.JPY,50000),"2026-10-01")
+                val card=repo.saveAccount(b,"JCB",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
+                val bare=repo.saveAccount(b,"Saison",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
+                val category=repo.saveCategory(b,"通信",EntryKind.EXPENSE,null)
+                repo.commitFinancialRule(repo.previewFinancialRule(b,card,FinancialRuleVersion("",b,card,FinanceMode.SINGLE,"2026-10-01","Asia/Tokyo",BillingRule(15,true,1,10,bank))))
+                repo.saveRecurrence(b,RecurrenceInput("Galaxy Care",card,category,Money(Currency.JPY,1091),null,false,RecurrenceFrequency.MONTHLY,"2026-11-01",cardPaymentChoice="SINGLE"))
+                repo.saveRecurrence(b,RecurrenceInput("動画配信",bare,category,Money(Currency.JPY,990),null,false,RecurrenceFrequency.MONTHLY,"2026-11-05",cardPaymentChoice="SINGLE"))
+                val s=repo.snapshot(repo.dao.book(b)!!).first()
+                val items=s.cashTimeline(db.financialDao().graph(b).first()!!,LocalDate.parse("2026-10-25"),LocalDate.parse("2027-01-23")).steps.map{it.item}.filter{it.kind=="CARD_RECURRENCE"}
+                vm.preferences.select(b);Triple(b,bank,items)
+            }
+            // Ruled card: purchase 11/01 and 12/01 debit the bank on 12/10 and 1/10; the 1/01 purchase debits after the range.
+            val debits=items.filter{it.issue==null}
+            assertEquals(listOf("2026-12-10","2027-01-10"),debits.map{it.date})
+            assertTrue(debits.all{it.accountId==bank&&it.accountDeltaMinor==-1091L&&it.name=="JCB · Galaxy Care"})
+            val missing=items.filter{it.issue!=null}
+            assertEquals(listOf("CARD_SINGLE_RULE_INCOMPLETE"),missing.map{it.issue}.distinct());assertEquals(3,missing.size)
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.navigate("reminders")}
+            ui.waitUntil(10000){ui.onAllNodesWithTag("important-payment-${debits.first().id}").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("important-payment-${debits.first().id}").performScrollTo();shot("$theme-$language-card-recurring-forecast")
+            ui.onNodeWithTag("important-payment-${missing.first().id}").performScrollTo()
+            ui.onAllNodesWithText(text("一次付规则未补齐，请核对締め日和扣款日。","一括払い条件が未補完です。締め日と引落日を確認してください。")).onFirst().assertExists()
+            shot("$theme-$language-card-recurring-missing-rule")
+            ui.runOnIdle{vm.navigate("home")}
+            ui.waitUntil(10000){ui.onAllNodesWithTag("outlook-attention-${missing.first().id}").fetchSemanticsNodes().isNotEmpty()}
+            debits.forEach{ui.onNodeWithTag("outlook-attention-${it.id}").assertDoesNotExist()}
+            ui.onNodeWithTag("outlook-attention-${missing.first().id}").performScrollTo();shot("$theme-$language-card-recurring-attention")
+            tapTag("outlook-attention-${missing.first().id}")
+            ui.waitUntil(10000){vm.route.value=="rules"&&ui.onAllNodesWithTag("finance-edit-SINGLE").fetchSemanticsNodes().isNotEmpty()}
+            assertNull(vm.error.value)
+            ui.runOnIdle{vm.navigate("home")}
+        }
+    }
     @Test fun budgetStatesKeepActualOverrunPredictionAndUnknownSeparate() {
         val args=InstrumentationRegistry.getArguments()
         for((theme,language) in testLooks(this@FinancialOutlookFlowTest)) {

@@ -15,7 +15,7 @@ data class FinancialExpenseChange(val month:String,val beforeMinor:Long,val afte
 class FinancialLedgerReview internal constructor(
     internal val before:FinancialReviewState,val change:PreparedLedgerChange?,val contract:DebtContractEntity?,
     val borrowingInput:FinancialBorrowingInput?,val repaymentInput:FinancialRepaymentInput?,
-    val balances:List<AccountBalanceChange>,val expenses:List<FinancialExpenseChange>,val after:BookSnapshot,val planImpacts:List<FinancialPlanImpact>,val limitImpacts:List<FinancialCreditLimitChange>
+    val balances:List<AccountBalanceChange>,val expenses:List<FinancialExpenseChange>,val after:BookSnapshot,val planImpacts:List<FinancialPlanImpact>,val limitImpacts:List<FinancialCreditLimitChange>,val unallocatedPrincipalMinor:Long
 )
 
 private fun BookSnapshot.projectFinance(change:PreparedLedgerChange):BookSnapshot {
@@ -43,7 +43,13 @@ private fun LedgerRepository.financialReview(state:FinancialReviewState,change:P
         val updated=accountCreditLimit(next,nextFinance,state.limits,a.id,asOf)
         if(old==updated)null else FinancialCreditLimitChange(a,old,updated)
     }
-    return FinancialLedgerReview(state,change,contract,borrow,repay,balances,expenses,next,financialPlanImpacts(state,next,change,contract),limits)
+    val impacts=financialPlanImpacts(state,next,change,contract)
+    val updated=impacts.filter{it.updatesPrediction}.map{it.original.id}.toSet()
+    val unallocated=repay?.let{input->
+        val stale=nextFinance.plans.filter{it.id !in updated&&financialPredictionStale(next,nextFinance,it)}.map{it.id}.toSet()
+        next.repaymentPrincipalNeedingAllocation(nextFinance,input.debtAccountId,stale)
+    }?:0
+    return FinancialLedgerReview(state,change,contract,borrow,repay,balances,expenses,next,impacts,limits,unallocated)
 }
 private fun requireMoney(money:Money,currency:String,positive:Boolean=false) {
     require(money.currency.name==currency&&if(positive)money.minor>0 else money.minor>=0){"请核对币种与金额 / 通貨と金額を確認してください"}

@@ -169,6 +169,13 @@ curl -X POST -H 'Content-Type: application/json' -d '{"status":"needs_info"}' ht
 curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<taskId>/results?summary=...'   # 发布结果并置ready
 ```
 
+### 金融预测修正（2026-11-04）
+
+- 未分配清偿提醒扣除有效余额池登记份额；池失效时恢复提示，编辑器原始份额口径不变。
+- 信用卡周期付款按与真实 CARD_ENTRY 相同的规则预测银行扣款，一次付/奖金付/分期逐期列出，リボ不单列；首页、重要事项、备款和云端确认共用时间线。缺规则/账户时显示具体处理原因，点击按原因进入周期付款或卡规则。提醒仍在刷卡日提醒记账，银行扣款预测本身不发提醒（记账后由 CARD_ENTRY 账单提醒还款）。
+- 修改债务期初日期或金额后，借还与消费仍可保存；余额池保留原预测并等待显式核对/重算。
+- JVM 回归：`FinancialOutlookTest`、`CardRecurrenceForecastTest`、`FinancialPoolOpeningTest`。设备回归（已运行通过）：`FinancialPoolTest`、`CardPaymentTest`（含刷卡日提醒）、`CommandPlanningExecutionTest` 及相关金融/提醒数据测试；视觉：`FinancialOutlookFlowTest.cardRecurringPaymentsForecastBankDebitsAndNameMissingRulesInEveryThemeAndLanguage`（`looks=all visual=true`，截图 `phase-c-outlook/*-card-recurring-*.png`，已查看）。
+
 ## 构建与验证
 
 JDK17、AGP9.3.3、Gradle Wrapper9.5.1、Compose BOM2026.09.00。SDK由`local.properties`或`ANDROID_HOME`指定；正式密钥配置见[发行说明](RELEASE.md)。

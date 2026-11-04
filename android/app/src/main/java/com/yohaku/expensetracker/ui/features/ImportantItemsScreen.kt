@@ -35,7 +35,7 @@ import com.yohaku.expensetracker.ui.theme.*
         is FinancialOutlookRead.Ready->{
             YText(value.timeline.asOf+" → "+value.timeline.through,11)
             val payments=value.payments.filter{it.item.kind=="BILL"}
-            val recurring=value.payments.filter{it.item.kind=="RECURRENCE"}
+            val recurring=value.payments.filter{it.item.kind in listOf("RECURRENCE","CARD_RECURRENCE")}
             val risks=value.risks.filter{it.currentGapMinor?.let{n->n>0}==true||it.firstRiskDate!=null||it.incompleteDate!=null}
             val pace=value.pace
             val budgetRisk=pace.actualOverMinor?.let{it>0}==true||pace.projectedOverMinor?.let{it>0}==true||pace.limitMinor!=null&&pace.projectedMinor==null

@@ -46,6 +46,7 @@ class FinancialPoolTest {
             assertEquals(1736L,(preview.calculation as Calculation.Ready).value.first().period.feeMinor)
             val plan=r.commitFinancialPrediction(preview)!!
             assertFalse(r.financialPredictionStale(x.s(),x.f(),x.f().plans.first{it.id==plan}))
+            assertEquals(0L,x.s().repaymentPrincipalNeedingAllocation(x.f(),x.a,emptySet()))
             val ids=x.f().bills.map{it.id}
             val extra=r.saveEntry(x.b,x.draft("30000","2026-10-28"))
             var f=x.f();assertEquals(ids,f.bills.filter{it.active}.map{it.id})
@@ -59,6 +60,8 @@ class FinancialPoolTest {
             f=x.f();assertEquals(first,f.bills.first{it.id==first.id});assertTrue(f.bills.first{it.number==2}.feeMinor!!<secondFee)
             assertEquals(145000L,x.s().balance(x.s().accounts.first{it.id==x.a}));assertEquals(170000L,x.s().balance(x.s().accounts.first{it.id==x.bank}))
             r.deleteEntry(x.b,extra);assertTrue(r.financialPredictionStale(x.s(),x.f(),x.f().plans.first{it.id==plan}))
+            val stale=x.f().plans.filter{r.financialPredictionStale(x.s(),x.f(),it)}.map{it.id}.toSet()
+            assertEquals(20000L,x.s().repaymentPrincipalNeedingAllocation(x.f(),x.a,stale))
             assertNull(x.s().financialAccountSummary(x.f(),x.a,"2026-10-15",setOf(plan)).rows.statementTotals().cashRequiredMinor)
             assertEquals(1,x.f().plans.count{it.origin=="POOL"});assertEquals(5,x.s().events.size)
             db.close();db=Room.databaseBuilder(context,YohakuDatabase::class.java,file).build();r=LedgerRepository(db,clock);x=x.copy(r=r)
@@ -120,6 +123,58 @@ class FinancialPoolTest {
             r.commitFinancialLedger(r.previewRepayment(x.b,pay.copy(allocations=listOf(RepaymentAllocationInput(first.id,line.id,1000,0,0)))))
             assertEquals(2000L,x.s().contractRemaining(line));assertEquals(5000L,x.s().contractRemaining(fixed))
             assertEquals(9000L,x.s().balance(x.s().accounts.first{it.id==x.a}));assertEquals(209000L,x.s().balance(x.s().accounts.first{it.id==x.bank}))
+        }finally{db.close()}
+    }
+    @Test fun changedLoanOpeningPreservesForecastAndAllowsRepaymentAndBorrowingUntilExplicitRecalculation()=runBlocking {
+        for((openingDate,openingMinor) in listOf("2026-10-02" to 5000L,"2026-10-01" to 4000L,"2026-10-01" to 6000L)) {
+            val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
+            try {
+                val x=fixture(db,true);val r=x.r
+                r.saveAccount(x.b,"债务",AccountType.LOAN,Currency.JPY,Money(Currency.JPY,5000),"2026-10-01",x.a)
+                val poolId=r.commitFinancialPrediction(r.previewFinancialPool(x.b,x.input(5000,loan=true)))!!
+                val original=x.f().plans.single();val originalBills=x.f().bills
+                r.saveAccount(x.b,"债务",AccountType.LOAN,Currency.JPY,Money(Currency.JPY,openingMinor),openingDate,x.a)
+                val saved=r.json.decodeFromString<FinancialPredictionInput>(original.termsJson!!).copy(planId=poolId)
+                try {r.previewFinancialPool(x.b,saved);fail("explicit pool review required")}
+                catch(e:IllegalArgumentException){assertTrue(e.message!!.contains("期初"));assertTrue(e.message!!.contains("期首"))}
+                val review=r.previewRepayment(x.b,FinancialRepaymentInput(x.bank,x.a,Money(Currency.JPY,1000),"2026-10-16",Money(Currency.JPY,1000),Money(Currency.JPY,1000),Money(Currency.JPY,0),Money(Currency.JPY,0),platformConfirmed=true,clearingDate="2026-10-16"))
+                assertEquals(FinancialPlanImpactIssue.POOL_OPENING_CHANGED,review.planImpacts.single().issue)
+                assertFalse(review.planImpacts.single().updatesPrediction)
+                val payment=r.commitFinancialLedger(review)!!
+                val borrowing=r.previewBorrowing(x.b,FinancialBorrowingInput(x.a,"追加借入",FinanceMode.CREDIT_LINE,Money(Currency.JPY,500),"2026-10-17",x.bank,Money(Currency.JPY,500)))
+                assertEquals(FinancialPlanImpactIssue.POOL_OPENING_CHANGED,borrowing.planImpacts.single().issue)
+                assertNotNull(r.commitFinancialLedger(borrowing))
+                assertEquals(originalBills,x.f().bills)
+                assertEquals(original.termsJson,x.f().plans.single().termsJson)
+                assertTrue(r.financialPredictionStale(x.s(),x.f(),x.f().plans.single()))
+                // The editor accepts the current opening and reclassifies the payment explicitly.
+                val accepted=saved.copy(terms=saved.terms.copy(agreementDate=openingDate),pool=saved.pool!!.copy(openingMinor=openingMinor,unallocatedShares=mapOf(payment to 1000L),facts=null))
+                val recalculated=r.previewFinancialPool(x.b,accepted)
+                assertTrue(recalculated.calculation is Calculation.Ready)
+                assertNotNull(r.commitFinancialPrediction(recalculated))
+                assertFalse(r.financialPredictionStale(x.s(),x.f(),x.f().plans.single()))
+                assertEquals(0L,x.s().repaymentPrincipalNeedingAllocation(x.f(),x.a,emptySet()))
+            }finally{db.close()}
+        }
+    }
+    @Test fun changedOrRemovedRepaymentInvalidatesSavedPoolShares()=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build()
+        try {
+            val x=fixture(db);val r=x.r
+            val input=FinancialRepaymentInput(x.bank,x.a,Money(Currency.JPY,1000),"2026-10-16",Money(Currency.JPY,1000),Money(Currency.JPY,1000),Money(Currency.JPY,0),Money(Currency.JPY,0),platformConfirmed=true,clearingDate="2026-10-16")
+            val payment=r.commitFinancialLedger(r.previewRepayment(x.b,input))!!
+            r.commitFinancialPrediction(r.previewFinancialPool(x.b,x.input(shares=mapOf(payment to 1000L))))
+            assertEquals(0L,x.s().repaymentPrincipalNeedingAllocation(x.f(),x.a,emptySet()))
+            val changed=r.previewRepayment(x.b,input.copy(eventId=payment,paid=Money(Currency.JPY,1500),received=Money(Currency.JPY,1500),principal=Money(Currency.JPY,1500)))
+            assertEquals(1500L,changed.unallocatedPrincipalMinor)
+            assertFalse(changed.planImpacts.single().updatesPrediction)
+            assertTrue((changed.planImpacts.single().forecast!!.calculation as Calculation.Incomplete).fields.contains("pool.repaymentShare"))
+            r.commitFinancialLedger(changed)
+            val f=x.f();val s=x.s();val stale=f.plans.filter{r.financialPredictionStale(s,f,it)}.map{it.id}.toSet()
+            assertEquals(1500L,s.repaymentPrincipalNeedingAllocation(f,x.a,stale))
+            r.deleteEntry(x.b,payment)
+            assertTrue(r.financialPredictionStale(x.s(),x.f(),x.f().plans.single()))
+            assertEquals(0L,x.s().repaymentPrincipalNeedingAllocation(x.f(),x.a,x.f().plans.map{it.id}.toSet()))
         }finally{db.close()}
     }
 }

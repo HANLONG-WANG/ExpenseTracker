@@ -37,3 +37,13 @@ fun BookSnapshot.planRepaymentAllocations(plan:FinancialPlanEntity,finance:Finan
         ?:plan.sourceEventId?.let{id->contracts.firstOrNull{it.fundingEventId==id}?.id}
     return appliedRepaymentAllocations().filter{it.billId in billIds||it.billId==null&&contractId!=null&&it.contractId==contractId}
 }
+
+/** Display/action amount only. Callers supply staleness from financialPredictionStale,
+ * which includes poolFacts' repaymentShare validation; raw shares remain available to editors. */
+fun BookSnapshot.repaymentPrincipalNeedingAllocation(finance:FinancialGraph,accountId:String,stalePlanIds:Set<String>):Long {
+    val repayments=repayments.filter{it.platformConfirmed&&it.debtAccountId==accountId&&visibleEvents.any{e->e.id==it.eventId}}.map{it.eventId}.toSet()
+    val assigned=finance.plans.filter{it.active&&it.origin=="POOL"&&it.accountId==accountId&&it.id !in stalePlanIds}
+        .mapNotNull{poolInput(it)?.takeIf{pool->pool.facts!=null&&pool.facts.issues.isEmpty()}}
+        .flatMap{it.unallocatedShares.entries}.filter{it.key in repayments}.fold(0L){sum,share->addExact(sum,share.value)}
+    return subtractExact(unallocatedRepaymentPrincipal(accountId),assigned)
+}

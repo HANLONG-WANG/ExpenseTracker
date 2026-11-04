@@ -19,12 +19,17 @@ suspend fun LedgerRepository.reminderItems(preferences:AppPreferences):List<Remi
         val state=financialReviewState(book.id);val s=state.ledger;val f=state.finance
         val stale=f.plans.filter{financialPredictionStale(s,f,it)}.map{it.id}.toSet()
         val timeline=s.cashTimeline(f,today,through,stale,rates)
-        for(payment in s.importantPayments(f,timeline)) {
+        // A card bank-debit forecast is not a reminder: the purchase is reminded on its own date,
+        // and once recorded its CARD_ENTRY bill brings the repayment reminder.
+        for(payment in s.importantPayments(f,timeline).filter{it.item.kind!="CARD_RECURRENCE"}) {
             val i=payment.item
             result+=ReminderItem(book.id,i.id,if(i.kind=="BILL")"REPAYMENT"else"RECURRING",i.scheduledDate,i.currency,payment.outstandingMinor,
                 i.name,s.accounts.firstOrNull{it.id==(if(i.kind=="BILL")i.sourceId else i.accountId)}?.name.orEmpty(),
                 i.estimated||i.issue!=null,targetAccountId=i.sourceId.takeIf{i.kind=="BILL"})
         }
+        val cards=s.accounts.filter{it.type==com.yohaku.expensetracker.domain.model.AccountType.CREDIT.name}.associateBy{it.id}
+        for(o in s.copy(occurrences=s.forecastOccurrences(today,through)).pendingOccurrences().filter{it.accountId in cards})
+            result+=ReminderItem(book.id,"occurrence:${o.id}","RECURRING",maxOf(o.scheduledDate,today.toString()),o.currency,o.amountMinor,o.name,cards.getValue(o.accountId).name,o.estimated)
         for(row in s.financialDeadlines(f,today.toString(),through.toString())) {
             val d=row.deadline
             result+=ReminderItem(book.id,"deadline:${d.billId}:${d.changeType}","DEADLINE",d.date,row.currency,row.outstandingMinor,

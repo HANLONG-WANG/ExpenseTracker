@@ -5,7 +5,7 @@ import com.yohaku.expensetracker.domain.finance.*
 import com.yohaku.expensetracker.domain.model.*
 import java.time.LocalDate
 
-enum class FinancialPlanImpactIssue { MANUAL, SOURCE_CHANGED, SOURCE_REMOVED, ACCOUNT_INACTIVE, PAYMENT_ACCOUNT, OPENING_PRINCIPAL, CONTRACT_PRINCIPAL, RETAINED_ARRANGEMENT, RETAINED_POOL }
+enum class FinancialPlanImpactIssue { POOL_OPENING_CHANGED, MANUAL, SOURCE_CHANGED, SOURCE_REMOVED, ACCOUNT_INACTIVE, PAYMENT_ACCOUNT, OPENING_PRINCIPAL, CONTRACT_PRINCIPAL, RETAINED_ARRANGEMENT, RETAINED_POOL }
 class FinancialPlanImpact internal constructor(
     val original:FinancialPlanEntity,val originalBills:List<FinancialBillEntity>,val forecast:FinancialPredictionReview?,
     val issue:FinancialPlanImpactIssue?,val facts:FinancialPredictionFacts
@@ -39,7 +39,7 @@ private fun LedgerRepository.autoPredictionIssue(state:FinancialReviewState,plan
     val s=state.ledger
     if(plan.origin=="POOL_RETAINED")return FinancialPlanImpactIssue.RETAINED_POOL
     if(s.accounts.none{it.id==plan.accountId&&it.active})return FinancialPlanImpactIssue.ACCOUNT_INACTIVE
-    if(plan.origin=="POOL")return null
+    if(plan.origin=="POOL")return if(input.poolOpeningChanged(s.accounts.first{it.id==plan.accountId}))FinancialPlanImpactIssue.POOL_OPENING_CHANGED else null
     if(input.paymentAccountId!=null&&s.accounts.none{it.id==input.paymentAccountId&&it.active&&!AccountType.valueOf(it.type).debt})return FinancialPlanImpactIssue.PAYMENT_ACCOUNT
     if(state.finance.arrangements.any{it.targetPlanId==plan.id})return null
     if(input.sourceEventId!=null) {

@@ -76,6 +76,14 @@ suspend fun cashReferenceRates(s:BookSnapshot,f:com.yohaku.expensetracker.data.d
         s.accounts.firstOrNull{it.id==b.paymentAccountId}?.let{pair(plan.currency,it.currency)}
         if(s.billOutstanding(b).feeMinor?.let{it>0}==true)pair(plan.currency,s.book.currency)
     }
+    val cardIds=(s.recurrences.filter{it.active}.map{it.accountId}+s.pendingOccurrences().map{it.accountId}).toSet()
+    for(card in s.accounts.filter{it.id in cardIds&&it.type=="CREDIT"}) {
+        (s.recurrences.filter{it.accountId==card.id}.map{it.currency}+s.pendingOccurrences().filter{it.accountId==card.id}.map{it.currency}).distinct().forEach{pair(it,card.currency)}
+        for(row in f.rules.filter{it.accountId==card.id&&it.mode in listOf("SINGLE","INSTALLMENT")}) {
+            val rule=Json.decodeFromString<com.yohaku.expensetracker.domain.finance.FinancialRuleVersion>(row.json)
+            s.accounts.firstOrNull{it.id==rule.billing?.paymentAccountId}?.let{pair(card.currency,it.currency)}
+        }
+    }
     for(e in s.expectedIncomes.filter{it.status=="PENDING"&&it.accountMinor==null})s.accounts.firstOrNull{it.id==e.accountId}?.let{pair(e.currency,it.currency)}
     for(r in s.recurrences.filter{it.active&&it.baseMinor==null&&it.amountMinor!=null})pair(r.currency,s.book.currency)
     return pairs.mapNotNull{(from,to)->service.lookup(from,to).rate}

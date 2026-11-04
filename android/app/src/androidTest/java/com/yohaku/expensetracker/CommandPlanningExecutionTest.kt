@@ -178,4 +178,19 @@ class CommandPlanningExecutionTest {
         assertFalse(blocked.executable);assertTrue(blocked.conflicts.isNotEmpty());assertTrue(runCatching{commands.confirm(undo.planId,commandChecks(blocked))}.isFailure)
         assertEquals(final,CommandUndoJournal(r,b).snapshot())
     }
+    @Test fun cardRecurrenceIncludesBankForecastWithoutExistingBillsAndKeepsCloudConfirmationStable()=runBlocking<Unit> {
+        val (b,bank,category)=setup()
+        val card=r.saveAccount(b,"JCB",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,0),"2026-11-01")
+        val rule=com.yohaku.expensetracker.domain.finance.FinancialRuleVersion("",b,card,com.yohaku.expensetracker.domain.finance.FinanceMode.SINGLE,"2026-11-01","Asia/Tokyo",com.yohaku.expensetracker.domain.finance.BillingRule(15,true,1,10,bank))
+        r.commitFinancialRule(r.previewFinancialRule(b,card,rule))
+        cycle(b,listOf(step("galaxy","recurrence.save","""{"name":"Galaxy Care","account":"$card","category":"$category","frequency":"MONTHLY","anchorDate":"2026-12-01","endDate":"2026-12-01","amount":{"currency":"JPY","minor":1091},"cardPaymentChoice":"SINGLE","estimated":false}"""))) {model,_->
+            val bankEffect=model.steps.single().objects.single{it.type=="account"&&it.key==bank}
+            assertEquals(bankEffect.before,bankEffect.after);assertNotEquals(JsonNull,bankEffect.before)
+            val cash=model.steps.single().objects.single{it.type=="cashForecast"&&it.key==bank}.after.jsonObject
+            val item=cash.getValue("periods").jsonArray.single().jsonObject.getValue("item").jsonObject
+            assertEquals("CARD_RECURRENCE",item.getValue("kind").jsonPrimitive.content)
+            assertEquals("2027-01-10",item.getValue("date").jsonPrimitive.content)
+            assertEquals(-1091L,item.getValue("accountDeltaMinor").jsonPrimitive.long)
+        }
+    }
 }

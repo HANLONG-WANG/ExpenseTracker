@@ -86,6 +86,8 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
     private fun project(state:FinancialReviewState,accounts:Set<String>,entries:Set<String>,categories:Set<String>,months:Set<String>):Map<Pair<String,String>,JsonElement> {
         val s=state.ledger;val f=state.finance;val result=linkedMapOf<Pair<String,String>,JsonElement>()
         fun add(type:String,id:String,value:JsonElement){result[type to id]=value}
+        val stale=f.plans.filter{ledger.financialPredictionStale(s,f,it)}.map{it.id}.toSet()
+        val cash=s.cashTimeline(f,LocalDate.parse(context.asOfDate),LocalDate.parse(context.throughDate),stale,context.referenceRates,orderKey={item->if(item.kind=="CARD_RECURRENCE")"cardOccurrence:"+identities.name(item.id.substringAfter(':').substringBefore(':'))+":"+item.id.substringAfterLast(':')else item.id.substringBefore(':')+":"+identities.name(item.id.substringAfter(':'))})
         val paymentAccounts=f.bills.filter{bill->f.plans.any{it.id==bill.planId&&it.accountId in accounts}}.mapNotNull{it.paymentAccountId}.toSet()
         val allAccounts=accounts+paymentAccounts
         for(a in s.accounts.filter{it.id in allAccounts}) {
@@ -151,11 +153,9 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         for(a in f.billAdjustments.filter{a->f.bills.any{it.id==a.billId&&it.planId in planIds}})add("billAdjustment",a.id,JsonObject(row(encoded(a))+("currency" to JsonPrimitive(f.plans.first{p->f.bills.any{it.id==a.billId&&it.planId==p.id}}.currency))))
         for(r in state.limits.recoveries.filter{it.accountId in accounts})add("creditLimitRecovery",r.id,JsonObject(row(encoded(r))+("currency" to JsonPrimitive(s.accounts.first{it.id==r.accountId}.currency))))
         for(o in state.limits.observations.filter{it.accountId in accounts||state.limits.members.any{m->m.accountId in accounts&&m.groupId==it.groupId}})add("creditLimitObservation",o.id,JsonObject(row(encoded(o))+("currency" to JsonPrimitive(s.accounts.firstOrNull{it.id==o.accountId}?.currency?:state.limits.groups.first{it.id==o.groupId}.currency))))
-        val stale=plans.filter{ledger.financialPredictionStale(s,f,it)}.map{it.id}.toSet()
-        val cash=s.cashTimeline(f,LocalDate.parse(context.asOfDate),LocalDate.parse(context.throughDate),stale,context.referenceRates,orderKey={item->item.id.substringBefore(':')+":"+identities.name(item.id.substringAfter(':'))})
-        for(a in s.accounts.filter{it.id in allAccounts&&!AccountType.valueOf(it.type).debt}) {
+        for(a in s.accounts.filter{it.id in allAccounts&&(!AccountType.valueOf(it.type).debt||cash.steps.any{row->row.item.kind=="CARD_RECURRENCE"&&row.item.sourceId==it.id&&row.item.accountId==null})}) {
             // Timeline item IDs contain generated IDs; sourceId + kind + date are the business key.
-            val steps=cash.steps.filter{it.item.accountId==a.id}.map{step->
+            val steps=cash.steps.filter{it.item.accountId==a.id||it.item.kind=="CARD_RECURRENCE"&&it.item.sourceId==a.id&&it.item.accountId==null}.map{step->
                 val value=encoded(step).jsonObject
                 JsonObject(value+("item" to JsonObject(value.getValue("item").jsonObject.filterKeys{it!="id"}+("accountCurrency" to JsonPrimitive(a.currency)))))
             }
@@ -186,7 +186,13 @@ internal class CommandRun(val ledger:LedgerRepository,val bookId:String,val cont
         val oldTreats=before.ledger.treats.map{it.id}.toSet()
         after.ledger.treats.filter{it.id !in oldTreats}.forEach{t->generated(t.id,step.id,"treat",t.eventId?.let(identities::name)?:t.name)}
         val relatedPayments=(before.finance.bills+after.finance.bills).filter{bill->(before.finance.plans+after.finance.plans).any{it.id==bill.planId&&it.accountId in accounts}}.mapNotNull{it.paymentAccountId}
-        val scope=accounts+relatedPayments
+        // Use one scope for both snapshots: an existing bank must not appear newly created
+        // merely because a recurring card purchase now forecasts its first debit there.
+        val recurringAccounts=(before.ledger.recurrences+after.ledger.recurrences).map{it.accountId}.toSet()+
+            (before.ledger.occurrences+after.ledger.occurrences).map{it.accountId}
+        val recurringPayers=(before.finance.rules+after.finance.rules).filter{it.accountId in accounts&&it.accountId in recurringAccounts&&it.mode in listOf("SINGLE","INSTALLMENT")}
+            .mapNotNull{commandJson.decodeFromString<com.yohaku.expensetracker.domain.finance.FinancialRuleVersion>(it.json).billing?.paymentAccountId}
+        val scope=accounts+relatedPayments+recurringPayers
         val beforeValues=project(before,scope,entries,categories,months);val afterValues=project(after,scope,entries,categories,months)
         val objects=(beforeValues.keys+afterValues.keys).map{key->ObjectEffect(key.first,key.second,beforeValues[key]?:JsonNull,afterValues[key]?:JsonNull)}
         val normalized=commandJson.decodeFromJsonElement<List<ObjectEffect>>(semantic(encoded(objects))).sortedWith(compareBy<ObjectEffect>{it.type}.thenBy{it.key})
