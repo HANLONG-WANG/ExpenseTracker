@@ -38,10 +38,11 @@ class FinancialPoolMergeFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -101,9 +102,9 @@ class FinancialPoolMergeFlowTest {
             val original=runBlocking{db.financialDao().bills(book,source).single()}
             val before=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
-            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$debt");tapTag("account-financial");tapTag("analysis-tab-plans");tapTag("finance-compare-plan-$source")
+            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$debt");tapTag("account-financial");tapTag("finance-tab-plans");openFinancialPlan(ui,vm,source);tapTag("finance-compare-plan-$source")
             tapTag("select-trigger-"+text("新付款方式","新しい支払方式"))
-            val modeText=if(loan)text("循环贷款","利用枠内の借入")else"リボ"
+            val modeText=if(loan)text("循环贷款","利用枠内の借入")else text("循环还款","リボ")
             ui.onNode(hasText(modeText) and hasAnyAncestor(hasTestTag("select-menu-frame"))).performClick()
             tapTag("arrangement-merge-pool")
             tapTag("select-trigger-"+text("办理费计入的付款日 / 费用0时可不选","変更手数料を含む支払日・無料は未選択可"))
@@ -115,7 +116,7 @@ class FinancialPoolMergeFlowTest {
             if(loan) {
                 tapTag("arrangement-merge-open-pool")
                 ui.onNodeWithTag("pool-opening").assertExists()
-                tapTag("sheet-close")
+                tapTag("finance-flow-close")
                 ui.waitUntil(10000){ui.onAllNodesWithTag("arrangement-preview").fetchSemanticsNodes().isNotEmpty()}
                 textField(feeLabel).assertTextContains("100")
             }

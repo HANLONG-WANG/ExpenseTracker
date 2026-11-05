@@ -2,6 +2,14 @@
 
 日期：2026-11-02。状态：**阶段 5 已验收通过**。基线：阶段 4 `9a45a1a`。实现由 Codex 完成（其环境无法运行 Gradle/模拟器），编译、测试与视觉验收在本机完成，见文末验收结果。
 
+### 金融本机查看路径更新（2026-11-04）
+
+金融账户 UI 阶段 1 将本机入口改为：账户详情 → 账单、计划与金融规则 → 固定「总览 / 账单 / 计划 / 管理」。计算规则、还款记录、额度与恢复、版本历史及金融草稿在管理目录；网贷另有借入与合同。借还、额度及各编辑器内部能力未改，正式写入/试运行/确认/撤销协议不变。
+
+按[用户决定 7.1](financial-account-ui-plan.md#71-用户决定2026-11-04)，本轮不添加 `CommandPreviewScreen` 金融对象导航回调或 `CommandFlowTest` 对象跳转流程；用户自行进入对应账户查看。已核对 `ui/features/command/`：现有金融预览显示的是业务对象、步骤和事实，没有引用被移除的旧 tab 标签或页尾入口，因此阶段 1 未修改云端 UI 代码；金融 UI 阶段 2 在 `CommandFinanceViews.kt` / `CommandEffectViews.kt` 同步循环还款计划和共同月付款术语，协议、校验和对象跳转边界不变。阶段 1/2 的路径文案更新不代表完整云端设备验收；阶段 3 的相关复验另见下段。
+
+金融账户 UI 阶段 3 同步：`financialRepayment.save` / `.confirm` 的步骤预览先显示付款账户、实扣、清偿状态、余额和分配目标，再显示完整资料；信息来自该步骤快照。save 仍只记实际付款及待确认组成，confirm 仍需手机端明确勾选平台事实；UI 建议值不成为命令默认值。无新增金融对象跳转。相关验证为 `CommandFinanceExecutionTest#manualBorrowingContractAllocationAndRepayment`、`CommandFlowTest#financeCombinationPreviewAcrossLooks` 和新增还款预览方法；结果见 Android README 的金融 UI 阶段 3。
+
 ## 命令清单与适配对应
 
 下表全部 **v1 / transactional**。I=INFORMATION，R=现有独立风险策略（实际资金账户负余额加重），F=USER_FACT（仅手机用户勾选）。R 不表示普通金额变化一律需要勾选。所有输入 schema、类型引用、默认值、前提、比较字段、执行方式、正常示例、失败处理和 undo 均由 `CommandRegistry` 的实际适配器导出。未知字段/版本/命令整份拒绝。
@@ -169,3 +177,26 @@
 - `CommandFlowTest`（`looks=all visual=true`）5 项通过；已查看三主题×中日文的 `*-finance-preview.png`、`*-finance-pool.png`、`*-finance-net.png`：事实勾选写明账户、金额、日期，未勾全不可确认；账期标签为"账户名 · 计划名 · 第 N 期 · 日期"，各主题风格一致。
 - 金融领域回归（CardPayment、CreditLimit、FinancialArrangement/Draft/Ledger/ManualArrangement/PlanImpact/Pool*/Prediction/Reconciliation*/Retroactive/Storage 及 FinancialDraftFlow、CreditLimitFlow、FinancialPoolPaymentFlow）73 项通过。
 - 真实网站往返仍为用户实测项，未声称已验证。
+
+### 金融规则差异与方案比较展示
+
+`CommandEffectViews` / `CommandFinanceViews` 接入本机共用的 `FinancialDisplayFacts` 只读投影：规则新版本取该步骤 `objects.before` 中同账户同模式最高版本，与新规则比较，首次建立单独标注；方案按存于该步骤办理记录中的 comparison 对齐日期，保留同日多行、账户/组成变化及不完整范围。共用紧凑日期/原/新/差额表，仅将不同的账户或组成列为行下小注；空值与键/嵌套段删除使用不同文案。不得从当前数据库最新规则补基线，不将展示摘要作为业务输入。逐项完整前后值、整批原子性、确认要求、冲突检查和撤销协议保持原样，不新增金融对象直达。验证入口为 `CommandFlowTest#financeCombinationPreviewAcrossLooks`（含同批前序版本与共同月付款比较）。
+
+预测/手填/余额池计划范围、核对字段与额度配置差异共用 `FinancialDisplayFacts`，每一步仅使用该步 `objects.before/after`（含未变化的相关账单），不使用最终净影响或当前数据库替换中间基线。名称也取该步快照。云端顺序为变化摘要 → 风险/缺项/未知 → 比较及逐项完整前后值入口 → 整批事实确认；原计算和归档继续是保存依据，投影不回传业务输入。整批原子性、事实要求、冲突检测、撤销协议和不新增金融对象跳转的决定保持不变。
+
+本机完整依据入口保留逐期账单、组成、付款账户、原预测依据和版本历史；云端“逐项查看前后与连带影响”保留每个字段的前后绝对值。同批前序规则/月付款变更的中间基线由 `CommandFlowTest#financeCombinationPreviewAcrossLooks` 验证，未知/日期/账户差异由 `FinancialDisplayFactsTest` 验证。
+
+
+### 金融 UI 阶段 5 联动
+
+本机批量转换撤销入口在管理 → 办理与版本历史 → 指定批次，循环计划历史也可进入。`financialBatchRevolving.undo` 命令名及输入协议不变，预览从该批次 `BatchArrangementArchive` 生成 `BatchRestorationFacts`（步骤内 `revolvingBatchArchive` 只读展示对象），包括办理时间/批次、原消费及逐笔金额/合计、原一次付、目标循环计划和恢复范围；原撤销事务及全部冲突校验继续执行。该操作称「撤销这次批量转换记录」，执行历史的另一入口称「撤销整份云端方案」，不能互换。完整恢复事实不取当前计划替代归档。
+
+`CommandFinanceViews` 与 `CommandEffectViews` 同步三种 sharing 关系、未配置/未知、跨账户共享组限制及限制后预计可用；上限与可用值分开。金融时间使用步骤捕获的规则时区，平台观测按原时间串偏移，既有 Z 记录显示 UTC，不补造原地区时区；记录时间单列。格式化只影响显示，不进入条件摘要或业务写入，不改变 Instant 精度。
+
+统一「循环还款计划」「本期付款方式变更截止」「核对当前还款安排」「已替换计划」「结账日」「奖金月付款」等名称，`POOL`、枚举、命令、协议、事实确认、原子性和撤销规则不变；仍不新增金融对象跳转。`CommandFlowTest.batchUndoAndLimitRelationshipsUseArchivedFinancialFactsAcrossLooks` 覆盖撤销归档与额度预览；数据回归继续用 `CommandFinanceExecutionTest.poolPaymentBatchConversionAndAuditedRestoration` / `sharedLimitsRecoveryVoidAndActualObservation`。
+
+批次显示以归档办理时间和原消费名称为依据，不输出内部 UUID；原消费按原付款日、名称排序，恢复列表将目标循环计划置后。本机历史仅有“查看并撤销”或已撤销后的“查看”，确认动作在详情内。
+
+额度关系只说明一次，各项上限不在关系与金额摘要中重复。配置预览中变化的上限只在差异区显示，未变化的上限仍在关系区保留：不适用字段不显示，关系切换删除的旧上限仍明确显示旧金额 → 已移除。完整前后依据保留。
+
+云端确认事实会规范化带 ID 的数组；批次摘要在最终展示边界应用同一业务排序，不能依赖序列化顺序。额度追加版本的差异基线取本步骤捕获的 `creditLimit.before.config`（或同一步的旧配置快照），不能把新增存储行的空 before 当成首次配置，也不能查询当前数据库补基线。

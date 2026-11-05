@@ -18,8 +18,7 @@ import com.yohaku.expensetracker.ui.theme.*
     }
     if(r.planImpacts.isEmpty())return
     ThemeSection(word("还款计划影响","返済予定への影響"),"SCHEDULE IMPACT")
-    r.planImpacts.forEach{impact->Panel(Modifier.testTag("finance-plan-impact-${impact.original.id}")) {
-        var detail by rememberSaveable(impact.original.id){mutableStateOf(false)}
+    r.planImpacts.forEach{impact->FinancialReviewSection(impact.original.name,Modifier.testTag("finance-plan-impact-${impact.original.id}")) {
         val currency=Currency.valueOf(impact.original.currency)
         val before=impact.originalBills.filter{it.active}
         val after=impact.nextBills
@@ -30,43 +29,42 @@ import com.yohaku.expensetracker.ui.theme.*
         }
         val unknown=word("未知","不明")
         fun amount(n:Long?)=n?.let{Money(currency,it).display()}?:unknown
-        YText(impact.original.name,18)
+        FinancialPlanChangeSummary("",FinancialDisplayFacts.plan(impact.original,impact.forecast?.plan?.takeIf{impact.updatesPrediction}?:impact.original,before,after),currency,summary=false)
         YText(if(impact.updatesPrediction)word("确认后与实际记录一起更新预测","確定時に実記録と予測を一緒に更新")else word("保留原计划；待付金额按实际分配更新","元の予定を保持し、請求残額は実充当に応じて更新"),12,color=if(impact.updatesPrediction)LocalYohaku.current.accent else LocalYohaku.current.muted)
         impact.issue?.let{YText(planImpactIssue(it),11,color=LocalYohaku.current.muted)}
         when(val result=impact.forecast?.calculation) {
             is Calculation.Incomplete->FinancialReadiness(RuleReadiness.Incomplete(result.fields),word("此计划暂不能自动重算","この予定は自動再計算できません"))
-            is Calculation.Unsupported->FinancialCalculationResult(result,currency)
-            is Calculation.CannotSettle->FinancialCalculationResult(result,currency)
+            is Calculation.Unsupported->FinancialCalculationResult(result,currency,compact=true)
+            is Calculation.CannotSettle->FinancialCalculationResult(result,currency,compact=true)
             else->Unit
         }
-        if(impact.updatesPrediction&&impact.forecast!!.plan.principalMinor!=impact.original.principalMinor)RecordFacts(listOf(word("计划来源本金","予定の対象元金") to (amount(impact.original.principalMinor)+" → "+amount(impact.forecast.plan.principalMinor))))
         RecordFacts(listOf(word("待付合计","請求残額の合計") to (amount(total(before,r.before.ledger))+" → "+amount(total(after,r.after))),
             word("待付利息及费用","未払利息・手数料") to (amount(fees(before,r.before.ledger))+" → "+amount(fees(after,r.after))),
             word("保存的计划版本","保存する予定の版") to "${impact.original.revision} → ${impact.original.revision+1}"))
         YText(word("确认账单金额与原预测依据保持原值，本次清偿会减少对应待付。","確定請求額・元の予測根拠を保持し、今回の返済で対応する請求残額を減らします。"),11)
-        YButton(word("逐期变化","各回の変化")+if(detail)" −"else" +",{detail=!detail},Modifier.testTag("finance-plan-impact-detail-${impact.original.id}"))
-        if(detail)(before+after).distinctBy{it.id}.sortedWith(compareBy<FinancialBillEntity>{it.date}.thenBy{it.number}).forEach{bill->
+        FinancialFullDetails(tag="finance-plan-impact-detail-${impact.original.id}") {
+        (before+after).distinctBy{it.id}.sortedWith(compareBy<FinancialBillEntity>{it.date}.thenBy{it.number}).forEach{bill->
             val old=before.firstOrNull{it.id==bill.id};val next=after.firstOrNull{it.id==bill.id}
-            Panel(Modifier.testTag("finance-plan-impact-period-${impact.original.id}-${bill.number}")) {
-                YText(word("第${bill.number}期","第${bill.number}回"),14)
+            FinancialReviewSection(word("第${bill.number}期","第${bill.number}回"),Modifier.testTag("finance-plan-impact-period-${impact.original.id}-${bill.number}")) {
                 RecordFacts(listOf(word("日期","日付") to ((old?.date?:"—")+" → "+(next?.date?:"—")),
                     word("本金","元金") to ((old?.let{amount(it.principalMinor)}?:"—")+" → "+(next?.let{amount(it.principalMinor)}?:"—")),
                     word("利息 / 费用","利息・手数料") to ((old?.let{amount(it.feeMinor)}?:"—")+" → "+(next?.let{amount(it.feeMinor)}?:"—")),
                     word("实际分配后待付","実充当後の請求残額") to (amount(old?.let{r.before.ledger.billOutstanding(it).totalMinor}?:0)+" → "+amount(next?.let{r.after.billOutstanding(it).totalMinor}?:0))))
             }
         }
+        }
     }}
 }
 
 @Composable private fun planImpactIssue(issue:FinancialPlanImpactIssue)=when(issue) {
-    FinancialPlanImpactIssue.POOL_OPENING_CHANGED->word("账户期初日期或金额已变化；本次记录可正常保存，保留原预测，请核对并重算账户余额池。","口座の期首日・金額が変わっています。今回の記録は保存でき、元の予測を保持します。口座プールを確認・再計算してください。")
-    FinancialPlanImpactIssue.RETAINED_POOL->word("原账单已纳入账户余额池，保留原金额并通过余额池更新未来预测。","元の請求は口座プールに統合済みです。元の金額を保持し、プールで将来の予測を更新します。")
+    FinancialPlanImpactIssue.POOL_OPENING_CHANGED->word("账户期初日期或金额已变化；本次记录可正常保存，保留原预测，请核对并重算循环还款计划。","口座の期首日・金額が変わっています。今回の記録は保存でき、元の予測を保持します。リボ・循環返済プランを確認・再計算してください。")
+    FinancialPlanImpactIssue.RETAINED_POOL->word("原账单已纳入循环还款计划，保留原金额并通过循环还款计划更新未来预测。","元の請求はリボ・循環返済プランに統合済みです。元の金額を保持し、循環返済プランで将来の予測を更新します。")
     FinancialPlanImpactIssue.RETAINED_ARRANGEMENT->word("这是已办理变更后保留的义务，按原账单及实际分配核对。","手続き済み変更後に保持する債務です。元の請求・実充当で確認します。")
     FinancialPlanImpactIssue.MANUAL->word("这是手动已知计划。本次保存实际分配与版本快照，逐期平台金额由用户明确核对。","既知の手動予定です。実充当と版の記録を保存し、各回の返済先金額は明示的に確認します。")
     FinancialPlanImpactIssue.SOURCE_CHANGED->word("来源资料已变化，请打开原计划核对后重算。","対象情報が変わっています。元の予定を確認して再計算してください。")
     FinancialPlanImpactIssue.SOURCE_REMOVED->word("来源记录已移入回收站，保留独立计划和本次实际清偿。","対象記録はごみ箱にあります。独立した予定と今回の実返済を保持します。")
     FinancialPlanImpactIssue.ACCOUNT_INACTIVE->word("计划账户已停用，请先核对原计划。","予定の口座が無効です。元の予定を確認してください。")
-    FinancialPlanImpactIssue.PAYMENT_ACCOUNT->word("计划扣款账户已停用，请核对未来实际付款账户。","予定の引落口座が無効です。将来の実支払口座を確認してください。")
+    FinancialPlanImpactIssue.PAYMENT_ACCOUNT->word("计划付款账户已停用，请核对未来实际付款账户。","予定の引落口座が無効です。将来の実支払口座を確認してください。")
     FinancialPlanImpactIssue.OPENING_PRINCIPAL->word("期初本金或其他计划的分配已变化，请核对来源本金。","期首元金・他の予定への割当てが変わっています。対象元金を確認してください。")
     FinancialPlanImpactIssue.CONTRACT_PRINCIPAL->word("合同本金与计划来源本金不同，请核对合同和原计划。","契約元金と予定の対象元金が異なります。契約・元の予定を確認してください。")
 }

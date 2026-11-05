@@ -190,7 +190,7 @@ import java.time.YearMonth
     }
 }
 /** Owner identifies the only calendar expanded in the enclosing form. */
-@Composable fun YDateFields(fields:List<Pair<String,String>>,activeOwner:Int?,onOwner:(Int?)->Unit,onDate:(Int,String)->Unit) {
+@Composable fun YDateFields(fields:List<Pair<String,String>>,activeOwner:Int?,onOwner:(Int?)->Unit,onDate:(Int,String)->Unit,displayValues:List<String>?=null) {
     val t=LocalYohaku.current
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
@@ -201,9 +201,9 @@ import java.time.YearMonth
             val textSize=if(t.id=="journal")15 else 13
             val reserved=if(t.id=="objects")48.dp else if(t.id=="journal")37.dp else 35.dp
             val available=with(density){((maxWidth-12.dp*(fields.size-1))/fields.size-reserved).toPx()}
-            val stacked=fields.any{(_,value)->measurer.measure(value.replace("T"," "),TextStyle(fontFamily=t.body,fontSize=textSize.sp),softWrap=false).size.width>available}
+            val stacked=fields.mapIndexed{i,pair->displayValues?.get(i)?:pair.second.replace("T"," ")}.any{value->measurer.measure(value,TextStyle(fontFamily=t.body,fontSize=textSize.sp),softWrap=false).size.width>available}
             @Composable fun trigger(i:Int,label:String,value:String,modifier:Modifier) {
-                DateTrigger(label,value,modifier.testTag("date-field-$i")){
+                DateTrigger(label,displayValues?.get(i)?:value.replace("T"," "),modifier.testTag("date-field-$i")){
                     if(activeOwner!=i){focus.clearFocus();keyboard?.hide()}
                     onOwner(if(activeOwner==i)null else i)
                 }
@@ -216,13 +216,21 @@ import java.time.YearMonth
             val selected=LocalDate.parse(raw.substringBefore("T"))
             val hasTime=raw.contains("T")
             val time=raw.substringAfter("T","09:00").take(5)
-            fun commit(date:String){onDate(owner,if(hasTime)date+"T"+time else date)}
+            // The calendar edits date/hour/minute only. Keep any original seconds and fraction.
+            fun commitTime(value:java.time.LocalDateTime) {
+                val original=java.time.LocalDateTime.parse(raw)
+                onDate(owner,if(value==original)raw else value.toString())
+            }
+            fun commit(date:String){
+                if(hasTime)commitTime(java.time.LocalDateTime.of(LocalDate.parse(date),java.time.LocalDateTime.parse(raw).toLocalTime()))
+                else onDate(owner,date)
+            }
             var month by remember(owner){mutableStateOf(YearMonth.from(selected))}
             CalendarSurface {
                 CalendarBody(fields[owner].first,month,selected,{month=it},{date->commit(date.toString());onOwner(null)},{onOwner(null)},timeFields=if(hasTime){ {
                     Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){
-                        YSelect(word("时","時"),time.substringBefore(":"),(0..23).map{it.toString().padStart(2,'0').let{n->n to n}},{v->onDate(owner,selected.toString()+"T"+v+":"+time.substringAfter(":"))},Modifier.weight(1f))
-                        YSelect(word("分","分"),time.substringAfter(":"),(0..59).map{it.toString().padStart(2,'0').let{n->n to n}},{v->onDate(owner,selected.toString()+"T"+time.substringBefore(":")+":"+v)},Modifier.weight(1f))
+                        YSelect(word("时","時"),time.substringBefore(":"),(0..23).map{it.toString().padStart(2,'0').let{n->n to n}},{v->commitTime(java.time.LocalDateTime.parse(raw).withHour(v.toInt()))},Modifier.weight(1f))
+                        YSelect(word("分","分"),time.substringAfter(":"),(0..59).map{it.toString().padStart(2,'0').let{n->n to n}},{v->commitTime(java.time.LocalDateTime.parse(raw).withMinute(v.toInt()))},Modifier.weight(1f))
                     }
                 } } else null)
             }
@@ -283,7 +291,7 @@ import java.time.YearMonth
         }
         Box(Modifier.fillMaxWidth().then(frame)){
             Row(Modifier.fillMaxWidth().padding(start=if(objects)12.dp else if(journal)2.dp else 0.dp,end=if(objects)36.dp else 35.dp,top=if(objects)14.dp else if(journal)12.dp else 13.dp,bottom=if(objects)14.dp else if(journal)9.dp else 14.dp),verticalAlignment=Alignment.CenterVertically){
-                YText(value.replace("T"," "),size,Modifier.weight(1f),lineHeightMultiplier=line/size,cssLineBox=true)
+                YText(value,size,Modifier.weight(1f),lineHeightMultiplier=line/size,cssLineBox=true)
             }
             Box(Modifier.align(Alignment.TopEnd).offset(x=(-5).dp,y=9.dp).size(28.dp,29.dp).testTag("date-icon-"+label).then(if(objects)Modifier.background(Color(0xffe4cbaa),RoundedCornerShape(8.dp)) else Modifier),contentAlignment=Alignment.Center){
                 YIcon("life",Modifier.size(if(objects)15.dp else 17.dp),if(objects)Color(0xffb08b5c) else t.ink)

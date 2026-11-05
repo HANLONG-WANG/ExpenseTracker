@@ -1,6 +1,8 @@
 package com.yohaku.expensetracker.ui.features
 
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import com.yohaku.expensetracker.data.db.*
@@ -14,7 +16,7 @@ import com.yohaku.expensetracker.ui.theme.*
     val p=s.financialPlanProgress(f,plan,asOf,stale);val currency=Currency.valueOf(plan.currency)
     fun amount(n:Long?)=n?.let{Money(currency,it).display()}
     val unknown=word("未知 / 待核对","不明・要確認")
-    ThemeAuditPanel(word("这份计划的剩余安排","このプランの残りの予定"),Modifier.testTag("finance-progress-${plan.id}")) {
+    Column(Modifier.testTag("finance-progress-${plan.id}"),verticalArrangement=Arrangement.spacedBy(10.dp)) {
         RecordFacts(listOf(word("待付 / 已列期次","未払・記載全回数") to "${p.unpaidPeriods} / ${p.listedPeriods}",
             word("其中已到期未清","うち期日経過・未返済") to p.overduePeriods.toString(),
             word("已列待还本金","予定分の未返済元金") to (amount(p.principalMinor)?:unknown),
@@ -44,7 +46,7 @@ import com.yohaku.expensetracker.ui.theme.*
     var mode by androidx.compose.runtime.saveable.rememberSaveable(s.book.id,a.id){androidx.compose.runtime.mutableStateOf(if(f.contracts.any{it.accountId==a.id&&it.mode=="FIXED_LOAN"})"FIXED_LOAN"else if(f.contracts.any{it.accountId==a.id&&it.mode=="CREDIT_LINE"}||f.plans.any{it.accountId==a.id&&it.active&&it.mode=="CREDIT_LINE"})"CREDIT_LINE"else"FIXED_LOAN")}
     ThemeSection(word("固定借款与循环借入","固定借入と循環借入"),"TWO BORROWING MODES")
     YTabs(listOf("FIXED_LOAN" to word("固定合同","固定契約"),"CREDIT_LINE" to word("循环借入","循環借入")),mode,{mode=it})
-    YText(if(mode=="FIXED_LOAN")word("每份合同独立维护期数与本金、利息、费用。等额本金、等额本息、到期还本或手动计划依用户规则计算。","契約ごとに回数・元金・利息・手数料を管理。元金均等・元利均等・満期一括・手入力はユーザー条件に従います。")else word("以账户循环余额池维护共同月付款，后续借入、实际清偿按事件日期进入计息。可用额度另按已配置额度及恢复条件判断。","口座プールで共通の月次支払を管理。追加借入・実返済はイベント日から計算。利用可能枠は設定した枠・回復条件で別に判定します。"),11)
+    YText(if(mode=="FIXED_LOAN")word("每份合同独立维护期数与本金、利息、费用。等额本金、等额本息、到期还本或手动计划依用户规则计算。","契約ごとに回数・元金・利息・手数料を管理。元金均等・元利均等・満期一括・手入力はユーザー条件に従います。")else word("以循环还款计划维护共同月付款，后续借入、实际清偿按事件日期进入计息。可用额度另按已配置额度及恢复条件判断。","リボ・循環返済プランで共通の月次支払を管理。追加借入・実返済はイベント日から計算。利用可能枠は設定した枠・回復条件で別に判定します。"),11)
     val contracts=f.contracts.filter{it.accountId==a.id&&it.mode==mode}
     if(contracts.isEmpty())YText(word("该模式尚无合同资料。","この方式の契約情報はまだありません。"),12)
     contracts.forEach{c->
@@ -54,7 +56,7 @@ import com.yohaku.expensetracker.ui.theme.*
             val links=f.contractPlans.filter{it.contractId==c.id}.map{it.planId}.toSet()
             val plans=f.plans.filter{it.active&&(it.id in links||c.fundingEventId!=null&&it.sourceEventId==c.fundingEventId)}
             val merged=f.arrangements.mapNotNull{change->val target=f.plans.first{it.id==change.targetPlanId};if(target.id !in links&&!(c.fundingEventId!=null&&target.sourceEventId==c.fundingEventId))null else f.reconciliationPool(target)?.name}
-            YText(if(merged.isNotEmpty())word("已并入共同付款池：","共通支払プールに統合済み：")+merged.distinct().joinToString()else if(plans.isEmpty())word("尚未关联逐期付款安排。","各回の支払予定は未関連です。")else word("关联计划：","関連プラン：")+plans.joinToString{it.name},11)
+            YText(if(merged.isNotEmpty())word("已并入循环还款计划：","リボ・循環返済プランに統合済み：")+merged.distinct().joinToString()else if(plans.isEmpty())word("尚未关联逐期付款安排。","各回の支払予定は未関連です。")else word("关联计划：","関連プラン：")+plans.joinToString{it.name},11)
         }
     }
     val standalone=f.plans.filter{plan->plan.accountId==a.id&&plan.active&&plan.mode==mode&&plan.origin !in listOf("POOL","POOL_RETAINED")&&contracts.none{c->f.contractPlans.any{it.contractId==c.id&&it.planId==plan.id}||c.fundingEventId!=null&&c.fundingEventId==plan.sourceEventId}}
@@ -64,7 +66,7 @@ import com.yohaku.expensetracker.ui.theme.*
     }}
     if(mode=="CREDIT_LINE") {
         val pools=f.plans.filter{it.accountId==a.id&&it.origin=="POOL"&&it.active}
-        if(pools.isEmpty())YText(word("账户循环余额池尚未建立；借入合同不等于已完整安排付款。","口座の循環プールは未作成。借入契約だけでは支払予定が揃ったことにはなりません。"),12,color=LocalYohaku.current.warm)
+        if(pools.isEmpty())YText(word("循环还款计划尚未建立；借入合同不等于已完整安排付款。","口座の循環循環返済プランは未作成。借入契約だけでは支払予定が揃ったことにはなりません。"),12,color=LocalYohaku.current.warm)
         else pools.forEach{YText(word("账户共同付款计划：","口座共通の支払プラン：")+it.name,12)}
     }
     YText(word("同一账户可以有两类借款。合同与付款计划用于解释来源，不再次加到上方账户欠款。","同じ口座に両方式の借入を記録できます。契約・支払予定は内訳で、上の口座残債へ重複加算しません。"),11,color=LocalYohaku.current.muted)

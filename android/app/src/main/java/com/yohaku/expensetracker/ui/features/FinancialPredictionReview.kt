@@ -14,16 +14,19 @@ import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
-@Composable internal fun FinancialPredictionReviewContent(r:FinancialPredictionReview,vm:AppViewModel,onSaved:()->Unit) {
-    val draftSession=requireNotNull(LocalFinancialDraft.current)
-    val busy by vm.busy.collectAsStateWithLifecycle()
+@Composable internal fun FinancialPredictionReviewContent(r:FinancialPredictionReview,vm:AppViewModel) {
     val refreshed by vm.financialReviewRefreshed.collectAsStateWithLifecycle()
     val currency=Currency.valueOf(r.plan.currency)
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(15.dp)) {
         if(refreshed)FinanceRefreshed()
-        YText(r.plan.name,18)
-        RecordFacts(listOf(word("关联本金","対象元金") to Money(currency,r.plan.principalMinor!!).display(),
-            word("保留确认账期","保持する確定請求") to r.retainedConfirmed.size.toString(),word("保留有付款或已过期的原预测","支払関連・期日経過の元予測を保持") to r.retainedOther.size.toString(),word("退出当前预测的账期","現在の予測から除外する回") to r.withdrawn.size.toString()))
+        val previous=r.before.finance.plans.firstOrNull{it.id==r.plan.id}
+        FinancialPlanChangeSummary(r.plan.name,FinancialDisplayFacts.plan(previous,r.plan,r.before.finance.bills.filter{it.planId==r.plan.id},r.bills),currency)
+        when(val calculation=r.calculation) {
+            is Calculation.Incomplete->FinancialReadiness(RuleReadiness.Incomplete(calculation.fields),word("预测需要补充或核对","予測に必要な情報・確認"))
+            is Calculation.Unsupported->FinancialCalculationResult(calculation,currency,compact=true)
+            is Calculation.CannotSettle->FinancialCalculationResult(calculation,currency,compact=true)
+            is Calculation.Ready->Unit
+        }
         val actualRemaining=Math.subtractExact(r.originalPrincipalMinor,r.facts.principalFacts().filter{it.date<=r.facts.asOf}.fold(0L){sum,p->Math.addExact(sum,p.principalMinor)})
         RecordFacts(listOf(word("计算基准日","計算基準日") to r.facts.asOf,word("实际清偿 / 退款后的来源本金","実返済・返金後の対象元金") to Money(currency,actualRemaining).display()))
         YText(word("已确认、有付款关联和已过期的原账单保留。只假设未来未付本金在对应付款日支付；逾期未付部分不当作已偿还。","確定・支払関連・期日経過の元請求は保持します。将来の未払元金のみ支払日に支払うと仮定し、延滞の未払分を返済済みにはしません。"),11,color=LocalYohaku.current.muted)
@@ -32,30 +35,30 @@ import com.yohaku.expensetracker.ui.theme.*
         YText(word("保存只更新预测；已确认金额、原消费、实际资金与欠款余额不变。","保存で更新するのは予測です。確定金額・元の支出・実資金・借入残高は変わりません。"),11,color=LocalYohaku.current.muted)
         when(val calculation=r.calculation) {
             is Calculation.Ready->{
-                r.bills.forEach{bill->Panel(Modifier.testTag("prediction-review-period-${bill.number}")) {
+                val remaining=calculation.value.lastOrNull()?.basis?.remainingPrincipalMinor?:actualRemaining
+                YText(word("预测范围后的剩余本金：","予測範囲後の残元金：")+Money(currency,remaining).display(),14,Modifier.testTag("prediction-remaining"))
+                FinancialFullDetails {
+                r.bills.forEach{bill->Column(Modifier.testTag("prediction-review-period-${bill.number}"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     FinancialBillFacts(bill,currency)
                     RecordFacts(listOf(word("实际清偿后本期待付","実返済後の当期残額") to Money(currency,r.before.ledger.billOutstanding(bill).totalMinor).display()))
                     calculation.value.firstOrNull{it.period.number==bill.number}?.let{FinancialProjectionFacts(it.basis,currency)}
                     if(bill.basisJson!=null)FinancialPredictionBasis(bill,r.before.finance,currency,vm,r.before.ledger,historical=bill.id in r.retainedOther.map{it.id})
                 }}
-                val remaining=calculation.value.lastOrNull()?.basis?.remainingPrincipalMinor?:actualRemaining
-                YText(word("预测范围后的剩余本金：","予測範囲後の残元金：")+Money(currency,remaining).display(),14,Modifier.testTag("prediction-remaining"))
-            }
-            is Calculation.Incomplete->FinancialReadiness(RuleReadiness.Incomplete(calculation.fields),word("预测需要补充或核对","予測に必要な情報・確認"))
-            is Calculation.Unsupported->FinancialCalculationResult(calculation,currency)
-            is Calculation.CannotSettle->FinancialCalculationResult(calculation,currency)
-        }
-        YActionRow {
-            YButton(word("确认保存预测计划","予測プランを保存"),{var saved=false;vm.execute(onSuccess={if(saved)onSaved()}) {
-                saved=commitFinancialDraft(draftSession){vm.repository.commitFinancialPrediction(r)}!=null
-                if(saved)vm.financialPredictionReview.value=null else {
-                    vm.financialPredictionReview.value=vm.repository.previewFinancialPrediction(r.plan.bookId,r.input)
-                    vm.financialReviewRefreshed.value=true
                 }
-            }},Modifier.testTag("prediction-confirm"),primary=true,enabled=!busy&&r.calculation is Calculation.Ready)
-            YButton(word("返回修改","戻って修正"),{vm.financialPredictionReview.value=null},Modifier.testTag("prediction-review-back"),enabled=!busy)
+            }
+            else->Unit
         }
+
     }
+}
+
+@Composable internal fun FinancialPredictionReviewActions(r:FinancialPredictionReview,vm:AppViewModel,onSaved:()->Unit,onStale:()->Unit) {
+    val draftSession=requireNotNull(LocalFinancialDraft.current)
+    val busy by vm.busy.collectAsStateWithLifecycle()
+            YButton(word("确认保存预测计划","予測プランを保存"),{var saved=false;vm.execute(onSuccess={if(saved)onSaved()else onStale()}) {
+                saved=commitFinancialDraft(draftSession){vm.repository.commitFinancialPrediction(r)}!=null
+                if(saved)vm.financialPredictionReview.value=null
+            }},Modifier.testTag("prediction-confirm"),primary=true,enabled=!busy&&r.calculation is Calculation.Ready)
 }
 
 @Composable internal fun FinancialPredictionBasis(bill:FinancialBillEntity,finance:FinancialGraph,currency:Currency,vm:AppViewModel,snapshot:BookSnapshot,historical:Boolean=false) {
@@ -63,8 +66,8 @@ import com.yohaku.expensetracker.ui.theme.*
     val basis=vm.repository.json.decodeFromString<FinancialCalculationBasis>(bill.basisJson!!)
     YButton((if(bill.confirmed||historical)word("原预测依据","元の予測根拠")else word("计算依据","計算根拠"))+if(open)" −"else " +",{open=!open},Modifier.testTag("prediction-basis-${bill.id}"))
     if(open) {
-        YText(word("预测期后本金：","予測の支払後元金：")+Money(currency,basis.remainingPrincipalMinor).display(),12)
-        basis.paymentSetting?.let{setting->ThemeAuditPanel(word("本期采用的月付款","当期に採用する月払い"),Modifier.testTag("pool-payment-basis-${bill.id}")) {
+        YText(word("预测期后本金：","予測の支払後元金：")+Money(currency,basis.remainingPrincipalMinor).display(),12,Modifier.testTag("prediction-basis-detail-${bill.id}"))
+        basis.paymentSetting?.let{setting->FinancialReviewSection(word("本期采用的月付款","当期に採用する月払い"),Modifier.testTag("pool-payment-basis-${bill.id}")) {
             PoolPaymentSettingFacts(setting,currency)
             YText(word("以下基础规则仍用于计息和舍入，其默认月付款由这份已办理条件替代。","以下の基本条件は金利・丸めに使い、既定の月支払額はこの手続き済み条件で置き換えます。"),11)
         }}

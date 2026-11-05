@@ -41,10 +41,11 @@ class FinancialDraftFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close();if(InstrumentationRegistry.getArguments().getString("processPhase")!="write")InstrumentationRegistry.getInstrumentation().targetContext.deleteDatabase("financial-draft-ui.db")}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -104,7 +105,7 @@ class FinancialDraftFlowTest {
                 if(ui.onAllNodesWithTag("financial-draft-resume-$kind").fetchSemanticsNodes().isEmpty())tapTag("financial-drafts-open")
                 tapTag("financial-draft-resume-$kind")
             }
-            enterAccount();tapTag("analysis-tab-movements");tapTag("finance-add-borrowing")
+            enterAccount();tapTag("finance-tab-manage");tapTag("finance-manage-contracts");tapTag("finance-add-borrowing")
             val name=text("合同名称","契約名");val principal=text("合同本金","契約元金")+" · JPY"
             textField(name).performScrollTo().performTextReplacement("循環の下書き")
             textField(principal).performScrollTo().performTextReplacement("3000")
@@ -117,7 +118,7 @@ class FinancialDraftFlowTest {
             for((label,value) in listOf(text("实际到账","実入金額") to "2900",text("预扣费用 / 不明留空","天引手数料・不明なら空欄") to "100",text("另付费用 / 未知留空","別払い手数料・不明なら空欄") to "0"))textField(label+" · JPY").performScrollTo().performTextReplacement(value)
             val ctx=FinancialDraftContext("BORROW",loan)
             ui.waitUntil(10000){runBlocking{db.financialDao().draft(book,ctx.slot())?.valuesJson?.contains("2900")==true}&&ui.onAllNodesWithText(text("正在保存草稿…","下書きを保存中…")).fetchSemanticsNodes().isEmpty()}
-            tapTag("sheet-close");tapTag("analysis-tab-overview");resume("BORROW")
+            tapTag("finance-flow-close");tapTag("finance-tab-overview");resume("BORROW")
             textField(principal).assertTextEquals("3000");textField(name).assertTextEquals("循環の下書き")
             restart();enterAccount();resume("BORROW")
             textField(principal).assertTextEquals("3000");textField(name).assertTextEquals("循環の下書き")
@@ -125,12 +126,12 @@ class FinancialDraftFlowTest {
             shot("$theme-$language-draft-resumed")
             tapTag("finance-borrow-preview");tapTag("finance-ledger-confirm")
             ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.financialDao().draft(book,ctx.slot())==null}&&(vm.state.value as? AppState.Ready)?.snapshot?.visibleEvents?.size==1}
-            tapTag("analysis-tab-movements");tapTag("finance-add-repayment")
+            tapTag("finance-tab-manage");tapTag("finance-manage-records");tapTag("finance-add-repayment")
             val paid=text("实际扣款总额","実出金総額")+" · JPY"
             textField(paid).performScrollTo().performTextReplacement("12.")
             val repay=FinancialDraftContext("REPAY",loan)
             ui.waitUntil(10000){runBlocking{db.financialDao().draft(book,repay.slot())?.valuesJson?.contains("12.")==true}}
-            tapTag("sheet-close");tapTag("analysis-tab-overview");resume("REPAY")
+            tapTag("finance-flow-close");tapTag("finance-tab-overview");resume("REPAY")
             textField(paid).assertTextEquals("12.");tapTag("financial-draft-discard")
             ui.waitUntil(10000){!vm.busy.value&&runBlocking{db.financialDao().drafts(book,loan).first().isEmpty()}}
             val s=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
@@ -159,7 +160,7 @@ class FinancialDraftFlowTest {
         ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
         ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$loan");tapTag("account-financial")
         if(phase=="write") {
-            tapTag("analysis-tab-movements");tapTag("finance-add-borrowing")
+            tapTag("finance-tab-manage");tapTag("finance-manage-contracts");tapTag("finance-add-borrowing")
             textField("合同名称").performScrollTo().performTextReplacement("进程恢复的未完成借款")
             textField("合同本金 · JPY").performScrollTo().performTextReplacement("4321")
             ui.waitUntil(10000){runBlocking{db.financialDao().draft(book,FinancialDraftContext("BORROW",loan).slot())?.valuesJson?.contains("4321")==true}}
@@ -176,7 +177,7 @@ class FinancialDraftFlowTest {
         assertTrue(s.events.isEmpty());assertEquals(0L,s.balance(s.accounts.first{it.id==loan}))
     }
 
-    @Test fun switchingBooksCanKeepDiscardOrContinueAnInlineFinancialRuleDraft() {
+    @Test fun closedRuleDraftCanBeKeptResumedOrDiscardedAcrossBookSwitches() {
         val (book,other,card)=runBlocking {
             val b=repo.createBook("元の帳簿",Currency.JPY,"journal","ja",startDate="2026-10-01")
             repo.updateBook(repo.dao.book(b)!!.copy(initialized=true))
@@ -188,26 +189,40 @@ class FinancialDraftFlowTest {
         fun openRuleDraft() {
             waitBook(book);ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial")
         }
-        fun switchPrompt() {
-            tapTag("header-book")
-            ui.waitUntil(10000){ui.onAllNodesWithText("切替先").fetchSemanticsNodes().isNotEmpty()}
-            ui.onNodeWithText("切替先").performScrollTo().performClick()
-            ui.waitUntil(10000){ui.onAllNodesWithTag("financial-draft-switch-keep").fetchSemanticsNodes().isNotEmpty()}
+        fun closeFlow() {
+            ui.onAllNodes(hasTestTag("header-book") and hasAnyAncestor(hasTestTag("finance-flow"))).assertCountEquals(0)
+            tapTag("finance-flow-close")
+            ui.waitUntil(10000){vm.activeFinancialDraft.value==null}
         }
-        openRuleDraft();tapTag("analysis-tab-rules");tapTag("finance-edit-SINGLE")
+        fun switchBook(name:String,id:String) {
+            tapTag("header-book")
+            ui.onNodeWithText(name).performScrollTo().performClick()
+            waitBook(id)
+        }
+        openRuleDraft();tapTag("finance-tab-manage");tapTag("finance-manage-rules");tapTag("finance-edit-SINGLE")
         textField("金融取引のタイムゾーン").performScrollTo().performTextReplacement("Asia/Shanghai")
         ui.runOnIdle{vm.appearance(book,theme="objects")}
         ui.waitUntil(10000){!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme=="objects"}
         textField("金融取引のタイムゾーン").assertTextEquals("Asia/Shanghai")
         ui.runOnIdle{vm.appearance(book,theme="journal")};ui.waitUntil(10000){!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme=="journal"}
-        switchPrompt();shot("journal-ja-draft-switch");tapTag("financial-draft-switch-continue")
+        // Leaving the flow saves the draft. Cancelling book selection lets the user resume it.
+        closeFlow();tapTag("header-book");tapTag("page-back");waitBook(book)
+        tapTag("finance-edit-SINGLE")
         textField("金融取引のタイムゾーン").assertTextEquals("Asia/Shanghai")
-        switchPrompt();tapTag("financial-draft-switch-keep");waitBook(other)
+        closeFlow();switchBook("切替先",other)
         val ctx=FinancialDraftContext("RULE",card,mode="SINGLE")
         assertNotNull(runBlocking{db.financialDao().draft(book,ctx.slot())})
-        ui.runOnIdle{vm.selectBook(book)};openRuleDraft();tapTag("financial-drafts-open");tapTag("financial-draft-resume-RULE")
+        assertNull(runBlocking{db.financialDao().draft(other,ctx.slot())})
+        switchBook("元の帳簿",book);openRuleDraft();tapTag("financial-drafts-open");tapTag("financial-draft-resume-RULE")
         textField("金融取引のタイムゾーン").assertTextEquals("Asia/Shanghai")
-        switchPrompt();tapTag("financial-draft-switch-discard");waitBook(other)
+        ui.onNodeWithTag("finance-tab-manage").assertIsSelected()
+        // A resumed rule returns to the same draft list, including a detour through limits.
+        tapTag("finance-advanced");tapTag("finance-rule-open-limits");tapTag("finance-back")
+        textField("金融取引のタイムゾーン").assertTextEquals("Asia/Shanghai")
+        shot("journal-ja-draft-resumed-after-book-switch")
+        tapTag("financial-draft-discard")
+        ui.waitUntil(10000){!vm.busy.value&&vm.activeFinancialDraft.value==null}
+        switchBook("切替先",other)
         assertNull(runBlocking{db.financialDao().draft(book,ctx.slot())})
         assertTrue(runBlocking{repo.snapshot(repo.dao.book(book)!!).first().events.isEmpty()})
         assertTrue(runBlocking{repo.snapshot(repo.dao.book(other)!!).first().events.isEmpty()})

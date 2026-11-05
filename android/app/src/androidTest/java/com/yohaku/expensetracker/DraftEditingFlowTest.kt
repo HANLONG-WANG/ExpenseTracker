@@ -434,26 +434,26 @@ class DraftEditingFlowTest {
             ui.runOnIdle{vm.appearance(a,theme=theme);vm.navigate("ledger")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.theme==theme}
             waitFor("日常的每一笔。")
-            ui.onNodeWithTag("event-"+event).performScrollTo().assertIsDisplayed()
+            ui.revealOnPage("event-"+event).assertIsDisplayed()
             captureScreen("ledger",theme)
-            ui.onNodeWithTag("field-搜索商户、备注或金额").performScrollTo().performTextReplacement("采购")
+            ui.revealOnPage("field-搜索商户、备注或金额").performTextReplacement("采购")
             ui.onNodeWithTag("event-"+event).assertDoesNotExist()
-            ui.onNodeWithTag("event-"+second).assertExists()
-            ui.onNodeWithTag("field-搜索商户、备注或金额").performTextReplacement("300")
-            ui.onNodeWithTag("event-"+event).assertExists()
+            ui.revealOnPage("event-"+second).assertIsDisplayed()
+            ui.revealOnPage("field-搜索商户、备注或金额").performTextReplacement("300")
+            ui.revealOnPage("event-"+event).assertIsDisplayed()
             ui.onNodeWithTag("event-"+second).assertDoesNotExist()
-            ui.onNodeWithTag("field-搜索商户、备注或金额").performTextReplacement("")
-            ui.onNodeWithTag("ledger-filters").performScrollTo().performClick()
-            ui.onNodeWithTag("select-trigger-分类").performScrollTo().performClick()
+            ui.revealOnPage("field-搜索商户、备注或金额").performTextReplacement("")
+            ui.revealOnPage("ledger-filters").performClick()
+            ui.revealOnPage("select-trigger-分类").performClick()
             ui.onNodeWithTag("select-option-分类-1").performScrollTo().performClick()
-            ui.onNodeWithTag("event-"+event).assertExists()
-            ui.onNodeWithTag("event-"+second).assertExists()
-            ui.onNodeWithTag("select-trigger-分类").performScrollTo().performClick()
+            ui.revealOnPage("event-"+event).assertIsDisplayed()
+            ui.revealOnPage("event-"+second).assertIsDisplayed()
+            ui.revealOnPage("select-trigger-分类").performClick()
             ui.onNodeWithTag("select-option-分类-2").performScrollTo().performClick()
-            ui.onNodeWithTag("event-"+event).assertExists()
+            ui.revealOnPage("event-"+event).assertIsDisplayed()
             ui.onNodeWithTag("event-"+second).assertDoesNotExist()
-            tap("清除筛选")
-            ui.onNodeWithTag("ledger-filters").performScrollTo().performClick()
+            ui.revealOnPage(hasText("清除筛选")).performClick()
+            ui.revealOnPage("ledger-filters").performClick()
             ui.revealOnPage("event-"+event).performClick()
             waitFor("这一笔的详情")
             ui.onNodeWithText("×").performClick()
@@ -583,12 +583,15 @@ class DraftEditingFlowTest {
         }
     }
     @Test fun incomeAndOpeningIncludedRemovalShowTheirActualBudgetEffects(){
+        // Both expenses must belong to the current budget month, including the opening record.
+        val openingDate=java.time.LocalDate.now(repo.clock).withDayOfMonth(1).toString()
         val income=runBlocking{
+            repo.saveAccount(a,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),openingDate,account)
             repo.updateBook(repo.dao.book(a)!!.copy(budgetMinor=10000))
             val c=repo.saveCategory(a,"収入",EntryKind.INCOME,null)
             repo.saveEntry(a,EntryDraft(kind=EntryKind.INCOME,accountId=account,categoryId=c,amount="400",merchant="income-preview"))
         }
-        val historical=runBlocking{repo.saveEntry(a,EntryDraft(accountId=account,categoryId=category,amount="250",date="2026-10-01",merchant="opening-included",historicalIncluded=true))}
+        val historical=runBlocking{repo.saveEntry(a,EntryDraft(accountId=account,categoryId=category,amount="250",date=openingDate,merchant="opening-included",historicalIncluded=true))}
         for((theme,language) in testLooks(this@DraftEditingFlowTest)){
             ui.runOnIdle{vm.appearance(a,theme=theme,language=language);vm.navigate("ledger")}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.let{it.theme==theme&&it.language==language}==true}
@@ -1125,10 +1128,11 @@ class DraftEditingFlowTest {
             val nameTag=if(language=="zh")"field-账本名称" else "field-帳簿名"
             ui.onNodeWithTag(nameTag).performTextReplacement("別の生活 $theme $language")
             tap(if(language=="zh")"保存账本" else "帳簿を保存")
-            ui.waitUntil(10000){snapshot(b).book.name=="別の生活 $theme $language"}
+            ui.waitUntil(10000){snapshot(b).book.name=="別の生活 $theme $language"&&!vm.busy.value&&ui.onAllNodesWithTag("sheet-close").fetchSemanticsNodes().isEmpty()}
             assertEquals(a,(vm.state.value as AppState.Ready).snapshot?.book?.id)
             assertEquals("journal",snapshot(b).book.theme);assertEquals("ja",snapshot(b).book.language)
             ui.onNodeWithTag("book-edit-$a").performScrollTo().performClick()
+            ui.onNodeWithTag(nameTag).assertIsDisplayed()
             ui.onNodeWithTag(if(language=="zh")"select-trigger-统计本位币" else "select-trigger-基準通貨").assertDoesNotExist()
             ui.onNodeWithText("×").performClick()
             ui.onNodeWithTag("book-choice-$b").performScrollTo().performClick()

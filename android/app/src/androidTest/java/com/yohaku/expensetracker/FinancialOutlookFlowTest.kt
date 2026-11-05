@@ -38,10 +38,11 @@ class FinancialOutlookFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back")node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -188,7 +189,7 @@ class FinancialOutlookFlowTest {
             ui.waitUntil(10000){ui.onAllNodesWithTag("important-payment-${debits.first().id}").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("important-payment-${debits.first().id}").performScrollTo();shot("$theme-$language-card-recurring-forecast")
             ui.onNodeWithTag("important-payment-${missing.first().id}").performScrollTo()
-            ui.onAllNodesWithText(text("一次付规则未补齐，请核对締め日和扣款日。","一括払い条件が未補完です。締め日と引落日を確認してください。")).onFirst().assertExists()
+            ui.onAllNodesWithText(text("一次付规则未补齐，请核对结账日和扣款日。","一括払い条件が未補完です。締め日と引落日を確認してください。")).onFirst().assertExists()
             shot("$theme-$language-card-recurring-missing-rule")
             ui.runOnIdle{vm.navigate("home")}
             ui.waitUntil(10000){ui.onAllNodesWithTag("outlook-attention-${missing.first().id}").fetchSemanticsNodes().isNotEmpty()}
@@ -196,6 +197,23 @@ class FinancialOutlookFlowTest {
             ui.onNodeWithTag("outlook-attention-${missing.first().id}").performScrollTo();shot("$theme-$language-card-recurring-attention")
             tapTag("outlook-attention-${missing.first().id}")
             ui.waitUntil(10000){vm.route.value=="rules"&&ui.onAllNodesWithTag("finance-edit-SINGLE").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("finance-tab-manage").assertIsSelected()
+            ui.onNodeWithTag("finance-task-title").assertTextEquals(text("计算规则","計算条件"))
+            ui.onNodeWithTag("lead-title").assertDoesNotExist()
+            // Open the same account through the existing reminder handoff twice with new months.
+            val accountId=missing.first().sourceId
+            for(month in listOf("2026-11","2026-12")) {
+                ui.runOnIdle {
+                    vm.reminderTarget.value=com.yohaku.expensetracker.domain.reminders.ReminderItem(book,"navigation-$month","REPAYMENT","$month-10","JPY",null,"navigation",targetAccountId=accountId,targetMonth=month)
+                    vm.reminderBook.value=book
+                }
+                ui.waitUntil(10000){vm.reminderBook.value==null && ui.onAllNodes(hasTestTag("finance-statement-month") and hasAnyDescendant(hasText(month))).fetchSemanticsNodes().isNotEmpty()}
+                ui.onNodeWithTag("finance-tab-statement").assertIsSelected()
+            }
+            tapTag("finance-statement-previous")
+            runBlocking{repo.saveAccount(book,"ゆうちょ 更新",AccountType.BANK,Currency.JPY,Money(Currency.JPY,50000),"2026-10-01",bank)}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.accounts?.any{it.id==bank&&it.name=="ゆうちょ 更新"}==true}
+            ui.onNodeWithTag("finance-statement-month").assert(hasAnyDescendant(hasText("2026-11")))
             assertNull(vm.error.value)
             ui.runOnIdle{vm.navigate("home")}
         }

@@ -44,7 +44,7 @@ import com.yohaku.expensetracker.ui.theme.*
             @Composable fun paymentRows(rows:List<ImportantPayment>) {
                 rows.forEach{payment->
                     val item=payment.item
-                    val bank=s.accounts.firstOrNull{it.id==item.accountId}?.name?:word("扣款账户未定","引落口座未定")
+                    val bank=s.accounts.firstOrNull{it.id==item.accountId}?.name?:word("付款账户未定","引落口座未定")
                     val obligation=outlookAmount(item.currency,payment.outstandingMinor,item.kind=="BILL"&&!payment.confirmed)
                     val cash=outlookAmount(item.currency,item.amountMinor)
                     val name=if(item.kind=="BILL")(s.accounts.first{it.id==item.sourceId}.name+" · "+item.name)else item.name
@@ -59,8 +59,8 @@ import com.yohaku.expensetracker.ui.theme.*
             if(value.deadlines.isNotEmpty()) {
                 ThemeSection(word("付款变更期限","支払方法の変更締切"),"DEADLINES")
                 value.deadlines.forEach{row->val d=row.deadline;val expired=vm.repository.clock.instant()>d.instant()
-                    ImportantEvent(d.date+" "+d.time+" · "+row.accountName,
-                        financeLabel(d.changeType.name)+" · "+d.zoneId+" · "+row.billDate,
+                    ImportantEvent(FinancialDisplayFacts.localTime(java.time.LocalDateTime.parse(d.date+"T"+d.time),d.zoneId,LocalLanguage.current)+" · "+row.accountName,
+                        financeLabel(d.changeType.name)+" · "+row.billDate,
                         Money(Currency.valueOf(row.currency),row.outstandingMinor).display(),
                         if(expired)word("期限已过，请核对平台实际受理结果。","締切経過。返済先の実際の受付結果を確認してください。")else word("账期：","対象：")+row.planName,
                         "important-deadline-${d.billId}-${d.changeType.name}",{onDeadline(row.accountId,row.billDate.take(7))},warning=expired,last=row===value.deadlines.last())

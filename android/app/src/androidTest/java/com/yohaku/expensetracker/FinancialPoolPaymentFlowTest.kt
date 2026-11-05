@@ -38,10 +38,11 @@ class FinancialPoolPaymentFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -99,7 +100,7 @@ class FinancialPoolPaymentFlowTest {
             val book=ids[0];val bank=ids[1];val card=ids[2];val pool=ids[3]
             val original=runBlocking{db.financialDao().bill(book,ids[4])!!}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
-            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-plans");tapTag("finance-pool-payment-$pool")
+            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans");openFinancialPlan(ui,vm,pool);tapTag("finance-pool-payment-$pool")
             tapTag("select-trigger-"+text("从哪次付款起采用","適用する最初の支払日"))
             ui.onNode(hasText("2026-12-05") and hasAnyAncestor(hasTestTag("select-menu-frame"))).performClick()
             tapTag("select-trigger-"+text("新的月付款方式","新しい月支払方式"))
@@ -117,7 +118,7 @@ class FinancialPoolPaymentFlowTest {
             tapTag("select-trigger-"+text("办理费付款日 / 无费用可不选","手数料支払日・無料は未選択"))
             ui.onNode(hasText("2026-12-05") and hasAnyAncestor(hasTestTag("select-menu-frame"))).performClick()
             if(loan) {
-                tapTag("pool-payment-review-original");ui.onNodeWithTag("pool-opening").assertExists();tapTag("sheet-close")
+                tapTag("pool-payment-review-original");ui.onNodeWithTag("pool-opening").assertExists();tapTag("finance-flow-close")
                 textField(text("办理费 / 未知留空，无费用填0","変更手数料・不明は空欄、無料は0")+" · JPY","pool-payment-fee").assertTextContains("100")
             }
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true") {
@@ -132,7 +133,13 @@ class FinancialPoolPaymentFlowTest {
             tapTag("pool-payment-preview")
             ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("pool-payment-record").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("pool-payment-comparison").performScrollTo();shot("$theme-$language-payment-review")
-            tapTag("pool-payment-record");tapTag("pool-payment-platform-confirmed");tapTag("pool-payment-confirm")
+            ui.onNodeWithTag("finance-comparison-row-${original.date}").assertDoesNotExist()
+            alignFinancialFlowSection(ui,"finance-comparison-changes-only");shot("$theme-$language-comparison-changed-dates")
+            tapTag("finance-comparison-changes-only")
+            ui.onNodeWithTag("finance-comparison-row-${original.date}").assertExists()
+            shot("$theme-$language-comparison-all-dates")
+            tapTag("finance-comparison-changes-only")
+            tapTag("pool-payment-record");ui.onNodeWithTag("pool-payment-confirm").assertIsNotEnabled();shot("$theme-$language-pool-payment-confirm");tapTag("pool-payment-platform-confirmed");tapTag("pool-payment-confirm")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialState.value?.plans?.firstOrNull{it.id==pool}?.termsJson?.contains("paymentChanges")==true}
             val f=runBlocking{db.financialDao().graph(book).first()!!};val s=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             val plan=f.plans.single();val saved=repo.json.decodeFromString<FinancialPredictionInput>(plan.termsJson!!)
@@ -149,14 +156,14 @@ class FinancialPoolPaymentFlowTest {
                 ui.onNodeWithTag("prediction-additional-fee-${bill.id}").assertExists()
                 ui.onNodeWithTag("prediction-additional-fee-${bill.id}").performScrollTo();shot("$theme-$language-payment-charge")
             }
-            tapTag("finance-plan-history-$pool");tapTag("finance-plan-version-open-${plan.revision}")
+            openFinancialPlan(ui,vm,pool);tapTag("finance-plan-history-$pool");tapTag("finance-plan-version-open-${plan.revision}")
             ui.onNodeWithTag("pool-payment-history-summary").performScrollTo();shot("$theme-$language-payment-history");tapTag("sheet-close")
             if(loan)runBlocking {
                 val bill=f.bills.first{it.active&&it.date=="2026-12-05"}
                 repo.commitFinancialLedger(repo.previewRepayment(book,FinancialRepaymentInput(bank,card,Money(Currency.JPY,200),"2026-12-02",Money(Currency.JPY,200),Money(Currency.JPY,100),Money(Currency.JPY,0),Money(Currency.JPY,100),platformConfirmed=true,clearingDate="2026-12-02",allocations=listOf(RepaymentAllocationInput(bill.id,f.contracts.single().id,100,0,100)))))
             }
             // A native recheck preserves the applied payment setting and its fee coverage evidence.
-            tapTag("finance-pool-open");tapTag("pool-preview");tapTag("pool-confirm")
+            tapTag("finance-tab-plans");tapTag("finance-add-arrangement");tapTag("finance-pool-open");tapTag("pool-preview");tapTag("pool-confirm")
             ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("pool-confirm").fetchSemanticsNodes().isEmpty()}
             val after=runBlocking{db.financialDao().graph(book).first()!!}
             assertEquals(saved.pool.paymentChanges,repo.json.decodeFromString<FinancialPredictionInput>(after.plans.single().termsJson!!).pool!!.paymentChanges)
@@ -168,4 +175,48 @@ class FinancialPoolPaymentFlowTest {
             }
         }
     }
+    @Test fun batchConversionRetainsDraftAndUsesAlignedComparisonBeforeFactConfirmation() {
+        for((theme,language) in testLooks(this)) {
+            val ids=runBlocking {
+                val b=repo.createBook("Batch $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")
+                repo.updateBook(repo.dao.book(b)!!.copy(initialized=true))
+                val bank=repo.saveAccount(b,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,50000),"2026-10-01")
+                val card=repo.saveAccount(b,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
+                val cat=repo.saveCategory(b,"生活",EntryKind.EXPENSE,null)
+                repo.commitFinancialRule(repo.previewFinancialRule(b,card,FinancialRuleVersion("",b,card,FinanceMode.SINGLE,"2026-10-01","Asia/Tokyo",BillingRule(31,true,1,10,bank))))
+                for((name,amount) in listOf("Grocery" to "6800","Train" to "9600"))repo.saveEntry(b,EntryDraft(accountId=card,categoryId=cat,amount=amount,date="2026-10-10",merchant=name,cardPaymentChoice="SINGLE"))
+                repo.commitFinancialRule(repo.previewFinancialRule(b,card,FinancialRuleVersion("",b,card,FinanceMode.REVOLVING,"2026-10-01","Asia/Tokyo",BillingRule(31,true,1,10,bank),revolving=RevolvingRule(InterestRule("0",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL),PaymentMethod.FIXED_PRINCIPAL,1200,allocation=AllocationOrder.FEES_FIRST,automatic=false))))
+                val dates=(0..13).map{LocalDate.parse("2026-11-10").plusMonths(it.toLong()).toString()}
+                val windows=(0..13).map{val d=LocalDate.parse("2026-10-01").plusMonths(it.toLong());AccrualWindow(d.toString(),d.withDayOfMonth(d.lengthOfMonth()).toString())}
+                val pool=repo.commitFinancialPrediction(repo.previewFinancialPool(b,FinancialPredictionInput(card,"循環",FinanceMode.REVOLVING,FinancialScheduleTerms("2026-10-01",dates,windows),paymentAccountId=bank,currentArrangementConfirmed=true,pool=FinancialPoolInput(0,PoolSourceDate.TRANSACTION))))!!
+                vm.preferences.select(b);listOf(b,card,pool)
+            }
+            val (book,card,pool)=ids
+            val before=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("finance-next-batch-revolving")
+            fun field(tag:String)=ui.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag(tag)))
+            field("batch-revolving-amount").performScrollTo().performTextReplacement("16400")
+            field("batch-revolving-fee").performScrollTo().performTextReplacement("0")
+            tapTag("finance-flow-close");tapTag("finance-next-batch-revolving")
+            field("batch-revolving-amount").assertTextEquals("16400");field("batch-revolving-fee").assertTextEquals("0")
+            tapTag("batch-revolving-preview")
+            ui.onNodeWithTag("finance-change-summary").performScrollTo();shot("$theme-$language-batch-comparison")
+            ui.onAllNodes(SemanticsMatcher("aligned dates"){it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.TestTag)&&it.config[androidx.compose.ui.semantics.SemanticsProperties.TestTag].startsWith("finance-comparison-row-")}).assertCountEquals(14)
+            alignFinancialFlowSection(ui,"finance-comparison-changes-only");shot("$theme-$language-batch-comparison-changed-dates")
+            tapTag("finance-comparison-changes-only");shot("$theme-$language-batch-comparison-all-dates")
+            tapTag("batch-revolving-record")
+            ui.onNodeWithTag("batch-revolving-confirm").assertIsNotEnabled()
+            tapTag("batch-revolving-platform");tapTag("finance-flow-back");tapTag("batch-revolving-record")
+            ui.onNodeWithTag("batch-revolving-platform").assertIsOff()
+            shot("$theme-$language-batch-confirm")
+            tapTag("batch-revolving-platform");tapTag("batch-revolving-confirm")
+            ui.waitUntil(10000){!vm.busy.value&&vm.financialState.value?.arrangements?.size==2}
+            val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
+            assertEquals(before.storedPostings,after.storedPostings)
+            assertEquals(16400L,vm.financialState.value!!.plans.first{it.id==pool}.principalMinor)
+            assertNull(runBlocking{db.financialDao().draft(book,FinancialDraftContext("BATCH_REVOLVING",card,targetId="2026-11-10").slot())})
+        }
+    }
+
 }

@@ -38,10 +38,11 @@ class FinancialPoolArrangementFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -97,7 +98,7 @@ class FinancialPoolArrangementFlowTest {
             val before=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             val original=runBlocking{db.financialDao().bill(book,billId)!!}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
-            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-plans");tapTag("finance-compare-plan-$pool")
+            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans");openFinancialPlan(ui,vm,pool);tapTag("finance-compare-plan-$pool")
             textField(text("预测期数","予測回数")).performScrollTo().performTextReplacement("2")
             tapTag("select-trigger-"+text("原方案剩余费用如何处理","元の予定の残手数料の扱い"));ui.onNodeWithText(text("平台取消原费用","返済先が元の手数料を取消")).performClick()
             tapTag("pool-transfer-select-$billId")
@@ -111,7 +112,7 @@ class FinancialPoolArrangementFlowTest {
             tapTag("arrangement-generate");tapTag("arrangement-preview")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialArrangementReview.value!=null}
             assertEquals(Calculation.Incomplete(listOf("arrangement.poolFees")),vm.financialArrangementReview.value!!.calculation)
-            tapTag("arrangement-back")
+            tapTag("finance-flow-back")
             textField(text("平台取消的本期费用 / 已知无费用填0","返済先が取り消す当期手数料・無料は0")+" · JPY").performScrollTo().performTextReplacement("0")
             tapTag("arrangement-preview")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialArrangementReview.value?.calculation is Calculation.Ready}
@@ -126,10 +127,10 @@ class FinancialPoolArrangementFlowTest {
             assertEquals(original,f.bills.first{it.id==billId});assertEquals(500L,snapshot.billOutstanding(original).principalMinor)
             assertEquals(1,f.plans.count{it.active&&it.origin=="POOL"})
             assertNull(runBlocking{db.financialDao().draft(book,FinancialDraftContext("ARRANGEMENT",card,targetId=pool).slot())})
-            tapTag("finance-compare-plan-$pool");tapTag("sheet-close")
+            openFinancialPlan(ui,vm,pool);tapTag("finance-compare-plan-$pool");tapTag("finance-flow-close")
             if(loan) {
                 val target=f.arrangements.single().targetPlanId
-                tapTag("analysis-tab-overview");tapTag("analysis-tab-FIXED_LOAN")
+                tapTag("finance-tab-overview");tapTag("analysis-tab-FIXED_LOAN")
                 ui.onNodeWithTag("loan-mode-plan-$target").performScrollTo();shot("$theme-$language-pool-fixed-overview")
             }
             assertNull(vm.error.value)

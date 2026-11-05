@@ -38,10 +38,11 @@ class FinancialProgressFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -118,12 +119,14 @@ class FinancialProgressFlowTest {
             tapTag("analysis-tab-CREDIT_LINE")
             ui.onNodeWithTag("loan-mode-contract-$line").performScrollTo();shot("$theme-$language-revolving")
             tapTag("loan-mode-plans")
+            openFinancialPlan(ui,vm,plan);tapTag("finance-progress-open-$plan")
             ui.onNodeWithTag("finance-progress-$plan").performScrollTo()
             for(amount in listOf("¥800","¥30","¥830","¥50","¥780"))ui.onNode(hasText(amount) and hasAnyAncestor(hasTestTag("finance-progress-$plan"))).assertExists()
             shot("$theme-$language-progress")
+            openFinancialPlan(ui,vm,linePlan);tapTag("finance-progress-open-$linePlan")
             ui.onNodeWithTag("finance-progress-$linePlan").performScrollTo()
             ui.onNode(hasText(text("只录入了部分安排。以上不是全部剩余期数或全部未来费用。","一部の予定のみ入力済み。全残回数・全将来費用ではありません。")) and hasAnyAncestor(hasTestTag("finance-progress-$linePlan"))).assertExists()
-            tapTag("analysis-tab-movements")
+            tapTag("finance-tab-manage");tapTag("finance-manage-contracts")
             ui.onNodeWithTag("finance-contract-$line").performScrollTo()
             for(amount in listOf("¥290","¥10","¥0"))ui.onNode(hasText(amount,substring=true) and hasAnyAncestor(hasTestTag("finance-contract-$line"))).assertExists()
             shot("$theme-$language-contract")

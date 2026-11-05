@@ -279,7 +279,8 @@ class StatementFileWorkflowTest {
         choose(outgoing,3)
         click("select-trigger-債務口座");click("select-option-債務口座-1")
         click("statement-start-supplement")
-        ui.onNodeWithText("実際の支払と返済",substring=true).assertExists();shot("journal-ja-repayment-handoff")
+        ui.onNodeWithTag("finance-flow").assertIsDisplayed()
+        ui.onNodeWithText("返済を記録").assertExists();shot("journal-ja-repayment-handoff")
         assertEquals(1,state().events.size);assertEquals(9500L,state().balance(state().accounts.first{it.id==ids[1]}))
         println("Statement typed handoffs passed: existing draft explicitly retained/discarded; transfer/refund normal unsaved forms; repayment financial draft host; no automatic facts")
     }

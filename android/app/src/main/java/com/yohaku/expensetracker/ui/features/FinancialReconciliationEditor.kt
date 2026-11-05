@@ -3,6 +3,8 @@ package com.yohaku.expensetracker.ui.features
 import androidx.compose.runtime.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import kotlinx.serialization.json.*
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yohaku.expensetracker.data.db.*
@@ -83,7 +85,23 @@ import java.time.format.DateTimeFormatter
     var calendar by remember{mutableStateOf<Int?>(null)}
     val busy by vm.busy.collectAsStateWithLifecycle();val formScroll=rememberScrollState();val previewScroll=rememberScrollState()
     LaunchedEffect(review){if(review!=null)previewScroll.scrollTo(0)}
-    YSheet(if(review==null)word("重核已办理安排","手続き済み予定の再確認")else word("当前义务核对","現在の債務を確認"),{if(review!=null)review=null else onClose()},scrollState=if(review==null)formScroll else previewScroll) {
+    FinancialFlow(word("核对当前还款安排","現在の返済予定を確認"),step=if(review!=null)1 else 0,
+        onClose=onClose,onBack={review=null;confirmed=false},scrollState=if(review==null)formScroll else previewScroll,actions={
+            val r=review
+            if(r==null) {
+            YButton(word("预览重核结果","再確認の結果をプレビュー"),{vm.execute {
+                val rows=bills.filter{row->val b=allBills.first{it.id==row.id};row.keep||mandatoryBill(b,principal.toBigDecimalOrNull()?.signum()==0)}.map{ReconciledBillObligation(it.id,it.principal.takeIf{v->v.isNotBlank()}?.let{v->Money.parse(v,c).minor},it.fee.takeIf{v->v.isNotBlank()}?.let{v->Money.parse(v,c).minor})}
+                val allocations=moves.map{ReconciledClearingMove(it.id,it.billId,Money.parse(it.principal,c).minor,Money.parse(it.interest,c).minor,Money.parse(it.fee,c).minor)}
+                val refundParts=refunds.map{fact->val row=shares.first{it.id==fact.eventId};ReconciledRefundShare(fact.eventId,if(fact.date<=effective)0 else Money.parse(row.target,c).minor,row.bills.filterValues{it.isNotBlank()}.map{ReconciledRefundBill(it.key,Money.parse(it.value,c).minor)})}
+                review=vm.repository.previewArrangementReconciliation(s.book.id,ArrangementReconciliationInput(target.id,effective,principal.takeIf{it.isNotBlank()}?.let{Money.parse(it,c).minor},rows,refundParts,allocations,if(source.sourceEventId==null&&f.arrangements.none{it.targetPlanId==source.id})Money.parse(opening,c).minor else null,complete,note,limitDelta.takeIf{it.isNotBlank()}?.let{Money.parse(it,c).minor},sourcePool?.let{PoolSourceDate.valueOf(poolDate)},sourcePool?.let{poolShares.filterValues{it.isNotBlank()}.mapValues{Money.parse(it.value,c).minor}}))
+                confirmed=false
+            }},Modifier.testTag("reconciliation-preview"),primary=true,enabled=!busy)
+            }else if(r.calculation is Calculation.Ready) {
+                    YButton(word("保存本次重核版本","今回の再確認版を保存"),{var ok=false;vm.execute(onSuccess={if(ok)onClose()else{review=null;confirmed=false;refreshed=true}}) {
+                        ok=commitFinancialDraft(session){vm.repository.commitArrangementReconciliation(r,confirmed)}!=null
+                    }},Modifier.testTag("reconciliation-save"),primary=true,enabled=!busy&&confirmed)
+            }
+        }) {
         val r=review
         if(r==null) {
             FinancialDraftNotice()
@@ -94,29 +112,29 @@ import java.time.format.DateTimeFormatter
                 YButton(word("核对上一步安排","前の予定を確認"),{onParent(parent.targetPlanId)},Modifier.testTag("reconciliation-parent-${parent.targetPlanId}"))
             }
             if(changedBills.isNotEmpty())YText(word("原账单已更新，已采用最新待付金额与拆分；其他输入仍保留。","元の請求が更新されたため、最新の未払額・内訳を採用しました。他の入力は保持しています。"),11,Modifier.testTag("reconciliation-bills-refreshed"))
-            if(sourcePool!=null)ThemeAuditPanel(word("原池与转出安排","元プールと移行先")) {
+            if(sourcePool!=null)ThemeAuditPanel(word("原循环还款计划与转出安排","元の循環返済プランと移行先")) {
                 YText(source.name,14)
                 f.poolArrangements(source.id).filter{change->!f.isPoolReturn(change,source.id)&&vm.repository.arrangementBaselineIssue(s,f,f.plans.first{it.id==change.targetPlanId})!=null}.forEach{change->
                     if(onParent!=null)YButton(word("先核对并入来源：","先に統合元を確認：")+f.plans.first{it.id==change.targetPlanId}.name,{onParent(change.targetPlanId)},Modifier.testTag("reconciliation-pool-source-${change.targetPlanId}"))
                 }
-                YText(word("核对生效日当时的池来源和本次转出金额。后续正常新增仍归原池；退款须明确分给本次新安排多少，其余保留原池。原池共同付款与新安排一起重算，仍有其他待核对安排时会保留提示。","適用日時点のプール元データと今回の移行額を確認します。その後の通常利用は元プールに残ります。返金のうち今回の移行先から減らす額を明示し、残りは元プールに充当します。共同支払と移行先を再計算し、他に要確認の予定があれば通知を保持します。"),11)
+                YText(word("核对生效日当时的循环还款计划来源和本次转出金额。后续正常新增仍归原循环还款计划；退款须明确分给本次新安排多少，其余保留原循环还款计划。原循环还款计划共同付款与新安排一起重算，仍有其他待核对安排时会保留提示。","適用日時点の循環返済プラン元データと今回の移行額を確認します。その後の通常利用は元の循環返済プランに残ります。返金のうち今回の移行先から減らす額を明示し、残りは元の循環返済プランに充当します。共同支払と移行先を再計算し、他に要確認の予定があれば通知を保持します。"),11)
             }
-            if(destinationPool!=null)ThemeAuditPanel(word("共同付款池","共同支払プール")) {
+            if(destinationPool!=null)ThemeAuditPanel(word("循环还款计划","共同支払循環返済プラン")) {
                 YText(destinationPool.name,14)
-                YText(word("这里只核对本次并入的来源本金。以下池账单属于全部共同义务，不是这一笔来源的专属余额；原池与本次重核一并保存。","ここで確認する移行元金は今回統合した元データ分です。以下のプール請求は全体の共同債務であり、この元データ専用の残高ではありません。再確認と元のプールを一緒に保存します。"),11)
+                YText(word("这里只核对本次并入的来源本金。以下循环还款计划账单属于全部共同义务，不是这一笔来源的专属余额；原循环还款计划与本次重核一并保存。","ここで確認する移行元金は今回統合した元データ分です。以下の循環返済プラン請求は全体の共同債務であり、この元データ専用の残高ではありません。再確認と元の循環返済プランを一緒に保存します。"),11)
             }
             ThemeAuditPanel(target.name) {
                 YText(word("原办理记录保留。核对当前来源、退款与各期剩余义务；不重复付款，也不增加消费或欠款。","元の手続き記録を保持します。現在の元データ・返金・各回の残額を確認し、支払・支出・借入残高を重複作成しません。"),12)
-                RecordFacts(listOf((if(sourcePool==null)word("当前来源本金","元データ元金")else word("生效日原池本金 / 转出前","移行前元金")) to (physical.grossMinor?.let{Money(c,it).display()}?:word("待核对清偿归属","返済の帰属を要確認")),word("原办理转入本金","当初の元金") to Money(c,f.arrangements.first{it.id==applied.id}.principalMinor).display()))
+                RecordFacts(listOf((if(sourcePool==null)word("当前来源本金","元データ元金")else word("生效日原循环还款计划本金 / 转出前","移行前元金")) to (physical.grossMinor?.let{Money(c,it).display()}?:word("待核对清偿归属","返済の帰属を要確認")),word("原办理转入本金","当初の元金") to Money(c,f.arrangements.first{it.id==applied.id}.principalMinor).display()))
                 if(!physical.exists)YText(word("原来源已删除。可先恢复原记录；若平台也已取消，可将当前转入本金及各期待付核对为0。实际清偿不会被删除。","元の記録は削除済みです。先に復元するか、返済先でも取消済みなら移す元金・各回残額を0として確認できます。実際の返済は削除しません。"),11,color=LocalYohaku.current.warm)
             }
             YDateFields(listOf(word("当前确认的生效日","現在確認した適用日") to effective),calendar,{calendar=it},{_,v->effective=v})
             YField(word("生效日转入的本金 / 非今日剩余","適用日に移す元金・今日の残額ではありません")+" · "+a.currency,principal,{principal=it},Modifier.testTag("reconciliation-principal"),numeric=true)
             if(source.sourceEventId==null&&f.arrangements.none{it.targetPlanId==source.id})YField(word("来源所属的期初本金","元データに属する期首元金")+" · "+a.currency,opening,{opening=it},Modifier.testTag("reconciliation-opening"),numeric=true)
-            if(sourcePool!=null)YSelect(word("池本金入账日期依据","プール元金の日付基準"),poolDate,listOf(PoolSourceDate.TRANSACTION.name to word("交易日期","取引日"),PoolSourceDate.ACCOUNT_POSTING.name to word("账户入账日期","口座計上日")),{poolDate=it})
+            if(sourcePool!=null)YSelect(word("循环还款计划本金入账日期依据","循環返済プラン元金の日付基準"),poolDate,listOf(PoolSourceDate.TRANSACTION.name to word("交易日期","取引日"),PoolSourceDate.ACCOUNT_POSTING.name to word("账户入账日期","口座計上日")),{poolDate=it})
             if(sourcePool!=null) {
                 unallocated.filter{it.minor>0||it.eventId in poolShares}.forEach{p->
-                    YField(word("未分配本金中属于原池的金额 / 零请填0","未充当のうち元プール分・ゼロも0")+" · "+p.date,poolShares[p.eventId].orEmpty(),{v->poolSharesJson=vm.repository.json.encodeToString(poolShares+(p.eventId to v))},Modifier.testTag("reconciliation-pool-share-${p.eventId}"),numeric=true)
+                    YField(word("未分配本金中属于原循环还款计划的金额 / 零请填0","未充当のうち元の循環返済プラン分・ゼロも0")+" · "+p.date,poolShares[p.eventId].orEmpty(),{v->poolSharesJson=vm.repository.json.encodeToString(poolShares+(p.eventId to v))},Modifier.testTag("reconciliation-pool-share-${p.eventId}"),numeric=true)
                 }
                 (poolShares.keys-unallocated.map{it.eventId}.toSet()).forEach{id->
                     YText(word("原付款已删除或变化，请核对后移除旧归属。","元の支払は削除・変更されています。確認して旧割当てを除外してください。"),11)
@@ -127,7 +145,7 @@ import java.time.format.DateTimeFormatter
             YText(word("以下填写已记录清偿之后仍待付的金额；本金与费用分别核对，恢复已取消部分也会留版本。","以下は記録済み返済後の未払額です。元金・手数料を別々に確認し、取消分を戻す場合も履歴を保持します。"),11)
             bills.forEach{row->val b=allBills.first{it.id==row.id};val required=mandatoryBill(b,principal.toBigDecimalOrNull()?.signum()==0)
                 Panel(Modifier.testTag("reconciliation-bill-${b.id}")) {
-                    YText((if(b.id in sourceBillIds)word("原安排","元の予定")else if(destinationPool!=null)word("共同付款池","共同支払プール")else word("已办理安排","手続き済み予定"))+" · "+b.date+" · "+word("第${b.number}期","第${b.number}回"),14)
+                    YText((if(b.id in sourceBillIds)word("原安排","元の予定")else if(destinationPool!=null)word("循环还款计划","共同支払循環返済プラン")else word("已办理安排","手続き済み予定"))+" · "+b.date+" · "+word("第${b.number}期","第${b.number}回"),14)
                     if(!required)YToggle(word("已向平台核对，保留本期金额","返済先で確認し当期金額を保持"),row.keep,{bill(row.copy(keep=it))})
                     if(required||row.keep) {
                         YField(word("仍待付本金 / 不明可留空","未払元金・不明は空欄")+" · "+a.currency,row.principal,{bill(row.copy(principal=it))},Modifier.testTag("reconciliation-bill-principal-${b.id}"),numeric=true)
@@ -164,35 +182,30 @@ import java.time.format.DateTimeFormatter
             if(moves.any{m->clearings.none{it.id==m.id}})YButton(word("清偿已变化，重新读取分配行","返済情報が変わりました。充当行を再読込"),{moveJson=vm.repository.json.encodeToString(clearings.map{ReconciliationMoveDraft(it.id,it.billId,value(it.principalMinor),value(it.interestMinor),value(it.feeMinor))})})
             YField(word("核对依据 / 可留空","確認の根拠・空欄可"),note,{note=it})
             if(refreshed)FinanceRefreshed()
-            YButton(word("预览重核结果","再確認の結果をプレビュー"),{vm.execute {
-                val rows=bills.filter{row->val b=allBills.first{it.id==row.id};row.keep||mandatoryBill(b,principal.toBigDecimalOrNull()?.signum()==0)}.map{ReconciledBillObligation(it.id,it.principal.takeIf{v->v.isNotBlank()}?.let{v->Money.parse(v,c).minor},it.fee.takeIf{v->v.isNotBlank()}?.let{v->Money.parse(v,c).minor})}
-                val allocations=moves.map{ReconciledClearingMove(it.id,it.billId,Money.parse(it.principal,c).minor,Money.parse(it.interest,c).minor,Money.parse(it.fee,c).minor)}
-                val refundParts=refunds.map{fact->val row=shares.first{it.id==fact.eventId};ReconciledRefundShare(fact.eventId,if(fact.date<=effective)0 else Money.parse(row.target,c).minor,row.bills.filterValues{it.isNotBlank()}.map{ReconciledRefundBill(it.key,Money.parse(it.value,c).minor)})}
-                review=vm.repository.previewArrangementReconciliation(s.book.id,ArrangementReconciliationInput(target.id,effective,principal.takeIf{it.isNotBlank()}?.let{Money.parse(it,c).minor},rows,refundParts,allocations,if(source.sourceEventId==null&&f.arrangements.none{it.targetPlanId==source.id})Money.parse(opening,c).minor else null,complete,note,limitDelta.takeIf{it.isNotBlank()}?.let{Money.parse(it,c).minor},sourcePool?.let{PoolSourceDate.valueOf(poolDate)},sourcePool?.let{poolShares.filterValues{it.isNotBlank()}.mapValues{Money.parse(it.value,c).minor}}))
-                confirmed=false
-            }},Modifier.testTag("reconciliation-preview"),primary=true,enabled=!busy)
+
         }else {
-            ReconciliationReviewFacts(r,c)
+            if(refreshed)FinanceRefreshed()
+            ReconciliationReviewFacts(r,c,vm)
             if(r.calculation is Calculation.Ready) {
                 YToggle(word("已核对平台当前义务与退款归属","返済先の現在の債務・返金の帰属を確認した"),confirmed,{confirmed=it},Modifier.testTag("reconciliation-confirmed"))
-                YActionRow {
-                    YButton(word("保存本次重核版本","今回の再確認版を保存"),{var ok=false;vm.execute(onSuccess={if(ok)onClose()else{review=null;confirmed=false;refreshed=true}}) {
-                        ok=commitFinancialDraft(session){vm.repository.commitArrangementReconciliation(r,confirmed)}!=null
-                    }},Modifier.testTag("reconciliation-save"),primary=true,enabled=!busy&&confirmed)
-                }
             }
-            YButton(word("返回修改","修正に戻る"),{review=null},Modifier.testTag("reconciliation-back"),enabled=!busy)
         }
     }
 }
 
-@Composable private fun ReconciliationReviewFacts(r:ArrangementReconciliationReview,c:Currency) {
-    ThemeAuditPanel(word("当前义务核对","現在の債務確認"),Modifier.testTag("reconciliation-review")) {
+@Composable private fun ReconciliationReviewFacts(r:ArrangementReconciliationReview,c:Currency,vm:AppViewModel) {
+    androidx.compose.foundation.layout.Column(Modifier.testTag("reconciliation-review"),verticalArrangement=androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+      FinancialChangeSummary {
         YText(r.original.name,16)
+        if(r.input.bills.any{it.principalMinor==null||it.feeMinor==null})YText(word("已列账期仍含未知本金或费用；不会按零处理。","記載済みの請求に不明な元金・手数料があります。ゼロとして扱いません。"),12,Modifier.testTag("reconciliation-unknown"),color=LocalYohaku.current.warm)
+        if(r.original.termsJson==null&&r.input.manualComplete!=true)YText(word("安排不完整；未列期次、全期费用和结清时间仍未知。","予定は不完全です。未記載の回・全期間の費用・完済日は不明です。"),12,color=LocalYohaku.current.warm)
         when(val result=r.calculation) {
             is Calculation.Incomplete->FinancialReadiness(RuleReadiness.Incomplete(result.fields),word("需要核对","確認が必要"))
             is Calculation.Ready->{val record=r.record!!
-                RecordFacts(listOf(word("生效日转入本金","移行元金") to Money(c,record.input.principalMinor!!).display(),word("退款后安排本金","返金後元金") to Money(c,r.plans.first{it.id==r.original.id}.principalMinor!!).display(),word("来源未排期本金","未予定元金") to Money(c,record.unassignedOriginalMinor).display()))
+                val previous=r.original.reconciliation()?.input
+                FinancialFieldChanges(FinancialDisplayFacts.reconciliation(previous?.let{vm.repository.json.encodeToJsonElement(ArrangementReconciliationInput.serializer(),it).jsonObject},
+                    vm.repository.json.encodeToJsonElement(ArrangementReconciliationInput.serializer(),r.input).jsonObject,loanAccount=r.before.ledger.accounts.first{it.id==r.original.accountId}.type==AccountType.LOAN.name),c,first=previous==null)
+                RecordFacts(listOf(word("退款后安排本金","返金後元金") to Money(c,r.plans.first{it.id==r.original.id}.principalMinor!!).display(),word("来源未排期本金","未予定元金") to Money(c,record.unassignedOriginalMinor).display()))
                 if(r.before.ledger.accounts.first{it.id==r.original.accountId}.type==AccountType.LOAN.name)YText(word("循环占用变动：","循環枠利用の変動：")+(record.input.loanLimitDeltaMinor?.let{Money(c,it).display()}?:word("未知，不推定释放或恢复","不明・解放や回復を推定しません")),12)
                 YText(word("保留原办理记录、原账单及实际付款。这里只记录当前核对结果，调整义务与清偿归属。","元の手続き・請求・実支払を保持し、現在の確認結果として債務・返済の帰属を更新します。"),11)
                 record.refunds.forEach{refund->
@@ -204,30 +217,33 @@ import java.time.format.DateTimeFormatter
                 }
                 if(record.unassignedOriginalMinor>0)YText(word("来源仍有未排期本金，账户风险继续提示，不视为已安排。","元データに未予定元金が残り、口座の要確認表示を継続します。"),11,color=LocalYohaku.current.warm)
             }
-            is Calculation.Unsupported->FinancialCalculationResult(result,c)
-            is Calculation.CannotSettle->FinancialCalculationResult(result,c)
+            is Calculation.Unsupported->FinancialCalculationResult(result,c,compact=true)
+            is Calculation.CannotSettle->FinancialCalculationResult(result,c,compact=true)
         }
     }
+    }
     if(r.calculation is Calculation.Ready) {
-        r.input.bills.forEach{bill->Panel {
+        FinancialFullDetails {
+        r.input.bills.forEach{bill->androidx.compose.foundation.layout.Column(verticalArrangement=androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
             val original=r.before.finance.bills.first{it.id==bill.billId}
-            YText((if(r.before.finance.reconciliationPool(r.original)!=null&&original.planId!=r.before.finance.arrangements.first{it.targetPlanId==r.original.id}.originalPlanId)word("共同付款池","共同支払プール")else if(original.planId==r.original.id)word("已办理安排","手続き済み予定")else word("原安排","元の予定"))+" · "+original.date+" / "+original.number,12)
+            YText((if(r.before.finance.reconciliationPool(r.original)!=null&&original.planId!=r.before.finance.arrangements.first{it.targetPlanId==r.original.id}.originalPlanId)word("循环还款计划","共同支払循環返済プラン")else if(original.planId==r.original.id)word("已办理安排","手続き済み予定")else word("原安排","元の予定"))+" · "+original.date+" / "+original.number,12)
             val unknown=word("未知","不明")
             fun amount(n:Long?)=n?.let{Money(c,it).display()}?:unknown
             val current=r.before.ledger.copy(billAdjustments=r.before.ledger.billAdjustments+r.adjustments).billOutstanding(original)
             RecordFacts(listOf(word("本期待付本金 / 费用","当期の未払元金・手数料") to (amount(bill.principalMinor)+" / "+amount(bill.feeMinor)),word("待付合计","未払合計") to Money(c,current.totalMinor).display()))
         }}
+        }
         val poolSource=r.record?.baseline?.pool!=null
         val forecasts=if(poolSource)listOf(false to r.prediction,true to r.poolPrediction)else listOf((r.poolPrediction!=null) to (r.poolPrediction?:r.prediction))
         forecasts.forEach{(shared,forecast)->
-        if(shared)ThemeSection(word("原池全部共同付款","プール全体の支払"),"SHARED PAYMENTS")
+        if(shared)ThemeSection(word("原循环还款计划全部共同付款","循環返済プラン全体の支払"),"SHARED PAYMENTS")
         else if(poolSource)ThemeSection(word("新安排付款","移行先の支払"),"NEW PAYMENTS")
         when(val result=forecast?.calculation) {
-            is Calculation.Ready->result.value.forEach{p->YText(p.period.date.toString()+" · "+Money(c,p.period.totalMinor).display()+" · "+word("本金","元金")+Money(c,p.period.principalMinor).display(),12)}
+            is Calculation.Ready->FinancialFullDetails(tag=if(shared)"reconciliation-pool-details"else"reconciliation-prediction-details",title=if(shared)word("查看共同付款依据","共同支払の根拠を見る")else word("查看预测逐期依据","予測の各回の根拠を見る")) {result.value.forEach{p->YText(p.period.date.toString()+" · "+Money(c,p.period.totalMinor).display()+" · "+word("本金","元金")+Money(c,p.period.principalMinor).display(),12)}}
             is Calculation.Incomplete->{YText(word("本次核对可保存，预测仍需补齐以下资料：","今回の確認は保存できます。予測には次の補完が必要です："),12);FinancialReadiness(RuleReadiness.Incomplete(result.fields),word("预测待核对","予測を要確認"))}
             null->YText(word("已知账单保留；若未来日期或算法仍需调整，请在保存后继续核对计划。","既知の請求を保持します。将来の日付・計算法の調整が必要なら、保存後に予定を引き続き確認してください。"),11)
-            is Calculation.Unsupported->{YText(word("核对可保存，原预测保留待处理。","確認は保存でき、元の予測は要確認のまま保持します。"),12);FinancialCalculationResult(result,c)}
-            is Calculation.CannotSettle->{YText(word("核对可保存，原预测保留待处理。","確認は保存でき、元の予測は要確認のまま保持します。"),12);FinancialCalculationResult(result,c)}
+            is Calculation.Unsupported->{YText(word("核对可保存，原预测保留待处理。","確認は保存でき、元の予測は要確認のまま保持します。"),12);FinancialCalculationResult(result,c,compact=true)}
+            is Calculation.CannotSettle->{YText(word("核对可保存，原预测保留待处理。","確認は保存でき、元の予測は要確認のまま保持します。"),12);FinancialCalculationResult(result,c,compact=true)}
         }
         }
     }
@@ -235,7 +251,7 @@ import java.time.format.DateTimeFormatter
 
 @Composable internal fun FinancialReconciliationHistory(r:ArrangementReconciliation,c:Currency,zone:ZoneId) {
     ThemeAuditPanel(word("重核记录","再確認"),Modifier.testTag("reconciliation-history")) {
-        YText(Instant.parse(r.recordedAt).atZone(zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),12)
+        FinancialTime(Instant.parse(r.recordedAt),zone,"reconciliation",record=true)
         RecordFacts(listOf(word("来源本金","元の元金") to (r.source.grossMinor?.let{Money(c,it).display()}?:word("未知","不明")),word("核对转入本金","移行元金") to Money(c,r.input.principalMinor!!).display(),word("来源未排期本金","未予定元金") to Money(c,r.unassignedOriginalMinor).display()))
         r.refunds.forEach{YText(it.fact.date+" · "+Money(c,it.fact.principalMinor).display()+" → "+Money(c,it.targetMinor).display(),12)}
         if(r.input.note.isNotBlank())YText(r.input.note,12)

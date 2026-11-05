@@ -38,10 +38,11 @@ class FinancialManualArrangementFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -88,7 +89,7 @@ class FinancialManualArrangementFlowTest {
             val book=ids[0];val bank=ids[1];val card=ids[2];val old=ids[3]
             val original=runBlocking{db.financialDao().bills(book,old).single()}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
-            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-plans");tapTag("finance-compare-plan-$old")
+            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans");openFinancialPlan(ui,vm,old);tapTag("finance-compare-plan-$old")
             tapTag("arrangement-manual")
             val count=text("预测期数","予測回数")
             textField(count).performScrollTo().performTextReplacement("2")
@@ -102,16 +103,19 @@ class FinancialManualArrangementFlowTest {
             ui.waitUntil(10000){!vm.busy.value&&vm.financialArrangementReview.value?.calculation is Calculation.Ready}
             val partial=vm.financialArrangementReview.value!!
             assertFalse(partial.target!!.complete);assertTrue(partial.bills.all{it.principalMinor==null&&it.feeMinor==null})
-            val title=text("新方案","新プラン")
-            ui.onNodeWithTag("arrangement-table-scroll-$title").performScrollTo()
-            ui.onNodeWithTag("arrangement-cell-$title-0-0").assertTextEquals(text("未知","不明"))
-            ui.onNodeWithTag("arrangement-cell-$title-0-2").assertTextEquals("¥620")
-            ui.onNodeWithTag("arrangement-cell-$title-0-3").assertTextEquals(text("未知","不明"))
+            ui.onNodeWithTag("finance-comparison-incomplete").performScrollTo().assertIsDisplayed()
+            shot("$theme-$language-review-incomplete-inline")
+            tapTag("finance-review-full-details")
+            val firstDate=partial.comparison!!.proposed.minOf{it.date}
+            ui.onNodeWithTag("arrangement-table-scroll-after").performScrollTo()
+            ui.onNodeWithTag("arrangement-cell-after-$firstDate-0-principal").assertTextEquals(text("未知","不明"))
+            ui.onNodeWithTag("arrangement-cell-after-$firstDate-0-total").assertTextEquals("¥620")
+            ui.onNodeWithTag("arrangement-cell-after-$firstDate-0-remaining").assertTextEquals(text("未知","不明"))
             shot("$theme-$language-manual-partial-table")
-            ui.onNodeWithTag("arrangement-table-scroll-$title").performTouchInput{swipeLeft()};ui.waitForIdle()
-            ui.onNodeWithTag("arrangement-cell-$title-0-3").assertIsDisplayed()
+            ui.onNodeWithTag("arrangement-table-scroll-after").performTouchInput{swipeLeft()};ui.waitForIdle()
+            ui.onNodeWithTag("arrangement-cell-after-$firstDate-0-remaining").assertIsDisplayed()
             shot("$theme-$language-manual-partial-table-end")
-            tapTag("arrangement-back");tapTag("arrangement-manual-complete")
+            tapTag("finance-flow-back");tapTag("arrangement-manual-complete")
             for(i in 0..1) {
                 ui.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("arrangement-manual-principal-$i"))).performScrollTo().performTextReplacement("500")
                 ui.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("arrangement-manual-fee-$i"))).performScrollTo().performTextReplacement("20")
@@ -132,7 +136,7 @@ class FinancialManualArrangementFlowTest {
             val change=f.arrangements.single();val target=f.plans.first{it.id==change.targetPlanId}
             assertTrue(target.complete);assertNull(target.termsJson);assertTrue(f.rules.isEmpty());assertEquals(original,f.bills.first{it.id==original.id})
             assertEquals(10000L,s.balance(s.accounts.first{it.id==bank}));assertEquals(1000L,s.balance(s.accounts.first{it.id==card}));assertTrue(s.events.isEmpty());assertEquals(0L,s.monthExpense("2026-10"))
-            tapTag("finance-plan-history-${target.id}");tapTag("finance-plan-version-open-1")
+            openFinancialPlan(ui,vm,target.id);tapTag("finance-plan-history-${target.id}");tapTag("finance-plan-version-open-1")
             ui.onAllNodes(hasText("¥620") and hasAnyAncestor(hasTestTag("finance-plan-version-1"))).onFirst().performScrollTo()
             shot("$theme-$language-manual-history");tapTag("sheet-close")
             assertNull(vm.error.value)

@@ -412,7 +412,7 @@ class SetupPresentationTest {
             if(ui.onAllNodesWithTag(noteField).fetchSemanticsNodes().isNotEmpty()!=expanded)ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
             ui.onNodeWithTag("entry-summary").performScrollTo()
             val top=ui.onNodeWithTag("entry-summary").getUnclippedBoundsInRoot().top
-            val tags=mapOf("summary" to "entry-summary","amount" to if(l=="zh")"field-group-金额 · JPY" else "field-group-金額 · JPY","quick" to "entry-quick-amount","base" to "entry-base-caption","account" to if(l=="zh")"select-field-付款账户" else "select-field-支払口座","merchant" to if(l=="zh")"field-group-商户 / 买了什么" else "field-group-お店 / 買ったもの","date" to "date-field-grid","notes" to "entry-notes","historical" to if(l=="zh")"toggle-历史补录：已包含在期初余额" else "toggle-履歴追加：期首残高に含まれる","save" to "entry-save-button")
+            val tags=mapOf("summary" to "entry-summary","amount" to "entry-amount","quick" to "entry-quick-amount","base" to "entry-base-caption","account" to if(l=="zh")"select-field-付款账户" else "select-field-支払口座","merchant" to "entry-merchant-input","date" to "date-field-grid","notes" to "entry-notes","historical" to if(l=="zh")"toggle-历史补录：已包含在期初余额" else "toggle-履歴追加：期首残高に含まれる","save" to "entry-save-button")
             val nodes=ref.getJSONArray("nodes")
             for(j in 0 until nodes.length()){
                 val expected=nodes.getJSONObject(j);val key=expected.getString("key");if(key=="tools")continue;val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()

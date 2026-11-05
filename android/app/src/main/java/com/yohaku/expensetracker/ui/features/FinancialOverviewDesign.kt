@@ -66,10 +66,11 @@ import com.yohaku.expensetracker.ui.theme.*
     val t=LocalYohaku.current
     val journal=t.id=="journal";val objects=t.id=="objects"
     val unknown=word("未知","不明")
-    ThemeSection(word("逐期还款安排","各回の返済予定"),"KNOWN SCHEDULE")
+    ThemeSection(word("近期还款安排","直近の返済予定"),"KNOWN SCHEDULE")
     val groups=summary.rows.filter{it.outstanding.totalMinor!=0L}.groupBy{it.plan.id}
     if(groups.isEmpty())YEmpty(word("尚无已保存的逐期付款安排。","保存済みの各回の支払予定はありません。"))
-    groups.forEach{(planId,rows)->
+    groups.forEach{(planId,allRows)->
+        val rows=allRows.sortedBy{it.bill.date}.take(2)
         val plan=rows.first().plan
         YText(plan.name+" · "+financeLabel(plan.mode),if(journal)15 else 12)
         val shape=RoundedCornerShape(15.dp)
@@ -143,7 +144,7 @@ import com.yohaku.expensetracker.ui.theme.*
         YText(summary.nextDate?.takeLast(5)?.replace('-','.')?:"—",if(objects)13 else 19,number=true,color=t.muted)
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(7.dp)) {
             YText(if(summary.next.isNotEmpty()&&summary.next.all{it.bill.confirmed})if(compact)word("已确认应还","次回確定額")else word("下次已确认应还","次回確定支払額")else if(compact)word("下次付款","次回予定")else word("下次付款安排","次回支払予定"),11)
-            val banks=summary.next.map{r->s.accounts.firstOrNull{it.id==r.bill.paymentAccountId}?.let{it.name+" · "+it.currency}?:word("扣款账户未定","引落口座未定")}.distinct()
+            val banks=summary.next.map{r->s.accounts.firstOrNull{it.id==r.bill.paymentAccountId}?.let{it.name+" · "+it.currency}?:word("付款账户未定","引落口座未定")}.distinct()
             YText(banks.joinToString(" / "),if(journal)11 else 9,color=t.muted)
         }
         val amount=when{summary.next.isEmpty()->"—";summary.next.any{!it.bill.confirmed&&it.plan.id in stale}->word("待核对","要確認");else->Money(currency,totals.totalMinor).display()}

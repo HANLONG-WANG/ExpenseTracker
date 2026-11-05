@@ -7,6 +7,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.ScrollState
 import androidx.compose.ui.*
@@ -80,6 +81,8 @@ import kotlinx.serialization.encodeToString
     var incomeAccount by rememberSaveable{mutableStateOf<String?>(null)}
     var incomeArriving by rememberSaveable{mutableStateOf(false)}
     var financialInitialTab by rememberSaveable{mutableStateOf("overview")}
+    var financialRequestId by rememberSaveable{mutableLongStateOf(0L)}
+    val financialPages=rememberSaveableStateHolder()
     var editAccount by remember{mutableStateOf<AccountEntity?>(null)}
     var editBookId by rememberSaveable{mutableStateOf<String?>(null)}
     var leaveTarget by rememberSaveable{mutableStateOf("home")}
@@ -139,8 +142,11 @@ import kotlinx.serialization.encodeToString
                 requestedStatementActual=vm.repository.json.encodeToString(StatementActualSeed(eventId,accountId,row,date));requestedStatement=null
                 if(snapshot.draft!=null)sheet="statement-existing-draft"else startStatementRequest()
             }
-            fun openFinancial(id:String,month:String?=null) {
-                selectedAccountId=id;financialInitialTab=if(month==null)"overview"else"statement";financialInitialMonth=month;sheet=null;vm.navigate("rules")
+            fun openFinancial(id:String,month:String?=null,target:String=if(month==null)"overview"else"statement") {
+                // A new external request resumes inputs, never an earlier uncommitted review.
+                vm.financialRuleReview.value=null;vm.financialPredictionReview.value=null;vm.manualFinancialPlanReview.value=null
+                vm.financialArrangementReview.value=null;vm.financialLedgerReview.value=null;vm.financialBillReview.value=null
+                selectedAccountId=id;financialInitialTab=FinancialDestination.from(target).path;financialInitialMonth=month;financialRequestId++;sheet=null;if(vm.route.value!="rules")vm.navigate("rules")
             }
             fun openTimelineItem(item:CashTimelineItem) {
                 sheet=null
@@ -148,7 +154,7 @@ import kotlinx.serialization.encodeToString
                     "BILL"->openFinancial(item.sourceId,item.scheduledDate.take(7))
                     "CARD_RECURRENCE"->when(item.issue) {
                         "CARD_PAYMENT_CHOICE_REQUIRED","CARD_INSTALLMENT_PERIODS_UNSUPPORTED","UNKNOWN_AMOUNT"->{recurringInitialMonth=item.scheduledDate.take(7);vm.navigate("recurring")}
-                        "CARD_AUTOMATIC_RULE_INCOMPLETE","CARD_SINGLE_RULE_INCOMPLETE","CARD_BONUS_RULE_INCOMPLETE","CARD_INSTALLMENT_RULE_INCOMPLETE","CARD_PAYMENT_ACCOUNT_REQUIRED","CARD_PAYMENT_ACCOUNT_INACTIVE"->{openFinancial(item.sourceId);financialInitialTab="rules"}
+                        "CARD_AUTOMATIC_RULE_INCOMPLETE","CARD_SINGLE_RULE_INCOMPLETE","CARD_BONUS_RULE_INCOMPLETE","CARD_INSTALLMENT_RULE_INCOMPLETE","CARD_PAYMENT_ACCOUNT_REQUIRED","CARD_PAYMENT_ACCOUNT_INACTIVE"->{openFinancial(item.sourceId,target="rules")}
                         else->openFinancial(item.sourceId)
                     }
                     "RECURRENCE"->{recurringInitialMonth=item.scheduledDate.take(7);vm.navigate("recurring")}
@@ -209,6 +215,11 @@ import kotlinx.serialization.encodeToString
                 // Pages listing every record own a lazy list instead of the shared scrolling column.
                 if(baseRoute=="ledger")LedgerScreen(snapshot,{openRecord(it)},{requestEntry(it)},{requestEntry(date=it)},today,Modifier.weight(1f),chrome)
                 else if(baseRoute=="account-detail"&&detailAccount!=null)detailAccount.let{a->AccountDetail(snapshot,a,{editAccount=a;sheet="account"},{openRecord(it)},{requestEntry(EntryKind.TRANSFER,a.id)},{openFinancial(a.id)},today,{openRisk(a.id)},{managedAccountId=a.id},Modifier.weight(1f),chrome)}
+                else if(baseRoute=="rules"&&detailAccount!=null) financialPages.SaveableStateProvider(book.id+"/"+detailAccount.id) {
+                    FinancialAccountScreen(snapshot,detailAccount,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,
+                        {from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)},
+                        requestId=financialRequestId,modifier=Modifier.weight(1f),onBack={vm.back()},head=chrome.head)
+                }
                 else Column(Modifier.weight(1f).verticalScroll(contentScroll).testTag("page-scroll")) {
                 chrome.head()
                 Column(Modifier.padding(pageContentPadding()).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
@@ -222,7 +233,6 @@ import kotlinx.serialization.encodeToString
                         "notification-settings"->NotificationSettingsScreen(snapshot,vm)
                         "reminders"->ImportantItemsScreen(snapshot,vm,{openTimelineItem(it)},{account,month->openFinancial(account,month)},{openRisk(it)},{openAttention(it)},{vm.navigate("forecast")})
                         "forecast"->FinancialForecastScreen(snapshot,vm,{openRecord(it)},{openFinancial(it)},{openRisk(it)},{openAttention(it)},{openTimelineItem(it)})
-                        "rules"->snapshot.accounts.find{it.id==selectedAccountId}?.let{FinancialAccountScreen(snapshot,it,vm,financialInitialTab,{openRecord(it)},financialInitialMonth,{from,to->if(to==null)requestEntry(EntryKind.INCOME,from)else requestEntry(EntryKind.TRANSFER,from,toAccountId=to)})}
                         "categories"->CategoryManagement(snapshot,{parent,kind->categoryParent=parent;categoryKind=kind;editCategory=null;sheet="category"},{c->editCategory=c;categoryParent=c.parentId;categoryKind=EntryKind.valueOf(c.kind);sheet="category"},{c->vm.execute{vm.repository.toggleCategoryFavorite(book.id,c.id)}},
                             {c->vm.execute{if(vm.repository.commitCategoryOperation(vm.repository.previewCategoryOperation(book.id,c.id,CategoryOperation.UNARCHIVE)))vm.reminders?.rebuildSafely(false)}})
                         "csv-import"->CsvImportScreen(snapshot,vm)
@@ -242,7 +252,10 @@ import kotlinx.serialization.encodeToString
                         "trash"->TrashScreen(snapshot,vm)
                         "budget"->BudgetScreen(snapshot,vm,{vm.navigate("recurring")},{vm.navigate("categories")})
                         "recurring"->RecurringScreen(snapshot,vm,{vm.previewOccurrence(snapshot,it)},{openRecord(it)},{vm.navigate("accounts")},{vm.navigate("categories")},recurringInitialMonth)
-                        "analysis"->AnalysisScreen(snapshot,vm,{openRecord(it)},{vm.navigate("categories")},{id->selectedAccountId=id;financialInitialTab="plans";financialInitialMonth=null;vm.navigate("rules")})
+                        "analysis"->AnalysisScreen(snapshot,vm,{openRecord(it)},{vm.navigate("categories")},{id->openFinancial(id,target="plans")},onTimelineItem={item->
+                            val bill=vm.financialState.value?.bills?.firstOrNull{item.id=="bill:${it.id}"}
+                            if(bill!=null)openFinancial(item.sourceId,target="plans/${bill.planId}/${bill.id}")else openTimelineItem(item)
+                        })
                         "receipts"->ReceiptsScreen(snapshot,vm,{openRecord(it)})
                         "templates"->TemplatesScreen(snapshot,vm)
                         "merchants"->MerchantsScreen(snapshot,vm,{openRecord(it)},{requestEntry(merchantId=it)})

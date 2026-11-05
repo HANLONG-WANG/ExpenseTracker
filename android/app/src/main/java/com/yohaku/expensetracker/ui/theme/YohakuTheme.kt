@@ -49,7 +49,7 @@ private object ThemeFonts {
         val app=context.applicationContext
         val serif=fallback(app,R.font.editorial,R.font.editorial_full)
         val editorialNumbers=fallback(app,R.font.editorial_number,R.font.editorial,R.font.editorial_full)
-        val ink=fallback(app,R.font.hand,R.font.hand_cn,R.font.hand_full,R.font.hand_cn_full,R.font.journal_check,R.font.journal_star)
+        val ink=fallback(app,R.font.journal_math,R.font.hand,R.font.hand_cn,R.font.hand_full,R.font.hand_cn_full,R.font.journal_check,R.font.journal_star)
         val rounded=fallback(app,R.font.round,R.font.round_cn,R.font.round_full,R.font.round_cn_full)
         return listOf(Magazine.copy(body=serif,display=serif,number=editorialNumbers),Journal.copy(body=ink,display=ink,number=ink),Objects.copy(body=rounded,display=rounded,number=rounded)).also{cached=it}
     }

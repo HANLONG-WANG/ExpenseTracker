@@ -26,7 +26,7 @@ import java.time.LocalDate
             FinancialBudgetScenario(state.pace,Currency.valueOf(s.book.currency))
             beforeTimeline()
             YText(word("以今天实际资金为起点，按账户独立推算；分类、商户与活动筛选不移除其他扣款。未到账收入另列情景。","本日の実資金を起点に口座別に推計。他の引落はカテゴリ・お店・シーンの絞込で除外しません。未入金の収入は別シナリオです。"),11)
-            ThemeSection(word("实际扣款账户的时间线","引落口座ごとの予定"),"ACCOUNT BY ACCOUNT")
+            ThemeSection(word("实际付款账户的时间线","引落口座ごとの予定"),"ACCOUNT BY ACCOUNT")
             YText(t.asOf+" → "+t.through,12)
             if(t.openings.isNotEmpty())RecordFacts(t.openings.map{o->o.account.name+" · "+o.account.currency to Money(Currency.valueOf(o.account.currency),o.actualMinor).display()})
             YText(word("同一天未配置扣款顺序，先扣后入；活动预留从可安排资金中扣除，不是真实支出。待确认金额影响后，余额显示未知。","同日の処理順が未設定のため出金を先に計算。シーン確保額は予定に使える資金から差し引き、実支出にはしません。未確定額の影響後は残高を不明と表示します。"),11,color=LocalYohaku.current.muted)
@@ -35,7 +35,7 @@ import java.time.LocalDate
             rows.forEach{step->
                 val item=step.item;val account=s.accounts.firstOrNull{it.id==item.accountId}
                 Column(Modifier.testTag("cash-${item.id}")) {
-                    FutureTimelineRow(item.id,item.date,if(item.name in EntryKind.entries.map{it.name})entryKindName(EntryKind.valueOf(item.name))else item.name,account?.let{it.name+" · "+it.currency}?:word("扣款账户未确定","引落口座未定"),
+                    FutureTimelineRow(item.id,item.date,if(item.name in EntryKind.entries.map{it.name})entryKindName(EntryKind.valueOf(item.name))else item.name,account?.let{it.name+" · "+it.currency}?:word("付款账户未确定","引落口座未定"),
                         item.amountMinor?.let{(if(item.incoming)"+ "else"− ")+Money(Currency.valueOf(item.currency),it).display()}?:word("金额未知","金額不明"),
                         when(item.kind){"EXPECTED_INCOME"->word("预计收入 · 尚未到账","収入予定・未入金");"RESERVE"->word("主动资金预留 · 非实际支出","自分で設定した資金確保・実支出ではない");else->if(item.estimated)word("预计 / 待确认安排","見込み・確認待ち予定")else word("已知安排","既知の予定")},atRisk=step.baselineAfterMinor?.let{it<0}==true,last=step===rows.last()) {
                     val unknown=word("未知 / 请补充资料","不明・情報を補足してください")
@@ -61,13 +61,13 @@ import java.time.LocalDate
 }
 @Composable internal fun cashIssue(code:String)=when(code) {
     "CARD_PAYMENT_CHOICE_REQUIRED"->word("周期付款尚未指定信用卡付款方式，请编辑周期规则。","定期支払のカード支払方法が未指定です。定期ルールを編集してください。")
-    "CARD_AUTOMATIC_RULE_INCOMPLETE"->word("自动リボ设置未补齐，请核对消费日期有效的卡规则。","自動リボ設定が未補完です。利用日に有効なカード条件を確認してください。")
-    "CARD_SINGLE_RULE_INCOMPLETE"->word("一次付规则未补齐，请核对締め日和扣款日。","一括払い条件が未補完です。締め日と引落日を確認してください。")
-    "CARD_BONUS_RULE_INCOMPLETE"->word("ボーナス払い规则未补齐，请核对适用期间和付款日期。","ボーナス払い条件が未補完です。利用期間と支払日を確認してください。")
+    "CARD_AUTOMATIC_RULE_INCOMPLETE"->word("自动循环还款设置未补齐，请核对消费日期有效的卡规则。","自動リボ設定が未補完です。利用日に有効なカード条件を確認してください。")
+    "CARD_SINGLE_RULE_INCOMPLETE"->word("一次付规则未补齐，请核对结账日和扣款日。","一括払い条件が未補完です。締め日と引落日を確認してください。")
+    "CARD_BONUS_RULE_INCOMPLETE"->word("奖金月付款规则未补齐，请核对适用期间和付款日期。","ボーナス払い条件が未補完です。利用期間と支払日を確認してください。")
     "CARD_INSTALLMENT_RULE_INCOMPLETE"->word("分期规则未补齐，请核对期数、费用和付款日期。","分割払い条件が未補完です。回数・手数料・支払日を確認してください。")
     "CARD_INSTALLMENT_PERIODS_UNSUPPORTED"->word("周期付款的分期回数未填写或不受卡规则支持，请核对分期规则及周期付款。","定期支払の分割回数が未指定またはカード条件の対象外です。分割条件と定期支払を確認してください。")
-    "CARD_PAYMENT_ACCOUNT_REQUIRED"->word("卡规则未指定有效资金扣款账户，请补齐扣款账户。","カード条件に有効な資金引落口座がありません。引落口座を設定してください。")
-    "CARD_PAYMENT_ACCOUNT_INACTIVE"->word("卡规则的扣款账户已停用，请重新指定扣款账户。","カード条件の引落口座が停止中です。引落口座を指定し直してください。")
+    "CARD_PAYMENT_ACCOUNT_REQUIRED"->word("卡规则未指定有效资金付款账户，请补齐付款账户。","カード条件に有効な資金引落口座がありません。引落口座を設定してください。")
+    "CARD_PAYMENT_ACCOUNT_INACTIVE"->word("卡规则的付款账户已停用，请重新指定付款账户。","カード条件の引落口座が停止中です。引落口座を指定し直してください。")
     "CARD_ACCOUNT_INACTIVE"->word("信用卡账户已停用，请核对账户及周期付款。","カード口座が停止中です。口座と定期支払を確認してください。")
     "PAYMENT_ACCOUNT_INACTIVE"->word("所选资金账户已停用，请重新确认实际收付款账户。","選択した資金口座は停止中です。実際の入出金口座を再確認してください。")
     "INCOME_RECEIPT_CHANGED"->word("关联的实际收入已删除或改变，请核对到账。","関連する実収入が削除・変更されています。入金を確認してください。")

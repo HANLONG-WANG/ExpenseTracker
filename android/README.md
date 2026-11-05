@@ -31,7 +31,7 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 - 收支、历史补录、原ID编辑/修订、按账本草稿及进程恢复。原币/账户币/统计币、预计与实际、部分/分次退款、同币转账/异币换汇、两端独立日期/在途及明确费用。
 - 自然月/分类预算、周期待办（规则内固定商户/备注/付款方式，到期预览后一键确认）、确认或关联已有记录、记账模板、活动预算/资金预留、多人互请；分析模块排序、分类/商户/活动筛选与下钻。
 - 用户配置的一次付/分期/リボ/固定贷款/循环贷款规则，生效版本、计息/费用/舍入/时区及逐期计划；缺项不假设零费用，特殊算法使用平台已知手动金额，无机构预设。
-- 信用卡消费付款方式、自动リボ/余额池、总/子/共享额度；实际借还、部分/提前/跨币种付款、待平台清偿/未知拆分。纯试算不修改正式账，确认办理保留原账单和历史。
+- 信用卡消费付款方式、自动循环还款/循环还款计划、总/子/共享额度；实际借还、部分/提前/跨币种付款、待平台清偿/未知拆分。纯试算不修改正式账，确认办理保留原账单和历史。
 - 预计收入及实际到账/关联、按实际资金账户的逐日预测、基础/含预计收入两情景、预算与资金缺口分列、付款日历及重要事项。其他账户资金和信用额度不自动抵消扣款账户缺口。
 - Frankfurter v2参考汇率、来源日期/持久缓存、自动开关/手动刷新/离线手填；请求仅含币种/日期，不上传账目，参考金额不改写实际账。
 - 真实附件/小票多选、内部副本、图片预览、音频播放、外部只读打开；每个文件严格小于100 MB。
@@ -105,14 +105,14 @@ Room 34→35：新表 `event_places`（bookId,eventId 主键，外键 events 级
 ## 信用卡付款与额度
 
 - 「额度与恢复」→ 编辑额度条件 → 按付款日恢复，可设置 N 个自然日（默认0），付款日后第 N 天预计恢复；实际恢复记录优先。
-- 一次付规则可选两段不重叠的ボーナス利用期间及付款月日，随版本保存。记账选择「ボーナス一括」自动计算，缺设置或期间不匹配会提示补齐；「指定月一次付」填 YYYY-MM，不早于正常付款月份，按该月规则还款日支付。手续费未知留空、免费填0，已知费用加入单期；未知时合计与备款待补。两者仍是 SINGLE/CARD_ENTRY，不新增金融模式。
+- 一次付规则可选两段不重叠的奖金月利用期间及付款月日，随版本保存。记账选择「奖金月一次付」自动计算，缺设置或期间不匹配会提示补齐；「指定月一次付」填 YYYY-MM，不早于正常付款月份，按该月规则还款日支付。手续费未知留空、免费填0，已知费用加入单期；未知时合计与备款待补。两者仍是 SINGLE/CARD_ENTRY，不新增金融模式。
 - 「调整付款方案」选择一次付后，可按规则下一期、ボーナス或指定月生成首次付款日。
-- 信用卡总览本期及月账单的付款日分组 → 「まとめてリボ」：选择未付款且未逾期的一次付账单（包括已确认），填写不超过所选本金的转换金额，按消费日和创建顺序分配，最后一笔可部分转入既有リボ池。原费用和未转本金保留原日；办理费沿用并池条件，只计一次，未确认费用不能提交。无池时进入既有建池表单。
-- 批次在一个事务内保存，并在总览/月账单提供整组撤销。保存前后快照与同一 `undoGroupId` 保留于现有安排输入/计划历史；后续付款或安排已变化时不能直接撤销。退款归属沿用安排重核，不另建账务机制。
+- 信用卡总览本期及月账单的付款日分组 → 「批量转为循环还款（リボ）」：选择未付款且未逾期的一次付账单（包括已确认），填写不超过所选本金的转换金额，按消费日和创建顺序分配，最后一笔可部分转入既有リボ池。原费用和未转本金保留原日；办理费沿用并池条件，只计一次，未确认费用不能提交。无池时进入既有建池表单。
+- 批次在一个事务内保存；从管理 → 办理与版本历史 → 指定批次撤销，循环计划历史也可进入。保存前后快照与同一 `undoGroupId` 保留于现有安排输入/计划历史；后续付款或安排已变化时不能直接撤销。退款归属沿用安排重核，不另建账务机制。
 
-Room 32→33 新增 `credit_limit_configs.recoveryDelayDays INTEGER NOT NULL DEFAULT 0`、`events.cardPaymentMonth TEXT`、`events.cardPaymentFeeMinor INTEGER`（后两项默认NULL）。ボーナス规则和批次追溯保存在现有版本JSON中。完整备份仍为原数据库归档，`BACKUP_SCHEMA_VERSION` 跟随33，旧备份通过相同迁移升级；旧记录不会被设成新的付款方式。
+Room 32→33 新增 `credit_limit_configs.recoveryDelayDays INTEGER NOT NULL DEFAULT 0`、`events.cardPaymentMonth TEXT`、`events.cardPaymentFeeMinor INTEGER`（后两项默认NULL）。奖金月付款规则和批次追溯保存在现有版本JSON中。完整备份仍为原数据库归档，`BACKUP_SCHEMA_VERSION` 跟随33，旧备份通过相同迁移升级；旧记录不会被设成新的付款方式。
 
-必要验证：`CreditCardOptionsTest`（日期、费用、额度恢复和分配守恒），`CreditCardOptionsStorageTest`（单期保存、已确认部分转换、事务回滚/整组撤销），`DatabaseUpgradeTest.version32KeepsLimitRecoveryOnPaymentDay`（老配置延迟0）。本次仪器测试仅编译，未执行；三主题中日文视觉检查交由用户完成。
+必要验证：`CreditCardOptionsTest`（日期、费用、额度恢复和分配守恒），`CreditCardOptionsStorageTest`（单期保存、已确认部分转换、事务回滚/整组撤销），`DatabaseUpgradeTest.version32KeepsLimitRecoveryOnPaymentDay`（老配置延迟0）。批次历史与撤销交互由 `FinancialBatchRevolvingFlowTest` 覆盖；`CreditLimitFlowTest` 覆盖三种额度关系及平台观测预览，显示投影由 `FinancialDisplayFactsTest` 覆盖。
 
 ## 分类图标
 
@@ -168,6 +168,88 @@ curl http://127.0.0.1:8787/admin/tasks                                     # 查
 curl -X POST -H 'Content-Type: application/json' -d '{"status":"needs_info"}' http://127.0.0.1:8787/admin/tasks/<taskId>/status
 curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<taskId>/results?summary=...'   # 发布结果并置ready
 ```
+
+### 金融账户全屏编辑与比较
+
+计算规则（含试算）、共同月付款调整、批量转为循环还款、付款方案调整、借入/期初合同、实际还款、预测/手填计划、余额池及额度配置使用 `FinancialReviewLayout.kt` 的全屏流程。普通记录和规则为“填写 → 预览”，保存位于预览的固定操作区；真实办理为“填写 → 比较 → 记录已办理结果”，保留平台事实、办理时间和期限外受理。顶部及系统返回先退一步，填写页关闭回来源；输入使用 `FinancialDraftHost` / `financialField` 保留，恢复不带旧预览或平台勾选。还款、重核及新建预测事实刷新后返回填写并重新确认；新建预测的“平台当前已采用此安排”勾选不随草稿恢复。全屏流程只显示返回、任务标题、关闭和步骤，不重复应用账本/设置页头。切换账本或进入设置前先关闭流程，草稿自动保留，返回原账本后续办或明确放弃；页面上的原切账本草稿保护保持原样。第三步指示使用“记录结果 / 結果を記録”，按钮保留完整办理语义。批量转换草稿按账户与付款日隔离，建立循环计划后回到原选择。
+
+杂志用编辑标题与编号步骤，手账用连续纸页与页码，小物用文件夹分隔签和底部工具托盘。正文单独滚动，操作区固定并避让键盘；试算采用紧凑期次表，金额与期后本金直接来自原计算结果，说明使用行内分区；账户、模式、月份、日期和简单确认继续使用主题菜单/短弹层。账本/设置入口保留在应用页面，全屏流程关闭后才可操作。
+
+规则首次建立显示关键条件；新版本从本次预览的同账户同模式上一版本显示前后差异，覆盖清空、删除及嵌套条件。旧新方案按日期并集聚合同日付款，默认只看变化日期，付款账户或组成变化也计入变化；可切换全部日期并展开两侧完整依据。无已列付款不代表全部债务为零，不完整范围和未知项明确保留。日期比较为同一紧凑表中的“日期｜原｜新｜差额”，差额符号在币种前（如 −¥6,600 / +¥3,400）；“—”表示该日无已列付款并配图例。两侧都有付款时，仅不同的付款账户、分配或本金/费用组成在该行下合为小注，相同信息不重复，新增/移除日期的逐笔信息留在完整依据。金额未变的账户/组成变化仍保留。规则值改空为“未填写 / 未入力”，键或嵌套段删除为“已移除 / 削除済み”；扣款账户、締め日和还款日沿用编辑器及缺项列表的同名字段。这些是 `FinancialDisplayFacts` 的只读展示投影，保存仍使用原计算结果与事务。云端使用每一步的前后快照与办理比较归档，保留逐项完整前后值，不新增金融对象跳转。
+
+稳定标签：`finance-flow-{back|close|scroll|actions}`、`finance-change-summary`、`finance-rule-diff-{fieldKey}`、`finance-review-full-details`、`finance-comparison-changes-only`、`finance-comparison-row-{date}`、`finance-comparison-{before|after|delta}-{date}`。完整单侧表使用 `arrangement-table-{before|after|history|trial}`，行/单元格按方向、日期及同日序号定位；不包含翻译标题。规则/借还/安排/预测/手填/余额池/额度/重核预览的返回使用 `finance-flow-back`，关闭填写使用 `finance-flow-close`，短弹层仍用 `sheet-close`。
+
+相关测试：`FinancialDisplayFactsTest`、`FinancialRuleModesFlowTest`、`FinancialFlowTest`、`FinancialPoolPaymentFlowTest`、`FinancialPoolArrangementFlowTest`、`FinancialPoolMergeFlowTest`、`FinancialRepaymentFlowTest`、`FinancialDraftEditorsTest`、`FinancialDraftFlowTest#closedRuleDraftCanBeKeptResumedOrDiscardedAcrossBookSwitches`、`FinancialProductionOverviewTest` 与 `CommandFlowTest#financeCombinationPreviewAcrossLooks`。视觉验证使用 `looks=all visual=true`，键盘验证加 `realIme=true`。重核返回与补账单由 `FinancialReconciliationFlowTest`、`FinancialReconciliationChainFlowTest` 覆盖；手填未知范围由 `FinancialManualArrangementFlowTest` 覆盖；额度/池编辑由 `CreditLimitFlowTest`、`FinancialPoolFlowTest` 覆盖，云端数据流程由 `CommandFinanceExecutionTest` 覆盖。
+
+预测计划、手填已知计划、余额池创建/编辑、额度配置及共享额度配置使用“填写 → 预览”，确认保存位于固定操作区。重核已办理安排是核对现存义务的两步流程，预览保留事实勾选；不会再要求记录一次新的办理时间。返回预览上一步保留输入；补齐原账单、上一层重核后返回保留其他输入，更新已变化账单的金额和拆分。旧预览与事实勾选不持久恢复，提交遇到事实变化返回填写并要求重新审阅、重新勾选。
+
+预测和手填计划先显示首个已列账期、来源本金、已列账期/金额与费用，再显示完整性和保留/退出范围；“已列”不等于全部债务或实际待付。未知费用及追加费用待补保持未知。计划影响另列实际分配后的待付变化；逐期原/新值和计算依据从“查看完整依据 / すべての根拠を見る”展开。核对的阻断问题、下一步、未知拆分及未排期本金始终可见，预览使用行内分区，不重复任务标题或嵌套大型审查面板。
+
+预测/手填/余额池计划范围、核对字段与额度配置差异共用 `FinancialDisplayFacts`，每一步仅使用该步 `objects.before/after`（含未变化的相关账单），不使用最终净影响或当前数据库替换中间基线。名称也取该步快照。云端顺序为变化摘要 → 风险/缺项/未知 → 比较及逐项完整前后值入口 → 整批事实确认；原计算和归档继续是保存依据，投影不回传业务输入。整批原子性、事实要求、冲突检测、撤销协议和不新增金融对象跳转的决定保持不变。
+
+循环计划的已列范围包括本次生成账单和保留原账单，并按账单身份去重；保留账单与来源变动仍有独立完整依据入口。摘要中的账单合计不冒充实际待付。核对差异只显示适用字段，信用卡不显示不适用的贷款额度空项，空备注不伪装成未知金融事实。
+
+稳定标签还包括 `finance-plan-scope-incomplete`、`reconciliation-unknown`、`finance-plan-impact-detail-{planId}`、`pool-retained-details`、`pool-source-details`、`reconciliation-prediction-details`、`reconciliation-pool-details`。账单金额确认、平台额度观测/恢复和简单选择仍走原主题短弹层。
+
+### 金融账户还款录入
+
+按[计划 5.3](../docs/plans/financial-account-ui-plan.md#53-还款简化的准确边界)实现就地还款和简化录入。账单和期次各显示一处金额状态（已确认或未确认的规则预测）与独立付款状态；未付/部分付款可直接记录还款，全额已付待确认可查看原付款。保存/关闭回到来源并保持月份和位置。总览还款入口位于近期付款附近，管理中的还款记录、合同还款及原账单金额核对入口保留。
+
+还款使用上述全屏流程，基本区显示目标、付款账户、实扣、日期、平台确认和组成/分配摘要；费用与组成（含跨币种）、已有付款/转账关联、多目标分配、类型/备注可展开。摘要按债务账户币种格式化，空值为未知。既有记录的费用、币种、关联及独立分配默认可见；收起不清空输入，草稿恢复保留展开状态但不恢复旧预览或平台确认。
+
+建议来自已知剩余待付，扣除明确的待确认分配，并标明来源；失效预测和未知金额不提供确定值。同币种实扣偏离已知建议时清空单目标本金并展开组成，回到建议金额时恢复本金与已知零合并费用。无建议时输入实扣不自动展开或推算本金。非零合并费用不拆分，部分还款不按比例分摊，实收与付款端费用不自动推定。独立分配保留原值。
+
+预览先显示资金、清偿和目标待付变化，再看完整资料；仍使用 `previewRepayment` / `commitFinancialLedger`，业务规则和 Room 不变。云端办理同步预览顺序与术语，save/confirm 及用户事实确认语义不变，不新增金融对象跳转。杂志、手账、小物分别沿用编辑短注、账目边线批注、标题签收纳格及各自菜单、日期和短弹层。
+
+稳定标签：`statement-repay-{billId}`、`statement-{amount|payment}-status-{billId}`、`statement-payment-{billId}-{eventId}`；期次使用 `period-{amount|payment}-status-*`、`period-payment-*`。还款分区使用 `finance-repay-{target|details|link-existing|multiple-targets|independent|other|allocation-summary|payment-date|clearing-date|review-summary|review-targets}`，保留 `finance-pay-bill-*`、`finance-repay-cleared/preview`、`finance-ledger-confirm`、`finance-flow-back`。日期测试按付款/清偿所属区域定位。
+
+相关测试：`FinancialRepaymentStateTest` 验证建议和单目标联动；`FinancialRepaymentFlowTest` 覆盖就地还款、待确认/确认、部分还款、无建议输入、已有跨币种付款与多目标编辑；`FinancialFlowTest`、`FinancialDraftEditorsTest`、`FinancialDraftFlowTest#closedRuleDraftCanBeKeptResumedOrDiscardedAcrossBookSwitches`、`FinancialProductionOverviewTest` 验证原业务、草稿和真实外壳；`CommandFlowTest` 覆盖云端还款预览。UI 使用 `looks=all visual=true` 并查看三主题×中日文截图，沿用 `phase-c-repayment/`、`phase-c-production-overview/`、`phase-c-rules/` 和 `cloud-command-stage-1/` 目录。
+
+
+### 金融账户 UI 阶段 5：办理历史、额度关系与时间
+
+批量转换从「管理 → 办理与版本历史 → 指定批次」查看；循环还款计划的版本历史也能进入同一批次。总览/账单只保留发起转换，不再提供页底整组撤销。确认首段来自 `BatchArrangementArchive` 的办理前/后归档：办理时间、批次身份、原消费/计划名称、逐笔转入金额与合计、原一次付安排、目标循环计划、恢复安排及范围、实际资金/原消费/平台办理边界。取消不写入；确认继续调用 `undoBatchRevolving`，成功后历史保留。后续付款、安排或引用变化由原事务阻断，界面显示具体原因并提供「查看当前还款安排」。
+
+总览、额度页、配置历史和预览依据配置显示关系：`TOTAL_ONLY` 显示分期与循环还款共用总额度；`SEPARATE_CAPS` 分列总/分期/循环上限并说明子额度仍受总额度约束；`SHARED_SUBPOOL` 分层显示总额度与其中共用子额度。未知/未配置不从计算容量推定独立额度。跨账户共享组限制及限制后本账户预计可用值另列，上限与预计可用值分开。计算、恢复规则和余额不变。
+
+金融办理时间按操作规则及历史归档中的规则时区显示，中文为 `2026年11月4日 10:59 · Asia/Tokyo`，日文为 `2026年11月4日 10:59・Asia/Tokyo`。普通版本保存、草稿更新及核对保存标注「记录时间」。日期字段保持日期。显示与输入原值分离，未实际编辑时间时保留原 Instant 的秒/小数精度。新平台观测使用操作时的 UTC 偏移保存同一 Instant，预览与历史用该偏移；既有仅含 `Z` 的观测以 UTC 展示，不能恢复未保存的原地区时区。
+
+中文主入口统一为「循环还款计划」「批量转为循环还款（リボ）」「本期付款方式变更截止」「核对当前还款安排」「已替换计划」「撤销这次批量转换记录」；结账日、奖金月付款、自动循环还款一并收口。同一计划字段 `paymentAccountId` 称「付款账户」，实际还款的 `sourceAccountId` 称「实际付款账户」，两者分别表示计划资金来源和已发生付款来源。`POOL`、协议字段、枚举和命令名不变。
+
+批次历史与摘要复用金融主题组件：杂志编辑短注、手账边线账目、小物标签收纳格；短确认使用各主题弹层，管理目录保留四区选中态。手账数学负号统一为 U+2212；原手账字体把该字形画成连字符，独立的同字体负号子集修正其宽度与数学运算符对齐，不替换其他主题或数字字体。
+
+云端 `financialBatchRevolving.undo` 从该批次历史归档生成同一只读恢复摘要，放入步骤自己的 `revolvingBatchArchive` 展示事实；不查询当前计划冒充办理前版本，不作为撤销事务输入。一次批量转换记录的撤销与「撤销整份云端方案」分别命名。额度和时间在 `CommandFinanceViews` / `CommandEffectViews` 同步，完整前后值、事实勾选、原子性与冲突检测保留；不新增金融对象跳转。
+
+稳定标签：`finance-batch-history-{group}`、`finance-batch-open-{group}`、`finance-batch-undo-summary`、`batch-revolving-undo-confirm`、`finance-batch-undo-cancel`、`finance-batch-undo-blocked`、`finance-batch-current`、`finance-limit-relationship`、`finance-time-{semanticId}`。测试为 `FinancialBatchRevolvingFlowTest`、`CreditLimitFlowTest`、`FinancialDisplayFactsTest` 和 `CommandFlowTest` 的金融方法；数据事务回归继续使用 `CreditCardOptionsStorageTest` 与 `CommandFinanceExecutionTest`。
+
+批次历史项只保留一个入口：未撤销时为“查看并撤销”，已撤销时为“查看”；确认撤销在详情内完成。摘要以办理时间和原消费名称标识批次，不展示内部 ID。原消费按原付款日、名称排序，恢复列表的目标循环计划固定置后。
+
+额度关系中的各项上限只显示一次；预览中变化的上限只在差异区展示，未变化的上限仍在关系区显示，关系说明保留一句。不适用的额度字段不显示；关系切换导致旧上限被删除时，差异明确列出旧金额与“已移除”。
+
+
+阶段 1–5 已通过复核。金融 UI 计划第 8.3 节的默认全量仪器回归、十个纯视觉类完整矩阵、金融三主题×中日文截图、真实进程草稿恢复及 MainActivity 导航抽查已完成。过时测试已修正并复验；默认全量中大账本用例出现内存不足而定点复跑通过，保留累计内存敏感风险，不能据此宣称全量单进程无失败。
+
+### 金融账户 UI 阶段 2（2026-11-04）
+
+计划区提供“添加还款安排”和摘要列表，每份计划显示已列待付及完整性。详情包含摘要、可展开完整进度、紧凑期次表、比较/重算/共同月付款和办理历史；点击期次查看事实、计算依据、还款及账单金额核对。列表、详情和期次保留各自滚动位置，顶部/系统返回恢复来源；网贷总览每份计划只列近期两期。
+
+新建可选择已知账单、规则预测或循环还款，进入统一全屏流程。合同候选按账户、来源、模式、状态和关联/清偿限制筛选；无候选可带合同上下文新建，草稿恢复及保存后返回候选页，再由用户确认关联。取消关联保留已保存计划；循环计划仍对应账户余额池。云端仅同步术语。
+
+稳定标签：`finance-plan-row-*`、`finance-plan-detail-*`、`finance-plan-period-*`、`finance-progress-open-*`、`finance-add-arrangement`、`finance-archived-open`、`statement-period-*`、`finance-link-contract-*`、`finance-contract-link-empty`、`finance-contract-create-plan`、`finance-contract-candidate-*`。原三种创建标签位于新建引导页，详情业务标签保留；测试通过 `FinancialPlanNavigation.kt` 的真实列表/详情点击进入。
+
+相关测试：`FinancialPlanPagesTest`、`FinancialFlowTest`、`FinancialPoolFlowTest`、`FinancialDraftEditorsTest`、`FinancialLedgerTest`、`FinancialDraftTest` 及安排/追溯/重核流程；`FinancialProductionOverviewTest` 验证真实 MainActivity 导航，`CommandFlowTest#financeCombinationPreviewAcrossLooks` 验证云端预览。计划/合同和真实外壳 UI 使用 `looks=all visual=true`。
+
+### 金融账户 UI 阶段 1（2026-11-04）
+
+金融账户采用固定「总览 / 账单 / 计划 / 管理」（日文「概要 / 請求 / 返済予定 / 管理」）。默认进入总览，完整封面仅在总览。管理提供还款记录、计算规则、额度与恢复、办理与版本历史、未完成金融草稿；网贷另有独立的借入与合同页。总览提供额度/草稿快捷入口，历史目录连接计划、规则版本和额度配置历史。
+
+`FinancialDestination` 将旧 `rules/movements/limits` 映射至管理子页。`NativeApp.openFinancial` 统一账户、分析、事项、日历、通知和文件入口；外层 `rules` 路由保留。外部请求仅消费一次，刷新/主题切换不重置目标或月份。金融正文独立滚动，按账本/账户/任务或子页保存位置；顶部/系统返回一致，规则往返额度保留草稿和来源。
+
+稳定标签：`finance-tab-{overview|statement|plans|manage}`、`finance-manage-{rules|records|contracts|limits|history|drafts}`、`finance-manage-history-{rules|limits}`、`finance-navigation`、`finance-account-bar`、`finance-account-name`、`finance-task-title`、`finance-back`、`finance-overview-limits`。`page-scroll` 指金融正文；原业务编辑标签保留。金融旧 `analysis-tab-{overview|statement|plans|rules|movements|limits}` 已移除，其他页面不变。
+
+相关测试：`FinancialNavigationTest`、`FinancialProductionOverviewTest`、`FinancialOutlookFlowTest`、`FinancialFlowTest`、`FinancialDraftFlowTest`、`CreditLimitFlowTest`、`CardPaymentFlowTest`、`ExpectedIncomeFlowTest`、`FinancialProgressFlowTest`。真实外壳和规则草稿往返使用 `looks=all visual=true`；重点检查固定导航、选中态、月份/滚动恢复及三主题布局。截图沿用 `phase-c-production-overview/`、`phase-c-rules/`、`phase-c-drafts/`，文件名为 `{theme}-{language}-{场景}.png`。
+
+云端办理文档使用新的本机路径，不新增金融对象跳转。`StatementFileWorkflowTest` 的文件交接仍直达账单编辑器。进程边界专项按 `FinancialDraftFlowTest#processBoundaryPreservesOnlyDraftFields` 的编排前提执行；全屏编辑与通用变化摘要见上文；办理历史、额度关系与时间文案已在阶段 5 收口。
 
 ### 金融预测修正（2026-11-04）
 

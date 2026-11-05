@@ -1,8 +1,12 @@
 package com.yohaku.expensetracker.ui.features
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -15,18 +19,38 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import kotlinx.serialization.encodeToString
 
-@Composable internal fun FinancialAccountScreen(s:BookSnapshot,account:AccountEntity,vm:AppViewModel,initialTab:String="overview",onRecord:(EventEntity)->Unit={},initialMonth:String?=null,onFund:((String,String?)->Unit)?=null) {
+@Composable internal fun FinancialAccountScreen(s:BookSnapshot,account:AccountEntity,vm:AppViewModel,initialTab:String="overview",onRecord:(EventEntity)->Unit={},initialMonth:String?=null,onFund:((String,String?)->Unit)?=null,requestId:Long=0,modifier:Modifier=Modifier,onBack:()->Unit={vm.back()},head:@Composable ()->Unit={}) {
     val graph by vm.financialState.collectAsStateWithLifecycle()
+    val readFailure by vm.financialReadFailure.collectAsStateWithLifecycle()
     val finance=graph?.takeIf{it.book.id==s.book.id}
-    var tab by rememberSaveable(s.book.id,account.id){mutableStateOf(initialTab)}
+    var path by rememberSaveable(s.book.id,account.id){mutableStateOf(FinancialDestination.from(initialTab).copy(planId=null,periodId=null).path)}
+    val destination=FinancialDestination.from(path)
+    val tab=destination.path
+    var pageReturn by rememberSaveable(s.book.id,account.id){mutableStateOf("manage")}
+    var selectedPlan by rememberSaveable(s.book.id,account.id){mutableStateOf(FinancialDestination.from(initialTab).planId)}
+    var selectedPeriod by rememberSaveable(s.book.id,account.id){mutableStateOf(FinancialDestination.from(initialTab).periodId)}
+    var periodReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
+    var addArrangement by rememberSaveable(s.book.id,account.id){mutableStateOf(false)}
+    var createContract by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
+    var savedContract by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
+    var createdPlan by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
+    fun navigate(target:String,returnTo:String="manage") {
+        val next=FinancialDestination.from(target)
+        selectedPlan=next.planId;selectedPeriod=next.periodId;periodReturn=null;addArrangement=false
+        path=next.copy(planId=null,periodId=null).path
+        pageReturn=returnTo
+    }
+    var consumedRequest by rememberSaveable(s.book.id,account.id){mutableStateOf(requestId)}
     var statementMonth by rememberSaveable(s.book.id,account.id){mutableStateOf(initialMonth?:java.time.YearMonth.now(vm.repository.clock).toString())}
+    var limitDraftReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
+    var limitSourceReturn by rememberSaveable(s.book.id,account.id){mutableStateOf("manage/rules")}
+    var limitPageReturn by rememberSaveable(s.book.id,account.id){mutableStateOf("manage")}
     var limitRuleReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var editMode by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var arrangementReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var arrangementPlan by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var batchDate by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var batchPoolReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
-    var undoBatch by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var poolTarget by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var poolBillReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var poolPaymentPlan by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
@@ -47,29 +71,80 @@ import kotlinx.serialization.encodeToString
     var history by rememberSaveable(s.book.id,account.id){mutableStateOf(false)}
     val busy by vm.busy.collectAsStateWithLifecycle()
     val currency=Currency.valueOf(account.currency)
-    if((tab=="overview"||account.type==AccountType.CREDIT.name)&&finance!=null)FinancialAccountLead(s,account,finance,vm)
-    else YTitle(account.name,if(account.type==AccountType.CREDIT.name)"CREDIT, WITH CLARITY" else "PERSONAL LOAN",word("用户配置规则 · 不采用机构预设","手動設定・会社別プリセットなし"),pageFlow=true)
-    val loanOverview=account.type==AccountType.LOAN.name&&tab=="overview"
-    if(!loanOverview)FinancialAccountTabs(tab,{tab=it;editMode=null},showActions=tab!="overview"&&account.type!=AccountType.CREDIT.name,card=account.type==AccountType.CREDIT.name)
-    if(finance==null){YText(word("正在读取金融资料…","金融情報を読込中…"),12);YButton(word("重新读取","再読込"),vm::retryRead);return}
+    val scrolls=rememberSaveableStateHolder()
+    val resume=resumedDraft?.let{vm.repository.json.decodeFromString<FinancialDraftContext>(it)}
+    fun planSaved(id:String,contractId:String?) {
+        manual=false;prediction=null;resumedDraft=null;createContract=null
+        if(contractId!=null){navigate("manage/contracts");contractLink=contractId;savedContract=contractId;createdPlan=id}else{navigate("plans");selectedPlan=id}
+    }
+    fun returnFromLimits() {
+        if(limitDraftReturn!=null)resumedDraft=limitDraftReturn else editMode=limitRuleReturn
+        limitDraftReturn=null;limitRuleReturn=null
+        navigate(limitSourceReturn,limitPageReturn)
+    }
+    fun back() {
+        when {
+            editMode!=null || resume?.kind=="RULE" -> {vm.financialRuleReview.value=null;editMode=null;resumedDraft=null}
+            tab=="manage/limits" && limitRuleReturn!=null -> returnFromLimits()
+            selectedPeriod!=null -> {val source=periodReturn;if(source!=null)navigate(source)else selectedPeriod=null}
+            selectedPlan!=null -> selectedPlan=null
+            addArrangement -> addArrangement=false
+            destination.page!=null -> navigate(pageReturn)
+            else -> onBack()
+        }
+    }
+    LaunchedEffect(requestId) {
+        if(consumedRequest!=requestId) {
+            navigate(initialTab)
+            initialMonth?.let{statementMonth=it}
+            editMode=null;resumedDraft=null;limitRuleReturn=null;limitDraftReturn=null
+            movement=null;movementTarget=null;contractLink=null;manual=false;prediction=null;createContract=null;createdPlan=null;savedContract=null
+            confirming=null;planHistory=null;poolTarget=null;poolPaymentPlan=null;arrangementPlan=null
+            batchDate=null;reconciliationPlan=null;reconciliationParents=emptyList()
+            poolBillReturn=null;batchPoolReturn=null;arrangementReturn=null;poolPaymentReturn=null;reconciliationReturn=null
+            consumedRequest=requestId
+        }
+    }
+    BackHandler(enabled=selectedPlan!=null || addArrangement || destination.page!=null || editMode!=null || resume?.kind=="RULE"){back()}
+    Column(modifier.fillMaxSize()) screen@{
+        head()
+        Column(Modifier.padding(pageContentPadding())) {
+            FinancialAccountBar(account.name,(if(selectedPeriod!=null)word("期次明细","各回の明細")else if(selectedPlan!=null)word("计划详情","プラン詳細")else financialTaskLabel(if(editMode!=null || resume?.kind=="RULE")"manage/rules" else tab)),::back)
+            FinancialTaskTabs(destination.tab){navigate(it);editMode=null;resumedDraft=null;limitRuleReturn=null;limitDraftReturn=null;vm.financialRuleReview.value=null}
+        }
+        Spacer(Modifier.height(when(LocalYohaku.current.id){"journal"->14.dp;"objects"->16.dp;else->12.dp}))
+        // Do not measure a restored scroll position against the temporary loading placeholder.
+        if(finance==null) {
+            Column(Modifier.padding(pageContentPadding())) {
+                YText(readFailure?:word("正在读取金融资料…","金融情報を読込中…"),12,Modifier.testTag(if(readFailure==null)"finance-loading"else "finance-load-failure"))
+                YButton(word("重新读取","再読込"),vm::retryRead)
+            }
+            return@screen
+        }
+        val scrollKey=if(editMode!=null || resume?.kind=="RULE") "rule-editor-${editMode?:resume?.mode}" else if(selectedPeriod!=null)"period-$selectedPeriod" else if(selectedPlan!=null)"plan-$selectedPlan" else tab
+        scrolls.SaveableStateProvider(s.book.id+"/"+account.id+"/"+scrollKey) {
+        val scroll=rememberSaveable(saver=ScrollState.Saver){ScrollState(0)}
+        Column(Modifier.weight(1f).verticalScroll(scroll).testTag("page-scroll")) {
+        Column(Modifier.padding(pageContentPadding()).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) content@{
+    if(tab=="overview")FinancialAccountLead(s,account,finance,vm)
     val rules=finance.rules.filter{it.accountId==account.id}
     val modes=if(account.type==AccountType.CREDIT.name)listOf(FinanceMode.SINGLE,FinanceMode.INSTALLMENT,FinanceMode.REVOLVING)else listOf(FinanceMode.FIXED_LOAN,FinanceMode.CREDIT_LINE)
-    val resume=resumedDraft?.let{vm.repository.json.decodeFromString<FinancialDraftContext>(it)}
-    fun openRuleLimits(mode:String) {limitRuleReturn=mode;resumedDraft=null;editMode=null;tab="limits";vm.financialRuleReview.value=null}
-    if(resume?.kind=="RULE"){FinancialDraftResume(s,account,finance,resume,vm,{resumedDraft=null},onLimits={openRuleLimits(requireNotNull(resume.mode))});return}
+    fun openRuleLimits(mode:String) {
+        limitRuleReturn=mode;limitDraftReturn=resumedDraft;limitSourceReturn=path;limitPageReturn=pageReturn
+        resumedDraft=null;editMode=null;navigate("limits");vm.financialRuleReview.value=null
+    }
+    if(resume?.kind=="RULE"){FinancialDraftResume(s,account,finance,resume,vm,{resumedDraft=null},onLimits={openRuleLimits(requireNotNull(resume.mode))});return@content}
     editMode?.let{raw->val mode=FinanceMode.valueOf(raw);val latest=rules.filter{it.mode==raw}.maxByOrNull{it.version}
-        FinancialRuleEditor(s,account,mode,latest?.let{vm.repository.json.decodeFromString(it.json)},vm,{editMode=null},onLimits={openRuleLimits(mode.name)});return}
+        FinancialRuleEditor(s,account,mode,latest?.let{vm.repository.json.decodeFromString(it.json)},vm,{editMode=null},onLimits={openRuleLimits(mode.name)});return@content}
     if(tab=="overview") {
-        FinancialDraftList(s,account,vm,{resumedDraft=vm.repository.json.encodeToString(it)})
-        FinancialAccountOverview(s,account,finance,vm,{month->statementMonth=month;tab="statement"},{bill->movementTarget=bill;movement=if(bill==null)"repay"else"repay-bill"},{arrangementPlan=it},{tab="rules"},{tab="plans"},onRecord,{tab="movements"},onFund,{batchDate=it})
-        if(loanOverview)FinancialAccountTabs(tab,{tab=it;editMode=null})
-        else FinancialAccountActions{tab=it;editMode=null}
+        FinancialDraftList(s,account,vm,{resumedDraft=vm.repository.json.encodeToString(it)},onOpen={navigate("manage/drafts",returnTo="overview")})
+        FinancialAccountOverview(s,account,finance,vm,{month->statementMonth=month;navigate("statement")},{bill->movementTarget=bill;movement=if(bill==null)"repay"else"repay-bill"},{arrangementPlan=it},{navigate("rules")},{navigate("plans")},{e->if(s.repayments.any{it.eventId==e.id}){movementTarget=e.id;movement="repay-edit"}else onRecord(e)},{navigate("manage/contracts")},onFund,{batchDate=it},onLimits={navigate("limits")})
     }else if(tab=="statement") {
-        FinancialStatements(s,account,finance,vm,statementMonth,{statementMonth=it},{confirming=it},{tab="plans"},onRecord,{batchDate=it})
-    }else if(tab=="limits") {
-        if(limitRuleReturn!=null)YButton(word("返回规则草稿","条件の下書きへ戻る"),{editMode=limitRuleReturn;limitRuleReturn=null;tab="rules"},Modifier.testTag("finance-return-rule"))
+        FinancialStatements(s,account,finance,vm,statementMonth,{statementMonth=it},{confirming=it},{navigate("plans")},onRecord,{batchDate=it},onPeriod={id->val bill=finance.bills.first{it.id==id};navigate("plans/${bill.planId}/$id");periodReturn="statement"},onRepay={movementTarget=it;movement="repay-bill"},onPayment={movementTarget=it.id;movement="repay-edit"})
+    }else if(tab=="manage/limits") {
+        if(limitRuleReturn!=null)YButton(word("返回规则草稿","条件の下書きへ戻る"),{returnFromLimits()},Modifier.testTag("finance-return-rule"))
         CreditLimitSection(s,account,finance,vm)
-    }else if(tab=="rules") {
+    }else if(tab=="manage/rules") {
         modes.forEach{mode->
             val latest=rules.filter{it.mode==mode.name}.maxByOrNull{it.version}
             val rule=latest?.let{vm.repository.json.decodeFromString<FinancialRuleVersion>(it.json)}
@@ -95,120 +170,93 @@ import kotlinx.serialization.encodeToString
                 if(historyVersion==version.id)FinancialRuleFacts(vm.repository.json.decodeFromString(version.json),s,finance.bills)
             }}
         }
-    }else if(tab=="movements") {
-        if(account.type==AccountType.LOAN.name) {
-            YButton(word("＋ 记录实际借入","＋ 実際の借入を記録"),{movementTarget=null;movement="borrow"},Modifier.testTag("finance-add-borrowing"),primary=true,enabled=!busy)
-            YButton(word("补充期初合同","期首契約を補完"),{movementTarget=null;movement="opening"},Modifier.testTag("finance-add-opening-contract"),enabled=!busy)
-        }
-        YButton(word("＋ 记录实际还款","＋ 実際の返済を記録"),{movementTarget=null;movement="repay"},Modifier.testTag("finance-add-repayment"),primary=true,enabled=!busy)
+    }else if(tab=="manage/contracts") {
+        YButton(word("＋ 记录实际借入","＋ 実際の借入を記録"),{movementTarget=null;movement="borrow"},Modifier.testTag("finance-add-borrowing"),primary=true,enabled=!busy)
+        YButton(word("补充期初合同","期首契約を補完"),{movementTarget=null;movement="opening"},Modifier.testTag("finance-add-opening-contract"),enabled=!busy)
         finance.contracts.filter{it.accountId==account.id}.forEach{c->Panel(Modifier.testTag("finance-contract-${c.id}")) {
             YText(c.name,18);YText(financeLabel(c.mode)+" · "+c.date,11)
             FinancialContractFacts(s,c)
+            if(savedContract==c.id&&createdPlan!=null&&finance.contractPlans.none{it.planId==createdPlan&&it.contractId==c.id})YText(word("计划已保存，尚未关联","プランは保存済み・未関連です"),12,color=LocalYohaku.current.accent)
             val funding=c.fundingEventId?.let{id->s.events.firstOrNull{it.id==id}}
             if(funding?.deletedAt!=null)YText(word("借入记录已在回收站；独立还款和合同资料仍保留。","借入記録はごみ箱にあります。独立した返済・契約情報は保持しています。"),11,color=LocalYohaku.current.warm)
             YActionRow {
                 if(c.fundingEventId==null||funding?.deletedAt==null)YButton(word("编辑合同 / 借入","契約・借入を編集"),{movementTarget=c.id;movement=if(c.fundingEventId==null)"opening"else "borrow"},enabled=!busy)
-                YButton(word("关联已有计划","既存プランを関連付け"),{contractLink=c.id},enabled=!busy)
+                YButton(word("关联已有计划","既存プランを関連付け"),{if(savedContract!=c.id)createdPlan=null;contractLink=c.id},Modifier.testTag("finance-link-contract-${c.id}"),enabled=!busy)
                 YButton(word("对这份合同还款","この契約へ返済"),{movementTarget=c.id;movement="repay-contract"},Modifier.testTag("finance-repay-contract-${c.id}"),enabled=!busy)
             }
         }}
+    }else if(tab=="manage/records") {
+        YButton(word("＋ 记录实际还款","＋ 実際の返済を記録"),{movementTarget=null;movement="repay"},Modifier.testTag("finance-add-repayment"),primary=true,enabled=!busy)
         s.repayments.filter{it.debtAccountId==account.id}.mapNotNull{p->s.visibleEvents.firstOrNull{it.id==p.eventId}?.let{it to p}}.sortedByDescending{it.first.date}.forEach{(e,p)->Panel {
             YText(e.date,14);FinancialRepaymentFacts(s,e,p)
             YButton(word("核对 / 编辑还款","返済を確認・編集"),{movementTarget=e.id;movement="repay-edit"},Modifier.testTag("finance-edit-repayment-${e.id}"),enabled=!busy)
         }}
         val unallocated=s.repaymentPrincipalNeedingAllocation(finance,account.id,finance.plans.filter{vm.repository.financialPredictionStale(s,finance,it)}.map{it.id}.toSet())
         if(unallocated!=0L)YText(word("尚未分配到具体义务的已清偿本金：","個別債務への未充当返済元金：")+Money(currency,unallocated).display(),12,color=LocalYohaku.current.warm)
-    }else {
-        val plans=finance.plans.filter{it.accountId==account.id&&it.active}
-        val pool=plans.firstOrNull{it.origin=="POOL"}
-        YButton(if(pool==null)word("建立账户循环余额池","口座の循環プールを作成")else word("核对 / 重算账户余额池","口座プールを確認・再計算"),{poolTarget=pool?.id?:""},Modifier.testTag("finance-pool-open"),primary=true,enabled=!busy)
-        YText(word("平台确认金额与实际付款分开保存。已知计划不重复计入欠款本金。","返済先の確定金額と実際の支払を分けて保存します。予定を元金に重複加算しません。"),11,color=LocalYohaku.current.muted)
-        if(plans.isEmpty())YEmpty(word("还没有已知账单或计划","既知の請求・予定はまだありません"))
-        plans.forEach{plan->
-            ThemeSection(plan.name,financeLabel(plan.mode))
-            val stale=vm.repository.financialPredictionStale(s,finance,plan)
-            FinancialPlanProgressView(s,finance,plan,java.time.LocalDate.now(vm.repository.clock).toString(),stale)
-            YActionRow {
-                YButton(word("计划版本与变化","予定の履歴と変化"),{planHistory=plan.id},Modifier.testTag("finance-plan-history-${plan.id}"),enabled=!busy)
-                if(plan.origin=="POOL")YButton(word("调整共同月付款","共通月払いを変更"),{poolPaymentPlan=plan.id},Modifier.testTag("finance-pool-payment-${plan.id}"),enabled=!busy)
-                if(plan.origin=="POOL"||plan.origin!="POOL_RETAINED"&&finance.arrangements.none{it.originalPlanId==plan.id})YButton(word("比较付款方案","支払プランを比較"),{arrangementPlan=plan.id},Modifier.testTag("finance-compare-plan-${plan.id}"),enabled=!busy)
-            }
-            val current=plan.termsJson?.let{vm.repository.json.decodeFromString<FinancialPredictionInput>(it)}
-            if(vm.repository.financialPredictionStale(s,finance,plan))YText(word("来源、清偿、账期或规则已变化；以下保留原预测，请核查并重算。","対象・返済・請求期間・条件が変わりました。以下は元の予測です。確認して再計算してください。"),12,Modifier.testTag("prediction-stale-${plan.id}"),color=LocalYohaku.current.warm)
-            if(plan.origin=="POOL"||plan.origin!="POOL_RETAINED"&&finance.arrangements.none{it.originalPlanId==plan.id})YButton(if(plan.termsJson==null)word("用规则核对这份计划","条件でこのプランを検算")else word("重算未确认预测","未確定の予測を再計算"),{if(plan.origin=="POOL")poolTarget=plan.id else prediction=plan.id},Modifier.testTag("finance-recalculate-${plan.id}"),enabled=!busy)
-            finance.bills.filter{it.planId==plan.id&&it.active}.sortedBy{it.number}.forEach{bill->Panel(Modifier.testTag("finance-bill-${bill.id}")) {
-                FinancialBillFacts(bill,currency)
-                val manualReview=plan.reconciliation()?.input?.principalMinor==0L
-                FinancialRemainingAfterBill(bill,currency,stale||manualReview)
-                val outstanding=s.billOutstanding(bill)
-                RecordFacts(listOf(word("实际清偿后待付","実返済後の請求残額") to Money(currency,outstanding.totalMinor).display()))
-                if(plan.reconciliation()?.input?.bills?.any{it.billId==bill.id}==true)RecordFacts(listOf(word("重核后待付本金 / 费用","再確認後の未払元金・手数料") to ((outstanding.principalMinor?.let{Money(currency,it).display()}?:word("未知","不明"))+" / "+(outstanding.feeMinor?.let{Money(currency,it).display()}?:word("未知","不明")))))
-                if(outstanding.totalMinor<0)YText(word("已付款超过当前账单，请核对多付或退款；实际付款保持原值。","支払済額が現在の請求を超えています。過払・返金を確認してください。実支払額は保持します。"),12,color=LocalYohaku.current.warm)
-                else if(outstanding.settled)YText(word("本期已由实际还款结清","当期は実際の返済で精算済み"),12,color=LocalYohaku.current.accent)
-                else YButton(word("记录本期实际还款","当期の実際の返済を記録"),{movementTarget=bill.id;movement="repay-bill"},Modifier.testTag("finance-pay-bill-${bill.id}"),enabled=!busy)
-                current?.projections?.firstOrNull{it.number==bill.number}?.let{FinancialProjectionFacts(it.basis,currency)}
-                if(plan.termsJson!=null&&bill.basisJson!=null)FinancialPredictionBasis(bill,finance,currency,vm,s,historical=manualReview||current?.facts?.retainedBills?.any{it.id==bill.id}==true)
-                YText(word("扣款账户：","引落口座：")+(s.accounts.firstOrNull{it.id==bill.paymentAccountId}?.name?:word("未确定","未定")),11)
-                YButton(if(bill.confirmed)word("明确调整这期账单","この回の請求を明示的に修正")else word("确认平台账单","返済先の請求を確定"),{confirming=bill.id},Modifier.testTag("finance-confirm-bill-${bill.id}"),enabled=!busy)
-                if(bill.confirmed&&bill.ruleVersionId!=null&&bill.predictedTotalMinor!=null)YButton(word("与原预测核对规则","元の予測で条件を検証"),{vm.execute{vm.repository.validateFinancialRule(s.book.id,bill.id)}},Modifier.testTag("finance-validate-bill-${bill.id}"),enabled=!busy)
-            }}
+    }else if(tab=="manage") {
+        val pages=if(account.type==AccountType.LOAN.name)listOf("contracts","records","rules","limits","history","drafts") else listOf("records","rules","limits","history","drafts")
+        pages.forEach{id->FinancialDirectoryRow(id,financialTaskLabel("manage/$id")){navigate("manage/$id")}}
+    }else if(tab=="manage/drafts") {
+        FinancialDraftList(s,account,vm,{resumedDraft=vm.repository.json.encodeToString(it)},alwaysExpanded=true)
+    }else if(tab=="manage/history") {
+        FinancialBatchHistoryList(s.book.id,account.id,vm,{id->navigate("plans");selectedPlan=id})
+        FinancialDirectoryRow("history-rules",word("规则版本历史","条件のバージョン履歴")){history=true;navigate("rules",returnTo="manage/history")}
+        FinancialDirectoryRow("history-limits",word("额度配置版本历史","利用枠設定の履歴")){navigate("limits",returnTo="manage/history")}
+        finance.plans.filter{it.accountId==account.id}.forEach{plan->
+            YButton(plan.name+" · "+word("计划版本与变化","予定の履歴と変化"),{planHistory=plan.id},Modifier.testTag("finance-plan-history-${plan.id}"))
         }
-        finance.arrangements.filter{a->finance.plans.any{it.id==a.targetPlanId&&it.accountId==account.id}}.forEach{a->Panel {
-            val original=finance.plans.first{it.id==a.originalPlanId};val target=finance.plans.first{it.id==a.targetPlanId}
-            YText(word("已办理变更","手続き済み変更")+" · "+a.effectiveDate,16)
-            YText(financeLabel(original.mode)+" → "+financeLabel(target.mode),12)
-            if(vm.repository.arrangementBaselineIssue(s,finance,target)!=null)YText(word("来源、退款或清偿已变化，请重核当前安排。","元データ・返金・返済に変更があります。現在の予定を再確認してください。"),12,color=LocalYohaku.current.warm)
-            if(target.origin!="POOL_RETAINED"||finance.reconciliationPool(target)!=null)YButton(word("重核来源 / 退款 / 清偿","元データ・返金・返済を再確認"),{reconciliationParents=emptyList();reconciliationPlan=target.id},Modifier.testTag("finance-reconcile-${target.id}"),enabled=!busy)
-            YButton(word("查看原安排版本","元の予定の履歴を見る"),{planHistory=original.id},enabled=!busy)
-            YButton(if(target.origin=="POOL_MEMBER")word("查看并入记录","統合の記録を見る")else word("查看新安排版本","新しい予定の履歴を見る"),{planHistory=target.id},Modifier.testTag("finance-arrangement-history-${a.id}"),enabled=!busy)
-        }}
+    }else if(tab=="plans") {
+        val plans=finance.plans.filter{it.accountId==account.id&&it.active}
+        if(selectedPlan==null) {
+            YButton(word("添加还款安排","返済予定を追加"),{addArrangement=true},Modifier.testTag("finance-add-arrangement"),primary=true,enabled=!busy)
+            if(plans.isEmpty())YEmpty(word("还没有已知账单或计划","既知の請求・予定はまだありません"))
+            plans.forEach{plan->FinancialPlanSummary(s,finance,plan,vm,{selectedPlan=plan.id})}
         val archived=finance.plans.filter{it.accountId==account.id&&!it.active&&it.origin!="POOL_MEMBER"}
         if(archived.isNotEmpty()) {
-            YButton(word("已替换的本地预测","置換済みの予測")+if(archivedPlans)" −"else" +",{archivedPlans=!archivedPlans})
-            if(archivedPlans)archived.forEach{p->YButton(p.name+" · "+financeLabel(p.mode),{planHistory=p.id},Modifier.testTag("finance-archived-${p.id}"))}
+            YButton(word("已替换计划","置換済みの予定")+if(archivedPlans)" −"else" +",{archivedPlans=!archivedPlans},Modifier.testTag("finance-archived-open"))
+            if(archivedPlans)archived.forEach{p->YButton(p.name+" · "+financeLabel(p.mode),{selectedPlan=p.id},Modifier.testTag("finance-archived-${p.id}"))}
         }
-        YButton(word("从消费 / 期初生成预测","利用・期首残高から予測を作成"),{prediction=""},Modifier.testTag("finance-add-prediction"),primary=true,enabled=!busy)
-        YButton(word("＋ 添加已知账单 / 逐期计划","＋ 既知の請求・各回の予定を追加"),{manual=true},Modifier.testTag("finance-add-plan"),primary=true,enabled=!busy)
+        } else finance.plans.firstOrNull{it.id==selectedPlan}?.let{plan->
+            val bill=finance.bills.firstOrNull{it.id==selectedPeriod&&it.planId==plan.id}
+            if(bill!=null)FinancialPlanPeriod(s,finance,plan,bill,vm,{movementTarget=it;movement="repay-bill"},{confirming=it},onRecord,onPayment={movementTarget=it.id;movement="repay-edit"})
+            else FinancialPlanDetail(s,finance,plan,vm,{selectedPeriod=it},{planHistory=it},{poolPaymentPlan=it},{arrangementPlan=it},
+                {if(plan.origin=="POOL")poolTarget=it else prediction=it},{reconciliationParents=emptyList();reconciliationPlan=it})
+        }
     }
-    if(account.type==AccountType.CREDIT.name&&tab!="overview")FinancialAccountActions{tab=it;editMode=null}
+
     resume?.let{context->FinancialDraftResume(s,account,finance,context,vm,{resumedDraft=null},{bill->
         resumedDraft=null
         if(context.kind=="POOL")poolBillReturn=context.targetId.orEmpty() else if(context.kind=="ARRANGEMENT_REVIEW")reconciliationReturn=context.targetId
         confirming=bill
-    },{parent->reconciliationParents=listOfNotNull(context.targetId);resumedDraft=null;reconciliationPlan=parent})}
-    if(account.type==AccountType.CREDIT.name&&tab in listOf("overview","statement")) {
-        val batches=finance.arrangements.filter{row->finance.plans.any{it.id==row.originalPlanId&&it.accountId==account.id}}.mapNotNull{row->vm.repository.json.decodeFromString<FinancialArrangementInput>(row.inputJson).undoGroupId?.let{it to row}}.groupBy({it.first},{it.second})
-        batches.forEach{(group,rows)->YButton(word("撤销まとめてリボ记录","まとめてリボの記録を取消")+" · "+rows.first().effectiveDate+" · "+Money(currency,rows.sumOf{it.principalMinor}).display(),{undoBatch=group},Modifier.testTag("batch-revolving-undo-$group"))}
-    }
-    undoBatch?.let{group->YSheet(word("整组撤销记录","グループの記録を取消"),{undoBatch=null}) {
-        YText(word("恢复本组转换前的一次付和余额池安排。这只撤销本地记录，不向卡公司申请取消。若已有后续付款或安排变化，需先核对。","この変更前の一括払いとプール予定に戻します。ローカル記録のみを取り消し、カード会社への取消申請は行いません。後続の支払・予定変更がある場合は確認が必要です。"),12)
-        YButton(word("确认整组撤销","グループ全体を取消"),{vm.execute(onSuccess={undoBatch=null}){vm.repository.undoBatchRevolving(s.book.id,group)}},Modifier.testTag("batch-revolving-undo-confirm"),primary=true,enabled=!busy)
-    }}
+    },{parent->reconciliationParents=listOfNotNull(context.targetId);resumedDraft=null;reconciliationPlan=parent},onPlanSaved=::planSaved,onPool={id->batchPoolReturn=context.targetId;resumedDraft=null;poolTarget=id.orEmpty()})}
     batchDate?.let{date->BatchRevolvingEditor(s,account,finance,date,vm,{batchDate=null},{id->batchPoolReturn=date;batchDate=null;poolTarget=id.orEmpty()})}
     poolTarget?.let{id->FinancialPoolEditor(s,account,finance,finance.plans.firstOrNull{it.id==id},vm,{poolTarget=null;batchDate=batchPoolReturn;batchPoolReturn=null;arrangementPlan=arrangementReturn;arrangementReturn=null;poolPaymentPlan=poolPaymentReturn;poolPaymentReturn=null},{bill->poolBillReturn=id;poolTarget=null;confirming=bill})}
     poolPaymentPlan?.let{id->finance.plans.firstOrNull{it.id==id&&it.active&&it.origin=="POOL"}?.let{plan->FinancialPoolPaymentEditor(s,account,finance,plan,vm,{poolPaymentPlan=null},{poolPaymentReturn=id;poolPaymentPlan=null;poolTarget=id},{bill->poolPaymentReturn=id;poolPaymentPlan=null;confirming=bill})}}
     reconciliationPlan?.let{id->finance.plans.firstOrNull{it.id==id}?.let{plan->FinancialReconciliationEditor(s,account,finance,plan,vm,{reconciliationPlan=reconciliationParents.lastOrNull();reconciliationParents=reconciliationParents.dropLast(1)},{bill->reconciliationReturn=id;reconciliationPlan=null;confirming=bill},{parent->reconciliationParents=reconciliationParents+id;reconciliationPlan=parent})}}
     arrangementPlan?.let{id->finance.plans.firstOrNull{it.id==id}?.let{FinancialArrangementEditor(s,account,finance,it,vm,{arrangementPlan=null},{pool->arrangementReturn=id;arrangementPlan=null;poolTarget=pool},{bill->arrangementReturn=id;arrangementPlan=null;confirming=bill})}}
-    planHistory?.let{id->finance.plans.firstOrNull{it.id==id}?.let{FinancialPlanHistory(it,vm,{planHistory=null})}}
+    planHistory?.let{id->finance.plans.firstOrNull{it.id==id}?.let{FinancialPlanHistory(it,vm,{planHistory=null},{planId->planHistory=null;navigate("plans");selectedPlan=planId})}}
     movement?.let{kind->
         if(kind in listOf("borrow","opening"))FinancialBorrowingEditor(s,account,vm,{movement=null},kind=="opening",finance.contracts.firstOrNull{it.id==movementTarget})
         else FinancialRepaymentEditor(s,account,finance,vm,{movement=null},eventId=movementTarget.takeIf{kind=="repay-edit"},billId=movementTarget.takeIf{kind=="repay-bill"},contractId=movementTarget.takeIf{kind=="repay-contract"})
     }
-    contractLink?.let{id->YSheet(word("关联已有计划","既存プランを関連付け"),{contractLink=null}) {
-        val c=finance.contracts.first{it.id==id}
-        YText(c.name,18)
-        YText(word("仅选择相同来源的计划。此关联不改变余额或账单金额。","同じ対象のプランを選択します。関連付けで残高・請求額は変わりません。"),11)
-        finance.plans.filter{it.accountId==account.id&&it.active&&it.origin!="POOL"&&it.sourceEventId==c.fundingEventId}.forEach{p->YButton(p.name,{vm.execute(onSuccess={contractLink=null}){vm.repository.linkFinancialContractPlan(s.book.id,c.id,p.id)}},enabled=!busy)}
+    if(addArrangement)FinancialAddArrangement(account,{addArrangement=false;if(createContract!=null){contractLink=createContract;createContract=null}},{addArrangement=false;manual=true},{addArrangement=false;prediction=""},{addArrangement=false;poolTarget=finance.plans.firstOrNull{it.accountId==account.id&&it.active&&it.origin=="POOL"}?.id?:""},contract=createContract!=null)
+    contractLink?.let{id->finance.contracts.firstOrNull{it.id==id}?.let{c->
+        FinancialContractPlanPicker(s,finance,c,vm,createdPlan,{contractLink=null},{createContract=c.id;contractLink=null;addArrangement=true},
+            {p->vm.execute(onSuccess={contractLink=null;createdPlan=null}){vm.repository.linkFinancialContractPlan(s.book.id,c.id,p)}})
     }}
-    prediction?.let{id->FinancialPredictionEditor(s,account,finance,if(id.isEmpty())null else finance.plans.first{it.id==id},vm,{prediction=null})}
-    if(manual)ManualFinancialPlanEditor(s,account,vm,{manual=false})
+    prediction?.let{id->FinancialPredictionEditor(s,account,finance,if(id.isEmpty())null else finance.plans.first{it.id==id},vm,{prediction=null;if(createContract!=null){contractLink=createContract;createContract=null}},finance.contracts.firstOrNull{it.id==createContract},::planSaved)}
+    if(manual)ManualFinancialPlanEditor(s,account,vm,{manual=false;if(createContract!=null){contractLink=createContract;createContract=null}},finance.contracts.firstOrNull{it.id==createContract},::planSaved)
     confirming?.let{id->finance.bills.firstOrNull{it.id==id}?.let{FinancialBillConfirmationEditor(s,account.id,it,currency,vm,{confirming=null;if(poolBillReturn!=null){poolTarget=poolBillReturn;poolBillReturn=null}else{arrangementPlan=arrangementReturn;arrangementReturn=null;poolPaymentPlan=poolPaymentReturn;poolPaymentReturn=null;reconciliationPlan=reconciliationReturn;reconciliationReturn=null}})}}
+        }
+        }
+        }
+    }
 }
 
-@Composable internal fun FinancialBillFacts(bill:FinancialBillEntity,currency:Currency) {
+@Composable internal fun FinancialBillFacts(bill:FinancialBillEntity,currency:Currency,showAmountStatus:Boolean=true) {
     fun money(value:Long?)=value?.let{Money(currency,it).display()}
     YText(word("第${bill.number}期","第${bill.number}回")+" · "+bill.date,14)
-    YText(if(bill.confirmed)word("平台已确认金额 · 尚非付款记录","返済先の確定金額・支払記録とは別")else word("规则预测","条件による予測"),11,color=LocalYohaku.current.accent)
+    if(showAmountStatus)YText(if(bill.confirmed)word("平台已确认金额 · 尚非付款记录","返済先の確定金額・支払記録とは別")else word("规则预测","条件による予測"),11,color=LocalYohaku.current.accent)
     RecordFacts(listOf(word("本金","元金") to (money(bill.principalMinor)?:word("未知","不明")),word("利息 / 费用","利息・手数料") to (money(bill.feeMinor)?:word("未知","不明")),word("合计","合計") to (if(!bill.confirmed&&bill.basisJson?.let{kotlinx.serialization.json.Json.decodeFromString<FinancialCalculationBasis>(it).additionalFeeUnknown}==true)word("手续费待补，合计未知","手数料未入力・合計不明")else Money(currency,bill.totalMinor).display())))
     if(bill.confirmed&&bill.predictedTotalMinor!=null)YText(word("原预测：","元の予測：")+money(bill.predictedTotalMinor)+" · "+bill.predictedDate,11,color=LocalYohaku.current.muted)
 }
@@ -255,17 +303,5 @@ import kotlinx.serialization.encodeToString
         FinancialDraftNotice()
         KnownBillFields(s,draft,{encoded=vm.repository.json.encodeToString(it)},date,{date=it},"finance-actual")
         YButton(word("预览本期调整","当期の修正を確認"),{val input=draft;vm.execute{vm.financialReviewRefreshed.value=false;vm.financialBillReview.value=vm.repository.previewFinancialBillConfirmation(s.book.id,bill.id,input.input(currency))}},Modifier.testTag("finance-bill-preview"),primary=true,enabled=!busy)
-    }
-}
-
-@Composable private fun FinancialAccountTabs(tab:String,onTab:(String)->Unit,showActions:Boolean=true,card:Boolean=false) {
-    YTabs(listOf("overview" to word("总览","概要"),"statement" to word("账单","明細"),"plans" to if(card)word("分期/リボ","分割/リボ")else word("计划","予定"),"rules" to word("规则","条件")),tab,onTab)
-    if(showActions)FinancialAccountActions(onTab)
-}
-
-@Composable private fun FinancialAccountActions(onTab:(String)->Unit) {
-    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        YButton(word("实际借还","借入・返済"),{onTab("movements")},Modifier.weight(1f).testTag("analysis-tab-movements"),inline=true)
-        YButton(word("额度与恢复","利用枠と回復"),{onTab("limits")},Modifier.weight(1f).testTag("analysis-tab-limits"),inline=true)
     }
 }

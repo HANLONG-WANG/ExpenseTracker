@@ -203,7 +203,7 @@ class ThemeControlsTest {
         val brand=mutableStateOf(false)
         val header=mutableStateOf(false)
         val owner=mutableStateOf<Int?>(null)
-        val dates=mutableStateOf(listOf("2026-10-12","2026-10-15T09:00"))
+        val dates=mutableStateOf(listOf("2026-10-12","2026-10-15T09:00:42.123456789"))
         val selected=mutableStateOf("cash")
         ui.setContent{YohakuTheme(theme.value,"zh"){
             if(brand.value)YStartup() else if(header.value)Column(Modifier.fillMaxSize().safeDrawingPadding()){YAppHeader("日常生活",{},{})} else Column(Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)){
@@ -214,7 +214,7 @@ class ThemeControlsTest {
             }
         }}
         for(id in testLooks(this@ThemeControlsTest).map { it.first }.distinct()){
-            ui.runOnIdle{theme.value=id;brand.value=true;owner.value=null;selected.value="cash";dates.value=listOf("2026-10-12","2026-10-15T09:00")}
+            ui.runOnIdle{theme.value=id;brand.value=true;owner.value=null;selected.value="cash";dates.value=listOf("2026-10-12","2026-10-15T09:00:42.123456789")}
             capture(id+"-startup")
             ui.runOnIdle{brand.value=false;header.value=true}
             capture(id+"-header")
@@ -234,7 +234,7 @@ class ThemeControlsTest {
             ui.onAllNodesWithTag("shared-calendar").assertCountEquals(1)
             ui.onNodeWithText("20").performScrollTo().performClick()
             assertEquals("2026-10-12",dates.value[0])
-            assertEquals("2026-10-20T09:00",dates.value[1])
+            assertEquals("2026-10-20T09:00:42.123456789",dates.value[1])
             ui.onNodeWithTag("date-field-1").performScrollTo().performClick()
             ui.onNodeWithTag("select-trigger-时").performScrollTo().performClick()
             ui.onNodeWithTag("select-option-时-11").performScrollTo()
@@ -242,7 +242,7 @@ class ThemeControlsTest {
             capture(id+"-hour-menu")
             ui.onNodeWithTag("select-option-时-11").performClick()
             ui.waitForIdle()
-            assertEquals("2026-10-20T11:00",dates.value[1])
+            assertEquals("2026-10-20T11:00:42.123456789",dates.value[1])
             ui.runOnIdle{owner.value=null}
             ui.onNodeWithTag("select-trigger-付款账户").performScrollTo().performClick()
             capture(id+"-menu")

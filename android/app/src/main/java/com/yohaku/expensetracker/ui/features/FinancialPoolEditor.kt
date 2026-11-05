@@ -14,6 +14,7 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.*
 import java.time.LocalDate
 
 @Serializable private data class PoolAdoptedFeeDraft(val arrangementId:String,val date:String,val included:Boolean=false,val waived:String="0")
@@ -58,40 +59,67 @@ import java.time.LocalDate
     val memberPlans=f.plans.filter{it.active&&it.accountId==a.id&&it.mode==mode.name&&it.id!=old?.id}
     val retained=f.bills.filter{b->b.active&&(memberPlans.any{it.id==b.planId}||b.planId==old?.id)&&(b.confirmed||b.date<LocalDate.now(vm.repository.clock).toString()||s.repaymentAllocations.any{it.billId==b.id}||s.billAdjustments.any{it.billId==b.id})}
     LaunchedEffect(review){if(review!=null)preview.scrollTo(0)}
-    YSheet(if(review==null)word("账户余额池","残高プール")else word("余额池预测","プールの予測"),{if(review!=null)review=null else onClose()},scrollState=if(review==null)form else preview) {
+    FinancialFlow(word("循环还款计划","リボ・循環返済プラン"),step=if(review!=null)1 else 0,onClose=onClose,onBack={review=null},
+        scrollState=if(review==null)form else preview,actions={
+            val r=review
+            if(r!=null) {
+                YButton(word("确认保存循环还款计划","循環返済プランを保存"),{var ok=false;vm.execute(onSuccess={if(ok)onClose()else{review=null;stale=true}}){ok=commitFinancialDraft(draftSession){vm.repository.commitFinancialPrediction(r)}!=null}},Modifier.testTag("pool-confirm"),primary=true,enabled=!busy&&r.calculation is Calculation.Ready)
+            }else {
+            YButton(word("预览循环还款计划","口座の循環予定を確認"),{vm.execute {
+                val source=sourceDate?.let{PoolSourceDate.valueOf(it)}?:error("请选择起算日期依据 / 開始日の根拠を選択してください")
+                val initial=Money.parse(opening,c).minor
+                val number=firstNumber.toIntOrNull()?:error("请输入起始期数 / 開始回数を入力してください")
+                val terms=(saved?.terms?:FinancialScheduleTerms(a.openingDate,emptyList())).copy(agreementDate=a.openingDate,paymentDates=rows.map{it.date},accrualWindows=rows.map{AccrualWindow(it.start,it.end)},firstPeriodNumber=number)
+                val values=shares.filterValues{it.isNotBlank()}.mapValues{Money.parse(it.value,c).minor}
+                val pool=(saved?.pool?:FinancialPoolInput(initial,source)).copy(openingMinor=initial,sourceDate=source,unallocatedShares=values,adoptExisting=adopt,adoptedFees=f.adoptedArrangements(a.id,mode.name,adopt).filter{it.changeFeeMinor>0}.mapNotNull{change->feeDrafts.firstOrNull{it.arrangementId==change.id}?.let{PoolAdoptedFee(it.arrangementId,it.date,it.included,Money.parse(it.waived,c).minor)}},facts=saved?.pool?.facts?.let{facts->facts.copy(openingDate=a.openingDate,accountOpeningMinor=a.openingMinor,payments=facts.payments.filter{it.eventId !in values.keys})})
+                review=vm.repository.previewFinancialPool(s.book.id,FinancialPredictionInput(a.id,name,mode,terms,paymentAccountId=bank,planId=old?.id,currentArrangementConfirmed=true,pool=pool))
+            }},Modifier.testTag("pool-preview"),primary=true,enabled=!busy&&rows.isNotEmpty())
+            }
+        }) {
         if(stale)FinanceRefreshed()
         val r=review
         if(r!=null) {
             val facts=r.input.pool!!.facts!!
-            YText(r.plan.name,18)
-            RecordFacts(listOf(word("期初循环本金","期首元金") to Money(c,r.input.pool.openingMinor).display(),word("纳入本金变动","元金変動") to facts.sources.size.toString(),word("保留原账单","保持請求") to facts.retained.size.toString()))
+            val previous=r.before.finance.plans.firstOrNull{it.id==r.plan.id}
+            val previousPool=previous?.let(::poolInput)
+            val retainedBefore=previousPool?.facts?.retained.orEmpty().map{it.bill.id}.toSet()
+            val beforeBills=r.before.finance.bills.filter{it.planId==r.plan.id||it.id in retainedBefore}
+            val afterBills=(r.bills+facts.retained.map{it.bill}).distinctBy{it.id}
+            FinancialPlanChangeSummary(r.plan.name,FinancialDisplayFacts.plan(previous,r.plan,beforeBills,afterBills),c)
+            when(val result=r.calculation) {
+                is Calculation.Incomplete->FinancialReadiness(RuleReadiness.Incomplete(result.fields),word("需要核对","確認が必要"))
+                is Calculation.Unsupported->FinancialCalculationResult(result,c,compact=true)
+                is Calculation.CannotSettle->FinancialCalculationResult(result,c,compact=true)
+                is Calculation.Ready->Unit
+            }
+            FinancialFieldChanges(FinancialDisplayFacts.fields(previousPool?.let{vm.repository.json.encodeToJsonElement(FinancialPoolInput.serializer(),it).jsonObject},
+                vm.repository.json.encodeToJsonElement(FinancialPoolInput.serializer(),r.input.pool).jsonObject,FinancialDisplayFacts.poolFields),c,first=previousPool==null)
+            FinancialPoolScopeFacts(FinancialDisplayFacts.poolScope(vm.repository.json.encodeToJsonElement(FinancialPoolInput.serializer(),r.input.pool).jsonObject,previousPool?.let{vm.repository.json.encodeToJsonElement(FinancialPoolInput.serializer(),it).jsonObject}),c)
             facts.arrangementFees.forEach{fee->YText(fee.date+" · "+word("本次安排费用：","今回の予定手数料：")+Money(c,fee.minor).display(),12)}
             r.input.pool.adoptedFees.filter{it.waivedMinor>0}.forEach{fee->YText(word("原办理费中平台明确取消：","元の手数料のうち返済先取消額：")+Money(c,fee.waivedMinor).display()+word("；实际已付款不自动退回。","。実支払は自動返金しません。"),11)}
             r.input.pool.paymentChanges.forEach{PoolPaymentSettingFacts(it.setting,c)}
             if(r.input.pool.paymentChanges.isNotEmpty())YText(word("采用已办理的月付款条件；利率规则中的默认月付金额不覆盖它。再次调整请记录新的办理结果。","手続き済みの月支払条件を採用し、金利条件の既定月額では上書きしません。再変更は新しい手続き結果として記録してください。"),11)
-            facts.retained.forEach{b->YText(b.bill.date+" · "+Money(c,b.totalMinor).display()+" · "+word("保留原账单，不另加一份","元の請求を保持し、重複作成しません"),11)}
+            if(facts.retained.isNotEmpty())FinancialFullDetails(tag="pool-retained-details",title=word("查看保留账单","保持する請求を見る")) { facts.retained.forEach{b->YText(b.bill.date+" · "+Money(c,b.totalMinor).display()+" · "+word("保留原账单，不另加一份","元の請求を保持し、重複作成しません"),11)} }
             when(val result=r.calculation) {
                 is Calculation.Ready->{
-                    result.value.forEach{p->Panel(Modifier.testTag("pool-period-${p.period.number}")) {
+                    val remaining=result.value.lastOrNull()?.period?.remainingPrincipalMinor?:0
+                    YText(word("预测范围后剩余：","予測範囲後の残額：")+Money(c,remaining).display(),14,Modifier.testTag("pool-remaining"))
+                    FinancialFullDetails {
+                    result.value.forEach{p->FinancialReviewSection(word("第${p.period.number}期","第${p.period.number}回"),Modifier.testTag("pool-period-${p.period.number}")) {
                         YText(p.period.date.toString(),14)
                         RecordFacts(listOf(word("本金","元金") to Money(c,p.period.principalMinor).display(),word("利息 / 费用","利息・手数料") to Money(c,p.period.feeMinor).display(),word("合计","合計") to Money(c,p.period.totalMinor).display(),word("期后本金","支払後の元金") to Money(c,p.period.remainingPrincipalMinor).display()))
                         FinancialProjectionFacts(p.basis,c)
                     }}
-                    val remaining=result.value.lastOrNull()?.period?.remainingPrincipalMinor?:0
-                    YText(word("预测范围后剩余：","予測範囲後の残額：")+Money(c,remaining).display(),14,Modifier.testTag("pool-remaining"))
+                    }
                 }
-                is Calculation.Incomplete->FinancialReadiness(RuleReadiness.Incomplete(result.fields),word("需要核对","確認が必要"))
-                is Calculation.Unsupported->FinancialCalculationResult(result,c)
-                is Calculation.CannotSettle->FinancialCalculationResult(result,c)
+                else->Unit
             }
-            ThemeSection(word("来源与变动","対象と変動"),"PRINCIPAL FACTS")
+            if(facts.sources.isNotEmpty()||facts.payments.isNotEmpty())FinancialFullDetails(tag="pool-source-details",title=word("来源与变动","対象と変動")) {
             facts.sources.forEach{source->YText(source.date+" · "+Money(c,source.principalMinor).display()+" · "+(source.eventId?.let{id->s.events.firstOrNull{it.id==id}?.merchant}.orEmpty()),11)}
             facts.payments.forEach{p->YText(p.date+" · "+word("实际清偿本金","実返済元金")+" · "+Money(c,p.allocations.sumOf{it.principalMinor?:0}+(p.explicitMinor?:0)).display(),11)}
-            YText(word("只保存一套账户循环预测；不增加借入、消费、收入或资金。确认/已付款关联/逾期账单按原义务保留，未来未付款才进入假设。","口座の循環予測を1つ保存し、借入・支出・収入・資金は増やしません。確定・支払関連・期限経過の請求は保持し、将来の未払分のみを仮定します。"),11)
-            YActionRow {
-                YButton(word("确认保存余额池","プールを保存"),{var ok=false;vm.execute(onSuccess={if(ok)onClose()else{review=null;stale=true}}){ok=commitFinancialDraft(draftSession){vm.repository.commitFinancialPrediction(r)}!=null}},Modifier.testTag("pool-confirm"),primary=true,enabled=!busy&&r.calculation is Calculation.Ready)
-                YButton(word("返回修改","修正に戻る"),{review=null},Modifier.testTag("pool-back"),enabled=!busy)
             }
+            YText(word("只保存一套账户循环预测；不增加借入、消费、收入或资金。确认/已付款关联/逾期账单按原义务保留，未来未付款才进入假设。","口座の循環予測を1つ保存し、借入・支出・収入・資金は増やしません。確定・支払関連・期限経過の請求は保持し、将来の未払分のみを仮定します。"),11)
+
         }else {
             FinancialDraftNotice()
             YText(word("账户内的循环本金共同计费、共同计算一次月付款，固定贷款与一次付/分期不混入。","口座内の循環元金をまとめて計算し、月の支払額を1回計算します。固定ローン・一括・分割分は含めません。"),11)
@@ -99,7 +127,7 @@ import java.time.LocalDate
             YText(word("账户期初：","口座期首：")+a.openingDate,12)
             YField(word("期初属于循环的本金 / 没有请填0","循環分の期首元金・なければ0"),opening,{opening=it},Modifier.testTag("pool-opening"),numeric=true)
             YSelect(word("新增本金起算日期","追加元金の開始日"),sourceDate,listOf(null to word("请选择","選択してください"),"TRANSACTION" to word("交易 / 借入发生日","取引・借入日"),"ACCOUNT_POSTING" to word("账户入账日","口座計上日")),{sourceDate=it})
-            YSelect(word("实际扣款账户 / 可留空","実引落口座・未定は空欄"),bank,listOf(null to word("未确定 / 按规则","未定・条件から取得"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to it.name},{bank=it})
+            YSelect(word("付款账户 / 可留空","引落口座・未定は空欄"),bank,listOf(null to word("未确定 / 按规则","未定・条件から取得"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id as String? to it.name},{bank=it})
             YField(word("预测期数","予測回数"),count,{count=it},numeric=true)
             YField(word("起始账期序号","開始請求回数"),firstNumber,{firstNumber=it},numeric=true)
             YDateFields(listOf(word("首期计费开始","初回計算開始") to firstStart,word("首期计费结束","初回計算終了") to firstEnd,word("首期付款日","初回支払日") to firstPay),calendar?.takeIf{it<3},{calendar=it},{i,v->when(i){0->firstStart=v;1->firstEnd=v;else->firstPay=v}})
@@ -143,22 +171,14 @@ import java.time.LocalDate
             if(retained.isNotEmpty())YText(word("须包含这些原账单日期：","次の元請求日を含めてください：")+retained.map{it.date}.distinct().sorted().joinToString(" · "),11)
             val unallocated=poolUnallocatedPayments(s,a.id)
             unallocated.filter{it.minor>0||it.eventId in shares}.forEach{p->
-                YField(word("未分配本金中属于池的金额","未充当のうちプール元金分")+" · "+p.date,shares[p.eventId].orEmpty(),{v->shareJson=vm.repository.json.encodeToString(shares+(p.eventId to v))},numeric=true)
+                YField(word("未分配本金中属于循环还款计划的金额","未充当のうち循環返済プラン元金分")+" · "+p.date,shares[p.eventId].orEmpty(),{v->shareJson=vm.repository.json.encodeToString(shares+(p.eventId to v))},numeric=true)
             }
             (shares.keys-unallocated.map{it.eventId}.toSet()).forEach{id->
                 YText(word("原付款已删除或不再适用，请核对旧归属。","元の支払は削除・変更されています。旧割当てを確認してください。"),11)
                 YButton(word("移除这份失效归属","この無効な割当てを除外"),{shareJson=vm.repository.json.encodeToString(shares-id)})
             }
-            YText(word("未分配还款需明确属于池的部分，零也请填0。预测期数只限定查看范围，不代表全部结清。","未充当返済はプール分を明示し、ゼロも0を入力してください。予測回数は表示範囲で、完済を意味しません。"),11)
-            YButton(word("预览账户循环计划","口座の循環予定を確認"),{vm.execute {
-                val source=sourceDate?.let{PoolSourceDate.valueOf(it)}?:error("请选择起算日期依据 / 開始日の根拠を選択してください")
-                val initial=Money.parse(opening,c).minor
-                val number=firstNumber.toIntOrNull()?:error("请输入起始期数 / 開始回数を入力してください")
-                val terms=(saved?.terms?:FinancialScheduleTerms(a.openingDate,emptyList())).copy(agreementDate=a.openingDate,paymentDates=rows.map{it.date},accrualWindows=rows.map{AccrualWindow(it.start,it.end)},firstPeriodNumber=number)
-                val values=shares.filterValues{it.isNotBlank()}.mapValues{Money.parse(it.value,c).minor}
-                val pool=(saved?.pool?:FinancialPoolInput(initial,source)).copy(openingMinor=initial,sourceDate=source,unallocatedShares=values,adoptExisting=adopt,adoptedFees=f.adoptedArrangements(a.id,mode.name,adopt).filter{it.changeFeeMinor>0}.mapNotNull{change->feeDrafts.firstOrNull{it.arrangementId==change.id}?.let{PoolAdoptedFee(it.arrangementId,it.date,it.included,Money.parse(it.waived,c).minor)}},facts=saved?.pool?.facts?.let{facts->facts.copy(openingDate=a.openingDate,accountOpeningMinor=a.openingMinor,payments=facts.payments.filter{it.eventId !in values.keys})})
-                review=vm.repository.previewFinancialPool(s.book.id,FinancialPredictionInput(a.id,name,mode,terms,paymentAccountId=bank,planId=old?.id,currentArrangementConfirmed=true,pool=pool))
-            }},Modifier.testTag("pool-preview"),primary=true,enabled=!busy&&rows.isNotEmpty())
+            YText(word("未分配还款需明确属于循环还款计划的部分，零也请填0。预测期数只限定查看范围，不代表全部结清。","未充当返済は循環返済プラン分を明示し、ゼロも0を入力してください。予測回数は表示範囲で、完済を意味しません。"),11)
+
         }
     }
 }

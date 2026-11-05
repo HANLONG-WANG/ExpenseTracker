@@ -101,7 +101,7 @@ import java.time.format.DateTimeFormatter
         val plan=remember(row.planJson){runCatching{readCommandDocument<CommandPlan>(row.planJson)}.getOrNull()}
         YText(if(row.undoOf!=null)undoTitle(history.firstOrNull{it.planId==row.undoOf})else plan?.message?.take(180)?.ifBlank{word("办理方案","手続きプラン")}?:word("无法识别的方案","読み取れないプラン"),14)
         YText(if(row.undoOf!=null)word("本机撤销 · ${plan?.steps?.size?:0} 个步骤","端末での取消・${plan?.steps?.size?:0} ステップ")else if(plan?.steps?.isEmpty()==true)word("文字回答","テキスト回答")else word("${plan?.steps?.size?:0} 个步骤 · 结果版本 ${row.resultVersion}","${plan?.steps?.size?:0} ステップ・結果バージョン ${row.resultVersion}"),11,color=LocalYohaku.current.muted)
-        row.undoneAt?.let{YText(word("撤销时间：","取消日時：")+commandTime(it),12,number=true)}
+        row.undoneAt?.let{YText(word("撤销记录时间：","取消の記録日時：")+commandTime(it),12,number=true)}
         if(row.status in listOf("EXECUTED","UNDONE"))CommandFollowups(row.planId,vm)
         if(row.status=="EXECUTED"&&row.undoOf==null)CommandUndoEntry(row,vm)
         row.error?.let{YText(localizedCommand(it),11,color=LocalYohaku.current.warm)}
@@ -144,7 +144,7 @@ import java.time.format.DateTimeFormatter
     if(row.status in listOf("EXECUTED","UNDONE"))CommandFollowups(row.planId,vm,focusOnAppear=true)
     Panel {
         YText(commandStatus(row.status),12,color=LocalYohaku.current.accent)
-        row.undoneAt?.let{YText(word("撤销时间：","取消日時：")+commandTime(it),12,number=true)}
+        row.undoneAt?.let{YText(word("撤销记录时间：","取消の記録日時：")+commandTime(it),12,number=true)}
         if(row.undoOf!=null)YText(undoTitle(original),15)
         if(monthly==null)plan?.let{if(it.message.isNotBlank())YText(it.message,15,lineHeightMultiplier=1.7f);it.questions.forEach{q->YText("• $q",13)}}
         row.error?.let{YText(localizedCommand(it),13,color=LocalYohaku.current.warm)}
@@ -196,6 +196,7 @@ import java.time.format.DateTimeFormatter
             StepSummary(step,s,model)
             CommandRiskNotices(step.risks,s,model)
             step.missing.filterNot{field->step.risks.any{it.detail==field}}.forEach{YText(commandIssue(it),12,color=LocalYohaku.current.warm)}
+            CommandFinancialComparison(step,s,model)
             if(step.objects.isNotEmpty())YLink(word("逐项查看前后与连带影响","変更前後と関連する影響を見る"),{details=step.objects},Modifier.testTag("command-details-${step.stepId}"))
         }}
         Panel(Modifier.testTag("command-net")) {
@@ -236,7 +237,7 @@ import java.time.format.DateTimeFormatter
             Panel {
                 YText(word("执行时的确认","実行時の確認"),16)
                 model.requirements.filter{it.kind!=ConfirmationKind.INFORMATION}.forEach{requirement->
-                    val statement=if(LocalLanguage.current=="ja")requirement.ja else requirement.zh
+                    val statement=commandRequirementText(requirement,model)
                     YText((if(requirement.key in saved)"✓ "else"— ")+statement,12)
                 }
             }
@@ -244,9 +245,9 @@ import java.time.format.DateTimeFormatter
         if(row.status=="PENDING") {
             model.requirements.filter{it.kind!=ConfirmationKind.INFORMATION}.forEachIndexed{index,requirement->
                 val stepNumber=model.steps.indexOfFirst{it.stepId==requirement.stepId}+1
-                YToggle(word("步骤 $stepNumber · ","ステップ ${stepNumber}・")+(if(LocalLanguage.current=="ja")requirement.ja else requirement.zh),requirement.key in checks,{checked->checks=if(checked)checks+requirement.key else checks-requirement.key},Modifier.testTag("command-check-$index"))
+                YToggle(word("步骤 $stepNumber · ","ステップ ${stepNumber}・")+commandRequirementText(requirement,model),requirement.key in checks,{checked->checks=if(checked)checks+requirement.key else checks-requirement.key},Modifier.testTag("command-check-$index"))
             }
-            YButton(if(row.undoOf!=null)word("确认整批撤销","一括取消を確定")else if(model.steps.isEmpty())word("确认收阅","受け取りを確認")else word("确认执行整份方案","プラン全体を確定"),{vm.execute{commands.confirm(row.planId,checks)}},Modifier.fillMaxWidth().testTag("command-confirm"),primary=true,
+            YButton(if(row.undoOf!=null)word("确认撤销整份云端方案","クラウドプラン全体の取消を確定")else if(model.steps.isEmpty())word("确认收阅","受け取りを確認")else word("确认执行整份方案","プラン全体を確定"),{vm.execute{commands.confirm(row.planId,checks)}},Modifier.fillMaxWidth().testTag("command-confirm"),primary=true,
                 enabled=!busy&&model.executable&&model.requirements.filter{it.kind!=ConfirmationKind.INFORMATION}.all{it.key in checks})
         }
     }
@@ -262,9 +263,9 @@ import java.time.format.DateTimeFormatter
     val availability=remember(row){commands.undoAvailability(row)}
     val effects by remember(row.planId){commands.effects(row.planId)}.collectAsStateWithLifecycle(emptyList())
     val busy by vm.busy.collectAsStateWithLifecycle()
-    CommandCard(null,word("整批撤销","一括取消"),"command-undo-availability-${row.planId}") {
+    CommandCard(null,word("撤销整份云端方案","クラウドプラン全体を取り消す"),"command-undo-availability-${row.planId}") {
         YText(if(LocalLanguage.current=="ja")availability.ja else availability.zh,12,color=LocalYohaku.current.muted)
-        if(availability.available)YButton(word("撤销","取り消す"),{
+        if(availability.available)YButton(word("撤销整份云端方案","クラウドプラン全体を取り消す"),{
             vm.execute{val inverse=commands.prepareUndo(row.planId);commands.preview(inverse.planId);vm.openCommandPlan(inverse.planId)}
         },Modifier.testTag("command-undo-${row.planId}"),enabled=!busy&&effects.all{it.status=="DONE"})
     }
@@ -282,7 +283,7 @@ import java.time.format.DateTimeFormatter
     "monthly_plans"->word("月度计划","月の計画");"accounts"->word("账户","口座");"financial_rules"->word("规则版本","条件バージョン");"financial_plans"->word("预测计划","予測プラン");"financial_bills"->word("账期","請求期間");"financial_plan_revisions"->word("预测修订","予測の履歴");"credit_limit_configs"->word("额度配置版本","利用枠のバージョン")
     "events"->word("记录","記録");"revisions"->word("本方案产生的记录修订","このプランによる記録の更新履歴");"drafts","financial_drafts"->word("草稿","下書き");"postings"->word("入账","計上");else->word("关联资料","関連情報")
 }
-private fun commandTime(value:Long)=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(Instant.ofEpochMilli(value).atZone(ZoneId.systemDefault()))
+@Composable private fun commandTime(value:Long)=com.yohaku.expensetracker.ui.features.FinancialDisplayFacts.time(Instant.ofEpochMilli(value),ZoneId.systemDefault(),LocalLanguage.current)
 @Composable private fun commandConflictValue(value:JsonElement,conflict:UndoConflict,s:BookSnapshot,model:ConfirmationModel):String {
     if(value==JsonNull)return word("不存在 / 无值","存在しない／値なし")
     if(value !is JsonPrimitive)return word("关联内容已变化","関連する内容が変わりました")

@@ -32,7 +32,7 @@ import kotlin.math.abs
 internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModule.CATEGORIES->"bag";AnalysisModule.MERCHANTS->"coffee";AnalysisModule.TREND,AnalysisModule.COMPARISON->"chart";AnalysisModule.ACTIVITIES->"life"}
 @Composable private fun analysisCategoryItems(s:BookSnapshot,report:AnalysisReport,currency:Currency)=s.categoryGroups(report).map{g->AnalysisListItem(g.key,if(g.key=="FEES")word("明确费用","確定した手数料")else s.categories.first{it.id==g.key}.name,Money(currency,g.amount).display(),g.count,if(report.total==0L)"—"else g.amount.toBigDecimal().multiply(100.toBigDecimal()).divide(report.total.toBigDecimal(),0,java.math.RoundingMode.HALF_UP).toPlainString()+"%",if(g.key=="FEES")"transfer"else"bag",if(g.key=="FEES")null else resolveCategoryIcon(g.key,s.categories))}
 @Composable private fun analysisMerchantItems(s:BookSnapshot,report:AnalysisReport,currency:Currency)=report.groups{it.merchantKey}.map{g->AnalysisListItem(g.key,s.merchantLabel(g.key).ifBlank{word("未填写商户","お店未入力")},Money(currency,g.amount).display(),g.count)}
-@Composable internal fun AnalysisScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit,onCategories:()->Unit,onFinancial:(String)->Unit={}) {
+@Composable internal fun AnalysisScreen(s:BookSnapshot,vm:AppViewModel,onRecord:(EventEntity)->Unit,onCategories:()->Unit,onFinancial:(String)->Unit={},onTimelineItem:((CashTimelineItem)->Unit)?=null) {
     val today by vm.today.collectAsStateWithLifecycle()
     var start by rememberSaveable(s.book.id){mutableStateOf(YearMonth.from(today).atDay(1).toString())}
     var end by rememberSaveable(s.book.id){mutableStateOf(YearMonth.from(today).atEndOfMonth().toString())}
@@ -97,7 +97,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
             }
         }
         "budget"->AnalysisBudgetView(s,filter,{category=it},{month->vm.openBudgetMonth.value=month;vm.navigate("budget")})
-        "future"->AnalysisFutureView(s,filter,vm,{vm.navigate("recurring")},{vm.openActivity.value=it;vm.navigate("life")},onRecord,onFinancial)
+        "future"->AnalysisFutureView(s,filter,vm,{vm.navigate("recurring")},{vm.openActivity.value=it;vm.navigate("life")},onRecord,onFinancial,onTimelineItem=onTimelineItem)
     }
     ThemeSection(word("资料与工具","情報とツール"),"MORE")
     FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(22.dp)) {

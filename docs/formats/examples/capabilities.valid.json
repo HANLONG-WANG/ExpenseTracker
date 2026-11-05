@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "3e256c00765923e4837adcc2c08d61993715c972ec0cfaadc8100fff03b7db56",
+    "catalogDigest": "ccd577f7f86d51a0cbf97265a079c6c416f9ffa605ff2ca099d80828697bab9f",
     "commands": [
         {
             "comparisonFields": [
@@ -12889,7 +12889,7 @@
             "example": {
                 "accountId": "card-id",
                 "mode": "REVOLVING",
-                "name": "循环余额池",
+                "name": "循环还款计划",
                 "openingMinor": 10000,
                 "sourceDate": "TRANSACTION",
                 "terms": {

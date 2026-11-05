@@ -41,7 +41,7 @@ class CardPaymentFlowTest {
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -123,8 +123,8 @@ class CardPaymentFlowTest {
             ui.onNodeWithTag("finance-pending-$pending").assertExists()
             ui.onNode(hasText("¥520") and hasAnyAncestor(hasTestTag("finance-overview-next"))).assertExists()
             tapTag("finance-unplanned-open")
-            ui.onNodeWithTag("finance-add-prediction").assertExists()
-            tapTag("analysis-tab-overview")
+            ui.onNodeWithTag("finance-add-arrangement").assertExists()
+            tapTag("finance-tab-overview")
             val bank=saved.accounts.single{it.name=="引落銀行"}
             ui.onNodeWithTag("finance-funding-${bank.id}").performScrollTo();shot("$theme-$language-card-funding")
             tapTag("finance-next-statement")

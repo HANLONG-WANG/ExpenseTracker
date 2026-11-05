@@ -46,7 +46,7 @@ import java.time.YearMonth
 
 @Composable internal fun AnalysisFutureView(s:BookSnapshot,filter:AnalysisFilter,vm:AppViewModel,onRecurring:()->Unit,onActivity:(String)->Unit,onTransfer:(EventEntity)->Unit,onFinancial:(String)->Unit={},outlook:FinancialOutlookRead?=null,onTimelineItem:((CashTimelineItem)->Unit)?=null,onOutlookRetry:(()->Unit)?=null,beforeTimeline:@Composable ()->Unit={}) {
     val currency=Currency.valueOf(s.book.currency)
-    YLead(word("提前一点，看见压力。","少し先の、負担を見よう。"),word("预算风险与扣款账户风险分开；预计收入不隐藏当前缺口。","予算と引落口座のリスクを区別。見込み収入で不足を隠しません。"),"A LITTLE AHEAD",pageFlow=true)
+    YLead(word("提前一点，看见压力。","少し先の、負担を見よう。"),word("预算风险与付款账户风险分开；预计收入不隐藏当前缺口。","予算と引落口座のリスクを区別。見込み収入で不足を隠しません。"),"A LITTLE AHEAD",pageFlow=true)
     CashTimelineView(s,filter,vm,onRecurring,onActivity,onTransfer,onFinancial,outlook,onTimelineItem,onOutlookRetry,beforeTimeline)
     ExpectedIncomeSection(s,vm,onTransfer)
     YButton(word("管理周期账单","定期支払を管理"),onRecurring)

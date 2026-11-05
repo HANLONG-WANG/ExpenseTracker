@@ -36,7 +36,8 @@ class FinancialDraftEditorsTest {
             val (s,f,l)=runBlocking {
                 val b=repo.createBook("下書きの全フォーム",Currency.JPY,"journal","ja")
                 val bank=repo.saveAccount(b,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
-                repo.saveAccount(b,"ローン",AccountType.LOAN,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
+                val loanId=repo.saveAccount(b,"ローン",AccountType.LOAN,Currency.JPY,Money(Currency.JPY,1000),"2026-10-01")
+                repo.commitFinancialLedger(repo.previewBorrowing(b,FinancialBorrowingInput(loanId,"期首契約",FinanceMode.FIXED_LOAN,Money(Currency.JPY,1000),"2026-10-01",opening=true)))
                 val card=repo.saveAccount(b,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
                 repo.commitManualFinancialPlan(repo.previewManualFinancialPlan(b,ManualFinancialPlanInput(card,"既知",FinanceMode.SINGLE,listOf(KnownBillInput("2026-11-05",10000,10000,0,bank)),principalMinor=10000,opening=true)))
                 repo.commitExpectedIncome(repo.previewExpectedIncome(b,ExpectedIncomeInput("予定",Money(Currency.JPY,1000),"2026-10-30",bank)))
@@ -48,8 +49,8 @@ class FinancialDraftEditorsTest {
             ui.setContent{YohakuTheme("journal","ja"){Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 when(screen) {
                     "RULE"->FinancialRuleEditor(s,a,FinanceMode.SINGLE,null,vm,close)
-                    "MANUAL"->ManualFinancialPlanEditor(s,a,vm,close)
-                    "PREDICTION"->FinancialPredictionEditor(s,a,f,null,vm,close)
+                    "MANUAL"->ManualFinancialPlanEditor(s,loan,vm,close,s.contracts.single())
+                    "PREDICTION"->FinancialPredictionEditor(s,loan,f,null,vm,close,s.contracts.single())
                     "POOL"->FinancialPoolEditor(s,a,f,null,vm,close)
                     "ARRANGEMENT"->FinancialArrangementEditor(s,a,f,plan,vm,close)
                     "BORROW"->FinancialBorrowingEditor(s,loan,vm,close)
@@ -69,9 +70,19 @@ class FinancialDraftEditorsTest {
                 val field=ui.onNodeWithTag("field-$label")
                 ui.waitUntil(10000){ui.onAllNodesWithTag("field-$label").fetchSemanticsNodes().isNotEmpty()}
                 field.performScrollTo().performTextReplacement("1234.")
+                if(kind=="REPAY") {
+                    ui.onNodeWithTag("finance-repay-cleared").performScrollTo().performClick()
+                    ui.onNodeWithTag("field-返済先の実受取額 · JPY").performScrollTo().performTextReplacement("1200")
+                }
+                if(kind=="PREDICTION")ui.onNodeWithTag("prediction-current-arrangement").performScrollTo().performClick()
                 ui.runOnIdle{screen=null};ui.waitForIdle();ui.runOnIdle{screen=kind}
                 ui.waitUntil(10000){ui.onAllNodesWithTag("field-$label").fetchSemanticsNodes().isNotEmpty()}
                 field.assertTextEquals("1234.")
+                if(kind=="PREDICTION")ui.onNodeWithTag("prediction-current-arrangement").assertIsOff()
+                if(kind=="REPAY") {
+                    ui.onNodeWithTag("finance-repay-cleared").assertIsOff()
+                    ui.onNodeWithTag("field-返済先の実受取額 · JPY").assertTextEquals("1200")
+                }
                 ui.onNodeWithTag("financial-draft-discard").performScrollTo().performClick()
                 ui.waitUntil(10000){screen==null&&!vm.busy.value}
             }

@@ -41,7 +41,7 @@ class ExpectedIncomeFlowTest {
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -131,6 +131,7 @@ class ExpectedIncomeFlowTest {
             ui.onNodeWithTag("cash-bill:$bill").performScrollTo();shot("$theme-$language-income-arrived")
             tapTag("cash-open-bill:$bill")
             ui.onNodeWithTag("finance-bill-$bill").assertExists()
+            ui.onNodeWithTag("finance-tab-plans").assertIsSelected()
             assertNull(vm.error.value)
         }
     }

@@ -54,7 +54,7 @@ import java.time.*
             YButton(word("核对并处理","確認・対応する"),{onRisk(a.id)},Modifier.testTag("cash-risk-open-${a.id}"),inline=true)
         }
     }
-    if(risks.isEmpty())YText(word("在上述范围的已知安排中，未见扣款账户缺口。未安排及资料不足的部分另列。","上記範囲の既知予定では引落口座の不足は見られません。未設定・未補完分は別に表示。"),11,color=LocalYohaku.current.muted)
+    if(risks.isEmpty())YText(word("在上述范围的已知安排中，未见付款账户缺口。未安排及资料不足的部分另列。","上記範囲の既知予定では引落口座の不足は見られません。未設定・未補完分は別に表示。"),11,color=LocalYohaku.current.muted)
 }
 
 @Composable internal fun FinancialAttentionList(s:BookSnapshot,ready:FinancialOutlookRead.Ready,onAttention:(FinancialAttention)->Unit,limit:Int=Int.MAX_VALUE) {
@@ -99,7 +99,7 @@ import java.time.*
             Column(Modifier.weight(1f)) {
                 val title=if(item.name in EntryKind.entries.map{it.name})entryKindName(EntryKind.valueOf(item.name))else item.name
                 YText(title,if(narrow)11 else if(journal)15 else 12)
-                YText((account?.name?:word("扣款账户未确定","引落口座未定"))+" · "+when{item.kind=="EXPECTED_INCOME"->word("预计收入 · 未到账","収入予定・未入金");item.kind=="RESERVE"->word("预留 · 非已花","資金確保・未支出");item.estimated->word("预计 / 待确认","見込み・確認待ち");else->word("已确认安排","確定した予定")},if(journal)11 else 9,color=t.muted)
+                YText((account?.name?:word("付款账户未确定","引落口座未定"))+" · "+when{item.kind=="EXPECTED_INCOME"->word("预计收入 · 未到账","収入予定・未入金");item.kind=="RESERVE"->word("预留 · 非已花","資金確保・未支出");item.estimated->word("预计 / 待确认","見込み・確認待ち");else->word("已确认安排","確定した予定")},if(journal)11 else 9,color=t.muted)
                 if(narrow)YText(amount,if(item.amountMinor==null)12 else 16,number=item.amountMinor!=null,color=if(item.amountMinor==null)t.warm else t.ink)
             }
             if(!narrow)YText(amount,if(item.amountMinor==null)13 else if(t.id=="magazine")19 else 17,number=item.amountMinor!=null,color=if(item.amountMinor==null)t.warm else t.ink)

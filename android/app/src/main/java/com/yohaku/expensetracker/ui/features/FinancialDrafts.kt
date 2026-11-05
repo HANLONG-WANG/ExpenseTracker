@@ -142,10 +142,11 @@ private sealed interface DraftRowsRead {
     "RULE"->word("金融规则","金融条件")
     "MANUAL"->word("已知逐期计划","既知の各回予定")
     "PREDICTION"->word("预测计划","予測プラン")
-    "POOL"->word("账户余额池","口座の残高プール")
+    "POOL"->word("循环还款计划","リボ・循環返済プラン")
+    "BATCH_REVOLVING"->word("批量转为循环还款（リボ）","まとめてリボ")
     "POOL_PAYMENT"->word("共同月付款变更","共通月払いの変更")
     "ARRANGEMENT"->word("付款方案变更","支払プランの変更")
-    "ARRANGEMENT_REVIEW"->word("已办理安排重核","手続き済み予定の再確認")
+    "ARRANGEMENT_REVIEW"->word("核对当前还款安排","現在の返済予定を確認")
     "BORROW"->word("实际借入 / 期初合同","実際の借入・期首契約")
     "REPAY"->word("实际还款","実際の返済")
     "EXPECTED"->word("预计收入 / 到账","収入予定・実入金")
@@ -156,7 +157,7 @@ private sealed interface DraftRowsRead {
     else->kind
 }
 
-@Composable internal fun FinancialDraftList(s:BookSnapshot,account:AccountEntity?,vm:AppViewModel,onResume:(FinancialDraftContext)->Unit) {
+@Composable internal fun FinancialDraftList(s:BookSnapshot,account:AccountEntity?,vm:AppViewModel,onResume:(FinancialDraftContext)->Unit,onOpen:(()->Unit)?=null,alwaysExpanded:Boolean=false) {
     var attempt by remember{mutableIntStateOf(0)}
     val read by remember(s.book.id,account?.id,attempt){vm.repository.db.financialDao().drafts(s.book.id,account?.id)
         .map<List<FinancialDraftEntity>,DraftRowsRead>{DraftRowsRead.Ready(it)}
@@ -164,19 +165,19 @@ private sealed interface DraftRowsRead {
     }.collectAsStateWithLifecycle(DraftRowsRead.Loading)
     var expanded by rememberSaveable(s.book.id,account?.id){mutableStateOf(false)}
     val rows=when(val result=read){DraftRowsRead.Loading->return;is DraftRowsRead.Ready->result.rows;is DraftRowsRead.Failure->{YText(result.message,12);YButton(word("重新读取草稿","下書きを再読込"),{attempt++});return}}
-    if(rows.isEmpty())return
-    YButton(word("未完成金融草稿","未完了の金融下書き")+" · ${rows.size}"+if(expanded)" −"else" +",{expanded=!expanded},Modifier.testTag("financial-drafts-open"))
-    if(expanded)rows.forEach{row->
+    if(rows.isEmpty()){if(alwaysExpanded)YEmpty(word("没有未完成金融草稿","未完了の金融下書きはありません"));return}
+    if(!alwaysExpanded)YButton(word("未完成金融草稿","未完了の金融下書き")+" · ${rows.size}"+if(expanded)" −"else" +",{if(onOpen!=null)onOpen()else expanded=!expanded},Modifier.testTag("financial-drafts-open"))
+    if(alwaysExpanded||expanded)rows.forEach{row->
         val context=vm.repository.json.decodeFromString<FinancialDraftContext>(row.contextJson)
         Panel {
             YText(financialDraftLabel(context.kind),14)
-            YText(Instant.ofEpochMilli(row.updatedAt).atZone(vm.repository.clock.zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),11)
+            FinancialTime(Instant.ofEpochMilli(row.updatedAt),vm.repository.clock.zone,"draft-${row.slot}",record=true)
             YButton(word("继续编辑","編集を続ける"),{onResume(context)},Modifier.testTag("financial-draft-resume-${context.kind}"))
         }
     }
 }
 
-@Composable internal fun FinancialDraftResume(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,context:FinancialDraftContext,vm:AppViewModel,onClose:()->Unit,onBill:((String)->Unit)?=null,onParent:((String)->Unit)?=null,onLimits:(()->Unit)?=null) {
+@Composable internal fun FinancialDraftResume(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,context:FinancialDraftContext,vm:AppViewModel,onClose:()->Unit,onBill:((String)->Unit)?=null,onParent:((String)->Unit)?=null,onLimits:(()->Unit)?=null,onPlanSaved:((String,String?)->Unit)?=null,onPool:((String?)->Unit)?=null) {
     val plan=f.plans.firstOrNull{it.id==context.targetId&&it.accountId==a.id&&(it.active||context.kind=="ARRANGEMENT_REVIEW")}
     val contract=f.contracts.firstOrNull{it.id==context.contractId&&it.accountId==a.id}
     val event=s.visibleEvents.firstOrNull{it.id==context.targetId}
@@ -189,7 +190,7 @@ private sealed interface DraftRowsRead {
         "POOL_PAYMENT"->plan?.origin=="POOL"
         "PREDICTION","POOL"->context.targetId==null||plan!=null
         "BORROW","REPAY"->(context.targetId==null||event!=null)&&(context.contractId==null||contract!=null)&&(context.billId==null||f.bills.any{it.id==context.billId&&it.active})
-        "RULE","MANUAL"->true
+        "RULE","MANUAL","BATCH_REVOLVING"->true
         "BILL"->f.bills.any{it.id==context.billId&&it.active}
         "LIMIT_CONFIG"->true
         "LIMIT_GROUP"->context.targetId==null||l?.groups?.any{it.id==context.targetId}==true
@@ -204,9 +205,10 @@ private sealed interface DraftRowsRead {
     }
     when(context.kind) {
         "RULE"->{val mode=FinanceMode.valueOf(requireNotNull(context.mode));val rule=f.rules.filter{it.accountId==a.id&&it.mode==mode.name}.maxByOrNull{it.version};FinancialRuleEditor(s,a,mode,rule?.let{vm.repository.json.decodeFromString(it.json)},vm,onClose,onLimits)}
-        "MANUAL"->ManualFinancialPlanEditor(s,a,vm,onClose)
-        "PREDICTION"->FinancialPredictionEditor(s,a,f,plan,vm,onClose)
+        "MANUAL"->ManualFinancialPlanEditor(s,a,vm,onClose,onSaved=onPlanSaved)
+        "PREDICTION"->FinancialPredictionEditor(s,a,f,plan,vm,onClose,onSaved=onPlanSaved)
         "POOL"->FinancialPoolEditor(s,a,f,plan,vm,onClose,onBill)
+        "BATCH_REVOLVING"->BatchRevolvingEditor(s,a,f,requireNotNull(context.targetId),vm,onClose,onPool)
         "POOL_PAYMENT"->FinancialPoolPaymentEditor(s,a,f,requireNotNull(plan),vm,onClose)
         "ARRANGEMENT"->FinancialArrangementEditor(s,a,f,requireNotNull(plan),vm,onClose)
         "ARRANGEMENT_REVIEW"->FinancialReconciliationEditor(s,a,f,requireNotNull(plan),vm,onClose,onBill,onParent)

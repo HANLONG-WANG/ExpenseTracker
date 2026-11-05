@@ -43,6 +43,6 @@ import java.time.LocalDate
         if(results.values.any{it.failure!=null&&it.failure!="AUTO_DISABLED"})YText(word("更新失败，以上使用最后可用缓存，请核对日期。","更新できないため直近のキャッシュを使用。日付を確認してください。"),11,color=LocalYohaku.current.warm)
         error?.let{YText(it,11,color=LocalYohaku.current.warm)}
         YButton(word("刷新估值汇率","評価用レートを更新"),{scope.launch{load(true)}},enabled=!loading)
-        YText(word("仅将已记原币余额折算为参考值，不更改任何余额、交易汇率或消费历史，也不把其他账户资金自动转入扣款账户。","記録済みの元通貨残高を参考換算するだけで、残高・取引レート・支出履歴は変更しません。他口座の資金を引落口座へ自動移動しません。"),11)
+        YText(word("仅将已记原币余额折算为参考值，不更改任何余额、交易汇率或消费历史，也不把其他账户资金自动转入付款账户。","記録済みの元通貨残高を参考換算するだけで、残高・取引レート・支出履歴は変更しません。他口座の資金を引落口座へ自動移動しません。"),11)
     }
 }

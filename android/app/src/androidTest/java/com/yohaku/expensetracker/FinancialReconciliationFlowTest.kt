@@ -38,10 +38,11 @@ class FinancialReconciliationFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -103,7 +104,7 @@ class FinancialReconciliationFlowTest {
                 repo.commitFinancialRule(repo.previewFinancialRule(b,card,FinancialRuleVersion("",b,card,FinanceMode.INSTALLMENT,"2026-10-01","Asia/Tokyo",BillingRule(31,true,1,5,bank),installment=InstallmentRule(listOf(2),InstallmentFeeMethod.TOTAL_AMOUNT,totalFeeMinor=40,principalRemainder=RemainderPlacement.LAST,feeRemainder=RemainderPlacement.FIRST,roundingMode="DOWN"))))
                 val pool=if(merged) {
                     repo.commitFinancialRule(repo.previewFinancialRule(b,card,FinancialRuleVersion("",b,card,FinanceMode.REVOLVING,"2026-10-01","Asia/Tokyo",BillingRule(31,true,1,5,bank),revolving=RevolvingRule(InterestRule("0",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL),PaymentMethod.TOTAL_PAYMENT,600,allocation=AllocationOrder.FEES_FIRST,automatic=true))))
-                    repo.commitFinancialPrediction(repo.previewFinancialPool(b,FinancialPredictionInput(card,"共同付款池",FinanceMode.REVOLVING,
+                    repo.commitFinancialPrediction(repo.previewFinancialPool(b,FinancialPredictionInput(card,"循环还款计划",FinanceMode.REVOLVING,
                         FinancialScheduleTerms("2026-10-01",listOf("2026-11-05","2026-12-05","2027-01-05"),listOf(AccrualWindow("2026-10-01","2026-10-31"),AccrualWindow("2026-11-01","2026-11-30"),AccrualWindow("2026-12-01","2026-12-31"))),paymentAccountId=bank,currentArrangementConfirmed=true,pool=FinancialPoolInput(0,PoolSourceDate.TRANSACTION))))!!
                 }else null
                 if(retained)repo.commitFinancialRule(repo.previewFinancialRule(b,card,FinancialRuleVersion("",b,card,FinanceMode.REVOLVING,"2026-10-01","Asia/Tokyo",BillingRule(31,true,1,5,bank),revolving=RevolvingRule(InterestRule("0",ChargeFrequency.DAILY,BalanceBasis.EVENT_BALANCE,true,true,365,ChargeRounding.PERIOD_TOTAL,"DOWN",FirstCharge.NORMAL),PaymentMethod.TOTAL_PAYMENT,600,allocation=AllocationOrder.FEES_FIRST,automatic=true))))
@@ -123,9 +124,9 @@ class FinancialReconciliationFlowTest {
             val original=runBlocking{db.financialDao().bills(book,old)}
             val applied=runBlocking{db.financialDao().graph(book).first()!!.arrangements.single()}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
-            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-plans")
+            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans")
             if(retained) {
-                tapTag("finance-pool-open")
+                tapTag("finance-tab-plans");tapTag("finance-add-arrangement");tapTag("finance-pool-open")
                 textField(text("期初属于循环的本金 / 没有请填0","循環分の期首元金・なければ0")).performScrollTo().performTextReplacement("0")
                 tapTag("select-trigger-"+text("新增本金起算日期","追加元金の開始日"));ui.onNodeWithText(text("交易 / 借入发生日","取引・借入日")).performClick()
                 textField(text("预测期数","予測回数")).performScrollTo().performTextReplacement("3")
@@ -138,7 +139,7 @@ class FinancialReconciliationFlowTest {
                 }else {
                     tapTag("pool-preview")
                     ui.onNodeWithTag("pool-confirm").assertIsNotEnabled();shot("$theme-$language-reconciliation-adoption-needs-inclusion")
-                    tapTag("pool-back")
+                    tapTag("finance-flow-back")
                     val first=runBlocking{db.financialDao().bills(book,target).first{it.number==1}}
                     tapTag("pool-adopted-fee-bill-${first.id}")
                     if(waive) {
@@ -161,7 +162,7 @@ class FinancialReconciliationFlowTest {
                 }
                 ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.visibleEvents==before.visibleEvents}
             }
-            tapTag("finance-reconcile-$target")
+            openFinancialPlan(ui,vm,target);tapTag("finance-reconcile-$target")
             fun replace(tag:String,value:String){ui.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag(tag))).performScrollTo().performTextReplacement(value)}
             val transferred=if(poolSource)if(unallocated)"600"else if(refundCase)"500"else"700" else if(refundCase)"800"else"1200"
             replace("reconciliation-principal",transferred)
@@ -183,9 +184,19 @@ class FinancialReconciliationFlowTest {
             ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("reconciliation-confirmed").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("reconciliation-review").performScrollTo();shot("$theme-$language-reconciliation-review")
             if(merged||poolSource||retained) {
-                ui.onNodeWithText(text("原池全部共同付款","プール全体の支払"),substring=true).performScrollTo()
+                ui.onNodeWithText(text("原循环还款计划全部共同付款","循環返済プラン全体の支払"),substring=true).performScrollTo()
                 shot("$theme-$language-reconciliation-shared")
             }
+            tapTag("reconciliation-confirmed")
+            runBlocking{repo.saveAccount(book,"核对更新",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,before.accounts.first{it.id==card}.openingMinor),before.accounts.first{it.id==card}.openingDate,card)}
+            tapTag("reconciliation-save")
+            ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("finance-review-refreshed").fetchSemanticsNodes().isNotEmpty()}
+            textField(text("生效日转入的本金 / 非今日剩余","適用日に移す元金・今日の残額ではありません")+" · JPY","reconciliation-principal").assertTextContains(transferred)
+            assertNull(runBlocking{db.financialDao().plan(book,target)!!.reconciliationJson})
+            tapTag("reconciliation-preview")
+            ui.onNodeWithTag("reconciliation-confirmed").assertIsOff()
+            ui.onNodeWithTag("reconciliation-save").assertIsNotEnabled()
+            shot("$theme-$language-reconciliation-review-refreshed")
             tapTag("reconciliation-confirmed");tapTag("reconciliation-save")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialState.value?.plans?.firstOrNull{it.id==target}?.reconciliationJson!=null}
             val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()};val f=runBlocking{db.financialDao().graph(book).first()!!}

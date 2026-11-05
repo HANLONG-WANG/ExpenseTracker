@@ -12,11 +12,11 @@ import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun cardPaymentLabel(value:String?)=when(value){
     "SINGLE"->word("一次付","一括払い")
-    "BONUS"->word("ボーナス一括","ボーナス一括")
+    "BONUS"->word("奖金月一次付","ボーナス一括")
     "DEFERRED"->word("指定月一次付","指定月一括")
     "INSTALLMENT"->word("分期","分割払い")
-    "REVOLVING"->word("リボ","リボ払い")
-    "ACCOUNT_RULE"->word("采用本卡自动リボ设置","カードの自動リボ設定を適用")
+    "REVOLVING"->word("循环还款","リボ払い")
+    "ACCOUNT_RULE"->word("采用本卡自动循环还款设置","カードの自動リボ設定を適用")
     else->word("尚未确认","未確認")
 }
 @Composable internal fun CardPaymentFields(d:EntryDraft,onChange:(EntryDraft)->Unit) {
@@ -35,5 +35,5 @@ import com.yohaku.expensetracker.ui.theme.*
     e.cardPaymentMonth?.let{RecordFacts(listOf(word("付款月","支払月") to it))}
     if(e.cardPaymentChoice=="DEFERRED")RecordFacts(listOf(word("手续费","手数料") to (e.cardPaymentFeeMinor?.let{com.yohaku.expensetracker.domain.model.Money(com.yohaku.expensetracker.domain.model.Currency.valueOf(accountCurrency),it).display()}?:word("未知","不明"))))
     if(e.cardPaymentChoice in listOf("ACCOUNT_RULE","BONUS","DEFERRED"))RecordFacts(listOf(word("采用规则版本","適用した条件の版") to (rule?.let{"v${it.version} · ${it.effectiveFrom}"}?:word("尚未匹配规则","条件は未確定"))))
-    if(e.cardPaymentChoice=="ACCOUNT_RULE")YText(word("保留消费时采用的规则版本；之后修改自动リボ设置不会重写此记录。","利用時に適用した条件の版を保持し、その後の自動リボ設定変更では書き換えません。"),11,color=LocalYohaku.current.muted)
+    if(e.cardPaymentChoice=="ACCOUNT_RULE")YText(word("保留消费时采用的规则版本；之后修改自动循环还款设置不会重写此记录。","利用時に適用した条件の版を保持し、その後の自動リボ設定変更では書き換えません。"),11,color=LocalYohaku.current.muted)
 }

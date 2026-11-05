@@ -174,14 +174,14 @@ internal fun financeCommandAdapters():List<CommandAdapter> = listOf(
         "Required openingMinor/sourceDate/terms; no invented principal. planId omitted/null creates, adoptExisting=false, unallocatedShares/adoptedFees=[]; references supported in each share. Existing payment changes are retained.",
         "Active compatible revolving/credit-line account, complete rule inputs, ordered dates and available opening/source principal. Adoption and unallocated payment shares obey poolFacts and reconciliation checks.",
         "Create, adopt existing arrangements into, reconcile or recalculate the account balance pool. Uses previewFinancialPool/commitFinancialPrediction; no fake transfer.",
-        """{"accountId":"card-id","name":"循环余额池","mode":"REVOLVING","openingMinor":10000,"sourceDate":"TRANSACTION","terms":{"agreementDate":"2026-11-02","paymentDates":["2026-12-10"],"accrualWindows":[{"start":"2026-11-02","end":"2026-12-09"}],"firstPeriodNumber":1}}""",fact=true) {step,run,v->
+        """{"accountId":"card-id","name":"循环还款计划","mode":"REVOLVING","openingMinor":10000,"sourceDate":"TRANSACTION","terms":{"agreementDate":"2026-11-02","paymentDates":["2026-12-10"],"accrualWindows":[{"start":"2026-11-02","end":"2026-12-09"}],"firstPeriodNumber":1}}""",fact=true) {step,run,v->
         val before=run.state();val rows=financeRows(run);require(v.unallocatedShares.map{it.eventId}.distinct().size==v.unallocatedShares.size)
         val existing=v.planId?.let{id->before.finance.plans.single{it.id==id}.termsJson?.let{commandJson.decodeFromString<FinancialPredictionInput>(it)}}
         val input=FinancialPredictionInput(v.accountId,v.name,v.mode,v.terms,paymentAccountId=v.paymentAccountId,planId=v.planId,currentArrangementConfirmed=true,
             pool=FinancialPoolInput(v.openingMinor,v.sourceDate,v.unallocatedShares.associate{it.eventId to it.minor},v.adoptExisting,paymentChanges=existing?.pool?.paymentChanges.orEmpty(),adoptedFees=v.adoptedFees))
         val review=run.ledger.previewFinancialPool(run.bookId,input);requireReady(review.calculation)
         run.output(step.id,"prediction",checkNotNull(run.ledger.commitFinancialPrediction(review)),v.planId==null)
-        financeFact(step,run,financeEffect(step,run,before,rows),encoded(v),v.accountId,review.originalPrincipalMinor,v.terms.agreementDate,"余额池范围、期初本金、已采纳安排和未分配还款归属均已核对。","残高プールの対象・期首元金・統合予定・未充当返済の帰属を確認しました。")
+        financeFact(step,run,financeEffect(step,run,before,rows),encoded(v),v.accountId,review.originalPrincipalMinor,v.terms.agreementDate,"循环还款计划范围、期初本金、已采纳安排和未分配还款归属均已核对。","リボ・循環返済プランの対象・期首元金・統合予定・未充当返済の帰属を確認しました。")
     },
     arrangementAdapter(),reconciliationAdapter(),poolPaymentAdapter(),batchRevolvingAdapter(),batchUndoAdapter(),
     borrowingAdapter(),repaymentAdapter(false),repaymentAdapter(true),
@@ -280,13 +280,20 @@ private fun batchRevolvingAdapter()=financeAdapter("financialBatchRevolving.appl
         val before=run.state();val rows=financeRows(run);val review=run.ledger.previewBatchRevolving(run.bookId,v.input);requireReady(review.calculation)
         val exception=review.reviews.any{r->r.deadlines.any{Instant.parse(v.appliedAt)>it.instant()}}
         val group=checkNotNull(run.ledger.commitBatchRevolving(review,v.appliedAt,true,exception));run.output(step.id,"batch",group,true)
-        deadlineFact(step,run,financeFact(step,run,financeEffect(step,run,before,rows),encoded(v),v.input.accountId,v.input.principalMinor,v.appliedAt,"所选账单的批量转循环已在平台办理，转入本金和费用一致。","選択した請求の一括リボ変更は返済先で手続き済みで、移行元金・費用が一致しています。"),encoded(v),exception)
+        deadlineFact(step,run,financeFact(step,run,financeEffect(step,run,before,rows),encoded(v),v.input.accountId,v.input.principalMinor,v.appliedAt,"所选账单已在平台批量转为循环还款，转入本金和费用一致。","選択した請求の一括リボ変更は返済先で手続き済みで、移行元金・費用が一致しています。"),encoded(v),exception)
     }
 private fun batchUndoAdapter()=financeAdapter("financialBatchRevolving.undo",FinanceBatchUndo.serializer(),defaults="Explicit existing undo group; no inferred latest group.",
     prerequisites="Exact archived after-plans/bills/arrangements/allocations and pool evidence must still match; later changes, repayment/reconciliation or external FK/JSON/draft references block the entire batch. Only this operation's generated arrangement/adjustment rows may be removed; complete archived history is retained.",
     description="Restore a recorded batch conversion using undoBatchRevolving. This is audited relation restoration, not permanent user-data deletion. The command itself supports exact whole-plan undo.",
     example="""{"undoGroupId":{"ref":"convert","output":"batch"}}""",schemaPatch=mapOf("undoGroupId" to referenceSchema("revolvingBatch"))) {step,run,v->
-        val before=run.state();val rows=financeRows(run);run.ledger.undoBatchRevolving(run.bookId,v.undoGroupId);financeEffect(step,run,before,rows)
+        val before=run.state();val rows=financeRows(run)
+        val accountId=before.finance.arrangements.firstOrNull{commandJson.decodeFromString<FinancialArrangementInput>(it.inputJson).undoGroupId==v.undoGroupId}?.originalPlanId?.let{id->before.finance.plans.first{it.id==id}.accountId}
+        val history=accountId?.let{run.ledger.financialBatchHistory(run.bookId,it).firstOrNull{it.archive.undoGroupId==v.undoGroupId}}
+        // Even a stale/missing group is rejected by the original transaction with its business reason.
+        run.ledger.undoBatchRevolving(run.bookId,v.undoGroupId)
+        val effect=financeEffect(step,run,before,rows)
+        val evidence=encoded(batchRestorationFacts(requireNotNull(history)))
+        effect.copy(objects=effect.objects+ObjectEffect("revolvingBatchArchive",run.semantic(JsonPrimitive(v.undoGroupId)).jsonPrimitive.content,run.semantic(evidence),run.semantic(evidence)))
     }
 private fun borrowingAdapter()=financeAdapter("financialBorrowing.save",FinancialBorrowingInput.serializer(),mapOf("contract" to "contract","entry" to "entry"),
     "Full form save: opening=false; nullable fees/received stay unknown, note empty. Opening contract has no cash entry output; actual borrowing requires explicit funding account/received amount. Existing contractId/eventId preserve source identity.",

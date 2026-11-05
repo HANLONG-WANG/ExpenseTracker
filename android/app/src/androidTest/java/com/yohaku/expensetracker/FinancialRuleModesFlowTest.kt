@@ -38,10 +38,11 @@ class FinancialRuleModesFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -94,7 +95,7 @@ class FinancialRuleModesFlowTest {
             val originalBill=runBlocking{db.financialDao().bill(book,bill)!!}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("accounts")}
-            tapTag("account-$account");tapTag("account-financial");tapTag("analysis-tab-rules");tapTag("finance-edit-${mode.name}")
+            tapTag("account-$account");tapTag("account-financial");tapTag("finance-tab-manage");tapTag("finance-manage-rules");tapTag("finance-edit-${mode.name}")
             fun field(key:String)=ui.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("finance-field-$key")))
             fun fill(key:String,value:String){field(key).performScrollTo().performTextReplacement(value)}
             fun choice(key:String,index:Int) {
@@ -106,7 +107,7 @@ class FinancialRuleModesFlowTest {
             }
             if(mode in listOf(FinanceMode.SINGLE,FinanceMode.INSTALLMENT,FinanceMode.REVOLVING)) {
                 fill("closing","31");fill("payday","15");choice("closingIncluded",1);fill("monthOffset","1")
-                tapTag("select-trigger-"+text("扣款账户","引落口座"));ui.onNodeWithText("支払口座 · JPY").performScrollTo().performClick()
+                tapTag("select-trigger-"+text("付款账户","引落口座"));ui.onNodeWithText("支払口座 · JPY").performScrollTo().performClick()
             }
             if(mode==FinanceMode.INSTALLMENT) {
                 fill("periods","3");choice("feeMethod",InstallmentFeeMethod.TOTAL_AMOUNT.ordinal+1);fill("totalFee","30")
@@ -164,6 +165,7 @@ class FinancialRuleModesFlowTest {
                 ui.onNode(hasText(if(case=="MANUAL")text("手动模式请填写平台逐期计划。","手動方式では返済先の各回の予定を入力してください。")else text("平台特殊算法，使用已知计划","返済先独自の計算・既知プランを使用")) and !hasSetTextAction()).assertExists()
                 ui.onAllNodes(hasTestTag("finance-trial-period-1")).assertCountEquals(0)
             }
+            tapTag("finance-flow-back")
             if(case=="CREDIT_LINE") {
                 // The calculation above succeeds while availability is still unknown.
                 tapTag("finance-rule-open-limits");tapTag("limit-configure")
@@ -191,6 +193,7 @@ class FinancialRuleModesFlowTest {
             assertEquals(mode,review.rule.mode);assertNull(review.rule.limitRecovery)
             assertEquals(listOf(originalBill),review.retainedConfirmedBills)
             shot("$theme-$language-$case-review")
+            if(case=="SINGLE")shot("$theme-$language-rule-first-version-review")
             tapTag("finance-rule-confirm")
             ui.waitUntil(10000){vm.financialRuleReview.value==null&&!vm.busy.value}
             val saved=runBlocking{db.financialDao().rules(book,account).single()}
@@ -199,7 +202,7 @@ class FinancialRuleModesFlowTest {
             tapTag("finance-edit-${mode.name}")
             if(interest)field("apr").assertTextEquals("12")
             if(case=="SPECIAL"){tapTag("finance-advanced");field("unsupported").assertTextEquals(text("平台特殊算法，使用已知计划","返済先独自の計算・既知プランを使用"))}
-            tapTag("finance-rule-cancel")
+            tapTag("finance-flow-close")
             runBlocking {
                 val snapshot=repo.snapshot(repo.dao.book(book)!!).first()
                 assertTrue(snapshot.events.isEmpty());assertTrue(snapshot.postings.isEmpty())
@@ -215,4 +218,43 @@ class FinancialRuleModesFlowTest {
             }
         }
     }
+    @Test fun editedVersionShowsClearedConditionsAndRefreshesItsComparisonBaseline() {
+        for((theme,language) in testLooks(this)) {
+            fun text(zh:String,ja:String)=if(language=="ja")ja else zh
+            val (book,card)=runBlocking {
+                val b=repo.createBook("Rule diff $theme $language",Currency.JPY,theme,language,startDate="2026-10-01")
+                repo.updateBook(repo.dao.book(b)!!.copy(initialized=true))
+                val bank=repo.saveAccount(b,"支払口座",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
+                val a=repo.saveAccount(b,"カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,0),"2026-10-01")
+                repo.commitFinancialRule(repo.previewFinancialRule(b,a,FinancialRuleVersion("",b,a,FinanceMode.SINGLE,"2026-10-01","Asia/Tokyo",BillingRule(31,true,1,15,bank))))
+                vm.preferences.select(b);b to a
+            }
+            ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
+            ui.runOnIdle{vm.navigate("accounts")}
+            tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-manage");tapTag("finance-manage-rules");tapTag("finance-edit-SINGLE")
+            val closing=ui.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("finance-field-closing")))
+            closing.performScrollTo().performTextReplacement("30")
+            tapTag("select-trigger-"+text("付款账户","引落口座"))
+            tapTag("select-option-"+text("付款账户","引落口座")+"-0")
+            tapTag("finance-rule-preview")
+            ui.onNodeWithTag("finance-rule-diff-billing.closingDay").assert(hasAnyDescendant(hasText("31 → 30")))
+            ui.onNodeWithTag("finance-rule-diff-billing.paymentAccountId").assert(hasAnyDescendant(hasText("支払口座 → "+text("未填写","未入力"))))
+            ui.onNodeWithTag("finance-rule-diff-billing.paymentAccountId").assert(hasAnyDescendant(hasText(text("付款账户","引落口座"))))
+            shot("$theme-$language-rule-new-version-diff")
+            tapTag("finance-flow-back");closing.assertTextEquals("30")
+            tapTag("finance-rule-preview")
+            val first=vm.financialRuleReview.value!!.rule
+            runBlocking{repo.commitFinancialRule(repo.previewFinancialRule(book,card,first.copy(billing=first.billing!!.copy(closingDay=28))))}
+            tapTag("finance-rule-confirm")
+            ui.waitUntil(10000){vm.financialReviewRefreshed.value&&!vm.busy.value}
+            ui.onNodeWithTag("finance-rule-diff-billing.closingDay").assert(hasAnyDescendant(hasText("28 → 30")))
+            assertEquals(2,runBlocking{db.financialDao().rules(book,card).size})
+            tapTag("finance-review-full-details")
+            ui.onNodeWithTag("finance-rule-confirm").assertIsDisplayed()
+            tapTag("finance-rule-confirm")
+            ui.waitUntil(10000){!vm.busy.value&&vm.financialRuleReview.value==null}
+            assertEquals(3,runBlocking{db.financialDao().rules(book,card).size})
+        }
+    }
+
 }

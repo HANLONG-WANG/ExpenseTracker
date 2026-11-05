@@ -19,10 +19,17 @@ import com.yohaku.expensetracker.ui.theme.*
         layout(p.width,(p.height-overlap).coerceAtLeast(0)){p.place(0,-overlap)}
     }.padding(bottom=7.dp)){
         Row(Modifier.fillMaxWidth().padding(vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=Alignment.CenterVertically){
-            YText(word("← 返回","← 戻る"),if(t.id=="journal")14 else 13,Modifier.weight(1f).clickable(onClick=onBack),color=t.muted,lineHeightMultiplier=if(t.id=="journal")19f/14 else 18f/13,cssLineBox=true)
+            YBackLink(onBack,Modifier.weight(1f))
             YText(pageName,if(t.id=="journal")13 else 12,Modifier.testTag("page-back-name"),color=t.ink,lineHeightMultiplier=18f/12,cssLineBox=true)
         }
         // Magazine pages open with the lead's thick rule; a hairline right above it would double it.
         if(t.id!="magazine")Box(Modifier.fillMaxWidth().height(1.dp).background(t.line))
     }
+}
+
+/** Shared return expression for regular pages and compact financial headers. */
+@Composable internal fun YBackLink(onBack:()->Unit,modifier:Modifier=Modifier) {
+    val t=LocalYohaku.current
+    YText(word("← 返回","← 戻る"),if(t.id=="journal")14 else 13,modifier.clickable(onClick=onBack),color=t.muted,
+        lineHeightMultiplier=if(t.id=="journal")19f/14 else 18f/13,cssLineBox=true)
 }

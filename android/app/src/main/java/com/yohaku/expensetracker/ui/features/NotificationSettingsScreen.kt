@@ -71,7 +71,7 @@ import java.time.ZoneId
         NotificationPreferenceToggle(word("还款方式变更截止","支払方法の変更締切"),deadline,{deadline=it})
         NotificationPreferenceToggle(word("未确认周期账单","未確認の定期支払"),recurring,{recurring=it})
         NotificationPreferenceToggle(word("预算超支风险","予算超過のリスク"),budget,{budget=it})
-        NotificationPreferenceToggle(word("扣款账户资金缺口","引落口座の資金不足"),funds,{funds=it})
+        NotificationPreferenceToggle(word("付款账户资金缺口","引落口座の資金不足"),funds,{funds=it})
     }
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(10.dp)) {
         YField("repayment-days",repaymentDays,{repaymentDays=it},displayLabel=word("还款提前天数 / 逗号分隔","返済の何日前・カンマ区切り"))

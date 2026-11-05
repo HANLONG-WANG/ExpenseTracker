@@ -13,6 +13,7 @@ import com.yohaku.expensetracker.data.command.*
 import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
+import com.yohaku.expensetracker.domain.finance.*
 import com.yohaku.expensetracker.ui.features.*
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,6 +77,14 @@ class CommandFlowTest {
         ui.waitForIdle();InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(350,5000)
         val file=File(context.getExternalFilesDir(null),"cloud-command-stage-1/$name.png");file.parentFile!!.mkdirs()
         file.outputStream().use{ui.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it)}
+    }
+    private fun alignCommandStep(tag:String) {
+        val step=ui.onNodeWithTag(tag)
+        step.performScrollTo();ui.waitForIdle()
+        val viewport=ui.onNodeWithTag("page-scroll")
+        val offset=step.getUnclippedBoundsInRoot().top.value-viewport.getUnclippedBoundsInRoot().top.value-12f
+        viewport.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy){it(0f,offset*context.resources.displayMetrics.density)}
+        ui.waitForIdle()
     }
     @Test fun monthlyPlanSubmissionReviewHistoryAndAnswerAcrossLooks() {
         for((theme,language) in testLooks(this)) {
@@ -305,7 +314,10 @@ class CommandFlowTest {
                 val bank=r.saveAccount(b,"银行・銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,300000),"2026-11-01")
                 vm.preferences.select(b)
                 val p=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),b,cloud.commands.registry.catalogDigest,r.commandExports(b,RecordScope()).context.contextDigest,
-                    message=if(language=="ja")"2枚のカードの分割と残高プールを確認してください。返済先で確認した事実だけをチェックしてください。"else"请核对两张卡的分期和余额池，只勾选你已在平台核实的事实。",steps=commandFinanceSteps(bank))
+                    message=if(language=="ja")"2枚のカードの分割と残高プールを確認してください。返済先で確認した事実だけをチェックしてください。"else"请核对两张卡的分期和余额池，只勾选你已在平台核实的事实。",steps=commandFinanceSteps(bank).let{base->
+                        base.take(4)+base[3].copy(id="poolRuleV2",input=commandJson.parseToJsonElement(base[3].input.toString().replace("5000","6000")).jsonObject)+base.drop(4)+
+                            CommandStep("payment","financialPool.changePayment",1,commandJson.parseToJsonElement("""{"input":{"planId":{"ref":"pool","output":"prediction"},"effectiveDate":"2026-11-02","setting":{"fromPaymentDate":"2026-12-10","method":"FIXED_PRINCIPAL","paymentMinor":7000},"feeMinor":0},"appliedAt":"2026-11-02T00:00:00Z"}""").jsonObject)
+                    })
                 cloud.commands.receive(commandClaim(p,resultId=p.plan_id,localId=p.plan_id),"https://example.test",p.context_digest).also{cloud.commands.preview(it.planId)}
             }
             ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==row.bookId&&!vm.busy.value}
@@ -316,16 +328,106 @@ class CommandFlowTest {
             // Screenshot intentionally includes the concrete account/amount/date declarations.
             shot("$theme-$language-finance-preview")
             tap("command-check-0");ui.onNodeWithTag("command-confirm").performScrollTo().assertIsNotEnabled()
-            tap("command-check-1");ui.onNodeWithTag("command-confirm").performScrollTo().assertIsEnabled()
+            tap("command-check-1");ui.onNodeWithTag("command-confirm").performScrollTo().assertIsNotEnabled()
+            tap("command-check-2");ui.onNodeWithTag("command-confirm").performScrollTo().assertIsEnabled()
             val firstPeriod=if(language=="ja")"第1回"else"第1期"
             val splitBill="分期卡・分割カード · 两期分期・2回分割 · ${firstPeriod} · 2026-12-10"
             val poolBill="循环卡・リボカード · 共同余额池・共通残高プール · ${firstPeriod} · 2026-12-10"
-            ui.onNodeWithTag("command-step-pool").performScrollTo()
-            ui.onNode(hasText(poolBill,substring=true) and hasAnyAncestor(hasTestTag("command-step-pool"))).assertIsDisplayed()
+            alignCommandStep("command-step-pool")
+            ui.onNode(hasText("2026-12-10 · ¥6,000") and hasAnyAncestor(hasTestTag("command-step-pool"))).assertIsDisplayed()
             shot("$theme-$language-finance-pool")
+            tap("command-details-pool")
+            ui.onNode(hasText((if(language=="ja")"各回の支払"else"逐期付款")+" · "+poolBill) and hasAnyAncestor(hasTestTag("sheet-scroll"))).performScrollTo().assertIsDisplayed()
+            tap("sheet-close")
+            ui.onNode(hasTestTag("finance-rule-diff-revolving.paymentMinor") and hasAnyAncestor(hasTestTag("command-step-poolRuleV2"))).performScrollTo().assert(hasAnyDescendant(hasText("¥5,000 → ¥6,000")))
+            alignCommandStep("command-step-poolRuleV2")
+            shot("$theme-$language-cloud-rule-new-version-diff")
+            ui.onNode(hasText("2026-12-10 · ¥6,000 → 2026-12-10 · ¥7,000") and hasAnyAncestor(hasTestTag("command-step-payment"))).assertExists()
+            ui.onNode(hasTestTag("finance-comparison-changes-only") and hasAnyAncestor(hasTestTag("command-step-payment"))).performScrollTo()
+            alignCommandStep("command-finance-comparison")
+            ui.onNode(hasTestTag("finance-comparison-row-2026-12-10") and hasAnyAncestor(hasTestTag("command-step-payment"))).assertIsDisplayed()
+            shot("$theme-$language-cloud-comparison-changed-dates")
             for(label in listOf(splitBill,poolBill))ui.onAllNodes(hasText(label,substring=true) and hasAnyAncestor(hasTestTag("command-net"))).assertCountEquals(1)
             ui.onNode(hasText(splitBill,substring=true) and hasAnyAncestor(hasTestTag("command-net"))).performScrollTo()
             shot("$theme-$language-finance-net")
+            ui.runOnIdle{vm.navigate("home")}
+        }
+    }
+
+
+    @Test fun batchUndoAndLimitRelationshipsUseArchivedFinancialFactsAcrossLooks() {
+        for((theme,language) in testLooks(this)) {
+            val row=runBlocking {
+                val x=batchHistoryFixture(r,theme,language)
+                val group=r.commitBatchRevolving(r.previewBatchRevolving(x.book,BatchRevolvingInput(x.card,"2026-12-10",x.sources,16400,x.pool,"2026-11-02",0)),"2026-11-02T01:59:42.123456789Z",true)!!
+                val limitSteps=CreditLimitSharing.entries.mapIndexed{index,sharing->
+                    val input=CreditLimitInput(x.card,100000,80000L.takeIf{sharing==CreditLimitSharing.SEPARATE_CAPS},60000L.takeIf{sharing==CreditLimitSharing.SEPARATE_CAPS},sharing,70000L.takeIf{sharing==CreditLimitSharing.SHARED_SUBPOOL},"2026-11-02","2026-11-02",16400,0L.takeIf{sharing!=CreditLimitSharing.TOTAL_ONLY},0L.takeIf{sharing!=CreditLimitSharing.TOTAL_ONLY},LimitRecovery.MANUAL,CreditLimitUsageBasis.PRINCIPAL_ONLY,"Asia/Tokyo",CreditLimitUsageStart.TRANSACTION_DATE)
+                    CommandStep("limits$index","creditLimit.save",1,commandJson.encodeToJsonElement(CreditLimitInput.serializer(),input).jsonObject)
+                }
+                val steps=listOf(CommandStep("undoConversion","financialBatchRevolving.undo",1,buildJsonObject{put("undoGroupId",group)}))+limitSteps+
+                    CommandStep("observe","creditLimitObservation.record",1,buildJsonObject{put("accountId",x.card);put("scope","TOTAL");put("availableMinor",83600);put("observedAt","2026-11-02T02:30:47.123Z")})
+                val plan=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),x.book,cloud.commands.registry.catalogDigest,r.commandExports(x.book,RecordScope()).context.contextDigest,steps=steps)
+                vm.preferences.select(x.book)
+                cloud.commands.receive(commandClaim(plan,resultId=plan.plan_id,localId=plan.plan_id),"https://example.test",plan.context_digest).also{cloud.commands.preview(it.planId)}
+            }
+            ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==row.bookId&&!vm.busy.value}
+            ui.runOnIdle{vm.openCommandPlan(row.planId)}
+            ui.waitUntil(15000){ui.onAllNodesWithTag("finance-batch-undo-summary").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("finance-batch-undo-summary").assert(hasAnyDescendant(hasText("Grocery · ¥6,800")))
+            ui.onNodeWithTag("finance-batch-undo-summary").assert(hasAnyDescendant(hasText("Train · ¥9,600")))
+            ui.onNodeWithTag("finance-batch-undo-summary").assert(hasAnyDescendant(hasText("¥16,400")))
+            val complete=if(language=="ja")"全期間の予定"else"完整安排"
+            val restoredTops=listOf("Grocery","Train","Monthly").map{name->ui.onNodeWithText("$name · $complete").getUnclippedBoundsInRoot().top.value}
+            assertTrue(restoredTops.zipWithNext().all{(before,after)->before<after})
+            alignCommandSection("finance-batch-undo-summary");shot("$theme-$language-cloud-batch-undo-summary")
+            for((index,sharing) in CreditLimitSharing.entries.withIndex()) {
+                val section="command-step-limits$index"
+                ui.onNode(hasTestTag("finance-limit-relationship") and hasAnyAncestor(hasTestTag(section))).assertExists()
+                if(sharing==CreditLimitSharing.TOTAL_ONLY)for(label in listOf(if(language=="ja")"分割個別枠上限"else"分期子额度上限",if(language=="ja")"リボ個別枠上限"else"循环还款子额度上限"))
+                    ui.onAllNodes(hasText(label) and hasAnyAncestor(hasTestTag(section))).assertCountEquals(0)
+                ui.onAllNodes(hasText("¥100,000",substring=true) and hasAnyAncestor(hasTestTag(section))).assertCountEquals(1)
+                if(sharing==CreditLimitSharing.SHARED_SUBPOOL)for(amount in listOf("¥80,000","¥60,000"))
+                    ui.onNode(hasText(amount+" → "+if(language=="ja")"削除済み"else"已移除") and hasAnyAncestor(hasTestTag(section))).assertExists()
+                alignCommandSection(section);shot("$theme-$language-cloud-limit-${sharing.name.lowercase().replace('_','-')}")
+            }
+            alignCommandSection("command-step-observe");shot("$theme-$language-cloud-limit-observation-preview")
+            ui.onNodeWithTag("command-step-observe").assert(hasAnyDescendant(hasText("2026年11月2日 02:30",substring=true)))
+            ui.onNodeWithTag("command-confirm").performScrollTo().assertIsNotEnabled()
+            // Preview only: archival batch restoration has not changed live arrangements.
+            assertEquals(2,runBlocking{db.financialDao().graph(row.bookId).first()!!.arrangements.size})
+            ui.runOnIdle{vm.navigate("home")}
+        }
+    }
+
+    @Test fun repaymentPreviewShowsCashClearingAndTargetsBeforeCompleteFactsAcrossLooks() {
+        for((theme,language) in testLooks(this)) {
+            val row=runBlocking {
+                val b=r.createBook("还款预览・返済プレビュー",Currency.JPY,theme,language,startDate="2026-11-01")
+                r.updateBook(r.dao.book(b)!!.copy(initialized=true))
+                val bank=r.saveAccount(b,"银行・銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,300000),"2026-11-01")
+                val card=r.saveAccount(b,"卡・カード",AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,10000),"2026-11-01")
+                val plan=r.commitManualFinancialPlan(r.previewManualFinancialPlan(b,ManualFinancialPlanInput(card,"本期・当期",com.yohaku.expensetracker.domain.finance.FinanceMode.SINGLE,listOf(KnownBillInput("2026-11-05",10000,10000,0,bank)),principalMinor=10000,opening=true)))!!
+                val bill=db.financialDao().bills(b,plan).single().id
+                fun step(id:String,command:String,extra:String)=CommandStep(id,command,1,commandJson.parseToJsonElement("""{"sourceAccountId":"$bank","debtAccountId":"$card","paid":{"currency":"JPY","minor":10000},"date":"2026-11-02","principal":{"currency":"JPY","minor":10000},"interest":{"currency":"JPY","minor":0},"fee":{"currency":"JPY","minor":0},"allocations":[{"billId":"$bill","principalMinor":10000,"interestMinor":0,"feeMinor":0}]$extra}""").jsonObject)
+                val p=CommandPlan("yohaku.command-plan",1,java.util.UUID.randomUUID().toString(),b,cloud.commands.registry.catalogDigest,r.commandExports(b,RecordScope()).context.contextDigest,
+                    steps=listOf(step("pending","financialRepayment.save",""),step("cleared","financialRepayment.confirm", ""","eventId":{"ref":"pending","output":"entry"},"received":{"currency":"JPY","minor":10000},"clearingDate":"2026-11-02"""")))
+                vm.preferences.select(b)
+                cloud.commands.receive(commandClaim(p,resultId=p.plan_id,localId=p.plan_id),"https://example.test",p.context_digest).also{cloud.commands.preview(it.planId)}
+            }
+            ui.waitUntil(15000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==row.bookId&&!vm.busy.value}
+            ui.runOnIdle{vm.openCommandPlan(row.planId)}
+            ui.waitUntil(15000){ui.onAllNodesWithTag("command-repayment-pending").fetchSemanticsNodes().isNotEmpty()}
+            val pending="command-repayment-pending";val cleared="command-repayment-cleared"
+            ui.onNodeWithTag(pending).assert(hasAnyDescendant(hasText(if(language=="ja")"支払済み・返済確定待ち"else"实际已付款 · 清偿待确认")))
+            ui.onNodeWithTag(cleared).assert(hasAnyDescendant(hasText(if(language=="ja")"返済先が返済を確定"else"平台已确认清偿")))
+            for(tag in listOf(pending,cleared)) {
+                ui.onNodeWithTag(tag).assert(hasAnyDescendant(hasText("银行・銀行")))
+                ui.onNodeWithTag(tag).assert(hasAnyDescendant(hasText(if(language=="ja")"充当元金・利息・手数料"else"分配本金 / 利息 / 费用")))
+                ui.onNodeWithTag(tag).assert(hasAnyDescendant(hasText("本期・当期",substring=true)))
+                alignCommandSection(tag.replace("command-repayment-","command-step-"));shot("$theme-$language-$tag")
+            }
+            ui.onNodeWithTag("command-confirm").performScrollTo().assertIsNotEnabled()
+            assertTrue(runBlocking{r.snapshot(r.dao.book(row.bookId)!!).first().events.isEmpty()})
             ui.runOnIdle{vm.navigate("home")}
         }
     }

@@ -38,10 +38,11 @@ class FinancialReconciliationChainFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -97,12 +98,12 @@ class FinancialReconciliationChainFlowTest {
             val before=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()};val graph=runBlocking{db.financialDao().graph(book).first()!!}
             val first=graph.bills.first{it.planId==child&&it.number==1};val rootBill=graph.bills.first{it.planId==root}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
-            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-plans");tapTag("finance-reconcile-$child")
+            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans");openFinancialPlan(ui,vm,child);tapTag("finance-reconcile-$child")
             fun replace(tag:String,value:String){ui.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag(tag))).performScrollTo().performTextReplacement(value)}
             fun principal()=textField(text("生效日转入的本金 / 非今日剩余","適用日に移す元金・今日の残額ではありません")+" · JPY","reconciliation-principal")
             replace("reconciliation-principal","1200")
             if(InstrumentationRegistry.getArguments().getString("resume")=="true") {
-                tapTag("sheet-close");tapTag("analysis-tab-overview");tapTag("financial-drafts-open");tapTag("financial-draft-resume-ARRANGEMENT_REVIEW")
+                tapTag("finance-flow-close");tapTag("finance-tab-overview");tapTag("financial-drafts-open");tapTag("financial-draft-resume-ARRANGEMENT_REVIEW")
                 principal().assertTextContains("1200")
             }
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true") {
@@ -110,7 +111,7 @@ class FinancialReconciliationChainFlowTest {
                 ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
                 shot("$theme-$language-chain-ime")
             }
-            tapTag("reconciliation-preview");ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("reconciliation-back").fetchSemanticsNodes().isNotEmpty()};ui.onNodeWithTag("reconciliation-save").assertDoesNotExist();shot("$theme-$language-chain-parent-required");tapTag("reconciliation-back")
+            tapTag("reconciliation-preview");ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("finance-flow-back").fetchSemanticsNodes().isNotEmpty()};ui.onNodeWithTag("reconciliation-save").assertDoesNotExist();shot("$theme-$language-chain-parent-required");tapTag("finance-flow-back")
             if(resolve) {
                 tapTag("reconciliation-open-bill-${first.id}")
                 replace("finance-actual-principal","500");replace("finance-actual-fee","100")
@@ -120,7 +121,7 @@ class FinancialReconciliationChainFlowTest {
                 textField(text("仍待付本金 / 不明可留空","未払元金・不明は空欄")+" · JPY","reconciliation-bill-principal-${first.id}").assertTextContains("500")
             }
             ui.onNodeWithTag("reconciliation-parent-$parent").performScrollTo()
-            ui.onNodeWithTag("sheet-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-300f*InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density)}
+            ui.onNodeWithTag("finance-flow-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,-300f*InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density)}
             shot("$theme-$language-chain-parent-link")
             tapTag("reconciliation-parent-$parent")
             ui.waitUntil(10000){ui.onAllNodesWithTag("reconciliation-bill-${rootBill.id}").fetchSemanticsNodes().isNotEmpty()}
@@ -131,12 +132,18 @@ class FinancialReconciliationChainFlowTest {
             shot("$theme-$language-chain-parent-review");tapTag("reconciliation-confirmed");tapTag("reconciliation-save")
             ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodesWithTag("reconciliation-parent-$parent").fetchSemanticsNodes().isNotEmpty()}
             principal().assertTextContains("1200")
+            if(visualEnabled())alignFinancialFlowSection(ui,"reconciliation-principal")
+            shot("$theme-$language-reconciliation-parent-return")
             if(cancelParentFee)textField(text("仍待付费用 / 不明可留空","未払手数料・不明は空欄")+" · JPY","reconciliation-bill-fee-${previousBill.id}").assertTextContains("10")
             tapTag("reconciliation-preview");ui.waitUntil(10000){ui.onAllNodesWithTag("reconciliation-confirmed").fetchSemanticsNodes().isNotEmpty()}
+            ui.onNodeWithTag("reconciliation-unknown").assertExists()
+            alignFinancialFlowSection(ui,"reconciliation-review")
+            shot("$theme-$language-review-incomplete-inline")
+            tapTag("finance-review-full-details")
             ui.onAllNodesWithText(text("未知 / 未知","不明 / 不明")).assertCountEquals(if(resolve)1 else 2)
             shot("$theme-$language-chain-manual-review")
             ui.onAllNodesWithText(text("未知 / 未知","不明 / 不明")).onLast().performScrollTo()
-            ui.onNodeWithTag("sheet-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,140f*InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density)}
+            ui.onNodeWithTag("finance-flow-scroll").performSemanticsAction(SemanticsActions.ScrollBy){it(0f,140f*InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density)}
             shot("$theme-$language-chain-unknown")
             tapTag("reconciliation-confirmed");tapTag("reconciliation-save")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialState.value?.plans?.firstOrNull{it.id==child}?.reconciliationJson!=null}
@@ -151,7 +158,7 @@ class FinancialReconciliationChainFlowTest {
             if(cancelParentFee)assertEquals(10L,after.billOutstanding(f.bills.first{it.id==previousBill.id}).feeMinor)
             assertEquals(1200L,after.balance(after.accounts.first{it.id==card}));assertEquals(10000L,after.balance(after.accounts.first{it.id==bank}));assertEquals(1,after.visibleEvents.size)
             for(target in listOf(parent,child))assertNull(runBlocking{db.financialDao().draft(book,FinancialDraftContext("ARRANGEMENT_REVIEW",card,targetId=target).slot())})
-            tapTag("analysis-tab-plans");tapTag("finance-plan-history-$child");tapTag("finance-plan-version-open-${plan.revision}");ui.onNodeWithTag("reconciliation-history").performScrollTo();shot("$theme-$language-chain-history");tapTag("sheet-close")
+            tapTag("finance-tab-plans");openFinancialPlan(ui,vm,child);tapTag("finance-plan-history-$child");tapTag("finance-plan-version-open-${plan.revision}");ui.onNodeWithTag("reconciliation-history").performScrollTo();shot("$theme-$language-chain-history");tapTag("sheet-close")
             assertNull(vm.error.value)
         }
     }

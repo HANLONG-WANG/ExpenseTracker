@@ -38,10 +38,11 @@ class FinancialFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -96,7 +97,7 @@ class FinancialFlowTest {
             val originalBill=runBlocking{db.financialDao().bill(book,billId)!!}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("accounts")}
-            tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-plans");tapTag("finance-compare-plan-$original")
+            tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans");openFinancialPlan(ui,vm,original);tapTag("finance-compare-plan-$original")
             textField(text("预测期数","予測回数")).performScrollTo().performTextReplacement("3")
             tapTag("select-trigger-"+text("原方案剩余费用如何处理","元の予定の残手数料の扱い"));ui.onNodeWithText(text("保留原费用","元の手数料を保持")).performClick()
             val feeLabel=text("另列变更费用 / 未知留空，已知无费用填0","別途変更手数料・不明は空欄、無料は0")+" · JPY"
@@ -114,26 +115,34 @@ class FinancialFlowTest {
             assertTrue(review.calculation.toString(),review.calculation is Calculation.Ready)
             assertEquals(6600L,review.comparison!!.currentReductionMinor);assertEquals(201L,review.comparison!!.totalExtraFeeMinor)
             shot("$theme-$language-arrangement-comparison")
-            val proposedTitle=text("新方案","新プラン")
-            val table=ui.onNodeWithTag("arrangement-table-scroll-$proposedTitle")
+            alignFinancialFlowSection(ui,"finance-comparison-changes-only")
+            ui.onNodeWithTag("finance-comparison-delta-2026-11-27").assertTextEquals("−¥6,600")
+            ui.onNodeWithTag("finance-comparison-delta-2026-12-27").assertTextEquals("+¥3,400")
+            ui.onNodeWithTag("finance-comparison-before-2026-12-27").assertTextEquals("—")
+            shot("$theme-$language-comparison-changed-dates")
+            tapTag("finance-comparison-changes-only")
+            shot("$theme-$language-comparison-all-dates")
+            tapTag("finance-review-full-details")
+            val firstDate=review.comparison!!.proposed.minOf{it.date}
+            val table=ui.onNodeWithTag("arrangement-table-scroll-after")
             table.performScrollTo();ui.waitForIdle()
             for((i,remaining) in listOf(6667L,3334L,0L).withIndex()) {
-                ui.onNodeWithTag("arrangement-cell-$proposedTitle-$i-3").assertTextEquals(Money(Currency.JPY,remaining).display())
+                ui.onNodeWithTag("arrangement-cell-after-${review.comparison!!.proposed.sortedBy{it.date}[i].date}-0-remaining").assertTextEquals(Money(Currency.JPY,remaining).display())
             }
-            val cells=ui.onAllNodes(hasAnyAncestor(hasTestTag("arrangement-table-$proposedTitle")) and hasText("",substring=true))
+            val cells=ui.onAllNodes(hasAnyAncestor(hasTestTag("arrangement-table-after")) and hasText("",substring=true))
             for(i in cells.fetchSemanticsNodes().indices)cells[i].performSemanticsAction(SemanticsActions.GetTextLayoutResult){action->
                 val layouts=mutableListOf<androidx.compose.ui.text.TextLayoutResult>();action(layouts)
                 assertTrue("table dates and amounts must stay on one line",layouts.all{it.lineCount==1})
             }
             table.performSemanticsAction(SemanticsActions.ScrollBy){it(-10000f,0f)}
-            shot("$theme-$language-arrangement-table-start")
+            shot("$theme-$language-arrangement-table-start");shot("$theme-$language-comparison-full-basis")
             table.performTouchInput{swipeLeft()};ui.waitForIdle()
-            ui.onNodeWithTag("arrangement-cell-$proposedTitle-0-3").assertIsDisplayed()
+            ui.onNodeWithTag("arrangement-cell-after-$firstDate-0-remaining").assertIsDisplayed()
             shot("$theme-$language-arrangement-table-end")
             ui.onNodeWithTag("arrangement-funding-$bank").performScrollTo();ui.waitForIdle()
             ui.onAllNodes(hasText("¥3,000 → ¥3,201") and hasAnyAncestor(hasTestTag("arrangement-funding-$bank"))).assertCountEquals(2)
             shot("$theme-$language-arrangement-funding")
-            tapTag("arrangement-back")
+            tapTag("finance-flow-back")
             textField(text("预测期数","予測回数")).assertTextEquals("3");field.assertTextEquals("0")
             assertTrue(runBlocking{db.financialDao().graph(book).first()!!.arrangements.isEmpty()})
             tapTag("arrangement-preview");tapTag("arrangement-record-applied")
@@ -155,7 +164,7 @@ class FinancialFlowTest {
             assertEquals(listOf(3400L,3400L,3401L),graph.bills.filter{it.planId==target}.map{it.totalMinor})
             assertFalse(repo.financialPredictionStale(snapshot,graph,graph.plans.first{it.id==target}))
             shot("$theme-$language-arrangement-saved")
-            tapTag("finance-plan-history-$target")
+            openFinancialPlan(ui,vm,target);tapTag("finance-plan-history-$target")
             shot("$theme-$language-arrangement-history-open")
             try {tapTag("finance-plan-version-open-1")}catch(e:Exception){shot("$theme-$language-arrangement-history-failure");throw e}
             shot("$theme-$language-arrangement-history")
@@ -183,7 +192,7 @@ class FinancialFlowTest {
             val versions=runBlocking{db.financialDao().planRevisions(book,plan).first()}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("accounts")}
-            tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-plans");tapTag("finance-pay-bill-$first")
+            tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans");openFinancialPeriod(ui,vm,first);tapTag("finance-pay-bill-$first")
             val paid=textField(text("实际扣款总额","実出金総額")+" · JPY")
             paid.performScrollTo()
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")paid.performClick()
@@ -192,15 +201,17 @@ class FinancialFlowTest {
                 ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
                 shot("$theme-$language-linked-plan-ime")
             }
-            tapTag("finance-repay-cleared")
+            tapTag("finance-repay-cleared");ui.onNodeWithTag("finance-repay-cleared").assertIsOn()
             for((label,value) in listOf(text("平台实际收到","返済先の実受取額") to "5100",text("清偿本金","返済元金") to "5000",text("实付利息","実支払利息") to "100",text("平台费用","返済先手数料") to "0"))textField(label+" · JPY").performScrollTo().performTextReplacement(value)
-            for((label,value) in listOf(text("分配本金","充当元金") to "5000",text("分配利息","充当利息") to "100",text("分配费用","充当手数料") to "0"))textField(label,"finance-repay-allocation-0").performScrollTo().performTextReplacement(value)
+            ui.onNodeWithTag("finance-repay-allocation-0").assertDoesNotExist() // Single target uses the composition once.
             tapTag("finance-repay-preview")
             ui.waitUntil(10000){vm.financialLedgerReview.value!=null&&!vm.busy.value}
+            assertEquals(RepaymentAllocationInput(first,null,5000,100,0),vm.financialLedgerReview.value!!.repaymentInput!!.allocations.single())
+            assertTrue("Platform confirmation must reach preview: ${vm.financialLedgerReview.value!!.repaymentInput}",vm.financialLedgerReview.value!!.repaymentInput!!.platformConfirmed)
             val impact=vm.financialLedgerReview.value!!.planImpacts.single()
             assertTrue(impact.updatesPrediction);assertEquals(listOf(1479L,1486L,1301L),impact.nextBills.map{it.feeMinor});assertEquals(original.first(),impact.nextBills.first())
             ui.onNodeWithTag("finance-plan-impact-$plan").performScrollTo();shot("$theme-$language-linked-plan-summary")
-            tapTag("finance-ledger-back")
+            tapTag("finance-flow-back")
             textField(text("实际扣款总额","実出金総額")+" · JPY").assertTextEquals("5100")
             assertTrue(runBlocking{repo.snapshot(repo.dao.book(book)!!).first().events.isEmpty()});assertEquals(original,runBlocking{db.financialDao().bills(book,plan)})
             tapTag("finance-repay-preview");tapTag("finance-plan-impact-detail-$plan")
@@ -209,13 +220,18 @@ class FinancialFlowTest {
             tapTag("finance-ledger-confirm")
             ui.waitUntil(10000){vm.financialReviewRefreshed.value&&!vm.busy.value}
             assertTrue(runBlocking{repo.snapshot(repo.dao.book(book)!!).first().events.isEmpty()});assertEquals(versions,runBlocking{db.financialDao().planRevisions(book,plan).first()})
+            ui.onNodeWithTag("finance-repay-cleared").assertIsOff()
+            ui.onNodeWithTag("finance-ledger-confirm").assertDoesNotExist()
+            textField(text("实际扣款总额","実出金総額")+" · JPY").assertTextEquals("5100")
+            shot("$theme-$language-review-refreshed")
+            tapTag("finance-repay-cleared");tapTag("finance-repay-preview")
             tapTag("finance-ledger-confirm")
             ui.waitUntil(10000){vm.financialLedgerReview.value==null&&!vm.busy.value&&vm.financialState.value?.plans?.firstOrNull{it.id==plan}?.revision==3}
             val snapshot=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(194900L,snapshot.balance(snapshot.accounts.first{it.id==bank}));assertEquals(95000L,snapshot.balance(snapshot.accounts.first{it.id==card}));assertEquals(100L,snapshot.monthExpense("2026-10"));assertEquals(1,snapshot.events.size)
             assertEquals(original.first(),runBlocking{db.financialDao().bill(book,first)})
             ui.onNodeWithTag("prediction-stale-$plan").assertDoesNotExist()
-            tapTag("finance-plan-history-$plan");tapTag("finance-plan-version-open-3")
+            openFinancialPlan(ui,vm,plan);tapTag("finance-plan-history-$plan");tapTag("finance-plan-version-open-3")
             ui.onNode(hasText("¥16,379") and hasAnyAncestor(hasTestTag("finance-plan-history-outstanding-3-$first"))).assertExists()
             ui.onNodeWithTag("finance-plan-version-3").performScrollTo();shot("$theme-$language-linked-plan-history")
             tapTag("finance-plan-version-open-2")
@@ -246,9 +262,9 @@ class FinancialFlowTest {
             val confirmed=runBlocking{db.financialDao().bill(book,first)!!}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("accounts")}
-            tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-plans")
+            tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans")
             ui.onNodeWithTag("prediction-stale-$plan").assertDoesNotExist()
-            tapTag("finance-recalculate-$plan")
+            openFinancialPlan(ui,vm,plan);tapTag("finance-recalculate-$plan")
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true") {
                 val field=textField(text("计划名称","プラン名"))
                 field.performScrollTo().performClick().performTextReplacement("実返済を反映")
@@ -262,6 +278,7 @@ class FinancialFlowTest {
             assertEquals(listOf(1479L,1479L,1301L),review.bills.map{it.feeMinor})
             assertEquals(confirmed,review.bills.first())
             shot("$theme-$language-reconciled-review-top")
+            tapTag("finance-review-full-details")
             tapTag("prediction-basis-"+review.bills.last().id,"prediction-review-period-3")
             ui.onNodeWithTag("prediction-review-period-3").performScrollTo()
             shot("$theme-$language-reconciled-basis")
@@ -287,7 +304,7 @@ class FinancialFlowTest {
             }
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("accounts")}
-            tapTag("account-$loan");tapTag("account-financial");tapTag("analysis-tab-movements");tapTag("finance-add-borrowing")
+            tapTag("account-$loan");tapTag("account-financial");tapTag("finance-tab-manage");tapTag("finance-manage-contracts");tapTag("finance-add-borrowing")
             textField(text("合同名称","契約名")).performScrollTo().performTextReplacement("実契約")
             textField(text("合同本金","契約元金")+" · JPY").performScrollTo().performTextReplacement("10000")
             tapTag("select-trigger-"+text("实际到账账户","実際の入金先口座"));ui.onNodeWithText("実資金 · JPY").performClick()
@@ -297,7 +314,7 @@ class FinancialFlowTest {
             ui.waitUntil(10000){vm.financialLedgerReview.value!=null&&!vm.busy.value}
             ui.onNodeWithText("実契約").assertIsDisplayed()
             shot("$theme-$language-borrow-review")
-            tapTag("finance-ledger-back")
+            tapTag("finance-flow-back")
             textField(text("合同本金","契約元金")+" · JPY").assertTextEquals("10000")
             tapTag("finance-borrow-preview");tapTag("finance-ledger-confirm")
             ui.waitUntil(10000){vm.financialState.value?.contracts?.any{it.accountId==loan}==true&&!vm.busy.value}
@@ -318,10 +335,10 @@ class FinancialFlowTest {
             var snapshot=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(7600L,snapshot.balance(snapshot.accounts.first{it.id==bank}));assertEquals(10000L,snapshot.balance(snapshot.accounts.first{it.id==loan}))
             assertEquals(10000L,snapshot.contractRemaining(contract));assertNull(snapshot.repaymentAllocations.single().principalMinor)
-            tapTag("finance-edit-repayment-${payment.eventId}")
+            tapTag("finance-tab-manage");tapTag("finance-manage-records");tapTag("finance-edit-repayment-${payment.eventId}")
             tapTag("finance-repay-cleared")
             for((label,value) in listOf(text("平台实际收到","返済先の実受取額") to "2100",text("清偿本金","返済元金") to "2000",text("实付利息","実支払利息") to "100",text("平台费用","返済先手数料") to "0"))textField(label+" · JPY").performScrollTo().performTextReplacement(value)
-            for((label,value) in listOf(text("分配本金","充当元金") to "2000",text("分配利息","充当利息") to "100",text("分配费用","充当手数料") to "0"))textField(label,"finance-repay-allocation-0").performScrollTo().performTextReplacement(value)
+            ui.onNodeWithTag("finance-repay-allocation-0").assertDoesNotExist()
             tapTag("finance-repay-preview")
             ui.waitUntil(10000){vm.financialLedgerReview.value!=null&&!vm.busy.value}
             shot("$theme-$language-partial-review")
@@ -338,7 +355,7 @@ class FinancialFlowTest {
             tapTag("record-edit-button")
             textField(text("实际扣款总额","実出金総額")+" · JPY").assertTextEquals("2100")
             textField(text("清偿本金","返済元金")+" · JPY").assertTextEquals("2000")
-            tapTag("sheet-close")
+            tapTag("finance-flow-close")
             assertNull(vm.error.value)
         }
     }
@@ -354,24 +371,33 @@ class FinancialFlowTest {
             }
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("accounts")}
-            tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-rules")
+            tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-manage");tapTag("finance-manage-rules")
             tapTag("finance-edit-SINGLE")
-            val closing=text("締め日（1—31）","締日（1〜31）")
+            val closing=text("结账日（1—31）","締日（1〜31）")
             textField(closing).performScrollTo().performTextReplacement("30")
-            tapTag("header-settings");tapTag("settings-language");tapTag("page-back")
+            // Finish input before scrolling away: the IME's focus scroll otherwise races performScrollTo.
+            androidx.test.espresso.Espresso.closeSoftKeyboard()
+            ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().none{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
+            tapTag("finance-advanced");tapTag("finance-rule-open-limits")
+            ui.onNodeWithTag("finance-tab-manage").assertIsSelected()
+            ui.onNodeWithTag("finance-task-title").assertTextEquals(text("额度与恢复","利用枠と回復"))
+            tapTag("finance-return-rule")
+            textField(closing).assertTextEquals("30")
+            textField(closing).performScrollTo();shot("$theme-$language-rule-limit-return")
+            tapTag("finance-flow-close");tapTag("header-settings");tapTag("settings-language");tapTag("page-back")
             val otherLanguage=if(language=="zh")"ja"else "zh"
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.language==otherLanguage&&!vm.busy.value}
-            tapTag("analysis-tab-rules");tapTag("finance-edit-SINGLE")
-            textField(if(language=="zh")"締日（1〜31）"else "締め日（1—31）").assertTextEquals("30")
-            tapTag("header-settings");tapTag("settings-language");tapTag("page-back")
+            tapTag("finance-tab-manage");tapTag("finance-manage-rules");tapTag("finance-edit-SINGLE")
+            textField(if(language=="zh")"締日（1〜31）"else "结账日（1—31）").assertTextEquals("30")
+            tapTag("finance-flow-close");tapTag("header-settings");tapTag("settings-language");tapTag("page-back")
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.language==language&&!vm.busy.value}
-            tapTag("analysis-tab-rules");tapTag("finance-edit-SINGLE")
+            tapTag("finance-tab-manage");tapTag("finance-manage-rules");tapTag("finance-edit-SINGLE")
             tapTag("finance-rule-preview")
             ui.onNodeWithTag("finance-rule-incomplete").assertExists()
             ui.waitUntil(10000){vm.financialRuleReview.value!=null&&!vm.busy.value}
             shot("$theme-$language-incomplete-review")
             assertTrue(runBlocking{db.financialDao().rules(book,card).isEmpty()})
-            tapTag("finance-review-back")
+            tapTag("finance-flow-back")
             textField(closing).assertTextEquals("30")
             tapTag("finance-rule-preview")
             runBlocking{repo.saveAccount(book,"支払銀行 更新",AccountType.BANK,Currency.JPY,Money(Currency.JPY,20000),"2026-10-01",bank)}
@@ -381,7 +407,7 @@ class FinancialFlowTest {
             assertTrue(runBlocking{db.financialDao().rules(book,card).isEmpty()})
             tapTag("finance-rule-confirm")
             ui.waitUntil(10000){vm.financialRuleReview.value==null&&vm.financialState.value?.rules?.count{it.accountId==card}==1}
-            tapTag("analysis-tab-plans");tapTag("finance-add-plan")
+            tapTag("finance-tab-plans");tapTag("finance-add-arrangement");tapTag("finance-add-plan")
             textField(text("计划名称","プラン名")).performScrollTo().performTextReplacement("手動の支払予定")
             textField(text("已知合计","既知の合計"),"finance-known-period-0").performScrollTo().performTextReplacement("3500")
             tapTag("finance-plan-add-period")
@@ -390,14 +416,14 @@ class FinancialFlowTest {
             ui.waitUntil(10000){vm.manualFinancialPlanReview.value!=null&&!vm.busy.value}
             shot("$theme-$language-known-plan-review")
             assertTrue(runBlocking{db.financialDao().plans(book,card).isEmpty()})
-            tapTag("finance-review-back")
+            tapTag("finance-flow-back")
             textField(text("已知合计","既知の合計"),"finance-known-period-1").assertTextEquals("3000")
             tapTag("finance-plan-preview");tapTag("finance-plan-confirm")
             ui.waitUntil(10000){vm.manualFinancialPlanReview.value==null&&vm.financialState.value?.plans?.count{it.accountId==card}==1}
             val plan=runBlocking{db.financialDao().plans(book,card).single()}
             val bill=runBlocking{db.financialDao().bills(book,plan.id).first()}
             assertNull(bill.principalMinor);assertNull(bill.feeMinor)
-            tapTag("finance-confirm-bill-${bill.id}")
+            openFinancialPeriod(ui,vm,bill.id);tapTag("finance-confirm-bill-${bill.id}")
             textField(text("已知合计","既知の合計")).performScrollTo().performTextReplacement("3600")
             tapTag("finance-bill-preview")
             try {
@@ -436,7 +462,7 @@ class FinancialFlowTest {
         }
         ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
         ui.runOnIdle{vm.navigate("accounts")}
-        tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-rules");tapTag("finance-edit-INSTALLMENT")
+        tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-manage");tapTag("finance-manage-rules");tapTag("finance-edit-INSTALLMENT")
         textField("回数:100通貨単位当たり手数料、カンマ区切り").performScrollTo().performTextReplacement("3:3.00")
         textField("検算する元金 · JPY").performScrollTo().performTextReplacement("10000")
         textField("回数").performScrollTo().performTextReplacement("3")
@@ -446,6 +472,8 @@ class FinancialFlowTest {
         ui.onNodeWithTag("finance-trial-period-3").assert(hasAnyDescendant(hasText("¥3,334")))
         ui.onNodeWithTag("finance-trial-period-1").assert(hasAnyDescendant(hasText("¥100")))
         ui.onNodeWithTag("finance-trial-period-1").performScrollTo();shot("journal-ja-installment-trial")
+        // Trial results are a separate flow step; return to the retained form before editing.
+        tapTag("finance-flow-back")
         tapTag("finance-advanced")
         tapTag("select-trigger-変更対象の請求")
         ui.onNodeWithText("既知請求 · 第1回 · 2026-11-27").performScrollTo().performClick()
@@ -485,7 +513,7 @@ class FinancialFlowTest {
             val (book,bank,card,ruleId)=ids
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("accounts")}
-            tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-plans");tapTag("finance-add-prediction")
+            tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans");tapTag("finance-add-arrangement");tapTag("finance-add-prediction")
             textField(text("计划名称","プラン名")).performScrollTo().performTextReplacement("実利用の分割")
             tapTag("select-trigger-"+text("计算模式","計算方式"))
             ui.onNodeWithText(text("分期","分割払い")).performScrollTo().performClick()
@@ -507,26 +535,39 @@ class FinancialFlowTest {
             tapTag("prediction-current-arrangement")
             tapTag("prediction-preview")
             ui.waitUntil(10000){vm.financialPredictionReview.value!=null&&!vm.busy.value}
+            ui.onNodeWithTag("finance-change-summary").assertExists()
+            shot("$theme-$language-prediction-change-summary")
+            tapTag("finance-review-full-details")
             ui.onNodeWithTag("prediction-review-period-1").assert(hasAnyDescendant(hasText("¥3,333")))
             shot("$theme-$language-real-prediction-review")
             assertTrue(runBlocking{db.financialDao().plans(book,card).isEmpty()})
-            tapTag("prediction-review-back")
+            tapTag("finance-flow-back")
             textField(text("预测期数 / 不代表必定结清","予測回数・完済を保証するものではありません")).assertTextEquals("3")
-            tapTag("prediction-preview");tapTag("prediction-confirm")
+            tapTag("prediction-preview")
+            runBlocking{repo.saveAccount(book,"支払口座 更新",AccountType.BANK,Currency.JPY,Money(Currency.JPY,20000),"2026-10-01",bank)}
+            tapTag("prediction-confirm")
+            ui.waitUntil(10000){!vm.busy.value&&vm.financialPredictionReview.value==null}
+            ui.onNodeWithTag("prediction-current-arrangement").assertIsOff()
+            ui.onNodeWithTag("prediction-preview").assertIsNotEnabled()
+            textField(text("预测期数 / 不代表必定结清","予測回数・完済を保証するものではありません")).assertTextEquals("3")
+            assertTrue(runBlocking{db.financialDao().plans(book,card).isEmpty()})
+            if(visualEnabled())ui.onNodeWithTag("prediction-current-arrangement").performScrollTo()
+            shot("$theme-$language-prediction-review-refreshed")
+            tapTag("prediction-current-arrangement");tapTag("prediction-preview");tapTag("prediction-confirm")
             ui.waitUntil(10000){vm.financialPredictionReview.value==null&&vm.financialState.value?.plans?.count{it.accountId==card}==1}
             val plan=runBlocking{db.financialDao().plans(book,card).single()}
             val bills=runBlocking{db.financialDao().bills(book,plan.id)}
             assertEquals(listOf("2026-11-27","2026-12-27","2027-01-27"),bills.map{it.date})
             assertEquals(listOf(3333L,3333L,3334L),bills.map{it.principalMinor})
             val first=bills.first()
-            tapTag("finance-confirm-bill-${first.id}")
+            openFinancialPeriod(ui,vm,first.id);tapTag("finance-confirm-bill-${first.id}")
             textField(text("已知合计","既知の合計")).performScrollTo().performTextReplacement("3500")
             textField(text("其中利息与费用 / 不明留空","うち利息・手数料・不明なら空欄")).performScrollTo().performTextReplacement("167")
             tapTag("finance-bill-preview");tapTag("finance-bill-confirm")
             ui.waitUntil(10000){vm.financialBillReview.value==null&&!vm.busy.value}
-            tapTag("finance-validate-bill-${first.id}")
+            openFinancialPeriod(ui,vm,first.id);tapTag("finance-validate-bill-${first.id}")
             ui.waitUntil(10000){vm.financialState.value?.ruleValidationStatus(ruleId)=="DIFFERENT"&&!vm.busy.value}
-            tapTag("analysis-tab-rules")
+            tapTag("finance-tab-manage");tapTag("finance-manage-rules")
             ui.onNodeWithTag("finance-validation-$ruleId").assertTextEquals(text("与实际账单存在差异","実際の請求と差異あり"))
             runBlocking {
                 val snapshot=repo.snapshot(repo.dao.book(book)!!).first()

@@ -72,7 +72,7 @@ private sealed interface HistoryRead{
                 if(b.cardPaymentRuleId!=a.cardPaymentRuleId) {
                     val finance by vm.financialState.collectAsStateWithLifecycle()
                     fun rule(id:String?)=finance?.rules?.firstOrNull{it.id==id}?.let{"v${it.version} · ${it.effectiveFrom}"}.orEmpty()
-                    field(word("自动リボ依据版本","自動リボの条件の版"),rule(b.cardPaymentRuleId),rule(a.cardPaymentRuleId))
+                    field(word("自动循环还款依据版本","自動リボの条件の版"),rule(b.cardPaymentRuleId),rule(a.cardPaymentRuleId))
                 }
                 val bs=change.beforeDetails?.settlement;val ds=change.afterDetails?.settlement
                 if(bs!=null&&ds!=null) {

@@ -76,9 +76,13 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
         .onStart{if(retry)emit(AppState.Loading)}
     }
         .stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),AppState.Loading)
-    val financialState=state.map{(it as? AppState.Ready)?.snapshot?.book?.id}.distinctUntilChanged()
-        .flatMapLatest{bookId->if(bookId==null)flowOf(null)else repository.db.financialDao().graph(bookId)}
-        .catch{error.value=it.message ?: "金融资料读取失败 / 金融情報の読込に失敗しました";emit(null)}
+    val financialReadFailure=MutableStateFlow<String?>(null)
+    val financialState=combine(state.map{(it as? AppState.Ready)?.snapshot?.book?.id}.distinctUntilChanged(),readRequests){bookId,_->bookId}
+        .flatMapLatest{bookId->
+            financialReadFailure.value=null
+            if(bookId==null)flowOf(null)else repository.db.financialDao().graph(bookId)
+                .catch{financialReadFailure.value=it.message ?: "金融资料读取失败 / 金融情報の読込に失敗しました";error.value=financialReadFailure.value;emit(null)}
+        }
         .stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),null)
     val financialPredictionReview=MutableStateFlow<FinancialPredictionReview?>(null)
     val financialRuleReview=MutableStateFlow<FinancialRuleReview?>(null)

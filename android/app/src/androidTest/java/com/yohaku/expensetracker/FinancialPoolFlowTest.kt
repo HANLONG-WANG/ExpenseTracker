@@ -38,6 +38,7 @@ class FinancialPoolFlowTest {
     }
     @After fun close(){vm.viewModelScope.cancel();db.close()}
     private fun tapTag(tag:String,ancestor:String?=null) {
+        finishFinancialInputBeforeTap(ui,tag)
         val matcher=if(ancestor==null)hasTestTag(tag)else hasTestTag(tag) and hasAnyAncestor(hasTestTag(ancestor))
         try{ui.waitUntil(10000){!vm.busy.value&&ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}}
         catch(failure:ComposeTimeoutException){
@@ -47,7 +48,7 @@ class FinancialPoolFlowTest {
             throw failure
         }
         val node=ui.onNode(matcher)
-        node.performScrollTo();ui.waitForIdle()
+        if(!tag.startsWith("finance-tab-") && tag!="finance-back" && !(tag in listOf("header-book","header-settings") && ui.onAllNodesWithTag("finance-navigation").fetchSemanticsNodes().isNotEmpty()))node.scrollIfScrollable();ui.waitForIdle()
         if(ui.onAllNodesWithTag("sheet-header").fetchSemanticsNodes().isNotEmpty()) {
             val density=InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             val header=ui.onNodeWithTag("sheet-header").getUnclippedBoundsInRoot().bottom.value
@@ -97,7 +98,7 @@ class FinancialPoolFlowTest {
             }
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
             ui.runOnIdle{vm.navigate("accounts")}
-            tapTag("account-$card");tapTag("account-financial");tapTag("analysis-tab-plans");tapTag("finance-pool-open")
+            tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-plans");tapTag("finance-add-arrangement");tapTag("finance-pool-open")
             val opening=textField(text("期初属于循环的本金 / 没有请填0","循環分の期首元金・なければ0"));opening.performScrollTo()
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")tapTag("field-"+text("期初属于循环的本金 / 没有请填0","循環分の期首元金・なければ0"))
             opening.performTextReplacement(if(loan)"0"else"100000")
@@ -107,7 +108,7 @@ class FinancialPoolFlowTest {
             }
             tapTag("select-trigger-"+text("新增本金起算日期","追加元金の開始日"));ui.onNodeWithText(text("交易 / 借入发生日","取引・借入日")).performClick()
             if(loan) {
-                tapTag("select-trigger-"+text("实际扣款账户 / 可留空","実引落口座・未定は空欄"));ui.onNodeWithText("銀行").performClick()
+                tapTag("select-trigger-"+text("付款账户 / 可留空","引落口座・未定は空欄"));ui.onNodeWithText("銀行").performClick()
                 tapTag("date-field-0");ui.onNodeWithContentDescription("2026-10-15").performScrollTo().performClick()
             }
             textField(text("预测期数","予測回数")).performScrollTo().performTextReplacement("2")
@@ -117,8 +118,12 @@ class FinancialPoolFlowTest {
             ui.onNodeWithContentDescription(text("下一月","次の月")).performScrollTo().performClick()
             ui.onNodeWithContentDescription("2026-11-05").performScrollTo().performClick()
             tapTag("pool-generate");if(!loan)tapTag("pool-adopt");tapTag("pool-preview")
+            ui.onNodeWithTag("finance-change-summary").assert(hasAnyDescendant(hasText(if(loan)"2 / ¥2,057"else"2 / ¥23,365")))
+            shot("$theme-$language-pool-change-summary")
+            tapTag("finance-review-full-details")
             ui.onNode(hasText(if(loan)"¥1,024"else"¥11,200") and hasAnyAncestor(hasTestTag("pool-period-1"))).assertExists()
             ui.onNode(hasText(if(loan)"¥1,033"else"¥12,165") and hasAnyAncestor(hasTestTag("pool-period-2"))).assertExists()
+            alignFinancialFlowSection(ui,"pool-period-1")
             shot("$theme-$language-pool-review")
             runBlocking{repo.saveAccount(book,"循環更新",if(loan)AccountType.LOAN else AccountType.CREDIT,Currency.JPY,Money(Currency.JPY,if(loan)0 else 100000),"2026-10-01",card)}
             tapTag("pool-confirm")
@@ -132,8 +137,8 @@ class FinancialPoolFlowTest {
             assertEquals(if(loan)3000L else 150000L,initial.balance(initial.accounts.first{it.id==card}));assertEquals(if(loan)203000L else 200000L,initial.balance(initial.accounts.first{it.name=="銀行"}));assertEquals(1,initial.events.size)
             runBlocking{if(loan)repo.commitFinancialLedger(repo.previewBorrowing(book,FinancialBorrowingInput(card,"循环2",FinanceMode.CREDIT_LINE,Money(Currency.JPY,2000),"2026-10-20",initial.accounts.first{it.name=="銀行"}.id,Money(Currency.JPY,2000))))else repo.saveEntry(book,EntryDraft(accountId=card,categoryId=initial.categories.single{it.name=="買物"}.id,amount="20000",date="2026-10-28",merchant="買物2",cardPaymentChoice="REVOLVING"))}
             ui.waitUntil(10000){vm.financialState.value?.plans?.firstOrNull{it.id==pool.id}?.revision==2&&(vm.state.value as? AppState.Ready)?.snapshot?.visibleEvents?.size==2}
-            tapTag("finance-plan-history-${pool.id}");tapTag("finance-plan-version-open-2");shot("$theme-$language-pool-history")
-            tapTag("sheet-close");tapTag("analysis-tab-overview");tapTag("finance-next-statement")
+            openFinancialPlan(ui,vm,pool.id);tapTag("finance-plan-history-${pool.id}");tapTag("finance-plan-version-open-2");shot("$theme-$language-pool-history")
+            tapTag("sheet-close");tapTag("finance-tab-overview");tapTag("finance-next-statement")
             ui.onNodeWithTag("finance-statement-amount").assertTextEquals(if(loan)"¥1,035"else"¥11,200")
             tapTag("finance-statement-next")
             ui.onNodeWithTag("finance-statement-amount").assertTextEquals(if(loan)"¥1,064"else"¥12,471")
@@ -141,6 +146,14 @@ class FinancialPoolFlowTest {
             ui.onNodeWithTag("finance-statement-total").performScrollTo();shot("$theme-$language-pool-statement")
             val final=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(if(loan)5000L else 170000L,final.balance(final.accounts.first{it.id==card}));assertEquals(if(loan)205000L else 200000L,final.balance(final.accounts.first{it.name=="銀行"}));assertEquals(if(loan)0L else 70000L,final.monthExpense("2026-10"));assertEquals(2,final.events.size)
+            tapTag("finance-tab-plans");openFinancialPlan(ui,vm,pool.id);tapTag("finance-recalculate-${pool.id}")
+            opening.assertTextEquals(if(loan)"0"else"100000")
+            tapTag("pool-preview")
+            ui.onNodeWithTag("finance-change-summary").assert(hasAnyDescendant(hasText(if(loan)"2 / ¥2,099"else"2 / ¥23,671")))
+            shot("$theme-$language-pool-edit-review")
+            tapTag("finance-flow-back");opening.assertTextEquals(if(loan)"0"else"100000")
+            tapTag("finance-flow-close")
+            assertEquals(2,runBlocking{db.financialDao().plan(book,pool.id)!!.revision})
             assertNull(vm.error.value)
         }
     }

@@ -1,6 +1,7 @@
 package com.yohaku.expensetracker.ui.features
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -38,7 +39,7 @@ import java.time.LocalDate
     var encoded by financialField("encoded"){vm.repository.json.encodeToString(original?.toForm(currency)?:FinancialRuleDraft(mode,mapOf("effective" to LocalDate.now(vm.repository.clock).toString(),"zone" to if(currency==Currency.CNY)"Asia/Shanghai"else "Asia/Tokyo")))}
     val draft=vm.repository.json.decodeFromString<FinancialRuleDraft>(encoded)
     fun change(key:String,value:String){encoded=vm.repository.json.encodeToString(draft.with(key,value))}
-    var advanced by rememberSaveable{mutableStateOf(false)}
+    var advanced by financialField("advanced"){false}
     var calendar by remember{mutableStateOf<Int?>(null)}
     var trialCalendar by remember{mutableStateOf<Int?>(null)}
     var deadlineCalendar by remember{mutableStateOf<Int?>(null)}
@@ -52,11 +53,20 @@ import java.time.LocalDate
     var trial by remember{mutableStateOf<Calculation<List<PaymentPeriod>>?>(null)}
     val interestMode=mode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE)||mode==FinanceMode.FIXED_LOAN&&draft["loanMethod"]!=LoanMethod.MANUAL.name
     val revolving=mode in listOf(FinanceMode.REVOLVING,FinanceMode.CREDIT_LINE)
-    if(review?.rule?.accountId==account.id){FinancialRuleReviewSheet(review!!,vm,onClose);return}
-    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(15.dp)) {
-        YButton(word("返回规则列表","条件一覧へ戻る"),{vm.financialRuleReview.value=null;onClose()},Modifier.testTag("finance-rule-cancel"))
+    val r=review?.takeIf{it.rule.accountId==account.id&&it.rule.mode==mode}
+    val formScroll=rememberScrollState();val resultScroll=rememberScrollState()
+    LaunchedEffect(r,trial){resultScroll.scrollTo(0)}
+    FinancialFlow(word("计算规则","計算条件"),step=if(r!=null||trial!=null)1 else 0,
+        onClose={vm.financialRuleReview.value=null;onClose()},onBack={vm.financialRuleReview.value=null;trial=null},trial=trial!=null&&r==null,
+        scrollState=if(r!=null||trial!=null)resultScroll else formScroll,actions={
+            if(r!=null)FinancialRuleReviewActions(r,vm,onClose)else {
+                YButton(word("预览规则变更","条件の変更を確認"),{val captured=draft;vm.execute{vm.financialReviewRefreshed.value=false;vm.financialRuleReview.value=vm.repository.previewFinancialRule(s.book.id,account.id,captured.build(s.book.id,account.id,currency))}},Modifier.testTag("finance-rule-preview"),primary=true,enabled=!busy)
+            }
+        }) {
+        if(r!=null){FinancialRuleReviewContent(r,vm);return@FinancialFlow}
+        if(trial!=null){FinancialCalculationResult(trial!!,currency,compact=true);return@FinancialFlow}
         YText(account.name+" · "+financeLabel(mode.name),14)
-        ThemeAuditPanel(word("不采用机构预设","会社別プリセットなし")) {
+        FinancialReviewSection(word("不采用机构预设","会社別プリセットなし")) {
             YText(word("各模式独立填写。缺项会明确列出；已确认账单保留原值。","方式ごとに設定します。不足情報を表示し、確定請求は元の値を保持します。"),11,lineHeightMultiplier=1.9f)
         }
         FinancialDraftNotice()
@@ -69,12 +79,12 @@ import java.time.LocalDate
                 RuleText(draft,"closing",financialIssueName("billing.closingDay"),{k,v->change(k,v);trial=null},Modifier.weight(1f),true)
                 RuleText(draft,"payday",financialIssueName("billing.paymentDay"),{k,v->change(k,v);trial=null},Modifier.weight(1f),true)
             }
-            RuleBoolean(draft,"closingIncluded",word("締め日当天属于本期","締日当日を当期に含む"),{k,v->change(k,v);trial=null})
-            RuleText(draft,"monthOffset",word("还款月距締め月的月数（0为当月）","締月から支払月までの月数（0は当月）"),{k,v->change(k,v);trial=null},numeric=true)
-            YSelect(word("扣款账户","引落口座"),draft["bank"],listOf("" to word("未填写","未入力"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id to (it.name+" · "+it.currency)},{change("bank",it);trial=null})
+            RuleBoolean(draft,"closingIncluded",word("结账日当天属于本期","締日当日を当期に含む"),{k,v->change(k,v);trial=null})
+            RuleText(draft,"monthOffset",word("还款月距结账月的月数（0为当月）","締月から支払月までの月数（0は当月）"),{k,v->change(k,v);trial=null},numeric=true)
+            YSelect(word("付款账户","引落口座"),draft["bank"],listOf("" to word("未填写","未入力"))+s.accounts.filter{it.active&&!AccountType.valueOf(it.type).debt}.map{it.id to (it.name+" · "+it.currency)},{change("bank",it);trial=null})
             YText(word("31日遇短月按月末。未配置营业日历时，本期实际扣款日期需手动确认。","31日がない月は月末です。営業日カレンダー未設定の場合、当期の引落日は手動確認してください。"),11,color=LocalYohaku.current.muted)
         }
-        if(mode==FinanceMode.SINGLE)FinanceFormSection(word("ボーナス払い（可选，最多两段）","ボーナス払い（任意・最大2区分）")) {
+        if(mode==FinanceMode.SINGLE)FinanceFormSection(word("奖金月付款（可选，最多两段）","ボーナス払い（任意・最大2区分）")) {
             (0..1).forEach{i->
                 YToggle(word("启用期间 ${i+1}","期間${i+1}を使用"),draft["bonus${i}Enabled"]=="true",{change("bonus${i}Enabled",it.toString())})
                 if(draft["bonus${i}Enabled"]=="true")listOf(
@@ -96,7 +106,7 @@ import java.time.LocalDate
                 "TOTAL_RATE"->RuleText(draft,"totalRate",word("适用总费率（%）","適用総料率（%）"),{k,v->change(k,v);trial=null},numeric=true)
                 "PER_HUNDRED_TABLE"->RuleText(draft,"feeTable",word("期数:每100单位费用，逗号分隔","回数:100通貨単位当たり手数料、カンマ区切り"),{k,v->change(k,v);trial=null})
             }
-            YText(word("各期数的数值由用户填写，不根据リボ年率推定。","各回数の値は手入力です。リボ年率から推定しません。"),11,color=LocalYohaku.current.muted)
+            YText(word("各期数的数值由用户填写，不根据循环还款年率推定。","各回数の値は手入力です。リボ年率から推定しません。"),11,color=LocalYohaku.current.muted)
         }
         if(mode==FinanceMode.FIXED_LOAN)FinanceFormSection(word("借款计算方式","借入の計算方式")) {
             RuleChoice(draft,"loanMethod",word("还款计算方式","返済計算方式"),LoanMethod.entries.map{it.name},{k,v->change(k,v);trial=null})
@@ -111,7 +121,7 @@ import java.time.LocalDate
                     YSelect(word("阶梯金额按哪个时点的余额","残高別コースの判定時点"),draft["tierBalanceDate"],listOf("" to word("未填写","未入力"),"BILL_CLOSING" to word("本期计费截止余额","当期計算終了時点の残高"),"PAYMENT_DATE" to word("付款日还本前余额","支払日の元金返済前残高")),{change("tierBalanceDate",it);trial=null})
                     RuleBoolean(draft,"tiersIncludeFees",word("阶梯金额包含费用","コースの月額に手数料を含む"),{k,v->change(k,v);trial=null})
                 }else RuleText(draft,"payment",word("月还款设定金额","月々の設定額")+" · "+currency.name,{k,v->change(k,v);trial=null},numeric=true)
-                if(mode==FinanceMode.REVOLVING)RuleBoolean(draft,"automatic",word("自动リボ","自動リボ"),{k,v->change(k,v);trial=null})
+                if(mode==FinanceMode.REVOLVING)RuleBoolean(draft,"automatic",word("自动循环还款","自動リボ"),{k,v->change(k,v);trial=null})
             }
         }
         YButton(word("高级设置 · 计息、取整与分配","詳細設定・計息、端数処理と充当")+if(advanced)" −"else " +",{advanced=!advanced},Modifier.testTag("finance-advanced"))
@@ -132,16 +142,17 @@ import java.time.LocalDate
             if(revolving||mode==FinanceMode.FIXED_LOAN)RuleChoice(draft,"allocation",word("付款分配顺序","支払額の充当順序"),AllocationOrder.entries.map{it.name},{k,v->change(k,v);trial=null})
             if(mode!=FinanceMode.FIXED_LOAN)FinancialRuleRecovery(s,account,vm,draft["recovery"],onLimits)
             if(mode in listOf(FinanceMode.INSTALLMENT,FinanceMode.REVOLVING)) {
-                YText(word("本期支払い変更期限","今期の支払方法変更締切"),15)
+                YText(word("本期付款方式变更截止","今期の支払方法変更締切"),15)
                 draft.deadlines.forEach{d->
                     val bill=accountBills.firstOrNull{it.id==d.billId}
-                    YText((bill?.let{word("第${it.number}期","第${it.number}回")+" · "+it.date}?:word("账期资料待核查","対象請求を要確認"))+" · "+d.date+" "+d.time+" · "+d.zoneId,11)
+                    YText((bill?.let{word("第${it.number}期","第${it.number}回")+" · "+it.date}?:word("账期资料待核查","対象請求を要確認"))+" · "+FinancialDisplayFacts.localTime(java.time.LocalDateTime.parse(d.date+"T"+d.time),d.zoneId,LocalLanguage.current),11)
                     YButton(word("移除此期截止时间","この回の締切を削除"),{encoded=vm.repository.json.encodeToString(draft.copy(deadlines=draft.deadlines.filterNot{it==d}))},enabled=!busy)
                 }
                 if(accountBills.isEmpty())YText(word("先保存已知账单，再为具体账期填写日期与时间。","既知の請求を保存してから、対象請求の締切日時を入力してください。"),11,color=LocalYohaku.current.muted)
                 else {
                     YSelect(word("变更对应的具体账期","変更対象の請求"),deadlineBill,listOf(null to word("请选择","選択してください"))+accountBills.sortedBy{it.date}.map{b->b.id as String? to (accountPlans.first{it.id==b.planId}.name+" · "+word("第${b.number}期","第${b.number}回")+" · "+b.date)},{deadlineBill=it},Modifier.testTag("finance-deadline-bill"))
-                    YDateFields(listOf(word("变更截止日期与时间","変更締切の日時") to deadlineAt),deadlineCalendar,{deadlineCalendar=it;calendar=null;trialCalendar=null},{_,v->deadlineAt=v})
+                    YDateFields(listOf(word("变更截止日期与时间","変更締切の日時") to deadlineAt),deadlineCalendar,{deadlineCalendar=it;calendar=null;trialCalendar=null},{_,v->deadlineAt=v},
+                        displayValues=listOf(FinancialDisplayFacts.localTime(java.time.LocalDateTime.parse(deadlineAt),draft["zone"].ifBlank{word("时区未填写","時間帯未入力")},LocalLanguage.current)))
                     YText(word("截止时间使用金融时区：","締切のタイムゾーン：")+draft["zone"],11)
                     YButton(word("采用这期截止时间","この回の締切を採用"),{
                         val billId=deadlineBill?:return@YButton
@@ -166,9 +177,9 @@ import java.time.LocalDate
                 val count=if(mode in listOf(FinanceMode.INSTALLMENT,FinanceMode.FIXED_LOAN))captured["trialCount"].toIntOrNull()?:error("请输入有效期数 / 有効な回数を入力してください")else 1
                 computed=calculateRulePreview(r,RulePreviewInput(Money.parse(captured["trialAmount"],currency).minor,count,start,end,pay))
             }},Modifier.testTag("finance-calculate"),enabled=!busy)
-            trial?.let{FinancialCalculationResult(it,currency)}
+
         }
-        YButton(word("预览规则变更","条件の変更を確認"),{val captured=draft;vm.execute{vm.financialReviewRefreshed.value=false;vm.financialRuleReview.value=vm.repository.previewFinancialRule(s.book.id,account.id,captured.build(s.book.id,account.id,currency))}},Modifier.testTag("finance-rule-preview"),primary=true,enabled=!busy)
+
     }
 }
 
@@ -180,7 +191,7 @@ import java.time.LocalDate
     val graph by vm.creditLimitState.collectAsStateWithLifecycle()
     val limits=graph?.takeIf{it.book.id==s.book.id}
     val config=limits?.currentConfig(a.id,LocalDate.now(vm.repository.clock).toString())
-    ThemeAuditPanel(word("额度恢复","枠回復"),Modifier.testTag("finance-rule-recovery")) {
+    FinancialReviewSection(word("额度恢复","枠回復"),Modifier.testTag("finance-rule-recovery")) {
         YText(word("本账户统一采用额度设置中的恢复条件。计算规则的保存不改动额度设置；未配置额度时仍可按已填条件计算付款。","この口座の枠設定にある回復条件を共通で使用します。計算条件の保存では枠設定を変更しません。枠が未設定でも支払額は入力条件から計算できます。"),11)
         if(limits==null)YText(word("正在读取当前额度设置…","現在の枠設定を読込中…"),12)
         else if(config==null)YText(word("尚未配置额度，利用可能额保持未知。","枠は未設定のため、利用可能額は不明です。"),12,Modifier.testTag("finance-rule-recovery-unset"))
