@@ -33,7 +33,7 @@ import com.yohaku.expensetracker.ui.theme.*
     else -> error("Unknown financial task: $path")
 }
 
-@Composable internal fun FinancialAccountBar(account: String, task: String, onBack: () -> Unit) {
+@Composable internal fun FinancialAccountBar(account: String, task: String?, onBack: () -> Unit) {
     val t = LocalYohaku.current
     Row(Modifier.fillMaxWidth().testTag("finance-account-bar").padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -43,23 +43,23 @@ import com.yohaku.expensetracker.ui.theme.*
                 drawLine(t.line, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
             }.padding(start = 10.dp, bottom = 4.dp)) {
                 YText(account, 17, Modifier.testTag("finance-account-name"))
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if(task!=null)Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     YText("↳", 12, Modifier.clearAndSetSemantics {}, color = t.accent)
                     YText(task, 12, Modifier.testTag("finance-task-title"), color = t.accent)
                 }
             }
             "objects" -> {
-                Box(Modifier.background(t.accent, RoundedCornerShape(8.dp)).padding(8.dp)) {
-                    YText(account.take(1), 16, color = t.surface)
+                Box(Modifier.size(28.dp).background(t.soft, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                    YText(account.take(1), 12, color = t.accent)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     YText(account, 14, Modifier.testTag("finance-account-name"))
-                    YText(task, 12, Modifier.testTag("finance-task-title").background(t.surface, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 2.dp), color = t.accent)
+                    if(task!=null)YText(task, 12, Modifier.testTag("finance-task-title").background(t.surface, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 2.dp), color = t.accent)
                 }
             }
             else -> {
                 YText(account, 17, Modifier.weight(1f).testTag("finance-account-name"), weight = FontWeight.Medium)
-                Box(Modifier.weight(0.7f).heightIn(min = 42.dp * LocalDensity.current.fontScale), contentAlignment = Alignment.CenterEnd) {
+                if(task!=null)Box(Modifier.weight(0.7f).heightIn(min = 42.dp * LocalDensity.current.fontScale), contentAlignment = Alignment.CenterEnd) {
                     YText(task, 12, Modifier.testTag("finance-task-title"), color = t.muted)
                 }
             }
@@ -72,7 +72,7 @@ import com.yohaku.expensetracker.ui.theme.*
     val journal = t.id == "journal"
     val objects = t.id == "objects"
     Row(Modifier.fillMaxWidth().testTag("finance-navigation").selectableGroup()
-        .then(if (objects) Modifier.background(t.soft, RoundedCornerShape(12.dp, 12.dp, 0.dp, 0.dp)).padding(horizontal = 5.dp, vertical = 4.dp) else Modifier),
+        .then(if (objects) Modifier.background(t.soft, RoundedCornerShape(24.dp)).padding(horizontal = 5.dp, vertical = 4.dp) else Modifier),
         horizontalArrangement = Arrangement.spacedBy(if (journal) 5.dp else if (objects) 4.dp else 12.dp), verticalAlignment = Alignment.Bottom) {
         listOf("overview", "statement", "plans", "manage").forEachIndexed { index, id ->
             val selected = current == id
@@ -81,9 +81,9 @@ import com.yohaku.expensetracker.ui.theme.*
                     drawLine(if (selected) t.accent else t.line, Offset(0f, 0f), Offset(size.width, 0f), if (selected) 3.dp.toPx() else 1.dp.toPx())
                     if (!selected) drawLine(t.line, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
                 }
-                objects -> Modifier.padding(top = if (selected) 0.dp else 7.dp).background(if (selected) t.surface else t.line, RoundedCornerShape(8.dp, 8.dp, 0.dp, 0.dp))
+                objects -> Modifier.background(if (selected) t.surface else t.soft, RoundedCornerShape(20.dp))
                 else -> Modifier.drawBehind {
-                    if (selected) drawLine(t.ink, Offset(0f, size.height), Offset(24.dp.toPx(), size.height), 3.dp.toPx())
+                    if (selected) drawLine(t.ink, Offset(0f, size.height), Offset(size.width, size.height), 3.dp.toPx())
                 }
             }
             Column(Modifier.weight(1f).testTag("finance-tab-$id").selectable(selected, role = Role.Tab, onClick = { onSelect(id) })
@@ -109,5 +109,28 @@ import com.yohaku.expensetracker.ui.theme.*
         if (t.id == "journal") YText("·", 14, Modifier.width(22.dp), color = t.accent)
         YText(title, 15, Modifier.weight(1f))
         YText(if (t.id == "objects") "▸" else "→", 16, color = t.accent)
+    }
+}
+
+/** Compact navigation row: editorial rule, ledger margin, or a softly rounded object. */
+@Composable internal fun FinancialCompactRow(name:String,amount:String,detail:String,tag:String,onOpen:()->Unit) {
+    val t=LocalYohaku.current
+    val surface=when(t.id) {
+        "journal"->Modifier.background(t.surface).drawBehind {
+            drawLine(t.line,Offset(18.dp.toPx(),0f),Offset(18.dp.toPx(),size.height),1.dp.toPx())
+            drawLine(t.line,Offset.Zero.copy(y=size.height),Offset(size.width,size.height),1.dp.toPx())
+        }
+        "objects"->Modifier.background(t.surface,RoundedCornerShape(14.dp))
+        else->Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())}
+    }
+    Row(Modifier.fillMaxWidth().testTag(tag).clickable(role=Role.Button,onClick=onOpen).then(surface)
+        .padding(start=if(t.id=="journal")26.dp else 10.dp,end=10.dp,top=9.dp,bottom=9.dp),
+        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+            YText(name,13)
+            YText(detail,10,color=t.muted)
+        }
+        YText(amount,14,number=true)
+        YText(if(t.id=="objects")"▸"else"→",12,color=t.accent)
     }
 }

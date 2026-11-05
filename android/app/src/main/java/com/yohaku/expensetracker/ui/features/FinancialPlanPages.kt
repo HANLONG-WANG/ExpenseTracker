@@ -55,13 +55,15 @@ import com.yohaku.expensetracker.ui.theme.*
     }
 }
 
-@Composable internal fun FinancialPlanPeriod(s:BookSnapshot,finance:FinancialGraph,plan:FinancialPlanEntity,bill:FinancialBillEntity,vm:AppViewModel,onPay:(String)->Unit,onConfirm:(String)->Unit,onRecord:(EventEntity)->Unit,onPayment:(EventEntity)->Unit) {
+@Composable internal fun FinancialPlanPeriod(s:BookSnapshot,finance:FinancialGraph,plan:FinancialPlanEntity,bill:FinancialBillEntity,vm:AppViewModel,onPay:(String)->Unit,onConfirm:(String)->Unit,onRecord:(EventEntity)->Unit,onPayment:(EventEntity)->Unit,onPlan:()->Unit,onCompare:()->Unit,onHistory:()->Unit) {
     val currency=Currency.valueOf(plan.currency)
     val busy by vm.busy.collectAsStateWithLifecycle()
     val stale=vm.repository.financialPredictionStale(s,finance,plan)
     val current=plan.termsJson?.let{vm.repository.json.decodeFromString<FinancialPredictionInput>(it)}
     Column(Modifier.testTag("finance-bill-${bill.id}"),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                YText(plan.name,18)
                 FinancialBillFacts(bill,currency,showAmountStatus=false)
+                if(stale)YText(word("原预测需重算，当前仍保留原值。","元の予測は再計算が必要です。現在は元の値を保持しています。"),12,Modifier.testTag("period-stale-${bill.id}"),color=LocalYohaku.current.warm)
                 val manualReview=plan.reconciliation()?.input?.principalMinor==0L
                 FinancialRemainingAfterBill(bill,currency,stale||manualReview)
                 val outstanding=s.billOutstanding(bill)
@@ -73,10 +75,16 @@ import com.yohaku.expensetracker.ui.theme.*
                 }
                 current?.projections?.firstOrNull{it.number==bill.number}?.let{FinancialProjectionFacts(it.basis,currency)}
                 if(plan.termsJson!=null&&bill.basisJson!=null)FinancialPredictionBasis(bill,finance,currency,vm,s,historical=manualReview||current?.facts?.retainedBills?.any{it.id==bill.id}==true)
-                plan.sourceEventId?.let{id->s.events.firstOrNull{it.id==id}?.let{event->
-                    YText(word("来源：","対象：")+event.date+" · "+event.merchant,12)
-                    if(event.deletedAt==null)YButton(word("查看原记录","元の記録を見る"),{onRecord(event)},Modifier.testTag("finance-period-source-${bill.id}"))
+                val poolSources=if(plan.origin=="POOL")poolInput(plan)?.facts?.sources.orEmpty().filter{it.principalMinor>0&&it.date<=bill.date}.mapNotNull{it.eventId}else emptyList()
+                if(poolSources.isNotEmpty())YText(word("循环还款计划来源仅表示关联；原金额不代表本期逐笔分配。","循環返済プランの対象記録は関連のみを示し、元の金額を当期の個別充当額とはみなしません。"),11)
+                (listOfNotNull(plan.sourceEventId)+poolSources).distinct().forEach{id->s.events.firstOrNull{it.id==id}?.let{event->
+                    YText(word("来源：","対象：")+event.date+" · "+event.merchant.ifBlank{event.note},12)
+                    if(event.deletedAt==null)YButton(word("查看原记录","元の記録を見る"),{onRecord(event)},Modifier.testTag("finance-period-source-${event.id}"))
+                    else YText(word("原消费已在回收站，独立账单仍保留。","元の利用はごみ箱にあります。独立した請求は保持しています。"),11)
                 }}
+                YButton(word("查看计划与全部期次","プラン・全回の予定を見る"),onPlan,Modifier.testTag("finance-period-plan-${plan.id}"))
+                if(plan.active&&(plan.origin=="POOL"||plan.origin!="POOL_RETAINED"&&finance.arrangements.none{it.originalPlanId==plan.id}))YButton(word("比较 / 更改付款方式","支払方法を比較・変更"),onCompare,Modifier.testTag("finance-compare-plan-${plan.id}"),enabled=!busy)
+                YButton(word("计划版本与变化","予定の履歴と変化"),onHistory,Modifier.testTag("finance-plan-history-${plan.id}"),enabled=!busy)
                 YText(word("付款账户：","引落口座：")+(s.accounts.firstOrNull{it.id==bill.paymentAccountId}?.name?:word("未确定","未定")),11)
                 YButton(if(bill.confirmed)word("明确调整这期账单","この回の請求を明示的に修正")else word("确认平台账单","返済先の請求を確定"),{onConfirm(bill.id)},Modifier.testTag("finance-confirm-bill-${bill.id}"),enabled=!busy)
                 if(bill.confirmed&&bill.ruleVersionId!=null&&bill.predictedTotalMinor!=null)YButton(word("与原预测核对规则","元の予測で条件を検証"),{vm.execute{vm.repository.validateFinancialRule(s.book.id,bill.id)}},Modifier.testTag("finance-validate-bill-${bill.id}"),enabled=!busy)

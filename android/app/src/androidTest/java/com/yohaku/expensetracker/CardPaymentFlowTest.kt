@@ -131,12 +131,14 @@ class CardPaymentFlowTest {
             ui.onNodeWithTag("finance-statement-amount").assertTextEquals("¥1,020")
             ui.onNodeWithTag("finance-statement-total").performScrollTo();shot("$theme-$language-card-statement")
             val later=saved.events.single{it.merchant=="翌々月の利用"}
-            ui.onNodeWithTag("statement-source-${later.id}").assertDoesNotExist()
+            val laterBill=vm.financialState.value!!.bills.first{bill->vm.financialState.value!!.plans.any{it.id==bill.planId&&it.sourceEventId==later.id}}
+            ui.onNodeWithTag("statement-bill-${laterBill.id}").assertDoesNotExist()
             tapTag("finance-statement-next")
             ui.onNodeWithTag("finance-statement-amount").assertTextEquals("¥3,020")
-            ui.onNodeWithTag("statement-source-${later.id}").assertExists()
+            ui.onNodeWithTag("statement-bill-${laterBill.id}").assertExists()
             ui.onNodeWithTag("finance-statement-total").performScrollTo();shot("$theme-$language-card-next-month")
-            tapTag("statement-source-${event.id}")
+            val eventBill=vm.financialState.value!!.bills.first{bill->bill.date.take(7)==laterBill.date.take(7)&&vm.financialState.value!!.plans.any{it.id==bill.planId&&it.sourceEventId==event.id}}
+            tapTag("statement-bill-${eventBill.id}");tapTag("finance-period-source-${event.id}")
             tapTag("sheet-close")
             ui.runOnIdle{vm.editEntry(saved,event)}
             ui.onNodeWithTag("select-trigger-"+text("平台当前付款方式","現在の支払方法")).assertExists()

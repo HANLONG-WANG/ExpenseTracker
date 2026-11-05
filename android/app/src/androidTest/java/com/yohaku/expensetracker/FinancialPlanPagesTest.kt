@@ -116,8 +116,8 @@ class FinancialPlanPagesTest {
             tapTag("finance-back");ui.onNodeWithTag("finance-plan-detail-$pool").assertExists()
             tapTag("finance-back");assertEquals(before,ui.onNodeWithTag("finance-plan-row-$pool").getUnclippedBoundsInRoot().top)
             // A statement period returns to its month, while the plan's own back path returns to the list.
-            tapTag("finance-tab-statement");tapTag("finance-statement-next");tapTag("statement-period-${first.id}");tapTag("finance-back")
-            ui.onNodeWithTag("finance-tab-statement").assertIsSelected();ui.onNodeWithTag("statement-period-${first.id}").assertExists()
+            tapTag("finance-tab-statement");tapTag("finance-statement-next");tapTag("statement-bill-${first.id}");tapTag("finance-back")
+            ui.onNodeWithTag("finance-tab-statement").assertIsSelected();ui.onNodeWithTag("statement-bill-${first.id}").assertExists()
             ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$loan");tapTag("account-financial");tapTag("finance-tab-plans")
             ui.onNodeWithTag("finance-add-plan").assertDoesNotExist();ui.onNodeWithTag("finance-pool-open").assertDoesNotExist();shot("$theme-$language-plans-empty")
             // Both a different mode and a different source must be absent from candidates.

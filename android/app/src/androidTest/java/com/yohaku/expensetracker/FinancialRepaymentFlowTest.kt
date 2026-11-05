@@ -99,11 +99,11 @@ class FinancialRepaymentFlowTest {
             val(book,bank,card,first,second)=ids
             fun snapshot()=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.book?.id==book&&!vm.busy.value}
-            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-statement")
-            ui.onNodeWithTag("statement-amount-status-$first").assertTextEquals(text("金额已确认","金額確定"))
-            ui.onNodeWithTag("statement-payment-status-$first").assertTextEquals(text("未付款","未払い"))
-            ui.onNodeWithTag("statement-repay-$first").performScrollTo();shot("$theme-$language-statement-repayment-actions")
-            tapTag("statement-repay-$first")
+            ui.runOnIdle{vm.navigate("accounts")};tapTag("account-$card");tapTag("account-financial");tapTag("finance-tab-statement");tapTag("statement-bill-$first")
+            ui.onNodeWithTag("period-amount-status-$first").assertTextEquals(text("金额已确认","金額確定"))
+            ui.onNodeWithTag("period-payment-status-$first").assertTextEquals(text("未付款","未払い"))
+            ui.onNodeWithTag("finance-pay-bill-$first").performScrollTo();shot("$theme-$language-statement-repayment-actions")
+            tapTag("finance-pay-bill-$first")
             val paid=textField(text("实际扣款总额","実出金総額")+" · JPY")
             paid.assertTextEquals("10000");ui.onNodeWithTag("finance-repay-cleared").assertIsOff()
             textField(text("平台实际收到","返済先の実受取額")+" · JPY").assertDoesNotExist()
@@ -140,10 +140,10 @@ class FinancialRepaymentFlowTest {
             val payment=snapshot().repayments.single().eventId
             assertEquals(40000L,snapshot().balance(snapshot().accounts.first{it.id==bank}));assertEquals(12000L,snapshot().balance(snapshot().accounts.first{it.id==card}))
             ui.onNodeWithTag("finance-tab-statement").assertIsSelected()
-            ui.onNodeWithTag("statement-payment-status-$first").assertTextEquals(text("已付款，待平台确认","支払済み・返済先の確認待ち"))
-            ui.onNodeWithTag("statement-repay-$first").assertDoesNotExist()
-            ui.onNodeWithTag("statement-payment-$first-$payment").performScrollTo();shot("$theme-$language-statement-pending-payment")
-            tapTag("statement-payment-$first-$payment")
+            ui.onNodeWithTag("period-payment-status-$first").assertTextEquals(text("已付款，待平台确认","支払済み・返済先の確認待ち"))
+            ui.onNodeWithTag("finance-pay-bill-$first").assertDoesNotExist()
+            ui.onNodeWithTag("period-payment-$first-$payment").performScrollTo();shot("$theme-$language-statement-pending-payment")
+            tapTag("period-payment-$first-$payment")
             textField(text("清偿本金","返済元金")+" · JPY").assertTextEquals("10000")
             ui.onNodeWithTag("finance-repay-allocation-0").assertDoesNotExist()
             ui.onNodeWithTag("finance-repay-allocation-summary").assert(hasAnyDescendant(hasText("¥10,000 / ¥0 / ¥0",substring=true)))
@@ -157,10 +157,10 @@ class FinancialRepaymentFlowTest {
             if(visualEnabled())showSection("finance-repay-review-targets");shot("$theme-$language-repayment-target-review")
             tapTag("finance-ledger-confirm")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialLedgerReview.value==null&&snapshot().repayments.single().platformConfirmed}
-            ui.onNodeWithTag("statement-payment-status-$first").assertTextEquals(text("已结清","精算済み"))
+            ui.onNodeWithTag("period-payment-status-$first").assertTextEquals(text("已结清","精算済み"))
             assertEquals(1,snapshot().events.size);assertEquals(2000L,snapshot().balance(snapshot().accounts.first{it.id==card}))
             // Merged nonzero fees stay unsplit; changing the amount opens composition without proportional guesses.
-            tapTag("statement-repay-$second");paid.assertTextEquals("2100")
+            tapTag("finance-back");tapTag("statement-bill-$second");tapTag("finance-pay-bill-$second");paid.assertTextEquals("2100")
             textField(text("实付利息","実支払利息")+" · JPY").assertTextEquals("")
             textField(text("平台费用","返済先手数料")+" · JPY").assertTextEquals("")
             paid.performScrollTo().performTextReplacement("1100")
@@ -168,7 +168,7 @@ class FinancialRepaymentFlowTest {
             for((label,value) in listOf(text("清偿本金","返済元金") to "1000",text("实付利息","実支払利息") to "100",text("平台费用","返済先手数料") to "0"))textField(label+" · JPY").performScrollTo().performTextReplacement(value)
             tapTag("finance-repay-preview");tapTag("finance-ledger-confirm")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialLedgerReview.value==null&&snapshot().repayments.size==2}
-            tapTag("statement-repay-$second");paid.assertTextEquals("1000")
+            tapTag("finance-pay-bill-$second");paid.assertTextEquals("1000")
             ui.onNodeWithTag("finance-repay-cleared").assertIsOff()
             tapTag("financial-draft-discard")
             ui.onNodeWithTag("finance-tab-statement").assertIsSelected();assertNull(vm.error.value)

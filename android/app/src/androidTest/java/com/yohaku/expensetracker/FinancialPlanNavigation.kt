@@ -11,6 +11,13 @@ internal fun openFinancialPlan(ui:ComposeContentTestRule,vm:AppViewModel,id:Stri
     val plan=f.plans.first{it.id==id}
     val destination=if(plan.origin=="POOL_MEMBER")requireNotNull(f.reconciliationPool(plan))else plan
     if(ui.onAllNodesWithTag("finance-plan-detail-${destination.id}").fetchSemanticsNodes().isNotEmpty())return
+    if(destination.mode=="SINGLE"&&destination.active) {
+        val bill=f.bills.first{it.planId==destination.id&&it.active}
+        openStatementPeriod(ui,bill.id,bill.date.take(7))
+        ui.onNodeWithTag("finance-period-plan-${destination.id}").performScrollTo().performClick()
+        ui.onNodeWithTag("finance-plan-detail-${destination.id}").assertExists()
+        return
+    }
     ui.onNodeWithTag("finance-tab-plans").performClick()
     ui.waitForIdle()
     if(!destination.active){
@@ -56,4 +63,12 @@ internal fun alignFinancialFlowSection(ui:ComposeContentTestRule,tag:String) {
     val density=androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
     viewport.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy){it(0f,offset*density)}
     ui.waitForIdle()
+}
+
+internal fun openStatementPeriod(ui:ComposeContentTestRule,id:String,month:String) {
+    ui.onNodeWithTag("finance-tab-statement").performClick()
+    ui.onNode(hasTestTag("select-trigger-还款月份") or hasTestTag("select-trigger-支払月")).performScrollTo().performClick()
+    ui.onNode(hasText(month) and isSelectable()).performScrollTo().performClick()
+    ui.onNodeWithTag("statement-bill-$id").performScrollTo().performClick()
+    ui.onNodeWithTag("finance-bill-$id").assertExists()
 }

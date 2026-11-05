@@ -170,7 +170,7 @@ private sealed interface DraftRowsRead {
     if(alwaysExpanded||expanded)rows.forEach{row->
         val context=vm.repository.json.decodeFromString<FinancialDraftContext>(row.contextJson)
         Panel {
-            YText(financialDraftLabel(context.kind),14)
+            YText(financialDraftLabel(context.kind)+context.paymentDate?.let{" · $it"}.orEmpty(),14)
             FinancialTime(Instant.ofEpochMilli(row.updatedAt),vm.repository.clock.zone,"draft-${row.slot}",record=true)
             YButton(word("继续编辑","編集を続ける"),{onResume(context)},Modifier.testTag("financial-draft-resume-${context.kind}"))
         }
@@ -213,7 +213,7 @@ private sealed interface DraftRowsRead {
         "ARRANGEMENT"->FinancialArrangementEditor(s,a,f,requireNotNull(plan),vm,onClose)
         "ARRANGEMENT_REVIEW"->FinancialReconciliationEditor(s,a,f,requireNotNull(plan),vm,onClose,onBill,onParent)
         "BORROW"->FinancialBorrowingEditor(s,a,vm,onClose,context.opening,contract,context.targetId)
-        "REPAY"->FinancialRepaymentEditor(s,a,f,vm,onClose,context.targetId,context.billId,context.contractId)
+        "REPAY"->FinancialRepaymentEditor(s,a,f,vm,onClose,context.targetId,context.billId,context.contractId,context.paymentDate)
         "BILL"->FinancialBillConfirmationEditor(s,a.id,f.bills.first{it.id==context.billId},Currency.valueOf(a.currency),vm,onClose)
         "LIMIT_CONFIG"->if(l!=null)CreditLimitConfigEditor(s,a,l.configs.filter{it.accountId==a.id}.maxByOrNull{it.version},vm,onClose)
         "LIMIT_GROUP"->if(l!=null)CreditLimitGroupEditor(s,a,l.groups.firstOrNull{it.id==context.targetId},l,vm,onClose)

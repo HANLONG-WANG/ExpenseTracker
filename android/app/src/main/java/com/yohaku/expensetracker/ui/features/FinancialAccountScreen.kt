@@ -29,6 +29,7 @@ import kotlinx.serialization.encodeToString
     var pageReturn by rememberSaveable(s.book.id,account.id){mutableStateOf("manage")}
     var selectedPlan by rememberSaveable(s.book.id,account.id){mutableStateOf(FinancialDestination.from(initialTab).planId)}
     var selectedPeriod by rememberSaveable(s.book.id,account.id){mutableStateOf(FinancialDestination.from(initialTab).periodId)}
+    var planReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var periodReturn by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     var addArrangement by rememberSaveable(s.book.id,account.id){mutableStateOf(false)}
     var createContract by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
@@ -36,7 +37,7 @@ import kotlinx.serialization.encodeToString
     var createdPlan by rememberSaveable(s.book.id,account.id){mutableStateOf<String?>(null)}
     fun navigate(target:String,returnTo:String="manage") {
         val next=FinancialDestination.from(target)
-        selectedPlan=next.planId;selectedPeriod=next.periodId;periodReturn=null;addArrangement=false
+        selectedPlan=next.planId;selectedPeriod=next.periodId;periodReturn=null;planReturn=null;addArrangement=false
         path=next.copy(planId=null,periodId=null).path
         pageReturn=returnTo
     }
@@ -87,7 +88,7 @@ import kotlinx.serialization.encodeToString
             editMode!=null || resume?.kind=="RULE" -> {vm.financialRuleReview.value=null;editMode=null;resumedDraft=null}
             tab=="manage/limits" && limitRuleReturn!=null -> returnFromLimits()
             selectedPeriod!=null -> {val source=periodReturn;if(source!=null)navigate(source)else selectedPeriod=null}
-            selectedPlan!=null -> selectedPlan=null
+            selectedPlan!=null -> {if(planReturn!=null)navigate(requireNotNull(planReturn))else selectedPlan=null}
             addArrangement -> addArrangement=false
             destination.page!=null -> navigate(pageReturn)
             else -> onBack()
@@ -109,8 +110,8 @@ import kotlinx.serialization.encodeToString
     Column(modifier.fillMaxSize()) screen@{
         head()
         Column(Modifier.padding(pageContentPadding())) {
-            FinancialAccountBar(account.name,(if(selectedPeriod!=null)word("期次明细","各回の明細")else if(selectedPlan!=null)word("计划详情","プラン詳細")else financialTaskLabel(if(editMode!=null || resume?.kind=="RULE")"manage/rules" else tab)),::back)
-            FinancialTaskTabs(destination.tab){navigate(it);editMode=null;resumedDraft=null;limitRuleReturn=null;limitDraftReturn=null;vm.financialRuleReview.value=null}
+            FinancialAccountBar(account.name,(if(selectedPeriod!=null)word("期次明细","各回の明細")else if(selectedPlan!=null)word("计划详情","プラン詳細")else if(editMode!=null || resume?.kind=="RULE")financialTaskLabel("manage/rules")else if(destination.page!=null)financialTaskLabel(tab)else null),::back)
+            FinancialTaskTabs(if(periodReturn=="statement"||planReturn=="statement")"statement"else destination.tab){navigate(it);editMode=null;resumedDraft=null;limitRuleReturn=null;limitDraftReturn=null;vm.financialRuleReview.value=null}
         }
         Spacer(Modifier.height(when(LocalYohaku.current.id){"journal"->14.dp;"objects"->16.dp;else->12.dp}))
         // Do not measure a restored scroll position against the temporary loading placeholder.
@@ -140,7 +141,7 @@ import kotlinx.serialization.encodeToString
         FinancialDraftList(s,account,vm,{resumedDraft=vm.repository.json.encodeToString(it)},onOpen={navigate("manage/drafts",returnTo="overview")})
         FinancialAccountOverview(s,account,finance,vm,{month->statementMonth=month;navigate("statement")},{bill->movementTarget=bill;movement=if(bill==null)"repay"else"repay-bill"},{arrangementPlan=it},{navigate("rules")},{navigate("plans")},{e->if(s.repayments.any{it.eventId==e.id}){movementTarget=e.id;movement="repay-edit"}else onRecord(e)},{navigate("manage/contracts")},onFund,{batchDate=it},onLimits={navigate("limits")})
     }else if(tab=="statement") {
-        FinancialStatements(s,account,finance,vm,statementMonth,{statementMonth=it},{confirming=it},{navigate("plans")},onRecord,{batchDate=it},onPeriod={id->val bill=finance.bills.first{it.id==id};navigate("plans/${bill.planId}/$id");periodReturn="statement"},onRepay={movementTarget=it;movement="repay-bill"},onPayment={movementTarget=it.id;movement="repay-edit"})
+        FinancialStatements(s,account,finance,vm,statementMonth,{statementMonth=it},{navigate("plans")},{batchDate=it},onPeriod={id->val bill=finance.bills.first{it.id==id};navigate("plans/${bill.planId}/$id");periodReturn="statement"},onRepayDate={movementTarget=it;movement="repay-date"})
     }else if(tab=="manage/limits") {
         if(limitRuleReturn!=null)YButton(word("返回规则草稿","条件の下書きへ戻る"),{returnFromLimits()},Modifier.testTag("finance-return-rule"))
         CreditLimitSection(s,account,finance,vm)
@@ -202,23 +203,23 @@ import kotlinx.serialization.encodeToString
         FinancialBatchHistoryList(s.book.id,account.id,vm,{id->navigate("plans");selectedPlan=id})
         FinancialDirectoryRow("history-rules",word("规则版本历史","条件のバージョン履歴")){history=true;navigate("rules",returnTo="manage/history")}
         FinancialDirectoryRow("history-limits",word("额度配置版本历史","利用枠設定の履歴")){navigate("limits",returnTo="manage/history")}
-        finance.plans.filter{it.accountId==account.id}.forEach{plan->
+        finance.plans.filter{it.accountId==account.id&&it.mode!="SINGLE"}.forEach{plan->
             YButton(plan.name+" · "+word("计划版本与变化","予定の履歴と変化"),{planHistory=plan.id},Modifier.testTag("finance-plan-history-${plan.id}"))
         }
     }else if(tab=="plans") {
-        val plans=finance.plans.filter{it.accountId==account.id&&it.active}
+        val plans=finance.plans.filter{it.accountId==account.id&&it.active&&it.mode!="SINGLE"}
         if(selectedPlan==null) {
             YButton(word("添加还款安排","返済予定を追加"),{addArrangement=true},Modifier.testTag("finance-add-arrangement"),primary=true,enabled=!busy)
-            if(plans.isEmpty())YEmpty(word("还没有已知账单或计划","既知の請求・予定はまだありません"))
+            if(plans.isEmpty())YEmpty(word("暂无多期计划；一次付消费请在账单页查看。","複数回の予定はありません。一括払いの利用は請求ページで確認できます。"))
             plans.forEach{plan->FinancialPlanSummary(s,finance,plan,vm,{selectedPlan=plan.id})}
-        val archived=finance.plans.filter{it.accountId==account.id&&!it.active&&it.origin!="POOL_MEMBER"}
+        val archived=finance.plans.filter{it.accountId==account.id&&!it.active&&it.origin!="POOL_MEMBER"&&it.mode!="SINGLE"}
         if(archived.isNotEmpty()) {
             YButton(word("已替换计划","置換済みの予定")+if(archivedPlans)" −"else" +",{archivedPlans=!archivedPlans},Modifier.testTag("finance-archived-open"))
             if(archivedPlans)archived.forEach{p->YButton(p.name+" · "+financeLabel(p.mode),{selectedPlan=p.id},Modifier.testTag("finance-archived-${p.id}"))}
         }
         } else finance.plans.firstOrNull{it.id==selectedPlan}?.let{plan->
             val bill=finance.bills.firstOrNull{it.id==selectedPeriod&&it.planId==plan.id}
-            if(bill!=null)FinancialPlanPeriod(s,finance,plan,bill,vm,{movementTarget=it;movement="repay-bill"},{confirming=it},onRecord,onPayment={movementTarget=it.id;movement="repay-edit"})
+            if(bill!=null)FinancialPlanPeriod(s,finance,plan,bill,vm,{movementTarget=it;movement="repay-bill"},{confirming=it},onRecord,onPayment={movementTarget=it.id;movement="repay-edit"},onPlan={planReturn=periodReturn?:planReturn;periodReturn=null;selectedPeriod=null},onCompare={arrangementPlan=plan.id},onHistory={planHistory=plan.id})
             else FinancialPlanDetail(s,finance,plan,vm,{selectedPeriod=it},{planHistory=it},{poolPaymentPlan=it},{arrangementPlan=it},
                 {if(plan.origin=="POOL")poolTarget=it else prediction=it},{reconciliationParents=emptyList();reconciliationPlan=it})
         }
@@ -237,7 +238,7 @@ import kotlinx.serialization.encodeToString
     planHistory?.let{id->finance.plans.firstOrNull{it.id==id}?.let{FinancialPlanHistory(it,vm,{planHistory=null},{planId->planHistory=null;navigate("plans");selectedPlan=planId})}}
     movement?.let{kind->
         if(kind in listOf("borrow","opening"))FinancialBorrowingEditor(s,account,vm,{movement=null},kind=="opening",finance.contracts.firstOrNull{it.id==movementTarget})
-        else FinancialRepaymentEditor(s,account,finance,vm,{movement=null},eventId=movementTarget.takeIf{kind=="repay-edit"},billId=movementTarget.takeIf{kind=="repay-bill"},contractId=movementTarget.takeIf{kind=="repay-contract"})
+        else FinancialRepaymentEditor(s,account,finance,vm,{movement=null},eventId=movementTarget.takeIf{kind=="repay-edit"},billId=movementTarget.takeIf{kind=="repay-bill"},contractId=movementTarget.takeIf{kind=="repay-contract"},paymentDate=movementTarget.takeIf{kind=="repay-date"})
     }
     if(addArrangement)FinancialAddArrangement(account,{addArrangement=false;if(createContract!=null){contractLink=createContract;createContract=null}},{addArrangement=false;manual=true},{addArrangement=false;prediction=""},{addArrangement=false;poolTarget=finance.plans.firstOrNull{it.accountId==account.id&&it.active&&it.origin=="POOL"}?.id?:""},contract=createContract!=null)
     contractLink?.let{id->finance.contracts.firstOrNull{it.id==id}?.let{c->

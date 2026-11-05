@@ -142,7 +142,10 @@ class FinancialPoolFlowTest {
             ui.onNodeWithTag("finance-statement-amount").assertTextEquals(if(loan)"¥1,035"else"¥11,200")
             tapTag("finance-statement-next")
             ui.onNodeWithTag("finance-statement-amount").assertTextEquals(if(loan)"¥1,064"else"¥12,471")
-            ui.onNodeWithTag("statement-source-$source").assertExists()
+            val sourceBill=vm.financialState.value!!.bills.first{it.planId==pool.id&&it.date.startsWith("2026-12")}
+            tapTag("statement-bill-${sourceBill.id}")
+            ui.onNodeWithTag("finance-period-source-$source").assertExists()
+            tapTag("finance-back")
             ui.onNodeWithTag("finance-statement-total").performScrollTo();shot("$theme-$language-pool-statement")
             val final=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(if(loan)5000L else 170000L,final.balance(final.accounts.first{it.id==card}));assertEquals(if(loan)205000L else 200000L,final.balance(final.accounts.first{it.name=="銀行"}));assertEquals(if(loan)0L else 70000L,final.monthExpense("2026-10"));assertEquals(2,final.events.size)

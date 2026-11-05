@@ -142,15 +142,20 @@ class FinancialProductionOverviewTest {
                 ui.onNodeWithTag("finance-statement-amount").assertTextEquals("—")
                 tap("finance-statement-previous");ui.onNodeWithTag("finance-statement-amount").assertTextEquals("¥32,000")
                 tap("finance-tab-plans");ui.onNodeWithTag("lead-title").assertDoesNotExist()
-                ui.onNodeWithTag("finance-plan-row-${ids[6]}").performScrollTo();shot("$theme-$language-credit-plans")
-                val planRowTop=ui.onNodeWithTag("finance-plan-row-${ids[6]}").getUnclippedBoundsInRoot().top
-                tap("finance-plan-row-${ids[6]}")
-                ui.onNodeWithTag("finance-plan-detail-${ids[6]}").assertExists()
+                ui.onNodeWithTag("finance-plan-row-${ids[6]}").assertDoesNotExist()
+                ui.onNodeWithTag("finance-task-title").assertDoesNotExist();shot("$theme-$language-credit-plans")
+                tap("finance-tab-statement")
+                val cardBill=runBlocking{repo.db.financialDao().bills(b,ids[6]).single()}
+                val billRow=ui.onNodeWithTag("statement-bill-${cardBill.id}")
+                billRow.performScrollTo();ui.waitForIdle()
+                val billRowTop=billRow.getUnclippedBoundsInRoot().top
+                tap("statement-bill-${cardBill.id}")
+                ui.onNodeWithTag("finance-bill-${cardBill.id}").assertExists()
                 scenario.recreate()
-                ui.waitUntil(10000){ui.onAllNodesWithTag("finance-plan-detail-${ids[6]}").fetchSemanticsNodes().isNotEmpty()}
+                ui.waitUntil(10000){ui.onAllNodesWithTag("finance-bill-${cardBill.id}").fetchSemanticsNodes().isNotEmpty()}
                 InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-                ui.waitUntil(10000){ui.onAllNodesWithTag("finance-plan-row-${ids[6]}").fetchSemanticsNodes().isNotEmpty()}
-                assertEquals(planRowTop,ui.onNodeWithTag("finance-plan-row-${ids[6]}").getUnclippedBoundsInRoot().top)
+                ui.waitUntil(10000){ui.onAllNodesWithTag("statement-bill-${cardBill.id}").fetchSemanticsNodes().isNotEmpty()}
+                assertEquals(billRowTop,billRow.getUnclippedBoundsInRoot().top)
                 tap("finance-tab-manage")
                 ui.onNodeWithTag("finance-tab-manage").assertIsSelected()
                 shot("$theme-$language-card-manage")
@@ -164,7 +169,7 @@ class FinancialProductionOverviewTest {
                 tap("finance-back")
                 ui.onNodeWithTag("finance-manage-rules").assertExists()
                 tap("finance-manage-history")
-                ui.onNodeWithTag("finance-plan-history-${ids[6]}").assertExists()
+                ui.onNodeWithTag("finance-plan-history-${ids[6]}").assertDoesNotExist()
                 tap("finance-back")
                 tap("finance-manage-drafts")
                 ui.onNodeWithTag("finance-task-title").assertTextEquals(if(language=="ja")"未完了の金融下書き"else"未完成金融草稿")

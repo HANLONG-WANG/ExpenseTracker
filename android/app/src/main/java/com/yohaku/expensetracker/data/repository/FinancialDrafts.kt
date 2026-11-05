@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.jsonObject
 
-@Serializable data class FinancialDraftContext(val kind:String,val accountId:String?,val targetId:String?=null,val billId:String?=null,val contractId:String?=null,val opening:Boolean=false,val mode:String?=null) {
+@Serializable data class FinancialDraftContext(val kind:String,val accountId:String?,val targetId:String?=null,val billId:String?=null,val contractId:String?=null,val opening:Boolean=false,val mode:String?=null,val paymentDate:String?=null) {
     fun slot()=kotlinx.serialization.json.Json.encodeToString(this)
 }
 

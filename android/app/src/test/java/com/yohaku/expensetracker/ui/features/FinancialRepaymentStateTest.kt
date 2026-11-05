@@ -42,4 +42,20 @@ class FinancialRepaymentStateTest {
         assertEquals(edited,edited.withSingleAllocation())
         assertEquals(edited.copy(singleTarget=null),edited.copy(singleTarget=null).withSingleAllocation())
     }
+    @Test fun dateGroupPrefillsEveryTargetWithoutGuessingUnknownComposition() {
+        val context=FinancialDraftContext("REPAY","card")
+        assertNotEquals(context.slot(),context.copy(paymentDate="2026-11-05").slot())
+        assertNotEquals(context.copy(paymentDate="2026-11-05").slot(),context.copy(paymentDate="2026-12-05").slot())
+        val base=RepaymentDraft(date="2026-11-01",clearingDate="2026-11-01")
+        val known=row()
+        val merged=row(fee=100,cash=1100).copy(bill=bill.copy(id="other"))
+        val draft=repaymentDateDraft(base,listOf(known,merged),emptySet(),Currency.JPY,true)
+        assertEquals("2100",draft.paid);assertEquals("2000",draft.principal)
+        assertEquals("",draft.interest);assertEquals("",draft.fee);assertEquals(false,draft.singleTarget)
+        assertEquals(listOf(AllocationDraft("bill",principal="1000",interest="0",fee="0"),AllocationDraft("other",principal="1000")),draft.rows)
+        val unknown=repaymentDateDraft(base,listOf(known,row(principal=null,fee=null,cash=null)),emptySet(),Currency.JPY,true)
+        assertEquals("",unknown.paid);assertEquals("",unknown.principal)
+        assertEquals("",repaymentDateDraft(base,listOf(known),emptySet(),Currency.JPY,false).paid)
+    }
+
 }

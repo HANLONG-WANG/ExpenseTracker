@@ -18,11 +18,11 @@ import java.time.LocalDate
 private fun amount(currency:String,value:Long?)=value?.let{Money(Currency.valueOf(currency),it).decimal.toPlainString()}.orEmpty()
 private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.let{Money.parse(it,Currency.valueOf(currency))}
 
-@Composable internal fun FinancialRepaymentEditor(s:BookSnapshot,account:AccountEntity,finance:FinancialGraph,vm:AppViewModel,onClose:()->Unit,eventId:String?=null,billId:String?=null,contractId:String?=null) {
-    FinancialDraftHost(s,FinancialDraftContext("REPAY",account.id,targetId=eventId,billId=billId,contractId=contractId),vm,onClose){FinancialRepaymentEditorContent(s,account,finance,vm,onClose,eventId,billId,contractId)}
+@Composable internal fun FinancialRepaymentEditor(s:BookSnapshot,account:AccountEntity,finance:FinancialGraph,vm:AppViewModel,onClose:()->Unit,eventId:String?=null,billId:String?=null,contractId:String?=null,paymentDate:String?=null) {
+    FinancialDraftHost(s,FinancialDraftContext("REPAY",account.id,targetId=eventId,billId=billId,contractId=contractId,paymentDate=paymentDate),vm,onClose){FinancialRepaymentEditorContent(s,account,finance,vm,onClose,eventId,billId,contractId,paymentDate)}
 }
 
-@Composable private fun FinancialRepaymentEditorContent(s:BookSnapshot,account:AccountEntity,finance:FinancialGraph,vm:AppViewModel,onClose:()->Unit,eventId:String?,billId:String?,contractId:String?) {
+@Composable private fun FinancialRepaymentEditorContent(s:BookSnapshot,account:AccountEntity,finance:FinancialGraph,vm:AppViewModel,onClose:()->Unit,eventId:String?,billId:String?,contractId:String?,paymentDate:String?) {
     val old=s.repayments.firstOrNull{it.eventId==eventId}
     val event=s.events.firstOrNull{it.id==eventId}
     val initialDate=LocalDate.now(vm.repository.clock).toString()
@@ -31,7 +31,8 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
     val initial=statement.firstOrNull{it.bill.id==billId}
     fun suggestion(id:String?)=statement.firstOrNull{it.bill.id==id}?.let{repaymentSuggestion(it,it.plan.id in stale)}
     val initialSuggestion=suggestion(billId)
-    val initialSource=event?.accountId?:initial?.bill?.paymentAccountId
+    val dateTargets=statement.filter{it.bill.date==paymentDate&&it.outstanding.totalMinor>0&&it.cashRequiredMinor!=0L}
+    val initialSource=event?.accountId?:initial?.bill?.paymentAccountId?:dateTargets.map{it.bill.paymentAccountId}.distinct().singleOrNull()
     val initialCurrency=s.accounts.firstOrNull{it.id==initialSource}?.currency
     var encoded by financialField("encoded"){vm.repository.json.encodeToString(
         RepaymentDraft(initialSource,amount(event?.currency?:account.currency,event?.amountMinor?:initialSuggestion?.paid?.takeIf{initialCurrency==account.currency}),event?.date?:initialDate,
@@ -39,7 +40,9 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
             amount(account.currency,if(old!=null)old.interestMinor else 0L.takeIf{initialSuggestion?.zeroCombinedFee==true}),amount(account.currency,if(old!=null)old.feeMinor else 0L.takeIf{initialSuggestion?.zeroCombinedFee==true}),amount(s.book.currency,old?.feeBaseMinor),
             false,old?.clearingDate?:initialDate,old?.paymentType?:RepaymentType.NORMAL.name,amount(event?.currency?:account.currency,old?.sourceFeeMinor),amount(s.book.currency,old?.sourceFeeBaseMinor),
             if(old!=null)s.repaymentAllocations.filter{it.eventId==eventId}.map{AllocationDraft(it.billId,it.contractId,amount(account.currency,it.principalMinor),amount(account.currency,it.interestMinor),amount(account.currency,it.feeMinor))}else if(billId!=null||contractId!=null)listOf(AllocationDraft(billId,contractId))else emptyList(),
-            old?.linkedTransferEventId,eventId,event?.note.orEmpty(),singleTarget=old==null).let{it.copy(singleTarget=old==null||it.canShareComposition())}.withSingleAllocation())}
+            old?.linkedTransferEventId,eventId,event?.note.orEmpty(),singleTarget=old==null).let{it.copy(singleTarget=old==null||it.canShareComposition())}.withSingleAllocation().let{draft->
+            if(paymentDate==null)draft else repaymentDateDraft(draft,dateTargets,stale,Currency.valueOf(account.currency),initialCurrency==account.currency)
+        })}
     val stored=vm.repository.json.decodeFromString<RepaymentDraft>(encoded)
     val d=if(stored.singleTarget==null)stored.copy(singleTarget=stored.canShareComposition())else stored
     fun update(v:RepaymentDraft){encoded=vm.repository.json.encodeToString(v.copy(confirmed=false).withSingleAllocation())}

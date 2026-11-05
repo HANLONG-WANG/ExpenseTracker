@@ -109,7 +109,12 @@ import java.time.*
     ThemeSection(word("付款与变更","支払と変更"),"PAYMENT & DEADLINES")
     if(deadlines.isEmpty())YText(word("本期付款方式变更截止未填写，不推定机构期限。","当期の変更締切は未入力。会社別の締切を推定しません。"),11)
     deadlines.forEach{d->YText(financeLabel(d.changeType.name)+" · "+FinancialDisplayFacts.time(d.instant(),ZoneId.of(d.zoneId),LocalLanguage.current),12);if(d.instant()<vm.repository.clock.instant())YText(word("期限已过，需核查实际受理结果。","締切を過ぎています。実際の受付結果を確認してください。"),11,color=LocalYohaku.current.warm)}
-    summary.next.distinctBy{it.plan.id}.forEach{r->if(r.plan.origin=="POOL"||r.plan.origin!="POOL_RETAINED"&&f.arrangements.none{it.originalPlanId==r.plan.id})YButton(word("比较付款方案","支払プランを比較")+" · "+r.plan.name,{onCompare(r.plan.id)},Modifier.testTag("finance-overview-compare-${r.plan.id}"))}
+    val candidates=summary.next.distinctBy{it.plan.id}.filter{r->r.plan.origin=="POOL"||r.plan.origin!="POOL_RETAINED"&&f.arrangements.none{it.originalPlanId==r.plan.id}}
+    var choosing by androidx.compose.runtime.saveable.rememberSaveable(a.id){mutableStateOf(false)}
+    if(candidates.isNotEmpty())YButton(word("比较 / 更改付款方式","支払方法を比較・変更"),{choosing=true},Modifier.testTag("finance-overview-compare"))
+    if(choosing)YSheet(word("选择付款安排","支払予定を選択"),{choosing=false}) {
+        candidates.forEach{r->FinancialCompactRow(r.plan.name,financialAmount(c,r.outstanding.totalMinor.takeUnless{!r.bill.confirmed&&r.plan.id in stale||r.bill.hasUnknownPredictedFee()}),r.bill.date,"finance-compare-candidate-${r.plan.id}"){choosing=false;onCompare(r.plan.id)}}
+    }
     if(a.type==AccountType.LOAN.name)FinancialLoanSchedule(summary,c,stale,onPlan)
     if(summary.unplanned.isNotEmpty()||summary.unassignedOpeningMinor!=0L||summary.reconciliationRemainders.isNotEmpty()) {
         ThemeSection(word("尚未完整安排","予定の未補完分"),"NOT YET SCHEDULED")
@@ -126,7 +131,7 @@ import java.time.*
     FinancialLoanModes(s,a,f,onPlan,onMovements)
 }
 
-@Composable internal fun FinancialStatements(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,vm:AppViewModel,month:String,onMonth:(String)->Unit,onBill:(String)->Unit,onPlan:()->Unit,onRecord:(EventEntity)->Unit,onBatchRevolving:(String)->Unit={},onPeriod:((String)->Unit)?=null,onRepay:(String)->Unit,onPayment:(EventEntity)->Unit) {
+@Composable internal fun FinancialStatements(s:BookSnapshot,a:AccountEntity,f:FinancialGraph,vm:AppViewModel,month:String,onMonth:(String)->Unit,onPlan:()->Unit,onBatchRevolving:(String)->Unit={},onPeriod:(String)->Unit,onRepayDate:(String)->Unit) {
     val today by vm.today.collectAsStateWithLifecycle();val c=Currency.valueOf(a.currency)
     val stale=f.plans.filter{vm.repository.financialPredictionStale(s,f,it)}.map{it.id}.toSet()
     val summary=s.financialAccountSummary(f,a.id,today.toString(),stale);val selected=YearMonth.parse(month)
@@ -144,28 +149,31 @@ import java.time.*
         if(rows.isNotEmpty())RecordFacts(listOf(word("待清偿本金","未返済元金") to financialAmount(c,total.principalMinor),word("待清偿费用","未返済手数料") to financialAmount(c,total.feeMinor),word("已确认 / 预测期数","確定・予測の回数") to "${total.confirmed} / ${total.predicted}",word("仍需备款","今後必要な資金") to financialAmount(c,total.cashRequiredMinor)))
         else YText(word("该月没有已保存账单；不代表没有尚未安排的债务。","この月に保存済みの請求はありません。予定未補完の債務がないことは意味しません。"),12)
     }
-    rows.groupBy{it.bill.date}.forEach{(date,bills)->
-        ThemeSection(date,"PAYMENT DATE")
-        if(vm.repository.batchRevolvingCandidates(s,f,a.id,date).isNotEmpty())YButton(word("批量转为循环还款（リボ）","まとめてリボ"),{onBatchRevolving(date)},Modifier.testTag("statement-batch-revolving-$date"))
-        bills.forEach{r->Panel(Modifier.testTag("statement-bill-${r.bill.id}")) {
-            YText(r.plan.name,18);YText(financeLabel(r.plan.mode),12);FinancialBillFacts(r.bill,c,showAmountStatus=false)
-            FinancialBillPayment(s,r,onRepay,onPayment)
-            RecordFacts(listOf(word("实际清偿后剩余","実返済後の残額") to Money(c,r.outstanding.totalMinor).display(),word("已付待确认","支払済み・確認待ち") to financialAmount(c,r.pendingTotalMinor),word("付款账户","引落口座") to (s.accounts.firstOrNull{it.id==r.bill.paymentAccountId}?.name?:word("未确定","未定"))))
-            if(vm.repository.financialPredictionStale(s,f,r.plan))YText(word("原预测需重算，当前仍保留原值。","元の予測は再計算が必要です。現在は元の値を保持しています。"),12,color=LocalYohaku.current.warm)
-            onPeriod?.let{open->YButton(word("查看期次明细","各回の明細を見る"),{open(r.bill.id)},Modifier.testTag("statement-period-${r.bill.id}"))}
-            YButton(word("核对金额","金額を確認"),{onBill(r.bill.id)},Modifier.testTag("statement-confirm-${r.bill.id}"))
-        }}
+    rows.groupBy{it.bill.date}.toSortedMap().forEach{(date,bills)->
+        val totals=bills.statementTotals()
+        ThemeAuditPanel(date,Modifier.testTag("statement-date-$date")) {
+            val known=bills.none{!it.bill.confirmed&&it.plan.id in stale||it.bill.hasUnknownPredictedFee()}
+            YText(if(known)Money(c,totals.totalMinor).display()else word("待核对","要確認"),24,number=known)
+            RecordFacts(listOf(word("已确认 / 预测笔数","確定・予測の件数") to "${totals.confirmed} / ${totals.predicted}",
+                word("已付待确认","支払済み・確認待ち") to financialAmount(c,totals.pendingMinor),
+                word("仍需备款","今後必要な資金") to financialAmount(c,totals.cashRequiredMinor),
+                word("付款账户","引落口座") to bills.map{r->s.accounts.firstOrNull{it.id==r.bill.paymentAccountId}?.name?:word("未确定","未定")}.distinct().joinToString(" / ")))
+            if(bills.any{it.outstanding.totalMinor>0&&it.cashRequiredMinor!=0L})YButton(word("记录还款","返済を記録"),{onRepayDate(date)},Modifier.testTag("statement-repay-date-$date"),primary=true)
+            if(vm.repository.batchRevolvingCandidates(s,f,a.id,date).isNotEmpty())YButton(word("批量转为循环还款（リボ）","まとめてリボ"),{onBatchRevolving(date)},Modifier.testTag("statement-batch-revolving-$date"))
+        }
+        Column(verticalArrangement=Arrangement.spacedBy(2.dp)) {
+            bills.forEach{r->
+                val type=if(r.plan.mode=="SINGLE")""else financeLabel(r.plan.mode)+" ${r.bill.number}/${f.bills.count{it.planId==r.plan.id&&it.active}} · "
+                val status=when {
+                    r.outstanding.settled->word("已付","支払済み")
+                    r.pendingTotalMinor==null||r.pendingTotalMinor>0->word("待确认","確認待ち")
+                    r.bill.confirmed->word("已确认","確定")
+                    else->word("预测","予測")
+                }
+                FinancialCompactRow(r.plan.name,financialAmount(c,r.outstanding.totalMinor.takeUnless{r.bill.hasUnknownPredictedFee()}),type+status,"statement-bill-${r.bill.id}"){onPeriod(r.bill.id)}
+            }
+        }
     }
-    ThemeSection(word("相关消费","対象の利用明細"),"PURCHASES")
-    val poolSources=rows.filter{it.plan.origin=="POOL"}.flatMap{row->poolInput(row.plan)?.facts?.sources.orEmpty().filter{it.principalMinor>0&&it.date<=row.bill.date}.mapNotNull{it.eventId}}
-    val sources=(rows.mapNotNull{it.plan.sourceEventId}+poolSources).distinct()
-    if(poolSources.isNotEmpty())YText(word("循环还款计划来源仅表示关联；原金额不代表本期逐笔分配。","循環返済プランの対象記録は関連のみを示し、元の金額を当期の個別充当額とはみなしません。"),11)
-    sources.mapNotNull{id->s.events.firstOrNull{it.id==id}}.forEach{e->Panel {
-        YText(e.date+" · "+e.merchant.ifBlank{e.note},14)
-        YText(s.accountMoney(e).display()+" · "+recordedPaymentLabel(s,e),14)
-        if(e.deletedAt!=null)YText(word("原消费已在回收站，独立账单仍保留。","元の利用はごみ箱にあります。独立した請求は保持しています。"),11,color=LocalYohaku.current.warm)
-        else YButton(word("查看原记录","元の記録を見る"),{onRecord(e)},Modifier.testTag("statement-source-${e.id}"))
-    }}
     if(summary.unplanned.isNotEmpty())YText(word("另有${summary.unplanned.size}笔未安排记录，尚不能确定还款月份。","予定未補完の記録が別に${summary.unplanned.size}件あり、支払月は未確定です。"),12,color=LocalYohaku.current.warm)
     YButton(word("管理逐期计划","各回の予定を管理"),onPlan,Modifier.testTag("statement-plans"))
 }

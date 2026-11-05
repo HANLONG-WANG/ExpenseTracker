@@ -193,7 +193,7 @@ curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<task
 
 ### 金融账户还款录入
 
-按[计划 5.3](../docs/plans/financial-account-ui-plan.md#53-还款简化的准确边界)实现就地还款和简化录入。账单和期次各显示一处金额状态（已确认或未确认的规则预测）与独立付款状态；未付/部分付款可直接记录还款，全额已付待确认可查看原付款。保存/关闭回到来源并保持月份和位置。总览还款入口位于近期付款附近，管理中的还款记录、合同还款及原账单金额核对入口保留。
+按[计划 5.3](../docs/plans/financial-account-ui-plan.md#53-还款简化的准确边界)实现就地还款和简化录入。账单按付款日汇总，紧凑行显示金额和简短状态；期次详情显示金额确认与独立付款状态。日期汇总可对当日全部未付账单记录还款，逐笔还款与已有付款查看位于详情。保存/关闭回到来源并保持月份和位置。总览还款入口位于近期付款附近，管理中的还款记录、合同还款及原账单金额核对入口保留。
 
 还款使用上述全屏流程，基本区显示目标、付款账户、实扣、日期、平台确认和组成/分配摘要；费用与组成（含跨币种）、已有付款/转账关联、多目标分配、类型/备注可展开。摘要按债务账户币种格式化，空值为未知。既有记录的费用、币种、关联及独立分配默认可见；收起不清空输入，草稿恢复保留展开状态但不恢复旧预览或平台确认。
 
@@ -201,9 +201,22 @@ curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<task
 
 预览先显示资金、清偿和目标待付变化，再看完整资料；仍使用 `previewRepayment` / `commitFinancialLedger`，业务规则和 Room 不变。云端办理同步预览顺序与术语，save/confirm 及用户事实确认语义不变，不新增金融对象跳转。杂志、手账、小物分别沿用编辑短注、账目边线批注、标题签收纳格及各自菜单、日期和短弹层。
 
-稳定标签：`statement-repay-{billId}`、`statement-{amount|payment}-status-{billId}`、`statement-payment-{billId}-{eventId}`；期次使用 `period-{amount|payment}-status-*`、`period-payment-*`。还款分区使用 `finance-repay-{target|details|link-existing|multiple-targets|independent|other|allocation-summary|payment-date|clearing-date|review-summary|review-targets}`，保留 `finance-pay-bill-*`、`finance-repay-cleared/preview`、`finance-ledger-confirm`、`finance-flow-back`。日期测试按付款/清偿所属区域定位。
+稳定标签：`statement-bill-{billId}`（账单行）、`statement-date-{date}`、`statement-repay-date-{date}`；期次使用 `finance-pay-bill-*`、`period-{amount|payment}-status-*`、`period-payment-*`。还款分区使用 `finance-repay-{target|details|link-existing|multiple-targets|independent|other|allocation-summary|payment-date|clearing-date|review-summary|review-targets}`，保留 `finance-pay-bill-*`、`finance-repay-cleared/preview`、`finance-ledger-confirm`、`finance-flow-back`。日期测试按付款/清偿所属区域定位。
 
 相关测试：`FinancialRepaymentStateTest` 验证建议和单目标联动；`FinancialRepaymentFlowTest` 覆盖就地还款、待确认/确认、部分还款、无建议输入、已有跨币种付款与多目标编辑；`FinancialFlowTest`、`FinancialDraftEditorsTest`、`FinancialDraftFlowTest#closedRuleDraftCanBeKeptResumedOrDiscardedAcrossBookSwitches`、`FinancialProductionOverviewTest` 验证原业务、草稿和真实外壳；`CommandFlowTest` 覆盖云端还款预览。UI 使用 `looks=all visual=true` 并查看三主题×中日文截图，沿用 `phase-c-repayment/`、`phase-c-production-overview/`、`phase-c-rules/` 和 `cloud-command-stage-1/` 目录。
+
+
+### 金融账户一次付规模化与页签外观
+
+一次付模型和账单保持原样。计划列表、已替换分区和管理的计划版本目录只显示非 SINGLE 计划；空状态引导一次付消费去账单页。账单行进入期次详情，可核对金额、还款/查看付款、查看原记录、比较/更改付款方式、进入计划全部期次与版本历史；旧一次付安排仍可从新安排的“查看原安排版本”进入。
+
+总览只保留一个“比较 / 更改付款方式”，候选条件不变，选择页用名称、金额、付款日的紧凑行进入原比较流程。账单每个付款日一份汇总，显示合计、确认/预测笔数、已付待确认、仍需备款和付款账户，下方每张账单只占一行；不再重复列“相关消费”，未安排提示保留。日期还款复用多目标编辑器及原预览/保存事务，按逐笔建议扣除明确待确认分配，仅在所有目标有依据时合计预填；付款账户不同或未知时不猜测，非零合并费用不拆分。日期作为可选草稿上下文隔离不同付款日的输入并显示在草稿目录中，旧草稿兼容；保存事务不变。金额核对仍逐笔进行；批量核对由已有云端办理 `financialBill.confirm` 在同一任务中包含多笔完成，不新增命令或整期确认。
+
+杂志页签下划线铺满页签宽度；日常小物改为等高浅底胶囊分段控件，小首字母格使用浅色背景；手账页签保留。四个一级页签均不显示重复任务名，`finance-task-title` 仅在详情/管理子页等次级页面出现。账单来源详情保持账单标签选中并返回原月份/位置。Role.Tab、selected 和 `finance-tab-*` 不变。
+
+新增稳定标签：`finance-overview-compare`、`finance-compare-candidate-{planId}`、`statement-date-{date}`、`statement-repay-date-{date}`、`statement-bill-{billId}`（点击行）、`finance-period-plan-{planId}`、`finance-period-source-{eventId}`。旧 `finance-overview-compare-{planId}`、`statement-period-*` 及账单卡片内的核对/付款标签由上述入口及期次详情既有标签替代。
+
+`FinancialScaleFlowTest` 覆盖同日 40 笔一次付、6 期分期、余额池与期初一次付，验证列表数量、候选、日期多目标预填和详情操作；使用 `looks=all visual=true` 生成三主题×中日文 `phase-c-scale/{theme}-{language}-{scene}.png`，场景包括计划、总览付款、选择页、日期汇总、账单行、期次事实/操作、管理和历史。受影响流程为 `FinancialPlanPagesTest`、`FinancialProductionOverviewTest`、`FinancialRepaymentFlowTest`、`FinancialBatchRevolvingFlowTest`、`FinancialOutlookFlowTest`、`FinancialFlowTest`、`FinancialPoolFlowTest`、`CardPaymentFlowTest`；导航辅助 `FinancialPlanNavigation.kt` 通过账单进入一次付。JVM 增补 `FinancialRepaymentStateTest` 的日期多目标建议，`FinancialNavigationTest` 继续验证路径。
 
 
 ### 金融账户 UI 阶段 5：办理历史、额度关系与时间
@@ -231,11 +244,11 @@ curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<task
 
 ### 金融账户 UI 阶段 2（2026-11-04）
 
-计划区提供“添加还款安排”和摘要列表，每份计划显示已列待付及完整性。详情包含摘要、可展开完整进度、紧凑期次表、比较/重算/共同月付款和办理历史；点击期次查看事实、计算依据、还款及账单金额核对。列表、详情和期次保留各自滚动位置，顶部/系统返回恢复来源；网贷总览每份计划只列近期两期。
+计划区提供“添加还款安排”和多期计划摘要列表（所有 SINGLE 均在账单页查看），每份计划显示已列待付及完整性。详情包含摘要、可展开完整进度、紧凑期次表、比较/重算/共同月付款和办理历史；点击期次查看事实、计算依据、还款及账单金额核对。列表、详情和期次保留各自滚动位置，顶部/系统返回恢复来源；网贷总览每份计划只列近期两期。
 
 新建可选择已知账单、规则预测或循环还款，进入统一全屏流程。合同候选按账户、来源、模式、状态和关联/清偿限制筛选；无候选可带合同上下文新建，草稿恢复及保存后返回候选页，再由用户确认关联。取消关联保留已保存计划；循环计划仍对应账户余额池。云端仅同步术语。
 
-稳定标签：`finance-plan-row-*`、`finance-plan-detail-*`、`finance-plan-period-*`、`finance-progress-open-*`、`finance-add-arrangement`、`finance-archived-open`、`statement-period-*`、`finance-link-contract-*`、`finance-contract-link-empty`、`finance-contract-create-plan`、`finance-contract-candidate-*`。原三种创建标签位于新建引导页，详情业务标签保留；测试通过 `FinancialPlanNavigation.kt` 的真实列表/详情点击进入。
+稳定标签：`finance-plan-row-*`、`finance-plan-detail-*`、`finance-plan-period-*`、`finance-progress-open-*`、`finance-add-arrangement`、`finance-archived-open`、`statement-bill-*`、`finance-link-contract-*`、`finance-contract-link-empty`、`finance-contract-create-plan`、`finance-contract-candidate-*`。原三种创建标签位于新建引导页，详情业务标签保留；测试通过 `FinancialPlanNavigation.kt` 的真实列表/详情点击进入。
 
 相关测试：`FinancialPlanPagesTest`、`FinancialFlowTest`、`FinancialPoolFlowTest`、`FinancialDraftEditorsTest`、`FinancialLedgerTest`、`FinancialDraftTest` 及安排/追溯/重核流程；`FinancialProductionOverviewTest` 验证真实 MainActivity 导航，`CommandFlowTest#financeCombinationPreviewAcrossLooks` 验证云端预览。计划/合同和真实外壳 UI 使用 `looks=all visual=true`。
 
