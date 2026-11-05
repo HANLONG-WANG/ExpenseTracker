@@ -165,7 +165,7 @@ class ReceiptWorkbenchFlowTest {
             clearHeader(ui.onNodeWithTag("media-receipt-remove-$first")).performClick()
             clearHeader(ui.onNodeWithTag("media-remove-$attachment")).performClick()
             ui.waitUntil(10000){vm.entry.value?.receiptFileIds==listOf(second)&&attachment !in vm.entry.value!!.attachmentIds}
-            clearHeader(ui.onNodeWithTag("entry-cancel-edit")).performClick()
+            ui.entryAction("entry-cancel-edit").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val original=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(listOf(first,second),original.entryReceiptImages(event).map{it.id})
@@ -175,7 +175,7 @@ class ReceiptWorkbenchFlowTest {
             ui.waitUntil(10000){vm.entry.value?.receiptFileIds?.size==2}
             clearHeader(ui.onNodeWithTag("media-receipt-previous-$second")).performClick()
             ui.waitUntil(10000){vm.entry.value?.receiptFileIds==listOf(second,first)}
-            clearHeader(ui.onNodeWithTag("entry-save-button")).performClick()
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val saved=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(listOf(second,first),saved.entryReceiptImages(event).map{it.id})

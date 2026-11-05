@@ -13,3 +13,7 @@ gradle任务请不要并行（并行会导致系统内存爆满死机）
 ## 测试
 
 日常改动只跑单元测试，以及默认参数的仪器测试中与改动相关的数据/逻辑和流程部分。UI 改动用 `looks=all` + `visual=true` 跑相关测试并查看截图。完整外观矩阵、系统和性能专项只在发版前或大改后按前提条件运行；Gradle 任务仍须串行。
+
+## 布局基准设备
+
+用户手机为三星 Galaxy S24 Ultra（默认 FHD+ 1080×2340、density 450，约 384×832dp）。验证页面布局、判断拥挤/留白时以它为准：模拟器临时设为 `adb shell wm size 1080x2340 && adb shell wm density 450`，看完恢复 [android/README.md](android/README.md) 记载的原尺寸。原稿几何对照断言仍只在 390dp 标准配置下生效，320dp/fontScale 1.3 窄屏矩阵照旧。

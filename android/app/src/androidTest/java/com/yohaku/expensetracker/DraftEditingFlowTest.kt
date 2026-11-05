@@ -113,7 +113,7 @@ class DraftEditingFlowTest {
             captureScreen("long-category","$theme-picker")
             ui.onNodeWithTag("category-child-$category").performClick()
             ui.onNodeWithTag("field-お店 / 買ったもの").performScrollTo().performTextReplacement(merchant)
-            ui.onNodeWithTag("entry-save-button").performScrollTo().performClick()
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null}
             val saved=snapshot(a)
             assertEquals(event,saved.events.single().id);assertEquals(category,saved.events.single().categoryId)
@@ -169,7 +169,7 @@ class DraftEditingFlowTest {
             for(n in listOf(100,500,1000))ui.onNodeWithTag("entry-quick-$n").performScrollTo().performClick()
             ui.onNodeWithTag(tag).assertTextEquals("1600")
             captureScreen("entry-quick","$theme-$language")
-            ui.onNodeWithTag("entry-save-button").performScrollTo().performClick()
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null}
             val saved=snapshot(a);assertEquals(1,saved.events.size);assertEquals(event,saved.events.single().id)
             assertEquals(1600L,saved.events.single().amountMinor);assertEquals(8400L,saved.balance(saved.accounts.single()))
@@ -221,7 +221,7 @@ class DraftEditingFlowTest {
         tap("↺ 記録を編集")
         ui.onNodeWithTag("field-金額 · JPY").performTextReplacement("680")
         ui.waitUntil(10000){!vm.busy.value}
-        tap("変更を保存")
+        ui.entryAction("entry-save-button").performClick()
         waitFor("日々の記録。")
         val saved=snapshot(a)
         assertEquals(event,saved.events.single().id)
@@ -265,7 +265,7 @@ class DraftEditingFlowTest {
         ui.onNodeWithText("×").performClick();ui.waitUntil(10000){vm.route.value=="home"}
         tap("この帳簿の下書きを続ける")
         assertEquals(event,vm.entry.value!!.id);assertEquals("999",vm.entry.value!!.amount)
-        ui.onNodeWithTag("entry-cancel-edit").performScrollTo().performClick()
+        ui.entryAction("entry-cancel-edit").performClick()
         ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="detail"}
         assertEquals(before,snapshot(a).visibleEvents.single());assertNull(snapshot(a).draft)
         ui.onNodeWithTag("record-detail-core").assertExists()
@@ -280,10 +280,17 @@ class DraftEditingFlowTest {
             ui.waitUntil(10000){ui.onAllNodesWithTag("record-edit-button").fetchSemanticsNodes().isNotEmpty()}
             ui.onNodeWithTag("record-edit-button").performScrollTo().performClick()
             ui.onNodeWithTag(if(language=="zh")"field-金额 · JPY" else "field-金額 · JPY").performTextReplacement("999")
-            ui.onNodeWithTag("entry-save-button").assert(hasText(if(language=="zh")"保存修改" else "変更を保存"))
-            ui.onNodeWithTag("entry-cancel-edit").performScrollTo().assertIsDisplayed()
+            ui.onNodeWithTag("entry-save-button").assert(hasText((if(language=="zh")"保存修改" else "変更を保存")+"  ¥999"))
+            // From the top of the form the save line floats at the sheet bottom.
+            androidx.test.espresso.Espresso.closeSoftKeyboard();ui.settleKeyboard()
+            ui.onNodeWithTag("sheet-scroll").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy){it(0f,-100000f)}
+            captureScreen("edit-cancel","$theme-$language-floating")
+            ui.entryAction("entry-cancel-edit").assertIsDisplayed()
+            // Cancel shares the save line at the same height.
             val rect=ui.onNodeWithTag("entry-cancel-edit").getUnclippedBoundsInRoot()
-            if(InstrumentationRegistry.getInstrumentation().targetContext.resources.configuration.fontScale==1f)assertEquals("Original cancel height",19f,(rect.bottom-rect.top).value,1f)
+            val save=ui.onNodeWithTag("entry-save-button").getUnclippedBoundsInRoot()
+            assertEquals("Cancel beside save",save.top.value,rect.top.value,1f)
+            assertEquals("Cancel as tall as save",(save.bottom-save.top).value,(rect.bottom-rect.top).value,1f)
             captureScreen("edit-cancel","$theme-$language")
             ui.onNodeWithTag("entry-cancel-edit").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="detail"}
@@ -294,7 +301,7 @@ class DraftEditingFlowTest {
             ui.onNodeWithTag("record-edit-button").performScrollTo().performClick()
             val amount=before.amountMinor+100
             ui.onNodeWithTag(if(language=="zh")"field-金额 · JPY" else "field-金額 · JPY").performTextReplacement(amount.toString())
-            ui.onNodeWithTag("entry-save-button").performScrollTo().performClick()
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&snapshot(a).visibleEvents.single().amountMinor==amount}
             val saved=snapshot(a)
             assertEquals(event,saved.visibleEvents.single().id);assertEquals(before.revision+1,saved.visibleEvents.single().revision)
@@ -567,7 +574,7 @@ class DraftEditingFlowTest {
             ui.onNodeWithTag(if(ja)"field-金額 · JPY" else "field-金额 · JPY").performScrollTo().performTextInput("4250")
             ui.onNodeWithTag(if(ja)"field-名称 / 内容" else "field-名称 / 说明").performScrollTo().performTextInput("手动收入")
             ui.waitUntil(10000){!vm.busy.value}
-            tap(if(ja)"記録を保存" else "保存记录")
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&vm.route.value=="ledger"}
             val after=snapshot(a)
             assertEquals(before.balance(before.accounts.first{it.id==account})+4250,after.balance(after.accounts.first{it.id==account}))
@@ -953,7 +960,7 @@ class DraftEditingFlowTest {
             catch(failure:androidx.compose.ui.test.ComposeTimeoutException){captureScreen("entry-keyboard-failure","$theme-$language");throw failure}
             val note="键盘输入 / キーボード $theme-$language"
             ui.onNodeWithTag(noteTag).performTextReplacement(note)
-            val save=ui.onNodeWithText(if(language=="zh")"保存修改" else "変更を保存").performScrollTo().assertIsDisplayed()
+            val save=ui.entryAction("entry-save-button").assertIsDisplayed()
             val visible=viewport.getUnclippedBoundsInRoot();val button=save.getUnclippedBoundsInRoot()
             assertTrue("Save must stay above the real IME",button.bottom.value<=visible.bottom.value+1)
             assertTrue("Save must stay below the visible header",button.top.value>=visible.top.value)
@@ -991,7 +998,7 @@ class DraftEditingFlowTest {
             ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
             ui.onNodeWithTag("field-メモ").assertTextEquals("保留的小记 $theme")
             captureScreen("entry-notes",theme)
-            tap("変更を保存")
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null}
             val saved=snapshot(a)
             assertEquals(event,saved.events.single().id)

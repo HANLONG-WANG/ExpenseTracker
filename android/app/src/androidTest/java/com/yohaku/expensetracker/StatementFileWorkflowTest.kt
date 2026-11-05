@@ -133,7 +133,7 @@ class StatementFileWorkflowTest {
             ui.waitUntil(10000){vm.entry.value!=null&&vm.route.value=="category-picker"}
             assertEquals(3,state().events.size);assertEquals("500",vm.entry.value!!.amount)
             click("category-shortcut-${state().categories.single().id}")
-            click("entry-save-button")
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){!vm.busy.value&&vm.entry.value==null&&state().events.size==4}
             val after=state()
             assertEquals(6300L,after.balance(after.accounts.single()))
@@ -198,7 +198,7 @@ class StatementFileWorkflowTest {
         click("statement-candidates-${row.row_id}");click("statement-confirm-actual-$fx")
         ui.waitUntil(10000){vm.entry.value?.id==fx}
         assertFalse(state().settlements.single().confirmed);assertEquals(10000L,state().balance(state().accounts.first{it.id==bank}))
-        click("entry-save-button")
+        ui.entryAction("entry-save-button").performClick()
         ui.waitUntil(10000){vm.entryReview.value!=null}
         assertFalse(state().settlements.single().confirmed)
         confirmNormalEntryReview()

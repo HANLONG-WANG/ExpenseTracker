@@ -123,7 +123,7 @@ class MerchantFlowTest {
             assertEquals("原名店",vm.entry.value!!.merchant)
             ui.onNode(hasText("咖啡") and hasClickAction() and hasAnyAncestor(hasTestTag("category-group-$category"))).performScrollTo().performClick()
             ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY").performScrollTo().performTextReplacement("200")
-            clearHeader(ui.onNodeWithTag("entry-save-button")).assertIsEnabled().performClick()
+            ui.entryAction("entry-save-button").assertIsEnabled().performClick()
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value&&(vm.state.value as? AppState.Ready)?.snapshot?.events?.size==3}
             assertEquals("ledger",vm.route.value)
             ui.runOnIdle{vm.navigate("merchants")}

@@ -135,7 +135,7 @@ class ActivityFlowTest {
             ui.waitUntil(10000){vm.entry.value?.id==s.events.single().id}
             assertTrue(vm.entry.value!!.treatEnabled);assertEquals(s.allocations.filter{it.treatId==s.treats.first{t->t.eventId!=null}.id}.mapNotNull{it.friendId},vm.entry.value!!.treatFriends)
             ui.onNodeWithText(text("本人付款 · 活动内互请","自分の支払・シーンのごちそう")).performScrollTo().assertExists()
-            ui.onNodeWithTag("entry-save-button").performScrollTo().performClick()
+            ui.entryAction("entry-save-button").performClick()
             tap(text("确认并保存","確認して保存"))
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val edited=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
@@ -185,7 +185,7 @@ class ActivityFlowTest {
             val amount=ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY")
             if(keyboard){clearHeader(amount).performTouchInput{click()};ui.waitUntil(10000){imeVisible()}}
             amount.performScrollTo().performTextReplacement("10000")
-            val save=clearHeader(ui.onNodeWithTag("entry-save-button"))
+            val save=ui.entryAction("entry-save-button")
             if(keyboard) {
                 assertTrue("Save remains above the real keyboard",save.getUnclippedBoundsInRoot().bottom<=ui.onNodeWithTag("sheet-scroll").getUnclippedBoundsInRoot().bottom)
                 shot("$theme-$language-friend-shortcut-me-keyboard",true,reset=false)

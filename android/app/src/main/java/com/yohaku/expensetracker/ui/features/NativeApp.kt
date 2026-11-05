@@ -402,7 +402,7 @@ import kotlinx.serialization.encodeToString
 }
 
 @Composable private fun Detail(s:BookSnapshot,e:EventEntity,onEdit:()->Unit,onDelete:()->Unit,vm:AppViewModel,onRefund:()->Unit,onConfirm:()->Unit,onRecord:(EventEntity)->Unit) {
-    RecordDetailCore(s,e,onEdit)
+    RecordDetailCore(s,e)
     s.settlements.find{it.eventId==e.id}?.takeIf{it.accountCurrency!=e.currency||!it.confirmed||e.kind==EntryKind.REFUND.name}?.let{settlement->
         RecordFacts(listOf(
             word("原币金额","原通貨額") to Money(Currency.valueOf(e.currency),e.amountMinor).display(),
@@ -425,9 +425,10 @@ import kotlinx.serialization.encodeToString
     RecordStatementSides(s,e,vm)
     s.contracts.firstOrNull{it.fundingEventId==e.id}?.let{FinancialBorrowingFacts(s,it)}
     s.transfers.find{it.eventId==e.id}?.let{TransferFacts(s,e,it,s.expenseComponents.filter{c->c.eventId==e.id})}
-    if(e.kind==EntryKind.EXPENSE.name) {
-        val linked=s.settlements.filter{it.originalEventId==e.id}
-        val refunds=s.visibleEvents.filter{r->linked.any{it.eventId==r.id}}
+    val linked=s.settlements.filter{it.originalEventId==e.id}
+    val refunds=s.visibleEvents.filter{r->linked.any{it.eventId==r.id}}
+    val expense=e.kind==EntryKind.EXPENSE.name
+    if(expense) {
         if(refunds.isNotEmpty()) {
             Column(Modifier.fillMaxWidth().testTag("refund-history"),verticalArrangement=Arrangement.spacedBy(15.dp)) {
             ThemeSection(word("原消费与退款","元の購入と返金"),"REFUND HISTORY")
@@ -440,9 +441,13 @@ import kotlinx.serialization.encodeToString
             TransactionList(s,refunds.sortedByDescending{it.date},onRecord)
             }
         }
-        if(refunds.sumOf{it.amountMinor}<e.amountMinor)YButton(word("记录退款","返金を記録"),onRefund,Modifier.fillMaxWidth())
-        else YText(word("原币退款已全部记录，实际收支差额仍保留在原消费月。","原通貨の返金は全額記録済み。実収支の差額は元の購入月に保持します。"),11)
     }
+    // Edit shares the refund line at the refund button's height; without a refund it keeps that slot alone.
+    YActionRow {
+        YButton("↺ "+word("编辑记录","記録を編集"),onEdit,Modifier.testTag("record-edit-button"),primary=true,compact=true)
+        if(expense&&refunds.sumOf{it.amountMinor}<e.amountMinor)YButton(word("记录退款","返金を記録"),onRefund)
+    }
+    if(expense&&refunds.sumOf{it.amountMinor}>=e.amountMinor)YText(word("原币退款已全部记录，实际收支差额仍保留在原消费月。","原通貨の返金は全額記録済み。実収支の差額は元の購入月に保持します。"),11)
     settlement?.originalEventId?.let{id->s.visibleEvents.find{it.id==id}?.let{original->YLink(word("查看原消费","元の購入を見る"),{onRecord(original)})}}
     s.occurrences.filter{it.eventId==e.id}.takeIf{it.isNotEmpty()}?.let{list->RecordFacts(list.map{o->word("关联周期实例","関連する定期予定") to (o.name+" · "+o.scheduledDate)},audit=true)}
     s.treats.find{it.eventId==e.id}?.let{treat->
@@ -573,8 +578,10 @@ import kotlinx.serialization.encodeToString
                 listOf(null to word("尚未记账，确认后新增","未記録・確認後に追加"))+candidates.map{it.id as String? to (it.date+" · "+it.merchant.ifBlank{s.path(it.categoryId)}+" · "+s.accountMoney(it).display())},{onChange(d.copy(occurrenceLinkEventId=it))})
             YText(if(existingId==null&&!d.settlementConfirmed)word("这笔消费按预计入账金额计入预算，保存后解除原周期预留，避免双算。账户实际金额仍待确认；已记过时请选择已有流水。","この支出は計上見込額で予算に含め、保存後に元の定期予定を解除して二重計算を防ぎます。口座の実額は確認待ちです。記録済みなら既存記録を選んでください。")else if(existingId==null)word("已手动记过时请选择对应流水，避免重复记账。实际确认后解除这次预留。","手動記録済みなら関連する記録を選択。重複せず、実際の確認後に予定を解除します。")else word("采用所选已有支出的金额和日期，不使用本表单输入，也不新增记录或附件；确认后解除这次预留。","選択した既存支出の金額・日付を使用します。このフォームの入力や添付は追加せず、確認後に予定を解除します。"),11,Modifier.testTag("occurrence-payment-note"),color=t.muted)
         }
-        Box(Modifier.padding(top=25.dp)){EntrySaveArea(d.id!=null,busy,existingId!=null||a!=null,{existingId?.let(onPreviewExisting)?:onSave()},onCancelEdit,if(existingId!=null)word("预览关联已有支出","既存支出との関連を確認")else if(confirmingOccurrence&&!d.settlementConfirmed)word("记录消费并解除预留","支出を記録して予定を解除")else if(confirmingOccurrence)word("确认付款并解除预留","支払を確認して予定を解除")else null)}
-        if(d.id==null&&d.occurrenceId==null&&d.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))Box(Modifier.fillMaxWidth().padding(top=14.dp),contentAlignment=Alignment.Center){YLink(word("把这笔存为模板","この記録をテンプレートに保存"),onSaveTemplate,Modifier.testTag("entry-save-template"))}
+        // Docked in the sheet footer normally; inline while the keyboard is up, where its own 12dp above and below keep the former 25dp / 14dp gaps.
+        val saveAmount=if(existingId!=null)null else runCatching{Money.parse(accountText,Currency.valueOf(currency))}.getOrNull()?.takeIf{it.minor>0}?.display()
+        Box(Modifier.padding(top=13.dp)){EntrySaveArea(d.id!=null,busy,existingId!=null||a!=null,{existingId?.let(onPreviewExisting)?:onSave()},onCancelEdit,if(existingId!=null)word("预览关联已有支出","既存支出との関連を確認")else if(confirmingOccurrence&&!d.settlementConfirmed)word("记录消费并解除预留","支出を記録して予定を解除")else if(confirmingOccurrence)word("确认付款并解除预留","支払を確認して予定を解除")else null,saveAmount)}
+        if(d.id==null&&d.occurrenceId==null&&d.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME))Box(Modifier.fillMaxWidth().padding(top=2.dp),contentAlignment=Alignment.Center){YLink(word("把这笔存为模板","この記録をテンプレートに保存"),onSaveTemplate,Modifier.testTag("entry-save-template"))}
     }
 }
 

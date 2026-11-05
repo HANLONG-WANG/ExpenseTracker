@@ -133,7 +133,7 @@ class ReminderSettingsFlowTest {
             assertTrue(prefs.reminderSettings.first()[b]!!.enabled);assertFalse(coordinator.allowed())
             assertTrue(repo.reminderItems(prefs).any{it.bookId==b&&it.kind=="RECURRING"})
             ui.runOnIdle{vm.changeEntry(b,EntryDraft(accountId=a,categoryId=c,amount="500",date=date.toString()));vm.navigate("entry")}
-            tap("entry-save-button")
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){(vm.state.value as? AppState.Ready)?.snapshot?.visibleEvents?.size==1&&!vm.busy.value}
             assertEquals(9500L,repo.snapshot(repo.dao.book(b)!!).first().balance(repo.dao.account(b,a)!!))
             ui.runOnIdle{vm.navigate("notification-settings")}

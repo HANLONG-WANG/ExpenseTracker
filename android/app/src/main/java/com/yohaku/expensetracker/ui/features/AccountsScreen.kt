@@ -8,7 +8,15 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material3.Text
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -39,15 +47,25 @@ import com.yohaku.expensetracker.ui.theme.*
     YText(today.toString()+" · "+word("资金只计截至今日已确认流水；未来已记流水在时间线中另列。","資金は本日までの確定記録のみ。将来日付の記録は予定に別掲。"),11,color=t.muted)
     // The account lists come before valuation and planning so the page opens on the accounts themselves.
     ThemeSection(word("持有的资金","持っている資金"),"AVAILABLE FUNDS")
-    Column(Modifier.fillMaxWidth().padding(top=8.dp,bottom=12.dp).testTag("funds-account-list"),verticalArrangement=Arrangement.spacedBy(13.dp)){
-        if(funds.isEmpty())YEmpty(word("添加第一个账户","最初の口座を追加"),onAdd,word("添加账户","口座を追加"))
-        funds.forEachIndexed{i,a->AccountCard(s,a,i,{onSelect(a)},today,i==funds.lastIndex)}
+    // Two accounts share a line; narrow screens and enlarged text keep one card per line.
+    val density=LocalDensity.current
+    val twoColumns=!(LocalConfiguration.current.screenWidthDp<=360||density.fontScale>1.1f)
+    @Composable fun Accounts(list:List<AccountEntity>,modifier:Modifier,empty:@Composable ()->Unit={}){
+        Column(modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(if(twoColumns&&t.id=="magazine")0.dp else 13.dp)){
+            if(list.isEmpty())empty()
+            if(twoColumns)list.chunked(2).forEachIndexed{row,pair->
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(if(t.id=="magazine")0.dp else 12.dp)){
+                    pair.forEachIndexed{column,a->AccountCell(s,a,row*2+column,{onSelect(a)},today,column,row==(list.size-1)/2,Modifier.weight(1f).fillMaxHeight())}
+                    if(pair.size==1)Spacer(Modifier.weight(1f))
+                }
+            }
+            else list.forEachIndexed{i,a->AccountCard(s,a,i,{onSelect(a)},today,i==list.lastIndex)}
+        }
     }
+    Accounts(funds,Modifier.padding(top=8.dp,bottom=12.dp).testTag("funds-account-list")){YEmpty(word("添加第一个账户","最初の口座を追加"),onAdd,word("添加账户","口座を追加"))}
     ThemeSection(word("信用卡与借款","カードと借入"),"TO REPAY",previousBottomPadding=12)
     // Magazine's last row no longer closes with a rule, so its own padding is enough room above the button.
-    Column(Modifier.fillMaxWidth().padding(top=8.dp,bottom=if(t.id=="magazine")0.dp else 27.dp).testTag("debt-account-list"),verticalArrangement=Arrangement.spacedBy(13.dp)){
-        debts.forEachIndexed{i,a->AccountCard(s,a,i,{onSelect(a)},today,i==debts.lastIndex)}
-    }
+    Accounts(debts,Modifier.padding(top=8.dp,bottom=if(t.id=="magazine")0.dp else 27.dp).testTag("debt-account-list"))
     YButton(word("＋ 添加账户","＋ 口座を追加"),onAdd,Modifier.testTag("accounts-add"),primary=true)
     if(hasForeign&&referenceService!=null)ReferenceAssetValuation(s,referenceService,today)
     ThemeSection(word("付款与资金安排","支払と資金の予定"),"PLANNING")
@@ -105,6 +123,60 @@ import com.yohaku.expensetracker.ui.theme.*
                 }
                 YText(a.currency,8,Modifier.offset(x=18.dp,y=(-6).dp).background(if(even&&!debt)Color(0xffa1ae87) else Color(0xffb99065),RoundedCornerShape(6.dp)).padding(horizontal=10.dp,vertical=6.dp),color=Color(0xfffff8e8),lineHeightMultiplier=11f/8,cssLineBox=true)
                 YText("↗",13,Modifier.align(Alignment.BottomEnd).padding(end=17.dp,bottom=21.dp),color=Color(0xffb0936c),lineHeightMultiplier=19f/13,cssLineBox=true)
+            }
+        }
+    }
+}
+
+/** One of two accounts on a line: name up to two lines, the balance pinned to the bottom on one shrinking line. */
+@Composable private fun AccountCell(s:BookSnapshot,a:AccountEntity,index:Int,onClick:()->Unit,today:LocalDate,column:Int,lastRow:Boolean,modifier:Modifier) {
+    val t=LocalYohaku.current
+    val debt=AccountType.valueOf(a.type).debt
+    val amount=Money(Currency.valueOf(a.currency),if(debt)s.balance(a)else s.cashBalanceAt(a,today.toString())).display()
+    val note=if(!a.active)word("已停用 · 请核对资金安排","停止中・資金予定を確認")else if(debt)accountTypeName(AccountType.valueOf(a.type))+" · "+word("当前欠款","現在の借入残高") else accountTypeName(AccountType.valueOf(a.type))
+    val click=modifier.testTag("account-"+a.id).clickable(role=Role.Button,onClick=onClick)
+    @Composable fun Name(size:Int,lineHeight:Float,bold:Boolean)=Text(a.name,maxLines=2,overflow=TextOverflow.Ellipsis,color=t.ink,fontSize=size.sp,lineHeight=(size*lineHeight).sp,fontFamily=t.body,fontWeight=if(bold)FontWeight.SemiBold else FontWeight.Normal)
+    @Composable fun Amount(size:Int,color:Color)=BasicText(amount,Modifier.fillMaxWidth().testTag("account-amount-"+a.id),style=TextStyle(color=color,fontFamily=t.number),maxLines=1,
+        autoSize=TextAutoSize.StepBased(minFontSize=11.sp,maxFontSize=size.sp,stepSize=.5.sp))
+    when(t.id){
+        // An index table: a hairline between the columns and between rows, none after the last row.
+        "magazine"->Column(click.drawBehind{
+            if(column==1)drawLine(t.line,Offset.Zero,Offset(0f,size.height),1.dp.toPx())
+            if(!lastRow)drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx())
+        }.padding(start=if(column==1)12.dp else 0.dp,end=12.dp,top=16.dp,bottom=16.dp)){
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+                YText(a.currency,8,Modifier.weight(1f),color=t.accent,letterSpacing=1f,lineHeightMultiplier=11f/8,cssLineBox=true)
+                YText("↗",12,color=t.muted,lineHeightMultiplier=17f/12,cssLineBox=true)
+            }
+            Box(Modifier.padding(top=5.dp)){Name(13,1.5f,true)}
+            YText(note,9,Modifier.padding(top=2.dp),color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
+            Spacer(Modifier.weight(1f).heightIn(min=10.dp))
+            Amount(20,t.ink)
+        }
+        "journal"->Box(click.rotate(if(index%2==0)-.3f else .4f).background(Color(0xfffff8e7)).dashedAccountBorder(t.line)){
+            Column(Modifier.fillMaxHeight().padding(start=12.dp,end=12.dp,top=20.dp,bottom=14.dp)){
+                Name(15,1.5f,false)
+                YText(note,11,Modifier.padding(top=2.dp),color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
+                Spacer(Modifier.weight(1f).heightIn(min=8.dp))
+                Amount(21,t.ink)
+            }
+            YText(a.currency,10,Modifier.offset(x=13.dp,y=(-7).dp).rotate(-4f).background(Color(0xfffff3d8)).border(1.dp,t.warm).padding(horizontal=8.dp,vertical=4.dp),color=t.warm,lineHeightMultiplier=17f/10,cssLineBox=true)
+        }
+        else->{
+            val shape=RoundedCornerShape(12.dp,12.dp,23.dp,19.dp)
+            val even=index%2==1
+            val bg=if(debt)Color(0xfff0dfce) else if(even)Color(0xffe5e8d7) else Color(0xffede0c5)
+            val border=if(debt)Color(0xffdfc5a8) else if(even)Color(0xffd0d5bd) else Color(0xffdcc49b)
+            Box(click.padding(top=6.dp).background(bg,shape).border(1.dp,border,shape)){
+                Column(Modifier.fillMaxHeight().padding(start=14.dp,end=14.dp,top=24.dp,bottom=15.dp)){
+                    Name(13,1.5f,true)
+                    YText(note,9,Modifier.padding(top=2.dp),color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
+                    Spacer(Modifier.weight(1f).heightIn(min=10.dp))
+                    // Leaves room for the arrow at the bottom corner.
+                    Box(Modifier.padding(end=16.dp)){Amount(21,Color(0xffad7951))}
+                }
+                YText(a.currency,8,Modifier.offset(x=14.dp,y=(-6).dp).background(if(even&&!debt)Color(0xffa1ae87) else Color(0xffb99065),RoundedCornerShape(6.dp)).padding(horizontal=10.dp,vertical=6.dp),color=Color(0xfffff8e8),lineHeightMultiplier=11f/8,cssLineBox=true)
+                YText("↗",12,Modifier.align(Alignment.BottomEnd).padding(end=13.dp,bottom=17.dp),color=Color(0xffb0936c),lineHeightMultiplier=17f/12,cssLineBox=true)
             }
         }
     }

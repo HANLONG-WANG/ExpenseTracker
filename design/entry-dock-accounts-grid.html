@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>提案 · 浮动保存按钮 / 账户两列</title>
+<style>
+@font-face{font-family:YohakuEditorial;src:url('fonts/editorial.woff2?v=55') format('woff2');font-weight:100 900}
+@font-face{font-family:YohakuHand;src:url('fonts/hand.woff2?v=55') format('woff2')}
+@font-face{font-family:YohakuHandCN;src:url('fonts/hand-cn.woff2?v=55') format('woff2')}
+@font-face{font-family:YohakuRound;src:url('fonts/round.woff2?v=55') format('woff2')}
+@font-face{font-family:YohakuRoundCN;src:url('fonts/round-cn.woff2?v=55') format('woff2');font-weight:100 900}
+*{box-sizing:border-box}
+body{margin:0;background:#e6e5df;color:#2f3933;font-family:system-ui,"Noto Sans CJK SC",sans-serif}
+header,.intro{max-width:1240px;margin:auto;padding:28px 24px 6px}
+h1{font-size:23px;font-weight:500;margin:0 0 8px}
+h2{font-size:18px;font-weight:500;margin:30px 0 6px}
+.intro p,header p,.intro li{font-size:13px;line-height:1.8;color:#56625a;margin:0 0 6px}
+.intro ul{margin:4px 0 8px;padding-left:20px}
+.controls{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;align-items:center}
+.controls span{font-size:12px;color:#6a746c;margin-right:2px}
+.controls button{font:inherit;font-size:12px;border:1px solid #bdc5bb;background:transparent;border-radius:7px;padding:6px 11px;cursor:pointer;color:inherit}
+.controls button.on{background:#2f3f36;border-color:#2f3f36;color:#fff}
+.controls i{width:14px}
+main{display:flex;justify-content:center;gap:26px;padding:16px 16px 10px;flex-wrap:wrap}
+figure{margin:0}figcaption{font-size:13px;margin:0 0 8px;color:#4c574f}
+.device{width:396px;border:6px solid #2b302c;border-radius:34px;overflow:hidden;background:#000}
+.screen{position:relative;width:384px;height:832px;overflow:hidden}
+.status{position:absolute;inset:0 0 auto;height:32px;z-index:6;display:flex;justify-content:space-between;align-items:center;padding:0 22px;font:12px system-ui;color:#333;pointer-events:none}
+.gesture{position:absolute;left:50%;bottom:7px;width:108px;height:4px;margin-left:-54px;border-radius:2px;background:#222;opacity:.75;z-index:7;pointer-events:none}
+.scroll{position:absolute;inset:0;overflow-y:auto;padding:32px 25px 0;scrollbar-width:none}
+.scroll::-webkit-scrollbar{display:none}
+.tail{height:var(--tail,40px)}
+.note{font-size:12px;color:#6a746c;max-width:1240px;margin:0 auto;padding:0 24px 8px;line-height:1.8}
+
+/* ---------- shared bits ---------- */
+.lbl{font-size:10px;color:var(--muted);line-height:1.9}
+.val{font-size:15px;color:var(--ink)}
+.row{display:flex;align-items:center;justify-content:space-between}
+.link{font-size:12px;color:var(--accent);padding:8px 0}
+.field{margin-top:16px}
+.summary{display:flex;justify-content:space-between;align-items:baseline;padding:20px 0 14px}
+.summary b{font-weight:400;font-size:20px}
+.quick{display:flex;gap:9px;margin-top:13px}
+.btn{display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;user-select:none}
+.btn .amt{opacity:.8;font-variant-numeric:tabular-nums}
+
+/* ---------- magazine ---------- */
+.magazine{--bg:#f7f7ef;--surface:#fffef8;--ink:#263d32;--muted:#788577;--accent:#355b43;--soft:#e8eddf;--line:#d2dacc;--warm:#bc664f;font-family:YohakuEditorial,"Noto Serif CJK SC",serif;background:var(--bg);color:var(--ink)}
+.magazine .scroll{background:var(--bg)}
+.magazine .summary{border-bottom:2px solid var(--ink)}
+.magazine .input{border-bottom:1px solid var(--ink);padding:10px 0}
+.magazine .amount{font-size:46px;padding:14px 14px 6px;border-bottom:1px solid var(--ink)}
+.magazine .chip{border:1px solid var(--line);padding:9px 12px;font-size:11px}
+.magazine .fold{border-bottom:1px solid var(--line);padding:14px 0}
+.magazine .btn.primary{background:var(--ink);color:var(--surface);height:48px;font-size:11px;letter-spacing:.5px}
+.magazine .btn.secondary{border:1px solid var(--ink);color:var(--accent);height:48px;font-size:10px;padding:0 16px}
+.magazine .dock{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:12px 25px 24px;background:var(--bg);border-top:1px solid var(--line)}
+
+/* ---------- journal ---------- */
+.journal{--bg:#f1e8d5;--surface:#faf5e7;--ink:#354d61;--muted:#898679;--accent:#3b5b70;--soft:#e6e6d9;--line:#d4cbb5;--warm:#ae6657;font-family:YohakuHand,YohakuHandCN,KaiTi,cursive;color:var(--ink)}
+.journal .scroll{background:repeating-linear-gradient(to bottom,transparent 0 27px,#e2d8c2 27px 28px),var(--bg)}
+.journal .scroll:before{content:"";position:absolute;left:18px;top:0;bottom:0;width:1px;background:#e7b7a8}
+.journal .lbl{font-size:12px}.journal .lbl:before{content:"· "}
+.journal .summary{border-bottom:1px dashed var(--line)}
+.journal .input{border-bottom:1.5px solid var(--accent);padding:10px 2px;font-size:16px}
+.journal .amount{font-size:46px;padding:12px 14px 6px;border-bottom:2px solid var(--accent)}
+.journal .chip{background:#ece6d2;padding:9px 12px;font-size:14px;transform:rotate(-1deg)}
+.journal .chip:nth-child(2){transform:rotate(1deg)}
+.journal .fold{border-bottom:1px dashed var(--line);padding:14px 0;font-size:15px}
+.journal .btn.primary{background:var(--accent);color:var(--surface);height:50px;font-size:16px;border-radius:3px 6px 2px 5px;box-shadow:2px 3px 0 #3b5b7023}
+.journal .btn.secondary{border:1px dashed var(--accent);color:var(--accent);height:50px;font-size:13px;padding:0 16px;transform:rotate(-.3deg)}
+.journal .dock{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:30px 25px 24px;background:linear-gradient(to bottom,#f1e8d500,#f1e8d5 30px)}
+
+/* ---------- objects ---------- */
+.objects{--bg:#faf1e5;--surface:#fffcf5;--ink:#634b3b;--muted:#9c8976;--accent:#ae6246;--soft:#f0e3cc;--line:#e9d8be;--warm:#b56340;font-family:YohakuRound,YohakuRoundCN,sans-serif;color:var(--ink)}
+.objects .scroll{background:var(--bg);padding-left:23px;padding-right:23px}
+.objects .summary{background:#f3e5cc;border-radius:14px;padding:14px 16px;margin-top:14px}
+.objects .input{background:#f6ebd9;border:1px solid var(--line);border-radius:16px;padding:12px 14px;font-size:14px}
+.objects .amount{font-size:40px;background:#f2dfb0;border:1px solid #e6cc96;border-radius:20px;padding:18px 16px}
+.objects .chip{background:#efdcc0;border-radius:9px;padding:9px 10px;font-size:11px;color:var(--warm)}
+.objects .fold{border-bottom:1px dashed #d9c3a0;padding:14px 0;color:var(--warm)}
+.objects .btn.primary{background:#b67551;border:1px solid #ab6847;color:#fff6e3;height:52px;font-size:14px;border-radius:14px 14px 20px 14px;box-shadow:0 4px 0 #8b543737,0 10px 22px -6px #8b543766}
+.objects .btn.secondary{background:#fff9eb;border:1px solid #dcc4a0;color:var(--accent);height:52px;font-size:12px;padding:0 18px;border-radius:12px;box-shadow:0 2px 0 #c6ab8015}
+.objects .dock{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:30px 23px 24px;background:linear-gradient(to bottom,#faf1e500,#faf1e5 32px)}
+
+.dock .pair{display:flex;gap:10px}.dock .pair .primary{flex:1}
+.disabled .dock .primary{opacity:.5}
+/* Variant B: compact floating pill at the lower right */
+.pill .dock{left:auto;right:18px;bottom:26px;padding:0;background:none;border:0}
+.pill .dock .btn.primary{padding:0 20px;border-radius:26px;height:48px;box-shadow:0 6px 18px -4px #0005}
+.pill.journal .dock .btn.primary{border-radius:24px 26px 22px 25px}
+.pill .dock .pair{flex-direction:row-reverse}
+.pill .dock .btn.secondary{display:none}
+
+/* ---------- accounts ---------- */
+.lead{padding:24px 0 18px}
+.lead h3{font-weight:400;font-size:27px;line-height:1.45;margin:6px 0 8px}
+.lead .big{font-size:34px;margin-top:10px}
+.section{margin:22px 0 10px}
+.section small{display:block;font-size:9px;letter-spacing:1px;color:var(--muted);font-family:system-ui}
+.section b{font-weight:400;font-size:20px}
+.list{display:flex;flex-direction:column;gap:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.acc{position:relative;cursor:pointer;min-width:0}
+.acc .name{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.acc .money{white-space:nowrap;font-variant-numeric:tabular-nums}
+.acc .sub{font-size:9px;color:var(--muted);line-height:1.9}
+.add{margin-top:22px}
+
+/* magazine list row (current) */
+.magazine .list{gap:0}
+.magazine .list .acc{display:flex;align-items:center;gap:11px;padding:19px 0;border-bottom:1px solid var(--line)}
+.magazine .list .acc:last-child{border-bottom:0}
+.magazine .list .cur{width:29px;font-size:8px;color:var(--accent);border-right:1px solid var(--line);padding-right:5px}
+.magazine .list .mid{flex:1;min-width:0}.magazine .list .name{font-size:13px;font-weight:600}
+.magazine .list .money{font-size:20px}
+/* magazine two-column: an index table, columns split by a hairline */
+.magazine .grid{gap:0}
+.magazine .grid .acc{padding:16px 12px 16px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column}
+.magazine .grid .acc:nth-child(2n){padding:16px 0 16px 12px;border-left:1px solid var(--line)}
+.magazine .grid .acc.lastrow{border-bottom:0}
+.magazine .grid .cur{font-size:8px;letter-spacing:1px;color:var(--accent)}
+.magazine .grid .name{font-size:13px;font-weight:600;margin-top:5px;line-height:1.5}
+.magazine .grid .money{font-size:20px;margin-top:auto;padding-top:10px}
+.magazine .grid .arrow{position:absolute;right:0;top:15px;font-size:12px;color:var(--muted)}
+.magazine .grid .acc:nth-child(2n+1) .arrow{right:12px}
+
+/* journal (current list + grid) */
+.journal .acc{background:#fff8e7;outline:1px dashed var(--line);outline-offset:-1px}
+.journal .acc:nth-child(odd){transform:rotate(-.3deg)}.journal .acc:nth-child(even){transform:rotate(.4deg)}
+.journal .acc .cur{position:absolute;left:13px;top:-7px;transform:rotate(-4deg);background:#fff3d8;border:1px solid var(--warm);color:var(--warm);font-size:10px;padding:2px 8px}
+.journal .list .acc{padding:21px 15px 18px}
+.journal .list .acc .top{display:flex;justify-content:space-between;gap:7px}.journal .list .name{font-size:16px}.journal .list .money{font-size:23px}
+.journal .list .sub{font-size:11px;margin-top:10px}
+.journal .grid{gap:14px 12px;padding-top:6px}
+.journal .grid .acc{padding:20px 12px 14px;display:flex;flex-direction:column}
+.journal .grid .name{font-size:15px;line-height:1.5}
+.journal .grid .money{font-size:21px;margin-top:auto;padding-top:8px}
+.journal .grid .sub{font-size:11px}
+
+/* objects (current list + grid) */
+.objects .acc{border-radius:12px 12px 23px 19px;border:1px solid #dcc49b;background:#ede0c5;margin-top:6px}
+.objects .acc.even{background:#e5e8d7;border-color:#d0d5bd}
+.objects .acc.debt{background:#f0dfce;border-color:#dfc5a8}
+.objects .acc .cur{position:absolute;left:18px;top:-6px;background:#b99065;color:#fff8e8;font-size:8px;padding:5px 10px;border-radius:6px}
+.objects .acc.even:not(.debt) .cur{background:#a1ae87}
+.objects .acc .money{color:#ad7951}
+.objects .acc .arrow{position:absolute;right:17px;bottom:19px;font-size:13px;color:#b0936c}
+.objects .list .acc{padding:29px 20px 21px}.objects .list .name{font-size:13px;font-weight:600}
+.objects .list .money{font-size:29px;margin:12px 0 4px}
+.objects .grid .acc{padding:24px 14px 15px;display:flex;flex-direction:column}
+.objects .grid .name{font-size:12.5px;font-weight:600;line-height:1.5}
+.objects .grid .money{font-size:21px;margin-top:auto;padding-top:10px}
+.objects .grid .arrow{right:13px;bottom:15px;font-size:12px}
+.objects .lead{background:#efdcbb;border-radius:22px;padding:22px 20px;margin-top:14px}
+</style>
+
+<div class="intro">
+  <h1>提案：记账页浮动保存按钮 · 账户页一行两个</h1>
+  <p>画布按三星 S24 Ultra 的 384 × 832dp 绘制。两组都可以直接在手机框里滚动查看，上方按钮切换方案和状态。</p>
+</div>
+
+<!-- =============== 1. floating save =============== -->
+<div class="intro">
+  <h2>1 · 记账页浮动保存按钮</h2>
+  <p><b>推荐方案 A：底部固定条。</b>保存按钮固定在屏幕底部，内容从它下面滚过；表单末尾留出等高空白，最后一个字段也能滚到按钮上方。按钮上同时显示本次金额（“保存记录 ¥680”），往下填备注或附件时也能确认要保存的金额。三套主题的处理：</p>
+  <ul>
+    <li><b>杂志</b>：纸色实底条，上缘一条发丝线，像版面底部的固定栏，不用渐变或阴影。</li>
+    <li><b>手账</b>：纸面横线向下渐隐，按钮保留现有的蓝色纸片和错位阴影，看起来像贴在页脚。</li>
+    <li><b>小物</b>：底色渐隐，按钮加一层向下的柔和投影，像摆在桌面上的一块实物按钮。</li>
+  </ul>
+  <p><b>编辑记录</b>时变成「取消」+「保存修改」并排，原来正文末尾的“取消，保留原记录”链接收进底部条。<b>键盘弹出时隐藏底部条</b>，否则键盘上方只剩很小一块可视区域；收起键盘后再显示。“把这笔存为模板”仍留在表单末尾。</p>
+  <p><b>方案 B：右下角悬浮胶囊</b>，遮挡面积更小，但会压住右侧的日期图标、开关等控件，也不太像这三套主题原有的按钮样式，所以作为备选。</p>
+  <div class="controls" id="dockControls">
+    <span>方案</span><button data-k="variant" data-v="bar" class="on">A 底部固定条</button><button data-k="variant" data-v="pill">B 右下胶囊</button>
+    <i></i><span>状态</span><button data-k="mode" data-v="new" class="on">新建</button><button data-k="mode" data-v="edit">编辑</button><button data-k="mode" data-v="disabled">未填金额</button>
+    <i></i><span>按钮金额</span><button data-k="amount" data-v="on" class="on">显示</button><button data-k="amount" data-v="off">不显示</button>
+  </div>
+</div>
+<main id="entryPhones"></main>
+
+<!-- =============== 3. accounts grid =============== -->
+<div class="intro">
+  <h2>3 · 账户页一行两个</h2>
+  <p>结论：可行。在 S24U 上，去掉页边距后内容宽约 334dp，两列各约 161dp，卡片内可用宽度约 130dp。要做的调整：</p>
+  <ul>
+    <li><b>金额字号要降</b>：小物从 29 降到约 21，手账从 23 降到约 21，杂志保持 20。仍放不下（例如 ¥12,345,678、US$12,345.67）时，在一行内自动缩小字号，不换行也不截断。</li>
+    <li><b>名称最多两行</b>，超出用省略号；同一行两张卡片等高，金额对齐卡片底部。</li>
+    <li><b>账户数为奇数时</b>，最后一张保持半宽，不拉满整行，网格节奏不被打断。</li>
+    <li><b>窄屏回退单列</b>：屏宽 ≤ 360dp 或字号放大（fontScale ≥ 1.3）时仍按现在一行一个排列。首页卡片已经按这个规则处理。</li>
+    <li><b>杂志</b>原来是带分隔线的列表，不是卡片，改成两列后会变成“目录表”：列之间一条竖发丝线，行之间一条横发丝线，币种用小号字放在名称上方。这是三套主题里变化最大的一套，可以只对手账和小物改两列，杂志保留列表，请你看图决定。</li>
+  </ul>
+  <div class="controls" id="accControls">
+    <span>布局</span><button data-k="layout" data-v="grid" class="on">两列</button><button data-k="layout" data-v="list">现状（单列）</button>
+    <i></i><span>数据</span><button data-k="data" data-v="typical" class="on">常见</button><button data-k="data" data-v="extreme">长名称 / 大金额</button>
+  </div>
+</div>
+<main id="accountPhones"></main>
+<p class="note">以上只是示意稿，字号和间距按 App 现有数值估算，实际落地后会在 S24U 尺寸下截图核对。</p>
+
+<script>
+const themes=[["magazine","杂志"],["journal","手账"],["objects","小物"]];
+const state={variant:"bar",mode:"new",amount:"on",layout:"grid",data:"typical"};
+const shell=(cls,inner,dock="")=>`<div class="device"><div class="screen ${cls}"><div class="status"><span>9:41</span><span>▾ ◢ ▮</span></div>${inner}${dock}<div class="gesture"></div></div></div>`;
+
+function entryPage(){
+  const f=(l,v,icon="")=>`<div class="field"><div class="lbl">${l}</div><div class="input row"><span>${v}</span><span style="color:var(--muted);font-size:13px">${icon}</span></div></div>`;
+  return `<div class="summary"><span class="lbl">生活 · 餐饮 / 咖啡</span><span class="link" style="padding:0">重选分类</span></div>
+  <div class="field"><div class="lbl">金额 · JPY</div><div class="amount">${state.mode==="disabled"?'<span style="opacity:.3">0</span>':"680"}</div>
+  <div class="lbl" style="margin-top:14px">本位币参考 ${state.mode==="disabled"?"¥0":"¥680"}</div>
+  <div class="quick"><span class="chip">+¥100</span><span class="chip">+¥500</span><span class="chip">+¥1,000</span></div>
+  <div class="link">查看 / 手动填写换算</div></div>
+  ${f("付款账户","随身现金","⌄")}
+  ${f("活动 / 可选","日常","⌄")}
+  ${f("附近的商户","喫茶と余白 · 120m","⌖")}
+  ${f("商户 / 买了什么","喫茶と余白")}
+  ${f("日期","2026-11-05","▦")}
+  <div class="fold row" style="margin-top:16px"><span>备注和其他</span><span>＋</span></div>
+  <div class="field"><div class="lbl">附件 / 小票</div><div class="input row"><span style="color:var(--muted)">添加小票或附件</span><span>＋</span></div></div>
+  <div style="text-align:center;margin-top:26px" class="link">把这笔存为模板</div>`;
+}
+function dock(){
+  const editing=state.mode==="edit";
+  const label=editing?"保存修改":"保存记录";
+  const amt=state.amount==="on"&&state.mode!=="disabled"?`<span class="amt">¥680</span>`:"";
+  return `<div class="dock"><div class="pair">${editing?'<div class="btn secondary">取消</div>':""}<div class="btn primary">${state.variant==="pill"?"✓ ":""}${label}${amt}</div></div></div>`;
+}
+function renderEntry(){
+  // The tail equals the dock height so the last field can scroll clear of it.
+  const tail=state.variant==="bar"?110:90;
+  document.getElementById("entryPhones").innerHTML=themes.map(([t,n])=>{
+    const cls=[t,state.variant==="pill"?"pill":"",state.mode==="disabled"?"disabled":""].join(" ");
+    return `<figure><figcaption>${n}</figcaption>${shell(cls,`<div class="scroll" style="--tail:${tail}px">${entryPage()}<div class="tail"></div></div>`,dock())}</figure>`;
+  }).join("");
+}
+
+const data={
+  typical:{funds:[["JPY","随身现金","¥8,600","现金"],["JPY","银行账户","¥18,400","银行"],["JPY","Suica","¥2,140","交通IC"],["USD","Wise 美元","US$1,234.56","银行"]],
+           debts:[["JPY","三井住友カード","¥42,380","信用卡 · 当前欠款"],["JPY","楽天カード","¥12,900","信用卡 · 当前欠款"],["JPY","Paidy","¥3,000","网贷 · 当前欠款"]]},
+  extreme:{funds:[["JPY","三菱UFJ銀行 普通預金（給与振込用）","¥12,345,678","银行"],["USD","Wise 美元","US$12,345.67","银行"],["JPY","随身现金","¥8,600","现金"]],
+           debts:[["JPY","三井住友カード（NL）ゴールド","¥1,042,380","信用卡 · 当前欠款"],["JPY","住宅ローン","¥28,500,000","借款 · 当前欠款"]]}
+};
+function fit(money,t){
+  // Stand-in for single-line auto-shrink: scale the font down by glyph count.
+  const base={magazine:20,journal:21,objects:21}[t];const max={magazine:11,journal:10,objects:10}[t];
+  return money.length>max?Math.max(13,Math.floor(base*max/money.length)):base;
+}
+function card(t,a,i,debt,grid,count){
+  const [cur,name,money,sub]=a;
+  const lastRow=grid&&i>=count-(count%2||2);
+  const cls=["acc",i%2?"even":"",debt?"debt":"",lastRow?"lastrow":""].join(" ");
+  const style=grid?` style="font-size:${fit(money,t)}px"`:"";
+  if(!grid){
+    if(t==="magazine")return `<div class="${cls}"><span class="cur">${cur}</span><div class="mid"><div class="name">${name}</div><div class="sub" style="margin-top:6px">${sub}</div></div><span class="money">${money}</span><span style="color:var(--muted);font-size:13px">↗</span></div>`;
+    if(t==="journal")return `<div class="${cls}"><div class="top"><span class="name">${name}</span><span class="money">${money}</span></div><div class="sub">${sub}</div><span class="cur">${cur}</span></div>`;
+    return `<div class="${cls}"><div class="name">${name}</div><div class="money">${money}</div><div class="sub">${sub}</div><span class="cur">${cur}</span><span class="arrow">↗</span></div>`;
+  }
+  if(t==="magazine")return `<div class="${cls}"><span class="cur">${cur}</span><div class="name">${name}</div><div class="sub">${sub}</div><span class="money"${style}>${money}</span><span class="arrow">↗</span></div>`;
+  return `<div class="${cls}"><span class="cur">${cur}</span><div class="name">${name}</div><div class="sub">${sub}</div><span class="money"${style}>${money}</span>${t==="objects"?'<span class="arrow">↗</span>':""}</div>`;
+}
+function renderAccounts(){
+  const d=data[state.data];const grid=state.layout==="grid";
+  const block=(t,list,debt)=>`<div class="${grid?"grid":"list"}">${list.map((a,i)=>card(t,a,i,debt,grid,list.length)).join("")}</div>`;
+  document.getElementById("accountPhones").innerHTML=themes.map(([t,n])=>{
+    const page=`<div class="lead"><span class="lbl">A PLACE FOR EVERY CURRENCY</span><h3>钱与欠款，都有位置。</h3><div class="lbl">账户保留原币；信用额度不计入资金。</div></div>
+    <div class="section"><small>AVAILABLE FUNDS</small><b>持有的资金</b></div>${block(t,d.funds,false)}
+    <div class="section" style="margin-top:28px"><small>TO REPAY</small><b>信用卡与借款</b></div>${block(t,d.debts,true)}
+    <div class="add btn primary">＋ 添加账户</div><div style="height:60px"></div>`;
+    return `<figure><figcaption>${n}</figcaption>${shell(t,`<div class="scroll">${page}</div>`)}</figure>`;
+  }).join("");
+}
+function bind(id,render){
+  document.getElementById(id).addEventListener("click",e=>{
+    const b=e.target.closest("button");if(!b)return;state[b.dataset.k]=b.dataset.v;
+    b.parentElement.querySelectorAll(`button[data-k="${b.dataset.k}"]`).forEach(x=>x.classList.toggle("on",x===b));render();
+  });
+}
+// A hash such as #mode=edit&data=extreme opens a given state directly.
+new URLSearchParams(location.hash.slice(1)).forEach((v,k)=>{if(k in state){state[k]=v;document.querySelectorAll(`button[data-k="${k}"]`).forEach(x=>x.classList.toggle("on",x.dataset.v===v))}});
+bind("dockControls",renderEntry);bind("accControls",renderAccounts);renderEntry();renderAccounts();
+</script>

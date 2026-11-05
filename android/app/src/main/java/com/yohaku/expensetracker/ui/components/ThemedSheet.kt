@@ -32,6 +32,9 @@ import com.yohaku.expensetracker.ui.theme.*
 /** Where the scrolled sheet body is visible, for content that must stay pinned while the body scrolls. */
 internal class SheetViewport(val scroll:ScrollState){var top by mutableFloatStateOf(0f);var bottom by mutableFloatStateOf(Float.POSITIVE_INFINITY)}
 internal val LocalSheetViewport=staticCompositionLocalOf<SheetViewport?>{null}
+/** Actions the sheet content pins below its scrolled body; the body's viewport ends above them. */
+internal class SheetFooter{var content by mutableStateOf<(@Composable ()->Unit)?>(null)}
+internal val LocalSheetFooter=staticCompositionLocalOf<SheetFooter?>{null}
 /** CSS position:sticky inside YSheet: pins below the stuck title (top) or to the sheet bottom. */
 internal fun Modifier.sheetSticky(top:Boolean)=composed {
     val viewport=LocalSheetViewport.current ?: return@composed this
@@ -58,6 +61,7 @@ internal fun Modifier.sheetSticky(top:Boolean)=composed {
     val scroll=scrollState
     var headerHeight by remember{mutableIntStateOf(0)}
     val viewport=remember(scroll){SheetViewport(scroll)}
+    val footer=remember{SheetFooter()}
     // Only the sheet's own scroller offsets for the stuck title. Nested scrollers (a multiline field's text
     // scroller, menus) must keep the platform spec, or they forward a cursor rect shifted by the title height.
     val platformScroll=LocalBringIntoViewSpec.current
@@ -102,11 +106,12 @@ internal fun Modifier.sheetSticky(top:Boolean)=composed {
                         }
                         Column(Modifier.fillMaxWidth().padding(bottom=if(journal)27.dp else 30.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
                             SheetCaption()
-                            Column(Modifier.fillMaxWidth().testTag("sheet-body-content").padding(top=if(objects)14.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(15.dp)){CompositionLocalProvider(LocalSheetViewport provides viewport,LocalBringIntoViewSpec provides platformScroll){content()}}
+                            Column(Modifier.fillMaxWidth().testTag("sheet-body-content").padding(top=if(objects)14.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(15.dp)){CompositionLocalProvider(LocalSheetViewport provides viewport,LocalSheetFooter provides footer,LocalBringIntoViewSpec provides platformScroll){content()}}
                             SheetColophon()
                         }
                     }
                 }
+                footer.content?.invoke()
             }
         }
     }

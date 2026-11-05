@@ -78,10 +78,12 @@ class EntryExperienceFlowTest {
         for((theme,language) in testLooks(this@EntryExperienceFlowTest)) {
             val s=fresh(theme,language);val book=s.book.id;val cash=s.accounts.first{it.type=="CASH"}.id;val bank=s.accounts.first{it.type=="BANK"}.id
             ui.runOnIdle{vm.startEntry(s);vm.changeEntry(book,vm.entry.value!!.copy(accountId=cash,categoryId=s.categories.first{it.kind=="EXPENSE"}.id,amount="150"));vm.navigate("entry")}
-            ui.onNodeWithTag("entry-save-button").performScrollTo().performClick()
+            // The save line floats over the form until its own slot scrolls into view.
+            ui.waitUntil(10000){ui.onAllNodesWithTag("entry-save-button").fetchSemanticsNodes().isNotEmpty()};ui.settleKeyboard();shot("$theme-$language-floating-save")
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.negativeBalanceReview.value!=null&&!vm.busy.value};assertTrue(snapshot().events.isEmpty());shot("$theme-$language-negative-balance")
             ui.onNodeWithTag("negative-balance-edit").performScrollTo().performClick();assertEquals("150",vm.entry.value!!.amount)
-            ui.onNodeWithTag("entry-save-button").performScrollTo().performClick();ui.waitUntil(10000){vm.negativeBalanceReview.value!=null&&!vm.busy.value}
+            ui.entryAction("entry-save-button").performClick();ui.waitUntil(10000){vm.negativeBalanceReview.value!=null&&!vm.busy.value}
             ui.onNodeWithTag("negative-balance-save").performScrollTo().performClick();ui.waitUntil(10000){vm.entry.value==null&&snapshot().events.size==1&&!vm.busy.value}
             assertEquals(-50L,snapshot().balance(s.accounts.first{it.id==cash}))
             ui.runOnIdle{vm.startTransfer(snapshot(),cash,bank);vm.changeEntry(book,vm.entry.value!!.copy(amount="10",toAmount="10",fromConfirmed=true,toConfirmed=true));vm.saveEntry(book)}

@@ -234,6 +234,8 @@ class SetupPresentationTest {
             ui.onNodeWithTag("lead-cover").performScrollTo()
             val origin=ui.onNodeWithTag("lead-cover").getUnclippedBoundsInRoot().top
             val nodes=ref.getJSONArray("nodes")
+            // Accounts now sit two to a line (2026-11-05), so the lists leave the source heights; later anchors are compared after removing that difference.
+            var listShift=0f
             for(j in 0 until nodes.length()){
                 val expected=nodes.getJSONObject(j);val key=expected.getString("key")
                 val node=when(key){
@@ -250,15 +252,16 @@ class SetupPresentationTest {
                 // C adds the dated cash-balance explanation after the original summary.
                 val note=ui.onNodeWithText(if(l=="zh")"资金只计截至今日已确认流水；未来已记流水在时间线中另列。" else "資金は本日までの確定記録のみ。将来日付の記録は予定に別掲。",substring=true).getUnclippedBoundsInRoot()
                 val extension=if(key in listOf("lead","summary"))0f else (note.bottom-note.top).value+15f
-                val top=(r.top-origin).value-extension;val height=(r.bottom-r.top).value
+                val top=(r.top-origin).value-extension-listShift;val height=(r.bottom-r.top).value
                 csv.appendText("$t,$l,$m,$key,$top,$height\n")
                 val lists=when(m){"empty"->0f;"funds"->1f;else->2f}
                 val expectedTop=expected.getDouble("top")+if(key=="add")magazineRules(t,-27f-lists) else 0f
                 val expectedHeight=expected.getDouble("height")+if(key in listOf("funds","debt")&&m!="empty"&&!(key=="debt"&&m=="funds"))magazineRules(t,-1f) else 0f
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(top-expectedTop)>1)errors+="$t/$l/$m/$key top $top vs $expectedTop"
-                    if(kotlin.math.abs(height-expectedHeight)>1)errors+="$t/$l/$m/$key height $height vs $expectedHeight"
+                    if(key !in listOf("funds","debt")&&kotlin.math.abs(height-expectedHeight)>1)errors+="$t/$l/$m/$key height $height vs $expectedHeight"
                 }
+                if(key in listOf("funds","debt"))listShift+=(height-expectedHeight).toFloat()
             }
             ui.onNodeWithTag("accounts-add").performScrollTo().assertIsDisplayed()
         }
@@ -526,9 +529,9 @@ class SetupPresentationTest {
             ui.onNodeWithTag("category-step-footer").performScrollTo().assertIsDisplayed()
         }
     }
-    @Test fun recordDetailCoreMatchesFrozenSourceAndEditRemainsReachable(){
+    @Test fun recordDetailCoreMatchesFrozenSource(){
         org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
-        val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");var edited=0
+        val theme=mutableStateOf("magazine");val language=mutableStateOf("zh")
         val i=InstrumentationRegistry.getInstrumentation()
         val suffix=InstrumentationRegistry.getArguments().getString("captureSuffix")?.let{"-$it"}.orEmpty()
         val folder=File(i.targetContext.filesDir,"verification/detail-core$suffix").also{it.mkdirs()}
@@ -538,7 +541,7 @@ class SetupPresentationTest {
             val event=EventEntity("fixture","native-fixture","EXPENSE","cash",null,300,"JPY",300,"2026-10-14","喫茶と余白","",revision=1)
             val snapshot=BookSnapshot(BookEntity("fixture","生活","JPY","2026-10-01"),listOf(account),emptyList(),listOf(event),emptyList(),null)
             Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal=if(theme.value=="objects")23.dp else 25.dp)){
-                RecordDetailCore(snapshot,event){edited++}
+                RecordDetailCore(snapshot,event)
             }
         }}
         for((t,l) in testLooks(this@SetupPresentationTest)){
@@ -546,9 +549,9 @@ class SetupPresentationTest {
             ui.onNodeWithTag("record-cover").performScrollTo()
             val core=ui.onNodeWithTag("record-detail-core").getUnclippedBoundsInRoot()
             val coverHeight=when(t){"journal"->233.891f;"objects"->230.391f;else->231.094f}
-            val editHeight=when(t){"journal"->50f;"objects"->52f;else->48f}
             val factsHeight=when(t){"journal"->212.375f;"objects"->184.375f;else->202.375f}
-            for((tag,expected) in listOf("record-cover" to (0f to coverHeight),"record-edit-button" to (coverHeight+22 to editHeight),"record-facts" to (coverHeight+44+editHeight to factsHeight))){
+            // The edit action moved down beside the refund action; the facts follow the cover after the same 22dp gap.
+            for((tag,expected) in listOf("record-cover" to (0f to coverHeight),"record-facts" to (coverHeight+22 to factsHeight))){
                 val r=ui.onNodeWithTag(tag).getUnclippedBoundsInRoot()
                 csv.appendText("$t,$l,$tag,${(r.top-core.top).value},${(r.bottom-r.top).value}\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
@@ -559,7 +562,6 @@ class SetupPresentationTest {
             ui.onNodeWithTag("record-fact-2").performScrollTo().assertIsDisplayed()
             ui.onNodeWithText("日常").assertExists()
             i.uiAutomation.takeScreenshot().let{bitmap->File(folder,"$t-$l.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
-            val before=edited;ui.onNodeWithTag("record-edit-button").performScrollTo().performClick();ui.runOnIdle{assertEquals(before+1,edited)}
         }
     }
     @Test fun impactRowsMatchSupplementaryDesignWithoutWritingRecords(){
@@ -591,7 +593,7 @@ class SetupPresentationTest {
             ui.onNodeWithTag("impact-budget").performScrollTo().assertIsDisplayed()
         }
     }
-    @Test fun fundingCardsAndGroupedListsMatchSourceInBothLanguages(){
+    @Test fun fundingCardsShareLinesInBothLanguages(){
         org.junit.Assume.assumeTrue("Requires visual=true", visualEnabled())
         val theme=mutableStateOf("magazine");val language=mutableStateOf("zh");val selected=mutableStateOf<String?>(null)
         val i=InstrumentationRegistry.getInstrumentation()
@@ -599,9 +601,15 @@ class SetupPresentationTest {
         val folder=File(i.targetContext.filesDir,"verification/account-lists$suffix").also{it.mkdirs()}
         val data=File(folder,"dimensions.csv").also{it.writeText("theme,language,firstHeight,secondHeight,listHeight,gap\n")}
         ui.setContent{YohakuTheme(theme.value,language.value){
+            // An odd number of funds with a long name, a large balance and a foreign account, plus two debts.
             val accounts=listOf(
                 AccountEntity("fixture","cash",word("随身现金","手元の現金"),"CASH","JPY",8600,"2026-10-12"),
-                AccountEntity("fixture","bank",word("银行账户","銀行口座"),"BANK","JPY",18400,"2026-10-12"))
+                AccountEntity("fixture","bank",word("银行账户","銀行口座"),"BANK","JPY",18400,"2026-10-12"),
+                AccountEntity("fixture","salary","三菱UFJ銀行 普通預金（給与振込用）","BANK","JPY",12345678,"2026-10-12"),
+                AccountEntity("fixture","wise","Wise USD","BANK","USD",1234567,"2026-10-12"),
+                AccountEntity("fixture","suica","Suica","IC","JPY",2140,"2026-10-12"),
+                AccountEntity("fixture","card","三井住友カード（NL）ゴールド","CREDIT","JPY",1042380,"2026-10-12"),
+                AccountEntity("fixture","loan",word("住房贷款","住宅ローン"),"LOAN","JPY",28500000,"2026-10-12"))
             val snapshot=BookSnapshot(BookEntity("fixture","生活","JPY","2026-10-12"),accounts,emptyList(),emptyList(),emptyList(),null)
             Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal=25.dp)){
                 AccountsScreen(snapshot,{},{selected.value=it.id})
@@ -614,16 +622,19 @@ class SetupPresentationTest {
             val second=ui.onNodeWithTag("account-bank").getUnclippedBoundsInRoot()
             val list=ui.onNodeWithTag("funds-account-list").getUnclippedBoundsInRoot()
             val h1=(first.bottom-first.top).value;val h2=(second.bottom-second.top).value
-            val listHeight=(list.bottom-list.top).value;val gap=listHeight-h1-h2
-            assertEquals("Original list gap $t/$l",13f,gap,1f)
-            if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
-                val expected=when(t){"journal"->107.891f;"objects"->162.484f;else->86.484f}
-                assertEquals("Original funding card height $t/$l",expected,h1,1f)
-                assertEquals("Original second card height $t/$l",expected+magazineRules(t,-1f),h2,1f)
-            }
+            val listHeight=(list.bottom-list.top).value;val gap=(second.top-first.bottom).value
+            // Two accounts share a line at equal height; narrow screens and enlarged text keep the original one-per-line list.
+            val config=i.targetContext.resources.configuration
+            if(config.screenWidthDp>360&&config.fontScale<=1.1f){
+                assertEquals("Same line $t/$l",first.top.value,second.top.value,1f)
+                assertEquals("Equal height $t/$l",h1,h2,1f)
+                assertEquals("Column gap $t/$l",if(t=="magazine")0f else 12f,(second.left-first.right).value,1f)
+            } else assertEquals("Original list gap $t/$l",13f,gap,1f)
             data.appendText("$t,$l,$h1,$h2,$listHeight,$gap\n")
             i.uiAutomation.takeScreenshot().let{bitmap->File(folder,"$t-$l.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
-            ui.onNodeWithTag("account-cash").performClick();ui.runOnIdle{assertEquals("cash",selected.value)}
+            ui.onNodeWithTag("account-loan").performScrollTo()
+            i.uiAutomation.takeScreenshot().let{bitmap->File(folder,"$t-$l-debts.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
+            ui.onNodeWithTag("account-cash").performScrollTo().performClick();ui.runOnIdle{assertEquals("cash",selected.value)}
             ui.onNodeWithTag("account-bank").performScrollTo().performClick();ui.runOnIdle{assertEquals("bank",selected.value)}
         }
     }

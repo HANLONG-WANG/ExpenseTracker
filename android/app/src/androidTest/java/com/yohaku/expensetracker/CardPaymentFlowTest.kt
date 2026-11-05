@@ -103,7 +103,7 @@ class CardPaymentFlowTest {
                 ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
                 shot("$theme-$language-payment-ime")
             }
-            tapTag("entry-save-button")
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val saved=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             val event=saved.visibleEvents.single{it.cardPaymentMode=="INSTALLMENT"}
@@ -143,7 +143,7 @@ class CardPaymentFlowTest {
             ui.runOnIdle{vm.editEntry(saved,event)}
             ui.onNodeWithTag("select-trigger-"+text("平台当前付款方式","現在の支払方法")).assertExists()
             textField(text("分期次数","分割回数")).assertTextEquals("3")
-            tapTag("entry-cancel-edit")
+            ui.entryAction("entry-cancel-edit").performClick()
             val final=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(4,final.events.size);assertEquals(200L,final.balance(final.accounts.single{it.name=="引落銀行"}));assertEquals(5400L,final.monthExpense("2026-10"))
             assertNull(vm.error.value)

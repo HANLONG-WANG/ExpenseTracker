@@ -127,9 +127,9 @@ class EntryFlowTest {
         ui.onNodeWithTag("field-账户名称").performTextInput("随身现金")
         ui.onNodeWithTag("field-期初余额").performTextReplacement("10000")
         tap("保存账户信息")
-        waitFor("保存记录")
+        ui.entryAction("entry-save-button")
         ui.waitUntil(10000){!vm.busy.value && vm.entry.value?.accountId!=null}
-        tap("保存记录")
+        ui.entryAction("entry-save-button").performClick()
         waitFor("日常的每一笔。")
         runBlocking {
             val b=repo.books.first().single();val s=repo.snapshot(b).first()
@@ -178,9 +178,9 @@ class EntryFlowTest {
             val stateLabel=if(language=="ja")"計上額の状態" else "入账金额状态"
             ui.onNodeWithTag("select-trigger-$stateLabel").performScrollTo().performClick()
             tap(if(language=="ja")"実額確認済" else "已确认实际金额")
-            refundTarget(ui.onNodeWithTag("entry-save-button"))
+            ui.entryAction("entry-save-button")
             refundShot("$theme-$language-foreign-entry-footer",false)
-            tap(if(language=="ja")"変更を保存" else "保存修改")
+            ui.entryAction("entry-save-button").performClick()
             val confirmLabel=if(language=="ja")"確認して保存" else "确认并保存"
             waitFor(confirmLabel)
             refundTarget(ui.onNode(hasText(confirmLabel) and hasClickAction()))
@@ -189,7 +189,7 @@ class EntryFlowTest {
             assertEquals("15100",vm.entry.value!!.accountAmount)
             assertEquals("100.00",vm.entry.value!!.amount)
             assertEquals(15000L,runBlocking{repo.snapshot(repo.dao.book(snapshot.book.id)!!).first()}.balance(snapshot.accounts.single()))
-            tap(if(language=="ja")"変更を保存" else "保存修改")
+            ui.entryAction("entry-save-button").performClick()
             tap(confirmLabel)
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val result=runBlocking{repo.snapshot(repo.dao.book(snapshot.book.id)!!).first()}
@@ -297,6 +297,7 @@ class EntryFlowTest {
             val actualHistory=ui.onNode(hasTestTag("event-${refund.id}") and hasAnyAncestor(hasTestTag("refund-history")))
             refundTarget(actualHistory).assertTextContains(text("已到账","入金済"),substring=true).assertTextContains("+¥5,920",substring=true)
             refundShot("$theme-$language-refund-history-actual",false)
+            refundTarget(ui.onNodeWithTag("record-edit-button"));refundShot("$theme-$language-detail-actions",false)
             refundTap(text("记录退款","返金を記録"))
             refundField(text("账户实际退款 / 待到账可填预计","口座の実返金額・未入金なら見込み")+" · JPY","8880")
             refundTap(text("预览退款变化","返金の変化を確認"))

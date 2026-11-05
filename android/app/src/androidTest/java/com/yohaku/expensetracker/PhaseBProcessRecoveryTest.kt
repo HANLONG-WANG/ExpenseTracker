@@ -109,7 +109,7 @@ class PhaseBProcessRecoveryTest {
         assertEquals(data.getString("activity"),draft.activityId);assertEquals(data.getString("reserve"),draft.reserveId);assertEquals("10000",draft.reserveAmount)
         assertTrue(draft.treatEnabled);assertEquals(TreatSplitMode.PERCENT,draft.treatMode);assertEquals("70",draft.treatWeights["ME"]);assertEquals("30",draft.treatWeights[data.getString("friend")])
         assertEquals(listOf(data.getString("activityAttachment")),draft.attachmentIds);assertEquals(listOf(data.getString("activityReceipt")),draft.receiptFileIds)
-        ui.onNodeWithTag("entry-save-button").performScrollTo().performClick();tap("確認して保存")
+        ui.entryAction("entry-save-button").performClick();tap("確認して保存")
         ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
         runBlocking {
             val book=data.getString("book");val saved=snapshot(book)

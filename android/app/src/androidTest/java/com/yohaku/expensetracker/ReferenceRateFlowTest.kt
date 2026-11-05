@@ -169,7 +169,7 @@ class ReferenceRateFlowTest {
             tapTag("select-trigger-$status");tapTag("select-option-$status-0")
             ui.onNodeWithTag("rate-use-USD-JPY").assertIsNotEnabled()
             shot("$theme-$language-rate-entry-confirmed")
-            tapTag("entry-save-button")
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val saved=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(7600L,saved.balance(saved.accounts.first{it.id==bank}));assertEquals(2400L,saved.monthExpense("2026-10"));assertEquals(1,saved.events.size)

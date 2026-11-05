@@ -115,7 +115,7 @@ class BudgetRecurrenceFlowTest {
             shot("$theme-$language-template-entry",true)
             ui.onNodeWithTag("entry-save-template").performScrollTo()
             shot("$theme-$language-template-entry-footer",true,false)
-            sheetTarget(ui.onNodeWithTag("entry-save-button")).performClick()
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             val entry=after.events.single{it.id!=paid.events.single().id}
@@ -281,9 +281,9 @@ class BudgetRecurrenceFlowTest {
             sheetTarget(ui.onNodeWithTag("field-"+text("原币金额","原通貨額")+" · USD")).performClick().performTextReplacement("20")
             sheetTarget(ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY")).performClick().performTextReplacement("2300")
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
-            sheetTarget(ui.onNodeWithTag("entry-save-button")).assert(hasText(text("记录消费并解除预留","支出を記録して予定を解除")))
+            ui.entryAction("entry-save-button").assert(hasText(text("记录消费并解除预留","支出を記録して予定を解除"),substring=true))
             shot("$theme-$language-recurring-estimated-payment-footer",true,false)
-            ui.onNodeWithTag("entry-save-button").performClick()
+            ui.entryAction("entry-save-button").performClick()
             tap(text("确认并保存","確認して保存"))
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val pending=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
@@ -299,7 +299,7 @@ class BudgetRecurrenceFlowTest {
             tap(text("确认实际入账金额","実計上額を確認"))
             ui.waitUntil(10000){vm.entry.value?.id==pending.events.single().id}
             sheetTarget(ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY")).performClick().performTextReplacement("2400")
-            sheetTarget(ui.onNodeWithTag("entry-save-button")).performClick()
+            ui.entryAction("entry-save-button").performClick()
             tap(text("确认并保存","確認して保存"))
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val actual=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
@@ -335,7 +335,7 @@ class BudgetRecurrenceFlowTest {
             sheetTarget(ui.onNodeWithTag("select-trigger-$selectLabel")).performClick()
             sheetTarget(ui.onNodeWithTag("select-option-$selectLabel-1")).performClick()
             ui.waitUntil(10000){vm.entry.value?.occurrenceLinkEventId==event&&!vm.busy.value}
-            ui.onNodeWithTag("entry-save-button").performScrollTo()
+            ui.entryAction("entry-save-button")
             shot("$theme-$language-recurring-payment-direct-link",true,false)
             ui.onNodeWithTag("entry-save-button").performClick()
             ui.waitUntil(10000){vm.occurrenceLinkReview.value!=null&&!vm.busy.value}
@@ -345,7 +345,7 @@ class BudgetRecurrenceFlowTest {
             assertEquals(event,vm.entry.value!!.occurrenceLinkEventId);assertEquals("2300",vm.entry.value!!.amount)
             assertEquals(2000L,runBlocking{repo.snapshot(repo.dao.book(book)!!).first().budgetProjection("2026-10").reserveMinor})
             restoration.emulateSavedInstanceStateRestore()
-            ui.onNodeWithTag("entry-save-button").performScrollTo().performClick()
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.occurrenceLinkReview.value!=null&&!vm.busy.value}
             tap(text("确认关联已有记录","既存記録との関連を確定"))
             ui.waitUntil(10000){vm.entry.value==null&&vm.occurrenceLinkReview.value==null&&!vm.busy.value}
@@ -382,7 +382,7 @@ class BudgetRecurrenceFlowTest {
             if(InstrumentationRegistry.getArguments().getString("realIme")=="true")ui.waitUntil(10000){android.view.inspector.WindowInspector.getGlobalWindowViews().any{androidx.core.view.ViewCompat.getRootWindowInsets(it)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}}
             ui.onNodeWithText(text("实际付款日期","実際の支払日")).performScrollTo().assertExists()
             assertEquals("2026-10-01",vm.entry.value!!.date)
-            ui.onNodeWithTag("entry-save-button").performScrollTo()
+            ui.entryAction("entry-save-button")
             ui.onNodeWithTag("occurrence-payment-note").assertExists()
             shot("$theme-$language-recurring-payment-footer",true,false)
             ui.onNodeWithTag("entry-save-button").performClick()
@@ -390,7 +390,7 @@ class BudgetRecurrenceFlowTest {
             assertEquals(0,runBlocking{repo.snapshot(repo.dao.book(book)!!).first().events.size})
             tap(text("返回表单继续编辑","フォームに戻って編集"))
             ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY").assertTextEquals("2300")
-            ui.onNodeWithTag("entry-save-button").performScrollTo().performClick()
+            ui.entryAction("entry-save-button").performClick()
             tap(text("确认并保存","確認して保存"))
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val after=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
@@ -459,7 +459,7 @@ class BudgetRecurrenceFlowTest {
             sheetTarget(ui.onNodeWithTag("occurrence-confirm-edit")).performClick()
             ui.waitUntil(10000){vm.entry.value?.occurrenceId==occurrence.id}
             ui.onNodeWithTag("field-"+text("金额","金額")+" · JPY").performScrollTo().performTextReplacement("21000")
-            tap(text("确认付款并解除预留","支払を確認して予定を解除"))
+            ui.entryAction("entry-save-button").assert(hasText(text("确认付款并解除预留","支払を確認して予定を解除"),substring=true)).performClick()
             ui.waitUntil(10000){vm.entryReview.value!=null&&!vm.busy.value}
             ui.onNodeWithTag("impact-reserve").assertExists()
             ui.onNodeWithText(text("原周期预计","元の定期見込み")).assertExists()

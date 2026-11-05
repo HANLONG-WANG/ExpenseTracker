@@ -324,7 +324,7 @@ class MediaFlowTest {
             pickFiles(listOf("receipt-1.png","receipt-2.png"))
             ui.waitUntil(15000){vm.entry.value?.receiptFileIds?.size==2&&!vm.busy.value}
             val d=vm.entry.value!!
-            ui.onNodeWithTag("entry-save-button").performScrollTo().performClick()
+            ui.entryAction("entry-save-button").performClick()
             ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
             val saved=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
             assertEquals(1,saved.events.size);assertEquals(9000L,saved.balance(saved.accounts.single()));assertEquals(5,saved.entryAttachments(saved.events.single().id).size);assertEquals(2,saved.entryReceiptImages(saved.events.single().id).size)
