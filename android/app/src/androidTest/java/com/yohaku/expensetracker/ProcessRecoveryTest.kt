@@ -76,6 +76,7 @@ class ProcessRecoveryTest {
         waitFor("金额 · JPY")
         ui.onNodeWithTag("field-金额 · JPY").assertTextEquals("777")
         ui.onNodeWithTag("field-商户 / 买了什么").assertTextEquals("喫茶と余白")
+        ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
         ui.onNodeWithTag("field-备注").performScrollTo().assertTextEquals("继续这一笔")
         runBlocking{
             val snapshot=repo.snapshot(repo.dao.book(data.getString("book"))!!).first()

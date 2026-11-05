@@ -11,7 +11,7 @@ import com.yohaku.expensetracker.ui.components.*
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun RefundForm(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onSave:()->Unit,
-    busy:Boolean,onCancel:()->Unit,mediaContent:@Composable ()->Unit={}) {
+    busy:Boolean,onCancel:()->Unit,mediaContent:@Composable ()->Unit={},mediaOption:@Composable ()->Unit={}) {
     val original=s.visibleEvents.find{it.id==d.originalEventId}
     if(original==null){YText(word("原消费已被删除，请先恢复。","元の支出を復元してください。"));YButton(word("返回","戻る"),onCancel);return}
     val account=s.accounts.find{it.id==d.accountId}
@@ -33,7 +33,7 @@ import com.yohaku.expensetracker.ui.theme.*
             "confirmed" as String? to word("已实际到账","実際に入金済"),"pending" as String? to word("待到账，不提前冲减消费","未入金・支出をまだ控除しない")
         ),{onChange(d.copy(settlementConfirmed=it=="confirmed"))})
         YText(word("沿用原分类与活动。按实际退款冲减原消费月，不增加到账月预算，不把汇差再记为到账月费用。","元のカテゴリ・シーンを保持。実返金額を元の購入月から控除し、入金月の予算は増やさず差額費用を重複計上しません。"),if(LocalYohaku.current.id=="journal")14 else 11,Modifier.padding(vertical=15.dp).testTag("refund-guidance"),color=LocalYohaku.current.muted,lineHeightMultiplier=2f,cssLineBox=true)
-        YField(word("备注","メモ"),d.note,{onChange(d.copy(note=it))})
+        EntryNotes(d.id,d.note,{onChange(d.copy(note=it))}){mediaOption()}
         mediaContent()
         YButton(word("预览退款变化","返金の変化を確認"),onSave,primary=true,enabled=!busy&&account!=null)
         YLink(word("取消修改并返回","変更を破棄して戻る"),onCancel)

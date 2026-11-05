@@ -61,13 +61,13 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 
 表单的两个添加入口每次弹出应用选择窗口（GET_CONTENT + OPENABLE + 多选 + chooser），立即复制临时 URI。小票另有“拍照”：`TakePicture` 调起系统默认相机，一次一张，写入 `cache/camera/IMG_yyyyMMdd_HHmmss.jpg`（FileProvider 授权，不声明 CAMERA 权限），之后按小票导入并删除临时文件。启动器挂在 `MainActivity`（`LocalReceiptCamera`），待处理的账本/表单会话/路径存于 saved state，拍照期间进程被回收也能导入已保存草稿。应用状态在回到前台重新订阅时保留上次结果（仅首次读取和手动重试显示启动页），从相机或其他应用返回超过 5 秒也不会重建页面，记账弹层与滚动位置保持不变。云端分析台的选择器不变。
 
-导入时可按全局“照片保存方式”设置优化（默认节省空间），也可在本次表单切换原样保存。节省空间模式下，所有 MIME 为 `image/*` 的图片都重新编码，不按截图、PNG、GIF 等格式豁免：小票短边 ≤ 2000px、JPEG 质量90；图片附件长边 ≤ 2560px、JPEG 质量85；等比缩小且不放大，EXIF 方向烘焙到像素，输出 sRGB SDR，去掉 gainmap，透明区域合成白底，不保留 EXIF/XMP、GPS、机型或动态视频。优化后 MIME 为 `image/jpeg`、扩展名 `.jpg`；原样保存及非图片保持字节不变。源文件完整读入后若格式不支持或损坏而无法解码，原样保存并提示数量；读取、写入或数据库失败不走回退。
+导入时可按全局“照片保存方式”设置优化（默认节省空间），也可在本次表单切换原样保存；在记录详情页为没有小票的记录补加小票时直接使用全局设置。节省空间模式下，所有 MIME 为 `image/*` 的图片都重新编码，不按截图、PNG、GIF 等格式豁免：小票短边 ≤ 2000px、JPEG 质量90；图片附件长边 ≤ 2560px、JPEG 质量85；等比缩小且不放大，EXIF 方向烘焙到像素，输出 sRGB SDR，去掉 gainmap，透明区域合成白底，不保留 EXIF/XMP、GPS、机型或动态视频。优化后 MIME 为 `image/jpeg`、扩展名 `.jpg`；原样保存及非图片保持字节不变。源文件完整读入后若格式不支持或损坏而无法解码，原样保存并提示数量；读取、写入或数据库失败不走回退。
 
 上传打包与备份使用已保存的图片字节，打包时不再转码；ZIP 中 `sha256` / `size_bytes` 是实际入包字节的校验值与大小，MIME 也对应保存后的文件。
 
-设置→数据→照片保存方式选择默认值；表单“原样保存（不压缩）”开关按附件会话保留，对之后的批次生效。偏好全局保存并进入完整备份，旧备份缺字段时默认节省空间。每张独立提交、失败继续，附件区显示进度，结束汇总成功/无法优化/失败及首个失败原因。缩略图长边512px，预览长边4096px，均精确等比缩放。没有历史图片迁移、去重或数据库变更。
+设置→数据→照片保存方式选择默认值；表单“原样保存（不压缩）”开关位于默认折叠的“备注和其他”（与备注、历史补录同区），按附件会话保留，对之后的批次生效。记录详情页在没有小票图片时可直接选图或拍照补小票，按全局设置保存，一批生成一版小票、不新增记录修订。偏好全局保存并进入完整备份，旧备份缺字段时默认节省空间。每张独立提交、失败继续，附件区显示进度，结束汇总成功/无法优化/失败及首个失败原因。缩略图长边512px，预览长边4096px，均精确等比缩放。没有历史图片迁移、去重或数据库变更。
 
-验证：`PhotoStorageTest` 覆盖尺寸/文件名/旧备份默认；`MediaStorageTest` 覆盖优化、EXIF/GPS、透明白底、原样字节、解码回退及读取/取消清理；`MediaFlowTest.chooserAlwaysWrapsGetContentAndParsesMultipleOrSingleUris` 检查 Intent，`photoDefaultToggleProgressAndBatchSummaryAcrossThemes` 检查设置默认、开关、进度及部分失败汇总；`BackupRoundTripTest` 增加照片偏好往返。仪器测试仅编译，尚未运行；UI 方法需在设备上用 `looks=all` + `visual=true` 运行并查看 `files/verification/media-import/` 截图。本轮不启动模拟器、不运行 connected 测试。
+验证：`PhotoStorageTest` 覆盖尺寸/文件名/旧备份默认；`MediaStorageTest` 覆盖优化、EXIF/GPS、透明白底、原样字节、解码回退及读取/取消清理；`MediaFlowTest.chooserAlwaysWrapsGetContentAndParsesMultipleOrSingleUris` 检查 Intent，`photoDefaultToggleProgressAndBatchSummaryAcrossThemes` 检查设置默认、开关、进度及部分失败汇总；`BackupRoundTripTest` 增加照片偏好往返。仪器测试仅编译，尚未运行；UI 方法需在设备上用 `looks=all` + `visual=true` 运行并查看 `files/verification/media-import/` 截图。本轮不启动模拟器、不运行 connected 测试。2026-11-05 补充 `MediaFlowTest.recordDetailAddsFirstReceiptsWithGlobalPhotoSetting`（详情页选图/拍照、全局两种保存方式、一版小票、入口消失及重复补加被拒），与 `MediaStorageTest`、`MediaFlowTest` 其余方法一起以 `looks=all visual=true` 在模拟器运行通过，截图 `media-import/*-record-upload.png` 已查看。
 
 ## 周期账单一键确认与记账模板（2026-11-01 源码更新）
 

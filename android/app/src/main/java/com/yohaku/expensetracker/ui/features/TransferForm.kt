@@ -97,7 +97,7 @@ import com.yohaku.expensetracker.ui.theme.*
         YDateFields(dates,owner,{owner=it},{index,value->change(when{index==0->d.copy(date=value);index==1->d.copy(toDate=value);d.feePosition==TransferFeePosition.SEPARATE&&index==2->d.copy(feeDate=value);else->d.copy(referenceQueryDate=value)})})
         if(d.feePosition==TransferFeePosition.SEPARATE)YToggle(word("手续费已经实际扣收","手数料は引落済み"),d.feeConfirmed,{change(d.copy(feeConfirmed=it))})
         YField(word("名称 / 说明","名称 / 内容"),d.merchant,{change(d.copy(merchant=it))})
-        YField(word("备注","メモ"),d.note,{change(d.copy(note=it))})
+        EntryNotes(d.id,d.note,{change(d.copy(note=it))}){MediaPreserveToggle(d,vm)}
         TransferStateNote(d.fromConfirmed,d.toConfirmed)
         YText(word("只记录账务，不向银行提交转账。转账本金不计消费，两端按各自实际确认更新。","記録のみで銀行に送金指示しません。元金は支出に含めず、各側の実際の確認で残高を更新します。"),11,color=LocalYohaku.current.muted)
         EntryMediaPanel(s,d,vm)

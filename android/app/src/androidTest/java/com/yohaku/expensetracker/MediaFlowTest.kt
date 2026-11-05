@@ -38,7 +38,7 @@ class MediaFlowTest {
         root=File(File(context.filesDir,"attachments"),"ui-media-"+java.util.UUID.randomUUID()).apply{mkdirs()}
         db=Room.inMemoryDatabaseBuilder(context,YohakuDatabase::class.java).build();repo=LedgerRepository(db,mediaRoot=root)
         vm=AppViewModel(repo,AppPreferences(context), testReferenceRates(AppPreferences(context),repo.clock));ui.setContent{
-            var camera:((String,String)->Unit)?=null
+            var camera:((String,ReceiptTarget)->Unit)?=null
             androidx.compose.runtime.CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides cameraOwner){camera=rememberReceiptCamera(vm)}
             androidx.compose.runtime.CompositionLocalProvider(LocalReceiptCamera provides camera){NativeApp(vm)}
         }
@@ -183,6 +183,7 @@ class MediaFlowTest {
                 ui.onNodeWithTag("sheet-close").performClick()
                 val snapshot=runBlocking{repo.snapshot(repo.dao.book(book)!!).first()}
                 ui.runOnIdle{vm.startEntry(snapshot);vm.changeEntry(book,vm.entry.value!!.copy(categoryId=snapshot.categories.first().id));vm.navigate("entry")}
+                ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
                 val toggle=ui.onNodeWithTag("media-preserve-original")
                 toggle.performScrollTo().assertIsOn()
                 ui.waitUntil(10000){!vm.busy.value}
@@ -246,6 +247,60 @@ class MediaFlowTest {
             cameraPhoto=photo
             ui.runOnIdle{vm.leaveEntry(book,false,"home")};ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
         }
+    }
+    /** A saved record without receipts takes its first ones on the detail page; storage follows the global photo setting. */
+    @Test fun recordDetailAddsFirstReceiptsWithGlobalPhotoSetting() {
+        val context=instrumentation.targetContext;val previous=runBlocking{vm.preferences.photoSaveOriginal.first()}
+        val png=java.io.ByteArrayOutputStream().also{out->Bitmap.createBitmap(40,20,Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.BLUE);compress(Bitmap.CompressFormat.PNG,100,out);recycle()}}.toByteArray()
+        val pick=File(context.filesDir,"attachments/ui-source-record.png").apply{writeBytes(png)}
+        val uri=androidx.core.content.FileProvider.getUriForFile(context,context.packageName+".files",pick,"record.png").buildUpon().appendQueryParameter("mime","image/png").build()
+        cameraPhoto=java.io.ByteArrayOutputStream().also{out->Bitmap.createBitmap(2400,4800,Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.WHITE);compress(Bitmap.CompressFormat.JPEG,95,out);recycle()}}.toByteArray()
+        fun current()=(vm.state.value as? AppState.Ready)?.snapshot
+        fun openDetail(event:String){ui.runOnIdle{vm.navigate("home")};ui.revealOnPage("event-$event").performClick();ui.waitUntil(10000){vm.route.value=="detail"}}
+        try {
+            for((theme,language) in testLooks(this@MediaFlowTest)) {
+                val (book,picked,shot)=runBlocking {
+                    val id=repo.createBook("补小票 $theme $language",Currency.JPY,theme,language);repo.updateBook(repo.dao.book(id)!!.copy(initialized=true))
+                    val account=repo.saveAccount(id,"现金",AccountType.CASH,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01");val category=repo.saveCategory(id,"生活",EntryKind.EXPENSE,null)
+                    repo.saveEntry(id,EntryDraft(accountId=account,categoryId=category,amount="300",date="2026-10-14",merchant="选图补票"))
+                    repo.saveEntry(id,EntryDraft(accountId=account,categoryId=category,amount="400",date="2026-10-15",merchant="拍照补票"))
+                    val events=repo.snapshot(repo.dao.book(id)!!).first().events
+                    vm.preferences.select(id);Triple(id,events.first{it.merchant=="选图补票"}.id,events.first{it.merchant=="拍照补票"}.id)
+                }
+                runBlocking{vm.preferences.setPhotoSaveOriginal(true)}
+                ui.waitUntil(10000){current()?.book?.id==book&&!vm.busy.value&&vm.photoSaveOriginal.value==true}
+                openDetail(picked)
+                ui.onNodeWithTag("record-add-receipts").performScrollTo().assertIsEnabled()
+                if(visualEnabled()) {
+                    ui.waitForIdle();android.os.SystemClock.sleep(600) // Compose idleness does not wait for the sheet's entrance animation.
+                    val bitmap=instrumentation.uiAutomation.takeScreenshot();val folder=File(context.filesDir,"verification/media-import").apply{mkdirs()}
+                    File(folder,"$theme-$language-record-upload.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+                }
+                val revision=current()!!.events.first{it.id==picked}.revision
+                ui.runOnIdle{vm.importRecordReceipts(context,book,picked,listOf(uri,uri))}
+                ui.waitUntil(10000){!vm.busy.value&&current()?.entryReceiptImages(picked)?.size==2}
+                val s=current()!!
+                assertEquals(1,s.receipts.single{it.eventId==picked}.revision)
+                assertEquals(revision,s.events.first{it.id==picked}.revision)
+                s.entryReceiptImages(picked).forEach{assertArrayEquals(png,repo.mediaFile(it).readBytes())}
+                ui.onAllNodesWithTag("record-add-receipts").assertCountEquals(0)
+                ui.runOnIdle{vm.error.value=null;vm.importRecordReceipts(context,book,picked,listOf(uri))}
+                ui.waitUntil(10000){!vm.busy.value&&vm.error.value!=null}
+                assertEquals(2,current()!!.entryReceiptImages(picked).size);ui.runOnIdle{vm.error.value=null}
+
+                runBlocking{vm.preferences.setPhotoSaveOriginal(false)}
+                ui.waitUntil(10000){vm.photoSaveOriginal.value==false}
+                openDetail(shot)
+                ui.onNodeWithTag("record-take-receipt").performScrollTo().performClick()
+                ui.waitUntil(15000){!vm.busy.value&&current()?.entryReceiptImages(shot)?.size==1}
+                val stored=current()!!.entryReceiptImages(shot).single()
+                assertEquals("image/jpeg",stored.mime)
+                val size=android.graphics.BitmapFactory.Options().apply{inJustDecodeBounds=true}.also{android.graphics.BitmapFactory.decodeFile(repo.mediaFile(stored).path,it)}
+                assertEquals(2000,minOf(size.outWidth,size.outHeight))
+                assertTrue(File(context.cacheDir,"camera").listFiles().isNullOrEmpty())
+                ui.onAllNodesWithTag("record-take-receipt").assertCountEquals(0)
+            }
+        }finally{runBlocking{vm.preferences.setPhotoSaveOriginal(previous)};pick.delete()}
     }
     @Test fun actualDocumentsImagesAudioAndSeparateUidReadOnlyViewer() {
         org.junit.Assume.assumeTrue("Requires system=true", testOption("system"))

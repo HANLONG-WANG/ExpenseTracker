@@ -279,12 +279,12 @@ import kotlinx.serialization.encodeToString
                 val transferTitle=if(fromCurrency!=null&&toCurrency!=null&&fromCurrency==toCurrency)word("账户转账","口座振替")else word("换汇与转账","両替と振替")
                 YSheet(if(activeDraft.kind==EntryKind.TRANSFER)transferTitle else if(activeDraft.kind==EntryKind.REFUND)word("退款 · 原币与实际到账","返金・原通貨と実入金") else if(route=="category-picker")word("先选一个分类","まずカテゴリを選ぶ") else if(draft?.id!=null)word("编辑这笔记录","この記録を編集") else if(activeDraft.occurrenceId!=null)word("确认周期账单","定期支払を確認") else word("记一笔","一筆を記録"),{requestLeave()},if(route=="category-picker")rememberScrollState() else entryScroll){
                     if(activeDraft.kind==EntryKind.TRANSFER)TransferForm(snapshot,activeDraft,vm,busy,{editAccount=null;sheet="account"},{vm.leaveEntry(book.id,false,entryReturnRoute)})
-                    else if(activeDraft.kind==EntryKind.REFUND)RefundForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},busy,{vm.leaveEntry(book.id,false,entryReturnRoute)},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
+                    else if(activeDraft.kind==EntryKind.REFUND)RefundForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},busy,{vm.leaveEntry(book.id,false,entryReturnRoute)},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)},mediaOption={MediaPreserveToggle(activeDraft,vm)})
                     else if(route=="category-picker")CategoryPicker(vm,snapshot,activeDraft,{vm.changeEntry(book.id,it)},{categoryParent=it;categoryKind=activeDraft.kind;editCategory=null;sheet="category"},{vm.navigate("entry")})
                     else EntryForm(snapshot,activeDraft,{vm.changeEntry(book.id,it)},{vm.saveEntry(book.id)},{editAccount=null;sheet="account"},{vm.navigate("category-picker")},busy,{
                         if(entryReturnRoute!="detail"){selectedEventId=activeDraft.id;detailReturnRoute=entryReturnRoute}
                         vm.leaveEntry(book.id,false,entryReturnRoute){if(entryReturnRoute!="detail")vm.navigate("detail")}
-                    },focusAmount=amountFocusSession==activeDraft.mediaSession,onAmountFocused={vm.amountFocusSession.value=null},onSaveTemplate={sheet="save-template"},referenceService=vm.referenceRates,onPreviewExisting={eventId->vm.previewOccurrenceLink(book.id,activeDraft.occurrenceId!!,eventId)},onRate={sheet="manual-rate"},locationContent={EntryLocation(snapshot,activeDraft,vm){vm.changeEntry(book.id,it)}},onExitActivity={vm.execute{vm.repository.setActivityMode(book.id,true)};vm.changeEntry(book.id,activeDraft.copy(activityId=null,reserveId=null,reserveAmount="",treatEnabled=false,treatFriends=emptyList(),treatWeights=emptyMap()))},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)})
+                    },focusAmount=amountFocusSession==activeDraft.mediaSession,onAmountFocused={vm.amountFocusSession.value=null},onSaveTemplate={sheet="save-template"},referenceService=vm.referenceRates,onPreviewExisting={eventId->vm.previewOccurrenceLink(book.id,activeDraft.occurrenceId!!,eventId)},onRate={sheet="manual-rate"},locationContent={EntryLocation(snapshot,activeDraft,vm){vm.changeEntry(book.id,it)}},onExitActivity={vm.execute{vm.repository.setActivityMode(book.id,true)};vm.changeEntry(book.id,activeDraft.copy(activityId=null,reserveId=null,reserveAmount="",treatEnabled=false,treatFriends=emptyList(),treatWeights=emptyMap()))},mediaContent={EntryMediaPanel(snapshot,activeDraft,vm)},mediaOption={MediaPreserveToggle(activeDraft,vm)})
                 }
             }
             occurrenceConfirmation?.takeIf{it.bookId==book.id}?.let{c->OccurrenceConfirmationSheet(snapshot,c,vm){
@@ -491,7 +491,7 @@ import kotlinx.serialization.encodeToString
     CategoryStepFooter()
 }
 
-@Composable internal fun EntryForm(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onSave:()->Unit,onAccount:()->Unit,onCategory:()->Unit,busy:Boolean,onCancelEdit:()->Unit,onRate:()->Unit={},onPreviewExisting:(String)->Unit={},onExitActivity:()->Unit={},referenceService:ReferenceRates?=null,mediaContent:@Composable ()->Unit={},locationContent:@Composable ()->Unit={},focusAmount:Boolean=false,onAmountFocused:()->Unit={},onSaveTemplate:()->Unit={}) {
+@Composable internal fun EntryForm(s:BookSnapshot,d:EntryDraft,onChange:(EntryDraft)->Unit,onSave:()->Unit,onAccount:()->Unit,onCategory:()->Unit,busy:Boolean,onCancelEdit:()->Unit,onRate:()->Unit={},onPreviewExisting:(String)->Unit={},onExitActivity:()->Unit={},referenceService:ReferenceRates?=null,mediaContent:@Composable ()->Unit={},mediaOption:@Composable ()->Unit={},locationContent:@Composable ()->Unit={},focusAmount:Boolean=false,onAmountFocused:()->Unit={},onSaveTemplate:()->Unit={}) {
     val t=LocalYohaku.current;val eligible=s.entryAccounts(d.kind,d.accountId.takeIf{d.id!=null});val a=eligible.find{it.id==d.accountId};val currency=a?.currency ?: s.book.currency
     val foreign=d.originalCurrency!=null&&d.originalCurrency.name!=currency
     val occurrence=s.occurrences.find{it.id==d.occurrenceId}
@@ -562,9 +562,9 @@ import kotlinx.serialization.encodeToString
         YDateFields(listOf((if(confirmingOccurrence)word("实际付款日期","実際の支払日")else word("日期","日付")) to d.date)+if(foreign)listOf(word("实际 / 预计入账日期","実際・予定計上日") to d.settlementDate)else emptyList(),activeDate,{activeDate=it},{index,date->
             onChange(if(index==0)d.copy(date=date,settlementDate=if(d.settlementDate==d.date)date else d.settlementDate)else d.copy(settlementDate=date))
         })
-        Column(Modifier.fillMaxWidth()){
-            EntryNotes(d.id,d.note,{onChange(d.copy(note=it))})
+        EntryNotes(d.id,d.note,{onChange(d.copy(note=it))}){
             HistoricalOpeningToggle(s.book.startDate,d.historicalIncluded){onChange(d.copy(historicalIncluded=it))}
+            mediaOption()
         }
         mediaContent()
         if(confirmingOccurrence) {

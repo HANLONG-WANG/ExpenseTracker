@@ -1000,6 +1000,7 @@ class DraftEditingFlowTest {
             assertEquals(9700L,saved.balance(saved.accounts.single()))
             ui.runOnIdle{vm.editEntry(saved,saved.events.single())}
             ui.waitUntil(10000){vm.entry.value!=null}
+            ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
             ui.onNodeWithTag("field-メモ").performScrollTo().assertTextEquals("保留的小记 $theme")
             ui.runOnIdle{vm.discardEntry(a)}
             ui.waitUntil(10000){vm.entry.value==null}

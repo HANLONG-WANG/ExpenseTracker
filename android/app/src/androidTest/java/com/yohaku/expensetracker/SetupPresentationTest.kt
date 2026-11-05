@@ -415,7 +415,8 @@ class SetupPresentationTest {
             val tags=mapOf("summary" to "entry-summary","amount" to "entry-amount","quick" to "entry-quick-amount","base" to "entry-base-caption","account" to if(l=="zh")"select-field-付款账户" else "select-field-支払口座","merchant" to "entry-merchant-input","date" to "date-field-grid","notes" to "entry-notes","historical" to if(l=="zh")"toggle-历史补录：已包含在期初余额" else "toggle-履歴追加：期首残高に含まれる","save" to "entry-save-button")
             val nodes=ref.getJSONArray("nodes")
             for(j in 0 until nodes.length()){
-                val expected=nodes.getJSONObject(j);val key=expected.getString("key");if(key=="tools")continue;val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
+                // "备注和其他" (2026-11-05) folds the historical toggle into the notes section, so it, the save area below and the expanded section height leave the source layout.
+                val expected=nodes.getJSONObject(j);val key=expected.getString("key");if(key=="tools"||key=="historical"||key=="save")continue;val r=ui.onNodeWithTag(tags.getValue(key)).getUnclippedBoundsInRoot()
                 // B/C add original-currency selection and an explicit manual-rate action.
                 // Compare the retained A anchors after removing only those measured additions.
                 val currencyField=ui.onNodeWithTag(if(l=="zh")"select-field-消费 / 收付原币" else "select-field-取引の原通貨").getUnclippedBoundsInRoot()
@@ -427,9 +428,10 @@ class SetupPresentationTest {
                 csv.appendText("$t,$l,$expanded,$key,$actualTop,$actualHeight\n")
                 if(i.targetContext.resources.configuration.let{it.fontScale==1f&&it.screenWidthDp==390}){
                     if(kotlin.math.abs(actualTop-expected.getDouble("top"))>1)errors+="$t/$l/$expanded/$key top: $actualTop vs ${expected.getDouble("top")}" 
-                    if(kotlin.math.abs(actualHeight-expected.getDouble("height"))>1)errors+="$t/$l/$expanded/$key height: $actualHeight vs ${expected.getDouble("height")}" 
+                    if(!(expanded&&key=="notes")&&kotlin.math.abs(actualHeight-expected.getDouble("height"))>1)errors+="$t/$l/$expanded/$key height: $actualHeight vs ${expected.getDouble("height")}" 
                 }
             }
+            assertEquals(expanded,ui.onAllNodesWithTag(tags.getValue("historical")).fetchSemanticsNodes().isNotEmpty())
             ui.onNodeWithTag("entry-save-button").performScrollTo().assertIsDisplayed()
             i.uiAutomation.takeScreenshot().let{bitmap->File(folder,"$t-$l-$expanded-bottom.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}
         }

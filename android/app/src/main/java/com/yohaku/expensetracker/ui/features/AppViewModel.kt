@@ -342,13 +342,25 @@ class AppViewModel(val repository:LedgerRepository,val preferences:AppPreference
                         }}
                     }catch(e:CancellationException){throw e}catch(e:Exception){failed++;if(firstFailure==null)firstFailure=e.message?:"无法导入文件 / ファイルを取り込めません"}
                 }
-                withContext(Dispatchers.Main){
-                    val zh=listOfNotNull("已导入 $success 个文件",fallback.takeIf{it>0}?.let{"$it 张图片无法优化，已原样保存"},firstFailure?.let{"失败 $failed 个：${it.substringBefore(" / ")}"}).joinToString("；")
-                    val ja=listOfNotNull("$success 件を取り込みました",fallback.takeIf{it>0}?.let{"$it 枚は最適化できず、そのまま保存しました"},firstFailure?.let{"失敗 $failed 件：${it.substringAfter(" / ",it)}"}).joinToString("。")
-                    notice.value=AppNotice(++noticeSequence,bookId,zh,ja)
-                }
+                importNotice(bookId,MediaBatchResult(success,fallback,failed,firstFailure))
             }finally{mediaImportProgress.value=null;onFinish()}
         }
+    }
+    /** Adds the first receipt images to a saved record from its detail page, using the global photo storage setting. */
+    fun importRecordReceipts(context:android.content.Context,bookId:String,eventId:String,uris:List<android.net.Uri>,onFinish:()->Unit={}) {
+        if(uris.isEmpty()){onFinish();return}
+        execute {
+            try {
+                val result=repository.importRecordReceipts(bookId,eventId,uris.map{mediaSource(context,it)},preferences.photoSaveOriginal.first()){mediaImportProgress.value=MediaImportProgress(eventId,it,uris.size)}
+                importNotice(bookId,result)
+            }finally{mediaImportProgress.value=null;onFinish()}
+        }
+    }
+    private suspend fun importNotice(bookId:String,result:MediaBatchResult)=withContext(Dispatchers.Main){
+        val (success,fallback,failed,firstFailure)=result
+        val zh=listOfNotNull("已导入 $success 个文件",fallback.takeIf{it>0}?.let{"$it 张图片无法优化，已原样保存"},firstFailure?.let{"失败 $failed 个：${it.substringBefore(" / ")}"}).joinToString("；")
+        val ja=listOfNotNull("$success 件を取り込みました",fallback.takeIf{it>0}?.let{"$it 枚は最適化できず、そのまま保存しました"},firstFailure?.let{"失敗 $failed 件：${it.substringAfter(" / ",it)}"}).joinToString("。")
+        notice.value=AppNotice(++noticeSequence,bookId,zh,ja)
     }
     private fun entrySaved(bookId:String,d:EntryDraft) {
         negativeBalanceReview.value=null;entryBaseline=null;entryReview.value=null;reviewRefreshed.value=false

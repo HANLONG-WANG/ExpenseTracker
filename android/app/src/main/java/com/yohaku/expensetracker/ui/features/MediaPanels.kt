@@ -54,8 +54,6 @@ import kotlinx.coroutines.withContext
     val receipts=rememberLauncherForActivityResult(MediaPickerContract("image/*","选择小票图片应用 / レシート画像を選ぶアプリ")){uris->vm.importFiles(context,s.book.id,uris,true)}
     var preview by rememberSaveable(d.mediaSession){mutableStateOf<String?>(null)}
     ThemeSection(word("普通附件","添付ファイル"),"ATTACHMENTS")
-    if(preserveOriginal!=null)YToggle(word("原样保存（不压缩）","そのまま保存（圧縮なし）"),preserveOriginal,{vm.setMediaImportOption(d.mediaSession,it)},Modifier.testTag("media-preserve-original"))
-    YText(word("关闭时，之后导入的图片会节省空间保存；已保存的文件不变。","オフにすると、これから取り込む画像を省容量で保存します。保存済みファイルは変わりません。"),11,color=LocalYohaku.current.muted)
     progress?.takeIf{it.session==d.mediaSession}?.let{YText(word("正在导入 ${it.current}/${it.total}","取り込み中 ${it.current}/${it.total}"),12,Modifier.testTag("media-import-progress"))}
     if(d.attachmentIds.isNotEmpty())Column(verticalArrangement=Arrangement.spacedBy(9.dp)) {
         d.attachmentIds.forEach{id->s.files.find{it.id==id}?.let{file->MediaFileRow(vm.repository,file,{preview=id},{vm.changeEntry(s.book.id,d.copy(attachmentIds=d.attachmentIds-id))})}}
@@ -73,27 +71,42 @@ import kotlinx.coroutines.withContext
     val camera=LocalReceiptCamera.current
     Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
         MaterialUpload(word("选择图片","画像を選ぶ"),"media-add-receipts",!busy&&preserveOriginal!=null,Modifier.weight(1f)){receipts.launch(Unit)}
-        if(camera!=null)MaterialUpload(word("拍照","撮影する"),"media-take-receipt",!busy&&preserveOriginal!=null,Modifier.weight(1f),{YIcon("camera",Modifier.size(18.dp),if(LocalYohaku.current.id=="objects")Color(0xffae815a)else LocalYohaku.current.accent)}){camera(s.book.id,d.mediaSession)}
+        if(camera!=null)MaterialUpload(word("拍照","撮影する"),"media-take-receipt",!busy&&preserveOriginal!=null,Modifier.weight(1f),{ReceiptCameraIcon()}){camera(s.book.id,ReceiptTarget.Draft(d.mediaSession))}
     }
     YText(word("小票独立于普通附件，保存的小票图片不会被修改，不自动识别或新增消费。","レシートは添付と分け、保存済みのレシート画像は変更しません。自動認識や支出の追加は行いません。"),11,color=LocalYohaku.current.muted)
     d.id?.let { ReceiptProducts(s,it,vm) }
     preview?.let{id->s.files.find{it.id==id}?.let{file->MediaPreview(vm.repository,file,{preview=null},if(id in d.receiptFileIds)d.receiptFileIds.mapNotNull{key->s.files.find{it.id==key}}else d.attachmentIds.mapNotNull{key->s.files.find{it.id==key}})}}
 }
-/** Launches the default camera for one receipt photo; provided at app level so a result still lands in the stored draft after process recreation. */
-internal val LocalReceiptCamera=staticCompositionLocalOf<((bookId:String,session:String)->Unit)?>{null}
-@Composable internal fun rememberReceiptCamera(vm:AppViewModel):(String,String)->Unit {
+/** The form's "原样保存" switch; [EntryMediaPanel] seeds the per-session option from the global setting. */
+@Composable internal fun MediaPreserveToggle(d:EntryDraft,vm:AppViewModel) {
+    val defaultOriginal by vm.photoSaveOriginal.collectAsStateWithLifecycle()
+    val option by vm.mediaImportOption.collectAsStateWithLifecycle()
+    val preserveOriginal=option?.takeIf{it.session==d.mediaSession}?.preserveOriginal?:defaultOriginal?:return
+    YToggle(word("原样保存（不压缩）","そのまま保存（圧縮なし）"),preserveOriginal,{vm.setMediaImportOption(d.mediaSession,it)},Modifier.testTag("media-preserve-original"))
+    YText(word("关闭时，之后导入的图片会节省空间保存；已保存的文件不变。","オフにすると、これから取り込む画像を省容量で保存します。保存済みファイルは変わりません。"),11,color=LocalYohaku.current.muted)
+}
+/** Where a camera photo lands: the open form's media session, or a saved record that has no receipt images yet. */
+internal sealed interface ReceiptTarget {
+    data class Draft(val session:String):ReceiptTarget
+    data class Record(val eventId:String):ReceiptTarget
+}
+/** Launches the default camera for one receipt photo; provided at app level so a result still lands in its target after process recreation. */
+internal val LocalReceiptCamera=staticCompositionLocalOf<((bookId:String,target:ReceiptTarget)->Unit)?>{null}
+@Composable internal fun rememberReceiptCamera(vm:AppViewModel):(String,ReceiptTarget)->Unit {
     val context=LocalContext.current
     var pending by rememberSaveable{mutableStateOf<String?>(null)}
     fun uri(file:File)=FileProvider.getUriForFile(context,context.packageName+".files",file)
     val launcher=rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()){taken->
-        val (book,session,path)=pending?.split("\n")?:return@rememberLauncherForActivityResult
+        val (book,kind,target,path)=pending?.split("\n")?:return@rememberLauncherForActivityResult
         pending=null;val file=File(path)
-        if(taken&&file.length()>0)vm.importFiles(context,book,listOf(uri(file)),true,session){file.delete()}else file.delete()
+        if(!taken||file.length()==0L)file.delete()
+        else if(kind=="record")vm.importRecordReceipts(context,book,target,listOf(uri(file))){file.delete()}
+        else vm.importFiles(context,book,listOf(uri(file)),true,target){file.delete()}
     }
-    return {book,session->
+    return {book,target->
         val dir=File(context.cacheDir,"camera");dir.deleteRecursively();dir.mkdirs()
         val file=File(dir,"IMG_"+java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))+".jpg")
-        pending=listOf(book,session,file.path).joinToString("\n")
+        pending=when(target){is ReceiptTarget.Draft->listOf(book,"draft",target.session,file.path);is ReceiptTarget.Record->listOf(book,"record",target.eventId,file.path)}.joinToString("\n")
         try{launcher.launch(uri(file))}catch(_:ActivityNotFoundException){pending=null;vm.error.value="没有可用的相机应用 / 使えるカメラアプリがありません"}
     }
 }
@@ -104,6 +117,7 @@ internal val LocalReceiptCamera=staticCompositionLocalOf<((bookId:String,session
 @Composable internal fun RecordMediaPanel(s:BookSnapshot,event:EventEntity,vm:AppViewModel) {
     var preview by rememberSaveable(event.id){mutableStateOf<String?>(null)}
     val attachments=s.entryAttachments(event.id);val receipts=s.entryReceiptImages(event.id)
+    if(receipts.isEmpty())RecordReceiptUpload(s,event,vm)
     if(attachments.isNotEmpty())ThemeSection(word("普通附件","添付ファイル"),"ATTACHMENTS")
     if(attachments.isNotEmpty())Column(verticalArrangement=Arrangement.spacedBy(9.dp)) {
         attachments.forEach{file->MediaFileRow(vm.repository,file,{preview=file.id})}
@@ -119,6 +133,22 @@ internal val LocalReceiptCamera=staticCompositionLocalOf<((bookId:String,session
     }
     ReceiptProducts(s,event.id,vm)
     preview?.let{id->s.files.find{it.id==id}?.let{MediaPreview(vm.repository,it,{preview=null},if(receipts.any{f->f.id==id})receipts else attachments)}}
+}
+@Composable private fun ReceiptCameraIcon()=YIcon("camera",Modifier.size(18.dp),if(LocalYohaku.current.id=="objects")Color(0xffae815a)else LocalYohaku.current.accent)
+/** A saved record without receipt images can take its first ones here; storage follows the global photo setting. */
+@Composable private fun RecordReceiptUpload(s:BookSnapshot,event:EventEntity,vm:AppViewModel) {
+    val context=LocalContext.current
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    val progress by vm.mediaImportProgress.collectAsStateWithLifecycle()
+    val picker=rememberLauncherForActivityResult(MediaPickerContract("image/*","选择小票图片应用 / レシート画像を選ぶアプリ")){uris->vm.importRecordReceipts(context,s.book.id,event.id,uris)}
+    val camera=LocalReceiptCamera.current
+    ThemeSection(word("小票图片","レシート画像"),"RECEIPT IMAGES")
+    progress?.takeIf{it.session==event.id}?.let{YText(word("正在导入 ${it.current}/${it.total}","取り込み中 ${it.current}/${it.total}"),12,Modifier.testTag("media-import-progress"))}
+    Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+        MaterialUpload(word("选择图片","画像を選ぶ"),"record-add-receipts",!busy,Modifier.weight(1f)){picker.launch(Unit)}
+        if(camera!=null)MaterialUpload(word("拍照","撮影する"),"record-take-receipt",!busy,Modifier.weight(1f),{ReceiptCameraIcon()}){camera(s.book.id,ReceiptTarget.Record(event.id))}
+    }
+    YText(word("这笔还没有小票，可以直接补上；按设置中的照片保存方式保存。之后增删请编辑记录。","この記録にはレシートがありません。ここで追加でき、設定の写真保存方法で保存します。以後の変更は記録を編集してください。"),11,color=LocalYohaku.current.muted)
 }
 internal suspend fun decodeMedia(repository:LedgerRepository,file:FileBlobEntity,maxSize:Int):android.graphics.Bitmap=withContext(Dispatchers.IO) {
     val path=repository.mediaFile(file);check(path.isFile){"附件文件缺失 / 添付ファイルがありません"}
