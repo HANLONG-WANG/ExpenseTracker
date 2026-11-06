@@ -13,7 +13,7 @@ private const val entryPostingConstraint="When consumed by an actual posting/res
 @Serializable internal data class EntryValues(
     val useReferenceRates:Boolean=false,val kind:EntryKind?=null,val account:JsonElement?=null,val category:JsonElement?=null,
     @SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val amount:Money?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val accountAmount:Money?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val baseAmount:Money?=null,@SchemaFormat("date") val date:String?=null,
-    val merchant:String?=null,val merchantId:JsonElement?=null,val note:String?=null,val historicalIncluded:Boolean?=null,
+    val merchant:String?=null,val merchantId:JsonElement?=null,val note:String?=null,val historicalIncluded:Boolean?=null,val budgetExcluded:Boolean?=null,
     val settlementConfirmed:Boolean?=null,@SchemaFormat("date") val settlementDate:String?=null,val rateSource:String?=null,@SchemaFormat("date") val rateDate:String?=null,val manualRate:String?=null,
     val originalEvent:JsonElement?=null,val toAccount:JsonElement?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val toAmount:Money?=null,@SchemaFormat("date") val toDate:String?=null,
     val fromConfirmed:Boolean?=null,val toConfirmed:Boolean?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val feeAmount:Money?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val feeAccountAmount:Money?=null,@SchemaRange(minimum=1,property="minor",condition=entryPostingConstraint) val feeBaseAmount:Money?=null,
@@ -28,6 +28,7 @@ private const val entryPostingConstraint="When consumed by an actual posting/res
 @Serializable internal data class TemplateEntryInput(val template:JsonElement,val set:JsonObject=buildJsonObject{})
 
 internal val entryValueSchema:JsonObject get()=patchSchema(descriptorSchema(EntryValues.serializer().descriptor),buildMap {
+    put("budgetExcluded",buildJsonObject{put("type","boolean");put("description","Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.")})
     put("kind",enumSchema("EXPENSE","INCOME","TRANSFER","REFUND"))
     put("feeDate",localConstraintSchema(nullableSchema(buildJsonObject{put("type","string")}),"Effective TRANSFER with a supplied fee and SEPARATE feePosition; ignored for INCLUDED_FROM/DEDUCTED_TO or no fee.",dateSchema()))
     put("cardPaymentMonth",localConstraintSchema(nullableSchema(buildJsonObject{put("type","string")}),"Effective EXPENSE/TRANSFER on a CREDIT account with DEFERRED payment; ignored otherwise. Null clears the field; an effective deferred payment still needs a month.",monthSchema()))
@@ -41,6 +42,7 @@ internal fun validateEntryValues(input:JsonObject) {
     val nullable=setOf("merchantId","activity","occurrence","reserve","reserveAmount","feeAmount","feeAccountAmount","feeBaseAmount","feeAccount","cardPaymentChoice","cardPaymentPeriods","cardPaymentMonth","cardPaymentFee","treatShares","treatTail")
     require(input.none{it.value==JsonNull&&it.key !in nullable}){"该字段不能为 null / この項目は null にできません"}
     require(v.kind==null||v.kind in listOf(EntryKind.EXPENSE,EntryKind.INCOME,EntryKind.TRANSFER,EntryKind.REFUND))
+    require(v.budgetExcluded!=true||v.kind==null||v.kind==EntryKind.EXPENSE){"不计入预算仅适用于支出 / 予算の除外は支出のみ指定できます"}
     v.manualRate?.takeIf{it.isNotEmpty()}?.let{require(it.toBigDecimal().signum()>0)}
     require(v.estimateDirection==null||v.estimateDirection in listOf("TO","FROM"))
 }
@@ -48,9 +50,10 @@ internal fun validateEntryValues(input:JsonObject) {
 internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,old:EntryDraft?=null,allowIncomplete:Boolean=false):EntryDraft {
     val v=commandJson.decodeFromJsonElement<EntryValues>(input)
     val kind=v.kind?:old?.kind?:EntryKind.EXPENSE
+    require(v.budgetExcluded!=true||kind==EntryKind.EXPENSE){"不计入预算仅适用于支出 / 予算の除外は支出のみ指定できます"}
     require(old?.id==null||kind==old.kind){"已有记录种类不可直接改写 / 既存の記録の種類は直接変更できません"}
     val transferFields=setOf("toAccount","toAmount","toDate","fromConfirmed","toConfirmed","feeAmount","feeAccountAmount","feeBaseAmount","feePosition","feeAccount","feeDate","feeConfirmed","estimateDirection")
-    val ordinaryFields=setOf("category","historicalIncluded","activity","occurrence","reserve","reserveAmount","treatEnabled","treatMode","treatShares","treatTail")
+    val ordinaryFields=setOf("category","historicalIncluded","budgetExcluded","activity","occurrence","reserve","reserveAmount","treatEnabled","treatMode","treatShares","treatTail")
     val incompatible=when(kind) {
         EntryKind.TRANSFER->ordinaryFields+setOf("originalEvent","accountAmount","baseAmount","settlementConfirmed","settlementDate")
         EntryKind.REFUND->transferFields+ordinaryFields+setOf("merchant","merchantId","cardPaymentChoice","cardPaymentPeriods","cardPaymentRecheck","cardPaymentMonth","cardPaymentFee")
@@ -143,7 +146,7 @@ internal suspend fun entryDraft(input:JsonObject,run:CommandRun,s:BookSnapshot,o
 
 internal class EntryWriteAdapter(private val action:String):LedgerAdapter() {
     override val capability=ledgerCapability("entry.$action",if(action=="create")entryValueSchema else patchSchema(descriptorSchema(EntryEditInput.serializer().descriptor),mapOf("set" to entryValueSchema,"targets" to entryWriteTargetsSchema)),if(action=="create")mapOf("entry" to "entry")else emptyMap(),
-        "Missing patch fields preserve the editor's full reconstructed values. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
+        "Missing patch fields preserve the editor's full reconstructed values. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
         (if(action=="create")"Create one new record; no targets field. "else"1–5000 fixed targets. ")+"For edits, category-only updates also accept explicitly identified trash records (preserve trash status); selectors and other edits remain live-only; expense/income/transfer/refund only. Existing domain validation covers category/account status, currency amounts, opening inclusion, refund ceilings/source, card payment choices, activity/reserve/participants. Incomplete entries reject the whole plan; use entry.prepareDraft for incomplete user input.",
         (when(action){"create"->"Create one ordinary expense/income/transfer/refund; no existing record is edited.";"confirmActual"->"Confirm actual amounts on fixed existing records; set must explicitly set at least one of settlementConfirmed/fromConfirmed/toConfirmed/feeConfirmed to true, with the actual amount/date for that side.";else->"Batch-edit fixed existing ordinary records using a field patch; omitted fields and attachments are preserved."})+" Uses shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance.",
         when(action){"create"->"""{"kind":"EXPENSE","account":"account-id","category":"category-id","amount":{"currency":"JPY","minor":900}}""";"confirmActual"->"""{"targets":{"ids":["entry-id"]},"set":{"accountAmount":{"currency":"JPY","minor":900},"settlementDate":"2026-11-02","settlementConfirmed":true}}""";else->"""{"targets":{"ids":["entry-id"]},"set":{"note":"已核对"}}"""})

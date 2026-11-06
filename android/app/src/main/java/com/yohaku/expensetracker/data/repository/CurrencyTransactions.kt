@@ -26,9 +26,10 @@ fun BookSnapshot.netExpense(event:EventEntity):Long {
     if(event.kind!=EntryKind.EXPENSE.name || event.deletedAt!=null)return 0
     return confirmedRefunds[event.id].orEmpty().fold(event.baseMinor){total,r->Math.subtractExact(total,r.baseMinor)}
 }
-/** Net spending per day in book currency on the monthExpense basis: refunds reduce their original day, confirmed components count on their own date. */
-fun BookSnapshot.dailyExpense(events:Collection<EventEntity>):Map<String,Long> {
-    val expenses=events.filter{it.kind==EntryKind.EXPENSE.name&&it.deletedAt==null}
+/** Net spending per day: refunds reduce their original day, confirmed components use their own date.
+ * budgetOnly applies the shared monthly/category exclusion to the original purchase and its fees. */
+fun BookSnapshot.dailyExpense(events:Collection<EventEntity>,budgetOnly:Boolean=false):Map<String,Long> {
+    val expenses=events.filter{it.kind==EntryKind.EXPENSE.name&&it.deletedAt==null&&(!budgetOnly||!excludedFromMonthly(it))}
     val ids=expenses.map{it.id}.toSet()
     val days=HashMap<String,Long>()
     expenses.forEach{e->days[e.date]=Math.addExact(days[e.date]?:0L,confirmedRefunds[e.id].orEmpty().fold(e.baseMinor){total,r->Math.subtractExact(total,r.baseMinor)})}

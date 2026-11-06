@@ -9,7 +9,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.yohaku.expensetracker.data.db.YohakuDatabase
+import com.yohaku.expensetracker.data.db.*
 import com.yohaku.expensetracker.data.repository.*
 import com.yohaku.expensetracker.domain.model.*
 import com.yohaku.expensetracker.ui.features.*
@@ -51,7 +51,12 @@ class LedgerCalendarTest {
                 val food=repo.saveCategory(book,"餐饮",EntryKind.EXPENSE,null)
                 val daily=repo.saveCategory(book,"日用",EntryKind.EXPENSE,null)
                 val salary=repo.saveCategory(book,"工资",EntryKind.INCOME,null)
-                amounts.forEach{(day,amount)->repo.saveEntry(book,EntryDraft(accountId=cash,categoryId=food,amount=amount.toString(),date="2026-10-%02d".format(day),merchant="店 $day"))}
+                repo.setActivityMode(book,true)
+                val activity=repo.saveActivity(book,"独立活动","2026-10-01","2026-10-31",null,excludeMonthly=true)
+                amounts.forEach{(day,amount)->
+                    val id=repo.saveEntry(book,EntryDraft(accountId=cash,categoryId=food,amount=amount.toString(),date="2026-10-%02d".format(day),merchant="店 $day",budgetExcluded=day==10))
+                    if(day==3)repo.dao.putEventActivity(EventActivityEntity(book,id,activity))
+                }
                 repo.saveEntry(book,EntryDraft(accountId=cash,categoryId=food,amount="680",date="2026-10-24",merchant="喫茶と余白"))
                 repo.saveEntry(book,EntryDraft(accountId=cash,categoryId=daily,amount="5480",date="2026-10-24",merchant="无印良品"))
                 repo.saveEntry(book,EntryDraft(accountId=cash,categoryId=food,amount="2800",date="2026-10-24",merchant="鸟贵族"))
@@ -64,7 +69,10 @@ class LedgerCalendarTest {
             ui.onNodeWithTag("ledger-view-calendar").performScrollTo().performClick()
             ui.onNodeWithTag("calendar-day-2026-10-24").performScrollTo()
             ui.onNodeWithTag("ledger-view-tabs").performScrollTo()
-            shot("$theme-$language-month")
+            val s=(vm.state.value as AppState.Ready).snapshot!!
+            assertEquals(s.monthExpense("2026-10")-15400L-12800L,s.budgetProjection("2026-10").spentMinor)
+            ui.onNode(hasText(Money(Currency.JPY,120000-s.budgetProjection("2026-10").spentMinor).display(),substring=true) and (hasTestTag("calendar-summary") or hasAnyAncestor(hasTestTag("calendar-summary")))).assertExists()
+            shot("$theme-$language-budget-excluded-month")
             // Day total: three expenses only; the same-day income is listed but not counted.
             ui.onNodeWithTag("calendar-day-2026-10-24").performScrollTo().performClick()
             ui.onNodeWithTag("calendar-day-panel").performScrollTo()

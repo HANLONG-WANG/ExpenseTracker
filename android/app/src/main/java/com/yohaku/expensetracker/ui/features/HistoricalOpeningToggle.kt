@@ -21,19 +21,30 @@ import com.yohaku.expensetracker.ui.components.YText
 import com.yohaku.expensetracker.ui.theme.*
 
 @Composable internal fun HistoricalOpeningToggle(startDate:String,value:Boolean,onChange:(Boolean)->Unit){
+    val label=word("历史补录：已包含在期初余额","履歴追加：期首残高に含まれる")
+    EntryOptionToggle(label,word("只补记录，不再次改变余额。账本开始日","記録のみ追加、残高を再変更しない。帳簿開始日")+" $startDate",
+        "toggle-$label","historical-opening-description",value,onChange=onChange)
+}
+
+@Composable internal fun BudgetExcludedToggle(value:Boolean,topDivider:Boolean=true,onChange:(Boolean)->Unit) {
+    EntryOptionToggle(word("不计入预算","予算に含めない"),word("仍计入分析与账户余额","分析と口座残高には含めます"),
+        "toggle-budget-excluded","budget-excluded-description",value,topDivider,onChange)
+}
+
+/** Adjacent options share one divider; each theme keeps its own control and haptics. */
+@Composable internal fun EntryOptionToggle(label:String,description:String,testTag:String,descriptionTag:String,value:Boolean,topDivider:Boolean=true,onChange:(Boolean)->Unit) {
     val haptics=LocalHaptics.current
     val t=LocalYohaku.current
     val paper=t.id=="journal";val objects=t.id=="objects"
-    val label=word("历史补录：已包含在期初余额","履歴追加：期首残高に含まれる")
-    Row(Modifier.fillMaxWidth().testTag("toggle-$label").toggleable(value,role=if(paper)Role.Checkbox else Role.Switch,onValueChange={haptics.perform(if(it)Haptic.ToggleOn else Haptic.ToggleOff);onChange(it)}).drawBehind{
+    Row(Modifier.fillMaxWidth().testTag(testTag).toggleable(value,role=if(paper)Role.Checkbox else Role.Switch,onValueChange={haptics.perform(if(it)Haptic.ToggleOn else Haptic.ToggleOff);onChange(it)}).drawBehind{
         val effect=if(t.id=="magazine")null else PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))
         val color=if(objects)Color(0xffd9c4a0) else t.line
-        if(!objects)drawLine(color,Offset(0f,.5.dp.toPx()),Offset(size.width,.5.dp.toPx()),1.dp.toPx(),pathEffect=effect)
+        if(topDivider&&!objects)drawLine(color,Offset(0f,.5.dp.toPx()),Offset(size.width,.5.dp.toPx()),1.dp.toPx(),pathEffect=effect)
         drawLine(color,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=effect)
     }.padding(top=if(objects)13.dp else 14.dp,bottom=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)){
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(7.dp)){
             YText(label,if(paper)16 else 13,weight=if(paper)FontWeight.Normal else FontWeight.Medium,lineHeightMultiplier=if(paper)24f/16 else 19f/13,cssLineBox=true)
-            YText(word("只补记录，不再次改变余额。账本开始日","記録のみ追加、残高を再変更しない。帳簿開始日")+" $startDate",if(paper)11 else 9,Modifier.testTag("historical-opening-description"),color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
+            YText(description,if(paper)11 else 9,Modifier.testTag(descriptionTag),color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
         }
         when(t.id){
             "journal"->Box(Modifier.size(25.dp).rotate(-3f).background(Color(0xfffff7e2),RoundedCornerShape(1.dp)).border(1.dp,t.accent,RoundedCornerShape(1.dp))){

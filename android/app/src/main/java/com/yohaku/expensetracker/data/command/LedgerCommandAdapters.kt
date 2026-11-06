@@ -127,7 +127,7 @@ internal class ContactAdapter(private val type:String):LedgerAdapter() {
 }
 
 @Serializable internal data class TemplateSaveInput(val name:String,val kind:EntryKind,val category:JsonElement,val account:JsonElement,val currency:Currency,
-    @SchemaRange(minimum=1) val amountMinor:Long?=null,val merchant:String="",val merchantId:JsonElement?=null,val note:String="",val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null,val activity:JsonElement?=null,val template:JsonElement?=null)
+    @SchemaRange(minimum=1) val amountMinor:Long?=null,val merchant:String="",val merchantId:JsonElement?=null,val note:String="",val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null,val activity:JsonElement?=null,val template:JsonElement?=null,val budgetExcluded:Boolean=false)
 @Serializable internal data class TemplateMoveInput(val template:JsonElement,val direction:Int)
 internal class TemplateAdapter(private val action:String):LedgerAdapter() {
     override val capability=ledgerCapability("template.$action",patchSchema(if(action=="save")descriptorSchema(TemplateSaveInput.serializer().descriptor)else descriptorSchema(TemplateMoveInput.serializer().descriptor),buildMap {
@@ -136,16 +136,16 @@ internal class TemplateAdapter(private val action:String):LedgerAdapter() {
         if(action=="move")put("direction",JsonObject(rangeSchema(-1,1)+("enum" to encoded(listOf(-1,1)))))
         if(action=="save"){put("category",referenceSchema("category"));put("account",referenceSchema("account"));put("merchantId",nullableSchema(referenceSchema("merchant")));put("activity",nullableSchema(referenceSchema("activity")))}
     }),if(action=="save")mapOf("template" to "template")else emptyMap(),
-        if(action=="save")"Complete replacement: omitted template creates; optional amount=null, merchant/note empty, associations/payment choice=null; existing sort position preserved."else"template/direction required; direction=-1/+1 moves one position, edge position remains unchanged.",
+        if(action=="save")"Complete replacement: omitted template creates; budgetExcluded=false (true only for EXPENSE), optional amount=null, merchant/note empty, associations/payment choice=null; existing sort position preserved."else"template/direction required; direction=-1/+1 moves one position, edge position remains unchanged.",
         if(action=="save")"Expense/income only; enabled matching category and account/currency, active merchant, available activity; positive amount if specified; supported fixed card choice. Same template validation as editor."else"Existing template in this book; direction must be -1 or +1. Moving at an edge leaves order unchanged.",
         if(action=="save")"Create/edit a template with complete replacement of editable fields, preserving existing order. Does not create a record; use template.createEntry for that. Physical deletion is forbidden."else"Move this template one position; preserves all template fields. Does not create a record or delete a template.",
         if(action=="save")"""{"name":"午餐","kind":"EXPENSE","category":"category-id","account":"account-id","currency":"JPY","amountMinor":900}"""else """{"template":"template-id","direction":-1}""")
-    override fun validate(input:JsonObject){if(action=="save")commandJson.decodeFromJsonElement<TemplateSaveInput>(input)else require(commandJson.decodeFromJsonElement<TemplateMoveInput>(input).direction in listOf(-1,1))}
+    override fun validate(input:JsonObject){if(action=="save"){val v=commandJson.decodeFromJsonElement<TemplateSaveInput>(input);require(!v.budgetExcluded||v.kind==EntryKind.EXPENSE){"不计入预算仅适用于支出 / 予算の除外は支出のみ指定できます"}}else require(commandJson.decodeFromJsonElement<TemplateMoveInput>(input).direction in listOf(-1,1))}
     override suspend fun execute(step:CommandStep,run:CommandRun):StepEffect {
         val before=run.state()
         if(action=="save") {
             val v=commandJson.decodeFromJsonElement<TemplateSaveInput>(step.input);val old=v.template?.let(run::resolve)
-            val id=run.ledger.saveTemplate(run.bookId,TemplateInput(v.name,v.kind,run.resolve(v.category),run.resolve(v.account),v.currency,v.amountMinor,v.merchant,v.merchantId?.let(run::resolve),v.note,v.cardPaymentChoice,v.cardPaymentPeriods,v.activity?.let(run::resolve),old));run.output(step.id,"template",id,old==null)
+            val id=run.ledger.saveTemplate(run.bookId,TemplateInput(v.name,v.kind,run.resolve(v.category),run.resolve(v.account),v.currency,v.amountMinor,v.merchant,v.merchantId?.let(run::resolve),v.note,v.cardPaymentChoice,v.cardPaymentPeriods,v.activity?.let(run::resolve),old,budgetExcluded=v.budgetExcluded));run.output(step.id,"template",id,old==null)
         }else {val v=commandJson.decodeFromJsonElement<TemplateMoveInput>(step.input);run.ledger.moveTemplate(run.bookId,run.resolve(v.template),v.direction)}
         return effect(step,run,before)
     }

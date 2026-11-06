@@ -20,7 +20,7 @@ import com.yohaku.expensetracker.ui.theme.*
     val t=LocalYohaku.current;val paper=t.id=="journal";val objects=t.id=="objects"
     val frame=if(objects)Modifier.background(Color(0xfff0e6d3),RoundedCornerShape(16.dp)).padding(horizontal=15.dp,vertical=19.dp) else if(!paper)Modifier else Modifier.drawBehind{drawLine(t.line,Offset(0f,size.height-.5.dp.toPx()),Offset(size.width,size.height-.5.dp.toPx()),1.dp.toPx(),pathEffect=if(paper)PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx())) else null)}.padding(bottom=21.dp)
     Row(Modifier.fillMaxWidth().testTag("home-spend-context").then(frame),horizontalArrangement=Arrangement.spacedBy(15.dp)){
-        listOf(word("本月全部净消费","今月の純支出全体") to total,word("其中独立活动支出","うち独立シーンの支出") to independent).forEach{(label,value)->Column(Modifier.weight(1f)){
+        listOf(word("本月全部净消费","今月の純支出全体") to total,word("其中不计入预算","うち予算に含めない支出") to independent).forEach{(label,value)->Column(Modifier.weight(1f)){
             YText(label,if(paper)11 else 9,color=t.muted,lineHeightMultiplier=1.9f,cssLineBox=true)
             YText(value,if(paper)26 else 22,Modifier.padding(top=7.dp),number=true,lineHeightMultiplier=if(paper)37f/26 else if(objects)32f/22 else 25f/22,cssLineBox=true)
         }}

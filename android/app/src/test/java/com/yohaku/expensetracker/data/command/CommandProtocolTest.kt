@@ -14,6 +14,18 @@ class CommandProtocolTest {
     private fun plan(steps:List<CommandStep> = listOf(card,rule))=CommandPlan("yohaku.command-plan",1,"11111111-1111-4111-8111-111111111111","book",registry.catalogDigest,context,steps=steps)
     private fun parse(p:CommandPlan)=registry.parse(commandJson.encodeToString(p),"book",context)
     private fun reject(p:CommandPlan){assertThrows(Exception::class.java){parse(p)}}
+    @Test fun budgetExclusionAcceptsExpensePatchesAndRejectsOtherKindsAndNull() {
+        val registry=CommandRegistry()
+        fun input(text:String)=commandJson.parseToJsonElement(text).jsonObject
+        validateEntryValues(input("""{"budgetExcluded":true}"""))
+        validateEntryValues(input("""{"kind":"EXPENSE","budgetExcluded":true}"""))
+        validateEntryValues(input("""{"kind":"INCOME","budgetExcluded":false}"""))
+        for(kind in listOf("INCOME","TRANSFER","REFUND"))assertThrows(IllegalArgumentException::class.java){validateEntryValues(input("""{"kind":"$kind","budgetExcluded":true}"""))}
+        assertThrows(IllegalArgumentException::class.java){validateEntryValues(input("""{"budgetExcluded":null}"""))}
+        val template=registry.adapters.single{it.capability.name=="template.save"}
+        assertThrows(IllegalArgumentException::class.java){template.validate(input("""{"name":"Income","kind":"INCOME","category":"c","account":"a","currency":"JPY","budgetExcluded":true}"""))}
+    }
+
     @Test fun typedEarlierReferencesAndQuestionOnlyPlansAreAccepted() {
         assertEquals(2,parse(plan()).steps.size)
         assertTrue(parse(plan(emptyList()).copy(message="请补充基准日",questions=listOf("日期？"))).steps.isEmpty())

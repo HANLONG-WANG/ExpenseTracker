@@ -97,7 +97,7 @@ import java.time.YearMonth
 @Composable private fun MonthlyUploadDetails(bundle:MonthlyReviewBundle) {
     val s=bundle.summary
     MonthlyPanel(word("收支与预算执行","収支と予算実績"),"monthly-upload-categories") {
-        YText(word("按账本币种汇总；退款回归原消费月，手续费按发生日。分类不重复计入上级，预算继承原设置并排除独立活动。","基準通貨で集計。返金は購入月、手数料は発生日に計上。カテゴリは親と重複せず、予算は引き継ぎ設定を使用し独立シーンを除きます。"),11)
+        YText(word("按账本币种汇总；退款回归原消费月，手续费按发生日。分类不重复计入上级，预算继承原设置，排除独立活动及标记为不计入预算的支出。","基準通貨で集計。返金は購入月、手数料は発生日に計上。カテゴリは親と重複せず、予算は引き継ぎ設定を使用し、独立シーンと予算に含めない支出を除きます。"),11)
         if(s.provisionalExpenseCount>0)YText(word("${s.provisionalExpenseCount} 笔消费金额尚待确认。","支出 ${s.provisionalExpenseCount} 件は金額の確定待ちです。"),12,color=LocalYohaku.current.warm)
         s.categories.forEach{row->YText((if(row.kind=="INCOME")word("收入 · ","収入・")else word("支出 · ","支出・"))+localizedCommand(row.name)+" · "+monthlyAmount(s.currency,row.amountMinor),13)}
         s.budgets.forEach{b->YText(localizedCommand(b.name)+word("：预算 ","：予算 ")+monthlyAmount(s.currency,b.limitMinor)+word(" · 已用 ","・使用済み ")+monthlyAmount(s.currency,b.spentMinor)+word(" · 剩余 ","・残額 ")+monthlyAmount(s.currency,b.remainingMinor),13)}

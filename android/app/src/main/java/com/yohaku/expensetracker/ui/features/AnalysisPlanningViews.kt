@@ -23,7 +23,7 @@ import java.time.YearMonth
     val p=s.budgetProjection(selected,filter.categoryId)
     val unknown=word("未设置 / 待补齐","未設定・未補足")
     fun money(value:Long?)=value?.let{Money(p.currency,it).display()}?:unknown
-    YLead(word("日常与活动，分开留。","日常とシーン、分けて残す。"),word("月预算内支出与独立活动支出分开表达。","月予算の支出と独立シーン支出を区別。"),"THE MONTHLY BALANCE",money(p.remainingMinor),selected+" · "+(filter.categoryId?.let{s.path(it)}?:word("本月预算余额","今月の予算残額")),amountIsText=p.remainingMinor==null,pageFlow=true)
+    YLead(word("预算内外，分开留。","予算の内と外、分けて残す。"),word("月预算内支出与不计入预算的支出分开表达。","月予算に含む支出と含めない支出を区別。"),"THE MONTHLY BALANCE",money(p.remainingMinor),selected+" · "+(filter.categoryId?.let{s.path(it)}?:word("本月预算余额","今月の予算残額")),amountIsText=p.remainingMinor==null,pageFlow=true)
     if(months.size>1)YSelect(word("预算月份","予算の月"),selected,months.map{it to it},{selected=it},Modifier.testTag("analysis-budget-month"))else YText(selected,19,number=true)
     YText(word("预算按完整自然月展示，消费筛选不会改写月预算。","予算は暦月全体を表示。支出の絞込は月予算を変更しません。"),12,color=LocalYohaku.current.muted)
     val provisional=if(filter.categoryId==null)s.provisionalExpenseCount(selected)else 0

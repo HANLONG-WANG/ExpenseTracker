@@ -347,3 +347,9 @@ rg -n 'preferences\.|saveCsvProfile|saveDraft|storeFinancialDraft|commitFinancia
 批次显示以归档办理时间和原消费名称为依据，不输出内部 UUID；原消费按原付款日、名称排序，恢复列表将目标循环计划置后。本机历史仅有“查看并撤销”或已撤销后的“查看”，确认动作在详情内。
 
 额度关系只说明一次，各项上限不在关系与金额摘要中重复。配置预览中变化的上限只在差异区显示，未变化的上限仍在关系区保留：不适用字段不显示，关系切换删除的旧上限仍明确显示旧金额 → 已移除。完整前后依据保留。
+
+### 支出不计入预算（2026-11-06）
+
+`entry.create`、`entry.update`（及共用字段的 `entry.confirmActual` / `entry.prepareDraft`）支持 `budgetExcluded` 布尔值：新记录默认 false，部分更新省略保留、显式 false 取消，不能为 null；仅 EXPENSE 可设 true，其他类型设 true 校验失败。仓库没有 `entry.save` 别名。排除月/分类预算及其待确认笔数、预算节奏与提醒，退款和手续费随原支出；分析、账户余额、日历实际金额与活动自身预算仍计入。`template.save` 是完整替换，budgetExcluded 默认 false，仅支出模板可为 true；`template.createEntry` 带入模板值并允许 set 覆盖。周期规则、实例和固定预留不新增字段。
+
+`yohaku.records` 每条记录导出 `budgetExcluded`；账本结构的 template.values 同样包含该字段。月评的 budgets 与 provisionalExpenseCount 使用排除后的口径，expenseMinor/categories 仍为实际净消费；确认页字段显示「不计入预算 / 予算に含めない」，撤销按原字段恢复。

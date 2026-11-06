@@ -136,6 +136,10 @@
               }
             ]
           },
+          "budgetExcluded": {
+            "type": "boolean",
+            "description": "Excludes this expense from monthly/category budgets; analysis, balances and activity budgets are unchanged."
+          },
           "historicalIncluded": {
             "type": "boolean"
           },
@@ -425,6 +429,7 @@
           "accountCurrency",
           "confirmed",
           "historicalIncluded",
+          "budgetExcluded",
           "cardPaymentChoice",
           "cardPaymentPeriods",
           "cardPaymentMonth",

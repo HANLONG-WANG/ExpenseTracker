@@ -11,7 +11,7 @@ import java.time.ZoneOffset
 internal fun commandEventFacts(value:JsonElement):JsonObject=commandLedgerRow("events",value.jsonObject)
 internal fun commandLedgerRow(table:String,value:JsonObject):JsonObject {
     val audit=setOf("createdAt","timestamp","updatedAt")+if(table in setOf("events","financial_plans","financial_bills","treats","expected_incomes","receipt_item_documents"))setOf("revision")else emptySet()
-    val booleans=setOf("platformConfirmed","exceptionAccepted","dateChanged","active","archived","initialized","favorite","historicalIncluded","confirmed","fromConfirmed","toConfirmed","complete","estimated","activityMode","ended","excludeMonthly")
+    val booleans=setOf("platformConfirmed","exceptionAccepted","dateChanged","active","archived","initialized","favorite","historicalIncluded","budgetExcluded","confirmed","fromConfirmed","toConfirmed","complete","estimated","activityMode","ended","excludeMonthly")
     val projected=JsonObject(value.filterKeys{it !in audit}.mapValues{(key,v)->
         when {
             key in setOf("deletedAt","invalidatedAt")&&v!=JsonNull->JsonPrimitive(Instant.ofEpochMilli(v.jsonPrimitive.long).atZone(ZoneOffset.UTC).toLocalDate().toString())

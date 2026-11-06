@@ -78,3 +78,9 @@ ZIP包括根目录 `manifest.json` 和 `images/<receipt_id>/<image_id>` 小票�
 command-plan schema 由注册表完整生成，含全部88条命令的 inputSchema、步骤分支及严格顶层结构；每个办理/月评任务均附 `yohaku-command-plan-v1.schema.json`。先用它校验结构，业务可执行性仍以手机预览为准。日期/月份和已强制的固定范围由字段注解及共用 helper 生成并由本机解释。月评评语写message、建议写steps，不能新增review或代填USER_FACT；无步骤回答仍须正确book_id及两个digest。普通办理实际必带协议/能力/方案schema/结构四份，按选择另附records/源文件；月评初次为协议/能力/方案schema/结构/月汇总五份。阶段8修正实际确认示例、枚举、过时说明并补任务放弃边界，触感反馈增量已手工同步能力样例及方案 schema（含 catalogDigest），需用上述入口重新生成并比对；该测试还检查完整方案 schema 的全部命令分支、所有命令示例以及生成文件一致性。
 
 助手往返首轮修订：结构导出增加可兼容旧快照的asOfDate/zoneId，book.values补initialized/setupStep；任务context.source_files标明初次用户源文件名称，非新增附件。协议集中说明合理推断/日期/额度可空值及完整建卡示例、月计划即时更新和日期范围未补跨范围退款的限制。entry.update.targets导出oneOf和ids的minItems/maxItems/uniqueItems，本机解释同一约束。能力复用说明按各命令区分，需验收方再次生成能力样例。
+
+### 支出不计入预算（2026-11-06）
+
+`entry.create`、`entry.update`（及共用字段的 `entry.confirmActual` / `entry.prepareDraft`）支持 `budgetExcluded` 布尔值：新记录默认 false，部分更新省略保留、显式 false 取消，不能为 null；仅 EXPENSE 可设 true，其他类型设 true 校验失败。仓库没有 `entry.save` 别名。排除月/分类预算及其待确认笔数、预算节奏与提醒，退款和手续费随原支出；分析、账户余额、日历实际金额与活动自身预算仍计入。`template.save` 是完整替换，budgetExcluded 默认 false，仅支出模板可为 true；`template.createEntry` 带入模板值并允许 set 覆盖。周期规则、实例和固定预留不新增字段。
+
+`yohaku.records` 每条记录导出 `budgetExcluded`；账本结构的 template.values 同样包含该字段。月评的 budgets 与 provisionalExpenseCount 使用排除后的口径，expenseMinor/categories 仍为实际净消费；确认页字段显示「不计入预算 / 予算に含めない」，撤销按原字段恢复。

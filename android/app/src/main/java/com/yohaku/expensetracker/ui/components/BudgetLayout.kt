@@ -39,7 +39,7 @@ import com.yohaku.expensetracker.ui.theme.*
     Box(Modifier.fillMaxWidth().padding(top=8.dp,bottom=8.dp)) {
     Column(Modifier.fillMaxWidth().testTag("independent-budget-note").then(frame).padding(start=if(t.id=="magazine")20.dp else if(t.id=="journal")19.dp else 18.dp,end=if(t.id=="journal")19.dp else 18.dp,top=if(t.id=="journal")19.dp else 18.dp,bottom=if(t.id=="journal")19.dp else 18.dp)) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
-            YText(word("独立活动另计","独立シーンは別枠"),if(t.id=="journal")15 else 12,Modifier.weight(1f),weight=if(t.id=="journal")FontWeight.Normal else FontWeight.Medium)
+            YText(word("不计入预算的支出","予算に含めない支出"),if(t.id=="journal")15 else 12,Modifier.weight(1f),weight=if(t.id=="journal")FontWeight.Normal else FontWeight.Medium)
             YText(amount,22,number=true)
         }
         YText(word("这部分仍是真实消费，但不占用月总预算或月分类预算。","実際の支出ですが、月全体・月カテゴリの予算に含めません。"),if(t.id=="journal")12 else 10,Modifier.padding(top=13.dp,bottom=5.dp),color=t.muted,lineHeightMultiplier=1.9f)

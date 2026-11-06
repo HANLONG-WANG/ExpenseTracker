@@ -37,8 +37,9 @@ class BackupRoundTripTest {
             val other=repo.createBook("旅行",Currency.CNY,"objects","zh")
             val account=repo.saveAccount(book,"銀行",AccountType.BANK,Currency.JPY,Money(Currency.JPY,10000),"2026-10-01")
             val category=repo.saveCategory(book,"食事",EntryKind.EXPENSE,null)
-            val event=EventEntity(book,"event",EntryKind.EXPENSE.name,account,category,1000,"JPY",1000,"2026-10-20","お店","備考")
+            val event=EventEntity(book,"event",EntryKind.EXPENSE.name,account,category,1000,"JPY",1000,"2026-10-20","お店","備考",budgetExcluded=true)
             repo.dao.putEvent(event)
+            repo.dao.putTemplate(EntryTemplateEntity(book,"template","旅行","EXPENSE",category,account,"JPY",createdAt=1,budgetExcluded=true))
             repo.dao.putPostings(listOf(PostingEntity(book,"posting",event.id,account,-1000,"JPY",event.date)))
             val original=File(layout.attachments,"$book/image.png").apply{parentFile!!.mkdirs()}
             Bitmap.createBitmap(3,3,Bitmap.Config.ARGB_8888).also{bitmap->original.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()}

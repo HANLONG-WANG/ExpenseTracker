@@ -11,7 +11,7 @@ import java.time.YearMonth
 }
 fun BookSnapshot.excludedFromMonthly(event:EventEntity):Boolean {
     val activityId=activityByEvent[event.id]
-    return activities.any{it.id==activityId&&it.deletedAt==null&&it.excludeMonthly}
+    return event.budgetExcluded || activities.any{it.id==activityId&&it.deletedAt==null&&it.excludeMonthly}
 }
 fun BookSnapshot.budgetLimit(month:String,categoryId:String?=null):Long? {
     YearMonth.parse(month)

@@ -591,3 +591,5 @@ CommandAssistantRoundTripTest使用磁盘测试库、真实任务准备/advance�
 批次历史项只保留一个入口：未撤销时为“查看并撤销”，已撤销时为“查看”；确认撤销在详情内完成。摘要以办理时间和原消费名称标识批次，不展示内部 ID。原消费按原付款日、名称排序，恢复列表的目标循环计划固定置后。
 
 额度关系中的各项上限只显示一次；预览中变化的上限只在差异区展示，未变化的上限仍在关系区显示，关系说明保留一句。不适用的额度字段不显示；关系切换导致旧上限被删除时，差异明确列出旧金额与“已移除”。
+
+2026-11-06：支出「备注和其他」新增不计入预算，`HistoricalOpeningToggle.kt` 内抽取参数化 `EntryOptionToggle`，历史补录外观与标签保留；相邻开关共用分隔线。`TemplateScreens.kt` 支出模板共用新开关。详情与 `RevisionHistory.kt`、云端 `CommandEffectViews.kt` 显示字段。`LedgerCalendar.kt` 保留实际金额，以 `dailyExpense(budgetOnly=true)` 计算颜色/超支/剩余预算及小物摘要进度；无预算仍按实际金额。验证：`EntryExperienceFlowTest#expenseBudgetExclusionSavesAndClearsOnIncomeAcrossLooks`（`looks=all visual=true`，`files/verification/entry-experience/*-budget-excluded.png`、`*-budget-income.png`）；本轮仅编译仪器测试，设备与视觉验证待用户执行。

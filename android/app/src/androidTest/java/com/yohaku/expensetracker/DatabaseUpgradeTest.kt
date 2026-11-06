@@ -17,6 +17,39 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class DatabaseUpgradeTest {
 
+    @Test fun version38AddsBudgetExclusionDefaultFalseToEventsAndTemplates()=runBlocking<Unit> {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val name="upgrade-budget-38-39.db";context.deleteDatabase(name)
+        val initial=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        val repo=LedgerRepository(initial)
+        val book=repo.createBook("Existing",com.yohaku.expensetracker.domain.model.Currency.JPY)
+        val account=repo.saveAccount(book,"Bank",com.yohaku.expensetracker.domain.model.AccountType.BANK,com.yohaku.expensetracker.domain.model.Currency.JPY,com.yohaku.expensetracker.domain.model.Money(com.yohaku.expensetracker.domain.model.Currency.JPY,1000),"2026-01-01")
+        val category=repo.saveCategory(book,"Food",com.yohaku.expensetracker.domain.model.EntryKind.EXPENSE,null)
+        val event=repo.saveEntry(book,com.yohaku.expensetracker.domain.model.EntryDraft(accountId=account,categoryId=category,amount="100"))
+        initial.dao().putTemplate(EntryTemplateEntity(book,"t","Meal","EXPENSE",category,account,"JPY",createdAt=1))
+        initial.close()
+        val old=SQLiteDatabase.openDatabase(context.getDatabasePath(name).path,null,SQLiteDatabase.OPEN_READWRITE)
+        try {
+            restoreFixtureTable(old,"com.yohaku.expensetracker.data.db.YohakuDatabase/38.json","events")
+            restoreFixtureTable(old,"com.yohaku.expensetracker.data.db.YohakuDatabase/38.json","entry_templates")
+            val schema=JSONObject(InstrumentationRegistry.getInstrumentation().context.assets.open("com.yohaku.expensetracker.data.db.YohakuDatabase/38.json").bufferedReader().readText()).getJSONObject("database")
+            old.execSQL("UPDATE room_master_table SET identity_hash=? WHERE id=42",arrayOf(schema.getString("identityHash")))
+            old.version=38
+        }finally{old.close()}
+        val db=com.yohaku.expensetracker.data.backup.openYohakuDatabase(context,name)
+        try {
+            val snapshot=LedgerRepository(db).snapshot(db.dao().book(book)!!).first()
+            assertEquals(39,db.openHelper.readableDatabase.version)
+            assertEquals(event,snapshot.events.single().id);assertEquals(100L,snapshot.events.single().amountMinor)
+            assertFalse(snapshot.events.single().budgetExcluded);assertFalse(snapshot.templates.single().budgetExcluded)
+            db.dao().putEvent(snapshot.events.single().copy(budgetExcluded=true))
+            db.dao().putTemplate(snapshot.templates.single().copy(budgetExcluded=true))
+            val updated=LedgerRepository(db).snapshot(db.dao().book(book)!!).first()
+            assertTrue(updated.events.single().budgetExcluded);assertTrue(updated.templates.single().budgetExcluded)
+            db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
+        }finally{db.close();context.deleteDatabase(name)}
+    }
+
     @Test fun version37AddsMonthlyPlanAndReviewWithoutChangingExistingRows()=runBlocking<Unit> {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val name="upgrade-monthly-37-38.db";context.deleteDatabase(name)

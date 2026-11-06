@@ -60,6 +60,7 @@ private sealed interface HistoryRead{
                 if(b.date!=a.date)field(word("日期","日付"),b.date,a.date)
                 if(b.merchant!=a.merchant)field(word("商户","お店"),b.merchant,a.merchant)
                 if(b.note!=a.note)field(word("备注","メモ"),b.note,a.note)
+                if(b.budgetExcluded!=a.budgetExcluded)field(word("不计入预算","予算に含めない"),if(b.budgetExcluded)word("是","はい")else word("否","いいえ"),if(a.budgetExcluded)word("是","はい")else word("否","いいえ"))
                 if(b.historicalIncluded!=a.historicalIncluded)field(word("期初包含","期首に含む"),if(b.historicalIncluded)word("已包含","含む") else word("不包含","含まない"),if(a.historicalIncluded)word("已包含","含む") else word("不包含","含まない"))
                 val oldAttachments=change.beforeDetails?.attachmentIds.orEmpty();val newAttachments=change.afterDetails?.attachmentIds.orEmpty()
                 if(oldAttachments!=newAttachments)field(word("附件列表 / 顺序","添付一覧・順序"),oldAttachments.size.toString(),newAttachments.size.toString())

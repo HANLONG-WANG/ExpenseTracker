@@ -50,6 +50,30 @@ class EntryExperienceFlowTest {
         val image=i.uiAutomation.takeScreenshot();val dir=File(i.targetContext.filesDir,"verification/entry-experience").apply{mkdirs()}
         File(dir,"$name.png").outputStream().use{image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};image.recycle()
     }
+    @Test fun expenseBudgetExclusionSavesAndClearsOnIncomeAcrossLooks() {
+        for((theme,language) in testLooks(this@EntryExperienceFlowTest)) {
+            val s=fresh(theme,language);val book=s.book.id
+            ui.runOnIdle{vm.startEntry(s);vm.changeEntry(book,vm.entry.value!!.copy(accountId=s.accounts.first{it.type=="BANK"}.id,categoryId=s.categories.first{it.kind=="EXPENSE"}.id,amount="50"));vm.navigate("entry")}
+            ui.onNodeWithTag("toggle-budget-excluded").assertDoesNotExist()
+            ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
+            ui.onNodeWithTag("toggle-budget-excluded").performScrollTo().performClick().assertIsOn()
+            shot("$theme-$language-budget-excluded")
+            ui.entryAction("entry-save-button").performClick()
+            ui.waitUntil(10000){vm.entry.value==null&&snapshot().events.size==1&&!vm.busy.value}
+            val event=snapshot().events.single();assertTrue(event.budgetExcluded)
+            assertEquals(0L,snapshot().budgetProjection(event.date.take(7)).spentMinor)
+            assertEquals(50L,snapshot().monthExpense(event.date.take(7)))
+            ui.runOnIdle{vm.startEntry(snapshot());vm.changeEntry(book,vm.entry.value!!.copy(budgetExcluded=true));vm.switchEntryKind(snapshot(),EntryKind.INCOME);vm.changeEntry(book,vm.entry.value!!.copy(categoryId=s.categories.first{it.kind=="INCOME"}.id));vm.navigate("entry")}
+            assertFalse(vm.entry.value!!.budgetExcluded)
+            ui.onNodeWithTag("entry-notes-toggle").performScrollTo().performClick()
+            ui.onNodeWithTag("toggle-budget-excluded").assertDoesNotExist()
+            shot("$theme-$language-budget-income")
+            ui.runOnIdle{vm.switchEntryKind(snapshot(),EntryKind.EXPENSE)}
+            assertFalse(vm.entry.value!!.budgetExcluded)
+            ui.runOnIdle{vm.discardEntry(book)}
+            ui.waitUntil(10000){vm.entry.value==null&&!vm.busy.value}
+        }
+    }
     @Test fun tabsPreserveMediaAndReturnRouteAndUseLastSavedAccounts() {
         for((theme,language) in testLooks(this@EntryExperienceFlowTest)) {
             var s=fresh(theme,language);val book=s.book.id;val bank=s.accounts.first{it.type=="BANK"}.id;val card=s.accounts.first{it.type=="CREDIT"}.id

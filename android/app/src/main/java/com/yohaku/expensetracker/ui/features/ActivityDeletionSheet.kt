@@ -29,7 +29,7 @@ import com.yohaku.expensetracker.ui.haptics.Haptic
             if(value.draftConverted)YText(word("未保存的新记录草稿将改为日常，移除活动、预留、周期和互请选择，其他输入保留。","未保存の新規下書きを日常に変更し、シーン・確保・定期予定・ごちそうの選択を解除。他の入力は保持します。"),12)
             value.months.forEach{(before,after)->
                 YText(before.month,14)
-                RecordFacts(listOf(word("计入月预算的消费","月予算に含む支出") to "${money(before.spentMinor)} → ${money(after.spentMinor)}",word("活动独立支出","シーンの独立支出") to "${money(before.independentMinor)} → ${money(after.independentMinor)}",word("全部消费","すべての支出") to "${money(before.allExpenseMinor)} → ${money(after.allExpenseMinor)}"),audit=true)
+                RecordFacts(listOf(word("计入月预算的消费","月予算に含む支出") to "${money(before.spentMinor)} → ${money(after.spentMinor)}",word("不计入预算的支出","予算に含めない支出") to "${money(before.independentMinor)} → ${money(after.independentMinor)}",word("全部消费","すべての支出") to "${money(before.allExpenseMinor)} → ${money(after.allExpenseMinor)}"),audit=true)
             }
             if(value.categoryBudgets.isNotEmpty()) {
                 YLink(word("分类预算变化（${value.categoryBudgets.size}项）","カテゴリ予算の変化（${value.categoryBudgets.size}件）"),{showCategories=!showCategories},Modifier.testTag("activity-category-impact"))

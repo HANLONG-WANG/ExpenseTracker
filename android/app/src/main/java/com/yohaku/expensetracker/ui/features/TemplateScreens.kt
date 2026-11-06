@@ -83,12 +83,12 @@ import com.yohaku.expensetracker.ui.theme.*
     var name by rememberSaveable(t?.id){mutableStateOf(t?.name.orEmpty())}
     var d by remember(t?.id){mutableStateOf(EntryDraft(kind=t?.kind?.let{EntryKind.valueOf(it)}?:EntryKind.EXPENSE,categoryId=t?.categoryId,
         accountId=t?.accountId?:s.defaultEntryAccount(EntryKind.EXPENSE),amount=t?.amountMinor?.let{Money(Currency.valueOf(t.currency),it).decimal.toPlainString()}.orEmpty(),
-        merchant=t?.merchant.orEmpty(),merchantId=t?.merchantId,note=t?.note.orEmpty(),cardPaymentChoice=t?.cardPaymentChoice,cardPaymentPeriods=t?.cardPaymentPeriods?.toString().orEmpty(),activityId=t?.activityId))}
+        merchant=t?.merchant.orEmpty(),merchantId=t?.merchantId,note=t?.note.orEmpty(),budgetExcluded=t?.budgetExcluded?:false,cardPaymentChoice=t?.cardPaymentChoice,cardPaymentPeriods=t?.cardPaymentPeriods?.toString().orEmpty(),activityId=t?.activityId))}
     val account=s.accounts.firstOrNull{it.id==d.accountId}
     val busy by vm.busy.collectAsStateWithLifecycle()
     YSheet(if(t==null)word("新建模板","テンプレートを作成")else word("编辑模板","テンプレートを編集"),onClose) {
         YField(word("模板名称","テンプレート名"),name,{name=it},Modifier.testTag("template-name"))
-        YSelect(word("类型","種類"),d.kind,listOf(EntryKind.EXPENSE to word("支出","支出"),EntryKind.INCOME to word("收入","収入")),{kind->d=d.clearCardPayment().copy(kind=kind,categoryId=null,accountId=null,amount="",activityId=null)},Modifier.testTag("template-kind"))
+        YSelect(word("类型","種類"),d.kind,listOf(EntryKind.EXPENSE to word("支出","支出"),EntryKind.INCOME to word("收入","収入")),{kind->d=d.clearCardPayment().copy(kind=kind,budgetExcluded=false,categoryId=null,accountId=null,amount="",activityId=null)},Modifier.testTag("template-kind"))
         YSelect(word("分类","カテゴリ"),d.categoryId,s.categories.filter{s.categoryEnabled(it.id)&&it.kind==d.kind.name}.map{it.id as String? to s.path(it.id)},{d=d.copy(categoryId=it)},Modifier.testTag("template-category"))
         YSelect(word("账户","口座"),d.accountId,s.entryAccounts(d.kind).map{it.id as String? to it.name},{id->
             val next=s.accounts.first{it.id==id};d=d.clearCardPayment().copy(accountId=id,amount=if(next.currency!=account?.currency)""else d.amount)
@@ -99,6 +99,7 @@ import com.yohaku.expensetracker.ui.theme.*
         YField(word("备注","メモ"),d.note,{d=d.copy(note=it)},Modifier.testTag("template-note"),multiline=true)
         if(d.kind==EntryKind.EXPENSE&&(s.features?.activityMode==true||d.activityId!=null))YSelect(word("所属活动 / 可选","シーン・任意"),d.activityId,
             listOf(null to word("日常","日常"))+s.availableActivities.map{it.id as String? to it.name},{d=d.copy(activityId=it)},Modifier.testTag("template-activity"))
+        if(d.kind==EntryKind.EXPENSE)BudgetExcludedToggle(d.budgetExcluded){d=d.copy(budgetExcluded=it)}
         YButton(word("保存模板","テンプレートを保存"),{vm.execute(onSuccess={vm.haptic(Haptic.Done);onClose()}){vm.repository.saveTemplate(s.book.id,s.templateInput(d,name,d.amount.isNotBlank()).copy(id=t?.id))}},Modifier.testTag("template-save"),primary=true,enabled=!busy)
     }
 }

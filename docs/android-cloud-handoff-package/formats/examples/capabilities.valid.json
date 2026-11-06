@@ -17,7 +17,7 @@
             "type": "object"
         }
     },
-    "catalogDigest": "1e28d3ffc04d22f5bcd9bcb3ca170b0e11789e62de6e1100804bf36988226e78",
+    "catalogDigest": "7a7c8216d781fd5f9985697f84b6897825b50c1d03493edbb99451458013e530",
     "commands": [
         {
             "comparisonFields": [
@@ -2723,7 +2723,7 @@
                 "INFORMATION",
                 "RISK"
             ],
-            "defaults": "Missing patch fields preserve the editor's full reconstructed values. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
+            "defaults": "Missing patch fields preserve the editor's full reconstructed values. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
             "description": "Create one ordinary expense/income/transfer/refund; no existing record is edited. Uses shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance.",
             "example": {
                 "account": "account-id",
@@ -2954,6 +2954,10 @@
                             },
                             "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                         }
+                    },
+                    "budgetExcluded": {
+                        "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                        "type": "boolean"
                     },
                     "cardPaymentChoice": {
                         "anyOf": [
@@ -3823,7 +3827,7 @@
                 "INFORMATION",
                 "RISK"
             ],
-            "defaults": "Missing patch fields preserve the editor's full reconstructed values. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
+            "defaults": "Missing patch fields preserve the editor's full reconstructed values. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
             "description": "Batch-edit fixed existing ordinary records using a field patch; omitted fields and attachments are preserved. Uses shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance.",
             "example": {
                 "set": {
@@ -4058,6 +4062,10 @@
                                     },
                                     "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                                 }
+                            },
+                            "budgetExcluded": {
+                                "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                                "type": "boolean"
                             },
                             "cardPaymentChoice": {
                                 "anyOf": [
@@ -5237,7 +5245,7 @@
                 "INFORMATION",
                 "RISK"
             ],
-            "defaults": "Missing patch fields preserve the editor's full reconstructed values. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
+            "defaults": "Missing patch fields preserve the editor's full reconstructed values. budgetExcluded defaults false for new entries; true is valid only for EXPENSE and excludes it (including refunds/fees) from monthly/category budgets, preserving analysis, account balances and activity budgets. New records use editor account/card/activity/date defaults; the phone does not auto-fill amount/category; the assistant supplies grounded values and explains any classification assumptions. Money={currency,minor}; same-currency settlement/base copied exactly. Explicit null clears only optional associations/card/fee fields. useReferenceRates=false by default; true uses frozen local reference quotes and shared conversion functions, never overwriting actual amounts. Foreign actual confirmation is false unless explicit; transfers default pending at both ends. Selectors freeze at first preview.",
             "description": "Confirm actual amounts on fixed existing records; set must explicitly set at least one of settlementConfirmed/fromConfirmed/toConfirmed/feeConfirmed to true, with the actual amount/date for that side. Uses shared entry preparation and financial refresh. Explicit negative-balance risk identifies the account and resulting balance.",
             "example": {
                 "set": {
@@ -5477,6 +5485,10 @@
                                     },
                                     "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                                 }
+                            },
+                            "budgetExcluded": {
+                                "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                                "type": "boolean"
                             },
                             "cardPaymentChoice": {
                                 "anyOf": [
@@ -6711,7 +6723,7 @@
                 "INFORMATION",
                 "RISK"
             ],
-            "defaults": "Complete replacement: omitted template creates; optional amount=null, merchant/note empty, associations/payment choice=null; existing sort position preserved.",
+            "defaults": "Complete replacement: omitted template creates; budgetExcluded=false (true only for EXPENSE), optional amount=null, merchant/note empty, associations/payment choice=null; existing sort position preserved.",
             "description": "Create/edit a template with complete replacement of editable fields, preserving existing order. Does not create a record; use template.createEntry for that. Physical deletion is forbidden.",
             "example": {
                 "account": "account-id",
@@ -6765,6 +6777,9 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "budgetExcluded": {
+                        "type": "boolean"
                     },
                     "cardPaymentChoice": {
                         "anyOf": [
@@ -7191,6 +7206,10 @@
                                     },
                                     "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                                 }
+                            },
+                            "budgetExcluded": {
+                                "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                                "type": "boolean"
                             },
                             "cardPaymentChoice": {
                                 "anyOf": [
@@ -10175,6 +10194,10 @@
                                     "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                                 }
                             },
+                            "budgetExcluded": {
+                                "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                                "type": "boolean"
+                            },
                             "cardPaymentChoice": {
                                 "anyOf": [
                                     {
@@ -11501,6 +11524,10 @@
                                             },
                                             "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                                         }
+                                    },
+                                    "budgetExcluded": {
+                                        "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                                        "type": "boolean"
                                     },
                                     "cardPaymentChoice": {
                                         "anyOf": [
@@ -17423,6 +17450,10 @@
                                     "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                                 }
                             },
+                            "budgetExcluded": {
+                                "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                                "type": "boolean"
+                            },
                             "cardPaymentChoice": {
                                 "anyOf": [
                                     {
@@ -19421,6 +19452,10 @@
                                     },
                                     "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                                 }
+                            },
+                            "budgetExcluded": {
+                                "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                                "type": "boolean"
                             },
                             "cardPaymentChoice": {
                                 "anyOf": [

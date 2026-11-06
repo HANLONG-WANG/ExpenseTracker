@@ -2156,6 +2156,10 @@
                                 "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                             }
                         },
+                        "budgetExcluded": {
+                            "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                            "type": "boolean"
+                        },
                         "cardPaymentChoice": {
                             "anyOf": [
                                 {
@@ -3535,6 +3539,10 @@
                         "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                     }
                 },
+                "budgetExcluded": {
+                    "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                    "type": "boolean"
+                },
                 "cardPaymentChoice": {
                     "anyOf": [
                         {
@@ -4643,6 +4651,10 @@
                                 "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                             }
                         },
+                        "budgetExcluded": {
+                            "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                            "type": "boolean"
+                        },
                         "cardPaymentChoice": {
                             "anyOf": [
                                 {
@@ -5704,6 +5716,10 @@
                                 },
                                 "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                             }
+                        },
+                        "budgetExcluded": {
+                            "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                            "type": "boolean"
                         },
                         "cardPaymentChoice": {
                             "anyOf": [
@@ -7153,6 +7169,10 @@
                                         },
                                         "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                                     }
+                                },
+                                "budgetExcluded": {
+                                    "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                                    "type": "boolean"
                                 },
                                 "cardPaymentChoice": {
                                     "anyOf": [
@@ -13472,6 +13492,10 @@
                                 "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                             }
                         },
+                        "budgetExcluded": {
+                            "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                            "type": "boolean"
+                        },
                         "cardPaymentChoice": {
                             "anyOf": [
                                 {
@@ -15491,6 +15515,10 @@
                                 "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                             }
                         },
+                        "budgetExcluded": {
+                            "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                            "type": "boolean"
+                        },
                         "cardPaymentChoice": {
                             "anyOf": [
                                 {
@@ -16602,6 +16630,10 @@
                                 "when": "When consumed by an actual posting/reserve, minor must be positive; ignored or derived currency fields and incomplete drafts are not unconditionally rejected."
                             }
                         },
+                        "budgetExcluded": {
+                            "description": "Only EXPENSE may set true. Omitted on edits preserves the previous value; new entries default false. Excludes monthly/category budgets, including refunds and fees, but not analysis, balances or activity budgets.",
+                            "type": "boolean"
+                        },
                         "cardPaymentChoice": {
                             "anyOf": [
                                 {
@@ -17541,6 +17573,9 @@
                             "type": "null"
                         }
                     ]
+                },
+                "budgetExcluded": {
+                    "type": "boolean"
                 },
                 "cardPaymentChoice": {
                     "anyOf": [

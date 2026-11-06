@@ -434,6 +434,7 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
     }
     StoredReferenceRates(s.settlements.firstOrNull{it.eventId==e.id}?.referenceRatesJson)
     if(e.currency!=s.book.currency&&e.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name,EntryKind.REFUND.name))YText(word("本位币统计：","基準通貨集計：")+Money(Currency.valueOf(s.book.currency),e.baseMinor).display(),12,number=true)
+    if(e.kind==EntryKind.EXPENSE.name&&e.budgetExcluded)YText(word("不计入预算","予算に含めない"),11)
     if(e.historicalIncluded)YText(word("已包含在期初余额","期首残高に含まれます"),11)
     val settlement=s.settlements.find{it.eventId==e.id}
     if(e.kind in listOf(EntryKind.EXPENSE.name,EntryKind.INCOME.name,EntryKind.REFUND.name)&&settlement!=null&&(settlement.accountCurrency!=e.currency||!settlement.confirmed))YButton(word("确认实际入账金额","実計上額を確認"),onConfirm,primary=true)
@@ -584,7 +585,10 @@ internal val LocalResultHaptic=staticCompositionLocalOf<(Haptic)->Unit>{{}}
             onChange(if(index==0)d.copy(date=date,settlementDate=if(d.settlementDate==d.date)date else d.settlementDate)else d.copy(settlementDate=date))
         })
         EntryNotes(d.id,d.note,{onChange(d.copy(note=it))}){
-            HistoricalOpeningToggle(s.book.startDate,d.historicalIncluded){onChange(d.copy(historicalIncluded=it))}
+            Column {
+                HistoricalOpeningToggle(s.book.startDate,d.historicalIncluded){onChange(d.copy(historicalIncluded=it))}
+                if(d.kind==EntryKind.EXPENSE)BudgetExcludedToggle(d.budgetExcluded,topDivider=false){onChange(d.copy(budgetExcluded=it))}
+            }
             mediaOption()
         }
         mediaContent()

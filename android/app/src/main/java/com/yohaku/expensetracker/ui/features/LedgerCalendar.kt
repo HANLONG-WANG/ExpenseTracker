@@ -92,23 +92,26 @@ private data class CalendarDay(val date:LocalDate,val spent:Long,val level:Int,v
     fun changeMonth(next:YearMonth){if(next>current)return;monthText=next.toString();selectedText=if(next==current)today.toString() else null}
     val currency=Currency.valueOf(s.book.currency)
     val spent=remember(s,events){s.dailyExpense(events)}
+    val budgetSpent=remember(s,events){s.dailyExpense(events,budgetOnly=true)}
     val limit=if(budgetEnabled)s.budgetLimit(month.toString(),budgetCategory) else null
     val dailyBudget=limit?.takeIf{it>0}?.let{it.toDouble()/month.lengthOfMonth()}
     val monthDays=(1..month.lengthOfMonth()).map{month.atDay(it)}
     val amounts=monthDays.associateWith{spent[it.toString()]?:0L}
     val total=amounts.values.sum()
+    val budgetTotal=monthDays.sumOf{budgetSpent[it.toString()]?:0L}
     val max=amounts.values.maxOrNull()?.takeIf{it>0}
     val days=monthDays.map{d->
         val n=amounts.getValue(d)
-        val ratio=if(n<=0)0.0 else dailyBudget?.let{n/it}?:(n.toDouble()/max!!)
-        val level=when{n<=0->0;dailyBudget!=null->if(ratio<.6)1 else if(ratio<=1)2 else 3;ratio<.34->1;ratio<.67->2;else->3}
-        CalendarDay(d,n,level,dailyBudget!=null&&ratio>1,ratio.coerceAtMost(1.0).toFloat(),max!=null&&n==max)
+        val compared=if(limit!=null)budgetSpent[d.toString()]?:0L else n
+        val ratio=if(compared<=0)0.0 else if(limit!=null)dailyBudget?.let{compared/it}?:Double.POSITIVE_INFINITY else n.toDouble()/max!!
+        val level=when{compared<=0->0;limit!=null->if(ratio<.6)1 else if(ratio<=1)2 else 3;ratio<.34->1;ratio<.67->2;else->3}
+        CalendarDay(d,n,level,limit!=null&&ratio>1,ratio.coerceAtMost(1.0).toFloat(),limit==null&&max!=null&&n==max)
     }
     val elapsed=when{month<current->month.lengthOfMonth();month==current->today.dayOfMonth;else->0}
     val average=if(elapsed>0)total/elapsed else 0L
     Column(Modifier.fillMaxWidth().testTag("ledger-calendar")){
         CalendarMonthHeader(month,month<current,{changeMonth(month.minusMonths(1))},{changeMonth(month.plusMonths(1))})
-        CalendarSummary(currency,total,average,limit?.let{it-total},days.filter{it.most}.firstOrNull()?.takeIf{limit==null},budgetEnabled&&limit!=null)
+        CalendarSummary(currency,total,average,limit?.let{it-budgetTotal},days.filter{it.most}.firstOrNull()?.takeIf{limit==null},budgetEnabled&&limit!=null,budgetTotal)
         val sundayFirst=LocalLanguage.current=="ja"
         val weekdays=if(sundayFirst)listOf(DayOfWeek.SUNDAY)+DayOfWeek.entries.dropLast(1) else DayOfWeek.entries
         CalendarWeekdays(weekdays)
@@ -173,7 +176,7 @@ private fun compactAmount(currency:Currency,minor:Long):String {
     }
 }
 
-@Composable private fun CalendarSummary(currency:Currency,total:Long,average:Long,remaining:Long?,most:CalendarDay?,budget:Boolean) {
+@Composable private fun CalendarSummary(currency:Currency,total:Long,average:Long,remaining:Long?,most:CalendarDay?,budget:Boolean,budgetSpent:Long) {
     val t=LocalYohaku.current
     fun money(n:Long)=Money(currency,n).display()
     val third=if(remaining!=null)word("预算余","予算残") to money(remaining) else word("最多的一天","最も多い日") to (most?.let{"${it.date.dayOfMonth}"+word("日","日")} ?: "—")
@@ -193,7 +196,7 @@ private fun compactAmount(currency:Currency,minor:Long):String {
                 BasicText(value,Modifier.padding(top=5.dp),style=TextStyle(color=t.ink,fontFamily=t.number,fontWeight=FontWeight.Medium),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=15.sp))
                 if(progress!=null)Box(Modifier.padding(top=7.dp).fillMaxWidth().height(5.dp).background(t.soft,RoundedCornerShape(3.dp))){Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(Color(0xffd7a46b),RoundedCornerShape(3.dp)))}
             }
-            chip(1.25f,word("本月支出","今月の支出"),money(total),if(budget&&remaining!=null)(total.toFloat()/(total+remaining).coerceAtLeast(1)).coerceIn(0f,1f) else null)
+            chip(1.25f,word("本月支出","今月の支出"),money(total),if(budget&&remaining!=null)(budgetSpent.toFloat()/(budgetSpent+remaining).coerceAtLeast(1)).coerceIn(0f,1f) else null)
             chip(1f,word("日均","1日平均"),money(average))
             chip(1f,third.first,third.second)
         }

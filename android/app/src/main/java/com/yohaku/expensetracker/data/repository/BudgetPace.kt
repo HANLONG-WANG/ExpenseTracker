@@ -27,13 +27,13 @@ fun BookSnapshot.budgetPace(asOf:LocalDate,finance:FinancialGraph?=null,referenc
     val planned=copy(occurrences=forecastOccurrences(asOf,month.atEndOfMonth()).map{o->if(o.baseMinor==null&&o.amountMinor!=null)rate(o.currency)?.let{q->o.copy(baseMinor=q.convert(Money(Currency.valueOf(o.currency),o.amountMinor)).minor,estimated=true)}?:o else o})
     val recurringIds=planned.occurrences.mapNotNull{it.eventId}.toSet()
     val activityIds=eventActivities.filter{link->availableActivities.any{it.id==link.activityId}}.map{it.eventId}.toSet()
-    val daily=current.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&it.date in start.toString()..today&&it.id !in recurringIds&&it.id !in activityIds}.fold(0L){sum,e->Math.addExact(sum,current.netExpense(e))}
+    val daily=current.visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&it.date in start.toString()..today&&it.id !in recurringIds&&it.id !in activityIds&&!current.excludedFromMonthly(it)}.fold(0L){sum,e->Math.addExact(sum,current.netExpense(e))}
     val remaining=month.lengthOfMonth()-asOf.dayOfMonth
     val futureDaily=daily.toBigDecimal().multiply(remaining.toBigDecimal()).divide(days.toBigDecimal(),0,RoundingMode.HALF_UP).longValueExact()
     val fixed=planned.budgetProjection(month.toString()).reserveMinor
     val futureEvents=visibleEvents.filter{it.kind==EntryKind.EXPENSE.name&&it.date>today&&it.date<=end&&!excludedFromMonthly(it)}.fold(0L){sum,e->Math.addExact(sum,netExpense(e))}
     val futureFees=visibleComponents().filter{it.date>today&&it.date<=end&&visibleEvents.none{e->e.id==it.eventId&&excludedFromMonthly(e)}}.fold(0L){sum,c->Math.addExact(sum,c.baseMinor)}
-    val fees=finance?.bills?.filter{it.active&&it.date<=end&&finance.plans.any{p->p.id==it.planId&&p.active}}?.map{b->
+    val fees=finance?.bills?.filter{it.active&&it.date<=end&&finance.plans.any{p->p.id==it.planId&&p.active&&visibleEvents.none{e->e.id==p.sourceEventId&&excludedFromMonthly(e)}}}?.map{b->
         val plan=finance.plans.first{it.id==b.planId};val fee=billOutstanding(b).feeMinor
         if(fee==0L)0L else fee?.let{n->if(plan.currency==book.currency)n.coerceAtLeast(0)else rate(plan.currency)?.convert(Money(Currency.valueOf(plan.currency),n.coerceAtLeast(0)))?.minor}
     }.orEmpty()

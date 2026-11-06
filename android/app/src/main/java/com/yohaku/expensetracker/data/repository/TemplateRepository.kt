@@ -25,7 +25,7 @@ fun BookSnapshot.occurrenceDraft(occurrence:OccurrenceEntity,rule:RecurrenceEnti
 
 data class TemplateInput(val name:String,val kind:EntryKind,val categoryId:String,val accountId:String,val currency:Currency,
     val amountMinor:Long?=null,val merchant:String="",val merchantId:String?=null,val note:String="",val cardPaymentChoice:String?=null,
-    val cardPaymentPeriods:Int?=null,val activityId:String?=null,val id:String?=null)
+    val cardPaymentPeriods:Int?=null,val activityId:String?=null,val id:String?=null,val budgetExcluded:Boolean=false)
 
 fun BookSnapshot.validateTemplate(input:TemplateInput) {
     require(input.name.isNotBlank()){ "请输入模板名称 / テンプレート名を入力してください" }
@@ -45,7 +45,7 @@ suspend fun LedgerRepository.saveTemplate(bookId:String,input:TemplateInput):Str
     require(input.activityId==null||s.features?.activityMode==true||old?.activityId==input.activityId){"请先开启活动模式 / シーンモードを有効にしてください"}
     val payment=fixedCardPayment(s.accounts.first{it.id==input.accountId},input.cardPaymentChoice,input.cardPaymentPeriods)
     val value=EntryTemplateEntity(bookId,old?.id?:id(),input.name.trim(),input.kind.name,input.categoryId,input.accountId,input.currency.name,input.amountMinor,
-        input.merchant.trim(),input.merchantId,input.note,payment.first,payment.second,input.activityId,old?.sortOrder?:((s.templates.maxOfOrNull{it.sortOrder}?:-1)+1),old?.createdAt?:clock.millis())
+        input.merchant.trim(),input.merchantId,input.note,payment.first,payment.second,input.activityId,old?.sortOrder?:((s.templates.maxOfOrNull{it.sortOrder}?:-1)+1),old?.createdAt?:clock.millis(),budgetExcluded=input.kind==EntryKind.EXPENSE&&input.budgetExcluded)
     dao.putTemplate(value);value.id
 }
 suspend fun LedgerRepository.deleteTemplate(bookId:String,id:String)=dao.deleteTemplate(bookId,id)
@@ -72,7 +72,7 @@ fun BookSnapshot.templateDraft(template:EntryTemplateEntity,date:String=LocalDat
     val d=EntryDraft(kind=EntryKind.valueOf(template.kind),date=date,accountId=template.accountId,categoryId=template.categoryId,
         amount=template.amountMinor?.let{Money(Currency.valueOf(template.currency),it).decimal.toPlainString()}.orEmpty(),
         merchant=template.merchant,merchantId=template.merchantId,merchantManuallyEdited=template.merchant.isNotBlank()||template.merchantId!=null,
-        note=template.note,cardPaymentChoice=template.cardPaymentChoice,cardPaymentPeriods=template.cardPaymentPeriods?.toString().orEmpty(),activityId=template.activityId)
+        note=template.note,budgetExcluded=template.budgetExcluded,cardPaymentChoice=template.cardPaymentChoice,cardPaymentPeriods=template.cardPaymentPeriods?.toString().orEmpty(),activityId=template.activityId)
     return if(template.cardPaymentChoice==null)withRememberedCardPayment(d)else d
 }
 fun BookSnapshot.templateInput(d:EntryDraft,name:String,includeAmount:Boolean):TemplateInput {
@@ -81,6 +81,6 @@ fun BookSnapshot.templateInput(d:EntryDraft,name:String,includeAmount:Boolean):T
     val amount=if(d.originalCurrency!=null&&d.originalCurrency!=currency)d.accountAmount else d.amount
     return TemplateInput(name,d.kind,d.categoryId?:error("请选择分类 / カテゴリを選択してください"),account.id,currency,
         if(includeAmount)Money.parse(amount,currency).minor else null,d.merchant,d.merchantId,d.note,d.cardPaymentChoice,
-        d.cardPaymentPeriods.takeIf{it.isNotBlank()}?.toIntOrNull(),d.activityId)
+        d.cardPaymentPeriods.takeIf{it.isNotBlank()}?.toIntOrNull(),d.activityId,budgetExcluded=d.kind==EntryKind.EXPENSE&&d.budgetExcluded)
 }
 internal fun List<EntryTemplateEntity>.remapTemplateCategories(sourceIds:Set<String>,targetId:String)=map{if(it.categoryId in sourceIds)it.copy(categoryId=targetId)else it}

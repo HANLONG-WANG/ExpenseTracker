@@ -6,7 +6,7 @@
 
 - [正式APK 0.5.0](artifacts/yohaku-release-0.5.0.apk) · [SHA-256](artifacts/yohaku-release-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker`，固定正式签名。
 - [开发APK 0.5.0](artifacts/yohaku-dev-0.5.0.apk) · [SHA-256](artifacts/yohaku-dev-0.5.0.apk.sha256)：包名`com.yohaku.expensetracker.dev`，沿用阶段A–D开发证书。
-- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v38（月计划和月评历史，迁移37→38；此前方案/效果队列、撤销关联及任务 purpose 保留）。三主题、中日文按账本保存。
+- Android 10+（minSdk29）、target/compile SDK37、versionCode5、Room v39（支出与模板 budgetExcluded，迁移38→39；此前月计划/月评、方案/效果队列、撤销关联及任务 purpose 保留）。三主题、中日文按账本保存。
 - 开发包可覆盖原开发版本。正式包独立安装，与开发包并存，不自动转移开发包资料。覆盖升级不要先卸载；卸载或清除应用存储会删除账本与内部附件。提供手动本地完整备份/恢复，系统云备份仍关闭。
 - 当前仅专用API36模拟器验证，用户实机未连接。精简实机检查、密钥位置和完整安装升级说明见[发行说明](RELEASE.md)。
 
@@ -59,6 +59,14 @@ adb -s <serial> install -r artifacts/yohaku-release-0.5.0.apk
 - 账户页资金与欠款列表一行两个账户：名称最多两行，余额单行自动缩小并贴卡片底部，同行等高，奇数时最后一张半宽；杂志为竖横发丝线分隔的目录表，手账为纸片，小物为实体卡片。屏宽 ≤360dp 或字号 >1.1 倍时仍一行一个。
 
 必要验证：`EntryDefaultsTest`（保存顺序、付款方式、草稿基线、负余额、名称规范化）；`TransferTransactionsTest`（信用卡充值 posting/预测/额度/对账/现金时间线及净余额预览）；`EntryExperienceFlowTest`（tab/附件/默认账户、负余额两种保存路径、商户联想与一览）；更新 `DraftEditingFlowTest`、`LocationEntryFlowTest`、`EntryLifecycleFlowTest`、`ThemeControlsTest`。本轮仅运行 JVM 测试和两个 APK 构建，不启动模拟器或运行 connected 测试；相关 UI 类在设备上使用 `looks=all` + `visual=true` 并查看截图，实际视觉结果仍待验。
+
+## 支出不计入预算（2026-11-06）
+
+支出表单展开「备注和其他」后可选「不计入预算 / 予算に含めない」，说明为「仍计入分析与账户余额 / 分析と口座残高には含めます」。与历史补录共用三主题 `EntryOptionToggle`，相邻开关只画一条分隔线；历史补录标签和 description testTag 保留，新开关为 `toggle-budget-excluded`。模板管理支持同款开关；存为模板、套用模板、草稿恢复、编辑、详情、修改记录与云端导出/撤销均保存该值。记账切类型重建草稿，模板切类型显式清零，仓库非支出强制 false。
+
+`excludedFromMonthly` 统一合并逐笔标记和独立活动：从月/分类预算已花、剩余、可用、进度、待确认数、保存预览、月评预算、预算节奏和提醒排除，归入 independent，退款/手续费随原消费。分析、余额、日历格子金额/月合计/日均、活动自身预算保留实际口径；日历颜色/超支/进度/剩余预算用排除后的每日金额，无预算时相对深浅和「最多」仍按实际支出。周期规则/实例及固定预留不变。完整备份直接保存数据库，无字段白名单；旧备份经 38→39 迁移默认 false。
+
+验证入口：JVM `BudgetExclusionTest`；仪器 `EntryExperienceFlowTest#expenseBudgetExclusionSavesAndClearsOnIncomeAcrossLooks`、`DatabaseUpgradeTest#version38AddsBudgetExclusionDefaultFalseToEventsAndTemplates`、`CommandLedgerExecutionTest#budgetExclusionEditsTemplatesExportsAndUndo`，及 `BackupRoundTripTest` 的完整快照往返。UI 使用 `looks=all visual=true`，查看 `files/verification/entry-experience/*-budget-excluded.png` 和 `*-budget-income.png`，日历回归用 `LedgerCalendarTest#calendarShowsDailyNetSpendingAndOpensTheChosenDay`，截图在 external-files `ledger-calendar/*-budget-excluded-month.png`。2026-11-06 JVM 全量通过；模拟器上 `DatabaseUpgradeTest`、`CommandLedgerExecutionTest`、`BackupRoundTripTest`、`BudgetRecurrenceTest`、`BudgetRecurrenceFlowTest`、`AnalysisProjectionTest`、`ThemeControlsTest`（53 项）通过，上述两项 UI 方法以 S24 Ultra 尺寸 `looks=all visual=true` 通过，三主题×中日文截图已查看。
 
 ## 照片与附件导入（2026-10-31 源码更新）
 
@@ -419,7 +427,7 @@ adb shell am instrument -w -r \
 
 阶段 2 增加本机整批撤销：账户/分类/已有预测恢复原快照；本方案新建且无修改、无外部引用的账户、额度/规则版本、预测和从属/修订行整体移除。原分类为空也可恢复为空。执行后相关对象变化阻止整批撤销，原执行与去重记录保留。后续命令按[适配器检查表](../docs/plans/cloud-command-adapter-checklist.md)验收。
 
-阶段7月计划和月评已验收；阶段8修正能力说明/示例、收窄生命周期及记录种类枚举，并补cloud.task.discard边界，能力清单再次变化。**需要用户使用下列 `CommandCapabilitiesTest` 生成入口重新生成两份样例和真实 catalogDigest**；本轮未手写能力样例。
+阶段7月计划和月评已验收；阶段8修正能力说明/示例、收窄生命周期及记录种类枚举，并补cloud.task.discard边界，能力清单再次变化。两份能力样例、方案 schema 和真实 catalogDigest 已在支出预算排除任务中用 `CommandCapabilitiesTest` 生成入口同步更新，未手写。
 
 必要测试（Gradle 须串行；本实现任务不运行，由验收方执行）：
 
@@ -434,7 +442,7 @@ adb shell am instrument -w -r \
 
 阶段3–5没有数据库迁移；执行文档版本3扩展行快照/关系行恢复，旧v1/v2兼容。新v3撤销恢复记录revision和保存次序，移除本次拥有的修订行；原办理/撤销/去重审计保留。
 
-阶段2的数据库 schema 在 `app/schemas/.../37.json`（当前已为38，37→38迁移及schema在阶段7完成），`sourceSets.androidTest.assets` 已读取该目录；36→37升级用已导出的36.json作真实起点，旧执行记录不伪造撤销快照。旧备份通过同一 `ALL_MIGRATIONS` 升级，办理去重记录不级联删除。
+阶段2的数据库 schema 在 `app/schemas/.../37.json`（当前为39，38→39增加支出与模板预算排除字段），`sourceSets.androidTest.assets` 已读取该目录；36→37升级用已导出的36.json作真实起点，旧执行记录不伪造撤销快照。旧备份通过同一 `ALL_MIGRATIONS` 升级，办理去重记录不级联删除。
 
 验收记录：[阶段 1](../docs/plans/cloud-command-stage-1.md)、[阶段 2](../docs/plans/cloud-command-stage-2.md)。
 

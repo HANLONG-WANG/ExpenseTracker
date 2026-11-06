@@ -51,6 +51,31 @@ class CommandLedgerExecutionTest {
         db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
         assertEquals("UNDONE",commands.plan(row.planId).status)
     }
+    @Test fun budgetExclusionEditsTemplatesExportsAndUndo()=runBlocking<Unit> {
+        val (book,bank)=setup();val c=r.saveCategory(book,"食事",EntryKind.EXPENSE,null)
+        val e=r.saveEntry(book,EntryDraft(accountId=bank,categoryId=c,amount="1200",date="2026-11-02"))
+        cycle(book,listOf(
+            step("exclude","entry.update","""{"targets":{"ids":["$e"]},"set":{"budgetExcluded":true}}"""),
+            step("note","entry.update","""{"targets":{"ids":["$e"]},"set":{"note":"保持预算开关"}}"""),
+            step("template","template.save","""{"name":"旅行","kind":"EXPENSE","category":"$c","account":"$bank","currency":"JPY","amountMinor":200,"budgetExcluded":true}"""),
+            step("entry","template.createEntry","""{"template":{"ref":"template","output":"template"}}"""))) {model,s->
+            assertTrue(s.visibleEvents.all{it.budgetExcluded});assertTrue(s.templates.single().budgetExcluded)
+            assertEquals(0L,s.budgetProjection("2026-11").spentMinor);assertEquals(1400L,s.monthExpense("2026-11"))
+            assertEquals(98600L,s.balance(s.accounts.single{it.id==bank}))
+            assertTrue(model.net.any{it.type=="entry"&&it.after.jsonObject["budgetExcluded"]==JsonPrimitive(true)})
+            val export=r.commandExports(book,RecordScope(mode="account",account=bank))
+            assertTrue(export.records!!.records.all{it.budgetExcluded})
+            assertEquals(JsonPrimitive(true),export.context.items.single{it.kind=="template"}.values["budgetExcluded"])
+        }
+        assertFalse(snapshot(book).events.single().budgetExcluded)
+        val incomeCategory=r.saveCategory(book,"工资",EntryKind.INCOME,null)
+        val income=r.saveEntry(book,EntryDraft(kind=EntryKind.INCOME,accountId=bank,categoryId=incomeCategory,amount="10",budgetExcluded=true))
+        assertFalse(snapshot(book).events.single{it.id==income}.budgetExcluded)
+        val rejected=receive(book,listOf(step("invalid","entry.update","""{"targets":{"ids":["$income"]},"set":{"budgetExcluded":true}}""")))
+        assertThrows(IllegalArgumentException::class.java){runBlocking{commands.preview(rejected.planId)}}
+        assertEquals("FAILED",commands.plan(rejected.planId).status)
+        assertFalse(snapshot(book).events.single{it.id==income}.budgetExcluded)
+    }
     @Test fun accountsCategoriesAndThreeEntries()=runBlocking<Unit> {
         val (book,_)=setup()
         cycle(book,listOf(

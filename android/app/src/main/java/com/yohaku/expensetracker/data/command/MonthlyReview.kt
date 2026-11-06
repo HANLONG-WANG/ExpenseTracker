@@ -43,7 +43,7 @@ suspend fun LedgerRepository.saveMonthlyPlan(bookId:String,text:String)=db.withT
 @Serializable data class MonthlyAccount(val id:String,val name:String,val currency:String,val openingDate:String,val beforeMinor:Long?,val afterMinor:Long?,val changeMinor:Long?)
 @Serializable data class MonthlySummary(val format:String="yohaku.monthly-review",val version:Int=1,val book_id:String,val month:String,val currency:String,
     val monthlyPlan:String,val incomeMinor:Long,val expenseMinor:Long,val categories:List<MonthlyCategory>,val budgets:List<MonthlyBudget>,val accounts:List<MonthlyAccount>,
-    val provisionalExpenseCount:Int,val basis:String="Income and net consumption use book currency. Confirmed refunds reduce their original purchase month; confirmed expense components use their own dates. Category rows are direct categories, not parent rollups; uncategorized expense components are separate. Budgets exclude independent activities and include inherited limits. Account balances use confirmed postings by posting date in each account currency; null means the account had not opened. Change includes opening funds for accounts opened during the month. This is a snapshot of current known facts, not a frozen month-end audit.")
+    val provisionalExpenseCount:Int,val basis:String="Income and net consumption use book currency. Confirmed refunds reduce their original purchase month; confirmed expense components use their own dates. Category rows are direct categories, not parent rollups; uncategorized expense components are separate. Budgets and provisionalExpenseCount exclude budgetExcluded expenses and independent activities and include inherited limits. Account balances use confirmed postings by posting date in each account currency; null means the account had not opened. Change includes opening funds for accounts opened during the month. This is a snapshot of current known facts, not a frozen month-end audit.")
 @Serializable data class MonthlyReviewBundle(val summary:MonthlySummary,val context:LedgerContextExport)
 
 fun BookSnapshot.monthlySummary(month:String,plan:String):MonthlySummary {
@@ -52,7 +52,6 @@ fun BookSnapshot.monthlySummary(month:String,plan:String):MonthlySummary {
     val categories=events.groupBy{it.kind to it.categoryId}.map{(key,rows)->MonthlyCategory(key.second,key.second?.let{path(it)}?:"未分类 / 未分類",key.first,rows.sumOf{if(it.kind=="EXPENSE")netExpense(it)else it.baseMinor})}.toMutableList()
     val fees=visibleComponents().filter{it.date.startsWith(month)}.sumOf{it.baseMinor}
     if(fees!=0L)categories+=MonthlyCategory(null,"手续费等支出组成 / 手数料などの支出内訳","COMPONENT",fees)
-    val expenseIds=events.filter{it.kind=="EXPENSE"}.map{it.id}.toSet()
     val budgetIds=listOf<String?>(null)+this.categories.filter{budgetLimit(month,it.id)!=null}.map{it.id}.sorted()
     val budgets=budgetIds.map{id->val b=budgetProjection(month,id);MonthlyBudget(id,id?.let{path(it)}?:"月预算 / 月予算",b.limitMinor,b.spentMinor,b.remainingMinor)}
     val accounts=this.accounts.sortedBy{it.id}.map{a->
@@ -61,7 +60,7 @@ fun BookSnapshot.monthlySummary(month:String,plan:String):MonthlySummary {
         val after=if(a.openingDate<=last)rows.filter{it.date<=last}.fold(a.openingMinor){sum,p->Math.addExact(sum,p.deltaMinor)}else null
         MonthlyAccount(a.id,a.name,a.currency,a.openingDate,before,after,after?.let{Math.subtractExact(it,before?:0)})
     }
-    return MonthlySummary(book_id=book.id,month=month,currency=book.currency,monthlyPlan=plan,incomeMinor=events.filter{it.kind=="INCOME"}.sumOf{it.baseMinor},expenseMinor=monthExpense(month),categories=categories.sortedWith(compareBy<MonthlyCategory>{it.kind}.thenBy{it.id.orEmpty()}),budgets=budgets,accounts=accounts,provisionalExpenseCount=settlements.count{!it.confirmed&&it.eventId in expenseIds})
+    return MonthlySummary(book_id=book.id,month=month,currency=book.currency,monthlyPlan=plan,incomeMinor=events.filter{it.kind=="INCOME"}.sumOf{it.baseMinor},expenseMinor=monthExpense(month),categories=categories.sortedWith(compareBy<MonthlyCategory>{it.kind}.thenBy{it.id.orEmpty()}),budgets=budgets,accounts=accounts,provisionalExpenseCount=provisionalExpenseCount(month))
 }
 
 suspend fun LedgerRepository.monthlyReviewBundle(bookId:String,month:String,preferences:AppPreferences?=null):MonthlyReviewBundle=db.withTransaction {

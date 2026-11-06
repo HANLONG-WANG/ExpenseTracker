@@ -167,7 +167,7 @@ class LedgerRepository(val db:YohakuDatabase, val clock:Clock=DeviceClock(),val 
         require(linkedRefunds.isEmpty() || old?.currency==amount.currency.name && old.kind==draft.kind.name && linkedRefunds.sumOf{it.amountMinor}<=amount.minor){"修改不能使关联退款超过原消费 / 変更後の金額は返金総額以上にしてください"}
         val merchant=draft.merchantId?.let{dao.merchant(bookId,it)?:error("商户不属于本账本 / 別の帳簿のお店です")}
         require(merchant==null||merchant.active||old?.let{dao.eventMerchant(bookId,it.id)?.merchantId}==merchant.id)
-        val event=cardPayment(EventEntity(bookId,old?.id?:id(),draft.kind.name,a.id,c.id,amount.minor,amount.currency.name,base.minor,date.toString(),draft.merchant.trim(),draft.note,draft.historicalIncluded,(old?.revision?:0)+1,createdAt=old?.createdAt ?: clock.millis()),draft,old,a)
+        val event=cardPayment(EventEntity(bookId,old?.id?:id(),draft.kind.name,a.id,c.id,amount.minor,amount.currency.name,base.minor,date.toString(),draft.merchant.trim(),draft.note,draft.historicalIncluded,(old?.revision?:0)+1,createdAt=old?.createdAt ?: clock.millis(),budgetExcluded=draft.kind==EntryKind.EXPENSE&&draft.budgetExcluded),draft,old,a)
         val expenseSign=if(draft.kind==EntryKind.EXPENSE)-1L else 1L
         val accountSign=if(AccountType.valueOf(a.type).debt)-expenseSign else expenseSign
         val postings=if(draft.historicalIncluded)emptyList()else listOf(PostingEntity(bookId,event.id+":settlement",event.id,a.id,

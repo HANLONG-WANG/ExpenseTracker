@@ -65,7 +65,7 @@ internal fun analysisModuleIcon(module:AnalysisModule)=when(module){AnalysisModu
         "spend"->{
             // The period total is shown before any module is chosen; only the module emphasis is left to the user.
             val provisional=report.events.any{event->s.settlementByEvent[event.id]?.confirmed==false}
-            YLead(word("从你的重点，看日常。","自分の視点で、日々を見る。"),"$start — $end · ${report.events.size} "+word("笔记录 · 含独立活动实际消费","件の記録・独立シーンの実支出を含む"),"MONEY IN CONTEXT",Money(currency,report.total).display(),if(provisional)word("净消费含预计换算","純支出に仮換算を含む")else word("本位币净消费","基準通貨の純支出"),pageFlow=true)
+            YLead(word("从你的重点，看日常。","自分の視点で、日々を見る。"),"$start — $end · ${report.events.size} "+word("笔记录 · 含不计入预算的消费","件の記録・予算に含めない支出も集計"),"MONEY IN CONTEXT",Money(currency,report.total).display(),if(provisional)word("净消费含预计换算","純支出に仮換算を含む")else word("本位币净消费","基準通貨の純支出"),pageFlow=true)
             RecordFacts(listOf(word("原消费","元の支出") to Money(currency,report.gross).display(),word("已到账退款 · 归原消费期间","入金済み返金・元の購入期間へ") to Money(currency,report.refunds).display(),word("明确实际费用","確定した実際の手数料") to Money(currency,report.fees).display()))
             if(s.analysisPreferences==null||modules.isEmpty()) {
                 ThemeSection(word("你想先看清什么？","まず、何を見たい？"),"YOUR OWN PERSPECTIVE")

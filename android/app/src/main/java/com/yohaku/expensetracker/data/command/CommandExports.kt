@@ -15,7 +15,7 @@ import com.yohaku.expensetracker.data.files.FileProtocols
     val asOfDate:String?=null,val zoneId:String?=null)
 @Serializable data class RecordExport(val id:String,val kind:String,val date:String,val account:String,val category:String?,
     val currency:String,val amountMinor:Long,val baseMinor:Long,val merchant:String,val note:String,val revision:Int,
-    val accountMinor:Long?,val accountCurrency:String?,val confirmed:Boolean?,val historicalIncluded:Boolean,
+    val accountMinor:Long?,val accountCurrency:String?,val confirmed:Boolean?,val historicalIncluded:Boolean,val budgetExcluded:Boolean,
     val cardPaymentChoice:String?,val cardPaymentPeriods:Int?,val cardPaymentMonth:String?,val cardPaymentFeeMinor:Long?,
     val settlementDate:String?=null,val originalEvent:String?=null,val toAccount:String?=null,val toMinor:Long?=null,val toCurrency:String?=null,
     val activity:String?=null,val merchantId:String?=null,val cardPaymentMode:String?=null,val cardPaymentRule:String?=null,val financial:JsonObject?=null)
@@ -41,7 +41,7 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope,pref
     s.merchants.forEach{m->add(m.id,"merchant",m.name){put("note",m.note);put("active",m.active)}}
     s.merchantLocations.forEach{p->add(p.id,"place",p.name){put("merchantId",p.merchantId);put("latitude",p.latitude);put("longitude",p.longitude);put("radiusMeters",p.radiusMeters)}}
     s.friends.forEach{a->add(a.id,"friend",a.name){put("active",a.active)}}
-    s.templates.forEach{t->add(t.id,"template",t.name){put("kind",t.kind);put("accountId",t.accountId);put("categoryId",t.categoryId);put("currency",t.currency);put("amountMinor",t.amountMinor);put("merchant",t.merchant);put("merchantId",t.merchantId);put("note",t.note);put("activityId",t.activityId);put("sortOrder",t.sortOrder);put("cardPaymentChoice",t.cardPaymentChoice);put("cardPaymentPeriods",t.cardPaymentPeriods)}}
+    s.templates.forEach{t->add(t.id,"template",t.name){put("kind",t.kind);put("accountId",t.accountId);put("categoryId",t.categoryId);put("currency",t.currency);put("amountMinor",t.amountMinor);put("merchant",t.merchant);put("merchantId",t.merchantId);put("note",t.note);put("activityId",t.activityId);put("sortOrder",t.sortOrder);put("budgetExcluded",t.budgetExcluded);put("cardPaymentChoice",t.cardPaymentChoice);put("cardPaymentPeriods",t.cardPaymentPeriods)}}
     s.budgets.forEach{b->add("${b.month}:${b.scope}","budget",b.month){put("month",b.month);put("categoryId",b.categoryId);put("currency",s.book.currency);put("amountMinor",b.amountMinor)}}
     s.recurrences.forEach{r->add(r.id,"recurrence",r.name){put("accountId",r.accountId);put("categoryId",r.categoryId);put("currency",r.currency);put("amountMinor",r.amountMinor);put("baseMinor",r.baseMinor);put("estimated",r.estimated);put("frequency",r.frequency);put("anchorDate",r.anchorDate);put("endDate",r.endDate);put("active",r.active);put("activityId",r.activityId);put("merchant",r.merchant);put("merchantId",r.merchantId);put("note",r.note);put("cardPaymentChoice",r.cardPaymentChoice);put("cardPaymentPeriods",r.cardPaymentPeriods)}}
     s.occurrences.forEach{o->add(o.id,"occurrence",o.name){put("recurrenceId",o.recurrenceId);put("scheduledDate",o.scheduledDate);put("accountId",o.accountId);put("categoryId",o.categoryId);put("currency",o.currency);put("amountMinor",o.amountMinor);put("baseMinor",o.baseMinor);put("estimated",o.estimated);put("status",o.status);put("eventId",o.eventId);put("activityId",o.activityId)}}
@@ -107,7 +107,7 @@ suspend fun LedgerRepository.commandExports(bookId:String,scope:RecordScope,pref
         db.csvImportDao().batches(bookId).first().forEach{batch->val ids=db.csvImportDao().events(bookId,batch.id).filter{it.id in selectedIds}.map{it.id};if(ids.isNotEmpty())workflows+=ContextItem(batch.id,"csv_batch_records",batch.fileName,buildJsonObject{put("entries",encoded(ids.sorted()))})}
         RecordsExport(book_id=bookId,generatedAt=generated,scope=scope,activityTreats=treats,workflows=workflows.sortedWith(compareBy<ContextItem>{it.kind}.thenBy{it.id}),records=selected.map{e->
             val st=s.settlementByEvent[e.id];val transfer=s.transferByEvent[e.id]
-            RecordExport(e.id,e.kind,e.date,e.accountId,e.categoryId,e.currency,e.amountMinor,e.baseMinor,e.merchant,e.note,e.revision,st?.accountMinor,st?.accountCurrency,st?.confirmed,e.historicalIncluded,e.cardPaymentChoice,e.cardPaymentPeriods,e.cardPaymentMonth,e.cardPaymentFeeMinor,
+            RecordExport(e.id,e.kind,e.date,e.accountId,e.categoryId,e.currency,e.amountMinor,e.baseMinor,e.merchant,e.note,e.revision,st?.accountMinor,st?.accountCurrency,st?.confirmed,e.historicalIncluded,e.budgetExcluded,e.cardPaymentChoice,e.cardPaymentPeriods,e.cardPaymentMonth,e.cardPaymentFeeMinor,
                 st?.settlementDate,st?.originalEventId,transfer?.toAccountId,transfer?.toMinor,transfer?.toCurrency,s.activityByEvent[e.id],s.merchantByEvent[e.id],e.cardPaymentMode,e.cardPaymentRuleId,
                 s.repayments.firstOrNull{it.eventId==e.id}?.let{repayment->buildJsonObject {
                     put("debtAccountId",repayment.debtAccountId);put("currency",s.accounts.first{it.id==repayment.debtAccountId}.currency)

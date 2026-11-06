@@ -40,7 +40,8 @@ data class EventEntity(val bookId: String, val id: String, val kind: String, val
     @ColumnInfo(defaultValue="NULL") val deletionGroupId:String?=null,
     @ColumnInfo(defaultValue="NULL") val purgedAt:Long?=null,
     @ColumnInfo(defaultValue="NULL") val cardPaymentMonth:String?=null,
-    @ColumnInfo(defaultValue="NULL") val cardPaymentFeeMinor:Long?=null)
+    @ColumnInfo(defaultValue="NULL") val cardPaymentFeeMinor:Long?=null,
+    @ColumnInfo(defaultValue="0") val budgetExcluded:Boolean=false)
 
 @Entity(tableName="postings", primaryKeys=["bookId","id"], foreignKeys=[
     ForeignKey(entity=EventEntity::class,parentColumns=["bookId","id"],childColumns=["bookId","eventId"],onDelete=ForeignKey.CASCADE),

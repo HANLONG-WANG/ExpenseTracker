@@ -11,4 +11,4 @@ import androidx.room.*
 @kotlinx.serialization.Serializable
 data class EntryTemplateEntity(val bookId:String,val id:String,val name:String,val kind:String,val categoryId:String,val accountId:String,val currency:String,
     val amountMinor:Long?=null,val merchant:String="",val merchantId:String?=null,val note:String="",val cardPaymentChoice:String?=null,val cardPaymentPeriods:Int?=null,
-    val activityId:String?=null,val sortOrder:Int=0,val createdAt:Long)
+    val activityId:String?=null,val sortOrder:Int=0,val createdAt:Long,@ColumnInfo(defaultValue="0") val budgetExcluded:Boolean=false)

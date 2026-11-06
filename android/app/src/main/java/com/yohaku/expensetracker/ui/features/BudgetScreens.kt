@@ -30,7 +30,7 @@ import java.time.YearMonth
     RecordFacts(listOf(
         word("总预算","全体予算") to value(projection.limitMinor),
         word("预算内已花","予算内の支出") to Money(currency,projection.spentMinor).display(),
-        word("独立活动净消费","独立シーンの純支出") to Money(currency,projection.independentMinor).display(),
+        word("不计入预算的净消费","予算に含めない純支出") to Money(currency,projection.independentMinor).display(),
         word("全部净消费","すべての純支出") to Money(currency,projection.allExpenseMinor).display(),
         word("预算余额","予算残額") to value(projection.remainingMinor),
         word("待付固定支出预留","固定費の未払い予定") to value(projection.fixedReserveMinor),
@@ -71,7 +71,7 @@ import java.time.YearMonth
     val projection=s.budgetProjection(month)
     val missing=word("未设置 / 待补齐","未設定・未補足")
     fun value(amount:Long?)=amount?.let{Money(projection.currency,it).display()}?:missing
-    YLead(word("日常与活动，分开留。","日常とシーン、分けて残す。"),word("月预算内支出与独立活动支出分开表达。","月予算の支出と独立シーン支出を区別。"),"THE MONTHLY BALANCE",value(projection.remainingMinor),word("本月预算余额","今月の予算残額"),amountIsText=projection.remainingMinor==null,pageFlow=true)
+    YLead(word("预算内外，分开留。","予算の内と外、分けて残す。"),word("月预算内支出与不计入预算的支出分开表达。","月予算に含む支出と含めない支出を区別。"),"THE MONTHLY BALANCE",value(projection.remainingMinor),word("本月预算余额","今月の予算残額"),amountIsText=projection.remainingMinor==null,pageFlow=true)
     MonthChooser(month,{month=it})
     val provisional=s.provisionalExpenseCount(month)
     Box(Modifier.padding(top=5.dp,bottom=if(provisional>0)5.dp else 20.dp)) {
