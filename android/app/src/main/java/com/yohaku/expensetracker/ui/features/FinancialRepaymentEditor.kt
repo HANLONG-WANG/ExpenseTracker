@@ -38,15 +38,18 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
     var encoded by financialField("encoded"){vm.repository.json.encodeToString(
         RepaymentDraft(initialSource,amount(event?.currency?:account.currency,event?.amountMinor?:initialSuggestion?.paid?.takeIf{initialCurrency==account.currency}),event?.date?:initialDate,
             amount(account.currency,old?.receivedMinor),amount(account.currency,if(old!=null)old.principalMinor else initialSuggestion?.principal),
-            amount(account.currency,if(old!=null)old.interestMinor else 0L.takeIf{initialSuggestion?.zeroCombinedFee==true}),amount(account.currency,if(old!=null)old.feeMinor else 0L.takeIf{initialSuggestion?.zeroCombinedFee==true}),amount(s.book.currency,old?.feeBaseMinor),
+            amount(account.currency,if(old!=null)old.interestMinor else initialSuggestion?.interest),amount(account.currency,if(old!=null)old.feeMinor else initialSuggestion?.fee),amount(s.book.currency,old?.feeBaseMinor),
             false,old?.clearingDate?:initialDate,old?.paymentType?:RepaymentType.NORMAL.name,amount(event?.currency?:account.currency,old?.sourceFeeMinor),amount(s.book.currency,old?.sourceFeeBaseMinor),
             if(old!=null)s.repaymentAllocations.filter{it.eventId==eventId}.map{AllocationDraft(it.billId,it.contractId,amount(account.currency,it.principalMinor),amount(account.currency,it.interestMinor),amount(account.currency,it.feeMinor))}else if(billId!=null||contractId!=null)listOf(AllocationDraft(billId,contractId))else emptyList(),
-            old?.linkedTransferEventId,eventId,event?.note.orEmpty(),singleTarget=old==null).let{it.copy(singleTarget=old==null||it.canShareComposition())}.withSingleAllocation().let{draft->
+            old?.linkedTransferEventId,eventId,event?.note.orEmpty(),interestManual=old!=null,singleTarget=old==null).let{it.copy(singleTarget=old==null||it.canShareComposition())}.withSingleAllocation().let{draft->
             if(paymentDate==null)draft else repaymentDateDraft(draft,dateTargets,stale,Currency.valueOf(account.currency),initialCurrency==account.currency)
         })}
     val stored=vm.repository.json.decodeFromString<RepaymentDraft>(encoded)
     val d=if(stored.singleTarget==null)stored.copy(singleTarget=stored.canShareComposition())else stored
-    fun update(v:RepaymentDraft){encoded=vm.repository.json.encodeToString(v.copy(confirmed=false).withSingleAllocation())}
+    fun update(v:RepaymentDraft){
+        val sameCurrency=(s.accounts.firstOrNull{it.id==v.source}?.currency?:s.book.currency)==account.currency
+        encoded=vm.repository.json.encodeToString(v.copy(confirmed=false).withDerivedInterest(Currency.valueOf(account.currency),sameCurrency).withSingleAllocation())
+    }
     fun row(index:Int,value:AllocationDraft){update(d.copy(rows=d.rows.mapIndexed{i,a->if(i==index)value else a}))}
     val session=requireNotNull(LocalFinancialDraft.current)
     // A saved record is a fact; a resumed form's confirmation is not.
@@ -58,7 +61,7 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
     val contracts=finance.contracts.filter{it.accountId==account.id}
     val currentSuggestion=suggestion(d.rows.singleOrNull()?.billId)
     val paidSuggestion=currentSuggestion.takeIf{sourceCurrency==account.currency}
-    var details by financialField("repaymentDetails"){old!=null||d.singleTarget!=true||d.received.isNotBlank()||d.sourceFee.isNotBlank()||d.feeBase.isNotBlank()||d.sourceFeeBase.isNotBlank()||sourceCurrency!=account.currency||currentSuggestion?.zeroCombinedFee==false}
+    var details by financialField("repaymentDetails"){old!=null||d.singleTarget!=true||d.received.isNotBlank()||d.sourceFee.isNotBlank()||d.feeBase.isNotBlank()||d.sourceFeeBase.isNotBlank()||sourceCurrency!=account.currency||currentSuggestion?.split==false}
     var links by financialField("repaymentLinks"){old!=null||d.linkedTransfer!=null||d.existing!=null}
     var multiple by financialField("repaymentMultiple"){old!=null||d.singleTarget!=true}
     var other by financialField("repaymentOther"){old!=null||d.type!=RepaymentType.NORMAL.name||d.note.isNotBlank()}
@@ -74,8 +77,8 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
         val next=suggestion(targetBill)
         val payer=d.source?:bills.firstOrNull{it.id==targetBill}?.paymentAccountId
         val currency=s.accounts.firstOrNull{it.id==payer}?.currency
-        update(d.copy(source=payer,paid=amount(currency?:account.currency,next?.paid?.takeIf{currency==account.currency}),principal=amount(account.currency,next?.principal),interest=if(next?.zeroCombinedFee==true)"0"else"",fee=if(next?.zeroCombinedFee==true)"0"else"",rows=if(value==null)emptyList()else listOf(AllocationDraft(targetBill,targetContract))))
-        if(next?.zeroCombinedFee!=true||currency!=account.currency)details=true
+        update(d.copy(source=payer,paid=amount(currency?:account.currency,next?.paid?.takeIf{currency==account.currency}),principal=amount(account.currency,next?.principal),interest=amount(account.currency,next?.interest),fee=amount(account.currency,next?.fee),interestManual=false,rows=if(value==null)emptyList()else listOf(AllocationDraft(targetBill,targetContract))))
+        if(next?.split!=true||currency!=account.currency)details=true
     }
     val r=review?.takeIf{it.repaymentInput?.debtAccountId==account.id&&it.before.ledger.book.id==s.book.id}
     FinancialFlow(word("记录还款","返済を記録"),step=if(r!=null)1 else 0,
@@ -120,20 +123,24 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
             if(d.rows.isEmpty())YText(word("未指定目标；本金不会自动结清账单或合同。","対象未指定。元金で請求・契約を自動精算しません。"),11)
             YText(word("实收与付款端费用未填写时仍为未知；付款不等于平台确认。","受取額・出金側手数料の未入力は不明のままです。支払と返済先の確定は別です。"),11,color=LocalYohaku.current.muted)
         }
-        YButton(word("费用与清偿组成","手数料・返済の内訳")+if(details)" −"else" +",{details=!details},Modifier.testTag("finance-repay-details"))
+        YActionRow {
+            YButton(word("费用与清偿组成","手数料・返済の内訳")+if(details)" −"else" +",{details=!details},Modifier.testTag("finance-repay-details"))
+            YButton(word("关联已有付款或转账","既存の支払・振替に関連付け")+if(links)" −"else" +",{links=!links},Modifier.testTag("finance-repay-link-existing"))
+            YButton(word("分配到多个目标","複数の対象へ充当")+if(multiple)" −"else" +",{multiple=!multiple},Modifier.testTag("finance-repay-multiple-targets"))
+            YButton(word("还款类型与备注","返済種別・メモ")+if(other)" −"else" +",{other=!other},Modifier.testTag("finance-repay-other"))
+        }
         if(details) {
-            if(currentSuggestion?.zeroCombinedFee==false)YText(word("账单只有利息/费用合计，不能自动拆分。部分还款请按实际组成填写。","請求には利息・手数料の合計のみがあり、自動で分けられません。一部返済は実際の内訳を入力してください。"),11,color=LocalYohaku.current.warm)
-            YText(word("未知留空，已知为零填 0。修改付款金额不会按比例猜测清偿组成。","不明は空欄、既知のゼロは0を入力。支払額の変更から返済内訳を比例推定しません。"),11)
+            if(currentSuggestion?.split==false)YText(word("账单利息/费用未知，请按实际组成填写。","請求の利息・手数料が不明です。実際の内訳を入力してください。"),11,color=LocalYohaku.current.warm)
+            YText(word("未知留空，已知为零填 0。修改付款金额不会按比例猜测清偿组成。账单未单列平台费用时按 0 计；利息按实收减本金和平台费用自动计算，手动填写后不再覆盖。","不明は空欄、既知のゼロは0を入力。支払額の変更から返済内訳を比例推定しません。請求に返済先手数料の内訳がなければ0とし、利息は受取額から元金と返済先手数料を引いて自動計算します。手入力後は上書きしません。"),11)
             YField(word("平台实际收到","返済先の実受取額")+" · "+account.currency,d.received,{update(d.copy(received=it))},numeric=true)
             YField(word("清偿本金","返済元金")+" · "+account.currency,d.principal,{update(d.copy(principal=it))},numeric=true)
-            YField(word("实付利息","実支払利息")+" · "+account.currency,d.interest,{update(d.copy(interest=it))},numeric=true)
+            YField(word("实付利息","実支払利息")+" · "+account.currency,d.interest,{update(d.copy(interest=it,interestManual=true))},numeric=true)
             YField(word("平台费用","返済先手数料")+" · "+account.currency,d.fee,{update(d.copy(fee=it))},numeric=true)
             if(account.currency!=s.book.currency)YField(word("利息及平台费用统计合计","利息・返済先手数料の集計合計")+" · "+s.book.currency,d.feeBase,{update(d.copy(feeBase=it))},numeric=true)
             YField(word("总扣款内含付款端费用","実出金総額に含む出金側手数料")+" · "+sourceCurrency,d.sourceFee,{update(d.copy(sourceFee=it))},numeric=true)
             if(sourceCurrency!=s.book.currency)YField(word("付款端费用统计金额","出金側手数料の集計額")+" · "+s.book.currency,d.sourceFeeBase,{update(d.copy(sourceFeeBase=it))},numeric=true)
             Column(Modifier.testTag("finance-repay-clearing-date")) { YDateFields(listOf(word("平台清偿日期","返済先の確定日") to d.clearingDate),dateOwner?.takeIf{it==1}?.let{0},{dateOwner=it?.let{1}},{_,v->update(d.copy(clearingDate=v))}) }
         }
-        YButton(word("关联已有付款或转账","既存の支払・振替に関連付け")+if(links)" −"else" +",{links=!links},Modifier.testTag("finance-repay-link-existing"))
         if(links) {
             if(eventId==null) {
                 val candidates=s.visibleEvents.filter{it.kind in listOf(EntryKind.EXPENSE.name,EntryKind.REPAYMENT.name)&&s.repayments.none{p->p.eventId==it.id}&&funds.any{a->a.id==it.accountId}}
@@ -143,7 +150,6 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
             val transfers=s.transfers.filter{it.toAccountId==d.source&&s.visibleEvents.any{e->e.id==it.eventId}}
             YSelect(word("关联先前换汇 / 转账","先行する両替・振替に関連付け"),d.linkedTransfer,listOf(null to word("不关联 / 直接付款","関連なし・直接支払"))+transfers.map{it.eventId as String? to (s.events.first{e->e.id==it.eventId}.date+" · "+it.eventId.take(8))},{update(d.copy(linkedTransfer=it))})
         }
-        YButton(word("分配到多个目标","複数の対象へ充当")+if(multiple)" −"else" +",{multiple=!multiple},Modifier.testTag("finance-repay-multiple-targets"))
         if(multiple) {
             YText(word("单目标沿用上面的组成；启用独立分配后可分别填写各目标。未分配本金不会自动结清账单。","単一対象は上の内訳を使用。個別充当を有効にすると対象別に入力できます。未充当元金で請求を自動精算しません。"),11)
             if(d.singleTarget==true)YButton(word("启用独立分配","個別充当を有効にする"),{update(d.copy(singleTarget=false))},Modifier.testTag("finance-repay-independent"),haptic=Haptic.ToggleOn)
@@ -157,7 +163,6 @@ private fun money(currency:String,value:String)=value.takeIf{it.isNotBlank()}?.l
             }}
             YButton(word("＋ 添加清偿目标","＋ 充当先を追加"),{update(d.copy(singleTarget=false,rows=d.rows+AllocationDraft()))},Modifier.testTag("finance-repay-add-allocation"),enabled=!busy)
         }
-        YButton(word("还款类型与备注","返済種別・メモ")+if(other)" −"else" +",{other=!other},Modifier.testTag("finance-repay-other"))
         if(other) {
             YSelect(word("还款类型","返済種別"),d.type,RepaymentType.entries.map{it.name to repaymentTypeLabel(it)},{update(d.copy(type=it))})
             YField(word("备注","メモ"),d.note,{update(d.copy(note=it))})

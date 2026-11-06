@@ -159,13 +159,16 @@ class FinancialRepaymentFlowTest {
             ui.waitUntil(10000){!vm.busy.value&&vm.financialLedgerReview.value==null&&snapshot().repayments.single().platformConfirmed}
             ui.onNodeWithTag("period-payment-status-$first").assertTextEquals(text("已结清","精算済み"))
             assertEquals(1,snapshot().events.size);assertEquals(2000L,snapshot().balance(snapshot().accounts.first{it.id==card}))
-            // Merged nonzero fees stay unsplit; changing the amount opens composition without proportional guesses.
+            // An unlisted bill charge prefills as interest; a partial amount clears principal, and interest follows received − principal − fee.
             tapTag("finance-back");tapTag("statement-bill-$second");tapTag("finance-pay-bill-$second");paid.assertTextEquals("2100")
-            textField(text("实付利息","実支払利息")+" · JPY").assertTextEquals("")
-            textField(text("平台费用","返済先手数料")+" · JPY").assertTextEquals("")
+            ui.onNodeWithTag("finance-repay-allocation-summary").assert(hasAnyDescendant(hasText("¥2,000 / ¥100 / ¥0",substring=true)))
             paid.performScrollTo().performTextReplacement("1100")
             textField(text("清偿本金","返済元金")+" · JPY").assertTextEquals("")
-            for((label,value) in listOf(text("清偿本金","返済元金") to "1000",text("实付利息","実支払利息") to "100",text("平台费用","返済先手数料") to "0"))textField(label+" · JPY").performScrollTo().performTextReplacement(value)
+            textField(text("清偿本金","返済元金")+" · JPY").performScrollTo().performTextReplacement("1050")
+            textField(text("实付利息","実支払利息")+" · JPY").assertTextEquals("50")
+            if(visualEnabled())showSection("finance-repay-details");shot("$theme-$language-repayment-derived-interest")
+            textField(text("清偿本金","返済元金")+" · JPY").performScrollTo().performTextReplacement("1000")
+            textField(text("实付利息","実支払利息")+" · JPY").assertTextEquals("100")
             tapTag("finance-repay-preview");tapTag("finance-ledger-confirm")
             ui.waitUntil(10000){!vm.busy.value&&vm.financialLedgerReview.value==null&&snapshot().repayments.size==2}
             tapTag("finance-pay-bill-$second");paid.assertTextEquals("1000")

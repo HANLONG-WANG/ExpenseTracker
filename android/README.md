@@ -197,22 +197,22 @@ curl -X POST --data-binary @result.json 'http://127.0.0.1:8787/admin/tasks/<task
 
 按[计划 5.3](../docs/plans/financial-account-ui-plan.md#53-还款简化的准确边界)实现就地还款和简化录入。账单按付款日汇总，紧凑行显示金额和简短状态；期次详情显示金额确认与独立付款状态。日期汇总可对当日全部未付账单记录还款，逐笔还款与已有付款查看位于详情。保存/关闭回到来源并保持月份和位置。总览还款入口位于近期付款附近，管理中的还款记录、合同还款及原账单金额核对入口保留。
 
-还款使用上述全屏流程，基本区显示目标、付款账户、实扣、日期、平台确认和组成/分配摘要；费用与组成（含跨币种）、已有付款/转账关联、多目标分配、类型/备注可展开。摘要按债务账户币种格式化，空值为未知。既有记录的费用、币种、关联及独立分配默认可见；收起不清空输入，草稿恢复保留展开状态但不恢复旧预览或平台确认。
+还款使用上述全屏流程，基本区显示目标、付款账户、实扣、日期、平台确认和组成/分配摘要；费用与组成（含跨币种）、已有付款/转账关联、多目标分配、类型/备注可展开，四个展开按钮同排换行，展开内容按同一顺序列在其下。摘要按债务账户币种格式化，空值为未知。既有记录的费用、币种、关联及独立分配默认可见；收起不清空输入，草稿恢复保留展开状态但不恢复旧预览或平台确认。
 
-建议来自已知剩余待付，扣除明确的待确认分配，并标明来源；失效预测和未知金额不提供确定值。同币种实扣偏离已知建议时清空单目标本金并展开组成，回到建议金额时恢复本金与已知零合并费用。无建议时输入实扣不自动展开或推算本金。非零合并费用不拆分，部分还款不按比例分摊，实收与付款端费用不自动推定。独立分配保留原值。
+建议来自已知剩余待付，扣除明确的待确认分配，并标明来源；失效预测和未知金额不提供确定值。同币种实扣偏离已知建议时清空单目标本金并展开组成，回到建议金额时恢复本金与建议利息/费用。无建议时输入实扣不自动展开或推算本金。账单利息/费用合计中，计算依据单列的追加费用计为平台费用，其余计为利息（无依据即平台费用 0）；单目标未手填利息时，利息随「实收（未填则实扣减付款端费用，同币种）− 本金 − 平台费用」自动更新，手填后不再覆盖，编辑已有记录保留原值。部分还款不按比例分摊，实收与付款端费用不自动推定。独立分配保留原值。
 
 预览先显示资金、清偿和目标待付变化，再看完整资料；仍使用 `previewRepayment` / `commitFinancialLedger`，业务规则和 Room 不变。云端办理同步预览顺序与术语，save/confirm 及用户事实确认语义不变，不新增金融对象跳转。杂志、手账、小物分别沿用编辑短注、账目边线批注、标题签收纳格及各自菜单、日期和短弹层。
 
 稳定标签：`statement-bill-{billId}`（账单行）、`statement-date-{date}`、`statement-repay-date-{date}`；期次使用 `finance-pay-bill-*`、`period-{amount|payment}-status-*`、`period-payment-*`。还款分区使用 `finance-repay-{target|details|link-existing|multiple-targets|independent|other|allocation-summary|payment-date|clearing-date|review-summary|review-targets}`，保留 `finance-pay-bill-*`、`finance-repay-cleared/preview`、`finance-ledger-confirm`、`finance-flow-back`。日期测试按付款/清偿所属区域定位。
 
-相关测试：`FinancialRepaymentStateTest` 验证建议和单目标联动；`FinancialRepaymentFlowTest` 覆盖就地还款、待确认/确认、部分还款、无建议输入、已有跨币种付款与多目标编辑；`FinancialFlowTest`、`FinancialDraftEditorsTest`、`FinancialDraftFlowTest#closedRuleDraftCanBeKeptResumedOrDiscardedAcrossBookSwitches`、`FinancialProductionOverviewTest` 验证原业务、草稿和真实外壳；`CommandFlowTest` 覆盖云端还款预览。UI 使用 `looks=all visual=true` 并查看三主题×中日文截图，沿用 `phase-c-repayment/`、`phase-c-production-overview/`、`phase-c-rules/` 和 `cloud-command-stage-1/` 目录。
+相关测试：`FinancialRepaymentStateTest` 验证建议、利息推算和单目标联动；`FinancialRepaymentFlowTest` 覆盖就地还款、待确认/确认、部分还款、无建议输入、已有跨币种付款与多目标编辑；`FinancialFlowTest`、`FinancialDraftEditorsTest`、`FinancialDraftFlowTest#closedRuleDraftCanBeKeptResumedOrDiscardedAcrossBookSwitches`、`FinancialProductionOverviewTest` 验证原业务、草稿和真实外壳；`CommandFlowTest` 覆盖云端还款预览。UI 使用 `looks=all visual=true` 并查看三主题×中日文截图，沿用 `phase-c-repayment/`、`phase-c-production-overview/`、`phase-c-rules/` 和 `cloud-command-stage-1/` 目录。
 
 
 ### 金融账户一次付规模化与页签外观
 
 一次付模型和账单保持原样。计划列表、已替换分区和管理的计划版本目录只显示非 SINGLE 计划；空状态引导一次付消费去账单页。账单行进入期次详情，可核对金额、还款/查看付款、查看原记录、比较/更改付款方式、进入计划全部期次与版本历史；旧一次付安排仍可从新安排的“查看原安排版本”进入。
 
-总览只保留一个“比较 / 更改付款方式”，候选条件不变，选择页用名称、金额、付款日的紧凑行进入原比较流程。账单每个付款日一份汇总，显示合计、确认/预测笔数、已付待确认、仍需备款和付款账户，下方每张账单只占一行；不再重复列“相关消费”，未安排提示保留。日期还款复用多目标编辑器及原预览/保存事务，按逐笔建议扣除明确待确认分配，仅在所有目标有依据时合计预填；付款账户不同或未知时不猜测，非零合并费用不拆分。日期作为可选草稿上下文隔离不同付款日的输入并显示在草稿目录中，旧草稿兼容；保存事务不变。金额核对仍逐笔进行；批量核对由已有云端办理 `financialBill.confirm` 在同一任务中包含多笔完成，不新增命令或整期确认。
+总览只保留一个“比较 / 更改付款方式”，候选条件不变，选择页用名称、金额、付款日的紧凑行进入原比较流程。账单每个付款日一份汇总，显示合计、确认/预测笔数、已付待确认、仍需备款和付款账户，下方每张账单只占一行；不再重复列“相关消费”，未安排提示保留。日期还款复用多目标编辑器及原预览/保存事务，按逐笔建议扣除明确待确认分配，仅在所有目标有依据时合计预填；付款账户不同或未知时不猜测，利息/费用按上述规则逐笔预填。日期作为可选草稿上下文隔离不同付款日的输入并显示在草稿目录中，旧草稿兼容；保存事务不变。金额核对仍逐笔进行；批量核对由已有云端办理 `financialBill.confirm` 在同一任务中包含多笔完成，不新增命令或整期确认。
 
 杂志页签下划线铺满页签宽度；日常小物改为等高浅底胶囊分段控件，小首字母格使用浅色背景；手账页签保留。四个一级页签均不显示重复任务名，`finance-task-title` 仅在详情/管理子页等次级页面出现。账单来源详情保持账单标签选中并返回原月份/位置。Role.Tab、selected 和 `finance-tab-*` 不变。
 
